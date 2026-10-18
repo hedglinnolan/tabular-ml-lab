@@ -29,6 +29,11 @@ export type ConfirmReadings = Extract<Decision, { kind: "confirm_readings" }>;
 // ── the record's outputs ─────────────────────────────────────────────────────
 
 export type MethodsText = S["MethodsText"];
+/** P8: the methods in the export bundle's own sections and words (TRIPOD+AI's under Predict, the
+ * bundle's STROBE order under Estimate), each line with its record id, and the lines counted. */
+export type MethodsSections = S["MethodsSections"];
+export type MethodsSection = S["MethodsSection"];
+export type MethodsEntry = S["MethodsEntry"];
 export type PlanExport = S["PlanExport"];
 /** Fit and the plan's lock (SIZING P0.8): what POST /fit returns and the quest log carries. */
 export type FitLock = S["FitLock"];
@@ -93,6 +98,14 @@ export type AssumptionView = S["AssumptionView"];
 export type TimeVaryingArtifact = S["TimeVaryingArtifact"];
 export type LaneOption = S["LaneOption"];
 export type ExplainArtifact = S["ExplainArtifact"];
+/** One input's curve for every family on one grid, with each segment's rows and support. */
+export type InputCurves = S["InputCurves"];
+export type ExplainCurve = S["Curve"];
+export type FamilyExplanation = S["FamilyExplanation"];
+export type InputImportance = S["InputImportance"];
+/** The evaluation stage: the benchmark, the interpretable cost, the design-based scores. */
+export type EvaluationArtifact = S["EvaluationArtifact"];
+export type Benchmark = S["Benchmark"];
 // FORM: the form question's card (the `forms` stage).
 export type FormsArtifact = S["FormsArtifact"];
 export type FormNeed = S["FormNeed"];
@@ -109,6 +122,7 @@ export interface M3StageArtifacts {
   time_varying: TimeVaryingArtifact;
   explain: ExplainArtifact;
   forms: FormsArtifact;
+  evaluation: EvaluationArtifact;
 }
 
 type Exactly<L extends readonly unknown[], U> = [U] extends [L[number]]
@@ -129,6 +143,7 @@ const m3Stages = [
   "time_varying",
   "explain",
   "forms",
+  "evaluation",
 ] as const;
 export const M3_STAGES: Exactly<typeof m3Stages, keyof M3StageArtifacts> = m3Stages;
 
@@ -136,3 +151,17 @@ export const M3_STAGES: Exactly<typeof m3Stages, keyof M3StageArtifacts> = m3Sta
 
 export type SubstitutionArtifact = S["SubstitutionArtifact"];
 export type ModelCalibration = S["Calibration"];
+
+// ── Predict Results (W1 part 2): the held-out detail beside the baseline ─────
+
+/** A score with its standard error and 95% interval. */
+export type ScoreInterval = S["Interval"];
+/** A family's score against the no-predictor baseline: cross-validated (`FittedModel`) or held
+ * out (`HoldoutDetail`), with the rule's sentence (`tolerance_basis`) that interpolates its floor. */
+export type VersusBaseline = S["VersusBaseline"];
+/** The no-predictor baseline on the held-out rows, scored metric for metric as `holdout` is. */
+export type HoldoutBaseline = S["HoldoutBaseline"];
+/** The held-out rows' detail, sealed with the scores until the opening: an interval on each score,
+ * calibration, the baseline (`baseline`) and, where an interval is served for the gain (a numeric
+ * outcome's held-out R²), the verdict against it (`versus_baseline`); null otherwise. */
+export type HoldoutDetail = S["HoldoutDetail"];

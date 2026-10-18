@@ -13,7 +13,9 @@ Rules:
 * ``energy_adjustment`` is ``not_applicable`` unless the lens includes ``dietary``, a column has
   the ``energy`` role and an ``exposure`` carries energy; ``reason`` names what is missing.
   ``substitution`` is ``not_applicable`` with fewer than two exposures that carry energy, as an
-  amount or as a share of energy.
+  amount or as a share of energy. Under prediction neither is asked, whatever the roles
+  (BEATS_PREDICT §9 ruling 5): the energy model decides what a coefficient means, and the
+  substitution is an effect.
 * The opening sequence (M2_CONTRACT §1, OPENING_SEQUENCE §01/§03), nothing resequenced:
   ``orientation`` fires when the lens includes an assay pack and the oriented stage's reading
   (names first, then a scale-aware shape; audit WP14) is not "one row per sample" — feature-major
@@ -239,21 +241,37 @@ def pending_stages(stages: Mapping[str, Any], deps: Mapping[str, Sequence[str]] 
     return {name for name in stages if pending(name)}
 
 
+def _slots_of(state: Any) -> Mapping[str, Any]:
+    """The state's slots by name, as a conditional write's ``holds`` reads them."""
+    if isinstance(state, Mapping):
+        return state
+    if hasattr(type(state), "model_fields"):
+        return {name: getattr(state, name, None) for name in type(state).model_fields}
+    return dict(vars(state)) if hasattr(state, "__dict__") else {}
+
+
 def _live_writer(records: Sequence[Any], state: Any) -> dict[str, str]:
-    """Slot -> id of the live record that wrote its current value."""
-    from turbotab.core.decisions import SLOTS, Revert, reverted
+    """Slot -> id of the live record that wrote its current value. A conditional write whose
+    condition does not hold on ``state`` (``decisions.register_kind(..., holds=)``: the energy model
+    and the substitution while the goal is prediction, BEATS_PREDICT §9 ruling 5) wrote nothing
+    that stands, so it is never the writer."""
+    from turbotab.core.decisions import _HOLDS, SLOTS, Revert, reverted
 
     ordered = sorted(records, key=lambda r: r.seq)
     try:
         cancelled = reverted(ordered)
     except Exception:
         cancelled = {}
+    slots = _slots_of(state)
     out: dict[str, str] = {}
     for record in ordered:
         decision = record.decision
         if record.id in cancelled or isinstance(decision, Revert) or decision.kind not in SLOTS:
             continue
         if decision.kind == "set_validation":  # the scheme, written onto the draw's record
+            continue
+        holds = _HOLDS.get(decision.kind)
+        if holds is not None and not holds(decision, slots):
             continue
         slot = SLOTS[decision.kind]
         if decision.kind == "set_task" and (
@@ -275,10 +293,24 @@ def _live_writer(records: Sequence[Any], state: Any) -> dict[str, str]:
     return out
 
 
+# BEATS_PREDICT §9 ruling 5: the energy model decides what a nutrient's coefficient means (Willett,
+# Howe & Kushi 1997) and the substitution compares two imagined diets, an effect (Shmueli 2010), so
+# under prediction neither is asked. With no energy answer recorded, each nutrient and total energy
+# enter the models as their roles give them (``models.steps.energy_step``).
+ENERGY_UNDER_PREDICTION = ("The energy model decides what a nutrient's coefficient means, and "
+                           "under prediction no coefficient is read as an effect.")
+SUBSTITUTION_UNDER_PREDICTION = ("A substitution estimates the effect of moving energy from one "
+                                 "nutrient to another, and under prediction no effect is "
+                                 "estimated.")
+
+
 def _energy_applicability(state: Any, bearing: Callable[[str], bool]) -> str | None:
-    """Why energy adjustment does not apply, or None when it does (or cannot tell yet)."""
+    """Why energy adjustment does not apply, or None when it does (or cannot tell yet). Under
+    prediction it is never asked (ruling 5), whatever the roles."""
     if state.lens is not None and "dietary" not in state.lens:
         return "The dietary lens is off, so energy adjustment does not apply."
+    if getattr(state, "purpose", None) == "prediction":
+        return ENERGY_UNDER_PREDICTION
     if state.roles is None:
         return None
     from turbotab.core.readings import unsettled
@@ -302,9 +334,12 @@ def _energy_applicability(state: Any, bearing: Callable[[str], bool]) -> str | N
 def _substitution_applicability(state: Any, bearing: Callable[[str], bool]) -> str | None:
     """Why a substitution does not apply, or None. An exposure carries energy as an amount
     (``fat_g``) or as a share of energy (``fat_pct_kcal``: the field's "5% of energy from X
-    replaced by Y", audit B24 and D19); a swap moves energy between two of them."""
+    replaced by Y", audit B24 and D19); a swap moves energy between two of them. Under prediction
+    it is never asked (ruling 5), whatever the roles."""
     from turbotab.core.methods.percent_energy import is_percent_of_energy
 
+    if getattr(state, "purpose", None) == "prediction":
+        return SUBSTITUTION_UNDER_PREDICTION
     if state.roles is None:
         return None
     n = sum(1 for c, r in state.roles.items()

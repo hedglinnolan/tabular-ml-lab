@@ -202,7 +202,10 @@ NOT_A_STEP = {"predictors", "inputs", "numeric", "roles", "lenses",
               "missing",
               # a tuned family's plan (RT-1b): no step, but the search nested in each fit, whose
               # inner splits are drawn from the fit's own rows (tests/test_tuning_engine.py)
-              "plans"}
+              "plans",
+              # the declared purpose: read by the design's concerns (``warnings_for``), never by a
+              # step, which takes the purpose as its own argument
+              "purpose"}
 
 
 def _applies(option: str, task: str) -> bool:

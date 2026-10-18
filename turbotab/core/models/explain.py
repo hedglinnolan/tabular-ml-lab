@@ -1151,7 +1151,9 @@ class Setting:
     unit_name: str | None = None
     exposures: Sequence[str] = ()  # raw columns asked for; empty: the top ones
     declared: Sequence[str] = ()  # under inference: the declared exposure(s)
-    candidates: Sequence[str] = ()  # raw columns that may be a top exposure
+    # raw columns a default curve may be drawn for: the Predictor columns under Estimate, every
+    # predictor-role column under Predict (``stages.explain``; U7)
+    candidates: Sequence[str] = ()
     curve_method: str = "ale"
     reseeds: int = RESEEDS
     seed: int = 0
@@ -1518,11 +1520,13 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
         works.append(w)
     notes: list[str] = []
     curves: list[InputCurves] = []
+    inference = s.purpose == "inference"
     if works:
-        say(0.92, "Drawing each study factor's curve per family")
+        # Under prediction a curve is a predictor's, whatever its role (W1 part 2's U7).
+        say(0.92, "Drawing each study factor's curve per family" if inference else
+            "Drawing the predictors' curves per family")
         inputs, notes = _exposure_inputs(s, works)
         curves = _curves(s, works, inputs, _roles(s, works[0].anat.sources), units)
-    inference = s.purpose == "inference"
     if not inference and works:
         notes.append(SELECTION_NOTE)
     fired = []  # each relation of the contract, said where it took effect
@@ -1531,7 +1535,9 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
     if works and s.units is not None and s.reseeds > 0:
         fired.append(UNITS_SAYS)
     if any(c.input not in works[0].anat.as_raw for c in curves):
-        fired.append(SCALE_SAYS)
+        # Under prediction the curves may be a covariate's or total energy's beside a transformed
+        # predictor's, so the scale is said of the transformed predictors' curves alone.
+        fired.append(SCALE_SAYS if inference else PREDICT_SCALE_SAYS)
     if inference:
         fired += [LOCK_SAYS, TERMS_SAYS] + ([FILL_SAYS] if s.multiple_imputation else [])
     artifact = ExplainArtifact(
@@ -1689,6 +1695,12 @@ UNITS_SAYS = ("Rows that repeat within a unit are resampled as whole units in th
               "measure stability.")
 SCALE_SAYS = ("Each curve is drawn on the final scale of what you study, as the model reads it after "
               "energy adjustment or normalization, the scale its form is declared on.")
+# Under prediction a curve may be of any predictor (W1 part 2's U7), age's on its own scale beside
+# an energy-adjusted intake's: the final scale is said of the transformed predictors' curves alone.
+PREDICT_SCALE_SAYS = ("A curve of a predictor the model reads adjusted, such as an energy-adjusted "
+                      "intake or a normalized assay value, is drawn on the adjusted scale the model "
+                      "reads, the scale its form is declared on; every other curve is on its "
+                      "column's own scale.")
 EFFECT_SAYS = ("An explanation describes a fitted model's predictions, not what changing an "
                "intake would do, so it is never reported as an effect.")
 LOCK_SAYS = ("Under inference the explanations wait until what you study, its effect and the "
@@ -1747,7 +1759,9 @@ CONTRACT = register_contract(MethodContract(
     relations=(
         Relation("implies", "performance_floor", FLOOR_SAYS, purposes=("prediction",)),
         Relation("implies", "unit_resampling", UNITS_SAYS),
-        Relation("implies", "domain_transform", SCALE_SAYS),
+        Relation("implies", "domain_transform", SCALE_SAYS, purposes=("inference",)),
+        Relation("implies", "domain_transform", PREDICT_SCALE_SAYS, purposes=("prediction",),
+                 id="domain_transform_under_prediction"),
         Relation("conflicts", "effect_estimate", EFFECT_SAYS, rung="refused", when=("as_effect",)),
         Relation("implies", "plan_lock", LOCK_SAYS, purposes=("inference",)),
         Relation("implies", "adjustment_terms", TERMS_SAYS, purposes=("inference",)),
@@ -1821,7 +1835,9 @@ def _explained_columns_are_predictors(decision: Any, ctx: Any) -> None:
             "not_a_predictor",
             f"{named} {'is' if len(absent) == 1 else 'are'} not among the model's predictors, so "
             f"there is no curve to draw.",
-            exits=[{"label": "Draw the top study factors' curves",
+            exits=[{"label": ("Draw the top predictors' curves"
+                              if getattr(state, "purpose", None) == "prediction" else
+                              "Draw the top study factors' curves"),
                     "decision": _keep(decision, exposures=[])}])
 
 
@@ -1852,8 +1868,10 @@ def decision_sentence(d: Any, state: Any) -> str:
         of = " and ".join(f"`{c}`" for c in d.exposures) if len(d.exposures) <= 2 else \
             ", ".join(f"`{c}`" for c in d.exposures[:-1]) + f" and `{d.exposures[-1]}`"
     else:
-        of = ("the declared exposure" if getattr(state, "purpose", None) == "inference" else
-              "the top exposures")
+        # Under prediction the default curves choose among every predictor-role column (U7).
+        purpose = getattr(state, "purpose", None)
+        of = ("the declared exposure" if purpose == "inference" else
+              "the top predictors" if purpose == "prediction" else "the top exposures")
     stability = (f", with their stability over {d.reseeds} refits on bootstrap resamples"
                  if d.reseeds else ", without a check of their stability across refits")
     tail = "these describe the models' predictions, not causal effects"

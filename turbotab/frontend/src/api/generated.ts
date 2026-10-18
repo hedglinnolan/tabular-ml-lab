@@ -80,7 +80,7 @@ export interface paths {
         put?: never;
         /**
          * Upload Project
-         * @description Upload a data file (multipart field ``file``). It is streamed to disk as it arrives.
+         * @description Upload a data file (multipart field ``file``). It is streamed to disk as it arrives. ``url``, ``release_date`` and ``license`` (each optional, each at most 2,000 characters) say where the file came from: kept on the project's meta and echoed into the export's ``provenance.json`` inputs beside the file's SHA-256 (SWARM_ENGINE_PLAN E5). One that does not read refuses the upload before any of it is kept.
          */
         post: operations["upload_project_api_projects_upload_post"];
         delete?: never;
@@ -120,9 +120,36 @@ export interface paths {
          * @description Record a decision. Stages downstream of the slot it writes recompute. ``decide_now``
          *     answers a later question ahead of the Router, only where its card is computed and the earlier
          *     answers it reads are in (crosswalk disagreement 20); otherwise it is refused with what it is
-         *     waiting for, and the record names the question it was decided ahead of.
+         *     waiting for, and the record names the question it was decided ahead of. ``note``: the reason,
+         *     in any mode (SWARM_ENGINE_PLAN E4); one past its limit is refused (``note_too_long``) and
+         *     nothing is recorded.
          */
         post: operations["decide_api_projects__pid__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/analyst-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Analyst Log
+         * @description What the analyst saw, in analyst mode only (``--analyst``, or ``TURBOTAB_ANALYST=1``;
+         *     SWARM_ENGINE_PLAN E4), oldest first: each claim rendered for the project (the claim asked for,
+         *     its register, frozen status and grade, the claim that rendered in its place outside its
+         *     regime, and why a render was refused), which is logged in every mode; and each preview asked
+         *     for in analyst mode, a decision's (``…/preview``) or a join's (``…/join-preview``, as the
+         *     ``join_files`` decision it previews), with the refusal's code when it was refused.
+         */
+        get: operations["analyst_log_api_projects__pid__analyst_log_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -228,6 +255,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/fits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fits
+         * @description Every fit that completed, one record per fit key in the order the keys turned fresh, each
+         *     written once and never rewritten (SWARM_ENGINE_PLAN E1): its purpose, outcome and key, the
+         *     plan's digest and the records in force it was computed from, the press of Fit in force, its
+         *     families, the seconds its job ran and the server's workers, the rows its split held out, and
+         *     per family the cross-validated summary (Predict) or the exposure's rows with their intervals
+         *     (Estimate). Each number is the fit's as ``GET /stages/fit`` would serve that fit now, read for
+         *     the record's own scope: none under another goal than the goal now; under Predict none before
+         *     Fit is pressed for the record's outcome; under Estimate none before the plan's lock, nor for a
+         *     fit computed before the lock that is not the fit the lock was recorded on (the plan's digest
+         *     is the plan when the fit completed, so the lock can record another for the same fit), unless
+         *     it is the fit the stage route serves now; a held-out score only once the record's outcome's
+         *     seal is opened, only where the fit was scored on the rows that opening opened, and only for
+         *     the fit the opening was recorded on, a fit computed after it or the current fit, with what the
+         *     stage route says beside them: whether the fit is not the opened one, the scores the opening
+         *     recorded (the reported result) and whether those are the scores served, and the final
+         *     model's note. ``withheld`` and ``holdout_why`` say why a number is not served. Under Predict,
+         *     a record scored on the same
+         *     folds as the one before it carries each family's paired movement against it; otherwise
+         *     ``movement_why`` says why it has none.
+         */
+        get: operations["fits_api_projects__pid__fits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Results
+         * @description What the Results screens show, joined into one document, each field the served artifact's
+         *     own value and gated as the stage route gates it (SWARM_ENGINE_PLAN E2). Under Predict: each
+         *     family's cross-validated summary, the declared result and, once the seal is opened, its
+         *     held-out scores with their intervals and calibration, with what the screen says beside them:
+         *     the scores the opening recorded (the reported result) and whether those are the scores served,
+         *     the final model's note, whether the fit changed after the opening and the post-seal decisions
+         *     that changed it, and the split's basis, which can mark the held-out scores exploratory. Under
+         *     Estimate: the estimand, each family's rows of the exposure from the fit, and from the effects
+         *     stage its sequence fits, marginal contrast and E-values. The cross-validated scores served
+         *     count as seen for the outcome of the fit that holds them, as on the stage route, and also
+         *     while that fit is not the current one.
+         */
+        get: operations["results_api_projects__pid__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/record": {
         parameters: {
             query?: never;
@@ -267,6 +362,34 @@ export interface paths {
          *     record each time, so a replay gives the same rows.
          */
         get: operations["materiality_ledger_api_projects__pid__materiality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/mattered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mattered
+         * @description Which decisions mattered, under Estimate (SWARM_ENGINE_PLAN E3): the exposure's estimate
+         *     refit with each recorded choice changed, one at a time (each exclusion rule dropped, each
+         *     adjusted covariate dropped, each covariate the adjustment answers left out added), a
+         *     specification curve the ``mattered`` stage computes after the plan's lock. Its primary is the
+         *     reported estimate, which stays the result whatever the curve shows. Refused under a goal or an
+         *     effect measure that does not offer it (a marginal risk difference or ratio), and before the
+         *     lock with the line saying when it opens; while the stage computes, its status and no curve; a
+         *     curve that cannot be drawn is refused with why, quoting no estimate. Serving a curve marks its
+         *     estimates as shown.
+         */
+        get: operations["mattered_api_projects__pid__mattered_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -315,6 +438,30 @@ export interface paths {
          *     were seen or the held-out rows were opened kept and marked (audit WP16).
          */
         get: operations["methods_api_projects__pid__methods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/methods/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Methods Sections
+         * @description The methods in the sections and words of the export bundle's methods (P8): TRIPOD+AI's
+         *     sections under prediction, STROBE's with STROBE-nut's otherwise, each line with its decision
+         *     record's id (null for a paragraph the analysis wrote and for the export's own sentence), and
+         *     how many lines there are. Built as the bundle builds them, from the decision log and the fresh
+         *     stages as they stand, without its refusal; reading it records nothing.
+         */
+        get: operations["methods_sections_api_projects__pid__methods_sections_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -583,6 +730,8 @@ export interface paths {
          * Get Teaching
          * @description One entry per question, in asking order: the question, its one line, each option's
          *     consequence, the terms it uses, and the pack content behind it with evidence badges.
+         *     ``purpose``: the project's declared goal; under ``prediction`` the roles card says
+         *     "predictors" and names no study factor. Without it, the cards as under Estimate.
          */
         get: operations["get_teaching_api_teaching_get"];
         put?: never;
@@ -628,7 +777,7 @@ export interface paths {
         put?: never;
         /**
          * Upload File
-         * @description Upload a file to join to the project's table (multipart field ``file``).
+         * @description Upload a file to join to the project's table (multipart field ``file``). ``url``, ``release_date`` and ``license`` (each optional, each at most 2,000 characters) say where the file came from: kept on the file's meta and echoed into the export's ``provenance.json`` inputs beside the file's SHA-256 once it is joined (SWARM_ENGINE_PLAN E5). One that does not read refuses the upload before any of it is kept.
          */
         post: operations["upload_file_api_projects__pid__files_upload_post"];
         delete?: never;
@@ -772,6 +921,8 @@ export interface components {
             source_kind: "path" | "upload";
             /** Fingerprint */
             fingerprint: string;
+            /** Sha256 */
+            sha256: string | null;
             /** N Rows */
             n_rows: number;
             /** N Cols */
@@ -858,6 +1009,16 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+        };
+        /**
+         * AnalystLog
+         * @description What the analyst saw, oldest first.
+         */
+        AnalystLog: {
+            /** Claims */
+            claims: components["schemas"]["ClaimRendered"][];
+            /** Previews */
+            previews: components["schemas"]["PreviewLogged"][];
         };
         /**
          * ApplyRepair
@@ -963,6 +1124,31 @@ export interface components {
             evidence: string;
             /** Change */
             change: components["schemas"]["AskExit"][];
+        };
+        /**
+         * AtOpening
+         * @description The held-out scores recorded when the current outcome's seal was first opened: the reported
+         *     result, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server.
+         */
+        AtOpening: {
+            /** Seq */
+            seq: number;
+            /** Family */
+            family: string | null;
+            /** Metric */
+            metric: string | null;
+            /** N Holdout */
+            n_holdout: number | null;
+            /** Scores */
+            scores: {
+                [key: string]: {
+                    [key: string]: number | null;
+                };
+            };
+            /** Current */
+            current: boolean;
+            /** Note */
+            note: string;
         };
         /** BatchSpec */
         BatchSpec: {
@@ -1163,6 +1349,86 @@ export interface components {
             sha256: string;
             /** License */
             license: string;
+        };
+        /**
+         * Chronology
+         * @description The chronological draw the temporal answer asked for, and whether it was drawn.
+         *
+         *     Whole units are held out by their last observation, so with repeated rows a held-out unit's
+         *     earlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).
+         *     ``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the
+         *     split question offers, at this draw's seed, so the split's sentence can state it.
+         */
+        Chronology: {
+            /** Drawn */
+            drawn: boolean;
+            /** Time Column */
+            time_column: string | null;
+            /** Boundary */
+            boundary: string | null;
+            /** N Units */
+            n_units: number | null;
+            /** N Undated */
+            n_undated: number;
+            /** Sentence */
+            sentence: string;
+            /** N Held Rows */
+            n_held_rows: number | null;
+            /** N Held Earlier */
+            n_held_earlier: number | null;
+            /**
+             * Earlier
+             * @default []
+             */
+            earlier: components["schemas"]["EarlierRows"][];
+        };
+        /**
+         * ClaimRendered
+         * @description One render of a claim for the project (``claims.render_log``), in any mode.
+         */
+        ClaimRendered: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Id
+             * @description The claim asked for
+             */
+            id: string;
+            /**
+             * Register
+             * @description card or methods
+             */
+            register: string;
+            /**
+             * Status
+             * @description Its frozen status as read; null where the render stopped before it was read
+             */
+            status: string | null;
+            /**
+             * Grade
+             * @description The weakest part's grade of the claim that rendered
+             */
+            grade: string | null;
+            /**
+             * Fallback
+             * @description The claim that rendered in its place, outside its regime; null when it rendered itself
+             */
+            fallback: string | null;
+            /** Version */
+            version: number | null;
+            /**
+             * Hash
+             * @description The content hash its frozen status is kept under
+             */
+            hash: string | null;
+            /**
+             * Refused
+             * @description Why no sentence rendered; null when one did
+             */
+            refused: string | null;
         };
         /**
          * ClusterSpec
@@ -1795,6 +2061,21 @@ export interface components {
             body: string;
             evidence: components["schemas"]["Evidence"] | null;
         };
+        /**
+         * EarlierRows
+         * @description For one held-out share drawn by time: how many held-out rows there are, and how many were
+         *     observed before the latest training row (audit IN-24).
+         */
+        EarlierRows: {
+            /** Holdout */
+            holdout: number;
+            /** Seed */
+            seed: number;
+            /** N Held Rows */
+            n_held_rows: number;
+            /** N Earlier */
+            n_earlier: number;
+        };
         /** EnergyAdjustment */
         EnergyAdjustment: {
             /**
@@ -2147,6 +2428,29 @@ export interface components {
             estimate_seconds: number | null;
             /** Reason */
             reason: string;
+        };
+        /**
+         * FitsLog
+         * @description Every fit's record, in the order the fits completed.
+         */
+        FitsLog: {
+            /** Records */
+            records: components["schemas"]["ServedFit"][];
+        };
+        /**
+         * FoldMovement
+         * @description One family's movement against the previous record: ``movement`` from
+         *     :func:`materiality.paired_folds` (``|mean Δ| / SD(Δ)`` of the primary metric's fold scores, this
+         *     fit's less the previous one's), or None and ``why``.
+         */
+        FoldMovement: {
+            /** Family */
+            family: string;
+            /** Against */
+            against: string;
+            movement: components["schemas"]["Movement"] | null;
+            /** Why */
+            why: string | null;
         };
         /**
          * FollowUpSpec
@@ -3115,6 +3419,209 @@ export interface components {
             /** Group */
             group: string | null;
         };
+        /**
+         * Mattered
+         * @description ``GET /projects/{pid}/mattered``: the stage's status and, once it is fresh for the current
+         *     answers, its curve. ``plan_lock`` is the lock in force, by its record id.
+         */
+        Mattered: {
+            /** Status */
+            status: string;
+            /** Fresh */
+            fresh: boolean;
+            /** Key */
+            key: string | null;
+            /** Plan Lock */
+            plan_lock: string | null;
+            curve: components["schemas"]["MatteredCurve"] | null;
+            /** Says */
+            says: string | null;
+            /** Methods */
+            methods: string | null;
+            reported: components["schemas"]["MatteredReported"] | null;
+            /** Examined */
+            examined: components["schemas"]["MatteredExamined"][];
+            /** Error */
+            error: string | null;
+        };
+        /** MatteredChoice */
+        MatteredChoice: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Primary */
+            primary: string;
+            /** Decision */
+            decision: string;
+            /** Options */
+            options: components["schemas"]["MatteredOption"][];
+        };
+        /**
+         * MatteredCurve
+         * @description ``spec_curve.SpecCurve`` as data (its ``to_dict``).
+         */
+        MatteredCurve: {
+            /** Estimate Label */
+            estimate_label: string;
+            /** Choices */
+            choices: components["schemas"]["MatteredChoice"][];
+            /** Specs */
+            specs: components["schemas"]["MatteredSpec"][];
+            /** Not Estimated */
+            not_estimated: components["schemas"]["MatteredNotEstimated"][];
+            /** Total */
+            total: number;
+            /** Drawn */
+            drawn: number;
+            /** Sampled */
+            sampled: boolean;
+            /** Rule */
+            rule: string | null;
+            /** Crossing */
+            crossing: string;
+            summary: components["schemas"]["MatteredSummary"] | null;
+            /** Level */
+            level: number | null;
+            /** Sealed */
+            sealed: string | null;
+            /** Plan Lock */
+            plan_lock: string | null;
+            /** Weighted */
+            weighted: boolean;
+            /** Clustered */
+            clustered: boolean;
+            /** Exits */
+            exits: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * MatteredExamined
+         * @description An alternative the analyst declared as examined: the adjustment set with ``add`` added and
+         *     ``drop`` dropped, beside the primary (one departure of its own).
+         */
+        MatteredExamined: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Add
+             * @default []
+             */
+            add: string[];
+            /**
+             * Drop
+             * @default []
+             */
+            drop: string[];
+        };
+        /** MatteredNotEstimated */
+        MatteredNotEstimated: {
+            /** Key */
+            key: string;
+            /** Picks */
+            picks: {
+                [key: string]: string;
+            };
+            /** Primary */
+            primary: boolean;
+            /** Reason */
+            reason: string;
+        };
+        /** MatteredOption */
+        MatteredOption: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
+        /**
+         * MatteredReported
+         * @description The reported estimate the primary specification reproduces: the fit stage's own row.
+         *     ``ratio``: the row's odds ratio exp(β) for a yes/no outcome, the number the fit reports beside
+         *     the log odds; None for a difference.
+         */
+        MatteredReported: {
+            /** Family */
+            family: string;
+            /** Feature */
+            feature: string;
+            /** Estimate */
+            estimate: number;
+            /** Ci Low */
+            ci_low: number;
+            /** Ci High */
+            ci_high: number;
+            /** Se */
+            se: number | null;
+            /** N Rows */
+            n_rows: number;
+            /** Covariance */
+            covariance: string | null;
+            /** Ratio */
+            ratio: number | null;
+        };
+        /** MatteredSpec */
+        MatteredSpec: {
+            /** Key */
+            key: string;
+            /** Picks */
+            picks: {
+                [key: string]: string;
+            };
+            /** Primary */
+            primary: boolean;
+            /** Estimate */
+            estimate: number;
+            /** Low */
+            low: number | null;
+            /** High */
+            high: number | null;
+            /** N */
+            n: number;
+            /** Se */
+            se: number | null;
+            /** P */
+            p: number | null;
+            /** Df */
+            df: number | null;
+            /**
+             * Estimator
+             * @default
+             */
+            estimator: string;
+            /**
+             * Covariance
+             * @default
+             */
+            covariance: string;
+            /**
+             * Scale Key
+             * @default
+             */
+            scale_key: string;
+        };
+        /** MatteredSummary */
+        MatteredSummary: {
+            /** K */
+            k: number;
+            /** Median */
+            median: number;
+            /** Lowest */
+            lowest: number;
+            /** Highest */
+            highest: number;
+            /** Above */
+            above: number;
+            /** Below */
+            below: number;
+            /** Spanning */
+            spanning: number;
+            /** Primary Rank */
+            primary_rank: number | null;
+        };
         /** MeasurementErrorSpec */
         MeasurementErrorSpec: {
             /**
@@ -3139,6 +3646,42 @@ export interface components {
             adjustment: string[] | null;
         };
         /**
+         * MethodsEntry
+         * @description One sentence or paragraph of the methods: the record's (with its decision), a paragraph the
+         *     analysis wrote (its stage), or the export's own reproducibility sentence. A sentence that
+         *     folds single confirmations (:func:`_together`) names every record it says in ``record_ids``,
+         *     in the order it lists their columns; one record's sentence, and a paragraph, name none.
+         */
+        MethodsEntry: {
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "record" | "analysis" | "export";
+            /** Text */
+            text: string;
+            /** Record Id */
+            record_id: string | null;
+            /** Record Ids */
+            record_ids: string[] | null;
+            /** Seq */
+            seq: number | null;
+            /** Kind */
+            kind: string | null;
+            /** In Force */
+            in_force: boolean | null;
+            /**
+             * After Estimates
+             * @default false
+             */
+            after_estimates: boolean;
+            /**
+             * Post Seal
+             * @default false
+             */
+            post_seal: boolean;
+        };
+        /**
          * MethodsLine
          * @description One record's sentence in the methods text.
          */
@@ -3157,6 +3700,38 @@ export interface components {
             post_seal: boolean;
             /** After Estimates */
             after_estimates: boolean;
+        };
+        /** MethodsSection */
+        MethodsSection: {
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+            /** Item */
+            item: string;
+            /** Entries */
+            entries: components["schemas"]["MethodsEntry"][];
+        };
+        /**
+         * MethodsSections
+         * @description The methods as the manuscript rail reads them (P8; W1 part 2 ruling 9): the export bundle's
+         *     own sections, in its order and its words (TRIPOD+AI's under prediction, STROBE's with
+         *     STROBE-nut's otherwise), each line with its decision record's id where it has one. Built from
+         *     the decision log and the fresh stages as the bundle's methods are, so a read and a download of
+         *     the same project hold the same lines. ``count``: the lines in every section.
+         */
+        MethodsSections: {
+            /**
+             * Guideline
+             * @enum {string}
+             */
+            guideline: "STROBE-nut" | "TRIPOD+AI";
+            /** Seen From */
+            seen_from: number | null;
+            /** Sections */
+            sections: components["schemas"]["MethodsSection"][];
+            /** Count */
+            count: number;
         };
         /**
          * MethodsText
@@ -3474,6 +4049,28 @@ export interface components {
             sha256: string;
             /** Text */
             text: string;
+        };
+        /**
+         * PreviewLogged
+         * @description One preview asked for in analyst mode: a decision's (``…/preview``), or a join's
+         *     (``…/join-preview``), logged as the ``join_files`` decision it previews.
+         */
+        PreviewLogged: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Decision
+             * @description The decision previewed, as asked; null for a join whose fields do not read as one
+             */
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"] | components["schemas"]["SetDesign-Output"] | components["schemas"]["SetValidation-Output"]) | null;
+            /**
+             * Refused
+             * @description The refusal's code; null when it previewed
+             */
+            refused: string | null;
         };
         /** PreviewResult */
         PreviewResult: {
@@ -4121,6 +4718,110 @@ export interface components {
              */
             action: "keep_labeled" | "period_hazard_ratios" | "without_influential";
         };
+        /** ResultEValue */
+        ResultEValue: {
+            /** Feature */
+            feature: string;
+            /** E Value */
+            e_value: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ResultFamily
+         * @description One family's results, each field the served artifact's own value.
+         */
+        ResultFamily: {
+            /** Family */
+            family: string;
+            /** Label */
+            label: string | null;
+            /**
+             * Cv
+             * @default {}
+             */
+            cv: {
+                [key: string]: unknown;
+            };
+            /** Holdout */
+            holdout: {
+                [key: string]: number | null;
+            } | null;
+            /** Intervals */
+            intervals: {
+                [key: string]: unknown;
+            } | null;
+            /** Calibration */
+            calibration: {
+                [key: string]: unknown;
+            } | null;
+            /** Effect */
+            effect: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Sequence
+             * @default []
+             */
+            sequence: {
+                [key: string]: unknown;
+            }[];
+            /** Marginal */
+            marginal: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * E Values
+             * @default []
+             */
+            e_values: components["schemas"]["ResultEValue"][];
+        };
+        /**
+         * Results
+         * @description What the Results screens show, as one document (``GET /projects/{pid}/results``).
+         */
+        Results: {
+            /** Purpose */
+            purpose: ("prediction" | "inference") | null;
+            fit: components["schemas"]["StageServed"];
+            effects: components["schemas"]["StageServed"] | null;
+            /** Withheld */
+            withheld: string | null;
+            /** Holdout Sealed */
+            holdout_sealed: boolean;
+            /** Final Model */
+            final_model: string | null;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
+            at_opening: components["schemas"]["AtOpening"] | null;
+            /** Final Note */
+            final_note: string | null;
+            /** Changed After Seal */
+            changed_after_seal: boolean;
+            /** Post Seal Decisions */
+            post_seal_decisions: string[];
+            split: components["schemas"]["ResultsSplit"] | null;
+            /** Estimand */
+            estimand: {
+                [key: string]: unknown;
+            } | null;
+            /** Families */
+            families: components["schemas"]["ResultFamily"][];
+        };
+        /**
+         * ResultsSplit
+         * @description How the split drew the held-out rows, as ``GET /stages/split`` serves it: the Results screen
+         *     marks the held-out scores exploratory beside them from these.
+         */
+        ResultsSplit: {
+            stage: components["schemas"]["StageServed"];
+            basis: components["schemas"]["SealBasis"] | null;
+            chronology: components["schemas"]["Chronology"] | null;
+            /** Exploratory */
+            exploratory: boolean | null;
+        };
         /** Revert */
         Revert: {
             /**
@@ -4319,6 +5020,29 @@ export interface components {
             instrument: string | null;
         };
         /**
+         * SealBasis
+         * @description How the held-out rows were drawn: one of four states, never inferred silently.
+         */
+        SealBasis: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "grouped" | "one_row_per_unit" | "abandoned" | "undetermined";
+            /** Column */
+            column: string | null;
+            /** Label */
+            label: string;
+            /** Sentence */
+            sentence: string;
+            /** Exploratory */
+            exploratory: boolean;
+            /** Source */
+            source: ("grain" | "stated" | "roles" | "aggregation") | null;
+            /** N Units */
+            n_units: number | null;
+        };
+        /**
          * SealCells
          * @description The seal drawn one cell per row (M2_CONTRACT §3, §11): which side each row falls on and which
          *     unit it belongs to, so the basis is a picture. Whole units, in file order, up to
@@ -4423,6 +5147,85 @@ export interface components {
             label: string;
             /** Rules */
             rules: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"])[];
+        };
+        /**
+         * ServedFit
+         * @description One fit's record (``turbotab/core/runs.py``'s ``FitRecord``) as a client is served it: its
+         *     numbers are the fit's at ``fit_key`` as ``GET /stages/fit`` would serve that fit now, its gate
+         *     read for the record's own goal, outcome, fit under the plan's lock and held-out rows, and
+         *     ``withheld`` and ``holdout_why`` say why a number is not served. ``plan_digest`` is the plan
+         *     when the fit completed: a lock recorded later on this same fit can record another digest, when
+         *     an answer the fit does not read (the model sequence) came in between.
+         */
+        ServedFit: {
+            /** Id */
+            id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Purpose */
+            purpose: ("prediction" | "inference") | null;
+            /** Target */
+            target: string | null;
+            /** Fit Key */
+            fit_key: string;
+            /** Plan Digest */
+            plan_digest: string | null;
+            /** Decisions */
+            decisions: number[] | null;
+            /** Press */
+            press: {
+                [key: string]: unknown;
+            } | null;
+            /** Families */
+            families: string[];
+            /** Seconds */
+            seconds: number | null;
+            /** Workers */
+            workers: number;
+            /** Primary Metric */
+            primary_metric: string | null;
+            /** Folds */
+            folds: string | null;
+            /** Seed */
+            seed: number | null;
+            /** Held Out */
+            held_out: string | null;
+            /** Scores */
+            scores: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Holdout */
+            holdout: {
+                [key: string]: {
+                    [key: string]: number | null;
+                } | null;
+            } | null;
+            /** Holdout Why */
+            holdout_why: string | null;
+            /** Changed After Seal */
+            changed_after_seal: boolean;
+            at_opening: components["schemas"]["AtOpening"] | null;
+            /** Final Note */
+            final_note: string | null;
+            /** Effects */
+            effects: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[] | null;
+            };
+            /** Movement */
+            movement: components["schemas"]["FoldMovement"][];
+            /** Movement Why */
+            movement_why: string | null;
+            /** Withheld */
+            withheld: string | null;
         };
         /**
          * SetAdjustment
@@ -6849,6 +7652,21 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * StageServed
+         * @description Which artifact of a stage a document read: its key, and whether it is the current one.
+         */
+        StageServed: {
+            /** Key */
+            key: string | null;
+            /** Fresh */
+            fresh: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "idle" | "queued" | "running" | "fresh" | "stale" | "blocked" | "error";
+        };
         /** StageStatus */
         StageStatus: {
             /** Stage */
@@ -6952,7 +7770,7 @@ export interface components {
          *     answered, by the person's own answer or by "Confirm all" (``confirmed_by``, the
          *     ``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,
          *     since that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its
-         *     words ("Here are the 6 other choices set for you", "Confirm all 6").
+         *     words ("The 6 choices set for you", "Confirm all 6").
          */
         Sweep: {
             /** Lines */
@@ -7474,7 +8292,10 @@ export interface components {
         };
         /**
          * Where
-         * @description Where an item is answered: a record sentence, an analysis paragraph, or a bundle file.
+         * @description Where an item is answered: a record sentence, an analysis paragraph, or a bundle file. A
+         *     sentence the methods fold from several records names each of them, as its methods entry does
+         *     (``record_ids``, in order; ``methods._together``), and the decision number of each, in the same
+         *     order (``seqs``), which the checklist's file names; one record's sentence names neither.
          */
         Where: {
             /**
@@ -7488,8 +8309,12 @@ export interface components {
             quote: string;
             /** Record Id */
             record_id: string | null;
+            /** Record Ids */
+            record_ids: string[] | null;
             /** Seq */
             seq: number | null;
+            /** Seqs */
+            seqs: number[] | null;
             /** Kind */
             kind: string | null;
         };
@@ -7745,31 +8570,6 @@ export interface components {
             status: "untestable" | "checked" | "violated" | "stated" | "pending";
             /** Source */
             source: string;
-        };
-        /**
-         * AtOpening
-         * @description The held-out scores recorded when the current outcome's seal was first opened: the reported
-         *     result, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server.
-         */
-        AtOpening: {
-            /** Seq */
-            seq: number;
-            /** Family */
-            family: string | null;
-            /** Metric */
-            metric: string | null;
-            /** N Holdout */
-            n_holdout: number | null;
-            /** Scores */
-            scores: {
-                [key: string]: {
-                    [key: string]: number | null;
-                };
-            };
-            /** Current */
-            current: boolean;
-            /** Note */
-            note: string;
         };
         /**
          * BandEstimate
@@ -8103,7 +8903,8 @@ export interface components {
         };
         /**
          * Calibration
-         * @description Calibration of one set of predictions: in the large, its slope, and its smoothed curve.
+         * @description Calibration of one set of predictions: in the large, its slope, its smoothed curve, and the
+         *     rows behind each stretch of the curve's x-range (``support``).
          */
         Calibration: {
             /** N */
@@ -8119,6 +8920,11 @@ export interface components {
              * @default []
              */
             curve: components["schemas"]["CurvePoint"][];
+            /**
+             * Support
+             * @default []
+             */
+            support: components["schemas"]["SupportBin"][];
             /**
              * Eavg
              * @default null
@@ -8591,44 +9397,6 @@ export interface components {
             then: string;
         };
         /**
-         * Chronology
-         * @description The chronological draw the temporal answer asked for, and whether it was drawn.
-         *
-         *     Whole units are held out by their last observation, so with repeated rows a held-out unit's
-         *     earlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).
-         *     ``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the
-         *     split question offers, at this draw's seed, so the split's sentence can state it.
-         */
-        Chronology: {
-            /** Drawn */
-            drawn: boolean;
-            /** Time Column */
-            time_column: string | null;
-            /** Boundary */
-            boundary: string | null;
-            /** N Units */
-            n_units: number | null;
-            /** N Undated */
-            n_undated: number;
-            /** Sentence */
-            sentence: string;
-            /**
-             * N Held Rows
-             * @default null
-             */
-            n_held_rows: number | null;
-            /**
-             * N Held Earlier
-             * @default null
-             */
-            n_held_earlier: number | null;
-            /**
-             * Earlier
-             * @default []
-             */
-            earlier: components["schemas"]["EarlierRows"][];
-        };
-        /**
          * ClusterScore
          * @description One held-out cluster: its rows, its scores, and the primary metric's interval.
          */
@@ -8958,6 +9726,11 @@ export interface components {
             columns: components["schemas"]["ColumnInfo"][];
             /** Source Bytes */
             source_bytes: number;
+            /**
+             * Source Sha256
+             * @default null
+             */
+            source_sha256: string | null;
             /** Parquet Bytes */
             parquet_bytes: number;
             /** Ingest Seconds */
@@ -9377,21 +10150,6 @@ export interface components {
              * @default null
              */
             sd_basis: ("design_weighted" | "sample") | null;
-        };
-        /**
-         * EarlierRows
-         * @description For one held-out share drawn by time: how many held-out rows there are, and how many were
-         *     observed before the latest training row (audit IN-24).
-         */
-        EarlierRows: {
-            /** Holdout */
-            holdout: number;
-            /** Seed */
-            seed: number;
-            /** N Held Rows */
-            n_held_rows: number;
-            /** N Earlier */
-            n_earlier: number;
         };
         /** EffectsArtifact */
         EffectsArtifact: {
@@ -10943,8 +11701,25 @@ export interface components {
             caption: string;
         };
         /**
+         * HoldoutBaseline
+         * @description What predicting without the predictors scores on the held-out rows (W1 part 2 ruling 2):
+         *     the cross-validated baseline's model (``stages.modeling.baseline_model``: the outcome's
+         *     training mean, the class prior, one risk for everyone) fit on every training row and scored
+         *     on the held-out rows as each family's ``holdout`` is, metric for metric. For a numeric outcome
+         *     its R², measured against the training rows' mean, is 0 by construction.
+         */
+        HoldoutBaseline: {
+            /** Label */
+            label: string;
+            /** Scores */
+            scores: {
+                [key: string]: number | null;
+            };
+        };
+        /**
          * HoldoutDetail
-         * @description What the held-out rows say beyond their scores: an interval on each, and calibration.
+         * @description What the held-out rows say beyond their scores: an interval on each, calibration, and the
+         *     no-predictor baseline beside them.
          */
         HoldoutDetail: {
             /** Intervals */
@@ -10965,6 +11740,10 @@ export interface components {
              * @default null
              */
             calibration_note: string | null;
+            /** @default null */
+            baseline: components["schemas"]["HoldoutBaseline"] | null;
+            /** @default null */
+            versus_baseline: components["schemas"]["VersusBaseline"] | null;
         };
         /** HoldoutOption */
         HoldoutOption: {
@@ -12493,6 +13272,11 @@ export interface components {
             columns: components["schemas"]["ColumnInfo"][];
             /** Source Bytes */
             source_bytes: number;
+            /**
+             * Source Sha256
+             * @default null
+             */
+            source_sha256: string | null;
             /** Parquet Bytes */
             parquet_bytes: number;
             /** Ingest Seconds */
@@ -12671,6 +13455,40 @@ export interface components {
              * @default null
              */
             reason: string | null;
+        };
+        /**
+         * PredictorGroupWords
+         * @description One predictor role's group on the roles card under Predict (``readings.PredictorGroup``):
+         *     ``one`` in a role line's words, ``head`` its name for one column and for many, ``note`` the
+         *     steps that treat it differently in the project, as a sentence (empty where it runs none).
+         */
+        PredictorGroupWords: {
+            /** One */
+            one: string;
+            /** Head */
+            head: string[];
+            /** Note */
+            note: string;
+        };
+        /**
+         * PredictorGroups
+         * @description The predictor groups the roles card draws under Predict, for the project's lenses and task
+         *     (W1 part 2's U6; ``readings.served_groups``): each role's group where the energy-aware fill
+         *     would run (``fill``) and where not (``no_fill``), and the columns that carry energy, so the card
+         *     tells which applies to the roles it draws (one holds the energy role and a Predictor column
+         *     carries energy).
+         */
+        PredictorGroups: {
+            /** Fill */
+            fill: {
+                [key: string]: components["schemas"]["PredictorGroupWords"];
+            };
+            /** No Fill */
+            no_fill: {
+                [key: string]: components["schemas"]["PredictorGroupWords"];
+            };
+            /** Energy Bearing */
+            energy_bearing: string[];
         };
         /**
          * ProfileArtifact
@@ -12992,7 +13810,8 @@ export interface components {
         };
         /**
          * RolesArtifact
-         * @description The ``roles`` artifact: a proposed role for every column but the outcome.
+         * @description The ``roles`` artifact: a proposed role for every column but the outcome. The server adds
+         *     ``predictor_groups`` as it serves them (the stage does not compute it).
          */
         RolesArtifact: {
             /** Columns */
@@ -13000,6 +13819,8 @@ export interface components {
             repeats: components["schemas"]["Repeats"] | null;
             /** Categorical */
             categorical: components["schemas"]["CategoricalProposal"][];
+            /** @default null */
+            predictor_groups: components["schemas"]["PredictorGroups"] | null;
         };
         /**
          * RowComparison
@@ -13425,29 +14246,6 @@ export interface components {
             scales: components["schemas"]["ScaleResult"][];
             /** Methods */
             methods: string;
-        };
-        /**
-         * SealBasis
-         * @description How the held-out rows were drawn: one of four states, never inferred silently.
-         */
-        SealBasis: {
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "grouped" | "one_row_per_unit" | "abandoned" | "undetermined";
-            /** Column */
-            column: string | null;
-            /** Label */
-            label: string;
-            /** Sentence */
-            sentence: string;
-            /** Exploratory */
-            exploratory: boolean;
-            /** Source */
-            source: ("grain" | "stated" | "roles" | "aggregation") | null;
-            /** N Units */
-            n_units: number | null;
         };
         /**
          * SealFloor
@@ -15567,6 +16365,19 @@ export interface components {
             fixed_through: number | null;
         };
         /**
+         * SupportBin
+         * @description One of equal-width stretches of the predictions' range, ``[lo, hi)`` (the last one closed),
+         *     and how many rows' predictions fall in it: where the calibration curve rests on few rows.
+         */
+        SupportBin: {
+            /** Lo */
+            lo: number;
+            /** Hi */
+            hi: number;
+            /** N */
+            n: number;
+        };
+        /**
          * SurveyInference
          * @description The survey design a design-based table rests on (AUDIT_REPORT §5 WP10;
          *     ``turbotab/core/models/survey.py``): what weighted it, its PSUs and strata, the domain.
@@ -16476,6 +17287,11 @@ export interface components {
             columns: components["schemas"]["ColumnInfo"][];
             /** Source Bytes */
             source_bytes: number;
+            /**
+             * Source Sha256
+             * @default null
+             */
+            source_sha256: string | null;
             /** Parquet Bytes */
             parquet_bytes: number;
             /** Ingest Seconds */
@@ -16670,7 +17486,14 @@ export interface operations {
     };
     upload_project_api_projects_upload_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Where the file came from, in full (https://…) */
+                url?: string | null;
+                /** @description When it was released, YYYY-MM-DD */
+                release_date?: string | null;
+                /** @description The license it was released under */
+                license?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -16693,13 +17516,22 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectSummary"];
                 };
             };
-            /** @description No file, or not a readable data file */
+            /** @description No file, not a readable data file, or a field of where it came from that does not read */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -16748,6 +17580,8 @@ export interface operations {
         parameters: {
             query?: {
                 decide_now?: boolean;
+                /** @description Why: the decision's reason, at most 2,000 characters, kept on its record and served in the decision log, never written into the methods */
+                note?: string | null;
             };
             header?: never;
             path: {
@@ -16781,6 +17615,55 @@ export interface operations {
             };
             /** @description The decision was refused and not recorded */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyst_log_api_projects__pid__analyst_log_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalystLog"];
+                };
+            };
+            /** @description TurboTab is not in analyst mode */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description No such project */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16968,6 +17851,86 @@ export interface operations {
             };
         };
     };
+    fits_api_projects__pid__fits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitsLog"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    results_api_projects__pid__results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Results"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     for_the_record_api_projects__pid__record_get: {
         parameters: {
             query?: never;
@@ -17048,6 +18011,55 @@ export interface operations {
             };
         };
     };
+    mattered_api_projects__pid__mattered_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mattered"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Not offered for this goal or effect measure, the plan not locked yet, a question the estimates rest on open, or the curve cannot be drawn */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     triage_api_projects__pid__triage_get: {
         parameters: {
             query?: never;
@@ -17106,6 +18118,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MethodsText"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    methods_sections_api_projects__pid__methods_sections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodsSections"];
                 };
             };
             /** @description No such project */
@@ -17669,7 +18721,9 @@ export interface operations {
     };
     get_teaching_api_teaching_get: {
         parameters: {
-            query?: never;
+            query?: {
+                purpose?: ("prediction" | "inference") | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17683,6 +18737,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TeachingEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -17791,7 +18854,14 @@ export interface operations {
     };
     upload_file_api_projects__pid__files_upload_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Where the file came from, in full (https://…) */
+                url?: string | null;
+                /** @description When it was released, YYYY-MM-DD */
+                release_date?: string | null;
+                /** @description The license it was released under */
+                license?: string | null;
+            };
             header?: never;
             path: {
                 pid: string;
@@ -17816,7 +18886,7 @@ export interface operations {
                     "application/json": components["schemas"]["AddedFile"];
                 };
             };
-            /** @description No file, or not a readable data file */
+            /** @description No file, not a readable data file, or a field of where it came from that does not read */
             400: {
                 headers: {
                     [name: string]: unknown;

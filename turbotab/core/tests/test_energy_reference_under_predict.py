@@ -1,0 +1,413 @@
+"""BEATS_PREDICT §9 ruling 5 in the methods reference and the review packets (W1-P11, repair
+round): under Predict the Router asks neither the energy model nor the substitution, so the
+generated reference and packets say the app does not ask them there, rather than print the energy
+model's ranking as what the app offers first; under Estimate both read as before.
+
+Every expectation is from construction: which question a goal asks is the ruling's, read off the
+Router (``interview.route``) on a dietary table built here, never off the generator's own words;
+the captures the packet test reads are built here too. Each guard is checked both ways: the
+"not asked" words and the stale-capture note appear under Predict and stay out under Estimate.
+"""
+from __future__ import annotations
+
+import re
+
+from turbotab.core import custom_sound
+from turbotab.core.decisions import ProjectState
+from turbotab.core.interview import route
+from turbotab.core.methods.energy import RANKING
+from turbotab.core.reference import defaults, journeys, methods, packet
+
+ROLES = {"participant_id": "identifier", "age": "covariate", "energy_kcal": "energy",
+         "protein_g": "exposure", "fat_g": "exposure", "carbohydrate_g": "exposure"}
+FRESH = {s: {"status": "fresh"} for s in (
+    "ingest", "oriented", "profile", "findings", "structure", "working", "target_info", "roles",
+    "proposals", "cohort", "split", "shelf", "design", "fit", "substitution")}
+
+
+def _router(purpose: str) -> dict:
+    """The Router's steps on a dietary table with total energy beside three nutrients."""
+    state = ProjectState(lens=["dietary"], target="hba1c", task="regression", purpose=purpose,
+                         grain={"grain": "one_row_per_unit"}, roles=ROLES, exclusions=[],
+                         missing="impute", split={"holdout": 0.2})
+    return {s.key: s for s in route(state, FRESH)}
+
+
+def _reason(key: str) -> str:
+    step = _router("prediction")[key]
+    assert step.status == "not_applicable", key  # the ruling: not asked under Predict
+    return step.reason
+
+
+def test_the_reference_reads_why_from_the_router_under_predict_and_nothing_under_estimate():
+    for key in ("energy_adjustment", "substitution"):
+        assert defaults.not_asked(key, "prediction") == _reason(key)
+        # under Estimate the Router asks both on this table, and the reference names no reason
+        assert _router("inference")[key].status in ("open", "waiting"), key
+        assert defaults.not_asked(key, "inference") is None, key
+    # a question the goal alone never removes has no such reason under either goal
+    for purpose in defaults.PURPOSES:
+        assert defaults.not_asked("missing", purpose) is None
+
+
+def test_the_energy_models_entry_says_it_is_not_asked_under_predict_and_ranks_under_estimate():
+    reason = _reason("energy_adjustment")
+    text = "\n".join(methods.custom_sound_section("energy_adjustment", "the energy model"))
+    assert "Under **prediction** it is not asked" in text and f"“{reason}”" in text
+    assert "Under **prediction**, soundest first" not in text
+    assert "- Under prediction" not in text  # no option offered first under Predict
+    # under Estimate the ranking stands, soundest first, with the data's own first options
+    first = custom_sound.energy("inference").options[0].key
+    assert "Under **inference**, soundest first" in text and f"| 1 | `{first}`:" in text
+    assert "- Under inference, a table with" in text
+    assert methods.question_first("energy_adjustment", "prediction") is None
+    assert methods.question_first("energy_adjustment", "inference")[0] == first
+    assert defaults.cases("energy_adjustment", "prediction") is None
+    assert {c.key for c in defaults.cases("energy_adjustment", "inference")} <= set(
+        RANKING["inference"])
+
+
+def test_an_intakes_transform_offers_no_energy_model_under_predict_and_its_first_under_estimate():
+    reason = _reason("energy_adjustment")
+    intake = [c for c in defaults.cases("exposure_transform", "prediction")
+              if c.when.startswith("an intake")]
+    assert len(intake) == 1
+    assert intake[0].key == "" and reason in intake[0].first
+    assert not any(f"`{m}`" in intake[0].first for m in RANKING["prediction"])
+    estimate = [c for c in defaults.cases("exposure_transform", "inference")
+                if c.when.startswith("an intake")]
+    assert estimate and all(c.key in RANKING["inference"] for c in estimate)
+    # the other inputs' transforms do not depend on the goal
+    assert ([c for c in defaults.cases("exposure_transform", "prediction") if c not in intake]
+            == [c for c in defaults.cases("exposure_transform", "inference")
+                if c not in estimate])
+
+
+def _capture(*kinds: str) -> dict:
+    answers = [{"kind": "set_lens", "status": 200, "summary": '{"lenses": ["dietary"]}',
+                "source": "the journey", "seq": 1}]
+    answers += [{"kind": k, "status": 200, "summary": "{}", "source": "the journey",
+                 "seq": i + 2} for i, k in enumerate(kinds)]
+    return {"captured": {"commit": "0000000", "date": "2026-10-01", "seconds": 1, "workers": 2},
+            "answers": answers, "readings": None, "export": {"status": 409}}
+
+
+def test_a_packet_flags_a_capture_that_answered_a_question_its_goal_no_longer_asks():
+    predict, estimate = (journeys.JOURNEYS["dietary-prediction"],
+                         journeys.JOURNEYS["dietary-inference"])
+    stale = _capture("set_split", "set_energy_adjustment", "set_substitution")
+    assert packet.unasked_answers(predict, stale) == [(3, "energy_adjustment"),
+                                                      (4, "substitution")]
+    text = "\n".join(packet.journey_section(predict, stale))
+    assert packet.STALE in text and "rows 3 and 4" in text
+    for key in ("energy_adjustment", "substitution"):
+        assert f"`{key}` (“{_reason(key)}”)" in text
+    assert f"python -m turbotab.core.reference.journeys {predict.name}" in text
+    # silent where the goal asks them, and where the capture never answered them
+    assert packet.unasked_answers(estimate, stale) == []
+    assert packet.STALE not in "\n".join(packet.journey_section(estimate, stale))
+    assert packet.STALE not in "\n".join(packet.journey_section(predict, _capture("set_split")))
+
+
+def test_the_dietary_packet_says_the_energy_model_is_not_asked_under_predict():
+    text = packet.render("dietary", packet.captures_for("dietary"))
+    labeled = text[text.index("### 3.2"):text.index("### 3.3")]
+    row = next(line for line in labeled.splitlines() if "(`energy_adjustment`)" in line)
+    assert row.split(" | ")[1] == "not asked under prediction"
+    assert row.split(" | ")[2].startswith(packet.BY_DATA)
+    ranked = text[text.index("### 3.4"):text.index("## 4 ")]
+    assert "| The energy model (`energy_adjustment`) | prediction |" not in ranked
+    assert "| The energy model (`energy_adjustment`) | inference |" in ranked
+
+
+# ── the method contracts the two questions offer (the repair round's minor) ───────────────────
+#
+# The exposure's energy residual is the energy model's own option, and the substitution's two
+# contracts are recorded by the substitution answer: under Predict the Router asks neither
+# question, so the reference says each is not offered there, with the Router's reason, and places
+# neither; under Estimate each cell is the registry's own, read here from the contract itself.
+
+
+def _contract(key: str):
+    from turbotab.core.contracts import contracts
+
+    return contracts()[key]
+
+
+def _row(text: str, option: str) -> list[str]:
+    """An options table's cells for ``option``: name, customary, then prediction's sound and rung,
+    then inference's."""
+    line = next(line for line in text.splitlines() if line.startswith(f"| `{option}`:"))
+    return [cell.strip() for cell in line.strip("|").split(" | ")]
+
+
+def _declared(c, option: str, purpose: str) -> tuple[str, str]:
+    o = c.option(option)
+    return methods.cell(o.sound[purpose]), methods.RUNG_WORDS[o.rung[purpose]]
+
+
+def _fact(text: str, name: str) -> str:
+    return next(line for line in text.splitlines() if line.startswith(f"- **{name}:**"))
+
+
+def test_the_energy_residual_is_not_offered_under_predict_and_the_other_transforms_stand():
+    reason = _reason("energy_adjustment")
+    c = _contract("exposure_transform")
+    text = "\n".join(methods.contract_section(c))
+    residual = _row(text, "residual")
+    assert residual[2] == f"Not asked (the Router's gate): “{reason}”"
+    assert residual[3] == f"not offered, {len(c.options)}"  # after every transform it offers
+    assert (residual[4], residual[5].split(",")[0]) == _declared(c, "residual", "inference")
+    assert f"`residual` is not offered" in _fact(text, "Under prediction")
+    assert f"“{reason}”" in _fact(text, "Under prediction")
+    # a log scale and a scale's score are not the energy model's: as the registry declares them,
+    # ranked in its order
+    for rank, key in enumerate(("log", "score"), 1):
+        row = _row(text, key)
+        assert (row[2], row[3]) == (_declared(c, key, "prediction")[0],
+                                    f"{_declared(c, key, 'prediction')[1]}, {rank}")
+    # the contract's placement is the whole transform's, unchanged
+    assert _fact(text, "Where") == f"- **Where:** placed at {c.place}."
+
+
+def test_the_substitution_contracts_are_neither_offered_nor_placed_under_predict():
+    reason = _reason("substitution")
+    for key in ("multiclass_substitution", "survey_substitution"):
+        c = _contract(key)
+        text = "\n".join(methods.contract_section(c))
+        for rank, o in enumerate(c.options_for("prediction"), 1):
+            row = _row(text, o["key"])
+            assert row[2] == f"Not asked (the Router's gate): “{reason}”", (key, o["key"])
+            assert row[3] == f"not offered, {rank}"
+        for rank, o in enumerate(c.options_for("inference"), 1):
+            row = _row(text, o["key"])
+            sound, rung = _declared(c, o["key"], "inference")
+            assert (row[4], row[5]) == (sound, f"{rung}, {rank}"), (key, o["key"])
+        assert _fact(text, "The method's own leash") == (
+            f"- **The method's own leash:** prediction not offered; inference "
+            f"{methods.RUNG_WORDS[c.leash['inference']]}.")
+        assert _fact(text, "Under prediction") == (
+            f"- **Under prediction:** not asked, so neither offered nor placed (the Router's gate, "
+            f"`interview.applicability`): “{reason}”")
+        assert "under prediction" not in _fact(text, "Where")
+    # the multiclass curves are placed beside the coefficient table under Estimate, as declared
+    where = _fact("\n".join(methods.contract_section(_contract("multiclass_substitution"))),
+                  "Where")
+    assert "beside the coefficient table under inference" in where
+    assert "beside the comparison" not in where
+
+
+def test_a_contract_no_gated_question_offers_reads_as_the_registry_declares():
+    c = _contract("functional_form")
+    text = "\n".join(methods.contract_section(c))
+    assert "- **Under prediction:**" not in text and "the Router's gate" not in text
+    for purpose, (sound_at, rung_at) in (("prediction", (2, 3)), ("inference", (4, 5))):
+        for rank, o in enumerate(c.options_for(purpose), 1):
+            row = _row(text, o["key"])
+            sound, rung = _declared(c, o["key"], purpose)
+            assert (row[sound_at], row[rung_at]) == (sound, f"{rung}, {rank}")
+    assert _fact(text, "Where").endswith(f"placed at {c.place}.")
+
+
+def test_the_dietary_packet_defaults_say_the_substitution_is_not_asked_under_predict():
+    reason = _reason("substitution")
+    text = packet.render("dietary", packet.captures_for("dietary"))
+    own = text[text.index("### 3.1"):text.index("### 3.2")]
+    for key in ("multiclass_substitution", "survey_substitution"):
+        c = _contract(key)
+        row = next(line for line in own.splitlines() if f"(`{key}`)" in line)
+        prediction, inference = [cell.strip() for cell in row.strip("|").split(" | ")][1:]
+        assert prediction == f"not asked under prediction (the Router's gate): “{reason}”"
+        first = c.options_for("inference")[0]
+        assert inference == packet.default_cell(c, "inference")
+        assert inference.startswith(f"`{first['key']}` ")
+    # the contract section in the packet carries the same cells as the reference's
+    section = text[text.index("(`multiclass_substitution`)"):]
+    assert "beside the comparison under prediction" not in section[:section.index("**Storyboard")]
+
+
+# ── the relations of a method no question offers under a goal (the repair round's second minor) ─
+#
+# Under Predict the substitution's curves are neither offered nor placed, so none of their
+# relations fires there: each relations table, the reference's and the packet's, drops prediction
+# from every row's purposes and leaves out the row that applies only under prediction. The truth is
+# the contract's own declared relations less the purposes the Router does not ask the substitution
+# under; a contract the Router still offers under Predict keeps every row as declared.
+
+
+def _gated(question: str) -> set[str]:
+    """The purposes under which the Router does not ask ``question`` on the dietary table."""
+    return {p for p in methods.PURPOSES if _router(p)[question].status == "not_applicable"}
+
+
+def _expected(c, gated: set[str]) -> list[tuple[str, str, str]]:
+    """``(kind, id, purposes)`` for each of ``c``'s declared relations that fires under a purpose
+    outside ``gated``, its purposes the declared ones less ``gated``, in declared order."""
+    out = []
+    for r in c.relations:
+        kept = [p for p in r.purposes if p not in gated]
+        if kept:
+            out.append((r.kind, r.id, ", ".join(kept)))
+    return out
+
+
+def _relation_cells(text: str) -> list[list[str]]:
+    """A contract section's relations table: each row's cells (kind, toward, fires for, purposes,
+    what the app says, enforced by)."""
+    body = text[text.index("**Relations:**"):text.index("**Primary sources:**")]
+    rows = [line for line in body.splitlines() if line.startswith("| ")][1:]  # past the header
+    return [[cell.strip() for cell in row.strip("|").split(" | ")] for row in rows]
+
+
+def _reference_rows(c) -> list[tuple[str, str, str]]:
+    cells = _relation_cells("\n".join(methods.contract_section(c)))
+    ids = [r.id for r in c.relations]
+    out = []
+    for row in cells:
+        named = [i for i in ids if f"`{i}`" in row[1]]
+        assert len(named) == 1, row[1]
+        out.append((row[0], named[0], row[3]))
+    return out
+
+
+def test_the_multiclass_substitutions_relations_name_no_purpose_the_router_does_not_ask():
+    gated = _gated("substitution")
+    assert gated == {"prediction"}  # the ruling: the substitution is not asked under Predict
+    c = _contract("multiclass_substitution")
+    assert _reference_rows(c) == _expected(c, gated)
+    # the row that applies only under prediction is left out, its sentence with it
+    stated = c.relation("omitted_stated")
+    assert stated.purposes == ("prediction",)
+    text = "\n".join(methods.contract_section(c))
+    assert stated.says not in text and "(id `omitted_stated`)" not in text
+    assert all("prediction" not in row[2] for row in _reference_rows(c))
+    # every relation that also holds under inference stays, with inference alone
+    assert {r.id for r in c.relations if "inference" in r.purposes} == {
+        row[1] for row in _reference_rows(c)}
+
+
+def test_a_contract_the_router_offers_under_predict_keeps_every_relation_as_declared():
+    # the survey's substitution curve declares inference only, so its rows stand as they are; the
+    # exposure's transform is offered under Predict save its energy residual, and the functional
+    # form is offered whole, so both keep prediction where they declare it
+    for key in ("survey_substitution", "exposure_transform", "functional_form"):
+        c = _contract(key)
+        assert _reference_rows(c) == _expected(c, set()), key
+        assert len(_reference_rows(c)) == len(c.relations), key
+    assert any("prediction" in r.purposes for r in _contract("functional_form").relations)
+    assert any("prediction" in r.purposes for r in _contract("exposure_transform").relations)
+
+
+def _chain_rows(text: str, key: str) -> list[tuple[str, ...]]:
+    """The packet's chain table rows declared by ``key``, sorted: (from, kind, toward, purposes)."""
+    body = text[text.index("## 2 · How they chain"):text.index("## 3 · The defaults")]
+    rows = [line for line in body.splitlines() if line.startswith(f"| `{key}` |")]
+    cells = [[cell.strip() for cell in row.strip("|").split(" | ")] for row in rows]
+    return sorted((f, kind, toward, purposes) for f, kind, toward, _fires, purposes, *_ in cells)
+
+
+def _chain_expected(c, gated: set[str]) -> list[tuple[str, ...]]:
+    """``c``'s declared relations as the chain table's rows would hold them, sorted, each with its
+    purposes less ``gated`` and none whose purposes all lie in it."""
+    return sorted((f"`{c.key}`", r.kind, f"`{r.target}`", ", ".join(kept)) for r in c.relations
+                  if (kept := [p for p in r.purposes if p not in gated]))
+
+
+def test_the_dietary_packets_chain_drops_prediction_from_the_substitution_curves_relations():
+    gated = _gated("substitution")
+    text = packet.render("dietary", packet.captures_for("dietary"))
+    c = _contract("multiclass_substitution")
+    assert _chain_rows(text, c.key) == _chain_expected(c, gated)
+    assert c.relation("omitted_stated").says not in text
+    # the diagram draws the edges the table lists: the implication toward the omitted sources was
+    # the prediction-only row's, while the conflict (inference) stays
+    edges = [line.strip() for line in text.splitlines()
+             if line.startswith(f"  {packet.node_id(c.key)} ")]
+    toward = packet.node_id("omitted_energy_sources")
+    assert f"{packet.node_id(c.key)} -.->|conflicts| {toward}" in edges
+    assert f"{packet.node_id(c.key)} -->|implies| {toward}" not in edges
+    # silent: the lens's methods the Router offers under Predict keep prediction where they
+    # declare it (the shared transform and form are in the reference's chain, not the packet's),
+    # and the survey's substitution curve, gated too, declares inference only
+    for key in ("dietary_patterns", "nci_usual_intake", "survey_substitution"):
+        rows = _chain_rows(text, key)
+        assert rows and rows == _chain_expected(_contract(key), set()), key
+    assert any("prediction" in row[3] for key in ("dietary_patterns", "nci_usual_intake")
+               for row in _chain_rows(text, key))
+
+
+# ── what the chain's purposes leave out, and what its intro says (W1-P11c) ───────────────────
+#
+# A chain row leaves out a purpose only where the Router does not ask, under it, the one question
+# that records the declaring method (``set_substitution`` records both substitution curves, and
+# under Predict the substitution is not asked); a purpose under which the registry's rungs offer
+# none of a method's options is a refusal the relation still states, so it stays. The §2 intro
+# says that much and no more. The truth is the Router's gate on the dietary table and the decision
+# each contract is recorded by, read off the contract.
+
+
+def _unasked() -> dict[str, set[str]]:
+    """Each gated question (a slot) -> the purposes under which the Router does not ask it."""
+    return {q: _gated(q) for q in ("energy_adjustment", "substitution")}
+
+
+def _recorded_slot(c) -> str | None:
+    from turbotab.core.decisions import SLOTS
+    from turbotab.core.reference import catalog
+
+    return SLOTS.get(catalog.recorded_by(c) or "")
+
+
+def _all_chain_rows(lens: str) -> list[tuple[str, ...]]:
+    """Every row of the lens's chain table, sorted: (from, kind, toward, purposes)."""
+    rows = packet.chain_table(lens)[2:]  # past the header
+    cells = [[cell.strip() for cell in row.strip("|").split(" | ")] for row in rows]
+    return sorted((f, kind, toward, purposes) for f, kind, toward, _fires, purposes, *_ in cells)
+
+
+def test_every_chain_row_whose_method_an_unasked_question_records_omits_that_purpose():
+    from turbotab.core.contracts import contracts
+    from turbotab.core.reference import catalog
+
+    unasked = _unasked()
+    assert unasked == {"energy_adjustment": {"prediction"}, "substitution": {"prediction"}}
+    dropped, refused_kept = 0, 0
+    for lens in catalog.LENSES:
+        own = {c.key for c in packet.lens_contracts(lens)[0]}
+        expected = []
+        for c in contracts().values():
+            gated = unasked.get(_recorded_slot(c), set())
+            for r in c.relations:
+                if c.key not in own and r.target not in own:
+                    continue
+                kept = [p for p in r.purposes if p not in gated]
+                dropped += len(r.purposes) - len(kept)
+                if kept:
+                    expected.append((f"`{c.key}`", r.kind, f"`{r.target}`", ", ".join(kept)))
+                # silent: a purpose whose rungs offer none of the method's options stays listed
+                refused_kept += sum(1 for p in kept if c.options and all(
+                    o.rung.get(p) == "not_offered" for o in c.options))
+        assert _all_chain_rows(lens) == sorted(expected), lens
+    assert dropped > 0 and refused_kept > 0  # each side of the rule is exercised
+
+
+def test_the_chain_intro_says_which_purposes_it_leaves_out_and_no_more():
+    from turbotab.core.contracts import contracts
+
+    unasked = _unasked()
+    # the gates that leave a method wholly unoffered: the question that records it, not asked
+    gates = sorted({(slot, p) for c in contracts().values()
+                    if (slot := _recorded_slot(c)) in unasked for p in unasked[slot]})
+    assert gates == [("substitution", "prediction")]
+    for lens in ("dietary", "genomics"):  # a lens with a gated method in its chain, and one without
+        text = packet.render(lens, packet.captures_for(lens))
+        body = text[text.index("## 2 · How they chain"):text.index("## 3 · The defaults")]
+        intro = next(line for line in body.splitlines()
+                     if line.startswith("Every relation this lens's own methods take part in"))
+        named = re.findall(r"the `(\w+)` question under (\w+)", intro)
+        assert sorted(named) == gates, lens
+        # the energy model's gate takes only the transform's residual away: no purpose goes
+        assert "energy_adjustment" not in intro and "energy model" not in intro
+        # the old words claimed every purpose the method is not offered under was left out
+        assert "does not offer the declaring method under is left out" not in intro
+        assert "rungs offer none" in intro  # and say that such a purpose stays

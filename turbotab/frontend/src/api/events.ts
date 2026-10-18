@@ -2,9 +2,11 @@
  * Server-sent events -> the query cache. The server pushes; the client never polls.
  *
  *   decision  append the record to the cached view; refetch the view for the folded state
- *   stage     patch the stage status in place; refetch the view when the status changed
- *             (the Router's interview reads it); when a stage turns fresh with a key the
- *             cached result does not have, refetch that stage (and the table after ingest)
+ *   stage     patch the stage status in place; refetch the view and the quest log when the
+ *             status changed (the Router's interview reads it), and the methods' sections then
+ *             or when it turns fresh with a new key (they read the fresh stages); when a stage
+ *             turns fresh with a key the cached result does not have, refetch that stage (and
+ *             the table after ingest)
  *   job       store the JobView and mirror its progress onto the stage it serves
  *   resync    refetch everything under [pid]
  */
@@ -49,7 +51,7 @@ function applyDecision(qc: QueryClient, pid: string, record: DecisionRecord): vo
   // changes the findings stage's key: any decision may settle one, so it is read again.
   void qc.invalidateQueries({ queryKey: keys.stage(pid, "findings"), exact: true });
   // The readings card, the methods text, the plan and the joined files are read from the log, as
-  // are the quest log, the record, the triage, the ledger and the checklist.
+  // are the quest log, the record, the triage, the ledger, the checklist and the methods' sections.
   const derived = [keys.readings(pid), keys.methods(pid), keys.plan(pid), keys.files(pid), ...logDerivedKeys(pid)];
   for (const key of derived) {
     void qc.invalidateQueries({ queryKey: key, exact: true });
@@ -64,6 +66,12 @@ function applyStage(qc: QueryClient, pid: string, status: StageStatus): void {
     // The quest log counts what is answered and what is computed, and the fit lock says whether
     // the fit is held: a stage changing state (not a progress tick) reads it again.
     if (changedState(current, status)) void qc.invalidateQueries({ queryKey: keys.quest(pid), exact: true });
+    // The methods' sections (P8) are built from the fresh stages as well as the log (the fit's
+    // cross-validation paragraphs, the design's matrix), and pressing Fit records no decision: a
+    // stage changing state, or turning fresh for other answers, reads them again.
+    if (changedState(current, status) || (status.status === "fresh" && current?.key !== status.key)) {
+      void qc.invalidateQueries({ queryKey: keys.methodsSections(pid), exact: true });
+    }
     qc.setQueryData<ProjectView>(keys.view(pid), {
       ...view,
       stages: { ...view.stages, [status.stage]: status },

@@ -1,4 +1,6 @@
 # Decoys for areas A, C and D, written by the orchestrator only (PLAN.md phase 3).
+# Kept as the backtest ran it. A new queue's decoys are generated from its candidates by
+# research/registry/decoys.py, after these kinds.
 # Each: the referee-facing fields, then the key fields (never shown to any agent).
 DECOYS = [
  # ---- area A siblings ----

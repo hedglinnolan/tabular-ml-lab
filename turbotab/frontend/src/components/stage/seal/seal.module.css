@@ -277,12 +277,14 @@
   gap: 8px 14px;
 }
 
+/* Opening the held-out rows: inside the quest shell, its one action color (`--record`,
+   quest.module.css); on the classic screen, today's accent. */
 .conAttest {
   padding: 7px 14px;
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--record, var(--accent));
   border-radius: 9px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--record, var(--accent));
+  color: var(--on-record, var(--on-accent));
   font-family: var(--sans);
   font-size: 13.5px;
   font-weight: 600;
@@ -290,7 +292,7 @@
 }
 
 .conAttest:hover:not(:disabled) {
-  background: var(--accent-ink);
+  background: var(--record-hover, var(--accent-ink));
 }
 
 .conAttest:disabled {

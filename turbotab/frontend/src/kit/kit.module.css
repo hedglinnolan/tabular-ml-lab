@@ -1,0 +1,548 @@
+/* The calm kit's look, as the quest shell uses it: copied rule for rule from
+   src/explore/calm-kit/kit.module.css (the page zones, the chain, the card, the one place to act,
+   the canvas head and caption, the manuscript rail and overlay). The explore copy stays as it is
+   for the prototypes; this one is the product's (plans/W1_PART2_PLAN.md §2, "the kit move"). */
+
+/* ── shell: the page zones (FOUNDATION §3) ───────────────────────────────── */
+.page {
+  min-height: 100vh;
+  padding-inline: 24px;
+  padding-block: 0 48px;
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 16px 6px;
+}
+.brand {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
+}
+.topright {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.linkish {
+  background: none;
+  border: 0;
+  padding: 6px 0;
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong);
+  font-size: 15px;
+}
+.linkish:hover {
+  color: var(--ink);
+}
+.zones {
+  display: grid;
+  grid-template-columns: 44px minmax(380px, 420px) minmax(0, 1fr);
+  grid-template-areas: "rail card canvas";
+  column-gap: 28px;
+  align-items: start;
+  padding-top: 24px;
+}
+.zones[data-manuscript="none"] {
+  grid-template-columns: minmax(380px, 440px) minmax(0, 1fr);
+  grid-template-areas: "card canvas";
+}
+.zones[data-manuscript="column"] {
+  grid-template-columns: minmax(300px, var(--manuscript-width, 360px)) minmax(380px, 420px) minmax(0, 1fr);
+  grid-template-areas: "manuscript card canvas";
+}
+.zoneRail {
+  grid-area: rail;
+  position: sticky;
+  top: 16px;
+}
+.zoneCard {
+  grid-area: card;
+  position: relative;
+  min-width: 0;
+}
+.zoneCanvas {
+  grid-area: canvas;
+  min-width: 0;
+  position: sticky;
+  top: 16px;
+}
+.zoneManuscript {
+  grid-area: manuscript;
+  min-width: 0;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+@media (max-width: 900px) {
+  .page {
+    padding-inline: 16px;
+    padding-block-end: 112px;
+  }
+  .zones,
+  .zones[data-manuscript="none"],
+  .zones[data-manuscript="column"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "card" "canvas" "manuscript";
+    row-gap: 24px;
+  }
+  /* The product's one change to the explore copy: a narrow window keeps the Manuscript control in
+     reach (FOUNDATION §3: no lost controls), as a row above the card rather than the far-left rail. */
+  .zones {
+    grid-template-areas: "rail" "card" "canvas" "manuscript";
+  }
+  .zoneRail {
+    position: static;
+  }
+  .zoneCanvas,
+  .zoneManuscript {
+    position: static;
+    max-height: none;
+  }
+}
+
+/* ── the chain: one line ─────────────────────────────────────────────────── */
+.chain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0;
+  font-size: 15px;
+  color: var(--faint);
+  min-width: 0;
+  overflow: hidden;
+}
+.chain li {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.chain li + li::before {
+  content: "·";
+  padding-inline: 8px;
+  color: var(--line-strong);
+}
+.chainBtn {
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.chainBtn:hover {
+  color: var(--ink);
+}
+.chainBtn:disabled {
+  cursor: default;
+  color: var(--faint);
+}
+.chainBtn[data-status="done"]::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.chainBtn[data-status="current"] {
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--ink);
+}
+@media (max-width: 640px) {
+  /* Hidden from sight only: each stage's button keeps its name for a screen reader. */
+  .chain li:not([data-status="current"]) .chainName {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .chain li:not([data-status="current"]) .chainBtn::after {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    border: 1.5px solid var(--line-strong);
+  }
+  .chain li[data-status="done"] .chainBtn::after {
+    display: none;
+  }
+  .chain li + li::before {
+    padding-inline: 5px;
+  }
+}
+
+/* ── the card ────────────────────────────────────────────────────────────── */
+.card {
+  display: grid;
+  gap: 16px;
+}
+.stageLabel {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0;
+}
+.question {
+  font-size: clamp(24px, 3.2vw, 30px);
+  line-height: 1.2;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.lede {
+  margin: -6px 0 0;
+  color: var(--muted);
+  max-width: 60ch;
+}
+.why {
+  color: var(--muted);
+}
+.why summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.why p {
+  margin: 8px 0 0;
+  max-width: 62ch;
+}
+.note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15.5px;
+}
+
+/* the one place to act */
+.actRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 4px;
+}
+.hint {
+  color: var(--muted);
+  font-size: 15px;
+  min-width: 0;
+}
+.hint b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.primary {
+  font-weight: 600;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 26px;
+  background: var(--action);
+  color: var(--action-ink);
+  cursor: pointer;
+  transition: background-color 0.15s;
+  white-space: nowrap;
+}
+.primary:hover {
+  background: var(--action-hover);
+}
+.primary:disabled {
+  background: var(--line);
+  color: var(--faint);
+  cursor: default;
+}
+/* The one primary action stays in view (FOUNDATION §1): on a long question the card's action row
+   holds to the bottom of the screen until the card's own end scrolls up to it. */
+.card .actRow {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--ground);
+  padding-block: 12px;
+  margin-block-end: -12px;
+  box-shadow: 0 -1px 0 var(--line);
+}
+@media (max-width: 900px) {
+  .card .actRow {
+    display: none;
+  }
+}
+/* ── the canvas: where the data speaks ───────────────────────────────────── */
+.canvas {
+  background: var(--canvas);
+  border-radius: 14px;
+  padding: 18px 20px 20px;
+  display: grid;
+  gap: 12px;
+  color: var(--canvas-ink);
+  min-width: 0;
+}
+.chead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.chead h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--canvas-muted);
+}
+.flip {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--canvas-line);
+  font-size: 14px;
+}
+.flip button {
+  border: 0;
+  background: none;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--canvas-muted);
+}
+.flip button[aria-pressed="true"][data-s="now"] {
+  background: var(--data-context);
+  color: var(--canvas-ink);
+}
+.flip button[aria-pressed="true"][data-s="after"] {
+  background: var(--data-affected);
+  color: var(--action-ink);
+}
+.flip button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  color: var(--canvas-muted);
+  font-size: 14px;
+}
+.steps button {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--data-affected);
+  background: transparent;
+  cursor: pointer;
+  flex: none;
+}
+.steps button[aria-current="step"] {
+  background: var(--data-affected);
+}
+.caption {
+  margin: 0;
+  font-size: 18px;
+  min-height: 1.5em;
+  overflow-wrap: anywhere;
+}
+.caption b {
+  font-weight: 600;
+}
+.readout {
+  display: flex;
+  gap: 4px 18px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  color: var(--canvas-muted);
+}
+.readout b {
+  color: var(--canvas-ink);
+  font-weight: 600;
+}
+.coach {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 15px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.coach::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  flex: none;
+  transform: translateY(-1px);
+}
+.rail {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 8px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.rail:hover,
+.rail[aria-expanded="true"] {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+/* A narrow window: the rail is a row above the card (the zones above), so it reads across. */
+@media (max-width: 900px) {
+  .rail {
+    writing-mode: horizontal-tb;
+    transform: none;
+    padding: 8px 14px;
+  }
+}
+.pinOnly {
+  display: none;
+}
+@media (min-width: 1680px) {
+  .pinOnly {
+    display: inline;
+  }
+}
+.railCount {
+  color: var(--ink);
+  font-weight: 600;
+}
+.overlay {
+  position: absolute;
+  inset: 0 0 auto 0;
+  min-height: 100%;
+  z-index: 3;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px 22px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.08);
+}
+.msHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.msHead h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.msSection {
+  margin-top: 18px;
+}
+.msSection h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.msSection h3 small {
+  font-weight: 400;
+  color: var(--faint);
+  font-size: 13px;
+}
+.msList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.msEntry {
+  padding-left: 12px;
+  border-left: 3px solid transparent;
+  font-size: 15.5px;
+}
+.msEntry[data-kind="recorded"] {
+  border-left-color: var(--ok);
+}
+.msEntry[data-kind="stated"] {
+  border-left-color: var(--line-strong);
+}
+.msEntry[data-newest="true"] {
+  animation: arrive 1.2s ease;
+}
+@keyframes arrive {
+  from {
+    background: var(--ok-soft);
+  }
+  to {
+    background: transparent;
+  }
+}
+.msHeadLine {
+  display: block;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.msPhrase {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 4px;
+}
+.msPhrase:hover {
+  text-decoration-color: var(--action);
+}
+.msBlank {
+  background: none;
+  border: 1px solid var(--selected-line);
+  border-radius: 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+  color: var(--action);
+  font-size: 15px;
+}
+.msBlank:hover {
+  background: var(--hover);
+}
+.msWaiting {
+  color: var(--faint);
+}
+.msAfter {
+  display: block;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.msColumn {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px 22px;
+}

@@ -1,12 +1,14 @@
 /**
- * Two routes do not need a router library: `/` and `/p/:pid` (and, in dev:mock only, `/lab`).
- * The location is the browser's; this only subscribes to it.
+ * A few routes do not need a router library: `/`, `/p/:pid` (the quest shell), `/p/:pid/classic`
+ * (today's screen, kept until W2 closes: plans/W1_PART2_PLAN.md ruling 8) and, in dev:mock only,
+ * `/lab`. The location is the browser's; this only subscribes to it.
  */
 import { useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from "react";
 
 export type Route =
   | { name: "start" }
   | { name: "project"; pid: string }
+  | { name: "classic"; pid: string }
   | { name: "lab" }
   | { name: "explore-stage" }
   | { name: "stage-lab" }
@@ -66,6 +68,8 @@ export function parseRoute(path: string, lab = LAB): Route {
   }
   const m = /^\/p\/([^/]+)\/?$/.exec(path);
   if (m) return { name: "project", pid: decodeURIComponent(m[1]!) };
+  const classic = /^\/p\/([^/]+)\/classic\/?$/.exec(path);
+  if (classic) return { name: "classic", pid: decodeURIComponent(classic[1]!) };
   return { name: "missing", path };
 }
 
@@ -92,6 +96,11 @@ export function navigate(to: string): void {
 
 export function projectPath(pid: string): string {
   return `/p/${encodeURIComponent(pid)}`;
+}
+
+/** Today's screen for a project, kept beside the quest shell until W2 closes. */
+export function classicPath(pid: string): string {
+  return `${projectPath(pid)}/classic`;
 }
 
 export function Link({

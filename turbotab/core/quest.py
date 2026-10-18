@@ -32,7 +32,9 @@ quest stages" and the audited disagreements); the registry test holds every plac
 Router asks is a Decide; a default it states is a Confirm, or For the record where no other choice
 is offered; FOUNDATION §3; a declaration carries its method contracts' tier, :func:`contract_tier`,
 unless the crosswalk rules otherwise, :data:`TIER_RULINGS`), with "Waiting for" on a line whose
-earlier answers are missing;
+earlier answers are missing; in Your data, each column a roles answer recorded below high confidence
+as proposed is a counted Decide of its own until its role is confirmed on its own (BLUEPRINT §14
+rule 2, :func:`_role_lines`);
 progress as answered over required, each counted Decide one and the stage's Confirm sweep one,
 empty (``None``) for a stage not reached, and ``complete`` once every objective is answered (a
 reached stage that asks nothing, 0 of 0, is complete: its segment is full; except Results under
@@ -89,7 +91,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Literal, Mapping, Sequence
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from turbotab.core.fit_press import FitLock
 
@@ -255,7 +257,8 @@ class Asked:
     """A consumer's refusal to read what nobody settled (``readings.Unsettled``: "it asks, never
     guesses"), measured on the state where the table is at hand (:func:`fit_waits`): the Router
     question whose consumer refused (``ask.CONSUMERS``; ``models`` is the fit), the refusal's own
-    words, the readings it waits on and its ways forward (one confirmation per reading)."""
+    words, the readings it waits on and its ways forward (one confirmation per reading, except a
+    judgment's roles asked whole, confirmed in one press: ruling R-g, :func:`fit_waits`)."""
 
     question: str
     message: str
@@ -263,20 +266,22 @@ class Asked:
     exits: tuple[Mapping[str, Any], ...] = ()
 
 
-def fit_waits(state: Any, info: Mapping[str, Any] | None = None, store: Any = None
-              ) -> Asked | None:
+def fit_waits(state: Any, info: Mapping[str, Any] | None = None, store: Any = None,
+              artifact: Any = None) -> Asked | None:
     """The fit's refusal on ``state`` (``readings.predictors_or_ask``, as the fit, the causal lane
     and the time-varying lane each call it), or None when every reading it rests on is settled.
     ``info`` is the table's column summaries and ``store`` the table, as those consumers read
     them. Every kind of refusal it raises is one (a role, codes or amounts, a detection limit, a
-    comma, an energy source's unit, a codes answer the energy or scales answer contradicts)."""
+    comma, an energy source's unit, a codes answer the energy or scales answer contradicts).
+    ``artifact``, the roles stage's: the roles of one judgment wait as one group with one press
+    (ruling R-g, as ``decisions._models_read_settled_readings`` refuses select_models)."""
     from turbotab.core.decisions import left_out
     from turbotab.core.readings import Unsettled, predictors_or_ask
 
     if state is None or not getattr(state, "roles", None):
         return None
     try:
-        predictors_or_ask(state, info, drop=left_out(state), store=store)
+        predictors_or_ask(state, info, drop=left_out(state), store=store, artifact=artifact)
     except Unsettled as waiting:
         return Asked("models", str(waiting), tuple(waiting.readings),
                      tuple(dict(e) for e in waiting.exits))
@@ -462,6 +467,50 @@ def _calibration_is_current(state: Any) -> bool:
     return spec is not None and changed is None
 
 
+def _sentence_case(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
+def validation_stated(state: Any) -> str:
+    """The validation scheme set for the person, as the split holds it (else the scheme's
+    defaults): Models' Confirm line states it by its value, in the validation card's words."""
+    from turbotab.core.decisions import SetValidation
+
+    s = getattr(state, "split", None) or SetValidation()
+    if s.validation == "kfold":
+        scheme = f"{s.folds}-fold cross-validation"
+    elif s.validation == "repeated_kfold":
+        scheme = f"{s.folds}-fold cross-validation, repeated {s.repeats} times"
+    elif s.validation == "bootstrap":
+        scheme = f"bootstrap optimism correction over {s.n_boot} resamples"
+    else:
+        scheme = "internal–external validation" + (f" by {s.cluster}" if s.cluster else "")
+    nested = ", with a nested cross-validation interval" if s.nested_cv else ""
+    return _sentence_case(f"{scheme}{nested}.")
+
+
+# The levers card's words for each rule (src/quest/cards/predict/LeversCard.tsx), lowercased.
+LEVER_WORDS = {
+    "forms": {"none": "none", "rule": "spline by rule",
+              "inner_cv": "linear or spline, by inner cross-validation"},
+    "variance_filter": {"none": "none", "near_zero": "near-zero variance", "top": "most variable"},
+    "imbalance": {"none": "none", "weights": "class weights", "undersample": "undersampling",
+                  "oversample": "oversampling"},
+}
+
+
+def levers_stated(state: Any) -> str:
+    """The rules repeated inside each fold set for the person, as recorded (else the defaults: no
+    lever is none of the three): Models' Confirm line states them by their values."""
+    from turbotab.core.decisions import LeverSpec
+
+    r = getattr(state, "levers", None) or LeverSpec()
+    kept = f" ({r.keep} kept)" if r.variance_filter == "top" and r.keep is not None else ""
+    return (f"Predictor forms: {LEVER_WORDS['forms'][r.forms]}; variance filter: "
+            f"{LEVER_WORDS['variance_filter'][r.variance_filter]}{kept}; imbalance correction: "
+            f"{LEVER_WORDS['imbalance'][r.imbalance]}.")
+
+
 @dataclass(frozen=True)
 class Declaration:
     """A decision with no Router key that the quest log lists as a line (disagreement 11).
@@ -472,7 +521,8 @@ class Declaration:
     whether its recorded answer still stands (else it is asked again). ``only_recorded``: a For the
     record line, listed once something is recorded. ``own_record``: answered only by a record of its
     own kind, since its slot is another answer's too (the validation scheme rides in the split's
-    record until it is changed, P0.6)."""
+    record until it is changed, P0.6). ``stated``: the default a Confirm line sets for the person,
+    stated by its value (its ``reason``, which "Confirm all" records: the re-walk's N6)."""
 
     kind: str
     name: str
@@ -482,6 +532,7 @@ class Declaration:
     holds: Callable[[Any], bool] | None = None
     only_recorded: bool = False
     own_record: bool = False
+    stated: Callable[[Any], str] | None = None
 
     @property
     def place(self) -> Place:
@@ -517,7 +568,7 @@ DECLARATIONS: tuple[Declaration, ...] = (
                 lambda s, f: (s.purpose == "inference" and s.estimand is not None
                               and bool(s.estimand.family)), reads=("estimand",)),
     Declaration("set_levers", "the rules repeated inside each fold", _goal("prediction"),
-                reads=("models",)),
+                reads=("models",), stated=levers_stated),
     # An unpenalized regression family under prediction (the relation shrinkage_offered).
     Declaration("set_updating", "the shrinkage question",
                 lambda s, f: s.purpose == "prediction" and _shrinkage_offered(s),
@@ -527,7 +578,7 @@ DECLARATIONS: tuple[Declaration, ...] = (
     # P0.6 (disagreement 5): the scheme set for you with the draw, a Models Confirm line under
     # Predict; changing it records its own kind and keeps the draw.
     Declaration("set_validation", "the validation scheme", _goal("prediction"), reads=("split",),
-                own_record=True),
+                own_record=True, stated=validation_stated),
 )
 
 
@@ -669,7 +720,8 @@ def noticing_stage(thread: str) -> str:
 # Each compute stage -> the quest stage that shows its result, with the crosswalk card that shows
 # it (CROSSWALK.md, "Engine stages and quest stages", its "Shown in" column). Every estimate stage
 # shows in Results, after Fit (``estimand.ESTIMATE_STAGES``); the substitution curve has no card
-# of its own yet (disagreement 13: Results draws it).
+# of its own yet (disagreement 13: Results draws it), nor has which decisions mattered under
+# Estimate (``mattered``, SWARM_ENGINE_PLAN E3: served at GET /projects/{pid}/mattered).
 COMPUTE: dict[str, tuple[str, str | None]] = {
     "ingest": ("data", "record:ingest-facts"),
     "oriented": ("data", "q:orientation"),
@@ -703,6 +755,7 @@ COMPUTE: dict[str, tuple[str, str | None]] = {
     "modification": ("results", "exhibit:effect_modification"),
     "explain": ("results", "exhibit:shap_importance"),
     "evaluation": ("results", "exhibit:decision_curve"),
+    "mattered": ("results", None),
 }
 
 
@@ -729,6 +782,13 @@ EXHIBITS: dict[str, tuple[str, ...]] = {
     "evaluation": ("prediction",),
 }
 EXHIBIT_STAGES: tuple[str, ...] = tuple(EXHIBITS)
+# The stages at home in Results that no screen draws: no card of their own (:data:`COMPUTE`) and
+# no exhibit of Results (:data:`EXHIBITS`). Today only which decisions mattered (``mattered``,
+# served at GET /projects/{pid}/mattered). A result no screen draws going out of date is no reason
+# Results dropped back, under any goal (the ruling at SE-int's cap, P4); it is no exhibit either.
+UNDRAWN: frozenset[str] = frozenset(
+    name for name, (home, item) in COMPUTE.items()
+    if home == "results" and item is None and name not in EXHIBITS)
 
 
 def goal_of(state: Any) -> str | None:
@@ -993,7 +1053,7 @@ class Sweep(BaseModel):
     answered, by the person's own answer or by "Confirm all" (``confirmed_by``, the
     ``confirm_sweep`` record). ``changed``: the lines set for the person anew, or stated otherwise,
     since that confirmation. ``id`` is the crosswalk's card; ``heading`` and ``action`` are its
-    words ("Here are the 6 other choices set for you", "Confirm all 6")."""
+    words ("The 6 choices set for you", "Confirm all 6")."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
@@ -1045,6 +1105,14 @@ class QuestLog(BaseModel):
     stages: list[QuestStage]
     kinds: dict[str, str]
     fit: FitLock | None = None  # Fit and the plan's lock (SIZING P0.8)
+    # The questions still to come that no line lists (:func:`unlisted_to_come`), which the triage
+    # reads as the quest log does (W1-W round 2, P1); never served.
+    _unlisted: frozenset[str] = PrivateAttr(default_factory=frozenset)
+
+    @property
+    def unlisted(self) -> frozenset[str]:
+        """The questions still to come that no line lists (:func:`unlisted_to_come`)."""
+        return self._unlisted
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -1456,6 +1524,12 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
               and not _holding(s, state)}
     if purpose == "prediction" and not drew_under_predict:
         asking.add("split")     # asked again below: no draw the person made under Predict
+    # The re-walk's N5: a question with no answer that waits only for the reading that says whether
+    # it is asked at all (``READ_BY_GATE``) is not known yet. A line after it waits for that
+    # reading, never for the question by name (a numeric outcome has no event question); and the
+    # questions asked only for some outcomes are not listed until the outcome's reading says.
+    unknown = {_get(s, "key"): list(_get(s, "waiting_on") or []) for s in steps
+               if _unknown_while_read(s, state)}
     lines = []
     for step in steps:
         key, status = _get(step, "key"), _get(step, "status")
@@ -1466,12 +1540,16 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
             continue
         if place is None or status == "not_applicable":
             continue
+        if not_known_until_the_outcome_is_read(step, state):
+            continue  # asked only for some outcomes: the outcome's reading says which (N5)
         label = place.label
         if status == "skipped":
             label = place.label if place.label != DECIDE else STATED.get(key, CONFIRM)
         waiting_on = list(_get(step, "waiting_on") or [])
         waiting_for, computing = [], waiting_on
-        if status == "waiting" and step is not first and waiting_on and waiting_on[0] in QUESTIONS:
+        if status == "waiting" and step is not first and waiting_on and waiting_on[0] in unknown:
+            computing = list(dict.fromkeys([*unknown[waiting_on[0]], *waiting_on[1:]]))
+        elif status == "waiting" and step is not first and waiting_on and waiting_on[0] in QUESTIONS:
             earlier = waiting_on[0]
             waiting_for = [Waiting(key=earlier, stage=QUESTIONS[earlier].stage,
                                    name=question_name(earlier))]
@@ -1533,32 +1611,103 @@ def _question_lines(state: Any, steps: Sequence[Any], log: _Log,
 
 def _ask_items(asked: Asked, state: Any) -> list[ReadItem]:
     """The readings a refusal waits on, each with the refusal's own ways forward for its column
-    (a way forward that names no column, such as changing the energy answer, under each)."""
-    from turbotab.core.readings import guess_words
+    (a way forward that names no column, such as changing the energy answer, under each), except a
+    block confirmation that lists a role: a role below high is confirmed on its own (BLUEPRINT §14
+    rule 2), never in one press with others, unless the refusal asks its whole judgment (ruling
+    R-g, ``readings.with_proposals``). Then the group is one item (:data:`ROLE_GROUP_ITEM`, as a
+    group's role line reads it: how many, the role, the confidence and the shared reason, its first
+    columns named) carrying the group's one press, and each of its columns follows as a role item
+    with its own presses, which move it alone. The group's evidence is its shared reason alone
+    (``readings.judged_reason``: a codebook's label of its first column is that column's)."""
+    from turbotab.core.readings import first_columns, guess_words, judged_reason, role_group_words
 
-    def column_of(exit_: Mapping[str, Any]) -> str | None:
+    def decided(exit_: Mapping[str, Any]) -> Any:
         decision = exit_.get("decision")
         if decision is not None and hasattr(decision, "model_dump"):
             decision = decision.model_dump(mode="json")
+        return decision
+
+    def column_of(exit_: Mapping[str, Any]) -> str | None:
+        decision = decided(exit_)
         return str(decision.get("column")) if isinstance(decision, Mapping) and \
             decision.get("column") is not None else None
 
     def option(exit_: Mapping[str, Any]) -> ReadOption:
-        decision = exit_.get("decision")
-        if decision is not None and hasattr(decision, "model_dump"):
-            decision = decision.model_dump(mode="json")
-        return ReadOption(label=str(exit_.get("label")), decision=decision)
+        return ReadOption(label=str(exit_.get("label")), decision=decided(exit_))
+
+    def several_roles(exit_: Mapping[str, Any]) -> bool:
+        # BLUEPRINT §14 rule 2: a role proposed below high never rides along in one press with
+        # other readings. A block confirmation that lists one (``readings.block_exit``) is not
+        # offered; each role keeps its own confirmation, and a block of other readings stays.
+        decision = decided(exit_)
+        if not isinstance(decision, Mapping) or decision.get("kind") != "confirm_readings":
+            return False
+        return any(_get(i, "reading") == "role" for i in decision.get("items") or ())
+
+    # Ruling R-g: the roles the refusal asks whole as one judgment (two or more), by judgment.
+    judged: dict[str, list[Any]] = {}
+    for r in asked.readings:
+        if getattr(r, "kind", None) == "role" and getattr(r, "judgment", None) is not None:
+            judged.setdefault(str(r.judgment), []).append(r)
+    groups = {j: g for j, g in judged.items() if len(g) > 1}
+    member = {str(r.column): j for j, g in groups.items() for r in g}
+
+    def press_of(exit_: Mapping[str, Any]) -> str | None:
+        # The judgment whose one press this is: a block of exactly its columns, each as proposed.
+        decision = decided(exit_)
+        if not several_roles(exit_):
+            return None
+        got = [(str(_get(i, "reading")), str(_get(i, "column")), str(_get(i, "value")))
+               for i in decision.get("items") or ()]
+        j = member.get(got[0][1]) if got else None
+        if j is None:
+            return None
+        whole = {("role", str(r.column), str(r.value)) for r in groups[j]}
+        return j if set(got) == whole and len(got) == len(whole) else None
+
+    purpose = getattr(state, "purpose", None)
+    lenses = [str(k) for k in getattr(state, "lens", None) or ()]
+
+    def words_of(r: Any) -> str:
+        try:
+            return str(guess_words(r, state))  # a role in the goal's words (W1-R round 2, R2's P4)
+        except Exception:  # noqa: BLE001 - a reading the ledger cannot word keeps its value
+            return str(getattr(r, "value", ""))
 
     items = []
+    listed: set[str] = set()
     for r in asked.readings:
         column = str(getattr(r, "column", ""))
-        mine = [e for e in asked.exits if column_of(e) in (column, None)]
-        try:
-            words = guess_words(r)
-        except Exception:  # noqa: BLE001 - a reading the ledger cannot word keeps its value
-            words = str(getattr(r, "value", ""))
+        j = member.get(column) if getattr(r, "kind", None) == "role" else None
+        if j is not None:
+            if j in listed:
+                continue
+            listed.add(j)
+            group = groups[j]
+            columns = [str(g.column) for g in group]
+            many = role_group_words(group[0].value, purpose, lenses)
+            items.append(ReadItem(
+                kind=ROLE_GROUP_ITEM, column=columns[0], value=str(group[0].value),
+                words=f"{first_columns(columns)}: "
+                      f"{role_group_head(len(columns), many, str(group[0].confidence))}",
+                evidence=judged_reason(group[0], purpose),
+                options=[option(e) for e in asked.exits if press_of(e) == j]))
+            # each column as a group's role line lists it ("proposed as …", ``role_line_text``),
+            # worded once for the group: 20,000 genes are one role
+            proposed = role_line_text(columns[0], str(group[0].value), purpose=purpose,
+                                      lenses=lenses)["proposed"]
+            own: dict[str, list[ReadOption]] = {}
+            in_group = set(columns)
+            for e in asked.exits:
+                c = column_of(e)
+                if c in in_group and not several_roles(e):
+                    own.setdefault(c, []).append(option(e))
+            items += [ReadItem(kind="role", column=c, value=str(group[0].value), words=proposed,
+                               evidence="", options=own.get(c, [])) for c in columns]
+            continue
+        mine = [e for e in asked.exits if column_of(e) in (column, None) and not several_roles(e)]
         items.append(ReadItem(kind=str(getattr(r, "kind", "")), column=column,
-                              value=str(getattr(r, "value", "")), words=str(words),
+                              value=str(getattr(r, "value", "")), words=words_of(r),
                               evidence=str(getattr(r, "evidence", "") or ""),
                               options=[option(e) for e in mine]))
     return items
@@ -1611,6 +1760,351 @@ def _asked_lines(state: Any, steps: Sequence[Any], log: _Log,
             reason=asked.message, items=_ask_items(asked, state),
             reopened_by=_since_answered(log, asked.question))))
     return lines
+
+
+ROLE_LINE = OTHER_KINDS["confirm_role"]
+
+
+def role_line_key(column: str) -> str:
+    """The quest line of one column's own role confirmation (:func:`_role_lines`)."""
+    return f"confirm_role:{column}"
+
+
+# What a role that waits cannot set (``readings.unsettled_message``, as the fit's refusal says it).
+ROLE_WAITS_FOR = "the model's predictors"
+
+
+def role_choices(role: str, purpose: str | None = None,
+                 lenses: Sequence[str] | None = None) -> list[str]:
+    """The roles a column's own confirmation offers instead of ``role``, in the ledger's order: its
+    changes (``readings.ROLE_CHANGES``) and an alternative the values cannot exclude
+    (``readings.ROLE_ALTERNATIVES``), each once. Under the declared ``purpose`` a role that reads
+    as ``role`` or as one offered before it, in a role line's words for a project with these
+    ``lenses`` (``readings.role_line_words``), is no change the person can read, so it is not
+    offered (W1-R round 3, SE-m2). Under Predict the three predictor roles read apart, each named
+    by the roles card's group for it (the roles ruling of 2026-10-17)."""
+    from turbotab.core.readings import ROLE_ALTERNATIVES, ROLE_CHANGES, role_line_words
+
+    others = [*ROLE_CHANGES.get(str(role), ("covariate",)),
+              *(other for other, _words in ROLE_ALTERNATIVES.get(str(role), ()))]
+    said = {role_line_words(role, purpose, lenses)}
+    out = []
+    for other in dict.fromkeys(others):
+        words = role_line_words(other, purpose, lenses)
+        if other != role and words not in said:
+            out.append(other)
+            said.add(words)
+    return out
+
+
+def role_line_reason(column: str, role: str, purpose: str | None = None,
+                     lenses: Sequence[str] | None = None) -> str:
+    """Why one column's role line waits: the fit's words for one column
+    (``readings.unsettled_message``), whose last clause names only what the line's presses do instead
+    of confirming (:func:`role_choices`): leaving it out where a press records it as left out of the
+    models; putting it in the model where it was proposed as left out and every press makes it a
+    predictor (while it waits it is in no model); else recording it as each role a press records (a
+    flag, a time, a design column or a cluster changes only to a covariate), in a role line's words
+    under the declared ``purpose`` for a project with these ``lenses``.
+
+    Only a predictor role's line says it cannot set the predictors yet: a role none of the
+    model's predictors holds says what waiting holds back for it (:func:`_held_back`), the fit."""
+    from turbotab.core.readings import PREDICTOR_ROLES, role_line_words, unsettled_message
+
+    choices = role_choices(role, purpose, lenses)
+    held = _held_back(role, purpose, lenses)
+    if "excluded" in choices and held is None:
+        return unsettled_message([column], ROLE_WAITS_FOR)
+    said = " or ".join(role_line_words(c, purpose, lenses) for c in choices)
+    if "excluded" in choices:
+        instead = ", or leave it out"
+    elif role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
+        instead = ", or put it in the model"
+    elif choices:
+        instead = f", or record it as {said}"
+    else:
+        instead = ""
+    waits = f". {held}" if held is not None else f", so it cannot set {ROLE_WAITS_FOR} yet."
+    return (f"`{column}` was proposed below high confidence and recorded with the other roles, not "
+            f"confirmed on its own{waits} Confirm it after reading why it was proposed{instead}.")
+
+
+def _held_back(role: str, purpose: str | None = None, lenses: Sequence[str] | None = None,
+               many: bool = False) -> str | None:
+    """What waiting holds back for a column (``many``: a group's columns) whose ``role`` is none of
+    the model's predictors, an identifier, a flag, a time, a design column, a cluster or one left
+    out, which a press makes a predictor: the fit, which asks every role that rode along
+    (``readings.predictors_or_ask``), since recorded as that press's role the column would enter the
+    model. None for a predictor role, whose line keeps the fit's words (it cannot set the model's
+    predictors yet), and for a role no press makes a predictor.
+
+    A flag enters no model, waiting or confirmed (the re-walk's N2), nor does a column left out
+    while it waits. A time, a design column, a cluster and an identifier are said to be not among
+    the model's predictors, never to enter no model (W1-W round 2, P4): a cluster groups the
+    clustered intervals, a design column is the weight, strata or PSU a design-based answer reads,
+    and an identifier may name the unit whose rows repeat. The ruling at W1-W's cap, M1: no waiting
+    line of these roles says it cannot set the model's predictors yet."""
+    from turbotab.core.readings import PREDICTOR_ROLES, role_group_words, role_line_words
+
+    if role in PREDICTOR_ROLES:
+        return None
+    into = [c for c in role_choices(role, purpose, lenses) if c in PREDICTOR_ROLES]
+    if not into:
+        return None
+    words = role_group_words if many else role_line_words
+    it, them, enters, is_ = (("they", "them", "enter", "are") if many else
+                             ("it", "it", "enters", "is"))
+    as_other = " or ".join(words(c, purpose, lenses) for c in into)
+    if role == "excluded":
+        held, since = (f"As {'columns' if many else 'a column'} left out {it} {enters} no model",
+                       f"put in the model {it} would")
+    elif role == "flag":
+        held, since = (f"As {words(role, purpose, lenses)} {it} {enters} no model",
+                       f"as {as_other} {it} would")
+    else:
+        held, since = (f"As {words(role, purpose, lenses)} {it} {is_} not among {ROLE_WAITS_FOR}",
+                       f"as {as_other} {it} would be")
+    return f"{held}, but the fit waits for {them}, since {since}."
+
+
+def role_line_text(column: str, role: str, other: str = "",
+                   purpose: str | None = None,
+                   lenses: Sequence[str] | None = None) -> dict[str, str]:
+    """The words of one column's role line (:func:`_role_lines`): its name, why it waits
+    (:func:`role_line_reason`), its reading while it waits (``proposed``) and once settled
+    (``settled``), and the labels of its confirmation (``confirm``) and of a change to ``other``
+    (``change``), each role in a role line's words under the declared ``purpose`` for a project with
+    these ``lenses`` (``readings.role_line_words``: under Predict each predictor role by the roles
+    card's group for it, the roles ruling of 2026-10-17). Under Predict a change to another
+    predictor role is a move between the card's groups ("Move `bp_sys` to the nutrients"), never a
+    claim about what the column is, and it names no step, the energy column's included (the ruling
+    of 2026-10-18: the energy-aware fill it named is built under a single fill alone)."""
+    from turbotab.core.readings import PREDICTOR_ROLES, predictor_groups, role_line_words
+
+    def words(r: str) -> str:
+        return role_line_words(r, purpose, lenses)
+
+    if purpose == "prediction" and other in PREDICTOR_ROLES and other != role:
+        change = f"Move `{column}` to the {predictor_groups(lenses)[other].head[1].lower()}"
+    else:
+        change = f"`{column}` is {words(other)}"
+    return {
+        "name": f"the role of `{column}`",
+        "reason": role_line_reason(column, role, purpose, lenses),
+        "proposed": f"proposed as {words(role)}",
+        "settled": f"is {words(role)}",
+        "confirm": f"Confirm `{column}` as {words(role)}",
+        "change": change,
+    }
+
+
+def _role_option(column: str, role: str, label: str) -> ReadOption:
+    from turbotab.core.decisions import ConfirmRole
+
+    return ReadOption(label=label, decision=ConfirmRole(column=column, role=role)
+                      .model_dump(mode="json"))
+
+
+def role_group_key(first: str) -> str:
+    """The quest line of one group's role confirmation (ruling R-g; :func:`_role_lines`), keyed by
+    the first column of its judgment, which stays its key while columns leave it."""
+    return f"confirm_roles:{first}"
+
+
+# A group line's first item reads the group as a whole (its count, role, confidence and shared
+# reason) and carries its one press; each column follows as a ``role`` item of its own.
+ROLE_GROUP_ITEM = "role_group"
+
+
+def _count(n: int | str) -> str:
+    """A count as a group line says it ("1,234"), or a template's placeholder as it is."""
+    return f"{n:,}" if isinstance(n, int) else str(n)
+
+
+def role_group_name(listed: str) -> str:
+    """A group line's name: its first columns, as listed ("`a`, `b` and 298 more")."""
+    return f"the roles of {listed}"
+
+
+def role_group_head(n: int | str, many: str, confidence: str, waiting: bool = True) -> str:
+    """What a group line's first item says of the group (:data:`ROLE_GROUP_ITEM`): how many columns,
+    the role they were proposed as (``many``: ``readings.role_group_words``), the confidence, below
+    high, and that one reason, its evidence, holds for all of them."""
+    return (f"{_count(n)} columns {'proposed' if waiting else 'confirmed'} as {many} at "
+            f"{confidence} confidence, below high, for one reason")
+
+
+def role_group_reason(n: int | str, role: str, purpose: str | None = None,
+                      lenses: Sequence[str] | None = None) -> str:
+    """Why one group's line waits (:func:`_role_lines`): its columns were proposed below high
+    confidence for one reason and recorded unconfirmed, so they cannot set the model's predictors
+    yet, or, for a role none of the model's predictors holds, what waiting holds back for them, the
+    fit (:func:`_held_back`, the ruling at W1-W's cap, M1); its one press confirms them all, and each
+    column's own presses record it as another role (:func:`role_choices`), in a role line's words
+    under the declared ``purpose``. ``n`` may be a template's placeholder (two columns read
+    "both")."""
+    from turbotab.core.readings import PREDICTOR_ROLES, role_line_words
+
+    choices = role_choices(role, purpose, lenses)
+    if "excluded" in choices:
+        instead = ", or leave any one of them out on its own"
+    elif role == "excluded" and choices and all(c in PREDICTOR_ROLES for c in choices):
+        instead = ", or put any one of them in the model on its own"
+    elif choices:
+        instead = (", or record any one of them as "
+                   + " or ".join(role_line_words(c, purpose, lenses) for c in choices)
+                   + " on its own")
+    else:
+        instead = ""
+    every = "both" if n == 2 else f"all {_count(n)}"
+    held = _held_back(role, purpose, lenses, many=True)
+    waits = f". {held}" if held is not None else f", so they cannot set {ROLE_WAITS_FOR} yet."
+    return (f"These {_count(n)} columns were proposed below high confidence for one reason and "
+            f"recorded with the other roles, not confirmed{waits} "
+            f"Confirm {every} in one press after reading why they were proposed{instead}.")
+
+
+def _role_confirmations(log: _Log) -> dict[str, Any]:
+    """Each column's latest live record that confirmed its role, as :func:`_confirmed_at` finds it,
+    for every column at once: one pass over the log, so a group of 20,000 genes is not one pass
+    each."""
+    out: dict[str, Any] = {}
+    for r in log.live:
+        d = r.decision
+        if d.kind == "confirm_role" or (d.kind == "confirm_reading" and d.reading == "role"):
+            out[d.column] = r
+        elif d.kind == "confirm_readings":
+            for i in d.items:
+                if i.reading == "role":
+                    out[i.column] = r
+    return out
+
+
+def _in_a_group(record: Any) -> bool:
+    """Whether a confirming record is one group's press: a ``confirm_readings`` of two or more roles
+    (the engine accepts no other block of roles below high; ruling R-g)."""
+    decision = getattr(record, "decision", None) if record is not None else None
+    if getattr(decision, "kind", None) != "confirm_readings":
+        return False
+    roles = (i for i in decision.items if i.reading == "role")
+    return next(roles, None) is not None and next(roles, None) is not None  # two, read no further
+
+
+def _role_lines(state: Any, steps: Sequence[Any], log: _Log,
+                facts: Facts) -> list[tuple[str, QuestLine]]:
+    """BLUEPRINT §14 rule 2 (the walkthrough of 2026-10-17, finding 1): a proposal below high
+    confidence "needs its own confirmation; it never rides along in a bulk 'confirm all'". Each
+    column a roles answer recorded exactly as proposed below high (``roles_unconfirmed``) waits in
+    a counted Decide of Your data, open until a confirmation settles it (``readings.unsettled``:
+    ``confirm_role``, or a role ``confirm_reading`` or ``confirm_readings``), then answered by that
+    record, so Your data is not complete while any waits and the bar moves as each is confirmed.
+    While one waits no number-changing default reads it: it is no predictor
+    (``readings.predictor_columns``) and the fit asks for it.
+
+    Ruling R-g: the columns the roles stage proposed with one proposal, the same role, confidence
+    and reason word for word (``readings.role_groups``), are one judgment of the recognizer and
+    wait in one line of their own, with one press that confirms them all (``readings.group_press``:
+    "Confirm these 300 as assay features"). Its first item (:data:`ROLE_GROUP_ITEM`) reads the
+    group whole (its count, role and confidence, and the shared reason as its evidence) and carries
+    that press; each column follows as a role item whose presses record it alone as another role
+    (:func:`role_choices`), so moving one column is one press on that column and the rest stay one
+    group. The shared reason is said in the goal's words (``readings.role_evidence``: under Predict
+    without its study clause). A column settled on its own press leaves the group for a line of its
+    own; a group of one is a column's own line, whose ways forward are one ``confirm_role`` each:
+    the role as proposed, or another the ledger offers (:func:`role_choices`), and why it waits
+    names only what those presses do (:func:`role_line_reason`). The evidence is the roles stage's
+    own reason for the proposal, where its artifact is at hand; without it each column is a line of
+    its own. While the roles question is asked again (its answer no longer holds) the columns wait
+    with it and are not listed."""
+    from turbotab.core.readings import (group_press, group_press_label, proposals_of,
+                                        role_evidence, role_group_words, role_groups,
+                                        role_reading)
+
+    roles = getattr(state, "roles", None) or {}
+    named = set(getattr(state, "roles_unconfirmed", None) or ())
+    if not roles or not named:
+        return []
+    step = next((s for s in steps if _get(s, "key") == "roles"), None)
+    if step is not None and _get(step, "status") in ("open", "waiting") \
+            and not _holding(step, state):
+        return []
+    artifact = facts.artifacts.get("roles")
+    reasons = {str(p.get("column")): str(p.get("reason") or "") for p in proposals_of(artifact)}
+    target = getattr(state, "target", None)
+    purpose = getattr(state, "purpose", None)
+    lenses = [str(k) for k in getattr(state, "lens", None) or ()]
+    order = {c: i for i, c in enumerate(roles)}
+    found = {c: role_reading(state, c) for c in roles if c in named and c != target}
+    held = {c: r for c, r in found.items() if r is not None}
+    by = _role_confirmations(log)
+    # Each judgment's columns that wait or were confirmed by its one press; any other column of it
+    # (settled on a press of its own) has a line of its own.
+    grouped: list[tuple[Any, list[str]]] = []
+    in_group: set[str] = set()
+    for g in role_groups(state, artifact):
+        members = [c for c in g.rode if c in held and str(roles[c]) == g.role and (
+            not held[c].settled or _in_a_group(by.get(c)))]
+        if len(members) > 1:
+            grouped.append((g, members))
+            in_group.update(members)
+    lines: list[tuple[int, QuestLine]] = []
+    for g, members in grouped:
+        waiting = [c for c in members if not held[c].settled]
+        confirmed = None if waiting else by.get(members[0])
+        press = ([ReadOption(label=group_press_label(len(waiting), g.role, purpose, lenses),
+                             decision=group_press(waiting, g.role))] if waiting else [])
+        many = role_group_words(g.role, purpose, lenses)
+        head = ReadItem(kind=ROLE_GROUP_ITEM, column=members[0], value=g.role,
+                        words=role_group_head(len(members), many, g.confidence, bool(waiting)),
+                        evidence=role_evidence(g.reason, purpose), options=press)
+        items = [head]
+        for c in members:
+            text = role_line_text(c, g.role, purpose=purpose, lenses=lenses)
+            items.append(ReadItem(
+                kind="role", column=c, value=g.role,
+                words=text["proposed" if not held[c].settled else "settled"], evidence="",
+                options=[_role_option(c, other, role_line_text(c, g.role, other, purpose,
+                                                               lenses)["change"])
+                         for other in role_choices(g.role, purpose, lenses)]))
+        lines.append((order[members[0]], QuestLine(
+            id=ROLE_LINE.item, key=role_group_key(g.rode[0]), source="reading", label=DECIDE,
+            name=role_group_name(_listing(members)), status="open" if waiting else "answered",
+            counted=True, order=ROLE_LINE.order,
+            decision_id=confirmed.id if confirmed is not None else None,
+            reason=role_group_reason(len(waiting), g.role, purpose, lenses) if waiting else None,
+            items=items)))
+    for column, reading in held.items():
+        if column in in_group:
+            continue
+        role = str(roles[column])
+        text = role_line_text(column, role, purpose=purpose, lenses=lenses)
+        options = [_role_option(column, other,
+                                role_line_text(column, role, other, purpose, lenses)["change"])
+                   for other in role_choices(role, purpose, lenses)]
+        waiting = not reading.settled
+        if waiting:
+            options.insert(0, _role_option(column, role, text["confirm"]))
+        confirmed = None if waiting else by.get(column)
+        lines.append((order[column], QuestLine(
+            id=ROLE_LINE.item, key=role_line_key(column), source="reading", label=DECIDE,
+            name=text["name"], status="open" if waiting else "answered", counted=True,
+            order=ROLE_LINE.order, decision_id=confirmed.id if confirmed is not None else None,
+            reason=text["reason"] if waiting else None,
+            items=[ReadItem(kind="role", column=column, value=role,
+                            words=text["proposed" if waiting else "settled"],
+                            evidence=reasons.get(column) or reading.evidence,
+                            options=options)])))
+    lines.sort(key=lambda x: x[0])
+    return [(ROLE_LINE.stage, line.model_copy(update={"order": ROLE_LINE.order + i / 1000}))
+            for i, (_, line) in enumerate(lines)]
+
+
+def _listing(columns: Sequence[str]) -> str:
+    """The first columns of a group, as the shell names columns elsewhere ("`a`, `b` and 298
+    more"; ``readings.first_columns``)."""
+    from turbotab.core.readings import first_columns
+
+    return first_columns(columns)
 
 
 def asks(message: str) -> str:
@@ -1671,6 +2165,9 @@ def _declaration_lines(state: Any, steps: Mapping[str, Any], log: _Log,
             id=place.item, key=decl.kind, source="declaration", label=place.label,
             name=decl.name, status=status, counted=decl.counted and place.label == DECIDE,
             order=place.order, decision_id=writer.id if answered and writer is not None else None,
+            # A default set for the person is stated by its value, which its sweep records (N6).
+            reason=(decl.stated(state) if decl.stated is not None and status == "set_for_you"
+                    else None),
             waiting_for=[Waiting(key=k, stage=QUESTIONS[k].stage, name=question_name(k))
                          for k in unanswered],
             reopened_by=reopened)))
@@ -1703,9 +2200,12 @@ def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any],
         if log is not None and not answered:
             reopened = _finding_withdrawal(log, str(f.get("id")))
             if (reopened is None and question is not None
-                    and (disposition is None or disposition.action == "deferred")):
+                    and (disposition is None or disposition.action == "deferred")
+                    and _settled_by_an_answer(log, f, question)):
                 # Decided by its question (held for it, or answered by it): a question whose
-                # answer was withdrawn or stopped holding is why it is open again.
+                # answer was withdrawn or stopped holding is why it is open again. Only an answer
+                # that settled it when given closed it; one no answer settled was open all along,
+                # so nothing reopened it (the re-walk's N7).
                 reopened = _reopened_by(log, answering_kinds(question), question_reads(question),
                                         answer_holds(question))
         lines.append((place.stage, QuestLine(
@@ -1715,6 +2215,23 @@ def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any],
             status="answered" if answered else "open", counted=decide, order=place.order,
             decision_id=answered_by, reopened_by=reopened)))
     return lines
+
+
+def _settled_by_an_answer(log: _Log, finding: Mapping[str, Any], question: str) -> bool:
+    """Whether an answer to ``question`` settled ``finding`` when it was given: on the log as it
+    stood just after that answer (one withdrawn since included), the answer matched it
+    (``repairs.matching_answer``: an eligibility rule names one of its columns, the roles give its
+    columns the role it asks for). A finding no answer ever settled was never closed."""
+    from turbotab.core.repairs import matching_answer
+
+    kinds = answering_kinds(question)
+    probe = {**finding, "routes_to": question}
+    for r in log.ordered:
+        if r.decision.kind in kinds:
+            state = log.state_at(r.seq)
+            if state is not None and matching_answer(probe, state):
+                return True
+    return False
 
 
 FINDING_DISPOSITIONS = ("apply_repair", "defer_finding", "dismiss_finding")
@@ -1793,6 +2310,39 @@ def _holding(step: Any, state: Any) -> bool:
     waiting_on = set(_get(step, "waiting_on") or ())
     return (state is not None and _get(step, "status") == "waiting" and bool(waiting_on)
             and waiting_on <= READ_BY_GATE.get(key, frozenset()) and answer_holds(key)(state))
+
+
+# The questions asked only for some outcomes (a two-level outcome's event, a time to event's
+# follow-up): while the outcome's reading recomputes, whether they are asked is not known.
+OUTCOME_KIND_QUESTIONS = frozenset({"event", "follow_up"})
+
+
+def not_known_until_the_outcome_is_read(step: Any, state: Any) -> bool:
+    """A question asked only for some outcomes (:data:`OUTCOME_KIND_QUESTIONS`) with no answer
+    standing, waiting while the outcome's reading (``target_info``) recomputes: whether it is
+    asked at all is that reading's, so the quest log does not list it yet (the re-walk's N5: a
+    numeric outcome has no event question)."""
+    return (_get(step, "key") in OUTCOME_KIND_QUESTIONS and _get(step, "status") == "waiting"
+            and "target_info" in (_get(step, "waiting_on") or ()) and not _holding(step, state))
+
+
+def unlisted_to_come(steps: Sequence[Any], state: Any) -> frozenset[str]:
+    """The questions still to come that the quest log does not list: an event or follow-up question
+    with no answer, waiting while the outcome is read (:func:`not_known_until_the_outcome_is_read`).
+    Not listed is not answered: a noticing such a question decides is still to come at it, never
+    left as it is under an answer that stands (the re-walk's N9 beside N5; W1-W round 2, P1)."""
+    return frozenset(str(_get(s, "key")) for s in steps
+                     if not_known_until_the_outcome_is_read(s, state))
+
+
+def _unknown_while_read(step: Any, state: Any) -> bool:
+    """A step with no answer standing that waits only for the reading that says whether it is
+    asked at all (``READ_BY_GATE``): what it will be is not known until that reading is back, so a
+    line after it waits for the reading, not for it (the re-walk's N5)."""
+    key = _get(step, "key")
+    waiting_on = set(_get(step, "waiting_on") or ())
+    return (_get(step, "status") == "waiting" and bool(waiting_on)
+            and waiting_on <= READ_BY_GATE.get(key, frozenset()) and not _holding(step, state))
 
 
 def _frontier(steps: Sequence[Any], stages: Mapping[str, Any],
@@ -1878,8 +2428,8 @@ def _reasons(stage: str, lines: Sequence[QuestLine], log: _Log, stages: Mapping[
         if by is not None:
             entry(by.decision_id, by.kind, by.stage)["questions"].append(line.id)
     for name, (home, _item) in COMPUTE.items():
-        if home != stage or name not in shown_at:
-            continue
+        if home != stage or name not in shown_at or name in UNDRAWN:
+            continue  # a result no screen draws is no reason its stage dropped back
         reads = stage_reads(name)
         if _get(stages.get(name), "status") == "blocked":
             # Blocked: its requirement was withdrawn, so it is never computed again; not out of
@@ -1966,19 +2516,28 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
                   asked=tuple(asked or ()))
     placed = [*_question_lines(state, steps, log, facts),
               *_asked_lines(state, steps, log, facts),
+              *_role_lines(state, steps, log, facts),
               *_declaration_lines(state, by_key, log, facts),
               *_finding_lines(state, findings, by_key, log),
               *sweeps.reading_lines(state, readings)]
     _reopened_only_if_complete(placed, log)
     _hold_the_families(placed)
     sweeps.weigh(placed, state, facts)
-    sweeps.cover_noticings(placed, state, log, findings)
+    unlisted = unlisted_to_come(steps, state)
+    sweeps.cover_noticings(placed, state, log, findings, unlisted)
     frontier = _frontier(steps, stages, shown_at, fit, state)
     # Under Estimate and Describe the exhibits are Results' objectives, none placed yet (C7a adds
     # placement): Results reads 0 of N, and Write-up is not reached until Results is placed.
     estimates = fit.locks if fit is not None else getattr(state, "purpose", None) == "inference"
     if estimates and frontier >= STAGE_INDEX["writeup"]:
         frontier = STAGE_INDEX["results"]
+    # Ruling R-a (W1-R round 2; FOUNDATION §7): under Predict the triage of open noticings is in
+    # Results, before the held-out rows open, so an open noticing waits for that triage, not for
+    # the stage it is placed in: Models completes once its questions are answered and Fit is
+    # offered. One answered stays counted where it was answered, so no answered count falls when
+    # the goal becomes Predict (the path fuzzer's I11). Under Estimate (and with no goal) the
+    # triage is Models' own, and nothing changes.
+    gate = sweeps.gate_stage(state)
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key),
@@ -1987,7 +2546,9 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
         sweep = sweeps.sweep_of(key, mine, state, log)
         progress = None
         if reached:
-            decide = [l for l in mine if l.label == DECIDE and l.counted]
+            decide = [l for l in mine if l.label == DECIDE and l.counted
+                      and not (gate == "results" and key != gate and l.source == "finding"
+                               and l.status == "open")]
             swept = int(sweep is not None and sweep.answered)
             answered = sum(l.status == "answered" for l in decide) + swept
             required = len(decide) + int(sweep is not None)
@@ -2008,21 +2569,27 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
                                          served_exhibits(state))
         out.append(QuestStage(key=key, name=name, reached=reached, progress=progress, sweep=sweep,
                               lines=mine, reopened=reasons))
-    return QuestLog(stages=out, kinds=kind_stages(), fit=fit)
+    made = QuestLog(stages=out, kinds=kind_stages(), fit=fit)
+    made._unlisted = unlisted
+    return made
 
 
 __all__ = [
     "ASK_CARD", "Asked", "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS",
-    "Declaration", "EXHIBITS", "EXHIBIT_STAGES",
+    "Declaration", "EXHIBITS", "EXHIBIT_STAGES", "UNDRAWN",
     "EXPLORE_FINDINGS", "FINDING_ROUTES", "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts",
     "GOAL_PLACES", "LABELS", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS",
     "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem",
-    "ReadOption", "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED", "SWEEP_ITEMS",
-    "Sweep", "TIER_RULINGS", "Waiting", "answer_holds", "answering_kinds", "contract_tier",
+    "ROLE_LINE", "ROLE_WAITS_FOR", "ReadOption", "Reopened", "ReopenedBy", "STAGES", "STAGE_NAMES", "STATED",
+    "SWEEP_ITEMS", "Sweep", "TIER_RULINGS", "Waiting", "answer_holds", "answering_kinds", "contract_tier",
     "exhibits_waiting",
     "asks", "explore_label", "explore_place", "finding_place", "fit_waits", "goal_of", "kind_place",
     "kind_stages", "noticing_place",
+    "OUTCOME_KIND_QUESTIONS", "not_known_until_the_outcome_is_read", "unlisted_to_come",
     "noticing_places", "noticing_stage", "noticing_stages", "quest_log", "question_reads",
-    "record_stage", "record_steps", "served_exhibits", "stage_reads", "waits_on_an_answer",
+    "ROLE_GROUP_ITEM", "record_stage", "record_steps", "role_choices", "role_group_head",
+    "role_group_key", "role_group_name", "role_group_reason", "role_line_key", "role_line_reason",
+    "role_line_text",
+    "served_exhibits", "stage_reads", "waits_on_an_answer",
     "written_slots",
 ]

@@ -10,7 +10,8 @@ literal hex colors rather than CSS variables, the exported file is self-containe
 * **Figure 2, the lineage** (BLUEPRINT §11.1: the canonical lineage; North star 4's "modeling
   decision provenance"): the design stage's lineage from the raw columns the analysis reads, through
   the steps every family shares, to the columns of the model matrix. A line's dash pattern says
-  what the step did to that column; an exposure's name is set in bold.
+  what the step did to that column; an exposure's name is set in bold. Under Predict a collapsed
+  predictor group is named as the roles card names it (:func:`predictor_words`).
 
 Both are pure functions of the artifacts: the same record draws the same bytes (no clock, no
 random identifier), so a replay can compare them too.
@@ -197,9 +198,49 @@ def _dash(operation: str) -> Style:
 
 def _node_label(node: Mapping[str, Any]) -> str:
     label = plain(node.get("label") or node.get("column") or "")
-    if len(label) > NODE_CHARS:
+    if len(label) > NODE_CHARS and not node.get(_WHOLE):
         label = label[: NODE_CHARS - 1] + "…"
     return label
+
+
+# The predictor roles, whose collapsed groups are named under Predict as the roles card names them.
+PREDICTOR_GROUPS = ("exposure", "energy", "covariate")
+# A node relabeled in the roles card's words: its label is the engine's, printed whole.
+_WHOLE = "_in_group_words"
+
+
+def predictor_words(state: Any) -> dict[str, tuple[str, str]] | None:
+    """Under Predict, each predictor role's group as the server serves it for the roles card
+    (``readings.served_groups``, by the project's lenses: "Nutrient", "Nutrients"), one column and
+    many; None under any other goal, whose lineage keeps the design stage's words."""
+    from turbotab.core.readings import served_groups
+
+    if getattr(state, "purpose", None) != "prediction":
+        return None
+    served = served_groups(getattr(state, "lens", None) or (), None, ())["no_fill"]
+    return {role: (str(served[role]["head"][0]), str(served[role]["head"][1]))
+            for role in PREDICTOR_GROUPS}
+
+
+def _in_group_words(node: Mapping[str, Any], groups: Mapping[str, Sequence[str]] | None
+                    ) -> Mapping[str, Any]:
+    """A collapsed predictor group's node (``models.lineage.collapse``: no column, its role's group)
+    named as the roles card names it under Predict, as the shell's Columns lineage does
+    (LiveScenes.tsx ``inGroupWords``; the ruling at W1-W's cap, M2): a folded node counts its own
+    lane's columns, one per characteristic only in the raw lane, so there it is the count and the
+    group's name for many ("13 characteristics"), and in every lane after it the group's name and
+    its count of columns ("characteristics: 12 columns"), as a name that is one word for one or many
+    reads in every lane ("total energy: 1 column"). Any other node, and every node without
+    ``groups`` (under Estimate), is as the design stage drew it."""
+    head = groups.get(str(node.get("group"))) if groups and node.get("column") is None else None
+    if not head:
+        return node
+    one, many = head[0].lower(), head[1].lower()
+    n = int(node.get("count") or 1)
+    name = one if n == 1 else many
+    columns = f"{n:,} column{'s' if n != 1 else ''}"
+    label = f"{n:,} {name}" if one != many and node.get("lane") == "raw" else f"{name}: {columns}"
+    return {**node, "label": label, _WHOLE: True}
 
 
 def _reached(nodes: Sequence[Mapping[str, Any]], links: Sequence[Mapping[str, Any]],
@@ -217,11 +258,14 @@ def _reached(nodes: Sequence[Mapping[str, Any]], links: Sequence[Mapping[str, An
 
 
 def lineage(design: Mapping[str, Any], *, n_rows: int | None = None,
-            exposures: Sequence[str] = (), number: int = 2) -> tuple[str, str]:
+            exposures: Sequence[str] = (), number: int = 2,
+            groups: Mapping[str, Sequence[str]] | None = None) -> tuple[str, str]:
     """The lineage figure and its caption (module docstring). ``exposures``: the declared
-    exposures, whose path through the steps is set in bold (none under prediction)."""
+    exposures, whose path through the steps is set in bold (none under prediction). ``groups``:
+    under Predict, each predictor role's group in the roles card's words (:func:`predictor_words`),
+    which name its collapsed groups (:func:`_in_group_words`)."""
     graph = design.get("lineage") or {}
-    nodes = list(graph.get("nodes") or [])
+    nodes = [_in_group_words(n, groups) for n in graph.get("nodes") or []]
     links = list(graph.get("links") or [])
     emphasized = _reached(nodes, links, exposures)
     lanes = ("raw", "adjusted", "matrix")
@@ -312,4 +356,5 @@ def lineage(design: Mapping[str, Any], *, n_rows: int | None = None,
     return svg, caption
 
 
-__all__ = ["DASHES", "lineage", "participant_flow", "plain", "width_of"]
+__all__ = ["DASHES", "PREDICTOR_GROUPS", "lineage", "participant_flow", "plain",
+           "predictor_words", "width_of"]

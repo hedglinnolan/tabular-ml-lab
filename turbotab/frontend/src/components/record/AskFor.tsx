@@ -11,7 +11,7 @@
  * failure), never a dead control. Arrival, reopening, the drawer and held findings are the
  * shell's.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { isRefusalError } from "../../api/client";
 import { useColumnSummaries, useDecide, useTeaching } from "../../api/queries";
 import type { QuestionKey, Role } from "../../api/m1-types";
@@ -33,6 +33,7 @@ import {
   SurveyAsk,
 } from "./ask/ChoiceQuestions";
 import { AskCard } from "./ask/AskCard";
+import { READINGS_ABOVE, besideAsk } from "./besideAsk";
 import type { AskProps } from "./ask/common";
 import { LensAsk, PurposeAsk, TargetAsk, TaskAsk } from "./ask/FactQuestions";
 import { RolesAsk } from "./ask/RolesAsk";
@@ -130,8 +131,13 @@ export const AskFor = ({
   const key = stepKey;
   const { state, decisions, stages } = view;
   const decide = useDecide(pid);
-  const teaching = useTeaching();
+  // The roles card asks for the project's goal (GET /teaching?purpose=): the server words it by
+  // goal, its predictors under prediction (W1-R finding 3c). Every other card reads the words with
+  // no goal named, which the server words alike under every goal.
+  const teaching = useTeaching(key === "roles" ? state.purpose : null);
   const [plainAnswer, setPlainAnswer] = useState<PlainAnswer | null>(null);
+  /** The ledger's ask card on this question, which a refusal's way to its readings leads to. */
+  const askRef = useRef<HTMLElement>(null);
   const entry = useMemo(
     () => (teaching.data ?? []).find((e) => e.key === key),
     [teaching.data, key],
@@ -187,10 +193,15 @@ export const AskFor = ({
         ),
     });
   };
-  /** As the Record's: a refusal with its exits, or the failure; `not_yet` leads to the first open question. */
+  /** As the Record's: a refusal with its exits, or the failure; `not_yet` leads to the first open
+   *  question. Beside the ledger's ask card on this question, a press refused for the readings it
+   *  asks says what it waits for, and the readings stay that card's alone (`besideAsk`). */
   const plainAnswerAt = ((): AskProps["answerAt"] => {
     if (wiring || !plainAnswer) return null;
-    const { at, refusal, failure } = plainAnswer;
+    const { at, failure } = plainAnswer;
+    const asking = stepOf(key)?.status === "open" && !!stepOf(key)?.ask && !at.startsWith("ask:");
+    const refusal =
+      plainAnswer.refusal && asking ? besideAsk(plainAnswer.refusal) : plainAnswer.refusal;
     const dismiss = () => setPlainAnswer(null);
     const firstOpen = view.interview.find(
       (st) => st.status === "open" || st.status === "waiting",
@@ -208,9 +219,17 @@ export const AskFor = ({
         <RefusalNote
           refusal={refusal}
           onDismiss={dismiss}
-          onExit={(exit) =>
-            exit.decision ? plainRecord(exit.decision, at) : onGo ? onGo() : dismiss()
-          }
+          onExit={(exit) => {
+            if (exit.decision) return plainRecord(exit.decision, at);
+            const card = askRef.current;
+            if (exit.label === READINGS_ABOVE.label && card) {
+              // The readings the refusal waits on are the ask card's: lead there, to its first
+              // control (the re-walk's N4).
+              card.scrollIntoView?.({ block: "nearest" });
+              return card.querySelector<HTMLElement>("select, input, button")?.focus();
+            }
+            return onGo ? onGo() : dismiss();
+          }}
         />
       ) : (
         <FailureNote message={failure ?? "no reason given"} onDismiss={dismiss} />
@@ -253,6 +272,7 @@ export const AskFor = ({
         mastered={decisions.some(
           (r) => r.decision.kind === "confirm_reading" || r.decision.kind === "confirm_readings",
         )}
+        rootRef={askRef}
       />
     );
   })();
@@ -357,6 +377,7 @@ export const AskFor = ({
           {...p}
           artifact={roles.artifact}
           current={(state.roles as Record<string, Role> | null) ?? null}
+          purpose={state.purpose}
         />
       ) : (
         waitingFor("roles", "Then each column's role is asked.")

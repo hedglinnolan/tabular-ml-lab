@@ -310,9 +310,17 @@ def test_each_journey_took_what_the_packet_says_the_app_offers_first(name):
         repairs = [b for b, _ in _answers(capture, "apply_repair") if b["finding_id"] == "omics_scale"]
         assert [b["option"] for b in repairs] == [first], (name, repairs)
     # (a screen's rule and the energy model's nutrients make long summaries: read their keys)
-    energy = {c.key for c in defaults.cases("energy_adjustment", purpose)}
-    for summary in _summaries(capture, "set_energy_adjustment", "the app's first-ranked"):
-        assert re.match(r'\{"method": "(\w+)"', summary)[1] in energy, (name, summary)
+    energy = defaults.cases("energy_adjustment", purpose)
+    taken = _summaries(capture, "set_energy_adjustment", "the app's first-ranked")
+    if energy is None:
+        # not asked under this purpose (BEATS_PREDICT §9 ruling 5): a capture that answered it
+        # was run before that, and its packet says so (``packet.stale_note``)
+        flagged = {q for _, q in packet.unasked_answers(spec, capture)}
+        assert not taken or "energy_adjustment" in flagged, name
+    else:
+        keys = {c.key for c in energy}
+        for summary in taken:
+            assert re.match(r'\{"method": "(\w+)"', summary)[1] in keys, (name, summary)
     screens = _case("exclusions", purpose,
                     EXCLUSIONS_WHEN.get(name, "whatever" if purpose == "prediction" else "no screen"))
     for summary in _summaries(capture, "set_exclusions", "the app's first-ranked"):
@@ -402,6 +410,21 @@ def test_no_reference_journey_exports_a_bundle_that_contradicts_itself(name):
     if capture is None or (capture.get("export") or {}).get("status") != 200:
         pytest.skip(f"{name} has no capture that reached the export")
     assert packet.matrix_flags(capture["export"]) == [], name
+
+
+def test_a_packet_credits_a_folded_checklist_place_to_every_decision_it_says():
+    """The land-1 verifier's P2, in a packet's checklist table: a place whose sentence the methods
+    fold from several records names each of their decisions (``seqs``, in the order the sentence
+    lists their columns); one record's place names its one decision, as does a capture taken
+    before a place carried ``seqs``."""
+    folded = {"source": "record", "seq": 7, "seqs": [5, 6, 7], "record_ids": ["a", "b", "c"],
+              "kind": "confirm_role"}
+    single = {"source": "record", "seq": 8, "seqs": None, "record_ids": None,
+              "kind": "confirm_role"}
+    older = {"source": "record", "seq": 2, "kind": "set_target"}
+    assert packet.where_words([folded]) == "decisions #5, #6 and #7 (`confirm_role`)"
+    assert packet.where_words([single, older]) == (
+        "decision #8 (`confirm_role`); decision #2 (`set_target`)")
 
 
 # ── what the app offers, where the registry's rank says otherwise ────────────

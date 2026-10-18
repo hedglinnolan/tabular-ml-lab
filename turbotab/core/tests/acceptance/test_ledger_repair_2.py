@@ -1692,14 +1692,16 @@ def mixed_table(n: int = 300) -> pd.DataFrame:
 MIXED_TRUTH = {"code_or_count:age": "amount", "code_or_count:dsm_dx": "code",
                "role:alcohol_flag": "covariate", "code_or_count:alcohol": "amount",
                "unit:energy_kcal": "kcal", "day_count:energy_kcal": "1",
-               "sex_coding:sex": "female=2,male=1"}
+               "code_or_count:energy_kcal": "amount", "sex_coding:sex": "female=2,male=1"}
 
 
 def test_e1_every_exit_the_fits_ask_offers_runs_the_fit(tmp_path):
     """The models ask on a table that meets every reading (decimal codes, a skip gate, a whole-
     number age): the block confirmation, each role's guess and its alternatives, each code-or-
-    amount answer. Each runs the design and the fit to the end, and `energy_kcal` (left out by
-    "none") and the 1/2 `sex` (one indicator either way) are not asked."""
+    amount answer. Each runs the design and the fit to the end. Under Predict no energy model is
+    asked (BEATS_PREDICT §9 ruling 5), so total energy enters as recorded and `energy_kcal`'s
+    code-or-amount reading is asked with the others; the 1/2 `sex` (one indicator either way) is
+    not asked."""
     plan = answers("sbp", ["dietary"], purpose={"kind": "set_purpose", "purpose": "prediction"},
                    missing={"kind": "set_missing", "strategy": "impute"})
     with local_server(tmp_path / "home") as client:
@@ -1711,7 +1713,7 @@ def test_e1_every_exit_the_fits_ask_offers_runs_the_fit(tmp_path):
     listed = {(e["decision"].get("reading"), e["decision"].get("column"))
               for e in exits if e["decision"]["kind"] == "confirm_reading"}
     assert ("code_or_count", "dsm_dx") in listed and ("role", "alcohol_flag") in listed, labels
-    assert ("code_or_count", "energy_kcal") not in listed and ("code_or_count", "sex") not in listed
+    assert ("code_or_count", "energy_kcal") in listed and ("code_or_count", "sex") not in listed
     values = {(e["decision"]["column"], e["decision"]["value"]) for e in exits
               if e["decision"]["kind"] == "confirm_reading"}
     assert {("dsm_dx", "code"), ("dsm_dx", "amount"), ("alcohol_flag", "flag"),
@@ -1840,7 +1842,8 @@ def test_f1_readings_settled_by_their_values_are_listed_with_evidence_and_a_chan
     On the clean dietary table (p6, rng 55006): the identifier, the age and sex covariates, the
     nutrients and total energy read by their values, the outcome's task, energy's kcal by the
     Atwater identity, the BMI's decimals an amount, and sex's labels. Each change exit is a
-    decision the server records. The select_models record carries "Read from the values"."""
+    decision the server records. The methods state "Read from the values" as a sentence of its own
+    among the variables, never in the select_models record (W1-R round 2, ruling R-c)."""
     plan = answers("sbp", ["dietary"])
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(clean_table(), tmp_path, "visible.csv"),
@@ -1852,6 +1855,7 @@ def test_f1_readings_settled_by_their_values_are_listed_with_evidence_and_a_chan
         items = {(i["kind"], i["column"]): i for i in card["read_from_data"]}
         record = next(r for r in drive.view()["decisions"]
                       if r["decision"]["kind"] == "select_models")
+        methods = client.get(f"/api/projects/{drive.pid}/methods/sections").json()
         for item in card["read_from_data"]:
             assert item["evidence"] and item["change"], item
             for change in item["change"]:
@@ -1864,8 +1868,12 @@ def test_f1_readings_settled_by_their_values_are_listed_with_evidence_and_a_chan
     assert ("code_or_count", "bmi") in items
     assert ("sex_coding", "sex") in items
     assert card["sentence"].startswith("Read from the values")
-    assert "Read from the values" in (record.get("sentence") or ""), record.get("sentence")
-    assert "`bmi` is an amount" in record["sentence"]
+    assert "Read from the values" not in (record.get("sentence") or ""), record.get("sentence")
+    said = [(s["key"], e["source"], e["text"]) for s in methods["sections"] for e in s["entries"]
+            if "Read from the values" in e["text"]]
+    key = "predictors" if methods["guideline"] == "TRIPOD+AI" else "variables"
+    assert said == [(key, "analysis", card["sentence"])], said
+    assert "`bmi` is an amount" in said[0][2]
 
 
 def test_e4_each_answer_the_time_roles_ask_offers_builds_a_design_that_fits():

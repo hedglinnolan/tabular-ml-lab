@@ -708,7 +708,11 @@ def design_stage(ctx: StageContext) -> Bundle:
                                step=shared.named_steps.get("energy"))
     described.terms = formed_meanings(described.terms, form)
     seen_set = set(seen)
-    for c in total_energy_columns(spec.predictors, spec.roles):
+    # Under Predict no coefficient is read and the energy model is never asked (BEATS_PREDICT §9
+    # ruling 5; W1-R round 2, R2's P2), so what a nutrient's coefficient means beside total energy
+    # is not said.
+    for c in total_energy_columns(spec.predictors, spec.roles) if state.purpose != "prediction" \
+            else ():
         role = spec.roles.get(c)
         if role != "energy" and c in seen_set and described.text:
             # Audit ME-02 (repair round): total energy kept as a covariate is the standard model,
@@ -753,16 +757,21 @@ def design_stage(ctx: StageContext) -> Bundle:
                "steps": describe_steps(spec, f, task, state.purpose, n_cols)} for f in families]
     totals = [*([adj.energy_column] if adj is not None and adj.energy_column else []),
               *total_energy_columns(spec.predictors, spec.roles)]
+    # Under Predict no coefficient is read (BEATS_PREDICT §9 ruling 5, extended by the orchestrator
+    # on 2026-10-17): the design serves no estimand and no coefficient's meaning, each a statement
+    # of what a coefficient estimates, often a substitution, so no saved figure's provenance carries
+    # one. The energy model the matrix holds (``energy_form``) is a fact of the matrix and stays.
+    interpreted = state.purpose != "prediction"
     artifact = DesignArtifact(
         lineage=lineage,
         matrix={"n_rows": int(exported.shape[0]), "n_cols": int(exported.shape[1])},
         models=models,
-        estimand=described.text,
+        estimand=described.text if interpreted else None,
         substitution_pairs=substitution_pairs(spec.predictors, totals, nested),
         warnings=warnings_list,
         nested=[{"column": c, "parent": p} for c, p in nested.items()],
         left_out=[c for c in left_out(state) if c in (state.roles or {})],
-        terms=described.terms,
+        terms=described.terms if interpreted else {},
         energy_form=described.form if described.text else None,
     )
     return Bundle(
@@ -1021,6 +1030,31 @@ def follow_up_horizon(state: Any, y: Any) -> tuple[float | None, str | None]:
     h = float(np.median(times))
     return h, (f"Scored and calibrated by {named} = `{h:g}`, the median follow-up time of the "
                f"training rows, as no prediction horizon was declared with the follow-up.")
+
+
+# W1 part 2 ruling 2: the task whose held-out rows serve an interval for the gain over the baseline,
+# and the score it is: the held-out R² against the training rows' mean (the baseline's R² there is 0
+# by construction, ``models.baseline``). Every other task's held-out intervals are each score's own,
+# not the gain's, so its held-out baseline is served with no verdict.
+HELD_OUT_GAIN = {"regression": "r2"}
+
+
+def held_out_baseline(task: str, X: Any, y: Any, X_hold: Any, y_hold: Any, *,
+                      reference: float | None, horizon: float | None) -> dict[str, float | None]:
+    """The no-predictor baseline's held-out scores (W1 part 2 ruling 2): :func:`baseline_model`
+    fit on the training rows, as the cross-validated baseline is on each fold's, and scored on the
+    held-out rows as each family's held-out scores are (``metrics.score``, R² against the training
+    rows' mean ``reference``). A score that cannot be computed on these rows is None."""
+    from turbotab.core.models.metrics import score, survival_baseline
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = baseline_model(task).fit(X, y)
+        if task == "time_to_event":
+            survival_baseline(model, X, y)
+        scores = score(task, model, X_hold, y_hold, reference=reference, horizon=horizon)
+    return {metric: (float(v) if v is not None and np.isfinite(v) else None)
+            for metric, v in scores.items()}
 
 
 def _baseline_scores(task: str, X: Any, y: Any, folds: Any, fold_keys: Sequence[int]) -> list[dict[str, float]]:
@@ -1749,7 +1783,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
     picking the best of them by cross-validation flatters it (``models/selection.py``).
     Audit WP9: every cross-validated score carries a standard error; the out-of-fold predictions
     are checked for calibration (a flagged calibration is a concern); the held-out rows get an
-    interval on every score and their own calibration, sealed with the scores. The split's
+    interval on every score and their own calibration, sealed with the scores, and (W1 part 2
+    ruling 2) the no-predictor baseline scored on them, with, for a numeric outcome, the held-out
+    verdict against it (:data:`HELD_OUT_GAIN`), sealed with them. The split's
     validation answer adds repeated k-fold (every repeat's folds), bootstrap optimism correction
     (``turbotab.core.models.validation``) or internal–external validation (one fold per cluster).
 
@@ -1764,10 +1800,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
     from sklearn.base import clone
 
     from turbotab.core.models import get_family
-    from turbotab.core.models.artifacts import FitArtifact, HoldoutDetail
+    from turbotab.core.models.artifacts import FitArtifact, HoldoutBaseline, HoldoutDetail
     from turbotab.core.models.base import reports_coefficients
     from turbotab.core.models.artifacts import Comparison, NestedOffer
-    from turbotab.core.models.baseline import no_better_concern, versus_baseline
+    from turbotab.core.models.baseline import no_better_concern, versus_baseline, versus_held_out
     from turbotab.core.models.cost import duration
     from turbotab.core.models.folds import comparison_folds
     from turbotab.core.models.inference import Outcome, cluster_columns, resolve_clusters
@@ -1995,6 +2031,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
     # fold, so a family's R² is its MSE gain as a share of the baseline's (the same comparison).
     versus_metric = "r2" if task == "regression" else primary
     reference = float(np.mean(y.astype(float))) if task == "regression" and len(y) else None
+    # W1 part 2 ruling 2: the same baseline on the held-out rows, sealed with each family's detail.
+    held_baseline = (HoldoutBaseline(label=BASELINE_LABEL[task], scores=held_out_baseline(
+        task, X, y, X_hold, y_hold, reference=reference, horizon=horizon)) if len(y_hold) else None)
+    gain_metric = HELD_OUT_GAIN.get(task)
     n_boot = int(split_data.get("n_boot") or 0) if validation == "bootstrap" else 0
     own_pairs = 0 if headline_repeats is not None else len(pairs)
     units = max(1, len(keys) * (len(sub_pairs) + own_pairs + 2 + n_boot + len(site_pairs)))
@@ -2071,20 +2111,23 @@ def fit_stage(ctx: StageContext) -> Bundle:
             # R² on the held-out rows is measured against the training rows' mean.
             holdout = (score(task, final, X_hold, y_hold, reference=reference, horizon=horizon)
                        if len(y_hold) else None)
-            if len(y_hold):  # sealed with the scores: an interval on each, and calibration
+            if len(y_hold):  # sealed with the scores: an interval on each, calibration, the baseline
                 classes = classes_of(task, final)
                 held_pred = predict(task, final, X_hold, horizon=horizon)
                 held_levels, held_horizon, held_note = calibration_by(
                     task, y_hold, held_pred, classes, levels, hold_groups, horizon,
                     "on the held-out rows")
+                intervals = score_intervals(task, y_hold, held_pred, classes=classes,
+                                            reference=reference, groups=hold_groups,
+                                            unit=grouped_by, horizon=horizon)
                 sealed_detail[key] = HoldoutDetail(
-                    intervals=score_intervals(task, y_hold, held_pred, classes=classes,
-                                              reference=reference, groups=hold_groups,
-                                              unit=grouped_by, horizon=horizon),
+                    intervals=intervals,
                     calibration=calibration(task, y_hold, held_pred, classes=classes,
                                             groups=hold_groups, where="on the held-out rows"),
                     calibration_levels=held_levels, calibration_horizon=held_horizon,
-                    calibration_note=held_note,
+                    calibration_note=held_note, baseline=held_baseline,
+                    versus_baseline=(versus_held_out(gain_metric, intervals.get(gain_metric),
+                                                     len(y_hold)) if gain_metric else None),
                 ).model_dump(mode="json")
             optimism = None
             if n_boot and family.bootstrap_optimism is False:

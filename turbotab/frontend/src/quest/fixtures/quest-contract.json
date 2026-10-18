@@ -1,0 +1,2604 @@
+{
+ "asked_by": {
+  "adjustment": [
+   "set_adjustment"
+  ],
+  "aggregation": [
+   "set_aggregation"
+  ],
+  "energy_adjustment": [
+   "set_energy_adjustment"
+  ],
+  "estimand": [
+   "set_estimand"
+  ],
+  "exclusions": [
+   "set_exclusions"
+  ],
+  "form": [
+   "set_exposure_form",
+   "set_forms"
+  ],
+  "models": [
+   "select_models"
+  ],
+  "survey": [
+   "set_survey"
+  ]
+ },
+ "datasets": [
+  "nhanes",
+  "metabolomics"
+ ],
+ "declarations": {
+  "import_codebook": {
+   "counted": false,
+   "label": "Decide",
+   "name": "the data dictionary",
+   "order": 9,
+   "stage": "data"
+  },
+  "join_files": {
+   "counted": false,
+   "label": "Decide",
+   "name": "joining another file",
+   "order": 2,
+   "stage": "data"
+  },
+  "set_batch": {
+   "counted": true,
+   "label": "Decide",
+   "name": "the batch question",
+   "order": 7,
+   "stage": "models"
+  },
+  "set_explain": {
+   "counted": false,
+   "label": "Decide",
+   "name": "the explanations",
+   "order": 45,
+   "stage": "results"
+  },
+  "set_intended_use": {
+   "counted": true,
+   "label": "Decide",
+   "name": "the intended-use question",
+   "order": 20,
+   "stage": "question"
+  },
+  "set_levers": {
+   "counted": true,
+   "label": "Confirm",
+   "name": "the rules repeated inside each fold",
+   "order": 137,
+   "stage": "models"
+  },
+  "set_measurement_error": {
+   "counted": true,
+   "label": "Decide",
+   "name": "the regression calibration question",
+   "order": 12,
+   "stage": "models"
+  },
+  "set_model_sequence": {
+   "counted": true,
+   "label": "Decide",
+   "name": "the Model 1 question",
+   "order": 10,
+   "stage": "models"
+  },
+  "set_multiplicity": {
+   "counted": true,
+   "label": "Confirm",
+   "name": "how many tests are accounted for",
+   "order": 135,
+   "stage": "models"
+  },
+  "set_scales": {
+   "counted": true,
+   "label": "Decide",
+   "name": "the scales question",
+   "order": 6,
+   "stage": "models"
+  },
+  "set_selection": {
+   "counted": true,
+   "label": "Decide",
+   "name": "the predictor-selection question",
+   "order": 8.5,
+   "stage": "models"
+  },
+  "set_sensitivity": {
+   "counted": true,
+   "label": "Decide",
+   "name": "the sensitivity analyses",
+   "order": 11,
+   "stage": "models"
+  },
+  "set_updating": {
+   "counted": true,
+   "label": "Decide",
+   "name": "the shrinkage question",
+   "order": 21,
+   "stage": "results"
+  },
+  "set_usual_intake": {
+   "counted": true,
+   "label": "Decide",
+   "name": "the usual-intake question",
+   "order": 21,
+   "stage": "models"
+  },
+  "set_validation": {
+   "counted": true,
+   "label": "Confirm",
+   "name": "the validation scheme",
+   "order": 136,
+   "stage": "models"
+  },
+  "view_outcome": {
+   "counted": false,
+   "label": "For the record",
+   "name": "the outcome views looked at",
+   "order": 5,
+   "stage": "first_look"
+  }
+ },
+ "fit_locks": {
+  "estimate_seconds": 1800.0,
+  "held": {
+   "at": null,
+   "estimate_seconds": 1800.0,
+   "held": true,
+   "locked": false,
+   "locks": false,
+   "opened": false,
+   "pressed": false,
+   "purpose": "prediction",
+   "reason": "Under prediction nothing locks: the held-out rows are the seal. Pressing Fit opens Results; until then no score or estimate is shown. The fit waits for it: it is expected to take about 30 minutes.",
+   "sha256": null
+  },
+  "no_goal": {
+   "at": null,
+   "estimate_seconds": null,
+   "held": false,
+   "locked": false,
+   "locks": false,
+   "opened": false,
+   "pressed": false,
+   "purpose": null,
+   "reason": "Nothing is locked and no estimate is shown: the goal is not chosen yet, and it decides whether the plan locks.",
+   "sha256": null
+  },
+  "pressed": {
+   "at": null,
+   "estimate_seconds": 1800.0,
+   "held": false,
+   "locked": false,
+   "locks": false,
+   "opened": true,
+   "pressed": true,
+   "purpose": "prediction",
+   "reason": "Under prediction nothing locks: the held-out rows are the seal. Fit was pressed, so the scores are shown.",
+   "sha256": null
+  },
+  "ready": {
+   "at": null,
+   "estimate_seconds": null,
+   "held": false,
+   "locked": false,
+   "locks": false,
+   "opened": false,
+   "pressed": false,
+   "purpose": "prediction",
+   "reason": "Under prediction nothing locks: the held-out rows are the seal. Pressing Fit opens Results; until then no score or estimate is shown.",
+   "sha256": null
+  },
+  "unlocked": {
+   "at": null,
+   "estimate_seconds": null,
+   "held": false,
+   "locked": false,
+   "locks": true,
+   "opened": false,
+   "pressed": false,
+   "purpose": "inference",
+   "reason": "The plan is not locked yet. Pressing Fit locks it and shows the first estimates; until then no estimate is shown.",
+   "sha256": null
+  }
+ },
+ "goals": [
+  "none",
+  "inference",
+  "prediction"
+ ],
+ "logs": {
+  "models_open": {
+   "log": {
+    "fit": {
+     "at": null,
+     "estimate_seconds": null,
+     "held": false,
+     "locked": false,
+     "locks": false,
+     "opened": false,
+     "pressed": false,
+     "purpose": "prediction",
+     "reason": "Under prediction nothing locks: the held-out rows are the seal. Pressing Fit opens Results; until then no score or estimate is shown.",
+     "sha256": null
+    },
+    "kinds": {
+     "apply_repair": "data",
+     "confirm_reading": "data",
+     "confirm_readings": "data",
+     "confirm_role": "data",
+     "defer_finding": "data",
+     "dismiss_finding": "data",
+     "import_codebook": "data",
+     "join_files": "data",
+     "lock_plan": "models",
+     "open_seal": "results",
+     "reseal": "results",
+     "respond_diagnostic": "results",
+     "select_models": "models",
+     "set_adjustment": "models",
+     "set_aggregation": "whos_in",
+     "set_batch": "models",
+     "set_categorical": "data",
+     "set_causal": "models",
+     "set_censoring": "question",
+     "set_clusters": "whos_in",
+     "set_column_unit": "data",
+     "set_design": "question",
+     "set_energy_adjustment": "models",
+     "set_estimand": "models",
+     "set_event": "question",
+     "set_exclusions": "whos_in",
+     "set_explain": "results",
+     "set_exposure_form": "models",
+     "set_feature_table": "data",
+     "set_follow_up": "question",
+     "set_forms": "models",
+     "set_grain": "whos_in",
+     "set_intended_use": "question",
+     "set_lens": "data",
+     "set_levers": "models",
+     "set_measurement_error": "models",
+     "set_missing": "whos_in",
+     "set_model_sequence": "models",
+     "set_modification": "models",
+     "set_multiplicity": "models",
+     "set_orientation": "data",
+     "set_outcome_order": "question",
+     "set_outcome_scale": "question",
+     "set_outcome_unit": "question",
+     "set_purpose": "question",
+     "set_repeat_kind": "whos_in",
+     "set_roles": "data",
+     "set_scales": "models",
+     "set_selection": "models",
+     "set_sensitivity": "models",
+     "set_split": "whos_in",
+     "set_substitution": "models",
+     "set_survey": "whos_in",
+     "set_target": "question",
+     "set_task": "question",
+     "set_temporal": "whos_in",
+     "set_time_varying": "models",
+     "set_unit": "whos_in",
+     "set_updating": "results",
+     "set_usual_intake": "models",
+     "set_validation": "models",
+     "view_outcome": "first_look"
+    },
+    "stages": [
+     {
+      "key": "data",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "decision:join_files",
+        "items": [],
+        "key": "join_files",
+        "label": "Decide",
+        "name": "joining another file",
+        "order": 2.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r1",
+        "id": "q:lens",
+        "items": [],
+        "key": "lens",
+        "label": "Decide",
+        "name": "the lens question",
+        "order": 5.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "decision:import_codebook",
+        "items": [],
+        "key": "import_codebook",
+        "label": "Decide",
+        "name": "the data dictionary",
+        "order": 9.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r5",
+        "id": "q:roles",
+        "items": [],
+        "key": "roles",
+        "label": "Decide",
+        "name": "the column roles",
+        "order": 29.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "finding:unnamed_columns__x",
+        "items": [],
+        "key": "unnamed_columns__x",
+        "label": "For the record",
+        "name": "A column has no name",
+        "order": 11.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "finding",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       }
+      ],
+      "name": "Your data",
+      "progress": {
+       "answered": 2,
+       "complete": true,
+       "required": 2
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": null
+     },
+     {
+      "key": "question",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r2",
+        "id": "q:target",
+        "items": [],
+        "key": "target",
+        "label": "Decide",
+        "name": "the outcome question",
+        "order": 1.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r3",
+        "id": "q:goal",
+        "items": [],
+        "key": "purpose",
+        "label": "Decide",
+        "name": "the purpose question",
+        "order": 18.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "q:intended_use",
+        "items": [],
+        "key": "set_intended_use",
+        "label": "Decide",
+        "name": "the intended-use question",
+        "order": 20.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "q:study-design",
+        "items": [],
+        "key": "design",
+        "label": "Confirm",
+        "name": "the study-design question",
+        "order": 17.0,
+        "reason": "Read as an observational study: people were observed as they were, not assigned or sampled by their outcome. Change it if they were randomized, sampled by the outcome or matched.",
+        "reopened_by": null,
+        "source": "question",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": "A trial or a matched case-control study is analyzed another way, so the estimates here would not be the ones for that design."
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "q:task",
+        "items": [],
+        "key": "task",
+        "label": "For the record",
+        "name": "the task question",
+        "order": 3.0,
+        "reason": "The outcome's values settle its kind.",
+        "reopened_by": null,
+        "source": "question",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": null
+       }
+      ],
+      "name": "Your question",
+      "progress": {
+       "answered": 2,
+       "complete": false,
+       "required": 4
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": {
+       "action": "Confirm it",
+       "answered": false,
+       "changed": [],
+       "confirmed_by": null,
+       "heading": "The choice set for you",
+       "id": "other:confirm-sweep:question",
+       "lines": 1
+      }
+     },
+     {
+      "key": "first_look",
+      "lines": [],
+      "name": "First look",
+      "progress": {
+       "answered": 0,
+       "complete": true,
+       "required": 0
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": null
+     },
+     {
+      "key": "whos_in",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r4",
+        "id": "q:grain",
+        "items": [],
+        "key": "grain",
+        "label": "Decide",
+        "name": "the question of whether people repeat",
+        "order": 1.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r6",
+        "id": "q:exclusions",
+        "items": [],
+        "key": "exclusions",
+        "label": "Decide",
+        "name": "the eligibility question",
+        "order": 11.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "finding:pack::dietary::implausible_intake#1",
+        "items": [],
+        "key": "pack::dietary::implausible_intake#1",
+        "label": "Decide",
+        "name": "Implausible reported intakes",
+        "order": 11.5,
+        "reason": null,
+        "reopened_by": null,
+        "source": "finding",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r7",
+        "id": "q:missing",
+        "items": [],
+        "key": "missing",
+        "label": "Decide",
+        "name": "the missing-values question",
+        "order": 13.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r8",
+        "id": "q:split",
+        "items": [],
+        "key": "split",
+        "label": "Decide",
+        "name": "the held-out rows question",
+        "order": 23.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "q:clusters",
+        "items": [],
+        "key": "clusters",
+        "label": "For the record",
+        "name": "the grouping question",
+        "order": 6.0,
+        "reason": "no column reads as a site, centre, household or batch, or can group the rows by its values.",
+        "reopened_by": null,
+        "source": "question",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": null
+       }
+      ],
+      "name": "Who's in",
+      "progress": {
+       "answered": 4,
+       "complete": true,
+       "required": 4
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": null
+     },
+     {
+      "key": "models",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "decision:set_selection",
+        "items": [],
+        "key": "set_selection",
+        "label": "Decide",
+        "name": "the predictor-selection question",
+        "order": 8.5,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "q:models",
+        "items": [],
+        "key": "models",
+        "label": "Decide",
+        "name": "the model families question",
+        "order": 9.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "waiting",
+        "waiting_for": [
+         {
+          "key": "set_selection",
+          "name": "the predictor-selection question",
+          "stage": "models"
+         }
+        ],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "q:form",
+        "items": [],
+        "key": "form",
+        "label": "Confirm",
+        "name": "the functional-form question",
+        "order": 5.0,
+        "reason": "Under prediction each predictor enters as each family takes it; the spline benchmark is on the shelf, and a spline can be declared for any numeric predictor.",
+        "reopened_by": null,
+        "source": "question",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": "Another form changes how each continuous predictor enters the models."
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "default:validation-scheme",
+        "items": [],
+        "key": "set_validation",
+        "label": "Confirm",
+        "name": "the validation scheme",
+        "order": 136.0,
+        "reason": "5-fold cross-validation.",
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": "Another scheme (more folds, repeated folds, the bootstrap) changes the cross-validated scores and how much they vary."
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "decision:set_levers",
+        "items": [],
+        "key": "set_levers",
+        "label": "Confirm",
+        "name": "the rules repeated inside each fold",
+        "order": 137.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "waiting",
+        "waiting_for": [
+         {
+          "key": "models",
+          "name": "the model families question",
+          "stage": "models"
+         }
+        ],
+        "would_change": "An in-fold rule (a spline, a variance filter, an imbalance correction) changes what each model is fit on."
+       }
+      ],
+      "name": "Models",
+      "progress": {
+       "answered": 0,
+       "complete": false,
+       "required": 3
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": {
+       "action": "Confirm all 3",
+       "answered": false,
+       "changed": [],
+       "confirmed_by": null,
+       "heading": "The 3 choices set for you",
+       "id": "other:confirm-sweep",
+       "lines": 3
+      }
+     },
+     {
+      "key": "results",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "decision:set_updating",
+        "items": [],
+        "key": "set_updating",
+        "label": "Decide",
+        "name": "the shrinkage question",
+        "order": 21.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "waiting",
+        "waiting_for": [
+         {
+          "key": "models",
+          "name": "the model families question",
+          "stage": "models"
+         }
+        ],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [
+         "fit"
+        ],
+        "counted": true,
+        "decision_id": null,
+        "id": "q:open_seal",
+        "items": [],
+        "key": "open_seal",
+        "label": "Decide",
+        "name": "opening the seal",
+        "order": 24.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "waiting",
+        "waiting_for": [
+         {
+          "key": "models",
+          "name": "the model families question",
+          "stage": "models"
+         }
+        ],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "decision:set_explain",
+        "items": [],
+        "key": "set_explain",
+        "label": "Decide",
+        "name": "the explanations",
+        "order": 45.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "waiting",
+        "waiting_for": [
+         {
+          "key": "models",
+          "name": "the model families question",
+          "stage": "models"
+         }
+        ],
+        "would_change": null
+       }
+      ],
+      "name": "Results",
+      "progress": null,
+      "reached": false,
+      "reopened": [],
+      "sweep": null
+     },
+     {
+      "key": "writeup",
+      "lines": [],
+      "name": "Write-up",
+      "progress": null,
+      "reached": false,
+      "reopened": [],
+      "sweep": null
+     }
+    ],
+    "version": 5
+   },
+   "swept": {
+    "models": [
+     {
+      "basis": null,
+      "id": "q:form",
+      "key": "form",
+      "value": "Under prediction each predictor enters as each family takes it; the spline benchmark is on the shelf, and a spline can be declared for any numeric predictor."
+     },
+     {
+      "basis": null,
+      "id": "default:validation-scheme",
+      "key": "set_validation",
+      "value": "5-fold cross-validation."
+     }
+    ],
+    "question": [
+     {
+      "basis": null,
+      "id": "q:study-design",
+      "key": "design",
+      "value": "Read as an observational study: people were observed as they were, not assigned or sampled by their outcome. Change it if they were randomized, sampled by the outcome or matched."
+     }
+    ]
+   }
+  },
+  "results_reached": {
+   "log": {
+    "fit": {
+     "at": null,
+     "estimate_seconds": null,
+     "held": false,
+     "locked": false,
+     "locks": false,
+     "opened": true,
+     "pressed": true,
+     "purpose": "prediction",
+     "reason": "Under prediction nothing locks: the held-out rows are the seal. Fit was pressed, so the scores are shown.",
+     "sha256": null
+    },
+    "kinds": {
+     "apply_repair": "data",
+     "confirm_reading": "data",
+     "confirm_readings": "data",
+     "confirm_role": "data",
+     "defer_finding": "data",
+     "dismiss_finding": "data",
+     "import_codebook": "data",
+     "join_files": "data",
+     "lock_plan": "models",
+     "open_seal": "results",
+     "reseal": "results",
+     "respond_diagnostic": "results",
+     "select_models": "models",
+     "set_adjustment": "models",
+     "set_aggregation": "whos_in",
+     "set_batch": "models",
+     "set_categorical": "data",
+     "set_causal": "models",
+     "set_censoring": "question",
+     "set_clusters": "whos_in",
+     "set_column_unit": "data",
+     "set_design": "question",
+     "set_energy_adjustment": "models",
+     "set_estimand": "models",
+     "set_event": "question",
+     "set_exclusions": "whos_in",
+     "set_explain": "results",
+     "set_exposure_form": "models",
+     "set_feature_table": "data",
+     "set_follow_up": "question",
+     "set_forms": "models",
+     "set_grain": "whos_in",
+     "set_intended_use": "question",
+     "set_lens": "data",
+     "set_levers": "models",
+     "set_measurement_error": "models",
+     "set_missing": "whos_in",
+     "set_model_sequence": "models",
+     "set_modification": "models",
+     "set_multiplicity": "models",
+     "set_orientation": "data",
+     "set_outcome_order": "question",
+     "set_outcome_scale": "question",
+     "set_outcome_unit": "question",
+     "set_purpose": "question",
+     "set_repeat_kind": "whos_in",
+     "set_roles": "data",
+     "set_scales": "models",
+     "set_selection": "models",
+     "set_sensitivity": "models",
+     "set_split": "whos_in",
+     "set_substitution": "models",
+     "set_survey": "whos_in",
+     "set_target": "question",
+     "set_task": "question",
+     "set_temporal": "whos_in",
+     "set_time_varying": "models",
+     "set_unit": "whos_in",
+     "set_updating": "results",
+     "set_usual_intake": "models",
+     "set_validation": "models",
+     "view_outcome": "first_look"
+    },
+    "stages": [
+     {
+      "key": "data",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "decision:join_files",
+        "items": [],
+        "key": "join_files",
+        "label": "Decide",
+        "name": "joining another file",
+        "order": 2.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r1",
+        "id": "q:lens",
+        "items": [],
+        "key": "lens",
+        "label": "Decide",
+        "name": "the lens question",
+        "order": 5.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "decision:import_codebook",
+        "items": [],
+        "key": "import_codebook",
+        "label": "Decide",
+        "name": "the data dictionary",
+        "order": 9.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r5",
+        "id": "q:roles",
+        "items": [],
+        "key": "roles",
+        "label": "Decide",
+        "name": "the column roles",
+        "order": 29.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "finding:unnamed_columns__x",
+        "items": [],
+        "key": "unnamed_columns__x",
+        "label": "For the record",
+        "name": "A column has no name",
+        "order": 11.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "finding",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       }
+      ],
+      "name": "Your data",
+      "progress": {
+       "answered": 2,
+       "complete": true,
+       "required": 2
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": null
+     },
+     {
+      "key": "question",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r2",
+        "id": "q:target",
+        "items": [],
+        "key": "target",
+        "label": "Decide",
+        "name": "the outcome question",
+        "order": 1.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r3",
+        "id": "q:goal",
+        "items": [],
+        "key": "purpose",
+        "label": "Decide",
+        "name": "the purpose question",
+        "order": 18.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "q:intended_use",
+        "items": [],
+        "key": "set_intended_use",
+        "label": "Decide",
+        "name": "the intended-use question",
+        "order": 20.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "q:study-design",
+        "items": [],
+        "key": "design",
+        "label": "Confirm",
+        "name": "the study-design question",
+        "order": 17.0,
+        "reason": "Read as an observational study: people were observed as they were, not assigned or sampled by their outcome. Change it if they were randomized, sampled by the outcome or matched.",
+        "reopened_by": null,
+        "source": "question",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": "A trial or a matched case-control study is analyzed another way, so the estimates here would not be the ones for that design."
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "q:task",
+        "items": [],
+        "key": "task",
+        "label": "For the record",
+        "name": "the task question",
+        "order": 3.0,
+        "reason": "The outcome's values settle its kind.",
+        "reopened_by": null,
+        "source": "question",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": null
+       }
+      ],
+      "name": "Your question",
+      "progress": {
+       "answered": 2,
+       "complete": false,
+       "required": 4
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": {
+       "action": "Confirm it",
+       "answered": false,
+       "changed": [],
+       "confirmed_by": null,
+       "heading": "The choice set for you",
+       "id": "other:confirm-sweep:question",
+       "lines": 1
+      }
+     },
+     {
+      "key": "first_look",
+      "lines": [],
+      "name": "First look",
+      "progress": {
+       "answered": 0,
+       "complete": true,
+       "required": 0
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": null
+     },
+     {
+      "key": "whos_in",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r4",
+        "id": "q:grain",
+        "items": [],
+        "key": "grain",
+        "label": "Decide",
+        "name": "the question of whether people repeat",
+        "order": 1.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r6",
+        "id": "q:exclusions",
+        "items": [],
+        "key": "exclusions",
+        "label": "Decide",
+        "name": "the eligibility question",
+        "order": 11.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "finding:pack::dietary::implausible_intake#1",
+        "items": [],
+        "key": "pack::dietary::implausible_intake#1",
+        "label": "Decide",
+        "name": "Implausible reported intakes",
+        "order": 11.5,
+        "reason": null,
+        "reopened_by": null,
+        "source": "finding",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r7",
+        "id": "q:missing",
+        "items": [],
+        "key": "missing",
+        "label": "Decide",
+        "name": "the missing-values question",
+        "order": 13.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r8",
+        "id": "q:split",
+        "items": [],
+        "key": "split",
+        "label": "Decide",
+        "name": "the held-out rows question",
+        "order": 23.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "q:clusters",
+        "items": [],
+        "key": "clusters",
+        "label": "For the record",
+        "name": "the grouping question",
+        "order": 6.0,
+        "reason": "no column reads as a site, centre, household or batch, or can group the rows by its values.",
+        "reopened_by": null,
+        "source": "question",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": null
+       }
+      ],
+      "name": "Who's in",
+      "progress": {
+       "answered": 4,
+       "complete": true,
+       "required": 4
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": null
+     },
+     {
+      "key": "models",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "decision:set_selection",
+        "items": [],
+        "key": "set_selection",
+        "label": "Decide",
+        "name": "the predictor-selection question",
+        "order": 8.5,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": "r9",
+        "id": "q:models",
+        "items": [],
+        "key": "models",
+        "label": "Decide",
+        "name": "the model families question",
+        "order": 9.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "answered",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "q:form",
+        "items": [],
+        "key": "form",
+        "label": "Confirm",
+        "name": "the functional-form question",
+        "order": 5.0,
+        "reason": "Under prediction each predictor enters as each family takes it; the spline benchmark is on the shelf, and a spline can be declared for any numeric predictor.",
+        "reopened_by": null,
+        "source": "question",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": "Another form changes how each continuous predictor enters the models."
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "default:validation-scheme",
+        "items": [],
+        "key": "set_validation",
+        "label": "Confirm",
+        "name": "the validation scheme",
+        "order": 136.0,
+        "reason": "5-fold cross-validation.",
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": "Another scheme (more folds, repeated folds, the bootstrap) changes the cross-validated scores and how much they vary."
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "decision:set_levers",
+        "items": [],
+        "key": "set_levers",
+        "label": "Confirm",
+        "name": "the rules repeated inside each fold",
+        "order": 137.0,
+        "reason": "Predictor forms: none; variance filter: none; imbalance correction: none.",
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "set_for_you",
+        "waiting_for": [],
+        "would_change": "An in-fold rule (a spline, a variance filter, an imbalance correction) changes what each model is fit on."
+       }
+      ],
+      "name": "Models",
+      "progress": {
+       "answered": 1,
+       "complete": false,
+       "required": 3
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": {
+       "action": "Confirm all 3",
+       "answered": false,
+       "changed": [],
+       "confirmed_by": null,
+       "heading": "The 3 choices set for you",
+       "id": "other:confirm-sweep",
+       "lines": 3
+      }
+     },
+     {
+      "key": "results",
+      "lines": [
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "decision:set_updating",
+        "items": [],
+        "key": "set_updating",
+        "label": "Decide",
+        "name": "the shrinkage question",
+        "order": 21.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": true,
+        "decision_id": null,
+        "id": "q:open_seal",
+        "items": [],
+        "key": "open_seal",
+        "label": "Decide",
+        "name": "opening the seal",
+        "order": 24.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "question",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       },
+       {
+        "changed_since": null,
+        "changes_nothing": null,
+        "computing": [],
+        "counted": false,
+        "decision_id": null,
+        "id": "decision:set_explain",
+        "items": [],
+        "key": "set_explain",
+        "label": "Decide",
+        "name": "the explanations",
+        "order": 45.0,
+        "reason": null,
+        "reopened_by": null,
+        "source": "declaration",
+        "status": "open",
+        "waiting_for": [],
+        "would_change": null
+       }
+      ],
+      "name": "Results",
+      "progress": {
+       "answered": 0,
+       "complete": false,
+       "required": 2
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": null
+     },
+     {
+      "key": "writeup",
+      "lines": [],
+      "name": "Write-up",
+      "progress": {
+       "answered": 0,
+       "complete": true,
+       "required": 0
+      },
+      "reached": true,
+      "reopened": [],
+      "sweep": null
+     }
+    ],
+    "version": 5
+   },
+   "swept": {
+    "models": [
+     {
+      "basis": null,
+      "id": "q:form",
+      "key": "form",
+      "value": "Under prediction each predictor enters as each family takes it; the spline benchmark is on the shelf, and a spline can be declared for any numeric predictor."
+     },
+     {
+      "basis": null,
+      "id": "default:validation-scheme",
+      "key": "set_validation",
+      "value": "5-fold cross-validation."
+     },
+     {
+      "basis": null,
+      "id": "decision:set_levers",
+      "key": "set_levers",
+      "value": "Predictor forms: none; variance filter: none; imbalance correction: none."
+     }
+    ],
+    "question": [
+     {
+      "basis": null,
+      "id": "q:study-design",
+      "key": "design",
+      "value": "Read as an observational study: people were observed as they were, not assigned or sampled by their outcome. Change it if they were randomized, sampled by the outcome or matched."
+     }
+    ]
+   }
+  }
+ },
+ "min_gain": 0.01,
+ "pairs": [
+  {
+   "key": "import_codebook",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "data"
+   ]
+  },
+  {
+   "key": "join_files",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "data"
+   ]
+  },
+  {
+   "key": "set_batch",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "set_explain",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "results"
+   ]
+  },
+  {
+   "key": "set_intended_use",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/prediction",
+    "nhanes/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "question"
+   ]
+  },
+  {
+   "key": "set_levers",
+   "labels": [
+    "Confirm"
+   ],
+   "seen": [
+    "metabolomics/prediction",
+    "nhanes/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "set_measurement_error",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "nhanes/inference"
+   ],
+   "source": "declaration",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "set_model_sequence",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "nhanes/inference"
+   ],
+   "source": "declaration",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "set_selection",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/prediction",
+    "nhanes/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "set_sensitivity",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "set_updating",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/prediction",
+    "nhanes/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "results"
+   ]
+  },
+  {
+   "key": "set_validation",
+   "labels": [
+    "Confirm"
+   ],
+   "seen": [
+    "metabolomics/prediction",
+    "nhanes/prediction"
+   ],
+   "source": "declaration",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "pack::dietary::energy_adjustment#1",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "nhanes/inference",
+    "nhanes/none"
+   ],
+   "source": "finding",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "pack::dietary::implausible_intake#1",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "finding",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "pack::metabolomics::acquisition_design#1",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction"
+   ],
+   "source": "finding",
+   "stages": [
+    "data"
+   ]
+  },
+  {
+   "key": "pack::metabolomics::left_censored#1",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction"
+   ],
+   "source": "finding",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "unnamed_columns__x",
+   "labels": [
+    "For the record"
+   ],
+   "seen": [
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "finding",
+   "stages": [
+    "data"
+   ]
+  },
+  {
+   "key": "adjustment",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "nhanes/inference",
+    "nhanes/none"
+   ],
+   "source": "question",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "aggregation",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "causal",
+   "labels": [
+    "Confirm"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "nhanes/inference",
+    "nhanes/none"
+   ],
+   "source": "question",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "clusters",
+   "labels": [
+    "Decide",
+    "For the record"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "design",
+   "labels": [
+    "Confirm"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "question"
+   ]
+  },
+  {
+   "key": "energy_adjustment",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/none",
+    "nhanes/inference",
+    "nhanes/none"
+   ],
+   "source": "question",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "estimand",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "nhanes/inference",
+    "nhanes/none"
+   ],
+   "source": "question",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "event",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "question"
+   ]
+  },
+  {
+   "key": "exclusions",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "follow_up",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "question"
+   ]
+  },
+  {
+   "key": "form",
+   "labels": [
+    "Confirm",
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "grain",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "lens",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "data"
+   ]
+  },
+  {
+   "key": "missing",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "models",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "modification",
+   "labels": [
+    "Confirm"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "nhanes/inference",
+    "nhanes/none"
+   ],
+   "source": "question",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "open_seal",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "results"
+   ]
+  },
+  {
+   "key": "orientation",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/none"
+   ],
+   "source": "question",
+   "stages": [
+    "data"
+   ]
+  },
+  {
+   "key": "purpose",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "question"
+   ]
+  },
+  {
+   "key": "repeat_kind",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "roles",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "data"
+   ]
+  },
+  {
+   "key": "split",
+   "labels": [
+    "Decide",
+    "For the record"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "substitution",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "nhanes/inference",
+    "nhanes/none"
+   ],
+   "source": "question",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "survey",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "target",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "question"
+   ]
+  },
+  {
+   "key": "task",
+   "labels": [
+    "Decide",
+    "For the record"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "question"
+   ]
+  },
+  {
+   "key": "temporal",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  },
+  {
+   "key": "time_varying",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "nhanes/inference",
+    "nhanes/none"
+   ],
+   "source": "question",
+   "stages": [
+    "models"
+   ]
+  },
+  {
+   "key": "unit",
+   "labels": [
+    "Decide"
+   ],
+   "seen": [
+    "metabolomics/inference",
+    "metabolomics/none",
+    "metabolomics/prediction",
+    "nhanes/inference",
+    "nhanes/none",
+    "nhanes/prediction"
+   ],
+   "source": "question",
+   "stages": [
+    "whos_in"
+   ]
+  }
+ ],
+ "questions": {
+  "adjustment": {
+   "label": "Decide",
+   "name": "the adjustment-set question",
+   "order": 2,
+   "stage": "models"
+  },
+  "aggregation": {
+   "label": "Decide",
+   "name": "the question of how rows are combined",
+   "order": 4,
+   "stage": "whos_in"
+  },
+  "causal": {
+   "label": "Confirm",
+   "name": "the causal question",
+   "order": 134,
+   "stage": "models"
+  },
+  "clusters": {
+   "label": "Decide",
+   "name": "the grouping question",
+   "order": 6,
+   "stage": "whos_in"
+  },
+  "design": {
+   "label": "Decide",
+   "name": "the study-design question",
+   "order": 17,
+   "stage": "question"
+  },
+  "energy_adjustment": {
+   "label": "Decide",
+   "name": "the energy-adjustment question",
+   "order": 4,
+   "stage": "models"
+  },
+  "estimand": {
+   "label": "Decide",
+   "name": "the question on what you study and its effect",
+   "order": 1,
+   "stage": "models"
+  },
+  "event": {
+   "label": "Decide",
+   "name": "the event question",
+   "order": 2,
+   "stage": "question"
+  },
+  "exclusions": {
+   "label": "Decide",
+   "name": "the eligibility question",
+   "order": 11,
+   "stage": "whos_in"
+  },
+  "follow_up": {
+   "label": "Decide",
+   "name": "the follow-up question",
+   "order": 7,
+   "stage": "question"
+  },
+  "form": {
+   "label": "Decide",
+   "name": "the functional-form question",
+   "order": 5,
+   "stage": "models"
+  },
+  "grain": {
+   "label": "Decide",
+   "name": "the question of whether people repeat",
+   "order": 1,
+   "stage": "whos_in"
+  },
+  "lens": {
+   "label": "Decide",
+   "name": "the lens question",
+   "order": 5,
+   "stage": "data"
+  },
+  "missing": {
+   "label": "Decide",
+   "name": "the missing-values question",
+   "order": 13,
+   "stage": "whos_in"
+  },
+  "models": {
+   "label": "Decide",
+   "name": "the model families question",
+   "order": 9,
+   "stage": "models"
+  },
+  "modification": {
+   "label": "Confirm",
+   "name": "the effect-modifier question",
+   "order": 133,
+   "stage": "models"
+  },
+  "open_seal": {
+   "label": "Decide",
+   "name": "opening the seal",
+   "order": 24,
+   "stage": "results"
+  },
+  "orientation": {
+   "label": "Decide",
+   "name": "the question of which way round the table is",
+   "order": 7,
+   "stage": "data"
+  },
+  "purpose": {
+   "label": "Decide",
+   "name": "the purpose question",
+   "order": 18,
+   "stage": "question"
+  },
+  "repeat_kind": {
+   "label": "Decide",
+   "name": "the question of what repeats",
+   "order": 2,
+   "stage": "whos_in"
+  },
+  "roles": {
+   "label": "Decide",
+   "name": "the column roles",
+   "order": 29,
+   "stage": "data"
+  },
+  "split": {
+   "label": "Decide",
+   "name": "the held-out rows question",
+   "order": 23,
+   "stage": "whos_in"
+  },
+  "substitution": {
+   "label": "Decide",
+   "name": "the substitution question",
+   "order": 13,
+   "stage": "models"
+  },
+  "survey": {
+   "label": "Decide",
+   "name": "the survey question",
+   "order": 7,
+   "stage": "whos_in"
+  },
+  "target": {
+   "label": "Decide",
+   "name": "the outcome question",
+   "order": 1,
+   "stage": "question"
+  },
+  "task": {
+   "label": "Decide",
+   "name": "the task question",
+   "order": 3,
+   "stage": "question"
+  },
+  "temporal": {
+   "label": "Decide",
+   "name": "the temporal question",
+   "order": 5,
+   "stage": "whos_in"
+  },
+  "time_varying": {
+   "label": "Decide",
+   "name": "the question on what you study over time",
+   "order": 3,
+   "stage": "models"
+  },
+  "unit": {
+   "label": "Decide",
+   "name": "the unit-of-analysis question",
+   "order": 3,
+   "stage": "whos_in"
+  }
+ },
+ "seeds": 40,
+ "stages": [
+  {
+   "key": "data",
+   "name": "Your data"
+  },
+  {
+   "key": "question",
+   "name": "Your question"
+  },
+  {
+   "key": "first_look",
+   "name": "First look"
+  },
+  {
+   "key": "whos_in",
+   "name": "Who's in"
+  },
+  {
+   "key": "models",
+   "name": "Models"
+  },
+  {
+   "key": "results",
+   "name": "Results"
+  },
+  {
+   "key": "writeup",
+   "name": "Write-up"
+  }
+ ],
+ "sweep_words": {
+  "1": [
+   "The choice set for you",
+   "Confirm it"
+  ],
+  "2": [
+   "The 2 choices set for you",
+   "Confirm all 2"
+  ],
+  "3": [
+   "The 3 choices set for you",
+   "Confirm all 3"
+  ],
+  "4": [
+   "The 4 choices set for you",
+   "Confirm all 4"
+  ],
+  "5": [
+   "The 5 choices set for you",
+   "Confirm all 5"
+  ],
+  "6": [
+   "The 6 choices set for you",
+   "Confirm all 6"
+  ],
+  "7": [
+   "The 7 choices set for you",
+   "Confirm all 7"
+  ],
+  "8": [
+   "The 8 choices set for you",
+   "Confirm all 8"
+  ]
+ },
+ "written_by": "turbotab/core/tests/test_quest_renderer_contract.py"
+}

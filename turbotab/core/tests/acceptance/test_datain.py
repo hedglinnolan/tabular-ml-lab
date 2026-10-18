@@ -782,6 +782,9 @@ def test_2_structured_fields_settle_labels_only_guide_and_contradictions_are_ask
     (guided,) = R.labeled([height_reading], state)
     assert guided.value == "cm" and not guided.settled
     assert guided.evidence == 'your codebook labels it "Standing Height (cm)"'
+    # Labeled again (the ask card labels the fit's refusal's readings, already labeled), the label
+    # is said once (W1-R round 2: the card's lines and its question read one labeled set).
+    assert R.labeled([guided], state) == [guided]
 
 
 def test_2_the_users_own_answer_stands_and_one_revert_undoes_the_import(tmp_path):

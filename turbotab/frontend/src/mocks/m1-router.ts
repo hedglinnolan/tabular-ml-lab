@@ -273,7 +273,14 @@ export function route(
       continue;
     }
     let na: string | null = sequenceGate(key, state, targetInfo, opts.featureMajor);
-    if (key === "energy_adjustment") {
+    if ((key === "energy_adjustment" || key === "substitution") && state.purpose === "prediction") {
+      // BEATS_PREDICT ruling 5 (the engine's W1-P11): the energy model decides what a nutrient's
+      // coefficient means, and the substitution compares two imagined diets, so neither is asked.
+      na =
+        key === "energy_adjustment"
+          ? "Under prediction no coefficient is read as an effect, so there is no energy model to choose: nutrients and total calories enter as recorded."
+          : "Under prediction no coefficient is read as an effect, so no swap of energy between two nutrients is estimated.";
+    } else if (key === "energy_adjustment") {
       if (state.lens && !state.lens.includes("dietary"))
         na = "The dietary lens is off, so energy adjustment does not apply.";
       else if (roles && !Object.values(roles).includes("energy"))

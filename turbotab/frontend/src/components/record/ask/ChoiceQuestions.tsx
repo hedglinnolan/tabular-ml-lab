@@ -5,7 +5,7 @@
  * recorded sentence). The pack's usual choice is tagged and ordered first, never pre-selected;
  * an option that does not apply stays on the shelf and says why.
  */
-import { useRef, useState, type FormEvent } from "react";
+import { createContext, useContext, useRef, useState, type FormEvent } from "react";
 import type {
   EnergyMethod,
   EnergyReading,
@@ -521,21 +521,66 @@ export function EnergyAsk({
  * `cost.NOTEWORTHY_SECONDS`): the models card says nothing about it. */
 export const NOTEWORTHY_SECONDS = 10;
 
+/**
+ * The models card's words for recording the chosen families: `one` is the family's name when one is
+ * chosen (lower case), else null, and `n` their count. Today's screen fits the families as it
+ * records them, so it says Fit; a screen where Fit is pressed elsewhere provides its own words.
+ */
+export type FamiliesLabel = (one: string | null, n: number) => string;
+const FIT_FAMILIES: FamiliesLabel = (one, n) => (one ? `Fit the ${one}` : `Fit these ${n} families`);
+/** The words ModelsAsk uses where its `label` prop is not given (the quest shell provides them
+ *  around today's card, src/quest/cards/CardFor.tsx); today's Fit words by default. */
+export const FamiliesLabelContext = createContext<FamiliesLabel>(FIT_FAMILIES);
+
+/** The families chosen on the models card and not yet recorded, with the record they were chosen
+ *  against (`base`, the recorded families as JSON). */
+export interface HeldFamilies {
+  base: string;
+  chosen: string[];
+}
+
+/**
+ * Where a screen keeps the families chosen and not yet recorded, so they survive the models card
+ * leaving the screen and coming back (finding 12 of the 2026-10-17 walkthrough): in the quest shell
+ * the card's line waits while the shelf is computed again, which a reading confirmed on the card
+ * sets off, and the card is drawn anew when the line opens. A choice held against a record that has
+ * changed since is not restored. Absent (today's screen), the card holds its own.
+ */
+export const HeldFamiliesContext = createContext<{
+  get: () => HeldFamilies | null;
+  set: (held: HeldFamilies) => void;
+} | null>(null);
+
 export function ModelsAsk({
   shelf,
   current,
+  label,
   ...p
 }: AskProps & {
   shelf: ShelfArtifact;
   current: string[] | null;
+  /** The record button's words for the chosen families; FamiliesLabelContext's when absent. */
+  label?: FamiliesLabel;
 }) {
-  // Nothing is chosen for the user: the shelf's order is its judgment (§0).
-  const [chosen, setChosen] = useState<string[]>(current ?? []);
+  // Nothing is chosen for the user: the shelf's order is its judgment (§0). A choice the screen held
+  // against this same record comes back as it was.
+  const keeper = useContext(HeldFamiliesContext);
+  const base = JSON.stringify(current ?? null);
+  const [chosen, setChosenHere] = useState<string[]>(() => {
+    const held = keeper?.get();
+    return held && held.base === base ? held.chosen : (current ?? []);
+  });
+  const setChosen = (next: string[]) => {
+    setChosenHere(next);
+    keeper?.set({ base, chosen: next });
+  };
+  const provided = useContext(FamiliesLabelContext);
+  const words = label ?? provided;
   const families = [...shelf.families].sort((a, b) => a.rank - b.rank);
   const ordered = families.map((f) => f.key).filter((k) => chosen.includes(k));
   const fitLabel = (keys: string[]) => {
     const one = keys.length === 1 ? families.find((f) => f.key === keys[0])?.label : null;
-    return one ? `Fit the ${one.toLowerCase()}` : `Fit these ${keys.length} families`;
+    return words(one ? one.toLowerCase() : null, keys.length);
   };
   // Enter and the stage's record button do the same thing: record the chosen families, or the
   // shown one when none is chosen yet.
@@ -579,7 +624,7 @@ export function ModelsAsk({
         mode="multi"
         selected={new Set(chosen)}
         onToggle={(k) =>
-          setChosen((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]))
+          setChosen(chosen.includes(k) ? chosen.filter((x) => x !== k) : [...chosen, k])
         }
         onRecord={(item) =>
           p.record({ kind: "select_models", models: recordFor(item.key) }, "record")

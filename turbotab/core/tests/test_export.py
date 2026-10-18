@@ -113,6 +113,133 @@ def test_a_prediction_plan_says_no_plan_was_locked_and_never_that_nothing_was_sh
     assert not any(w in doc.text.lower() for w in plan_lock.NEVER_SAID)
 
 
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_single_confirmations_alike_but_for_their_column_are_said_in_one_sentence(tmp_path,
+                                                                                  purpose):
+    """The re-walk's N10: the methods listed each flag's confirmation as its own near-identical
+    sentence, six of them. Single confirmations of one kind whose sentences differ only in their
+    column are said once, with every column named; one alone, or one whose sentence differs
+    otherwise (another role), keeps its own. The merged sentence is built here by the rule, from
+    the records' own sentences."""
+    flags = ["imputed_weight", "imputed_height", "imputed_bmi"]
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    roles = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate", "waist": "covariate",
+             **{c: "flag" for c in flags}}
+    for decision in (d.SetLens(lenses=["clinical"]), d.SetTarget(column="glucose"),
+                     d.SetPurpose(purpose=purpose),
+                     d.SetRoles(roles=roles, unconfirmed=[*flags, "bp_sys"]),
+                     *(d.ConfirmRole(column=c, role="flag") for c in flags),
+                     d.ConfirmRole(column="bp_sys", role="covariate")):
+        log.append(decision, sentence=_say)
+    records = log.records()
+    said = {r.decision.column: r.sentence for r in records if r.decision.kind == "confirm_role"}
+    rest = said[flags[0]].removeprefix(f"`{flags[0]}` was ")
+    assert all(said[c] == f"`{c}` was {rest}" for c in flags)  # alike but for the column
+    assert said["bp_sys"] != f"`bp_sys` was {rest}"
+    doc = methods.methods_section(_source(records, purpose=purpose),
+                                  {"engine": {}, "inputs": [], "decisions": {"n": len(records)},
+                                   "analysis_plan": {}})
+    texts = [e.text for s in doc.sections for e in s.entries if e.kind == "confirm_role"]
+    together = "`imputed_weight`, `imputed_height` and `imputed_bmi` were each " + rest
+    assert texts == [together, said["bp_sys"]]
+    merged = next(e for s in doc.sections for e in s.entries if e.text == together)
+    # Under the newest of its records: the manuscript's newest line is the sentence just grown.
+    last = [r for r in records if r.decision.kind == "confirm_role"][len(flags) - 1]
+    assert (merged.record_id, merged.seq) == (last.id, last.seq)
+    # Silent where only one is alike: two flags confirmed, the third left out, one stays its own.
+    alone = methods.methods_section(_source(records[:5] + records[7:], purpose=purpose),
+                                    {"engine": {}, "inputs": [], "decisions": {"n": 6},
+                                     "analysis_plan": {}})
+    assert [e.text for s in alone.sections for e in s.entries if e.kind == "confirm_role"] == [
+        said[flags[0]], said["bp_sys"]]
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_a_folded_confirmation_names_every_record_it_says_and_the_checklist_quotes_them(tmp_path,
+                                                                                       purpose):
+    """W1-X's cap, ruling R2 (its P1, option b): a methods entry that folds single confirmations
+    names every folded record, in the order its columns are listed (``record_ids``), so the union
+    of the entries' records is the methods route's records; one alone names none and is the
+    route's sentence verbatim. The checklist's place for the folded sentence names them too. The
+    folded records are the three flags' confirmations, in the order they were recorded."""
+    flags = ["imputed_weight", "imputed_height", "imputed_bmi"]
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    roles = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate", "waist": "covariate",
+             **{c: "flag" for c in flags}}
+    for decision in (d.SetLens(lenses=["clinical"]), d.SetTarget(column="glucose"),
+                     d.SetPurpose(purpose=purpose),
+                     d.SetRoles(roles=roles, unconfirmed=[*flags, "bp_sys"]),
+                     *(d.ConfirmRole(column=c, role="flag") for c in flags),
+                     d.ConfirmRole(column="bp_sys", role="covariate")):
+        log.append(decision, sentence=_say)
+    records = log.records()
+    confirmed = [r for r in records if r.decision.kind == "confirm_role"]
+    folded = [r.id for r in confirmed[:3]]
+    source = _source(records, purpose=purpose)
+    route = {line.record_id: line.sentence for line in source.methods.lines}
+    doc = methods.methods_section(source, {"engine": {}, "inputs": [], "decisions":
+                                           {"n": len(records)}, "analysis_plan": {}})
+    said = [e for s in doc.sections for e in s.entries if e.source == "record"]
+    [merged] = [e for e in said if e.record_ids]
+    assert merged.record_ids == folded and merged.record_id in folded
+    rest = route[folded[0]].removeprefix(f"`{flags[0]}` was ")
+    assert merged.text == "`imputed_weight`, `imputed_height` and `imputed_bmi` were each " + rest
+    # Silent on every entry that is one record's: it names none, and says the route's sentence.
+    for e in said:
+        if e is not merged:
+            assert e.record_ids is None and e.text == route[e.record_id], e
+    assert {i for e in said for i in (e.record_ids or [e.record_id])} == set(route)
+    report = checklists.fill(checklists.checklist_of(purpose), methods=doc, records=records,
+                             state=source.state, files={})
+    places = [w for item in report.items for w in item.where if w.source == "record"]
+    quoting = [w for w in places if w.quote == merged.text]
+    assert quoting and all(w.record_ids == folded for w in quoting)
+    assert all(w.record_ids is None and w.quote == route[w.record_id] for w in places
+               if w.quote != merged.text)
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_the_checklist_file_credits_a_folded_sentence_to_every_decision_it_says(tmp_path, purpose):
+    """The land-1 verifier's P2: the checklist's Markdown names the decision behind each sentence it
+    quotes. The log is built so the three flags' confirmations are its records #5, #6 and #7 and
+    `bp_sys`'s its #8. The methods fold the three flags' into one sentence, which the checklist
+    credits to all three decisions, in the order its columns are listed (``Where.seqs``), never to
+    #7 alone; a place that is one record's names its one decision, as before (`bp_sys`'s #8)."""
+    flags = ["imputed_weight", "imputed_height", "imputed_bmi"]
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    roles = {"SEQN": "identifier", "age": "covariate", "bp_sys": "covariate", "waist": "covariate",
+             **{c: "flag" for c in flags}}
+    for decision in (d.SetLens(lenses=["clinical"]), d.SetTarget(column="glucose"),
+                     d.SetPurpose(purpose=purpose),
+                     d.SetRoles(roles=roles, unconfirmed=[*flags, "bp_sys"]),
+                     *(d.ConfirmRole(column=c, role="flag") for c in flags),
+                     d.ConfirmRole(column="bp_sys", role="covariate")):
+        log.append(decision, sentence=_say)
+    records = log.records()
+    assert [(r.seq, r.decision.kind) for r in records[4:]] == [
+        (5, "confirm_role"), (6, "confirm_role"), (7, "confirm_role"), (8, "confirm_role")]
+    source = _source(records, purpose=purpose)
+    doc = methods.methods_section(source, {"engine": {}, "inputs": [], "decisions":
+                                           {"n": len(records)}, "analysis_plan": {}})
+    report = checklists.fill(checklists.checklist_of(purpose), methods=doc, records=records,
+                             state=source.state, files={})
+    places = [w for item in report.items for w in item.where if w.source == "record"]
+    folded = [w for w in places if w.record_ids]
+    assert folded and all(w.seqs == [5, 6, 7] for w in folded)
+    assert all(w.seqs is None for w in places if not w.record_ids)
+    lines = [line for line in checklists.markdown(report, "test").splitlines()
+             if line.startswith("- In the methods, decision")]
+    together = f"- In the methods, decisions #5, #6 and #7 (`confirm_role`): “{folded[0].quote}”"
+    assert lines.count(together) == len(folded)
+    assert not [line for line in lines if line.startswith("- In the methods, decision #7 ")]
+    # Silent on a place that is one record's: it names its one decision, `bp_sys`'s #8 among them.
+    singles = [w for w in places if not w.record_ids]
+    assert any(w.record_id == records[7].id for w in singles)
+    for w in singles:
+        assert f"- In the methods, decision #{w.seq} (`{w.kind}`): “{w.quote}”" in lines, w
+    assert len(lines) == len(places)
+
+
 # ── the tables ───────────────────────────────────────────────────────────────
 
 EFFECTS = {
@@ -294,6 +421,79 @@ def test_the_figures_are_self_contained_greyscale_serif_svg():
     assert re.findall(r'font-weight="700">([^<]+)<', svg).count("a_1") == 1
 
 
+# A lineage over 40 raw columns (``models.lineage.COLLAPSE_AT``), which the design stage folds into
+# one node per role in each lane: 30 nutrients, 12 characteristics and total energy, each kept as
+# it is (no step runs, so no column is drawn alone).
+WIDE_ROLES = {**{f"n{i:02d}": "exposure" for i in range(30)},
+              **{f"c{i:02d}": "covariate" for i in range(12)}, "kcal": "energy"}
+
+
+def _wide_design() -> dict[str, Any]:
+    from turbotab.core.models.lineage import COLLAPSE_AT, trace
+
+    assert len(WIDE_ROLES) > COLLAPSE_AT
+    lineage = trace([], list(WIDE_ROLES), WIDE_ROLES).model_dump(mode="json")
+    return {"matrix": {"n_rows": 90, "n_cols": len(WIDE_ROLES)}, "lineage": lineage}
+
+
+def _texts(svg: str) -> list[str]:
+    import xml.etree.ElementTree as ET
+
+    return [t.text or "" for t in ET.fromstring(svg).iter("{http://www.w3.org/2000/svg}text")]
+
+
+def test_under_predict_the_lineage_figure_names_its_groups_as_the_roles_card_does():
+    """The ruling at W1-W's cap (M2): under Predict the bundle's lineage figure names its collapsed
+    predictor groups in the words the server serves for the roles card (``readings.served_groups``),
+    as the shell's Columns lineage does (LiveScenes.tsx ``inGroupWords``): in the raw lane by the
+    count and the group's name for many, after it by the group's name and its count of columns, and
+    a name that is one word for one or many with its count of columns in every lane. It never says
+    "covariate columns" or "exposure columns". The words for a dietary project are written out here
+    from the ruling of 2026-10-17; the counts are the frame's."""
+    design = _wide_design()
+    state = d.ProjectState(lens=["dietary"], target="y", purpose="prediction",
+                           roles=dict(WIDE_ROLES))
+    svg, caption = figures.lineage(design, groups=figures.predictor_words(state))
+    said = _texts(svg)
+    assert {"30 nutrients", "12 characteristics", "total energy: 1 column"} <= set(said)
+    assert said.count("nutrients: 30 columns") == said.count("characteristics: 12 columns") == 2
+    assert said.count("total energy: 1 column") == 3
+    assert not any(w in t for t in said for w in ("exposure", "covariate", "energy column"))
+    assert "covariate" not in caption and "exposure" not in caption
+    # the clinical lens names the Predictor role's group by its measures
+    clinical = d.ProjectState(lens=["clinical"], target="y", purpose="prediction")
+    svg, _ = figures.lineage(design, groups=figures.predictor_words(clinical))
+    assert "30 measures" in _texts(svg) and "measures: 30 columns" in _texts(svg)
+
+
+@pytest.mark.parametrize("purpose", ["inference", None])
+def test_under_estimate_the_lineage_figure_keeps_the_design_stages_words(purpose):
+    """The other way: under Estimate (and with no goal) the bundle passes no groups, and the figure
+    is the one drawn from the design stage's labels, byte for byte ("30 exposure columns")."""
+    design = _wide_design()
+    state = d.ProjectState(lens=["dietary"], target="y", purpose=purpose, roles=dict(WIDE_ROLES))
+    assert figures.predictor_words(state) is None
+    svg, caption = figures.lineage(design, groups=figures.predictor_words(state))
+    assert (svg, caption) == figures.lineage(design)
+    said = _texts(svg)
+    assert {"30 exposure columns", "12 covariate columns", "1 energy column"} <= set(said)
+
+
+@pytest.mark.parametrize("purpose, want", [("prediction", "30 nutrients"),
+                                           ("inference", "30 exposure columns")])
+def test_the_bundles_lineage_figure_is_worded_by_the_goal(tmp_path, purpose, want):
+    """The bundle itself draws ``figures/lineage.svg`` with the goal's words, from the design
+    stage's artifact over 40 raw columns."""
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    for x in (d.SetLens(lenses=["dietary"]), d.SetTarget(column="y"),
+              d.SetPurpose(purpose=purpose), d.SetRoles(roles=dict(WIDE_ROLES))):
+        log.append(x, sentence=_say)
+    source = _source(log.records(), purpose=purpose, artifacts={"design": _wide_design()})
+    files = bundle.contents(source, gated=False).files
+    said = _texts(files["figures/lineage.svg"].decode("utf-8"))
+    assert want in said
+
+
 # ── the replay's own refusals ────────────────────────────────────────────────
 
 
@@ -315,6 +515,33 @@ def test_the_replay_refuses_a_file_that_differs_naming_both_hashes(tmp_path):
     assert replay.close(1.0, 1.0 + 1e-13) and not replay.close(1.0, 1.0 + 1e-11)
     assert replay.close(1e6, 1e6 + 1e-7) and replay.close(None, None) and not replay.close(None, 0)
     json.dumps(report.model_dump())
+
+
+PROVENANCE = {"url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/GLU_J.xpt",
+              "release_date": "2019-11-01", "license": "Public domain (17 U.S.C. 105)"}
+
+
+def test_an_input_echoes_where_it_came_from_only_when_given(tmp_path):
+    """SWARM_ENGINE_PLAN E5: an input's URL, release date and license, as given at upload, are
+    echoed into ``provenance.json``'s inputs; an input given none has exactly the keys it had."""
+    import hashlib
+
+    from turbotab.core.export.source import input_file
+
+    data = tmp_path / "GLU_J.csv"
+    data.write_bytes(b"seqn,lbxglu\n1,98\n2,104\n")
+    sha = hashlib.sha256(data.read_bytes()).hexdigest()
+    given = input_file("table", "GLU_J.csv", data, None, provenance=PROVENANCE).to_json()
+    assert given == {"role": "table", "name": "GLU_J.csv", "path": str(data), "bytes": 23,
+                     "sha256": sha, "file_id": None, **PROVENANCE}
+    some = input_file("joined file", "GLU_J.csv", data, None, file_id="f0123456789",
+                      provenance={"license": PROVENANCE["license"]}).to_json()
+    assert some["license"] == PROVENANCE["license"] and "url" not in some
+    plain = input_file("table", "GLU_J.csv", data, None).to_json()
+    assert set(plain) == {"role", "name", "path", "bytes", "sha256", "file_id"}
+    # The replay checks an input by its SHA-256 alone: the echoed fields change nothing there.
+    [check] = replay.verify_inputs({"inputs": [given]})
+    assert check.matches and check.sha256 == sha
 
 
 def test_the_performance_table_keeps_the_fits_unweighted_label():

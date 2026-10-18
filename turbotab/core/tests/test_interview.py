@@ -13,6 +13,16 @@ ONE_ROW = {"grain": "one_row_per_unit"}  # M2: the grain is asked before the rol
 DIET_ROLES = {"participant_id": "identifier", "age": "covariate", "energy_kcal": "energy",
               "protein_g": "exposure", "fat_g": "exposure", "carbohydrate_g": "exposure"}
 GENE_ROLES = {"sample_id": "identifier", "age": "covariate", "gene_0001": "exposure", "gene_0002": "exposure"}
+# BEATS_PREDICT §9 ruling 5: Predict asks neither the energy model nor the substitution, so the
+# tests of those two questions run under Estimate, with what you study declared, each covariate's
+# answers, and a forms card with no continuous column to ask about (the form is not applicable).
+ESTIMATE = dict(purpose="inference",
+                estimand={"exposure": "protein_g", "measure": "mean_difference",
+                          "contrast": "substitution"},
+                adjustment={c: {"exposure": "protein_g", "causes_exposure": "yes",
+                                "causes_outcome": "yes", "after_exposure": "no"}
+                            for c in ("age", "fat_g", "carbohydrate_g")})
+NO_FORMS = {"forms": {"purpose": "inference", "ready": True, "needs": [], "waiting": False}}
 
 
 def _stages(**overrides):
@@ -76,7 +86,8 @@ def test_a_question_waits_on_a_stage_still_computing_but_not_on_one_that_failed(
 def test_energy_adjustment_applies_under_the_dietary_lens_only():
     base = dict(target="hba1c", task="regression", purpose="prediction", exclusions=[], missing="impute",
                 split={"holdout": 0.2}, grain=ONE_ROW)
-    diet = _by_key(route(ProjectState(lens=["dietary"], roles=DIET_ROLES, **base), _stages()))
+    diet = _by_key(route(ProjectState(lens=["dietary"], roles=DIET_ROLES, **{**base, **ESTIMATE}),
+                         _stages()))
     assert diet["energy_adjustment"].status == "open"
     assert diet["substitution"].status == "waiting"
     genes = _by_key(route(ProjectState(lens=["genomics"], roles=GENE_ROLES, orientation="sample_major",
@@ -88,7 +99,7 @@ def test_energy_adjustment_applies_under_the_dietary_lens_only():
 
 
 def test_energy_adjustment_says_which_ingredient_is_missing():
-    base = dict(lens=["dietary"], target="y", task="regression", purpose="prediction", grain=ONE_ROW)
+    base = dict(lens=["dietary"], target="y", task="regression", purpose="inference", grain=ONE_ROW)
     no_energy = {k: v for k, v in DIET_ROLES.items() if v != "energy"}
     step = _by_key(route(ProjectState(roles=no_energy, **base), _stages()))["energy_adjustment"]
     assert step.status == "not_applicable" and "energy role" in step.reason
@@ -104,14 +115,16 @@ def test_energy_adjustment_says_which_ingredient_is_missing():
 
 
 def test_substitution_waits_for_a_fresh_fit_and_needs_two_energy_nutrients():
-    state = ProjectState(lens=["dietary"], target="hba1c", task="regression", purpose="prediction",
-                         roles=DIET_ROLES, exclusions=[], missing="impute", split={"holdout": 0.2},
-                         energy_adjustment={"method": "none"}, models=["linear"], grain=ONE_ROW)
-    steps = _by_key(route(state, _stages(fit="stale")))
+    state = ProjectState(lens=["dietary"], target="hba1c", task="regression", roles=DIET_ROLES,
+                         exclusions=[], missing="impute", split={"holdout": 0.2},
+                         energy_adjustment={"method": "none"}, models=["linear"], grain=ONE_ROW,
+                         **ESTIMATE)
+    steps = _by_key(route(state, _stages(fit="stale"), NO_FORMS))
     assert steps["substitution"].status == "waiting" and steps["substitution"].waiting_on == ["fit"]
-    assert _by_key(route(state, _stages()))["substitution"].status == "open"
+    assert _by_key(route(state, _stages(), NO_FORMS))["substitution"].status == "open"
     one = {"energy_kcal": "energy", "protein_g": "exposure", "age": "covariate"}
-    step = _by_key(route(state.model_copy(update={"roles": one}), _stages()))["substitution"]
+    step = _by_key(route(state.model_copy(update={"roles": one}), _stages(),
+                         NO_FORMS))["substitution"]
     assert step.status == "not_applicable" and "two" in step.reason
 
 
@@ -238,5 +251,24 @@ def test_no_step_waits_on_a_fit_that_failed_or_was_stopped():
     stopped["fit"] = {"status": "stale", "cancelled": True}
     assert _by_key(route(seal, stopped, pressed=True))["open_seal"].status == "open"
     assert _by_key(route(seal, _stages(fit="running"), pressed=True))["open_seal"].waiting_on == ["fit"]
-    substitution = _by_key(route(ProjectState(**base), _stages(fit="error")))["substitution"]
+    # the substitution, asked under Estimate alone (ruling 5)
+    substitution = _by_key(route(ProjectState(**{**base, **ESTIMATE}), _stages(fit="error"),
+                                 NO_FORMS))["substitution"]
     assert substitution.status == "open" and substitution.waiting_on == []
+
+
+def test_a_conditional_answer_whose_condition_does_not_hold_is_no_questions_writer():
+    """A conditional answer stands only while its condition holds (``register_kind(..., holds=)``),
+    so the record named as a slot's writer is the one whose write stands, as the fold reads the
+    log: a survey answer given for the other goal is not the survey's writer, and becomes it once
+    the goal is the one it was given for. The energy model and the substitution under Predict are
+    in ``test_energy_questions_under_predict.py``."""
+    from turbotab.core.decisions import fold
+    from turbotab.core.interview import _live_writer
+
+    records = [_record(1, {"kind": "set_purpose", "purpose": "prediction"}),
+               _record(2, {"kind": "set_survey", "estimand": "sample", "goal": "prediction"}),
+               _record(3, {"kind": "set_survey", "estimand": "sample", "goal": "inference"})]
+    assert _live_writer(records, fold(records))["survey"] == "r2"
+    records.append(_record(4, {"kind": "set_purpose", "purpose": "inference"}))
+    assert _live_writer(records, fold(records))["survey"] == "r3"

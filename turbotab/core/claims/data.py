@@ -200,6 +200,7 @@ register(Claim(
                  "turbotab.core.usual_intake:ul_form"),
     fallback="data.ul_share_unread",
     author=AUTHOR,
+    origin="audit",
 ))
 
 
@@ -255,6 +256,7 @@ register(Claim(
                  "turbotab.core.methods.usual_intake:methods_sentence",
                  "turbotab.core.decisions:SetUsualIntake"),
     author=AUTHOR,
+    origin="engine",
 ))
 
 
@@ -306,6 +308,7 @@ register(Claim(
     enforced_by=("turbotab.core.readings:constant_values",
                  "turbotab.core.stages.rows:propose_roles"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 
@@ -422,6 +425,7 @@ register(Claim(
                  "turbotab.core.recognizers:_nhanes_weight_name",
                  "turbotab.core.recognizers:_interview_only"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 
@@ -589,6 +593,7 @@ register(Claim(
                  "turbotab.core.methods.omics:_excluded_by_name",
                  "turbotab.core.methods.omics:_estimated_counts"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 
@@ -663,6 +668,7 @@ register(Claim(
                  "turbotab.core.estimand:_intercepts_still_have_rows",
                  "turbotab.core.estimand:intercepts_refusal"),
     author=AUTHOR,
+    origin="audit",
 ))
 
 
@@ -723,4 +729,5 @@ register(Claim(
     ruled="docs/turbotab-next/calm/BEATS_MODELS_RESULTS.md §6, the tail question (Round 2, E23; "
           "claims backtest D-086)",
     author=AUTHOR,
+    origin="audit",
 ))

@@ -44,6 +44,9 @@ export type FitLock = S["FitLock"];
 export type QuestLog = S["QuestLog"];
 export type QuestStage = S["QuestStage"];
 export type QuestLine = S["QuestLine"];
+/** One reading a quest line carries, with its ways forward (each a decision, or none). */
+export type ReadItem = S["ReadItem"];
+export type ReadOption = S["ReadOption"];
 export type ForTheRecord = S["ForTheRecord"];
 export type Ledger = S["Ledger"];
 export type LedgerRow = S["LedgerRow"];

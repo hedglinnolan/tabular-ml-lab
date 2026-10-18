@@ -790,6 +790,7 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
   - the linear family chosen
 - **Question:** Which energy substitution, in what steps? (the substitution question)
 - **Where:** recorded by `set_substitution`; run by the `substitution` stage; placed at MODELING_SEQUENCE §1 step 11's displays, beside the coefficient table.
+- **Under prediction:** not asked, so neither offered nor placed (the Router's gate, `interview.applicability`): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.”
 - **The method's own leash:** prediction not offered; inference recommended.
 - **Lenses:** Dietary assessment. Declared by the SURVEY package.
 
@@ -797,8 +798,8 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `design_band`: A band by Taylor linearization over the survey design | Predictive margins with survey data (Graubard & Korn 1999) | Not asked: under prediction the scores describe the rows they were computed on, and the weights are noted, not used. | not offered, 2 | Sound for the surveyed population: the band carries both the error of the weighted fit and which people were sampled. | recommended, 1 |
-| `row_bootstrap`: A band from refits on bootstrap resamples of rows | The band this app draws without a survey design | The band prediction draws on its training rows. | recommended, 1 | Not under the population answer: a row bootstrap ignores the strata and PSUs, so the design's band replaces it. | not offered, 2 |
+| `design_band`: A band by Taylor linearization over the survey design | Predictive margins with survey data (Graubard & Korn 1999) | Not asked (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | not offered, 2 | Sound for the surveyed population: the band carries both the error of the weighted fit and which people were sampled. | recommended, 1 |
+| `row_bootstrap`: A band from refits on bootstrap resamples of rows | The band this app draws without a survey design | Not asked (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | not offered, 1 | Not under the population answer: a row bootstrap ignores the strata and PSUs, so the design's band replaces it. | not offered, 2 |
 
 **Storyboard** (the transform player's real steps):
 
@@ -834,16 +835,17 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
   - a fitted family that predicts each class's probability
   - the substitution answer (donor, recipient and step)
 - **Question:** Which energy substitution, in what steps? (the substitution question; a multiclass outcome draws one curve per class)
-- **Where:** recorded by `set_substitution`; run by the `substitution` stage; placed at MODELING_SEQUENCE §1 step 11's displays: beside the coefficient table under inference, beside the comparison under prediction.
-- **The method's own leash:** prediction recommended; inference recommended.
+- **Where:** recorded by `set_substitution`; run by the `substitution` stage; placed at MODELING_SEQUENCE §1 step 11's displays: beside the coefficient table under inference.
+- **Under prediction:** not asked, so neither offered nor placed (the Router's gate, `interview.applicability`): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.”
+- **The method's own leash:** prediction not offered; inference recommended.
 - **Lenses:** Dietary assessment. Declared by the MULTISUB package.
 
 **Options**, each labeled customary and sound for each purpose, with its leash rung and its rank (1 is offered first):
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `class_curves`: One curve per class: the average change in each class's predicted probability | Average discrete changes of a multinomial model on each outcome's probability (Long & Freese 2014, ch. 8; Stata margins and R marginaleffects per outcome) | Sound as a model contrast: what the fitted model predicts for each class when k kcal move. | recommended, 1 | Sound: a marginal, isocaloric contrast on the probability scale over the stated population; the curves sum to zero at every k, as each person's probabilities sum to one. | recommended, 1 |
-| `reference_ratios`: Relative-risk ratios against the reference class per kcal swapped | The multinomial coefficients' contrast, as categorical-outcome analyses report them | Not a prediction: the class curves say what the model predicts. | not offered, 2 | Conditional on every covariate and against one reference class: it says how the odds of a class against the reference move, not how any class's probability does, and it is one number only when every energy source is a linear term. The coefficient table reports each class's ratios per unit. | not offered, 2 |
+| `class_curves`: One curve per class: the average change in each class's predicted probability | Average discrete changes of a multinomial model on each outcome's probability (Long & Freese 2014, ch. 8; Stata margins and R marginaleffects per outcome) | Not asked (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | not offered, 1 | Sound: a marginal, isocaloric contrast on the probability scale over the stated population; the curves sum to zero at every k, as each person's probabilities sum to one. | recommended, 1 |
+| `reference_ratios`: Relative-risk ratios against the reference class per kcal swapped | The multinomial coefficients' contrast, as categorical-outcome analyses report them | Not asked (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | not offered, 2 | Conditional on every covariate and against one reference class: it says how the odds of a class against the reference move, not how any class's probability does, and it is one number only when every energy source is a linear term. The coefficient table reports each class's ratios per unit. | not offered, 2 |
 
 **Storyboard** (the transform player's real steps):
 
@@ -863,16 +865,15 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
-| implies | `class_probabilities_sum_to_one` (id `curves_sum_to_zero`) | any option | prediction, inference | The class curves sum to zero at every k, because each row's class probabilities sum to one before and after the move; a set that does not is a defect, raised and never drawn. | `turbotab.core.methods.substitution:check_sums_to_zero` |
-| implies | `refit_band` | any option; when a band asked for (n_boot > 0) with no surveyed population | prediction, inference | Each class's band comes from refits of the model on bootstrap resamples of the rows it was fit on (whole units when rows repeat), its interval read from that class's refits. | `turbotab.core.methods.substitution:class_refit_band` |
+| implies | `class_probabilities_sum_to_one` (id `curves_sum_to_zero`) | any option | inference | The class curves sum to zero at every k, because each row's class probabilities sum to one before and after the move; a set that does not is a defect, raised and never drawn. | `turbotab.core.methods.substitution:check_sums_to_zero` |
+| implies | `refit_band` | any option; when a band asked for (n_boot > 0) with no surveyed population | inference | Each class's band comes from refits of the model on bootstrap resamples of the rows it was fit on (whole units when rows repeat), its interval read from that class's refits. | `turbotab.core.methods.substitution:class_refit_band` |
 | implies | `multiple_imputation_compatible` (id `pooled_per_k`) | any option; when multiple imputation under inference | inference | Each completed copy's class curves are drawn on that copy's rows through that copy's own fit (a family with no coefficient table refit on each copy), and pooled at each k by Rubin's rules; a curve from one fill is never shown. | `turbotab.core.methods.substitution:pool_class_curves` |
 | conflicts | `imputation_blocked` (id `blocked_with_the_table`) | any option; when multiple imputation under inference with blanks among the analyzed rows, blocked and recorded or with no copies drawn | inference | While the missing-values answer blocks the coefficient table under inference (passive imputation with a declared nonlinear term, single-level imputation on clustered rows, imputation that cannot run on these data), or no imputed copies were drawn for the fit, no class curve is drawn: each family's curves are blocked and recorded with the table's own refusal and exits, never drawn on one fill of the blanks. *(rung: blocked until recorded)* Exits: the coefficient table's own exits (complete cases, with their assumption stated, among them); with no copies drawn: the linear model added, whose coefficient table draws them. | `turbotab.core.methods.substitution:missing_values_block` |
 | implies | `survey_population` (id `design_based`) | any option; when the survey answer "the surveyed population" | inference | Each class's curve comes from the survey-weighted multinomial fit, averaged with the weights, and its band is Taylor linearization over the survey design; refits on bootstrap resamples of rows are not drawn. | `turbotab.core.methods.substitution:design_class_curves` |
 | conflicts | `survey_population` (id `blocked_family`) | any option; when the survey answer "the surveyed population" and a family with no design-based estimator | inference | A family with no design-based estimator draws no class curves under the surveyed population: blocked and recorded. *(rung: blocked until recorded)* Exits: the design-based family in its place, every other chosen family kept; the sample-only attestation. | `turbotab.core.stages.class_substitution:population_blocked` |
 | conflicts | `survey_population` (id `no_design_df`) | any option; when the survey answer "the surveyed population" with no design degrees of freedom (every PSU alone in its stratum) | inference | A design whose analysis rows lie in no more PSUs than strata leaves no degrees of freedom for an interval: the coefficient table is refused, and no class curve is drawn either, blocked and recorded, never shown as points under a caption that promises intervals. *(rung: blocked until recorded)* Exits: the sample-only attestation. | `turbotab.core.methods.substitution:no_design_df` |
 | conflicts | `omitted_energy_sources` (id `omitted_sources`) | any option; when energy sources left out above MAX_OMITTED_SHARE of total energy | inference | Energy sources left out of the model, above the stated share of total energy, block the swap under inference until it is recorded: the curves carry the confounding of the sources total energy holds as one composite. *(rung: blocked until recorded)* Exits: add each missing energy source to the model as a study factor; Keep this swap; the curve carries their confounding; Choose another swap. | `turbotab.core.decisions:_substitution_has_every_energy_source` |
-| implies | `omitted_energy_sources` (id `omitted_stated`) | any option; when energy sources left out of the model | prediction | Under prediction the curves are model contrasts: the sources the model leaves out are named as a concern, never blocked. | `turbotab.core.methods.energy:omitted_sentence` |
-| implies | `estimand_label` | any option | prediction, inference | The comparison you want names the probability scale, the isocaloric move and the population the curves average over; each class's label is the change in its probability at the stated k, an average over that population, since a multinomial model's change depends on k and on each person's intake (MODELING_SEQUENCE §2). | `turbotab.core.methods.substitution:class_estimand` |
+| implies | `estimand_label` | any option | inference | The comparison you want names the probability scale, the isocaloric move and the population the curves average over; each class's label is the change in its probability at the stated k, an average over that population, since a multinomial model's change depends on k and on each person's intake (MODELING_SEQUENCE §2). | `turbotab.core.methods.substitution:class_estimand` |
 
 **Primary sources:**
 
@@ -1155,18 +1156,7 @@ Their options are labeled customary and sound outside the registry where shown h
 
 #### The energy model (`energy_adjustment`)
 
-Under **prediction**, soundest first. The field reaches for `residual_energy_dropped` first. Tension the coach names: “The residual method is the field's default; in its energy-dropped form it discards total energy's signal, so the methods that keep energy rank first.”
-
-| Rank | Option | Customary (field: text, source) | Sound | Reason |
-|---|---|---|---|---|
-| 1 | `standard`: Standard (multivariate) model | nutritional epidemiology: Yes (NUTRITION_PACK §04; Tomova et al. 2022). (Willett, Nutritional Epidemiology (NUTRITION_PACK §04)) | sound | Good: keeps total energy. |
-| 2 | `residual`: Willett residual model, total energy kept | nutritional epidemiology: Yes (McCullough & Byrd 2023, AJE 192(11):1801-1805). (McCullough & Byrd 2023, AJE 192:1801) | sound | Fine: keeps total energy. |
-| 3 | `density_multivariate`: Multivariate nutrient density model | nutritional epidemiology: Yes (NUTRITION_PACK §04). (NUTRITION_PACK §04) | sound | Fine: keeps total energy. |
-| 4 | `partition`: Energy partition model | nutritional epidemiology: Yes (NUTRITION_PACK §04). (NUTRITION_PACK §04) | sound | Fine: carries total energy in its parts. |
-| 5 | `all_components`: All-components model | nutritional epidemiology: Emerging (Tomova et al. 2022, AJCN 115(1):189-198); disputed (Willett, Stampfer & Tobias 2022, AJCN 116(2):608-609). (Tomova et al. 2022, AJCN 115:189; disputed by Willett, Stampfer & Tobias 2022) | sound | Information-equivalent to keeping total energy. |
-| 6 | `none`: No energy adjustment | nutritional epidemiology: As the unadjusted model beside an adjusted one (NUTRITION_PACK §04). (NUTRITION_PACK §04 and §08 (the crude model beside the adjusted ones)) | conditional | Rarely: it drops total energy, often the strongest predictor. |
-| 7 | `residual_energy_dropped`: Willett residual model, total energy left out | nutritional epidemiology: Yes, the field default (NUTRITION_PACK §04). (Willett, Nutritional Epidemiology (NUTRITION_PACK §04: the field default)) | unsound | Avoid: discards total energy's signal. |
-| 8 | `density`: Nutrient density alone | nutritional epidemiology: Yes, the weakest (NUTRITION_PACK §04). (NUTRITION_PACK §04) | unsound | Rank low: drops total energy. |
+Under **prediction** it is not asked (the Router's gate, `interview.applicability`): “The energy model decides what a nutrient's coefficient means, and under prediction no coefficient is read as an effect.”
 
 Under **inference**, soundest first. The field reaches for `residual_energy_dropped` first. Tension the coach names: “The residual method is the field's default; all components ranks first for substitution, with no composite-variable bias at a precision cost (Tomova et al. 2022, AJCN 115:189).”
 
@@ -1183,7 +1173,6 @@ Under **inference**, soundest first. The field reaches for `residual_energy_drop
 
 **Ranked by the data:** the app offers these options in another order than the rank above where the data decide it; what it offers first under each condition:
 
-- Under prediction, a table with total energy: `standard`: Good: keeps total energy.
 - Under inference, a table with every source of energy as a column (all components needs each): `all_components`: Sound for total and average relative effects, at a precision cost.
 - Under inference, a table without every source, or whose sources nest (a total beside its parts, such as sugar inside carbohydrate: the partition check refuses it, `proposals.partition_check`): `standard`: Acceptable with the omitted energy sources named.
 
@@ -1322,7 +1311,7 @@ Under **inference** it is stated, never asked by default (`causal.causal_gate`):
 
 ## 2 · How they chain
 
-Every relation this lens's own methods take part in: declared by them, or declared by another method toward them (BLUEPRINT §13). Blue: this lens's methods; grey: other methods; orange: a named consequence (a state, a concern or a refusal, not a method). Solid: implies or precedes; dotted: enables, disables or conflicts; thick: invalidates.
+Every relation this lens's own methods take part in: declared by them, or declared by another method toward them (BLUEPRINT §13). Each lists the purposes it declares, less any under which the Router does not ask the one question that offers the declaring method's options (the `substitution` question under prediction), and a relation declared only for such a purpose is left out. Any other purpose stays listed, even one under which the registry's rungs offer none of the method's options. Blue: this lens's methods; grey: other methods; orange: a named consequence (a state, a concern or a refusal, not a method). Solid: implies or precedes; dotted: enables, disables or conflicts; thick: invalidates.
 
 ```mermaid
 flowchart LR
@@ -1560,7 +1549,6 @@ flowchart LR
   n_multiclass_substitution -->|implies| n_survey_population
   n_multiclass_substitution -.->|conflicts| n_survey_population
   n_multiclass_substitution -.->|conflicts| n_omitted_energy_sources
-  n_multiclass_substitution -->|implies| n_omitted_energy_sources
   n_multiclass_substitution -->|implies| n_estimand_label
   n_design_based_cv -->|implies| n_design_folds
   n_design_based_cv -->|implies| n_no_cv_under_inference
@@ -1601,11 +1589,10 @@ The relations, with the sentence the app states when each fires:
 | `dietary_patterns` | implies | `survey_population` | any option; when a survey weight column | prediction, inference | The correlations, cluster centers and reduced rank regression are weighted by the survey weights, so the patterns are the surveyed population's. |
 | `dietary_patterns` | implies | `varimax rotation` | `pca`, `factor_analysis`; when two or more patterns retained | prediction, inference | Components and factors are rotated by varimax, so each food group loads mainly on one pattern. |
 | `imputed_copies_pooled` | implies | `rubins_rules` | any option; when imputed copies kept as records, under inference | inference | each copy analyzed with its own outcome and pooled by Rubin's rules |
-| `multiclass_substitution` | implies | `class_probabilities_sum_to_one` | any option | prediction, inference | The class curves sum to zero at every k, because each row's class probabilities sum to one before and after the move; a set that does not is a defect, raised and never drawn. |
-| `multiclass_substitution` | implies | `estimand_label` | any option | prediction, inference | The comparison you want names the probability scale, the isocaloric move and the population the curves average over; each class's label is the change in its probability at the stated k, an average over that population, since a multinomial model's change depends on k and on each person's intake (MODELING_SEQUENCE §2). |
+| `multiclass_substitution` | implies | `class_probabilities_sum_to_one` | any option | inference | The class curves sum to zero at every k, because each row's class probabilities sum to one before and after the move; a set that does not is a defect, raised and never drawn. |
+| `multiclass_substitution` | implies | `estimand_label` | any option | inference | The comparison you want names the probability scale, the isocaloric move and the population the curves average over; each class's label is the change in its probability at the stated k, an average over that population, since a multinomial model's change depends on k and on each person's intake (MODELING_SEQUENCE §2). |
 | `multiclass_substitution` | implies | `multiple_imputation_compatible` | any option; when multiple imputation under inference | inference | Each completed copy's class curves are drawn on that copy's rows through that copy's own fit (a family with no coefficient table refit on each copy), and pooled at each k by Rubin's rules; a curve from one fill is never shown. |
-| `multiclass_substitution` | implies | `omitted_energy_sources` | any option; when energy sources left out of the model | prediction | Under prediction the curves are model contrasts: the sources the model leaves out are named as a concern, never blocked. |
-| `multiclass_substitution` | implies | `refit_band` | any option; when a band asked for (n_boot > 0) with no surveyed population | prediction, inference | Each class's band comes from refits of the model on bootstrap resamples of the rows it was fit on (whole units when rows repeat), its interval read from that class's refits. |
+| `multiclass_substitution` | implies | `refit_band` | any option; when a band asked for (n_boot > 0) with no surveyed population | inference | Each class's band comes from refits of the model on bootstrap resamples of the rows it was fit on (whole units when rows repeat), its interval read from that class's refits. |
 | `multiclass_substitution` | implies | `survey_population` | any option; when the survey answer "the surveyed population" | inference | Each class's curve comes from the survey-weighted multinomial fit, averaged with the weights, and its band is Taylor linearization over the survey design; refits on bootstrap resamples of rows are not drawn. |
 | `nci_usual_intake` | implies | `population_design` | any option; when a survey design answered as the surveyed population | prediction, inference | the fit and the distribution are weighted, and the standard errors come from Fay's balanced repeated replication (two PSUs per stratum) or a bootstrap of PSUs within strata, stated in the sentence |
 | `nci_usual_intake` | implies | `sample_attestation` | any option; when a survey design answered as these participants | prediction, inference | unweighted estimates, a bootstrap over participants, and the attestation in the sentence |
@@ -1745,8 +1732,8 @@ The option each method offers first for each purpose, its rung, and the reason i
 | Survey-weighted linear, logistic and multinomial models (`survey_linear`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | Survey-weighted proportional-odds model (`survey_ordinal`) | `unweighted` (recommended): The fit prediction uses: its scores describe these rows. | `design_based` (recommended): Sound for the surveyed population: weighted estimating equations with a linearized variance (Binder 1983; Lumley 2010). |
 | The effect of the assigned treatment in a randomized trial (`trial_effect`) | not offered under prediction: Not offered under Predict: the effect of an assigned treatment is an Estimate question | `ancova` (recommended): Sound for a numeric outcome in a parallel trial: adjustment for precision only, the covariates named before the data were seen |
-| The substitution curve over the surveyed population (`survey_substitution`) | `row_bootstrap` (recommended): The band prediction draws on its training rows. | `design_band` (recommended): Sound for the surveyed population: the band carries both the error of the weighted fit and which people were sampled. |
-| Substitution curves for a multiclass outcome, one per class (`multiclass_substitution`) | `class_curves` (recommended): Sound as a model contrast: what the fitted model predicts for each class when k kcal move. | `class_curves` (recommended): Sound: a marginal, isocaloric contrast on the probability scale over the stated population; the curves sum to zero at every k, as each person's probabilities sum to one. |
+| The substitution curve over the surveyed population (`survey_substitution`) | not asked under prediction (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | `design_band` (recommended): Sound for the surveyed population: the band carries both the error of the weighted fit and which people were sampled. |
+| Substitution curves for a multiclass outcome, one per class (`multiclass_substitution`) | not asked under prediction (the Router's gate): “A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.” | `class_curves` (recommended): Sound: a marginal, isocaloric contrast on the probability scale over the stated population; the curves sum to zero at every k, as each person's probabilities sum to one. |
 | Design-based cross-validation (`design_based_cv`) | `population` (recommended): Sound for performance in the surveyed population (Wieczorek et al. 2022) | not offered under inference: Not shown: under inference no cross-validated score is reported |
 | Trends across stacked survey cycles (`cycle_trends`) | not offered under prediction: Not offered under Predict: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) | not offered under inference: Not offered under Estimate an effect: a trend across survey cycles describes the population over time (offered under Describe; see DESCRIBE_LABELS) |
 | How sensitive a trial's result is to its missing outcomes (the tipping point) (`trial_missing_outcomes`) | not offered under prediction: Not offered under Predict: the effect of an assigned treatment is an Estimate question | `delta_tipping_point` (recommended): Sound: says how different the missing would have to be, in the outcome's own units, before the conclusion changes |
@@ -1755,7 +1742,7 @@ The option each method offers first for each purpose, its rung, and the reason i
 
 | Question | Prediction | Inference |
 |---|---|---|
-| the energy model (`energy_adjustment`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
+| the energy model (`energy_adjustment`) | not asked under prediction | ranked by the data: §3.4 |
 | the eligibility screens (`exclusions`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
 | missing values (`missing`) | `impute` (sound): Sound: fit in each training fold without the outcome, it imputes a new row as it was developed (Josse et al. 2019; Sisk et al. 2023). | `multiple_imputation` (sound): Sound: with the outcome and energy in the imputation model it is unbiased under missing at random and its intervals carry the imputation's uncertainty (Moons et al. 2006). |
 | the split and the validation (`split`) | ranked by the data: §3.4 | ranked by the data: §3.4 |
@@ -1821,7 +1808,7 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 |---|---|---|---|
 | Usual-intake distribution (NCI method) (`nci_usual_intake`) | inference | a component with 5% of its recalls at zero or fewer | `amount_only`: consumed nearly every day, so the amount-only model ranks first (Tooze et al. 2010). |
 | Usual-intake distribution (NCI method) (`nci_usual_intake`) | inference | a component with more than 5% of its recalls at zero | `two_part`: an episodically consumed food, so the two-part model ranks first (Tooze et al. 2006). |
-| A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | an intake on a table with total energy | `standard`, the energy model's first (the energy-adjustment question) |
+| A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | an intake on a table with total energy | nothing: the energy-adjustment question, which sets an intake's transform, is not asked (“The energy model decides what a nutrient's coefficient means, and under prediction no coefficient is read as an effect.”) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | a multi-item scale | `score`: declared with its items and key (`set_scales`), never ranked; no question asks it, so from the app the items enter on their own (the scales contract) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | prediction | raw counts or intensities | the omics normalization by the data's kind (`log_cpm_tmm` for counts, `pqn_log2` for intensities) |
 | A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`) | inference | an intake on a table with every source of energy as a column (all components needs each) | `all_components`, the energy model's first (the energy-adjustment question) |
@@ -1857,7 +1844,6 @@ Each condition the app ranks by, and what it offers first under it, computed by 
 | The E-value of a difference, standardized by the estimand's SD (`evalue_sd`) | inference | the sample answer (no weights) | `sample`: the analyzed rows' SD |
 | Sensitivity to unmeasured confounding (`unmeasured_confounding`) | inference | a difference from a least-squares fit (a linear outcome's coefficient) | `robustness_value` then `e_value` |
 | Sensitivity to unmeasured confounding (`unmeasured_confounding`) | inference | a ratio (an odds, hazard or risk ratio), or a difference with no least-squares fit | `e_value` |
-| The energy model (`energy_adjustment`) | prediction | a table with total energy | `standard`: Good: keeps total energy. |
 | The energy model (`energy_adjustment`) | inference | a table with every source of energy as a column (all components needs each) | `all_components`: Sound for total and average relative effects, at a precision cost. |
 | The energy model (`energy_adjustment`) | inference | a table without every source, or whose sources nest (a total beside its parts, such as sugar inside carbohydrate: the partition check refuses it, `proposals.partition_check`) | `standard`: Acceptable with the omitted energy sources named. |
 | The eligibility screens (`exclusions`) | prediction | whatever screens can run | `keep_every_row`: The model will be used on everyone, misreporters included, so they stay in its development rows. |
@@ -1889,6 +1875,8 @@ Each journey ran headlessly through the real server (the acceptance harness's dr
 - **Fixture:** `_tt_tmp_nhanes.csv (the NHANES export, tracked gzipped as turbotab/core/tests/fixtures/nhanes.csv.gz)`. V2_DEFINITION_OF_DONE §1: the NHANES export runs the dietary and clinical reference journeys.
 - **Lens declared:** dietary; **outcome:** `glucose`.
 - **Run:** at commit `2ba3c5727a`, with local changes on 2026-10-05, 467 s on 2 workers; engine 2.0.0.dev0.
+
+**This capture predates what the app asks today.** Under prediction the Router does not ask `energy_adjustment` (“The energy model decides what a nutrient's coefficient means, and under prediction no coefficient is read as an effect.”) or `substitution` (“A substitution estimates the effect of moving energy from one nutrient to another, and under prediction no effect is estimated.”), but this journey answered them (rows 10, 14 and 16 of the table below), so the methods section below quotes the sentences those answers wrote. Rerun the journey (`python -m turbotab.core.reference.journeys dietary-prediction`) to replace it.
 
 #### How the journey answered
 

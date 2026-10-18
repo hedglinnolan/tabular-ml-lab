@@ -150,6 +150,15 @@ interaction.py):
     under inference it is an estimate stage. ``cohort`` reads the forms: a consumers-only domain
     leaves the non-consumers on a line of their own.
 
+SWARM_ENGINE_PLAN E3 (turbotab/core/mattered.py), which decisions mattered under Estimate:
+
+    mattered     heavy   deps: working, cohort, split,           reads the lock, the exclusions, the
+                               target_info, design, fit          adjustment answers …; requires
+                                                                 plan_locked, estimand, models, purpose
+
+    ``mattered`` refits the exposure's estimate with each recorded choice changed, one at a time
+    (``methods.spec_curve``), once the plan is locked; its primary is the fit's reported estimate.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -188,6 +197,7 @@ from turbotab.core.stages.time_varying import TIME_VARYING_READS, time_varying_s
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 from turbotab.core.methods.exposure_form import FORMS_READS, forms_stage  # FORM
 from turbotab.core.methods.interaction import MODIFICATION_READS, modification_stage  # FORM
+from turbotab.core.mattered import MATTERED_READS, MATTERED_REQUIRES, mattered_stage  # E3
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 # What an estimate stage serves (``Stage.serves``): withheld while a question it rests on is open,
@@ -295,9 +305,12 @@ def build_graph() -> Graph:
             # the app's own finding reads, repair and all, are left to it by the lab pack's
             # censored-values finding; a text predictor confirmed "amount" through the ledger is
             # checked by the plausibility checks as the numbers the fit reads.
+            # findings 21 (W1-R R-f 14): the SAS-zero finding says how many columns hold its cells
+            # ("9 cells in 3 columns (`a` and 2 more)", ``repairs.sas_zero_finding``), so findings
+            # cached before are computed again rather than served in the old words.
             Stage(
                 "findings",
-                20,
+                21,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings", "numbers_read",
                  "shape_confirmations", "categorical", "aggregation"),
@@ -577,7 +590,14 @@ def build_graph() -> Graph:
             # design 30 (claims backtest D-058): under inference a yes/no outcome's grouping
             # answered "adjust for it" is refused when the rows the design describes hold too few
             # per group for an intercept each (``estimand.intercepts_refusal``).
-            Stage("design", 30, ("working", "split", "target_info"),
+            # design 31 (W1-R, the walkthrough's finding 3b): under prediction the design's concerns
+            # say nothing of a coefficient's meaning or a substitution (``warnings_for``, audit
+            # ME-02's total energy as a covariate), so a design cached before is computed again
+            # rather than served with them.
+            # design 32 (W1-T, ruling 5 extended): under prediction the design serves no estimand
+            # and no coefficient's meaning, a substitution among them, so a design cached before
+            # is computed again rather than served with them into a saved figure's provenance.
+            Stage("design", 32, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection", "survey"),
@@ -651,7 +671,13 @@ def build_graph() -> Graph:
             # fit 27 (RT-1b, F15): the split's seed and, under the population answer, the design
             # reach every fit; a tuned family searches nested in each, Cancel checked before every
             # candidate fit.
-            Stage("fit", 27, ("working", "design", "split", "target_info", "cohort"),
+            # fit 28 (W1-K): the held-out detail serves the no-predictor baseline's scores and,
+            # for a numeric outcome, the held-out verdict against it, so a fit cached before them
+            # is computed again rather than served without them.
+            # fit 29 (W1-R, the walkthrough's finding 10): the held-out calibration serves the rows
+            # behind each stretch of its predictions' range (``support``), so a fit cached before
+            # it is computed again rather than served with none.
+            Stage("fit", 29, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -847,7 +873,11 @@ def build_graph() -> Graph:
             # the file's order; the paragraph names only the families that drew curves.
             # explain 4 (EXPLORE repair, ruling 13): under inference no cross-validated score is
             # read, so no floor gates a curve or quotes a score.
-            Stage("explain", 4, ("working", "fit", "design", "target_info"),
+            # explain 5 (W1 part 2's U7): under prediction the default curves choose among every
+            # predictor-role column, not the Predictor role alone, by the same rule and cap.
+            # explain 6 (U7's repair): under prediction the adjusted scale is said of the adjusted
+            # predictors' curves alone, beside a covariate's on its own scale.
+            Stage("explain", 6, ("working", "fit", "design", "target_info"),
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models", "purpose"),
                   label="Explaining each fitted model", serves=ESTIMATE),
@@ -890,6 +920,14 @@ def build_graph() -> Graph:
                   (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
                   requires=("models", "purpose"),
                   label="Fitting the benchmark and weighing the models", serves=ESTIMATE),
+            # ── SWARM_ENGINE_PLAN E3: which decisions mattered, under Estimate ──
+            # mattered 1: the specification curve over the recorded choices, one at a time, after
+            # the lock (``core/mattered.py``). It requires the lock, so nothing is fitted before
+            # it. It serves no estimate of its own kind (``serves`` is unset), so it adds no slot
+            # to the plan the lock records; its routes withhold it as the estimates are withheld.
+            Stage("mattered", 1, ("working", "cohort", "split", "target_info", "design", "fit"),
+                  MATTERED_READS, mattered_stage, heavy=True, requires=MATTERED_REQUIRES,
+                  label="Refitting the estimate with each recorded choice changed"),
         ]
     ))
 

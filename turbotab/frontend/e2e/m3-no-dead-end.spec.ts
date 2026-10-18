@@ -25,7 +25,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
-import { fitReached, openSealCard, pressFit } from "./fit";
+import { toClassic } from "./classic";
+import { enabledNow } from "./ask";
+import { ANY_STAGE, cheapestFamily, fitReached, openSealCard, pressFit, stagesComputing, visibleWhileComputing, waitWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -68,6 +70,13 @@ interface Journey {
 
 async function view(page: Page, pid: string): Promise<View> {
   return page.evaluate(async (p) => (await (await fetch(`/api/projects/${p}`)).json()) as View, pid);
+}
+
+/** How many readings the open question's ask card still asks, each confirmed in its own press: a
+ *  group of one judgment, or a column judged on its own (core/readings.py `ask_exits`, ruling R-g). */
+function asking(step: Step): number {
+  const ask = step.ask as { groups?: unknown[] } | null;
+  return ask?.groups?.length ?? 0;
 }
 
 /** Console errors and failed requests; a 409 is an answer the app shows, not a failure. */
@@ -143,17 +152,18 @@ const roles: Answer = async (_page, slot) => {
   await slot.getByTestId("record-roles").click();
 };
 
-/** The first family on the shelf. */
-/** The shelf's first linear family where it has one (a fit of seconds), else its first: the
- *  journey checks that each question renders, and a family estimated at minutes (boosted trees on
- *  NHANES, about 10) is held for Fit and then takes that long once pressed. */
+/** The cheapest of the linear families on the shelf by its estimate (e2e/fit.ts), else the
+ *  cheapest family on it, else its first: the journey checks that each question renders, and a
+ *  family estimated at minutes (boosted trees on NHANES, about 10; the elastic net on the 497
+ *  genes) is held for Fit and then takes that long once pressed. The elastic net is the shelf's
+ *  first family on the genomics table, so "the first linear one" is not a cheap fit there. */
 const LIGHT = ["linear", "ridge", "elastic_net"];
 const models: Answer = async (page, slot) => {
   const shelf = slot.getByRole("listbox", { name: /Model families/ }).locator(':scope > [role="option"]');
   const options = (await shelf.count()) ? shelf : slot.locator('[role="option"]');
   const keys = await options.evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
-  const light = keys.findIndex((k) => LIGHT.includes(k));
-  const o = options.nth(Math.max(light, 0));
+  const cheapest = (await cheapestFamily(page, LIGHT)) ?? (await cheapestFamily(page, keys));
+  const o = options.nth(Math.max(keys.indexOf(cheapest ?? ""), 0));
   await o.focus();
   await expect(o).toBeFocused();
   await page.keyboard.press("Space");
@@ -195,14 +205,34 @@ const openSeal: Answer = async (page) => {
 };
 
 /** The ledger's ask card on the open question: confirm every line as shown, else each line, then
- *  the consumer's own ways forward (an energy column's unit and days). */
+ *  the consumer's own ways forward (an energy column's unit and days). True when a press was
+ *  made. The app answers a press by removing the card, so one the count saw may be gone by the
+ *  click, which would wait for it with no end: a click gives up after 15 s (as ask.ts's does),
+ *  and a card that left is not pressed (false: the question is answered as if it had none). The
+ *  press can still be disabled by the previous decision pending, so it is waited for first. */
 async function confirmAsk(slot: Locator): Promise<boolean> {
   const card = slot.getByTestId("ask-card");
   if (!(await card.count())) return false;
   const all = card.getByTestId("ask-confirm-all");
-  if (await all.count()) await all.click();
-  else if (await card.getByTestId("ask-confirm").count()) await card.getByTestId("ask-confirm").first().click();
-  else await card.getByTestId("ask-exits").getByRole("button").first().click();
+  const one = card.getByTestId("ask-confirm");
+  const press = (await all.count()) ? all : (await one.count()) ? one : card.getByTestId("ask-exits").getByRole("button");
+  // The card's buttons are disabled while the answer before this one is still being recorded
+  // (they wait for the server's response): the press is clicked once it is enabled, if the card is
+  // still there, the wait lasting while any stage computes (e2e/ask.ts confirmAsk).
+  const ready = await waitWhileComputing(
+    slot.page(),
+    async () => !(await card.count()) || (await enabledNow(press.first())),
+    [ANY_STAGE],
+    { quiet: 60_000, cap: 600_000 },
+  );
+  if (!(await card.count())) return false;
+  expect(ready.done, `the ask card's press is enabled (waited ${ready.waited} s; ${ready.seen})`).toBe(true);
+  try {
+    await press.first().click({ timeout: 15_000 });
+  } catch (error) {
+    if (await card.count()) throw error; // still there and not pressable: a real failure
+    return false;
+  }
   return true;
 }
 
@@ -279,9 +309,8 @@ const JOURNEYS: Journey[] = [
       roles,
       exclusions: option("none"),
       split: option("0.2"),
-      energy_adjustment: option("residual"),
+      // No energy or substitution question under prediction: no coefficient is read as an effect.
       models,
-      substitution,
       open_seal: openSeal,
     },
   },
@@ -385,20 +414,25 @@ async function upload(page: Page, file: string): Promise<string> {
   await expect(page.getByRole("heading", { name: "Open a table to begin." })).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles(file);
   await expect(page).toHaveURL(/\/p\/[^/]+$/, { timeout: 120_000 });
-  return decodeURIComponent(/\/p\/([^/]+)$/.exec(page.url())![1]!);
+  const pid = decodeURIComponent(/\/p\/([^/]+)$/.exec(page.url())![1]!);
+  await toClassic(page);
+  return pid;
 }
 
 /** The first question the Router has not settled, once nothing it waits on is computing. Fit is
  *  pressed on the Results once the Router reaches it: the fit is served withheld until it is (the
- *  substitution's pairs sit in the Results), and the seal waits for it. A fit held for Fit with
- *  nothing to press skips the journey with that reason (e2e/fit.ts). */
-async function settle(page: Page, pid: string, timeout = 600_000): Promise<{ v: View; step: Step | null }> {
-  const end = Date.now() + timeout;
+ *  substitution's pairs sit in the Results), and the seal waits for it. A fit held for Fit
+ *  computes only after the press, and the wait for the question behind it lasts while any stage
+ *  computes (up to ``cap``): it fails once none has for ``quiet``, not after a flat time. */
+async function settle(page: Page, pid: string, { quiet = 120_000, cap = 1_800_000 } = {}): Promise<{ v: View; step: Step | null }> {
+  const start = Date.now();
+  let busyAt = start;
   for (;;) {
     const v = await view(page, pid);
     const step = v.interview.find((s) => s.status === "open" || s.status === "waiting") ?? null;
     if (await fitReached(page, pid)) {
       await pressFit(page);
+      busyAt = Date.now();
       continue;
     }
     if (!step || step.status === "open") return { v, step };
@@ -406,7 +440,10 @@ async function settle(page: Page, pid: string, timeout = 600_000): Promise<{ v: 
     const failed = step.waiting_on.filter((w) => v.stages[w]?.status === "error");
     if (failed.length)
       throw new Error(`${step.key} waits on ${failed.join(", ")}, which failed: ${failed.map((w) => v.stages[w]?.error).join("; ")}`);
-    if (Date.now() > end) throw new Error(`${step.key} waits on ${step.waiting_on.join(", ")} for too long`);
+    const look = await stagesComputing(page, [ANY_STAGE]);
+    if (look.computing) busyAt = Date.now();
+    if (Date.now() - busyAt >= quiet || Date.now() - start >= cap)
+      throw new Error(`${step.key} waits on ${step.waiting_on.join(", ")} for too long (${look.seen})`);
     await page.waitForTimeout(400);
   }
 }
@@ -427,18 +464,28 @@ for (const journey of JOURNEYS) {
     const pid = await upload(page, journey.file);
     const asked: string[] = [];
     let last = "";
+    let lastAsking = 0;
     let tries = 0;
     for (let i = 0; i < 200; i++) {
       const { v, step } = await settle(page, pid);
       if (!step) break;
       const key = step.key;
-      tries = key === last ? tries + 1 : 0;
+      // An answer that left the question open counts toward its dead end only where it settled
+      // nothing the question's ask card asks: each press confirms one group, or one column judged
+      // on its own (ruling R-g), so six waiting flags are six presses that each settle one.
+      const pending = asking(step);
+      tries = key === last && pending >= lastAsking ? tries + 1 : 0;
       last = key;
+      lastAsking = pending;
       expect(tries, `${key} stays open after ${tries} answers`).toBeLessThan(6);
       // The open question renders something answerable (the seal's opening is its own card).
       const slot = key === "open_seal" ? page.getByTestId("open-seal-step") : page.locator(`[data-slot="${key}"]`);
-      await expect(slot, `${key} renders`).toBeVisible({ timeout: 60_000 });
-      if (key !== "open_seal") await expect(slot.getByTestId(`question-${key}`), `${key} asks`).toBeVisible({ timeout: 60_000 });
+      // A question's card waits for the stage it reads to compute again after each reading
+      // confirmed (the shelf's ranking took 55 s, then 108 s, on the 500-column genomics table on
+      // a throttled machine): the wait lasts while anything computes, not a flat minute.
+      await visibleWhileComputing(page, slot, [ANY_STAGE], { label: `${key} renders` });
+      if (key !== "open_seal")
+        await visibleWhileComputing(page, slot.getByTestId(`question-${key}`), [ANY_STAGE], { label: `${key} asks` });
       await expect
         .poll(async () => slot.locator(ANSWERABLE).count(), { message: `${key}: nothing to answer`, timeout: 60_000 })
         .toBeGreaterThan(0);
@@ -494,6 +541,7 @@ test("the mock replays a captured journey: the lab lists it, the follow-up is an
   await page.getByTestId("m3-journey-clinical").click();
   await page.getByTestId("m3-step-clinical-3").click();
   await expect(page).toHaveURL(/\/p\/m3~clinical~3$/);
+  await toClassic(page);
   const slot = page.locator('[data-slot="follow_up"]');
   await expect(slot.getByTestId("generic-follow_up")).toBeVisible({ timeout: 30_000 });
   await expect(slot.locator(ANSWERABLE).first()).toBeVisible();

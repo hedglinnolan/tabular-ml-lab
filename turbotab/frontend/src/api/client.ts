@@ -36,6 +36,7 @@ import type {
   FitLock,
   JoinPreview,
   JoinPreviewRequest,
+  MethodsSections,
   MethodsText,
   PlanExport,
   ReadingsCard,
@@ -267,8 +268,11 @@ export const api = {
   listDir: (path?: string, signal?: AbortSignal) =>
     request<FsListing>("/fs/list", { query: { path }, signal }),
 
-  /** The words every interview question carries, in asking order (M1_CONTRACT §5). */
-  teaching: (signal?: AbortSignal) => request<TeachingEntry[]>("/teaching", { signal }),
+  /** The words every interview question carries, in asking order (M1_CONTRACT §5), for the
+   *  project's goal (`?purpose=`, a plain query parameter) where one is named: the server words the
+   *  roles card by goal (W1-R finding 3c). */
+  teaching: (purpose?: string | null, signal?: AbortSignal) =>
+    request<TeachingEntry[]>("/teaching", { query: { purpose }, signal }),
 
   /** What recording `decision` would change, on the user's own data. Nothing is recorded. */
   preview: (pid: string, decision: Decision, signal?: AbortSignal) =>
@@ -293,6 +297,11 @@ export const api = {
   /** The methods text built from the decision log (audit WP16). */
   methods: (pid: string, signal?: AbortSignal) =>
     request<MethodsText>(`/projects/${enc(pid)}/methods`, { signal }),
+
+  /** P8: the methods in the export bundle's own sections and words, each line with its record id
+   * and the lines counted (the manuscript rail; TRIPOD+AI's sections under Predict). */
+  methodsSections: (pid: string, signal?: AbortSignal) =>
+    request<MethodsSections>(`/projects/${enc(pid)}/methods/sections`, { signal }),
 
   /** The analysis plan for registration: canonical JSON with its SHA-256 (MODELING_SEQUENCE §1). */
   plan: (pid: string, signal?: AbortSignal) =>

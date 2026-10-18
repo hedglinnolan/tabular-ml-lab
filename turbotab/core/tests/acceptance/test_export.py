@@ -56,8 +56,8 @@ import pandas as pd
 import pytest
 
 from turbotab.core.tests.acceptance.server_drive import (WP17_QUESTIONS, _post_when_reached,
-                                                         answer_plan, answer_wp17, local_server,
-                                                         open_project)
+                                                         answer_plan, answer_wp17, confirm_each,
+                                                         local_server, open_project)
 from turbotab.core.tests.acceptance.r_reference import needs_r, run_r
 from turbotab.core.tests.stage_harness import NHANES, REPO
 from turbotab.core.tests.truths import ASKING, fixture_truth
@@ -155,8 +155,8 @@ def _journey(client: Any, purpose: str, *, confirm_roles: bool,
             _post(drive, {"kind": "set_roles", "roles": roles})
             waiting = drive.view()["decisions"][-1]["decision"].get("unconfirmed") or []
             if confirm_roles and waiting:
-                _post(drive, {"kind": "confirm_readings", "items": [
-                    {"reading": "role", "column": c, "value": roles[c]} for c in waiting]})
+                for body in confirm_each(roles, waiting):
+                    _post(drive, body)
             continue
         for body in plan[key]:
             _post(drive, body)
@@ -345,22 +345,45 @@ def test_1_the_analysis_plan_is_the_lock_s_with_its_sha256(inference):
     assert prov["analysis_plan"]["plan_sha256"] == doc["plan_sha256"]
 
 
+# A record's sentence the methods may fold with others alike but for its column (W1-W's N10).
+ONE_COLUMN = re.compile(r"^`(?P<column>[^`]+)` was (?P<rest>.+)$", re.S)
+
+
+def _said_for(entry: dict[str, Any], sentences: dict[str, str]) -> str:
+    """What a methods entry, or a checklist's place, says, built from the methods route's
+    sentences (ruling R2 at W1-X's cap): one record's sentence verbatim, or, where it folds several
+    records (``record_ids``, in order), each record's column listed with the rest they all share
+    word for word ("`a`, `b` and `c` were each ...")."""
+    ids = entry.get("record_ids")
+    if not ids:
+        return sentences[entry["record_id"]]
+    parts = [ONE_COLUMN.match(sentences[i]) for i in ids]
+    assert len(ids) >= 2 and all(parts), ids
+    rests = {p["rest"] for p in parts}
+    assert len(rests) == 1, rests
+    named = [f"`{p['column']}`" for p in parts]
+    return f"{', '.join(named[:-1])} and {named[-1]} were each {rests.pop()}"
+
+
 @needs_nhanes
 def test_1_the_methods_are_the_records_sentences_by_strobe_section(inference):
     """The record's sentences in force, by STROBE section; the first exclusions answer folded out;
     Model 1, declared after the estimates were seen, kept in a section of its own after the lock;
-    every sentence verbatim from the methods route; never "prespecified" or "preregistered"."""
+    every sentence verbatim from the methods route, or single confirmations alike but for their
+    column folded into one sentence that names each of their records; never "prespecified" or
+    "preregistered"."""
     doc = json.loads(inference["files"]["methods.json"])
     route = {line["record_id"]: line for line in inference["methods_route"]["lines"]}
     records = inference["view"]["decisions"]
     exclusions = [r for r in records if r["decision"]["kind"] == "set_exclusions"]
     assert len(exclusions) == 2
     said = [e for s in doc["sections"] for e in s["entries"] if e["source"] == "record"]
-    ids = [e["record_id"] for e in said]
+    ids = [i for e in said for i in (e.get("record_ids") or [e["record_id"]])]
     assert exclusions[0]["id"] not in ids and exclusions[1]["id"] in ids  # folded out, then kept
     assert set(ids) == set(route)  # every line of the record's methods text, and only those
+    sentences = {i: line["sentence"] for i, line in route.items()}
     for e in said:
-        assert e["text"] == route[e["record_id"]]["sentence"]  # verbatim
+        assert e["text"] == _said_for(e, sentences)  # verbatim, or its records' sentences folded
     keys = [s["key"] for s in doc["sections"]]
     # (wave 2b, FORM) the form question's answer says how each continuous term enters (STROBE 11)
     assert keys == ["design", "participants", "variables", "measurement", "quantitative",
@@ -728,8 +751,8 @@ def test_3_each_checklist_lists_every_item_with_where_or_unanswered(inference, p
                 continue
             assert item["where"]
             for w in item["where"]:
-                if w["source"] == "record":  # the quoted sentence and its decision
-                    assert w["quote"] == sentences[w["record_id"]]
+                if w["source"] == "record":  # the quoted sentence and its decisions
+                    assert w["quote"] == _said_for(w, sentences)
                 elif w["source"] == "file":
                     assert w["file"] in seen["files"] or w["file"] == "provenance.json"
             if item["status"] == "partly answered":
@@ -984,7 +1007,6 @@ def diet(tmp_path_factory) -> dict[str, Any]:
         # prediction: a held-out set drawn, the final model declared and then the rows opened
         drive = _open_diet(client, csv, "prediction")
         drive.answer("split", {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
-        drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "none"})
         drive.answer("models", {"kind": "select_models", "models": ["linear", "elastic_net"]})
         _wait_fresh(drive, ("cohort", "design", "fit"))
         assert drive.press_fit()  # Results opens on Fit (P0.8): the scores, the held-out rows sealed
@@ -1064,7 +1086,7 @@ d <- read.csv(diet_csv, stringsAsFactors = FALSE)
 s <- read.csv(sealed_csv)
 d$y <- as.integer(d$dm == "yes")
 held <- d$pid %in% s$pid
-m <- glm(y ~ age + sex + smoking + activity + bmi + protein_g, family = binomial(),
+m <- glm(y ~ age + sex + smoking + activity + bmi + protein_g + kcal, family = binomial(),
          data = d[!held, ], control = glm.control(epsilon = 1e-14, maxit = 100))
 p <- predict(m, newdata = d[held, ], type = "response")
 y <- d$y[held]
@@ -1079,8 +1101,9 @@ out(list(log_loss = -mean(y * log(p) + (1 - y) * log(1 - p)),
 @needs_r
 def test_diet_the_held_out_result_is_r_s_glm_scored_on_the_sealed_rows(diet, tmp_path):
     """The one row labeled the result under a holdout is the declared family's held-out score: R's
-    ``glm`` (logistic regression, unpenalized, on the predictors the roles declare, energy left
-    out as "no energy adjustment" says) fitted on the rows not held out and scored on the sealed
+    ``glm`` (logistic regression, unpenalized, on the predictors the roles declare, total energy
+    among them as recorded, since under Predict no energy model is asked: BEATS_PREDICT §9 ruling
+    5) fitted on the rows not held out and scored on the sealed
     ones gives the same log loss, and its rank-sum AUC the same AUC, independently of the code
     under test. The held-out rows are the split stage's sealed frame's, by row position."""
     fit = diet["fit"]

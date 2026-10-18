@@ -29,6 +29,18 @@ EXPLAIN_READS: tuple[str, ...] = ("explain", "purpose", "task", "event", "outcom
 SUPPORTED_TASKS = ("regression", "binary")
 
 
+def curve_candidates(predictors: Any, roles: Any, purpose: str | None) -> list[str]:
+    """The columns the default curves choose among (``models.explain``: the best family's
+    importance ranks them, up to its cap): the Predictor columns under Estimate; under Predict,
+    where every predictor role is a predictor (the roles ruling of 2026-10-17), every predictor-role
+    column, so the curves read the Predictor role no differently from the others (W1 part 2's U7)
+    and the roles card's list of the steps that do stays complete (``readings.predict_steps``)."""
+    from turbotab.core.readings import PREDICTOR_ROLES
+
+    chosen = PREDICTOR_ROLES if purpose == "prediction" else ("exposure",)
+    return [c for c in predictors if (roles or {}).get(c) in chosen]
+
+
 def explain_stage(ctx: StageContext) -> Bundle:
     from sklearn.base import clone
 
@@ -118,8 +130,7 @@ def explain_stage(ctx: StageContext) -> Bundle:
             unfitted=pinned_to_full_fit(clone(pipelines[key]), fitted[key]),
             versus=None if inference else m.get("versus_baseline"), score=cv.get("estimate"),
             baseline=None if inference else (m.get("baseline") or {}).get("value")))
-    roles = settled_roles(state)
-    exposures = [c for c in spec.predictors if roles.get(c) == "exposure"]
+    exposures = curve_candidates(spec.predictors, settled_roles(state), state.purpose)
     declared: list[str] = []
     if inference:
         from turbotab.core.estimand import current_estimand, exposures_of
@@ -144,4 +155,4 @@ def explain_stage(ctx: StageContext) -> Bundle:
     return Bundle(data=artifact.model_dump(mode="json"))
 
 
-__all__ = ["EXPLAIN_READS", "explain_stage"]
+__all__ = ["EXPLAIN_READS", "curve_candidates", "explain_stage"]

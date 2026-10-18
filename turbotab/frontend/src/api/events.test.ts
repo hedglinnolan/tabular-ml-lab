@@ -145,6 +145,16 @@ describe("a decision event", () => {
     expect(cachedView().decisions).toHaveLength(1);
     expect(isInvalid(keys.view(PID))).toBe(false);
   });
+
+  it("reads the methods' sections (P8) again with the other log-derived reads, and only then", () => {
+    qc.setQueryData(keys.methodsSections(PID), { sections: [], count: 0 });
+    qc.setQueryData(keys.checklist(PID), { items: [] });
+    applyProjectEvent(qc, PID, { type: "decision", data: record(1) }); // already held: no-op
+    expect(isInvalid(keys.methodsSections(PID))).toBe(false);
+    applyProjectEvent(qc, PID, { type: "decision", data: record(2) });
+    expect(isInvalid(keys.methodsSections(PID))).toBe(true);
+    expect(isInvalid(keys.checklist(PID))).toBe(true);
+  });
 });
 
 describe("a stage event", () => {
@@ -241,6 +251,29 @@ describe("a stage event", () => {
       data: status("target_info", { key: "t1", updated_at: "2026-09-27T10:00:02.000Z" }),
     });
     expect(isInvalid(keys.view(PID))).toBe(false);
+  });
+
+  it("reads the methods' sections (P8) again when a stage changes state or turns fresh, not on a tick", () => {
+    // The sections are built from the fresh stages as well as the log (the fit's cross-validation
+    // paragraphs, the design's matrix), and pressing Fit records no decision.
+    const sections = () => qc.setQueryData(keys.methodsSections(PID), { sections: [], count: 0 });
+    const fit = (patch: Partial<StageStatus>) => ({ type: "stage" as const, data: status("fit", patch) });
+    applyProjectEvent(qc, PID, fit({ status: "running", fresh: false, key: "f1", progress: 0.1 }));
+    sections();
+    applyProjectEvent(qc, PID, fit({ status: "running", fresh: false, key: "f1", progress: 0.5,
+                                     updated_at: "2026-09-27T10:00:01.000Z" }));
+    expect(isInvalid(keys.methodsSections(PID))).toBe(false); // a progress tick
+    applyProjectEvent(qc, PID, fit({ key: "f1", updated_at: "2026-09-27T10:00:02.000Z" }));
+    expect(isInvalid(keys.methodsSections(PID))).toBe(true); // running -> fresh
+    sections();
+    applyProjectEvent(qc, PID, fit({ key: "f1", updated_at: "2026-09-27T10:00:03.000Z" }));
+    expect(isInvalid(keys.methodsSections(PID))).toBe(false); // a repeat of the same fresh key
+    applyProjectEvent(qc, PID, fit({ key: "f2", updated_at: "2026-09-27T10:00:04.000Z" }));
+    expect(isInvalid(keys.methodsSections(PID))).toBe(true); // fresh again, for other answers
+    sections();
+    applyProjectEvent(qc, PID, fit({ status: "stale", fresh: false, key: "f3",
+                                     updated_at: "2026-09-27T10:00:05.000Z" }));
+    expect(isInvalid(keys.methodsSections(PID))).toBe(true); // fresh -> stale drops its paragraphs
   });
 
   it("refetches the table and column summaries when ingest turns fresh", () => {

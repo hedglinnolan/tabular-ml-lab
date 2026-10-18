@@ -1,0 +1,990 @@
+{
+  "paper": "Sullivan VK et al. Self-Rated Diet Quality and Cardiometabolic Health Among U.S. Adults, 2011-2018. Am J Prev Med 2021;61(4):563-575.",
+  "reference": "Blind R-only reference (package SU-R); inputs: estimate_candidates.md section 1 and the CDC codebook pages. Decisions in decisions.md.",
+  "generated": "2026-10-18",
+  "software": {
+    "r": "R version 4.6.1 (2026-06-24)",
+    "survey": "4.5",
+    "haven": "2.5.5"
+  },
+  "exposure": "rating = 6 - DBQ700 (poor = 1 ... excellent = 5), codes 7 and 9 dropped; beta is per rating step. beta_on_raw_dbq700 = -beta.",
+  "design": {
+    "call": "svydesign(ids = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~<weight_column>, nest = TRUE, data = <all 39,156 records>)",
+    "domain": "subset(design, in_analytic & outcome present & weight > 0 & complete cases on the fit's variables)",
+    "fit": "svyglm(formula, design = domain, family = gaussian())",
+    "records": 39156,
+    "strata": 59,
+    "psus": 121,
+    "df": 62,
+    "p": "two-sided t with df = PSUs - strata of the full design (SAS survey procedures' default); svyglm_p uses svyglm's residual df"
+  },
+  "sample_steps": [
+    {
+      "step": "Start (four cycles combined)",
+      "paper_removed": null,
+      "ours_removed": null,
+      "paper_remaining": 39156,
+      "ours_remaining": 39156
+    },
+    {
+      "step": "Age < 20",
+      "paper_removed": 16539,
+      "ours_removed": 16539,
+      "paper_remaining": 22617,
+      "ours_remaining": 22617
+    },
+    {
+      "step": "Pregnant",
+      "paper_removed": 247,
+      "ours_removed": 247,
+      "paper_remaining": 22370,
+      "ours_remaining": 22370
+    },
+    {
+      "step": "No self-rating (DBQ700 missing, 7 or 9)",
+      "paper_removed": 10,
+      "ours_removed": 10,
+      "paper_remaining": 22360,
+      "ours_remaining": 22360
+    },
+    {
+      "step": "No dietary recall (day 1 not complete and reliable)",
+      "paper_removed": 2982,
+      "ours_removed": 2982,
+      "paper_remaining": 19378,
+      "ours_remaining": 19378
+    },
+    {
+      "step": "Only one recall (day 2 not complete and reliable)",
+      "paper_removed": 2445,
+      "ours_removed": 2445,
+      "paper_remaining": 16933,
+      "ours_remaining": 16933
+    },
+    {
+      "step": "Only water reported on a recall day",
+      "paper_removed": 20,
+      "ours_removed": 18,
+      "paper_remaining": 16913,
+      "ours_remaining": 16915
+    }
+  ],
+  "nothing_reported_days_in_sample": 2,
+  "analytic_tables": [
+    {
+      "outcome": "glucose",
+      "path": "research/data/derived/reference_r/analytic_glucose.csv",
+      "rows": 7535,
+      "sha256": "3e4f1be517b50eaa9a53e009cefa5a57da9f2fc64838b93caa2421413ccdaa67",
+      "weight_column": "w_fasting_glu",
+      "rows_are": "analytic sample rows with the outcome and a positive weight; in_<fit> marks the rows each fit uses (complete cases on its own variables)",
+      "table4_rows_used": 6832,
+      "table4_rows_dropped_for_missing_covariates": 703,
+      "table4_missing_by_covariate": {
+        "age": 0,
+        "sex": 0,
+        "race": 0,
+        "educ": 5,
+        "pir": 632,
+        "smoke": 5,
+        "rec_pa": 10,
+        "bmi": 63
+      },
+      "nothing_reported_day_rows": 1
+    },
+    {
+      "outcome": "insulin",
+      "path": "research/data/derived/reference_r/analytic_insulin.csv",
+      "rows": 7335,
+      "sha256": "241abe88ebfa40a760679a4d6784b56b827074d9345de824fa8b2e2215ff9d8b",
+      "weight_column": "w_fasting_ins",
+      "rows_are": "analytic sample rows with the outcome and a positive weight; in_<fit> marks the rows each fit uses (complete cases on its own variables)",
+      "table4_rows_used": 6655,
+      "table4_rows_dropped_for_missing_covariates": 680,
+      "table4_missing_by_covariate": {
+        "age": 0,
+        "sex": 0,
+        "race": 0,
+        "educ": 5,
+        "pir": 609,
+        "smoke": 5,
+        "rec_pa": 10,
+        "bmi": 62
+      },
+      "nothing_reported_day_rows": 0
+    },
+    {
+      "outcome": "hba1c",
+      "path": "research/data/derived/reference_r/analytic_hba1c.csv",
+      "rows": 16347,
+      "sha256": "833eefb77560d00e555d29035201c54af944a157fdfa36689554892100894b3a",
+      "weight_column": "w_diet2d",
+      "rows_are": "analytic sample rows with the outcome and a positive weight; in_<fit> marks the rows each fit uses (complete cases on its own variables)",
+      "table4_rows_used": 14795,
+      "table4_rows_dropped_for_missing_covariates": 1552,
+      "table4_missing_by_covariate": {
+        "age": 0,
+        "sex": 0,
+        "race": 0,
+        "educ": 12,
+        "pir": 1387,
+        "smoke": 12,
+        "rec_pa": 19,
+        "bmi": 153
+      },
+      "nothing_reported_day_rows": 1
+    },
+    {
+      "outcome": "bmi",
+      "path": "research/data/derived/reference_r/analytic_bmi.csv",
+      "rows": 16747,
+      "sha256": "a87f33b4ef798c473a9954d207a2a924773401813d216cbc8623ae6514580c6f",
+      "weight_column": "w_diet2d",
+      "rows_are": "analytic sample rows with the outcome and a positive weight; in_<fit> marks the rows each fit uses (complete cases on its own variables)",
+      "table4_rows_used": 15279,
+      "table4_rows_dropped_for_missing_covariates": 1468,
+      "table4_missing_by_covariate": {
+        "age": 0,
+        "sex": 0,
+        "race": 0,
+        "educ": 11,
+        "pir": 1439,
+        "smoke": 12,
+        "rec_pa": 18
+      },
+      "nothing_reported_day_rows": 2
+    }
+  ],
+  "fits": [
+    {
+      "id": "table4_glucose",
+      "table": "Table 4",
+      "model": "Table 4",
+      "outcome": "glucose",
+      "formula": "glucose ~ rating + age + sex + race + educ + pir + smoke + rec_pa + bmi",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_glu",
+      "n": 6832,
+      "beta": -1.97983695504829,
+      "se": 0.421499879969079,
+      "t": -4.69712341363782,
+      "df": 62,
+      "p": 1.50829337379585e-05,
+      "svyglm_df_residual": 47,
+      "svyglm_p": 2.32369003930633e-05,
+      "beta_on_raw_dbq700": 1.97983695504829,
+      "paper": {
+        "n": 6832,
+        "beta": "-2.0",
+        "se": "0.4",
+        "p": "<0.001"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": 0
+    },
+    {
+      "id": "M0_glucose",
+      "table": "Appendix Table 2",
+      "model": "M0",
+      "outcome": "glucose",
+      "formula": "glucose ~ rating",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_glu",
+      "n": 7535,
+      "beta": -2.73954531521744,
+      "se": 0.365168490188911,
+      "t": -7.50214048808046,
+      "df": 62,
+      "p": 2.89555073329923e-10,
+      "svyglm_df_residual": 61,
+      "svyglm_p": 3.16761725187483e-10,
+      "beta_on_raw_dbq700": 2.73954531521744,
+      "paper": {
+        "beta": "-2.7",
+        "se": "0.37"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M1_glucose",
+      "table": "Appendix Table 2",
+      "model": "M1",
+      "outcome": "glucose",
+      "formula": "glucose ~ rating + age + sex",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_glu",
+      "n": 7535,
+      "beta": -4.05645183049386,
+      "se": 0.364613360762339,
+      "t": -11.1253515834213,
+      "df": 62,
+      "p": 2.06292492957794e-16,
+      "svyglm_df_residual": 59,
+      "svyglm_p": 4.07082403668756e-16,
+      "beta_on_raw_dbq700": 4.05645183049386,
+      "paper": {
+        "beta": "-4.1",
+        "se": "0.36"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M2_glucose",
+      "table": "Appendix Table 2",
+      "model": "M2",
+      "outcome": "glucose",
+      "formula": "glucose ~ rating + age + sex + race + educ + pir",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_glu",
+      "n": 6900,
+      "beta": -3.67840896175207,
+      "se": 0.438118473773276,
+      "t": -8.39592297962679,
+      "df": 62,
+      "p": 8.15732777133878e-12,
+      "svyglm_df_residual": 50,
+      "svyglm_p": 4.08591517302016e-11,
+      "beta_on_raw_dbq700": 3.67840896175207,
+      "paper": {
+        "beta": "-3.7",
+        "se": "0.44"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M3_glucose",
+      "table": "Appendix Table 2",
+      "model": "M3",
+      "outcome": "glucose",
+      "formula": "glucose ~ rating + age + sex + race + educ + pir + smoke + rec_pa + energy",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_glu",
+      "n": 6886,
+      "beta": -3.5770931958051,
+      "se": 0.446340873500472,
+      "t": -8.01426310736768,
+      "df": 62,
+      "p": 3.73811047826899e-11,
+      "svyglm_df_residual": 47,
+      "svyglm_p": 2.42541465208849e-10,
+      "beta_on_raw_dbq700": 3.5770931958051,
+      "paper": {
+        "beta": "-3.6",
+        "se": "0.45"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M4_glucose",
+      "table": "Appendix Table 2",
+      "model": "M4",
+      "outcome": "glucose",
+      "formula": "glucose ~ rating + age + sex + race + educ + pir + glucose_med",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_glu",
+      "n": 6897,
+      "beta": -2.01345519537548,
+      "se": 0.339234741063743,
+      "t": -5.93528595880794,
+      "df": 62,
+      "p": 1.43176600349786e-07,
+      "svyglm_df_residual": 49,
+      "svyglm_p": 2.94391050581088e-07,
+      "beta_on_raw_dbq700": 2.01345519537548,
+      "paper": {
+        "beta": "-1.1",
+        "se": "0.36",
+        "p": "0.004"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": false,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "table4_insulin",
+      "table": "Table 4",
+      "model": "Table 4",
+      "outcome": "insulin",
+      "formula": "insulin ~ rating + age + sex + race + educ + pir + smoke + rec_pa + bmi",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_ins",
+      "n": 6655,
+      "beta": -0.562318238167781,
+      "se": 0.182771791676907,
+      "t": -3.07661391842027,
+      "df": 62,
+      "p": 0.00311454485561345,
+      "svyglm_df_residual": 47,
+      "svyglm_p": 0.00348599144860742,
+      "beta_on_raw_dbq700": 0.562318238167781,
+      "paper": {
+        "n": 6655,
+        "beta": "-0.6",
+        "se": "0.2",
+        "p": "0.003"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": 0
+    },
+    {
+      "id": "M0_insulin",
+      "table": "Appendix Table 2",
+      "model": "M0",
+      "outcome": "insulin",
+      "formula": "insulin ~ rating",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_ins",
+      "n": 7335,
+      "beta": -2.3308422158038,
+      "se": 0.2189720673308,
+      "t": -10.6444728052122,
+      "df": 62,
+      "p": 1.26374811444752e-15,
+      "svyglm_df_residual": 61,
+      "svyglm_p": 1.54886245366053e-15,
+      "beta_on_raw_dbq700": 2.3308422158038,
+      "paper": {
+        "beta": "-2.3",
+        "se": "0.22"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M1_insulin",
+      "table": "Appendix Table 2",
+      "model": "M1",
+      "outcome": "insulin",
+      "formula": "insulin ~ rating + age + sex",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_ins",
+      "n": 7335,
+      "beta": -2.48650493609615,
+      "se": 0.212751729966025,
+      "t": -11.6873547232412,
+      "df": 62,
+      "p": 2.56688263209218e-17,
+      "svyglm_df_residual": 59,
+      "svyglm_p": 5.42925785734175e-17,
+      "beta_on_raw_dbq700": 2.48650493609615,
+      "paper": {
+        "beta": "-2.5",
+        "se": "0.21"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M2_insulin",
+      "table": "Appendix Table 2",
+      "model": "M2",
+      "outcome": "insulin",
+      "formula": "insulin ~ rating + age + sex + race + educ + pir",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_ins",
+      "n": 6723,
+      "beta": -2.23140013698038,
+      "se": 0.228051014941233,
+      "t": -9.78465339237975,
+      "df": 62,
+      "p": 3.43651977356798e-14,
+      "svyglm_df_residual": 50,
+      "svyglm_p": 3.32726810411545e-13,
+      "beta_on_raw_dbq700": 2.23140013698038,
+      "paper": {
+        "beta": "-2.2",
+        "se": "0.23"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M3_insulin",
+      "table": "Appendix Table 2",
+      "model": "M3",
+      "outcome": "insulin",
+      "formula": "insulin ~ rating + age + sex + race + educ + pir + smoke + rec_pa + energy",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_ins",
+      "n": 6709,
+      "beta": -2.09340629677766,
+      "se": 0.229319028262227,
+      "t": -9.12879455595742,
+      "df": 62,
+      "p": 4.47225193606108e-13,
+      "svyglm_df_residual": 47,
+      "svyglm_p": 5.57446607299415e-12,
+      "beta_on_raw_dbq700": 2.09340629677766,
+      "paper": {
+        "beta": "-2.1",
+        "se": "0.23"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M4_insulin",
+      "table": "Appendix Table 2",
+      "model": "M4",
+      "outcome": "insulin",
+      "formula": "insulin ~ rating + age + sex + race + educ + pir + glucose_med",
+      "weight": "WTSAF2YR / 4",
+      "weight_column": "w_fasting_ins",
+      "n": 6720,
+      "beta": -1.85755608165068,
+      "se": 0.223455245300848,
+      "t": -8.31287750327708,
+      "df": 62,
+      "p": 1.13555935088842e-11,
+      "svyglm_df_residual": 49,
+      "svyglm_p": 6.37506937679647e-11,
+      "beta_on_raw_dbq700": 1.85755608165068,
+      "paper": {
+        "beta": "-0.4",
+        "se": "0.19",
+        "p": "0.03"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": false,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "table4_hba1c",
+      "table": "Table 4",
+      "model": "Table 4",
+      "outcome": "hba1c",
+      "formula": "hba1c ~ rating + age + sex + race + educ + pir + smoke + rec_pa + bmi",
+      "weight": "WTDR2D / 4",
+      "weight_column": "w_diet2d",
+      "n": 14795,
+      "beta": -0.0470251708396876,
+      "se": 0.00956206124562075,
+      "t": -4.91789057105489,
+      "df": 62,
+      "p": 6.75499566611305e-06,
+      "svyglm_df_residual": 47,
+      "svyglm_p": 1.10979793958504e-05,
+      "beta_on_raw_dbq700": 0.0470251708396876,
+      "paper": {
+        "n": 14795,
+        "beta": "-0.05",
+        "se": "0.01",
+        "p": "<0.001"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": 0
+    },
+    {
+      "id": "M0_hba1c",
+      "table": "Appendix Table 2",
+      "model": "M0",
+      "outcome": "hba1c",
+      "formula": "hba1c ~ rating",
+      "weight": "WTDR2D / 4",
+      "weight_column": "w_diet2d",
+      "n": 16347,
+      "beta": -0.0773627955354543,
+      "se": 0.0094143328880696,
+      "t": -8.21755470676982,
+      "df": 62,
+      "p": 1.66055089383492e-11,
+      "svyglm_df_residual": 61,
+      "svyglm_p": 1.85923466964697e-11,
+      "beta_on_raw_dbq700": 0.0773627955354543,
+      "paper": {
+        "beta": "-0.08",
+        "se": "0.01"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M1_hba1c",
+      "table": "Appendix Table 2",
+      "model": "M1",
+      "outcome": "hba1c",
+      "formula": "hba1c ~ rating + age + sex",
+      "weight": "WTDR2D / 4",
+      "weight_column": "w_diet2d",
+      "n": 16347,
+      "beta": -0.126674790492291,
+      "se": 0.00940223878610075,
+      "t": -13.4728327342157,
+      "df": 62,
+      "p": 4.43846279652327e-20,
+      "svyglm_df_residual": 59,
+      "svyglm_p": 1.17442413386937e-19,
+      "beta_on_raw_dbq700": 0.126674790492291,
+      "paper": {
+        "beta": "-0.13"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": null,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M2_hba1c",
+      "table": "Appendix Table 2",
+      "model": "M2",
+      "outcome": "hba1c",
+      "formula": "hba1c ~ rating + age + sex + race + educ + pir",
+      "weight": "WTDR2D / 4",
+      "weight_column": "w_diet2d",
+      "n": 14954,
+      "beta": -0.0994472795175732,
+      "se": 0.0100888318418962,
+      "t": -9.85716494000781,
+      "df": 62,
+      "p": 2.59364219596438e-14,
+      "svyglm_df_residual": 50,
+      "svyglm_p": 2.6029399715984e-13,
+      "beta_on_raw_dbq700": 0.0994472795175732,
+      "paper": {
+        "beta": "-0.10"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": null,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M3_hba1c",
+      "table": "Appendix Table 2",
+      "model": "M3",
+      "outcome": "hba1c",
+      "formula": "hba1c ~ rating + age + sex + race + educ + pir + smoke + rec_pa + energy",
+      "weight": "WTDR2D / 4",
+      "weight_column": "w_diet2d",
+      "n": 14928,
+      "beta": -0.092853972178414,
+      "se": 0.00986281006880462,
+      "t": -9.41455543913439,
+      "df": 62,
+      "p": 1.4556905787267e-13,
+      "svyglm_df_residual": 47,
+      "svyglm_p": 2.16287016558769e-12,
+      "beta_on_raw_dbq700": 0.092853972178414,
+      "paper": {
+        "beta": "-0.09"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": null,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "M4_hba1c",
+      "table": "Appendix Table 2",
+      "model": "M4",
+      "outcome": "hba1c",
+      "formula": "hba1c ~ rating + age + sex + race + educ + pir + glucose_med",
+      "weight": "WTDR2D / 4",
+      "weight_column": "w_diet2d",
+      "n": 14947,
+      "beta": -0.0569457427833645,
+      "se": 0.00735685489241065,
+      "t": -7.74050101791595,
+      "df": 62,
+      "p": 1.11639512056637e-10,
+      "svyglm_df_residual": 49,
+      "svyglm_p": 4.77317331131634e-10,
+      "beta_on_raw_dbq700": 0.0569457427833645,
+      "paper": {
+        "beta": "-0.03",
+        "se": "0.01"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": true,
+      "n_minus_paper_n": null
+    },
+    {
+      "id": "table4_bmi",
+      "table": "Table 4",
+      "model": "Table 4",
+      "outcome": "bmi",
+      "formula": "bmi ~ rating + age + sex + race + educ + pir + smoke + rec_pa",
+      "weight": "WTDR2D / 4",
+      "weight_column": "w_diet2d",
+      "n": 15279,
+      "beta": -1.63162120655201,
+      "se": 0.0859602074612671,
+      "t": -18.9811222510975,
+      "df": 62,
+      "p": 1.61340538908412e-27,
+      "svyglm_df_residual": 48,
+      "svyglm_p": 5.91268837534684e-24,
+      "beta_on_raw_dbq700": 1.63162120655201,
+      "paper": {
+        "n": 15278,
+        "beta": "-1.6",
+        "se": "0.1",
+        "p": "<0.001"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": 1
+    }
+  ],
+  "domain_variance_checks": [
+    {
+      "id": "table4_glucose",
+      "svyglm_se": 0.421499879969079,
+      "hand_se": 0.42149987996909,
+      "hand_beta": -1.97983695504812,
+      "rel_diff_se": 2.63398182867004e-14,
+      "rel_diff_beta": 8.74793206581498e-14,
+      "subset_frame_se": 0.421499879969079,
+      "psus_without_domain_rows": 0
+    },
+    {
+      "id": "table4_insulin",
+      "svyglm_se": 0.182771791676907,
+      "hand_se": 0.182771791676906,
+      "hand_beta": -0.562318238167739,
+      "rel_diff_se": 4.55577559769621e-15,
+      "rel_diff_beta": 7.4828539743608e-14,
+      "subset_frame_se": 0.182771791676907,
+      "psus_without_domain_rows": 0
+    },
+    {
+      "id": "table4_hba1c",
+      "svyglm_se": 0.00956206124562075,
+      "hand_se": 0.0095620612456208,
+      "hand_beta": -0.0470251708396863,
+      "rel_diff_se": 5.44251944664529e-15,
+      "rel_diff_beta": 2.74456050468506e-14,
+      "subset_frame_se": 0.00956206124562075,
+      "psus_without_domain_rows": 0
+    },
+    {
+      "id": "table4_bmi",
+      "svyglm_se": 0.0859602074612671,
+      "hand_se": 0.0859602074612677,
+      "hand_beta": -1.63162120655195,
+      "rel_diff_se": 7.91077200330532e-15,
+      "rel_diff_beta": 3.64716723961086e-14,
+      "subset_frame_se": 0.0859602074612671,
+      "psus_without_domain_rows": 0
+    }
+  ],
+  "premise_checks_note": "Not results. Run after the primary fits were compared with the paper, to locate two differences (the water step's count; M4). Every variant tried is listed in the order tried; none replaces a primary fit.",
+  "premise_checks": [
+    {
+      "check": "water step read as zero energy on a reliable recall day (removes 20)",
+      "id": "table4_glucose",
+      "n": 6832,
+      "beta": -1.97983695504829,
+      "se": 0.421499879969079,
+      "p": 1.50829337379585e-05,
+      "paper": {
+        "n": 6832,
+        "beta": "-2.0",
+        "se": "0.4",
+        "p": "<0.001"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": 0
+    },
+    {
+      "check": "water step read as zero energy on a reliable recall day (removes 20)",
+      "id": "table4_insulin",
+      "n": 6655,
+      "beta": -0.562318238167781,
+      "se": 0.182771791676907,
+      "p": 0.00311454485561345,
+      "paper": {
+        "n": 6655,
+        "beta": "-0.6",
+        "se": "0.2",
+        "p": "0.003"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": 0
+    },
+    {
+      "check": "water step read as zero energy on a reliable recall day (removes 20)",
+      "id": "table4_hba1c",
+      "n": 14795,
+      "beta": -0.0470251708396876,
+      "se": 0.00956206124562075,
+      "p": 6.75499566611305e-06,
+      "paper": {
+        "n": 14795,
+        "beta": "-0.05",
+        "se": "0.01",
+        "p": "<0.001"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": 0
+    },
+    {
+      "check": "water step read as zero energy on a reliable recall day (removes 20)",
+      "id": "table4_bmi",
+      "n": 15278,
+      "beta": -1.63045079596223,
+      "se": 0.08591610321587,
+      "p": 1.63098920630306e-27,
+      "paper": {
+        "n": 15278,
+        "beta": "-1.6",
+        "se": "0.1",
+        "p": "<0.001"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true,
+      "n_minus_paper_n": 0
+    },
+    {
+      "check": "M4 read as M2 + medication + BMI",
+      "id": "M4_glucose",
+      "formula": "glucose ~ rating + age + sex + race + educ + pir + glucose_med + bmi",
+      "n": 6842,
+      "beta": -1.12259810669699,
+      "se": 0.341646757716806,
+      "p": 0.00167590535843765,
+      "paper": {
+        "beta": "-1.1",
+        "se": "0.36",
+        "p": "0.004"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": false
+    },
+    {
+      "check": "M4 read as M2 + medication + BMI",
+      "id": "M4_insulin",
+      "formula": "insulin ~ rating + age + sex + race + educ + pir + glucose_med + bmi",
+      "n": 6665,
+      "beta": -0.499333638061443,
+      "se": 0.184327057977792,
+      "p": 0.00871438475564762,
+      "paper": {
+        "beta": "-0.4",
+        "se": "0.19",
+        "p": "0.03"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": false
+    },
+    {
+      "check": "M4 read as M2 + medication + BMI",
+      "id": "M4_hba1c",
+      "formula": "hba1c ~ rating + age + sex + race + educ + pir + glucose_med + bmi",
+      "n": 14812,
+      "beta": -0.0312363460465734,
+      "se": 0.00726852775844399,
+      "p": 6.20769785676847e-05,
+      "paper": {
+        "beta": "-0.03",
+        "se": "0.01"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true
+    },
+    {
+      "check": "M4 read as M2 + BMI",
+      "id": "M4_glucose",
+      "formula": "glucose ~ rating + age + sex + race + educ + pir + bmi",
+      "n": 6845,
+      "beta": -2.02367342854346,
+      "se": 0.401831805731343,
+      "p": 4.36861898393771e-06,
+      "paper": {
+        "beta": "-1.1",
+        "se": "0.36",
+        "p": "0.004"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": false
+    },
+    {
+      "check": "M4 read as M2 + BMI",
+      "id": "M4_insulin",
+      "formula": "insulin ~ rating + age + sex + race + educ + pir + bmi",
+      "n": 6668,
+      "beta": -0.645810986473051,
+      "se": 0.179742667465281,
+      "p": 0.000647449287807704,
+      "paper": {
+        "beta": "-0.4",
+        "se": "0.19",
+        "p": "0.03"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": false
+    },
+    {
+      "check": "M4 read as M2 + BMI",
+      "id": "M4_hba1c",
+      "formula": "hba1c ~ rating + age + sex + race + educ + pir + bmi",
+      "n": 14819,
+      "beta": -0.0518871643516186,
+      "se": 0.00977897350197846,
+      "p": 1.5941299590071e-06,
+      "paper": {
+        "beta": "-0.03",
+        "se": "0.01"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": true
+    },
+    {
+      "check": "M4 read as M3 + medication",
+      "id": "M4_glucose",
+      "formula": "glucose ~ rating + age + sex + race + educ + pir + smoke + rec_pa + energy + glucose_med",
+      "n": 6883,
+      "beta": -1.89719067539725,
+      "se": 0.352324714460324,
+      "p": 1.18391158841683e-06,
+      "paper": {
+        "beta": "-1.1",
+        "se": "0.36",
+        "p": "0.004"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": false
+    },
+    {
+      "check": "M4 read as M3 + medication",
+      "id": "M4_insulin",
+      "formula": "insulin ~ rating + age + sex + race + educ + pir + smoke + rec_pa + energy + glucose_med",
+      "n": 6706,
+      "beta": -1.72362100725275,
+      "se": 0.228145085538904,
+      "p": 2.34455605140375e-10,
+      "paper": {
+        "beta": "-0.4",
+        "se": "0.19",
+        "p": "0.03"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": false
+    },
+    {
+      "check": "M4 read as M3 + medication",
+      "id": "M4_hba1c",
+      "formula": "hba1c ~ rating + age + sex + race + educ + pir + smoke + rec_pa + energy + glucose_med",
+      "n": 14921,
+      "beta": -0.0509854301539923,
+      "se": 0.0073655866933738,
+      "p": 2.93218571708993e-09,
+      "paper": {
+        "beta": "-0.03",
+        "se": "0.01"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": true
+    },
+    {
+      "check": "M4 read as M3 + medication + BMI",
+      "id": "M4_glucose",
+      "formula": "glucose ~ rating + age + sex + race + educ + pir + smoke + rec_pa + energy + glucose_med + bmi",
+      "n": 6829,
+      "beta": -1.04487252493737,
+      "se": 0.355397522870992,
+      "p": 0.00460701697538401,
+      "paper": {
+        "beta": "-1.1",
+        "se": "0.36",
+        "p": "0.004"
+      },
+      "beta_matches_paper": false,
+      "se_matches_paper": true
+    },
+    {
+      "check": "M4 read as M3 + medication + BMI",
+      "id": "M4_insulin",
+      "formula": "insulin ~ rating + age + sex + race + educ + pir + smoke + rec_pa + energy + glucose_med + bmi",
+      "n": 6652,
+      "beta": -0.413549842473111,
+      "se": 0.191895410664909,
+      "p": 0.0350469344858593,
+      "paper": {
+        "beta": "-0.4",
+        "se": "0.19",
+        "p": "0.03"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true
+    },
+    {
+      "check": "M4 read as M3 + medication + BMI",
+      "id": "M4_hba1c",
+      "formula": "hba1c ~ rating + age + sex + race + educ + pir + smoke + rec_pa + energy + glucose_med + bmi",
+      "n": 14788,
+      "beta": -0.0258766840386426,
+      "se": 0.00734114783326734,
+      "p": 0.000802677879686846,
+      "paper": {
+        "beta": "-0.03",
+        "se": "0.01"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true
+    },
+    {
+      "check": "M4 read as Table 4 model + medication",
+      "id": "M4_glucose",
+      "formula": "glucose ~ rating + age + sex + race + educ + pir + smoke + rec_pa + bmi + glucose_med",
+      "n": 6829,
+      "beta": -1.05749265970377,
+      "se": 0.357315108827663,
+      "p": 0.00435894447279793,
+      "paper": {
+        "beta": "-1.1",
+        "se": "0.36",
+        "p": "0.004"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true
+    },
+    {
+      "check": "M4 read as Table 4 model + medication",
+      "id": "M4_insulin",
+      "formula": "insulin ~ rating + age + sex + race + educ + pir + smoke + rec_pa + bmi + glucose_med",
+      "n": 6652,
+      "beta": -0.414726447885153,
+      "se": 0.190196094711931,
+      "p": 0.0330226661073137,
+      "paper": {
+        "beta": "-0.4",
+        "se": "0.19",
+        "p": "0.03"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true
+    },
+    {
+      "check": "M4 read as Table 4 model + medication",
+      "id": "M4_hba1c",
+      "formula": "hba1c ~ rating + age + sex + race + educ + pir + smoke + rec_pa + bmi + glucose_med",
+      "n": 14788,
+      "beta": -0.0266641731351069,
+      "se": 0.00732496840831227,
+      "p": 0.00055710985779259,
+      "paper": {
+        "beta": "-0.03",
+        "se": "0.01"
+      },
+      "beta_matches_paper": true,
+      "se_matches_paper": true
+    }
+  ]
+}

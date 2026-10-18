@@ -1,0 +1,344 @@
+/**
+ * The renderer contract (plans/W1_PART2_PLAN.md §2 "W1-E" acceptance; ruling 6): every (source, key)
+ * the path fuzzer emits for the sample datasets under every goal (fixtures/quest-contract.json,
+ * written by turbotab/core/tests/test_quest_renderer_contract.py) has a renderer in the card
+ * dispatcher, and renders something, never a blank. A declaration counts as rendered only through
+ * W1-F's DECLARATION_CARDS or the generic fallback (LineGeneric, GenericAsk's content in the line's
+ * own words); the kinds that fall to it today are listed here, since W1-F's cards replace them.
+ * The Results stage, once reached, is not drawn line by line: its column is W1-G's ResultsCards,
+ * which draws every Results line (renderers.ts `columnOf`; StageCard.test.tsx pins the mount). Its
+ * lines still render through the dispatcher without a blank, as they would before Results is reached.
+ *
+ * Each line renders on a real server's captured view (src/mocks/fixtures, the M3 captures), with
+ * the stages it reads served from the capture, as the generic question's test does.
+ */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, vi } from "vitest";
+import { QUESTION_KEYS, type TeachingEntry } from "../../api/m1-types";
+import { keys } from "../../api/queries";
+import type { ProjectView, QuestLine } from "../../api/schema";
+import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
+import { AskFor } from "../../components/record/AskFor";
+import { StageFocusProvider } from "../../state/focus";
+import type { DeclarationCards, LineCardProps } from "../contracts";
+import { CONTRACT, type ContractPair } from "../fixtures/contract";
+import { CardFor } from "./CardFor";
+import { DECLARATION_CARDS } from "./predict";
+import { columnOf, recordable, rendererOf, type Renderer } from "./renderers";
+import ROLE_FIXTURE from "./roles/fixture.json";
+import { said } from "../words";
+
+const FIXTURES = import.meta.glob<M3Fixture>("../../mocks/fixtures/m3-*.json", { eager: true, import: "default" });
+const SHARED = Object.entries(FIXTURES).find(([p]) => p.endsWith("m3-shared.json"))![1] as unknown as {
+  teaching: TeachingEntry[];
+};
+const JOURNEYS = Object.entries(FIXTURES)
+  .filter(([p]) => !p.endsWith("m3-shared.json"))
+  .map(([p, f]) => ({ name: /m3-(.+)\.json$/.exec(p)![1]!, f, views: viewsOf(f) }));
+const PID = "quest-test";
+const AT = "2026-10-17T00:00:00Z";
+
+/** A captured view where the Router lists `key` as a step it asks; else the Predict journey's last. */
+function viewFor(key: string): { view: ProjectView; f: M3Fixture } {
+  for (const { f, views } of JOURNEYS) {
+    for (let i = views.length - 1; i >= 0; i--) {
+      const step = views[i]!.interview.find((s) => s.key === key);
+      if (step && step.status !== "not_applicable") return { view: expandView(f, views[i]!, PID, AT), f };
+    }
+  }
+  const j = JOURNEYS.find((x) => x.name === "nhanes-prediction")!;
+  return { view: expandView(j.f, j.views[j.views.length - 1]!, PID, AT), f: j.f };
+}
+
+function lineOf(pair: Pick<ContractPair, "source" | "key">, label: QuestLine["label"] = "Decide"): QuestLine {
+  const place = CONTRACT.questions[pair.key] ?? CONTRACT.declarations[pair.key];
+  return {
+    id: pair.key,
+    key: pair.key,
+    source: pair.source as QuestLine["source"],
+    label,
+    name: place?.name ?? `the finding ${pair.key}`,
+    status: "open",
+    counted: true,
+    order: place?.order ?? 0,
+    decision_id: null,
+    reason: null,
+    waiting_for: [],
+    computing: [],
+    reopened_by: null,
+    would_change: null,
+    changes_nothing: null,
+    items: [],
+    changed_since: null,
+  };
+}
+
+function renderLine(line: QuestLine, cards?: DeclarationCards, onOpenStage?: (stage: string, line?: string) => void) {
+  const { view, f } = viewFor(line.key);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  qc.setQueryData(keys.teaching(), SHARED.teaching);
+  qc.setQueryData(keys.view(PID), view);
+  qc.setQueryData(keys.quest(PID), CONTRACT.logs.results_reached.log);
+  const columns = f.endpoints.columns;
+  if (columns?.status === 200) qc.setQueryData(keys.columns(PID), columns.body);
+  for (const [name, status] of Object.entries(view.stages)) {
+    if (!status || status.status === "idle" || status.status === "blocked") continue;
+    qc.setQueryData(keys.stage(PID, name), {
+      stage: name,
+      key: status.key,
+      fresh: status.status === "fresh",
+      status: status.status,
+      artifact: artifactAt(f, name, status.key),
+    });
+  }
+  return render(
+    <QueryClientProvider client={qc}>
+      <StageFocusProvider>
+        <CardFor pid={PID} line={line} {...(cards ? { cards } : {})} {...(onOpenStage ? { onOpenStage } : {})} />
+      </StageFocusProvider>
+    </QueryClientProvider>,
+  );
+}
+
+// Whatever the capture does not hold stays pending: nothing here reaches a server.
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+const CASES = CONTRACT.pairs.flatMap((p) => p.stages.map((stage) => ({ ...p, stage })));
+const ALLOWED: Record<string, readonly Renderer[]> = {
+  question: ["ask"],
+  declaration: ["declaration", "generic"],
+  finding: ["finding"],
+  reading: ["reading"],
+};
+
+describe("every (source, key) the engine emits has a renderer", () => {
+  it("walks both sample datasets under every goal", () => {
+    const walked = new Set(CONTRACT.pairs.flatMap((p) => p.seen));
+    for (const d of CONTRACT.datasets) for (const g of CONTRACT.goals) expect(walked.has(`${d}/${g}`), `${d}/${g}`).toBe(true);
+    expect(CASES.length).toBeGreaterThan(40);
+  });
+
+  it.each(CASES)("$source $key in $stage", ({ source, key, stage }) => {
+    const kind = rendererOf({ source: source as QuestLine["source"], key }, DECLARATION_CARDS);
+    expect(ALLOWED[source], `a source the shell does not know: ${source}`).toBeDefined();
+    expect(ALLOWED[source]).toContain(kind);
+    if (source === "question") expect(kind).toBe("ask");
+    // Results' lines, once it is reached, are W1-G's ResultsCards' to draw; every other stage's
+    // are drawn line by line, through the dispatcher.
+    expect(columnOf({ key: stage, reached: true })).toBe(stage === "results" ? "results" : "lines");
+  });
+
+  it("lists the declaration kinds that fall to the generic fallback today (W1-F's cards replace them)", () => {
+    const generic = [
+      ...new Set(
+        CONTRACT.pairs
+          .filter((p) => p.source === "declaration" && rendererOf({ source: p.source as QuestLine["source"], key: p.key }, DECLARATION_CARDS) === "generic")
+          .map((p) => p.key),
+      ),
+    ].sort();
+    const declared = CONTRACT.pairs.filter((p) => p.source === "declaration").map((p) => p.key);
+    // Every declaration is one or the other, never neither.
+    expect(generic.length + declared.filter((k) => DECLARATION_CARDS[k]).length).toBe(declared.length);
+    // On the base, DECLARATION_CARDS is W1-F's stub: every declaration falls to the generic fallback.
+    if (Object.keys(DECLARATION_CARDS).length === 0) expect(generic).toEqual([...declared].sort());
+  });
+});
+
+/**
+ * The counted Decide declarations whose only renderer is still the fallback, which records nothing,
+ * each with where it is met. A counted Decide holds its stage open until it is answered (core/quest.py
+ * `progress`), so any other would leave a walk with no way to Fit (the design review's P1, the
+ * sensitivity analyses under Predict). None is met on v0's walk, NHANES glucose under Predict.
+ */
+const NOT_YET: Record<string, string> = {
+  set_batch: "a batch column's handling, met under the omics lenses",
+  set_measurement_error: "regression calibration, met under Estimate (W3)",
+  set_model_sequence: "the Model 1 question, met under Estimate (W3)",
+  set_scales: "a multi-item scale, met under the survey lens",
+  set_usual_intake: "usual intake from repeated recalls, met under the dietary lens with repeats",
+};
+
+describe("no counted Decide is left with only the fallback card (P1)", () => {
+  const counted = Object.entries(CONTRACT.declarations)
+    .filter(([, p]) => p.label === "Decide" && p.counted)
+    .map(([key]) => key);
+  const seen = (key: string) => CONTRACT.pairs.filter((p) => p.source === "declaration" && p.key === key).flatMap((p) => p.seen);
+  const deadEnds = (cards: DeclarationCards) => counted.filter((key) => !recordable({ source: "declaration", key }, cards)).sort();
+
+  it("has a card for every counted Decide the engine places, but those listed as not yet", () => {
+    expect(counted).toContain("set_sensitivity");
+    expect(deadEnds(DECLARATION_CARDS)).toEqual(Object.keys(NOT_YET).sort());
+  });
+
+  it("meets none of those not yet on v0's walk, NHANES glucose under Predict", () => {
+    for (const key of Object.keys(NOT_YET)) expect(seen(key), key).not.toContain("nhanes/prediction");
+  });
+
+  it("fails where a counted Decide met under Predict has only the fallback (the sensitivity analyses' card taken away)", () => {
+    const { set_sensitivity: _gone, ...without } = DECLARATION_CARDS;
+    expect(seen("set_sensitivity")).toContain("nhanes/prediction");
+    expect(deadEnds(without)).toContain("set_sensitivity");
+    expect(deadEnds(without)).not.toEqual(Object.keys(NOT_YET).sort());
+  });
+});
+
+describe("a noticing's lever (P9)", () => {
+  it("opens the question it routes to by name, in the stage that asks it, so a lever in that stage expands it", async () => {
+    // The capture's blank-medication noticing routes to the missing-values question, which the
+    // engine's log asks in Who's in (by construction of both, not of the card).
+    const LOG = CONTRACT.logs.results_reached.log;
+    const asks = LOG.stages.find((s) => s.lines.some((l) => l.source === "question" && l.key === "missing"))!.key;
+    expect(asks).toBe("whos_in");
+    const open = vi.fn();
+    renderLine({ ...lineOf({ source: "finding", key: "binary_text__meds_hbp" }), name: "Meds_hbp is blank on most rows" }, undefined, open);
+    fireEvent.click(await screen.findByRole("button", { name: /Choose how blanks are handled/ }));
+    expect(open).toHaveBeenCalledWith(asks, "missing");
+  });
+});
+
+describe("the dispatcher never renders a blank", () => {
+  it.each(CASES)("$source $key in $stage renders something", ({ source, key, labels }) => {
+    const line = lineOf({ source, key }, labels[0] as QuestLine["label"]);
+    const { container } = renderLine(line);
+    expect(container.textContent!.trim().length, `${source} ${key}`).toBeGreaterThan(0);
+    const kind = rendererOf(line, DECLARATION_CARDS);
+    if (kind === "ask") expect(screen.getByTestId(`ask-${key}`).textContent!.trim().length).toBeGreaterThan(0);
+    if (kind === "generic") expect(screen.getByTestId(`generic-${key}`)).toBeInTheDocument();
+    if (kind === "finding") expect(screen.getByTestId(`finding-card-${key}`)).toBeInTheDocument();
+  });
+});
+
+describe("the dispatcher's fallbacks, both ways", () => {
+  const Probe = ({ line }: LineCardProps) => <p data-testid="probe">{line.key}</p>;
+
+  it("draws a declaration with its own card through that card, and without one through the generic fallback", () => {
+    const line = lineOf({ source: "declaration", key: "set_selection" });
+    const withCard = renderLine(line, { set_selection: Probe });
+    expect(screen.getByTestId("probe")).toHaveTextContent("set_selection");
+    expect(screen.queryByTestId("generic-set_selection")).toBeNull();
+    withCard.unmount();
+    renderLine(line, {});
+    expect(screen.queryByTestId("probe")).toBeNull();
+    expect(screen.getByTestId("generic-set_selection")).toHaveTextContent("The predictor-selection question");
+  });
+
+  it("names a fallback card by the line's own name, never by its decision kind (FOUNDATION §2)", () => {
+    const unknown: QuestLine = { ...lineOf({ source: "question", key: "lens" }), source: "exhibit" as QuestLine["source"], key: "table_one", name: "the first table" };
+    const lines = [
+      ...Object.keys(CONTRACT.declarations).flatMap((key) =>
+        (["open", "answered"] as const).map((status) => ({ ...lineOf({ source: "declaration", key }), status })),
+      ),
+      unknown,
+    ];
+    expect(lines.length).toBeGreaterThan(20);
+    for (const line of lines) {
+      const { container, unmount } = renderLine(line, {});
+      expect(rendererOf(line, {})).toBe("generic");
+      const text = container.textContent!.toLowerCase();
+      expect(text, `${line.key} (${line.status})`).not.toContain(line.key.replace(/_/g, " "));
+      expect(text, `${line.key} (${line.status})`).not.toContain(line.key);
+      expect(screen.getByTestId(`generic-${line.key}`)).toHaveTextContent(said(line.name));
+      unmount();
+    }
+  });
+
+  it("draws a Router question as today's card, and a line of a source it does not know by its own name", () => {
+    expect(QUESTION_KEYS).toContain("lens");
+    const known = renderLine(lineOf({ source: "question", key: "lens" }));
+    expect(screen.getByTestId("question-lens")).toBeInTheDocument();
+    expect(screen.queryByTestId("generic-lens")).toBeNull();
+    known.unmount();
+    const unknown: QuestLine = { ...lineOf({ source: "question", key: "lens" }), source: "exhibit" as QuestLine["source"], key: "table_one", name: "the first table" };
+    expect(rendererOf(unknown, DECLARATION_CARDS)).toBe("generic");
+    renderLine(unknown);
+    expect(screen.getByTestId("generic-table_one")).toHaveTextContent("The first table");
+  });
+
+  it("draws the ledger's ask line and a reading line as rows of their items", () => {
+    const ask: QuestLine = {
+      ...lineOf({ source: "question", key: "ask:models" }),
+      name: "Tell me about this column: kcal",
+      items: [
+        {
+          kind: "unit",
+          column: "kcal",
+          value: "kcal",
+          words: "kcal is energy in kilocalories",
+          evidence: "Its median is 1,980.",
+          options: [{ label: "It is in kilojoules", decision: { kind: "set_column_unit", column: "kcal", unit: "kJ" } }],
+        },
+      ],
+    };
+    expect(rendererOf(ask, DECLARATION_CARDS)).toBe("reading");
+    renderLine(ask);
+    expect(screen.getByTestId("reading-ask:models")).toHaveTextContent("kcal is energy in kilocalories");
+    expect(screen.getByRole("button", { name: "It is in kilojoules" })).toBeEnabled();
+  });
+
+  it("draws a column's own role line through the role card, recordable, and every other reading line as rows", () => {
+    // W1-R finding 1: the engine's line for a role recorded below high (roles/fixture.json).
+    const role = (ROLE_FIXTURE.lines as unknown as QuestLine[]).find((l) => l.status === "open")!;
+    expect(recordable(role, DECLARATION_CARDS)).toBe(true);
+    renderLine(role);
+    expect(screen.getByTestId(`role-${role.items[0]!.column}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`reading-${role.key}`)).toBeNull();
+    cleanup();
+    const settled: QuestLine = { ...role, id: "default:read-from-data", key: "read_from_data", label: "Confirm", status: "set_for_you", counted: false };
+    renderLine(settled);
+    expect(screen.getByTestId("reading-read_from_data")).toBeInTheDocument();
+    expect(screen.queryByTestId(`role-${role.items[0]!.column}`)).toBeNull();
+  });
+});
+
+/**
+ * Fit is the analysis flowchart's one action (FOUNDATION §7), so in the shell the families card
+ * records the choice in words that do not say Fit; today's screen fits the families as it records
+ * them and keeps its words. The families chosen are the capture's two first on its shelf, so the
+ * count in each label is 2 by construction.
+ */
+describe("the families card's words (P3)", () => {
+  /** The Predict capture's first view with the families open on a fresh shelf. */
+  const j = JOURNEYS.find((x) => x.name === "nhanes-prediction")!;
+  const at = j.views.findIndex((v) => v.stages.shelf?.status === "fresh" && v.interview.some((s) => s.key === "models" && s.status === "open"));
+  const view = expandView(j.f, j.views[at]!, PID, AT);
+  const mount = (node: ReactNode) => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(keys.teaching(), SHARED.teaching);
+    qc.setQueryData(keys.view(PID), view);
+    qc.setQueryData(keys.quest(PID), CONTRACT.logs.models_open.log);
+    const shelf = view.stages.shelf!;
+    qc.setQueryData(keys.stage(PID, "shelf"), { stage: "shelf", key: shelf.key, fresh: true, status: "fresh", artifact: artifactAt(j.f, "shelf", shelf.key) });
+    render(
+      <QueryClientProvider client={qc}>
+        <StageFocusProvider>{node}</StageFocusProvider>
+      </QueryClientProvider>,
+    );
+  };
+  const chooseTwo = () => {
+    const options = screen.getAllByRole("option").filter((o) => o.dataset.testid?.startsWith("option-"));
+    for (const o of options) if (o.getAttribute("aria-selected") === "true") fireEvent.click(o);
+    fireEvent.click(options[0]!);
+    fireEvent.click(options[1]!);
+    expect(options.filter((o) => o.getAttribute("aria-selected") === "true")).toHaveLength(2);
+  };
+
+  it("says Choose in the shell, never Fit", () => {
+    expect(at).toBeGreaterThanOrEqual(0);
+    mount(<CardFor pid={PID} line={lineOf({ source: "question", key: "models" })} />);
+    chooseTwo();
+    expect(screen.getByTestId("record-models")).toHaveTextContent(/^Choose these 2 families$/);
+  });
+
+  it("keeps Fit on today's card", () => {
+    mount(<AskFor pid={PID} view={view} stepKey="models" />);
+    chooseTwo();
+    expect(screen.getByTestId("record-models")).toHaveTextContent(/^Fit these 2 families$/);
+  });
+});

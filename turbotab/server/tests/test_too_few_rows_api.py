@@ -5,7 +5,9 @@ prediction, the roles recorded as proposed (the features ride along unconfirmed)
 then the features confirmed at the models question. The confirmation left the cohort 0 rows and
 the design failed on scikit-learn's "Found array with 0 sample(s)"; now its preview and its
 recording are refused (409) with the blanks named and a fill as the way back, the fill is accepted,
-the confirmation goes through after it, and no stage fails.
+the confirmation goes through after it, and no stage fails. Under ruling R-g (2026-10-17) the
+features the roles stage proposed with one proposal are one judgment, confirmed in one press, which
+the models answer's refusal offers.
 """
 from __future__ import annotations
 
@@ -59,23 +61,41 @@ def test_confirming_the_features_under_complete_cases_is_refused_with_a_fill(cli
     wait_for(client, pid, {"shelf": "fresh"}, timeout=180)
     asked = post(client, pid, {"kind": "select_models", "models": ["elastic_net"]})
     assert asked.status_code == 409 and asked.json()["error"]["code"] == "reading_unsettled"
-    confirm = next(e["decision"] for e in asked.json()["error"]["exits"]
-                   if (e["decision"] or {}).get("kind") == "confirm_readings")
-    assert any(i["column"].startswith("mz_") for i in confirm["items"])
+    # Ruling R-g (which replaces W1-R round 2's R-b, one press per feature): the features the roles
+    # stage proposed below high with one proposal, read from its served proposals, are one
+    # judgment; the refusal offers its one press, exactly those columns as proposed, and no
+    # confirmation of one of them alone.
+    proposals = {p["column"]: p for p in roles["columns"]}
 
-    previewed = client.post(f"/api/projects/{pid}/preview", json=confirm)
+    def judged(c: str) -> tuple[str, str, str]:
+        return proposals[c]["proposed"], proposals[c]["confidence"], proposals[c]["reason"]
+
+    first = next(c for c in proposals if c.startswith("mz_"))
+    assert proposals[first]["confidence"] != "high"
+    features = [c for c in proposals if judged(c) == judged(first)]
+    assert len(features) > 1 and all(c.startswith("mz_") for c in features)
+    exits = [e["decision"] for e in asked.json()["error"]["exits"] if e["decision"]]
+    press = {"kind": "confirm_readings", "items": [
+        {"reading": "role", "column": c, "value": proposals[c]["proposed"]} for c in features]}
+    assert exits.count(press) == 1
+    assert not [d for d in exits if d.get("kind") == "confirm_reading" and d["column"] in features]
+
+    # The press would leave too few complete rows: its preview and its recording are refused.
+    previewed = client.post(f"/api/projects/{pid}/preview", json=press)
     assert previewed.status_code == 409, previewed.text[:600]
     assert previewed.json()["error"]["code"] == "too_few_rows"
-    refused = post(client, pid, confirm)
-    assert refused.status_code == 409, refused.text[:600]
-    error = refused.json()["error"]
+    recorded = post(client, pid, press)
+    assert recorded.status_code == 409, recorded.text[:600]
+    error = recorded.json()["error"]
     assert error["code"] == "too_few_rows"
     # Under prediction the check reads the rows outside the held-out ones, as a preview does.
     held = client.get(f"/api/projects/{pid}/stages/split").json()["artifact"]["n_holdout"]
-    assert error["message"].startswith(
-        f"Recorded, this answer would leave none of the {measured - held} rows outside the held-out "
-        f"ones, and the design needs at least 6. Complete cases would remove {measured - held} rows: "
-        f"each of them is blank in at least one of the ")
+    assert error["message"].startswith("Recorded, this answer would leave ")
+    assert "rows outside the held-out ones, and the design needs at least 6." in error["message"]
+    assert held > 0
+    # The blanks it names are of the columns this confirmation brings in.
+    named = [c for c in proposals if f"`{c}`" in error["message"]]
+    assert named and set(named) <= set(features)
     assert error["message"].endswith(
         "Fill the blanks instead of complete cases (the missing-values question).")
     fill = error["exits"][0]
@@ -84,7 +104,7 @@ def test_confirming_the_features_under_complete_cases_is_refused_with_a_fill(cli
     assert error["exits"][-1] == {"label": "Keep the answers as they are", "decision": None}
 
     assert post(client, pid, fill["decision"]).status_code == 200
-    confirmed = post(client, pid, confirm)
+    confirmed = post(client, pid, press)
     assert confirmed.status_code == 200, confirmed.text[:600]
     view = wait_for(client, pid, {"cohort": "fresh"}, timeout=180)
     assert client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["n_final"] == measured

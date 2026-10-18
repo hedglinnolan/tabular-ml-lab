@@ -1,5 +1,8 @@
 """Build the adjudication batches (PLAN.md phase 6): every real claim either referee marked false or
-overstated, or whose basis audit found fidelity partly/unfaithful or asked for review."""
+overstated, or whose basis audit found fidelity partly/unfaithful or asked for review.
+
+Kept as the backtest ran it: S below is that session's scratchpad, written in. A new queue's
+promoted decoys are listed to adjudicate by research/registry/decoy_queue.py (python -m research.registry.decoy_queue), which reads and writes only the paths it is given."""
 import json, glob, os
 S = "/private/tmp/claude-501/-Users-nhedglin-tabular-ml-lab/a12607bd-3f0c-4a23-8d52-bda4a2c1292e/scratchpad"
 key = json.load(open(f"{S}/sealed/decoy_key.json"))

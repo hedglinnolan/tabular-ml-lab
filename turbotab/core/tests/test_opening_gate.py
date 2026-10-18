@@ -163,6 +163,51 @@ def test_keeping_an_act_on_it_disposition_does_not_open_the_rows_until_it_is_set
                                            opening_ctx(state, settled))
 
 
+ROUTED_TO_AN_ANSWER = {"findings": [
+    {"id": "pack::dietary::implausible_intake", "severity": "warning",
+     "summary": "Some sugar reports are implausible", "affected_columns": ["sugar"],
+     "routes_to": "exclusions", "repairs": [], "answered_by": None},
+]}
+
+
+def test_a_noticing_whose_question_is_answered_is_confirmed_as_a_limitation_and_opens_the_rows():
+    """The re-walk's N9 (the ruling of 2026-10-18): the eligibility question that decides it is
+    answered (a rule on `age` only), and that answer stands, so "Confirm all" records the noticing
+    as a limitation, the record says so, and the opening does not wait for an act nobody chose."""
+    from turbotab.core.sweep import confirm_sentence
+
+    answered = predicting().model_copy(update={"exclusions": [
+        decisions.ExclusionRule(column="age", low=18.0, reason="adults")]})
+    log = log_of(answered, [], findings=ROUTED_TO_AN_ANSWER)
+    t = sweep.triage(answered, log, ROUTED_TO_AN_ANSWER, [])
+    assert [(i.id, i.recommended) for i in t.items] == [
+        ("pack::dietary::implausible_intake", "could_bias")]
+    kept = _confirm(log, t)
+    assert [(l.key, l.value) for l in kept.lines] == [("pack::dietary::implausible_intake",
+                                                       "could_bias")]
+    assert confirm_sentence(kept) == "The open noticings were triaged in Results: 1 left as a limitation."
+    records = [record(1, kept.model_dump(mode="json"))]
+    state = answered.model_copy(update={"sweeps": decisions.fold(records).sweeps})
+    after = sweep.triage(state, log_of(state, records, findings=ROUTED_TO_AN_ANSWER),
+                         ROUTED_TO_AN_ANSWER, records)
+    assert after.answered and [i.recorded for i in after.items] == ["could_bias"]
+    seal._the_opening_waits_for_the_triage(decisions.OpenSeal(family="linear"),
+                                           opening_ctx(state, after))
+    # The alternative, chosen: marked "act on it", the rows stay sealed until it is acted on.
+    acting = _confirm(log, t, [{"id": "finding:pack::dietary::implausible_intake",
+                                "key": "pack::dietary::implausible_intake", "value": "act_on_it"}])
+    assert confirm_sentence(acting) == "The open noticings were triaged in Results: 1 to act on."
+    records = [record(1, acting.model_dump(mode="json"))]
+    state = answered.model_copy(update={"sweeps": decisions.fold(records).sweeps})
+    marked = sweep.triage(state, log_of(state, records, findings=ROUTED_TO_AN_ANSWER),
+                          ROUTED_TO_AN_ANSWER, records)
+    assert [i.recorded for i in marked.items] == ["act_on_it"]
+    r = _refusal(state, marked)
+    assert r.code == "triage_open"
+    assert "1 marked \"act on it\" is not acted on yet: Some sugar reports are implausible" \
+        in r.message
+
+
 def test_a_triage_that_cannot_be_read_keeps_the_rows_sealed():
     state, _log, _t = triaged(OPEN_NOTICING)
 

@@ -141,7 +141,7 @@ def test_every_compute_stage_sits_in_one_stage():
     from turbotab.core.stages import build_graph
 
     names = [s.name for s in build_graph().stages()]
-    assert len(names) == len(set(names)) == 30
+    assert len(names) == len(set(names)) == 31
     assert set(quest.COMPUTE) == set(names)
     assert {home for home, _item in quest.COMPUTE.values()} <= set(SEVEN)
 
@@ -281,8 +281,11 @@ def test_a_stage_not_reached_reports_no_progress_and_waits_for_the_question_ahea
     assert not models.reached and models.progress is None  # empty, never "0 of N"
     estimand = line(log, "estimand")
     assert estimand.status == "waiting"
-    assert [(w.key, w.stage) for w in estimand.waiting_for] == [
-        (first.key, quest.QUESTIONS[first.key].stage)]
+    # The question ahead is the event question, which waits only for the outcome's first reading:
+    # whether it is asked at all is that reading's, so the line waits for the reading, not for it
+    # by name (the re-walk's N5).
+    assert (first.key, first.waiting_on) == ("event", ["target_info"])
+    assert estimand.waiting_for == [] and estimand.computing[:1] == ["target_info"]
     # Your data: the lens answered; the roles, asked after Who's in's structure questions today,
     # wait; the offers (a join, a codebook) are listed and not counted.
     data = stage(log, "data")
@@ -488,6 +491,30 @@ def test_results_stays_reached_after_the_fit_and_says_why_it_dropped_back():
         assert stage(log, "results").reopened == []
 
 
+@pytest.mark.parametrize("purpose", ["inference", "prediction", None])
+def test_a_results_stage_no_screen_draws_is_no_reason_results_dropped_back(purpose):
+    """The ruling at SE-int's cap (P4, option a): which decisions mattered (``mattered``) has its
+    quest home in Results but no card and no exhibit there (``COMPUTE`` names none, and it is not
+    in ``EXHIBITS``), so no screen draws it: its result out of date is no reason Results dropped
+    back, under every goal. The other way, the results a screen draws keep their reasons exactly as
+    without it. It stays out of the exhibits."""
+    state, records, steps = _after_the_fit(EXCLUSION)
+    state = state.model_copy(update={"purpose": purpose})
+    fitted = T0 + timedelta(minutes=7.5)
+    assert quest.COMPUTE["mattered"] == ("results", None) and "mattered" not in quest.EXHIBITS
+    # the mattered stage reads the rule recorded in Who's in after it was computed
+    assert "exclusions" in quest.stage_reads("mattered")
+    stale = {"fit": {"status": "stale"}, "mattered": {"status": "stale"}}
+    drawn = {"fit": fitted, "effects": fitted}
+    log = quest.quest_log(state, records, steps, stale, shown_at={**drawn, "mattered": fitted})
+    without = quest.quest_log(state, records, steps, stale, shown_at=drawn)
+    results = stage(log, "results")
+    assert results.reached, purpose
+    assert all("mattered" not in r.results for r in results.reopened), results.reopened
+    assert results.reopened == stage(without, "results").reopened
+    assert results.reopened, purpose  # the drawn results' reason stands
+
+
 def test_results_opens_when_fit_is_pressed_not_when_an_estimate_is_computed():
     # P0.8 (FOUNDATION §7): under Estimate, Results opens with the lock Fit records; a fit computed
     # live before the press opens nothing. The log carries the lock as Fit reports it.
@@ -566,7 +593,10 @@ def test_progress_holds_while_the_outcome_is_read_again():
                if s.key in ("event", "task", "follow_up") else s for s in settled]
     log = quest.quest_log(state, [], reading)
     assert stage(log, "question").progress == before
-    assert not line(log, "event").counted and line(log, "event").status == "waiting"
+    # The event and follow-up questions are asked only for some outcomes: not listed until the
+    # reading says whether they are (the re-walk's N5).
+    keys = {l.key for l in stage(log, "question").lines}
+    assert "event" not in keys and "follow_up" not in keys
     # A recorded answer that still holds stands meanwhile, and counts: the task, set for the
     # outcome now; one recorded for another outcome does not hold, so it waits uncounted.
     records = [record(1, {"kind": "set_target", "column": "glucose"}),

@@ -76,8 +76,8 @@ def settle_post(client: Any, pid: str, body: dict[str, Any], truth: Truth | None
                 unblock: Callable[[], bool] | None = None) -> Any:
     """Post ``body``; while it is refused only for readings to settle, answer every reading it
     asks about from the fixture's ``truth`` (one block confirmation, ``confirm_readings``, which
-    settles exactly the readings it lists; an energy column's unit and days as declared), then
-    post it again. ``unblock``: answers an earlier question that holds ``body`` (WP17: a reading
+    settles exactly the readings it lists, beside a role's own confirmation; an energy column's
+    unit and days as declared: ``truths.answers``), then post it again. ``unblock``: answers an earlier question that holds ``body`` (WP17: a reading
     confirmed here can settle a covariate the adjustment question then asks about)."""
     url = f"/api/projects/{pid}/decisions"
     truth = truth if truth is not None else Truth(fixture="the test (no truth given)")
@@ -102,6 +102,36 @@ def _post_when_reached(client: Any, url: str, body: dict[str, Any], timeout: flo
         if unblock is not None and unblock():
             continue
         time.sleep(0.1)
+
+
+def confirm_each(roles: dict[str, str], waiting: list[str],
+                 proposals: Any = None) -> list[dict[str, Any]]:
+    """The confirmations of the roles a ``set_roles`` left waiting, each as its author gave it
+    (a column waits only where its author gave it the role proposed): each group in one press
+    (ruling R-g: the columns the roles stage's ``proposals``, its artifact, proposed with one role,
+    one confidence and one reason word for word, as ``readings.role_groups`` reads them), a
+    ``confirm_readings`` of exactly its columns, and every other column on its own (one
+    ``confirm_readings`` of the one column where one waits, as recorded before ruling R-b, else
+    one ``confirm_reading``), since the server refuses any other block of roles proposed below
+    high (BLUEPRINT §14 rule 2)."""
+    if len(waiting) == 1:
+        return [{"kind": "confirm_readings", "items": [
+            {"reading": "role", "column": waiting[0], "value": roles[waiting[0]]}]}]
+    data = (proposals or {}).get("columns") if isinstance(proposals, dict) else proposals
+    judged: dict[tuple[str, str, str], list[str]] = {}
+    for p in data or []:
+        if p.get("column") in waiting and p.get("proposed") == roles.get(p.get("column")):
+            judged.setdefault((str(p["proposed"]), str(p.get("confidence")),
+                               str(p.get("reason") or "")), []).append(str(p["column"]))
+    out: list[dict[str, Any]] = []
+    done: set[str] = set()
+    for (role, _confidence, _reason), columns in judged.items():
+        if len(columns) > 1:
+            out.append({"kind": "confirm_readings", "items": [
+                {"reading": "role", "column": c, "value": role} for c in columns]})
+            done.update(columns)
+    return out + [{"kind": "confirm_reading", "reading": "role", "column": c, "value": roles[c]}
+                  for c in waiting if c not in done]
 
 
 def every_row(model: dict[str, Any]) -> list[dict[str, Any]]:
@@ -379,17 +409,19 @@ class Drive:
     def decide_roles(self, roles: dict[str, str]) -> None:
         """Record the roles as their author answers them (BLUEPRINT §14, recognition's leash):
         the ``set_roles`` answer, then every role the server recorded unconfirmed (proposed below
-        high confidence) confirmed in one block, each with the role the author gave it, as a user
-        who knows the table does. A bulk ``set_roles`` alone confirms none of them. The author's
-        roles are the fixture's truth for its role readings."""
+        high confidence) confirmed with the role the author gave it, as a user who knows the table
+        does: each group of one proposal in its one press, and every other column on its own
+        (:func:`confirm_each`). A bulk ``set_roles`` alone confirms none of them, and the server
+        refuses any other block (rule 2; ruling R-g). The author's roles are the fixture's truth
+        for its role readings."""
         for column, role in roles.items():
             self.truth.setdefault(f"role:{column}", role)
         self.decide({"kind": "set_roles", "roles": roles})
         record = self.view()["decisions"][-1]
         waiting = record["decision"].get("unconfirmed") or []
-        if waiting:
-            self.decide({"kind": "confirm_readings", "items": [
-                {"reading": "role", "column": c, "value": roles[c]} for c in waiting]})
+        proposals = served(self.c, self.pid, "roles") if len(waiting) > 1 else None
+        for body in confirm_each(roles, waiting, proposals):
+            self.decide(body)
 
     def reach(self, key: str, timeout: float = 120.0) -> dict[str, Any]:
         end = time.monotonic() + timeout

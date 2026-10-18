@@ -21,6 +21,7 @@ from typing import Any
 
 from turbotab.core import claims
 from turbotab.core.methods.missing import RULE
+from turbotab.core.readings import PREDICTOR_ROLES
 
 _NUT = "research/NUTRITION_PACK.md"
 _CLIN = "research/CLINICAL_SURVEY_PACK.md"
@@ -130,8 +131,8 @@ LENS = {
     "consumer": "The findings, the column roles and the order of every suggestion read it.",
     "options": [
         option("dietary", "Dietary intake",
-               "Checks energy units and implausible intakes; offers energy adjustment and "
-               "substitution curves."),
+               "Checks energy units and implausible intakes; for estimating effects, offers energy "
+               "adjustment and substitution curves."),
         option("clinical", "Clinical measurements and labs",
                "Separates impossible values from abnormal ones; checks units and censored "
                "results."),
@@ -691,6 +692,13 @@ TEMPORAL = {
     "evidence": None,
 }
 
+_ROLE_UNITS = section(
+    "Units decide everything downstream",
+    "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an amount. Every "
+    "implausibility screen, energy adjustment and substitution is a function of total energy, so a "
+    "unit error there reaches every result.",
+    "SETTLED", NUT01)
+
 ROLES = {
     "key": "roles",
     "title": "What each column is",
@@ -750,13 +758,66 @@ ROLES = {
                 "four-year weight, doubled, before the division (NHANES Analytic Guidelines "
                 "2011–2016 §3.1.3–3.1.4). Confirm the same dietary method applies across cycles.",
                 "SETTLED", NUT01),
-        section("Units decide everything downstream",
-                "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an "
-                "amount. Every implausibility screen, energy adjustment and substitution is a "
-                "function of total energy, so a unit error there reaches every result.",
-                "SETTLED", NUT01),
+        _ROLE_UNITS,
     ]},
     "evidence": None,
+}
+
+# W1-R (the walkthrough of 2026-10-17, finding 3c; BEATS_PREDICT P3's wording, pulled forward):
+# under Predict no column is studied and nothing is adjusted for, so the roles card says
+# "predictors" and names no study factor, and no energy model reads the roles (BEATS_PREDICT §9
+# ruling 5). The roles themselves stay as they are, each with a label of its own (the card's
+# buttons are named by them). The roles ruling of 2026-10-17: every predictor role is a predictor,
+# so the card's one-liner says how many roles are predictor roles (``readings.PREDICTOR_ROLES``,
+# its count in words; under the ruling at W1-X's cap, never that they enter the models, since
+# the missing-values answer can drop a role's only column), and names each group in the
+# project's own words (``readings.predictor_groups``, which the server serves with the roles
+# stage's artifact). The engine still reads the Predictor role apart in some preparation and
+# screening steps, and four rounds named them here and on the groups; each round produced a false
+# sentence, the last the energy-aware fill named under the complete-cases answer, where
+# ``models.pipeline`` builds no fill. So under the ruling of 2026-10-18 no option or term names a
+# step: each says what kind of column holds the role, and the card's one sentence says how many
+# columns hold a predictor role, whichever group holds them (``readings.predictors_sentence``, the
+# rulings at W1-V's cap and at W1-X's: what the roles hold, never what the models get, since the
+# missing-values answer or a repair can leave a predictor-role column out). The Predictor option's
+# examples name each group the role is named by (a nutrient intake, a lab value as a measure, an
+# assay feature), since one option is served under every lens. The drawer and the why are the Estimate
+# card's but for two sentences that named steps (the W1-V verifier's P2): the units section says
+# what the units are and leaves out the screens, energy adjustment and substitution that read total
+# energy (neither of the last two runs under Predict), and a flag "marks which values were imputed"
+# rather than "describes how a value was filled". ``tests/test_estimate_words_under_predict.py``
+# holds every word of the Predict entry to naming no step.
+_PREDICT_OPTIONS = {
+    "exposure": option("exposure", "Predictor",
+                       "A predictor, such as a nutrient intake, a lab value or an assay feature."),
+    "energy": option("energy", "Energy", "Total energy intake, a predictor."),
+    "covariate": option("covariate", "Covariate",
+                        "A predictor that describes the person, such as age or sex."),
+}
+# How many roles are predictor roles, in words (the Predict roles card's one-liner).
+_HOW_MANY = {2: "Two", 3: "Three", 4: "Four", 5: "Five"}
+_ROLE_UNITS_UNDER_PREDICT = section(
+    "Energy units",
+    "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an amount.",
+    "SETTLED", NUT01)
+ROLES_UNDER_PREDICT = {
+    **ROLES,
+    "one_liner": f"{_HOW_MANY[len(PREDICTOR_ROLES)]} roles are predictor roles; every other role "
+                 "stays out of the predictors.",
+    "why": "An identifier names a person and cannot generalize. Survey weights and design columns "
+           "describe how people were sampled, and a flag such as `imputed_weight` marks which "
+           "values were imputed. None of them measures the participant, so each stays out of the "
+           "predictors while the record keeps it.",
+    "consumer": "The participant flow, the split's grouping and the model matrix read it.",
+    "options": [_PREDICT_OPTIONS.get(o["value"], o) for o in ROLES["options"]],
+    "terms": [
+        term("predictor", "A column the model reads to predict the outcome, such as a nutrient "
+                          "intake or age."),
+        term("covariate", "A predictor that describes the person, such as age or sex."),
+        *(t for t in ROLES["terms"] if t["term"] == "identifier"),
+    ],
+    "drawer": {"sections": [_ROLE_UNITS_UNDER_PREDICT if s is _ROLE_UNITS else s
+                            for s in ROLES["drawer"]["sections"]]},
 }
 
 SURVEY = {
@@ -1644,6 +1705,10 @@ ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, DESIGN, P
            MODIFICATION, CAUSAL, MODELS, SUBSTITUTION, OPEN_SEAL]
 
 
-def entries_now() -> list[dict[str, Any]]:
-    """:data:`ENTRIES`, with the models card's options read from the registry as it stands now."""
-    return [dict(e, options=family_options()) if e is MODELS else e for e in ENTRIES]
+def entries_now(purpose: str | None = None) -> list[dict[str, Any]]:
+    """:data:`ENTRIES`, with the models card's options read from the registry as it stands now;
+    under prediction (``purpose``) the roles card is :data:`ROLES_UNDER_PREDICT`. None: unanswered,
+    the cards as they stand under Estimate."""
+    roles = ROLES_UNDER_PREDICT if purpose == "prediction" else ROLES
+    return [dict(e, options=family_options()) if e is MODELS else roles if e is ROLES else e
+            for e in ENTRIES]

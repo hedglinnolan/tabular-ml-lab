@@ -13,6 +13,9 @@
                                    raw.parquet and file.json (DATAIN, minimal assembly)
         codebooks/<cid>/           an imported codebook: codebook.json and its source file
         cache/<stage>/<key>/       disposable stage artifacts
+        claims_rendered.jsonl      each claim rendered for the project (the claims render log,
+                                   ``claims.render_log``), written in every mode
+        previews.jsonl             each preview asked for, in analyst mode (SWARM_ENGINE_PLAN E4)
 
 Project ids are ``"p"`` + 10 lowercase hex characters. Every accessor
 validates the id against that shape before touching the filesystem, so an id
@@ -20,25 +23,68 @@ taken from a URL can never name a path outside ``projects/``.
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
 import secrets
 import tempfile
 import threading
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
+from urllib.parse import urlsplit
 
 from turbotab.core.config import Settings
 
 if TYPE_CHECKING:  # pragma: no cover
     from turbotab.core.datastore import DataStore
+    from turbotab.core.graph import Graph, StageContext
 
 SourceKind = Literal["path", "upload"]
 SOURCE_KINDS: tuple[str, ...] = ("path", "upload")
 PROJECT_ID_RE = re.compile(r"^p[0-9a-f]{10}$")
+CLAIMS_LOG = "claims_rendered.jsonl"
+PREVIEWS_LOG = "previews.jsonl"
+# Where a file came from (SWARM_ENGINE_PLAN E5), as given with it: each optional, kept only when
+# given, in this order.
+PROVENANCE_FIELDS: tuple[str, ...] = ("url", "release_date", "license")
+_PROVENANCE_WORDS = {"url": "URL", "release_date": "release date", "license": "license"}
+PROVENANCE_MAX_CHARS = 2000
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def source_provenance(url: str | None = None, release_date: str | None = None,
+                      license: str | None = None) -> dict[str, str]:
+    """The file's URL, release date (``YYYY-MM-DD``) and license, as given, keeping only those
+    given (a blank is not given); raises ValueError, in words a client shows, for one that does
+    not read: a URL without its scheme and host, a date that is not a day on the calendar written
+    ``YYYY-MM-DD``, or a field over :data:`PROVENANCE_MAX_CHARS` characters."""
+    given = {"url": url, "release_date": release_date, "license": license}
+    out: dict[str, str] = {}
+    for name in PROVENANCE_FIELDS:
+        value = (given[name] or "").strip()
+        if not value:
+            continue
+        if len(value) > PROVENANCE_MAX_CHARS:
+            raise ValueError(f"The file's {_PROVENANCE_WORDS[name]} holds at most "
+                             f"{PROVENANCE_MAX_CHARS:,} characters; this one has {len(value):,}.")
+        if name == "url":
+            parts = urlsplit(value)
+            if not (parts.scheme and parts.netloc):
+                raise ValueError(f"Give the file's address in full, starting with its scheme "
+                                 f"(https://), not {value!r}.")
+        if name == "release_date":
+            try:
+                if not _ISO_DATE.match(value):
+                    raise ValueError
+                date.fromisoformat(value)
+            except ValueError:
+                raise ValueError(f"Write the release date as YYYY-MM-DD (a day on the calendar), "
+                                 f"not {value!r}.") from None
+        out[name] = value
+    return out
 
 
 @dataclass
@@ -49,9 +95,12 @@ class ProjectMeta:
     source_kind: SourceKind
     source_path: str
     source_name: str
+    # Where the table's file came from, as given with it (``source_provenance``); empty when none
+    # was, and then not written, so the file reads as every project's did before.
+    provenance: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "id": self.id,
             "name": self.name,
             "created_at": self.created_at.isoformat(),
@@ -59,6 +108,9 @@ class ProjectMeta:
             "source_path": self.source_path,
             "source_name": self.source_name,
         }
+        if self.provenance:
+            out["provenance"] = dict(self.provenance)
+        return out
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ProjectMeta":
@@ -67,10 +119,12 @@ class ProjectMeta:
             created = datetime.fromisoformat(str(created))
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
+        kept = data.get("provenance") or {}
         return cls(id=str(data["id"]), name=str(data["name"]),
                    created_at=created.astimezone(timezone.utc),
                    source_kind=data["source_kind"], source_path=str(data["source_path"]),
-                   source_name=str(data["source_name"]))
+                   source_name=str(data["source_name"]),
+                   provenance={k: str(kept[k]) for k in PROVENANCE_FIELDS if kept.get(k)})
 
 
 class ProjectNotFound(KeyError):
@@ -107,13 +161,14 @@ class Workspace:
 
     # ── projects ──────────────────────────────────────────────────────────────
     def create_project(self, name: str, source_path: str | os.PathLike[str],
-                       source_kind: SourceKind, *, source_name: str | None = None
-                       ) -> ProjectMeta:
+                       source_kind: SourceKind, *, source_name: str | None = None,
+                       provenance: dict[str, str] | None = None) -> ProjectMeta:
         """Create ``projects/<pid>/`` and its ``project.json``.
 
         ``source_name`` defaults to the file name of ``source_path``; an upload
         passes the client's original file name here, since the staged copy's
-        name is TurboTab's own.
+        name is TurboTab's own. ``provenance``: where the file came from, as
+        :func:`source_provenance` reads it.
         """
         if source_kind not in SOURCE_KINDS:
             raise ValueError(f"source_kind must be 'path' or 'upload', not {source_kind!r}")
@@ -137,6 +192,7 @@ class Workspace:
             source_kind=source_kind,
             source_path=str(src.absolute()),
             source_name=src_name,
+            provenance=dict(provenance or {}),
         )
         _write_json_atomic(pdir / "project.json", meta.to_dict())
         return meta
@@ -221,8 +277,46 @@ class Workspace:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def claims_log_path(self, pid: str) -> Path:
+        """``projects/<pid>/claims_rendered.jsonl``: the claims render log."""
+        return self.project_dir(pid) / CLAIMS_LOG
+
+    def previews_log_path(self, pid: str) -> Path:
+        """``projects/<pid>/previews.jsonl``: each preview asked for in analyst mode."""
+        return self.project_dir(pid) / PREVIEWS_LOG
+
     # ── convenience ───────────────────────────────────────────────────────────
     def datastore(self, pid: str) -> "DataStore":
         """A DataStore over the project's ingested table, under this machine's budget."""
         from turbotab.core.datastore import DataStore
         return DataStore(self.data_path(pid), self.settings.memory_budget_bytes)
+
+
+# ── the engine's stage graph (SWARM_ENGINE_PLAN E4) ──────────────────────────
+# The engine loads its graph by this name, in the server and again in each job worker
+# (``graph.load_graph``): the stage graph itself, each stage run inside its project's claims
+# render log, so a claim a stage renders is logged wherever the stage runs.
+STAGE_GRAPH = "turbotab.core.workspace:stage_graph"
+
+
+def logged_stage(fn: Callable[["StageContext"], Any]) -> Callable[["StageContext"], Any]:
+    """``fn``, run inside the claims render log of the project folder its context names (no log
+    where it names none)."""
+    from turbotab.core.claims._registry import render_log
+
+    @functools.wraps(fn)
+    def run(ctx: "StageContext") -> Any:
+        folder = (getattr(ctx, "paths", None) or {}).get("project_dir")
+        with render_log(Path(folder) / CLAIMS_LOG if folder else None):
+            return fn(ctx)
+
+    return run
+
+
+def stage_graph() -> "Graph":
+    """``stages.build_graph``'s graph, each stage's function run by :func:`logged_stage`. Every
+    other field of a stage, and so every stage key, is the stage graph's own."""
+    from turbotab.core.graph import Graph
+    from turbotab.core.stages import build_graph
+
+    return Graph([replace(stage, fn=logged_stage(stage.fn)) for stage in build_graph().stages()])
