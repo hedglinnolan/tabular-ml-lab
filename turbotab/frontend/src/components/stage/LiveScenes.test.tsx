@@ -104,13 +104,15 @@ function predictorLine(column: string): QuestLine {
  * The re-walk's N3: under Predict the lineage named its groups "13 covariate columns" and "7 exposure
  * columns", Estimate's words. It names them as the roles card does, in the predictor groups the server
  * serves for the project (core/readings.py `served_groups`; here the engine's own, from the roles
- * fixture, a dietary project's with no fill), each count read from the roles by construction; under
+ * fixture, a dietary project's: since W1-V the groups read the lenses alone, so the served shape's
+ * `fill` and `no_fill` are the same groups), each count read from the roles by construction; under
  * Estimate, with no groups served, the words are as before.
  */
 describe("the lineage's groups in the roles card's words under Predict (N3)", () => {
-  const SERVED = (ROLES as unknown as { under: { prediction: { kinds: { dietary: { groups: { screen: PredictorGroupsServed } } } } } })
-    .under.prediction.kinds.dietary.groups.screen;
-  type PredictorGroupsServed = { fill: Record<string, { one: string; head: [string, string]; note: string }>; no_fill: Record<string, { one: string; head: [string, string]; note: string }> };
+  type Group = { one: string; head: [string, string]; note: string };
+  const GROUPS = (ROLES as unknown as { under: { prediction: { kinds: { dietary: { groups: Record<string, Group> } } } } })
+    .under.prediction.kinds.dietary.groups;
+  const SERVED = { fill: GROUPS, no_fill: GROUPS };
   const roles: Record<string, string> = {
     ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`c${i}`, "covariate"])),
     ...Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`n${i}`, "exposure"])),
@@ -154,7 +156,7 @@ describe("the lineage's groups in the roles card's words under Predict (N3)", ()
 
   it("names each group as the roles card does, never as a covariate or an exposure", () => {
     expect(predictors.length).toBeGreaterThan(12); // collapsed into one node per role
-    draw(servedGroups({ ...SERVED, energy_bearing: [] }, roles));
+    draw(servedGroups({ ...SERVED, energy_bearing: [] }));
     const text = document.body.textContent ?? "";
     expect(text).toContain(`8 ${head("covariate")[1]}`);
     expect(text).toContain(`5 ${head("exposure")[1]}`);
@@ -173,7 +175,7 @@ describe("the lineage's groups in the roles card's words under Predict (N3)", ()
 
   it("names the design's collapsed groups the same way", () => {
     const engine = predictorsLineage(predictors, roles); // the engine's collapse has the same group nodes
-    const named = inGroupWords(engine, servedGroups({ ...SERVED, energy_bearing: [] }, roles));
+    const named = inGroupWords(engine, servedGroups({ ...SERVED, energy_bearing: [] }));
     const labels = named.nodes.filter((n) => n.lane === "raw").map((n) => n.label);
     expect(labels).toEqual([`8 ${head("covariate")[1]}`, `5 ${head("exposure")[1]}`, `${head("energy")[0]}: 1 column`]);
     expect(inGroupWords(engine, null)).toBe(engine);
@@ -207,7 +209,7 @@ describe("the lineage's groups in the roles card's words under Predict (N3)", ()
       group("raw", "covariate", 2, 30), group("adjusted", "covariate", 2, 30), group("matrix", "covariate", 2, 30),
     ];
     const engine = { nodes, links: [], collapsed: true } as unknown as Parameters<typeof inGroupWords>[0];
-    const named = inGroupWords(engine, servedGroups({ ...SERVED, energy_bearing: [] }, roles));
+    const named = inGroupWords(engine, servedGroups({ ...SERVED, energy_bearing: [] }));
     const label = (id: string) => named.nodes.find((n) => n.id === id)!.label;
     const [, many] = head("covariate");
     expect(label("raw:group:covariate:1")).toBe(`3 ${many}`);
@@ -392,7 +394,7 @@ describe("the lineage's groups in the roles card's words under Predict (N3)", ()
         expect(text).not.toMatch(/covariate|exposure|energy column/);
       }
       // A step between the two sides (a preview's story frame) is named the same way.
-      const served = servedGroups({ ...SERVED, energy_bearing: [] }, roles);
+      const served = servedGroups({ ...SERVED, energy_bearing: [] });
       const framed = { ...PREVIEW.views[0]!, story: [{ label: "a step", lineage: before }] } as typeof PREVIEW.views[number];
       const named = viewInGroupWords(framed, served, true);
       const frame = named.kind === "lineage" ? named.story[0]!.lineage.nodes.map((n) => n.label) : [];

@@ -148,8 +148,8 @@ export function Stage({
   const roles = useM1Stage(pid, view, "roles", predict);
   const served = roles.artifact?.predictor_groups;
   const predictorGroups = useMemo(
-    () => (predict ? servedGroups(served, view.state.roles) : null),
-    [predict, served, view.state.roles],
+    () => (predict ? servedGroups(served) : null),
+    [predict, served],
   );
 
   const live: LiveData = {
