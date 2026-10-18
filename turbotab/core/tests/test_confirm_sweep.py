@@ -255,8 +255,10 @@ def test_each_open_noticing_arrives_with_a_recommended_disposition_and_blockers_
     routed = {"id": "implausible", "severity": "warning", "affected_columns": ["sugar"],
               "routes_to": "exclusions"}
     assert sweep.recommend(state, routed, {"exclusions"})[:2] == ("act_on_it", False)
-    # Answered, it is still decided there: the answer is where it is changed (Q-a's rule 3).
-    assert sweep.recommend(state, routed, set())[:2] == ("act_on_it", False)
+    # Answered, that answer stands: it is left as a limitation, and changing the answer there is
+    # how to act on it instead (Q-a's rule 3 as the re-walk's N9 ruled it, 2026-10-18).
+    left = sweep.recommend(state, routed, set())
+    assert left[:2] == ("could_bias", False) and "change that answer there" in left[2]
 
 
 # A noticing decided in Models (it routes to the families question) and nothing else open there.

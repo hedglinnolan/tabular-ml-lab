@@ -511,21 +511,34 @@ def adjustment_only(state: Any, column: str) -> bool:
                    if slot not in WHAT_A_COLUMN_IS and slot != "modifications" and v is not None)
 
 
-def _decided_at(question: str, open_questions: set[str]) -> str:
+def _decided_at(question: str) -> str:
     from turbotab.core.voice import question_name
 
-    where = f"{question_name(question)} in {STAGE_NAMES[QUESTIONS[question].stage]}"
-    if question in open_questions:
-        return f"It is decided at {where}, still to come."
-    return (f"It is decided at {where}, already answered: change that answer there if it should "
-            f"act on this.")
+    return f"It is decided at {question_name(question)} in {STAGE_NAMES[QUESTIONS[question].stage]}"
+
+
+def _left_as_it_is(state: Any, finding: Mapping[str, Any]) -> tuple[Disposition, str]:
+    """What a finding left as it is means here (rule 4 of :func:`recommend`): a note (info) changes
+    no number, nor does a finding about columns no analysis reads; otherwise it concerns what the
+    analysis reads, and it could bias the estimate (under prediction, the score)."""
+    if str(finding.get("severity") or "info") == "info":
+        return "no_change", "A note about the data: no number rests on it."
+    columns = [str(c) for c in finding.get("affected_columns") or []]
+    read = [c for c in columns if analysis_reads(state, c)]
+    what = "score" if _get(state, "purpose") == "prediction" else "estimate"
+    if columns and not read:
+        return "no_change", f"It concerns only {_tick(columns)}, which no analysis reads."
+    about = f"It concerns {_tick(read)}, which the analysis reads" if read else \
+        "It concerns the whole table, which every number reads"
+    return "could_bias", f"{about}; left as it is, it could bias the {what}."
 
 
 def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
               ) -> tuple[Disposition, bool, str]:
     """The engine's recommended disposition for an open finding, whether it blocks, and why.
 
-    The rules, in order (WAVE_C6A_PLAN §3 row Q-a):
+    The rules, in order (WAVE_C6A_PLAN §3 row Q-a, with the re-walk's ruling of 2026-10-18 on
+    rule 3):
 
     1. A critical finding blocks or refuses part of the analysis (UNDERSTANDING_LAYER §2.2, T1):
        it is acted on first.
@@ -534,9 +547,12 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
        reach the focal estimate only as adjustment terms (:func:`adjustment_only`) changes no
        number here, exactly: the model matrix spans the same space either way
        (Frisch–Waugh–Lovell; ``materiality.invariance``).
-    3. A finding with a repair is decided in Your data, where the repair is chosen; one routed to
-       a question, open or answered, is decided at that question. Either way it is acted on
-       there, and the reason names the stage and the question.
+    3. A finding routed to a question still to come is acted on at that question. One routed to
+       a question already answered is left as it is, since that answer stands: rule 4 says what
+       that means (a limitation where it could bias), and its reason names the question, where
+       changing the answer is how to act on it instead (the re-walk's N9). A finding with a repair
+       is decided in Your data, where the repair is chosen: it is acted on there. The reason names
+       the stage and the question.
     4. A note (info) changes no number, nor does a finding about columns no analysis reads.
        Otherwise it concerns what the analysis reads, and left as it is it could bias the
        estimate (or, under prediction, the score): a limitation sentence, unless the person acts
@@ -545,26 +561,23 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
     if severity == "critical":
         return "act_on_it", True, ("It blocks or refuses part of the analysis, so it is resolved "
                                    "before any estimate.")
-    columns = [str(c) for c in finding.get("affected_columns") or []]
     recoded = reparameterized(state, finding)
     if recoded is not None:
         return "no_change", False, recoded.words
     repaired = _repaired(finding)
     routed = finding.get("routes_to")
     if routed in QUESTIONS:
-        return "act_on_it", False, _decided_at(str(routed), open_questions)
+        if routed in open_questions:
+            return "act_on_it", False, f"{_decided_at(str(routed))}, still to come."
+        disposition, why = _left_as_it_is(state, finding)
+        return disposition, False, (f"{_decided_at(str(routed))}, already answered, and that "
+                                    f"answer stands. {why} To act on it instead, change that "
+                                    f"answer there.")
     if repaired:
         return "act_on_it", False, (f"It is decided in {STAGE_NAMES['data']}, where its repair is "
                                     f"chosen.")
-    if severity == "info":
-        return "no_change", False, "A note about the data: no number rests on it."
-    read = [c for c in columns if analysis_reads(state, c)]
-    what = "score" if _get(state, "purpose") == "prediction" else "estimate"
-    if columns and not read:
-        return "no_change", False, f"It concerns only {_tick(columns)}, which no analysis reads."
-    about = f"It concerns {_tick(read)}, which the analysis reads" if read else \
-        "It concerns the whole table, which every number reads"
-    return "could_bias", False, f"{about}; left as it is, it could bias the {what}."
+    disposition, why = _left_as_it_is(state, finding)
+    return disposition, False, why
 
 
 def family_for(finding_id: str) -> Any:
