@@ -12,8 +12,10 @@ attempts, across the records given, ordered by run id and fit seq; ``n`` of them
 replacement by Python's ``random.Random(seed)``, so a seed draws the same sample from the same
 corpus. ``index.json`` lists the seed and each sample.
 
-**What a prompt shows.** The run's goal and outcome; the records that changed before the fit, each
-with its option and its reason (the record's note); the fit's numbers as the engine served them
+**What a prompt shows.** The run's goal and outcome; the records credited with the fit's change
+from the fit before (``Attempt.changed``), each with its option (a revert with the record it
+withdrew), each record it replaced or restored, and its reason (the record's note), and each record
+that left or returned to force credited to none; the fit's numbers as the engine served them
 (each family's cross-validated summary of the primary metric under Predict, the exposure's rows
 under Estimate); the engine's movement against the fit before, in its own words, or its why; and
 the reasons the analyst recorded after the fit completed and before the next fit (its reading).
@@ -56,11 +58,39 @@ def _option(option: dict[str, Any]) -> str:
 
 def _changed(rec: Record, attempt: Attempt) -> str:
     by_seq = {d.seq: d for d in rec.decisions}
+    by_id = {d.id: d for d in rec.decisions}
+
+    def withdrawn_by(d: Any) -> Any:
+        return by_id.get(str(d.option.get("decision_id"))) if d.kind == "revert" else None
+
+    def named(d: Any) -> str:
+        target = withdrawn_by(d)
+        if target is not None:
+            return (f"Record #{d.seq}, `revert` of record #{target.seq}, `{target.kind}` "
+                    f"{_option(target.option)}")
+        return f"Record #{d.seq}, `{d.kind}` {_option(d.option)}"
+
+    def other(seq: int) -> str:
+        d = by_seq[seq]
+        return f"record #{d.seq}, `{d.kind}` {_option(d.option)}"
+
     lines = []
     for s in attempt.changed or []:
         d = by_seq[s]
-        reason = d.reason or "(no reason recorded)"
-        lines.append(f"- Record #{d.seq}, `{d.kind}` {_option(d.option)}\n  Reason: {reason}")
+        target = withdrawn_by(d)
+        text = f"- {named(d)}"
+        for w in attempt.withdrawn:
+            if w.by == s and (target is None or w.seq != target.seq):
+                verb = "withdrew" if d.kind == "revert" else "replaced"
+                text += f"\n  It {verb} {other(w.seq)}."
+        for w in attempt.reinstated:
+            if w.by == s:
+                text += f"\n  It restored {other(w.seq)}."
+        lines.append(f"{text}\n  Reason: {d.reason or '(no reason recorded)'}")
+    for shifts, what in ((attempt.withdrawn, "left force"), (attempt.reinstated,
+                                                            "returned to force")):
+        lines += [f"- {named(by_seq[w.seq])}, {what}, and no record of the log is credited with "
+                  f"it." for w in shifts if w.by is None]
     return "\n".join(lines) or NONE
 
 

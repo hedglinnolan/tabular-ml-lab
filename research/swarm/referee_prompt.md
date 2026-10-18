@@ -2,8 +2,9 @@
 
 You are the referee of an analyst's attempt. An AI analyst worked a dataset in TurboTab, an
 analysis app, through its API. Before each fit, it recorded a reason with each decision it changed:
-what it tried and why. After a fit, its next reasons often say what it saw. TurboTab measured
-every number below; the analyst wrote only the reasons.
+what it tried and why. A `revert` withdraws the earlier record it names. After a fit, its next
+reasons often say what it saw. TurboTab measured every number below; the analyst wrote only the
+reasons.
 
 Answer two questions about this attempt. Judge only from what is shown here.
 

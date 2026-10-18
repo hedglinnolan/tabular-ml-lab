@@ -9,7 +9,7 @@ import json
 
 from research.swarm import referee
 from research.swarm.record import validate
-from research.swarm.tests.constructed import predict_record
+from research.swarm.tests.constructed import REVERT_NOTE, predict_record, revert_record
 
 
 def corpus(n: int):
@@ -71,3 +71,26 @@ def test_write_keeps_each_prompt_and_an_index_of_the_draw(tmp_path):
     assert drawn == referee.sample(records, 3, seed=11)
     for s in body["samples"]:
         assert (tmp_path / s["prompt"]).read_text("utf-8").startswith("# Referee")
+
+
+def test_a_revert_is_shown_with_the_record_it_withdrew_and_what_each_change_replaced():
+    """DB-V2: a fit whose only change is a revert is in the pool, and its prompt names the revert,
+    the record it withdrew and the revert's reason; a record that replaced another says so."""
+    rec = validate(revert_record())
+    assert ("run-3", 4) in referee.pool([rec])
+    text = referee.prompt(rec, 4)
+    assert ('- Record #5, `revert` of record #3, `confirm_role` {"column": "a", "role": '
+            '"excluded"}\n  Reason: ' + REVERT_NOTE) in text
+    assert "For `linear`, what differs moved the score by 0.4." in text
+    replaced = referee.prompt(validate(predict_record()), 2)
+    assert ('- Record #4, `select_models` {"models": ["linear", "elastic_net"]}\n  It replaced '
+            'record #2, `select_models` {"models": ["linear"]}.\n  Reason: a reason') in replaced
+
+
+def test_a_record_that_left_force_credited_to_no_record_is_shown_as_such():
+    data = revert_record()
+    data["attempts"][3].update(changed=[], reasons=[], withdrawn=[{"seq": 3, "by": None}])
+    data["decisions"][4]["materiality"] = {"source": None, "why": "constructed: none measured"}
+    text = referee.prompt(validate(data), 4)
+    assert ('- Record #3, `confirm_role` {"column": "a", "role": "excluded"}, left force, and no '
+            'record of the log is credited with it.') in text

@@ -41,17 +41,25 @@ def attempt(seq: int, decisions: list[int], changed: list[int], *, minute: int,
             families: list[str] | None = None, scores: dict[str, Any] | None = None,
             effects: dict[str, Any] | None = None, moved: list[dict[str, Any]] | None = None,
             movement_why: str | None = None, at_opening: dict[str, Any] | None = None,
-            changed_after_seal: bool = False) -> dict[str, Any]:
+            changed_after_seal: bool = False, plan_digest: str | None = None,
+            holdout: dict[str, Any] | None = None,
+            withdrawn: list[tuple[int, int | None]] | None = None,
+            reinstated: list[tuple[int, int | None]] | None = None) -> dict[str, Any]:
     notes = notes or {s: f"reason for record #{s}" for s in changed}
-    return {"id": f"fit{seq}", "seq": seq, "at": at(minute), "purpose": purpose, "target": "y",
-            "fit_key": f"key{seq}", "plan_digest": f"digest{seq}", "decisions": decisions,
-            "changed": changed, "reasons": [{"seq": s, "note": n} for s, n in notes.items()],
-            "press": None, "families": families or ["linear"], "seconds": 1.5, "workers": 2,
-            "primary_metric": "auc" if purpose == "prediction" else None, "folds": "folds",
-            "seed": 0, "held_out": "rows", "scores": scores or {}, "holdout": None,
-            "holdout_why": None, "changed_after_seal": changed_after_seal,
-            "at_opening": at_opening, "effects": effects or {}, "movement": moved or [],
-            "movement_why": movement_why, "withheld": None}
+    out = {"id": f"fit{seq}", "seq": seq, "at": at(minute), "purpose": purpose, "target": "y",
+           "fit_key": f"key{seq}", "plan_digest": plan_digest or f"digest{seq}",
+           "decisions": decisions, "changed": changed,
+           "reasons": [{"seq": s, "note": n} for s, n in notes.items()],
+           "press": None, "families": families or ["linear"], "seconds": 1.5, "workers": 2,
+           "primary_metric": "auc" if purpose == "prediction" else None, "folds": "folds",
+           "seed": 0, "held_out": "rows", "scores": scores or {}, "holdout": holdout,
+           "holdout_why": None if holdout is not None else "constructed: none served",
+           "changed_after_seal": changed_after_seal,
+           "at_opening": at_opening, "effects": effects or {}, "movement": moved or [],
+           "movement_why": movement_why, "withheld": None}
+    out["withdrawn"] = [{"seq": s, "by": b} for s, b in withdrawn or ()]
+    out["reinstated"] = [{"seq": s, "by": b} for s, b in reinstated or ()]
+    return out
 
 
 def run(run_id: str = "run-1") -> dict[str, Any]:
@@ -86,8 +94,9 @@ CV = {"linear": {"auc": {"estimate": 0.74, "ci_low": 0.69, "ci_high": 0.79,
 
 def predict_record(control: str | None = None) -> dict[str, Any]:
     """Two fits under Predict: the first with the linear model, the second after the analyst
-    added the elastic net (examined by the first fit); then the opening of the seal on the second.
-    Its result is the opening's scores, read by records #1–#3 and #4."""
+    added the elastic net (record #4, which replaced record #2; examined by the first fit); then
+    the opening of the seal on the second, which serves the opening's held-out scores. Its result
+    is the opening's scores, read by records #1, #3 and #4."""
     decisions = [
         decision(1, "set_target", {"column": "y"}, [("set_target", {"column": "y"})]),
         decision(2, "select_models", {"models": ["linear"]},
@@ -109,6 +118,7 @@ def predict_record(control: str | None = None) -> dict[str, Any]:
         attempt(1, [1, 2, 3], [1, 2, 3], minute=3, scores=CV,
                 movement_why="No earlier fit is recorded to compare this one with."),
         attempt(2, [1, 3, 4], [4], minute=6, families=["linear", "elastic_net"], scores=CV,
+                holdout=copy.deepcopy(SCORES), withdrawn=[(2, 4)],
                 moved=[movement("linear", "fit1", 0.4),
                        {"family": "elastic_net", "against": "fit1", "movement": None,
                         "why": "`elastic_net` was not fitted in the previous fit."}],
@@ -133,8 +143,9 @@ EFFECT = [{"feature": "x", "estimate": 0.30, "ci_low": 0.10, "ci_high": 0.50, "p
 
 
 def estimate_record(control: str | None = None) -> dict[str, Any]:
-    """Under Estimate: the plan locked at record #4 (TurboTab's own), the locked fit read records
-    #1–#4, and a secondary analysis after the estimates were seen (record #5, a second fit)."""
+    """Under Estimate: the plan locked at record #4 (TurboTab's own), the locked fit (its plan
+    the lock's) read records #1–#4, and a secondary analysis after the estimates were seen (record
+    #5, a second fit)."""
     decisions = [
         decision(1, "set_purpose", {"purpose": "inference"},
                  [("set_purpose", {"purpose": "inference"})]),
@@ -152,6 +163,7 @@ def estimate_record(control: str | None = None) -> dict[str, Any]:
     attempts = [
         attempt(1, [1, 2, 3, 4], [1, 2, 3, 4], minute=6, purpose="inference",
                 notes={1: "r1", 2: "r2", 3: "r3"}, effects={"linear": copy.deepcopy(EFFECT)},
+                plan_digest="lockdigest",
                 movement_why="This fit is under Estimate."),
         attempt(2, [1, 2, 3, 4, 5], [5], minute=10, purpose="inference",
                 effects={"linear": [{**EFFECT[0], "estimate": 0.31}]},
@@ -166,4 +178,46 @@ def estimate_record(control: str | None = None) -> dict[str, Any]:
                          "intended_use": None, "stated": None, "paper": None},
             "regime": {"n_rows": 700, "n_analyzed": 690, "task": "regression", "event": None,
                        "events": None, "missing": {"z": 10}, "design": {}, "lenses": []},
+            "decisions": decisions, "attempts": attempts, "result": result}
+
+
+REVERT_NOTE = "Back to `a` as a predictor: excluding it lowered the AUC, so it carries signal."
+
+
+def revert_record() -> dict[str, Any]:
+    """Four fits under Predict and no opening: `a` excluded (record #3, fit 2), then `b` (record
+    #4, fit 3), then record #3 reverted (record #5), the only change before fit 4. Its result is
+    refused, since the seal was never opened."""
+    def fitted(n: int, value: float) -> dict[str, Any]:
+        return {"source": "fits", "attempt": f"fit{n}",
+                "movement": [movement("linear", f"fit{n - 1}", value)]}
+
+    decisions = [
+        decision(1, "set_target", {"column": "y"}, [("set_target", {"column": "y"})]),
+        decision(2, "select_models", {"models": ["linear"]},
+                 [("select_models", {"models": ["linear"]})]),
+        decision(3, "confirm_role", {"column": "a", "role": "excluded"},
+                 [("role:a", "excluded")], minute=4, materiality=fitted(2, 0.4)),
+        decision(4, "confirm_role", {"column": "b", "role": "excluded"},
+                 [("role:b", "excluded")], minute=6, materiality=fitted(3, 0.2)),
+        decision(5, "revert", {"decision_id": "r3"}, [("revert", {"decision_id": "r3"})],
+                 note=REVERT_NOTE, minute=8, materiality=fitted(4, 0.4)),
+    ]
+    first = "No earlier fit is recorded to compare this one with."
+    attempts = [
+        attempt(1, [1, 2], [1, 2], minute=3, scores=CV, movement_why=first),
+        attempt(2, [1, 2, 3], [3], minute=5, scores=CV, moved=[movement("linear", "fit1", 0.4)]),
+        attempt(3, [1, 2, 3, 4], [4], minute=7, scores=CV,
+                moved=[movement("linear", "fit2", 0.2)]),
+        attempt(4, [1, 2, 4], [5], minute=9, scores=CV, notes={5: REVERT_NOTE},
+                withdrawn=[(3, 5)], moved=[movement("linear", "fit3", 0.4)]),
+    ]
+    result = {"purpose": "prediction", "attempt": None, "plan_digest": None, "decisions": None,
+              "refused": "The held-out rows were never opened."}
+    return {"version": 1, "run": {**run("run-3"), "fits": 4, "fit_seconds": 6.0},
+            **surroundings(),
+            "question": {"purpose": "prediction", "target": "y", "estimand": None,
+                         "intended_use": None, "stated": None, "paper": None},
+            "regime": {"n_rows": 480, "n_analyzed": 480, "task": "binary", "event": "1",
+                       "events": 112, "missing": {}, "design": {}, "lenses": []},
             "decisions": decisions, "attempts": attempts, "result": result}

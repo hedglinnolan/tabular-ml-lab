@@ -15,10 +15,12 @@ analyst's account of it, and validated here before it is kept. Its fields are SW
 * ``decisions``: each decision record of the log with its option, the options examined for it
   (previewed or fitted), its reason (the record's ``note``), its phase, who recorded it and its
   materiality M;
-* ``attempts``: each fit's record as ``GET …/fits`` serves it, with the records that changed since
-  the fit before it and their reasons;
+* ``attempts``: each fit's record as ``GET …/fits`` serves it, with its change from the fit before
+  it both ways (the records that entered force and those that left it, each credited to the record
+  that made the change: itself, the record that replaced it, or the revert that withdrew or
+  restored it) and the reasons of the records credited;
 * ``result``: the reported result, once: the first opening's held-out scores under Predict, the
-  locked plan's estimate under Estimate, or why there is none;
+  estimate of the fit whose plan is the lock's under Estimate, or why there is none;
 * ``claims``: every registry claim rendered for the project, as the analyst log serves it;
 * ``surfacings``: each refusal the driver met and the command that followed it, and each concern
   the materiality ledger measured;
@@ -33,9 +35,10 @@ does not declare, so a record that carries a validity, or any field a run invent
 Only a mechanical check (``checks.py``) or an independent grader judges a run.
 
 **Materiality is the engine's number.** A decision's ``materiality`` holds either what the engine
-measured (``GET …/fits``' paired movement for the fit the decision first took effect in, or
-``GET …/mattered``' specifications for a choice the curve varies), with at least one number, or
-why it has none; a record holding neither, or both, or a measure of whys alone, fails its schema.
+measured (``GET …/fits``' paired movement for the fit whose whole change from the fit before is
+that decision's, a revert's included, or ``GET …/mattered``' specifications for a choice the curve
+varies), with at least one number, or why it has none; a record holding neither, or both, or a
+measure of whys alone, fails its schema.
 
 **A record that fails its schema is a failed run** (``assemble.write``): it is written to
 ``research/corpus/failed/`` with the error, and never edited into one that passes.
@@ -184,8 +187,10 @@ class Materiality(_Strict):
     """How far the engine measured a decision to move the result, or why it has no measure.
 
     ``source == "fits"``: ``movement`` is the paired movement ``GET …/fits`` served for the fit
-    the decision first took effect in, where it was the one record that changed since the fit
-    before. ``source == "mattered"``: ``departures`` are ``GET …/mattered``' specifications that
+    the decision first took effect in (a revert: the fit whose change holds its withdrawal), where
+    the fit's whole change from the fit before was that one record's (``Attempt.changed`` is that
+    record alone, and every record that entered or left force is credited to a record). ``source
+    == "mattered"``: ``departures`` are ``GET …/mattered``' specifications that
     change this decision's choices, beside its ``primary``. A measure holds at least one number;
     where every family or departure has only a why, the materiality is that why."""
 
@@ -234,9 +239,27 @@ class Reason(_Strict):
     note: str
 
 
+class Shift(_Strict):
+    """A record that left force (``Attempt.withdrawn``) or came back into it
+    (``Attempt.reinstated``) between two fits, and ``by``, the record credited with it: the revert
+    that withdrew or restored it, or the later record that replaced it; null when no record of the
+    log is found to credit."""
+
+    seq: int
+    by: int | None
+
+
 class Attempt(_Strict):
-    """One fit's record as ``GET …/fits`` serves it, with ``changed``: the records in force at this
-    fit and not at the one before it (every record in force, for the first), and their reasons."""
+    """One fit's record as ``GET …/fits`` serves it, with its change from the fit before it
+    (``assemble.change_of``), both ways:
+
+    * ``changed``: the records credited with the change, each record in force here that is new
+      since the fit before, and each record credited with a shift (every record in force, for the
+      first fit; null where either fit's records are not served);
+    * ``withdrawn``: each record in force at the fit before and not here, with the record credited;
+    * ``reinstated``: each record in force here, recorded before the fit before and not in force
+      at it, with the revert credited;
+    * ``reasons``: the notes of the records in ``changed``."""
 
     id: str
     seq: int = Field(ge=1)
@@ -247,6 +270,8 @@ class Attempt(_Strict):
     plan_digest: str | None
     decisions: list[int] | None
     changed: list[int] | None
+    withdrawn: list[Shift]
+    reinstated: list[Shift]
     reasons: list[Reason]
     press: dict[str, Any] | None
     families: list[str]
@@ -272,10 +297,11 @@ class Attempt(_Strict):
 
 class Result(_Strict):
     """The reported result, once (SWARM_PLAN §4): under Predict the held-out scores the first
-    opening of the seal recorded (``open_seal``'s ``scores``), with the intervals beside them only
-    while the scores served are the opening's; under Estimate each family's exposure rows of the fit
-    the plan's lock in force was recorded on, under the lock's digest. ``refused`` says why there
-    is none."""
+    opening of the seal recorded (``open_seal``'s ``scores``), from the fit it was recorded on, with
+    the intervals beside them only while the scores served are the opening's; under Estimate each
+    family's exposure rows of the fit the plan's lock in force was recorded on, the one fit record
+    whose own plan digest is the lock's, under the lock's digest. ``refused`` says why there is
+    none."""
 
     purpose: str | None
     attempt: str | None  # the fit record the result is from
@@ -378,6 +404,8 @@ class Record(_Strict):
         known = set(seqs)
         for a in self.attempts:
             named = set(a.decisions or ()) | set(a.changed or ()) | {r.seq for r in a.reasons}
+            named |= {n for s in a.withdrawn + a.reinstated for n in (s.seq, s.by)
+                      if n is not None}
             stray = sorted(named - known)
             if stray:
                 raise ValueError(f"fit #{a.seq} names records {stray} the decision log does not "
@@ -401,4 +429,4 @@ def validate(data: Any) -> Record:
 
 __all__ = ["Answer", "Attempt", "Claim", "Dataset", "DatasetFile", "Decision", "Examined", "Export",
            "Materiality", "Question", "Reason", "Record", "Refusal", "Regime", "Replication",
-           "Result", "Run", "Spend", "Surfacings", "VERSION", "validate"]
+           "Result", "Run", "Shift", "Spend", "Surfacings", "VERSION", "validate"]

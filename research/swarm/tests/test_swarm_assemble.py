@@ -7,7 +7,11 @@ an in-process server in analyst mode (``server_drive.local_server``), every deci
 note, through two fits, a preview of each kind, the seal and a change after it, to the export. Its
 record is compared with what each route serves, with the run's own notes, with hashlib over the
 fixture's bytes and the bundle's, with pandas over the fixture, and with git for the engine's
-commit; then every check runs on it and gives what the run's construction implies.
+commit; then every check runs on it and gives what the run's construction implies. Three more runs
+on the same server harness: the NHANES journey under Estimate with a change after the lock;
+``clinical_risk.csv`` under Predict with reverts between fits (a revert alone, then a revert with
+a new record); and the NHANES journey with a rule tried and undone before the lock, then a revert after
+it. Each one's truths come from its construction, read against what ``GET …/fits`` serves.
 """
 from __future__ import annotations
 
@@ -190,6 +194,142 @@ def test_a_decision_has_the_fits_movement_only_where_it_alone_changed():
         "why": "`elastic_net`: `elastic_net` was not fitted in the previous fit."}
 
 
+# ── a fit's change from the fit before, both ways (DB-V2) ────────────────────
+
+
+def _fit(seq: int, minute: int, decisions: list[int], **kw: Any) -> dict[str, Any]:
+    return {"id": f"fit{seq}", "seq": seq, "at": f"2026-10-18T10:{minute:02d}:00Z",
+            "decisions": decisions, **kw}
+
+
+def _excluded(column: str) -> dict[str, Any]:
+    return {"kind": "confirm_role", "column": column, "role": "excluded"}
+
+
+def _revert(seq: int, minute: int, target: int, note: str = "why") -> dict[str, Any]:
+    return _rec(seq, minute, {"kind": "revert", "decision_id": f"r{target}"}, note)
+
+
+def _rule(low: int) -> dict[str, Any]:
+    return {"kind": "set_exclusions", "rules": [{"column": "kcal", "low": low, "high": 5000}]}
+
+
+def _moved(attempts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The attempts with each fit's served movement (constructed): its own value, ``0.1 × seq``."""
+    for a in attempts:
+        a.update(movement=[{"family": "linear", "against": None, "why": None,
+                            "movement": {"value": round(0.1 * a["seq"], 1)}}],
+                 movement_why=None, withheld=None)
+    return attempts
+
+
+TARGET = _rec(1, 1, {"kind": "set_target", "column": "y"})
+MODELS = _rec(2, 2, {"kind": "select_models", "models": ["linear"]})
+
+
+def test_a_fit_after_a_revert_alone_is_the_reverts_change_with_its_reason_and_measure():
+    """Fits {1,2}, {1,2,3}, {1,2,3,4} and {1,2,4}: the last follows only revert #5 of #3, so its
+    change is the revert's (record #3 withdrawn by it), its reason the revert's note, and the
+    revert's materiality that fit's served movement."""
+    note = "Back to `a`: excluding it lowered the AUC."
+    records = [TARGET, MODELS, _rec(3, 4, _excluded("a")), _rec(4, 6, _excluded("b")),
+               _revert(5, 8, 3, note)]
+    fits = [_fit(1, 3, [1, 2]), _fit(2, 5, [1, 2, 3]), _fit(3, 7, [1, 2, 3, 4]),
+            _fit(4, 9, [1, 2, 4])]
+    got = _moved(A.attempts_of(fits, records))
+    assert [(a["changed"], a["withdrawn"], a["reinstated"]) for a in got] == [
+        ([1, 2], [], []), ([3], [], []), ([4], [], []), ([5], [{"seq": 3, "by": 5}], [])]
+    assert got[3]["reasons"] == [{"seq": 5, "note": note}]
+    assert A.fits_materiality(records[4], got, records) == {
+        "source": "fits", "attempt": "fit4", "movement": got[3]["movement"]}
+    assert A.fits_materiality(records[2], got, records) == {  # #3 alone changed before fit 2
+        "source": "fits", "attempt": "fit2", "movement": got[1]["movement"]}
+
+
+def test_a_revert_and_a_new_record_before_one_fit_share_its_change():
+    """Revert #4 of #3 and record #5 both came before fit 3: neither has its movement alone."""
+    records = [TARGET, MODELS, _rec(3, 4, _excluded("a")), _revert(4, 6, 3),
+               _rec(5, 7, _excluded("b"))]
+    fits = [_fit(1, 3, [1, 2]), _fit(2, 5, [1, 2, 3]), _fit(3, 8, [1, 2, 5])]
+    got = _moved(A.attempts_of(fits, records))
+    assert (got[2]["changed"], got[2]["withdrawn"], got[2]["reinstated"]) == (
+        [4, 5], [{"seq": 3, "by": 4}], [])
+    assert [r["seq"] for r in got[2]["reasons"]] == [4, 5]
+    tail = ": the fit records measure the change between two fits, not each record's share of it."
+    assert A.fits_materiality(records[4], got, records) == {
+        "source": None, "attempt": "fit3",
+        "why": "It took effect at fit #3 together with record #4" + tail}
+    assert A.fits_materiality(records[3], got, records) == {
+        "source": None, "attempt": "fit3",
+        "why": "It took effect at fit #3 together with record #5" + tail}
+
+
+def test_a_record_restored_by_reverting_what_replaced_it_is_the_reverts_change():
+    """Rule A (#2), replaced by rule B (#3), then #3 reverted (#5): fit 4 has rule A again, the
+    revert's change alone, so the revert has its movement; rule A first took effect at fit 1."""
+    records = [TARGET, _rec(2, 2, _rule(500)), _rec(3, 4, _rule(600)),
+               _rec(4, 6, _excluded("a")), _revert(5, 8, 3)]
+    fits = [_fit(1, 3, [1, 2]), _fit(2, 5, [1, 3]), _fit(3, 7, [1, 3, 4]), _fit(4, 9, [1, 2, 4])]
+    got = _moved(A.attempts_of(fits, records))
+    assert (got[1]["changed"], got[1]["withdrawn"]) == ([3], [{"seq": 2, "by": 3}])  # replaced
+    assert (got[3]["changed"], got[3]["withdrawn"], got[3]["reinstated"]) == (
+        [5], [{"seq": 3, "by": 5}], [{"seq": 2, "by": 5}])
+    assert A.fits_materiality(records[4], got, records)["attempt"] == "fit4"
+    assert A.fits_materiality(records[4], got, records)["source"] == "fits"
+    assert A.fits_materiality(records[1], got, records)["why"] == A.FIRST_FIT
+
+
+def test_a_record_restored_by_reverting_its_revert_is_that_reverts_change():
+    """#2 reverted by #3 (fit 2), then #3 reverted by #5: #2 is back at fit 4 by #5 alone."""
+    records = [TARGET, _rec(2, 2, _excluded("a")), _revert(3, 4, 2),
+               _rec(4, 6, _excluded("b")), _revert(5, 8, 3)]
+    fits = [_fit(1, 3, [1, 2]), _fit(2, 5, [1]), _fit(3, 7, [1, 4]), _fit(4, 9, [1, 2, 4])]
+    got = _moved(A.attempts_of(fits, records))
+    assert (got[1]["changed"], got[1]["withdrawn"]) == ([3], [{"seq": 2, "by": 3}])
+    assert (got[3]["changed"], got[3]["reinstated"]) == ([5], [{"seq": 2, "by": 5}])
+    assert A.fits_materiality(records[4], got, records)["source"] == "fits"
+    assert A.fits_materiality(records[2], got, records)["attempt"] == "fit2"
+
+
+def test_a_record_first_in_force_by_a_revert_says_so_and_has_no_measure_of_its_own():
+    """Rule A (#2) was replaced by rule B (#3) before any fit; reverting #3 (#5) brings rule A in
+    for the first time at fit 3, a change the revert is credited with."""
+    records = [TARGET, _rec(2, 2, _rule(500)), _rec(3, 3, _rule(600)),
+               _rec(4, 5, _excluded("a")), _revert(5, 7, 3)]
+    fits = [_fit(1, 4, [1, 3]), _fit(2, 6, [1, 3, 4]), _fit(3, 8, [1, 2, 4])]
+    got = _moved(A.attempts_of(fits, records))
+    assert A.fits_materiality(records[1], got, records) == {
+        "source": None, "attempt": "fit3",
+        "why": "It took effect at fit #3, restored by record #5, which is credited with that "
+               "change."}
+
+
+def test_a_revert_no_fit_measured_says_why_and_a_record_never_fitted_says_so():
+    records = [TARGET, _rec(2, 2, _excluded("a")), _revert(3, 3, 2)]
+    fits = [_fit(1, 4, [1])]  # #2 was withdrawn before any fit
+    got = _moved(A.attempts_of(fits, records))
+    assert A.fits_materiality(records[2], got, records) == {
+        "source": None, "why": "No fit's change from the fit before it includes this revert's "
+                               "withdrawal of record #2."}
+    assert A.fits_materiality(records[1], got, records) == {"source": None, "why": A.NOT_IN_A_FIT}
+
+
+def test_a_record_that_left_force_by_no_record_found_withholds_every_measure_of_that_fit():
+    """Record #2 left force before fit 2 with no revert of it and no later answer to its question:
+    the change is not wholly #3's, so #3 has no measure (a number is right or it is refused)."""
+    records = [_rec(1, 1, {"kind": "set_target", "column": "y"}),
+               _rec(2, 2, {"kind": "set_lens", "lenses": ["clinical"]}),
+               _rec(3, 4, {"kind": "set_purpose", "purpose": "prediction"})]
+    fits = [_fit(1, 3, [1, 2]), _fit(2, 5, [1, 3])]
+    got = _moved(A.attempts_of(fits, records))
+    assert (got[1]["changed"], got[1]["withdrawn"]) == ([3], [{"seq": 2, "by": None}])
+    assert A.fits_materiality(records[2], got, records) == {
+        "source": None, "attempt": "fit2",
+        "why": "It took effect at fit #2 while record #2 left force by no record found between "
+               "the two fits: the fit records measure the change between two fits, not each "
+               "record's share of it."}
+
+
 def _curve_doc() -> dict[str, Any]:
     from turbotab.core import mattered as M
 
@@ -264,17 +404,57 @@ def test_under_predict_the_result_is_the_openings_scores_once():
 
 
 def test_under_estimate_the_result_is_the_fit_the_lock_in_force_was_recorded_on():
+    """A fit the scheduler held for Fit completes after the lock (its records hold it); a fit
+    after a change made with the estimates in view holds another plan."""
     effect = [{"feature": "x", "estimate": 0.3, "ci_low": 0.1, "ci_high": 0.5}]
     records = [_rec(1, 1, {"kind": "set_estimand"}), _rec(2, 2, {"kind": "set_adjustment"}),
                _rec(3, 3, {"kind": "lock_plan", "digest": "lockdigest"}),
                _rec(4, 6, {"kind": "set_exclusions", "rules": []})]
-    fits = [{"id": "fit1", "decisions": [1], "effects": {}},
-            {"id": "fit2", "decisions": [1, 2, 3], "effects": {"linear": effect}},
-            {"id": "fit3", "decisions": [1, 2, 3, 4], "effects": {"linear": effect}}]
+    fits = [{"id": "fit1", "plan_digest": "d1", "decisions": [1], "effects": {}},
+            {"id": "fit2", "plan_digest": "lockdigest", "decisions": [1, 2, 3],
+             "effects": {"linear": effect}},
+            {"id": "fit3", "plan_digest": "d3", "decisions": [1, 2, 3, 4],
+             "effects": {"linear": effect}}]
     got = A.result_of("inference", records, fits, A.Read(200, {}))
     assert (got["attempt"], got["lock"], got["plan_digest"], got["effects"]) == (
         "fit2", 3, "lockdigest", {"linear": effect})
     assert A.result_of("inference", records[:2], fits, A.Read(200, {}))["refused"]
+
+
+A_ROWS = [{"feature": "sugar", "estimate": -0.0276, "ci_low": -0.0395, "ci_high": -0.0156}]
+B_ROWS = [{"feature": "sugar", "estimate": -0.0262, "ci_low": -0.0384, "ci_high": -0.0140}]
+TRIED = [_rec(1, 1, {"kind": "set_estimand"}), _rec(2, 2, _rule(500)), _rec(3, 4, _rule(600)),
+         _rec(4, 6, _rule(500)), _rec(5, 7, {"kind": "lock_plan", "digest": "plan-A"})]
+TRIED_FITS = [{"id": "fit1", "plan_digest": "plan-A", "decisions": [1, 2],
+               "effects": {"linear": A_ROWS}},
+              {"id": "fit2", "plan_digest": "plan-B", "decisions": [1, 3],
+               "effects": {"linear": B_ROWS}}]
+
+
+def test_under_estimate_the_result_is_the_fit_whose_plan_is_the_locks_not_the_last_before_it():
+    """DB-V1's E1: rule A fitted (fit 1), rule B fitted (fit 2), rule A again (#4, no new fit:
+    its key was recorded), then the lock on rule A's plan. Its E3: a revert of #4 after the lock
+    makes rule B's fit current again. The result is fit 1 both times, by its plan's digest."""
+    got = A.result_of("inference", TRIED, TRIED_FITS, A.Read(200, {}))
+    assert (got["attempt"], got["decisions"], got["effects"], got["plan_digest"]) == (
+        "fit1", [1, 2], {"linear": A_ROWS}, "plan-A")
+    reverted = {**_rec(6, 9, {"kind": "revert", "decision_id": "r4"}), "after_estimates": True}
+    got = A.result_of("inference", TRIED + [reverted], TRIED_FITS, A.Read(200, {}))
+    assert (got["attempt"], got["effects"]) == ("fit1", {"linear": A_ROWS})
+
+
+def test_under_estimate_a_lock_whose_plan_no_fit_record_holds_is_refused():
+    """No fit record holds the lock's plan (an answer the fit does not read changed between the
+    fit and the press, say): the result is refused, never the last fit before the lock."""
+    other = [*TRIED[:4], _rec(5, 7, {"kind": "lock_plan", "digest": "plan-C"})]
+    got = A.result_of("inference", other, TRIED_FITS, A.Read(200, {}))
+    assert (got["attempt"], got["lock"], got["plan_digest"], got.get("effects")) == (
+        None, 5, "plan-C", None)
+    assert got["refused"] == A.no_locked_fit(5)
+    twice = [*TRIED_FITS, {"id": "fit3", "plan_digest": "plan-A", "decisions": [1, 4],
+                           "effects": {"linear": B_ROWS}}]
+    got = A.result_of("inference", TRIED, twice, A.Read(200, {}))
+    assert got["attempt"] is None and got["refused"] == A.locked_twice(5, ["fit1", "fit3"])
 
 
 def test_a_lock_the_server_withdrew_is_not_the_lock_in_force():
@@ -419,10 +599,12 @@ class ScriptedDriver:
         return r
 
 
-def _drive(driver: ScriptedDriver, pid: str) -> dict[str, Any]:
+def _first_fit(driver: ScriptedDriver, pid: str) -> None:
+    """``clinical_risk.csv`` answered through its first fit, the linear model's, with Fit pressed
+    (a preview of excluding sodium and of the blanks' strategy on the way)."""
     from turbotab.core.tests.acceptance.server_drive import press_fit
-    from turbotab.core.tests.truths import FIXTURE_TRUTHS, answer_refusal
-    from turbotab.server.tests.conftest import answer_settled, declare, prepare, truth_of, wait_for
+    from turbotab.core.tests.truths import FIXTURE_TRUTHS
+    from turbotab.server.tests.conftest import answer_settled, declare, prepare, wait_for
 
     declare(pid, FIXTURE_TRUTHS[FIXTURE], fixture=FIXTURE)
     wait_for(driver, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
@@ -438,6 +620,13 @@ def _drive(driver: ScriptedDriver, pid: str) -> dict[str, Any]:
     assert answer_settled(driver, pid, None, models).status_code == 200
     wait_for(driver, pid, {"fit": "fresh"}, timeout=600)
     assert press_fit(driver, pid)
+
+
+def _drive(driver: ScriptedDriver, pid: str) -> dict[str, Any]:
+    from turbotab.core.tests.truths import answer_refusal
+    from turbotab.server.tests.conftest import answer_settled, truth_of, wait_for
+
+    _first_fit(driver, pid)
     assert answer_settled(driver, pid, None, ROLE).status_code == 200
     wait_for(driver, pid, {"fit": "fresh"}, timeout=600)
     assert driver.get(f"/api/projects/{pid}/results").status_code == 200
@@ -701,3 +890,207 @@ def test_under_estimate_every_check_gives_what_the_runs_construction_implies(est
     assert got["robustness"].outcome == "pass"
     known = got["known_answer"]
     assert known.outcome == "not_checked" and known.problems == []  # kcal's unit and days declared
+
+
+# ── end to end: reverts between fits (DB-V2) ─────────────────────────────────
+
+ALBUMIN = {"kind": "confirm_role", "column": "albumin_g_dl", "role": "excluded"}
+HEMOGLOBIN = {"kind": "confirm_role", "column": "hemoglobin_g_dl", "role": "excluded"}
+
+
+def _seq_of(driver: ScriptedDriver) -> int:
+    """The seq of the record the driver posted last (each post carries its own note)."""
+    return max(driver.notes)
+
+
+@pytest.fixture(scope="module")
+def revert_e2e(tmp_path_factory) -> dict[str, Any]:
+    """``clinical_risk.csv`` under Predict in analyst mode, every record posted with a note:
+    after the first fit, sodium excluded (fit 2), albumin excluded (fit 3), the sodium record
+    reverted, the only change before fit 4 (a plan no fit held, so a new fit); then the albumin
+    record reverted (fit 1's plan again, whose fit is recorded, so no new record) and hemoglobin
+    excluded, both before fit 5."""
+    from turbotab.server.tests.conftest import answer_settled, wait_for
+
+    folder = tmp_path_factory.mktemp("swarm_e2e_revert")
+    run_dir = folder / "runs" / "e2e-revert-1"
+    start = _now()
+    seqs: dict[str, int] = {}
+    with analyst_server(run_dir / "home") as client:
+        made = client.post("/api/projects", json={"path": str(SAMPLE)})
+        assert made.status_code == 200, made.text
+        pid = made.json()["id"]
+        driver = ScriptedDriver(client)
+        _first_fit(driver, pid)
+
+        def record(name: str, body: dict[str, Any]) -> None:
+            assert answer_settled(driver, pid, None, body).status_code == 200, body
+            seqs[name] = _seq_of(driver)
+
+        def revert(name: str, of: str) -> None:
+            log = client.get(f"/api/projects/{pid}").json()["decisions"]
+            target = next(r["id"] for r in log if r["seq"] == seqs[of])
+            r = driver.post(f"/api/projects/{pid}/decisions",
+                            json={"kind": "revert", "decision_id": target})
+            assert r.status_code == 200, r.text
+            seqs[name] = _seq_of(driver)
+
+        def fitted() -> None:
+            wait_for(driver, pid, {"fit": "fresh"}, timeout=600)
+
+        for step, name, body in ((record, "sodium", ROLE), (record, "albumin", ALBUMIN),
+                                 (revert, "sodium back", "sodium"),
+                                 (revert, "albumin back", "albumin"),
+                                 (record, "hemoglobin", HEMOGLOBIN)):
+            step(name, body)
+            fitted()
+        finish(run_dir, driver, pid, start, {"id": "clinical-risk", "fixture": FIXTURE})
+        path, ok = A.assemble(run_dir, client=client, corpus=folder / "corpus")
+        fits = client.get(f"/api/projects/{pid}/fits").json()["records"]
+    assert ok, path.read_text("utf-8")[:2000]
+    return {"rec": validate(json.loads(path.read_text("utf-8"))), "fits": fits, "seqs": seqs,
+            "notes": driver.notes}
+
+
+def test_on_the_server_a_fit_after_a_revert_alone_is_the_reverts_change(revert_e2e):
+    rec, fits, seqs, notes = (revert_e2e[k] for k in ("rec", "fits", "seqs", "notes"))
+    assert len(rec.attempts) == len(fits) == 5  # fit 1's plan again made no new fit record
+    by = {a.seq: a for a in rec.attempts}
+    assert (by[2].changed, by[3].changed) == ([seqs["sodium"]], [seqs["albumin"]])
+    assert by[4].changed == [seqs["sodium back"]]
+    assert [w.model_dump() for w in by[4].withdrawn] == [{"seq": seqs["sodium"],
+                                                          "by": seqs["sodium back"]}]
+    assert [(r.seq, r.note) for r in by[4].reasons] == [(seqs["sodium back"],
+                                                         notes[seqs["sodium back"]])]
+    undone = next(d for d in rec.decisions if d.seq == seqs["sodium back"])
+    assert undone.kind == "revert" and undone.materiality.source == "fits"
+    assert undone.materiality.attempt == fits[3]["id"]
+    assert undone.materiality.movement == fits[3]["movement"]
+    assert fits[3]["movement"][0]["movement"]["value"] is not None
+    sodium = next(d for d in rec.decisions if d.seq == seqs["sodium"])
+    assert (sodium.materiality.source, sodium.materiality.attempt) == ("fits", fits[1]["id"])
+
+
+def test_on_the_server_a_revert_and_a_new_record_before_one_fit_share_its_change(revert_e2e):
+    rec, fits, seqs = (revert_e2e[k] for k in ("rec", "fits", "seqs"))
+    last = rec.attempts[4]
+    assert last.changed == sorted([seqs["albumin back"], seqs["hemoglobin"]])
+    assert [w.model_dump() for w in last.withdrawn] == [{"seq": seqs["albumin"],
+                                                         "by": seqs["albumin back"]}]
+    assert [r.seq for r in last.reasons] == last.changed
+    by_seq = {d.seq: d for d in rec.decisions}
+    for mine, other in (("albumin back", "hemoglobin"), ("hemoglobin", "albumin back")):
+        m = by_seq[seqs[mine]].materiality
+        assert (m.source, m.attempt) == (None, fits[4]["id"])
+        assert m.why.startswith(f"It took effect at fit #{last.seq} together with record "
+                                f"#{seqs[other]}:")
+
+
+def test_on_the_server_after_reverts_logging_passes_and_the_referee_sees_each_revert(revert_e2e):
+    from research.swarm import referee
+
+    rec, seqs, notes = (revert_e2e[k] for k in ("rec", "seqs", "notes"))
+    got = {o.check: o for o in C.run_checks([rec])}
+    assert got["logging"].outcome == "pass", got["logging"].problems
+    text = referee.prompt(rec, 4)
+    assert f"Record #{seqs['sodium back']}, `revert` of record #{seqs['sodium']}" in text
+    assert notes[seqs["sodium back"]] in text
+
+
+# ── end to end: a rule tried before the lock, and a revert after it (DB-V1) ──
+
+
+@pytest.fixture(scope="module")
+def relock_e2e(tmp_path_factory) -> dict[str, Any]:
+    """The NHANES journey under Estimate, every decision with a note: the drive's rule 500–5000
+    fitted (fit 1), rule 600–4500 fitted (fit 2), rule 500–5000 recorded again (fit 1's plan, its
+    fit recorded), then Fit pressed (the lock), assembled (E1). Then the restoring record reverted
+    with the estimates in view, which makes fit 2 current again, assembled again (E3)."""
+    from turbotab.core import plan_lock
+    from turbotab.core.tests.acceptance.server_drive import settle_forms
+    from turbotab.server.tests.conftest import wait_for
+    from turbotab.server.tests.test_fit_lock_repair import _inference_drive, press
+    from turbotab.server.tests.test_quest_api import rule
+
+    folder = tmp_path_factory.mktemp("swarm_e2e_relock")
+    run_dir = folder / "runs" / "e2e-relock-1"
+    start = _now()
+    dataset = {"id": "nhanes", "control": "known_answer", "fixture": NHANES_TRUTH}
+    with analyst_server(run_dir / "home") as client:
+        driver = ScriptedDriver(client)
+        drive = _inference_drive(driver)
+        pid = drive.pid
+        service = client.app.state.service
+        drive.decide({"kind": "select_models", "models": ["linear"]})
+        wait_for(driver, pid, {"fit": "fresh"}, timeout=400)
+        for body in (rule(600, 4500), rule(500, 5000)):
+            drive.decide(body)
+            settle_forms(drive)
+            wait_for(driver, pid, {"fit": "fresh"}, timeout=400)
+        assert press(driver, pid)["locked"] is True
+        wait_for(driver, pid, {"fit": "fresh", "mattered": "fresh"}, timeout=400)
+        assert driver.get(f"/api/projects/{pid}/results").status_code == 200
+
+        def snapshot(name: str) -> dict[str, Any]:
+            finish(run_dir, driver, pid, start, dataset)
+            path, ok = A.assemble(run_dir, client=client, corpus=folder / name)
+            assert ok, path.read_text("utf-8")[:2000]
+            records = service.log(pid).records()
+            return {"rec": validate(json.loads(path.read_text("utf-8"))),
+                    "locked_key": service._locked_fit(pid, records,
+                                                      plan_lock.current_lock(records)),
+                    "fits": client.get(f"/api/projects/{pid}/fits").json()["records"],
+                    "log": client.get(f"/api/projects/{pid}").json()["decisions"]}
+
+        e1 = snapshot("corpus_e1")
+        restore = next(r for r in reversed(e1["log"])
+                       if r["decision"]["kind"] == "set_exclusions")
+        reverted = driver.post(f"/api/projects/{pid}/decisions",
+                               json={"kind": "revert", "decision_id": restore["id"]})
+        assert reverted.status_code == 200, reverted.text
+        settle_forms(drive)
+        wait_for(driver, pid, {"fit": "fresh", "mattered": "fresh"}, timeout=400)
+        e3 = snapshot("corpus_e3")
+    return {"e1": e1, "e3": e3}
+
+
+def _rows(fit: dict[str, Any]) -> dict[str, Any]:
+    return {f: rows for f, rows in fit["effects"].items() if rows}
+
+
+def test_under_estimate_a_rule_tried_and_undone_before_the_lock_leaves_the_locked_fit(relock_e2e):
+    """E1: by construction the lock is on the drive's rule, fit 1's plan; the server's own rule
+    for the fit the lock was recorded on (``_locked_fit``) names the same key."""
+    e1 = relock_e2e["e1"]
+    rules = [r for r in e1["log"] if r["decision"]["kind"] == "set_exclusions"]
+    drives, tried, again = rules
+    assert (tried["decision"]["rules"][0]["low"], again["decision"]["rules"][0]["low"]) == (600,
+                                                                                         500)
+    fits = e1["fits"]
+    assert len(fits) == 2  # the drive's rule again made no new fit record
+    locked, other = fits
+    assert drives["seq"] in locked["decisions"] and tried["seq"] not in locked["decisions"]
+    assert locked["fit_key"] == e1["locked_key"]
+    r = e1["rec"].result
+    assert r.refused is None and (r.attempt, r.decisions) == (locked["id"], locked["decisions"])
+    assert r.effects == _rows(locked) and r.effects
+    assert tried["seq"] not in r.decisions
+    assert C.seal_integrity(e1["rec"]).outcome == "pass"
+
+
+def test_under_estimate_a_revert_after_the_lock_leaves_the_locked_fits_estimate(relock_e2e):
+    """E3: the revert makes fit 2 current again and its estimate is served, but the primary result
+    stays the locked fit's, read from GET …/fits; the record HEAD assembled before DB-V1's repair
+    (fit 2's estimate under the lock's digest) is not passed by seal integrity."""
+    e3 = relock_e2e["e3"]
+    assert e3["log"][-1]["decision"]["kind"] == "revert" and e3["log"][-1]["after_estimates"]
+    locked = next(f for f in e3["fits"] if f["fit_key"] == e3["locked_key"])
+    other = next(f for f in e3["fits"] if f["id"] != locked["id"])
+    assert _rows(other) and _rows(other) != _rows(locked)
+    rec = e3["rec"]
+    assert (rec.result.attempt, rec.result.effects) == (locked["id"], _rows(locked))
+    assert C.seal_integrity(rec).outcome == "pass"
+    wrong = rec.model_dump(mode="json", by_alias=True)
+    wrong["result"].update(attempt=other["id"], decisions=other["decisions"],
+                           effects=_rows(other))
+    assert C.seal_integrity(validate(wrong)).outcome != "pass"

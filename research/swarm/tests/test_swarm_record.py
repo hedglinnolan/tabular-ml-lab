@@ -11,10 +11,10 @@ from pydantic import ValidationError
 
 from research.swarm import record as R
 from research.swarm.assemble import write
-from research.swarm.tests.constructed import estimate_record, predict_record
+from research.swarm.tests.constructed import estimate_record, predict_record, revert_record
 
 
-@pytest.mark.parametrize("make", [predict_record, estimate_record])
+@pytest.mark.parametrize("make", [predict_record, estimate_record, revert_record])
 def test_the_constructed_records_validate(make):
     rec = R.validate(make())
     assert rec.version == R.VERSION
@@ -105,6 +105,12 @@ def test_a_fit_or_a_result_naming_what_the_record_does_not_hold_fails():
     unchanged["attempts"][1]["changed"].append(97)
     with pytest.raises(ValidationError, match="97"):
         R.validate(unchanged)
+    for field, shift, stray in (("withdrawn", {"seq": 96, "by": 4}, 96),
+                                ("reinstated", {"seq": 2, "by": 95}, 95)):
+        moved = predict_record()
+        moved["attempts"][1][field] = [shift]
+        with pytest.raises(ValidationError, match=str(stray)):
+            R.validate(moved)
     repeated = predict_record()
     repeated["decisions"][1]["seq"] = 1
     with pytest.raises(ValidationError, match="seqs"):

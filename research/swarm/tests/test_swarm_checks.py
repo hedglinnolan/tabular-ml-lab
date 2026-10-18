@@ -17,6 +17,7 @@ from research.swarm.tests.constructed import (
     estimate_record,
     movement,
     predict_record,
+    revert_record,
 )
 
 
@@ -65,7 +66,94 @@ def test_seal_integrity_fires_when_the_result_is_not_the_openings_scores():
     data["result"]["scores"]["linear"]["auc"] = 0.75  # a later fit's score, reported instead
     got = outcome(C.seal_integrity, data)
     assert got.problems == ["The result's scores are not those the opening at record #5 "
-                            "recorded."]
+                            "recorded.",
+                            "The result's scores are not the held-out scores its fit #2 serves."]
+
+
+# DB-V3: the result is tied to the fit it names, whatever opening or lock it names.
+
+
+def test_seal_integrity_fires_on_a_record_after_the_seal_in_the_result_when_no_opening_is_named():
+    """DB-V3 (a): a post-seal record #6 among the result's records, the result naming no
+    opening."""
+    data = predict_record()
+    data["decisions"].append(decision(6, "select_models", {"models": ["linear"]},
+                                      [("select_models", {"models": ["linear"]})],
+                                      post_seal=True, minute=20))
+    data["result"].update(opening=None, decisions=[1, 3, 4, 6])
+    got = outcome(C.seal_integrity, data)
+    assert got.outcome == "fail"
+    assert got.problems == [
+        "Records #6, made after the seal's opening, are among those the result's fit read.",
+        "The result's records (#1, #3, #4, #6) are not those its fit #2 read (#1, #3, #4).",
+        "The result reports held-out scores but names no opening of the seal."]
+
+
+def test_seal_integrity_fires_on_estimates_that_are_not_its_named_fits():
+    """DB-V3 (b): the post-lock fit's estimate reported under the locked fit's name."""
+    data = estimate_record()
+    data["result"]["effects"] = copy.deepcopy(data["attempts"][1]["effects"])
+    got = outcome(C.seal_integrity, data)
+    assert got.outcome == "fail"
+    assert got.problems == ["The result's estimates are not those its fit #1 serves."]
+
+
+def test_seal_integrity_fires_on_a_named_fit_that_read_a_change_made_with_the_estimates_in_view():
+    """DB-V3 (c): the result names fit 2, which read record #5, while its own records stop at
+    #4."""
+    data = estimate_record()
+    data["result"]["attempt"] = "fit2"
+    got = outcome(C.seal_integrity, data)
+    assert got.outcome == "fail"
+    assert got.problems[:2] == [
+        "Records #5, made after the plan's lock or with the estimates in view, are among those "
+        "the result's fit read.",
+        "The result's records (#1, #2, #3, #4) are not those its fit #2 read (#1, #2, #3, #4, "
+        "#5)."]
+
+
+def test_seal_integrity_does_not_pass_a_locked_result_whose_fit_holds_another_plan():
+    """Its fit's own plan is not the lock's: whether the lock was recorded on it is not known
+    from the record (a fit and a lock can differ in an answer the fit does not read), so it is
+    not passed, and not failed."""
+    data = estimate_record()
+    data["attempts"][0]["plan_digest"] = "another plan"
+    got = outcome(C.seal_integrity, data)
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == ["The result's fit #1 holds a plan whose digest is not the lock's, so "
+                             "whether the lock at record #4 was recorded on it is not known from "
+                             "the record."]
+
+
+def test_seal_integrity_fires_on_held_out_scores_its_named_fit_does_not_serve():
+    data = predict_record()
+    data["attempts"][1]["holdout"]["linear"]["auc"] = 0.69
+    got = outcome(C.seal_integrity, data)
+    assert got.problems == ["The result's scores are not the held-out scores its fit #2 serves."]
+
+
+def test_seal_integrity_does_not_pass_scores_its_named_fit_serves_none_of():
+    data = predict_record()
+    data["attempts"][1].update(holdout=None, holdout_why="The held-out rows are sealed.")
+    got = outcome(C.seal_integrity, data)
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == ["The result's fit #2 serves no held-out scores to compare with the "
+                             "opening's: The held-out rows are sealed."]
+
+
+def test_seal_integrity_fires_on_a_named_fit_that_is_not_the_one_the_opening_was_recorded_on():
+    data = predict_record()
+    data["attempts"][1]["changed_after_seal"] = True
+    got = outcome(C.seal_integrity, data)
+    assert got.problems == ["The result's fit #2 is not the fit the opening at record #5 was "
+                            "recorded on."]
+
+
+def test_seal_integrity_fires_on_estimates_with_no_lock_named():
+    data = estimate_record()
+    data["result"]["lock"] = None
+    got = outcome(C.seal_integrity, data)
+    assert got.problems == ["The result reports estimates but names no lock of the plan."]
 
 
 def test_seal_integrity_does_not_pass_a_result_whose_fit_is_unknown():
@@ -96,6 +184,27 @@ def test_seal_integrity_fires_when_the_result_is_not_the_locked_plans():
 def test_logging_is_silent_when_every_attempt_and_record_has_its_reason(make):
     got = outcome(C.logging_complete, make())
     assert (got.outcome, got.problems) == ("pass", [])
+
+
+def test_logging_is_silent_on_a_fit_whose_only_change_is_a_revert_with_its_note():
+    assert outcome(C.logging_complete, revert_record()).outcome == "pass"
+    quiet = revert_record()
+    quiet["decisions"][4]["reason"] = None
+    quiet["attempts"][3]["reasons"] = []
+    got = outcome(C.logging_complete, quiet)
+    assert got.problems == ["Fit #4 has no reason: no record that changed before it (records #5) "
+                            "has a note.", "Record #5 (revert) has no reason."]
+
+
+def test_logging_does_not_pass_a_fit_whose_change_is_credited_to_no_record():
+    data = revert_record()
+    data["attempts"][3].update(changed=[], reasons=[], withdrawn=[{"seq": 3, "by": None}])
+    data["decisions"][4]["materiality"] = {"source": None, "why": "constructed: none measured"}
+    got = outcome(C.logging_complete, data)
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == ["Fit #4's change from the fit before (records #3 leaving or "
+                             "returning to force) is credited to no record, so its reason is not "
+                             "known."]
 
 
 def test_logging_fires_on_an_attempt_with_no_reason():

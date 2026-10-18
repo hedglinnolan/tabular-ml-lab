@@ -28,14 +28,29 @@ outcome and the participant flow, and the export. Every number in the record is 
 nothing is recomputed. These reads count what they serve as shown, as the stage routes do; the run
 is over, so no decision of the run is marked by them.
 
+**A fit's change from the fit before** (:func:`change_of`) is read both ways from the records in
+force at each (``GET …/fits``' ``decisions``), against the decision log: each record that left
+force is credited to the revert that withdrew it (a revert of it recorded after the fit before's
+records and by this fit) or to a new record answering its question; each record that came into
+force is new, or is restored and credited to the revert that withdrew what had replaced it or that
+reverted its own revert. A record no record of the log is found to credit is kept with none. A
+revert is never in force, so a fit whose only change is a revert has that revert as its change and
+its note as its reason.
+
 **A decision's materiality** is the engine's (:class:`record.Materiality`):
 
 * under Predict, the paired movement ``GET …/fits`` serves for the first fit the record was in
-  force in, where it is the only record that changed since the fit before; with others it moved
-  together, so it has no measure of its own, and the why names them;
+  force in (a revert: the first whose change holds it), where the fit's whole change from the fit
+  before is that one record; with others, or with a record credited to none, it moved together, so
+  it has no measure of its own, and the why names them;
 * under Estimate, for an exclusion rule or an adjustment set in force when the curve was drawn,
   ``GET …/mattered``' specifications that change its choices, beside the primary;
 * otherwise none, and why: the route's own words where it gave them.
+
+**The result** under Estimate is the fit the lock in force was recorded on: the one fit record
+whose own plan digest is the lock's. ``GET …/fits`` does not serve the fit key the lock was
+recorded on, so where no record, or more than one, holds the lock's plan, the result is refused
+and says so; it is never the last fit before the lock.
 
 **Examined options.** A decision answers one or more questions (:func:`answers_of`). For each, an
 option is examined for the decision when it was previewed (the analyst log's previews) while the
@@ -96,6 +111,7 @@ SETTLED = ("fresh", "error", "blocked")
 
 NOT_IN_A_FIT = "No fit completed while this record was in force."
 FIRST_FIT = "This record was in force at the first fit, which has no earlier fit to compare with."
+LOOSE = "by no record found between the two fits"
 NO_MOVEMENT = "The fit records serve no movement for the fit this record first took effect in."
 NOT_VARIED = ("The curve of which decisions mattered varies the exclusion rules and the adjustment "
               "set (its v0), so it has no specification for this decision.")
@@ -104,11 +120,48 @@ WITHDRAWN = ("Withdrawn by a revert: the curve served is drawn for the plan in f
 NO_SPEC = "The curve estimated no specification that changes this decision's choices:"
 
 
-def _together(others: Sequence[int], fit_seq: int) -> str:
-    listed = ", ".join(f"#{s}" for s in others)
-    noun = "record" if len(others) == 1 else "records"
-    return (f"It took effect at fit #{fit_seq} together with {noun} {listed}: the fit records "
-            f"measure the change between two fits, not each record's share of it.")
+def _records(seqs: Sequence[int]) -> str:
+    listed = ", ".join(f"#{s}" for s in seqs)
+    return f"record {listed}" if len(seqs) == 1 else f"records {listed}"
+
+
+def _together(others: Sequence[int], fit_seq: int, left: Sequence[int] = (),
+              back: Sequence[int] = ()) -> str:
+    """Why a record has no measure of its own: at fit ``fit_seq`` it moved with ``others``, or
+    with records that left force (``left``) or came back into it (``back``) credited to none."""
+    text = f"It took effect at fit #{fit_seq}"
+    if others:
+        text += f" together with {_records(others)}"
+    loose = [f"{_records(left)} left force"] if left else []
+    loose += [f"{_records(back)} returned to force"] if back else []
+    if loose:
+        text += f"{',' if others else ''} while {' and '.join(loose)} {LOOSE}"
+    return (f"{text}: the fit records measure the change between two fits, not each record's "
+            f"share of it.")
+
+
+def _restored(fit_seq: int, by: int | None) -> str:
+    if by is None:
+        return f"It took effect at fit #{fit_seq}, back in force {LOOSE}."
+    return (f"It took effect at fit #{fit_seq}, restored by record #{by}, which is credited with "
+            f"that change.")
+
+
+def _unseen_revert(target: int | None) -> str:
+    withdrawn = f"record #{target}" if target is not None else "the record it names"
+    return (f"No fit's change from the fit before it includes this revert's withdrawal of "
+            f"{withdrawn}.")
+
+
+def no_locked_fit(lock: int) -> str:
+    return (f"No fit record holds the plan the lock at record #{lock} recorded (its digest), so "
+            f"the fit the lock was recorded on is not known from the fit records.")
+
+
+def locked_twice(lock: int, ids: Sequence[str]) -> str:
+    listed = ", ".join(f"`{i}`" for i in ids)
+    return (f"Fit records {listed} each hold the plan the lock at record #{lock} recorded, so "
+            f"which one the lock was recorded on is not known from the fit records.")
 
 
 def _superseded(seq: int) -> str:
@@ -288,23 +341,96 @@ def _at(value: Any) -> datetime:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
+def cancelled(records: Sequence[Mapping[str, Any]]) -> dict[str, str]:
+    """Each record a revert withdraws at the end of ``records``, by id, with its revert's id: the
+    decision log's own rule (``decisions.reverted``), latest first, so a revert counts only when no
+    later revert withdrew it."""
+    out: dict[str, str] = {}
+    for r in sorted(records, key=lambda r: r["seq"], reverse=True):
+        if r["id"] not in out and r["decision"].get("kind") == "revert":
+            out.setdefault(str(r["decision"].get("decision_id")), r["id"])
+    return out
+
+
 # ── the attempts ─────────────────────────────────────────────────────────────
+
+
+CHANGE = ("changed", "withdrawn", "reinstated")
+
+
+def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
+              records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """``fit``'s change from ``before``, the fit record before it (None for the first), both ways
+    (the module docstring; :class:`record.Attempt`'s ``changed``, ``withdrawn`` and
+    ``reinstated``).
+
+    A record is taken as read by the fit before when it comes before that fit's last record in
+    force (``floor``) or was appended by the time that fit completed, and as appended between the
+    two fits when it comes after ``floor`` and was appended by the time this fit completed: a
+    fit's records are the log appended by its completion (``runs.appended_by``), less the newest
+    ones the engine had not read (``runs.keyed_prefix``)."""
+    now = fit.get("decisions")
+    if before is None:
+        return {"changed": sorted(now) if now is not None else None, "withdrawn": [],
+                "reinstated": []}
+    was = before.get("decisions")
+    if now is None or was is None:
+        return {"changed": None, "withdrawn": [], "reinstated": []}
+    by_seq = {r["seq"]: r for r in records}
+    seq_of = {r["id"]: r["seq"] for r in records}
+    reverts: dict[int, list[Mapping[str, Any]]] = {}  # each record's reverts, by its seq
+    for r in records:
+        if r["decision"].get("kind") == "revert" and r["decision"].get("decision_id") in seq_of:
+            reverts.setdefault(seq_of[r["decision"]["decision_id"]], []).append(r)
+    floor = max(was, default=0)
+    done = _at(fit["at"]) if fit.get("at") else None
+    done_before = _at(before["at"]) if before.get("at") else None
+
+    def between(r: Mapping[str, Any]) -> bool:
+        return r["seq"] > floor and (done is None or _at(r["at"]) <= done)
+
+    def held_before(r: Mapping[str, Any]) -> bool:
+        return r["seq"] < floor or (done_before is not None and _at(r["at"]) <= done_before)
+
+    def questions(seq: int) -> set[str]:
+        return {q for q, _ in answers_of(by_seq[seq]["decision"])} if seq in by_seq else set()
+
+    gone, came = sorted(set(was) - set(now)), sorted(set(now) - set(was))
+    withdrawn: dict[int, int | None] = {
+        x: next((r["seq"] for r in reverts.get(x, ()) if between(r)), None) for x in gone}
+    reinstated: dict[int, int | None] = {}
+    new: list[int] = []
+    for s in came:
+        # Restored: the revert that withdrew what had replaced it, or that reverted its revert.
+        by = next((withdrawn[y] for y in gone if withdrawn[y] is not None and y > s
+                   and questions(y) & questions(s)), None)
+        if by is None:
+            by = next((r2["seq"] for r1 in reverts.get(s, ()) if held_before(r1)
+                       for r2 in reverts.get(r1["seq"], ()) if between(r2)), None)
+        if by is not None or s < floor:  # before ``floor``: in the fit before's prefix, not new
+            reinstated[s] = by
+        else:
+            new.append(s)
+    for x in gone:  # replaced by a new answer to its question
+        if withdrawn[x] is None:
+            withdrawn[x] = next((s for s in new if s > x and questions(x) & questions(s)), None)
+    credited = {b for b in (*withdrawn.values(), *reinstated.values()) if b is not None}
+    return {"changed": sorted(set(new) | credited),
+            "withdrawn": [{"seq": x, "by": b} for x, b in withdrawn.items()],
+            "reinstated": [{"seq": x, "by": b} for x, b in reinstated.items()]}
 
 
 def attempts_of(fits: Sequence[Mapping[str, Any]], records: Sequence[Mapping[str, Any]]
                 ) -> list[dict[str, Any]]:
-    """Each fit record as served, with the records in force at it and not at the fit before it
-    (``changed``; every record in force, for the first) and their notes (``reasons``)."""
+    """Each fit record as served, with its change from the fit before it (:func:`change_of`) and
+    the notes of the records credited with it (``reasons``)."""
     notes = {r["seq"]: r.get("note") for r in records}
     out: list[dict[str, Any]] = []
-    before: set[int] | None = set()
-    for rec in fits:
-        now = rec.get("decisions")
-        changed = None if now is None or before is None else sorted(set(now) - before)
-        reasons = [{"seq": s, "note": notes[s]} for s in changed or () if notes.get(s)]
-        keep = {k: rec.get(k) for k in R.Attempt.model_fields if k not in ("changed", "reasons")}
-        out.append({**keep, "changed": changed, "reasons": reasons})
-        before = set(now) if now is not None else None
+    for i, rec in enumerate(fits):
+        change = change_of(fits[i - 1] if i else None, rec, records)
+        reasons = [{"seq": s, "note": notes[s]} for s in change["changed"] or () if notes.get(s)]
+        keep = {k: rec.get(k) for k in R.Attempt.model_fields if k not in (*CHANGE, "reasons")}
+        out.append({**keep, **change, "reasons": reasons})
     return out
 
 
@@ -368,14 +494,25 @@ def examined_of(rec: Mapping[str, Any], records: Sequence[Mapping[str, Any]],
     return out
 
 
-def fits_materiality(rec: Mapping[str, Any], attempts: Sequence[Mapping[str, Any]]
-                     ) -> dict[str, Any]:
-    """The paired movement of the first fit ``rec`` was in force in, where it alone changed since
-    the fit before; else why there is none."""
+def fits_materiality(rec: Mapping[str, Any], attempts: Sequence[Mapping[str, Any]],
+                     records: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+    """The paired movement of the first fit ``rec`` was in force in (a revert, which is never in
+    force: the first fit whose change holds it), where the fit's whole change from the fit before
+    is ``rec`` alone (:func:`change_of`); else why there is none. ``records``: the decision log, to
+    name what a revert withdrew."""
     seq = rec["seq"]
-    first = next((i for i, a in enumerate(attempts) if seq in (a.get("decisions") or ())), None)
-    if first is None:
-        return {"source": None, "why": NOT_IN_A_FIT}
+    decision = rec.get("decision") or {}
+    if decision.get("kind") == "revert":
+        first = next((i for i, a in enumerate(attempts) if seq in (a.get("changed") or ())), None)
+        if first is None:
+            target = next((r["seq"] for r in records if r["id"] == decision.get("decision_id")),
+                          None)
+            return {"source": None, "why": _unseen_revert(target)}
+    else:
+        first = next((i for i, a in enumerate(attempts) if seq in (a.get("decisions") or ())),
+                     None)
+        if first is None:
+            return {"source": None, "why": NOT_IN_A_FIT}
     fit = attempts[first]
     if first == 0:
         return {"source": None, "attempt": fit["id"], "why": fit.get("movement_why") or FIRST_FIT}
@@ -383,9 +520,15 @@ def fits_materiality(rec: Mapping[str, Any], attempts: Sequence[Mapping[str, Any
     if changed is None:
         return {"source": None, "attempt": fit["id"],
                 "why": fit.get("movement_why") or fit.get("withheld") or NO_MOVEMENT}
+    if seq not in changed:  # restored by a revert, which is credited with it
+        by = next((s.get("by") for s in fit.get("reinstated") or () if s.get("seq") == seq), None)
+        return {"source": None, "attempt": fit["id"], "why": _restored(fit["seq"], by)}
     others = [s for s in changed if s != seq]
-    if others:
-        return {"source": None, "attempt": fit["id"], "why": _together(others, fit["seq"])}
+    left = [s["seq"] for s in fit.get("withdrawn") or () if s.get("by") is None]
+    back = [s["seq"] for s in fit.get("reinstated") or () if s.get("by") is None]
+    if others or left or back:
+        return {"source": None, "attempt": fit["id"],
+                "why": _together(others, fit["seq"], left, back)}
     moved = fit.get("movement") or []
     if any(m.get("movement") is not None for m in moved):
         return {"source": "fits", "attempt": fit["id"], "movement": moved}
@@ -396,9 +539,8 @@ def fits_materiality(rec: Mapping[str, Any], attempts: Sequence[Mapping[str, Any
 
 def in_force_of(records: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     """Each question's record in force at the end of the log: its last answer that no revert
-    withdrew."""
-    reverted = {r["decision"].get("decision_id") for r in records
-                if r["decision"].get("kind") == "revert"}
+    withdrew (:func:`cancelled`)."""
+    reverted = cancelled(records)
     out: dict[str, int] = {}
     for r in records:
         if r["id"] in reverted:
@@ -462,7 +604,7 @@ def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mappin
     in_force = in_force_of(records)
     out: list[dict[str, Any]] = []
     for rec in records:
-        materiality = fits_materiality(rec, attempts)
+        materiality = fits_materiality(rec, attempts, records)
         if purpose == "inference" and materiality.get("source") is None:
             drawn = mattered_materiality(rec, mattered, in_force)
             if drawn is not None:
@@ -485,10 +627,9 @@ def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mappin
 
 
 def _last(records: Sequence[Mapping[str, Any]], kind: str) -> Mapping[str, Any] | None:
-    """The last record of ``kind`` no revert withdrew (the server withdraws a lock no estimate was
-    served under by a revert of its own)."""
-    reverted = {r["decision"].get("decision_id") for r in records
-                if r["decision"].get("kind") == "revert"}
+    """The last record of ``kind`` no revert withdrew (:func:`cancelled`; the server withdraws a
+    lock no estimate was served under by a revert of its own, ``plan_lock.current_lock``)."""
+    reverted = cancelled(records)
     return next((r for r in reversed(records) if r["decision"].get("kind") == kind
                  and r["id"] not in reverted), None)
 
@@ -532,12 +673,14 @@ def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
         lock = _last(records, "lock_plan")
         if lock is None:
             return {**base, "refused": "The plan was never locked, so no estimate was served."}
-        locked = [a for a in attempts if a.get("decisions") is not None
-                  and max(a["decisions"], default=0) <= lock["seq"]]
-        fit = locked[-1] if locked else None
-        out = {**base, "lock": lock["seq"], "plan_digest": lock["decision"].get("digest")}
-        if fit is None:
-            return {**out, "refused": "No fit record holds the answers the plan was locked on."}
+        digest = lock["decision"].get("digest")
+        out = {**base, "lock": lock["seq"], "plan_digest": digest}
+        held = [a for a in attempts if digest is not None and a.get("plan_digest") == digest]
+        if not held:
+            return {**out, "refused": no_locked_fit(lock["seq"])}
+        if len(held) > 1:
+            return {**out, "refused": locked_twice(lock["seq"], [a["id"] for a in held])}
+        fit = held[0]
         out.update(attempt=fit["id"], decisions=fit.get("decisions"))
         effects = {f: rows for f, rows in (fit.get("effects") or {}).items() if rows}
         if not effects:

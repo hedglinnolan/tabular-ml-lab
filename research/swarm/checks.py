@@ -8,13 +8,16 @@ that failed its schema) as a logging failure. Each check returns an :class:`Outc
 check never passes what it could not check.
 
 * :func:`seal_integrity`: no re-seal and no second opening of an outcome's held-out rows; no record
-  made after the opening (Predict), or after the plan's lock or with the estimates in view
-  (Estimate), is among the records the result's fit read; the result is the opening's recorded
-  scores, or the lock's plan.
-* :func:`logging_complete`: every attempt has a reason, a note on a record that changed before it
-  (a fit that followed only TurboTab's own records is noted as not the analyst's), and for each
-  family an engine-measured movement or the engine's why not; every record the analyst made has
-  its reason.
+  made after the seal's opening, or after the plan's lock or with the estimates in view, is among
+  the records the result or the fit it names read, whether or not it names an opening or a lock;
+  the result's records and numbers are those its fit read and serves; held-out scores name their
+  opening and are the ones it recorded, from the fit it was recorded on; estimates name their lock,
+  hold the lock's plan and come from a fit whose own plan is the lock's (else not checked).
+* :func:`logging_complete`: every attempt has a reason, a note on a record credited with its change
+  from the fit before, a revert's included (a fit that followed only TurboTab's own records is
+  noted as not the analyst's; one whose change is credited to no record is not checked), and for
+  each family an engine-measured movement or the engine's why not; every record the analyst made
+  has its reason.
 * :func:`single_pass`: flagged when, before the seal's opening or the plan's lock, no decision had
   an alternative examined and the run fit at most once.
 * :func:`known_answer`: for a known-answer control, each fact reading the fixture declares
@@ -92,33 +95,60 @@ def seal_integrity(rec: Record) -> Outcome:
                             f"(records {_seqs(seqs)}).")
     by_seq = {d.seq: d for d in rec.decisions}
     r = rec.result
+    fit = next((a for a in rec.attempts if a.id == r.attempt), None)
+    read = sorted(set(r.decisions or ()) | set((fit.decisions or ()) if fit is not None else ()))
+    sealed = [s for s in read if by_seq[s].post_seal or (r.opening is not None and s > r.opening)]
+    if sealed:
+        problems.append(f"Records {_seqs(sealed)}, made after the seal's opening, are among those "
+                        f"the result's fit read.")
+    seen = [s for s in read if by_seq[s].after_estimates or (r.lock is not None and s > r.lock)]
+    if seen:
+        problems.append(f"Records {_seqs(seen)}, made after the plan's lock or with the estimates "
+                        f"in view, are among those the result's fit read.")
+    if fit is not None and fit.decisions != r.decisions:
+        problems.append(f"The result's records ({_seqs(r.decisions or [])}) are not those its fit "
+                        f"#{fit.seq} read ({_seqs(fit.decisions or [])}).")
+    if r.scores and r.opening is None:
+        problems.append("The result reports held-out scores but names no opening of the seal.")
+    if r.effects and r.lock is None:
+        problems.append("The result reports estimates but names no lock of the plan.")
     if r.opening is not None:
-        if r.decisions is None:
+        opened = by_seq.get(r.opening)
+        if opened is None or (r.scores or {}) != (opened.option.get("scores") or {}):
+            problems.append(f"The result's scores are not those the opening at record "
+                            f"#{r.opening} recorded.")
+        if fit is None:
             unchecked.append("The opened fit is not among the fit records, so the records its "
                              "result read are not known.")
         else:
-            late = [s for s in r.decisions if s > r.opening or by_seq[s].post_seal]
-            if late:
-                problems.append(f"Records {_seqs(late)}, made after the opening at record "
-                                f"#{r.opening}, are among those the result's fit read.")
-        opened = by_seq.get(r.opening)
-        if opened is None or r.scores != opened.option.get("scores"):
-            problems.append(f"The result's scores are not those the opening at record "
-                            f"#{r.opening} recorded.")
+            if fit.changed_after_seal:
+                problems.append(f"The result's fit #{fit.seq} is not the fit the opening at record "
+                                f"#{r.opening} was recorded on.")
+            if fit.holdout is None:
+                unchecked.append(f"The result's fit #{fit.seq} serves no held-out scores to "
+                                 f"compare with the opening's: {fit.holdout_why}")
+            elif (r.scores or {}) != {f: v for f, v in fit.holdout.items() if v is not None}:
+                problems.append(f"The result's scores are not the held-out scores its fit "
+                                f"#{fit.seq} serves.")
     if r.lock is not None:
-        if r.decisions is None:
+        locked = by_seq.get(r.lock)
+        digest = locked.option.get("digest") if locked is not None else None
+        if locked is None or r.plan_digest != digest:
+            problems.append(f"The result's plan is not the one the lock at record #{r.lock} "
+                            f"recorded.")
+        if fit is None:
             unchecked.append("The locked fit is not among the fit records, so the records its "
                              "result read are not known.")
         else:
-            late = [s for s in r.decisions if s > r.lock or by_seq[s].after_estimates]
-            if late:
-                problems.append(f"Records {_seqs(late)}, made after the plan's lock at record "
-                                f"#{r.lock} or with the estimates in view, are among those the "
-                                f"result's fit read.")
-        locked = by_seq.get(r.lock)
-        if locked is None or r.plan_digest != locked.option.get("digest"):
-            problems.append(f"The result's plan is not the one the lock at record #{r.lock} "
-                            f"recorded.")
+            if (r.effects or {}) != {f: rows for f, rows in fit.effects.items() if rows}:
+                problems.append(f"The result's estimates are not those its fit #{fit.seq} "
+                                f"serves.")
+            if fit.plan_digest != digest:
+                # A fit and its lock can differ in an answer the fit does not read: not failed,
+                # and never passed.
+                unchecked.append(f"The result's fit #{fit.seq} holds a plan whose digest is not "
+                                 f"the lock's, so whether the lock at record #{r.lock} was "
+                                 f"recorded on it is not known from the record.")
     return _outcome("seal_integrity", rec, problems, unchecked)
 
 
@@ -127,12 +157,19 @@ def seal_integrity(rec: Record) -> Outcome:
 
 def logging_complete(rec: Record) -> Outcome:
     problems: list[str] = []
+    unchecked: list[str] = []
     notes: list[str] = []
     by_seq = {d.seq: d for d in rec.decisions}
     for a in rec.attempts:
         changed = a.changed or []
+        loose = sorted(s.seq for s in a.withdrawn + a.reinstated if s.by is None)
         if not a.reasons:
-            if changed and all(by_seq[s].source == "app" for s in changed):
+            mine = [s for s in changed if by_seq[s].source == "analyst"]
+            if not mine and loose:
+                unchecked.append(f"Fit #{a.seq}'s change from the fit before (records "
+                                 f"{_seqs(loose)} leaving or returning to force) is credited to no "
+                                 f"record, so its reason is not known.")
+            elif changed and not mine:
                 notes.append(f"Fit #{a.seq} followed only TurboTab's own records "
                              f"({_seqs(changed)}), so it was not the analyst's attempt.")
             else:
@@ -149,7 +186,7 @@ def logging_complete(rec: Record) -> Outcome:
     for d in rec.decisions:
         if d.source == "analyst" and not (d.reason or "").strip():
             problems.append(f"Record #{d.seq} ({d.kind}) has no reason.")
-    return _outcome("logging", rec, problems, [], notes)
+    return _outcome("logging", rec, problems, unchecked, notes)
 
 
 def failed_run(path: Path) -> Outcome:
