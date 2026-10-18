@@ -11,9 +11,10 @@ Per dataset it writes three files under ``research/datasets/<id>/`` (committed):
 * ``card.json``: the question card an analyst reads (:data:`CARD_FIELDS`): the question, the
   population, the purpose (Predict or Estimate), the outcome (and under Estimate the exposure),
   for a replication the paper and its stated question, the table the run uploads, and every step
-  taken to prepare it before the upload. It holds no known answer, and no number that is an
-  answer's rounded to the card's own decimal places, beyond the coincidences
-  :data:`SHARED_NUMBERS` names.
+  taken to prepare it before the upload. It holds no known answer, and no number, in digits or
+  in words, that is an answer's (as stated, as a percent or as a proportion) rounded to the
+  card's own decimal places, beyond the coincidences :data:`SHARED_NUMBERS` names, each in the
+  form it is pinned in ("1" pinned does not excuse "1.0" or "one").
 * ``answers.json``: what the checks compare a run against (:data:`ANSWER_KINDS`): a paper's
   numbers, a fixture's declared truth, a decoy's "no finding is real", or that nothing is known.
   No analyst reads it.
@@ -238,8 +239,20 @@ BIBLIOGRAPHIC = ("citation", "doi", "pmid")
 # A number as prose writes it: digits, with or without thousands commas, and a decimal part
 # ("16,913", "0.79"), or a decimal part alone (".79"). It is read wherever no letter, digit,
 # underscore or point comes just before it, so DBQ700, item_05 and log10 are names, and whatever
-# follows it: "126mg", "210cases" and "2.6x" are 126, 210 and 2.6.
+# follows it: "126mg", "210cases", "2.6x" and "74%" are 126, 210, 2.6 and 74.
 NUMBER = re.compile(r"(?<![\w.])(?:(\d{1,3}(?:,\d{3})+(?!\d)|\d+)(\.\d+)?|(\.\d+))")
+# A number as prose writes it in words, to no decimal places: zero to nineteen, the tens, and a
+# ten with its unit ("twenty-five", "twenty five"), in any case and only as a whole word, so
+# "someone", "often", "weight" and item_one hold none.
+UNIT_WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+              "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+              "seventeen", "eighteen", "nineteen")
+TEN_WORDS = ("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
+WORD_VALUES = {**{w: i for i, w in enumerate(UNIT_WORDS)},
+               **{w: 20 + 10 * i for i, w in enumerate(TEN_WORDS)}}
+NUMBER_WORD = re.compile(
+    rf"\b(?:({'|'.join(TEN_WORDS)})(?:[-\s]+({'|'.join(UNIT_WORDS[1:10])}))?"
+    rf"|({'|'.join(sorted(UNIT_WORDS, key=len, reverse=True))}))\b", re.IGNORECASE)
 
 
 def _text(value: Any) -> bool:
@@ -335,22 +348,35 @@ def validate_answers(answers: Any, id_: str | None = None) -> list[str]:
     return errors
 
 
+def written(value: float, places: int) -> str:
+    """A number in digits as a card writes it, by absolute value: 1 to one place is "1.0", to none
+    "1"; ".79" is "0.79" and "16,913" is "16913"."""
+    return f"{value:.{places}f}"
+
+
 def _numbers(value: Any, skip: Callable[[tuple[str, ...]], bool], at: tuple[str, ...] = ()
-             ) -> Iterator[tuple[float, int]]:
-    """Every number in ``value``, by absolute value, with the decimal places it is written to."""
+             ) -> Iterator[tuple[float, int, str]]:
+    """Every number in ``value``, in digits (:data:`NUMBER`) or in words (:data:`NUMBER_WORD`), by
+    absolute value, with the decimal places it is written to and its form: digits as
+    :func:`written` gives them, words in lower case joined by a hyphen ("twenty-five")."""
     if skip(at):
         return
     if isinstance(value, bool) or value is None:
         return
     if isinstance(value, int):
-        yield float(abs(value)), 0
+        yield float(abs(value)), 0, written(abs(value), 0)
     elif isinstance(value, float):
         if math.isfinite(value):
-            yield abs(value), max(0, -Decimal(repr(value)).as_tuple().exponent)
+            places = max(0, -Decimal(repr(value)).as_tuple().exponent)
+            yield abs(value), places, written(abs(value), places)
     elif isinstance(value, str):
         for whole, fraction, alone in NUMBER.findall(value):
             part = fraction or alone
-            yield abs(float(whole.replace(",", "") + part)), max(0, len(part) - 1)
+            number, places = abs(float(whole.replace(",", "") + part)), max(0, len(part) - 1)
+            yield number, places, written(number, places)
+        for ten, unit, alone in NUMBER_WORD.findall(value):
+            words = [w.lower() for w in (ten, unit, alone) if w]
+            yield float(sum(WORD_VALUES[w] for w in words)), 0, "-".join(words)
     elif isinstance(value, dict):
         for k, v in value.items():
             yield from _numbers(v, skip, (*at, str(k)))
@@ -359,21 +385,23 @@ def _numbers(value: Any, skip: Callable[[tuple[str, ...]], bool], at: tuple[str,
             yield from _numbers(v, skip, at)
 
 
-def card_readings(card: dict[str, Any]) -> set[tuple[float, int]]:
-    """Every number the card states, in any field (its paper's bibliographic identifiers aside),
-    by absolute value, each with the decimal places the card writes it to."""
+def card_readings(card: dict[str, Any]) -> set[tuple[float, int, str]]:
+    """Every number the card states, in digits or in words, in any field (its paper's
+    bibliographic identifiers aside), by absolute value, each with the decimal places the card
+    writes it to and its form (:func:`_numbers`)."""
     return set(_numbers(card, lambda at: len(at) == 3 and at[:2] == ("replication", "paper")
                         and at[2] in BIBLIOGRAPHIC))
 
 
 def card_numbers(card: dict[str, Any]) -> set[float]:
     """Every number the card states (:func:`card_readings`), by absolute value."""
-    return {value for value, _ in card_readings(card)}
+    return {value for value, _, _ in card_readings(card)}
 
 
 def answer_numbers(answers: dict[str, Any]) -> set[float]:
-    """Every number the answers' truths state (each truth's value), by absolute value."""
-    return {value for value, _ in
+    """Every number the answers' truths state (each truth's value), in digits or in words, by
+    absolute value."""
+    return {value for value, _, _ in
             _numbers([t.get("value") for t in answers.get("truths") or []], lambda at: False)}
 
 
@@ -384,39 +412,69 @@ def rounds_to(answer: float, stated: float, places: int) -> bool:
     return abs(answer - stated) <= 0.5 * 10.0 ** -places * (1 + 1e-9)
 
 
-def shared_numbers(card: dict[str, Any], answers: dict[str, Any]) -> set[float]:
-    """The numbers the card states that are an answer's number rounded to the card's own decimal
-    places (:func:`rounds_to`), by the card's value."""
-    stated = answer_numbers(answers)
-    return {value for value, places in card_readings(card)
+def shared_numbers(card: dict[str, Any], answers: dict[str, Any]) -> set[str]:
+    """The numbers the card states (:func:`card_readings`) that are an answer's number rounded to
+    the card's own decimal places (:func:`rounds_to`), each in its form ("0.79", "1.0", "five"):
+    the answer as it is stated, times 100 (a proportion written as a percent: 0.74194 is "74%")
+    or divided by 100 (a percent written as a proportion: a sensitivity of 82 is "0.82")."""
+    stated = [s for a in answer_numbers(answers) for s in (a, a * 100, a / 100)]
+    return {form for value, places, form in card_readings(card)
             if any(rounds_to(a, value, places) for a in stated)}
 
 
-# A number a card states that is an answer's rounded to the card's places (:func:`shared_numbers`),
-# where the two are not the same fact; the intake refuses every other shared number, a pinned
-# value at whatever places the card writes it, and the tests pin this list. A whole 0 or 1 in a
-# card matches every answer within 0.5 of it, so a binary column's coding meets the answers'
-# small decimals.
-SHARED_NUMBERS: dict[str, dict[float, str]] = {
-    "bang2009": {1.0: "the outcome column's coding (diabetes_fpg is 1 at or above the cut); "
-                      "a factor's points in the paper's score are also 1, and its odds ratios, "
-                      "confidence bounds, likelihood ratios and AUC from 0.5 to 1.5 round to 1",
-                 0.0: "the outcome column's coding (diabetes_fpg is 0 below the cut); the "
-                      "paper's P values, negative likelihood ratios and the bounds up to 0.5 "
-                      "round to 0"},
-    "sullivan2021": {20.0: "the paper's stated inclusion, aged 20 or older (its flow's 'Age < 20' "
-                           "step); the flow also excludes 20 people for reporting only water",
-                     10.0: "the base of the insulin crosswalk's logarithm; the flow also "
-                           "excludes 10 people for having no self-rating",
-                     1.0: "the derived columns' coding (smoke_now, glu_med and water_only_alt "
-                          "are 1 or 0); the paper's betas of 0.5 to 1.5 in size round to 1",
-                     0.0: "the same columns' coding (0); the paper's betas, SEs and P values up "
-                          "to 0.5 in size round to 0"},
+# A number a card states that is an answer's rounded to the card's places (:func:`shared_numbers`:
+# the answer as stated, times 100 or divided by 100), where the two are not the same fact. Each is
+# keyed by its form, the number as the card writes it: digits by their value to the card's
+# places ("1", "1.0"), words by the words ("one"). The intake refuses every other shared number,
+# a pinned value in any other form among them ("1.0" or "one" where only "1" is pinned), and the
+# tests pin this list. A whole 0 or 1 in a card matches every answer within 0.5 of it, and every
+# one up to 50, or from 50 to 150, divided by 100, so a binary column's coding meets most answers.
+SHARED_NUMBERS: dict[str, dict[str, str]] = {
+    "bang2009": {
+        "1": "the outcome column's coding (diabetes_fpg is 1 at or above the cut); a factor's "
+             "points in the paper's score are also 1, its odds ratios, confidence bounds, "
+             "likelihood ratios and AUC from 0.5 to 1.5 round to 1, and so, divided by 100, do "
+             "Table 3's percentages from 55 to 100 and Table 2's age bands' 50, 59 and 60",
+        "one": "the prepared steps' 'one under the other' and 'one row per participant'; it meets "
+               "the answers as 1 does",
+        "0": "the outcome column's coding (diabetes_fpg is 0 below the cut); the paper's P "
+             "values, negative likelihood ratios and the bounds up to 0.5 round to 0, as do its P "
+             "values below 0.005 times 100 and every number up to 50 divided by 100"},
+    "sullivan2021": {
+        "20": "the paper's stated inclusion, aged 20 or older (its flow's 'Age < 20' step); the "
+              "flow also excludes 20 people for reporting only water, and Table 4's insulin SE of "
+              "0.2 times 100 is 20",
+        "10": "the base of the insulin crosswalk's logarithm; the flow also excludes 10 people "
+              "for having no self-rating, and Table 4's BMI SE of 0.1 (and Appendix Table 2's "
+              "HbA1c beta of -0.10) times 100 is 10",
+        "24": "the population's 24-hour dietary recalls; the flow's 2,445 people with only one "
+              "recall, divided by 100, round to 24",
+        "five": "the exposure's five ratings, excellent to poor; Table 4's HbA1c beta of -0.05 "
+                "times 100 is 5 in size",
+        "two": "the population's two dietary recalls, the two groups educ4 merges and the two "
+               "recall days kcal_mean averages; the paper's betas from 1.5 to 2.5 in size (Table "
+               "4's glucose beta of -2.0 among them) round to 2, and the flow's 247 pregnant "
+               "women divided by 100 round to 2",
+        "1": "the derived columns' coding (smoke_now, glu_med and water_only_alt are 1 or 0); the "
+             "paper's betas of 0.5 to 1.5 in size round to 1, the flow's 'Only one recall' step "
+             "names 1, and the HbA1c SEs of 0.01 (Table 4 and Appendix Table 2) times 100 are 1",
+        "one": "the prepared steps' 'one under the other', 'one Hispanic group' and 'one row per "
+               "participant'; it meets the answers as 1 does",
+        "0": "the same columns' coding (0); the paper's betas, SEs and P values up to 0.5 in size "
+             "round to 0, as do its P values below 0.005 times 100 and every number up to 50 "
+             "divided by 100",
+        "zero": "pa_rec_min's step, where a kind of activity counts zero minutes; it meets the "
+                "answers as 0 does"},
+    "nhanes_glucose_predict": {
+        "one": "the population's 'one row each' and 'every one with a fasting glucose'; the "
+               "readings' day count of kcal is also 1"},
     "clinical_readmission_predict": {
-        1.0: "the outcome's coding (readmit_30d is 1 yes); the generating model's intercept, "
-             "coefficients and centers of 0.5 to 1.5 in size, and its C-statistic, round to 1",
-        0.0: "the outcome's coding (0 no); the generating model's coefficients up to 0.5 in "
-             "size round to 0"},
+        "1": "the outcome's coding (readmit_30d is 1 yes); the generating model's intercept, "
+             "coefficients and centers of 0.5 to 1.5 in size, and its C-statistic, round to 1, "
+             "and its center of 68 divided by 100 rounds to 1",
+        "one": "the population's 'one row per encounter'; it meets the answers as 1 does",
+        "0": "the outcome's coding (0 no); the generating model's coefficients up to 0.5 in size "
+             "round to 0, and so does every number up to 50 divided by 100"},
 }
 
 
@@ -1153,12 +1211,13 @@ def load(id_: str) -> dict[str, Any]:
 
 def problems(id_: str, card: dict, answers: dict) -> list[str]:
     """Why the card and the answers may not be written: each schema's errors, and every number
-    the card shares with an answer beyond :data:`SHARED_NUMBERS`."""
+    the card shares with an answer (:func:`shared_numbers`) beyond :data:`SHARED_NUMBERS`, each
+    as the card writes it."""
     out = [f"card: {e}" for e in validate_card(card, id_)]
     out += [f"answers: {e}" for e in validate_answers(answers, id_)]
     shared = shared_numbers(card, answers) - set(SHARED_NUMBERS.get(id_, {}))
     if shared:
-        out.append(f"the card states numbers an answer states: {sorted(shared)}")
+        out.append(f"the card states numbers an answer states: {', '.join(sorted(shared))}")
     return out
 
 

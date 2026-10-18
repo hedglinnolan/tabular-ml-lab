@@ -6,10 +6,13 @@
 * The committed manifests match the bytes on disk where the data are present, and the Sullivan
   files' SHA-256 equal those of the replication's own manifest, an independent download.
 * Every card and answers file validates; the validators fire on each broken field.
-* No card states a number its answers state, to the card's own decimal places, beyond the pinned
-  coincidences; the scan reads ".79", "210cases" and "2.6x" whole, fires on an answer number
-  written in at any precision that rounds to it, and stays silent on names (DBQ700, item_05,
-  log10) and the paper's DOI.
+* No card states a number its answers state, in digits or in words, to the card's own decimal
+  places, beyond the coincidences pinned by their form ("1" pinned does not excuse "1.0" or
+  "one"); an answer is compared as stated, times 100 and divided by 100 (0.74194 is "74%", a
+  sensitivity of 82 is "0.82"). The scan reads ".79", "210cases", "2.6x", "74%" and
+  "twenty-five" whole, fires on an answer number written in at any precision that rounds to it,
+  and stays silent on names (DBQ700, item_05, log10, item_one), words that hold a number word
+  (someone, often, weight) and the paper's DOI.
 * The table builders' refusals (a repeated or stray SEQN, a column clash, a variable no cycle
   carries, the NHANES export's changed bytes or repeated participant, a join other than a left
   join by SEQN) each fire on a frame built to trip them and stay silent on a clean one.
@@ -45,10 +48,13 @@ from research.swarm import intake as I  # noqa: E402
 
 IDS = list(I.INTAKES)
 # The numbers a card may share with its answers, each a coincidence of two different facts
-# (intake.SHARED_NUMBERS says which): pinned here, so a new one needs this test changed. A whole 0
-# or 1 (a binary column's coding) matches every answer within 0.5 of it.
-PINNED_SHARED = {"bang2009": {0.0, 1.0}, "sullivan2021": {0.0, 1.0, 10.0, 20.0},
-                 "clinical_readmission_predict": {0.0, 1.0}}
+# (intake.SHARED_NUMBERS says which), by the form the card writes them in: pinned here, so a new
+# one needs this test changed. A whole 0 or 1 (a binary column's coding) matches every answer
+# within 0.5 of it, and every one up to 50, or from 50 to 150, divided by 100.
+PINNED_SHARED = {"bang2009": {"0", "1", "one"},
+                 "sullivan2021": {"0", "zero", "1", "one", "two", "five", "10", "20", "24"},
+                 "nhanes_glucose_predict": {"one"},
+                 "clinical_readmission_predict": {"0", "1", "one"}}
 XPT = I.XPT_MAGIC + b"!!!!!!!000000000000000000000000000000  " + bytes(range(256)) * 40
 CODEBOOK = (b"<html><head><title>LAB10AM Codebook</title></head><body><p>First Published: "
             b"June 2002</p><p>Last Revised: September 2009</p></body></html>")
@@ -250,21 +256,22 @@ def test_the_number_scan_fires_on_an_answer_number_written_into_a_card():
     card = copy.deepcopy(files["card"])
     assert I.problems("bang2009", card, files["answers"]) == []
     card["question"] = card["question"].rstrip("?") + ", with an AUC near 0.79?"
-    assert 0.79 in I.shared_numbers(card, files["answers"])
+    assert "0.79" in I.shared_numbers(card, files["answers"])
     assert any("numbers an answer states" in p for p in I.problems("bang2009", card,
                                                                      files["answers"]))
     sul = committed("sullivan2021")
     card = copy.deepcopy(sul["card"])
     card["population"] += " The analytic sample is 16,913 people."
-    assert 16913.0 in I.shared_numbers(card, sul["answers"])
+    assert "16913" in I.shared_numbers(card, sul["answers"])
     card = copy.deepcopy(sul["card"])
     card["prepared"] = card["prepared"] + ["β is −2.0 per step."]
-    assert 2.0 in I.shared_numbers(card, sul["answers"])
+    assert "2.0" in I.shared_numbers(card, sul["answers"])
 
 
 def test_the_number_scan_reads_numbers_not_names_or_identifiers():
     card = copy.deepcopy(committed("bang2009")["card"])
     assert I.card_numbers({"x": "DBQ700, item_05, WTSAF2YR and log10"}) == set()
+    assert I.card_numbers({"x": "Someone often weighs item_one; none alone is done."}) == set()
     assert I.card_numbers({"x": "from 1999–2004, 21,849 rows, 7.0 mmol/L"}) == {
         1999.0, 2004.0, 21849.0, 7.0}
     # the paper's DOI holds 11, a number Table 3 prints; the identifier is not scanned
@@ -273,12 +280,20 @@ def test_the_number_scan_reads_numbers_not_names_or_identifiers():
     assert 11.0 in I.answer_numbers(committed("bang2009")["answers"])
 
 
-# (text, its numbers with the decimal places each is written to): a leading point, a unit or word
-# against the number, and the decimal part read whole.
-WRITTEN = [("AUC .79", {(0.79, 2)}), ("p = .06", {(0.06, 2)}), ("210cases", {(210.0, 0)}),
-           ("126mg", {(126.0, 0)}), ("OR 2.6x", {(2.6, 1)}), ("C = 0.742", {(0.742, 3)}),
-           ("21,849.5 rows", {(21849.5, 1)}), ("2.60", {(2.6, 2)}), ("end.", set()),
-           ("1,2345", {(1.0, 0), (2345.0, 0)}), ("v1.2.3", set()), ("−2.0", {(2.0, 1)})]
+# (text, its numbers with the decimal places each is written to and its form): a leading point,
+# a unit, sign or word against the number, the decimal part read whole, and numbers in words.
+WRITTEN = [("AUC .79", {(0.79, 2, "0.79")}), ("p = .06", {(0.06, 2, "0.06")}),
+           ("210cases", {(210.0, 0, "210")}), ("126mg", {(126.0, 0, "126")}),
+           ("OR 2.6x", {(2.6, 1, "2.6")}), ("C = 0.742", {(0.742, 3, "0.742")}),
+           ("21,849.5 rows", {(21849.5, 1, "21849.5")}), ("2.60", {(2.6, 2, "2.60")}),
+           ("end.", set()), ("1,2345", {(1.0, 0, "1"), (2345.0, 0, "2345")}), ("v1.2.3", set()),
+           ("−2.0", {(2.0, 1, "2.0")}), ("74%", {(74.0, 0, "74")}),
+           ("74.2 percent", {(74.2, 1, "74.2")}), ("five or more", {(5.0, 0, "five")}),
+           ("Twenty-five", {(25.0, 0, "twenty-five")}),
+           ("ninety nine", {(99.0, 0, "ninety-nine")}),
+           ("seventeen, zero", {(17.0, 0, "seventeen"), (0.0, 0, "zero")}),
+           ("forty percent", {(40.0, 0, "forty")}), ("someone often weighs", set()),
+           ("item_one", set())]
 
 
 @pytest.mark.parametrize("text, readings", WRITTEN, ids=[w[0] for w in WRITTEN])
@@ -287,8 +302,12 @@ def test_the_number_scan_reads_each_way_a_number_is_written(text, readings):
 
 
 # (dataset, a sentence written into its card's question, whether it states an answer's number to
-# the sentence's own places). Each answer is the dataset's answers.json's: Bang's AUC 0.79, P 0.06,
-# 210 undiagnosed and OR 2.6, the clinical C-statistic 0.74194..., the Sullivan sample 16,913.
+# the sentence's own places: as stated, times 100 or divided by 100). Each answer is the dataset's
+# answers.json's: Bang's AUC 0.79, P 0.06, 210 undiagnosed, OR 2.6, the activity CI's upper bound
+# 1.0, P 0.004, Table 3's sensitivity of 82 and the high-risk cut of 5; the clinical C-statistic
+# 0.74194...; the Sullivan sample 16,913 and its glucose beta -2.0. The pinned forms ("1" and "0"
+# for Bang's coding, "one" and "two" for prose) stay silent, and no other form of their values
+# does.
 LEAKS = [
     ("bang2009", "with an AUC near .79", True),
     ("bang2009", "with p = .06 for activity", True),
@@ -303,6 +322,25 @@ LEAKS = [
     ("clinical_readmission_predict", "where C = 0.75", False),
     ("sullivan2021", "in 16,913 people", True),
     ("sullivan2021", "in 16,914 people", False),
+    # a proportion written as a percent, and a percent as a proportion
+    ("clinical_readmission_predict", "with a C-statistic of 74%", True),
+    ("clinical_readmission_predict", "with a C-statistic of 74.2%", True),
+    ("clinical_readmission_predict", "with a C-statistic of seventy-four percent", True),
+    ("clinical_readmission_predict", "with a C-statistic of 76%", False),
+    ("clinical_readmission_predict", "with a C-statistic of 74.5%", False),  # 74.194 is 74.2
+    ("bang2009", "with a sensitivity of 0.82 at the cut", True),
+    ("bang2009", "with a sensitivity of 0.84 at the cut", False),
+    # a number in words
+    ("bang2009", "with high risk at a score of five or more", True),
+    ("bang2009", "with high risk at a score of twelve or more", False),
+    # a pin excuses its own form alone
+    ("bang2009", "with an activity odds ratio's upper bound of 1.0", True),
+    ("bang2009", "with points of 0.0 for some", True),
+    ("bang2009", "with an upper bound of 1.00", True),
+    ("bang2009", "coded 1 or 0", False),
+    ("bang2009", "with one row per participant", False),
+    ("sullivan2021", "with a beta of -2 per step", True),
+    ("sullivan2021", "with two recall days", False),
 ]
 
 
@@ -322,10 +360,48 @@ def test_the_number_scan_stays_silent_on_names_and_the_doi_whose_digits_an_answe
     doi = card["replication"]["paper"]["doi"]
     digits = [float(d) for d in re.findall(r"\d+", doi)] + [700.0, 5.0, 2.0, 10.0]
     answers = {"truths": [{"name": "x", "source": "y", "value": digits}]}
-    card["population"] += " DBQ700, item_05, WTSAF2YR and log10 are names."
-    assert I.shared_numbers(card, answers) == set()
+    card["population"] += " DBQ700, item_05, WTSAF2YR, log10 and item_one are names."
+    # the outcome's coding 0 alone: 2, 3, 5, 10 and 11 divided by 100 round to it
+    assert I.shared_numbers(card, answers) == {"0"}
     card["population"] += " 700 is not."
-    assert 700.0 in I.shared_numbers(card, answers)
+    assert "700" in I.shared_numbers(card, answers)
+
+
+# (an answer, a card's text, whether the text states the answer to its own places): the answer as
+# stated, times 100 and divided by 100, and no other scale.
+SCALES = [
+    (0.5, "50%", True), (0.5, "50.0 percent", True), (0.5, "fifty percent", True),
+    (0.5, "51%", False), (0.5, "fifty-one percent", False), (0.5, "5", False),
+    (50, "0.5", True), (50, "0.50", True), (50, "0.49", False), (50, "5.0", False),
+    (12, "twelve", True), (12, "0.12", True), (12, "1200", True), (12, "thirteen", False),
+    (12, "1.2", False), (12, "120", False),
+]
+
+
+@pytest.mark.parametrize("answer, text, leaks", SCALES, ids=[f"{a}:{t}" for a, t, _ in SCALES])
+def test_the_number_scan_compares_an_answer_as_stated_as_a_percent_and_as_a_proportion(
+        answer, text, leaks):
+    answers = {"truths": [{"name": "x", "source": "y", "value": answer}]}
+    assert bool(I.shared_numbers({"x": text}, answers)) is leaks
+
+
+def test_a_pinned_number_excuses_its_own_form_and_the_refusal_names_the_other():
+    """Bang's coding "1" is pinned; "1.0" (the activity CI's upper bound, to its printed place)
+    is refused and named as the card writes it, and so is Sullivan's "2" beside its pinned
+    "two"."""
+    files = committed("bang2009")
+    card = copy.deepcopy(files["card"])
+    assert {"1", "0"} <= I.shared_numbers(card, files["answers"])
+    assert I.problems("bang2009", card, files["answers"]) == []
+    card["population"] += " The upper bound is 1.0."
+    assert I.problems("bang2009", card, files["answers"]) == [
+        "the card states numbers an answer states: 1.0"]
+    sul = committed("sullivan2021")
+    card = copy.deepcopy(sul["card"])
+    assert "two" in I.shared_numbers(card, sul["answers"])
+    card["population"] += " The beta is -2 per step."
+    assert I.problems("sullivan2021", card, sul["answers"]) == [
+        "the card states numbers an answer states: 2"]
 
 
 def test_rounds_to_counts_a_tie_either_way_and_nothing_past_half_a_unit():
