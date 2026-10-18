@@ -782,6 +782,13 @@ EXHIBITS: dict[str, tuple[str, ...]] = {
     "evaluation": ("prediction",),
 }
 EXHIBIT_STAGES: tuple[str, ...] = tuple(EXHIBITS)
+# The stages at home in Results that no screen draws: no card of their own (:data:`COMPUTE`) and
+# no exhibit of Results (:data:`EXHIBITS`). Today only which decisions mattered (``mattered``,
+# served at GET /projects/{pid}/mattered). A result no screen draws going out of date is no reason
+# Results dropped back, under any goal (the ruling at SE-int's cap, P4); it is no exhibit either.
+UNDRAWN: frozenset[str] = frozenset(
+    name for name, (home, item) in COMPUTE.items()
+    if home == "results" and item is None and name not in EXHIBITS)
 
 
 def goal_of(state: Any) -> str | None:
@@ -2421,8 +2428,8 @@ def _reasons(stage: str, lines: Sequence[QuestLine], log: _Log, stages: Mapping[
         if by is not None:
             entry(by.decision_id, by.kind, by.stage)["questions"].append(line.id)
     for name, (home, _item) in COMPUTE.items():
-        if home != stage or name not in shown_at:
-            continue
+        if home != stage or name not in shown_at or name in UNDRAWN:
+            continue  # a result no screen draws is no reason its stage dropped back
         reads = stage_reads(name)
         if _get(stages.get(name), "status") == "blocked":
             # Blocked: its requirement was withdrawn, so it is never computed again; not out of
@@ -2569,7 +2576,7 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
 
 __all__ = [
     "ASK_CARD", "Asked", "COMPLETED", "COMPUTE", "ChangedSince", "DECLARATIONS",
-    "Declaration", "EXHIBITS", "EXHIBIT_STAGES",
+    "Declaration", "EXHIBITS", "EXHIBIT_STAGES", "UNDRAWN",
     "EXPLORE_FINDINGS", "FINDING_ROUTES", "FOLLOWS_ITS_STAGE", "FOLLOWS_WHAT_IT_UNDOES", "Facts",
     "GOAL_PLACES", "LABELS", "NORMALIZATION", "OTHER_KINDS", "Place", "Progress", "QUESTIONS",
     "QUEST_VERSION", "QuestLine", "QuestLog", "QuestStage", "READ_BY_GATE", "ReadItem",
