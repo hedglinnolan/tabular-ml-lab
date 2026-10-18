@@ -26,6 +26,10 @@
       "tag": "name"
     },
     {
+      "text": "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an amount.",
+      "tag": "threshold-pending-claim"
+    },
+    {
       "text": "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an amount. Every implausibility screen, energy adjustment and substitution is a function of total energy, so a unit error there reaches every result.",
       "tag": "threshold-pending-claim"
     },
