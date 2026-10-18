@@ -1,6 +1,16 @@
 {
   "claims": [
     {
+      "hash": "bc3d52ff2944f74d268afaf69eced299329c44c375057c62a67f3e7abbe7fbbf",
+      "id": "adjustment.demographic_guess",
+      "status": "built"
+    },
+    {
+      "hash": "3a3e1d472ec5afa0d89de8ed4519dbfd2c083b790177b87ca3b469f2cf2119bb",
+      "id": "aggregation.replicate_mean",
+      "status": "built"
+    },
+    {
       "hash": "e43628a317c101bd286a7f579b9d66762771f980242cead872252488bc8fc7d0",
       "id": "baseline.min_gain",
       "status": "built"
@@ -13,6 +23,11 @@
     {
       "hash": "c62fe7e9d10c178b74a2dbac3cac9de37f4c509d2f673d039a0235b1afbd0869",
       "id": "causal.numeric_exposure_r2",
+      "status": "built"
+    },
+    {
+      "hash": "f12119e12ccec68c44ffaec81e56e3e8fd1e0c3e0f62ff70e7860105e370d342",
+      "id": "copies.pooled_by_rubin",
       "status": "built"
     },
     {
@@ -51,6 +66,11 @@
       "status": "built"
     },
     {
+      "hash": "ca711aafc3b7a49fda3c0a8329db35e7b514d7bc820048522ea2269d8f315374",
+      "id": "designs.adjustment_by_design",
+      "status": "built"
+    },
+    {
       "hash": "b2adb1ceaef579d097a432861e8250f9fed5d4028fefb24a4024b8492d1497d1",
       "id": "designs.observational_default",
       "status": "built"
@@ -61,6 +81,16 @@
       "status": "built"
     },
     {
+      "hash": "a34ac8d822d783babc01e186bebca8c3e071a6aef115fbba2117eb6577117f57",
+      "id": "energy.no_energy_no_swap",
+      "status": "built"
+    },
+    {
+      "hash": "dabda8c56ec82d841a7cfc827396fbc5de6ca727c0403e91056286480326f7fd",
+      "id": "explore.missing_by_group",
+      "status": "built"
+    },
+    {
       "hash": "69da1b7c6ddb489adefc69241a2a33650760d1ddb337309aca5a7b8aa6259a28",
       "id": "forest.small_rows",
       "status": "built"
@@ -68,6 +98,11 @@
     {
       "hash": "fa3507d692eaa653aeb28c54e4a35fd7479058f1824cdbad2ad44c8f92f484c6",
       "id": "inference.few_clusters",
+      "status": "built"
+    },
+    {
+      "hash": "3e814e9b3b333e0ef1d828972377d9f89c0dfb9210a9d4cc39b645a48682312d",
+      "id": "materiality.collinear_inside",
       "status": "built"
     },
     {
@@ -86,14 +121,44 @@
       "status": "built"
     },
     {
+      "hash": "c62899cab6346071f772b22bd02017193897093b784c9b7816645c48b0d97bff",
+      "id": "missing.ffq_blank_handling",
+      "status": "built"
+    },
+    {
+      "hash": "9ca735e4ebee49eb5bf1aaf7ad1df70e96ea140814bd8acfd58b89ba340009dd",
+      "id": "missing.mi_refused_unless_inference",
+      "status": "built"
+    },
+    {
+      "hash": "8b0068a3b24760b83a4e2f829041b14f548bae9b6d9ff7ae01bfa7933ff46a8f",
+      "id": "modeling.no_resampling",
+      "status": "built"
+    },
+    {
       "hash": "f757d93e9fbc97f8360b174c983fcc11b139f1e038778ce460ade505eee0c60c",
       "id": "ordinal.cluster_robust_intervals",
+      "status": "built"
+    },
+    {
+      "hash": "b82a23508ceff50c7748a3400d59dd6dedd6318e5701da3a620d8fa85cf94ace",
+      "id": "repairs.tntc_censored",
       "status": "built"
     },
     {
       "hash": "f27f745a4e22d3e8beb6b7e367bb3500a3cfe918f1eaa0ddaca1efde2e157919",
       "id": "results.tail_share",
       "status": "proposed"
+    },
+    {
+      "hash": "e9b352125fc9512551487c74f1c926ef0ac25d8c678b6a98e92dc0fc48332d0c",
+      "id": "seal.by_row_exploratory",
+      "status": "built"
+    },
+    {
+      "hash": "fa14997b27b6b04bc08612fa71043479e855cb591a61a5eb13fbe7f9517950c1",
+      "id": "substitution.isocaloric_units",
+      "status": "built"
     },
     {
       "hash": "b5f40ed68c0337e82ec2a17532491394066563ebe073e9f15598c928b4dcd33c",
@@ -133,6 +198,16 @@
     {
       "hash": "2fa28534c61a107e07623d87ad34d28d52d554ccdbf924af930a437e9279f3ed",
       "id": "tuning.small_sample_standard_estimate",
+      "status": "built"
+    },
+    {
+      "hash": "fe32fffe17b84603419614d97c0f3a0ff58abe011c8c39cf19b95ad0f4940650",
+      "id": "validation.paired_interval",
+      "status": "built"
+    },
+    {
+      "hash": "64e47e60eb106135f78a958cb7c4f7d3914339c22ceb08c83b5488ca63a91641",
+      "id": "validation.resampling_first",
       "status": "built"
     }
   ],

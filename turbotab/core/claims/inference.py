@@ -852,9 +852,161 @@ RESULTS_TAIL_SHARE = register(Claim(
     origin="audit",
 ))
 
+# ── R1-F's first batch (R1_PLAN.md R1-F; claims backtest FIXES.md) ───────────────────────────
+#
+# The inference area's sentences an analyst reads on a card, in teaching, in a refusal or in a
+# reading, each fixed test first: what adjustment does in each design (D-032), multiple
+# imputation refused unless the purpose is inference (A-117), what holding a near dependency's
+# columns fixed does (A-121), and whether the group a missingness gap is read by is in the
+# imputation model (C-241). Each part is the author's judgment: no grader other than the author
+# has checked one yet (CLAIMS_REGISTRY.md §2.4).
+
+RF1_AUTHOR = "RF-1 builder"
+RF1_TESTS = "turbotab/core/tests/test_rf1_sentences.py"
+
+DESIGNS_ADJUSTMENT_BY_DESIGN = register(Claim(
+    id="designs.adjustment_by_design",
+    kind="teaching",
+    card="The design decides which comparisons are fair. In a trial, adjustment buys precision: a "
+         "standardized risk keeps its meaning; an adjusted odds ratio becomes conditional. A "
+         "case-control sample needs its sampling fractions for prevalence or absolute risk; "
+         "matched sets are analyzed within each set. An observational study adjusts for what "
+         "else could explain the link and speaks of associations.",
+    regime=Regime("the study design's card, read before the design is answered: a randomized "
+                  "trial, a sample drawn by the outcome, matched sets or an observational study"),
+    decision="set_design",
+    parts=(
+        Part("trial", grade="judgment", basis=Basis(
+            reason="Randomization balances every covariate, so adjusting for one buys precision "
+                   "and leaves a standardized risk's meaning; an odds ratio is non-collapsible, "
+                   "so adjusting for a covariate that predicts the outcome changes it even "
+                   "without imbalance (the fires test fits both on a trial built here, with "
+                   "statsmodels). The trial core standardizes its risks (methods/trials.py).")),
+        Part("case_control", grade="judgment", basis=Basis(
+            reason="A sample drawn by the outcome sets the share of cases, so prevalence and "
+                   "absolute risk need the sampling fractions; weighting each row by the inverse "
+                   "of its fraction recovers the risk, as the second test builds.")),
+        Part("matched", grade="judgment", basis=Basis(
+            reason="Individually matched sets are compared within each set (conditional "
+                   "logistic regression), as designs.py says the milestone will analyze them.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_in_a_trial_an_adjusted_odds_ratio_is_another_effect_and_a_"
+              "standardized_risk_is_not", truth="independent:statsmodels"),
+        Fires(f"{RF1_TESTS}::test_a_case_control_sample_gives_absolute_risk_with_its_sampling_"
+              "fractions", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.teaching.content:DESIGN",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+MISSING_MI_UNLESS_INFERENCE = register(Claim(
+    id="missing.mi_refused_unless_inference",
+    kind="rule",
+    card="TurboTab's multiple imputation puts the outcome in the imputation model, so a held-out "
+         "row's own outcome would fill its blanks, and a new row to predict has no outcome to "
+         "fill from. Unless the purpose is inference, the fill offered is fit in each training "
+         "fold without the outcome: where new rows may arrive with blanks, Sisk et al. (2023) "
+         "found leaving the outcome out preferred, while with complete rows at deployment they "
+         "recommend using it.",
+    regime=Regime("the multiple-imputation answer when the purpose is not inference: prediction, "
+                  "or no purpose answered yet"),
+    decision="set_missing.strategy",
+    options=("multiple_imputation", "impute", "complete_case"),
+    verdict="refused",
+    parts=(
+        Part("leak", grade="judgment", basis=Basis(
+            reason="The imputation the app runs is fit on the whole table with the outcome in "
+                   "its model, so it would read a held-out row's own outcome; an in-fold "
+                   "imputation with the outcome is not built, so no valid alternative is held "
+                   "back.")),
+        Part("sisk_scope", grade="judgment", basis=Basis(
+            cites=("sisk2023missing",),
+            reason="We read Sisk et al. 2023 as methods/missing.py quotes it: \"the outcome should "
+                   "be used to impute development data when using multiple imputation … When "
+                   "missingness is allowed at deployment, omitting the outcome from the "
+                   "imputation model at the development was preferred\"; the refusal cites them "
+                   "for that regime only. The author read the quotation, not the paper.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_multiple_imputation_is_refused_unless_the_purpose_is_inference_"
+              "in_sisks_scope", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_multiple_imputation_under_inference_is_not_refused",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.decisions:_missing_fits_the_purpose",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+COLLINEAR_INSIDE = register(Claim(
+    id="materiality.collinear_inside",
+    kind="teaching",
+    card="holding them fixed leaves little of its own variation, so which of them stay in the "
+         "model changes the contrast the estimate describes.",
+    goal=("inference",),
+    regime=Regime("under Estimate, what you study inside a near dependency among the adjustment "
+                  "terms (Belsley's condition index and variance-decomposition proportions)"),
+    decision="set_adjustment.collinear",
+    parts=(
+        Part("contrast", grade="judgment", basis=Basis(
+            reason="What you study is then close to a fixed mix of the columns beside it, so the "
+                   "variation left once they are held fixed is small, and its coefficient "
+                   "compares rows that differ in it with those columns held where they are: which "
+                   "of them stay changes that comparison.")),
+        Part("part_of_a_total", grade="judgment", basis=Basis(
+            reason="Only where what you study is a part of a total beside it (sugar within "
+                   "carbohydrate, read by readings.nesting) is more of it at a fixed total less "
+                   "of the rest of that total, which the code then says; the claims backtest's "
+                   "A-121 found the substitution reading stated for every dependency.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_a_part_beside_its_total_says_more_of_it_is_less_of_the_rest_of_"
+              "the_total", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_dependency_that_is_no_total_says_the_contrast_changes_not_"
+               "what_it_replaces", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.materiality:collinear_noticing",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+EXPLORE_MISSING_BY_GROUP = register(Claim(
+    id="explore.missing_by_group",
+    kind="teaching",
+    card="Multiple imputation fills blanks from the analysis's variables, so a group is in its "
+         "model only where it is one of them, and complete cases state their assumption",
+    goal=("inference",),
+    regime=Regime("under Estimate, a column named like a sociodemographic group whose groups "
+                  "differ in how often the candidate predictors are blank (TRIPOD+AI 7)"),
+    decision="explore.quality_by_group",
+    parts=(
+        Part("model", grade="judgment", basis=Basis(
+            reason="The imputation model holds the design's inputs (the predictors and a "
+                   "residual method's strata column) and the outcome's terms "
+                   "(methods.missing.imputation_frame), with no path for an auxiliary column, so "
+                   "the option says whether the group is among them.")),
+        Part("complete_cases", grade="judgment", basis=Basis(
+            reason="Complete cases stay on the menu with their assumption stated "
+                   "(methods.missing.COMPLETE_CASE_ASSUMPTION).")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_a_group_that_is_a_predictor_is_said_to_be_in_the_imputation_"
+              "model", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_group_that_is_no_predictor_is_said_to_be_left_out_of_the_"
+               "imputation_model", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.stages.explore:_quality_finding",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
 CLAIMS: tuple[Claim, ...] = (
     INFERENCE_FEW_CLUSTERS, TRIALS_FEW_CLUSTERS, TRIALS_FEW_CLUSTERS_EXTENDED,
     ORDINAL_CLUSTER_ROBUST_INTERVALS,
     TRIALS_SEPARATION, DESIGNS_OBSERVATIONAL_DEFAULT, DESIGNS_SAMPLED_BY_OUTCOME,
     CAUSAL_NUMERIC_EXPOSURE_R2, SURVIVAL_MONOTONE_LIKELIHOOD, RESULTS_TAIL_SHARE,
+    DESIGNS_ADJUSTMENT_BY_DESIGN, MISSING_MI_UNLESS_INFERENCE, COLLINEAR_INSIDE,
+    EXPLORE_MISSING_BY_GROUP,
 )

@@ -731,3 +731,251 @@ register(Claim(
     author=AUTHOR,
     origin="audit",
 ))
+
+
+# ── R1-F's first batch (R1_PLAN.md R1-F; claims backtest FIXES.md) ───────────────────────────
+#
+# The data area's sentences an analyst reads on a card, in teaching or in a reading, each fixed
+# test first: what a swap in grams is (D-009), how food-frequency blanks are filled (D-037), a
+# count too numerous to count blanked (D-044), imputed copies pooled (D-070), a nutrient with no
+# energy (D-001), what averaging replicates does (D-012) and the demographic guess (C-144). Each
+# part is the author's judgment: no grader other than the author has checked one yet
+# (CLAIMS_REGISTRY.md §2.4). Where the sentence a card shows holds the data's own words (a
+# column's name, a count), the claim holds its fixed words and the code that enforces it composes
+# the rest around them.
+
+RF1_AUTHOR = "RF-1 builder"
+RF1_TESTS = "turbotab/core/tests/test_rf1_sentences.py"
+
+register(Claim(
+    id="substitution.isocaloric_units",
+    kind="teaching",
+    card="Adjusting for total energy does not by itself make a substitution isocaloric: the swap "
+         "must be counted in calories. A nutrient's grams are a fixed multiple of its calories, "
+         "so TurboTab converts a swap in grams by the nutrient's Atwater factor. A food's energy "
+         "per gram or per serving varies, so a swap in a food's grams or servings is not the one "
+         "intended; TurboTab moves a food only once it is recorded in kcal or kJ.",
+    regime=Regime("a substitution between two energy sources at fixed total energy, each in a "
+                  "unit the reading records (grams, kcal or kJ; alcohol in standard drinks)"),
+    decision="set_substitution",
+    parts=(
+        Part("grams_convert", grade="judgment", basis=Basis(
+            reason="We convert a nutrient recorded in grams by its Atwater factor "
+                   "(readings.kcal_per_unit), a constant multiple, so a swap of its grams at "
+                   "fixed total energy is a swap of its calories; the fires test moves k kcal "
+                   "each way and finds total energy unchanged.")),
+        Part("foods", grade="judgment", basis=Basis(
+            reason="A food's calories per gram are no general factor (fatty fish is about two "
+                   "kcal a gram, not fat's nine) and the reading records no serving unit, so the "
+                   "substitution refuses a food until it is recorded in kcal or kJ; the silent "
+                   "test reads that refusal.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_a_nutrients_grams_move_at_its_atwater_factor_and_hold_total_"
+              "energy", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_foods_grams_or_servings_move_nothing_until_it_is_recorded_"
+               "in_kcal", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.readings:kcal_per_unit",
+                 "turbotab.core.teaching.content:SUBSTITUTION"),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="missing.ffq_blank_handling",
+    kind="teaching",
+    card="Coding blanks as zero is the field's convention: it costs little for rarely eaten "
+         "foods and biases frequently eaten ones. Standard multiple imputation assumes missing at "
+         "random, so it improves on complete cases without solving the problem. Which handling "
+         "is better is disputed.",
+    regime=Regime("blank food lines on a food-frequency questionnaire, a blank often meaning "
+                  "never (NUTRITION_PACK §06)"),
+    parts=(
+        Part("zero_coding", grade="judgment", basis=Basis(
+            reason="NUTRITION_PACK §06 marks zero-coding a convention with documented limits: "
+                   "little bias except for frequently consumed foods.")),
+        Part("imputation", grade="judgment", basis=Basis(
+            reason="The pack calls multiple imputation an improvement, not a solution, since it "
+                   "assumes missing at random; we name what it improves on, complete cases, as "
+                   "the claims backtest's adjudicator asked (D-037).")),
+        Part("disputed", grade="judgment", basis=Basis(
+            reason="The pack marks the handling DISPUTED while the mechanism is SETTLED, so the "
+                   "handling is a section of its own, badged DISPUTED.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_the_food_frequency_blanks_carry_the_packs_own_badges",
+              truth="independent:NUTRITION_PACK §06"),
+    ),
+    enforced_by=("turbotab.core.teaching.content:MISSING",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="repairs.tntc_censored",
+    kind="teaching",
+    card="too numerous to count, biasing it low",
+    methods="each is a count above the countable range, right-censored rather than missing, so "
+            "the column is biased low",
+    regime=Regime("a column of counts written as text, some cells too numerous to count (TNTC), "
+                  "which reading the column as numbers sets blank"),
+    decision="apply_repair.text_numbers",
+    parts=(
+        Part("censored", grade="judgment", basis=Basis(
+            cites=("fda_bam_ch3",),
+            reason="FDA's Bacteriological Analytical Manual reads a plate too numerous to count "
+                   "as a lower bound, above its countable range (stages/finding_words.py quotes "
+                   "it); the author read the quotation, not the manual.")),
+        Part("direction", grade="judgment", basis=Basis(
+            reason="Every count too numerous to count is above every count kept within the "
+                   "range, so the column's mean with them is above its mean without them; the "
+                   "fires test builds that case. A column whose kept counts pass the range is "
+                   "outside the construction.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_blanking_counts_too_numerous_to_count_says_it_biases_the_"
+              "column_low", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_"
+               "one", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.repairs:_offer_text_numbers",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="copies.pooled_by_rubin",
+    kind="rule",
+    card="Imputed copies of one record; under inference, copies kept as records are pooled by "
+         "Rubin's rules.",
+    methods="kept as records, each copy is analyzed as a completed dataset with its own outcome "
+            "and the estimates pooled by Rubin's rules, which carries the imputation's "
+            "uncertainty (NCHS's combining rules)",
+    goal=("inference",),
+    regime=Regime("under inference, rows that are imputed copies of one record, numbered by a "
+                  "column (NHANES DXA's _MULT_), each copy kept as a record"),
+    decision="set_repeat_kind.imputed_copies",
+    options=("imputed_copies", "repeats", "time_points"),
+    verdict="recommended",
+    parts=(
+        Part("pooled", grade="judgment", basis=Basis(
+            reason="The fit pools the copies only where a column numbers them and each is kept "
+                   "as a record (stages.modeling.imputed_copies_column), and the record's "
+                   "sentence says pooled only then. The pooled numbers are held to R's mitools "
+                   "and mice elsewhere (test_ms1_ms3_multiple_imputation.py), which no one has "
+                   "graded for this claim.")),
+        Part("records", grade="judgment", basis=Basis(
+            reason="Under inference, combining the copies into one row per unit is blocked and "
+                   "recorded (structural._imputed_copies_are_not_combined_unrecorded), so a "
+                   "numbered copy is kept as a record unless that limitation is recorded, which "
+                   "records the repeats answer again with its own sentence.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_numbered_copies_kept_as_records_are_said_pooled_as_the_fit_"
+              "pools_them", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_"
+               "not_pool_them", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.stages.modeling:imputed_copies_column",
+                 "turbotab.core.voice:_set_repeat_kind"),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="energy.no_energy_no_swap",
+    kind="teaching",
+    card="the nutrient carries no energy, so nothing is substituted for it",
+    regime=Regime("an energy-adjusted model (standard, or residual with energy kept or dropped) "
+                  "whose study factors and covariates hold no energy-bearing nutrient, such as "
+                  "sodium"),
+    decision="set_energy_adjustment",
+    parts=(
+        Part("no_swap", grade="judgment", basis=Basis(
+            reason="A nutrient with no Atwater factor adds no calories, so more of it at fixed "
+                   "total energy leaves every energy source where it was: the coefficient is "
+                   "more of it at the same total energy. The fires test reads describe_model for "
+                   "sodium; the silent test keeps protein's substitution.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_with_energy_held_fixed_a_nutrient_with_no_energy_is_"
+              "substituted_for_nothing", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_with_energy_held_fixed_a_nutrient_that_carries_energy_is_a_"
+               "substitution", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_the_teaching_scopes_the_substitution_reading_to_nutrients_"
+              "that_carry_energy", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.methods.energy:describe_model",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="aggregation.replicate_mean",
+    kind="teaching",
+    card="Averaging k replicates of one quantity divides the day-to-day error variance of each "
+         "person's mean by up to k, and by k when the replicates' errors are independent, as for "
+         "non-consecutive recalls.",
+    regime=Regime("a unit's rows that repeat one quantity (the repeats answer), combined by their "
+                  "mean"),
+    decision="set_aggregation",
+    parts=(
+        Part("quantity", grade="judgment", basis=Basis(
+            reason="Averaging shrinks the error variance of each person's mean, not the "
+                   "within-person variance itself (the claims backtest's D-012).")),
+        Part("up_to", grade="judgment", basis=Basis(
+            reason="With k errors of variance s² correlated at ρ ≥ 0 the mean's error variance is "
+                   "s²(1 + (k − 1)ρ)/k, so the cut is k only at ρ = 0 (non-consecutive recalls) "
+                   "and smaller for consecutive days, as the teaching's own section on "
+                   "consecutive recalls says; the fires test simulates both.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_averaging_replicates_divides_the_error_variance_by_up_to_their_"
+              "number", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_the_replicates_note_names_the_error_variance_of_each_mean",
+              truth="construction"),
+        Silent(f"{RF1_TESTS}::test_time_points_get_no_replicates_note", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.coach:aggregation_coach",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="adjustment.demographic_guess",
+    kind="rule",
+    card="age, sex and race or ethnicity are set before what you study, while income, education, "
+         "occupation and marital status measured at the same visit may also follow it or the "
+         "outcome; the field's Models 1 and 2 adjust for them as what else could explain the "
+         "link",
+    goal=("inference",),
+    regime=Regime("under inference, a covariate whose name reads as a demographic characteristic "
+                  "(age, sex, race or ethnicity, education, income or the poverty ratio, "
+                  "occupation, marital status), under any lens"),
+    decision="set_adjustment.guess",
+    verdict="recommended",
+    parts=(
+        Part("set_before", grade="judgment", basis=Basis(
+            reason="Age, sex and race or ethnicity are fixed for an adult before any study factor "
+                   "is measured, so nothing studied can have changed them.")),
+        Part("may_follow", grade="judgment", basis=Basis(
+            reason="Both referees and the audit (claims backtest C-144) agree that income, "
+                   "occupation and marital status measured at the same visit can follow what is "
+                   "studied or the outcome; the guess still answers them as set before, the "
+                   "field's convention, and the reason says they may follow, so the person "
+                   "answers.")),
+        Part("convention", grade="judgment", basis=Basis(
+            reason="NUTRITION_PACK §08's Models 1 and 2 adjust for demographics; we carry the "
+                   "convention to every lens, worded without the diet.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_a_demographic_guess_names_no_diet_and_says_which_may_follow",
+              truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_body_measure_takes_no_demographic_guess",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.covariate_guesses:guess",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))

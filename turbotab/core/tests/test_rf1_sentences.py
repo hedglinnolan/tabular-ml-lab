@@ -1,0 +1,753 @@
+"""R1-F's first batch (R1_PLAN.md R1-F; the claims backtest's fix list,
+``docs/turbotab-next/notes/claims-backtest/FIXES.md``): the sentences an analyst reads on a card, in
+teaching, in a refusal or in a reading, each held to what the code does, both ways.
+
+* **D-009**: a swap is counted in calories; a nutrient's grams convert by its Atwater factor, and a
+  food moves only when recorded in kcal (``readings.kcal_per_unit``).
+* **D-018**: bootstrap optimism correction leads under prediction below about 20,000 units (Harrell
+  2017's figure), and the near-interpolating families keep their cross-validated score.
+* **D-021**: the pairwise interval is the corrected repeated k-fold t, written out here, and one
+  that includes zero says the rows cannot tell two families apart.
+* **D-032**: in a randomized trial an adjusted odds ratio is a conditional one, while the
+  standardized risk difference keeps its meaning (statsmodels, on a trial built here).
+* **D-037**: the food-frequency blanks' mechanism and their handling carry the badges the
+  nutrition pack gives them (its §06, read here).
+* **D-044**: blanking a count too numerous to count says it removes a count above the countable
+  range, and that this biases the column low (built here so every such count is above the rest).
+* **D-070**: the imputed copies' sentence says they are pooled only where the fit pools them.
+* **D-001**: a nutrient that carries no energy is substituted for nothing.
+* **D-012**: averaging replicates divides each mean's error variance by up to their number, fully
+  when the errors are independent (a simulation built here).
+* **A-106**: the event-share sentence says no resampling only where the fit applied none.
+* **A-117**: multiple imputation is refused unless the purpose is inference, in Sisk et al.'s
+  scope.
+* **A-121**: inside a near dependency the estimate's contrast changes; "less of what it replaces"
+  is said only of a part beside its total.
+* **C-110**: an ungrouped seal says its folds were drawn by row too.
+* **C-144**: the demographic guess's reason names no diet, and says the socioeconomic columns may
+  follow what you study.
+* **C-241**: the missing-values option says whether the group is in the imputation model.
+* **The roles ruling** (the orchestrator's, at the landing's cap): the roles teaching says what a
+  role is, never what reaches the models, since a missing-values drop or a fixed-effects grouping
+  column changes what the models get (``models.pipeline.model_predictors``).
+
+Every expectation comes from construction, an independent library or the cited source. This file
+names no claim id and none of the constants the claims set (meta-test 2).
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from turbotab.core import decisions as d
+from turbotab.core.decisions import MissingSpec, ProjectState, Refusal, validate
+from turbotab.core.teaching.content import entries_now
+from turbotab.core.tests.test_coach import recalls  # noqa: F401 - the coach's recalls fixture
+
+REPO = Path(__file__).resolve().parents[3]
+
+
+def _entry(key: str, purpose: str | None = None) -> dict:
+    return next(e for e in entries_now(purpose) if e["key"] == key)
+
+
+def _section(entry: dict, heading: str) -> dict:
+    return next(s for s in entry["drawer"]["sections"] if s["heading"] == heading)
+
+
+def _option(entry: dict, value: str) -> dict:
+    return next(o for o in entry["options"] if o["value"] == value)
+
+
+def _term(entry: dict, name: str) -> dict:
+    return next(t for t in entry["terms"] if t["term"] == name)
+
+
+# ── D-009 · a swap is counted in calories ────────────────────────────────────
+
+
+def _units(**units: str) -> ProjectState:
+    from turbotab.core.tests.test_stage_registry import record
+
+    return d.fold([record(i + 1, {"kind": "confirm_reading", "reading": "unit", "column": c,
+                                  "value": u}) for i, (c, u) in enumerate(units.items())])
+
+
+def test_a_nutrients_grams_move_at_its_atwater_factor_and_hold_total_energy():
+    """The substitution's own conversion (``readings.kcal_per_unit``): protein recorded in grams
+    moves at 4 kcal/g and fat at 9 (the Atwater factors, NUTRITION_PACK §01), so moving k kcal from
+    one to the other changes total energy by nothing. The teaching says a nutrient's grams convert,
+    where the base said any swap in grams is not the one intended."""
+    from turbotab.core.readings import kcal_per_unit
+
+    state = _units(protein_g="g", fat_g="g")
+    protein, fat = kcal_per_unit(state, "protein_g"), kcal_per_unit(state, "fat_g")
+    assert (protein.factor, fat.factor) == (4.0, 9.0)
+    for k in (50.0, 100.0, 200.0):
+        assert -k / protein.factor * 4.0 + k / fat.factor * 9.0 == pytest.approx(0.0, abs=1e-12)
+    entry = _entry("substitution")
+    said = [entry["why"], _term(entry, "isocaloric")["definition"],
+            _section(entry, "Adjusting for energy is not enough")["body"]]
+    for text in said:
+        assert "Atwater factor" in text, text
+        assert not re.search(r"in grams or servings, the substitution reported", text), text
+        assert "grams and servings do not make" not in text, text
+
+
+def test_a_foods_grams_or_servings_move_nothing_until_it_is_recorded_in_kcal():
+    """The other side: a food in grams has no factor (fatty fish is about 2 kcal/g, not fat's 9), a
+    food with no recorded unit (servings are no unit the reading records) has none, and a food
+    recorded in kcal moves at 1 kcal per unit. The teaching says a food moves only in kcal."""
+    from turbotab.core.readings import kcal_per_unit
+
+    state = _units(fatty_fish_g="g", fish_kcal="kcal")
+    assert kcal_per_unit(state, "fatty_fish_g").factor is None
+    assert kcal_per_unit(state, "fish_servings").factor is None
+    assert kcal_per_unit(state, "fish_kcal").factor == 1.0
+    entry = _entry("substitution")
+    body = _section(entry, "Adjusting for energy is not enough")["body"]
+    assert "serving" in body and "kcal" in body
+    assert "food" in entry["why"] and "kcal" in entry["why"]
+
+
+# ── D-018 · bootstrap first, for the families it suits, below about 20,000 units ──
+
+HARRELL_UNITS = 20_000  # Harrell 2017: "less than about 20,000" (models/validation.py quotes it)
+
+
+def test_resampling_leads_under_prediction_below_harrells_twenty_thousand():
+    from turbotab.core.models.validation import validation_plan
+
+    below = validation_plan("prediction", HARRELL_UNITS - 1)
+    at = validation_plan("prediction", HARRELL_UNITS)
+    assert [o.validation for o in below.options][:2] == ["bootstrap", "repeated_kfold"]
+    assert below.resampling_first and not at.resampling_first
+    assert at.options[0].validation == "kfold"
+    inference = validation_plan("inference", HARRELL_UNITS - 1)
+    assert inference.options[0].validation == "kfold"
+    body = _section(_entry("split"), "A single split is the weakest")["body"]
+    assert f"{HARRELL_UNITS:,}" in body and body.startswith("Under prediction")
+
+
+def test_the_teaching_names_every_family_the_bootstrap_does_not_correct():
+    """Coley et al. 2023 (models/validation.py): a near-interpolating learner keeps its
+    cross-validated score. The teaching names each family that declares so, and no other."""
+    from turbotab.core.models.base import families
+
+    kept = {f.label for f in families() if f.bootstrap_optimism is False}
+    corrected = {f.label for f in families() if f.bootstrap_optimism}
+    assert kept == {"Boosted trees", "Random forest", "XGBoost"}
+    body = _section(_entry("split"), "A single split is the weakest")["body"].lower()
+    for label in ("boosted trees", "xgboost", "random forests"):
+        assert label in body
+    assert "regression-type" in body
+    assert not any(label.lower() in body for label in corrected - {"Linear model"})
+
+
+# ── D-021 · what the pairwise interval says ───────────────────────────────────
+
+
+def test_the_pairwise_interval_is_the_corrected_repeated_k_fold_t_written_out():
+    """Nadeau & Bengio (2003), as Bouckaert & Frank (2004) apply it to r repeats of K folds: over
+    the rK paired differences, se = √((1/(rK) + 1/(K − 1)) s²) on rK − 1 degrees of freedom."""
+    from scipy import stats
+
+    from turbotab.core.models.validation import corrected_t
+
+    rng = np.random.default_rng(4)
+    r, K = 10, 5
+    a, b = rng.normal(0.70, 0.03, r * K), rng.normal(0.69, 0.03, r * K)
+    got = corrected_t(list(a), list(b), test_share=None, repeats=r)
+    diff = a - b
+    se = np.sqrt((1 / (r * K) + 1 / (K - 1)) * diff.var(ddof=1))
+    q = stats.t.ppf(0.975, r * K - 1)
+    assert got.se == pytest.approx(se, rel=1e-12)
+    assert (got.ci_low, got.ci_high) == pytest.approx((diff.mean() - q * se, diff.mean() + q * se))
+
+
+def _null_cv(rng: np.random.Generator, n: int = 60, r: int = 10, K: int = 5):
+    """Two least-squares models, each on one noise column, so neither predicts better: their
+    fold scores (negative mean squared error) over r repeats of K folds."""
+    x = rng.normal(size=(n, 2))
+    y = rng.normal(size=n)
+    out = {0: [], 1: []}
+    for rep in range(r):
+        folds = rng.permutation(n) % K
+        for k in range(K):
+            test, train = folds == k, folds != k
+            for j in (0, 1):
+                X = np.column_stack([np.ones(train.sum()), x[train, j]])
+                beta = np.linalg.lstsq(X, y[train], rcond=None)[0]
+                pred = beta[0] + beta[1] * x[test, j]
+                out[j].append(-float(np.mean((y[test] - pred) ** 2)))
+    return out[0], out[1]
+
+
+def test_under_a_true_null_the_interval_rarely_calls_a_family_ahead():
+    """The teaching's "usually conservative", in one regime built here: two exchangeable models,
+    10 × 5 folds, 300 tables; an interval that excludes zero, either way, in at most 5% of them
+    (the nominal level), so an interval that includes zero is the usual answer."""
+    from turbotab.core.models.validation import corrected_t
+
+    rng = np.random.default_rng(21)
+    ahead = 0
+    for _ in range(300):
+        a, b = _null_cv(rng)
+        t = corrected_t(a, b, test_share=None, repeats=10)
+        ahead += int(t.ci_low > 0 or t.ci_high < 0)
+    assert ahead / 300 <= 0.05
+
+
+def test_the_teaching_says_an_interval_with_zero_cannot_tell_two_families_apart():
+    """The verdicts the comparisons give (``family_differences``) are "not distinguishable on
+    these rows" and "… is ahead on these rows"; the teaching says the same, cites the method, and
+    is not badged with the pack section on discrimination and calibration."""
+    section = _section(_entry("split"), "How precise the scores are here")
+    body = section["body"]
+    assert "Nadeau & Bengio 2003" in body and "Bouckaert & Frank 2004" in body
+    assert "cannot tell" in body and "not that they are equal" in body
+    assert "ahead" in body and "approximate" in body
+    assert "Discrimination vs calibration" not in section["evidence"]["source"]
+    assert section["evidence"]["status"] != "SETTLED"
+
+
+# ── D-032 · what adjustment does in a trial ───────────────────────────────────
+
+
+def _trial(rng: np.random.Generator, n: int = 20_000) -> pd.DataFrame:
+    arm = rng.integers(0, 2, n)
+    z = rng.normal(size=n)  # prognostic, independent of the arm (randomized)
+    p = 1 / (1 + np.exp(-(-0.5 + 1.0 * arm + 2.0 * z)))
+    return pd.DataFrame({"arm": arm, "z": z, "y": (rng.random(n) < p).astype(float),
+                         "w": 2.0 + 1.0 * arm + 2.0 * z + rng.normal(size=n)})
+
+
+def test_in_a_trial_an_adjusted_odds_ratio_is_another_effect_and_a_standardized_risk_is_not():
+    """Randomized, so z explains nothing of the arm. statsmodels: adjusting for z moves the log
+    odds ratio far from the unadjusted one (non-collapsibility), while the risk difference
+    standardized over the rows from the adjusted model stays the unadjusted one; a numeric
+    outcome's mean difference (collapsible) stays too. The design card says so."""
+    import statsmodels.api as sm
+
+    f = _trial(np.random.default_rng(32))
+    crude = sm.Logit(f["y"], sm.add_constant(f[["arm"]])).fit(disp=0)
+    adjusted = sm.Logit(f["y"], sm.add_constant(f[["arm", "z"]])).fit(disp=0)
+    assert adjusted.params["arm"] - crude.params["arm"] > 0.3
+    X1, X0 = sm.add_constant(f[["arm", "z"]]), sm.add_constant(f[["arm", "z"]])
+    X1["arm"], X0["arm"] = 1.0, 0.0
+    standardized = float(adjusted.predict(X1).mean() - adjusted.predict(X0).mean())
+    raw = float(f.loc[f.arm == 1, "y"].mean() - f.loc[f.arm == 0, "y"].mean())
+    assert standardized == pytest.approx(raw, abs=0.01)
+    linear_crude = sm.OLS(f["w"], sm.add_constant(f[["arm"]])).fit().params["arm"]
+    linear_adjusted = sm.OLS(f["w"], sm.add_constant(f[["arm", "z"]])).fit().params["arm"]
+    assert linear_adjusted == pytest.approx(linear_crude, abs=0.06)
+    why = _entry("design")["why"]
+    assert "only sharpens precision" not in why
+    assert "odds ratio" in why and "standardized" in why
+
+
+def test_a_case_control_sample_gives_absolute_risk_with_its_sampling_fractions():
+    """A cohort with a 5% risk, sampled by outcome (every case, 4 controls per case): the sample's
+    share of cases is 20%, not the risk; weighting each row by the inverse of its sampling
+    fraction gives the risk back. The card says the fractions are needed, not that it never can."""
+    rng = np.random.default_rng(9)
+    cohort = rng.random(200_000) < 0.05
+    cases = np.flatnonzero(cohort)
+    controls = rng.choice(np.flatnonzero(~cohort), 4 * len(cases), replace=False)
+    f_case, f_control = 1.0, len(controls) / float((~cohort).sum())
+    sample_share = len(cases) / (len(cases) + len(controls))
+    weighted = (len(cases) / f_case) / (len(cases) / f_case + len(controls) / f_control)
+    assert sample_share == pytest.approx(0.2, abs=1e-9)
+    assert weighted == pytest.approx(cohort.mean(), rel=1e-9)
+    why = _entry("design")["why"]
+    assert "sampling fractions" in why
+    assert "cannot give prevalence or absolute risk;" not in why
+
+
+# ── D-037 · food-frequency blanks: the mechanism and the handling ─────────────
+
+
+def test_the_food_frequency_blanks_carry_the_packs_own_badges():
+    """NUTRITION_PACK §06 marks the claim "[SETTLED that the mechanism is non-ignorable; DISPUTED
+    how to handle it]" and zero-coding "[CONVENTION with documented limits]", saying a blank is
+    "often missing not at random". The mechanism's section is SETTLED and says "often"; the
+    handling is its own section, badged DISPUTED, naming zero-coding and what imputation improves
+    on."""
+    raw = (REPO / "docs/turbotab-next/reference/research/NUTRITION_PACK.md").read_text("utf-8")
+    pack = " ".join(raw.replace("\n>", " ").split())  # its block quotes, joined across lines
+    assert "SETTLED that the mechanism is non-ignorable; DISPUTED how to handle it" in pack
+    assert "often **missing not at random**" in pack
+    missing = _entry("missing")
+    mechanism = _section(missing, "Blanks often mean something")
+    handling = _section(missing, "Filling food-frequency blanks")
+    assert mechanism["evidence"]["status"] == "SETTLED"
+    assert "often" in mechanism["body"] and "frequently means" not in mechanism["body"]
+    assert "imputation" not in mechanism["body"]
+    assert handling["evidence"]["status"] == "DISPUTED"
+    assert "zero" in handling["body"] and "complete cases" in handling["body"]
+    assert "rarely eaten" in handling["body"]
+
+
+# ── D-044 · a count too numerous to count, blanked ────────────────────────────
+
+
+def _plates(tntc: int, seed: int = 0) -> pd.DataFrame:
+    """Plate counts within FDA BAM's countable range (15-300 per plate), some read TNTC."""
+    rng = np.random.default_rng(seed)
+    counts = [str(int(v)) for v in rng.integers(20, 280, 60)]
+    return pd.DataFrame({"apc": counts + ["TNTC"] * tntc + ["."] * 2,
+                         "y": rng.normal(size=62 + tntc)})
+
+
+def _read_as_numbers(frame: pd.DataFrame):
+    from turbotab.core import repairs as R
+
+    raw, finding = next((r, f) for r, f in R.text_number_findings(frame)
+                        if f["id"] == "text_numbers__apc")
+    (option,) = R.offer(finding, raw, R.OfferContext(frame))
+    return option
+
+
+def test_blanking_counts_too_numerous_to_count_says_it_biases_the_column_low():
+    """Each TNTC plate holds more colonies than any countable one (BAM: a lower bound), so the
+    column's mean with them, at any values above the range, is above its mean without them: the
+    option and its sentence say the blanks are such counts and that the column is biased low."""
+    frame = _plates(5)
+    kept = pd.to_numeric(frame["apc"], errors="coerce").dropna()
+    for above in (301.0, 500.0, 5000.0):
+        assert np.mean([*kept, *([above] * 5)]) > kept.mean()
+    option = _read_as_numbers(frame)
+    for text in (option.consequence, option.sentence):
+        assert "too numerous to count" in text and "low" in text, text
+    assert "above the countable range" in option.sentence and "right-censored" in option.sentence
+
+
+def test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_one():
+    option = _read_as_numbers(_plates(0))
+    for text in (option.consequence, option.sentence):
+        assert "too numerous" not in text and "countable" not in text, text
+    assert option.consequence == "`60` values of `apc` become numbers; `2` become blank."
+
+
+# ── D-070 · imputed copies, pooled only where the fit pools them ──────────────
+
+
+def _copies_sentence(implicate: str | None, purpose: str = "inference") -> str:
+    from turbotab.core.voice import sentence_for
+
+    before = ProjectState(target="bmd", purpose=purpose,
+                          grain={"grain": "repeated", "id_column": "SEQN"})
+    return sentence_for(d.SetRepeatKind(repeat_kind="imputed_copies", implicate_column=implicate),
+                        before)
+
+
+def _fit_pools(implicate: str | None) -> str | None:
+    from turbotab.core.stages.modeling import imputed_copies_column
+
+    state = ProjectState(target="bmd", purpose="inference", unit="row",
+                         grain={"grain": "repeated", "id_column": "SEQN"},
+                         repeat_kind={"repeat_kind": "imputed_copies",
+                                      "implicate_column": implicate})
+    return imputed_copies_column(state)
+
+
+def test_numbered_copies_kept_as_records_are_said_pooled_as_the_fit_pools_them():
+    assert _fit_pools("_MULT_") == "_MULT_"
+    said = _copies_sentence("_MULT_")
+    assert "pooled by Rubin's rules, which carries the imputation's uncertainty" in said
+    option = _option(_entry("repeat_kind"), "imputed_copies")["consequence"]
+    assert "pooled by Rubin's rules" in option and "only as a recorded limitation" not in option
+
+
+def test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_not_pool_them():
+    assert _fit_pools(None) is None
+    said = _copies_sentence(None)
+    assert "were not pooled by Rubin's rules" in said
+    assert "carries the imputation's uncertainty" not in said
+    assert "were not pooled by Rubin's rules" in _copies_sentence("_MULT_", "prediction")
+
+
+# ── D-001 · a nutrient that carries no energy ─────────────────────────────────
+
+
+def _describe(method: str, exposure: str):
+    from turbotab.core.methods.energy import describe_model
+
+    adjustment = d.EnergyAdjustment(method=method, energy_column="kcal", nutrients=[exposure])
+    roles = {exposure: "exposure", "kcal": "energy", "age": "covariate"}
+    name = f"{exposure}_adj" if method == "residual" else exposure
+    return describe_model(adjustment, [exposure, "kcal", "age"], roles, [name, "kcal", "age"])
+
+
+@pytest.mark.parametrize("method", ["standard", "residual"])
+def test_with_energy_held_fixed_a_nutrient_with_no_energy_is_substituted_for_nothing(method):
+    """Sodium carries no energy (no Atwater factor): with total energy fixed, more sodium leaves
+    every energy source where it was, so the coefficient names no substitution."""
+    from turbotab.core.methods.energy import energy_factor
+
+    assert energy_factor("sodium_mg").factor is None
+    text = _describe(method, "sodium_mg").text
+    assert "substitution" not in text and "in place of" not in text, text
+    assert "carries no energy" in text and "held fixed" in text
+
+
+@pytest.mark.parametrize("method", ["standard", "residual"])
+def test_with_energy_held_fixed_a_nutrient_that_carries_energy_is_a_substitution(method):
+    from turbotab.core.methods.energy import energy_factor
+
+    assert energy_factor("protein_g").factor == 4.0
+    text = _describe(method, "protein_g").text
+    assert "substitution" in text and "carries no energy" not in text
+
+
+def test_the_teaching_scopes_the_substitution_reading_to_nutrients_that_carry_energy():
+    energy = _entry("energy_adjustment")
+    estimand = _entry("estimand")
+    for body in (_section(energy, "What the coefficient means")["body"],
+                 _section(estimand, "A substitution, not an addition")["body"]):
+        assert "carries energy" in body or "carry energy" in body, body
+        assert "sodium" in body, body
+    assert "energy source" in _term(energy, "substitution")["definition"].split(";")[1]
+
+
+# ── D-012 · what averaging replicates does ────────────────────────────────────
+
+
+def test_averaging_replicates_divides_the_error_variance_by_up_to_their_number():
+    """k = 2 recalls a person: with independent day-to-day errors the error variance of each
+    person's mean is σ²/2; with errors correlated at ρ = 0.5 (consecutive days) it is σ²(1 + ρ)/2,
+    less than a twofold cut. The note says "up to"."""
+    rng = np.random.default_rng(12)
+    people, sigma = 100_000, 1.0
+    independent = rng.normal(0, sigma, (people, 2)).mean(axis=1).var()
+    rho = 0.5
+    shared = rng.normal(size=people)
+    correlated = (np.sqrt(rho) * shared[:, None]
+                  + np.sqrt(1 - rho) * rng.normal(size=(people, 2))).mean(axis=1).var()
+    assert independent == pytest.approx(sigma ** 2 / 2, rel=0.02)
+    assert correlated == pytest.approx(sigma ** 2 * (1 + rho) / 2, rel=0.02)
+    assert sigma ** 2 / correlated < 2 < sigma ** 2 / independent * 1.05
+
+
+def _aggregation_notes(recalls, kind: str) -> list[str]:
+    from turbotab.core import coach
+    from turbotab.core.consequences import RowFlowView, RowStep
+    from turbotab.core.tests.test_coach import ctx_for
+
+    base = ProjectState(lens=["dietary"], target="hba1c",
+                        grain={"grain": "repeated", "id_column": "participant_id"},
+                        repeat_kind=d.RepeatSpec(repeat_kind=kind))
+    steps = [RowStep(key="loaded", label="Rows", n=600), RowStep(key="combined", label="People",
+                                                                  n=300)]
+    view = RowFlowView(title="One row per person", caption="Rows combine.", before=steps[:1],
+                       after=steps)
+    coach.annotate(d.SetAggregation(method="mean"), [view], ctx_for(recalls, base))
+    return [n.text for n in view.coach]
+
+
+def test_the_replicates_note_names_the_error_variance_of_each_mean(recalls):
+    (said,) = _aggregation_notes(recalls, "repeats")
+    assert "within-person variance" not in said
+    assert said == "Averaging `2` replicates cuts each mean's day-to-day error variance up to `2`-fold."
+
+
+def test_time_points_get_no_replicates_note(recalls):
+    assert _aggregation_notes(recalls, "time_points") == [
+        "Averaging `2` time points erases change between them."]
+
+
+# ── A-106 · the event's share, and whether anything was resampled ─────────────
+
+
+def _imbalance_fit(tmp_path: Path, imbalance: str) -> str:
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    rng = np.random.default_rng(5)
+    n = 600
+    x = rng.normal(size=n)
+    frame = pd.DataFrame({"pid": np.arange(n), "x": x.round(3), "age": rng.normal(50, 9, n).round(1),
+                          "case": rng.random(n) < 1 / (1 + np.exp(-(-2.0 + x)))})
+    paths = mf.ingest_frame(frame, tmp_path / imbalance)
+    split = mf.split_bundle(np.arange(n), holdout=0.0)
+    ti = mf.target_info("binary", "case")
+    st = mf.state(roles={"pid": "identifier", "x": "exposure", "age": "covariate"}, target="case",
+                  task="binary", event="True", purpose="prediction", models=["linear"],
+                  lens=["clinical"], levers=d.LeverSpec(imbalance=imbalance))
+    design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+    return fit.data["imbalance"]
+
+
+def test_a_fit_with_no_imbalance_correction_says_none_was_applied(tmp_path):
+    said = _imbalance_fit(tmp_path, "none")
+    assert said.startswith("The event, `True`, is ") and "No resampling" in said
+
+
+def test_a_fit_with_class_weights_never_says_none_was_applied(tmp_path):
+    said = _imbalance_fit(tmp_path, "weights")
+    assert said.startswith("The event, `True`, is ")
+    assert "No resampling" not in said and "was applied" not in said
+    assert "corrected" in said and "recalibrated" in said
+
+
+# ── A-117 · multiple imputation with the outcome, unless the purpose is inference ─
+
+
+@pytest.mark.parametrize("purpose", ["prediction", None])
+def test_multiple_imputation_is_refused_unless_the_purpose_is_inference_in_sisks_scope(purpose):
+    """Sisk et al. 2023 (quoted in methods/missing.py): "the outcome should be used to impute
+    development data when using multiple imputation … When missingness is allowed at deployment,
+    omitting the outcome from the imputation model at the development was preferred." The
+    refusal fires with no purpose too, so it says "unless the purpose is inference", and it cites
+    them only for rows that can arrive with blanks."""
+    state = ProjectState(target="y", roles={"x": "exposure", "z": "covariate"}, purpose=purpose)
+    with pytest.raises(Refusal) as refused:
+        validate(d.SetMissing(strategy="multiple_imputation"), {"state": state})
+    message = refused.value.message
+    assert refused.value.code == "imputation_with_the_outcome"
+    assert "Unless the purpose is inference" in message
+    assert "under prediction the imputation is fit" not in message
+    assert "blanks" in message and "Sisk et al. (2023)" in message
+    assert "complete" in message
+
+
+def test_multiple_imputation_under_inference_is_not_refused():
+    state = ProjectState(target="y", roles={"x": "exposure", "z": "covariate"},
+                         purpose="inference")
+    validate(d.SetMissing(strategy="multiple_imputation"), {"state": state})
+
+
+# ── A-121 · inside a near dependency ──────────────────────────────────────────
+
+
+def _generic_dependency(n: int = 400, seed: int = 3) -> tuple[ProjectState, pd.DataFrame]:
+    """`score` is half `item_a` plus half `item_b`, give or take a little: no part of any total by
+    name, no energy."""
+    rng = np.random.default_rng(seed)
+    a, b = rng.normal(50, 10, n), rng.normal(30, 8, n)
+    f = pd.DataFrame({"item_a": a, "item_b": b, "score": 0.5 * a + 0.5 * b + rng.normal(0, 0.2, n),
+                      "age": rng.uniform(20, 80, n)})
+    f["outcome"] = 0.1 * f["score"] + rng.normal(size=n)
+    roles = {"score": "exposure", "item_a": "covariate", "item_b": "covariate", "age": "covariate"}
+    state = ProjectState(lens=["clinical"], target="outcome", purpose="inference", roles=roles,
+                         estimand=d.EstimandSpec(exposure="score", measure="mean_difference"))
+    return state, f
+
+
+def test_a_dependency_that_is_no_total_says_the_contrast_changes_not_what_it_replaces():
+    from turbotab.core import materiality as M
+
+    state, f = _generic_dependency()
+    n = M.collinear_noticing(state, f)
+    assert n is not None and n.predicted.band == 2
+    words = n.predicted.words
+    assert "less of what it replaces" not in words and "less of the rest" not in words
+    assert "little of its own variation" in words and "contrast" in words
+
+
+def test_a_part_beside_its_total_says_more_of_it_is_less_of_the_rest_of_the_total():
+    from turbotab.core import materiality as M
+    from turbotab.core.tests.test_collinear_adjustment import ADJUST, state, table
+
+    f = table(sugar_inside=True)  # carb is sugar plus starch, built so
+    n = M.collinear_noticing(state([*ADJUST, "starch"]), f)
+    assert n.predicted.band == 2
+    assert "more `sugar` means less of the rest of `carb`" in n.predicted.words
+
+
+# ── C-110 · an ungrouped seal draws its folds by row too ──────────────────────
+
+
+def _seal(grain: dict) -> tuple:
+    from turbotab.core.seal import decide_basis
+
+    frame = pd.DataFrame({"pid": np.repeat(np.arange(40), 3)})
+    state = ProjectState(target="y", roles={"pid": "identifier"}, grain=grain)
+    return decide_basis(state, frame, ["pid"])
+
+
+def test_a_seal_drawn_by_row_over_a_repeating_identifier_says_the_folds_were_too():
+    basis, column = _seal({"grain": "one_row_per_unit"})
+    assert column is None and basis.exploratory
+    assert "treat held-out and cross-validated scores as exploratory" in basis.sentence.lower()
+    from turbotab.core.stages.rows import draw_split
+
+    rows = np.arange(120)
+    frame, _ = draw_split(rows, holdout=0.2, seed=0, folds=5, groups=None)
+    pid = np.repeat(np.arange(40), 3)
+    folds = frame.set_index("row_id")["fold"].reindex(rows).to_numpy()
+    train = folds >= 0
+    spans = pd.Series(folds[train]).groupby(pid[train]).nunique()
+    assert (spans > 1).any()  # drawn by row: a unit's rows land in two folds
+
+
+def test_a_grouped_seal_says_nothing_of_exploratory_scores():
+    basis, column = _seal({"grain": "repeated", "id_column": "pid"})
+    assert column == "pid" and not basis.exploratory
+    assert "exploratory" not in basis.sentence
+
+
+# ── C-144 · the demographic guess ─────────────────────────────────────────────
+
+
+def _guess(column: str, exposure: str = "hba1c"):
+    from turbotab.core.covariate_guesses import guess
+
+    state = ProjectState(lens=["clinical"], target="cimt", purpose="inference",
+                         roles={exposure: "exposure", column: "covariate"},
+                         estimand=d.EstimandSpec(exposure=exposure, measure="mean_difference"))
+    return guess(column, state)
+
+
+@pytest.mark.parametrize("column", ["age", "sex", "income", "INDFMPIR", "marital_status"])
+def test_a_demographic_guess_names_no_diet_and_says_which_may_follow(column):
+    """Under a clinical study factor: the reason is the lens's own, no diet. Age, sex and race are
+    set before what you study; income, occupation and marital status measured at the same visit
+    may also follow it (the referees' and the audit's point), which the reason says."""
+    g = _guess(column)
+    assert g.key == "demographic"
+    assert "diet" not in g.reason
+    assert "set before what you study" in g.reason and "may also follow" in g.reason
+    assert dict(g.answers) == {"causes_exposure": "yes", "causes_outcome": "yes",
+                               "after_exposure": "no"}
+
+
+def test_a_body_measure_takes_no_demographic_guess():
+    g = _guess("waist")
+    assert g.key == "body" and dict(g.answers)["after_exposure"] == "unknown"
+
+
+# ── C-241 · whether the group is in the imputation model ──────────────────────
+
+
+def _quality_lever(group_is_a_predictor: bool) -> str:
+    from turbotab.core.stages.explore import _quality_finding
+
+    rng = np.random.default_rng(2)
+    n = 300
+    race = rng.choice(["a", "b", "c"], n)
+    x = rng.normal(size=n)
+    x[(race == "a") & (rng.random(n) < 0.4)] = np.nan
+    frame = pd.DataFrame({"race": race, "x": x, "z": rng.normal(size=n)})
+    roles = {"x": "exposure", "z": "covariate", "race": "covariate" if group_is_a_predictor
+             else "excluded"}
+    state = ProjectState(lens=["clinical"], target="y", purpose="inference", roles=roles)
+    predictors = ["x", "z", *(["race"] if group_is_a_predictor else [])]
+    finding = _quality_finding(state, frame, predictors, "race", "race or ethnicity", "analyzed",
+                               None)
+    return finding.lever.options[0].sound
+
+
+def test_a_group_that_is_a_predictor_is_said_to_be_in_the_imputation_model():
+    sound = _quality_lever(True)
+    assert "`race` is one of them" in sound and "not one" not in sound
+
+
+def test_a_group_that_is_no_predictor_is_said_to_be_left_out_of_the_imputation_model():
+    sound = _quality_lever(False)
+    assert "with the group in its model" not in sound
+    assert "`race` is not one of them" in sound
+
+
+# ── the roles ruling: what a role is, never what reaches the models ───────────
+
+MODELS_GET = re.compile(r"\b(?:enters?|stays? out of|kept out of) the (?:models?|predictors)\b"
+                        r"|\bthe models? reads?\b|\bbecomes? (?:a )?predictors?\b"
+                        r"|\bcan become predictors\b|\bnever a predictor\b", re.I)
+
+BASE_WORDS = (
+    "Only study factors, covariates and the energy column can become predictors; every other role "
+    "stays out of the models.",
+    "Adjusted for, such as age or sex; enters the models beside the study factors.",
+    "Groups participants, such as a site or household; kept out of the predictors.",
+    "A column the model reads to predict the outcome, such as a nutrient intake or age.",
+    "Names a participant; never a predictor, and keeps a person's rows together in the split.",
+)
+
+
+def test_the_guard_fires_on_the_base_words_and_is_silent_on_a_roles_definition():
+    for old in BASE_WORDS:
+        assert MODELS_GET.search(old), old
+    assert not MODELS_GET.search("Groups participants, such as a site or household; not a "
+                                 "predictor role.")
+
+
+def test_under_predict_no_grouping_reaches_the_models_so_the_one_liner_holds():
+    """The Predict one-liner keeps "every other role stays out of the predictors", which the
+    landing ruled: fixed effects are an Estimate answer, so a grouping answered "adjust for it"
+    puts its column in the models under inference and in none under Predict."""
+    from turbotab.core.models.pipeline import model_predictors
+
+    fe = {"clusters": {"column": "site", "adjust": "fixed_effects"}}
+    assert "site" in model_predictors(_inference(**fe))
+    predict = _inference(**fe).model_copy(update={"purpose": "prediction"})
+    roles = _inference().roles
+    assert all(roles[c] in ("exposure", "covariate", "energy") for c in model_predictors(predict))
+    assert _entry("roles", "prediction")["one_liner"].endswith("stays out of the predictors.")
+
+
+def _role_words(purpose: str | None) -> list[str]:
+    roles = _entry("roles", purpose)
+    return [roles["one_liner"], roles["why"], *(o["consequence"] for o in roles["options"]),
+            *(t["definition"] for t in roles["terms"])]
+
+
+def _inference(**slots) -> ProjectState:
+    roles = {"pid": "identifier", "site": "cluster", "sugar": "exposure", "age": "covariate",
+             "waist": "covariate", "kcal": "energy"}
+    return ProjectState(lens=["clinical"], target="glucose", purpose="inference", roles=roles,
+                        **slots)
+
+
+@pytest.mark.parametrize("case", ["plain", "fixed_effects", "identifier_fixed_effects", "drop"])
+def test_under_estimate_the_roles_say_what_each_role_is_whatever_the_models_get(case):
+    """The cases the landing's verifier reproduced: with nothing changed the models get the three
+    predictor roles; a fixed-effects grouping column puts a cluster-role column in them (and an
+    identifier-role one, named as the grouping); a missing-values drop leaves a covariate out. The
+    roles card is one card for all of them, so it says what each role is and nothing of what the
+    models get."""
+    from turbotab.core.models.pipeline import model_predictors
+
+    slots = {"plain": {},
+             "fixed_effects": {"clusters": {"column": "site", "adjust": "fixed_effects"}},
+             "identifier_fixed_effects": {"clusters": {"column": "pid",
+                                                       "adjust": "fixed_effects"}},
+             "drop": {"missing": MissingSpec(strategy="complete_case", drop_columns=["waist"])}}
+    got = model_predictors(_inference(**slots[case]))
+    want = {"plain": ["sugar", "age", "waist", "kcal"],
+            "fixed_effects": ["sugar", "age", "waist", "kcal", "site"],
+            "identifier_fixed_effects": ["sugar", "age", "waist", "kcal", "pid"],
+            "drop": ["sugar", "age", "kcal"]}[case]
+    assert got == want
+    for text in _role_words("inference"):
+        assert not MODELS_GET.search(text), text
+    roles = _entry("roles", "inference")
+    assert "predictor role" in roles["one_liner"]
+    assert "predictor role" in _option(roles, "covariate")["consequence"]
+    assert "not a predictor role" in _option(roles, "cluster")["consequence"]
+
+
+@pytest.mark.parametrize("case", ["plain", "drop"])
+def test_under_predict_the_options_and_the_predictor_term_agree_whatever_the_models_get(case):
+    """Under Predict each predictor role's option says "a predictor", and the term defines a
+    predictor as a kind of column, never as what the model reads: a drop leaves the column a
+    predictor in that sense, though no model reads it."""
+    from turbotab.core.models.pipeline import model_predictors
+
+    slots = {"plain": {}, "drop": {"missing": MissingSpec(strategy="complete_case",
+                                                          drop_columns=["waist"])}}
+    state = _inference(**slots[case]).model_copy(update={"purpose": "prediction"})
+    assert ("waist" in model_predictors(state)) == (case == "plain")
+    roles = _entry("roles", "prediction")
+    for text in [*(o["consequence"] for o in roles["options"]),
+                 *(t["definition"] for t in roles["terms"])]:
+        assert not MODELS_GET.search(text), text
+    definition = _term(roles, "predictor")["definition"]
+    assert definition.startswith("A column") and "could predict" in definition
+    for value in ("exposure", "energy", "covariate"):
+        assert "predictor" in _option(roles, value)["consequence"].lower()

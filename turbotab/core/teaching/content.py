@@ -2,6 +2,8 @@
 
 Every drawer section names its pack section and carries the status the pack gives the claim
 (SETTLED · CONVENTION · DISPUTED). Where the pack gives a claim no status, the claim is not here.
+A section no pack covers names instead the registered works that say it, with the status its claim's
+grade supports (claims backtest D-021: the pairwise interval, CONVENTION, its parts judgments).
 Budgets: ``turbotab.core.teaching.BUDGETS`` (tested). American spelling.
 
 One precision the packs leave implicit, stated here on purpose (energy adjustment, §04): the
@@ -90,11 +92,12 @@ WHOLE_PIPELINE = section(
     "Internal validation must resample the entire modeling pipeline: imputation, transformation, "
     "selection and tuning.",
     "SETTLED", CLIN_A55)
+# Claims backtest D-018: the pack's order, scoped as the app acts on it (its claim,
+# ``validation.resampling_first``): under prediction below the plan's size, and only for the
+# families the bootstrap suits (``bootstrap_optimism``; models/validation.py, Coley et al. 2023).
 SINGLE_SPLIT = section(
     "A single split is the weakest",
-    "Bootstrap optimism correction is the recommended default and repeated cross-validation is "
-    "acceptable; a single train and test split is the weakest option at typical clinical sample "
-    "sizes.",
+    claims.card("validation.resampling_first"),
     "CONVENTION", CLIN_A55)
 # Audit ledger #4 (OVERSTATED): "Regularization is mandatory" is true of least squares and logistic
 # regression, whose fit at p ≥ n is not unique (rank(X) ≤ n < p, so XᵀX is singular); dimension
@@ -403,10 +406,9 @@ DESIGN = {
     "question": "Were people observed as they were, randomized, sampled by outcome, or matched?",
     "one_liner": "Read as observational until you say otherwise; a trial or a case-control sample "
                  "changes what may be adjusted and claimed.",
-    "why": "The design decides which comparisons are fair. In a randomized trial adjustment only "
-           "sharpens precision and causal wording is allowed; a case-control sample cannot give "
-           "prevalence or absolute risk; matched sets are analyzed within each set. An "
-           "observational study adjusts for what else could explain the link and speaks of associations.",
+    # Claims backtest D-032 (its claim, ``designs.adjustment_by_design``): an adjusted odds ratio
+    # is non-collapsible, and sampling fractions give a case-control sample its absolute risk.
+    "why": claims.card("designs.adjustment_by_design"),
     "consumer": "Who's in, the adjustment set, the claim wording and the methods read it.",
     "options": [
         option("observational", "Observed as they were",
@@ -539,10 +541,10 @@ REPEAT_KIND = {
                "first."),
         option("time_points", "Time points",
                "Different moments in time; averaging is not offered first, and order matters."),
-        # Audit I18 (WP18): NHANES DXA's five imputations, numbered by _MULT_.
-        option("imputed_copies", "Imputed copies",
-               "Copies of one record from multiple imputation; under inference kept only as a "
-               "recorded limitation."),
+        # Audit I18 (WP18): NHANES DXA's five imputations, numbered by _MULT_. Claims backtest
+        # D-070: under inference the fit pools the copies kept as records (its claim,
+        # ``copies.pooled_by_rubin``); only combining them is recorded as a limitation.
+        option("imputed_copies", "Imputed copies", claims.card("copies.pooled_by_rubin")),
     ],
     "terms": [
         term("replicate", "A repeated measurement of the same quantity under the same "
@@ -699,38 +701,45 @@ _ROLE_UNITS = section(
     "unit error there reaches every result.",
     "SETTLED", NUT01)
 
+# The roles ruling at the landing's cap (W1 part 2, 2026-10-18): the roles card says what a role
+# is, never what reaches the models, since a missing-values drop, a repair that marks a column
+# unusable or the adjustment answers leave a predictor-role column out of them
+# (``decisions.left_out``), and under inference a grouping answered "adjust for it" puts its
+# column in them as fixed effects, whatever its role (``models.pipeline.model_predictors``). So
+# the one-liner and each option name the role a column holds, a predictor role or not, and no
+# option names a step that reads it. ``tests/test_rf1_sentences.py`` holds every word to it, with a
+# drop, a fixed-effects column and neither.
 ROLES = {
     "key": "roles",
     "title": "What each column is",
     "question": "What role does each column play in the analysis?",
-    "one_liner": "Only study factors, covariates and the energy column can become predictors; every "
-                 "other role stays out of the models.",
+    "one_liner": "Study factors, covariates and the energy column hold the predictor roles; each "
+                 "other role says what else a column is.",
     "why": "An identifier names a person and cannot generalize. Survey weights and design columns "
            "describe how people were sampled, and a flag such as `imputed_weight` describes how a "
-           "value was filled. None of them measures the participant, so each stays out of the "
-           "predictors while the record keeps it.",
+           "value was filled. None of them measures the participant, so none holds a predictor "
+           "role, while the record keeps it.",
     "consumer": "The participant flow, the split's grouping, energy adjustment and the model "
                 "matrix read it.",
     "options": [
         option("identifier", "Identifier",
-               "Names a participant; never a predictor, and keeps a person's rows together in "
-               "the split."),
+               "Names a participant or a row rather than measuring anything; not a predictor "
+               "role."),
         option("exposure", "What you study",
-               "The factor the study is about; a predictor, and energy adjustment applies to its "
-               "nutrients."),
+               "The factor the study is about, such as a nutrient intake: a predictor role."),
         option("energy", "Energy",
-               "Total energy intake; energy adjustment is computed against it and decides whether "
-               "it stays."),
+               "Total energy intake, which the energy question asks about: a predictor role."),
         option("covariate", "Covariate",
-               "Adjusted for, such as age or sex; enters the models beside the study factors."),
+               "Something to adjust for, such as age or sex: a predictor role beside the study "
+               "factors."),
         option("cluster", "Cluster",
-               "Groups participants, such as a site or household; kept out of the predictors."),
+               "Groups participants, such as a site or household; not a predictor role."),
         option("design", "Survey design",
-               "A survey weight, stratum or sampling unit; kept out of the predictors."),
+               "A survey weight, stratum or sampling unit; not a predictor role."),
         option("flag", "Flag",
-               "Marks another column's values, such as imputed ones; kept out of the predictors."),
+               "Marks another column's values, such as imputed ones; not a predictor role."),
         option("time", "Time",
-               "When a row was measured, such as a cycle or visit; kept out of the predictors."),
+               "When a row was measured, such as a cycle or visit; not a predictor role."),
         option("excluded", "Excluded",
                "Left out of the analysis; the record keeps the column and the reason."),
     ],
@@ -786,7 +795,11 @@ ROLES = {
 # what the units are and leaves out the screens, energy adjustment and substitution that read total
 # energy (neither of the last two runs under Predict), and a flag "marks which values were imputed"
 # rather than "describes how a value was filled". ``tests/test_estimate_words_under_predict.py``
-# holds every word of the Predict entry to naming no step.
+# holds every word of the Predict entry to naming no step. Under the roles ruling at the landing's
+# cap (above ``ROLES``) the term defines a predictor as a kind of column, as the options use the
+# word, never as what the model reads, since a drop leaves a predictor-role column out of every
+# model. The one-liner and the why keep "stays out of the predictors": under Predict no grouping
+# enters a model (fixed effects are an Estimate answer), so no other role's column reaches one.
 _PREDICT_OPTIONS = {
     "exposure": option("exposure", "Predictor",
                        "A predictor, such as a nutrient intake, a lab value or an assay feature."),
@@ -811,8 +824,8 @@ ROLES_UNDER_PREDICT = {
     "consumer": "The participant flow, the split's grouping and the model matrix read it.",
     "options": [_PREDICT_OPTIONS.get(o["value"], o) for o in ROLES["options"]],
     "terms": [
-        term("predictor", "A column the model reads to predict the outcome, such as a nutrient "
-                          "intake or age."),
+        term("predictor", "A column measured on each person that could predict the outcome, such "
+                          "as a nutrient intake or age."),
         term("covariate", "A predictor that describes the person, such as age or sex."),
         *(t for t in ROLES["terms"] if t["term"] == "identifier"),
     ],
@@ -994,11 +1007,17 @@ MISSING = {
     ],
     "drawer": {"sections": [
         section("One rule, by purpose", RULE, "SETTLED", CLIN_A2),
+        # Claims backtest D-037: NUTRITION_PACK §06 is "[SETTLED that the mechanism is
+        # non-ignorable; DISPUTED how to handle it]", and says "often missing not at random", so
+        # the mechanism and the handling are two sections with the pack's two badges (the
+        # handling's claim, ``missing.ffq_blank_handling``).
         section("Blanks often mean something",
-                "On a food-frequency questionnaire a blank frequently means never, especially "
-                "among older participants. That missingness is not at random, and standard "
-                "multiple imputation assumes it is: an improvement, not a solution.",
+                "On a food-frequency questionnaire a blank often means never, especially among "
+                "older participants and those with many blanks, so blanks are often missing not "
+                "at random.",
                 "SETTLED", NUT06),
+        section("Filling food-frequency blanks", claims.card("missing.ffq_blank_handling"),
+                "DISPUTED", NUT06),
         section("A zero is not a blank",
                 "A zero on a 24-hour recall is a zero for that day, not a person who never eats "
                 "the food.",
@@ -1076,12 +1095,12 @@ SPLIT = {
         WHOLE_PIPELINE,
         SINGLE_SPLIT,
         # Audit ME-11/G10: the unsourced "below about 50 rows" threshold was 2–4× too low; the
-        # spread is now computed on the user's own rows (models/validation.py).
-        section("How precise the scores are here",
-                "Each cross-validated score carries its standard error, and each pair of families "
-                "an interval for their difference, computed on these rows. Read whether two models "
-                "differ from that interval, not from a rule about sample size.",
-                "SETTLED", CLIN_A53),
+        # spread is now computed on the user's own rows (models/validation.py). Claims backtest
+        # D-021 (its claim, ``validation.paired_interval``): the pack section on discrimination
+        # and calibration does not say this, so the badge names the method's sources, and the
+        # interval is said to be approximate, descriptive across pairs, and no proof of equality.
+        section("How precise the scores are here", claims.card("validation.paired_interval"),
+                "CONVENTION", "Nadeau & Bengio 2003; Bouckaert & Frank 2004"),
     ]},
     "evidence": ev("CONVENTION", CLIN_A55),
 }
@@ -1104,7 +1123,8 @@ ENERGY_ADJUSTMENT = {
         option("none", "No adjustment",
                "Total energy leaves the model: absolute intake, mixed with how much people eat."),
         option("standard", "Standard model",
-               "Energy stays in the model: more of the nutrient in place of other calories."),
+               "Energy stays in the model: more of a nutrient, swapping any calories it "
+               "carries."),
         option("residual", "Residual, energy kept",
                "Each nutrient's residual on energy, energy kept: the standard model's swap, in "
                "its units."),
@@ -1130,7 +1150,8 @@ ENERGY_ADJUSTMENT = {
         term("residual method", "Replacing a nutrient by its residual from a regression on total "
                                 "energy, re-centered at its mean, so it no longer tracks energy."),
         term("substitution", "More of one energy source in place of others at the same total "
-                             "energy; what an energy-adjusted coefficient describes."),
+                             "energy; what an energy-adjusted coefficient of an energy source "
+                             "describes."),
         term("nutrient density", "A nutrient's amount per unit of energy, such as grams per "
                                  "1,000 kcal."),
         term("energy partition", "Splitting total energy into calories from the nutrient and "
@@ -1158,11 +1179,15 @@ ENERGY_ADJUSTMENT = {
                 "energy, and its interval is wider even then; otherwise it differs, sometimes in "
                 "sign.",
                 "SETTLED", NUT04),
+        # Claims backtest D-001: a nutrient that carries no energy displaces nothing (its claim,
+        # ``energy.no_energy_no_swap``, which methods/energy.py's describe_model says).
         section("What the coefficient means",
-                "An energy-adjusted coefficient is a substitution estimate: more of this nutrient "
-                "and correspondingly less of everything else, at the same total intake — not the "
-                "effect of simply eating more of it. With several energy sources in the model, "
-                "\"everything else\" is only the sources left out of it; name them.",
+                "For a nutrient that carries energy, an energy-adjusted coefficient is a "
+                "substitution estimate: more of this nutrient and correspondingly less of "
+                "everything else, at the same total intake — not the effect of simply eating more "
+                "of it. With several energy sources in the model, \"everything else\" is only the "
+                "sources left out of it; name them. A nutrient that carries no energy, such as "
+                "sodium, displaces nothing: its coefficient is more of it at the same total energy.",
                 "SETTLED", NUT04),
         section("All components",
                 "Every energy source its own term in kcal: each coefficient is the total effect of "
@@ -1280,8 +1305,8 @@ SUBSTITUTION = {
                  "nutrient to another at fixed total energy.",
     "why": "Energy-adjusted effects are substitutions, so name what replaces what. The curve moves "
            "calories from the donor to the recipient through each fitted model, only as far as "
-           "your data hold people with such diets. Both nutrients must carry energy; grams and "
-           "servings do not make an isocaloric swap.",
+           "your data hold people with such diets. Both must carry energy: a nutrient in grams "
+           "moves at its Atwater factor, and a food only once recorded in kcal.",
     "consumer": "The substitution stage draws one curve per fitted model family.",
     "options": [
         option("50", "50 kcal steps",
@@ -1295,17 +1320,18 @@ SUBSTITUTION = {
         term("donor", "The nutrient whose calories are taken away in a substitution."),
         term("recipient", "The nutrient that receives those calories, so total energy stays the "
                           "same."),
-        term("isocaloric", "At the same total energy. A substitution is isocaloric only when both "
-                           "parts are measured in calories."),
+        term("isocaloric", "At the same total energy: a swap counted in calories. A nutrient's "
+                           "grams convert by its Atwater factor; a food's grams or servings do "
+                           "not."),
         term("support", "The range of diets actually present in your data; a curve beyond it is "
                         "extrapolation, so the curve stops there."),
         NESTED,
     ],
     "drawer": {"sections": [
-        section("Adjusting for energy is not enough",
-                "Adjusting for total energy does not by itself make a substitution isocaloric. The "
-                "components must be measured and analyzed in calories; in grams or servings, the "
-                "substitution reported is not the one intended.",
+        # Claims backtest D-009 (its claim, ``substitution.isocaloric_units``): a nutrient's
+        # grams are a fixed multiple of its calories, which ``readings.kcal_per_unit`` converts by
+        # its Atwater factor; a food's grams or servings carry no fixed calories.
+        section("Adjusting for energy is not enough", claims.card("substitution.isocaloric_units"),
                 "SETTLED", NUT05),
         section("Parts of a whole",
                 "When shares of energy sum to 100%, one part is determined by the others, and a "
@@ -1459,10 +1485,11 @@ ESTIMAND_QUESTION = {
     ],
     "drawer": {"sections": [
         section("A substitution, not an addition",
-                "An energy-adjusted coefficient is a substitution estimate. It answers 'what if "
-                "this person got more of their calories from X and correspondingly fewer from "
-                "everything else, at the same total intake?' — not 'what if this person ate more "
-                "X?'",
+                "For a nutrient that carries energy, an energy-adjusted coefficient is a "
+                "substitution estimate. It answers 'what if this person got more of their calories "
+                "from X and correspondingly fewer from everything else, at the same total intake?' "
+                "— not 'what if this person ate more X?' A nutrient that carries no energy, such "
+                "as sodium, displaces nothing.",
                 "SETTLED", NUT04),
     ]},
     "evidence": None,

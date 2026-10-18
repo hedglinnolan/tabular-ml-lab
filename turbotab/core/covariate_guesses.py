@@ -25,6 +25,9 @@ guesses"). The exposure's and the outcome's own classes decide it:
 
 * demographics and lifestyle: a pre-exposure common cause, adjusted as a confounder
   (``causes_exposure`` yes, ``causes_outcome`` yes, ``after_exposure`` no), the field's Models 1–2;
+  the demographic reason says that income, education, occupation and marital status, measured at
+  the same visit, may also follow the exposure or the outcome (claims backtest C-144), though the
+  guess still answers them as before it;
 * other dietary components: a possible common cause through the diet's shared causes, adjusted
   (unknown, unknown, no), the field's Model 4, never "not relevant";
 * body size, clinical measurements and medications, measured at the same visit as the exposure
@@ -66,6 +69,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from turbotab.core import claims
+
 VANDERWEELE = "VanderWeele 2019, Eur J Epidemiol 34:211–219"
 SCHISTERMAN = "Schisterman, Cole & Platt 2009, Epidemiology 20:488"
 TOBIN = "Tobin et al. 2005, Stat Med 24:2911–2935"
@@ -87,11 +92,14 @@ OUTCOME_MEASURE = {"causes_exposure": "no", "causes_outcome": "no", "after_expos
 # One guess per class (the answers, the class's label and the reason the card leads with). The
 # adjustment card reads these at call time, so a test may set one class's answers.
 GUESSES: dict[str, dict[str, Any]] = {
+    # Claims backtest C-144 (its claim, ``adjustment.demographic_guess``): the reason holds under
+    # every lens (it names no diet), and says that socioeconomic columns measured at the same visit
+    # may follow what you study or the outcome. The answers stay the field's convention, set before
+    # it, which the person confirms.
     "demographic": {
         "label": "Demographics",
         "answers": dict(PRE_EXPOSURE),
-        "reason": "set before the diet was measured, and the field's Models 1 and 2 adjust for "
-                  "them as what else could explain the link",
+        "reason": claims.card("adjustment.demographic_guess"),
         "source": f"{PACK08} (Models 1 and 2); {VANDERWEELE}",
     },
     "lifestyle": {

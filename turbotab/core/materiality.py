@@ -918,9 +918,18 @@ def collinear_noticing(state: Any, frame: Any) -> Noticing | None:
     others = _listing(partners)
     label = (f"Belsley proportion of {exposure} = {share:.2f}, condition index {worst:.0f}")
     if share >= IN_DEPENDENCY:
-        words = (f"`{exposure}` is close to a fixed mix of {others}: holding them fixed, more "
-                 f"`{exposure}` means less of what it replaces, so which of them stay in the model "
-                 f"changes what the estimate means. It is decided at the adjustment-set question.")
+        # Claims backtest A-121 (its claim, ``materiality.collinear_inside``): what holding the
+        # partners fixed does holds for any near dependency; "less of what it replaces" only for a
+        # part beside its own total (sugar within carbohydrate, ``readings.nesting``).
+        from turbotab.core import claims
+        from turbotab.core.readings import nesting
+
+        total = nesting(state, frame=frame, columns=[exposure, *partners]).get(exposure)
+        part = (f" With `{total}` held fixed, more `{exposure}` means less of the rest of "
+                f"`{total}`." if total in partners else "")
+        words = (f"`{exposure}` is close to a fixed mix of {others}: "
+                 f"{claims.card('materiality.collinear_inside')}{part} It is decided at the "
+                 f"adjustment-set question.")
         return Noticing(
             thread=COLLINEAR_THREAD, family="K5", stage=_place(COLLINEAR_THREAD),
             subject=[exposure, *partners], summary=f"`{exposure}` moves almost in step with {others}",

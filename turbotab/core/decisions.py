@@ -5052,12 +5052,16 @@ def _accepted_ways(exits: list[dict[str, Any]], ctx: Any) -> list[dict[str, Any]
 def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
     """Missing data by purpose (BLUEPRINT §12 ruling 4; AUDIT_REPORT §5 WP7, ME-01).
 
-    Multiple imputation puts the outcome in the imputation model, so under prediction it is
-    refused: a held-out row's own outcome would fill its predictors, and a new row has none. Under
-    inference a single fill and the missing-indicator method (a missing indicator, or blanks as a
-    level) are blocked and recorded: refused with their exits, multiple imputation first, and kept
-    only with the attestation (``acknowledged``) the methods sentence carries.
+    Multiple imputation puts the outcome in the imputation model, so unless the purpose is
+    inference (under prediction, or with none answered) it is refused: a held-out row's own outcome
+    would fill its predictors, and a new row has none. The refusal cites Sisk et al. 2023 in their
+    regime, rows that may arrive with blanks (claims backtest A-117; its claim,
+    ``missing.mi_refused_unless_inference``). Under inference a single fill and the
+    missing-indicator method (a missing indicator, or blanks as a level) are blocked and recorded:
+    refused with their exits, multiple imputation first, and kept only with the attestation
+    (``acknowledged``) the methods sentence carries.
     """
+    from turbotab.core import claims
     from turbotab.core.methods.missing import INDICATOR_CAUTION, MI_EXIT_LABEL, SINGLE_FILL_CAUTION
 
     state = _state(ctx)
@@ -5067,10 +5071,7 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
         if purpose != "inference":
             raise Refusal(
                 "imputation_with_the_outcome",
-                "Multiple imputation puts the outcome in the imputation model. That is right for "
-                "inference, but a prediction model must impute a new row without its outcome, so "
-                "under prediction the imputation is fit in each training fold without it (Sisk et "
-                "al. 2023).",
+                claims.card("missing.mi_refused_unless_inference"),
                 exits=_accepted_ways([
                     {"label": "Fill in each training fold, without the outcome",
                      "decision": SetMissing(strategy="impute", **keep)},

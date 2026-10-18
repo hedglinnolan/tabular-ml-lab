@@ -687,6 +687,12 @@ def test_every_tuning_plans_seeds_and_candidates_are_the_bases():
     (area.verdict_metric, {"metric": "brier_t"}, {"metric": "auc"}),
     (area.verdict_metric, {"metric": "c_index"}, {"metric": "accuracy"}),
     (area.rows_times_smd, {"instrument": "rows_smd"}, {"instrument": "attenuation"}),
+    # R1-F's first batch (A-106, C-110)
+    (area.yes_no_left_uncorrected, {"task": "binary", "imbalance": "none"},
+     {"task": "binary", "imbalance": "weights"}),
+    (area.yes_no_left_uncorrected, {"task": "binary"}, {"task": "regression"}),
+    (area.drawn_by_row, {"state": "abandoned"}, {"state": "grouped"}),
+    (area.drawn_by_row, {"state": "undetermined"}, {"state": "one_row_per_unit"}),
 ])
 def test_each_regime_predicate_holds_where_its_words_say_and_nowhere_else(predicate, holds, fails):
     assert predicate(holds) is True and predicate(fails) is False and predicate({}) is False

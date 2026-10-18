@@ -17,11 +17,14 @@ the user's confirmed roles). So the invariant lives here, once:
   kind's own answer (``set_column_unit``, ``set_outcome_unit``, ``set_categorical``,
   ``set_repeat_kind``, ``set_grain``, ``set_survey``), never a bulk confirm of uncertain readings.
 * **Every number-changing consumer reads only settled readings** (:data:`CONSUMERS` names each
-  one and its conservative path). When a reading it needs is unsettled it asks, with one exit per
-  reading (:func:`confirm_exit`), or takes the conservative path: no unit in a sentence, no
-  clustering without a confirmed unit, no screen until the unit and the days are settled, no
-  combining rule for a column whose code-or-count reading is unsettled, no fit while a role the
-  predictor set reads waits for its confirmation.
+  one and its leash-safe path). When a reading it needs is unsettled it asks, with one exit per
+  reading (:func:`confirm_exit`), or takes the leash-safe path, which acts on no unsettled
+  reading: no unit in a sentence, no clustering without a confirmed unit, no screen until the unit
+  and the days are settled, no combining rule for a column whose code-or-count reading is
+  unsettled, no fit while a role the predictor set reads waits for its confirmation. Leash-safe is
+  not conservative: held out and folded without a confirmed unit, a unit's rows can sit on both
+  sides, and held-out and cross-validated scores read high, so the seal labels them exploratory
+  (``seal.decide_basis``; claims backtest C-110).
 
 **Corroboration must discriminate** (BLUEPRINT §14.3). Each kind of reading declares its plausible
 alternatives in :data:`KIND_RULES`, and the values settle it only through a test that rejects every

@@ -2335,6 +2335,7 @@ def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
         return (f"{whose[:1].upper()}{whose[1:]} rows were taken as repeated measurements of the "
                 f"same quantity, not different time points{over_copies}")
     if d.repeat_kind == "imputed_copies":  # audit I18 (WP18)
+        from turbotab.core import claims
         from turbotab.core.structural import COPIES_CONCERN
 
         by = f", numbered by {tick(d.implicate_column)}" if d.implicate_column else ""
@@ -2342,10 +2343,18 @@ def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
         if getattr(d, "acknowledged", False):
             return (text + f"; recorded as a limitation: they were not pooled by Rubin's rules, "
                            f"and {COPIES_CONCERN}")
-        if getattr(state, "purpose", None) == "inference":  # MS3: the fit pools them
-            return (text + "; kept as records, each copy is analyzed as a completed dataset with "
-                           "its own outcome and the estimates pooled by Rubin's rules, which "
-                           "carries the imputation's uncertainty (NCHS's combining rules)")
+        # MS3: under inference the fit pools the copies only where a column numbers them and each
+        # is kept as a record (``stages.modeling.imputed_copies_column``). The unit is asked after
+        # this answer, and combining the copies under inference is blocked and recorded, which
+        # records this answer again as a limitation; so the sentence says pooled where a column
+        # numbers them and the unit is not already combined (claims backtest D-070; its claim,
+        # ``copies.pooled_by_rubin``).
+        if getattr(state, "purpose", None) == "inference":
+            if d.implicate_column and getattr(state, "unit", None) != "unit":
+                return text + f"; {claims.methods('copies.pooled_by_rubin')}"
+            why = (" (each unit's rows are combined into one)" if d.implicate_column
+                   else " (no column numbers the copies)")
+            return text + f"; they were not pooled by Rubin's rules{why}, and {COPIES_CONCERN}"
         return text + f"; they were not pooled by Rubin's rules, and {COPIES_CONCERN}"
     text = f"{whose[:1].upper()}{whose[1:]} rows were taken as different time points"
     if d.time_column:

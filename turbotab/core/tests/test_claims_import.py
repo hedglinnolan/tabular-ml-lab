@@ -95,14 +95,37 @@ R0B_IDS = {
 }
 
 
+# R1-F's first batch (R1_PLAN.md R1-F): the claims backtest's S2 and S3 defects an analyst reads,
+# each with the claims RF-1 registered for it, in the same three areas' modules.
+BACKTEST_RF1 = {
+    "A-106": {"modeling.no_resampling"},
+    "A-117": {"missing.mi_refused_unless_inference"},
+    "A-121": {"materiality.collinear_inside"},
+    "C-110": {"seal.by_row_exploratory"},
+    "C-144": {"adjustment.demographic_guess"},
+    "C-241": {"explore.missing_by_group"},
+    "D-001": {"energy.no_energy_no_swap"},
+    "D-009": {"substitution.isocaloric_units"},
+    "D-012": {"aggregation.replicate_mean"},
+    "D-018": {"validation.resampling_first"},
+    "D-021": {"validation.paired_interval"},
+    "D-032": {"designs.adjustment_by_design"},
+    "D-037": {"missing.ffq_blank_handling"},
+    "D-044": {"repairs.tntc_censored"},
+    "D-070": {"copies.pooled_by_rubin"},
+}
+RF1_IDS = set().union(*BACKTEST_RF1.values())
+
+
 def test_the_default_registry_holds_r0bs_claims():
     """R0a shipped the registry with no real claim in it; R0b registers its three areas' claims,
-    found by the package scan, and no other."""
+    found by the package scan, and R1-F's first batch adds its own to the same modules, and no
+    other."""
     assert isinstance(claims.registry(), Registry)
     assert claims.scan("turbotab.core.claims") == [
         "turbotab.core.claims.data", "turbotab.core.claims.inference",
         "turbotab.core.claims.models"]
-    assert {c.id for c in claims.registry()} == R0B_IDS
+    assert {c.id for c in claims.registry()} == R0B_IDS | RF1_IDS
 
 
 # The S1 findings of the claims backtest (README.md's table, FIXES.md), each with the claims R0b
@@ -129,8 +152,9 @@ BACKTEST_S1 = {
 def test_r0bs_claims_are_audit_where_they_state_a_backtest_finding_and_engine_otherwise():
     audit = set().union(*BACKTEST_S1.values())
     assert len(BACKTEST_S1) == 15 and len(audit) == 17
+    assert len(BACKTEST_RF1) == 15 and len(RF1_IDS) == 15 and not RF1_IDS & R0B_IDS
     origin = {c.id: c.origin for c in claims.registry()}
-    assert {i for i, o in origin.items() if o == "audit"} == audit
+    assert {i for i, o in origin.items() if o == "audit"} == audit | RF1_IDS
     assert {i for i, o in origin.items() if o == "engine"} == R0B_IDS - audit
     assert "swarm" not in origin.values()
 

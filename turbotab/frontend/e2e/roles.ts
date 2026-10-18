@@ -13,7 +13,11 @@ import type { QuestLine, QuestLog } from "../src/api/schema";
 import { confirmAsk } from "./ask";
 import { ANY_STAGE, pidOf, waitWhileComputing } from "./fit";
 
-/** The predictor roles (core/readings.py PREDICTOR_ROLES): a column confirmed in one enters the model. */
+/**
+ * The predictor roles (core/readings.py PREDICTOR_ROLES): a column confirmed in one holds a
+ * predictor role, and the served design holds it unless another answer leaves it out (the
+ * design's `left_out`), as `expectDesignHolds` checks.
+ */
 const PREDICTOR_ROLES = ["exposure", "covariate", "energy"];
 
 async function served<T>(page: Page, path: string): Promise<T> {

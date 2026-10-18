@@ -1,7 +1,7 @@
 /**
  * The roles question: a compact, grouped confirmation of what TurboTab read each column to
- * be, editable per column. Predictors first (exposures, energy, covariates); the roles that
- * stay out of the models after. A nested nutrient shows its parent (`sugar` ⊂ `carb`), a flag
+ * be, editable per column. The predictor roles first (exposures, energy, covariates); the other
+ * roles after. A nested nutrient shows its parent (`sugar` ⊂ `carb`), a flag
  * the column it marks. Pressing a column opens its role menu in place, with the reason for
  * the proposal, under prediction in the goal's words (`roleEvidence`, as the engine quotes it);
  * every edit previews on the stage before anything is recorded.
@@ -41,24 +41,20 @@ const GROUP: Record<Role, [one: string, many: string]> = {
 const hold = (n: number) => (n === 1 ? "column holds a predictor role" : "columns hold a predictor role");
 
 /**
+ * A group's note, under either goal: whether its role is a predictor role, never whether its
+ * columns reach the models, since a missing-values drop leaves a predictor-role column out of them
+ * and, under inference, a grouping answered "adjust for it" puts its column in them whatever its
+ * role (core/models/pipeline.py `model_predictors`; the roles ruling at the landing's cap).
+ */
+export const groupNote = (predictor: boolean) => (predictor ? "a predictor role" : "not a predictor role");
+
+/**
  * The card's own words under Estimate (and with no goal): what you study, energy and the
  * covariates are the predictor roles.
  */
 const ESTIMATE = {
   title: "Records every column's role. Only exposures, covariates and energy hold a predictor role.",
 };
-
-/*
- * Under prediction every predictor role is a predictor (the roles ruling of 2026-10-17): the card
- * names each predictor role's group by the project's lenses (nutrients under the dietary lens,
- * assay features under an assay lens), with its count, in the words the server serves beside the
- * proposals (core/readings.py `predictor_groups`; W1 part 2's U6), never a fixture's. It names no
- * step that treats a group apart: four rounds did, and each produced a false sentence (the ruling
- * of 2026-10-18). It says one sentence that holds in every project instead (`predictorsSentence`:
- * how many columns hold a predictor role, whichever group holds them, the rulings at W1-V's cap and
- * at W1-X's), its title says which groups hold the predictor roles, and a role's button says what
- * kind of column holds it (the Predict teaching entry's option).
- */
 
 /** "Total energy `kcal` and 4 characteristics", as the card's line begins it. */
 const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -85,7 +81,18 @@ export function RolesAsk({
   purpose?: string | null;
 }) {
   const predict = purpose === "prediction";
-  /** The predictor groups under prediction, as served for the project's lenses. */
+  /**
+   * The predictor groups under prediction, as served for the project's lenses. Under prediction
+   * every predictor role is a predictor (the roles ruling of 2026-10-17): the card names each
+   * predictor role's group by the project's lenses (nutrients under the dietary lens, assay
+   * features under an assay lens), with its count, in the words the server serves beside the
+   * proposals (core/readings.py `predictor_groups`; W1 part 2's U6), never a fixture's. It names no
+   * step that treats a group apart: four rounds did, and each produced a false sentence (the ruling
+   * of 2026-10-18). It says one sentence that holds in every project instead (`predictorsSentence`:
+   * how many columns hold a predictor role, whichever group holds them, the rulings at W1-V's cap
+   * and at W1-X's), its title says which groups hold the predictor roles, and a role's button says
+   * what kind of column holds it (the Predict teaching entry's option).
+   */
   const named = predict ? servedGroups(artifact.predictor_groups) : null;
   const proposed = useMemo(
     () => Object.fromEntries(artifact.columns.map((col) => [col.column, col.proposed])),
@@ -252,7 +259,7 @@ export function RolesAsk({
                     ? `${fmtCount(columns.length)} of ${fmtCount(count(role))}`
                     : fmtCount(columns.length)}
                 </span>
-                <span className={c.groupNote}>{predictor ? "predictors" : "kept out of the models"}</span>
+                <span className={c.groupNote}>{groupNote(predictor)}</span>
               </div>
               <ul className={cx(c.chips, all && columns.length > 60 && c.chipsScroll)}>
                 {shown.map((name) => {

@@ -1116,13 +1116,21 @@ def ranking_phrase(metric: str) -> str:
 
 
 def imbalance_sentence(task: str, y: Any, event: str | None,
-                       rows_word: str = "training rows") -> str | None:
+                       rows_word: str = "training rows",
+                       levers: Mapping[str, Any] | None = None) -> str | None:
     """A binary outcome's event share, and why nothing was resampled (audit E15; BLUEPRINT north
     star 5: "SMOTE versus calibration-preserving weighting"). Van den Goorbergh et al. (JAMIA
     2022;29:1525): "The use of random undersampling, random oversampling, or SMOTE yielded poorly
     calibrated models: the probability to belong to the minority class was strongly
     overestimated. These methods did not result in higher areas under the ROC curve"; "similar
-    results were obtained by shifting the probability threshold instead"."""
+    results were obtained by shifting the probability threshold instead".
+
+    ``levers`` is the design's Explore answer: where it corrects the imbalance (weights, under- or
+    oversampling), the fit wraps every model in that correction and its recalibration
+    (``methods.levers.wrap_model``), so the sentence says so, never that nothing was applied
+    (claims backtest A-106; the default's claim, ``modeling.no_resampling``)."""
+    from turbotab.core import claims
+
     y = np.asarray(y)
     if task != "binary" or not len(y):
         return None
@@ -1131,10 +1139,13 @@ def imbalance_sentence(task: str, y: Any, event: str | None,
     else:  # no event named: the rarer class
         values, counts = np.unique(y.astype(str), return_counts=True)
         name, share = f"The rarer class, `{values[counts.argmin()]}`,", float(counts.min() / len(y))
-    return (f"{name} is {share:.0%} of the {rows_word}. No resampling (SMOTE, over- or "
-            f"undersampling) or class weighting was applied: customary in machine-learning "
-            f"papers, resampling overestimates the rarer class's probability without raising the "
-            f"AUC (van den Goorbergh et al. 2022); a decision moves the threshold instead.")
+    method = str((levers or {}).get("imbalance") or "none")
+    if method != "none":
+        return (f"{name} is {share:.0%} of the {rows_word}; the class imbalance was corrected in "
+                f"each training fold and the probabilities recalibrated, as the Explore answer "
+                f"records.")
+    said = claims.card("modeling.no_resampling", {"task": task, "imbalance": method})
+    return f"{name} is {share:.0%} of the {rows_word}. {said}"
 
 
 def precision_sentence(metric: str, summaries: Mapping[str, Any], labels: Mapping[str, str],
@@ -2429,8 +2440,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
                    if len(results) > 1 else [])
     # The event's share beside the table: every analyzed row under inference (ruling 3), the
     # training rows the models learn from under prediction.
-    imbalance = (imbalance_sentence(task, y_tab, state.event, "analyzed rows") if inference
-                 else imbalance_sentence(task, y, state.event))
+    levers = getattr(spec, "levers", None)
+    imbalance = (imbalance_sentence(task, y_tab, state.event, "analyzed rows", levers) if inference
+                 else imbalance_sentence(task, y, state.event, levers=levers))
     # MS7: the figure ComBat with the outcome protected serves (inference, batch as a covariate,
     # figures only; never a test), and each family's methods paragraph, written from what this run
     # did: the design's steps and its detect step's columns, the working table's QC record, the

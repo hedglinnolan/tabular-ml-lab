@@ -1700,6 +1700,26 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
                 "and total energy span the same model as the nutrients and total energy, so each "
                 f"coefficient is the standard model's exactly ({_MCCULLOUGH}). "
                 + clause[0].upper() + clause[1:])
+    elif not terms and form in ("standard", "residual", "residual_energy_dropped"):
+        # Claims backtest D-001 (its claim, ``energy.no_energy_no_swap``): no study factor or
+        # covariate carries energy (sodium), so more of it at fixed total energy displaces no
+        # source, and METHOD_TABLE's substitution, written for one energy-bearing nutrient, is not
+        # its meaning.
+        from turbotab.core import claims
+
+        nothing = claims.card("energy.no_energy_no_swap")
+        text = {
+            "standard": f"More of the nutrient with total energy held fixed; {nothing}.",
+            "residual": ("The standard model's coefficient, in the nutrient's own units: the "
+                         "residual and total energy span the same model as the nutrient and total "
+                         f"energy ({_MCCULLOUGH}), so it is more of the nutrient with total energy "
+                         f"held fixed; {nothing}."),
+            "residual_energy_dropped": (
+                "Total energy is not in the outcome model: the coefficient equals the standard "
+                "model's only when no other covariate correlates with energy; otherwise it is a "
+                "different number, which can differ in sign, and its interval is wider. "
+                f"{nothing[0].upper()}{nothing[1:]}."),
+        }[form]
     else:
         text = METHOD_TABLE[form]["estimand"]
         if form == "residual_energy_dropped" and named:

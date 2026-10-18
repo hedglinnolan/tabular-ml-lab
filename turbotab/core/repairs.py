@@ -942,14 +942,32 @@ def _offer_text_numbers(finding: dict[str, Any], p: dict[str, Any], oc: OfferCon
     named = _named_values(unparsed) if unparsed else ""
     below = (f"{_count(n_below)} below a detection limit" if n_below else "")
     gone = " and ".join(x for x in (f"{_count(n_bad)} that are not numbers" if n_bad else "", below) if x)
+    # Claims backtest D-044 (its claim, ``repairs.tntc_censored``): a count too numerous to count
+    # is a value above the countable range, not a missing one (FDA BAM, as stages/finding_words.py
+    # reads it), so blanking it is said to bias the column low. No censored handling is built.
+    from turbotab.core.stages.finding_words import _ABOVE_COUNTABLE
+
+    tntc = sum(n for v, n in unparsed.items() if _ABOVE_COUNTABLE.search(v))
+    if tntc:
+        from turbotab.core import claims
+
+        missing = (f"; {_count(tntc)} {_plural(tntc, 'was', 'were')} too numerous to count: "
+                   f"{claims.methods('repairs.tntc_censored')}")
+    else:
+        missing = ""
 
     def option(key: str, label: str, decimal: str, thousands: bool, example: str = "") -> RepairOption:
         spec = {"decimal": decimal, "thousands": thousands}
-        consequence = (f"{_count(numbers)} values of {_tick(c)} become numbers{example}"
-                       + (f"; {_count(blank)} become blank." if blank else "."))
+        if tntc:  # within CONSEQUENCE_WORDS: the column, its numbers, its blanks (the label
+            # says how a comma is read)
+            consequence = (f"{_tick(c)}: {_count(numbers)} become numbers, {_count(blank)} blank, "
+                           f"{_count(tntc)} of them {claims.card('repairs.tntc_censored')}.")
+        else:
+            consequence = (f"{_count(numbers)} values of {_tick(c)} become numbers{example}"
+                           + (f"; {_count(blank)} become blank." if blank else "."))
         sentence = (f"{_tick(c)} was read as numbers{example}"
                     + (f"; {gone} {_plural(blank, 'was', 'were')} set to missing" if blank else "")
-                    + (f" ({named})" if named else "") + ".")
+                    + (f" ({named})" if named else "") + f"{missing}.")
         return _option(finding, key, label, consequence, sentence, "values", {"columns": {c: spec}})
 
     if p.get("ambiguous_comma"):
