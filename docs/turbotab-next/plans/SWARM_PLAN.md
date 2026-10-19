@@ -181,17 +181,45 @@ Menke 2015 waits for a Describe purpose, which the engine does not have yet.
 **The model-and-effort comparison**, the pilot's first experiment. Nolan asked on 2026-10-16
 whether the best analyst model and effort are settled. They are not: nothing has measured them.
 
-Nolan's ruling of 2026-10-18 ("Use Haiku 5-5 for the pilot") sets the analysts' model: Haiku
-5.5. Its model ID is checked before the first run.
+Nolan's rulings set the design:
+- 2026-10-18: "Use Haiku 5-5 for the pilot." The analyst agent type names `claude-haiku-5-5`, and
+  the first runs confirm which model actually ran.
+- 2026-10-19: the pilot's purpose is to learn whether the production swarm will be effective and
+  which choices make it more so ("since pilots are cheap, perhaps we also open the scope to sonnet
+  5-5 as well"). So Sonnet 5.5 runs from the start, and each analyst takes one of three personas
+  (he approved them the same day).
 
-| Configuration | Runs | Why |
-|---|---|---|
-| Haiku 5.5, high effort | each dataset × 3 analysts | the pilot's analysts |
-| Opus 5.5, high effort | each dataset × 1 | the ceiling: what the cheaper analyst loses, and whether a stuck run is the engine's or the analyst's |
+**The personas** are stances toward the field's defaults. The protocol is the same for all three;
+only the stance in the analyst's prompt differs.
+- **Conventional:** takes the domain's customary path where the engine ranks it sound, and says why.
+- **Skeptical:** questions each default before accepting it, previewing at least one alternative
+  where a decision could move the result.
+- **Explorer:** deliberately tries the alternatives the field rarely takes, the search's explicit
+  exploration term, so the corpus reaches the places a convention may be valid but not good.
 
-That is about 24 runs. Three analysts per dataset measure the spread between analysts, which is
-the many-analysts quantity itself. The Sonnet 5.5 configurations (medium and high effort) run only
-if Haiku fails §7, and only after Nolan is told.
+| Per dataset | Conventional | Skeptical | Explorer |
+|---|---|---|---|
+| Haiku 5.5, high effort | 1 | 1 | 1 |
+| Sonnet 5.5, high effort | 1 | 1 | 1 |
+| Opus 5.5, high effort | 1, the ceiling | | |
+
+That is 7 runs per dataset and 42 in all. Crossing model with persona separates the two levers the
+production swarm must set. Haiku against Sonnet at each persona, and both against the Opus ceiling,
+measure what a cheaper model loses. Each persona on two models measures whether a stance makes real
+diversity, which three identical prompts could not show. Beside §7, the pilot reports:
+- the spread between a dataset's runs (paths and results);
+- each run's coverage (the share of the decisions on offer it previewed or changed).
+
+**Order and cost:** first a measured trio, one run of each model with the conventional persona on
+the Predict fixture. Its fresh tokens, fits and wall time size the rest. The rest runs dataset by
+dataset, so a model that clearly fails, or a spend running hot, stops it early. Nolan's budget
+(2026-10-19): up to 40% of a fresh week. The runs go in daytime, unthrottled (PILOT_READINESS §3).
+
+**The production swarm the pilot informs** (the orchestrator's proposal, for Nolan after the pilot):
+- most problems get one analyst each, for breadth;
+- about one in five gets a panel of personas, to keep measuring spread and the field's blind spots;
+- a small sample gets an Opus ceiling run;
+- replications and stuck runs escalate to a stronger model.
 
 **Each configuration is scored on:**
 - protocol (seal violations, which must be zero; every attempt has a reason);
