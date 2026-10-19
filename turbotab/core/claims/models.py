@@ -865,10 +865,15 @@ SEAL_BY_ROW = register(Claim(
                       "every validation either: it said the folds were drawn by row under "
                       "internal-external validation too (the verifier's round-2 P3), and then "
                       "that every score was within-unit where one unit of forty spanned two folds "
-                      "(the RF-1b verifier's P3). It now says so only of folds drawn by row, and "
-                      "under internal-external validation reads the drawn folds: it says nothing "
-                      "of units where no unit's rows fall in two of them, and where some do, "
-                      "counts them and reads only their rows' scores as within-unit.",
+                      "(the RF-1b verifier's P3), and under k-fold that every score was "
+                      "within-unit where no unit, or only some, had rows in two folds (the RF-1b "
+                      "verifier's round-2 V2). It now reads the drawn folds, each draw of them, "
+                      "under every validation wherever a column names the unit: it says nothing of "
+                      "units where no unit's rows fall in two folds, says every score is "
+                      "within-unit only where every unit's training rows do in every draw, and "
+                      "otherwise counts them (their range over the draws of repeated k-fold) and "
+                      "reads only their rows' scores as within-unit; where no column can tell, it "
+                      "says a fold may split a unit.",
              basis=Basis(
                  reason="The folds are drawn with the seal's groups (seal.split_args, "
                         "rows.draw_split), so where the held-out rows are drawn by row the folds "

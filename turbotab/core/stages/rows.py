@@ -2035,26 +2035,31 @@ def split_stage(ctx: StageContext) -> Bundle:
     if seal.chronology is not None:
         notes.append(seal.chronology.sentence)
     # MS6 (MODELING_SEQUENCE §2): when the seal could not keep a unit's rows together the folds are
-    # drawn by row too, and every score is within-unit performance: said here, never silent. Under
-    # internal–external validation the folds are the cluster's levels instead, so the note reads
-    # the drawn folds: where no unit's rows fall in two of them it says nothing of units (the RF-1
-    # verifier's round-2 P3), and where some do it counts them (the RF-1b verifier's P3).
-    from turbotab.core.models.validation import within_unit_sentence
+    # drawn by row too (or, under internal–external validation, are the cluster's levels), and a
+    # unit's rows can fall in more than one fold: said here, never silent. The note reads the drawn
+    # folds, each draw of them: where no unit's rows fall in two folds it says nothing of units
+    # (the RF-1 verifier's round-2 P3, the RF-1b verifier's round-2 V2), and where some do it
+    # counts them (the RF-1b verifier's P3).
+    from turbotab.core.models.validation import unit_spans, within_unit_sentence
 
     basis = seal.basis.model_dump(mode="json") if seal.basis else None
-    spanning = None
-    if clusters is not None and basis and basis.get("column"):
+    spanning, units = None, None
+    if basis and basis.get("column") and unit_spans(basis) is not None:
         with open_store(ctx) as store:
             unit = (store.materialize([basis["column"]], frame["row_id"].to_numpy(dtype=np.int64))
                     if basis["column"] in store.columns else None)
         if unit is not None:  # else not read: the note says a fold may split a unit
-            drawn = pd.DataFrame({"unit": unit[basis["column"]].to_numpy(dtype=object),
-                                  "fold": frame["fold"].to_numpy()})
+            ids = pd.Series(unit[basis["column"]].to_numpy(dtype=object))
+            train = frame["fold"].to_numpy() != -1
             # A blank identifier is its own unit, which no fold can split.
-            drawn = drawn[(drawn["fold"] != -1) & drawn["unit"].notna()]
-            spanning = int((drawn.groupby("unit")["fold"].nunique() > 1).sum())
+            named = train & ids.notna().to_numpy()
+            units = int(ids[named].nunique() + (train & ~named).sum())
+            draws = [c for c in frame.columns if c == "fold" or c.startswith("fold_r")]
+            spanning = [int((pd.Series(frame[c].to_numpy()[named]).groupby(
+                ids[named].to_numpy()).nunique() > 1).sum()) for c in draws]
     within = within_unit_sentence(basis, cluster=spec.cluster if clusters is not None else None,
-                                  spanning=spanning)
+                                  spanning=spanning, units=units,
+                                  ordered=info.get("fold_scheme") == "time_ordered")
     if within:
         notes.append(within)
     data = {**info, **seal.facts(), "note": split_note({**info, "notes": notes})}

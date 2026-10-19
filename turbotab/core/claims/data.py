@@ -830,9 +830,13 @@ register(Claim(
     regime=Regime("a column of counts written as text, its kept counts within the countable "
                   "range, some cells too numerous to count (TNTC), which reading the column as "
                   "numbers, or setting its values below a limit to a fraction of it, sets blank; "
-                  "the card, which says the column is biased low, only where no cell below a "
-                  "detection limit is blanked with them, whether written with its limit ('<10') or "
-                  "with a mark that names none ('ND', '<LOD', 'BLQ', 'not detected')"),
+                  "the card, which says the column is biased low, only where every other blanked "
+                  "cell is known to hold no value (a missing mark such as '.', or a measurement "
+                  "failure the clinical pack names, such as QNS) or to lie above every kept count "
+                  "('>ULOQ', or above a limit at or above the most the column keeps), so none is "
+                  "below a detection limit, whether written with its limit ('<10') or with a mark "
+                  "that names none ('ND', '<LOD', 'BLQ', 'not detected'), and none is a label read "
+                  "as neither ('N/D', 'trace')"),
     decision="apply_repair.text_numbers",
     parts=(
         Part("censored", grade="judgment", basis=Basis(
@@ -847,17 +851,19 @@ register(Claim(
                    "they hold: the methods sentence of either lever (reading the column as "
                    "numbers, or setting its values below a limit to a fraction of it) says that "
                    "of every such blank (the RF-1b verifier's P1). The card says the column is "
-                   "biased low only where no cell below a detection limit is blanked with them: "
-                   "such a blank raises the mean, and the column's direction then rests on values "
-                   "neither kind gives, which repairs.tntc_beside_below_limit says instead (the "
-                   "RF-1 verifier's round-2 P1). A cell below a limit is one whether its limit is "
-                   "written ('<10') or a mark names none ('ND', '<LOD', 'BLQ', 'not detected', "
-                   "which repairs.is_censoring_mark reads as values censored at a limit), since a "
-                   "detected count is at or above its limit (the RF-1b verifier's P1). A mark "
-                   "above a limit ('>ULOQ') is above every quantified count kept, so its blank "
-                   "lowers the mean too, and the card holds beside it. The fires tests build each "
-                   "case. A column whose kept counts pass the range is outside the "
-                   "construction.")),
+                   "biased low only where no other blank can raise the mean: each other blanked "
+                   "cell holds no value (repairs.is_missing_mark, or the clinical pack's "
+                   "measurement failures, such as QNS or a hemolyzed specimen, which it reads as "
+                   "no value) or lies above every kept count ('>ULOQ', above the upper limit of "
+                   "quantification, or '>L' with L at or above the most the column keeps), so "
+                   "every blanked value is above the kept mean (the RF-1b verifier's round-2 V1). "
+                   "A cell below a limit, whether its limit is written ('<10') or a mark names "
+                   "none ('ND', '<LOD', 'BLQ', 'not detected'), raises it, which "
+                   "repairs.tntc_beside_below_limit says instead (the RF-1 verifier's round-2 P1); "
+                   "a label the engine reads as neither ('N/D', which can mean not done or not "
+                   "detected, 'Below LOD', 'trace') may, which repairs.tntc_beside_unplaced says "
+                   "instead. The fires tests build each case. A column whose kept counts pass the "
+                   "range is outside the construction.")),
     ),
     tests=(
         Fires(f"{RF1_TESTS}::test_blanking_counts_too_numerous_to_count_says_it_biases_the_"
@@ -866,6 +872,10 @@ register(Claim(
               truth="construction"),
         Fires(f"{RF1_TESTS}::test_a_mark_above_a_limit_beside_a_count_too_numerous_to_count_keeps_"
               "the_column_biased_low", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_beside_blanks_with_no_value_or_above_every_kept_count_the_column_"
+              "is_biased_low", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_beside_a_label_the_engine_cannot_place_a_count_too_numerous_"
+              "says_only_its_own_direction", truth="construction"),
         Fires(f"{RF1_TESTS}::test_a_fraction_of_the_limit_says_the_count_too_numerous_to_count_was_"
               "blanked", truth="construction"),
         Fires(f"{RF1_TESTS}::test_blanking_counts_above_the_range_and_below_a_limit_says_they_"
@@ -882,38 +892,81 @@ register(Claim(
 ))
 
 register(Claim(
-    id="repairs.tntc_beside_below_limit",
+    id="repairs.tntc_beside_unplaced",
     kind="teaching",
-    card="those too numerous or below a limit pull opposite ways",
-    methods="and blanking a value below a detection limit biases it high: the two pull opposite "
-            "ways",
+    card="too numerous to count biases it low",
     regime=Regime("a column of counts written as text, its kept counts within the countable "
-                  "range and at or above each detection limit, with both kinds blanked: cells too "
-                  "numerous to count (TNTC) and cells below a detection limit, written with its "
-                  "limit ('<10') or with a mark that names none ('ND', '<LOD', 'BLQ', 'not "
-                  "detected'); reading the column as numbers blanks both, and setting its values "
-                  "below a limit to a fraction of it blanks a mark that names none"),
+                  "range, read as numbers, which blanks cells too numerous to count (TNTC) beside "
+                  "a label the engine reads as neither no value, nor above every kept count, nor "
+                  "below a limit ('N/D', 'Below LOD', 'non-detect', 'BLOD', 'trace'), and no cell "
+                  "it reads as below a limit"),
     decision="apply_repair.text_numbers",
     parts=(
         Part("direction", grade="judgment", basis=Basis(
-            reason="A value below its detection limit is below every kept count at or above that "
-                   "limit, so blanking it raises the column's mean, while blanking a count above "
-                   "the range lowers it; the column's direction rests on values neither kind "
-                   "gives, so the sentences name none. The fires test builds the RF-1 verifier's "
-                   "round-2 column (60 counts from 20 to 279, 30 read below 10, one too numerous "
-                   "to count): its kept mean, 149.6, is above the full mean at the least the "
-                   "unread values can be (101.9) and below it at a TNTC count of 20,000. A mark "
-                   "that names no limit ('ND', '<LOD', 'BLQ', 'not detected') is below one too, "
-                   "and no detected count is under it, so the same column with its 30 cells so "
-                   "respelled pulls the same two ways (the RF-1b verifier's P1); the second "
-                   "lever, which has no limit to take a fraction of for such a mark, blanks it, "
-                   "and its methods sentence says the same.")),
+            reason="Blanking a count too numerous to count lowers the column's mean, as "
+                   "repairs.tntc_censored's direction part says; the card says that of the TNTC "
+                   "blanks alone and nothing of the column's direction, since the other label "
+                   "may be a value below a detection limit, whose blank raises the mean, or no "
+                   "value. The fires test builds the RF-1b verifier's round-2 column (60 counts "
+                   "from 20 to 279, kept mean 149.55, 5 cells so labeled and 1 TNTC): read as "
+                   "values from 0 to 19.99 and the TNTC count as 301, the full mean is 140.5 to "
+                   "142.0, below the kept mean, so the kept column is biased high; read as no "
+                   "value, it is biased low.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_beside_a_label_the_engine_cannot_place_a_count_too_numerous_"
+              "says_only_its_own_direction", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_beside_blanks_with_no_value_or_above_every_kept_count_the_"
+               "column_is_biased_low", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_blanking_counts_above_the_range_and_below_a_limit_says_they_"
+               "pull_opposite_ways", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_"
+               "one", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.repairs:_offer_text_numbers",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="repairs.tntc_beside_below_limit",
+    kind="teaching",
+    card="those too numerous or below a limit pull opposite ways",
+    methods="and blanking a value below a limit biases it high: the two pull opposite ways",
+    regime=Regime("a column of counts written as text, its kept counts within the countable "
+                  "range and at or above each limit, with both kinds blanked: cells too numerous "
+                  "to count (TNTC) and cells below a limit, written with its limit ('<10') or with "
+                  "a mark that names none ('ND', '<LOD', 'BLQ', 'not detected'), which the "
+                  "sentence then says it read as below the detection, quantification or reporting "
+                  "limit the mark names; reading the column as numbers blanks both, and setting "
+                  "its values below a limit to a fraction of it blanks a mark that names none, "
+                  "named as such"),
+    decision="apply_repair.text_numbers",
+    parts=(
+        Part("direction", grade="judgment", basis=Basis(
+            reason="A value below its detection or quantification limit is below every kept "
+                   "count at or above that limit, so blanking it raises the column's mean, while "
+                   "blanking a count above the range lowers it; the column's direction rests on "
+                   "values neither kind gives, so the sentences name none. The fires test builds "
+                   "the RF-1 verifier's round-2 column (60 counts from 20 to 279, 30 read below "
+                   "10, one too numerous to count): its kept mean, 149.6, is above the full mean "
+                   "at the least the unread values can be (101.9) and below it at a TNTC count of "
+                   "20,000. A mark that names no limit ('ND', '<LOD', 'BLQ', 'not detected') is "
+                   "below one too, and no quantified count is under it, so the same column with "
+                   "its 30 cells so respelled pulls the same two ways (the RF-1b verifier's P1); "
+                   "the sentence says the mark was read as below the limit it names, since BLQ, "
+                   "LOQ and LLOQ are limits of quantification, not detection (the RF-1b verifier's "
+                   "round-2 V4). The second lever, which has no limit to take a fraction of for "
+                   "such a mark, blanks it and names it as a blanked value below a limit, the "
+                   "clause's referent (the RF-1b verifier's round-2 V5).")),
     ),
     tests=(
         Fires(f"{RF1_TESTS}::test_blanking_counts_above_the_range_and_below_a_limit_says_they_"
               "pull_opposite_ways", truth="construction"),
         Fires(f"{RF1_TESTS}::test_a_mark_below_a_limit_naming_none_beside_a_count_too_numerous_"
               "pulls_the_other_way", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_marks_below_two_kinds_of_limit_beside_a_count_too_numerous_name_"
+              "both_limits", truth="construction"),
         Fires(f"{RF1_TESTS}::test_a_fraction_of_the_limit_beside_a_blanked_nd_says_they_pull_"
               "opposite_ways", truth="construction"),
         Silent(f"{RF1_TESTS}::test_blanking_counts_too_numerous_to_count_says_it_biases_the_"
@@ -924,6 +977,8 @@ register(Claim(
                "was_blanked", truth="construction"),
         Silent(f"{RF1_TESTS}::test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_"
                "one", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_with_no_count_too_numerous_a_mark_that_names_no_limit_is_said_"
+               "as_not_a_number", truth="construction"),
     ),
     enforced_by=("turbotab.core.repairs:_offer_text_numbers",
                  "turbotab.core.repairs:_offer_below_detection"),

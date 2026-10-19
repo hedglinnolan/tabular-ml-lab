@@ -141,12 +141,17 @@
       "status": "built"
     },
     {
-      "hash": "5cc0313aa79e630db3aff414c6e31f7d088f99611cde6bd5414457775e0d4062",
+      "hash": "0eac24d05aafbdf7841d857915798ea636deec4ba473b65074b04f281f3b4301",
       "id": "repairs.tntc_beside_below_limit",
       "status": "built"
     },
     {
-      "hash": "b91a941201b7560152cae0e634d54423ae8abdd8c54bd3617b8d66cf0df376b5",
+      "hash": "38cef92b3ab36b1a814b3f94fe614a5331cf30f11654b2ed94776b6bd95454a8",
+      "id": "repairs.tntc_beside_unplaced",
+      "status": "built"
+    },
+    {
+      "hash": "e6e767dd69bc56bde0332f12ec3ccb7ec1eaf86d0eb75355c853e7851da2c581",
       "id": "repairs.tntc_censored",
       "status": "built"
     },
@@ -156,7 +161,7 @@
       "status": "proposed"
     },
     {
-      "hash": "db1ecf7448454fc60206bec9d73716ff85d224a0c3ec8ea2fb984ba50a7dcd3c",
+      "hash": "1d25073ea52f8138321ad350d684929d51f84b656b12b68648a6914da4f79147",
       "id": "seal.by_row_exploratory",
       "status": "built"
     },
