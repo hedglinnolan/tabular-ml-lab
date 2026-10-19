@@ -33,10 +33,9 @@ in the documents they amend.
     to ubuntu-24.04), feat/rm-core (RM's referee and audit fixes, without R1-M), feat/rf-1b (R1-F's
     first batch), feat/drv-int and feat/drv-fix (the driver, record, checks, intake, analyst type
     and hook, the dry run), and three fixes made at integration.
-- **CI:** on 874c6d50 (`ci/full-race`, the shell's quest-log race fixed), every job green but one
-  acceptance test whose worker was killed by SIGTERM on the runner (test_wp11_omics 3f; the
-  commit touches only frontend files, and the same Python passed on 8a3e0fff). turbotab-next is
-  pushed from here, which reruns the full tier.
+- **CI:** full tier green on 5901298a (all 13 jobs, real-server journeys included; the shell's
+  quest-log race fixed; an omics acceptance test killed by SIGTERM on an earlier run passed, a
+  runner flake). Later commits on turbotab-next are documents only.
 - **Since 8a3e0fff, on turbotab-next:** the analyst model set to `claude-haiku-5-5`; the shell
   race fix; SWARM_PLAN version 2 (after the independent audit in `notes/swarm-audit/`), under
   review by a Fable xhigh reader before anything in its §10 is built.
