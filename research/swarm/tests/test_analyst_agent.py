@@ -62,3 +62,34 @@ def test_it_names_what_its_prompt_must_carry_and_states_no_answer():
                  "notes/replication", "corpus", "referee"):
         assert word.lower() not in body.lower(), word
     assert not re.search(r"\b\d+(\.\d+)?%", body)  # no number it could take for a result
+
+
+def test_it_says_what_a_refusal_lists_as_the_driver_prints_it():
+    """DRV-INT V1 (the verifier, round 2): the prompt's account of a refusal is the driver's. A
+    refusal of the driver's own prints no ways forward, and a way forward the app gives with no
+    decision has no id, which ``answer`` cannot name; each is read here from the driver itself."""
+    import json
+
+    from research.swarm import options as opts
+
+    out: list[str] = []
+    assert driver.main(["ask", "--run", "r1"], out=out.append) == 1
+    own = json.loads(out[0])["refused"]
+    assert own["by"] == "driver" and own["message"] and "exits" not in own
+    wait = {"label": "Wait for the fit to finish", "decision": None}
+    take = {"label": "Confirm", "decision": {"kind": "confirm_reading", "reading": "code_or_count",
+                                             "column": "age", "value": "amount"}}
+    ways = opts.exits([wait, take])
+    assert ways[0]["id"] is None and ways[1]["id"].startswith("x-")
+    assert opts.resolve({"options": []}, [ways[1]["id"]], [], ways) == take["decision"]
+    with pytest.raises(opts.Unanswerable):
+        opts.resolve({"options": []}, ["None"], [], ways)
+
+    _, body = parts()
+    text = " ".join(body.split())
+    assert "lists the ways forward, each with an id" not in text
+    assert 'A refusal by the driver (`"by": "driver"`) lists none, and its `message` says why.' in text
+    assert ('A refusal by the app (`"by": "server"`) lists its ways forward under `exits`.' in text)
+    assert ("A way forward with an id, in a refusal or in `ask`, is taken with "
+            "`answer <id> --reason <why>`; one whose id is null records nothing, and `answer` "
+            "cannot take it.") in text

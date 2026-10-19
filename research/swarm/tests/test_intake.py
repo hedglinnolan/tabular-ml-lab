@@ -845,19 +845,39 @@ def test_the_survey_card_states_the_instruments_whole_key():
     assert len(key) == 8 and key[0] == "item_05"
     text = " ".join(committed("survey_support_estimate")["card"]["documentation"])
     assert f"its reverse-coded items are {', '.join(key[:-1])} and {key[-1]}" in text
-    assert "item_01 to item_40 are one 40-item instrument" in text
-    assert "whose reverse-coded item is item_05; item_11 to item_40 belong to no scale" in text
+    assert "item_01 to item_40 are one 40-item instrument, each item answered from 1 to 5" in text
 
 
-def test_the_survey_key_is_refused_where_the_scale_disagrees_with_the_codebook():
-    from turbotab.core.reference.journeys import SURVEY_SCALE
+def test_the_survey_card_asks_only_what_the_drivers_commands_can_record():
+    """DRV-INT V2 (the verifier, round 2): no Router question, proposals card or control posts
+    ``set_scales`` (the engine's own account, ``catalog.py``), and the driver composes no option
+    that records it, so the card asks about age and having sought support and names no scale
+    scored from the items: which columns enter beside age is the analyst's decision."""
+    import inspect
+
+    from research.swarm import options as opts
+    from turbotab.core.reference.catalog import NOT_ASKED
+
+    assert "No Router question, proposals card or control posts `set_scales`" in NOT_ASKED["scales"]
+    assert "set_scales" not in inspect.getsource(opts)
+    card = committed("survey_support_estimate")["card"]
+    assert card["question"] == "Is age associated with having sought support?"
+    for text in (card["question"], *card["documentation"]):
+        assert "scale" not in text.lower(), text
+
+
+def test_the_survey_key_is_refused_where_it_disagrees_with_the_codebook():
+    """The response range from survey_instrument.md's own table ("Response levels | 1, 2, 3, 4,
+    5"), the key from make_fixtures.py: a reverse-coded item the instrument does not hold, or a
+    range an answer lies outside, is refused."""
     from turbotab.sample_data.make_fixtures import REVERSE_CODED
+    doc = (I.SAMPLE / "survey_instrument.md").read_text()
+    row = next(line for line in doc.splitlines() if line.startswith("| Response levels"))
+    levels = [int(n) for n in re.findall(r"\d", row.split("|")[2])]
+    assert I.SURVEY_RESPONSES == (min(levels), max(levels)) == (1, 5)
     frame = pd.read_csv(I.SAMPLE / "survey_instrument.csv")
-    assert len(I.survey_key(SURVEY_SCALE, REVERSE_CODED, frame)) == 2
-    for scale in ({**SURVEY_SCALE, "reverse": []},
-                  {**SURVEY_SCALE, "reverse": ["item_05", "item_11"]},
-                  {**SURVEY_SCALE, "items": SURVEY_SCALE["items"][1:]}):
-        with pytest.raises(SystemExit, match="not the instrument's first items"):
-            I.survey_key(scale, REVERSE_CODED, frame)
+    assert len(I.survey_key(REVERSE_CODED, frame, *I.SURVEY_RESPONSES)) == 1
+    with pytest.raises(SystemExit, match="not the instrument's"):
+        I.survey_key((*REVERSE_CODED, "item_41"), frame, *I.SURVEY_RESPONSES)
     with pytest.raises(SystemExit, match="answered outside 1 to 4"):
-        I.survey_key({**SURVEY_SCALE, "high": 4}, REVERSE_CODED, frame)
+        I.survey_key(REVERSE_CODED, frame, 1, 4)

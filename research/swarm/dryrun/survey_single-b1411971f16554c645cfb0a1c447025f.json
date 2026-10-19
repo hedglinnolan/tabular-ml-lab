@@ -1,7 +1,7 @@
 {
  "attempts": [
   {
-   "at": "2026-10-18T23:01:37.015705Z",
+   "at": "2026-10-19T01:29:50.305953Z",
    "at_opening": null,
    "changed": [
     1,
@@ -86,7 +86,7 @@
    "held_out": null,
    "holdout": null,
    "holdout_why": "No rows are held out of this fit's split, so it has no held-out score.",
-   "id": "51d8c7286e364d2ebb3fbb3556d64b5c",
+   "id": "c682c6e462e84c12b04246155c07c574",
    "locked": true,
    "movement": [],
    "movement_why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict.",
@@ -194,7 +194,7 @@
    ],
    "reinstated": [],
    "scores": {},
-   "seconds": 4.406046082964167,
+   "seconds": 4.4705013749189675,
    "seed": 0,
    "seq": 1,
    "target": "sought_support",
@@ -208,8 +208,7 @@
   "card": {
    "design": "analysts",
    "documentation": [
-    "The instrument's key: item_01 to item_40 are one 40-item instrument, each item answered from 1 to 5, and its reverse-coded items are item_05, item_11, item_17, item_23, item_29, item_34, item_38 and item_40.",
-    "The support scale the question names is item_01 to item_10, whose reverse-coded item is item_05; item_11 to item_40 belong to no scale the question uses."
+    "The instrument's key: item_01 to item_40 are one 40-item instrument, each item answered from 1 to 5, and its reverse-coded items are item_05, item_11, item_17, item_23, item_29, item_34, item_38 and item_40."
    ],
    "exposure": {
     "column": "age",
@@ -224,7 +223,7 @@
    "population": "A generated (synthetic) survey of adult respondents, one row per respondent: their age, sex and education, their answers to a 40-item instrument, and whether they sought support.",
    "prepared": [],
    "purpose": "Estimate",
-   "question": "Is age associated with having sought support, with the support scale scored from its items in the model beside it?",
+   "question": "Is age associated with having sought support?",
    "source": "A generated (synthetic) table.",
    "table": {
     "format": "csv",
@@ -265,13 +264,13 @@
      }
     }
    ],
-   "at": "2026-10-18T23:00:42.729720Z",
+   "at": "2026-10-19T01:28:54.265924Z",
    "early": null,
    "examined": [],
-   "id": "40fae1eab0ae46309111afcec6c61f4a",
+   "id": "01403e637bf94eceba3238b7f5c68372",
    "kind": "set_lens",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -300,13 +299,13 @@
      }
     }
    ],
-   "at": "2026-10-18T23:00:44.638671Z",
+   "at": "2026-10-19T01:28:56.308813Z",
    "early": null,
    "examined": [],
-   "id": "1c594ddd669346f1ac2ee2f7cc6d78f8",
+   "id": "6ced2c8c9e6e4a41b2fe44972ab94ea8",
    "kind": "set_target",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -334,13 +333,13 @@
      }
     }
    ],
-   "at": "2026-10-18T23:00:46.554316Z",
+   "at": "2026-10-19T01:28:58.345714Z",
    "early": null,
    "examined": [],
-   "id": "b0769f70a89944c78b360b9f285c5ff6",
+   "id": "91bc67b42b7f4c4b9c5ff99f86ee4e01",
    "kind": "set_event",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -368,13 +367,13 @@
      }
     }
    ],
-   "at": "2026-10-18T23:00:48.467784Z",
+   "at": "2026-10-19T01:29:00.349105Z",
    "early": null,
    "examined": [],
-   "id": "896d91ae4ca94ec59fc21c7cd8ea5189",
+   "id": "0ecd65fefd954804861a8bce04869dc7",
    "kind": "set_purpose",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -571,13 +570,13 @@
      "value": "excluded"
     }
    ],
-   "at": "2026-10-18T23:00:50.389481Z",
+   "at": "2026-10-19T01:29:02.398932Z",
    "early": null,
    "examined": [],
-   "id": "b598bf36145047b5975d130b543a8335",
+   "id": "92e07d127f9948c085362bd9c8d12b3e",
    "kind": "set_roles",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -650,13 +649,13 @@
      "value": "covariate"
     }
    ],
-   "at": "2026-10-18T23:00:52.338263Z",
+   "at": "2026-10-19T01:29:04.479269Z",
    "early": null,
    "examined": [],
-   "id": "078fbd4078ac4d3f84c2fd2f9f562a44",
+   "id": "9a6d14ed8afc4628a3fc171487e686c5",
    "kind": "confirm_role",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -684,10 +683,10 @@
      }
     }
    ],
-   "at": "2026-10-18T23:00:54.260794Z",
+   "at": "2026-10-19T01:29:06.529900Z",
    "early": null,
    "examined": [],
-   "id": "e4e78cbf16dd473ebae264e7669f5f09",
+   "id": "3c4df5b7142d40808e20e31efecc9d11",
    "kind": "set_exclusions",
    "materiality": {
     "attempt": null,
@@ -727,13 +726,13 @@
      }
     }
    ],
-   "at": "2026-10-18T23:00:56.179443Z",
+   "at": "2026-10-19T01:29:08.567574Z",
    "early": null,
    "examined": [],
-   "id": "3a17cff650a741c183b2e874e00364ce",
+   "id": "c81eea6be8ab4d18a3b5e46fed78625a",
    "kind": "set_missing",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -777,13 +776,13 @@
      }
     }
    ],
-   "at": "2026-10-18T23:00:56.183200Z",
+   "at": "2026-10-19T01:29:08.571545Z",
    "early": null,
    "examined": [],
-   "id": "418ffc8ebb544ec883af467fb7ff56e6",
+   "id": "3f1ae53745b6433b8adb1819d34dc3cd",
    "kind": "set_split",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -823,13 +822,13 @@
      }
     }
    ],
-   "at": "2026-10-18T23:00:58.166832Z",
+   "at": "2026-10-19T01:29:10.660743Z",
    "early": null,
    "examined": [],
-   "id": "f0349b140cd34c27a91af015bad989ad",
+   "id": "81927d86183b420f9848156704fa46b0",
    "kind": "set_estimand",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1060,10 +1059,10 @@
      }
     }
    ],
-   "at": "2026-10-18T23:01:00.145317Z",
+   "at": "2026-10-19T01:29:12.746785Z",
    "early": null,
    "examined": [],
-   "id": "b0238f3399e743e9b9b3ff8219155a54",
+   "id": "6fa156aa12cf40dd8c4ad806922351a4",
    "kind": "set_adjustment",
    "materiality": {
     "attempt": null,
@@ -1249,13 +1248,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-18T23:01:02.165196Z",
+   "at": "2026-10-19T01:29:14.836304Z",
    "early": null,
    "examined": [],
-   "id": "dda06cad7a7f479f8d035239536ed3b9",
+   "id": "538a5bedb9384fd89e883487897ad928",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1296,13 +1295,13 @@
      "value": "all"
     }
    ],
-   "at": "2026-10-18T23:01:04.153817Z",
+   "at": "2026-10-19T01:29:16.903390Z",
    "early": null,
    "examined": [],
-   "id": "e2592809170a4b978fc30f8c41922fbf",
+   "id": "f7bb0665a9b84b7680db2788671dbe0f",
    "kind": "set_forms",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1339,13 +1338,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:06.739575Z",
+   "at": "2026-10-19T01:29:19.506161Z",
    "early": null,
    "examined": [],
-   "id": "81560a5683c14e31ba36b2bb998eaa39",
+   "id": "f0d25fdb972447538c69d59be68cb186",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1372,13 +1371,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:09.322493Z",
+   "at": "2026-10-19T01:29:22.116945Z",
    "early": null,
    "examined": [],
-   "id": "009c3cc05243424a8d3d916540e13948",
+   "id": "b7ff73582f324362ac21f135667186ea",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1405,13 +1404,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:11.889163Z",
+   "at": "2026-10-19T01:29:24.726412Z",
    "early": null,
    "examined": [],
-   "id": "91779dd29a674abfa6cc16b6e0d0f19a",
+   "id": "1cc7fef85f9c4a3e8cdc82357a00b39b",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1438,13 +1437,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:14.423782Z",
+   "at": "2026-10-19T01:29:27.364134Z",
    "early": null,
    "examined": [],
-   "id": "8cb39386988944f1811e71b6db5f1a8d",
+   "id": "0dd9fec831194319b2cd236e964f2c24",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1471,13 +1470,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:17.014716Z",
+   "at": "2026-10-19T01:29:30.080912Z",
    "early": null,
    "examined": [],
-   "id": "eed2b7170ba24f6a9b9b384473f22d74",
+   "id": "9f9b1353ad394c0e8ae4b1ce2e695a7f",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1504,13 +1503,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:19.597763Z",
+   "at": "2026-10-19T01:29:32.715283Z",
    "early": null,
    "examined": [],
-   "id": "636fdedaaaf64363b13ad72ba3cdb0a3",
+   "id": "0869b2c145344b54bac3812efe4df78c",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1537,13 +1536,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:22.170387Z",
+   "at": "2026-10-19T01:29:35.330063Z",
    "early": null,
    "examined": [],
-   "id": "2db8b61986904c858960598c093e1b20",
+   "id": "f03e2d18af6b47a89cdb84f36f423be2",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1570,13 +1569,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:24.760423Z",
+   "at": "2026-10-19T01:29:37.955032Z",
    "early": null,
    "examined": [],
-   "id": "67c7c3c460ab46fb9b6af8a8770ef2b0",
+   "id": "768af5d9c4964876858bec895b3df1b6",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1603,13 +1602,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:27.367436Z",
+   "at": "2026-10-19T01:29:40.573707Z",
    "early": null,
    "examined": [],
-   "id": "afee35fdb71045059559d3bb76372f48",
+   "id": "da4f0af9101e42a69a8cbbee539cd4c5",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1636,13 +1635,13 @@
      "value": "code"
     }
    ],
-   "at": "2026-10-18T23:01:29.954315Z",
+   "at": "2026-10-19T01:29:43.190281Z",
    "early": null,
    "examined": [],
-   "id": "17330b57f1804ca38cdf17d92bda7794",
+   "id": "c7c8f8a82a2e4ea58941908d98d493d9",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1673,13 +1672,13 @@
      }
     }
    ],
-   "at": "2026-10-18T23:01:32.566353Z",
+   "at": "2026-10-19T01:29:45.785740Z",
    "early": null,
    "examined": [],
-   "id": "8ed4c2b5496a445caaa2cd89892d5f41",
+   "id": "f9f8774a6f764ffaa651879f6d73a6d8",
    "kind": "select_models",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -2003,13 +2002,13 @@
      }
     }
    ],
-   "at": "2026-10-18T23:01:33.820831Z",
+   "at": "2026-10-19T01:29:47.093131Z",
    "early": null,
    "examined": [],
-   "id": "8f4877b04a7d476a9f50de9a0d565471",
+   "id": "77d4795168de444d8bf90e9ebca0956f",
    "kind": "lock_plan",
    "materiality": {
-    "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+    "attempt": "c682c6e462e84c12b04246155c07c574",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -2396,7 +2395,7 @@
        "file": "methods.md",
        "kind": "set_estimand",
        "quote": "The analysis estimates the total effect of `age` on `sought_support`, as a marginal risk difference per unit of `age`, by standardization over the analyzed rows (g-computation) from the logistic model, with a bootstrap of the whole chain for its interval, the model's conditional odds ratio reported beside it.",
-       "record_id": "f0349b140cd34c27a91af015bad989ad",
+       "record_id": "81927d86183b420f9848156704fa46b0",
        "record_ids": null,
        "seq": 10,
        "seqs": null,
@@ -2419,7 +2418,7 @@
        "file": "methods.md",
        "kind": "set_purpose",
        "quote": "The analysis was declared for `inference`: associations are estimated with their uncertainty.",
-       "record_id": "896d91ae4ca94ec59fc21c7cd8ea5189",
+       "record_id": "0ecd65fefd954804861a8bce04869dc7",
        "record_ids": null,
        "seq": 4,
        "seqs": null,
@@ -2466,7 +2465,7 @@
        "file": "methods.md",
        "kind": "set_exclusions",
        "quote": "No rows were excluded: every row with `sought_support` measured stays in the analysis.",
-       "record_id": "e4e78cbf16dd473ebae264e7669f5f09",
+       "record_id": "3c4df5b7142d40808e20e31efecc9d11",
        "record_ids": null,
        "seq": 7,
        "seqs": null,
@@ -2513,7 +2512,7 @@
        "file": "methods.md",
        "kind": "set_target",
        "quote": "`sought_support` was chosen as the outcome; it is measured on all `300` rows.",
-       "record_id": "1c594ddd669346f1ac2ee2f7cc6d78f8",
+       "record_id": "6ced2c8c9e6e4a41b2fe44972ab94ea8",
        "record_ids": null,
        "seq": 2,
        "seqs": null,
@@ -2523,7 +2522,7 @@
        "file": "methods.md",
        "kind": "set_event",
        "quote": "`1` of `sought_support` was taken as the event and coded 1; `0` was coded 0.",
-       "record_id": "b0769f70a89944c78b360b9f285c5ff6",
+       "record_id": "91bc67b42b7f4c4b9c5ff99f86ee4e01",
        "record_ids": null,
        "seq": 3,
        "seqs": null,
@@ -2533,7 +2532,7 @@
        "file": "methods.md",
        "kind": "set_roles",
        "quote": "Column roles were set for `44` columns: covariates `age`, `sex`, `education` and 10 more; identifier `respondent_id`; excluded `item_11`, `item_12`, `item_13` and 27 more.",
-       "record_id": "b598bf36145047b5975d130b543a8335",
+       "record_id": "92e07d127f9948c085362bd9c8d12b3e",
        "record_ids": null,
        "seq": 5,
        "seqs": null,
@@ -2543,7 +2542,7 @@
        "file": "methods.md",
        "kind": "confirm_role",
        "quote": "`education` was confirmed as a covariate on its own, after the evidence for its proposal was read.",
-       "record_id": "078fbd4078ac4d3f84c2fd2f9f562a44",
+       "record_id": "9a6d14ed8afc4628a3fc171487e686c5",
        "record_ids": null,
        "seq": 6,
        "seqs": null,
@@ -2553,7 +2552,7 @@
        "file": "methods.md",
        "kind": "set_estimand",
        "quote": "The analysis estimates the total effect of `age` on `sought_support`, as a marginal risk difference per unit of `age`, by standardization over the analyzed rows (g-computation) from the logistic model, with a bootstrap of the whole chain for its interval, the model's conditional odds ratio reported beside it.",
-       "record_id": "f0349b140cd34c27a91af015bad989ad",
+       "record_id": "81927d86183b420f9848156704fa46b0",
        "record_ids": null,
        "seq": 10,
        "seqs": null,
@@ -2563,7 +2562,7 @@
        "file": "methods.md",
        "kind": "confirm_reading",
        "quote": "`age` was confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.",
-       "record_id": "dda06cad7a7f479f8d035239536ed3b9",
+       "record_id": "538a5bedb9384fd89e883487897ad928",
        "record_ids": null,
        "seq": 12,
        "seqs": null,
@@ -2573,18 +2572,18 @@
        "file": "methods.md",
        "kind": "confirm_reading",
        "quote": "`item_01`, `item_02`, `item_03`, `item_04`, `item_05`, `item_06`, `item_07`, `item_08`, `item_09` and `item_10` were each confirmed to hold codes for categories, on its own, after the evidence for its reading was read.",
-       "record_id": "17330b57f1804ca38cdf17d92bda7794",
+       "record_id": "c7c8f8a82a2e4ea58941908d98d493d9",
        "record_ids": [
-        "81560a5683c14e31ba36b2bb998eaa39",
-        "009c3cc05243424a8d3d916540e13948",
-        "91779dd29a674abfa6cc16b6e0d0f19a",
-        "8cb39386988944f1811e71b6db5f1a8d",
-        "eed2b7170ba24f6a9b9b384473f22d74",
-        "636fdedaaaf64363b13ad72ba3cdb0a3",
-        "2db8b61986904c858960598c093e1b20",
-        "67c7c3c460ab46fb9b6af8a8770ef2b0",
-        "afee35fdb71045059559d3bb76372f48",
-        "17330b57f1804ca38cdf17d92bda7794"
+        "f0d25fdb972447538c69d59be68cb186",
+        "b7ff73582f324362ac21f135667186ea",
+        "1cc7fef85f9c4a3e8cdc82357a00b39b",
+        "0dd9fec831194319b2cd236e964f2c24",
+        "9f9b1353ad394c0e8ae4b1ce2e695a7f",
+        "0869b2c145344b54bac3812efe4df78c",
+        "f03e2d18af6b47a89cdb84f36f423be2",
+        "768af5d9c4964876858bec895b3df1b6",
+        "da4f0af9101e42a69a8cbbee539cd4c5",
+        "c7c8f8a82a2e4ea58941908d98d493d9"
        ],
        "seq": 23,
        "seqs": [
@@ -2605,7 +2604,7 @@
        "file": "methods.md",
        "kind": "set_adjustment",
        "quote": "For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for.",
-       "record_id": "b0238f3399e743e9b9b3ff8219155a54",
+       "record_id": "6fa156aa12cf40dd8c4ad806922351a4",
        "record_ids": null,
        "seq": 11,
        "seqs": null,
@@ -2736,7 +2735,7 @@
        "file": "methods.md",
        "kind": "set_adjustment",
        "quote": "For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for.",
-       "record_id": "b0238f3399e743e9b9b3ff8219155a54",
+       "record_id": "6fa156aa12cf40dd8c4ad806922351a4",
        "record_ids": null,
        "seq": 11,
        "seqs": null,
@@ -2817,7 +2816,7 @@
        "file": "methods.md",
        "kind": "set_adjustment",
        "quote": "For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for.",
-       "record_id": "b0238f3399e743e9b9b3ff8219155a54",
+       "record_id": "6fa156aa12cf40dd8c4ad806922351a4",
        "record_ids": null,
        "seq": 11,
        "seqs": null,
@@ -2827,7 +2826,7 @@
        "file": "methods.md",
        "kind": "select_models",
        "quote": "One model family was chosen: logistic regression.",
-       "record_id": "8ed4c2b5496a445caaa2cd89892d5f41",
+       "record_id": "f9f8774a6f764ffaa651879f6d73a6d8",
        "record_ids": null,
        "seq": 24,
        "seqs": null,
@@ -2872,7 +2871,7 @@
        "file": "methods.md",
        "kind": "set_missing",
        "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
-       "record_id": "3a17cff650a741c183b2e874e00364ce",
+       "record_id": "c81eea6be8ab4d18a3b5e46fed78625a",
        "record_ids": null,
        "seq": 8,
        "seqs": null,
@@ -2966,7 +2965,7 @@
        "file": "methods.md",
        "kind": "set_exclusions",
        "quote": "No rows were excluded: every row with `sought_support` measured stays in the analysis.",
-       "record_id": "e4e78cbf16dd473ebae264e7669f5f09",
+       "record_id": "3c4df5b7142d40808e20e31efecc9d11",
        "record_ids": null,
        "seq": 7,
        "seqs": null,
@@ -2976,7 +2975,7 @@
        "file": "methods.md",
        "kind": "set_missing",
        "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
-       "record_id": "3a17cff650a741c183b2e874e00364ce",
+       "record_id": "c81eea6be8ab4d18a3b5e46fed78625a",
        "record_ids": null,
        "seq": 8,
        "seqs": null,
@@ -3055,7 +3054,7 @@
        "file": "methods.md",
        "kind": "set_exclusions",
        "quote": "No rows were excluded: every row with `sought_support` measured stays in the analysis.",
-       "record_id": "e4e78cbf16dd473ebae264e7669f5f09",
+       "record_id": "3c4df5b7142d40808e20e31efecc9d11",
        "record_ids": null,
        "seq": 7,
        "seqs": null,
@@ -3065,7 +3064,7 @@
        "file": "methods.md",
        "kind": "set_missing",
        "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
-       "record_id": "3a17cff650a741c183b2e874e00364ce",
+       "record_id": "c81eea6be8ab4d18a3b5e46fed78625a",
        "record_ids": null,
        "seq": 8,
        "seqs": null,
@@ -3158,7 +3157,7 @@
        "file": "methods.md",
        "kind": "set_adjustment",
        "quote": "For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for.",
-       "record_id": "b0238f3399e743e9b9b3ff8219155a54",
+       "record_id": "6fa156aa12cf40dd8c4ad806922351a4",
        "record_ids": null,
        "seq": 11,
        "seqs": null,
@@ -3250,7 +3249,7 @@
        "file": "methods.md",
        "kind": "set_missing",
        "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
-       "record_id": "3a17cff650a741c183b2e874e00364ce",
+       "record_id": "c81eea6be8ab4d18a3b5e46fed78625a",
        "record_ids": null,
        "seq": 8,
        "seqs": null,
@@ -3436,10 +3435,10 @@
    ],
    "waiting": []
   },
-  "methods": "# Methods: survey_instrument\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the estimates were seen is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow STROBE and STROBE-nut; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Study design (STROBE 4)\n\nThe analysis was declared for `inference`: associations are estimated with their uncertainty.\n\n## Participants (STROBE 6)\n\nNo rows were excluded: every row with `sought_support` measured stays in the analysis.\n\n## Variables (STROBE 7)\n\n`sought_support` was chosen as the outcome; it is measured on all `300` rows. `1` of `sought_support` was taken as the event and coded 1; `0` was coded 0. Column roles were set for `44` columns: covariates `age`, `sex`, `education` and 10 more; identifier `respondent_id`; excluded `item_11`, `item_12`, `item_13` and 27 more. `education` was confirmed as a covariate on its own, after the evidence for its proposal was read. The analysis estimates the total effect of `age` on `sought_support`, as a marginal risk difference per unit of `age`, by standardization over the analyzed rows (g-computation) from the logistic model, with a bootstrap of the whole chain for its interval, the model's conditional odds ratio reported beside it. `age` was confirmed to hold amounts or counts, on its own, after the evidence for its reading was read. `item_01`, `item_02`, `item_03`, `item_04`, `item_05`, `item_06`, `item_07`, `item_08`, `item_09` and `item_10` were each confirmed to hold codes for categories, on its own, after the evidence for its reading was read.\n\nRead from the values, no question asked: `respondent_id` is the unit's identifier (Named like a participant's identifier; `300` labels, one per row); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sought_support` is a binary outcome (Only `0` and `1` \u2014 read as a binary outcome); `education` holds codes for categories (one indicator per label) (`4` labels, not numbers); `sex` is coded F female, M male (the labels spell the sexes (`F` female)).\n\n## Data sources and measurement (STROBE 8)\n\nThe table was read through the `survey` lens.\n\n## Quantitative variables (STROBE 11)\n\n`age` entered the models as a straight line.\n\n## Statistical methods (STROBE 12)\n\nMissing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor. No rows were held out: every analyzed row estimates the coefficients, and no cross-validated score is reported under inference: the declared model is reported by its estimates. For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for. One model family was chosen: logistic regression.\n\nThe estimate of `age` is reported across a declared sequence of models fit on all 300 analyzed rows: unadjusted; Model 2, the primary, adjusted for `sex`, `education`, `item_01`, `item_02`, `item_03`, `item_04`, `item_05` and 5 more. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(46, 254) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.\n\nMissing values were multiply imputed by substantive-model-compatible fully conditional specification (SMC-FCS; Bartlett et al. 2015), compatible with the analysis model, a logistic model; m = 20 imputations, at least 20 and at least the 4% of rows with an imputed value (White, Royston & Wood 2011); the estimates were pooled by Rubin's rules; the largest Monte Carlo error, for `item_07_3.0`, was 3.4% of its standard error.\n\nThe analysis plan recorded above was declared in TurboTab before any estimate was displayed (SHA-256 `7622b85c241c`); every later change is marked as made after the estimates were seen.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `7b2960215a1c`). The supplementary provenance record holds the decision log (`25` records), the SHA-256 of the input file `survey_instrument.csv` (SHA-256 `b646927ae201`), the analysis plan (SHA-256 `7622b85c241c`) and the model matrix (`300` rows by `45` columns; SHA-256 `c98671191cfb` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "methods": "# Methods: survey_instrument\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the estimates were seen is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow STROBE and STROBE-nut; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Study design (STROBE 4)\n\nThe analysis was declared for `inference`: associations are estimated with their uncertainty.\n\n## Participants (STROBE 6)\n\nNo rows were excluded: every row with `sought_support` measured stays in the analysis.\n\n## Variables (STROBE 7)\n\n`sought_support` was chosen as the outcome; it is measured on all `300` rows. `1` of `sought_support` was taken as the event and coded 1; `0` was coded 0. Column roles were set for `44` columns: covariates `age`, `sex`, `education` and 10 more; identifier `respondent_id`; excluded `item_11`, `item_12`, `item_13` and 27 more. `education` was confirmed as a covariate on its own, after the evidence for its proposal was read. The analysis estimates the total effect of `age` on `sought_support`, as a marginal risk difference per unit of `age`, by standardization over the analyzed rows (g-computation) from the logistic model, with a bootstrap of the whole chain for its interval, the model's conditional odds ratio reported beside it. `age` was confirmed to hold amounts or counts, on its own, after the evidence for its reading was read. `item_01`, `item_02`, `item_03`, `item_04`, `item_05`, `item_06`, `item_07`, `item_08`, `item_09` and `item_10` were each confirmed to hold codes for categories, on its own, after the evidence for its reading was read.\n\nRead from the values, no question asked: `respondent_id` is the unit's identifier (Named like a participant's identifier; `300` labels, one per row); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sought_support` is a binary outcome (Only `0` and `1` \u2014 read as a binary outcome); `education` holds codes for categories (one indicator per label) (`4` labels, not numbers); `sex` is coded F female, M male (the labels spell the sexes (`F` female)).\n\n## Data sources and measurement (STROBE 8)\n\nThe table was read through the `survey` lens.\n\n## Quantitative variables (STROBE 11)\n\n`age` entered the models as a straight line.\n\n## Statistical methods (STROBE 12)\n\nMissing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor. No rows were held out: every analyzed row estimates the coefficients, and no cross-validated score is reported under inference: the declared model is reported by its estimates. For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for. One model family was chosen: logistic regression.\n\nThe estimate of `age` is reported across a declared sequence of models fit on all 300 analyzed rows: unadjusted; Model 2, the primary, adjusted for `sex`, `education`, `item_01`, `item_02`, `item_03`, `item_04`, `item_05` and 5 more. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(46, 254) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.\n\nMissing values were multiply imputed by substantive-model-compatible fully conditional specification (SMC-FCS; Bartlett et al. 2015), compatible with the analysis model, a logistic model; m = 20 imputations, at least 20 and at least the 4% of rows with an imputed value (White, Royston & Wood 2011); the estimates were pooled by Rubin's rules; the largest Monte Carlo error, for `item_07_3.0`, was 3.4% of its standard error.\n\nThe analysis plan recorded above was declared in TurboTab before any estimate was displayed (SHA-256 `7622b85c241c`); every later change is marked as made after the estimates were seen.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `15cfe3824281`, with local changes). The supplementary provenance record holds the decision log (`25` records), the SHA-256 of the input file `survey_instrument.csv` (SHA-256 `b646927ae201`), the analysis plan (SHA-256 `7622b85c241c`) and the model matrix (`300` rows by `45` columns; SHA-256 `c98671191cfb` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
   "reached": true,
   "refused": null,
-  "sha256": "99a80c068536de956106daf2719fab7ee867a4f855f553f509e9eaad7f7c2a5f"
+  "sha256": "abb5bf9b169da3db8df50bf44d0b3aa8055855a9f2d9845e2de69dc9fb17ff15"
  },
  "question": {
   "estimand": {
@@ -3454,7 +3453,7 @@
   "intended_use": null,
   "paper": null,
   "purpose": "inference",
-  "stated": "Is age associated with having sought support, with the support scale scored from its items in the model beside it?",
+  "stated": "Is age associated with having sought support?",
   "target": "sought_support"
  },
  "regime": {
@@ -3482,7 +3481,7 @@
  },
  "replication": null,
  "result": {
-  "attempt": "51d8c7286e364d2ebb3fbb3556d64b5c",
+  "attempt": "c682c6e462e84c12b04246155c07c574",
   "decisions": [
    1,
    2,
@@ -3548,28 +3547,28 @@
   "design": 2,
   "effort": null,
   "ended": null,
-  "engine_commit": "7b2960215a1c412401bbe15146f7ac54f92380aa",
-  "engine_modified": false,
+  "engine_commit": "15cfe38242819a7c88943aef97623a750561ee52",
+  "engine_modified": true,
   "engine_version": "2.0.0.dev0",
   "fit_budget": {
    "fits": 4,
    "seconds": 600.0
   },
-  "fit_seconds": 4.406046082964167,
+  "fit_seconds": 4.4705013749189675,
   "fits": 1,
   "fits_unseen": 0,
   "help": [],
-  "id": "survey_single-80da5ef0902ba80242b557663b8d8d41",
+  "id": "survey_single-b1411971f16554c645cfb0a1c447025f",
   "prompt_version": "dry-run-1",
   "server": {
    "mode": "local",
-   "pid": 82459,
-   "port": 61217,
+   "pid": 18894,
+   "port": 60347,
    "workers": 2
   },
   "spend": null,
   "spend_why": "No transcript of the analyst agent was given.",
-  "started": "2026-10-18T23:00:37Z"
+  "started": "2026-10-19T01:28:48Z"
  },
  "surfacings": {
   "concerns": [],

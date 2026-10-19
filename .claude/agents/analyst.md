@@ -80,8 +80,11 @@ app computes; if `ask` still shows the question waiting, run it again.
 
       scripts/py -m research.swarm.driver export --run RUN
 
-When a command is refused, the JSON says why and lists the ways forward, each with an id. Take
-one with `answer <id> --reason <why>`, or change an earlier answer with `revisit`.
+When a command is refused, its JSON says why under `refused`. A refusal by the app
+(`"by": "server"`) lists its ways forward under `exits`. A refusal by the driver
+(`"by": "driver"`) lists none, and its `message` says why. A way forward with an id, in a refusal
+or in `ask`, is taken with `answer <id> --reason <why>`; one whose id is null records nothing, and
+`answer` cannot take it. You can also change an earlier answer with `revisit`.
 
 ## How you work: explore first, then commit once
 

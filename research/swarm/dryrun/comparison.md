@@ -23,6 +23,6 @@ Written by `python -m research.swarm.dry_run` (DRIVER_PLAN D6): each run's expec
 | decoy_single | outpatient_admission_predict | null_decoy | pass | pass | yes |
 | decoy_single | outpatient_admission_predict | robustness | pass | pass | yes |
 
-- `clinical_explore`: record `research/swarm/dryrun/clinical_explore-6d1b37d008afc715265af12eb7af020f.json`, 60 driver commands, 209.0 s.
-- `survey_single`: record `research/swarm/dryrun/survey_single-80da5ef0902ba80242b557663b8d8d41.json`, 52 driver commands, 60.7 s.
-- `decoy_single`: record `research/swarm/dryrun/decoy_single-b57ad1aca6d46a510d3dbe51df2564a0.json`, 55 driver commands, 297.8 s.
+- `clinical_explore`: record `research/swarm/dryrun/clinical_explore-18aebb257587732c517c624d59e3662d.json`, 60 driver commands, 210.3 s.
+- `survey_single`: record `research/swarm/dryrun/survey_single-b1411971f16554c645cfb0a1c447025f.json`, 52 driver commands, 62.8 s.
+- `decoy_single`: record `research/swarm/dryrun/decoy_single-e91810f5c78f8ec4fe15445a9e1679c2.json`, 55 driver commands, 299.3 s.

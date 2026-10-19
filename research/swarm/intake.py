@@ -1087,36 +1087,32 @@ def intake_clinical_readmission_predict(old: dict | None) -> tuple[dict, dict, d
     return manifest, card, answers
 
 
-def survey_key(scale: dict[str, Any], reverse_coded: tuple[str, ...] | list[str],
-               frame: Any) -> list[str]:
+SURVEY_RESPONSES = (1, 5)  # each item's response levels, 1 to 5 (survey_instrument.md's own table)
+
+
+def survey_key(reverse_coded: tuple[str, ...] | list[str], frame: Any, low: int,
+               high: int) -> list[str]:
     """The instrument's key, as its codebook gives it (``reverse_coded``, make_fixtures.py's
-    REVERSE_CODED), and the support scale the question names (``scale``, the journeys' scale).
-    Refused where the scale is not the instrument's first items, its reverse-coded items are not
-    the key's among them, or an answer lies outside the scale's range."""
+    REVERSE_CODED), and each item's response range (``low`` to ``high``). Refused where a
+    reverse-coded item is not one of the instrument's items, or an answer lies outside the range.
+    It names no scale: no driver command declares one (``set_scales`` is posted by no Router
+    question, ``catalog.NOT_ASKED``), so a card that asked for a scale would ask what an analyst
+    cannot do."""
     items = [c for c in frame.columns if c.startswith("item_")]
-    own, rest = list(scale["items"]), items[len(scale["items"]):]
-    reversed_ = [r for r in reverse_coded if r in own]
-    if own != items[:len(own)] or not rest or not set(reverse_coded) <= set(items) \
-            or list(scale["reverse"]) != reversed_:
-        raise SystemExit("the support scale is not the instrument's first items with the key's "
-                         "reverse-coded items among them")
+    if not items or not set(reverse_coded) <= set(items):
+        raise SystemExit("the key's reverse-coded items are not the instrument's")
     answered = frame[items].stack()
-    if not answered.between(scale["low"], scale["high"]).all():
-        raise SystemExit(f"an item is answered outside {scale['low']} to {scale['high']}")
+    if not answered.between(low, high).all():
+        raise SystemExit(f"an item is answered outside {low} to {high}")
     return [
         f"The instrument's key: {items[0]} to {items[-1]} are one {len(items)}-item instrument, "
-        f"each item answered from {scale['low']} to {scale['high']}, and its reverse-coded items "
+        f"each item answered from {low} to {high}, and its reverse-coded items "
         f"are {listed(list(reverse_coded))}.",
-        f"The support scale the question names is {own[0]} to {own[-1]}, whose reverse-coded "
-        + (f"item is {reversed_[0]}" if len(reversed_) == 1 else
-           f"items are {listed(reversed_)}" if reversed_ else "items are none")
-        + f"; {rest[0]} to {rest[-1]} belong to no scale the question uses.",
     ]
 
 
 def intake_survey_support_estimate(old: dict | None) -> tuple[dict, dict, dict]:
     import pandas as pd
-    from turbotab.core.reference.journeys import SURVEY_SCALE
     from turbotab.sample_data.make_fixtures import REVERSE_CODED
     id_, key = "survey_support_estimate", "survey_instrument.csv"
     source, table = SAMPLE / key, TABLES / id_ / key
@@ -1125,14 +1121,13 @@ def intake_survey_support_estimate(old: dict | None) -> tuple[dict, dict, dict]:
     items = [c for c in frame.columns if c.startswith("item_")]
     card = generated_card(
         id_, "Estimate",
-        "Is age associated with having sought support, with the support scale scored from its "
-        "items in the model beside it?",
+        "Is age associated with having sought support?",
         f"A generated (synthetic) survey of adult respondents, one row per respondent: their age, "
         f"sex and education, their answers to a {len(items)}-item instrument, and whether they "
         "sought support.",
         {"column": "sought_support", "meaning": "sought support (1 yes, 0 no)"}, table,
         exposure={"column": "age", "meaning": "age in years"},
-        documentation=survey_key(SURVEY_SCALE, REVERSE_CODED, frame))
+        documentation=survey_key(REVERSE_CODED, frame, *SURVEY_RESPONSES))
     generator = "turbotab/sample_data/make_fixtures.py::survey"
     answers = {
         "id": id_, "kind": "known_answer", "fixture_key": key,

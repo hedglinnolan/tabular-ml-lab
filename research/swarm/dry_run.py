@@ -80,8 +80,11 @@ def _truth(key: str) -> dict[str, str]:
 
 
 def specs() -> dict[str, Spec]:
-    """The runs. The survey run is journeys.py's ``survey-inference`` journey (the card's own
-    question), its roles and readings, with age's form declared a straight line (a reading journeys
+    """The runs. The survey run asks the card's question, age's association with having sought
+    support, with journeys.py's ``survey-inference`` journey's roles and readings: the ten items
+    the journey scores as its scale (item_01 to item_10) enter one by one as covariates beside age,
+    sex and education, and the other thirty are excluded, since a scale is a declaration no driver
+    command makes (the card names none, so which columns enter is the analyst's decision). Age's form is declared a straight line (a reading journeys
     takes in place of the form card's proposal), so the known answer is one row; its declared truth
     is that age has no effect, on every scale (``answers.json``), and the linear family's rows for a
     yes/no outcome are log odds (``models/inference.py``: "each odds ratio is exp(estimate)"), so
