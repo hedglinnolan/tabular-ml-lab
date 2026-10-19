@@ -18,7 +18,9 @@ teaching, in a refusal or in a reading, each held to what the code does, both wa
 * **D-037**: the food-frequency blanks' mechanism and their handling carry the badges the
   nutrition pack gives them (its §06, read here).
 * **D-044**: blanking a count too numerous to count says it removes a count above the countable
-  range, and that this biases the column low (built here so every such count is above the rest).
+  range, and that this biases the column low (built here so every such count is above the rest),
+  under either lever that blanks it; beside a blanked value below a limit, whether its limit is
+  written (``<10``) or a mark names none (``ND``), the two are said to pull opposite ways.
 * **D-070**: the imputed copies' sentence and option say they are pooled only where the fit pools
   them: numbered by a column, each kept as a record, so not where each unit's rows are combined.
 * **D-001**: a nutrient that carries no energy is substituted for nothing, whatever the covariates
@@ -32,7 +34,9 @@ teaching, in a refusal or in a reading, each held to what the code does, both wa
 * **A-121**: inside a near dependency the estimate's contrast changes; "less of what it replaces"
   is said only of a part beside its total.
 * **C-110**: an ungrouped seal labels its held-out scores exploratory and says nothing of the
-  folds, which internal–external validation draws by a grouping's levels.
+  folds, which internal–external validation draws by a grouping's levels; the split's note then
+  counts the units whose rows fall in more than one fold and reads only their rows' scores as
+  within-unit.
 * **C-144**: the demographic guess's reason names no diet, and says the socioeconomic columns may
   follow what you study.
 * **C-241**: the missing-values option says whether the group is in the imputation model, right
@@ -384,13 +388,14 @@ def test_the_food_frequency_blanks_carry_the_packs_own_badges():
 # ── D-044 · a count too numerous to count, blanked ────────────────────────────
 
 
-def _plates(tntc: int, seed: int = 0, below: int = 0, dots: int = 2) -> pd.DataFrame:
+def _plates(tntc: int, seed: int = 0, below: int = 0, dots: int = 2,
+            mark: str = "<10") -> pd.DataFrame:
     """Plate counts within FDA BAM's countable range (15-300 per plate), from 20 to 279, some read
-    TNTC (above 300), ``below`` of them ``<10`` (below a detection limit of 10, so under every
-    kept count) and ``dots`` blank as ``.``."""
+    TNTC (above 300), ``below`` of them ``mark`` (``<10``: below a detection limit of 10, so under
+    every kept count) and ``dots`` blank as ``.``."""
     rng = np.random.default_rng(seed)
     counts = [str(int(v)) for v in rng.integers(20, 280, 60)]
-    cells = counts + ["<10"] * below + ["TNTC"] * tntc + ["."] * dots
+    cells = counts + [mark] * below + ["TNTC"] * tntc + ["."] * dots
     return pd.DataFrame({"apc": cells, "y": rng.normal(size=len(cells))})
 
 
@@ -468,6 +473,134 @@ def test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_one(below)
         assert "opposite" not in text, text
     assert option.consequence == (f"`60` values of `apc` become numbers; `{2 + below}` become "
                                   "blank.")
+
+
+# A detected count is at or above its detection limit, so a value the engine reads as below one,
+# written with no number (``repairs.is_censoring_mark``), is under every kept count: here, under 20.
+UNDER_EVERY_KEPT = (0.0, 19.99)
+
+
+@pytest.mark.parametrize("mark", ["ND", "<LOD", "not detected", "BLQ"])
+def test_a_mark_below_a_limit_naming_none_beside_a_count_too_numerous_pulls_the_other_way(
+        mark):
+    """The RF-1b verifier's column: the round-2 column with its 30 ``<10`` cells respelled as a
+    censoring mark that names no limit, which the engine reads as a value below one. Each is under
+    every kept count, so blanking them raises the column's mean, whatever values they hold, while
+    blanking the TNTC count lowers it: the kept mean, 149.6, is above the full mean at the least the
+    unread values can be (101.9) and below it at a TNTC count of 20,000. So the column is not said
+    to be biased low, the marks are not called "not numbers", and the two kinds pull opposite
+    ways."""
+    frame = _plates(1, below=30, dots=0, mark=mark)
+    kept = pd.to_numeric(frame["apc"], errors="coerce").dropna().to_numpy()
+    assert len(kept) == 60 and kept.min() >= 20 and kept.max() < 300
+    assert kept.mean() == pytest.approx(149.55)
+    for small in UNDER_EVERY_KEPT:
+        for above in (301.0, 5000.0):
+            limited = np.r_[kept, [small] * 30]
+            assert np.mean(np.r_[limited, above]) > limited.mean()  # the TNTC blank: low
+            assert kept.mean() > limited.mean()  # the marks' blanks: high
+    assert np.mean(np.r_[kept, [0.0] * 30, 301.0]) == pytest.approx(101.91, abs=0.01)
+    assert kept.mean() < np.mean(np.r_[kept, [UNDER_EVERY_KEPT[-1]] * 30, 20_000.0])
+    option = _read_as_numbers(frame)
+    for text in (option.consequence, option.sentence):
+        assert "opposite ways" in text, text
+        assert "biasing it low" not in text, text
+    assert (f"`apc` was read as numbers; `1` that is not a number and `30` below a detection "
+            f"limit were set to missing (`{mark}` (`30`), `TNTC` (`1`)); `1` was too numerous to "
+            "count: it is a count above the countable range, right-censored rather than missing, "
+            "so blanking such a count biases the column low, and blanking a value below a "
+            "detection limit biases it high: the two pull opposite ways.") == option.sentence, (
+        option.sentence)
+
+
+def test_a_mark_above_a_limit_beside_a_count_too_numerous_to_count_keeps_the_column_biased_low():
+    """The other side: ``>ULOQ`` is above the upper limit of quantification, so above every
+    quantified count kept (the most is 279), as a TNTC count is. Blanking both lowers the column's
+    mean, whatever values above the kept counts they hold: the column is said to be biased low, and
+    nothing is said to pull the other way."""
+    frame = _plates(1, below=30, dots=0, mark=">ULOQ")
+    kept = pd.to_numeric(frame["apc"], errors="coerce").dropna().to_numpy()
+    for above in (kept.max() + 0.01, 5000.0):
+        assert np.mean(np.r_[kept, [above] * 31]) > kept.mean()
+    option = _read_as_numbers(frame)
+    assert "`1` of them too numerous to count, biasing it low" in option.consequence, (
+        option.consequence)
+    for text in (option.consequence, option.sentence):
+        assert "opposite" not in text and "high" not in text, text
+    assert "`31` that are not numbers were set to missing" in option.sentence, option.sentence
+
+
+def test_one_cell_that_is_not_a_number_is_said_as_one():
+    """The RF-1b verifier's neighbor: one blanked cell is "a number", never "numbers"."""
+    option = _read_as_numbers(_plates(1, dots=0))
+    assert "`1` that is not a number was set to missing (`TNTC` (`1`))" in option.sentence, (
+        option.sentence)
+
+
+def _below_limit(frame: pd.DataFrame) -> dict:
+    from turbotab.core import repairs as R
+
+    raw, finding = next((r, f) for r, f in R.text_number_findings(frame)
+                        if f["id"] == "below_detection__apc")
+    return {o.key: o for o in R.offer(finding, raw, R.OfferContext(frame))}
+
+
+# Each option's fraction of the limit, by its definition: half, and the limit over √2.
+FRACTIONS = [("half_limit", "half", 0.5), ("limit_root2", "the limit over √2", 2 ** -0.5)]
+
+
+@pytest.mark.parametrize("key, words, fraction", FRACTIONS)
+def test_a_fraction_of_the_limit_says_the_count_too_numerous_to_count_was_blanked(
+        key, words, fraction):
+    """The RF-1b verifier's case on the second lever: the round-2 column (60 counts, 30 ``<10``, 1
+    TNTC), each ``<10`` set to a fraction of 10, under every kept count, and the TNTC cell blank. It
+    is above every value the column keeps, so blanking it lowers the column's mean, and nothing else
+    is blanked: the methods sentence says the cell was set to missing and that blanking such a count
+    biases the column low, never that anything pulls the other way."""
+    frame = _plates(1, below=30, dots=0)
+    kept = pd.to_numeric(frame["apc"], errors="coerce").dropna().to_numpy()
+    filled = np.r_[kept, [10 * fraction] * 30]
+    for above in (301.0, 5000.0):
+        assert np.mean(np.r_[filled, above]) > filled.mean()
+    option = _below_limit(frame)[key]
+    assert option.sentence == (
+        f"`30` values of `apc` below a detection limit were set to {words} of their limit, and the "
+        "column was read as numbers; `1` other text value was set to missing (`TNTC` (`1`)); `1` "
+        "was too numerous to count: it is a count above the countable range, right-censored rather "
+        "than missing, so blanking such a count biases the column low."), option.sentence
+
+
+@pytest.mark.parametrize("key, words, fraction", FRACTIONS)
+def test_a_fraction_of_the_limit_beside_a_blanked_nd_says_they_pull_opposite_ways(
+        key, words, fraction):
+    """A mark below a limit that names none (``ND``) has no limit to take a fraction of, so the
+    second lever blanks it beside the TNTC cell. Under every kept count and every filled one (5 or
+    7.07 against a column mean near 100), its blank raises the mean while the TNTC blank lowers it:
+    the methods sentence says the two pull opposite ways."""
+    nd = _plates(0, below=5, dots=0, mark="ND").tail(5)
+    frame = pd.concat([_plates(1, below=30, dots=0), nd], ignore_index=True)
+    kept = pd.to_numeric(frame["apc"], errors="coerce").dropna().to_numpy()
+    filled = np.r_[kept, [10 * fraction] * 30]
+    for small in UNDER_EVERY_KEPT:
+        assert filled.mean() > np.mean(np.r_[filled, [small] * 5])  # the ND blanks: high
+        assert np.mean(np.r_[filled, 301.0]) > filled.mean()  # the TNTC blank: low
+    option = _below_limit(frame)[key]
+    assert ("`6` other text values were set to missing (`ND` (`5`), `TNTC` (`1`)); `1` was too "
+            "numerous to count: it is a count above the countable range, right-censored rather "
+            "than missing, so blanking such a count biases the column low, and blanking a value "
+            "below a detection limit biases it high: the two pull opposite ways.") in (
+        option.sentence), option.sentence
+
+
+@pytest.mark.parametrize("key, words, fraction", FRACTIONS)
+def test_a_fraction_of_the_limit_with_no_count_too_numerous_names_its_blanks_and_nothing_of_one(
+        key, words, fraction):
+    option = _below_limit(_plates(0, below=30))[key]
+    assert option.sentence == (
+        f"`30` values of `apc` below a detection limit were set to {words} of their limit, and the "
+        "column was read as numbers; `2` other text values were set to missing (`.` (`2`))."), (
+        option.sentence)
+    assert "too numerous" not in option.sentence and "opposite" not in option.sentence
 
 
 # ── D-070 · imputed copies, pooled only where the fit pools them ──────────────
@@ -1050,21 +1183,45 @@ def test_under_internal_external_validation_with_no_unit_in_two_sites_the_note_i
 def test_under_internal_external_validation_a_unit_in_two_sites_keeps_the_within_unit_note(
         tmp_path, grain):
     """The other side: each unit's 3 rows in 3 different sites, so internal–external validation's
-    folds put one unit's rows in more than one of them (read off the drawn folds), and its rows sit
-    on both sides of a fold. The note says so, and says the folds were the sites' levels, never
+    folds put rows of most units in more than one of them (read off the drawn folds), and those
+    rows sit on both sides of a fold, while a unit left one training row, or all in one site, is
+    scored as a new unit. The note counts the units that span folds and reads only their rows'
+    scores as within-unit (the RF-1b verifier's P3), says the folds were the sites' levels, never
     that they were drawn by row; where no column names the unit, that a fold may split one."""
     data, folds_per_unit = _split(tmp_path, np.arange(len(PID)) % 4, grain, "internal_external")
-    assert (folds_per_unit > 1).any()
+    spanning = int((folds_per_unit > 1).sum())
+    assert 1 < spanning < len(folds_per_unit)  # most units span folds, not every one
     note = data["note"]
     assert "drawn by row" not in note and "`site`" in note, note
     if grain is SAID_A_UNIT:
-        assert ("Rows repeat within `pid` (`40` units), and the folds, the levels of `site`, put "
-                "rows of one unit in more than one of them: every cross-validated score here is "
-                "within-unit performance") in note, note
+        assert (f"Rows repeat within `pid` (`40` units), and `{spanning}` of them have rows in "
+                "more than one of the folds, the levels of `site`: the cross-validated scores of "
+                "those units' rows are within-unit performance, new rows of units the models were "
+                "fit on, not performance on new units") in note, note
+        assert "every cross-validated score" not in note, note
     else:
         assert ("so the folds, the levels of `site`, may put rows of one unit in more than one of "
                 "them: every cross-validated score here may be within-unit performance") in note, (
             note)
+
+
+def test_under_internal_external_validation_one_unit_in_three_sites_scopes_the_within_unit_note(
+        tmp_path):
+    """The RF-1b verifier's case: the 40 units of `pid` each wholly in one of 4 sites, except unit
+    0, whose 3 rows sit in sites 0, 1 and 2. One unit's rows fall in more than one fold (read off
+    the drawn assignment), so only its rows are scored by models fit on rows of the same unit, and
+    the other 39 units are scored as new ones: the note counts the one unit and reads only its
+    rows' scores as within-unit, never every score."""
+    site = SITE.copy()
+    site[:3] = [0, 1, 2]
+    data, folds_per_unit = _split(tmp_path, site, SAID_A_UNIT, "internal_external")
+    assert int((folds_per_unit > 1).sum()) == 1 and folds_per_unit.loc[0] > 1
+    note = data["note"]
+    assert ("Rows repeat within `pid` (`40` units), and `1` of them has rows in more than one of "
+            "the folds, the levels of `site`: the cross-validated scores of that unit's rows are "
+            "within-unit performance, new rows of units the models were fit on, not performance on "
+            "new units") in note, note
+    assert "every cross-validated score" not in note and "drawn by row" not in note, note
 
 
 def test_under_k_fold_validation_the_note_keeps_saying_the_folds_were_drawn_by_row(tmp_path):

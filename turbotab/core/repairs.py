@@ -929,6 +929,36 @@ def _parse_spec(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(c): dict(spec) for c, spec in dict(params.get("columns") or {}).items()}
 
 
+def _below_marks(unparsed: Mapping[str, int]) -> int:
+    """How many of ``unparsed`` are censoring marks below a limit that name no number (``ND``,
+    ``<LOD``, ``BLQ``, ``not detected``): every censoring word but ``>ULOQ``, which is above one."""
+    return sum(n for v, n in unparsed.items()
+               if _CENSORED_WORDS.match(v) and not v.strip().startswith(">"))
+
+
+def _too_numerous(unparsed: Mapping[str, int], below: int) -> tuple[int, str]:
+    """How many of the blanked ``unparsed`` are counts too numerous to count, and the methods
+    clause that says what blanking them does, beside ``below`` blanked values below a limit.
+
+    Claims backtest D-044 (its claims, ``repairs.tntc_censored`` and
+    ``repairs.tntc_beside_below_limit``): a count too numerous to count is a value above the
+    countable range, not a missing one (FDA BAM, as stages/finding_words.py reads it), so blanking
+    it alone biases the column low. A value below a limit, blanked in the same repair, whether it
+    is written with its limit (``<10``) or with a mark that names none (``ND``), pulls it high, so
+    with both the column's direction is not known and the clause says the two pull opposite ways
+    (the RF-1 verifier's round-2 P1, the RF-1b verifier's P1). No censored handling is built."""
+    from turbotab.core.stages.finding_words import _ABOVE_COUNTABLE
+
+    tntc = sum(n for v, n in unparsed.items() if _ABOVE_COUNTABLE.search(v))
+    if not tntc:
+        return 0, ""
+    from turbotab.core import claims
+
+    return tntc, (f"; {_count(tntc)} {_plural(tntc, 'was', 'were')} too numerous to count: "
+                  f"{_plural(tntc, 'it is', 'each is')} {claims.methods('repairs.tntc_censored')}"
+                  + (f", {claims.methods('repairs.tntc_beside_below_limit')}" if below else ""))
+
+
 def _offer_text_numbers(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
     column = p.get("column")
     if not oc.has(column):
@@ -936,30 +966,18 @@ def _offer_text_numbers(finding: dict[str, Any], p: dict[str, Any], oc: OfferCon
     c = str(column)
     n, numbers = int(p.get("n_values") or 0), int(p.get("numbers") or 0)
     unparsed = {str(k): int(v) for k, v in dict(p.get("unparsed") or {}).items()}
-    n_below = sum(int(v) for v in dict(p.get("below") or {}).values())
-    n_bad = sum(unparsed.values())
-    blank = n_bad + n_below
+    limited = sum(int(v) for v in dict(p.get("below") or {}).values())  # ``<10``: its limit written
+    blank = sum(unparsed.values()) + limited
+    # A value below a limit is one whether its limit is written or a mark names none (``ND``):
+    # both are blanked here, and neither is called "not a number".
+    n_below = limited + _below_marks(unparsed)
+    n_bad = blank - n_below
     named = _named_values(unparsed) if unparsed else ""
     below = (f"{_count(n_below)} below a detection limit" if n_below else "")
-    gone = " and ".join(x for x in (f"{_count(n_bad)} that are not numbers" if n_bad else "", below) if x)
-    # Claims backtest D-044 (its claims, ``repairs.tntc_censored`` and
-    # ``repairs.tntc_beside_below_limit``): a count too numerous to count is a value above the
-    # countable range, not a missing one (FDA BAM, as stages/finding_words.py reads it), so blanking
-    # it alone biases the column low, and the column is said to be biased low where nothing else
-    # pulls it. A value below a detection limit, blanked in the same repair, pulls it high, so with
-    # both the column's direction is not known and the sentences say the two pull opposite ways
-    # (the RF-1 verifier's round-2 P1). No censored handling is built.
-    from turbotab.core.stages.finding_words import _ABOVE_COUNTABLE
-
-    tntc = sum(n for v, n in unparsed.items() if _ABOVE_COUNTABLE.search(v))
-    if tntc:
-        from turbotab.core import claims
-
-        missing = (f"; {_count(tntc)} {_plural(tntc, 'was', 'were')} too numerous to count: "
-                   f"{_plural(tntc, 'it is', 'each is')} {claims.methods('repairs.tntc_censored')}"
-                   + (f", {claims.methods('repairs.tntc_beside_below_limit')}" if n_below else ""))
-    else:
-        missing = ""
+    bad = f"{_count(n_bad)} {_plural(n_bad, 'that is not a number', 'that are not numbers')}"
+    gone = " and ".join(x for x in (bad if n_bad else "", below) if x)
+    tntc, missing = _too_numerous(unparsed, n_below)
+    from turbotab.core import claims
 
     def option(key: str, label: str, decimal: str, thousands: bool, example: str = "") -> RepairOption:
         spec = {"decimal": decimal, "thousands": thousands}
@@ -1012,6 +1030,14 @@ def _offer_below_detection(finding: dict[str, Any], p: dict[str, Any], oc: Offer
     first = next(iter(below))
     spec = {"decimal": str(p.get("decimal") or "."), "thousands": bool(p.get("thousands"))}
     out = []
+    # Every other text value is blanked and named in the methods sentence (claims backtest D-044;
+    # the RF-1b verifier's P1): among them a count too numerous to count, with what blanking it
+    # does, and a mark below a limit that names none (``ND``), which has no limit to take a
+    # fraction of.
+    unparsed = {str(k): int(v) for k, v in dict(p.get("unparsed") or {}).items()}
+    _, missing = _too_numerous(unparsed, _below_marks(unparsed))
+    blanked = (f"; {_count(n_bad)} other text {_plural(n_bad, 'value was', 'values were')} set to "
+               f"missing ({_named_values(unparsed)})" if unparsed else "")
     for key, label, words in (("half_limit", "Half the limit", "half"),
                               ("limit_root2", "Limit over √2", "the limit over √2")):
         factor = LOD_FACTORS[key]
@@ -1023,7 +1049,7 @@ def _offer_below_detection(finding: dict[str, Any], p: dict[str, Any], oc: Offer
             f"{_tick(f'{example:.4g}')}{rest}.",
             f"{_count(n_below)} {_plural(n_below, 'value')} of {_tick(c)} below a detection limit "
             f"{_plural(n_below, 'was', 'were')} set to {words} of {_plural(n_below, 'its', 'their')} "
-            f"limit, and the column was read as numbers.",
+            f"limit, and the column was read as numbers{blanked}{missing}.",
             "values", {"columns": {c: {**spec, "factor": factor}}}))
     return out
 

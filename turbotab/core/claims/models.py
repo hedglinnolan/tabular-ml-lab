@@ -863,10 +863,12 @@ SEAL_BY_ROW = register(Claim(
                       "note, written after the validation is chosen, holds the folds' sentence "
                       "(models.validation.within_unit_sentence, MS6), and was not right under "
                       "every validation either: it said the folds were drawn by row under "
-                      "internal-external validation too (the verifier's round-2 P3). It now says "
-                      "so only of folds drawn by row, and under internal-external validation reads "
-                      "the drawn folds, saying nothing of units where no unit's rows fall in two "
-                      "of them.",
+                      "internal-external validation too (the verifier's round-2 P3), and then "
+                      "that every score was within-unit where one unit of forty spanned two folds "
+                      "(the RF-1b verifier's P3). It now says so only of folds drawn by row, and "
+                      "under internal-external validation reads the drawn folds: it says nothing "
+                      "of units where no unit's rows fall in two of them, and where some do, "
+                      "counts them and reads only their rows' scores as within-unit.",
              basis=Basis(
                  reason="The folds are drawn with the seal's groups (seal.split_args, "
                         "rows.draw_split), so where the held-out rows are drawn by row the folds "

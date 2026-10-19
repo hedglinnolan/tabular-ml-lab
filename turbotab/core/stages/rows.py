@@ -2038,11 +2038,11 @@ def split_stage(ctx: StageContext) -> Bundle:
     # drawn by row too, and every score is within-unit performance: said here, never silent. Under
     # internal–external validation the folds are the cluster's levels instead, so the note reads
     # the drawn folds: where no unit's rows fall in two of them it says nothing of units (the RF-1
-    # verifier's round-2 P3).
+    # verifier's round-2 P3), and where some do it counts them (the RF-1b verifier's P3).
     from turbotab.core.models.validation import within_unit_sentence
 
     basis = seal.basis.model_dump(mode="json") if seal.basis else None
-    split_units = None
+    spanning = None
     if clusters is not None and basis and basis.get("column"):
         with open_store(ctx) as store:
             unit = (store.materialize([basis["column"]], frame["row_id"].to_numpy(dtype=np.int64))
@@ -2052,9 +2052,9 @@ def split_stage(ctx: StageContext) -> Bundle:
                                   "fold": frame["fold"].to_numpy()})
             # A blank identifier is its own unit, which no fold can split.
             drawn = drawn[(drawn["fold"] != -1) & drawn["unit"].notna()]
-            split_units = bool((drawn.groupby("unit")["fold"].nunique() > 1).any())
+            spanning = int((drawn.groupby("unit")["fold"].nunique() > 1).sum())
     within = within_unit_sentence(basis, cluster=spec.cluster if clusters is not None else None,
-                                  split_units=split_units)
+                                  spanning=spanning)
     if within:
         notes.append(within)
     data = {**info, **seal.facts(), "note": split_note({**info, "notes": notes})}
