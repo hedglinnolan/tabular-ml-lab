@@ -11,9 +11,11 @@ Biometrics 44:837), computed by Sun & Xu's midrank algorithm (IEEE Signal Proces
 21:1389), the variance pROC's ``ci.auc(method = "delong")`` reports. Where every case–control pair
 ties (the model gives every row the same score), the AUC is 0.5 by its ties alone and DeLong's
 variance is 0: that interval of no width is refused, with the reason (:data:`TIED`), and the AUC
-stands. Every other score is a mean
-of per-row losses, or a smooth function of such means (R² = 1 − SSE/SST, RMSE = √MSE), and its
-standard error is the influence-function (delta-method) one. When a unit's rows repeat, the
+stands. That holds for a fit computed with this rule. A stage's cache key holds its version, not
+its code (``graph.stage_key``), so a fit cached before the rule is served as it was stored, an
+interval of no width with no reason, until the fit stage's version is raised. Every other score
+is a mean of per-row losses, or a smooth function of such means (R² = 1 − SSE/SST, RMSE = √MSE),
+and its standard error is the influence-function (delta-method) one. When a unit's rows repeat, the
 influence values are summed within each unit first, so the interval is cluster-robust (Obuchowski
 1997, Biometrics 53:567, for the AUC).
 
