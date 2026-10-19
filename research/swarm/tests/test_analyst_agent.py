@@ -31,7 +31,9 @@ def test_its_definition_holds_it_to_bash():
     assert fields["tools"] == "Bash"
     disallowed = [t.strip() for t in fields["disallowedTools"].split(",")]
     assert disallowed == ["Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent", "mcp__*"]
-    assert fields["model"] == "haiku" and fields["effort"] == "high"
+    # Haiku 5.5 by its full id, not the alias, which can resolve to an older Haiku (Nolan,
+    # 2026-10-18: "Use Haiku 5-5 for the pilot"; 2026-10-19: set the analyst model to 5.5).
+    assert fields["model"] == "claude-haiku-5-5" and fields["effort"] == "high"
 
 
 def examples() -> list[str]:

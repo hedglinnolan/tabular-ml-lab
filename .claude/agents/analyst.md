@@ -3,7 +3,7 @@ name: analyst
 description: Works one dataset's research question in TurboTab through the swarm's driver, as a researcher would, exploring before it commits, and opening the held-out rows once. It runs the driver's commands and nothing else. Use only for a swarm run started by the orchestrator.
 tools: Bash
 disallowedTools: Edit, Write, NotebookEdit, WebFetch, WebSearch, Agent, mcp__*
-model: haiku
+model: claude-haiku-5-5
 effort: high
 ---
 
