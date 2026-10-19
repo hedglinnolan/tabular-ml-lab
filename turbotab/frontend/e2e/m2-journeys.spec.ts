@@ -31,7 +31,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { onMock } from "./backend";
 import { confirmAsk, confirmStageAsk } from "./ask";
 import { toClassic } from "./classic";
-import { ANY_STAGE, FIT_CAP, FIT_QUIET, attributeWhileComputing, cheapestFamily, fitOnceComputed, openSealCard, shelfEstimates, visibleWhileComputing } from "./fit";
+import { ANY_STAGE, FIT_CAP, attributeWhileComputing, cheapestFamily, fitOnceComputed, openSealCard, refitShown, shelfEstimates, visibleWhileComputing } from "./fit";
 import { nhanesExport } from "./nhanes";
 import { confirmWaitingRoles, expectDesignHolds } from "./roles";
 
@@ -798,7 +798,8 @@ test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing l
 }) => {
   // The rest of the journey, and two waits for a fit, each up to its cap while the fit job runs:
   // the fit (held for the press, it computes only after it: fitOnceComputed) and the refit after
-  // the post-seal change (a whole fit; it took longer than the first one when this was measured).
+  // the post-seal change (a whole fit, held for the press too where its estimate re-arms the
+  // hold: refitShown; it took longer than the first one when this was measured).
   test.setTimeout(REST_OF_JOURNEY + 2 * FIT_CAP);
   const run = await start(page, "nhanes");
   const T = timings.nhanes!;
@@ -879,13 +880,13 @@ test("NHANES: SAS zeros repaired, the grain stated, meds_hbp kept as a Missing l
   await expect(exclusions).toContainText(/no rows were excluded/i, { timeout: 30_000 });
   await expect(exclusions.getByTestId("post-seal-mark")).toBeVisible({ timeout: 30_000 });
   await page.keyboard.press("Escape");
-  // The refit's wait lasts while the fit job runs (it is not a flat one).
+  // Every row kept, the refit's estimate rises (1.29 and 1.47 times the one Fit confirmed, on two
+  // runs on a dev machine): where it re-arms the hold (over about 2 minutes and over 1.5 times
+  // that one, as a slower runner's estimates can), the refit waits for Fit, pressed as the person
+  // presses it (CI run 39169596231 waited 122 s with nothing computing, as a held refit does).
+  // The waits last while the shelf and the fit job compute (they are not flat ones).
   T.post_seal_refit_s = await timed(() =>
-    visibleWhileComputing(page, page.locator('[data-testid="results"][data-seal-phase="post_seal"]'), ["fit"], {
-      quiet: FIT_QUIET,
-      cap: FIT_CAP,
-      label: "the refit is post-seal",
-    }),
+    refitShown(page, page.locator('[data-testid="results"][data-seal-phase="post_seal"]'), "the refit is post-seal"),
   );
   await expect(page.getByTestId("post-seal")).toContainText("eligibility rules");
   await page.getByTestId("post-seal").scrollIntoViewIfNeeded();

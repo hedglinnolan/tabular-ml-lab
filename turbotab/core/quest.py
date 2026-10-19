@@ -62,7 +62,14 @@ question reopened by another answer in its own stage says so too ("Your change t
 in Your data reopened 1 question.", FOUNDATION §3's "the join added 12 columns, so what each new
 column is gets read again"; ``within``); a result its own stage's answers left out of date is not
 a drop-back (each answer redraws its stage's cards). A result whose stage is blocked (the analysis
-was withdrawn) is never computed again, so it is not out of date.
+was withdrawn) is never computed again, so it is not out of date. Under Predict an open noticing
+counts toward the triage in Results, not toward the stage it sits in (ruling R-a); a change of the
+goal from Predict makes it count there again, so a stage complete just before the goal changed
+names that change on each noticing it held open then, and on each the change made fire (the
+energy noticing), for as long as it stays open, the goal stands and the findings are the ones the
+change met. Findings computed again since (an answer the findings stage reads changed) may hold
+a new noticing, and nothing says which were open then, so none names the change; one in a stage
+still being worked (or not yet reached) then is the journey going forward.
 
 **While a reading recomputes.** A question whose applicability or answer is read from a stage
 (the outcome's reading, the rows' structure, the form card) waits while that stage recomputes.
@@ -1406,6 +1413,206 @@ def _goal_changed_to_predict(log: _Log) -> ReopenedBy | None:
     return None
 
 
+def _goal_moved_the_triage(log: _Log) -> ReopenedBy | None:
+    """The latest goal change (or revert) that made the goal other than Predict after Predict, if
+    the goal is still the one it set. Under Predict an open noticing counts toward the triage in
+    Results (ruling R-a), not toward the stage it is placed in; under any other goal, or none, it
+    counts there, so that stage, if complete when the goal changed, asks one more and says why
+    (§7.2 I11: the path fuzzer's seeds 475, 1181 and 1221; :func:`_moved_the_triage_here`)."""
+    from turbotab.core.sweep import gate_stage
+
+    for record in reversed(log.live):
+        if record.decision.kind not in ("set_purpose", FOLLOWS_WHAT_IT_UNDOES):
+            continue
+        before, after = log.state_at(record.seq - 1), log.state_at(record.seq)
+        purposes = (getattr(before, "purpose", None), getattr(after, "purpose", None))
+        if purposes[0] == purposes[1]:
+            continue
+        stage = log.stage_of(record)
+        if (before is None or after is None or gate_stage(before) != "results"
+                or gate_stage(after) == "results" or stage is None):
+            return None
+        return ReopenedBy(decision_id=record.id, kind=record.decision.kind, stage=stage)
+    return None
+
+
+def _moved_the_triage_here(stage: str, lines: Sequence[QuestLine], sweep: Sweep | None,
+                           moved: ReopenedBy, log: _Log, facts: Facts,
+                           met: Callable[[Any], bool]) -> list[QuestLine]:
+    """The open noticings of ``stage`` that the goal's change from Predict (``moved``) made count
+    there, in a stage complete just before it (§7.2 I11's case): each one its stage held open
+    then, which Predict counted toward Results' triage (ruling R-a), and each one that first fires
+    with the change (the dietary energy noticing, which does not fire under Predict, ruling 5:
+    the change made it apply, as it makes the estimand apply). Each keeps the change as its cause
+    while it stays open, the goal stands and the findings served are the ones the change met
+    (``met``, :func:`_findings_met`). Judged from the log as it stood just before the change, as
+    :func:`_reopened_only_if_complete` judges a declaration, never from how the stage stands now.
+    Once an answer the findings stage reads has changed since (a reading confirmed), its findings
+    were computed again, one may be new (served for that answer), and nothing here says which
+    were open then, so none names the change. One disposed of since (held for another question)
+    was not the one open then; a stage still asking then (a question open, the held-out rows not
+    drawn), or not yet reached, counts its noticings as the journey going forward."""
+    cause = log.by_id.get(moved.decision_id)
+    if cause is None:
+        return []
+    held = [l for l in lines if l.source == "finding" and l.label == DECIDE and l.counted
+            and l.status == "open" and l.reopened_by is None
+            and not _disposed_since(log, l.key, cause)]
+    if not held or not met(cause) or not _complete_before(stage, lines, sweep, cause, log, facts):
+        return []
+    return held
+
+
+def _findings_met(state: Any, stages: Mapping[str, Any], cause: Any, log: _Log) -> bool:
+    """Whether the findings served are the ones the findings stage computed when ``cause`` was
+    recorded: the stage is fresh (its status not given: the findings are for these answers), and
+    its key on the answers now is its key on the log just before ``cause``, by the engine's own
+    rule (``graph.stage_keys``), so an answer given again with the value it had, or a change
+    withdrawn, computes nothing again."""
+    from turbotab.core.graph import stage_keys
+
+    status = _get(stages.get("findings"), "status")
+    before = log.state_at(cause.seq - 1)
+    if (status is not None and status != "fresh") or before is None:
+        return False
+    order = _graph().order()
+    try:
+        then, now = (stage_keys(order, s.model_dump(mode="json"), None).get("findings")
+                     for s in (before, state))
+    except Exception:  # noqa: BLE001 - answers the keys cannot read say nothing was met
+        return False
+    return then is not None and then == now
+
+
+def _disposed_since(log: _Log, finding_id: str, cause: Any) -> bool:
+    for r in log.live:
+        changed = log.undone(r) if r.seq > cause.seq else None
+        if (changed is not None and changed.kind in FINDING_DISPOSITIONS
+                and getattr(changed, "finding_id", None) == finding_id):
+            return True
+    return False
+
+
+def _complete_before(stage: str, lines: Sequence[QuestLine], sweep: Sweep | None, cause: Any,
+                     log: _Log, facts: Facts) -> bool:
+    """Whether ``stage`` stood complete just before ``cause``, a change from Predict: each counted
+    Decide it held then answered then (:func:`_answered_before`; an open noticing counted toward
+    Results' triage under Predict, ruling R-a), each default of its sweep confirmed then, and each
+    question or declaration the change asks otherwise or takes away (the held-out rows, which
+    Predict asks until they are drawn; a form Predict sets for the person and Estimate asks)
+    answered or confirmed then too. A line that was not there then (:func:`_there_before`: the
+    estimand the change made apply, answered since or not) says nothing of then. A stage whose
+    questions had no answers then was not reached, or was still being worked."""
+    before, after = log.state_at(cause.seq - 1), log.state_at(cause.seq)
+    if before is None or after is None:
+        return False
+    confirmed = log.by_id.get(sweep.confirmed_by) if sweep and sweep.confirmed_by else None
+    for line in lines:
+        if not _there_before(line, before, after, facts):
+            continue
+        if line.label == DECIDE and line.counted:
+            if line.source == "finding" and line.status == "open":
+                continue
+        elif line.label != CONFIRM or sweep is None:
+            continue
+        elif (confirmed is not None and confirmed.seq < cause.seq
+              and (line.key in sweep.changed or line.decision_id == confirmed.id)):
+            continue  # confirmed by "Confirm all" before the change
+        if not _answered_before(line, cause, log):
+            return False
+    for key, question in QUESTIONS.items():
+        if question.stage != stage:
+            continue
+        was, now = _verdict(key, before, facts), _verdict(key, after, facts)
+        if was is None or now is None or (was == now and key != "split"):
+            continue  # a line the change left as it was is judged as it stands (above)
+        if _answered_at(key, log, cause.seq - 1):
+            continue
+        if was == "asked" or (was == "stated" and STATED.get(key, CONFIRM) == CONFIRM
+                              and not _swept_at(stage, key, before)):
+            return False
+    for decl in DECLARATIONS:
+        if (decl.place.stage != stage or not decl.counted or decl.only_recorded
+                or decl.place.label not in (DECIDE, CONFIRM)):
+            continue
+        try:
+            left = decl.applies(before, facts) and not decl.applies(after, facts)
+        except Exception:  # noqa: BLE001 - an older state the card cannot read says nothing
+            continue
+        if left and not _declared_at(decl, before, log, cause.seq - 1, facts):
+            return False
+    return True
+
+
+def _there_before(line: QuestLine, before: Any, after: Any, facts: Facts) -> bool:
+    """Whether ``line`` stood in its stage just before the change (``before``, ``after``: the log
+    just before and just after it), so that how it stands now says how it stood then. A question
+    that did not apply then was not there, nor a declaration that did not apply then, nor a
+    noticing that did not fire then (``materiality.finding_fires``: the energy noticing under
+    Predict); a question the change asks otherwise (stated then, asked now) is judged as it stood
+    then (:func:`_complete_before`'s questions)."""
+    if line.source == "question" and line.key in QUESTIONS:
+        was = _verdict(line.key, before, facts)
+        now = _verdict(line.key, after, facts)
+        return was != "na" and (was is None or now is None or was == now)
+    if line.source == "declaration":
+        decl = next((d for d in DECLARATIONS if d.kind == line.key), None)
+        try:
+            return decl is None or bool(decl.applies(before, facts))
+        except Exception:  # noqa: BLE001 - an older state the card cannot read: judged as it is
+            return True
+    if line.source == "finding":
+        from turbotab.core.materiality import finding_fires
+
+        return finding_fires({"id": line.key}, before)
+    return True
+
+
+def _answered_at(key: str, log: _Log, seq: int) -> bool:
+    """Whether Router question ``key`` stood answered just after record ``seq``: a live answer of
+    it by then that held then; under Predict the held-out rows only once drawn
+    (``outcome_gate.drawn``), as :func:`quest_log` asks them."""
+    if not any(r.seq <= seq and r.decision.kind in answering_kinds(key) for r in log.live):
+        return False
+    if log.holds_at(answer_holds(key), seq) is not True:
+        return False
+    if key == "split" and getattr(log.state_at(seq), "purpose", None) == "prediction":
+        from turbotab.core.outcome_gate import drawn
+
+        return drawn([r for r in log.records if r.seq <= seq])
+    return True
+
+
+def _swept_at(stage: str, key: str, state: Any) -> bool:
+    """Whether the stage's "Confirm all" held on ``state`` lists the line ``key``."""
+    from turbotab.core.decisions import sweep_key
+
+    held = (getattr(state, "sweeps", None) or {}).get(sweep_key(stage))
+    return held is not None and any(l.key == key for l in held.lines)
+
+
+def _declared_at(decl: Declaration, state: Any, log: _Log, seq: int, facts: Facts) -> bool:
+    """Whether declaration ``decl`` stood answered on ``state``, the log just after ``seq``, as
+    :func:`_declaration_lines` and the sweep answer it: recorded and holding, or, a default set
+    for the person, confirmed by its stage's "Confirm all" as stated then while nothing it reads
+    was still asked."""
+    from turbotab.core.decisions import SLOTS, sweep_key
+
+    recorded = getattr(state, SLOTS[decl.kind], None) is not None
+    if decl.own_record:
+        recorded = recorded and any(r.seq <= seq and r.decision.kind == decl.kind
+                                    for r in log.live)
+    if recorded and (decl.holds is None or bool(decl.holds(state))):
+        return True
+    if decl.place.label != CONFIRM:
+        return False
+    held = (getattr(state, "sweeps", None) or {}).get(sweep_key(decl.place.stage))
+    value = decl.stated(state) if decl.stated is not None else decl.name
+    return (held is not None and (decl.kind, value) in {(l.key, l.value) for l in held.lines}
+            and not any(_verdict(k, state, facts) == "asked" and not _answered_at(k, log, seq)
+                        for k in decl.reads))
+
+
 def _stated_reason(key: str) -> str | None:
     """Why a default TurboTab recorded itself holds (the split under Estimate)."""
     if key == "split":
@@ -2538,12 +2745,27 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     # the goal becomes Predict (the path fuzzer's I11). Under Estimate (and with no goal) the
     # triage is Models' own, and nothing changes.
     gate = sweeps.gate_stage(state)
+    # The other side of R-a (the path fuzzer's I11): once the goal moves from Predict, an open
+    # noticing counts in the stage it is placed in again, so that stage, if it was complete just
+    # before the goal changed, says the change is why it asks one more, while the findings are the
+    # ones the change met (:func:`_moved_the_triage_here`, :func:`_findings_met`).
+    moved = _goal_moved_the_triage(log) if gate != "results" else None
+    met_at: dict[str, bool] = {}
+
+    def met(cause: Any) -> bool:  # the findings served are the ones the change met (once a log)
+        if cause.id not in met_at:
+            met_at[cause.id] = _findings_met(state, stages, cause, log)
+        return met_at[cause.id]
+
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key),
                       key=lambda l: (LABELS.index(l.label), l.order, l.name))
         reached = STAGE_INDEX[key] <= frontier
         sweep = sweeps.sweep_of(key, mine, state, log)
+        if moved is not None and reached and key != "results":
+            for line in _moved_the_triage_here(key, mine, sweep, moved, log, facts, met):
+                line.reopened_by = moved
         progress = None
         if reached:
             decide = [l for l in mine if l.label == DECIDE and l.counted

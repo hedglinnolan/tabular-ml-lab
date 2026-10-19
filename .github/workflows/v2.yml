@@ -48,7 +48,7 @@ jobs:
             paths: turbotab/core/tests/test_modeling.py -k "fitted_step_sees_only or independent_cross_validate"
           - shard: models, the rest
             paths: turbotab/core/tests/test_modeling.py -k "not (fitted_step_sees_only or independent_cross_validate)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the move to Ubuntu 26 is to be made deliberately later
     timeout-minutes: 25
     env:
       TURBOTAB_WORKERS: "2"
@@ -82,7 +82,7 @@ jobs:
 
   frontend:
     name: frontend check (tsc, eslint, vitest)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the move to Ubuntu 26 is to be made deliberately later
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -101,7 +101,7 @@ jobs:
 
   docker:
     name: server image (build, accounts, sign-in, upload)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the move to Ubuntu 26 is to be made deliberately later
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4

@@ -122,6 +122,44 @@ export async function fitOnceComputed(page: Page, timeout = 300_000): Promise<bo
   return pressed;
 }
 
+/** Whether the scheduler holds the fit for Fit now, as the server's status says (``held: "fit"``):
+ *  its estimate is over about 2 minutes, and no press of Fit for the outcome confirmed one it is
+ *  within 1.5 times of (core/fit_press.py ``holds``). */
+export async function fitHeldForPress(page: Page, pid: string = pidOf(page)): Promise<boolean> {
+  return page.evaluate(async (p) => {
+    const res = await fetch(`/api/projects/${p}`);
+    if (!res.ok) return false;
+    const view = (await res.json()) as { stages?: Record<string, { held?: string | null }> };
+    return view.stages?.fit?.held === "fit";
+  }, pid);
+}
+
+/**
+ * After an answer the fit reads, changed once Fit was pressed: ``target`` (what the refit shows)
+ * visible. The refit computes on its own, or waits for Fit where its new estimate re-arms the
+ * hold: over about 2 minutes and over 1.5 times the estimate the last press confirmed
+ * (core/fit_press.py ``holds``), which the shelf's measured estimates reach on a slower runner
+ * where a faster machine's stay under it. Fit is then pressed as the person presses it. The waits
+ * go on while the shelf measures the estimates again and the fit job runs, not for a flat time.
+ * Returns whether Fit was pressed.
+ */
+export async function refitShown(page: Page, target: Locator, label: string): Promise<boolean> {
+  const pid = pidOf(page);
+  await waitWhileComputing(page, async () => (await target.isVisible()) || (await fitHeldForPress(page, pid)), ["shelf", "fit"], {
+    quiet: FIT_QUIET,
+    cap: FIT_CAP,
+  });
+  const pressed = !(await target.isVisible()) && (await fitHeldForPress(page, pid));
+  if (pressed) await pressFit(page);
+  try {
+    test.info().annotations.push({ type: "refit", description: pressed ? "held for the press, and pressed" : "computed without a press" });
+  } catch {
+    /* not inside a test */
+  }
+  await visibleWhileComputing(page, target, ["fit"], { quiet: FIT_QUIET, cap: FIT_CAP, label });
+  return pressed;
+}
+
 /** The project's id from the page's URL (/p/:pid, or today's screen at /p/:pid/classic). */
 export function pidOf(page: Page): string {
   return decodeURIComponent(/\/p\/([^/]+)(?:\/classic)?$/.exec(page.url())![1]!);

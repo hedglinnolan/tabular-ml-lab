@@ -48,7 +48,7 @@ jobs:
             paths: turbotab/core/tests/acceptance --ignore=turbotab/core/tests/acceptance/test_nci_usual_intake.py --ignore=turbotab/core/tests/acceptance/test_explain.py --ignore=turbotab/core/tests/acceptance/test_ms6_prediction_validation.py --ignore=turbotab/core/tests/acceptance/test_wp7_missing_data.py --ignore=turbotab/core/tests/acceptance/test_wp11_omics.py --ignore=turbotab/core/tests/acceptance/test_export.py --ignore=turbotab/core/tests/acceptance/test_ms5_regression_calibration.py
           - shard: the rest
             paths: turbotab/core turbotab/server --ignore=turbotab/core/tests/acceptance
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the move to Ubuntu 26 is to be made deliberately later
     timeout-minutes: 120
     env:
       TURBOTAB_WORKERS: "2"
@@ -95,7 +95,7 @@ jobs:
 
   e2e:
     name: mock browser tests (Playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the move to Ubuntu 26 is to be made deliberately later
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -138,7 +138,7 @@ jobs:
     # The heavy journeys (m3-no-dead-end's metabolomics and survey, about 27 and 31 minutes) are
     # marked and skip without E2E_HEAVY=1, which this job never sets: a scheduled run takes them.
     name: real-server browser journeys, light (Playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: the move to Ubuntu 26 is to be made deliberately later
     # Non-blocking until its waits are tuned to CI's runners (2026-10-11): the journeys pass on a
     # dev machine, and the job has not yet been green in CI. Remove this line once it is.
     continue-on-error: true
