@@ -18,6 +18,7 @@ import {
   useDecideNow,
   useExport,
   useMateriality,
+  useProjectView,
   useQuest,
   useRecord,
   useTriage,
@@ -243,6 +244,53 @@ describe("the quest log follows the record", () => {
       type: "stage",
       data: { ...running, progress: 0.2, updated_at: "2026-10-10T10:00:01.000Z" },
     });
+    expect(qc.getQueryState(keys.quest(PID))!.isInvalidated).toBe(false);
+  });
+
+  // A read of the view can hold a stage's new state before its event: the engine reports a stage
+  // fresh once its result is written, before the run's end publishes that it finished (stamped
+  // then), and a response can beat an event on the wire. The event that follows then finds the view
+  // holding its state already. The quest log was read before either, while Who's in's results were
+  // out of date (CI's quest-nhanes-predict journey: the bar kept Who's in reopened, GET /quest none).
+  const viewWith = (fit: StageStatus) => ({ summary: {}, state: {}, decisions: [], interview: [], stages: { fit } });
+  // [what, the view held, the view read, the event that follows it]
+  const moves: [string, StageStatus, StageStatus, StageStatus][] = [
+    [
+      "a result computed again (its stage no longer out of date)",
+      status({ status: "running", progress: 0.9 }),
+      status({ status: "fresh", fresh: true }), // written, stamped as when it started running
+      status({ status: "fresh", fresh: true, updated_at: "2026-10-10T10:00:05.000Z" }), // the run's end
+    ],
+    [
+      "a result out of date (a reopening)",
+      status({ status: "fresh", fresh: true }),
+      status({ status: "stale", key: "k2", updated_at: "2026-10-10T10:00:01.000Z" }),
+      status({ status: "stale", key: "k2", updated_at: "2026-10-10T10:00:01.000Z" }),
+    ],
+  ];
+  for (const [what, held, read, event] of moves) {
+    it(`a view read that brings ${what} before its event marks the quest log out of date`, async () => {
+      serve({ [BASE]: { body: viewWith(read) } });
+      const { qc, Wrap } = wrapper();
+      qc.setQueryData(keys.view(PID), viewWith(held));
+      qc.setQueryData(keys.quest(PID), { marker: "read before the change" });
+      const { result } = renderHook(() => useProjectView(PID), { wrapper: Wrap });
+      await waitFor(() => expect(result.current.data?.stages.fit?.status).toBe(read.status));
+      applyProjectEvent(qc, PID, { type: "stage", data: event });
+      expect(qc.getQueryState(keys.quest(PID))!.isInvalidated).toBe(true);
+    });
+  }
+
+  it("a view read that brings no new state (a progress tick, or a status older than the cache's) leaves it as read", async () => {
+    const running = status({ status: "running", progress: 0.4, updated_at: "2026-10-10T10:00:02.000Z" });
+    const older = status({ status: "queued", updated_at: "2026-10-10T10:00:01.000Z" });
+    serve({ [BASE]: { body: { ...viewWith(older), stages: { fit: older, split: { ...running, stage: "split", progress: 0.6 } } } } });
+    const { qc, Wrap } = wrapper();
+    qc.setQueryData(keys.view(PID), { ...viewWith(running), stages: { fit: running, split: { ...running, stage: "split" } } });
+    qc.setQueryData(keys.quest(PID), { marker: 1 });
+    const { result } = renderHook(() => useProjectView(PID), { wrapper: Wrap });
+    await waitFor(() => expect(result.current.data?.stages.split?.progress).toBe(0.6));
+    expect(result.current.data?.stages.fit?.status).toBe("running"); // the cache's newer status kept
     expect(qc.getQueryState(keys.quest(PID))!.isInvalidated).toBe(false);
   });
 

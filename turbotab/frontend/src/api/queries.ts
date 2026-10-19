@@ -51,7 +51,8 @@ export const keys = {
   files: (pid: string) => [pid, "files"] as const,
   models: () => ["models"] as const,
   // W1-A: the quest log and the record's outputs. All are derived from the decision log and the
-  // stage statuses, so a decision event (and a stage changing state) invalidates them (events.ts).
+  // stage statuses, so a decision event (and a stage changing state) invalidates them (events.ts);
+  // the quest log also when a read of the view brings a stage's new state first (useProjectView).
   quest: (pid: string) => [pid, "quest"] as const,
   record: (pid: string) => [pid, "record"] as const,
   triage: (pid: string) => [pid, "triage"] as const,
@@ -116,7 +117,15 @@ export function useProjectView(pid: string) {
     queryFn: async ({ signal }) => {
       const next = await api.project(pid, signal);
       // Read the cache after the response, not before: SSE may have patched it meanwhile.
-      return mergeView(qc.getQueryData<ProjectView>(keys.view(pid)), next);
+      const prev = qc.getQueryData<ProjectView>(keys.view(pid));
+      const merged = mergeView(prev, next);
+      // The quest log reads each stage's state (a result out of date drops its stage back until it
+      // is computed again), and a stage event reads it again only when it changes the state the view
+      // holds (events.ts). This read can bring that state first: the engine reports a stage fresh
+      // once its result is written, before the run's end publishes the event, and a response can
+      // beat an event. The event then finds nothing new, so this read reads the quest log again.
+      if (prev && stagesMoved(prev, merged)) void qc.invalidateQueries({ queryKey: keys.quest(pid), exact: true });
+      return merged;
     },
   });
 }
@@ -206,6 +215,16 @@ export function mergeView(prev: ProjectView | undefined, next: ProjectView): Pro
   // The size comes from the ingest artifact; keep the side whose ingest status won.
   const summary = stages.ingest === prev.stages.ingest ? prev.summary : next.summary;
   return { ...next, summary, state: behind ? prev.state : next.state, stages, decisions };
+}
+
+/** Whether a stage really changed (its state, a stop, the hold), as against a progress tick. */
+export function changedState(a: StageStatus | undefined, b: StageStatus): boolean {
+  return a?.status !== b.status || a?.cancelled !== b.cancelled || a?.held !== b.held;
+}
+
+/** Whether `next` holds a stage in a state `prev` did not (a progress tick is no change). */
+function stagesMoved(prev: ProjectView, next: ProjectView): boolean {
+  return Object.entries(next.stages).some(([name, s]) => !!s && changedState(prev.stages[name], s));
 }
 
 function lastSeq(view: ProjectView): number {
