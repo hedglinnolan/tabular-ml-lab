@@ -5,127 +5,131 @@ under a dated heading, to the top of `HANDOFF_HISTORY.md`, which holds every ear
 rulings recorded in them. Rules live in the root `CLAUDE.md` and in `ORCHESTRATOR.md`; rulings live
 in the documents they amend.
 
-## State on 2026-10-16 (evening), checked against git
+## TL;DR (2026-10-19)
 
-- **turbotab-next** is the R0b merge (feat/r0b-int at 18659faa, landed and pushed on 2026-10-16), on top of R0a and stage 1. It holds:
-  - the claims registry with its first 27 claims (`turbotab/core/claims/`; `docs/turbotab-next/reference/CLAIMS_REFERENCE.md` lists them);
-  - stage 1's four fix branches, the claims registry spec, the replication data checks, the onboarding guidance;
-  - `plans/SWARM_PLAN.md`, the research swarm's draft, for the pause.
+- **What:** the build is on the swarm path. Nolan ruled on 2026-10-17 that the swarm's pieces come
+  before the drawn screens of W2–W4. On 2026-10-18 he kept the full path and said: "Do everything
+  right up until we are ready to start the swarm and I will have a discussion with you about it."
+- **Landed** locally on turbotab-next (8a3e0fff, on GitHub as `ci/full-int-3b`; turbotab-next
+  itself is held until CI is green):
+  - W1 part 2: the quest shell, the Predict cards and Predict Results, fixed through two
+    walkthroughs;
+  - the swarm's engine pieces;
+  - the claims gates;
+  - the Sullivan 2021 replication;
+  - the swarm's driver, record, checks and intake, with a dry run whose 18 checks all agree;
+  - the false sentences an analyst reads (R1-F's first batch) and RM's referee and audit fixes.
+- **The pre-pilot report** is `plans/PILOT_READINESS.md`: four of five gates met; RB, the live
+  lockdown check and one shell race remain; the pilot after Nolan's usage resets (Thursday 1 pm).
+- **Spend:** 96.0M fresh subagent tokens from 2026-10-17 00:30 to 2026-10-19, against the ~80M
+  reference (raised from 50M on 2026-10-18; "if we blow past 80M that's fine"); 126.5M since
+  Thursday, about 91% of Nolan's week.
+
+## State on 2026-10-19, checked against git
+
+- **turbotab-next** is 8a3e0fff locally. It holds:
+  - 12345c40, which merged feat/w1p2-x (W1 part 2 with the swarm engine pieces), feat/r1-gates,
+    feat/sullivan-r and feat/sullivan-a;
+  - feat/int-3 on top: feat/land-fix-1 (the path fuzzer's I11 fix, the NHANES m2 journey, CI pinned
+    to ubuntu-24.04), feat/rm-core (RM's referee and audit fixes, without R1-M), feat/rf-1b (R1-F's
+    first batch), feat/drv-int and feat/drv-fix (the driver, record, checks, intake, analyst type
+    and hook, the dry run), and three fixes made at integration.
+- **CI on 8a3e0fff** (`ci/full-int-3b`): every job green but the real-server journey
+  `quest-nhanes-predict`, where the page's quest bar shows "Who's in" reopened while GET /quest does
+  not (passes on this machine; passed on 12345c40). **turbotab-next is not pushed until it is fixed.**
 - **Environments:**
-  - `venv-next/` in the main checkout is TurboTab v2's environment, built with uv from `turbotab/server/constraints.txt` (CI's pins); `scripts/py` runs it from any worktree.
-  - `venv/` is Classic's, untouched.
-  - The fast tiers pass under `venv-next` on 18659faa: server 189, core 3,561, models 34.
-- **CI:** read it on turbotab-next's head through the public check-runs API before you rely on it.
-  - On 18659faa (ci/full-r0b-int) every job passed: the four fast shards, the full tier's three shards, the browser mocks, the image and both launchers. The known-red e2e-real had not finished when R0b landed.
-  - The full tier runs in three shards, each with its own 100-minute deadline and its slowest files posted as annotations.
-  - One server test is intermittent on Linux (INBOX, "W1, intermittent test").
-- **No CI job installs R,** so the R reference tests (the trial core against R's gee, and others) run only on a machine with R and its packages (INBOX, R0b).
+  - `venv-next/` in the main checkout is TurboTab v2's environment (CI's pins); `scripts/py` runs
+    it from any worktree.
+  - R 4.6.1 with `survey` and `haven` is on the machine. No CI job installs R.
+- **Local and private** (Nolan, 2026-10-17: "Let's not make those public"):
+  - `.claude/settings.local.json` runs `.claude/hooks/guard.py` (five Never rules) and, since
+    2026-10-19, `research/swarm/analyst_hook.py` for every tool (an analyst runs only the driver).
+  - None of these settings is ever committed.
 
-## Done since 2026-10-11
+## Done since 2026-10-16
 
-- **Stratification optimism in Lean 4** (914a054a): the exact decomposition and the stratification sandwich are proved, and the general law is stated (notes/lean-strat/).
-- **The claims backtest** (e6e58809): 14.5% (5.7–23.3%) of a seeded sample of 117 decision-setting claims carry an S1 defect (notes/claims-backtest/).
-- **Stage 1, the 15 S1 defects,** each fixed test first and re-reviewed until approved. B-281 ended at the honest refusal; partial reporting is filed in INBOX as v2.x.
-- **The claims registry, R0** (plans/R0_PLAN.md):
-  - **R0a, the scaffold:** 8 runs, 1.74M fresh tokens.
-  - **R0b, the first 27 claims and the splits:** 31 runs, 9.76M fresh (about 570M cached), against about 3M to 3.5M planned. Its 14 verifier passes found 10 blockers, 12 majors and 55 minors. R0_PLAN, "R0b landed", records what it settled and what it hands R1.
-- **The claims registry spec** (plans/CLAIMS_REGISTRY.md, draft 2), ruled by Nolan on 2026-10-15.
-- **Replication data checks** (notes/replication/): Bang 2009 and Menke 2015 can be replicated approximately; Sullivan 2021 replaces Yang 2014.
-- **The onboarding guidance,** in three passes (notes/onboarding-audit/).
-- **plans/SWARM_PLAN.md,** drafted by the orchestrator, docs only (3c131b0a), for the pause.
+Each line gives the package's fresh subagent tokens, measured from its transcripts.
 
-## Known red
-
-- **The e2e-real job is still `continue-on-error`.** The same five journeys failed on every CI run of 2026-10-16; check each for a defect before tuning a wait (INBOX, "W1, e2e-real").
+- **W1 part 2** (plans/W1_PART2_PLAN.md):
+  - Stage A, B and C built the shell, the Predict cards, Predict Results, the held-out baseline and
+    its verdict, and the methods sections.
+  - The orchestrator's walkthrough of NHANES glucose under Predict found 5 blockers, 7 majors and
+    13 minors (notes/walkthrough/2026-10-17-nhanes-glucose-predict.md).
+  - Fix rounds W1-R to W1-X took them, about 18M in all.
+  - The re-walk on 712747ff found findings 1–17 and 19–25 fixed, and 10 more (N1–N10), which W1-W
+    and W1-X fixed.
+- **Rulings made on the way, recorded in the code and its tests:**
+  - **R-g:** roles proposed below high confidence with the same role, confidence and reason are
+    one group, confirmed in one press. A block that mixes groups is refused.
+  - **Under Predict the roles card names no preparation step** after four rounds of false step
+    notes. It says only "N columns hold a predictor role, whichever group holds them."
+  - **N9:** a noticing whose deciding question is already answered is proposed as a limitation.
+  - **The methods** may fold alike confirmations into one sentence, and the entry lists its
+    records.
+- **The swarm's engine pieces** (plans/SWARM_ENGINE_PLAN.md, about 6M with integration):
+  - GET /fits, a record of every completed fit with its paired movement under Predict;
+  - GET /results;
+  - GET /mattered, the specification curve after the lock, checked against R's `survey` package;
+  - analyst mode: re-seal refused, a claims render log in every mode, a preview log, and the
+    decision's `note`;
+  - each file's provenance and SHA-256.
+- **The claims gates** (plans/R1_PLAN.md R1-G, 1.46M):
+  - every claim's origin;
+  - meta-test 7: a swarm claim needs two referees, neither its author nor a fork, plus a basis
+    audit;
+  - meta-test 8: every grade change is a history line;
+  - research/registry's decoy queue, which reproduces the backtest's own gate result.
+- **The Sullivan 2021 replication** (plans/SULLIVAN_PLAN.md,
+  notes/replication/sullivan2021.md, about 1.3M):
+  - Through the engine, Table 4 matches the paper at printed precision, with exact n.
+  - A blind R-only reference agrees with the engine to about 1e-11 on equal rows. Every row
+    difference is traced to a named decision.
+  - The paper's stated M4 (Model 2 plus medication) does not reproduce its printed values. The
+    Table 4 model plus medication reproduces all of them; the report gives both readings.
+  - It found 14 engine gaps (INBOX).
 
 ## Next, in order
 
-The goal, re-ordered on 2026-10-15 at Nolan's direction so that the product is walkable sooner:
-- Nolan walks his own project, NHANES fasting glucose under Predict, end to end in the app (step 3).
-- The Estimate lane passes its first real replication (step 4).
-- Then W2–W4 finish the lanes toward v2.0.0.
+The goal (Nolan, 2026-10-18): everything up to the swarm's start, then a discussion with him
+before any pilot run. His usage resets Thursday at 1 pm; nothing optional runs before it (his
+words of 2026-10-18: a buffer for other tasks this week). Each step's status ends with one line of
+cost against the ~80M reference, which is not a cap.
 
-Send Nolan a short status at the end of each step, ending with one line of cost and rework. Tell him before any step expected to exceed about 3M subagent tokens or 25 agent runs. Wait for him only where a step says **[Nolan]**. **This week's pause is after step 3's walkthrough** (Nolan, 2026-10-15).
-
-1. **Check, in a fresh session, that the roles load.** This session's workflow agents get neither
-   the root CLAUDE.md nor the roles, since both load at session start, so in the new session:
-   - Make one agent call with `agentType: 'builder'`, worktree isolation and no `model`.
-   - Check that it quotes builder.md's first step.
-   - Check that it sees one copy of CLAUDE.md, not two.
-
-   Until that check, agents are told to read CLAUDE.md and their role file by path
-   (ORCHESTRATOR §0 step 4).
-
-   **[Nolan]** The remaining 15 worktrees: Nolan approved their removal on 2026-10-16, branches
-   kept, and removes them himself at the shell. No agent removes them: auto mode refused it. The
-   two with unlanded code are saved as `wip/2026-10-05-*` commits (INBOX, worktree clean-up).
-2. **W1 part 2** (WALKABLE_PLAN §5; the packages are under Leftovers), then your own walkthrough of NHANES glucose under Predict, with a friction log, before Nolan sees it. Every claim that journey puts on screen is audited and registered as R1's first batch. Why: this is the walkable product, and the friction log decides what gets work next. First, check the five e2e-real journeys that fail on CI for defects: the NHANES one is the journey Nolan walks. **[Nolan]** He judges the walkthrough on screen. Then pause.
-
-   Bring `plans/SWARM_PLAN.md` to the pause. Still open in it for Nolan: whether Haiku may go
-   below his Sonnet floor for analysts. Until he answers, no Haiku.
-3. **The Sullivan 2021 replication** (Am J Prev Med 61:563). Why: the first end-to-end check of the Estimate lane. It reports the decisions the paper stated, the ones it left unstated, and how far each unstated option moves the published number.
-4. **W2–W4,** each registering the claims it adds, and building what SWARM_PLAN §8 asks of them (a run record per Fit, results as data, which decisions mattered as data, an analyst mode, data provenance). The remaining S2/S3 fixes and R0b's S1 INBOX lines go in the order the walkthrough and the replication surface them.
-5. **Heavy runs, each at a time Nolan sets** **[Nolan]**:
-   - the T1 rerun at 600 datasets (the small-sample standard is in code, A-001);
-   - the reference-journey recapture, then the materiality calibration on it.
-6. **The rest of the research groundwork:**
-   - the Lean pilot, on about a dozen invariance and exactness claims;
-   - the stage-3 audit, with decoy set v2;
-   - the Bang 2009 and Menke 2015 replications;
-   - data provenance in ingest (each file's source URL and release date).
-7. **The research swarm,** built to plans/SWARM_PLAN.md once its gates (plans/CLAIMS_REGISTRY.md §8) are passed. It writes to a corpus kept apart from the registry.
-
-## Leftovers that still hold (from the state of 2026-10-11)
-
-- **W1 part 2** (WALKABLE_PLAN §5):
-  - W1-E: the quest-log shell on live /quest (it owns `turbotab/frontend/CLAUDE.md`, which the onboarding guidance
-    rewrote on 2026-10-15; brief its builder on the new file);
-  - W1-F: the Predict cards;
-  - W1-G: Predict Results v0;
-  - e2e quest-nhanes-predict and quest-own-csv.
-- **Phase-4 leftovers:**
-  - a plan_units field for the leaf cap on yes/no and class outcomes;
-  - the forest and boosted trees reading "units" alike;
-  - omics' TuningDecl.clause;
-  - the preview lineage's coding;
-  - the wide elastic net's threads in the record.
-- **W1 part 1 leftovers:**
-  - tune the e2e-real waits, then drop continue-on-error;
-  - mock handlers for the new hooks;
-  - the seal card's chain of refusals;
-  - the engine serving the held-out no-predictor baseline;
-  - the calibration intercept (a methods ruling, yours);
-  - Cancel beside a held Fit;
-  - recapture dietary-prediction.
-- **After W1:** W2a/W2b, Predict built to BEATS_PREDICT, then W3/W4 Estimate built to
-  BEATS_MODELS_RESULTS.
+1. **The discussion** of `plans/PILOT_READINESS.md` (§4's four questions). **[Nolan]**
+2. **Nolan restarts Claude Code** (`claude --resume`) so the analyst agent type loads; then the
+   live lockdown check and the analyst's model id (Haiku 5.5, not 4.5).
+3. **After the reset:** RB (its brief: the orchestrator's `rb_args.json`, 25 claims at most), and
+   the `quest-nhanes-predict` shell race; then CI green and turbotab-next pushed.
+4. **The measured pair** (one Haiku, one Opus analyst on the Predict fixture), then the pilot,
+   daytime and unthrottled, as Nolan schedules it.
 
 ## Open for Nolan
 
-- **Haiku for swarm analysts** (SWARM_PLAN §10): whether analysts may go below his Sonnet floor. Until he answers, no Haiku.
-- On 2026-10-15 he ruled:
-  - **The agent files:** `CLAUDE.md` and `.claude/agents/` are public in the repo and kept out of the release zip.
-  - **Proprietary tools:** the rule covers the product only.
-  - **The paper's tag** is `v1.0.0` on main; no other tag is wanted.
-  - **Disputed rulings:** a ruling that evidence shows wrong is shown to him once, and he re-rules.
-  - **Status and spend:** each status carries a line of cost and rework, and he is told before a step expected to exceed about 3M tokens or 25 agent runs.
-  - **The pause** comes after his walkthrough.
-- On 2026-10-16 he answered SWARM_PLAN's two questions: the swarm's compute runs on his machine under the heavy-run rules, and analysts have no cap like the build agents' (spend is still measured and reported).
+- **His own walk** of NHANES glucose under Predict on the landed product, when he chooses. It is
+  no longer a gate for the swarm path (his go-ahead of 2026-10-18).
+- **The pilot's analysts are Haiku 5.5** (his ruling of 2026-10-18): three per dataset, with one
+  Opus ceiling run per dataset; Sonnet runs only if Haiku fails SWARM_PLAN §7, and after he is
+  told (SWARM_PLAN §6).
+- **The schedule** for the pilot's runs, which are heavy runs on his machine.
 
 ## Nolan's context
 
-- **His real project is NHANES fasting glucose under Predict,** used at a fasting-draw visit; on the
-  medication answers, the app recommends. The light walk gave R² 0.155 (cycle CV) and 0.18 on the
-  sealed 2017–18 cycle; DIQ is not in the fixture. He re-ran it "several times over" and never
-  passed about 0.25, and that only after trimming glucose's tails before upload (INBOX, "From
-  Nolan's question on predicting glucose").
+- **His real project is NHANES fasting glucose under Predict,** used at a fasting-draw visit.
+  - The orchestrator's re-walk on 2026-10-18 gave a held-out MSE of 1,131 for ridge on 21
+    predictors (20% sealed), with a cross-validated R² of 0.156 (0.141 to 0.171).
+  - The light walk had given R² 0.155 to 0.18. He never passed about 0.25, and that only after
+    trimming glucose's tails before upload (INBOX, "From Nolan's question on predicting glucose").
 - **Direction A is accepted provisionally.** He wants to judge it on a real project.
-- **Strategy homework he may bring back:** whether researchers' pain is doing or defending; his
-  stance on recommendations and the lock; the anchor paper; a classroom pilot.
+- **No preview release of v2** (2026-10-17): "I'm all in on the analytic engine's work."
 
 ## Heavy runs to schedule with Nolan
 
-- The T1 rerun at 600 datasets: about 60 minutes at 4 jobs. Approved on 2026-10-11 to run after
-  stage 1 lands; it still needs a time from him.
-- The reference-journey recapture (the drivers now press Fit), then the materiality calibration on
-  it.
+- **The T1 rerun at 600 datasets:** about 60 minutes at 4 jobs, approved on 2026-10-11, and still
+  waiting for a time.
+- **The reference-journey recapture:**
+  - including `src/mocks/fixtures/m3-nhanes-prediction.json`, which still carries the design's
+    estimand under Predict;
+  - and the dietary-prediction capture;
+  - then the materiality calibration on it.
+- **The swarm pilot's runs** (SWARM_PLAN §6), after the discussion; daytime and unthrottled
+  (`plans/PILOT_READINESS.md` §3: the throttle made long commands miss the prompt cache).
