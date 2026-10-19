@@ -448,7 +448,13 @@ def test_the_command_line_builds_a_queue_from_the_registry_and_prints_its_rate(t
     cands, out = tmp_path / "candidates.jsonl", tmp_path / "queue"
     assert decoy_queue.main(["candidates", "--out", str(cands)]) == 0
     real = decoy_queue.read_jsonl(cands)
-    assert len(real) == 27 and {c["origin"] for c in real} == {"engine", "audit"}
+    # Every live claim the registry's generated status file records, as many as it holds now
+    # (R1-F's first batch added to R0's 27), none of them a swarm's.
+    status = Path(__file__).resolve().parents[3] / "turbotab" / "core" / "claims" / "status.json"
+    live = [c["id"] for c in json.loads(status.read_text(encoding="utf-8"))["claims"]
+            if c["status"] != "retracted"]
+    assert sorted(c["id"] for c in real) == sorted(live)
+    assert {c["origin"] for c in real} == {"engine", "audit"}
     assert decoy_queue.main(["build", "--candidates", str(cands), "--out", str(out),
                              "--decoys", "6", "--seed", "3"]) == 0
     key = json.loads((out / "key.json").read_text(encoding="utf-8"))
@@ -465,7 +471,7 @@ def test_the_command_line_builds_a_queue_from_the_registry_and_prints_its_rate(t
                              "--report", str(tmp_path / "report.json")]) == 0
     printed = capsys.readouterr().out
     assert "false-promotion rate: 1 of 6 false decoys promoted (16.7%)" in printed
-    assert "real candidates promoted: 27 of 27" in printed
+    assert f"real candidates promoted: {len(live)} of {len(live)}" in printed
     saved = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
     assert saved["false_promotion"]["rate"] == pytest.approx(1 / 6)
 
