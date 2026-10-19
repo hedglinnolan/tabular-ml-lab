@@ -60,8 +60,9 @@ by :mod:`research.swarm.options`.
 ``answer``, ``revisit``, ``fit``, ``results``, ``seal`` or ``export`` runs, opening anything a run
 is judged against (a dataset's declared answers and its manifest under ``research/datasets/``, the
 corpus records and their materiality under ``research/corpus/``, the fixtures' declared truths, the
-decoy's generator) or importing a module that holds or builds them (:data:`UNREAD_MODULES`) is
-refused, so nothing it prints can come from them.
+decoy's generator) or importing a module that holds or builds them (:data:`UNREAD_MODULES`), by
+an import statement or by ``importlib``, is refused, so nothing it prints can come from them. The
+driver itself imports none of those modules, so none is loaded before a command runs.
 
 Exit status: 0 when the command did what it says, 1 when the server or the driver refused it (the
 JSON says why, with the ways forward), 2 when the command line does not read.
@@ -172,10 +173,26 @@ def _audit(event: str, args: tuple[Any, ...]) -> None:
         _SEALED["in_hook"] = False
 
 
+class _Unimportable:
+    """A finder first on ``sys.meta_path`` that refuses, while sealed, to find a module of
+    :data:`UNREAD_MODULES`: an import by ``importlib.import_module`` raises no ``import`` audit
+    event, and its compiled file is read in place of the source the audit hook watches."""
+
+    @staticmethod
+    def find_spec(name: str, path: Any = None, target: Any = None) -> None:
+        if _SEALED["on"] and not _SEALED["in_hook"] and name in UNREAD_MODULES:
+            raise DriverError("not_for_the_analyst", "An analyst's command reads nothing a run is "
+                                                     "judged against.")
+        return None
+
+
 class analyst_sealed:
     """While an analyst's command runs, refuse every read of what a run is judged against (the
     module docstring): an audit hook (``sys.addaudithook``, added once per process) on each file
-    opened and each module imported, which refuses only while one of these is entered."""
+    opened and each module imported by an import statement, and a finder first on
+    ``sys.meta_path`` (:class:`_Unimportable`) for any other way of importing one, each refusing
+    only while one of these is entered. A module already imported before the command is not
+    imported again; the driver imports none of them (its module docstring)."""
 
     hooked = False
 
@@ -183,6 +200,8 @@ class analyst_sealed:
         if not analyst_sealed.hooked:
             sys.addaudithook(_audit)
             analyst_sealed.hooked = True
+        if not any(f is _Unimportable for f in sys.meta_path):
+            sys.meta_path.insert(0, _Unimportable)
         self.before = _SEALED["on"]
         _SEALED["on"] = True
         return self

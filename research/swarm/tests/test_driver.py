@@ -475,6 +475,66 @@ def test_an_analysts_command_reads_no_answer_truth_decoy_or_record(tmp_path, mon
                    "turbotab.core.reference.journeys": "imported"}
 
 
+def test_through_the_driver_an_analysts_command_is_refused_what_a_run_is_judged_against(
+        tmp_path, monkeypatch):
+    """DRV-INT round 1 (P3): through ``driver.main``, an analyst's command (here ``results``,
+    replaced by one that reads a single thing) that opens a dataset's declared answers, the
+    fixtures' declared truths or a corpus record, or imports the record's module (by an import
+    statement) or the truths' (by ``importlib``, which raises no import audit event and reads the
+    compiled file, not the source), answers exit 1 with the driver's refusal
+    ``not_for_the_analyst``, which the run's log keeps; one that opens the run's own file passes.
+    The orchestrator's ``start`` and ``stop``, replaced the same way, are not refused."""
+    import importlib
+
+    repo = driver.REPO
+    folder = fake_run(tmp_path, monkeypatch)
+    for name in ("research.swarm.record", "turbotab.core.tests.truths"):
+        parent, _, leaf = name.rpartition(".")  # not imported yet: each is restored after the test
+        monkeypatch.delitem(sys.modules, name, raising=False)
+        if parent in sys.modules:
+            monkeypatch.delattr(sys.modules[parent], leaf, raising=False)
+
+    def opened(path: Path) -> Any:
+        def read() -> None:
+            try:
+                open(path, "rb").close()
+            except FileNotFoundError:
+                pass  # not there: reached, so not refused
+        return read
+
+    def statement() -> None:
+        import research.swarm.record  # noqa: F401
+
+    reads = {"answers": opened(repo / "research" / "datasets" / "clinical_readmission_predict"
+                               / "answers.json"),
+             "truths": opened(repo / "turbotab" / "core" / "tests" / "truths.py"),
+             "corpus": opened(repo / "research" / "corpus" / f"{RID}.json"),
+             "import": statement,
+             "importlib": lambda: importlib.import_module("turbotab.core.tests.truths")}
+    for what, read in reads.items():
+        def command(args: Any, read: Any = read) -> tuple[int, dict[str, Any], Any]:
+            read()
+            return 0, {"read": True}, driver.Run.load(args.run)
+        monkeypatch.setitem(driver.COMMANDS, "results", command)
+        code, payload = run_main(["results", "--run", RID, "--wait", "0"])
+        assert (code, (payload.get("refused") or {}).get("code")) == (
+            1, "not_for_the_analyst"), what
+        logged = json.loads((folder / "commands.jsonl").read_text().splitlines()[-1])
+        assert logged["summary"]["refused"]["code"] == "not_for_the_analyst", what
+    monkeypatch.setitem(driver.COMMANDS, "results", lambda args: (
+        0, {"read": opened(folder / "driver.json")() is None}, None))
+    assert run_main(["results", "--run", RID, "--wait", "0"]) == (0, {"read": True})
+    for what, read in reads.items():
+        def command(args: Any, read: Any = read) -> tuple[int, dict[str, Any], Any]:
+            read()
+            return 0, {"read": True}, None
+        monkeypatch.setitem(driver.COMMANDS, "start", command)
+        monkeypatch.setitem(driver.COMMANDS, "stop", command)
+        assert run_main(["start", "--data", str(FIXTURE), "--budget-fits", "1",
+                         "--budget-seconds", "1", "--scripted"]) == (0, {"read": True}), what
+        assert run_main(["stop", "--run", RID]) == (0, {"read": True}), what
+
+
 def test_a_server_that_does_not_answer_is_said_in_json(tmp_path, monkeypatch):
     """The fake run's port has nothing listening: the command answers with the driver's refusal,
     never a traceback; a defect inside a command is answered the same way, and both are logged."""

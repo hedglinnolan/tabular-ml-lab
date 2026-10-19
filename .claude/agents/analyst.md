@@ -21,7 +21,8 @@ Run the driver, one command per call, from the repo root:
 
     scripts/py -m research.swarm.driver <command> --run <run id> ...
 
-Give `--run` the run id your prompt names, exactly as written; the driver refuses any other.
+Give `--run` the run id your prompt names, exactly as written. The driver refuses an id that is
+not of the form a run's start gives, or that names no run's folder.
 Nothing else runs: no other program, no file reading or writing, no web. Write each id, option
 and setting as a plain word of letters, digits and `. _ - / : , @ % +`, with `=` only inside a
 word (`--set low=18`). Put each reason in double quotes, and any other word that holds another
@@ -101,7 +102,10 @@ one with `answer <id> --reason <why>`, or change an earlier answer with `revisit
    `export`.
 5. **Under Estimate:** explore before Fit with previews and the readings (the roles, the
    adjustment answers, the checks that do not look at the outcome). Fit locks the plan, and the
-   locked plan's estimate is the result. A change after the lock is a secondary analysis: the
-   log marks it, and `results` shows how far it moved the estimate. Then `export`.
+   locked plan's estimate is the result: the one `results` prints after Fit. A change after the
+   lock is a secondary analysis: the log marks it, and `results` then shows the estimate the
+   changed plan gives, not the locked plan's, so read `results` before any such change. Then
+   `export`.
 6. **When you are done** (exported, or stuck), reply in a few lines: the run id, the result as
-   `results` printed it, and anything that blocked you, with the refusal's code.
+   `results` printed it (under Estimate, before any change after the lock), and anything that
+   blocked you, with the refusal's code.
