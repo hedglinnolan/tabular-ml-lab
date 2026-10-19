@@ -267,10 +267,12 @@ class Attempt(_Strict):
       first fit), held to the server's own rule: one record alone only where that record alone
       makes this fit's records from the fit before's, else the records this fit read since the
       fit before, which moved together; null where either fit's records are not served, or the
-      decision log does not account for them (``assemble.Prefixes``);
-    * ``withdrawn``: each record in force at the fit before and not here, with the record credited;
+      decision log does not account for them (``assemble.Prefixes``: no prefix of it holds them,
+      or two that do fold to different answers);
+    * ``withdrawn``: each record in force at the fit before and not here, with the record credited
+      (none where ``changed`` is null);
     * ``reinstated``: each record in force here, recorded before the fit before and not in force
-      at it, with the revert credited;
+      at it, with the revert credited (none where ``changed`` is null);
     * ``reasons``: the notes of the records in ``changed``."""
 
     id: str

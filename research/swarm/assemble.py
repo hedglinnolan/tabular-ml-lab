@@ -48,13 +48,15 @@ so a fit whose only change is a revert has that revert as its change and its not
 
 Each credit is then held to the server's own rule (:class:`Prefixes`: ``provenance.in_force``
 over ``decisions.fold``, for the longest prefix of the log appended by each fit's completion that
-holds its records in force, as ``runs.keyed_prefix`` reads a fit's answers): a record the fit
-before had read already is credited with nothing of this fit's, and a fit's whole change is one
-record's only where that record alone, after the records the fit before read, holds this fit's
-records in force and folds to its answers. Otherwise the records this fit read since the fit
-before moved together and are its change, each with its note among the reasons; where those are
-not known (no prefix holds a fit's records), neither is the change (``changed`` null,
-:data:`UNACCOUNTED`).
+holds its records in force, as ``runs.keyed_prefix`` reads a fit's answers, where every prefix
+appended by then that holds them folds to the same answers): a record the fit before had read
+already is credited with nothing of this fit's, and a fit's whole change is one record's only
+where that record alone, after the records the fit before read, holds this fit's records in force
+and folds to its answers. Otherwise the records this fit read since the fit before moved together
+and are its change, each with its note among the reasons. Where those are not known (no prefix
+holds a fit's records, or two that do fold to different answers, so which one keyed it is not
+known), neither is the change: ``changed`` is null (:data:`UNACCOUNTED`) and no shift is credited
+to any record.
 
 **A decision's materiality** is the engine's (:class:`record.Materiality`):
 
@@ -83,7 +85,9 @@ answer examined it too), or when it was an earlier answer in force in a fit that
 the decision (SWARM_PLAN §3: reading a card does not count). It is an alternative when it is not
 the option chosen and, for a preview, the preview was not refused. On the split, which the held-out
 draw and the validation scheme both answer, an option is the one chosen where it leaves the slot
-as the chosen answer does on the fields both write (:func:`same_answer`).
+as the chosen answer does, each as the log stood where it was given: a scheme answer leaves the
+draw then in force with its scheme (:func:`same_answer`), so another draw previewed while a scheme
+answer stands is an alternative to it.
 
 **Spend** (:func:`spend`): the transcript's assistant lines, once per message id. A message
 streams as several lines with one id, the same input counts and a growing output count, so each
@@ -102,7 +106,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from pydantic import ValidationError
 
@@ -450,11 +454,14 @@ def same_option(examined: Any, chosen: Any) -> bool:
 SPLIT_SLOT = "split"
 
 
-def left_in_split(decision: Mapping[str, Any]) -> dict[str, Any] | None:
-    """What a split answer leaves in the split slot, each field as the server fills it: a
-    ``set_split`` the whole split (its draw and its scheme); a ``set_validation`` the scheme it
-    writes onto the draw (``SetValidation.scheme()``). None for any other decision, or one that
-    does not read as one."""
+def left_in_split(decision: Mapping[str, Any], standing: Mapping[str, Any] | None = None
+                  ) -> dict[str, Any] | None:
+    """What a split answer leaves in the split slot as the slot stands (``standing``: the split in
+    force where it was given, as the server keeps it, or None), each field as the server fills it:
+    a ``set_split`` the whole split (its draw and its scheme); a ``set_validation`` the scheme it
+    writes onto the draw standing (``decisions._scheme_onto_the_draw``: the draw kept), or the
+    scheme alone (``SetValidation.scheme()``) where no draw is known to stand. None for any other
+    decision, or one that does not read as one."""
     from turbotab.core import decisions as D
 
     kind = decision.get("kind")
@@ -464,17 +471,23 @@ def left_in_split(decision: Mapping[str, Any]) -> dict[str, Any] | None:
         model = D.parse_decision(dict(decision))
     except ValidationError:
         return None
-    return model.scheme() if kind == "set_validation" else model.model_dump(exclude={"kind"})
+    if kind == "set_split":
+        return model.model_dump(exclude={"kind"})
+    return {**standing, **model.scheme()} if standing else model.scheme()
 
 
 def same_answer(question: str, examined: Mapping[str, Any], value: Any,
-                chosen: Mapping[str, Any], chosen_value: Any) -> bool:
+                chosen: Mapping[str, Any], chosen_value: Any,
+                standing: tuple[Mapping[str, Any] | None, Mapping[str, Any] | None] = (None, None)
+                ) -> bool:
     """Whether the examined decision's answer to ``question`` is the option chosen. On the split
-    slot each is compared by what it leaves there (:func:`left_in_split`), on the fields both
-    write: a scheme answer leaves the draw as it was, so a draw and a scheme answer are the same
-    option where their schemes are. Any other answer by :func:`same_option`."""
+    slot each is compared by what it leaves there as the slot stood where it was given
+    (:func:`left_in_split`; ``standing``: the split in force there, the examined one's and the
+    chosen one's): a scheme answer leaves the draw standing with its scheme, so a draw and a
+    scheme answer are the same option where they leave the same split. Where a scheme answer's
+    draw is not known, on the fields both write. Any other answer by :func:`same_option`."""
     if question == SPLIT_SLOT:
-        a, b = left_in_split(examined), left_in_split(chosen)
+        a, b = left_in_split(examined, standing[0]), left_in_split(chosen, standing[1])
         if a is not None and b is not None:
             return all(a[k] == b[k] for k in set(a) & set(b))
     return same_option(value, chosen_value)
@@ -513,9 +526,12 @@ class Prefixes:
     """The server's own rule over the decision log (DRV-INT): the records in force in each prefix
     of it (``provenance.in_force`` over ``decisions.fold``), and the prefix a fit read. A fit's
     records are those in force in the longest prefix of the log appended by its completion whose
-    answers key its fit (``runs.keyed_prefix``); a prefix holding the same records in force folds
-    to the same answers, so that is the longest prefix appended by then whose records in force are
-    the fit's (:meth:`read_through`). ``log`` is None where a record does not read as the server's
+    answers key its fit (``runs.keyed_prefix``). Two prefixes holding the same records in force
+    can fold to different answers (``in_force`` counts a draw as superseded by the scheme written
+    onto it, and ``fold`` keeps the draw, so a revert of that draw changes the split and no record
+    in force). So the prefix a fit read is the longest appended by then whose records in force are
+    the fit's only where every such prefix folds to the same answers; otherwise it is not known
+    (:meth:`read_through`). ``log`` is None where a record does not read as the server's
     (``decisions.DecisionRecord``): then no prefix is known."""
 
     def __init__(self, records: Sequence[Mapping[str, Any]]):
@@ -548,8 +564,11 @@ class Prefixes:
         return self._held[n]
 
     def read_through(self, fit: Mapping[str, Any]) -> int | None:
-        """How many records of the log ``fit`` read (the module docstring), or None where its
-        records are not served or no prefix appended by its completion holds them in force."""
+        """How many records of the log ``fit`` read (the class docstring): the longest prefix
+        appended by its completion that holds its records in force, where every such prefix folds
+        to the same answers. None where its records are not served, where no such prefix holds
+        them, or where two fold to different answers (a draw a revert withdrew after a scheme
+        superseded it), since which one keyed the fit is then not known."""
         served = fit.get("decisions")
         if self.log is None or served is None:
             return None
@@ -557,11 +576,11 @@ class Prefixes:
         appended = next((i for i, r in enumerate(self.log) if done is not None and r.at > done),
                         len(self.log))
         want = frozenset(served)
-        for n in range(appended, -1, -1):
-            held = self.at(n)
-            if held is not None and held[0] == want:
-                return n
-        return None
+        holding = [n for n in range(appended, -1, -1)
+                   if (held := self.at(n)) is not None and held[0] == want]
+        if not holding or any(self.at(n)[1] != self.at(holding[0])[1] for n in holding[1:]):
+            return None
+        return holding[0]
 
     def between(self, before: Mapping[str, Any], fit: Mapping[str, Any]) -> list[int] | None:
         """The records ``fit`` read that ``before`` (the fit before it) did not, by their seqs; None
@@ -609,12 +628,13 @@ def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
     had replaced it. Beside a new answer to its question, a record's chain is credited with its
     leaving only where this fit read every revert of the chain.
 
-    Then the server's own rule (``prefixes``, :class:`Prefixes` over ``records`` by default): a
-    shift credited to a record the fit before had read is credited to none; a change credited to
-    records outside those this fit read since the fit before is those records; and a change
-    credited to one record alone stands only where :meth:`Prefixes.alone` confirms it, else it is
-    the records this fit read since the fit before (they moved together), or null where those are
-    not known."""
+    Then the server's own rule (``prefixes``, :class:`Prefixes` over ``records`` by default):
+    where the records this fit read since the fit before are not known (:meth:`Prefixes.between`),
+    the change is null and no shift is credited; a shift credited to a record the fit before had
+    read is credited to none; a change credited to records outside those this fit read since the
+    fit before is those records; and a change credited to one record alone stands only where
+    :meth:`Prefixes.alone` confirms it, else it is the records this fit read since the fit before
+    (they moved together)."""
     now = fit.get("decisions")
     if before is None:
         return {"changed": sorted(now) if now is not None else None, "withdrawn": [],
@@ -693,18 +713,23 @@ def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
             withdrawn[x] = None
     prefixes = prefixes or Prefixes(records)
     read = prefixes.between(before, fit)
-    if read is not None:
-        # A record the fit before read already is credited with no shift of this fit's.
-        for shifted in (withdrawn, reinstated):
-            for x, b in shifted.items():
-                if isinstance(b, int) and b not in read:
-                    shifted[x] = None
+    if read is None:
+        # Which records this fit read since the fit before is not known by the server's own rule
+        # (:meth:`Prefixes.between`), so none is credited with its change or with a shift of it.
+        return {"changed": None,
+                "withdrawn": [{"seq": x, "by": None} for x in withdrawn],
+                "reinstated": [{"seq": x, "by": None} for x in reinstated]}
+    # A record the fit before read already is credited with no shift of this fit's.
+    for shifted in (withdrawn, reinstated):
+        for x, b in shifted.items():
+            if isinstance(b, int) and b not in read:
+                shifted[x] = None
     credited = {b for b in (*withdrawn.values(), *reinstated.values()) if b is not None}
     changed = sorted(set(new) | credited)
-    if read is not None and not set(changed) <= set(read):
+    if not set(changed) <= set(read):
         changed = sorted(read)  # credited by the log's chains, not by the server's prefixes
     shifts = [*withdrawn.values(), *reinstated.values()]
-    if changed is not None and len(changed) == 1 and None not in shifts:
+    if len(changed) == 1 and None not in shifts:
         # The fit's whole change would be one record's: only where the server's own rule confirms
         # it (:meth:`Prefixes.alone`); else the records this fit read since the fit before moved
         # together, and where those are not known, neither is the change.
@@ -735,16 +760,20 @@ def attempts_of(fits: Sequence[Mapping[str, Any]], records: Sequence[Mapping[str
 
 
 def examined_of(rec: Mapping[str, Any], records: Sequence[Mapping[str, Any]],
-                previews: Sequence[Mapping[str, Any]], attempts: Sequence[Mapping[str, Any]]
-                ) -> list[dict[str, Any]]:
+                previews: Sequence[Mapping[str, Any]], attempts: Sequence[Mapping[str, Any]],
+                prefixes: Prefixes | None = None) -> list[dict[str, Any]]:
     """The options examined for each question ``rec`` answers (the module docstring), previews
     first, then fits, each in time order: each preview of the question made while this answer was
     being chosen or while it stood (after the question's previous answer, before its next), and
     each earlier answer in force in a fit that completed before this one was recorded. An option
     examined the same way again (previewed again with the same refusal, or held by another earlier
-    record in a fit) is listed once, at its first."""
+    record in a fit) is listed once, at its first. On the split, each answer is compared with the
+    one chosen by what it leaves in the slot as the log stood where it was given (``prefixes``,
+    :class:`Prefixes` over ``records`` by default: the split the log folds to through the records
+    before it, for a preview those appended by its time)."""
     at = _at(rec["at"])
     chosen = dict(answers_of(rec["decision"]))
+    stood = _standing(records, prefixes, read=SPLIT_SLOT in chosen)
     out: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str, str | None]] = set()
     window: dict[str, tuple[datetime | None, datetime | None]] = {}
@@ -776,7 +805,8 @@ def examined_of(rec: Mapping[str, Any], records: Sequence[Mapping[str, Any]],
                             "refused": p.get("refused"),
                             "alternative": p.get("refused") is None
                             and not same_answer(question, p["decision"], value, rec["decision"],
-                                                chosen[question])})
+                                                chosen[question],
+                                                (stood(when=_at(p["at"])), stood(rec["seq"])))})
     for earlier in records:
         if earlier["seq"] >= rec["seq"]:
             continue
@@ -788,9 +818,30 @@ def examined_of(rec: Mapping[str, Any], records: Sequence[Mapping[str, Any]],
             if question in chosen and once(question, value, "fit"):
                 out.append({"question": question, "value": value, "how": "fit",
                             "at": fitted["at"], "seq": earlier["seq"], "attempt": fitted["id"],
-                            "alternative": not same_answer(question, earlier["decision"], value,
-                                                           rec["decision"], chosen[question])})
+                            "alternative": not same_answer(
+                                question, earlier["decision"], value, rec["decision"],
+                                chosen[question], (stood(earlier["seq"]), stood(rec["seq"])))})
     return out
+
+
+def _standing(records: Sequence[Mapping[str, Any]], prefixes: Prefixes | None = None,
+              read: bool = True) -> Callable[..., Any]:
+    """The split in force before a record (by its seq) or at a time (a preview's: the records
+    appended by then), as ``decisions.fold`` gives it over the log (``prefixes``, :class:`Prefixes`
+    over ``records`` by default); None where the log does not fold there or holds no draw, and
+    everywhere when ``read`` is false (no split answer is compared, so the log is not folded)."""
+    prefixes = (prefixes or Prefixes(records)) if read else None
+
+    def stood(seq: int | None = None, when: datetime | None = None) -> Any:
+        if prefixes is None or prefixes.log is None:
+            return None
+        n = (next((i for i, r in enumerate(prefixes.log) if r.seq >= seq), len(prefixes.log))
+             if seq is not None else
+             next((i for i, r in enumerate(prefixes.log) if r.at > when), len(prefixes.log)))
+        held = prefixes.at(n)
+        return held[1].get(SPLIT_SLOT) if held is not None else None
+
+    return stood
 
 
 def fits_materiality(rec: Mapping[str, Any], attempts: Sequence[Mapping[str, Any]],
@@ -928,6 +979,7 @@ def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mappin
                  mattered: Read) -> list[dict[str, Any]]:
     in_force = in_force_of(records)
     withdrawn = set(cancelled(records))
+    prefixes = Prefixes(records)
     out: list[dict[str, Any]] = []
     for rec in records:
         materiality = fits_materiality(rec, attempts, records)
@@ -943,7 +995,7 @@ def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mappin
             "source": "app" if rec.get("recorded_by") == "turbotab" else "analyst",
             "phase": phase_of(rec), "post_seal": bool(rec.get("post_seal")),
             "after_estimates": bool(rec.get("after_estimates")), "early": rec.get("early"),
-            "examined": examined_of(rec, records, previews, attempts),
+            "examined": examined_of(rec, records, previews, attempts, prefixes),
             "materiality": materiality,
         })
     return out

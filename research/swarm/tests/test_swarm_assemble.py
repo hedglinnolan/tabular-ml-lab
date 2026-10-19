@@ -235,6 +235,35 @@ def test_a_validation_scheme_is_compared_with_the_split_by_what_each_leaves_in_t
         assert [(e["how"], e["alternative"]) for e in got] == [("preview", alternative)], folds
 
 
+def test_a_scheme_answer_leaves_the_draw_standing_so_another_draw_is_an_alternative_to_it():
+    """DRV-INT round 1 (P2): a scheme answer (#2) leaves in the split slot the draw in force at
+    it (#1's 20% held out) with its scheme (``decisions._scheme_onto_the_draw``). A preview of a
+    draw holding out 30% while #2 stands examined another held-out share, so it is an
+    alternative to #2; a preview of #1's own draw with #2's scheme, or of #2's scheme again, is
+    not. The same by fit: a 30% draw (#1) in force in fit 1, then a 20% draw (#2) and a scheme
+    answer (#3) with the same folds: #1's draw is an alternative examined for #3."""
+    records = [_rec(1, 1, SPLIT_DRAW), _rec(2, 2, SCHEME)]
+    other = _preview(3, {**SPLIT_DRAW, "holdout": 0.3})
+    got = A.examined_of(records[1], records, [other], [])
+    assert [(e["how"], e["value"]["holdout"], e["alternative"]) for e in got] == [
+        ("preview", 0.3, True)]
+    same = [_preview(3, {**SPLIT_DRAW}), _preview(4, {**SCHEME})]
+    got = A.examined_of(records[1], records, same, [])
+    assert [(e["how"], e["alternative"]) for e in got] == [("preview", False), ("preview", False)]
+    fitted = [_rec(1, 1, {**SPLIT_DRAW, "holdout": 0.3}), _rec(2, 3, SPLIT_DRAW),
+              _rec(3, 4, SCHEME)]
+    fits = [{"id": "fit1", "seq": 1, "at": "2026-10-18T10:02:00Z", "decisions": [1]}]
+    got = A.examined_of(fitted[2], fitted, [], fits)
+    assert [(e["how"], e["seq"], e["alternative"]) for e in got] == [("fit", 1, True)]
+    kept = [_rec(1, 1, SPLIT_DRAW), _rec(2, 3, {**SPLIT_DRAW, "holdout": 0.3}),
+            _rec(3, 4, SCHEME)]  # #1 fitted, then the 30% draw, then the scheme: 20% is examined
+    got = A.examined_of(kept[2], kept, [], fits)
+    assert [(e["how"], e["seq"], e["alternative"]) for e in got] == [("fit", 1, True)]
+    back = [_rec(1, 1, SPLIT_DRAW), _rec(2, 4, SCHEME)]  # the fitted draw, its scheme kept
+    got = A.examined_of(back[1], back, [], fits)
+    assert [(e["how"], e["seq"], e["alternative"]) for e in got] == [("fit", 1, False)]
+
+
 def _adjust(seq, minute, **answers):
     return _rec(seq, minute, {"kind": "set_adjustment", "exposure": "sugar", "answers": answers})
 
@@ -511,14 +540,20 @@ def test_beside_a_new_answer_a_revert_is_credited_only_where_its_whole_chain_was
 
 
 def test_a_record_that_left_force_by_no_record_found_withholds_every_measure_of_that_fit():
-    """Record #2 left force before fit 2 with no revert of it and no later answer to its question:
-    the change is not wholly #3's, so #3 has no measure (a number is right or it is refused)."""
+    """Record #2, the task answered for the outcome `y`, left force before fit 2 with no revert of
+    it and no later answer to its question: it stands only while `y` is the outcome, and #3 named
+    another (``provenance.in_force``: fit 2's records are #3 alone). The change is not wholly #3's,
+    so #3 has no measure (a number is right or it is refused). DRV-INT round 1: the log was
+    `set_lens` (#2) left out of fit 2's records, which no prefix of the log holds by the server's
+    rule, so that change is now not known (the test above); a task answer is one the server's own
+    rule leaves out."""
     records = [_rec(1, 1, {"kind": "set_target", "column": "y"}),
-               _rec(2, 2, {"kind": "set_lens", "lenses": ["clinical"]}),
-               _rec(3, 4, {"kind": "set_purpose", "purpose": "prediction"})]
-    fits = [_fit(1, 3, [1, 2]), _fit(2, 5, [1, 3])]
+               _rec(2, 2, {"kind": "set_task", "column": "y", "task": "regression"}),
+               _rec(3, 4, {"kind": "set_target", "column": "z"})]
+    fits = [_fit(1, 3, [1, 2]), _fit(2, 5, [3])]
     got = _moved(A.attempts_of(fits, records))
-    assert (got[1]["changed"], got[1]["withdrawn"]) == ([3], [{"seq": 2, "by": None}])
+    assert (got[1]["changed"], got[1]["withdrawn"]) == (
+        [3], [{"seq": 1, "by": 3}, {"seq": 2, "by": None}])
     assert A.fits_materiality(records[2], got, records) == {
         "source": None, "attempt": "fit2",
         "why": "It took effect at fit #2 while record #2 left force by no record found between "
@@ -569,30 +604,123 @@ def test_a_credit_the_log_cannot_account_for_is_withheld_and_says_so():
     assert (m["source"], m["attempt"], m["why"]) == (None, "fit2", A.UNACCOUNTED)
 
 
-def _simulated(seed: int, events: int = 14) -> tuple[list[Any], list[dict[str, Any]]]:
-    """A log of roles confirmed and reverted at random, and its fits as the server records them
-    (``ProjectService._write_fit_record``): each fit keyed by the confirmations in force when it
-    started, completing after up to two more records, recorded once per key, its records in force
-    those of the longest prefix appended by its completion that keys it (``runs.keyed_prefix``).
-    The verifier's simulation (DRV-B, dbv3/probes/sim.py)."""
+def _server_fits(recs: list[Any], fits: list[tuple[int, int]], slots: tuple[str, ...]
+                 ) -> list[dict[str, Any]]:
+    """Fit records written as ``ProjectService._write_fit_record`` writes them: fit ``k`` keyed
+    by the first ``n`` records' answers in ``slots`` and completing at minute ``done``; its
+    records in force those of the longest prefix appended by then that keys it
+    (``runs.keyed_prefix`` over ``runs.appended_by``). ``_read`` is how many records it read."""
+    from datetime import timedelta
+
+    from turbotab.core import decisions as D, provenance, runs
+
+    def key_of(state: Any) -> str:
+        dumped = state.model_dump(mode="json")
+        return json.dumps({k: dumped.get(k) for k in slots}, sort_keys=True)
+
+    out = []
+    for k, (n, done) in enumerate(fits, start=1):
+        at = datetime(2026, 10, 18, 10, 0, tzinfo=timezone.utc) + timedelta(minutes=done)
+        prefix = runs.keyed_prefix(runs.appended_by(recs, at), key_of(D.fold(recs[:n])), key_of)
+        live = provenance.in_force(prefix)
+        out.append({"id": f"fit{k}", "seq": k, "at": at.isoformat(),
+                    "decisions": sorted(r.seq for r in prefix if r.id in live),
+                    "_read": len(prefix)})
+    return out
+
+
+def _log(records: list[dict[str, Any]]) -> list[Any]:
+    from turbotab.core.decisions import DecisionRecord
+
+    return [DecisionRecord.model_validate(r) for r in records]
+
+
+def test_a_fit_whose_records_two_prefixes_with_different_answers_hold_has_no_change_known():
+    """DRV-INT round 1 (P1): ``provenance.in_force`` counts a draw (#1) as superseded by the scheme
+    written onto it (#2), while ``decisions.fold`` keeps the draw. Fit 1 is keyed on #1–#2; the
+    exclusion rule (#3) keys fit 2; the draw's revert (#4) is appended while fit 2 runs, so the
+    server's prefix for fit 2 is #1–#3 (with #4 the draw is gone, which keys another fit). The
+    prefixes #1–#3 and #1–#4 both hold #2 and #3 in force but fold to different splits, so what
+    ``GET …/fits`` serves cannot tell which fit 2 read: its change is not known, #4 (which fit 2
+    never read) is named in none, and #3 has no measure and says why. The other way: #4 appended
+    after fit 2 completed, one prefix holds fit 2's records, and #3 alone is credited with fit 2's
+    change and its movement."""
+    records = [_rec(1, 1, {"kind": "set_split", "holdout": 0.2}),
+               _rec(2, 2, {"kind": "set_validation", "folds": 10}), _rec(3, 4, _age(30)),
+               _revert(4, 5, 1)]
+    fits = _server_fits(_log(records), [(2, 3), (3, 6)], ("split", "exclusions"))
+    assert [(f["decisions"], f["_read"]) for f in fits] == [([2], 2), ([2, 3], 3)]
+    served = [{k: v for k, v in f.items() if k != "_read"} for f in fits]
+    got = _moved(A.attempts_of(served, records))
+    assert (got[1]["changed"], got[1]["reasons"]) == (None, [])
+    assert A.fits_materiality(records[2], got, records) == {
+        "source": None, "attempt": "fit2", "why": A.UNACCOUNTED}
+    assert A.Prefixes(records).read_through(served[1]) is None
+    late = [*records[:3], _revert(4, 7, 1)]
+    fits = _server_fits(_log(late), [(2, 3), (3, 6)], ("split", "exclusions"))
+    served = [{k: v for k, v in f.items() if k != "_read"} for f in fits]
+    got = _moved(A.attempts_of(served, late))
+    assert (got[1]["changed"], got[1]["withdrawn"], got[1]["reinstated"]) == ([3], [], [])
+    assert A.fits_materiality(late[2], got, late) == {
+        "source": "fits", "attempt": "fit2", "movement": got[1]["movement"]}
+
+
+def _role(rnd: Any) -> dict[str, Any]:
+    return {"kind": "confirm_role", "column": rnd.choice("ab"),
+            "role": rnd.choice(["covariate", "excluded"])}
+
+
+def _kinds(rnd: Any) -> dict[str, Any]:
+    """An exclusion rule, a missing-values answer, a held-out draw, a validation scheme written
+    onto the draw, or the sensitivity answer, which no fit reads (the verifier's DRV-INT round 1
+    simulation, drvint/probes/sim_kinds.py)."""
+    k = rnd.random()
+    if k < 0.3:
+        return _age(rnd.choice([18, 30, 40]))
+    if k < 0.45:
+        return {"kind": "set_missing", "strategy": rnd.choice(["complete_case", "impute"])}
+    if k < 0.6:
+        return {"kind": "set_split", "holdout": rnd.choice([0.2, 0.3]),
+                "folds": rnd.choice([5, 10])}
+    if k < 0.75:
+        return {"kind": "set_validation", "folds": rnd.choice([5, 10])}
+    return {"kind": "set_sensitivity", "analyses": []}
+
+
+# Each simulation: the answers it draws, the slots its fits are keyed by, its seeds, and the chances
+# that a record is a revert before a fit starts and while it runs.
+SIMULATIONS = {
+    "roles": (_role, ("role_confirmations",), 150, (0.45, 0.6)),
+    "kinds": (_kinds, ("exclusions", "missing", "split"), 300, (0.4, 0.5)),
+}
+
+
+def _simulated(seed: int, simulation: str = "roles", events: int = 14
+               ) -> tuple[list[Any], list[dict[str, Any]]]:
+    """A log of answers and reverts drawn at random (``SIMULATIONS``), and its fits as the server
+    records them (``ProjectService._write_fit_record``): each fit keyed by the answers in force
+    when it started, completing after up to two more records, recorded once per key, its records
+    in force those of the longest prefix appended by its completion that keys it
+    (``runs.keyed_prefix``). The verifier's simulations (DRV-B, dbv3/probes/sim.py; DRV-INT round
+    1, drvint/probes/sim_kinds.py)."""
     import random
     from datetime import timedelta
 
     from turbotab.core import decisions as D, provenance, runs
 
+    body, slots, _, (p_before, p_during) = SIMULATIONS[simulation]
     rnd, recs, t = random.Random(seed), [], 0.0
     t0 = datetime(2026, 10, 18, 10, 0, tzinfo=timezone.utc)
 
     def key_of(state: Any) -> str:
-        return json.dumps(state.model_dump(mode="json").get("role_confirmations"), sort_keys=True)
+        dumped = state.model_dump(mode="json")
+        return json.dumps({k: dumped.get(k) for k in slots}, sort_keys=True)
 
     def append(p_revert: float) -> None:
         nonlocal t
         t += 1.0
         decision = ({"kind": "revert", "decision_id": rnd.choice(recs).id}
-                    if recs and rnd.random() < p_revert else
-                    {"kind": "confirm_role", "column": rnd.choice("ab"),
-                     "role": rnd.choice(["covariate", "excluded"])})
+                    if recs and rnd.random() < p_revert else body(rnd))
         r = D.DecisionRecord(id=f"r{len(recs) + 1}", seq=len(recs) + 1,
                              at=t0 + timedelta(seconds=t), note=f"n{len(recs) + 1}",
                              decision=D.parse_decision(decision))
@@ -605,10 +733,12 @@ def _simulated(seed: int, events: int = 14) -> tuple[list[Any], list[dict[str, A
     fits, keys = [], set()
     for _ in range(events):
         for _ in range(rnd.randint(0, 2)):
-            append(0.45)
+            append(p_before)
+        if not recs:
+            continue
         key = key_of(D.fold(recs))
         for _ in range(rnd.randint(0, 2)):
-            append(0.6)
+            append(p_during)
         t += 0.5
         if key in keys:
             continue
@@ -622,18 +752,22 @@ def _simulated(seed: int, events: int = 14) -> tuple[list[Any], list[dict[str, A
     return recs, fits
 
 
-def test_every_credit_to_one_record_is_that_records_change_by_the_servers_rule():
-    """Over 150 simulated runs: every record credited with a fit's change, or with a shift of it,
-    is among the records this fit read that the fit before did not; and wherever a fit's whole
-    change is credited to one record, that record alone, after the records the fit before read,
-    keys this fit by the server's own rule (``decisions.fold``). The truth is the server's prefix
-    for each fit (``runs.keyed_prefix``); the assembler reads only what ``GET …/fits`` serves.
-    Some runs do credit one record, so the rule is exercised."""
+@pytest.mark.parametrize("simulation", sorted(SIMULATIONS))
+def test_every_credit_to_one_record_is_that_records_change_by_the_servers_rule(simulation):
+    """Over simulated runs (roles confirmed and reverted; exclusions, missing values, the draw,
+    the scheme written onto it and an answer no fit reads, with reverts): every record credited
+    with a fit's change, or with a shift of it, is among the records this fit read that the fit
+    before did not; and wherever a fit's whole change is credited to one record, that record
+    alone, after the records the fit before read, keys this fit by the server's own rule
+    (``decisions.fold``). The truth is the server's prefix for each fit (``runs.keyed_prefix``);
+    the assembler reads only what ``GET …/fits`` serves. Some runs do credit one record, so the
+    rule is exercised."""
     from turbotab.core import decisions as D
 
+    _, slots, seeds, _ = SIMULATIONS[simulation]
     credited = 0
-    for seed in range(150):
-        recs, fits = _simulated(seed)
+    for seed in range(seeds):
+        recs, fits = _simulated(seed, simulation)
         records = [r.model_dump(mode="json") for r in recs]
         got = A.attempts_of([{k: v for k, v in f.items() if not k.startswith("_")} for f in fits],
                             records)
@@ -651,7 +785,7 @@ def test_every_credit_to_one_record_is_that_records_change_by_the_servers_rule()
             credited += 1
             assert before["_read"] < x <= fit["_read"], (seed, i, change)
             alone = D.fold(recs[:before["_read"]] + [recs[x - 1]]).model_dump(mode="json")
-            assert json.dumps(alone.get("role_confirmations"), sort_keys=True) == fit["_key"], (
+            assert json.dumps({k: alone.get(k) for k in slots}, sort_keys=True) == fit["_key"], (
                 seed, i, change)
     assert credited > 20
 
