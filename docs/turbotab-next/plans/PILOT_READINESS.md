@@ -4,6 +4,12 @@ Written 2026-10-19 by the orchestrator for Nolan, under his go-ahead of 2026-10-
 right up until we are ready to start the swarm and I will have a discussion with you about it."
 This is that discussion's paper.
 
+**Superseded in part the same day:** after the discussion and an independent audit
+(`notes/swarm-audit/2026-10-19-plan-audit.md`), SWARM_PLAN version 2 redesigns the pilot (two
+kinds of claim, mechanical arms, replay scoring, a pre-registered decision rule) and adds a build
+before it (its §10). Its gates, cost and order replace §1–§5 below; this report stays as the
+record of the state on the morning of 2026-10-19.
+
 ## TL;DR
 
 - **Almost.** Four of SWARM_PLAN §9's five gates are met. The fifth is your word on the schedule.

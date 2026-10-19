@@ -1,359 +1,407 @@
-# The research swarm: driver, record, intake and pilot
+# The research swarm: what it measures, how, and the pilot
 
-Drafted 2026-10-16 on turbotab-next by the orchestrator, docs only, at Nolan's approval the same
-day. It builds on the swarm program (CLAIMS_REGISTRY.md §8 and §11, ruled 2026-10-15) and on
-Nolan's answers of 2026-10-16. Nothing here is built yet. The swarm runs only after its gates
-(§9) are passed.
+Version 2, written 2026-10-19 by the orchestrator. It replaces version 1 (2026-10-16, amended
+2026-10-18 and earlier on 2026-10-19; in git history) after an independent audit
+(`notes/swarm-audit/2026-10-19-plan-audit.md`) found that, as built, the pilot would measure the
+analysts and not whether decisions are good. Nolan ruled on the audit's questions the same day.
+Under the swarm program (CLAIMS_REGISTRY §8 and §11) and Nolan's go-ahead of 2026-10-18.
 
 ## TL;DR
 
-- **What:** AI analysts work real public datasets in TurboTab, the way a researcher would. Each
-  one asks its question, tries options, and writes down why it chose what it chose. We keep
-  every run as a record.
-- **Why:** many such runs show which modeling decisions actually change results, and where.
-  That is the "middle layer" the app's advice should rest on. Today the advice rests on our
-  judgment.
-- **The one rule that matters most:** analysts must explore before they commit. Every attempt is
-  logged with its reason and with how far it moved the result. Once the held-out data are opened,
-  nothing more is tried. A run that tries nothing is flagged.
-- **Where:** on your machine, at times you set, throttled at night. Analysts have no token cap,
-  but every run's spend is measured and reported.
-- **What we decide first:** whether the cheapest analyst is good enough, measured in a small
-  pilot before any volume. Nolan ruled on 2026-10-18 that the pilot uses Haiku ("Use Haiku 5-5
-  for the pilot"), lifting his "nothing below Sonnet" rule for the pilot's analysts only.
+- **The goal:** the middle layer, the learning mechanics of tabular modeling. Nolan's question:
+  "is this modeling decision even a good decision regardless of whether it is mathematically
+  valid?" A claim answers it on three axes: the regime, the measurement model, and the purpose
+  with its loss.
+- **Two kinds of claim:**
+  - a **surfacing** claim ("this decision matters here, or does not") says where a user's
+    attention belongs, and the corpus can reach it;
+  - a **choice** claim ("this option beats that one on this loss") needs known truth: simulations
+    and the fixtures.
+
+  Surfacing comes first (Nolan, 2026-10-19).
+- **How:** a search over modeling paths with two arms.
+  - **AI analysts** give the prior: the paths a researcher in that domain would take ("the
+    analysis that a modeler does happens on rails for a specific domain"), plus a persona that
+    deliberately leaves the rails.
+  - **Mechanical arms that spend no tokens** do the measuring: a sweep that changes each offered
+    decision one at a time and keeps the signed change, a default path, and a random path.
+- **Against slop:**
+  - Choice claims are graded only against known truth.
+  - Every claim pipeline runs once on a corpus whose markers are shuffled, where every pattern is
+    false by construction, to measure the real false-promotion rate.
+  - Nolan blind-reviews a sample of promoted claims.
+- **Built today:** the driver, version 1 of the record, the six checks, the intake and a dry run
+  whose 18 checks agree. **Not built:** everything this version adds (§10).
+- **The pilot:** after the build in §10, in daytime and unthrottled, within 40% of a fresh week:
+  - Haiku 5.5 and Sonnet 5.5, each crossed with three personas;
+  - an Opus 5.5 ceiling on the fixtures;
+  - the mechanical arms on every dataset;
+  - one claim cycle beside its shuffled control.
 
 ## 1. What the swarm is for
 
-One infrastructure carries three run designs (the swarm program, 2026-10-11):
-1. **Replication.** The analyst reproduces a published analysis. It records each decision the
-   paper stated, each one the paper left unstated, and how far each unstated option moves the
-   published number. This measures the literature's hygiene, and it is Nolan's provenance
-   question (2026-10-15).
-2. **Agent analysts.** Several analysts take the same dataset and question, each making its own
-   decisions. This is a "many analysts" study whose every decision is logged with its
-   materiality, so it shows why their results diverge.
-3. **The full shelf.** Every model family on every dataset, nested and sealed, for the learning
-   mechanics. The meaning decisions are fixed from the documentation, and the methodological ones
-   are enumerated.
+**The middle layer.** A claim in it says, for a region of three axes, whether a decision matters
+and, where truth allows, which option is better:
+- **the regime:** the structure of the table and the question;
+- **the measurement model:** how each number came to be (Nolan: "regime only answers half the
+  question, the other half that goes unanswered is the instrumentation of how the data was
+  recorded");
+- **the purpose and its loss:** the purpose, the score or estimand it is judged on, and the use.
 
-The pilot runs designs 1 and 2. Design 3 needs no analyst and waits for the heavy-run schedule.
+Claims are keyed on the axes, not on the domain. Domains sit in different regions of them, so a
+claim learned in one domain can be tested in another that matches its markers; that transfer test
+is the middle layer's strongest check. A claim's evidence records its domain as provenance.
 
-Each sprint stays in one domain (nutrition first, where the lenses are strongest), because the
-engine applies only partly outside its lenses. A rule that holds across every domain's ledger
-belongs to the engine; one that holds in a single domain belongs to that lens.
+**Two kinds of claim, graded differently:**
+- **Surfacing:** "in this region, decision D moves the result by at least m (or by less than m)".
+  It feeds the app's Decide and Confirm tiers: what to ask a user and what to set for them. It is
+  graded on the signed change measured across held-out datasets in the region (§9).
+- **Choice:** "in this region, option O beats O′ on loss L by at least d". It feeds defaults and
+  rankings. It is graded only against known truth: plasmode simulations built from real datasets,
+  and the fixtures (§5, §9).
+
+**Three run designs** share one infrastructure:
+1. **Replication.** An analysis reproduces a published one. Its product is a pre-registered sweep
+   of the paper's unstated decisions, how far each moves the published number, as SU-A's Sullivan
+   replication did (`notes/replication/sullivan2021.md` §4, §8). The analysts are its
+   many-analysts arm: how far independent analysts' paths diverge from the paper's and from each
+   other.
+2. **Agent analysts** on a dataset and question, under personas (§6).
+3. **The full shelf:** every model family on every dataset, nested and sealed, with no analyst.
+   It waits for the heavy-run schedule.
+
+**The closed loop of engine growth.** A run that needs an option the engine lacks records it (the
+`want` command, §2). The engine grows only by the admission rule in §9, within a budget of
+questions per reference journey, so it grows from evidence without the bloat that would make
+modeling overwhelming (Nolan, 2026-10-19).
 
 ## 2. The driver
 
-**An analyst works through the app's own API, never the engine directly.** The driver runs a
-local-mode server and talks to it over HTTP, as `turbotab/core/reference/journeys.py` already does
-for the review packets' reference journeys. That server is `ProjectService`, so every guard,
-refusal, claim and seal the app enforces applies to an analyst too. This is also the interface a
-later LLM harness will use, so building one gives the other.
+Built (DRIVER_PLAN D1, D2; `research/swarm/driver.py`). An analyst works through the app's own API
+on a local-mode server in analyst mode, never the engine directly, so every guard, refusal, claim
+and seal the app enforces applies to it. Its commands, each printing JSON:
 
-`journeys.py` already follows the Router question by question. Its answers come from a journey
-spec, the app's first-ranked option, or the acceptance drivers. The driver keeps that loop and
-replaces the answer source with the analyst. It gives the analyst a small command set, each
-command returning JSON:
-
-| Command | What it does | Exists today |
+| Command | What it does | Change in this version |
 |---|---|---|
-| `ask` | the open question: its card's words, its options, the readings it rests on | the quest log and ask cards |
-| `preview <option>` | what recording that option would do to the data; nothing is recorded | `ProjectService.preview` |
-| `answer <option> --reason` | records the decision, with the analyst's reason in the record's `note` | `decide`; `DecisionRecord.note` exists, but no route accepts a note yet (SWARM_ENGINE_PLAN E4) |
-| `revisit <decision>` | changes an earlier decision, which the log keeps as a new record | the decision log's reverts |
-| `fit` | presses Fit; under Estimate this records the plan's lock | `press_fit`, `LockPlan` |
-| `results` | the results the app would show now: cross-validated under Predict, the estimate under Estimate | W2 (Predict Results), W3–W4 (Estimate) |
-| `seal` | opens the held-out rows, once | `open_seal` |
-| `export` | the methods, the checklist and the bundle | `export` |
+| `ask` | the open question: its card's words, its options, the readings it rests on | none |
+| `preview <option> --reason` | what recording that option would do; nothing is recorded | **needs a reason**, which goes in the record and the referee's sample |
+| `answer <option> --reason --marker` | records the decision with the analyst's reason | **adds `--marker`**: the axis and marker that drove it (§4) |
+| `revisit <decision> --reason` | changes an earlier decision | none |
+| `fit` | presses Fit; under Estimate it records the plan's lock | none |
+| `results` | what the app shows now | none |
+| `seal <family> --reason` | opens the held-out rows, once | none |
+| `export` | the methods, the checklist and the bundle | none |
+| `want <what> --reason --marker` | **new:** records an option or check the analyst needed and the engine lacks | new |
 
-**What the driver refuses**, mechanically and whatever the analyst asks:
-- `reseal`. A Predict run's reported result is its first sealed score. The engine allows a
-  recorded re-seal for people, so the driver blocks it in analyst mode.
-- Any change after the seal is opened, beyond what the record marks `post_seal` and the corpus
-  leaves out of the run's result.
-- Any file, shell or network access outside the driver's commands. The analyst agent type
-  (`.claude/agents/analyst.md`, new) has no Edit or Write tool and no web tool. Its Bash is
-  limited to the driver's commands by a permission allowlist.
+**Refused mechanically:** a re-seal; any change after the seal reaching the result; every tool but
+the driver's commands (the analyst agent type and its hook, DRIVER_PLAN D2, wired locally); a run
+id that is not the caller's. A run's label is neutral (`run_NN` and a secret part), so no label
+names a control.
 
-**Compute, not tokens, is what binds.** Every fit is metered: count, seconds, and the workers it
-used. Each run has a fit budget (§6), and the driver refuses `fit` past it with a plain message.
+**The fit budget** is set per dataset from a scripted fit on it before the pilot (§6), not from
+the fixtures' small tables.
 
 ## 3. Exploration before the lock, and none after the seal
 
-Nolan's line (2026-10-16): trial and error, documented, is good. A swarm that "makes exactly one
-decision and does no real discovery" is not, and neither is chasing a result after it is seen. That
-is his p-hacking point about preprocessing. The protocol follows the app's own lock and seal, so
-the line falls in the same place for an analyst as for a person.
+Unchanged in principle (Nolan, 2026-10-16: trial and error, documented, is good; chasing a result
+after it is seen is not). Under Predict, discovery is on the cross-validated scores, then one seal.
+Under Estimate, discovery is outcome-blind until Fit records the lock; a change after the lock is
+a secondary analysis, logged and measured.
 
-**Under Predict:**
-- Discovery is on the training rows' cross-validated scores, before the seal.
-- The analyst may fit, compare and revisit as often as its fit budget allows. Each attempt
-  records:
-  - what it tries;
-  - why: a hypothesis, such as "the medication answers may carry most of the signal";
-  - what it saw: the change in the CV score and in the model's reading.
-- Then it opens the seal once and reports that score.
-- The record keeps every CV attempt, so selection optimism (best CV score against the sealed one)
-  is measured per run. That is a learning-mechanics datum, not a failure.
-
-**Under Estimate:**
-- The plan's lock is recorded when Fit is pressed, before any estimate is shown (`LockPlan`,
-  FOUNDATION §7).
-- Discovery before the lock uses what the app shows without the estimate:
-  - previews;
-  - the readings and the causal roles;
-  - outcome-blind checks such as positivity and balance;
-  - the shelf's outcome-blind ranking.
-- After the lock, a change is a secondary analysis. It is logged, and its effect on the estimate
-  is measured ("which decisions mattered"). The primary result stays the locked plan's.
-
-**What counts as exploring, and how it is checked:**
-- An **examined alternative** is an option previewed or fitted before the analyst chose. Reading a
-  card does not count.
-- A **single-pass run** examines no alternative for any decision and fits once. It is flagged, and
-  the pilot reports the single-pass rate for each analyst configuration.
-- **Exploring has no quota.** A quota would breed token exploration, previews pressed to pass a
-  count. Instead every attempt needs a hypothesis and a reading of what it showed. Then a referee
-  audits a random sample of attempts each sprint and asks whether the reason was real and whether
-  the reading matches the numbers. The referee is an Opus agent, with Nolan spot-checking. The
-  audit's pass rate is reported beside the exploration counts.
-- **Materiality is measured by the engine, never stated by the analyst:**
-  - the preview's change in the data;
-  - the CV score's change between attempts;
-  - the estimate's shift for a secondary analysis.
+**What counts, and how it is audited:**
+- An **examined alternative** is an option previewed or fitted before the choice, with a reason.
+  A preview without a reason is refused.
+- **Coverage, not counts:** the share of the decisions the mechanical sweep rates material (§6)
+  that the run previewed or changed. A run that previews everything immaterial and nothing
+  material scores low.
+- **A single-pass run** (no alternative examined, one fit) is flagged and its rate reported.
+- **The referee audit** samples previews as well as fits. It scores whether each reason is real
+  and whether it matches what the analyst was shown. About one in ten sampled reasons is a planted
+  fabrication, written by another agent, to measure how often the referees catch one.
+- **Materiality is the engine's, never the analyst's** (§4).
 
 ## 4. The corpus record
 
-One JSON record per run. It is validated against a schema (`research/swarm/record.py`) and
-stored in `research/corpus/`. Both sit outside `turbotab/`, so the product never imports them and
-the release zip leaves them out. The corpus is kept apart from the claims registry
-(CLAIMS_REGISTRY.md §8): abundance in the corpus, authority in the registry.
+One JSON record per run, validated against `research/swarm/record.py`, stored in
+`research/corpus/`, outside `turbotab/`, apart from the registry: abundance in the corpus,
+authority in the registry. Built at version 1; version 2 adds what is marked new.
 
 | Field | Contents | Source |
 |---|---|---|
-| `run` | id, design (1–3), engine commit, analyst model, effort and prompt version, start and end, fresh and cached tokens, fits and fit seconds | the driver; the transcript, counted as in `measuring-subagent-spend` |
-| `dataset` | id, source URL, release date, license, each file's SHA-256, the codebook | intake (§5); data provenance in ingest (HANDOFF step 7) |
-| `question` | goal G (the purpose), estimand or intended use Q, and for replications the paper and its stated question | the analyst's first answers; the paper |
-| `regime` | n, events, missingness, design (survey weights, clusters, repeats), lenses | the engine's readings |
-| `decisions` | each decision D: the option O chosen; the options examined and how (preview or fit); the reason; the phase (before the lock, after the lock, after the seal); the source (the analyst, or the app's default accepted); and materiality M | the decision log (`DecisionRecord`: `note`, `post_seal`), the driver, the engine |
-| `attempts` | each fit: the plan's digest, the decisions it read, its CV scores or estimate | the driver; W2–W4's run records (§8) |
-| `result` | the locked plan's digest, and the sealed score or the estimate with its interval, once | the engine |
-| `claims` | every registry claim the run rendered, with its id, status and grade at the time | `claims.card` and `claims.methods` calls, logged by the server in analyst mode |
-| `surfacings` | each refusal met and the exit taken, and each concern shown | the server's responses |
-| `export` | the bundle's SHA-256, its methods text and its checklist | `export` |
-| `replication` | for design 1: the paper's stated decisions, the unstated ones, each unstated option's shift in the published number, and the published number against ours | the analyst's record against `notes/replication/` |
+| `run` | id, design, engine commit, **analyst model and persona (new)**, effort, prompt version, start and end, fresh and cached tokens, fits and fit seconds | the driver; the transcript |
+| `dataset` | id, source URL, release date, license, each file's SHA-256, the codebook, **the card's declared measurement markers (new, §5)** | intake |
+| `question` | the purpose, the estimand or intended use, the paper for a replication | the card; the analyst's answers |
+| `regime` | **the three axes' run-level markers (new; below)** | the engine's readings |
+| `decisions` | each decision: the option chosen; those examined and how; the reason and **its marker tag and rejected alternative (new)**; the phase; the source; **the markers it read, as they stood then (new)**; the engine's measured change | the decision log, the driver, the engine |
+| `attempts` | each fit: the plan's digest, the decisions it read, its scores or estimate | GET /fits |
+| `result` | the locked fit's sealed score, or the reported estimate on its measure's scale, or the refusal with its reason | the engine |
+| `sweep` | **new:** the mechanical arm's one-at-a-time changes around this run's final plan (§6) | the sweep runner |
+| `replay` | **new, fixtures only:** the final plan replayed on fresh draws from the fixture's generator: regret, or bias and coverage | the replay scorer |
+| `wants` | **new:** each `want` with its reason and marker | the driver |
+| `account` | **new:** the analyst's end-of-run account, marked as written after the results | the analyst |
+| `claims`, `surfacings`, `export`, `replication` | as in version 1 | the server; the replication sweep |
 
-The schema follows the middle layer's claim shape (the swarm program, 2026-10-11): under goal G,
-estimand or use Q and regime R, decision D with option O has validity V and materiality M.
-Analysts fill G, Q, D and O, the engine fills R and M, and V is never set by a run. Only a
-mechanical check or an independent grader sets it (§7).
+**The engine's measured change is signed and in the loss's units (new).** Today it is stored
+unsigned, as |mean Δ| / SD(Δ), with the sign only in a sentence (`core/materiality.py`), and it
+grows with the table's size. Version 2 keeps the signed paired difference in the score's own units
+(under Predict, with the engine's corrected repeated k-fold interval) and, under Estimate, the
+shift of the reported estimate in its own units and in units of its interval.
 
-**Amended 2026-10-19 (Nolan, in the pilot discussion): three axes, their markers, and the
-analyst's account.**
+**The three axes' markers**, from the engine's readings, never the analyst's description:
+- **Regime:** rows, rows analyzed, units where rows repeat, the effective size (events, or the
+  rarest class), events per parameter; the predictors by role and their ratio to the rows; the
+  outcome's type and event share; missingness per column, the complete-case share, whether the
+  pattern is monotone; clusters, the spread of cluster sizes, survey strata, PSUs, weights, Kish's
+  effective n, time order; the largest correlation and the condition index; the signal (the
+  cross-validated gain over the no-predictor baseline, recorded after the run).
+- **Measurement model:** the scale type (absolute, relative intensity, compositional, ordinal
+  items); the units as read; the error structure (variance growing with the mean, skew);
+  censoring (shares below or above a detection limit, top-coding); batch and run-order columns,
+  drift found, QC samples; repeated measurement (replicates, recalls, imputed copies) and,
+  where it can be estimated, reliability; the instrument, as declared (§5); under Predict, how
+  each predictor will be measured when the model is used (self-report against measured at an
+  exam).
+- **Purpose and loss:** the purpose and primary score, with why; the intended use and its
+  thresholds; the estimand (the measure, marginal or conditional, the substitution); the
+  multiplicity family; the loss a claim from the run would be graded on.
 
-A claim says where it holds on three axes, and the record keeps the markers for each, from the
-engine's own readings (never the analyst's description):
-- **The regime,** the structure of the table and the question: rows, rows analyzed, units where
-  rows repeat, the effective size (events, or the rarest class); the predictors by role and their
-  ratio to the rows; the outcome's type and event share; missingness per column, the complete-case
-  share and whether the pattern is monotone; clusters, survey strata, PSUs, weights and time order;
-  the largest correlation and the condition index; the signal (the cross-validated gain over the
-  no-predictor baseline, recorded after the run, so it steers nothing).
-- **The measurement model,** how each number came to be (Nolan: "regime only answers half the
-  question, the other half that goes unanswered is the instrumentation of how the data was
-  recorded"): the scale type (absolute, relative intensity, compositional, ordinal items); the
-  units as read; the error structure (variance growing with the mean, skew); censoring (shares
-  below or above a detection limit); batch and run-order columns, drift found, QC samples; repeated
-  measurement (replicates, recalls, imputed copies); and the instrument (food-frequency
-  questionnaire, 24-hour recall, a mass-spectrometry platform, an assay), declared by the intake
-  (§5) because the engine cannot read it.
-- **The purpose and its loss:** the purpose and the primary score, with why; the intended use and
-  its thresholds; the estimand (the effect measure, marginal or conditional, the substitution);
-  the multiplicity family; the loss a claim from the run would be graded on.
+Each reading records its basis (the rule and the evidence the engine used). Units, and whether a
+column was already transformed, are inferences, so a disagreement between a declared marker and a
+reading is settled by the evidence before it is called a finding.
 
-Each decision's entry keeps a snapshot of the markers it read, as they stood when it was made (a
-missing-values answer reads the missingness after the exclusions); the dataset's markers are kept
-once per run. A transfer test then picks datasets from another domain that match a claim's
-markers.
-
-**The analyst's account** sits beside the engine's record and never in place of it. The engine's
-record is the evidence; the account carries what only the analyst knows, its intent (an exclusion
-that corrects a data error and one that drops outliers to improve the fit look alike in the log):
-- written when each decision is made, before the analyst has seen what mattered; any end-of-run
-  account is a separate field, marked as written after the results;
-- each reason names the marker that drove it (its axis and marker) and the alternative it
-  rejected, then free text;
+**The analyst's account** sits beside the engine's record, never in its place:
+- a reason per decision, written when it is made, before the analyst has seen what mattered, with
+  a marker tag (axis and marker) and the alternative rejected, then free text;
+- the end-of-run account, a separate field marked as written after the results;
 - context for a theorist's hypotheses, never evidence: a claim's status changes only by the
   mechanical checks and the designed experiments (§9);
-- audited: the referees score whether each stated reason matches what the analyst was shown, and
-  the rate of reasons that do not is reported per model and persona.
+- audited for faithfulness (§3), with the rate reported per model and persona.
 
 ## 5. Dataset intake
 
-- **Public data only,** each file with its source URL and release date (HANDOFF step 7's
-  provenance), its license, and its SHA-256 at download. No dataset needs an application or
-  a data-use agreement.
-- **One question card per dataset.** For a replication it comes from the paper, verified against
-  `notes/replication/`. For agent analysts, an intake agent writes the question, the population
-  and the purpose, and the orchestrator reviews it. Analysts on one dataset share one card, so
-  their divergence is in the decisions, not in the question.
-- **Known-answer controls.** The repo's fixtures with declared truths (`truths.FIXTURE_TRUTHS`,
-  BLUEPRINT §14.3) run beside real data. An analyst's estimate there is right, or the app refuses
-  it; anything else is a defect, filed in INBOX.
-- **Null decoys.** Datasets generated with no signal run in the same queue. A "finding" there is a
-  false discovery, and the corpus reports the rate. These are separate from the stage-3 audit's
-  sealed decoys, which the swarm never sees.
-- **A held-out shelf.** Each sprint sets some datasets aside before it starts. A pattern found on
-  the discovery shelf is confirmed on them once, the lock and seal applied to the research itself.
-
-- **Declared measurement markers from the source** (amended 2026-10-19, Nolan: "since we are
-  pulling from real published papers, why not use that information to guide the measurement
-  markers we need?"). The intake reads the paper's methods (for a fixture, its documentation) and
-  fills the card's measurement section: the instrument, assay or platform, the preprocessing, the
-  handling of detection limits, the units, the recall method. Each marker quotes its passage and is
-  labeled declared; a referee checks the quotes. What the paper does not say is recorded as not
-  stated, since a paper's unstated measurement decisions are part of what a replication reports.
-  Where a declared marker and the engine's reading disagree (the paper says kcal and the engine
-  reads kJ; the paper says log-transformed and the data are raw), the record holds both and the
-  conflict is a finding.
+Built for version 1 (`research/swarm/intake.py`: manifest with URL, release date, license and
+SHA-256; a question card). Version 2 adds:
+- **Declared measurement markers** (Nolan, 2026-10-19: "since we are pulling from real published
+  papers, why not use that information to guide the measurement markers we need?"):
+  - The intake reads the paper's methods and, for NHANES, the NCHS laboratory and
+    questionnaire documentation (for a fixture, its own documentation).
+  - It fills the card's measurement section: the instrument, assay or platform, the
+    preprocessing, detection limits, units, the recall method.
+  - Each marker quotes its passage and is labeled declared; a referee checks the quotes.
+  - What the source does not say is recorded as not stated: a paper's unstated measurement
+    decisions are part of what a replication reports, and the material for a survey paper Nolan
+    has in view.
+- **Fixtures with known truth that can be redrawn**, so a plan can be replayed on fresh draws:
+  - the Predict fixture's generator (`clinical_readmission_predict`, its true risk known);
+  - a new Estimate fixture: a non-null effect, a planted confounder and a collider, and
+    missingness that depends on the outcome, so attenuation, adjustment and missing-data choices
+    are all graded;
+  - a measurement fixture: the repo's untargeted metabolomics table
+    (`metabolomics_untargeted.csv`: detection-limit censoring, run-order drift, QC samples,
+    batches), with a generator for its truth.
+- **The null decoy** is run by the scripted analyst and the mechanical arms only: the seal
+  protects it, so it tests the engine's intervals, not an analyst. Its draws use distinct seeds.
+- **Nolan's NHANES glucose table** is rebuilt from the NCHS files with its provenance (its card
+  today says the export and the imputation are "not recorded"). Its "good" is performance on a
+  later NHANES cycle, not a random split (Nolan, 2026-10-19).
+- **The held-out shelf** is set aside per regime stratum before a sprint, with its confirmation
+  statistic fixed in advance and a budget for its reuse across claims (Dwork et al., Science 2015).
 
 ## 6. The pilot
 
-**Datasets** (about six):
-- Bang 2009 (Predict, NHANES);
-- Sullivan 2021 (Estimate, NHANES; replicated by hand first, HANDOFF step 4, so the swarm's
-  replication has a reference);
-- Nolan's NHANES fasting glucose under Predict, after his walkthrough;
-- one Predict fixture and one Estimate fixture with declared truths;
-- one null decoy.
+**What it decides:** how the production swarm should run: which analyst model, which personas, and
+whether agents beat the mechanical arms per unit of cost at finding what matters and choosing well.
 
-Menke 2015 waits for a Describe purpose, which the engine does not have yet.
+**Datasets** (six):
+- Bang 2009 (Predict) and Sullivan 2021 (Estimate), the replications;
+- Nolan's NHANES glucose (Predict, judged on a later cycle);
+- the Predict fixture, the new Estimate fixture and the measurement fixture, with known truth.
 
-**The model-and-effort comparison**, the pilot's first experiment. Nolan asked on 2026-10-16
-whether the best analyst model and effort are settled. They are not: nothing has measured them.
+The null decoy runs mechanically beside them.
 
-Nolan's rulings set the design:
-- 2026-10-18: "Use Haiku 5-5 for the pilot." The analyst agent type names `claude-haiku-5-5`, and
-  the first runs confirm which model actually ran.
-- 2026-10-19: the pilot's purpose is to learn whether the production swarm will be effective and
-  which choices make it more so ("since pilots are cheap, perhaps we also open the scope to sonnet
-  5-5 as well"). So Sonnet 5.5 runs from the start, and each analyst takes one of three personas
-  (he approved them the same day).
-
-**The personas** are stances toward the field's defaults. The protocol is the same for all three;
-only the stance in the analyst's prompt differs.
+**The personas,** stances toward the field's defaults; the protocol is the same for all:
 - **Conventional:** takes the domain's customary path where the engine ranks it sound, and says why.
-- **Skeptical:** questions each default before accepting it, previewing at least one alternative
+- **Skeptical:** questions each default before accepting it, examining at least one alternative
   where a decision could move the result.
-- **Explorer:** deliberately tries the alternatives the field rarely takes, the search's explicit
-  exploration term, so the corpus reaches the places a convention may be valid but not good.
+- **Explorer:** deliberately tries the alternatives the field rarely takes, the agents' share of
+  the exploration term.
 
-| Per dataset | Conventional | Skeptical | Explorer |
-|---|---|---|---|
-| Haiku 5.5, high effort | 1 | 1 | 1 |
-| Sonnet 5.5, high effort | 1 | 1 | 1 |
-| Opus 5.5, high effort | 1, the ceiling | | |
+**The arms, per dataset:**
 
-That is 7 runs per dataset and 42 in all. Crossing model with persona separates the two levers the
-production swarm must set. Haiku against Sonnet at each persona, and both against the Opus ceiling,
-measure what a cheaper model loses. Each persona on two models measures whether a stance makes real
-diversity, which three identical prompts could not show. Beside §7, the pilot reports:
-- the spread between a dataset's runs (paths and results);
-- each run's coverage (the share of the decisions on offer it previewed or changed).
+| Arm | Runs | Tokens |
+|---|---|---|
+| Haiku 5.5, high effort | one per persona (3) | yes |
+| Sonnet 5.5, high effort | one per persona (3) | yes |
+| Opus 5.5, high effort, conventional | one, on the three fixtures only (the ceiling, scored by replay) | yes |
+| Haiku replicates | two more per persona on the Predict and Estimate fixtures (12 in all) | yes |
+| The mechanical sweep | around each agent run's final plan and around the default plan | none |
+| The default path and a random path | one each | none |
 
-**Order and cost:** first a measured trio, one run of each model with the conventional persona on
-the Predict fixture. Its fresh tokens, fits and wall time size the rest. The rest runs dataset by
-dataset, so a model that clearly fails, or a spend running hot, stops it early. Nolan's budget
-(2026-10-19): up to 40% of a fresh week. The runs go in daytime, unthrottled (PILOT_READINESS §3).
+That is 51 agent runs. The replicates separate a persona's effect from run-to-run noise. Run order
+is randomized within each wave.
 
-**The production swarm the pilot informs** (the orchestrator's proposal, for Nolan after the pilot):
-- most problems get one analyst each, for breadth;
-- about one in five gets a panel of personas, to keep measuring spread and the field's blind spots;
-- a small sample gets an Opus ceiling run;
-- replications and stuck runs escalate to a stronger model.
+**The engine is frozen** at one commit for the pilot. No package merges into the branch the pilot
+runs on until it ends.
 
-**Each configuration is scored on:**
-- protocol (seal violations, which must be zero; every attempt has a reason);
-- exploration (examined alternatives per decision, the single-pass rate, the referee audit's pass
-  rate);
-- correctness (known-answer controls right or refused; decoys giving no finding);
-- replication (stated decisions reproduced, or each divergence named; the published number within
-  the paper's own interval where the data allow);
-- robustness (runs reaching the export without help; each stuck run classed as an engine defect,
-  a driver defect or an analyst failure);
-- spend (fresh and cached tokens, fits, wall time per run).
+**Order:**
+1. **Sizing.** A scripted fit on each dataset sets its fit budget, and the measured trio runs one
+   run of each model with the explorer persona on Bang 2009, the largest table and the widest path.
+   Nolan reads his usage meter before and after the trio.
+2. **The waves,** dataset by dataset, with the stopping rule in §7.
+3. **One claim cycle** (§9) on the pilot corpus and one on its shuffled control.
 
-If Haiku meets §7, it is the analysts' model. If it does not, that is the finding, and the plan
-comes back to Nolan before any Sonnet run.
+**Compute and timing:** daytime, unthrottled (Nolan, 2026-10-19: "daytime is acceptable for the
+subagent runs"), since under the throttle long commands make an agent miss its prompt cache and
+cost about four times as much (PILOT_READINESS §3). At most three agent runs at once. Each
+analyst command stays short; a fit that would run past about four minutes is refused by its
+budget.
 
-**Compute:** the runs are heavy runs, scheduled with Nolan, two workers each, under the
-quiet-hours throttle (`heavy-runs-wake-the-bedroom`). The fit budget per run is set from the first
-three runs' measured fit times, not guessed here.
+**Budget:** up to 40% of a fresh week (Nolan, 2026-10-19). If the trio's spend projects the pilot
+past it, the waves are cut before they start, Sonnet's replicates first.
 
-## 7. Pilot acceptance
+## 7. Pre-registration and acceptance
 
-These thresholds are our judgment, set before the pilot and revisited only with Nolan:
-1. **Seal integrity:** no decision after a seal opening reaches a run's result, and no re-seal,
-   checked mechanically from every decision log. One violation fails the pilot.
-2. **Logging:** every record validates against the schema. Every attempt has a reason and an
-   engine-measured materiality.
-3. **Exploration:** in the chosen configuration, the single-pass rate is at most 1 run in 5, and
-   the referee audit passes at least 4 attempts in 5.
-4. **Correctness:** every known-answer control is right or refused, and no null decoy yields a
-   finding the analyst reports as real.
-5. **Robustness:** at least 9 runs in 10 reach the export without human help. Every engine defect
-   a run meets is filed in INBOX with the run's id.
-6. **Spend:** measured for every run, with a projection for one domain sprint. Nolan is told
-   before a sprint whose projection threatens the week's usage the build needs.
+Written down before the trio runs, in `research/swarm/prereg.json`, and applied by a script
+(`research/swarm/score_pilot.py`), not by the orchestrator, who wrote the plan.
 
-## 8. What W2–W4 must build for it
+**Regression checks** that must hold on every run (they hold by construction, so they are not
+acceptance criteria): seal integrity, schema validity, a reason on every preview and decision.
 
-These go into the waves, so the swarm is not a retrofit (HANDOFF step 3):
-- **A run record per Fit:** the plan's digest, the decisions it read, and its CV scores or
-  estimate, kept by the server. Nothing today lists the fits a project made, with the plan each
-  read and what it scored.
-- **Results readable as data,** under both purposes: W2's Predict Results and W3–W4's Estimate
-  Results serve JSON, not only a screen.
-- **"Which of my decisions mattered"** as engine data for secondary analyses (W3–W4), since
-  materiality after the lock comes from it.
-- **An analyst mode** in the server: re-seal refused, and each claim rendered logged with its id
-  and status.
-- **Data provenance in ingest** (HANDOFF step 7): source URL and release date per file.
+**The unit and the statistics:**
+- The unit is the model, pooled over its personas; the persona comparison is secondary.
+- **Decision quality** on the fixtures, from the replay: regret against the true risk (Predict),
+  bias and coverage (Estimate), compared between models as paired differences per fixture.
+- **Coverage of the material decisions,** from the sweep, paired per dataset between models and
+  against the mechanical arms.
+- **Reason faithfulness,** from the referee audit, and the referees' catch rate of the planted
+  reasons.
+- **Robustness:** runs reaching the export without help. Each stuck run is classed (engine defect,
+  driver defect, capability gap, analyst failure) by a reader who does not know which model ran;
+  only analyst failures count against a model.
+- **Refusals** are a separate rate, never counted as passes.
+- **Cost per useful result:** fresh tokens per material decision covered, and per unit of regret
+  reduced.
 
-The driver, the analyst role, the schema and the intake tooling come after W4. They are about
-20 units in the swarm program's estimate of 2026-10-11, to be re-sized from W2–W4's measured
-cost.
+**The decision rule:**
+- A model is acceptable if:
+  - its regret, bias and coverage on the fixtures are within the pre-registered margin of the Opus
+    ceiling;
+  - its reasons are faithful at least 4 times in 5;
+  - at least 9 runs in 10 reach the export.
+- The cheaper acceptable model is the production analyst. If neither is acceptable, that is the
+  finding, and the plan returns to Nolan.
+- A persona is kept in production if it raises coverage of the material decisions beyond the
+  replicates' spread.
+- The margins are fixed in `prereg.json` before the trio.
 
-## 9. From corpus to the middle layer, and the gates
+**Expected false alarms, stated in advance:** about 2.5% for the decoy's interval and 5% for a
+null's coverage. A miss on a control is settled by rerunning that control on fresh seeds, never by
+editing an expectation.
 
-The corpus never reaches a user. A pattern in it becomes advice only through the registry
-(CLAIMS_REGISTRY.md §8):
-1. **Propose.** A theorist agent (Opus) reads the corpus and proposes a claim in the middle
-   layer's shape, with the regime it holds in. It enters the registry as proposed and unsupported.
-2. **Pull, not push.** The claim gets work only if it answers a decision a real person got stuck
-   on: a friction log, or a walkthrough (ORCHESTRATOR §2).
-3. **Try to break it.** An experimentalist designs runs where the claim would fail: known-truth
-   simulations, and the held-out shelf. Only these mechanical checks change its status.
-4. **Grade.** The claim earns its grade's requirement (§2.4), passes the two-referee gate and the
-   basis audit, and is built with Fires and Silent tests like any claim.
-5. **Measure the slop rate.** Decoys sit in the same queue, and the false-promotion rate is
-   reported, never a count of claims. Throughput is capped at what can be audited, highest
-   materiality first.
+**Early stopping:** a model whose first two fixtures both miss the margin stops; a spend that
+projects past the budget stops the waves.
 
-**The gates before the first pilot run:**
-- R0 landed, and the walkthrough's claims registered (R1);
-- W2–W4's needs in §8 built;
-- the Sullivan 2021 replication done by hand;
-- the stage-3 audit's decoy machinery in place;
-- Nolan's word on the schedule.
+## 8. What the engine must provide
 
-## 10. Open for Nolan
+Built for version 1: GET /fits (with the locked fit), GET /results, GET /mattered, analyst mode
+(re-seal refused, the claims render log, the preview log, the decision's note), provenance.
 
-- **Haiku for analysts:** ruled 2026-10-18, "Use Haiku 5-5 for the pilot" (§6).
+Version 2 needs (§10):
+- **The sweep's refits under the full pipeline.** GET /mattered refits only linear and logistic
+  models and refuses a plan holding imputation, an energy model, a declared form, a scale score,
+  omics normalization, a detection-limit fill, batch correction or a marginal measure
+  (`core/mattered.py`). Those are exactly the measurement-axis decisions. So the sweep runs each
+  one-at-a-time change through the driver as its own scripted fit, under the full pipeline, at a
+  compute cost and no token cost.
+- **The signed change** in the loss's units, with its interval (§4).
+- **The markers** on the record (§4), from readings the engine mostly already makes (units,
+  detection limits, batch, scale), each with its basis.
+- **Replay** of a final decision log as a plan on a fresh draw, without the engine asking its
+  data-dependent readings again. This is unproven: the build checks it first, and where a reading
+  cannot be replayed, the replay records the reading's answer from the original run.
 
-Everything else here is the orchestrator's call, under your delegation of methods and
-architecture, and is recorded so you can overrule it:
-- the corpus's place outside `turbotab/`;
-- the exploration protocol;
-- the acceptance thresholds;
-- the pilot's datasets.
+## 9. From corpus to the middle layer
+
+The corpus never reaches a user. A pattern becomes advice only through the registry
+(CLAIMS_REGISTRY §8):
+1. **Propose.** A theorist (Opus) reads the corpus and the sweeps and proposes surfacing or choice
+   claims in the three axes' terms. Each enters the registry as proposed and unsupported.
+2. **Pull.** A claim gets work if it answers a decision a person got stuck on (a friction log, a
+   walkthrough) or if it would change one of the engine's judgment-graded defaults, ranked by the
+   sweep's measured materiality. The second door lets in the field's blind spots that no one yet
+   knows to be stuck on.
+3. **Try to break it.**
+   - A surfacing claim is tested on held-out datasets in its region.
+   - A choice claim is tested on plasmode simulations, real datasets with planted truth, whose
+     designs, losses and replicate counts are written down before they run.
+   - A claim learned in one domain is tested where possible in another that matches its markers.
+   - Only these mechanical results change a claim's status.
+4. **Grade.** The claim earns its grade's requirement, passes the two-referee gate and the basis
+   audit, and is built with Fires and Silent tests.
+5. **Measure the slop rate end to end.**
+   - **The shuffled control:** each claim cycle also runs on a copy of the corpus whose markers
+     are permuted across datasets, so every claim the theorist proposes from it is false by
+     construction.
+   - **Power:** one true effect is planted in the control, to show that the pipeline can find a
+     claim at all.
+   - The share of the control's claims that reach a grade is the false-promotion rate, reported
+     beside the registry's text decoys.
+6. **A human check.** Nolan blind-reviews a sample of promoted claims each sprint, within the
+   couple of hours a week he can give to walkthroughs and spot checks (2026-10-19). Claude is then
+   not the only grader of Claude.
+
+**The engine's growth, from wants:** an option enters the engine only when it is wanted by at
+least three runs on at least two datasets, and a prototype sweep shows it is material. Each
+reference journey has a cap on Decide-tier questions; a new question that would pass the cap
+must retire or fold an existing one. That cap is the bloat budget.
+
+## 10. Order of work
+
+The pilot waits for these. They run after Nolan's usage resets (Thursday 1 pm), each package
+an Opus builder, an adversarial verifier and at most two repairs, with commands kept short.
+
+1. **The record's version 2 and the driver:**
+   - the fields in §4;
+   - the signed change;
+   - the preview reason, `--marker` and `want`;
+   - model and persona;
+   - the account fields.
+2. **The mechanical arms and the replay:**
+   - the sweep runner;
+   - the default and random paths;
+   - the replay scorer;
+   - the new Estimate and measurement fixtures with their generators;
+   - the decoy's distinct seeds.
+3. **The intake's version 2:**
+   - the cards' measurement sections with their checked quotes;
+   - the NHANES glucose table rebuilt from the NCHS files, with its later cycle.
+4. **RB** (R1_PLAN R1-B), the pre-registration and its scoring script, the shuffled-corpus tool,
+   and the theorist's and experimentalist's prompts.
+5. **The live lockdown check and the analyst's model id**, in a fresh session on the home machine
+   (DRIVER_PLAN D6).
+
+Then the pilot (§6), then its claim cycle and Nolan's review.
+
+## 11. Rulings and what is open
+
+**Nolan's rulings this plan rests on** (2026-10-16 to 2026-10-19):
+- exploration before the lock, none after the seal;
+- Haiku 5.5 as the analysts' model, with Sonnet 5.5 opened for the pilot and three personas;
+- daytime, unthrottled runs, within 40% of a fresh week;
+- the three axes, declared markers from the papers, and the analyst's audited account;
+- surfacing claims first;
+- "good" for his glucose project is performance on a later NHANES cycle;
+- he blind-reviews promoted claims.
+
+**The orchestrator's calls,** recorded so he can overrule them:
+- the arms and their counts;
+- the pre-registration's statistics and margins;
+- the admission rule and the question cap;
+- the Opus ceiling only on the fixtures;
+- the null decoy run mechanically;
+- the corpus kept outside `turbotab/`.
+
+**Reviews:** this version goes to an independent review by a Fable agent at xhigh effort before
+any of §10 is built. The plan is revised until fresh readers stop finding flaws (Nolan,
+2026-10-19: "Think of this like editing an english essay, it's always good to revisit and revise
+until we are happy").
