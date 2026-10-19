@@ -40,7 +40,8 @@ Nolan's go-ahead of 2026-10-18.
   buffer) and the pilot both run in the week after Nolan's usage resets, on a thin buffer he
   accepted (2026-10-19).
 - **Built today:** the driver, version 1 of the record, the six checks, the intake, the dry run (18
-  checks agree at 8a3e0fff, on today's fixtures; redone in package 2 on the hardened ones), replay of a decision log (`core/export/replay.py`), and R1-F's first batch of
+  checks agree: the committed records come from the driver's fix branch, and a rerun at 8a3e0fff
+  gave the same; redone in package 2 on the hardened fixtures), replay of a decision log (`core/export/replay.py`), and R1-F's first batch of
   sentence fixes (RF-1).
 
 ## 1. What the swarm is for
@@ -249,8 +250,9 @@ Built for version 1 (`research/swarm/intake.py`). Version 2 of the intake adds:
      features, k fixed in `prereg.json`.
    - **In the pilot it decides nothing:** it is reported, as the measurement axis's first contrast.
 
-   The decisions it grades are measurement decisions: drift correction, normalization,
-   detection-limit handling and the log scale. This gives the pilot a measurement-axis contrast
+   The decisions it grades are the measurement decisions the engine offers: normalization, batch
+   handling, detection-limit handling and the log scale. No decision kind names drift or run-order
+   correction today, so an analyst who needs it records a `want`, itself a result. This gives the pilot a measurement-axis contrast
    with the NHANES tables.
 
 **Mechanical only:** the null decoy (the seal protects it, so it tests the engine's intervals),
@@ -501,6 +503,17 @@ sentence fixes R1_PLAN requires before the pilot.
 | 6d | The claim cycle's tools | the theorist's and experimentalist's prompts, structured proposals, the overlap script | 1–2M |
 | 7 | The live lockdown check | and the analyst's model id, in a fresh session on the home machine | small |
 
+**Watch inside the packages** (the last review's notes, none design-changing):
+- **Package 3:** the fold scheme follows the held-out draw (`core/seal.py`: a chronological draw
+  makes the folds time-ordered, and `set_temporal` is one answer for both), so the sweep cannot
+  reach random repeated folds on the glucose plan by a `revisit` without changing its held-out
+  rows. It needs an engine-side rescoring of the fixed training rows, or package 4's cut-point seal
+  leaves the fold scheme free.
+- **Package 5:** the benchmark script takes the later-cycle participants from the record's own
+  eligibility decisions, not a filter of its own; the glucose card fixes the temporal seal, so an
+  analyst cannot choose a random split and lose comparability with the benchmark.
+- **Package 2:** the measurement fixture's graded list is the engine's current menu (§5 item 6).
+
 The packages sum to 36–58M; about 40–65M with a buffer, on the evidence of this build's own
 overruns. Packages 1 and 2 can start first; 3 waits for 2; 5 waits for 4; 6b waits for 2; 6c
 waits for 3 and 5. The claim cycle's own runs (the theorist on two corpora, the referees, the
@@ -537,5 +550,6 @@ planted reasons) come out of the pilot's 40%.
 - the Decide cap after the pilot;
 - the admission rule.
 
-**Reviews:** version 5 goes to one last fresh reader, asked only whether anything left changes the
-build's design; if nothing does, the build starts after the reset.
+**Reviews:** five independent readers reviewed versions 1 to 5 (`notes/swarm-audit/`). The fifth,
+asked only whether anything left changes the build's design, answered BUILD (2026-10-19). Revision
+stops; the build starts after the reset.

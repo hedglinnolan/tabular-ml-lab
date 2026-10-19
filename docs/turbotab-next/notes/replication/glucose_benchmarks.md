@@ -10,8 +10,8 @@ paper before citing it.
 No peer-reviewed paper found predicts fasting plasma glucose as a number from non-glycemic
 predictors on NHANES. The continuous-outcome papers it found use glycemic predictors (HbA1c,
 fasting glucose) or are preprints. So the external benchmark for a glucose model is a
-classification: its predictions thresholded at 126 mg/dL (undiagnosed diabetes) and 100 mg/dL
-(prediabetes), on the benchmark's own population and outcome.
+classification: the outcome thresholded at 126 mg/dL (undiagnosed diabetes), the model's
+continuous prediction ranked against it, on the benchmark's own population.
 
 ## The three best benchmarks
 
@@ -24,8 +24,9 @@ classification: its predictions thresholded at 126 mg/dL (undiagnosed diabetes) 
 ## What this means for the glucose project
 
 - **Bang is the north star:** the same NHANES, a published score, and a later-cycle validation
-  (AUC 0.83). The glucose model thresholded at 126 mg/dL, on Bang's population, gives a directly
-  comparable AUC.
+  (AUC 0.83). The outcome thresholded at 126 mg/dL on Bang's population, with the glucose
+  model's continuous prediction ranked against it, gives a directly comparable AUC; Bang's score,
+  adapted to the later cycle's activity questions, is computed on the same participants.
 - **A realistic ceiling** for non-laboratory prediction of dysglycemia on a later cycle is about
   0.77–0.80 (Yoo 2026); prediabetes alone is harder, about 0.70 (De Silva 2020).
 - **Random-split results are optimistic:** several other candidates report AUCs of 0.82–0.91 on
