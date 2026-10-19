@@ -1496,13 +1496,15 @@ def _disposed_since(log: _Log, finding_id: str, cause: Any) -> bool:
 def _complete_before(stage: str, lines: Sequence[QuestLine], sweep: Sweep | None, cause: Any,
                      log: _Log, facts: Facts) -> bool:
     """Whether ``stage`` stood complete just before ``cause``, a change from Predict: each counted
-    Decide it held then answered then (:func:`_answered_before`; an open noticing counted toward
-    Results' triage under Predict, ruling R-a), each default of its sweep confirmed then, and each
-    question or declaration the change asks otherwise or takes away (the held-out rows, which
-    Predict asks until they are drawn; a form Predict sets for the person and Estimate asks)
-    answered or confirmed then too. A line that was not there then (:func:`_there_before`: the
-    estimand the change made apply, answered since or not) says nothing of then. A stage whose
-    questions had no answers then was not reached, or was still being worked."""
+    Decide it held then answered then (:func:`_answered_before`), each default of its sweep
+    confirmed then, and each question or declaration the change asks otherwise or takes away (the
+    held-out rows, which Predict asks until they are drawn; a form Predict sets for the person and
+    Estimate asks) answered or confirmed then too. A noticing says nothing of then: under Predict
+    an open one counted toward Results' triage (ruling R-a), not toward its stage, so one open now,
+    or one not answered just before the change (dismissed since, say), left the stage complete
+    then. A line that was not there then (:func:`_there_before`: the estimand the change made
+    apply, answered since or not) says nothing of then either. A stage whose questions had no
+    answers then was not reached, or was still being worked."""
     before, after = log.state_at(cause.seq - 1), log.state_at(cause.seq)
     if before is None or after is None:
         return False
@@ -1511,8 +1513,9 @@ def _complete_before(stage: str, lines: Sequence[QuestLine], sweep: Sweep | None
         if not _there_before(line, before, after, facts):
             continue
         if line.label == DECIDE and line.counted:
-            if line.source == "finding" and line.status == "open":
-                continue
+            if line.source == "finding" and (line.status == "open"
+                                             or not _answered_before(line, cause, log)):
+                continue  # under Predict it did not count here, answered now or not
         elif line.label != CONFIRM or sweep is None:
             continue
         elif (confirmed is not None and confirmed.seq < cause.seq

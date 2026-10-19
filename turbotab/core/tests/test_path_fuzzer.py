@@ -700,6 +700,61 @@ def test_a_line_asked_when_the_goal_left_predict_and_answered_since_leaves_its_s
     assert line.reopened_by is None and not data.reopened
 
 
+def _noticings(stage):
+    return {l.key: l for l in stage.lines if l.source == "finding"}
+
+
+def test_a_noticing_open_when_the_goal_left_predict_keeps_that_cause_past_another_ones_disposal():
+    # LF-1's last verifier: Your data complete at 3 of 3 under Predict with the acquisition-design
+    # and run-order noticings open in it (Predict counts both toward Results' triage, ruling R-a);
+    # the change to Estimate makes both count there, 3 of 5, and names itself on each. Dismissing
+    # the run-order noticing answers it now, but it did not count under Predict, so its answer
+    # says nothing of how Your data stood then: the acquisition-design noticing, open still, the
+    # goal standing and the findings the ones the change met, keeps the change as its cause.
+    fx = path_fuzzer.METABOLOMICS
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop="exclusions")
+    data, _line_ = _line(_log_serving(state, records, fx, [DRIFT]), ACQUISITION)
+    assert data.key == "data" and data.progress.complete
+    assert (data.progress.answered, data.progress.required) == (3, 3)
+    assert {k for k, l in _noticings(data).items() if l.status == "open"} == {ACQUISITION,
+                                                                               DRIFT["id"]}
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    goal = records[-1]
+    data, line = _line(_log_serving(state, records, fx, [DRIFT]), ACQUISITION)
+    assert (data.progress.answered, data.progress.required) == (3, 5)
+    assert _named(data, line, goal) and _named(data, _noticings(data)[DRIFT["id"]], goal)
+    assert [r.sentence for r in data.reopened] == [
+        "Your change to Your question reopened 2 questions in Your data."]
+    then = _findings_inputs(state)
+    state = _decide(records, {"kind": "dismiss_finding", "finding_id": DRIFT["id"]})
+    assert _findings_inputs(state) == then and state.purpose == "inference"
+    data, line = _line(_log_serving(state, records, fx, [DRIFT]), ACQUISITION)
+    drift = _noticings(data)[DRIFT["id"]]
+    assert drift.status == "answered" and drift.reopened_by is None
+    assert (data.progress.answered, data.progress.required) == (4, 5)
+    assert line.status == "open" and line.counted and _named(data, line, goal)
+    assert [(r.decision_id, r.questions) for r in data.reopened] == [(goal.id, [line.id])]
+    assert data.reopened[0].sentence == (
+        "Your change to Your question reopened 1 question in Your data.")
+
+
+def test_a_stage_still_asking_when_the_goal_left_predict_stays_unnamed_past_a_noticings_disposal():
+    # Its other side: Your data still asked the roles under Predict, so it was not complete when
+    # the goal changed. Dismissing the run-order noticing after the change leaves the roles open
+    # then, and the acquisition-design noticing names no goal change.
+    fx = path_fuzzer.METABOLOMICS
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop="roles")
+    data, _line_ = _line(_log_serving(state, records, fx, [DRIFT]), ACQUISITION)
+    assert next(l for l in data.lines if l.key == "roles").status == "open"
+    assert not data.progress.complete
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    state = _decide(records, {"kind": "dismiss_finding", "finding_id": DRIFT["id"]})
+    data, line = _line(_log_serving(state, records, fx, [DRIFT]), ACQUISITION)
+    assert _noticings(data)[DRIFT["id"]].status == "answered"
+    assert data.key == "data" and line.status == "open" and line.counted
+    assert line.reopened_by is None and not data.reopened
+
+
 # ── each new check bites ─────────────────────────────────────────────────────
 
 
