@@ -1475,31 +1475,58 @@ WITHIN_TAIL = ("within-unit performance, new rows of units the models were fit o
 
 
 def _fitted(tmp_path: Path, site: np.ndarray, validation: str, pid: np.ndarray = PID,
-            seen: bool = True) -> dict:
+            seen: bool = True, nested: bool = False, named: bool = False,
+            n_boot: int | None = None, monkeypatch: pytest.MonkeyPatch | None = None) -> dict:
     """The brief's construction through the real split, seal plan and fit: `pid` (by default 40
     units of 3 rows) in four sites, ``site`` per row, each row said to be a unit, SplitSpec(holdout
-    0.2, seed 1, folds 5, ``validation``; by `site` under internal–external validation), one linear
-    family under prediction. Returns the split's data and the fit's, the record's sentence as the
-    server writes it (the seal plan settled, the table its datastore, unless not ``seen``), and,
-    read off the drawn folds, the units whose training rows the headline's folds put in more than
-    one fold, and the same for each of the comparisons' draws (the fit's substrate pairs)."""
+    0.2, seed 1, folds 5, ``validation``; by `site` under internal–external validation; the nested
+    cross-validation interval where ``nested``; ``n_boot`` resamples under the bootstrap), one
+    linear family under prediction; where ``named``, the grouping question names `site`. Returns
+    the split's data and the fit's, the record's sentence as the server writes it (the seal plan
+    settled, the table its datastore, unless not ``seen``), and, read off the drawn folds, the
+    units whose training rows the headline's folds put in more than one fold, the same for each of
+    the comparisons' draws (the fit's substrate pairs) and, where ``nested``, for each draw of
+    folds the nested cross-validation ran on (recorded as ``folds.nested_folds`` and the plain
+    runs' draw made them, through ``monkeypatch``; a row a repetition sits out, fold 0, in none),
+    and the units with training rows in more than one site."""
     from turbotab.core import voice
+    from turbotab.core.models import folds as folds_module
+    from turbotab.core.models import validation as validation_module
     from turbotab.core.stages.modeling import design_stage, fit_stage
     from turbotab.core.stages.rows import cohort_stage, split_stage
     from turbotab.core.stages.seal import seal_plan_stage
     from turbotab.core.stages.target import target_info_stage
     from turbotab.core.tests.stage_harness import Ingested
 
+    drawn_nested: list[np.ndarray] = []
+    drawn_plain: list[np.ndarray] = []
+    if nested:
+        assert monkeypatch is not None
+        nested_folds, plain_folds = folds_module.nested_folds, validation_module._plain_folds
+
+        def recorded_nested(*args, **kwargs):
+            drawn_nested.append(nested_folds(*args, **kwargs))
+            return drawn_nested[-1]
+
+        def recorded_plain(*args, **kwargs):
+            drawn_plain.append(plain_folds(*args, **kwargs))
+            return drawn_plain[-1]
+
+        monkeypatch.setattr(folds_module, "nested_folds", recorded_nested)
+        monkeypatch.setattr(validation_module, "_plain_folds", recorded_plain)
     rng = np.random.default_rng(7)
     frame = pd.DataFrame({"pid": pid, "site": [f"s{s}" for s in site],
                           "x1": rng.normal(size=len(pid)), "y": rng.normal(size=len(pid))})
     frame.to_csv(tmp_path / "t.csv", index=False)
     by_site = {"cluster": "site"} if validation == "internal_external" else {}
+    if n_boot is not None:
+        by_site["n_boot"] = n_boot
     state = ProjectState(lens=["clinical"], target="y", task="regression", purpose="prediction",
                          roles={"pid": "identifier", "x1": "covariate", "site": "design"},
                          missing="complete_case", grain=SAID_A_UNIT, models=["linear"],
+                         clusters=d.ClusterSpec(column="site") if named else None,
                          split=d.SplitSpec(holdout=0.2, seed=1, folds=5, validation=validation,
-                                           **by_site))
+                                           nested_cv=nested, **by_site))
     table = Ingested(tmp_path / "t.csv", tmp_path / "i")
     info = table.run(target_info_stage, state)
     cohort = table.run(cohort_stage, state, {"target_info": info})
@@ -1512,6 +1539,9 @@ def _fitted(tmp_path: Path, site: np.ndarray, validation: str, pid: np.ndarray =
     a = split.frames["assignment"].sort_values("row_id")
     fold, units = a["fold"].to_numpy(), pid[a["row_id"].to_numpy()]
     headline = int((pd.Series(fold[fold != -1]).groupby(units[fold != -1]).nunique() > 1).sum())
+    train = fold != -1  # a held-out row has no fold
+    sites = int((pd.Series(np.asarray(site)[a["row_id"].to_numpy()][train]).groupby(
+        units[train]).nunique() > 1).sum())
     comparison = fit.objects["comparison"]
     owner = pid[np.asarray(comparison["train_ids"])]  # each training row's unit, in fit order
     compared = []
@@ -1522,8 +1552,15 @@ def _fitted(tmp_path: Path, site: np.ndarray, validation: str, pid: np.ndarray =
                 drawn[np.asarray(test)] = fold
         assert (drawn != -1).all()  # each training row is scored once in each draw
         compared.append(int((pd.Series(drawn).groupby(owner).nunique() > 1).sum()))
+    in_nested = []
+    for f in [*drawn_nested, *drawn_plain]:
+        f = np.asarray(f)
+        assert len(f) == len(owner)
+        used = f > 0
+        in_nested.append(int((pd.Series(f[used]).groupby(owner[used]).nunique() > 1).sum()))
     return {"split": split.data, "fit": fit.data, "record": record, "headline": headline,
-            "compared": compared}
+            "compared": compared, "nested": in_nested, "nested_draws": len(drawn_nested),
+            "plain_draws": len(drawn_plain), "sites": sites}
 
 
 def _within_link(fit: dict) -> dict | None:
@@ -1536,10 +1573,31 @@ def _range(counts: list[int]) -> str:
 
 
 def _compared_clause(counts: list[int]) -> tuple[str, str]:
-    return (f"rows repeat within `pid` (`40` units), but the comparisons' folds were drawn by row, "
-            f"and in each of their `{len(counts)}` draws {_range(counts)} units have rows in more "
-            f"than one fold",
+    return (f"rows repeat within `pid` (`40` units), but {_compared_part(counts)}",
             f"the comparisons' scores of those units' rows are {WITHIN_TAIL}")
+
+
+def _compared_part(counts: list[int]) -> str:
+    """What the comparisons' draws did, as a joined link says it after the unit (the integration
+    verifier's P5): their count over the draws."""
+    return (f"the comparisons' folds were drawn by row, and in each of their `{len(counts)}` draws "
+            f"{_range(counts)} units have rows in more than one fold")
+
+
+def _nested_part(got: dict) -> str:
+    """What the nested cross-validation's draws did, counted off the folds it ran on."""
+    return (f"the nested cross-validation's folds were drawn by row, and in each of its "
+            f"`{got['nested_draws']}` repetitions and `{got['plain_draws']}` plain cross-validation "
+            f"runs {_range(got['nested'])} units have rows in more than one fold")
+
+
+SUBJECT = "rows repeat within `pid` (`40` units)"
+
+
+def _said_once(link: dict) -> None:
+    """The joined link names the unit once and says the consequence once (P5)."""
+    text = f"{link['because']} {link['then']}"
+    assert text.count("rows repeat within `pid`") == 1 and text.count("Saeb et al.") == 1, text
 
 
 def test_with_units_nested_in_the_sites_internal_external_scores_say_nothing_of_units(tmp_path):
@@ -1586,10 +1644,13 @@ def test_with_units_across_the_sites_internal_external_scores_count_the_units_th
     assert (f"by internal–external validation by site (`{k}` units have rows in more than one level "
             "of `site`; their rows' scores are within-unit performance): ") in model["performance"], (
         model["performance"])
-    because, then = _compared_clause(got["compared"])
-    assert _within_link(got["fit"]) == {
-        "relation": "within_unit_performance", "because": f"{headline}; {because}",
-        "then": f"the cross-validated scores of those units' rows are {WITHIN_TAIL}; {then}"}
+    link = _within_link(got["fit"])
+    assert link == {
+        "relation": "within_unit_performance",
+        "because": f"{headline}; {_compared_part(got['compared'])}",
+        "then": ("the cross-validated scores and the comparisons' scores of the rows of the units "
+                 f"counted are {WITHIN_TAIL}")}
+    _said_once(link)
     record = got["record"]
     assert ("rows repeat within `pid` (`40` units), and the folds, the levels of `site`, may put "
             "rows of one unit in more than one of them: every cross-validated score here may be "
@@ -1619,10 +1680,13 @@ def test_under_k_fold_by_row_the_scores_count_the_units_the_folds_split(tmp_path
         model["performance"])
     headline = (f"rows repeat within `pid` (`40` units), but the folds were drawn by row, and `{k}` "
                 "units have rows in more than one fold")
-    because, then = _compared_clause(got["compared"])
-    assert _within_link(got["fit"]) == {
-        "relation": "within_unit_performance", "because": f"{headline}; {because}",
-        "then": f"the cross-validated scores of those units' rows are {WITHIN_TAIL}; {then}"}
+    link = _within_link(got["fit"])
+    assert link == {
+        "relation": "within_unit_performance",
+        "because": f"{headline}; {_compared_part(got['compared'])}",
+        "then": ("the cross-validated scores and the comparisons' scores of the rows of the units "
+                 f"counted are {WITHIN_TAIL}")}
+    _said_once(link)
     assert ("rows repeat within `pid` (`40` units), but the folds were drawn by row: every "
             f"cross-validated score here may be {WITHIN_TAIL}") in got["record"], got["record"]
 
@@ -1641,6 +1705,155 @@ def test_under_k_fold_by_row_where_every_unit_spans_every_score_is_within_unit(t
         "relation": "within_unit_performance",
         "because": "rows repeat within `pid` (`40` units), but the folds were drawn by row",
         "then": f"every cross-validated score here is {WITHIN_TAIL}"}
+
+
+def test_under_the_bootstrap_the_link_names_the_unit_once_and_its_consequence_once(tmp_path):
+    """The integration verifier's P5: under Harrell's bootstrap beside folds drawn by row, the
+    chain's within-unit link names `pid` and its count once, then what the headline's folds, the
+    comparisons' draws (each counted off the drawn folds) and the bootstrap's resamples of rows did,
+    and gives Saeb et al.'s consequence once, for the scores of the rows of the units counted and
+    for every optimism-corrected score. The record, before any draw, joins the same way: every
+    cross-validated score and every optimism-corrected one may be within-unit."""
+    got = _fitted(tmp_path, SITE, "bootstrap", n_boot=50)
+    k = got["headline"]
+    assert 0 < k < 40 and 0 < min(got["compared"])
+    link = _within_link(got["fit"])
+    assert link == {
+        "relation": "within_unit_performance",
+        "because": (f"{SUBJECT}, but the folds were drawn by row, and `{k}` units have rows in more "
+                    f"than one fold; {_compared_part(got['compared'])}; the bootstrap resampled "
+                    "rows, not units"),
+        "then": ("the cross-validated scores and the comparisons' scores of the rows of the units "
+                 f"counted, and the optimism-corrected scores, are {WITHIN_TAIL}")}
+    _said_once(link)
+    assert (f"{SUBJECT}, but the folds were drawn by row, and the bootstrap resampled rows, not "
+            "units: every cross-validated score here and the optimism-corrected scores may be "
+            f"{WITHIN_TAIL};") in got["record"], got["record"]
+    assert got["record"].count("Saeb et al.") == 1, got["record"]
+
+
+def test_nested_cross_validation_under_nested_sites_says_its_folds_split_units(tmp_path,
+                                                                              monkeypatch):
+    """The integration verifier's P1: the brief's construction (40 units of 3 rows, each wholly in
+    one of 4 sites, internal–external validation by `site`) with the nested cross-validation
+    interval. Its folds are drawn by row, the seal having abandoned grouping, and split units
+    (counted off the folds it ran on): the family's interval is the nested one, so the chain's
+    within-unit link says what its draws did beside the comparisons', and the record, before any
+    draw, that both may be within-unit, while nothing is said of the sites' folds."""
+    got = _fitted(tmp_path, SITE, "internal_external", nested=True, monkeypatch=monkeypatch)
+    assert got["headline"] == 0 and got["nested_draws"] == 50 and got["plain_draws"] == 10
+    assert 0 < min(got["nested"]) and max(got["nested"]) < 40
+    (model,) = got["fit"]["models"]
+    assert "by nested cross-validation (50 repetitions of 5 folds" in model["performance"]
+    link = _within_link(got["fit"])
+    assert link == {
+        "relation": "within_unit_performance",
+        "because": f"{SUBJECT}, but {_compared_part(got['compared'])}; {_nested_part(got)}",
+        "then": ("the comparisons' scores and the nested cross-validation's scores of the rows of the "
+                 f"units counted are {WITHIN_TAIL}")}
+    _said_once(link)
+    record = got["record"]
+    assert (f"{SUBJECT}, but the comparisons' folds and the nested cross-validation's folds were "
+            "drawn by row: the comparisons' scores and the nested cross-validation's scores may be "
+            f"{WITHIN_TAIL};") in record, record
+    assert "levels of `site`, may" not in record and "every cross-validated score" not in record
+
+
+def test_nested_cross_validation_under_k_fold_counts_its_draws_beside_the_headlines(tmp_path,
+                                                                                  monkeypatch):
+    """P1 under k-fold: the chain counts the headline's folds, the comparisons' draws and the nested
+    cross-validation's, each off the folds drawn. The record says every cross-validated score may
+    be within-unit, which takes the nested interval's in."""
+    got = _fitted(tmp_path, SITE, "kfold", nested=True, monkeypatch=monkeypatch)
+    k = got["headline"]
+    assert 0 < k < 40 and 0 < min(got["nested"]) and max(got["nested"]) < 40
+    link = _within_link(got["fit"])
+    assert link == {
+        "relation": "within_unit_performance",
+        "because": (f"{SUBJECT}, but the folds were drawn by row, and `{k}` units have rows in more "
+                    f"than one fold; {_compared_part(got['compared'])}; {_nested_part(got)}"),
+        "then": ("the cross-validated scores, the comparisons' scores and the nested "
+                 "cross-validation's scores of the rows of the units counted are "
+                 f"{WITHIN_TAIL}")}
+    _said_once(link)
+    assert (f"{SUBJECT}, but the folds were drawn by row: every cross-validated score here may be "
+            f"{WITHIN_TAIL};") in got["record"], got["record"]
+
+
+def test_the_named_groupings_levels_beside_k_fold_count_the_units_across_them(tmp_path):
+    """P1's second case: k-fold by row, and the grouping question names `site`, by whose levels
+    every family is also validated beside the headline; each unit's 3 rows lie in 3 sites, so most
+    units' training rows fall in more than one level (counted off the training rows), and their
+    rows' scores by site are within-unit. The chain counts them beside the folds' and the
+    comparisons' draws."""
+    got = _fitted(tmp_path, np.arange(len(PID)) % 4, "kfold", named=True)
+    k, sites = got["headline"], got["sites"]
+    assert 0 < k < 40 and 0 < sites < 40
+    (model,) = got["fit"]["models"]
+    assert model["internal_external"] is not None and model["internal_external"]["cluster"] == "site"
+    link = _within_link(got["fit"])
+    assert link == {
+        "relation": "within_unit_performance",
+        "because": (f"{SUBJECT}, but the folds were drawn by row, and `{k}` units have rows in more "
+                    f"than one fold; `{sites}` units have rows in more than one level of `site`, by "
+                    f"which the families were also validated internal–externally; "
+                    f"{_compared_part(got['compared'])}"),
+        "then": ("the cross-validated scores, the internal–external scores by `site` and the "
+                 f"comparisons' scores of the rows of the units counted are {WITHIN_TAIL}")}
+    _said_once(link)
+
+
+def test_the_named_groupings_levels_say_nothing_where_every_unit_lies_in_one(tmp_path):
+    """The other side: each unit wholly in one site, so no unit's training rows fall in two of the
+    levels every family is also validated by (counted off the training rows), and the link says
+    nothing of them, as under k-fold with no grouping named."""
+    got = _fitted(tmp_path, SITE, "kfold", named=True)
+    assert got["sites"] == 0
+    (model,) = got["fit"]["models"]
+    assert model["internal_external"] is not None and model["internal_external"]["cluster"] == "site"
+    link = _within_link(got["fit"])
+    assert "`site`" not in link["because"] and "by `site`" not in link["then"], link
+    assert link["because"] == (f"{SUBJECT}, but the folds were drawn by row, and `{got['headline']}` "
+                               f"units have rows in more than one fold; "
+                               f"{_compared_part(got['compared'])}")
+
+
+def test_one_unit_under_internal_external_validation_is_within_unit_in_the_record(tmp_path):
+    """The integration verifier's P3: every row is the one `pid` unit, its rows across the 4 sites,
+    under internal–external validation by `site`. Each fold, a site, holds rows of that unit, so
+    every cross-validated score is within-unit, as the split's note says: the record says so too,
+    never "(`1` units)" nor that a score only may be."""
+    one = np.zeros(120, dtype=int)
+    got = _fitted(tmp_path, np.arange(120) % 4, "internal_external", pid=one)
+    clause = "every row belongs to the one `pid` unit, so no fold can leave a unit out"
+    assert f"{clause[0].upper()}{clause[1:]}: every cross-validated score here is {WITHIN_TAIL}." \
+        in got["split"]["note"], got["split"]["note"]
+    record = got["record"]
+    assert f"{clause}: every cross-validated score here is {WITHIN_TAIL};" in record, record
+    assert "`1` units" not in record and "may be" not in record, record
+
+
+def test_a_whole_headline_beside_a_counted_part_is_said_of_its_own_folds_only():
+    """The joiner's guard, both ways: where every unit spans the headline's one draw (40 of 40)
+    but one comparison draw splits only 39, "every cross-validated score here" would take in the
+    40th unit's comparison scores, which are not within-unit, so the headline's whole part is said
+    of the folds' scores; where every part is whole (40 in every draw), it stays every score here.
+    The truth is the counts as constructed."""
+    from turbotab.core.models.validation import (compared_within_unit, headline_within,
+                                                 within_unit_link)
+
+    basis = {"state": "abandoned", "column": "pid", "n_units": 40}
+    split = {"basis": basis, "validation": "kfold", "units_spanning": [40], "n_train_units": 40}
+    headline = headline_within(split)
+    mixed = within_unit_link(headline, compared_within_unit(basis, spanning=[40, 39], units=40))
+    assert mixed == (
+        f"{SUBJECT}, but the folds were drawn by row; the comparisons' folds were drawn by row, and "
+        "in each of their `2` draws `39` to `40` units have rows in more than one fold",
+        "the comparisons' scores of the rows of the units counted, and every score of the folds, "
+        f"are {WITHIN_TAIL}")
+    whole = within_unit_link(headline, compared_within_unit(basis, spanning=[40, 40], units=40))
+    assert whole == (f"{SUBJECT}, but the folds were drawn by row",
+                     f"every cross-validated score here is {WITHIN_TAIL}")
 
 
 # ── C-144 · the demographic guess ─────────────────────────────────────────────

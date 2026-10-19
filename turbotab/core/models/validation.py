@@ -123,8 +123,11 @@ every score is within-unit only where every unit's do in every draw, and otherwi
 reads only their rows' scores as within-unit (:func:`within_unit_sentence`). The split artifact
 keeps those counts, so the headline's performance sentences and the chain say the same of the same
 folds (:func:`headline_within`), and the chain says beside them what the comparisons' draws by row
-did, counted the same way, and Harrell's bootstrap where it resampled rows
-(:func:`compared_within_unit`, :func:`resampled_within_unit`). The split's sentence is written
+and the nested cross-validation's did, counted the same way, what the levels of the grouping the
+question named did where every family is also validated by them, and Harrell's bootstrap where it
+resampled rows (:func:`compared_within_unit`, :func:`nested_within_unit`,
+:func:`levels_within_unit`, :func:`resampled_within_unit`), naming the unit once and saying the
+consequence once (:func:`within_unit_joined`). The split's sentence is written
 when the split is answered, before any fold is drawn: it says only what the answers and the table
 settle (``voice``'s set_split).
 
@@ -164,9 +167,11 @@ P_OVER_N = 1.0  # more candidate predictors than rows: a convention, stated wher
 NESTED_REPS = 50  # Bates et al.'s ``nested_cv`` default repetitions
 NESTED_SOURCE = "Bates, Hastie & Tibshirani 2023"
 SITE_LIMIT = 30  # the grouping's levels validated one by one beside the headline, at most (a convention)
-WITHIN_UNIT = ("every cross-validated score here is within-unit performance, new rows of units the "
-               "models were fit on, not performance on new units, which record-wise "
-               "cross-validation overestimates (Saeb et al. 2017)")
+# What a score whose rows share a unit with rows the models were fit on is, after subject and verb.
+_WITHIN_TAIL = ("within-unit performance, new rows of units the models were fit on, not "
+                "performance on new units, which record-wise cross-validation overestimates "
+                "(Saeb et al. 2017)")
+WITHIN_UNIT = f"every cross-validated score here is {_WITHIN_TAIL}"
 
 
 class _Model(BaseModel):
@@ -730,6 +735,30 @@ def _plain_folds(n: int, groups: Any, folds: int, rng: np.random.Generator) -> n
     return ids
 
 
+def nested_draws(n: int, *, groups: Any = None, folds: int = 5, reps: int = NESTED_REPS,
+                 bias_reps: int | None = None, seed: int = 0,
+                 draws: Mapping[str, Sequence[np.ndarray]] | None = None
+                 ) -> dict[str, list[np.ndarray]]:
+    """The folds :func:`nested_cv_interval` runs on, fold ids per row: every repetition's
+    (``nested``, ``0`` for the rows that sit one out), then every plain run's of the bias estimate
+    (``plain``), drawn from ``numpy.random.default_rng(seed)``; where ``draws`` gives either list,
+    it replaces that draw. The fit stage draws them once, counts the units they split where the
+    seal could not keep a unit's rows together (:func:`nested_within_unit`), and gives them to
+    every family."""
+    from turbotab.core.models.folds import nested_folds
+
+    K = int(folds)
+    B = int(math.ceil(reps / 5)) if bias_reps is None else int(bias_reps)
+    rng = np.random.default_rng(seed)
+    nested = list((draws or {}).get("nested") or [])
+    plain = list((draws or {}).get("plain") or [])
+    if not nested:
+        nested = [nested_folds(n, groups=groups, folds=K, rng=rng) for _ in range(int(reps))]
+    if not plain:
+        plain = [_plain_folds(n, groups, K, rng) for _ in range(B)]
+    return {"nested": nested, "plain": plain}
+
+
 def nested_cv_interval(task: str, metric: str, make: Callable[[], Any],
                        fit: Callable[[Any, Any, Any], Any], X: Any, y: Any, *, folds: int = 5,
                        reps: int = NESTED_REPS, bias_reps: int | None = None, seed: int = 0,
@@ -744,8 +773,6 @@ def nested_cv_interval(task: str, metric: str, make: Callable[[], Any],
     replaces the draws, so an independent implementation can be given the same folds.
     """
     from statistics import NormalDist
-
-    from turbotab.core.models.folds import nested_folds
 
     started = time.perf_counter()
     y = np.asarray(y)
@@ -763,13 +790,8 @@ def nested_cv_interval(task: str, metric: str, make: Callable[[], Any],
     if metric not in PER_ROW_LOSSES:
         return refused(f"Nested cross-validation needs a mean of per-row losses; {metric} is not "
                        f"one.")
-    rng = np.random.default_rng(seed)
-    nested = list((draws or {}).get("nested") or [])
-    plain = list((draws or {}).get("plain") or [])
-    if not nested:
-        nested = [nested_folds(n, groups=groups, folds=K, rng=rng) for _ in range(int(reps))]
-    if not plain:
-        plain = [_plain_folds(n, groups, K, rng) for _ in range(B)]
+    found = nested_draws(n, groups=groups, folds=K, reps=reps, bias_reps=B, seed=seed, draws=draws)
+    nested, plain = found["nested"], found["plain"]
 
     def take(data: Any, mask: np.ndarray) -> Any:
         return data.iloc[np.flatnonzero(mask)] if hasattr(data, "iloc") else np.asarray(data)[mask]
@@ -929,9 +951,10 @@ def _register_contracts() -> None:
                      id="repeated_units_group_resampling"),
             Relation("implies", "within_unit_scores",
                      "the folds (unless they are a grouping's levels), the comparisons' folds, "
-                     "the resamples and BBC-CV are drawn by row, and each score whose rows share a "
-                     "unit with rows the models were fit on, as the drawn folds show, is stated as "
-                     "within-unit performance, never as performance on new units",
+                     "the nested folds, the resamples and BBC-CV are drawn by row, and each score "
+                     "whose rows share a unit with rows the models were fit on, as the drawn folds "
+                     "and a grouping's levels show, is stated as within-unit performance, never as "
+                     "performance on new units",
                      condition="rows repeat within a unit, but the seal could not keep units whole "
                                "(one unit, too few, an unconfirmed identifier, a grain not known)",
                      enforced_by=f"{here}:unit_spans", id="within_unit_performance"),
@@ -1124,25 +1147,51 @@ _UNNAMED = "units were said to repeat, but no column names the unit"
 
 
 def _units(n: Any) -> str:
-    return f" (`{int(n):,}` units)" if n else ""
+    return f" (`{int(n):,}` {'unit' if int(n) == 1 else 'units'})" if n else ""
 
 
 class WithinUnit(NamedTuple):
-    """What a draw by row did to a unit's rows: why a unit's rows can sit on both sides of a fold
-    or a resample (``why``), what follows for the scores (``then``), the few words a performance
-    sentence carries for the headline's folds (``short``), and whether ``then`` is said of every
-    score in its scope (each is, or each may be) rather than of some units' rows (``whole``)."""
+    """What one part's draws did to a unit's rows, where the seal could not keep them together: the
+    headline's folds, the levels of the grouping the question named, the comparisons' folds, the
+    nested cross-validation's or the bootstrap's resamples. ``subject`` names the unit (its column
+    and count, the one unit every row belongs to, or why no column names it); ``clause`` says what
+    the part's draws did, after its connective ("but", "and" or "so"); ``scope`` names the part's
+    scores, which ``verb`` ("is", "are" or "may be") says are within-unit, of the rows of the units
+    the clause counts where ``counted`` (that unit's where ``one``, after their first fold where
+    the folds follow time, ``after``); ``short`` is the few words a performance sentence carries
+    for the headline's folds; ``whole``: said of every score in its scope (each is, or each may
+    be), not of some units' rows."""
 
-    why: str
-    then: str
+    subject: str
+    clause: str
+    scope: str
+    verb: str
+    counted: bool = False
+    one: bool = False
+    after: str = ""
     short: str = ""
     whole: bool = False
+    drawn: str = ""  # what the clause says was drawn by row, uncounted ("the comparisons' folds")
+
+    @property
+    def why(self) -> str:
+        """Why the part's scores can be within-unit, as one clause."""
+        return f"{self.subject}, {self.clause}"
+
+    @property
+    def then(self) -> str:
+        """What follows for the part's scores."""
+        if not self.counted:
+            return f"{self.scope} {self.verb} {_WITHIN_TAIL}"
+        whose = "that unit's" if self.one else "those units'"
+        return f"{self.scope} of {whose} rows{self.after} {self.verb} {_WITHIN_TAIL}"
 
 
 def units_spanning(draws: Sequence[Any], units: Any, keep: Any = None) -> list[int]:
-    """For each draw of folds (``draws``: a fold per row), the units whose rows, among those
-    ``keep`` marks (every row by default), fall in more than one fold. ``units`` names each row's
-    unit; a row with none is its own unit, which no fold can split."""
+    """For each draw of folds (``draws``: a fold per row, NaN for a row the draw leaves out), the
+    units whose rows, among those ``keep`` marks (every row by default), fall in more than one
+    fold. ``units`` names each row's unit; a row with none is its own unit, which no fold can
+    split."""
     import pandas as pd
 
     ids = pd.Series(np.asarray(units, dtype=object))
@@ -1153,7 +1202,20 @@ def units_spanning(draws: Sequence[Any], units: Any, keep: Any = None) -> list[i
                  > 1).sum()) for d in draws]
 
 
-_EVERY = "every cross-validated score here is"  # WITHIN_UNIT's subject, which each scope replaces
+_EVERY = "every cross-validated score here"  # the headline's scope where it is said of every score
+
+
+def _subject(basis: Mapping[str, Any]) -> str:
+    """The unit a part speaks of, as :func:`unit_spans` begins: its column and count, the one unit
+    every row belongs to, or why no column names it."""
+    column, n = basis.get("column"), basis.get("n_units")
+    if basis.get("state") == "undetermined":
+        return _NOT_KNOWN
+    if column and n == 1:
+        return f"every row belongs to the one `{column}` unit"
+    if column:
+        return f"rows repeat within `{column}`{_units(n)}"
+    return _UNNAMED
 
 
 def _span_counts(spanning: int | Sequence[int] | None, column: Any,
@@ -1191,50 +1253,52 @@ def within_unit_clauses(basis: Mapping[str, Any] | None, *, cluster: str | None 
     every unit's do, in every draw, every score is; where some do, only their rows are scored by
     models fit on rows of the same unit, so the clauses count them (their range over the draws)
     and read only their rows' scores as within-unit (the RF-1b verifier's P3 and round-2 V2);
-    where no column can tell, they say a fold may split a unit. The split's note says them as one
+    where no column can tell, they say a fold may split a unit. Where every row belongs to one
+    unit, every fold holds rows of it, whether the folds are drawn by row or are a grouping's
+    levels (internal–external validation holds out one of two or more), so every score is
+    within-unit, counted or not (the integration verifier's P3). The split's note says them as one
     sentence (:func:`within_unit_sentence`); the fit's performance sentences and its chain say the
     same of the same folds (:func:`headline_within`)."""
-    spans = unit_spans(basis)
-    if spans is None:
+    if unit_spans(basis) is None:
         return None
     state, column, n = basis.get("state"), basis.get("column"), basis.get("n_units")
     counts = _span_counts(spanning, column, state)
     if counts is not None and not any(counts):
         return None
+    subject = _subject(basis)
     lead = "over rows, not units " if cluster is None else ""
-    # One unit holds every row, so every fold drawn by row holds rows of it, read or not.
-    if counts is None and not (column and n == 1 and cluster is None):
-        # no column names the unit, its column was not read, or no fold is drawn yet
-        if cluster is not None:
-            across = (f"the folds, the levels of `{cluster}`, may put rows of one unit in more "
-                      f"than one of them")
-            spans = (f"rows repeat within `{column}`{_units(n)}, and {across}" if column else
-                     f"{_NOT_KNOWN if state == 'undetermined' else _UNNAMED}, so {across}")
-        return WithinUnit(spans, WITHIN_UNIT.replace(_EVERY, "every cross-validated score here "
-                                                             "may be"),
-                          f"{lead}(may be within-unit performance)", whole=True)
-    if n == 1 or (cluster is None and not ordered and units is not None
-                  and all(k == units for k in counts)):
-        # one unit ("no fold can leave a unit out"), or every unit in each draw
-        return WithinUnit(spans, WITHIN_UNIT, f"{lead}(within-unit performance)", whole=True)
+    every = f"{lead}(within-unit performance)"
+    if column and n == 1:
+        return WithinUnit(subject, "so no fold can leave a unit out", _EVERY, "is", short=every,
+                          whole=True)
+    if counts is None:  # no column names the unit, its column was not read, or no fold is drawn yet
+        clause = (f"{'and' if column else 'so'} the folds, the levels of `{cluster}`, may put rows "
+                  f"of one unit in more than one of them" if cluster is not None else
+                  f"{'but' if column else 'so'} the folds were drawn by row")
+        return WithinUnit(subject, clause, _EVERY, "may be",
+                          short=f"{lead}(may be within-unit performance)", whole=True,
+                          drawn="the folds" if cluster is None else "")
+    if cluster is None and not ordered and units is not None and all(k == units for k in counts):
+        # every unit in each draw
+        return WithinUnit(subject, "but the folds were drawn by row", _EVERY, "is", short=every,
+                          whole=True, drawn="the folds")
     many, one = _many(counts)
     has = "unit has" if one else "units have"
     if cluster is not None:
-        spans = (f"rows repeat within `{column}`{_units(n)}, and {many} of them "
-                 f"{'has' if one else 'have'} rows in more than one of the folds, the levels "
-                 f"of `{cluster}`")
+        clause = (f"and {many} of them {'has' if one else 'have'} rows in more than one of the "
+                  f"folds, the levels of `{cluster}`")
         rows_in = f"rows in more than one level of `{cluster}`"
     else:
         draws = f"in each of their `{len(counts)}` draws " if len(counts) > 1 else ""
-        spans = f"{spans}, and {draws}{many} {has} rows in more than one fold"
+        clause = (f"but the folds were drawn by row, and {draws}{many} {has} rows in more than one "
+                  f"fold")
         rows_in = "rows in more than one fold"
-    whose = "that unit's" if one else "those units'"
     after = f" after {'its' if one else 'their'} first fold" if ordered else ""
     each = "in each draw " if cluster is None and len(counts) > 1 else ""
     return WithinUnit(
-        spans, WITHIN_UNIT.replace(_EVERY, f"the cross-validated scores of {whose} rows{after} are"),
-        f"{lead}({each}{many} {has} {rows_in}; {'its' if one else 'their'} rows' scores{after} "
-        f"are within-unit performance)")
+        subject, clause, "the cross-validated scores", "are", counted=True, one=one, after=after,
+        short=f"{lead}({each}{many} {has} {rows_in}; {'its' if one else 'their'} rows' "
+              f"scores{after} are within-unit performance)")
 
 
 def within_unit_sentence(basis: Mapping[str, Any] | None, *, cluster: str | None = None,
@@ -1263,13 +1327,32 @@ def headline_within(split: Mapping[str, Any] | None) -> WithinUnit | None:
                                ordered=split.get("fold_scheme") == "time_ordered")
 
 
-def _by_row(basis: Mapping[str, Any], drawn: str) -> str:
-    """Why a draw by row (``drawn``: "the comparisons' folds were drawn by row") can put a unit's
-    rows on both sides: the unit's column and count, or why no column names it."""
+def _drawn_within_unit(basis: Mapping[str, Any] | None, *, drawn: str, scope: str, each: str,
+                       spanning: Sequence[int] | None, units: int | None) -> WithinUnit | None:
+    """What a part's own draws of folds by row (``drawn``: "the comparisons' folds") did to a
+    unit's rows, for its scores (``scope``), or None: read as :func:`within_unit_clauses` reads
+    the headline's. ``spanning`` counts, for each draw, the units whose training rows it puts in
+    more than one fold (None where no column names the unit, or before the draws are made: the
+    record's sentence), ``each`` words the draws a count over several follows ("in each of their
+    `10` draws"), ``units`` counts the units with training rows."""
+    if unit_spans(basis) is None:
+        return None
     column, n = basis.get("column"), basis.get("n_units")
-    if column:
-        return f"rows repeat within `{column}`{_units(n)}, but {drawn}"
-    return f"{_NOT_KNOWN if basis.get('state') == 'undetermined' else _UNNAMED}, so {drawn}"
+    counts = _span_counts(spanning, column, basis.get("state"))
+    if counts is not None and not any(counts):
+        return None
+    subject = _subject(basis)
+    if column and n == 1:
+        return WithinUnit(subject, "so no fold can leave a unit out", scope, "are", whole=True)
+    clause = f"{'but' if column else 'so'} {drawn} were drawn by row"
+    if counts is None:
+        return WithinUnit(subject, clause, scope, "may be", whole=True, drawn=drawn)
+    if units is not None and all(k == units for k in counts):
+        return WithinUnit(subject, clause, scope, "are", whole=True, drawn=drawn)
+    many, one = _many(counts)
+    over = f"{each} " if len(counts) > 1 else ""
+    return WithinUnit(subject, f"{clause}, and {over}{many} {'unit has' if one else 'units have'} "
+                               f"rows in more than one fold", scope, "are", counted=True, one=one)
 
 
 def compared_within_unit(basis: Mapping[str, Any] | None, *,
@@ -1283,28 +1366,59 @@ def compared_within_unit(basis: Mapping[str, Any] | None, *,
     whose training rows it puts in more than one fold (None where no column names the unit, or
     before the draws are made: the record's sentence), ``units`` how many units have training
     rows; read as :func:`within_unit_clauses` reads the headline's."""
+    return _drawn_within_unit(basis, drawn="the comparisons' folds",
+                              scope="the comparisons' scores",
+                              each=f"in each of their `{len(spanning or ()):,}` draws",
+                              spanning=spanning, units=units)
+
+
+def nested_within_unit(basis: Mapping[str, Any] | None, *,
+                       spanning: Sequence[int] | None = None, units: int | None = None,
+                       reps: int = NESTED_REPS, bias_reps: int | None = None) -> WithinUnit | None:
+    """What the nested cross-validation's draws (:func:`nested_draws`: ``reps`` repetitions, then
+    ``bias_reps`` plain runs of its bias estimate) did to a unit's rows, or None. They are drawn by
+    row where the seal could not keep a unit's rows together (its groups are then none), whatever
+    folds give the headline; ``spanning`` counts, for each draw, the units whose training rows it
+    puts in more than one fold, a row a repetition sits out in none (None where no column names
+    the unit, or before the draws are made: the record's sentence)."""
+    b = int(math.ceil(reps / 5)) if bias_reps is None else int(bias_reps)
+    each = f"in each of its `{int(reps):,}` repetitions" + (
+        f" and `{b:,}` plain cross-validation runs" if b else "")
+    return _drawn_within_unit(basis, drawn="the nested cross-validation's folds",
+                              scope="the nested cross-validation's scores", each=each,
+                              spanning=spanning, units=units)
+
+
+def levels_within_unit(basis: Mapping[str, Any] | None, cluster: str, *,
+                       spanning: int | Sequence[int] | None = None,
+                       units: int | None = None) -> WithinUnit | None:
+    """What the levels of the grouping the question named (``cluster``), by which every family is
+    also validated internal–externally beside a headline of folds by row, did to a unit's rows, or
+    None. Each level is scored by models fit on the others, so a unit with training rows in two
+    levels has rows on both sides and one within a single level has none: ``spanning`` counts the
+    units whose training rows fall in more than one level, as the split counts internal–external
+    validation's (None where no column names the unit or it was not read), and where none does
+    there is nothing to say."""
     if unit_spans(basis) is None:
         return None
     column, n = basis.get("column"), basis.get("n_units")
     counts = _span_counts(spanning, column, basis.get("state"))
     if counts is not None and not any(counts):
         return None
-    why = _by_row(basis, "the comparisons' folds were drawn by row")
+    subject = _subject(basis)
+    scope = f"the internal–external scores by `{cluster}`"
+    by = (f"rows in more than one level of `{cluster}`, by which the families were also validated "
+          f"internal–externally")
     if column and n == 1:
-        return WithinUnit(unit_spans(basis), WITHIN_UNIT.replace(_EVERY, "the comparisons' "
-                                                                        "scores are"), whole=True)
+        return WithinUnit(subject, "so no fold can leave a unit out", scope, "are", whole=True)
     if counts is None:
-        return WithinUnit(why, WITHIN_UNIT.replace(_EVERY, "the comparisons' scores may be"),
-                          whole=True)
+        return WithinUnit(subject, f"{'and' if column else 'so'} a unit may have {by}", scope,
+                          "may be", whole=True)
     if units is not None and all(k == units for k in counts):
-        return WithinUnit(why, WITHIN_UNIT.replace(_EVERY, "the comparisons' scores are"),
-                          whole=True)
+        return WithinUnit(subject, f"and every unit has {by}", scope, "are", whole=True)
     many, one = _many(counts)
-    draws = f"in each of their `{len(counts)}` draws " if len(counts) > 1 else ""
-    whose = "that unit's" if one else "those units'"
-    return WithinUnit(
-        f"{why}, and {draws}{many} {'unit has' if one else 'units have'} rows in more than one fold",
-        WITHIN_UNIT.replace(_EVERY, f"the comparisons' scores of {whose} rows are"))
+    return WithinUnit(subject, f"and {many} {'unit has' if one else 'units have'} {by}", scope,
+                      "are", counted=True, one=one)
 
 
 def resampled_within_unit(basis: Mapping[str, Any] | None, *, units: int | None = None,
@@ -1321,30 +1435,89 @@ def resampled_within_unit(basis: Mapping[str, Any] | None, *, units: int | None 
         return None
     column, n = basis.get("column"), basis.get("n_units")
     known = bool(column) and (n == 1 or (units is not None and n_rows is not None))
-    return WithinUnit(_by_row(basis, "the bootstrap resampled rows, not units"),
-                      WITHIN_UNIT.replace(_EVERY, "the optimism-corrected scores are" if known
-                                          else "the optimism-corrected scores may be"))
+    clause = ("so no resample can leave a unit out" if column and n == 1 else
+              f"{'but' if column else 'so'} the bootstrap resampled rows, not units")
+    return WithinUnit(_subject(basis), clause, "the optimism-corrected scores",
+                      "are" if known else "may be", whole=True)
 
 
 def within_unit_parts(headline: WithinUnit | None, compared: WithinUnit | None = None,
-                      resampled: WithinUnit | None = None) -> list[WithinUnit]:
-    """Each part that found a unit's rows on both sides, the headline's folds, the comparisons'
-    and the bootstrap's resamples, in that order. The comparisons' part is left out where it and
-    the headline's are each said of every score in its scope: every cross-validated score here
-    (the comparisons' among them) is within-unit, or may be."""
-    if headline is not None and headline.whole and compared is not None and compared.whole:
-        compared = None
-    return [p for p in (headline, compared, resampled) if p is not None]
+                      resampled: WithinUnit | None = None, *, nested: WithinUnit | None = None,
+                      levels: WithinUnit | None = None) -> list[WithinUnit]:
+    """Each part that found a unit's rows on both sides, in order: the headline's folds, the
+    named grouping's levels beside them, the comparisons' folds, the nested cross-validation's and
+    the bootstrap's resamples. A cross-validated part is left out where it and the headline's are
+    each said of every score in its scope, alike in certainty: every cross-validated score here
+    (its among them) is within-unit, or may be."""
+    def covered(part: WithinUnit | None) -> bool:
+        return (part is not None and headline is not None and headline.whole and part.whole
+                and (part.verb == "may be") == (headline.verb == "may be"))
+
+    middle = [None if covered(p) else p for p in (levels, compared, nested)]
+    return [p for p in (headline, *middle, resampled) if p is not None]
+
+
+def _listed(items: Sequence[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def within_unit_joined(parts: Sequence[WithinUnit]) -> tuple[str, str] | None:
+    """The parts as one reason and one consequence, (because, then), or None where there is no
+    part. One part is its own (``why``, ``then``). Several name the unit once, then say in turn
+    what each part's draws did, each with its own count, and say the consequence once: for the
+    scores of the rows of the units counted, part by part, and for each part said of every score
+    in its scope (the integration verifier's P5)."""
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0].why, parts[0].then
+    # Each part's clause, those whose uncounted draws were by row as one ("the comparisons' folds
+    # and the nested cross-validation's folds were drawn by row"); a clause beside a count is set
+    # off by a semicolon, the count's own "and" kept apart.
+    said_of: list[tuple[str, list[str], bool]] = []  # (connective and clause, nouns drawn, counted)
+    for p in parts:
+        if p.drawn and not p.counted and said_of and said_of[-1][1]:
+            said_of[-1][1].append(p.drawn)
+        else:
+            said_of.append((p.clause, [p.drawn] if p.drawn and not p.counted else [], p.counted))
+    because = parts[0].subject
+    for i, (clause, nouns, was_counted) in enumerate(said_of):
+        connective, bare = clause.split(" ", 1)
+        if nouns:
+            bare = f"{_listed(nouns)} were drawn by row"
+        if i == 0:
+            because += f", {connective} {bare}"
+        else:
+            because += (f"; {bare}" if was_counted or said_of[i - 1][2] else f", and {bare}")
+    counted = [p for p in parts if p.counted]
+    said: list[tuple[str, str]] = []  # (whose scores, verb), the counted parts' first
+    if counted:
+        after = next((p.after for p in counted if p.after), "")
+        said.append((f"{_listed([p.scope for p in counted])} of the rows of the units "
+                     f"counted{after}", "are"))
+    for p in parts:
+        if not p.counted:
+            # beside a counted part, "here" would take in its scores too
+            scope = "every score of the folds" if p.scope == _EVERY and counted else p.scope
+            said.append((scope, "may be" if p.verb == "may be" else "are"))
+    verbs = list(dict.fromkeys(v for _, v in said))
+    if len(verbs) > 1:
+        return because, (", and ".join(f"{_listed([s for s, v in said if v == verb])} {verb}"
+                                       for verb in verbs) + f", {_WITHIN_TAIL}")
+    if counted and len(said) > 1:
+        return because, (f"{said[0][0]}, and {_listed([s for s, _ in said[1:]])}, {verbs[0]} "
+                         f"{_WITHIN_TAIL}")
+    return because, f"{_listed([s for s, _ in said])} {verbs[0]} {_WITHIN_TAIL}"
 
 
 def within_unit_link(headline: WithinUnit | None, compared: WithinUnit | None = None,
-                     resampled: WithinUnit | None = None) -> tuple[str, str] | None:
-    """The chain's within-unit link from :func:`within_unit_parts`: (because, then), or None where
-    no part found a unit's rows on both sides."""
-    found = within_unit_parts(headline, compared, resampled)
-    if not found:
-        return None
-    return "; ".join(p.why for p in found), "; ".join(p.then for p in found)
+                     resampled: WithinUnit | None = None, *, nested: WithinUnit | None = None,
+                     levels: WithinUnit | None = None) -> tuple[str, str] | None:
+    """The chain's within-unit link: :func:`within_unit_parts` joined by
+    :func:`within_unit_joined`, (because, then), or None where no part found a unit's rows on both
+    sides."""
+    return within_unit_joined(within_unit_parts(headline, compared, resampled, nested=nested,
+                                                levels=levels))
 
 
 def nested_offer_label(fits_each: int, n_families: int) -> str:
@@ -1416,10 +1589,10 @@ def fired_chain(task: str, primary: str, *, inference: bool, grouped_by: str | N
                 sites: Mapping[str, Any] | None = None) -> list[ChainLink]:
     """The relations of :data:`CONTRACTS` that fired on this fit, each said as "because …, …".
 
-    ``within``: where the seal could not keep a unit's rows together, what the draws by row did to
-    a unit's rows, the headline's folds as the split's note says it and the comparisons' and the
-    bootstrap's beside them (:func:`within_unit_link`), None where none put a unit's rows on both
-    sides; ``sites``: the grouping the question named under prediction (``column``, ``levels``,
+    ``within``: where the seal could not keep a unit's rows together, what the draws did to a
+    unit's rows, the headline's folds as the split's note says it and beside them the named
+    grouping's levels, the comparisons', the nested cross-validation's and the bootstrap's
+    (:func:`within_unit_link`), None where none put a unit's rows on both sides; ``sites``: the grouping the question named under prediction (``column``, ``levels``,
     and ``ran`` or the ``why`` it did not)."""
     from turbotab.core.models.metrics import HEADLINE, SPOKEN, headline_words
 
@@ -1510,6 +1683,7 @@ __all__ = ["BOOTSTRAP_CAUTION", "CALIBRATION_KEYS", "COMPARISONS_NOTE", "ChainLi
            "validation_plan", "wide", "wide_clause", "calibration_by", "fired_chain",
            "headline_how", "level_words", "score_words", "VALIDATION_CONTRACTS", "SITE_LIMIT",
            "WITHIN_UNIT", "WithinUnit", "compared_within_unit", "headline_within",
-           "nested_offer_label", "resampled_within_unit", "site_folds", "unit_spans",
-           "units_spanning", "within_unit_clauses", "within_unit_link", "within_unit_parts",
+           "levels_within_unit", "nested_draws", "nested_offer_label", "nested_within_unit",
+           "resampled_within_unit", "site_folds", "unit_spans", "units_spanning",
+           "within_unit_clauses", "within_unit_joined", "within_unit_link", "within_unit_parts",
            "within_unit_sentence"]

@@ -1844,8 +1844,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                                  calibration_by, compared_within_unit,
                                                  family_differences, fired_chain, headline_how,
                                                  headline_within, internal_external, level_words,
-                                                 nested_cv_fits, nested_cv_interval,
-                                                 nested_offer_label, not_applied,
+                                                 levels_within_unit, nested_cv_fits,
+                                                 nested_cv_interval, nested_draws,
+                                                 nested_offer_label, nested_within_unit,
+                                                 not_applied,
                                                  optimism_bootstrap, performance_sentence,
                                                  resample_concern, resampled_within_unit,
                                                  score_words, site_folds, unit_spans,
@@ -1943,8 +1945,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
     # rows can sit on both sides of a fold, and every sentence says so (models/validation.py): the
     # headline's sentences what its drawn folds did, as the split's note says it (C-110: under
     # internal–external validation they are the grouping's levels, and no unit nested in one
-    # spans two), and the chain beside them what the comparisons' draws by row and the bootstrap's
-    # resamples did.
+    # spans two), and the chain beside them what the comparisons' draws by row, the nested
+    # cross-validation's, the named grouping's levels and the bootstrap's resamples did.
     basis = split_data.get("basis")
     spans = unit_spans(basis) if grouped_by is None else None
     folds_within = headline_within(split_data) if spans is not None else None
@@ -2067,19 +2069,41 @@ def fit_stage(ctx: StageContext) -> Bundle:
         task, X, y, X_hold, y_hold, reference=reference, horizon=horizon)) if len(y_hold) else None)
     gain_metric = HELD_OUT_GAIN.get(task)
     n_boot = int(split_data.get("n_boot") or 0) if validation == "bootstrap" else 0
+    run_nested = bool(getattr(state.split, "nested_cv", False)) and not inference \
+        and primary in PER_ROW_LOSSES
+    # The nested cross-validation's folds, drawn once and given to every family, so the units they
+    # split are counted off the folds every family's interval reads (models/validation.py).
+    nested_drawn = (nested_draws(len(y), groups=groups, folds=k_folds, seed=seed)
+                    if run_nested else None)
     # Beside the headline's folds, what the comparisons' own draws by row (those beyond the
-    # headline's) did to a unit's rows, counted on the training rows as the split counts the
-    # headline's, and Harrell's bootstrap where it resampled rows (models/validation.py).
-    compared = resampled = None
+    # headline's), the nested cross-validation's and the levels of the grouping the question named
+    # did to a unit's rows, counted on the training rows as the split counts the headline's, and
+    # Harrell's bootstrap where it resampled rows (models/validation.py).
+    compared = resampled = nested_within = levels_within = None
     if spans is not None:
         train_units = split_data.get("n_train_units")
-        if not inference and len(sub_columns) > shared:
-            unit_ids = _unit_ids(ctx, basis, assignment.index.to_numpy()[train])
-            compared = compared_within_unit(
-                basis, units=train_units,
-                spanning=units_spanning(sub_columns, unit_ids) if unit_ids is not None else None)
+        by_draws = not inference and len(sub_columns) > shared
+        unit_ids = (_unit_ids(ctx, basis, assignment.index.to_numpy()[train])
+                    if by_draws or nested_drawn is not None or site_pairs else None)
+
+        def spanning(draws: list[Any]) -> list[int] | None:
+            return units_spanning(draws, unit_ids) if unit_ids is not None else None
+
+        if by_draws:
+            compared = compared_within_unit(basis, units=train_units,
+                                            spanning=spanning(sub_columns))
+        if nested_drawn is not None:
+            # A row a repetition sits out (fold 0) is in none of its folds.
+            nested_within = nested_within_unit(
+                basis, units=train_units, bias_reps=len(nested_drawn["plain"]),
+                spanning=spanning([np.where(f > 0, f, np.nan) for f in nested_drawn["nested"]]
+                                  + [np.asarray(f, dtype=float) for f in nested_drawn["plain"]]))
+        if site_pairs:
+            levels_within = levels_within_unit(basis, str(site), units=train_units,
+                                               spanning=spanning([site_codes]))
         if n_boot:
             resampled = resampled_within_unit(basis, units=train_units, n_rows=int(train.sum()))
+    site_scored = False  # a family was validated by the named grouping's levels beside the headline
     own_pairs = 0 if headline_repeats is not None else len(pairs)
     units = max(1, len(keys) * (len(sub_pairs) + own_pairs + 2 + n_boot + len(site_pairs)))
     done = 0
@@ -2090,8 +2114,6 @@ def fit_stage(ctx: StageContext) -> Bundle:
     nested_runs: dict[str, Any] = {}
     n_features = len(spec.inputs)
     narrow = wide_clause(n_features, len(y)) if wide(n_features, len(y)) else None
-    run_nested = bool(getattr(state.split, "nested_cv", False)) and not inference \
-        and primary in PER_ROW_LOSSES
     unit_series = (pd.Series(groups, index=X.index) if groups is not None else None)
 
     def share(n: int) -> float:
@@ -2203,7 +2225,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 nested = nested_cv_interval(
                     task, primary, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
                     nested_fit, X, y, folds=k_folds, seed=seed, groups=groups, horizon=horizon,
-                    cancelled=ctx.cancelled)
+                    draws=nested_drawn, cancelled=ctx.cancelled)
                 nested_runs[key] = nested
             ctx.progress(share(done), f"{family.label}: coefficients")
             concerns: list[str] = []
@@ -2395,6 +2417,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                         horizon=horizon)
                 iecv = internal_external(task, by_site, site_labels, site, groups=groups,
                                          unit=grouped_by, metric=primary)
+                site_scored = True
             except Cancelled:
                 raise
             except Exception as exc:  # noqa: BLE001 - a level that cannot be fit is a concern
@@ -2536,7 +2559,11 @@ def fit_stage(ctx: StageContext) -> Bundle:
                    selection=selection, result=result_declared, n_boot=n_boot,
                    horizon_note=horizon_note, notes=[m.get("calibration_note") for m in models],
                    narrow=narrow, nested=bool(nested_runs),
-                   within=within_unit_link(folds_within, compared, resampled), sites=sites)
+                   within=within_unit_link(
+                       folds_within, compared, resampled, levels=levels_within if site_scored
+                       else None, nested=nested_within if any(
+                           r.estimate is not None for r in nested_runs.values()) else None),
+                   sites=sites)
     artifact = FitArtifact(task=task, primary_metric=primary, metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,

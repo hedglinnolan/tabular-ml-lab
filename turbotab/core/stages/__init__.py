@@ -490,7 +490,10 @@ def build_graph() -> Graph:
             # split 7 (BLUEPRINT §14.3): as fit 14.
             # split 8 (REPAIR-VALID, MS6): when the seal cannot keep a unit's rows together, the
             # note says the folds are drawn by row and every score is within-unit performance.
-            Stage("split", 8, ("working", "cohort", "target_info", "structure"),
+            # split 9 (C-110): the note reads every draw of the drawn folds, saying nothing of
+            # units where none has rows in two folds, and the artifact keeps the units each draw
+            # splits and the units with training rows, so a split cached before it is drawn again.
+            Stage("split", 9, ("working", "cohort", "target_info", "structure"),
                   ("split", *ROLE_READS, "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
             # shelf 7 (methods gate): under inference it ranks for every analyzed row and its basis
@@ -677,7 +680,11 @@ def build_graph() -> Graph:
             # fit 29 (W1-R, the walkthrough's finding 10): the held-out calibration serves the rows
             # behind each stretch of its predictions' range (``support``), so a fit cached before
             # it is computed again rather than served with none.
-            Stage("fit", 29, ("working", "design", "split", "target_info", "cohort"),
+            # fit 30 (C-110): the headline's performance sentences and the chain's within-unit
+            # link say what the drawn folds, the comparisons', the nested cross-validation's and
+            # the named grouping's levels did to a unit's rows, so a fit cached before it is
+            # computed again.
+            Stage("fit", 30, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),

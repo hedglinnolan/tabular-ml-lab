@@ -1473,21 +1473,30 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     # written when the split is answered, before any fold is drawn, so it says what the answers and
     # the table settle and no more (C-110): under internal–external validation the folds are the
     # grouping's levels, and where every unit lies in one level none spans two, however the rows
-    # are drawn, while the comparisons' folds are drawn by row; one unit spans every fold; else a
-    # fold may split a unit, which the split's note, reading the drawn folds, counts.
+    # are drawn, while the comparisons' folds and the nested cross-validation's are drawn by row;
+    # one unit spans every fold; else a fold may split a unit, which the split's note, reading the
+    # drawn folds, counts. The named grouping's levels, validated beside a headline of folds by
+    # row, need no part of their own here: such a headline may split a unit, and "every
+    # cross-validated score here may be" takes their scores in (``within_unit_parts``), while under
+    # internal–external validation the fit scores no other grouping's levels.
     if basis is not None and not group:
-        from turbotab.core.models.validation import (compared_within_unit, resampled_within_unit,
-                                                     within_unit_clauses, within_unit_parts)
+        from turbotab.core.models.validation import (compared_within_unit, nested_within_unit,
+                                                     resampled_within_unit, within_unit_clauses,
+                                                     within_unit_joined, within_unit_parts)
 
         unit = {k: _attr(basis, k) for k in ("state", "column", "n_units")}
         cluster = (getattr(d, "cluster", None) if validation == "internal_external" else None)
         headline = (None if cluster and _units_within_levels(ctx, unit.get("column"), cluster)
                     else within_unit_clauses(unit, cluster=cluster or None))
-        comparisons = (compared_within_unit(unit) if getattr(state, "purpose", None) != "inference"
-                       and not time_ordered else None)
+        predicting = getattr(state, "purpose", None) != "inference" and not time_ordered
+        comparisons = compared_within_unit(unit) if predicting else None
+        nested = (nested_within_unit(unit) if predicting and getattr(d, "nested_cv", False)
+                  else None)
         resampled = resampled_within_unit(unit) if validation == "bootstrap" else None
-        for part in within_unit_parts(headline, comparisons, resampled):
-            boot += f"; {part.why}: {part.then}"
+        joined = within_unit_joined(within_unit_parts(headline, comparisons, resampled,
+                                                      nested=nested))
+        if joined:
+            boot += f"; {joined[0]}: {joined[1]}"
     # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
     r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
           "prediction" if task == "regression" else "")
