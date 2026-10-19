@@ -148,6 +148,46 @@ estimand or use Q and regime R, decision D with option O has validity V and mate
 Analysts fill G, Q, D and O, the engine fills R and M, and V is never set by a run. Only a
 mechanical check or an independent grader sets it (§7).
 
+**Amended 2026-10-19 (Nolan, in the pilot discussion): three axes, their markers, and the
+analyst's account.**
+
+A claim says where it holds on three axes, and the record keeps the markers for each, from the
+engine's own readings (never the analyst's description):
+- **The regime,** the structure of the table and the question: rows, rows analyzed, units where
+  rows repeat, the effective size (events, or the rarest class); the predictors by role and their
+  ratio to the rows; the outcome's type and event share; missingness per column, the complete-case
+  share and whether the pattern is monotone; clusters, survey strata, PSUs, weights and time order;
+  the largest correlation and the condition index; the signal (the cross-validated gain over the
+  no-predictor baseline, recorded after the run, so it steers nothing).
+- **The measurement model,** how each number came to be (Nolan: "regime only answers half the
+  question, the other half that goes unanswered is the instrumentation of how the data was
+  recorded"): the scale type (absolute, relative intensity, compositional, ordinal items); the
+  units as read; the error structure (variance growing with the mean, skew); censoring (shares
+  below or above a detection limit); batch and run-order columns, drift found, QC samples; repeated
+  measurement (replicates, recalls, imputed copies); and the instrument (food-frequency
+  questionnaire, 24-hour recall, a mass-spectrometry platform, an assay), declared by the intake
+  (§5) because the engine cannot read it.
+- **The purpose and its loss:** the purpose and the primary score, with why; the intended use and
+  its thresholds; the estimand (the effect measure, marginal or conditional, the substitution);
+  the multiplicity family; the loss a claim from the run would be graded on.
+
+Each decision's entry keeps a snapshot of the markers it read, as they stood when it was made (a
+missing-values answer reads the missingness after the exclusions); the dataset's markers are kept
+once per run. A transfer test then picks datasets from another domain that match a claim's
+markers.
+
+**The analyst's account** sits beside the engine's record and never in place of it. The engine's
+record is the evidence; the account carries what only the analyst knows, its intent (an exclusion
+that corrects a data error and one that drops outliers to improve the fit look alike in the log):
+- written when each decision is made, before the analyst has seen what mattered; any end-of-run
+  account is a separate field, marked as written after the results;
+- each reason names the marker that drove it (its axis and marker) and the alternative it
+  rejected, then free text;
+- context for a theorist's hypotheses, never evidence: a claim's status changes only by the
+  mechanical checks and the designed experiments (§9);
+- audited: the referees score whether each stated reason matches what the analyst was shown, and
+  the rate of reasons that do not is reported per model and persona.
+
 ## 5. Dataset intake
 
 - **Public data only,** each file with its source URL and release date (HANDOFF step 7's
@@ -165,6 +205,17 @@ mechanical check or an independent grader sets it (§7).
   sealed decoys, which the swarm never sees.
 - **A held-out shelf.** Each sprint sets some datasets aside before it starts. A pattern found on
   the discovery shelf is confirmed on them once, the lock and seal applied to the research itself.
+
+- **Declared measurement markers from the source** (amended 2026-10-19, Nolan: "since we are
+  pulling from real published papers, why not use that information to guide the measurement
+  markers we need?"). The intake reads the paper's methods (for a fixture, its documentation) and
+  fills the card's measurement section: the instrument, assay or platform, the preprocessing, the
+  handling of detection limits, the units, the recall method. Each marker quotes its passage and is
+  labeled declared; a referee checks the quotes. What the paper does not say is recorded as not
+  stated, since a paper's unstated measurement decisions are part of what a replication reports.
+  Where a declared marker and the engine's reading disagree (the paper says kcal and the engine
+  reads kJ; the paper says log-transformed and the data are raw), the record holds both and the
+  conflict is a finding.
 
 ## 6. The pilot
 
