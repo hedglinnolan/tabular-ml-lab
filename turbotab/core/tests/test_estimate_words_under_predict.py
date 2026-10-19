@@ -289,11 +289,12 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     calibration's support (finding 10), so neither stage's cached artifact from before is served:
     each stage's version is the one after the change. The design changed again (W1-T: no estimand
     and no coefficient's meaning under Predict), and so did the SAS-zero finding's summary (R-f
-    14), which the findings stage computes."""
+    14), which the findings stage computes. The fit changed again (C-110: its headline sentences and
+    chain say what the drawn folds did to a unit's rows)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (32, 29, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (32, 30, 21)
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:
