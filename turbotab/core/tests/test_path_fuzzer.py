@@ -416,6 +416,150 @@ def test_a_noticing_disposed_of_before_the_goal_changed_from_predict_is_not_reop
     assert data.progress.complete and not data.reopened
 
 
+# The goal's change from Predict names itself only on a noticing its stage held open then, in a
+# stage reached and complete then (§7.2 I11's case): judged from the log as it stood just before
+# the change, never from how the stage stands now.
+
+IMPLAUSIBLE = "pack::dietary::implausible_intake#1"
+ENERGY = "pack::dietary::energy_adjustment#1"
+DRIFT = {"id": "pack::metabolomics::run_order_drift#1", "routes_to": "roles",
+         "affected_columns": ["run_order"], "repairs": [],
+         "summary": "Intensity drifts with run order"}
+
+
+def _log_serving(state, records, fx, noticings):
+    # the quest log as _log_of draws it, the findings stage serving ``noticings`` beside the
+    # fixture's own (a noticing it computes once a slot it reads has changed)
+    from turbotab.core.repairs import annotate
+
+    artifacts = path_fuzzer.artifacts_for(state, fx, records)
+    artifacts["findings"] = annotate(
+        {"findings": [*(dict(f) for f in fx.findings), *(dict(n) for n in noticings)]},
+        state, records)
+    stages = {"fit": {"status": "idle"}}
+    steps = route(state, stages, artifacts, records)
+    return quest.quest_log(state, records, steps, stages, findings=artifacts["findings"],
+                           columns=fx.columns, artifacts=artifacts)
+
+
+def _forward(fx, records, stop):
+    # answered_through's walk from ``records`` on: each Router question before ``stop`` answered
+    # by its first option on the fixture
+    from turbotab.core import decisions
+
+    state = decisions.fold(records)
+    for _ in range(3 * len(QUESTION_KEYS)):
+        artifacts = path_fuzzer.artifacts_for(state, fx, records)
+        steps = route(state, {"fit": {"status": "fresh"}}, artifacts, records, pressed=True)
+        first = next((s for s in steps if s.status == "open"), None)
+        if first is None or first.key == stop:
+            return state
+        options = path_fuzzer.question_options(first.key, state, fx)
+        assert options, first.key
+        records.append(path_fuzzer._record(records, path_fuzzer._validate(options[0], state, fx)))
+        state = decisions.fold(records)
+    return state
+
+
+def _named(stage, line, record):
+    # the line names ``record`` as why it is open, and its stage's Reopened record lists it
+    return (line.reopened_by is not None and line.reopened_by.decision_id == record.id
+            and any(r.decision_id == record.id and line.id in r.questions
+                    for r in stage.reopened))
+
+
+def test_a_noticing_served_after_the_goal_left_predict_names_no_goal_change():
+    # P1: with the acquisition-design noticing dismissed, the goal's change leaves Your data
+    # complete at 4 of 4; a reading then confirmed in Your data changes a slot the findings stage
+    # reads, and the run-order noticing it serves for that was not open when the goal changed.
+    # Your data counts it within the stage being worked (I11), and no Reopened record is owed.
+    fx = path_fuzzer.METABOLOMICS
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop="exclusions")
+    _decide(records, {"kind": "dismiss_finding", "finding_id": ACQUISITION})
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    data, _open = _line(_log_of(state, records, fx=fx), ACQUISITION)
+    assert data.progress.complete and not data.reopened
+    answered, required = data.progress.answered, data.progress.required
+    state = _decide(records, {"kind": "confirm_reading", "reading": "code_or_count",
+                              "column": "age", "value": "amount"})
+    assert quest.written_slots(records[-1].decision) & quest.stage_reads("findings")
+    data, line = _line(_log_serving(state, records, fx, [DRIFT]), DRIFT["id"])
+    assert data.key == "data" and line.status == "open" and line.counted
+    assert (data.progress.answered, data.progress.required) == (answered, required + 1)
+    assert line.reopened_by is None and not data.reopened
+
+
+def test_a_noticing_open_when_the_goal_left_predict_keeps_that_cause_past_another_answer():
+    # P1's other side: an answer after the change that writes no slot the findings stage reads
+    # (the exclusions, in Who's in) leaves the noticing the one that was open then, and Your data,
+    # complete before the change, still says why it asks one more.
+    fx = path_fuzzer.METABOLOMICS
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop="exclusions")
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    goal = records[-1]
+    state = _decide(records, {"kind": "set_exclusions", "rules": []})
+    assert not quest.written_slots(records[-1].decision) & quest.stage_reads("findings")
+    data, line = _line(_log_of(state, records, fx=fx), ACQUISITION)
+    assert data.key == "data" and line.status == "open" and _named(data, line, goal)
+
+
+@pytest.mark.parametrize("fx,stop,key,home,waiting", [
+    # Your data still asked the roles: 2 of 3 under Predict, 2 of 4 after
+    (path_fuzzer.METABOLOMICS, "roles", ACQUISITION, "data", "roles"),
+    # Who's in still asked the held-out rows, a line Predict alone asks: 3 of 4 before and after
+    (path_fuzzer.NHANES, "split", IMPLAUSIBLE, "whos_in", "split"),
+])
+def test_a_stage_still_asking_when_the_goal_left_predict_is_not_reopened_by_it(fx, stop, key, home,
+                                                                                waiting):
+    # P2: I11 asks a Reopened record only of a stage complete before; one still asking when the
+    # goal changed counts the noticing as the journey going forward.
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop=stop)
+    stage, line = _line(_log_of(state, records, fx=fx), key)
+    assert stage.key == home and line.status == "open"
+    assert not stage.progress.complete
+    assert next(l for l in stage.lines if l.key == waiting).status == "open"
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    stage, line = _line(_log_of(state, records, fx=fx), key)
+    assert stage.key == home and line.status == "open" and line.counted
+    assert line.reopened_by is None and not stage.reopened
+
+
+def test_a_stage_not_reached_when_the_goal_left_predict_is_not_reopened_by_it():
+    # P2: the goal changed to Estimate right after it was first answered, with Who's in reached
+    # at its first question (the grain, open) and Models not reached; the journey then goes
+    # forward through both, and neither was complete when the goal changed.
+    fx = path_fuzzer.NHANES
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop="grain")
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    log = _log_of(state, records, fx=fx)
+    stages = {s.key: s for s in log.stages}
+    assert stages["models"].progress is None and not stages["models"].reached
+    assert not stages["whos_in"].progress.complete
+    assert next(l for l in stages["whos_in"].lines if l.key == "grain").status == "open"
+    state = _forward(fx, records, "energy_adjustment")
+    log = _log_of(state, records, fx=fx)
+    for key, home in ((IMPLAUSIBLE, "whos_in"), (ENERGY, "models")):
+        stage, line = _line(log, key)
+        assert stage.key == home and stage.reached and line.status == "open" and line.counted
+        assert line.reopened_by is None, key
+        assert not any(line.id in r.questions for r in stage.reopened), key
+
+
+def test_a_drawn_split_that_leaves_with_predict_leaves_the_goal_change_the_cause():
+    # P2's other side: Who's in complete under Predict (the held-out rows drawn), the split leaves
+    # its count with the goal's change and the noticing counts there: the change is why.
+    fx = path_fuzzer.NHANES
+    state, _artifacts, records = path_fuzzer.answered_through(fx, "prediction", stop="split")
+    state = _decide(records, {"kind": "set_split", "holdout": 0.2, "seed": 0})
+    whos_in, line = _line(_log_of(state, records, fx=fx), IMPLAUSIBLE)
+    assert whos_in.progress.complete and line.status == "open"
+    state = _decide(records, {"kind": "set_purpose", "purpose": "inference"})
+    whos_in, line = _line(_log_of(state, records, fx=fx), IMPLAUSIBLE)
+    assert not whos_in.progress.complete and _named(whos_in, line, records[-1])
+    assert [r.sentence for r in whos_in.reopened] == [
+        "Your change to Your question reopened 1 question in Who's in."]
+
+
 # ── each new check bites ─────────────────────────────────────────────────────
 
 

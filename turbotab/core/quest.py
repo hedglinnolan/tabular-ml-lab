@@ -64,7 +64,9 @@ column is gets read again"; ``within``); a result its own stage's answers left o
 a drop-back (each answer redraws its stage's cards). A result whose stage is blocked (the analysis
 was withdrawn) is never computed again, so it is not out of date. Under Predict an open noticing
 counts toward the triage in Results, not toward the stage it sits in (ruling R-a); a change of the
-goal from Predict makes it count there again, so each open noticing there names that change.
+goal from Predict makes it count there again, so a stage complete when the goal changed names that
+change on each noticing it held open then. A noticing the findings stage served after the change,
+or one in a stage still being worked (or not yet reached) then, is the journey going forward.
 
 **While a reading recomputes.** A question whose applicability or answer is read from a stage
 (the outcome's reading, the rows' structure, the form card) waits while that stage recomputes.
@@ -1412,8 +1414,8 @@ def _goal_moved_the_triage(log: _Log) -> ReopenedBy | None:
     """The latest goal change (or revert) that made the goal other than Predict after Predict, if
     the goal is still the one it set. Under Predict an open noticing counts toward the triage in
     Results (ruling R-a), not toward the stage it is placed in; under any other goal, or none, it
-    counts there, so that stage, complete before perhaps, asks one more and says why (§7.2 I11:
-    the path fuzzer's seeds 475, 1181 and 1221)."""
+    counts there, so that stage, if complete when the goal changed, asks one more and says why
+    (§7.2 I11: the path fuzzer's seeds 475, 1181 and 1221; :func:`_moved_the_triage_here`)."""
     from turbotab.core.sweep import gate_stage
 
     for record in reversed(log.live):
@@ -1429,6 +1431,129 @@ def _goal_moved_the_triage(log: _Log) -> ReopenedBy | None:
             return None
         return ReopenedBy(decision_id=record.id, kind=record.decision.kind, stage=stage)
     return None
+
+
+def _moved_the_triage_here(stage: str, lines: Sequence[QuestLine], sweep: Sweep | None,
+                           moved: ReopenedBy, log: _Log, facts: Facts) -> list[QuestLine]:
+    """The open noticings of ``stage`` that the goal's change from Predict (``moved``) made count
+    there again: those its stage held open when the goal changed, in a stage complete then, as
+    Predict counted it (§7.2 I11's case). Judged from the log as it stood just before the change,
+    as :func:`_reopened_only_if_complete` judges a declaration, never from how the stage stands
+    now. A noticing the findings stage may have served since (a slot it reads changed after the
+    change), or one disposed of since (held for another question), was not the one open then; a
+    stage still asking then (a question open, the held-out rows not drawn), or not yet reached,
+    counts its noticings as the journey going forward."""
+    cause = log.by_id.get(moved.decision_id)
+    if cause is None or log.changes(stage_reads("findings"), after_seq=cause.seq):
+        return []
+    held = [l for l in lines if l.source == "finding" and l.label == DECIDE and l.counted
+            and l.status == "open" and l.reopened_by is None
+            and not _disposed_since(log, l.key, cause)]
+    if not held or not _complete_before(stage, lines, sweep, cause, log, facts):
+        return []
+    return held
+
+
+def _disposed_since(log: _Log, finding_id: str, cause: Any) -> bool:
+    for r in log.live:
+        changed = log.undone(r) if r.seq > cause.seq else None
+        if (changed is not None and changed.kind in FINDING_DISPOSITIONS
+                and getattr(changed, "finding_id", None) == finding_id):
+            return True
+    return False
+
+
+def _complete_before(stage: str, lines: Sequence[QuestLine], sweep: Sweep | None, cause: Any,
+                     log: _Log, facts: Facts) -> bool:
+    """Whether ``stage`` stood complete just before ``cause``, a change from Predict: each counted
+    Decide in it answered then (:func:`_answered_before`; an open noticing counted toward Results'
+    triage under Predict, ruling R-a), each default of its sweep confirmed then, and each question
+    or declaration the change asks otherwise or takes away (the held-out rows, which Predict asks
+    until they are drawn; a form Predict sets for the person and Estimate asks) answered or
+    confirmed then too. A stage whose questions had no answers then was not reached, or was
+    still being worked."""
+    confirmed = log.by_id.get(sweep.confirmed_by) if sweep and sweep.confirmed_by else None
+    for line in lines:
+        if line.label == DECIDE and line.counted:
+            if line.source == "finding" and line.status == "open":
+                continue
+        elif line.label != CONFIRM or sweep is None:
+            continue
+        elif (confirmed is not None and confirmed.seq < cause.seq
+              and (line.key in sweep.changed or line.decision_id == confirmed.id)):
+            continue  # confirmed by "Confirm all" before the change
+        if not _answered_before(line, cause, log):
+            return False
+    before, after = log.state_at(cause.seq - 1), log.state_at(cause.seq)
+    if before is None or after is None:
+        return False
+    for key, question in QUESTIONS.items():
+        if question.stage != stage:
+            continue
+        was, now = _verdict(key, before, facts), _verdict(key, after, facts)
+        if was is None or now is None or (was == now and key != "split"):
+            continue  # a line the change left as it was is judged as it stands (above)
+        if _answered_at(key, log, cause.seq - 1):
+            continue
+        if was == "asked" or (was == "stated" and STATED.get(key, CONFIRM) == CONFIRM
+                              and not _swept_at(stage, key, before)):
+            return False
+    for decl in DECLARATIONS:
+        if (decl.place.stage != stage or not decl.counted or decl.only_recorded
+                or decl.place.label not in (DECIDE, CONFIRM)):
+            continue
+        try:
+            left = decl.applies(before, facts) and not decl.applies(after, facts)
+        except Exception:  # noqa: BLE001 - an older state the card cannot read says nothing
+            continue
+        if left and not _declared_at(decl, before, log, cause.seq - 1, facts):
+            return False
+    return True
+
+
+def _answered_at(key: str, log: _Log, seq: int) -> bool:
+    """Whether Router question ``key`` stood answered just after record ``seq``: a live answer of
+    it by then that held then; under Predict the held-out rows only once drawn
+    (``outcome_gate.drawn``), as :func:`quest_log` asks them."""
+    if not any(r.seq <= seq and r.decision.kind in answering_kinds(key) for r in log.live):
+        return False
+    if log.holds_at(answer_holds(key), seq) is not True:
+        return False
+    if key == "split" and getattr(log.state_at(seq), "purpose", None) == "prediction":
+        from turbotab.core.outcome_gate import drawn
+
+        return drawn([r for r in log.records if r.seq <= seq])
+    return True
+
+
+def _swept_at(stage: str, key: str, state: Any) -> bool:
+    """Whether the stage's "Confirm all" held on ``state`` lists the line ``key``."""
+    from turbotab.core.decisions import sweep_key
+
+    held = (getattr(state, "sweeps", None) or {}).get(sweep_key(stage))
+    return held is not None and any(l.key == key for l in held.lines)
+
+
+def _declared_at(decl: Declaration, state: Any, log: _Log, seq: int, facts: Facts) -> bool:
+    """Whether declaration ``decl`` stood answered on ``state``, the log just after ``seq``, as
+    :func:`_declaration_lines` and the sweep answer it: recorded and holding, or, a default set
+    for the person, confirmed by its stage's "Confirm all" as stated then while nothing it reads
+    was still asked."""
+    from turbotab.core.decisions import SLOTS, sweep_key
+
+    recorded = getattr(state, SLOTS[decl.kind], None) is not None
+    if decl.own_record:
+        recorded = recorded and any(r.seq <= seq and r.decision.kind == decl.kind
+                                    for r in log.live)
+    if recorded and (decl.holds is None or bool(decl.holds(state))):
+        return True
+    if decl.place.label != CONFIRM:
+        return False
+    held = (getattr(state, "sweeps", None) or {}).get(sweep_key(decl.place.stage))
+    value = decl.stated(state) if decl.stated is not None else decl.name
+    return (held is not None and (decl.kind, value) in {(l.key, l.value) for l in held.lines}
+            and not any(_verdict(k, state, facts) == "asked" and not _answered_at(k, log, seq)
+                        for k in decl.reads))
 
 
 def _stated_reason(key: str) -> str | None:
@@ -2564,20 +2689,18 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
     # triage is Models' own, and nothing changes.
     gate = sweeps.gate_stage(state)
     # The other side of R-a (the path fuzzer's I11): once the goal moves from Predict, an open
-    # noticing counts in the stage it is placed in again, so that stage, complete before
-    # perhaps, says the goal's change is why it asks one more.
+    # noticing counts in the stage it is placed in again, so that stage, if it was complete when
+    # the goal changed, says the change is why it asks one more (:func:`_moved_the_triage_here`).
     moved = _goal_moved_the_triage(log) if gate != "results" else None
-    if moved is not None:
-        for home, line in placed:
-            if (home != "results" and line.source == "finding" and line.label == DECIDE
-                    and line.counted and line.status == "open" and line.reopened_by is None):
-                line.reopened_by = moved
     out = []
     for key, name in STAGES:
         mine = sorted((l for stage, l in placed if stage == key),
                       key=lambda l: (LABELS.index(l.label), l.order, l.name))
         reached = STAGE_INDEX[key] <= frontier
         sweep = sweeps.sweep_of(key, mine, state, log)
+        if moved is not None and reached and key != "results":
+            for line in _moved_the_triage_here(key, mine, sweep, moved, log, facts):
+                line.reopened_by = moved
         progress = None
         if reached:
             decide = [l for l in mine if l.label == DECIDE and l.counted
