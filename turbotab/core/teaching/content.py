@@ -1134,9 +1134,9 @@ ENERGY_ADJUSTMENT = {
     # Audit IN-20 (ledger #43): adjusting for total energy changes the estimand (Tomova et al. 2022).
     "why": "Total energy drives every nutrient's intake, and the errors in reported nutrients and "
            "energy move together. Adjusting for it changes the question: the standard model and "
-           "the residual method with energy kept swap calories between sources at fixed total "
-           "energy; partition adds calories; all components gives each source's added and average "
-           "swapped calories. Choose by the question.",
+           "the residual method with energy kept swap any calories the nutrients carry for other "
+           "sources at fixed total energy; partition adds calories; all components gives each "
+           "source's added and average swapped calories. Choose by the question.",
     "consumer": "Each model's pipeline, the column lineage, the coefficients and the substitution "
                 "curves read it.",
     "options": [
@@ -1146,8 +1146,8 @@ ENERGY_ADJUSTMENT = {
                "Energy stays in the model: more of a nutrient, swapping any calories it "
                "carries."),
         option("residual", "Residual, energy kept",
-               "Each nutrient's residual on energy, energy kept: the standard model's swap, in "
-               "its units."),
+               "Each nutrient's residual on energy, energy kept: the standard model's swap of any "
+               "calories it carries, in its units."),
         option("residual_energy_dropped", "Residual, energy dropped",
                "Each nutrient's residual on energy, energy dropped: differs when covariates track "
                "energy."),

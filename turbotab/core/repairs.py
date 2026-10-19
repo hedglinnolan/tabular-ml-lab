@@ -942,9 +942,13 @@ def _offer_text_numbers(finding: dict[str, Any], p: dict[str, Any], oc: OfferCon
     named = _named_values(unparsed) if unparsed else ""
     below = (f"{_count(n_below)} below a detection limit" if n_below else "")
     gone = " and ".join(x for x in (f"{_count(n_bad)} that are not numbers" if n_bad else "", below) if x)
-    # Claims backtest D-044 (its claim, ``repairs.tntc_censored``): a count too numerous to count
-    # is a value above the countable range, not a missing one (FDA BAM, as stages/finding_words.py
-    # reads it), so blanking it is said to bias the column low. No censored handling is built.
+    # Claims backtest D-044 (its claims, ``repairs.tntc_censored`` and
+    # ``repairs.tntc_beside_below_limit``): a count too numerous to count is a value above the
+    # countable range, not a missing one (FDA BAM, as stages/finding_words.py reads it), so blanking
+    # it alone biases the column low, and the column is said to be biased low where nothing else
+    # pulls it. A value below a detection limit, blanked in the same repair, pulls it high, so with
+    # both the column's direction is not known and the sentences say the two pull opposite ways
+    # (the RF-1 verifier's round-2 P1). No censored handling is built.
     from turbotab.core.stages.finding_words import _ABOVE_COUNTABLE
 
     tntc = sum(n for v, n in unparsed.items() if _ABOVE_COUNTABLE.search(v))
@@ -952,13 +956,17 @@ def _offer_text_numbers(finding: dict[str, Any], p: dict[str, Any], oc: OfferCon
         from turbotab.core import claims
 
         missing = (f"; {_count(tntc)} {_plural(tntc, 'was', 'were')} too numerous to count: "
-                   f"{claims.methods('repairs.tntc_censored')}")
+                   f"{_plural(tntc, 'it is', 'each is')} {claims.methods('repairs.tntc_censored')}"
+                   + (f", {claims.methods('repairs.tntc_beside_below_limit')}" if n_below else ""))
     else:
         missing = ""
 
     def option(key: str, label: str, decimal: str, thousands: bool, example: str = "") -> RepairOption:
         spec = {"decimal": decimal, "thousands": thousands}
-        if tntc:  # within CONSEQUENCE_WORDS: the column, its numbers, its blanks (the label
+        if tntc and n_below:  # within CONSEQUENCE_WORDS, as below
+            consequence = (f"{_tick(c)}: {_count(numbers)} become numbers, {_count(blank)} blank; "
+                           f"{claims.card('repairs.tntc_beside_below_limit')}.")
+        elif tntc:  # within CONSEQUENCE_WORDS: the column, its numbers, its blanks (the label
             # says how a comma is read)
             consequence = (f"{_tick(c)}: {_count(numbers)} become numbers, {_count(blank)} blank, "
                            f"{_count(tntc)} of them {claims.card('repairs.tntc_censored')}.")

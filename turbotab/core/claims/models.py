@@ -859,9 +859,14 @@ SEAL_BY_ROW = register(Claim(
              regraded="The seal's sentence no longer says the folds were drawn by row: it is "
                       "drawn before the validation is chosen, and under internal-external "
                       "validation each fold is one level of the grouping (rows.draw_split's "
-                      "clusters), so the RF-1 verifier's P3 found it false there; the split's "
-                      "note, written after the validation is chosen, says what the folds did "
-                      "(models.validation.within_unit_sentence, MS6).",
+                      "clusters), so the RF-1 verifier's P3 found it false there. The split's "
+                      "note, written after the validation is chosen, holds the folds' sentence "
+                      "(models.validation.within_unit_sentence, MS6), and was not right under "
+                      "every validation either: it said the folds were drawn by row under "
+                      "internal-external validation too (the verifier's round-2 P3). It now says "
+                      "so only of folds drawn by row, and under internal-external validation reads "
+                      "the drawn folds, saying nothing of units where no unit's rows fall in two "
+                      "of them.",
              basis=Basis(
                  reason="The folds are drawn with the seal's groups (seal.split_args, "
                         "rows.draw_split), so where the held-out rows are drawn by row the folds "

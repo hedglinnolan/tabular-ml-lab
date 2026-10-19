@@ -115,7 +115,10 @@ units: every score is *within-unit* performance, new rows of units the models we
 record-wise cross-validation overestimates as an estimate of the other (Saeb et al., GigaScience
 2017;6(5): "record-wise CV often massively overestimates the prediction accuracy of the
 algorithms"). It is stated, never silent (:func:`unit_spans`): in the split's note and sentence, in
-every performance sentence and the result, and in the chain.
+every performance sentence and the result, and in the chain. Under internal–external validation
+the folds are a grouping's levels, not rows, so the split's note reads the drawn folds: it says
+nothing of units where no unit's rows fall in two of them, and says what the folds did where they
+do (:func:`within_unit_sentence`).
 
 **Performance across sites** (MODELING_SEQUENCE §2: clusters imply, under prediction, "performance
 heterogeneity across sites"; §1 row 11: "internal–external CV when clusters exist"; TRIPOD+AI 12d
@@ -1092,24 +1095,56 @@ def unit_spans(basis: Mapping[str, Any] | None) -> str | None:
     column = basis.get("column")
     n = basis.get("n_units")
     if state == "undetermined":
-        return ("whether a unit can appear in more than one row was answered as not known, so the "
-                "folds were drawn by row")
+        return f"{_NOT_KNOWN}, so the folds were drawn by row"
     if state != "abandoned":
         return None
     if column and n == 1:
         return f"every row belongs to the one `{column}` unit, so no fold can leave a unit out"
     if column:
-        units = f" (`{int(n):,}` units)" if n else ""
-        return f"rows repeat within `{column}`{units}, but the folds were drawn by row"
-    return "units were said to repeat, but no column names the unit, so the folds were drawn by row"
+        return f"rows repeat within `{column}`{_units(n)}, but the folds were drawn by row"
+    return f"{_UNNAMED}, so the folds were drawn by row"
 
 
-def within_unit_sentence(basis: Mapping[str, Any] | None) -> str | None:
-    """:func:`unit_spans` and what follows from it, as one sentence (the split's note), or None."""
+# Why a unit's rows can sit on both sides of a fold where no column names the unit
+# (:func:`unit_spans`).
+_NOT_KNOWN = "whether a unit can appear in more than one row was answered as not known"
+_UNNAMED = "units were said to repeat, but no column names the unit"
+
+
+def _units(n: Any) -> str:
+    return f" (`{int(n):,}` units)" if n else ""
+
+
+def within_unit_sentence(basis: Mapping[str, Any] | None, *, cluster: str | None = None,
+                         split_units: bool | None = None) -> str | None:
+    """:func:`unit_spans` and what follows from it, as one sentence (the split's note), or None.
+
+    ``cluster`` names the column whose levels are the folds (internal–external validation), so
+    they were not drawn by row; ``split_units`` says whether the drawn folds put rows of one unit
+    in more than one of them, read where a column names the unit (None where none does). Where
+    no unit's rows fall in two folds no score is within-unit, and there is nothing to say; where
+    they do, or where no column can tell, the sentence says what the folds did (the RF-1
+    verifier's round-2 P3)."""
     spans = unit_spans(basis)
     if spans is None:
         return None
-    then = WITHIN_UNIT if basis.get("state") != "undetermined" else WITHIN_UNIT.replace(
+    state, column, n = basis.get("state"), basis.get("column"), basis.get("n_units")
+    may = state == "undetermined"
+    if cluster is not None:
+        if split_units is False:
+            return None
+        folds = f"the folds, the levels of `{cluster}`,"
+        across = "rows of one unit in more than one of them"
+        if column and split_units:
+            if n != 1:  # one unit: "no fold can leave a unit out" holds under any folds
+                spans = f"rows repeat within `{column}`{_units(n)}, and {folds} put {across}"
+        elif column:  # not read
+            spans, may = (f"rows repeat within `{column}`{_units(n)}, and {folds} may put "
+                          f"{across}"), True
+        else:
+            lead = _NOT_KNOWN if state == "undetermined" else _UNNAMED
+            spans, may = f"{lead}, so {folds} may put {across}", True
+    then = WITHIN_UNIT if not may else WITHIN_UNIT.replace(
         "every cross-validated score here is", "every cross-validated score here may be")
     return f"{spans[0].upper()}{spans[1:]}: {then}."
 

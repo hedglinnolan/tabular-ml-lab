@@ -76,8 +76,9 @@ export function RolesAsk({
 }: AskProps & {
   artifact: RolesArtifact;
   current: Record<string, Role> | null;
-  /** The project's goal: under prediction the card says predictors (`predictorsSentence`), and names the
-   *  predictor roles' groups as the server serves them for the project's lenses and task. */
+  /** The project's goal: under prediction the card says how many columns hold a predictor role,
+   *  whichever group holds them (`predictorsSentence`), and names the predictor roles' groups as
+   *  the server serves them for the project's lenses and task. */
   purpose?: string | null;
 }) {
   const predict = purpose === "prediction";

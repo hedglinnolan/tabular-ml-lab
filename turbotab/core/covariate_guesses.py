@@ -95,7 +95,8 @@ GUESSES: dict[str, dict[str, Any]] = {
     # Claims backtest C-144 (its claim, ``adjustment.demographic_guess``): the reason holds under
     # every lens (it names no diet), and says that socioeconomic columns measured at the same visit
     # may follow what you study or the outcome. The answers stay the field's convention, set before
-    # it, which the person confirms.
+    # it, which the person confirms. The lifestyle and body reasons, and a baseline level's, speak
+    # of what you study too, never the diet (the RF-1 verifier's round-2 P4).
     "demographic": {
         "label": "Demographics",
         "answers": dict(PRE_EXPOSURE),
@@ -105,7 +106,7 @@ GUESSES: dict[str, dict[str, Any]] = {
     "lifestyle": {
         "label": "Lifestyle",
         "answers": dict(PRE_EXPOSURE),
-        "reason": "habits that shape both what people eat and the outcome; the field's Model 2 "
+        "reason": "habits that shape both what you study and the outcome; the field's Model 2 "
                   "adjusts for them as what else could explain the link",
         "source": f"{PACK08} (Model 2: demographics and lifestyle); {VANDERWEELE}",
     },
@@ -119,8 +120,9 @@ GUESSES: dict[str, dict[str, Any]] = {
     "body": {
         "label": "Body size and composition",
         "answers": dict(TIMING_UNKNOWN),
-        "reason": "the diet may have changed them, so the field's Model 3 adds them beside the "
-                  "primary; adjusting for a mediator without saying so is the pack's anti-pattern",
+        "reason": "what you study may have changed them, so the field's Model 3 adds them beside "
+                  "the primary; adjusting for a mediator without saying so is the pack's "
+                  "anti-pattern",
         "source": f"{PACK08} (Model 3; the anti-pattern \"adjusting for BMI when BMI is a "
                   f"mediator without saying so\")",
     },
@@ -428,7 +430,8 @@ def guess(column: str, state: Any, pairing: Pairing | None = None) -> Guess | No
                         f"a level of the outcome {_tick(p.outcome)}'s own kind ({kind}) {p.when}, "
                         f"so before {later}: no consequence of the "
                         f"{'event' if event else 'outcome'}, and it can predict it; it may have "
-                        f"changed the diet (so it could explain the link) or been changed by it (a mediator), so "
+                        f"changed what you study (so it could explain the link) or been changed "
+                        f"by it (a mediator), so "
                         f"the estimate is declared without it and, beside, with it",
                         f"{PACK08} (a measurement taken with what you study: unknown, yes, unknown); "
                         f"{SCHISTERMAN}; {'' if event else change}MODELING_SEQUENCE §1 step 3 "

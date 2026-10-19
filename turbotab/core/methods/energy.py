@@ -1537,6 +1537,17 @@ def _in_place_of(named: bool, omitted: Sequence[str]) -> str:
     return f"in place of {_and([*omitted[:-1], 'other energy'])}"
 
 
+def _substitution(columns: Sequence[str], named: bool, swap: str, omitted: Sequence[str]) -> str:
+    """``the coefficient of protein_g is a substitution in place of …``: the swap each of
+    ``columns``' coefficients is, by name; with two or more energy sources in the model, in place
+    of the sources not in it, listed (ME-04)."""
+    if len(columns) == 1:
+        return f"the coefficient of {columns[0]} is a substitution {swap}"
+    where = (f"in place of the energy sources not in the model: {', '.join(omitted)}" if named
+             else swap)
+    return f"the coefficients of {_and(columns)} are each a substitution {where}"
+
+
 # A part of a macronutrient as a card names it (the recognizer's part codes; sugar and starch are
 # their own words).
 _PART_NOUNS = {"sfa": "saturated fat", "mufa": "monounsaturated fat",
@@ -1640,6 +1651,9 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
       substituting that component for the omitted one. Name the omitted component in your
       results."), not for "the average of all other sources" (ME-04).
     * A total beside its own parts estimates the remainder not in any part (ME-15).
+    * A study factor that carries no energy (sodium) displaces no energy source: "the nutrient"
+      where every study factor is one, else named, beside each energy-bearing factor's
+      substitution by name (claims backtest D-001; the RF-1 verifier's round-2 P2).
     """
     roles = dict(roles or {})
     matrix = [str(c) for c in matrix_columns]
@@ -1710,7 +1724,12 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
     read = [c for c in dict.fromkeys([*(c for c in predictors if roles.get(c) == "exposure"),
                                       *(getattr(adjustment, "nutrients", None) or [])])
             if c not in energy_cols]
-    no_energy = bool(read) and all(carries_no_energy(str(c)) for c in read)
+    carry_none = [c for c in read if carries_no_energy(str(c))]
+    no_energy = bool(read) and len(carry_none) == len(read)
+    # Beside them, the study factors and terms that carry energy, each said by name (the RF-1
+    # verifier's round-2 P2); a part beside its total is said below, with its total.
+    bearing = [c for c in dict.fromkeys([*(c for c in read if c not in carry_none),
+                                         *(t.column for t, _ in present)]) if c not in children]
     if log:
         text = LOG_ESTIMAND[form]
         slopes = _slopes(step)
@@ -1730,23 +1749,48 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
 
         nothing = claims.card("energy.no_energy_no_swap")
         text = {
-            "standard": f"More of the nutrient with total energy held fixed; {nothing}.",
+            "standard": ("More of the nutrient with total energy held fixed; the nutrient "
+                         f"{nothing}."),
             "residual": ("The standard model's coefficient, in the nutrient's own units: the "
                          "residual and total energy span the same model as the nutrient and total "
                          f"energy ({_MCCULLOUGH}), so it is more of the nutrient with total energy "
-                         f"held fixed; {nothing}."),
+                         f"held fixed; the nutrient {nothing}."),
             "residual_energy_dropped": (
                 "Total energy is not in the outcome model: the coefficient equals the standard "
                 "model's only when no other covariate correlates with energy; otherwise it is a "
-                "different number, which can differ in sign, and its interval is wider. "
-                f"{nothing[0].upper()}{nothing[1:]}."),
+                "different number, which can differ in sign, and its interval is wider. The "
+                f"nutrient {nothing}."),
         }[form]
         swapped = [t.column for t, _ in present if t.column not in children]
-        if form != "residual_energy_dropped" and len(swapped) >= 2:
-            text += (f" The coefficients of {_and(swapped)} are each a substitution in place of "
-                     f"the energy sources not in the model: {', '.join(omitted)}.")
-        elif form != "residual_energy_dropped" and swapped:
-            text += f" The coefficient of {swapped[0]} is a substitution {swap}."
+        if form != "residual_energy_dropped" and swapped:
+            said = _substitution(swapped, named, swap, omitted)
+            text += f" {said[0].upper()}{said[1:]}."
+    elif carry_none and bearing and form in ("standard", "residual", "residual_energy_dropped"):
+        # The RF-1 verifier's round-2 P2: the study factors are mixed, some carrying no energy
+        # (sodium) and some carrying it (protein, red meat), so no sentence of "the nutrient" or of
+        # "each coefficient" is true of them all. Each that carries none is named as displacing no
+        # energy source, and each that carries energy, a covariate's term too (alcohol_g), keeps its
+        # substitution by name, the swap METHOD_TABLE and the named clause give it. Words only: the
+        # terms and the swaps are those below, as without the factors that carry no energy.
+        from turbotab.core import claims
+
+        nothing = claims.card("energy.no_energy_no_swap")
+        who = carry_none[0] if len(carry_none) == 1 else f"each of {_and(carry_none)}"
+        none = f"{who} {nothing}"
+        swaps_said = _substitution(bearing, named, swap, omitted)
+        text = {
+            "standard": (f"More of each nutrient with total energy held fixed; {none}; "
+                         f"{swaps_said}."),
+            "residual": ("The standard model's coefficients, in each nutrient's own units: the "
+                         "residuals and total energy span the same model as the nutrients and "
+                         f"total energy ({_MCCULLOUGH}), so each is more of its nutrient with "
+                         f"total energy held fixed; {none}; {swaps_said}."),
+            "residual_energy_dropped": (
+                "Total energy is not in the outcome model: each coefficient equals the standard "
+                "model's only when no other covariate correlates with energy; otherwise it is a "
+                "different number, which can differ in sign, and its interval is wider. In the "
+                f"standard model, {swaps_said}; {none}."),
+        }[form]
     elif form == "standard" and named:
         text = ("More of each nutrient with total energy held fixed: " + clause +
                 " It is not a swap for the average of all other sources (NUTRITION_PACK §05a: "

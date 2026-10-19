@@ -111,7 +111,7 @@ BACKTEST_RF1 = {
     "D-021": {"validation.paired_interval"},
     "D-032": {"designs.adjustment_by_design"},
     "D-037": {"missing.ffq_blank_handling"},
-    "D-044": {"repairs.tntc_censored"},
+    "D-044": {"repairs.tntc_censored", "repairs.tntc_beside_below_limit"},
     "D-070": {"copies.pooled_by_rubin"},
 }
 RF1_IDS = set().union(*BACKTEST_RF1.values())
@@ -152,7 +152,7 @@ BACKTEST_S1 = {
 def test_r0bs_claims_are_audit_where_they_state_a_backtest_finding_and_engine_otherwise():
     audit = set().union(*BACKTEST_S1.values())
     assert len(BACKTEST_S1) == 15 and len(audit) == 17
-    assert len(BACKTEST_RF1) == 15 and len(RF1_IDS) == 15 and not RF1_IDS & R0B_IDS
+    assert len(BACKTEST_RF1) == 15 and len(RF1_IDS) == 16 and not RF1_IDS & R0B_IDS
     origin = {c.id: c.origin for c in claims.registry()}
     assert {i for i, o in origin.items() if o == "audit"} == audit | RF1_IDS
     assert {i for i, o in origin.items() if o == "engine"} == R0B_IDS - audit

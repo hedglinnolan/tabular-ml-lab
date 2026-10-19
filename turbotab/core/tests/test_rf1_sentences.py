@@ -359,8 +359,10 @@ def test_the_food_frequency_blanks_carry_the_packs_own_badges():
     """NUTRITION_PACK §06 marks the claim "[SETTLED that the mechanism is non-ignorable; DISPUTED
     how to handle it]" and zero-coding "[CONVENTION with documented limits]", saying a blank is
     "often missing not at random". The mechanism's section is SETTLED and says "often"; the
-    handling is its own section, badged DISPUTED, naming zero-coding and what imputation improves
-    on."""
+    handling is its own section, badged DISPUTED, naming zero-coding and that standard multiple
+    imputation assumes missing at random, which the pack says it is not. It ranks no handling over
+    another: under a blank that means never, that ranking is the disputed point (the RF-1
+    verifier's round-2 P5)."""
     raw = (REPO / "docs/turbotab-next/reference/research/NUTRITION_PACK.md").read_text("utf-8")
     pack = " ".join(raw.replace("\n>", " ").split())  # its block quotes, joined across lines
     assert "SETTLED that the mechanism is non-ignorable; DISPUTED how to handle it" in pack
@@ -372,19 +374,24 @@ def test_the_food_frequency_blanks_carry_the_packs_own_badges():
     assert "often" in mechanism["body"] and "frequently means" not in mechanism["body"]
     assert "imputation" not in mechanism["body"]
     assert handling["evidence"]["status"] == "DISPUTED"
-    assert "zero" in handling["body"] and "complete cases" in handling["body"]
-    assert "rarely eaten" in handling["body"]
+    assert "Standard MI assumes MAR" in pack
+    body = handling["body"]
+    assert "zero" in body and "rarely eaten" in body
+    assert "assumes missing at random" in body and "Which handling is better is disputed." in body
+    assert "complete cases" not in body and "improve" not in body, body
 
 
 # ── D-044 · a count too numerous to count, blanked ────────────────────────────
 
 
-def _plates(tntc: int, seed: int = 0) -> pd.DataFrame:
-    """Plate counts within FDA BAM's countable range (15-300 per plate), some read TNTC."""
+def _plates(tntc: int, seed: int = 0, below: int = 0, dots: int = 2) -> pd.DataFrame:
+    """Plate counts within FDA BAM's countable range (15-300 per plate), from 20 to 279, some read
+    TNTC (above 300), ``below`` of them ``<10`` (below a detection limit of 10, so under every
+    kept count) and ``dots`` blank as ``.``."""
     rng = np.random.default_rng(seed)
     counts = [str(int(v)) for v in rng.integers(20, 280, 60)]
-    return pd.DataFrame({"apc": counts + ["TNTC"] * tntc + ["."] * 2,
-                         "y": rng.normal(size=62 + tntc)})
+    cells = counts + ["<10"] * below + ["TNTC"] * tntc + ["."] * dots
+    return pd.DataFrame({"apc": cells, "y": rng.normal(size=len(cells))})
 
 
 def _read_as_numbers(frame: pd.DataFrame):
@@ -407,14 +414,60 @@ def test_blanking_counts_too_numerous_to_count_says_it_biases_the_column_low():
     option = _read_as_numbers(frame)
     for text in (option.consequence, option.sentence):
         assert "too numerous to count" in text and "low" in text, text
+        assert "opposite" not in text and "high" not in text, text  # no cell below a limit
+    assert "biasing it low" in option.consequence, option.consequence
     assert "above the countable range" in option.sentence and "right-censored" in option.sentence
+    assert "`5` were too numerous to count: each is a count" in option.sentence, option.sentence
 
 
-def test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_one():
-    option = _read_as_numbers(_plates(0))
+def test_one_count_too_numerous_to_count_is_said_as_one():
+    """The RF-1 verifier's round 2: one cell is "it", never "each"."""
+    option = _read_as_numbers(_plates(1))
+    assert "`1` was too numerous to count: it is a count above the countable range" in (
+        option.sentence), option.sentence
+    assert "each is" not in option.sentence, option.sentence
+    assert "biasing it low" in option.consequence, option.consequence
+
+
+def test_blanking_counts_above_the_range_and_below_a_limit_says_they_pull_opposite_ways():
+    """The RF-1 verifier's round-2 column: 60 counts from 20 to 279, 30 read ``<10`` (under 10, so
+    under every kept count) and one TNTC (above 300, so above every kept count). Blanking the TNTC
+    count alone lowers the column's mean and blanking the ``<10`` cells alone raises it, whatever
+    values they hold; the kept mean, 149.6, is above the full mean at the least those values can be
+    (101.9) and below it at a TNTC count of 20,000. So the column is not said to be biased low: the
+    TNTC blank's own direction is said, and the two kinds pull opposite ways."""
+    frame = _plates(1, below=30, dots=0)
+    kept = pd.to_numeric(frame["apc"], errors="coerce").dropna().to_numpy()
+    assert len(kept) == 60 and kept.min() >= 20 and kept.max() < 300
+    assert kept.mean() == pytest.approx(149.55)
+    for small in (0.0, 9.99):
+        for above in (301.0, 5000.0):
+            limited = np.r_[kept, [small] * 30]
+            assert np.mean(np.r_[limited, above]) > limited.mean()  # the TNTC blank: low
+            assert kept.mean() > limited.mean()  # the blanks below the limit: high
+    assert np.mean(np.r_[kept, [0.0] * 30, 301.0]) == pytest.approx(101.91, abs=0.01)
+    assert kept.mean() < np.mean(np.r_[kept, [9.99] * 30, 20_000.0])  # the net: either way
+    option = _read_as_numbers(frame)
+    for text in (option.consequence, option.sentence):
+        assert "opposite ways" in text, text
+        assert "biasing it low" not in text and "the column is biased low" not in text, text
+    assert ("`1` was too numerous to count: it is a count above the countable range, "
+            "right-censored rather than missing, so blanking such a count biases the column low, "
+            "and blanking a value below a detection limit biases it high") in option.sentence, (
+        option.sentence)
+    from turbotab.core import repairs as R, voice
+
+    assert voice.words(option.consequence) <= R.CONSEQUENCE_WORDS, option.consequence
+
+
+@pytest.mark.parametrize("below", [0, 30])
+def test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_one(below):
+    option = _read_as_numbers(_plates(0, below=below))
     for text in (option.consequence, option.sentence):
         assert "too numerous" not in text and "countable" not in text, text
-    assert option.consequence == "`60` values of `apc` become numbers; `2` become blank."
+        assert "opposite" not in text, text
+    assert option.consequence == (f"`60` values of `apc` become numbers; `{2 + below}` become "
+                                  "blank.")
 
 
 # ── D-070 · imputed copies, pooled only where the fit pools them ──────────────
@@ -563,17 +616,76 @@ def test_with_energy_held_fixed_a_food_a_drink_or_a_fatty_acid_is_still_a_substi
     assert "substitution" in text, text
 
 
-def test_a_food_beside_sodium_keeps_the_substitution_reading():
-    """Two study factors, sodium and red meat: red meat carries energy, so the model's sentence
-    does not say the nutrient carries none."""
+def _factors(method: str, factors: list[str]):
+    """``describe_model`` for several study factors, each adjusted, total energy kept unless the
+    method drops it."""
     from turbotab.core.methods.energy import describe_model
 
-    adjustment = d.EnergyAdjustment(method="standard", energy_column="kcal",
-                                    nutrients=["sodium_mg", "red_meat_g"])
-    roles = {"sodium_mg": "exposure", "red_meat_g": "exposure", "kcal": "energy"}
-    columns = ["sodium_mg", "red_meat_g", "kcal"]
-    text = describe_model(adjustment, columns, roles, columns).text
-    assert "carries no energy" not in text, text
+    kept = method != "residual_energy_dropped"
+    m = "standard" if method == "standard" else "residual"
+    adjustment = d.EnergyAdjustment(method=m, energy_column="kcal", nutrients=list(factors))
+    roles = {**{f: "exposure" for f in factors}, "kcal": "energy", "age": "covariate"}
+    names = [f if m == "standard" else f"{f}_adj" for f in factors]
+    return describe_model(adjustment, [*factors, "kcal", "age"], roles,
+                          [*names, *(["kcal"] if kept else []), "age"])
+
+
+def test_a_food_beside_sodium_keeps_the_substitution_reading():
+    """Two study factors, sodium and red meat: red meat carries energy, so the model's sentence
+    does not say the nutrient carries none, a sentence that would cover red meat; sodium is named
+    as carrying none, and red meat keeps its substitution by name (the RF-1 verifier's round-2
+    P2)."""
+    text = _factors("standard", ["sodium_mg", "red_meat_g"]).text
+    assert "the nutrient carries no energy" not in text.lower(), text
+    assert "sodium_mg carries no energy, so it displaces no energy source" in text, text
+    assert "the coefficient of red_meat_g is a substitution" in text, text
+
+
+# Mixed study factors (the RF-1 verifier's round-2 P2): sodium, which carries no energy (no
+# Atwater factor), beside protein (4 kcal/g, FAO 2003) or red meat (a food, which carries energy no
+# general factor converts).
+MIXED = {"sodium+protein": (["sodium_mg", "protein_g"], ["protein_g"]),
+         "sodium+red meat": (["sodium_mg", "red_meat_g"], ["red_meat_g"])}
+
+
+@pytest.mark.parametrize("method", ["standard", "residual", "residual_energy_dropped"])
+@pytest.mark.parametrize("mix", list(MIXED))
+def test_mixed_study_factors_name_each_with_no_energy_and_give_each_others_swap_by_name(method,
+                                                                                       mix):
+    """With total energy fixed, more sodium leaves every energy source where it was, while more
+    protein or red meat is more of their energy in place of the other sources'. So the sentence
+    names sodium as displacing no energy source and gives the other factor's substitution by name,
+    never a substitution "of the nutrient" or of "each coefficient", which would cover sodium's.
+    Words only: the swaps and the terms are those of the energy-bearing factor alone, since sodium
+    adds no energy term (the energy factors, shown first)."""
+    from turbotab.core.methods.energy import energy_factor
+
+    factors, bearing = MIXED[mix]
+    assert energy_factor("sodium_mg").factor is None and energy_factor("protein_g").factor == 4.0
+    described, alone = _factors(method, factors), _factors(method, bearing)
+    text = described.text
+    assert "sodium_mg carries no energy, so it displaces no energy source" in text, text
+    assert "the nutrient carries no energy" not in text.lower(), text
+    assert "implicitly a substitution" not in text, text
+    assert "each coefficient is a substitution" not in text, text
+    assert "more of the nutrient at the same total energy, in place of" not in text, text
+    assert "the standard model's substitution" not in text.lower(), text
+    lead ="In the standard model, t" if method == "residual_energy_dropped" else "; t"
+    assert (f"{lead}he coefficient of {bearing[0]} is a substitution in place of the average of "
+            f"all other energy sources") in text, text
+    assert described.terms == alone.terms and described.swaps == alone.swaps, described
+    assert described.form == alone.form
+
+
+@pytest.mark.parametrize("method", ["standard", "residual"])
+def test_study_factors_that_all_carry_energy_keep_each_coefficients_swap(method):
+    """The other side: protein (4 kcal/g) and fat (9) both carry energy, so each coefficient is a
+    swap for the sources left out of the model (NUTRITION_PACK §04), and nothing is said to carry
+    none."""
+    text = _factors(method, ["protein_g", "fat_g"]).text
+    assert "carries no energy" not in text and "displaces no energy source" not in text, text
+    assert ("each coefficient is a substitution in place of the energy sources not in the model: "
+            "carbohydrate, alcohol, other") in text, text
 
 
 # Covariates that carry energy in a unit their names state, which ``energy_terms`` reads: alcohol
@@ -653,6 +765,15 @@ def test_the_teaching_scopes_the_substitution_reading_to_nutrients_that_carry_en
     assert nothing[0] == nothing[1]
     assert "sodium" in nothing[0]["body"] and "displaces nothing" in nothing[0]["body"]
     assert "energy source" in _term(energy, "substitution")["definition"].split(";")[1]
+    # The options and the why that say the energy-kept models swap calories, each scoped to the
+    # calories a nutrient carries, as the standard option is (the RF-1 verifier's round-2 P6):
+    # sodium carries none, so an unscoped "swap" says of it what describe_model does not.
+    for value in ("standard", "residual"):
+        said = _option(energy, value)["consequence"]
+        assert "any calories it carries" in said, said
+        assert "the standard model's swap," not in said, said
+    assert "swap any calories the nutrients carry" in energy["why"], energy["why"]
+    assert "swap calories between sources" not in energy["why"], energy["why"]
 
 
 # ── D-012 · what averaging replicates does ────────────────────────────────────
@@ -661,7 +782,8 @@ def test_the_teaching_scopes_the_substitution_reading_to_nutrients_that_carry_en
 def test_averaging_replicates_divides_the_error_variance_by_up_to_their_number():
     """k = 2 recalls a person: with independent day-to-day errors the error variance of each
     person's mean is σ²/2; with errors correlated at ρ = 0.5 (consecutive days) it is σ²(1 + ρ)/2,
-    less than a twofold cut. The note says "up to"."""
+    less than a twofold cut. The note says "up to". This supports the derivation and calls no
+    engine code; the tests below read what the engine says."""
     rng = np.random.default_rng(12)
     people, sigma = 100_000, 1.0
     independent = rng.normal(0, sigma, (people, 2)).mean(axis=1).var()
@@ -751,8 +873,8 @@ def test_a_fit_with_class_weights_never_says_none_was_applied(tmp_path):
 
 @pytest.mark.parametrize("purpose", ["prediction", None])
 def test_multiple_imputation_is_refused_unless_the_purpose_is_inference_in_sisks_scope(purpose):
-    """Sisk et al. 2023's abstract (Stat Methods Med Res 32:1461; quoted in methods/missing.py, and
-    read on PubMed 37105540 by the RF-1 verifier): "With complete data available at deployment, the
+    """Sisk et al. 2023's abstract (Stat Methods Med Res 32:1461, the paper's PMC record
+    PMC10515473; quoted in methods/missing.py): "With complete data available at deployment, the
     outcome should be used to impute development data when using multiple imputation and omitted
     under regression imputation. When missingness is allowed at deployment, omitting the outcome
     from the imputation model at the development was preferred." The refusal fires with no purpose
@@ -880,6 +1002,80 @@ def test_a_grouped_seal_says_nothing_of_exploratory_scores():
     assert "exploratory" not in basis.sentence
 
 
+def _split(tmp_path: Path, site: np.ndarray, grain: dict, validation: str):
+    """The real split stage over `pid` (40 units, 3 rows each) in four sites, ``site`` per row,
+    under ``validation`` (internal–external by `site`, or k-fold), the grain answered ``grain``:
+    the split's note, and how many folds each unit's training rows fall in (read off the drawn
+    assignment)."""
+    from turbotab.core.stages.rows import cohort_stage, split_stage
+    from turbotab.core.stages.target import target_info_stage
+    from turbotab.core.tests.stage_harness import Ingested
+
+    rng = np.random.default_rng(7)
+    frame = pd.DataFrame({"pid": PID, "site": [f"s{s}" for s in site],
+                          "x1": rng.normal(size=len(PID)), "y": rng.normal(size=len(PID))})
+    frame.to_csv(tmp_path / "t.csv", index=False)
+    by_site = {"cluster": "site"} if validation == "internal_external" else {}
+    state = ProjectState(lens=["clinical"], target="y", task="regression", purpose="prediction",
+                         roles={"pid": "identifier", "x1": "covariate", "site": "design"},
+                         missing="complete_case", grain=grain,
+                         split=d.SplitSpec(holdout=0.2, seed=1, folds=5, validation=validation,
+                                           **by_site))
+    table = Ingested(tmp_path / "t.csv", tmp_path / "i")
+    info = table.run(target_info_stage, state)
+    cohort = table.run(cohort_stage, state, {"target_info": info})
+    split = table.run(split_stage, state, {"cohort": cohort, "target_info": info})
+    a = split.frames["assignment"].sort_values("row_id")
+    pid, fold = PID[a["row_id"].to_numpy()], a["fold"].to_numpy()
+    folds_per_unit = pd.Series(fold[fold != -1]).groupby(pid[fold != -1]).nunique()
+    return split.data, folds_per_unit
+
+
+SAID_A_UNIT = {"grain": "one_row_per_unit", "id_column": "pid"}
+
+
+def test_under_internal_external_validation_with_no_unit_in_two_sites_the_note_is_silent_on_units(
+        tmp_path):
+    """The RF-1 verifier's round-2 case: `pid` repeats 3 times over 40 units, each wholly in one of
+    4 sites, while each row was said to be a unit. Internal–external validation makes each site a
+    fold, so no unit's rows fall in two folds (read off the drawn folds): the cross-validated scores
+    are not within-unit, and the note says nothing of units."""
+    data, folds_per_unit = _split(tmp_path, SITE, SAID_A_UNIT, "internal_external")
+    assert data["basis"]["state"] == "abandoned" and data["cluster"] == "site"
+    assert (folds_per_unit == 1).all()
+    assert "within-unit" not in data["note"] and "drawn by row" not in data["note"], data["note"]
+
+
+@pytest.mark.parametrize("grain", [SAID_A_UNIT, {"grain": "unknown"}], ids=["pid", "unknown"])
+def test_under_internal_external_validation_a_unit_in_two_sites_keeps_the_within_unit_note(
+        tmp_path, grain):
+    """The other side: each unit's 3 rows in 3 different sites, so internal–external validation's
+    folds put one unit's rows in more than one of them (read off the drawn folds), and its rows sit
+    on both sides of a fold. The note says so, and says the folds were the sites' levels, never
+    that they were drawn by row; where no column names the unit, that a fold may split one."""
+    data, folds_per_unit = _split(tmp_path, np.arange(len(PID)) % 4, grain, "internal_external")
+    assert (folds_per_unit > 1).any()
+    note = data["note"]
+    assert "drawn by row" not in note and "`site`" in note, note
+    if grain is SAID_A_UNIT:
+        assert ("Rows repeat within `pid` (`40` units), and the folds, the levels of `site`, put "
+                "rows of one unit in more than one of them: every cross-validated score here is "
+                "within-unit performance") in note, note
+    else:
+        assert ("so the folds, the levels of `site`, may put rows of one unit in more than one of "
+                "them: every cross-validated score here may be within-unit performance") in note, (
+            note)
+
+
+def test_under_k_fold_validation_the_note_keeps_saying_the_folds_were_drawn_by_row(tmp_path):
+    """Folds drawn by row put a unit's rows in several folds (read off the drawn folds), as the note
+    says."""
+    data, folds_per_unit = _split(tmp_path, SITE, SAID_A_UNIT, "kfold")
+    assert (folds_per_unit > 1).any()
+    assert ("Rows repeat within `pid` (`40` units), but the folds were drawn by row: every "
+            "cross-validated score here is within-unit performance") in data["note"], data["note"]
+
+
 # ── C-144 · the demographic guess ─────────────────────────────────────────────
 
 
@@ -908,6 +1104,42 @@ def test_a_demographic_guess_names_no_diet_and_says_which_may_follow(column):
 def test_a_body_measure_takes_no_demographic_guess():
     g = _guess("waist")
     assert g.key == "body" and dict(g.answers)["after_exposure"] == "unknown"
+
+
+# A clinical study factor (HbA1c and carotid intima-media thickness) and a dietary one (sugar and
+# fasting glucose): the lifestyle and body guesses' reasons are written around what is studied
+# under both (the RF-1 verifier's round-2 P4).
+LENSES = {"clinical": (["clinical"], "hba1c", "cimt"),
+          "dietary": (["dietary"], "sugar_g", "glucose")}
+
+
+def _lens_guess(column: str, lens: str, target: str | None = None):
+    from turbotab.core.covariate_guesses import guess
+
+    lenses, exposure, outcome = LENSES[lens]
+    state = ProjectState(lens=lenses, target=target or outcome, purpose="inference",
+                         roles={exposure: "exposure", column: "covariate"},
+                         estimand=d.EstimandSpec(exposure=exposure, measure="mean_difference"))
+    return guess(column, state)
+
+
+@pytest.mark.parametrize("lens", list(LENSES))
+@pytest.mark.parametrize("column,key", [("smoking", "lifestyle"), ("waist", "body")])
+def test_the_lifestyle_and_body_guesses_speak_of_what_you_study_under_any_lens(column, key, lens):
+    g = _lens_guess(column, lens)
+    assert g.key == key
+    assert "diet" not in g.reason and " eat" not in g.reason, g.reason
+    assert "what you study" in g.reason, g.reason
+
+
+@pytest.mark.parametrize("lens", list(LENSES))
+def test_a_baseline_of_the_outcomes_own_kind_speaks_of_what_you_study_under_any_lens(lens):
+    """The body guess for a baseline waist beside a waist measured at twelve months (an outcome over
+    follow-up): it may have changed what is studied or been changed by it."""
+    g = _lens_guess("waist", lens, target="waist_12m")
+    assert g.key == "body" and "a baseline level" in g.what, g
+    assert "diet" not in g.reason, g.reason
+    assert "it may have changed what you study" in g.reason, g.reason
 
 
 # ── C-241 · whether the group is in the imputation model ──────────────────────
