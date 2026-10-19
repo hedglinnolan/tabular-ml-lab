@@ -1,0 +1,3578 @@
+{
+ "attempts": [
+  {
+   "at": "2026-10-19T01:29:50.305953Z",
+   "at_opening": null,
+   "changed": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25
+   ],
+   "changed_after_seal": false,
+   "decisions": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25
+   ],
+   "effects": {
+    "linear": [
+     {
+      "ci_high": 0.01971135745889983,
+      "ci_low": -0.012312396882922978,
+      "df": 20857759.61283611,
+      "estimate": 0.0036994802879884263,
+      "feature": "age",
+      "fmi": 0.0009545233561110132,
+      "mc_se": 5.5075185946002475e-05,
+      "meaning": null,
+      "p": 0.6506626096426903,
+      "q": null,
+      "ratio": 1.003706331811609,
+      "ratio_high": 1.0199069090142387,
+      "ratio_low": 0.9877630905475625,
+      "se": 0.008169474729153354
+     }
+    ]
+   },
+   "families": [
+    "linear"
+   ],
+   "fit_key": "62ccaa529eaf60ef9236221a0e321b3a86ca0afd4da73b2770829af3f1714aa8",
+   "folds": "91ed2b220ae9c68ca692937217525e83e699b0ec61102b4b23d84c415dcab173",
+   "held_out": null,
+   "holdout": null,
+   "holdout_why": "No rows are held out of this fit's split, so it has no held-out score.",
+   "id": "c682c6e462e84c12b04246155c07c574",
+   "locked": true,
+   "movement": [],
+   "movement_why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict.",
+   "plan_digest": "7622b85c241c9f597cfd4dba32a916a30eca4c97c43de16c11939fab5e9a579c",
+   "press": {
+    "seconds": 0.0,
+    "seq": 24,
+    "target": "sought_support"
+   },
+   "primary_metric": "log_loss",
+   "purpose": "inference",
+   "reasons": [
+    {
+     "note": "Scripted analyst, step 1: lens answered from the journey's lens.",
+     "seq": 1
+    },
+    {
+     "note": "Scripted analyst, step 2: target answered from the card's outcome.",
+     "seq": 2
+    },
+    {
+     "note": "Scripted analyst, step 3: event answered from the card's outcome level.",
+     "seq": 3
+    },
+    {
+     "note": "Scripted analyst, step 4: purpose answered from the card's purpose.",
+     "seq": 4
+    },
+    {
+     "note": "Scripted analyst, step 5: roles answered from the journey's roles.",
+     "seq": 5
+    },
+    {
+     "note": "Scripted analyst, step 6: a role confirmed as the roles answer gave it",
+     "seq": 6
+    },
+    {
+     "note": "Scripted analyst, step 7: exclusions answered from the app's first-ranked option (journeys).",
+     "seq": 7
+    },
+    {
+     "note": "Scripted analyst, step 8: missing answered from the app's first-ranked option (journeys).",
+     "seq": 8
+    },
+    {
+     "note": "Scripted analyst, step 9: estimand answered from the card's exposure, its first-ranked measure.",
+     "seq": 10
+    },
+    {
+     "note": "Scripted analyst, step 10: adjustment answered from each covariate's causal place from the readings.",
+     "seq": 11
+    },
+    {
+     "note": "Scripted analyst, step 11: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 12
+    },
+    {
+     "note": "Scripted analyst, step 12: form answered from the form card's proposal, unless the readings declare one.",
+     "seq": 13
+    },
+    {
+     "note": "Scripted analyst, step 13: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 14
+    },
+    {
+     "note": "Scripted analyst, step 14: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 15
+    },
+    {
+     "note": "Scripted analyst, step 15: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 16
+    },
+    {
+     "note": "Scripted analyst, step 16: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 17
+    },
+    {
+     "note": "Scripted analyst, step 17: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 18
+    },
+    {
+     "note": "Scripted analyst, step 18: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 19
+    },
+    {
+     "note": "Scripted analyst, step 19: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 20
+    },
+    {
+     "note": "Scripted analyst, step 20: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 21
+    },
+    {
+     "note": "Scripted analyst, step 21: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 22
+    },
+    {
+     "note": "Scripted analyst, step 22: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 23
+    },
+    {
+     "note": "Scripted analyst, step 23: models answered from the run's own answer.",
+     "seq": 24
+    }
+   ],
+   "reinstated": [],
+   "scores": {},
+   "seconds": 4.4705013749189675,
+   "seed": 0,
+   "seq": 1,
+   "target": "sought_support",
+   "withdrawn": [],
+   "withheld": null,
+   "workers": 2
+  }
+ ],
+ "claims": [],
+ "dataset": {
+  "card": {
+   "design": "analysts",
+   "documentation": [
+    "The instrument's key: item_01 to item_40 are one 40-item instrument, each item answered from 1 to 5, and its reverse-coded items are item_05, item_11, item_17, item_23, item_29, item_34, item_38 and item_40."
+   ],
+   "exposure": {
+    "column": "age",
+    "meaning": "age in years"
+   },
+   "id": "survey_support_estimate",
+   "manifest": "research/datasets/survey_support_estimate/manifest.json",
+   "outcome": {
+    "column": "sought_support",
+    "meaning": "sought support (1 yes, 0 no)"
+   },
+   "population": "A generated (synthetic) survey of adult respondents, one row per respondent: their age, sex and education, their answers to a 40-item instrument, and whether they sought support.",
+   "prepared": [],
+   "purpose": "Estimate",
+   "question": "Is age associated with having sought support?",
+   "source": "A generated (synthetic) table.",
+   "table": {
+    "format": "csv",
+    "path": "research/data/datasets/survey_support_estimate/survey_instrument.csv"
+   }
+  },
+  "codebook": null,
+  "control": "known_answer",
+  "files": [
+   {
+    "bytes": 32974,
+    "license": null,
+    "name": "survey_instrument.csv",
+    "release_date": null,
+    "role": "table",
+    "sha256": "b646927ae2019317d7441cb4b3b93da41fde70955d908021bed8aca8e55f1729",
+    "url": null
+   }
+  ],
+  "fixture": "survey_instrument.csv",
+  "id": "survey_support_estimate",
+  "known": {
+   "family": "linear",
+   "feature": "age",
+   "value": 0.0
+  }
+ },
+ "decisions": [
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "lens",
+     "value": {
+      "lenses": [
+       "survey"
+      ]
+     }
+    }
+   ],
+   "at": "2026-10-19T01:28:54.265924Z",
+   "early": null,
+   "examined": [],
+   "id": "01403e637bf94eceba3238b7f5c68372",
+   "kind": "set_lens",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "kind": "set_lens",
+    "lenses": [
+     "survey"
+    ]
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 1: lens answered from the journey's lens.",
+   "seq": 1,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "target",
+     "value": {
+      "column": "sought_support"
+     }
+    }
+   ],
+   "at": "2026-10-19T01:28:56.308813Z",
+   "early": null,
+   "examined": [],
+   "id": "6ced2c8c9e6e4a41b2fe44972ab94ea8",
+   "kind": "set_target",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "sought_support",
+    "kind": "set_target"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 2: target answered from the card's outcome.",
+   "seq": 2,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "event",
+     "value": {
+      "column": "sought_support",
+      "level": "1"
+     }
+    }
+   ],
+   "at": "2026-10-19T01:28:58.345714Z",
+   "early": null,
+   "examined": [],
+   "id": "91bc67b42b7f4c4b9c5ff99f86ee4e01",
+   "kind": "set_event",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "sought_support",
+    "kind": "set_event",
+    "level": "1"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 3: event answered from the card's outcome level.",
+   "seq": 3,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "purpose",
+     "value": {
+      "purpose": "inference"
+     }
+    }
+   ],
+   "at": "2026-10-19T01:29:00.349105Z",
+   "early": null,
+   "examined": [],
+   "id": "0ecd65fefd954804861a8bce04869dc7",
+   "kind": "set_purpose",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "kind": "set_purpose",
+    "purpose": "inference"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 4: purpose answered from the card's purpose.",
+   "seq": 4,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "role:respondent_id",
+     "value": "identifier"
+    },
+    {
+     "question": "role:age",
+     "value": "covariate"
+    },
+    {
+     "question": "role:sex",
+     "value": "covariate"
+    },
+    {
+     "question": "role:education",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_01",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_02",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_03",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_04",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_05",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_06",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_07",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_08",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_09",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_10",
+     "value": "covariate"
+    },
+    {
+     "question": "role:item_11",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_12",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_13",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_14",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_15",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_16",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_17",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_18",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_19",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_20",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_21",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_22",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_23",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_24",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_25",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_26",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_27",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_28",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_29",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_30",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_31",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_32",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_33",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_34",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_35",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_36",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_37",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_38",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_39",
+     "value": "excluded"
+    },
+    {
+     "question": "role:item_40",
+     "value": "excluded"
+    }
+   ],
+   "at": "2026-10-19T01:29:02.398932Z",
+   "early": null,
+   "examined": [],
+   "id": "92e07d127f9948c085362bd9c8d12b3e",
+   "kind": "set_roles",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "kind": "set_roles",
+    "roles": {
+     "age": "covariate",
+     "education": "covariate",
+     "item_01": "covariate",
+     "item_02": "covariate",
+     "item_03": "covariate",
+     "item_04": "covariate",
+     "item_05": "covariate",
+     "item_06": "covariate",
+     "item_07": "covariate",
+     "item_08": "covariate",
+     "item_09": "covariate",
+     "item_10": "covariate",
+     "item_11": "excluded",
+     "item_12": "excluded",
+     "item_13": "excluded",
+     "item_14": "excluded",
+     "item_15": "excluded",
+     "item_16": "excluded",
+     "item_17": "excluded",
+     "item_18": "excluded",
+     "item_19": "excluded",
+     "item_20": "excluded",
+     "item_21": "excluded",
+     "item_22": "excluded",
+     "item_23": "excluded",
+     "item_24": "excluded",
+     "item_25": "excluded",
+     "item_26": "excluded",
+     "item_27": "excluded",
+     "item_28": "excluded",
+     "item_29": "excluded",
+     "item_30": "excluded",
+     "item_31": "excluded",
+     "item_32": "excluded",
+     "item_33": "excluded",
+     "item_34": "excluded",
+     "item_35": "excluded",
+     "item_36": "excluded",
+     "item_37": "excluded",
+     "item_38": "excluded",
+     "item_39": "excluded",
+     "item_40": "excluded",
+     "respondent_id": "identifier",
+     "sex": "covariate"
+    },
+    "unconfirmed": [
+     "education"
+    ]
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 5: roles answered from the journey's roles.",
+   "seq": 5,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "role:education",
+     "value": "covariate"
+    }
+   ],
+   "at": "2026-10-19T01:29:04.479269Z",
+   "early": null,
+   "examined": [],
+   "id": "9a6d14ed8afc4628a3fc171487e686c5",
+   "kind": "confirm_role",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "education",
+    "kind": "confirm_role",
+    "role": "covariate"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 6: a role confirmed as the roles answer gave it",
+   "seq": 6,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "exclusions",
+     "value": {
+      "rules": []
+     }
+    }
+   ],
+   "at": "2026-10-19T01:29:06.529900Z",
+   "early": null,
+   "examined": [],
+   "id": "3c4df5b7142d40808e20e31efecc9d11",
+   "kind": "set_exclusions",
+   "materiality": {
+    "attempt": null,
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "The curve refits the logistic model's coefficient, a conditional log odds ratio, and the estimate reported is a marginal risk difference, standardized over the analyzed rows from that model (g-computation). The refit does not standardize each specification, so the curve is not drawn under this measure."
+   },
+   "option": {
+    "kind": "set_exclusions",
+    "rules": []
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 7: exclusions answered from the app's first-ranked option (journeys).",
+   "seq": 7,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "missing",
+     "value": {
+      "acknowledged": false,
+      "below_detection": null,
+      "categorical": "impute",
+      "censored_columns": [],
+      "drop_columns": [],
+      "imputation_levels": "clustered",
+      "imputation_model": "compatible",
+      "indicators": false,
+      "m": 20,
+      "reason": null,
+      "strategy": "multiple_imputation"
+     }
+    }
+   ],
+   "at": "2026-10-19T01:29:08.567574Z",
+   "early": null,
+   "examined": [],
+   "id": "c81eea6be8ab4d18a3b5e46fed78625a",
+   "kind": "set_missing",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "acknowledged": false,
+    "below_detection": null,
+    "categorical": "impute",
+    "censored_columns": [],
+    "drop_columns": [],
+    "imputation_levels": "clustered",
+    "imputation_model": "compatible",
+    "indicators": false,
+    "kind": "set_missing",
+    "m": 20,
+    "reason": null,
+    "strategy": "multiple_imputation"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 8: missing answered from the app's first-ranked option (journeys).",
+   "seq": 8,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "split",
+     "value": {
+      "cluster": null,
+      "folds": 5,
+      "holdout": 0.0,
+      "n_boot": 500,
+      "nested_cv": false,
+      "repeats": 10,
+      "seed": 0,
+      "validation": "kfold"
+     }
+    }
+   ],
+   "at": "2026-10-19T01:29:08.571545Z",
+   "early": null,
+   "examined": [],
+   "id": "3f1ae53745b6433b8adb1819d34dc3cd",
+   "kind": "set_split",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "cluster": null,
+    "folds": 5,
+    "holdout": 0.0,
+    "kind": "set_split",
+    "n_boot": 500,
+    "nested_cv": false,
+    "repeats": 10,
+    "seed": 0,
+    "validation": "kfold"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": null,
+   "seq": 9,
+   "source": "app"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "estimand",
+     "value": {
+      "contrast": null,
+      "effect": "total",
+      "exposure": "age",
+      "family": false,
+      "measure": "risk_difference",
+      "multiplicity": null,
+      "multiplicity_acknowledged": false
+     }
+    }
+   ],
+   "at": "2026-10-19T01:29:10.660743Z",
+   "early": null,
+   "examined": [],
+   "id": "81927d86183b420f9848156704fa46b0",
+   "kind": "set_estimand",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "contrast": null,
+    "effect": "total",
+    "exposure": "age",
+    "family": false,
+    "kind": "set_estimand",
+    "measure": "risk_difference",
+    "multiplicity": null,
+    "multiplicity_acknowledged": false
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 9: estimand answered from the card's exposure, its first-ranked measure.",
+   "seq": 10,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "adjust:sex",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:education",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_01",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_02",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_03",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_04",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_05",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_06",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_07",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_08",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_09",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:item_10",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "age",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    }
+   ],
+   "at": "2026-10-19T01:29:12.746785Z",
+   "early": null,
+   "examined": [],
+   "id": "6fa156aa12cf40dd8c4ad806922351a4",
+   "kind": "set_adjustment",
+   "materiality": {
+    "attempt": null,
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "The curve refits the logistic model's coefficient, a conditional log odds ratio, and the estimate reported is a marginal risk difference, standardized over the analyzed rows from that model (g-computation). The refit does not standardize each specification, so the curve is not drawn under this measure."
+   },
+   "option": {
+    "answers": {
+     "education": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_01": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_02": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_03": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_04": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_05": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_06": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_07": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_08": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_09": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "item_10": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "sex": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    "exposure": "age",
+    "kind": "set_adjustment"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 10: adjustment answered from each covariate's causal place from the readings.",
+   "seq": 11,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:age",
+     "value": "amount"
+    }
+   ],
+   "at": "2026-10-19T01:29:14.836304Z",
+   "early": null,
+   "examined": [],
+   "id": "538a5bedb9384fd89e883487897ad928",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "age",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "amount"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 11: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 12,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "exposure_forms:age",
+     "value": {
+      "acknowledged": false,
+      "cuts": null,
+      "domain": "all",
+      "form": "linear",
+      "knots": null,
+      "knots_rule": null,
+      "n_effective": null,
+      "scale": "raw",
+      "unit": "unit of `age`"
+     }
+    },
+    {
+     "question": "form_domains:age",
+     "value": "all"
+    }
+   ],
+   "at": "2026-10-19T01:29:16.903390Z",
+   "early": null,
+   "examined": [],
+   "id": "f7bb0665a9b84b7680db2788671dbe0f",
+   "kind": "set_forms",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "forms": {
+     "age": {
+      "acknowledged": false,
+      "cuts": null,
+      "domain": "all",
+      "form": "linear",
+      "knots": null,
+      "knots_rule": null,
+      "n_effective": null,
+      "scale": "raw",
+      "unit": "unit of `age`"
+     }
+    },
+    "kind": "set_forms"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 12: form answered from the form card's proposal, unless the readings declare one.",
+   "seq": 13,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_01",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:19.506161Z",
+   "early": null,
+   "examined": [],
+   "id": "f0d25fdb972447538c69d59be68cb186",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_01",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 13: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 14,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_02",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:22.116945Z",
+   "early": null,
+   "examined": [],
+   "id": "b7ff73582f324362ac21f135667186ea",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_02",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 14: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 15,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_03",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:24.726412Z",
+   "early": null,
+   "examined": [],
+   "id": "1cc7fef85f9c4a3e8cdc82357a00b39b",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_03",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 15: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 16,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_04",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:27.364134Z",
+   "early": null,
+   "examined": [],
+   "id": "0dd9fec831194319b2cd236e964f2c24",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_04",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 16: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 17,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_05",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:30.080912Z",
+   "early": null,
+   "examined": [],
+   "id": "9f9b1353ad394c0e8ae4b1ce2e695a7f",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_05",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 17: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 18,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_06",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:32.715283Z",
+   "early": null,
+   "examined": [],
+   "id": "0869b2c145344b54bac3812efe4df78c",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_06",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 18: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 19,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_07",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:35.330063Z",
+   "early": null,
+   "examined": [],
+   "id": "f03e2d18af6b47a89cdb84f36f423be2",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_07",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 19: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 20,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_08",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:37.955032Z",
+   "early": null,
+   "examined": [],
+   "id": "768af5d9c4964876858bec895b3df1b6",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_08",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 20: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 21,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_09",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:40.573707Z",
+   "early": null,
+   "examined": [],
+   "id": "da4f0af9101e42a69a8cbbee539cd4c5",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_09",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 21: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 22,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:item_10",
+     "value": "code"
+    }
+   ],
+   "at": "2026-10-19T01:29:43.190281Z",
+   "early": null,
+   "examined": [],
+   "id": "c7c8f8a82a2e4ea58941908d98d493d9",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "item_10",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "code"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 22: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 23,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "models",
+     "value": {
+      "models": [
+       "linear"
+      ]
+     }
+    }
+   ],
+   "at": "2026-10-19T01:29:45.785740Z",
+   "early": null,
+   "examined": [],
+   "id": "f9f8774a6f764ffaa651879f6d73a6d8",
+   "kind": "select_models",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "kind": "select_models",
+    "models": [
+     "linear"
+    ]
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 23: models answered from the run's own answer.",
+   "seq": 24,
+   "source": "analyst"
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "plan_locked",
+     "value": {
+      "digest": "7622b85c241c9f597cfd4dba32a916a30eca4c97c43de16c11939fab5e9a579c",
+      "plan": {
+       "adjustment": {
+        "education": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_01": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_02": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_03": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_04": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_05": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_06": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_07": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_08": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_09": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "item_10": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "sex": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "age",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        }
+       },
+       "estimand": {
+        "contrast": null,
+        "effect": "total",
+        "exposure": "age",
+        "family": false,
+        "measure": "risk_difference",
+        "multiplicity": null,
+        "multiplicity_acknowledged": false
+       },
+       "event": "1",
+       "exclusions": [],
+       "exposure_forms": {
+        "age": {
+         "acknowledged": false,
+         "cuts": null,
+         "domain": "all",
+         "form": "linear",
+         "knots": null,
+         "knots_rule": null,
+         "n_effective": null,
+         "scale": "raw",
+         "unit": "unit of `age`"
+        }
+       },
+       "lens": [
+        "survey"
+       ],
+       "missing": {
+        "acknowledged": false,
+        "below_detection": null,
+        "categorical": "impute",
+        "censored_columns": [],
+        "drop_columns": [],
+        "imputation_levels": "clustered",
+        "imputation_model": "compatible",
+        "indicators": false,
+        "m": 20,
+        "reason": null,
+        "strategy": "multiple_imputation"
+       },
+       "models": [
+        "linear"
+       ],
+       "purpose": "inference",
+       "role_confirmations": {
+        "education": "covariate"
+       },
+       "roles": {
+        "age": "covariate",
+        "education": "covariate",
+        "item_01": "covariate",
+        "item_02": "covariate",
+        "item_03": "covariate",
+        "item_04": "covariate",
+        "item_05": "covariate",
+        "item_06": "covariate",
+        "item_07": "covariate",
+        "item_08": "covariate",
+        "item_09": "covariate",
+        "item_10": "covariate",
+        "item_11": "excluded",
+        "item_12": "excluded",
+        "item_13": "excluded",
+        "item_14": "excluded",
+        "item_15": "excluded",
+        "item_16": "excluded",
+        "item_17": "excluded",
+        "item_18": "excluded",
+        "item_19": "excluded",
+        "item_20": "excluded",
+        "item_21": "excluded",
+        "item_22": "excluded",
+        "item_23": "excluded",
+        "item_24": "excluded",
+        "item_25": "excluded",
+        "item_26": "excluded",
+        "item_27": "excluded",
+        "item_28": "excluded",
+        "item_29": "excluded",
+        "item_30": "excluded",
+        "item_31": "excluded",
+        "item_32": "excluded",
+        "item_33": "excluded",
+        "item_34": "excluded",
+        "item_35": "excluded",
+        "item_36": "excluded",
+        "item_37": "excluded",
+        "item_38": "excluded",
+        "item_39": "excluded",
+        "item_40": "excluded",
+        "respondent_id": "identifier",
+        "sex": "covariate"
+       },
+       "roles_unconfirmed": [
+        "education"
+       ],
+       "shape_confirmations": {
+        "code_or_count:age": "amount",
+        "code_or_count:item_01": "code",
+        "code_or_count:item_02": "code",
+        "code_or_count:item_03": "code",
+        "code_or_count:item_04": "code",
+        "code_or_count:item_05": "code",
+        "code_or_count:item_06": "code",
+        "code_or_count:item_07": "code",
+        "code_or_count:item_08": "code",
+        "code_or_count:item_09": "code",
+        "code_or_count:item_10": "code"
+       },
+       "split": {
+        "cluster": null,
+        "folds": 5,
+        "holdout": 0.0,
+        "n_boot": 500,
+        "nested_cv": false,
+        "repeats": 10,
+        "seed": 0,
+        "validation": "kfold"
+       },
+       "target": "sought_support"
+      },
+      "seen": "inference",
+      "seen_at": null,
+      "seen_target": null
+     }
+    }
+   ],
+   "at": "2026-10-19T01:29:47.093131Z",
+   "early": null,
+   "examined": [],
+   "id": "77d4795168de444d8bf90e9ebca0956f",
+   "kind": "lock_plan",
+   "materiality": {
+    "attempt": "c682c6e462e84c12b04246155c07c574",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "digest": "7622b85c241c9f597cfd4dba32a916a30eca4c97c43de16c11939fab5e9a579c",
+    "kind": "lock_plan",
+    "plan": {
+     "adjustment": {
+      "education": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_01": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_02": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_03": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_04": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_05": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_06": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_07": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_08": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_09": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "item_10": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "sex": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "age",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      }
+     },
+     "estimand": {
+      "contrast": null,
+      "effect": "total",
+      "exposure": "age",
+      "family": false,
+      "measure": "risk_difference",
+      "multiplicity": null,
+      "multiplicity_acknowledged": false
+     },
+     "event": "1",
+     "exclusions": [],
+     "exposure_forms": {
+      "age": {
+       "acknowledged": false,
+       "cuts": null,
+       "domain": "all",
+       "form": "linear",
+       "knots": null,
+       "knots_rule": null,
+       "n_effective": null,
+       "scale": "raw",
+       "unit": "unit of `age`"
+      }
+     },
+     "lens": [
+      "survey"
+     ],
+     "missing": {
+      "acknowledged": false,
+      "below_detection": null,
+      "categorical": "impute",
+      "censored_columns": [],
+      "drop_columns": [],
+      "imputation_levels": "clustered",
+      "imputation_model": "compatible",
+      "indicators": false,
+      "m": 20,
+      "reason": null,
+      "strategy": "multiple_imputation"
+     },
+     "models": [
+      "linear"
+     ],
+     "purpose": "inference",
+     "role_confirmations": {
+      "education": "covariate"
+     },
+     "roles": {
+      "age": "covariate",
+      "education": "covariate",
+      "item_01": "covariate",
+      "item_02": "covariate",
+      "item_03": "covariate",
+      "item_04": "covariate",
+      "item_05": "covariate",
+      "item_06": "covariate",
+      "item_07": "covariate",
+      "item_08": "covariate",
+      "item_09": "covariate",
+      "item_10": "covariate",
+      "item_11": "excluded",
+      "item_12": "excluded",
+      "item_13": "excluded",
+      "item_14": "excluded",
+      "item_15": "excluded",
+      "item_16": "excluded",
+      "item_17": "excluded",
+      "item_18": "excluded",
+      "item_19": "excluded",
+      "item_20": "excluded",
+      "item_21": "excluded",
+      "item_22": "excluded",
+      "item_23": "excluded",
+      "item_24": "excluded",
+      "item_25": "excluded",
+      "item_26": "excluded",
+      "item_27": "excluded",
+      "item_28": "excluded",
+      "item_29": "excluded",
+      "item_30": "excluded",
+      "item_31": "excluded",
+      "item_32": "excluded",
+      "item_33": "excluded",
+      "item_34": "excluded",
+      "item_35": "excluded",
+      "item_36": "excluded",
+      "item_37": "excluded",
+      "item_38": "excluded",
+      "item_39": "excluded",
+      "item_40": "excluded",
+      "respondent_id": "identifier",
+      "sex": "covariate"
+     },
+     "roles_unconfirmed": [
+      "education"
+     ],
+     "shape_confirmations": {
+      "code_or_count:age": "amount",
+      "code_or_count:item_01": "code",
+      "code_or_count:item_02": "code",
+      "code_or_count:item_03": "code",
+      "code_or_count:item_04": "code",
+      "code_or_count:item_05": "code",
+      "code_or_count:item_06": "code",
+      "code_or_count:item_07": "code",
+      "code_or_count:item_08": "code",
+      "code_or_count:item_09": "code",
+      "code_or_count:item_10": "code"
+     },
+     "split": {
+      "cluster": null,
+      "folds": 5,
+      "holdout": 0.0,
+      "n_boot": 500,
+      "nested_cv": false,
+      "repeats": 10,
+      "seed": 0,
+      "validation": "kfold"
+     },
+     "target": "sought_support"
+    },
+    "seen": "inference",
+    "seen_at": null,
+    "seen_target": null
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": null,
+   "seq": 25,
+   "source": "app"
+  }
+ ],
+ "export": {
+  "checklist": {
+   "checklist": "STROBE-nut",
+   "citation": "Lachat C, Hawwash D, Ock\u00e9 MC, et al. Strengthening the Reporting of Observational Studies in Epidemiology\u2014Nutritional Epidemiology (STROBE-nut): an extension of the STROBE statement. PLoS Med 2016;13(6):e1002036. doi:10.1371/journal.pmed.1002036",
+   "counts": {
+    "answered": 8,
+    "items": 58,
+    "partly_answered": 8,
+    "unanswered": 42
+   },
+   "items": [
+    {
+     "id": "1a",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Title and Abstract",
+     "status": "unanswered",
+     "text": "Indicate the study\u2019s design with a commonly used term in the title or the abstract.",
+     "topic": "Title and Abstract",
+     "where": []
+    },
+    {
+     "id": "nut-1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Title and Abstract",
+     "status": "unanswered",
+     "text": "State the dietary/nutritional assessment method(s) used in the title, abstract, or keywords.",
+     "topic": "Title and Abstract",
+     "where": []
+    },
+    {
+     "id": "1b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Title and Abstract",
+     "status": "unanswered",
+     "text": "Provide in the abstract an informative and balanced summary of what was done and what was found.",
+     "topic": "Title and Abstract",
+     "where": []
+    },
+    {
+     "id": "2",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Introduction",
+     "status": "unanswered",
+     "text": "Explain the scientific background and rationale for the investigation being reported.",
+     "topic": "Background Rationale",
+     "where": []
+    },
+    {
+     "id": "3",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the study's objectives and hypotheses, in the author's words",
+     "owed": "the study's objectives and hypotheses, in the author's words",
+     "scope": null,
+     "section": "Introduction",
+     "status": "partly answered",
+     "text": "State specific objectives, including any prespecified hypotheses.",
+     "topic": "Objectives",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_estimand",
+       "quote": "The analysis estimates the total effect of `age` on `sought_support`, as a marginal risk difference per unit of `age`, by standardization over the analyzed rows (g-computation) from the logistic model, with a bootstrap of the whole chain for its interval, the model's conditional odds ratio reported beside it.",
+       "record_id": "81927d86183b420f9848156704fa46b0",
+       "record_ids": null,
+       "seq": 10,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "4",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the study design by its usual name (cohort, case-control or cross-sectional)",
+     "owed": "the study design by its usual name (cohort, case-control or cross-sectional)",
+     "scope": null,
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Present key elements of study design early in the paper.",
+     "topic": "Study Design",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "quote": "The analysis was declared for `inference`: associations are estimated with their uncertainty.",
+       "record_id": "0ecd65fefd954804861a8bce04869dc7",
+       "record_ids": null,
+       "seq": 4,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "5",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe the setting, locations, and relevant dates, including periods of recruitment, exposure, follow-up, and data collection.",
+     "topic": "Settings",
+     "where": []
+    },
+    {
+     "id": "nut-5",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe any characteristics of the study settings that might affect the dietary intake or nutritional status of the participants, if applicable.",
+     "topic": "Settings",
+     "where": []
+    },
+    {
+     "id": "6a",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the sources and methods of selection of participants, and of follow-up",
+     "owed": "the sources and methods of selection of participants, and of follow-up",
+     "scope": null,
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Cohort study\u2014give the eligibility criteria and the sources and methods of selection of participants. Describe methods of follow-up. Case-control study\u2014give the eligibility criteria and the sources and methods of case ascertainment and control selection. Give the rationale for the choice of cases and controls. Cross-sectional study\u2014give the eligibility criteria and the sources and methods of selection of participants.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "quote": "No rows were excluded: every row with `sought_support` measured stays in the analysis.",
+       "record_id": "3c4df5b7142d40808e20e31efecc9d11",
+       "record_ids": null,
+       "seq": 7,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "nut-6",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Report particular dietary, physiological, or nutritional characteristics that were considered when selecting the target population.",
+     "topic": "Participants",
+     "where": []
+    },
+    {
+     "id": "6b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Cohort study\u2014for matched studies, give matching criteria and number of exposed and unexposed. Case-control study\u2014for matched studies, give matching criteria and the number of controls per case.",
+     "topic": "Participants",
+     "where": []
+    },
+    {
+     "id": "7",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply each variable's definition beyond its column, and any diagnostic criteria",
+     "owed": "each variable's definition beyond its column, and any diagnostic criteria",
+     "scope": null,
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Clearly define all outcomes, exposures, predictors, potential confounders, and effect modifiers. Give diagnostic criteria, if applicable.",
+     "topic": "Variables",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_target",
+       "quote": "`sought_support` was chosen as the outcome; it is measured on all `300` rows.",
+       "record_id": "6ced2c8c9e6e4a41b2fe44972ab94ea8",
+       "record_ids": null,
+       "seq": 2,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_event",
+       "quote": "`1` of `sought_support` was taken as the event and coded 1; `0` was coded 0.",
+       "record_id": "91bc67b42b7f4c4b9c5ff99f86ee4e01",
+       "record_ids": null,
+       "seq": 3,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_roles",
+       "quote": "Column roles were set for `44` columns: covariates `age`, `sex`, `education` and 10 more; identifier `respondent_id`; excluded `item_11`, `item_12`, `item_13` and 27 more.",
+       "record_id": "92e07d127f9948c085362bd9c8d12b3e",
+       "record_ids": null,
+       "seq": 5,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_role",
+       "quote": "`education` was confirmed as a covariate on its own, after the evidence for its proposal was read.",
+       "record_id": "9a6d14ed8afc4628a3fc171487e686c5",
+       "record_ids": null,
+       "seq": 6,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_estimand",
+       "quote": "The analysis estimates the total effect of `age` on `sought_support`, as a marginal risk difference per unit of `age`, by standardization over the analyzed rows (g-computation) from the logistic model, with a bootstrap of the whole chain for its interval, the model's conditional odds ratio reported beside it.",
+       "record_id": "81927d86183b420f9848156704fa46b0",
+       "record_ids": null,
+       "seq": 10,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_reading",
+       "quote": "`age` was confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.",
+       "record_id": "538a5bedb9384fd89e883487897ad928",
+       "record_ids": null,
+       "seq": 12,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_reading",
+       "quote": "`item_01`, `item_02`, `item_03`, `item_04`, `item_05`, `item_06`, `item_07`, `item_08`, `item_09` and `item_10` were each confirmed to hold codes for categories, on its own, after the evidence for its reading was read.",
+       "record_id": "c7c8f8a82a2e4ea58941908d98d493d9",
+       "record_ids": [
+        "f0d25fdb972447538c69d59be68cb186",
+        "b7ff73582f324362ac21f135667186ea",
+        "1cc7fef85f9c4a3e8cdc82357a00b39b",
+        "0dd9fec831194319b2cd236e964f2c24",
+        "9f9b1353ad394c0e8ae4b1ce2e695a7f",
+        "0869b2c145344b54bac3812efe4df78c",
+        "f03e2d18af6b47a89cdb84f36f423be2",
+        "768af5d9c4964876858bec895b3df1b6",
+        "da4f0af9101e42a69a8cbbee539cd4c5",
+        "c7c8f8a82a2e4ea58941908d98d493d9"
+       ],
+       "seq": 23,
+       "seqs": [
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+       ],
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "quote": "For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for.",
+       "record_id": "6fa156aa12cf40dd8c4ad806922351a4",
+       "record_ids": null,
+       "seq": 11,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "nut-7.1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Clearly define foods, food groups, nutrients, or other food components.",
+     "topic": "Variables",
+     "where": []
+    },
+    {
+     "id": "nut-7.2",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "When using dietary patterns or indices, describe the methods to obtain them and their nutritional properties.",
+     "topic": "Variables",
+     "where": []
+    },
+    {
+     "id": "8",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "For each variable of interest, give sources of data and details of methods of assessment (measurement). Describe comparability of assessment methods if there is more than one group.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe the dietary assessment method(s), e.g., portion size estimation, number of days and items recorded, how it was developed and administered, and how quality was assured. Report if and how supplement intake was assessed.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.2",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe and justify food composition data used. Explain the procedure to match food composition with consumption data. Describe the use of conversion factors, if applicable.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.3",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe the nutrient requirements, recommendations, or dietary guidelines and the evaluation approach used to compare intake with the dietary reference values, if applicable.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.4",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "When using nutritional biomarkers, additionally use the STROBE Extension for Molecular Epidemiology (STROBE-ME). Report the type of biomarkers used and their usefulness as dietary exposure markers.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.5",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe the assessment of nondietary data (e.g., nutritional status and influencing factors) and timing of the assessment of these variables in relation to dietary assessment.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.6",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Report on the validity of the dietary or nutritional assessment methods and any internal or external validation used in the study, if applicable.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "9",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply any other source of bias the author addressed, and how",
+     "owed": "any other source of bias the author addressed, and how",
+     "scope": null,
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Describe any efforts to address potential sources of bias.",
+     "topic": "Bias",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "quote": "For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for.",
+       "record_id": "6fa156aa12cf40dd8c4ad806922351a4",
+       "record_ids": null,
+       "seq": 11,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "effects",
+       "quote": "The estimate of `age` is reported across a declared sequence of models fit on all 300 analyzed rows: unadjusted; Model 2, the primary, adjusted for `sex`, `education`, `item_01`, `item_02`, `item_03`, `item_04`, `item_05` and 5 more. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(46, 254) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      }
+     ]
+    },
+    {
+     "id": "nut-9",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Report how bias in dietary or nutritional assessment was addressed, e.g., misreporting, changes in habits as a result of being measured, or data imputation from other sources.",
+     "topic": "Bias",
+     "where": []
+    },
+    {
+     "id": "10",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Explain how the study size was arrived at.",
+     "topic": "Study Size",
+     "where": []
+    },
+    {
+     "id": "11",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Explain how quantitative variables were handled in the analyses. If applicable, describe which groupings were chosen and why.",
+     "topic": "Quantitative Variables",
+     "where": []
+    },
+    {
+     "id": "nut-11",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Explain the categorization of dietary/nutritional data (e.g., use of N-tiles and handling of nonconsumers) and the choice of reference category, if applicable.",
+     "topic": "Quantitative Variables",
+     "where": []
+    },
+    {
+     "id": "12a",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "answered",
+     "text": "Describe all statistical methods, including those used to control for confounding.",
+     "topic": "Statistical Methods",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "quote": "For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for.",
+       "record_id": "6fa156aa12cf40dd8c4ad806922351a4",
+       "record_ids": null,
+       "seq": 11,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "select_models",
+       "quote": "One model family was chosen: logistic regression.",
+       "record_id": "f9f8774a6f764ffaa651879f6d73a6d8",
+       "record_ids": null,
+       "seq": 24,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "effects",
+       "quote": "The estimate of `age` is reported across a declared sequence of models fit on all 300 analyzed rows: unadjusted; Model 2, the primary, adjusted for `sex`, `education`, `item_01`, `item_02`, `item_03`, `item_04`, `item_05` and 5 more. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(46, 254) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      }
+     ]
+    },
+    {
+     "id": "12b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe any methods used to examine subgroups and interactions.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "12c",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "answered",
+     "text": "Explain how missing data were addressed.",
+     "topic": "Statistical Methods",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_missing",
+       "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
+       "record_id": "c81eea6be8ab4d18a3b5e46fed78625a",
+       "record_ids": null,
+       "seq": 8,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "12d",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Cohort study\u2014if applicable, explain how loss to follow-up was addressed. Case-control study\u2014if applicable, explain how matching of cases and controls was addressed. Cross-sectional study\u2014if applicable, describe analytical methods taking account of sampling strategy.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "12e",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "answered",
+     "text": "Describe any sensitivity analyses.",
+     "topic": "Statistical Methods",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "effects",
+       "quote": "The estimate of `age` is reported across a declared sequence of models fit on all 300 analyzed rows: unadjusted; Model 2, the primary, adjusted for `sex`, `education`, `item_01`, `item_02`, `item_03`, `item_04`, `item_05` and 5 more. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(46, 254) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      }
+     ]
+    },
+    {
+     "id": "nut-12.1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe any statistical method used to combine dietary or nutritional data, if applicable.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "nut-12.2",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe and justify the method for energy adjustments, intake modeling, and use of weighting factors, if applicable.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "nut-12.3",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Report any adjustments for measurement error, i.e., from a validity or calibration study.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "13a",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the numbers before the table was assembled: potentially eligible, examined for eligibility, and completing follow-up",
+     "owed": "the numbers before the table was assembled: potentially eligible, examined for eligibility, and completing follow-up",
+     "scope": null,
+     "section": "Results",
+     "status": "partly answered",
+     "text": "Report the numbers of individuals at each stage of the study\u2014e.g., numbers potentially eligible, examined for eligibility, confirmed eligible, included in the study, completing follow-up, and analyzed.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "quote": "No rows were excluded: every row with `sought_support` measured stays in the analysis.",
+       "record_id": "3c4df5b7142d40808e20e31efecc9d11",
+       "record_ids": null,
+       "seq": 7,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_missing",
+       "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
+       "record_id": "c81eea6be8ab4d18a3b5e46fed78625a",
+       "record_ids": null,
+       "seq": 8,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 300 rows of the table as read to 300 analyzed. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "13b",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the reasons for nonparticipation before the table was assembled",
+     "owed": "the reasons for nonparticipation before the table was assembled",
+     "scope": null,
+     "section": "Results",
+     "status": "partly answered",
+     "text": "Give reasons for nonparticipation at each stage.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 300 rows of the table as read to 300 analyzed. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "13c",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Consider use of a flow diagram.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 300 rows of the table as read to 300 analyzed. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "nut-13",
+     "kind": "STROBE-nut",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Report the number of individuals excluded based on missing, incomplete, or implausible dietary/nutritional data.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "quote": "No rows were excluded: every row with `sought_support` measured stays in the analysis.",
+       "record_id": "3c4df5b7142d40808e20e31efecc9d11",
+       "record_ids": null,
+       "seq": 7,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_missing",
+       "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
+       "record_id": "c81eea6be8ab4d18a3b5e46fed78625a",
+       "record_ids": null,
+       "seq": 8,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 300 rows of the table as read to 300 analyzed. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "14a",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Give characteristics of study participants (e.g., demographic, clinical, and social) and information on exposures and potential confounders.",
+     "topic": "Descriptive Data",
+     "where": []
+    },
+    {
+     "id": "14b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Indicate the number of participants with missing data for each variable of interest.",
+     "topic": "Descriptive Data",
+     "where": []
+    },
+    {
+     "id": "14c",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Cohort study\u2014summarize follow-up time (e.g., average and total amount).",
+     "topic": "Descriptive Data",
+     "where": []
+    },
+    {
+     "id": "nut-14",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Give the distribution of participant characteristics across the exposure variables if applicable. Specify if food consumption of total population or consumers only were used to obtain results.",
+     "topic": "Descriptive Data",
+     "where": []
+    },
+    {
+     "id": "15",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Cohort study\u2014report numbers of outcome events or summary measures over time. Case-control study\u2014report numbers in each exposure category or summary measures of exposure. Cross-sectional study\u2014report numbers of outcome events or summary measures.",
+     "topic": "Outcome Data",
+     "where": []
+    },
+    {
+     "id": "16a",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Give unadjusted estimates and, if applicable, confounder-adjusted estimates and their precision (e.g., 95% confidence interval). Make clear which confounders were adjusted for and why they were included.",
+     "topic": "Main Results",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "quote": "For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for.",
+       "record_id": "6fa156aa12cf40dd8c4ad806922351a4",
+       "record_ids": null,
+       "seq": 11,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "results/table2.md",
+       "kind": null,
+       "quote": "Table 2. The exposure's estimate across the declared models. The estimate of `age` on `sought_support` as a marginal risk difference, from all 300 analyzed rows, unadjusted and in each declared model; Model 2 is the primary. Only the exposure's rows are effect estimates; every other coefficient is listed in the appendix (adjustment terms, not effect estimates).",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "16b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Report category boundaries when continuous variables were categorized.",
+     "topic": "Main Results",
+     "where": []
+    },
+    {
+     "id": "16c",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "If relevant, consider translating estimates of relative risk into absolute risk for a meaningful time period.",
+     "topic": "Main Results",
+     "where": []
+    },
+    {
+     "id": "nut-16",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Specify if nutrient intakes are reported with or without inclusion of dietary supplement intake, if applicable.",
+     "topic": "Main Results",
+     "where": []
+    },
+    {
+     "id": "17",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Report other analyses done\u2014e.g., analyses of subgroups and interactions and sensitivity analyses.",
+     "topic": "Other Analyses",
+     "where": [
+      {
+       "file": "results/table2_sensitivity.md",
+       "kind": null,
+       "quote": "Sensitivity of each estimate to unmeasured confounding. The E-value for the estimate and for the confidence limit nearer the null (VanderWeele & Ding 2017), and the Cinelli\u2013Hazlett robustness value, never read as a pass or a fail.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "nut-17",
+     "kind": "STROBE-nut",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Report any sensitivity analysis (e.g., exclusion of misreporters or outliers) and data imputation, if applicable.",
+     "topic": "Other Analyses",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_missing",
+       "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
+       "record_id": "c81eea6be8ab4d18a3b5e46fed78625a",
+       "record_ids": null,
+       "seq": 8,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "18",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Summarize key results with reference to study objectives.",
+     "topic": "Key Results",
+     "where": []
+    },
+    {
+     "id": "19",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Discuss limitations of the study, taking into account sources of potential bias or imprecision. Discuss both direction and magnitude of any potential bias.",
+     "topic": "Limitation",
+     "where": []
+    },
+    {
+     "id": "nut-19",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Describe the main limitations of the data sources and assessment methods used and implications for the interpretation of the findings.",
+     "topic": "Limitation",
+     "where": []
+    },
+    {
+     "id": "20",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Give a cautious overall interpretation of results considering objectives, limitations, multiplicity of analyses, results from similar studies, and other relevant evidence.",
+     "topic": "Interpretation",
+     "where": []
+    },
+    {
+     "id": "nut-20",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Report the nutritional relevance of the findings, given the complexity of diet or nutrition as an exposure.",
+     "topic": "Interpretation",
+     "where": []
+    },
+    {
+     "id": "21",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Discuss the generalizability (external validity) of the study results.",
+     "topic": "Generalizability",
+     "where": []
+    },
+    {
+     "id": "22",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Other Information",
+     "status": "unanswered",
+     "text": "Give the source of funding and the role of the funders for the present study and, if applicable, for the original study on which the present article is based.",
+     "topic": "Funding",
+     "where": []
+    },
+    {
+     "id": "nut-22.1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Other Information",
+     "status": "unanswered",
+     "text": "Describe the procedure for consent and study approval from ethics committee(s).",
+     "topic": "Ethics",
+     "where": []
+    },
+    {
+     "id": "nut-22.2",
+     "kind": "STROBE-nut",
+     "note": "partly answered \u2014 the author must supply the data collection tools and the data, or how they can be accessed",
+     "owed": "the data collection tools and the data, or how they can be accessed",
+     "scope": null,
+     "section": "Other Information",
+     "status": "partly answered",
+     "text": "Provide data collection tools and data as online material or explain how they can be accessed.",
+     "topic": "Supplementary Material",
+     "where": [
+      {
+       "file": "provenance.json",
+       "kind": null,
+       "quote": "the provenance record: the decision log, each input file's SHA-256, the engine and its stages' versions, the model matrix's hashes and every reported estimate, which `python -m turbotab.replay` checks against the input files",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    }
+   ],
+   "note": "Each item is quoted from Table 1 of the source and listed with where this bundle answers it: a sentence of the decision record (with its decision), a paragraph the analysis wrote, or a figure or table. An item the record cannot answer is listed as \u201cunanswered \u2014 the author must supply this\u201d.",
+   "purpose": "inference",
+   "source": {
+    "doi": "10.1371/journal.pmed.1002036",
+    "license": "CC BY",
+    "pmcid": "PMC4896435",
+    "retrieved": "2026-10-05",
+    "sha256": "99eceb605590a16826657699b0456f33944f00059a1f0bdd0c1157ab976997b5",
+    "table": "Table 1",
+    "url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC4896435/fullTextXML"
+   },
+   "title": "STROBE-nut: an extension of the STROBE statement for nutritional epidemiology",
+   "unanswered": [
+    "1a",
+    "nut-1",
+    "1b",
+    "2",
+    "5",
+    "nut-5",
+    "nut-6",
+    "6b",
+    "nut-7.1",
+    "nut-7.2",
+    "8",
+    "nut-8.1",
+    "nut-8.2",
+    "nut-8.3",
+    "nut-8.4",
+    "nut-8.5",
+    "nut-8.6",
+    "nut-9",
+    "10",
+    "11",
+    "nut-11",
+    "12b",
+    "12d",
+    "nut-12.1",
+    "nut-12.2",
+    "nut-12.3",
+    "14a",
+    "14b",
+    "14c",
+    "nut-14",
+    "15",
+    "16b",
+    "16c",
+    "nut-16",
+    "18",
+    "19",
+    "nut-19",
+    "20",
+    "nut-20",
+    "21",
+    "22",
+    "nut-22.1"
+   ],
+   "waiting": []
+  },
+  "methods": "# Methods: survey_instrument\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the estimates were seen is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow STROBE and STROBE-nut; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Study design (STROBE 4)\n\nThe analysis was declared for `inference`: associations are estimated with their uncertainty.\n\n## Participants (STROBE 6)\n\nNo rows were excluded: every row with `sought_support` measured stays in the analysis.\n\n## Variables (STROBE 7)\n\n`sought_support` was chosen as the outcome; it is measured on all `300` rows. `1` of `sought_support` was taken as the event and coded 1; `0` was coded 0. Column roles were set for `44` columns: covariates `age`, `sex`, `education` and 10 more; identifier `respondent_id`; excluded `item_11`, `item_12`, `item_13` and 27 more. `education` was confirmed as a covariate on its own, after the evidence for its proposal was read. The analysis estimates the total effect of `age` on `sought_support`, as a marginal risk difference per unit of `age`, by standardization over the analyzed rows (g-computation) from the logistic model, with a bootstrap of the whole chain for its interval, the model's conditional odds ratio reported beside it. `age` was confirmed to hold amounts or counts, on its own, after the evidence for its reading was read. `item_01`, `item_02`, `item_03`, `item_04`, `item_05`, `item_06`, `item_07`, `item_08`, `item_09` and `item_10` were each confirmed to hold codes for categories, on its own, after the evidence for its reading was read.\n\nRead from the values, no question asked: `respondent_id` is the unit's identifier (Named like a participant's identifier; `300` labels, one per row); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sought_support` is a binary outcome (Only `0` and `1` \u2014 read as a binary outcome); `education` holds codes for categories (one indicator per label) (`4` labels, not numbers); `sex` is coded F female, M male (the labels spell the sexes (`F` female)).\n\n## Data sources and measurement (STROBE 8)\n\nThe table was read through the `survey` lens.\n\n## Quantitative variables (STROBE 11)\n\n`age` entered the models as a straight line.\n\n## Statistical methods (STROBE 12)\n\nMissing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor. No rows were held out: every analyzed row estimates the coefficients, and no cross-validated score is reported under inference: the declared model is reported by its estimates. For the effect of `age`, by the disjunctive cause criterion: `sex`, `education`, `item_01`, `item_02` and 8 more are causes of the outcome only, adjusted for. One model family was chosen: logistic regression.\n\nThe estimate of `age` is reported across a declared sequence of models fit on all 300 analyzed rows: unadjusted; Model 2, the primary, adjusted for `sex`, `education`, `item_01`, `item_02`, `item_03`, `item_04`, `item_05` and 5 more. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(46, 254) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.\n\nMissing values were multiply imputed by substantive-model-compatible fully conditional specification (SMC-FCS; Bartlett et al. 2015), compatible with the analysis model, a logistic model; m = 20 imputations, at least 20 and at least the 4% of rows with an imputed value (White, Royston & Wood 2011); the estimates were pooled by Rubin's rules; the largest Monte Carlo error, for `item_07_3.0`, was 3.4% of its standard error.\n\nThe analysis plan recorded above was declared in TurboTab before any estimate was displayed (SHA-256 `7622b85c241c`); every later change is marked as made after the estimates were seen.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `15cfe3824281`, with local changes). The supplementary provenance record holds the decision log (`25` records), the SHA-256 of the input file `survey_instrument.csv` (SHA-256 `b646927ae201`), the analysis plan (SHA-256 `7622b85c241c`) and the model matrix (`300` rows by `45` columns; SHA-256 `c98671191cfb` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "reached": true,
+  "refused": null,
+  "sha256": "abb5bf9b169da3db8df50bf44d0b3aa8055855a9f2d9845e2de69dc9fb17ff15"
+ },
+ "question": {
+  "estimand": {
+   "contrast": null,
+   "effect": "total",
+   "exposure": "age",
+   "family": false,
+   "measure": "risk_difference",
+   "multiplicity": null,
+   "multiplicity_acknowledged": false
+  },
+  "intended_use": null,
+  "paper": null,
+  "purpose": "inference",
+  "stated": "Is age associated with having sought support?",
+  "target": "sought_support"
+ },
+ "regime": {
+  "design": {
+   "clusters": null,
+   "design": null,
+   "grain": null,
+   "repeat_kind": null,
+   "survey": null,
+   "unit": null
+  },
+  "event": "1",
+  "events": 120,
+  "lenses": [
+   "survey"
+  ],
+  "missing": {
+   "item_07": 12,
+   "item_19": 12,
+   "item_31": 12
+  },
+  "n_analyzed": 300,
+  "n_rows": 300,
+  "task": "binary"
+ },
+ "replication": null,
+ "result": {
+  "attempt": "c682c6e462e84c12b04246155c07c574",
+  "decisions": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25
+  ],
+  "effects": {
+   "linear": [
+    {
+     "ci_high": 0.01971135745889983,
+     "ci_low": -0.012312396882922978,
+     "df": 20857759.61283611,
+     "estimate": 0.0036994802879884263,
+     "feature": "age",
+     "fmi": 0.0009545233561110132,
+     "mc_se": 5.5075185946002475e-05,
+     "meaning": null,
+     "p": 0.6506626096426903,
+     "q": null,
+     "ratio": 1.003706331811609,
+     "ratio_high": 1.0199069090142387,
+     "ratio_low": 0.9877630905475625,
+     "se": 0.008169474729153354
+    }
+   ]
+  },
+  "family": null,
+  "intervals": null,
+  "intervals_why": null,
+  "lock": 25,
+  "metric": null,
+  "n_holdout": null,
+  "opening": null,
+  "plan_digest": "7622b85c241c9f597cfd4dba32a916a30eca4c97c43de16c11939fab5e9a579c",
+  "purpose": "inference",
+  "refused": null,
+  "refused_kind": null,
+  "scores": null
+ },
+ "run": {
+  "analyst_model": "scripted",
+  "design": 2,
+  "effort": null,
+  "ended": null,
+  "engine_commit": "15cfe38242819a7c88943aef97623a750561ee52",
+  "engine_modified": true,
+  "engine_version": "2.0.0.dev0",
+  "fit_budget": {
+   "fits": 4,
+   "seconds": 600.0
+  },
+  "fit_seconds": 4.4705013749189675,
+  "fits": 1,
+  "fits_unseen": 0,
+  "help": [],
+  "id": "survey_single-b1411971f16554c645cfb0a1c447025f",
+  "prompt_version": "dry-run-1",
+  "server": {
+   "mode": "local",
+   "pid": 18894,
+   "port": 60347,
+   "workers": 2
+  },
+  "spend": null,
+  "spend_why": "No transcript of the analyst agent was given.",
+  "started": "2026-10-19T01:28:48Z"
+ },
+ "surfacings": {
+  "concerns": [],
+  "refusals": []
+ },
+ "version": 1
+}

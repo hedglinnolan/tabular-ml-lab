@@ -1,0 +1,34 @@
+{
+ "id": "bang2009",
+ "design": "replication",
+ "purpose": "Predict",
+ "question": "How well can undiagnosed diabetes in U.S. adults be predicted from what a person can tell about themselves, without a blood test?",
+ "population": "U.S. adults aged 20 or older in NHANES 1999–2004 who have a fasting plasma glucose result, pregnant women excluded. People with known diabetes are not in the model: known diabetes is a yes to DIQ010 (a doctor said you have diabetes), taking insulin now (DIQ050) or taking diabetic pills (DIQ070).",
+ "outcome": {
+  "column": "diabetes_fpg",
+  "meaning": "fasting plasma glucose of 126 mg/dL or more (1) or below (0), blank without a glucose result; the paper's undiagnosed diabetes is diabetes_fpg = 1 in a participant without known diabetes"
+ },
+ "replication": {
+  "paper": {
+   "citation": "Bang H, Edwards AM, Bomback AS, Ballantyne CM, Brillon D, Callahan MA, Teutsch SM, Mushlin AI, Kern LM. Development and validation of a patient self-assessment score for diabetes risk. Ann Intern Med 2009;151(11):775-783.",
+   "doi": "10.7326/0003-4819-151-11-200912010-00005",
+   "pmid": "19949143"
+  },
+  "stated_question": "The paper's title: Development and validation of a patient self-assessment score for diabetes risk. It develops, in NHANES 1999–2004, a score a person can work out about themselves, with undiagnosed diabetes as its endpoint."
+ },
+ "table": {
+  "path": "research/data/datasets/bang2009/bang2009.parquet",
+  "format": "parquet"
+ },
+ "source": "NHANES public-use files from the CDC (wwwn.cdc.gov).",
+ "prepared": [
+  "Read each cycle's NHANES files, 1999-2000, 2001-2002, 2003-2004, with TurboTab's own SAS transport reader, which reads SAS missing values as blank.",
+  "Stacked each file's cycles one under the other; a row's cycle is NHANES's own SDDSRVYR.",
+  "Kept only these variables: DEMO/DEMO_B/DEMO_C (demographics and the survey design): SDDSRVYR, RIDAGEYR, RIAGENDR, RIDRETH1, DMDEDUC2, INDHHINC, DMDMARTL, RIDEXPRG, SDMVSTRA, SDMVPSU, WTMEC2YR, WTMEC4YR; LAB10AM/L10AM_B/L10AM_C (fasting plasma glucose and the fasting subsample's weights): LBXGLU, WTSAF2YR, WTSAF4YR; DIQ/DIQ_B/DIQ_C (diabetes questions): DIQ010, DIQ050, DIQ070; BPQ/BPQ_B/BPQ_C (blood pressure questions): BPQ020, BPQ040A, BPQ050A; BPX/BPX_B/BPX_C (blood pressure readings): BPXSY1, BPXSY2, BPXSY3, BPXSY4, BPXDI1, BPXDI2, BPXDI3, BPXDI4; BMX/BMX_B/BMX_C (body measures): BMXWT, BMXHT, BMXBMI, BMXWAIST; PAQ/PAQ_B/PAQ_C (physical activity): PAQ520; MCQ/MCQ_B/MCQ_C (medical conditions and family history): MCQ250A, MCQ260AA, MCQ260AB, MCQ260AC, MCQ260AD, MCQ260AE, MCQ260AF, MCQ260AG, MCQ260AH, MCQ260AI, MCQ160C, MCQ160E, MCQ160F; HIQ/HIQ_B/HIQ_C (health insurance): HID010; SMQ/SMQ_B/SMQ_C (smoking): SMQ020, SMQ040; PH/PH_B/PH_C (fasting hours before the blood draw): PHAFSTHR, PHAFSTMN.",
+  "Blank where a cycle's file does not carry the variable: WTMEC4YR in 2003-2004 (DEMO_C does not carry it); WTSAF4YR in 2003-2004 (L10AM_C does not carry it).",
+  "Joined every file to the demographics file (DEMO) by the participant's SEQN: one row per participant of DEMO, blank in a file's variables where the participant has no record in it (every record of every file has its participant in DEMO).",
+  "Added diabetes_fpg: 1 where fasting plasma glucose (LBXGLU) is 126 mg/dL or more, 0 where it is below, blank where LBXGLU is blank. It names the paper's outcome but is not yet its undiagnosed diabetes, which also needs the participant to be without known diabetes: an exclusion the table does not apply.",
+  "Nothing else: no row is dropped, and no value is recoded or imputed."
+ ],
+ "manifest": "research/datasets/bang2009/manifest.json"
+}

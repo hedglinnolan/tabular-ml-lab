@@ -282,7 +282,8 @@ export interface paths {
          *     model's note. ``withheld`` and ``holdout_why`` say why a number is not served. Under Predict,
          *     a record scored on the same
          *     folds as the one before it carries each family's paired movement against it; otherwise
-         *     ``movement_why`` says why it has none.
+         *     ``movement_why`` says why it has none. Under Estimate, ``locked`` marks the record of the fit
+         *     the plan's lock in force was recorded on (its key is the one the answers at the lock give).
          */
         get: operations["fits_api_projects__pid__fits_get"];
         put?: never;
@@ -5226,6 +5227,8 @@ export interface components {
             movement_why: string | null;
             /** Withheld */
             withheld: string | null;
+            /** Locked */
+            locked: boolean;
         };
         /**
          * SetAdjustment

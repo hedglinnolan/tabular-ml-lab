@@ -1,0 +1,42 @@
+{
+ "id": "sullivan2021",
+ "design": "replication",
+ "purpose": "Estimate",
+ "question": "Is the rating U.S. adults give their own diet associated with their fasting glucose?",
+ "population": "U.S. adults aged 20 or older in NHANES 2011–2018 who rated their diet and have two reliable 24-hour dietary recalls; pregnant women, and anyone reporting only water on a recall day, excluded. Fasting glucose is measured in the morning fasting subsample.",
+ "exposure": {
+  "column": "DBQ700",
+  "meaning": "the participant's rating of their own diet, from excellent (the lowest code) to poor (the highest of the five ratings); refused and don't know have codes of their own"
+ },
+ "outcome": {
+  "column": "LBXGLU",
+  "meaning": "fasting plasma glucose (mg/dL)"
+ },
+ "replication": {
+  "paper": {
+   "citation": "Sullivan VK, Johnston EA, Firestone MJ, Yi SS, Beasley JM. Self-Rated Diet Quality and Cardiometabolic Health Among U.S. Adults, 2011-2018. Am J Prev Med 2021;61(4):563-575. doi:10.1016/j.amepre.2021.04.033"
+  },
+  "stated_question": "The paper's title: Self-Rated Diet Quality and Cardiometabolic Health Among U.S. Adults, 2011–2018. It asks whether the rating people give their own diet is associated with fasting glucose, fasting insulin, HbA1c and BMI; this card takes fasting glucose."
+ },
+ "table": {
+  "path": "research/data/datasets/sullivan2021/sullivan2021.parquet",
+  "format": "parquet"
+ },
+ "source": "NHANES public-use files from the CDC (wwwn.cdc.gov).",
+ "prepared": [
+  "The Sullivan replication's prep (research/replication/sullivan2021/engine/prep.py), run as it is: it read the NHANES files of the cycles 2011-2012, 2013-2014, 2015-2016, 2017-2018 with TurboTab's own SAS transport reader, which reads SAS missing values as blank, and stacked each file's cycles one under the other; a row's cycle is NHANES's own SDDSRVYR.",
+  "Insulin (LBXIN) is read from GLU_G for 2011-2012, which carries it, and from INS_H, INS_I, INS_J for the later cycles. The fasting weight WTSAF2YR comes from the glucose files; the prep checks that the insulin files' weight equals it row for row.",
+  "Kept only these variables: DEMO: SDDSRVYR, RIDAGEYR, RIAGENDR, RIDRETH3, DMDEDUC2, INDFMPIR, RIDEXPRG, SDMVPSU, SDMVSTRA; DBQ: DBQ700; DR1TOT: DR1DRSTZ, DR1TKCAL; DR2TOT: DR2DRSTZ, DR2TKCAL, WTDR2D; GLU: LBXGLU, WTSAF2YR; INS: LBXIN; GHB: LBXGH; BMX: BMXBMI; DIQ: DIQ010.",
+  "Derived race5: RIDRETH3 with Mexican American and Other Hispanic merged into one Hispanic group, the other groups as they are.",
+  "Derived educ4: DMDEDUC2 with its two groups below high school merged, and high school, some college and college graduate each a group of its own; refused and don't know blank.",
+  "Derived smoke_now, current smoking: 1 where SMQ020 is yes and SMQ040 is every day or some days; 0 where SMQ020 is no or SMQ040 is not at all; blank otherwise.",
+  "Derived pa_rec_min, weekly recreational activity minutes: moderate days times minutes (PAQ670 × PAD675) plus twice vigorous days times minutes (PAQ655 × PAD660); a kind counts zero minutes where its yes/no item (PAQ665, PAQ650) is no, and the sum is blank where an item it reads is refused, not known or missing.",
+  "Derived kcal_mean: the mean of the two recall days' energy, DR1TKCAL and DR2TKCAL.",
+  "Derived glu_med, glucose-lowering medication: 1 where taking insulin now (DIQ050) or diabetic pills (DIQ070) is yes; 0 where DIQ010 is answered yes, no or borderline and neither item is yes, refused or not known; blank otherwise.",
+  "Derived water_only_alt: 1 where a recall day has no energy (DR1TKCAL or DR2TKCAL) and plain water reported that day (DR1_320Z or DR2_320Z), else 0.",
+  "Derived LBXIN_xw: insulin with 2011-2012's Roche values put on the later cycles' Tosoh scale by the INS_H codebook's forward Deming equation, 10^(1.024 × log10(x) − 0.0802); every other value as measured.",
+  "Joined DBQ, DR1TOT, DR2TOT, GLU, INS, GHB, BMX, DIQ and the derived columns to DEMO by SEQN: one row per participant of DEMO (a left join, as the replication's plan file joins them in the app).",
+  "Nothing else: no row is dropped, no value imputed, and DBQ700 keeps NHANES's codes."
+ ],
+ "manifest": "research/datasets/sullivan2021/manifest.json"
+}

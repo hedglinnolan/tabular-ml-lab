@@ -1,0 +1,25 @@
+{
+ "id": "survey_support_estimate",
+ "design": "analysts",
+ "purpose": "Estimate",
+ "question": "Is age associated with having sought support?",
+ "population": "A generated (synthetic) survey of adult respondents, one row per respondent: their age, sex and education, their answers to a 40-item instrument, and whether they sought support.",
+ "outcome": {
+  "column": "sought_support",
+  "meaning": "sought support (1 yes, 0 no)"
+ },
+ "exposure": {
+  "column": "age",
+  "meaning": "age in years"
+ },
+ "documentation": [
+  "The instrument's key: item_01 to item_40 are one 40-item instrument, each item answered from 1 to 5, and its reverse-coded items are item_05, item_11, item_17, item_23, item_29, item_34, item_38 and item_40."
+ ],
+ "table": {
+  "path": "research/data/datasets/survey_support_estimate/survey_instrument.csv",
+  "format": "csv"
+ },
+ "source": "A generated (synthetic) table.",
+ "prepared": [],
+ "manifest": "research/datasets/survey_support_estimate/manifest.json"
+}

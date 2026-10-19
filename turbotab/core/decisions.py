@@ -2508,6 +2508,13 @@ def validate(decision: Any, ctx: Any = None) -> Any:
     decision = parse_decision(decision)
     for fn in _VALIDATORS.get(decision.kind, ()):
         fn(decision, ctx)
+    return complete(decision, ctx)
+
+
+def complete(decision: Any, ctx: Any = None) -> Any:
+    """Run ``decision``'s kind's completions under ``ctx`` and return the completed decision: what
+    :func:`validate` runs after the validators, and so what the server records. ``decision`` is a
+    parsed decision; a completion may refuse it (:class:`Refusal`)."""
     for fn in _COMPLETIONS.get(decision.kind, ()):
         decision = fn(decision, ctx)
     return decision
@@ -3176,15 +3183,20 @@ def _roles_record_what_rode_along(decision: SetRoles, ctx: Any) -> SetRoles:
         # The routing gate's leash note: a bulk answer that changes one column re-records every
         # other role as it stands. A role the ledger already holds settled (confirmed one by one,
         # or the user's own earlier answer) and recorded again unchanged is the user's word kept,
-        # never a proposal riding along, so it is not re-asked and nothing it settled reopens.
-        from turbotab.core.readings import role_reading
+        # never a proposal riding along, so it is not re-asked and nothing it settled reopens. So
+        # is a role confirmed one by one before any roles answer was recorded (``confirm_role``,
+        # ``confirm_reading``): the roles TurboTab records from those confirmations
+        # (``readings.roles_completion``) carry none of them as riding along.
+        from turbotab.core.readings import confirmation, role_reading
 
         state = _state(ctx)
         kept = set()
-        if state is not None and getattr(state, "roles", None):
+        if state is not None:
             for column, role in decision.roles.items():
-                held = role_reading(state, column)
+                held = role_reading(state, column) if getattr(state, "roles", None) else None
                 if held is not None and held.settled and held.value == role:
+                    kept.add(column)
+                elif held is None and confirmation(state, "role", column) == role:
                     kept.add(column)
         return decision.model_copy(update={"unconfirmed": [
             c for c in rode_along(decision.roles, proposals) if c not in kept]})

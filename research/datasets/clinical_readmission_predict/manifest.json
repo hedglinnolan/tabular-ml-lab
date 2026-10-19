@@ -1,0 +1,23 @@
+{
+ "about": "A sample fixture of this repository, copied as tracked.",
+ "dataset": "clinical_readmission_predict",
+ "license": "MIT",
+ "basis": "the repository's LICENSE: the table is generated here",
+ "files": [
+  {
+   "file": "turbotab/sample_data/clinical_risk.csv",
+   "origin": "this repository",
+   "generator": "turbotab/sample_data/make_fixtures.py::clinical_risk",
+   "bytes": 18803,
+   "sha256": "c33f2a5a928618db672ea3205e80094e70613290e1a07cde1f7350f2d14e7fd7"
+  }
+ ],
+ "table": {
+  "file": "research/data/datasets/clinical_readmission_predict/clinical_risk.csv",
+  "format": "csv",
+  "rows": 480,
+  "columns": 11,
+  "bytes": 18803,
+  "sha256": "c33f2a5a928618db672ea3205e80094e70613290e1a07cde1f7350f2d14e7fd7"
+ }
+}

@@ -163,6 +163,10 @@ class ServedFit(Model):
     movement: list[FoldMovement]
     movement_why: str | None
     withheld: str | None
+    # Estimate: whether this is the fit the plan's lock in force was recorded on: its key is the
+    # one the answers at the lock give (``ProjectService._locked_fit``), whatever its plan's digest.
+    # False for every record under Predict, and with no lock in force.
+    locked: bool
 
 
 class FitsLog(Model):

@@ -1,0 +1,241 @@
+[
+ {
+  "run": "clinical_explore",
+  "run_id": "clinical_explore-18aebb257587732c517c624d59e3662d",
+  "dataset": "clinical_readmission_predict",
+  "record": "research/swarm/dryrun/clinical_explore-18aebb257587732c517c624d59e3662d.json",
+  "valid": true,
+  "error": null,
+  "seconds": 210.3,
+  "commands": 60,
+  "refused": [],
+  "checks": [
+   {
+    "check": "seal_integrity",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "One opening, no re-seal; the driver refuses any change after it, so no later record reaches the result.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   },
+   {
+    "check": "logging",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "Every answer the script posts carries its reason (the driver requires one), TurboTab's own records need none, and each fit's family has the engine's movement or its why.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   },
+   {
+    "check": "single_pass",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "Before the opening the roles answer had another option previewed (sodium left out), and the run fits more than once.",
+    "problems": [],
+    "unchecked": [],
+    "notes": [
+     "2 of 23 decisions made before the seal's opening or the plan's lock had an alternative examined; 2 fits read only those decisions."
+    ]
+   },
+   {
+    "check": "known_answer",
+    "expected": "not_checked",
+    "got": "not_checked",
+    "agrees": true,
+    "why": "A known-answer control whose fact readings are answered from its declared truth (no problem), with no known answer for the held-out score.",
+    "problems": [],
+    "unchecked": [
+     "The fixture's declared truth holds its readings, not its answer, and no known answer is declared, so the result is not checked."
+    ],
+    "notes": []
+   },
+   {
+    "check": "null_decoy",
+    "expected": "not_checked",
+    "got": "not_checked",
+    "agrees": true,
+    "why": "Not a decoy.",
+    "problems": [],
+    "unchecked": [
+     "Not a null decoy."
+    ],
+    "notes": []
+   },
+   {
+    "check": "robustness",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "The script's own export returns the bundle, and no person helps.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   }
+  ]
+ },
+ {
+  "run": "survey_single",
+  "run_id": "survey_single-b1411971f16554c645cfb0a1c447025f",
+  "dataset": "survey_support_estimate",
+  "record": "research/swarm/dryrun/survey_single-b1411971f16554c645cfb0a1c447025f.json",
+  "valid": true,
+  "error": null,
+  "seconds": 62.8,
+  "commands": 52,
+  "refused": [],
+  "checks": [
+   {
+    "check": "seal_integrity",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "Under Estimate no seal; the result is the fit the lock was recorded on, and no record after the lock is made.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   },
+   {
+    "check": "logging",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "Every answer the script posts carries its reason; the split and the lock are TurboTab's own.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   },
+   {
+    "check": "single_pass",
+    "expected": "fail",
+    "got": "fail",
+    "agrees": true,
+    "why": "No preview, no revisit, and one fit: flagged as a single pass.",
+    "problems": [
+     "Single pass: before the seal's opening or the plan's lock, no decision had an alternative examined, and the run made 1 fit."
+    ],
+    "unchecked": [],
+    "notes": [
+     "0 of 25 decisions made before the seal's opening or the plan's lock had an alternative examined; 1 fit read only those decisions."
+    ]
+   },
+   {
+    "check": "known_answer",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "Fact readings answered from the declared truth; age has no effect by construction, so a 95% interval for its log odds holds 0 (in 1 run in 20 it would not by chance; that would be checked against an independent fit before calling it a defect).",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   },
+   {
+    "check": "null_decoy",
+    "expected": "not_checked",
+    "got": "not_checked",
+    "agrees": true,
+    "why": "Not a decoy.",
+    "problems": [],
+    "unchecked": [
+     "Not a null decoy."
+    ],
+    "notes": []
+   },
+   {
+    "check": "robustness",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "The script's own export returns the bundle, and no person helps.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   }
+  ]
+ },
+ {
+  "run": "decoy_single",
+  "run_id": "decoy_single-e91810f5c78f8ec4fe15445a9e1679c2",
+  "dataset": "outpatient_admission_predict",
+  "record": "research/swarm/dryrun/decoy_single-e91810f5c78f8ec4fe15445a9e1679c2.json",
+  "valid": true,
+  "error": null,
+  "seconds": 299.3,
+  "commands": 55,
+  "refused": [
+   "triage_open"
+  ],
+  "checks": [
+   {
+    "check": "seal_integrity",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "One opening, no re-seal, no change after it.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   },
+   {
+    "check": "logging",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "Every answer the script posts carries its reason.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   },
+   {
+    "check": "single_pass",
+    "expected": "fail",
+    "got": "fail",
+    "agrees": true,
+    "why": "No preview, no revisit, and one fit: flagged as a single pass.",
+    "problems": [
+     "Single pass: before the seal's opening or the plan's lock, no decision had an alternative examined, and the run made 1 fit."
+    ],
+    "unchecked": [],
+    "notes": [
+     "0 of 24 decisions made before the seal's opening or the plan's lock had an alternative examined; 1 fit read only those decisions."
+    ]
+   },
+   {
+    "check": "known_answer",
+    "expected": "not_checked",
+    "got": "not_checked",
+    "agrees": true,
+    "why": "Not a known-answer control.",
+    "problems": [],
+    "unchecked": [
+     "Not a known-answer control."
+    ],
+    "notes": []
+   },
+   {
+    "check": "null_decoy",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "No column enters the outcome (decoys.py), so the held-out AUC's interval lies above 0.5 in about 1 run in 40 by chance only: none expected.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   },
+   {
+    "check": "robustness",
+    "expected": "pass",
+    "got": "pass",
+    "agrees": true,
+    "why": "The script's own export returns the bundle, and no person helps.",
+    "problems": [],
+    "unchecked": [],
+    "notes": []
+   }
+  ]
+ }
+]

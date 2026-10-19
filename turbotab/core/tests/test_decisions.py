@@ -279,3 +279,64 @@ def test_the_event_level_stands_only_while_its_column_is_the_target():
            rec(2, {"kind": "set_event", "column": "dx", "level": "case"})]
     assert fold(log).event == "case"
     assert fold(log + [rec(3, {"kind": "set_target", "column": "bmi"})]).event is None
+
+
+# ── a kind's completions, and the roles TurboTab records from confirmations (DRV-INT) ──
+
+ROLES_SHOWN = {"columns": [{"column": "a", "proposed": "covariate", "confidence": "high"},
+                           {"column": "b", "proposed": "covariate", "confidence": "medium"},
+                           {"column": "c", "proposed": "covariate", "confidence": "low"}]}
+
+
+def _roles_ctx(state):
+    return {"state": state, "target": "y", "columns": ["a", "b", "c", "y"],
+            "artifact": lambda stage: ROLES_SHOWN if stage == "roles" else None}
+
+
+def test_complete_runs_a_kinds_completions_and_none_of_its_validators():
+    """``decisions.complete``: what ``validate`` runs after the validators, so a caller that
+    reads what the server would record (the swarm's driver) never reads the private registry. A
+    roles answer naming a column the table lacks is refused by ``validate`` (its validator) and
+    completed by ``complete`` (its completion records what rode along: b and c, proposed below
+    high and confirmed by no one); a kind with no completion comes back as parsed."""
+    body = {"kind": "set_roles", "roles": {"a": "covariate", "b": "covariate", "c": "covariate",
+                                           "nope": "covariate"}}
+    with pytest.raises(Refusal):
+        validate(body, _roles_ctx(ProjectState()))
+    done = d.complete(parse_decision(body), _roles_ctx(ProjectState()))
+    assert sorted(done.unconfirmed) == ["b", "c"]
+    assert d.complete(parse_decision({"kind": "set_lens", "lenses": ["clinical"]}), None) == \
+        SetLens(lenses=["clinical"])
+    driver = Path(__file__).resolve().parents[3] / "research" / "swarm" / "driver.py"
+    assert "_COMPLETIONS" not in driver.read_text("utf-8")
+
+
+def test_roles_recorded_from_one_by_one_confirmations_record_none_as_riding_along():
+    """INBOX (DRV-A's repair and verifier): a, b and c confirmed one by one (``confirm_role``,
+    each as proposed), then the roles answer TurboTab records from them
+    (``readings.roles_completion``, P0.6), completed as the server completes it: every column was
+    the person's own confirmation, so none rode along unconfirmed, as the completion's line
+    ("recorded as you confirmed them") says. A revert after it rewrites no record. The other way:
+    with only b confirmed, a person's bulk answer carries c unconfirmed (b is the person's word
+    kept), and with none confirmed both ride along."""
+    from turbotab.core.decisions import DecisionRecord
+    from turbotab.core.readings import roles_completion
+
+    def rec(i, body):
+        return DecisionRecord(id=f"d{i}", seq=i, at="2026-10-18T12:00:00Z",
+                              decision=parse_decision(body))
+
+    confirmations = [rec(i, {"kind": "confirm_role", "column": c, "role": "covariate"})
+                     for i, c in enumerate("abc", start=1)]
+    state = fold(confirmations)
+    body = roles_completion(state, ROLES_SHOWN)
+    assert body == {"kind": "set_roles", "roles": {"a": "covariate", "b": "covariate",
+                                                   "c": "covariate"}}
+    recorded = validate(body, _roles_ctx(state))
+    assert recorded.unconfirmed == []
+    log = [*confirmations, rec(4, recorded.model_dump()), rec(5, {"kind": "revert",
+                                                                 "decision_id": "d1"})]
+    assert fold(log).roles_unconfirmed == []
+    only_b = fold([confirmations[1]])
+    assert validate(body, _roles_ctx(only_b)).unconfirmed == ["c"]
+    assert sorted(validate(body, _roles_ctx(ProjectState())).unconfirmed) == ["b", "c"]
