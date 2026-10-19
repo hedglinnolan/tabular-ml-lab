@@ -10,8 +10,7 @@ in the documents they amend.
 - **What:** the build is on the swarm path. Nolan ruled on 2026-10-17 that the swarm's pieces come
   before the drawn screens of W2–W4. On 2026-10-18 he kept the full path and said: "Do everything
   right up until we are ready to start the swarm and I will have a discussion with you about it."
-- **Landed** locally on turbotab-next (8a3e0fff, on GitHub as `ci/full-int-3b`; turbotab-next
-  itself is held until CI is green):
+- **Landed** on turbotab-next and pushed (2026-10-19):
   - W1 part 2: the quest shell, the Predict cards and Predict Results, fixed through two
     walkthroughs;
   - the swarm's engine pieces;
@@ -27,16 +26,20 @@ in the documents they amend.
 
 ## State on 2026-10-19, checked against git
 
-- **turbotab-next** is 8a3e0fff locally. It holds:
+- **turbotab-next** holds:
   - 12345c40, which merged feat/w1p2-x (W1 part 2 with the swarm engine pieces), feat/r1-gates,
     feat/sullivan-r and feat/sullivan-a;
   - feat/int-3 on top: feat/land-fix-1 (the path fuzzer's I11 fix, the NHANES m2 journey, CI pinned
     to ubuntu-24.04), feat/rm-core (RM's referee and audit fixes, without R1-M), feat/rf-1b (R1-F's
     first batch), feat/drv-int and feat/drv-fix (the driver, record, checks, intake, analyst type
     and hook, the dry run), and three fixes made at integration.
-- **CI on 8a3e0fff** (`ci/full-int-3b`): every job green but the real-server journey
-  `quest-nhanes-predict`, where the page's quest bar shows "Who's in" reopened while GET /quest does
-  not (passes on this machine; passed on 12345c40). **turbotab-next is not pushed until it is fixed.**
+- **CI:** on 874c6d50 (`ci/full-race`, the shell's quest-log race fixed), every job green but one
+  acceptance test whose worker was killed by SIGTERM on the runner (test_wp11_omics 3f; the
+  commit touches only frontend files, and the same Python passed on 8a3e0fff). turbotab-next is
+  pushed from here, which reruns the full tier.
+- **Since 8a3e0fff, on turbotab-next:** the analyst model set to `claude-haiku-5-5`; the shell
+  race fix; SWARM_PLAN version 2 (after the independent audit in `notes/swarm-audit/`), under
+  review by a Fable xhigh reader before anything in its §10 is built.
 - **Environments:**
   - `venv-next/` in the main checkout is TurboTab v2's environment (CI's pins); `scripts/py` runs
     it from any worktree.
