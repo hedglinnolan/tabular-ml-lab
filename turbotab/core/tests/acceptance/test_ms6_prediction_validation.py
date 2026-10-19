@@ -1122,11 +1122,15 @@ def test_6_when_no_fold_can_keep_a_unit_whole_every_score_says_it_is_within_unit
         f"All `60` rows train, checked by cross-validation, with the outcome's classes in "
         f"proportion; `5` folds. {spans[0].upper()}{spans[1:]}: {WITHIN}.")
     plan = table.run(seal_plan_stage, st, {"cohort": cohort, "target_info": info})
+    # The record's sentence is written when the split is answered, before any fold is drawn: one
+    # unit spans every fold however they fall, while of three it can say only that each score may
+    # be within-unit (C-110; the drawn folds' count is the note's and the fit's, above and below).
+    said = WITHIN if units == 1 else WITHIN.replace("score here is", "score here may be")
     assert voice.sentence_for(d.SetSplit(**st.split.model_dump()), st, {"seal_plan": plan}) == (
         "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `4`, "
         "stratified by `y`); models were compared with each other and with the no-predictor "
         "baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated "
-        f"k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); {spans}: {WITHIN}.")
+        f"k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); {spans}: {said}.")
     data = fit.data
     links = {c["relation"]: c for c in data["chain"]}
     assert "repeated_units_group_resampling" not in links

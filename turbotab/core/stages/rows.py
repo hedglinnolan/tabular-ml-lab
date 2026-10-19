@@ -2040,7 +2040,7 @@ def split_stage(ctx: StageContext) -> Bundle:
     # folds, each draw of them: where no unit's rows fall in two folds it says nothing of units
     # (the RF-1 verifier's round-2 P3, the RF-1b verifier's round-2 V2), and where some do it
     # counts them (the RF-1b verifier's P3).
-    from turbotab.core.models.validation import unit_spans, within_unit_sentence
+    from turbotab.core.models.validation import unit_spans, units_spanning, within_unit_sentence
 
     basis = seal.basis.model_dump(mode="json") if seal.basis else None
     spanning, units = None, None
@@ -2055,14 +2055,16 @@ def split_stage(ctx: StageContext) -> Bundle:
             named = train & ids.notna().to_numpy()
             units = int(ids[named].nunique() + (train & ~named).sum())
             draws = [c for c in frame.columns if c == "fold" or c.startswith("fold_r")]
-            spanning = [int((pd.Series(frame[c].to_numpy()[named]).groupby(
-                ids[named].to_numpy()).nunique() > 1).sum()) for c in draws]
+            spanning = units_spanning([frame[c].to_numpy() for c in draws], ids, keep=train)
     within = within_unit_sentence(basis, cluster=spec.cluster if clusters is not None else None,
                                   spanning=spanning, units=units,
                                   ordered=info.get("fold_scheme") == "time_ordered")
     if within:
         notes.append(within)
-    data = {**info, **seal.facts(), "note": split_note({**info, "notes": notes})}
+    # The counts the note read, kept, so the fit's performance sentences and chain say of these
+    # folds what the note says (``models.validation.headline_within``): None where none were read.
+    data = {**info, **seal.facts(), "note": split_note({**info, "notes": notes}),
+            "units_spanning": spanning, "n_train_units": units}
     # "sealed" holds every held-out row, including ones the cohort now excludes: an exclusion
     # relaxed later brings them back held out, so previews must never read them either.
     return Bundle(data=data, frames={"assignment": frame, "sealed": pd.DataFrame({"row_id": sealed})})

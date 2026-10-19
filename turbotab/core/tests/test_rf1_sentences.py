@@ -710,6 +710,20 @@ def test_a_fraction_of_the_limit_beside_a_blanked_nd_says_they_pull_opposite_way
         option.sentence)
 
 
+@pytest.mark.parametrize("cells", [1, 2])
+@pytest.mark.parametrize("key, words, fraction", FRACTIONS)
+def test_a_fraction_of_the_limit_card_counts_one_cell_as_one(key, words, fraction, cells):
+    """The RF-1b verifier's minor: one ``<10`` cell and one ``.`` blank are one value set to a
+    fraction of its limit and one other text value made blank, never "values"; two of each are
+    plural. The example is 10 times the option's fraction, by its definition."""
+    option = _below_limit(_plates(0, below=cells, dots=cells))[key]
+    one = cells == 1
+    assert option.consequence == (
+        f"`{cells}` {'value' if one else 'values'} below a limit {'becomes' if one else 'become'} "
+        f"{words} of it: `<10` is `{10 * fraction:.4g}`; `{cells}` other text "
+        f"{'value becomes' if one else 'values become'} blank."), option.consequence
+
+
 @pytest.mark.parametrize("key, words, fraction", FRACTIONS)
 def test_a_fraction_of_the_limit_with_no_count_too_numerous_names_its_blanks_and_nothing_of_one(
         key, words, fraction):
@@ -1447,6 +1461,186 @@ def test_under_repeated_k_fold_every_unit_in_two_folds_of_every_draw_keeps_every
     assert len(draws) == 3 and all((s > 1).all() for s in draws)
     assert ("Rows repeat within `pid` (`40` units), but the folds were drawn by row: every "
             "cross-validated score here is within-unit performance") in data["note"], data["note"]
+
+
+# The record, the headline's performance sentences and the chain say what the split's note says of
+# the same folds (the RF-1b verifier's last BLOCKER, C-110 in the record and the chain): the
+# record's sentence is written when the split is answered, before a fold is drawn, so it says only
+# what the answers and the table settle; the fit reads the counts the split kept. The comparisons'
+# own draws by row are counted the same way, and the chain keeps saying within-unit of them.
+
+WITHIN_TAIL = ("within-unit performance, new rows of units the models were fit on, not "
+               "performance on new units, which record-wise cross-validation overestimates (Saeb et "
+               "al. 2017)")
+
+
+def _fitted(tmp_path: Path, site: np.ndarray, validation: str, pid: np.ndarray = PID,
+            seen: bool = True) -> dict:
+    """The brief's construction through the real split, seal plan and fit: `pid` (by default 40
+    units of 3 rows) in four sites, ``site`` per row, each row said to be a unit, SplitSpec(holdout
+    0.2, seed 1, folds 5, ``validation``; by `site` under internal–external validation), one linear
+    family under prediction. Returns the split's data and the fit's, the record's sentence as the
+    server writes it (the seal plan settled, the table its datastore, unless not ``seen``), and,
+    read off the drawn folds, the units whose training rows the headline's folds put in more than
+    one fold, and the same for each of the comparisons' draws (the fit's substrate pairs)."""
+    from turbotab.core import voice
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+    from turbotab.core.stages.rows import cohort_stage, split_stage
+    from turbotab.core.stages.seal import seal_plan_stage
+    from turbotab.core.stages.target import target_info_stage
+    from turbotab.core.tests.stage_harness import Ingested
+
+    rng = np.random.default_rng(7)
+    frame = pd.DataFrame({"pid": pid, "site": [f"s{s}" for s in site],
+                          "x1": rng.normal(size=len(pid)), "y": rng.normal(size=len(pid))})
+    frame.to_csv(tmp_path / "t.csv", index=False)
+    by_site = {"cluster": "site"} if validation == "internal_external" else {}
+    state = ProjectState(lens=["clinical"], target="y", task="regression", purpose="prediction",
+                         roles={"pid": "identifier", "x1": "covariate", "site": "design"},
+                         missing="complete_case", grain=SAID_A_UNIT, models=["linear"],
+                         split=d.SplitSpec(holdout=0.2, seed=1, folds=5, validation=validation,
+                                           **by_site))
+    table = Ingested(tmp_path / "t.csv", tmp_path / "i")
+    info = table.run(target_info_stage, state)
+    cohort = table.run(cohort_stage, state, {"target_info": info})
+    split = table.run(split_stage, state, {"cohort": cohort, "target_info": info})
+    plan = table.run(seal_plan_stage, state, {"cohort": cohort, "target_info": info})
+    record = voice.sentence_for(d.SetSplit(**state.split.model_dump()), state,
+                                {"seal_plan": plan, **({"datastore": table.store()} if seen else {})})
+    design = table.run(design_stage, state, {"split": split, "target_info": info})
+    fit = table.run(fit_stage, state, {"design": design, "split": split, "target_info": info})
+    a = split.frames["assignment"].sort_values("row_id")
+    fold, units = a["fold"].to_numpy(), pid[a["row_id"].to_numpy()]
+    headline = int((pd.Series(fold[fold != -1]).groupby(units[fold != -1]).nunique() > 1).sum())
+    comparison = fit.objects["comparison"]
+    owner = pid[np.asarray(comparison["train_ids"])]  # each training row's unit, in fit order
+    compared = []
+    for r in sorted(set(comparison["repeat_of"])):
+        drawn = np.full(len(owner), -1)  # each training row's scoring fold in draw r
+        for (fold, _train, test), of in zip(comparison["pairs"], comparison["repeat_of"]):
+            if of == r:
+                drawn[np.asarray(test)] = fold
+        assert (drawn != -1).all()  # each training row is scored once in each draw
+        compared.append(int((pd.Series(drawn).groupby(owner).nunique() > 1).sum()))
+    return {"split": split.data, "fit": fit.data, "record": record, "headline": headline,
+            "compared": compared}
+
+
+def _within_link(fit: dict) -> dict | None:
+    return next((c for c in fit["chain"] if c["relation"] == "within_unit_performance"), None)
+
+
+def _range(counts: list[int]) -> str:
+    lo, hi = min(counts), max(counts)
+    return f"`{lo}` to `{hi}`" if lo != hi else f"`{lo}`"
+
+
+def _compared_clause(counts: list[int]) -> tuple[str, str]:
+    return (f"rows repeat within `pid` (`40` units), but the comparisons' folds were drawn by row, "
+            f"and in each of their `{len(counts)}` draws {_range(counts)} units have rows in more "
+            f"than one fold",
+            f"the comparisons' scores of those units' rows are {WITHIN_TAIL}")
+
+
+def test_with_units_nested_in_the_sites_internal_external_scores_say_nothing_of_units(tmp_path):
+    """The verifier's construction: each of the 40 units wholly in one of 4 sites, so no unit's
+    training rows fall in two of internal–external validation's folds (read off the drawn folds),
+    and no headline score is within-unit. The split's note says nothing of units; the headline's
+    performance sentence says nothing either, and the chain says nothing of the headline's folds,
+    while it keeps saying within-unit of the comparisons' own draws by row, counted off them. The
+    record, written before any fold is drawn, reads off the table that every unit lies in one
+    site, so it says nothing of the headline's folds either, and that the comparisons' folds were
+    drawn by row, whose scores may be within-unit."""
+    got = _fitted(tmp_path, SITE, "internal_external")
+    assert got["split"]["basis"]["state"] == "abandoned" and got["headline"] == 0
+    assert got["split"]["units_spanning"] == [0] and got["split"]["n_train_units"] == 40
+    assert "within-unit" not in got["split"]["note"]
+    (model,) = got["fit"]["models"]
+    assert "by internal–external validation by site: " in model["performance"], model["performance"]
+    assert "within-unit" not in model["performance"] and "over rows" not in model["performance"]
+    assert 0 < min(got["compared"]) and len(got["compared"]) == 10  # the comparisons do split units
+    because, then = _compared_clause(got["compared"])
+    assert _within_link(got["fit"]) == {"relation": "within_unit_performance", "because": because,
+                                        "then": then}
+    record = got["record"]
+    assert "but the folds were drawn by row" not in record and "levels of `site`, may" not in record
+    assert ("rows repeat within `pid` (`40` units), but the comparisons' folds were drawn by row: "
+            f"the comparisons' scores may be {WITHIN_TAIL}") in record, record
+    assert "every cross-validated score here" not in record, record
+
+
+def test_with_units_across_the_sites_internal_external_scores_count_the_units_that_span(tmp_path):
+    """The other side: each unit's 3 rows in 3 sites, so most units' training rows fall in more than
+    one of the folds, the sites (read off the drawn folds). The performance sentence and the chain
+    count them as the split's note does and read only their rows' scores as within-unit, never
+    that the folds were drawn by row; the chain says the comparisons' beside them. The record,
+    before any fold is drawn, reads that some unit has rows in two sites, so a fold may split one."""
+    got = _fitted(tmp_path, np.arange(len(PID)) % 4, "internal_external")
+    k = got["headline"]
+    assert 0 < k < 40 and got["split"]["units_spanning"] == [k]
+    headline = (f"rows repeat within `pid` (`40` units), and `{k}` of them have rows in more than "
+                "one of the folds, the levels of `site`")
+    assert f"{headline[0].upper()}{headline[1:]}: the cross-validated scores of those units' rows " \
+           f"are {WITHIN_TAIL}." in got["split"]["note"], got["split"]["note"]
+    (model,) = got["fit"]["models"]
+    assert (f"by internal–external validation by site (`{k}` units have rows in more than one level "
+            "of `site`; their rows' scores are within-unit performance): ") in model["performance"], (
+        model["performance"])
+    because, then = _compared_clause(got["compared"])
+    assert _within_link(got["fit"]) == {
+        "relation": "within_unit_performance", "because": f"{headline}; {because}",
+        "then": f"the cross-validated scores of those units' rows are {WITHIN_TAIL}; {then}"}
+    record = got["record"]
+    assert ("rows repeat within `pid` (`40` units), and the folds, the levels of `site`, may put "
+            "rows of one unit in more than one of them: every cross-validated score here may be "
+            f"{WITHIN_TAIL}") in record, record
+    assert "drawn by row: every cross-validated score here is" not in record, record
+
+
+def test_a_record_that_cannot_read_the_table_says_a_site_fold_may_split_a_unit(tmp_path):
+    """Nested sites, but the record's context holds no table: it cannot tell that every unit lies in
+    one site, so it says a fold may split one, never that one does."""
+    record = _fitted(tmp_path, SITE, "internal_external", seen=False)["record"]
+    assert "the folds, the levels of `site`, may put rows of one unit" in record, record
+    assert "within-unit performance, new rows" in record and " is within-unit" not in record
+
+
+def test_under_k_fold_by_row_the_scores_count_the_units_the_folds_split(tmp_path):
+    """The 40 units of 3 rows under k-fold: the folds are drawn by row and some, not all, units'
+    training rows fall in more than one (read off the drawn folds). The performance sentence and
+    the chain count them as the split's note does; the record, before the draw, says every score
+    may be within-unit, never that every one is."""
+    got = _fitted(tmp_path, SITE, "kfold")
+    k = got["headline"]
+    assert 0 < k < 40 and got["split"]["units_spanning"] == [k]
+    (model,) = got["fit"]["models"]
+    assert (f"by 5-fold cross-validation over rows, not units (`{k}` units have rows in more than "
+            "one fold; their rows' scores are within-unit performance): ") in model["performance"], (
+        model["performance"])
+    headline = (f"rows repeat within `pid` (`40` units), but the folds were drawn by row, and `{k}` "
+                "units have rows in more than one fold")
+    because, then = _compared_clause(got["compared"])
+    assert _within_link(got["fit"]) == {
+        "relation": "within_unit_performance", "because": f"{headline}; {because}",
+        "then": f"the cross-validated scores of those units' rows are {WITHIN_TAIL}; {then}"}
+    assert ("rows repeat within `pid` (`40` units), but the folds were drawn by row: every "
+            f"cross-validated score here may be {WITHIN_TAIL}") in got["record"], got["record"]
+
+
+def test_under_k_fold_by_row_where_every_unit_spans_every_score_is_within_unit(tmp_path):
+    """The other side: 40 units of 10 rows, so every unit's training rows fall in more than one fold
+    of the headline's draw and of each of the comparisons' (read off the drawn folds): every
+    cross-validated score is within-unit, and the performance sentence and the chain say so once,
+    of every score."""
+    got = _fitted(tmp_path, TEN_ROWS % 4, "kfold", pid=TEN_ROWS)
+    assert got["headline"] == 40 and got["compared"] == [40] * 10
+    (model,) = got["fit"]["models"]
+    assert ("by 5-fold cross-validation over rows, not units (within-unit performance): "
+            in model["performance"]), model["performance"]
+    assert _within_link(got["fit"]) == {
+        "relation": "within_unit_performance",
+        "because": "rows repeat within `pid` (`40` units), but the folds were drawn by row",
+        "then": f"every cross-validated score here is {WITHIN_TAIL}"}
 
 
 # ── C-144 · the demographic guess ─────────────────────────────────────────────

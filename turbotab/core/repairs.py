@@ -1105,10 +1105,12 @@ def _offer_below_detection(finding: dict[str, Any], p: dict[str, Any], oc: Offer
                               ("limit_root2", "Limit over √2", "the limit over √2")):
         factor = LOD_FACTORS[key]
         example = float(first) * factor
-        rest = f"; {_count(n_bad)} other text values become blank" if n_bad else ""
+        rest = (f"; {_count(n_bad)} other text {_plural(n_bad, 'value becomes', 'values become')} "
+                f"blank" if n_bad else "")
         out.append(_option(
             finding, key, label,
-            f"{_count(n_below)} values below a limit become {words} of it: {_tick('<' + first)} is "
+            f"{_count(n_below)} {_plural(n_below, 'value')} below a limit "
+            f"{_plural(n_below, 'becomes', 'become')} {words} of it: {_tick('<' + first)} is "
             f"{_tick(f'{example:.4g}')}{rest}.",
             f"{_count(n_below)} {_plural(n_below, 'value')} of {_tick(c)} below a detection limit "
             f"{_plural(n_below, 'was', 'were')} set to {words} of {_plural(n_below, 'its', 'their')} "

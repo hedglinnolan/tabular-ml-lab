@@ -63,6 +63,17 @@ def repeat_columns(frame: pd.DataFrame) -> list[str]:
     return sorted(names, key=lambda c: int(str(c)[6:]))
 
 
+def _unit_ids(ctx: StageContext, basis: Mapping[str, Any] | None,
+              rows: np.ndarray) -> np.ndarray | None:
+    """Each of ``rows``' unit, by the column the seal's basis names, as the split reads it; None
+    where no column names the unit or the table has none by that name."""
+    column = (basis or {}).get("column")
+    with open_store(ctx) as store:
+        if not column or column not in store.columns:
+            return None
+        return store.materialize([column], rows)[column].to_numpy(dtype=object)
+
+
 def read_assignment(split: Any) -> pd.DataFrame:
     """The split's assignment, indexed by row id: ``train`` (bool) and ``fold`` (training rows)."""
     frame = split.frames["assignment"] if isinstance(split, Bundle) else split
@@ -1830,13 +1841,16 @@ def fit_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.estimand import cluster_answer
     from turbotab.core.models.metrics import fold_pairs
     from turbotab.core.models.validation import (COMPARISONS_NOTE, PER_ROW_LOSSES, SITE_LIMIT,
-                                                 calibration_by, family_differences, fired_chain,
-                                                 headline_how, internal_external, level_words,
+                                                 calibration_by, compared_within_unit,
+                                                 family_differences, fired_chain, headline_how,
+                                                 headline_within, internal_external, level_words,
                                                  nested_cv_fits, nested_cv_interval,
                                                  nested_offer_label, not_applied,
                                                  optimism_bootstrap, performance_sentence,
-                                                 resample_concern, score_words, site_folds,
-                                                 unit_spans, wide, wide_clause)
+                                                 resample_concern, resampled_within_unit,
+                                                 score_words, site_folds, unit_spans,
+                                                 units_spanning, wide, wide_clause,
+                                                 within_unit_link)
     from turbotab.core.seal import SEALED_DETAIL, SEALED_SCORES, sealed_detail_frame, sealed_scores_frame
 
     state = ctx.state
@@ -1925,9 +1939,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
         # the unit, but no unit repeats, so clustering by it changes nothing and "its rows repeat"
         # would be false.
         groups, grouped_by, unit_all, hold_groups = None, None, None, None
-    # MS6 (MODELING_SEQUENCE §2): when the seal could not keep a unit's rows together, every score
-    # is within-unit performance, and every sentence says so (models/validation.py).
-    spans = unit_spans(split_data.get("basis")) if grouped_by is None else None
+    # MS6 (MODELING_SEQUENCE §2): when the seal could not keep a unit's rows together, a unit's
+    # rows can sit on both sides of a fold, and every sentence says so (models/validation.py): the
+    # headline's sentences what its drawn folds did, as the split's note says it (C-110: under
+    # internal–external validation they are the grouping's levels, and no unit nested in one
+    # spans two), and the chain beside them what the comparisons' draws by row and the bootstrap's
+    # resamples did.
+    basis = split_data.get("basis")
+    spans = unit_spans(basis) if grouped_by is None else None
+    folds_within = headline_within(split_data) if spans is not None else None
     # ... and under prediction the grouping the question named is validated internal–externally
     # beside the headline (2 to SITE_LIMIT levels), unless the headline already is.
     sites: dict[str, Any] | None = None
@@ -2047,6 +2067,19 @@ def fit_stage(ctx: StageContext) -> Bundle:
         task, X, y, X_hold, y_hold, reference=reference, horizon=horizon)) if len(y_hold) else None)
     gain_metric = HELD_OUT_GAIN.get(task)
     n_boot = int(split_data.get("n_boot") or 0) if validation == "bootstrap" else 0
+    # Beside the headline's folds, what the comparisons' own draws by row (those beyond the
+    # headline's) did to a unit's rows, counted on the training rows as the split counts the
+    # headline's, and Harrell's bootstrap where it resampled rows (models/validation.py).
+    compared = resampled = None
+    if spans is not None:
+        train_units = split_data.get("n_train_units")
+        if not inference and len(sub_columns) > shared:
+            unit_ids = _unit_ids(ctx, basis, assignment.index.to_numpy()[train])
+            compared = compared_within_unit(
+                basis, units=train_units,
+                spanning=units_spanning(sub_columns, unit_ids) if unit_ids is not None else None)
+        if n_boot:
+            resampled = resampled_within_unit(basis, units=train_units, n_rows=int(train.sum()))
     own_pairs = 0 if headline_repeats is not None else len(pairs)
     units = max(1, len(keys) * (len(sub_pairs) + own_pairs + 2 + n_boot + len(site_pairs)))
     done = 0
@@ -2390,7 +2423,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 f"Cross-validated {score_words(primary)}",
                 entry.get("estimate"), entry.get("ci_low"), entry.get("ci_high"),
                 how=headline_how(validation, scheme, k_folds, len(fold_columns),
-                                  split_data.get("cluster"), by_row=spans is not None),
+                                  split_data.get("cluster"), within=folds_within),
                 narrow=narrow)
         corrected = ((optimism.estimates.get(primary) if optimism is not None else None))
         if corrected is not None and corrected.corrected is not None:
@@ -2473,8 +2506,11 @@ def fit_stage(ctx: StageContext) -> Bundle:
             else narrow,
             nested=(nested_runs[only].model_dump() if only in nested_runs else None) if only else None,
             how_cv=headline_how(validation, scheme, k_folds, len(fold_columns),
-                                split_data.get("cluster"), by_row=spans is not None),
-            nested_ran=bool(nested_runs), by_row=spans is not None)
+                                split_data.get("cluster"), within=folds_within),
+            # BBC-CV resamples, by row, the out-of-fold predictions of the substrate's first draw:
+            # its own where it has draws beyond the headline's, the headline's otherwise.
+            nested_ran=bool(nested_runs),
+            by_row=(compared if len(sub_columns) > shared else folds_within) is not None)
     comparison = (Comparison(folds=len(sub_pairs) // max(len(sub_columns), 1),
                              repeats=len(sub_columns), shared=shared,
                              method=("the corrected repeated k-fold t (Nadeau & Bengio 2003; "
@@ -2499,7 +2535,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
                    families=predicting, n_holdout=n_holdout, comparison=comparison,
                    selection=selection, result=result_declared, n_boot=n_boot,
                    horizon_note=horizon_note, notes=[m.get("calibration_note") for m in models],
-                   narrow=narrow, nested=bool(nested_runs), spans=spans, sites=sites)
+                   narrow=narrow, nested=bool(nested_runs),
+                   within=within_unit_link(folds_within, compared, resampled), sites=sites)
     artifact = FitArtifact(task=task, primary_metric=primary, metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,

@@ -1377,6 +1377,31 @@ def split_states_plan(d: Any, state: Any) -> bool:
                 and float(getattr(d, "holdout", 0) or 0) == 0)
 
 
+def _units_within_levels(ctx: Any, column: str | None, cluster: str) -> bool:
+    """Whether every unit ``column`` names has its rows in one level of ``cluster`` on the table
+    (``frame`` or ``datastore``; a blank level is a level of its own, as the folds hold it, and a
+    blank identifier its own unit): then no fold of internal–external validation by ``cluster``
+    holds rows of a unit another fold holds, however the held-out rows are drawn. False where it
+    cannot be read."""
+    if not column:
+        return False
+    store, frame = _get(ctx, "datastore"), _get(ctx, "frame")
+    try:
+        values = None
+        if frame is not None and {column, cluster} <= set(frame.columns):
+            values = frame[[column, cluster]]
+        elif store is not None and {column, cluster} <= set(store.columns):
+            values = store.materialize([column, cluster])
+        if values is None:
+            return False
+        named = values[values[column].notna()]
+        levels = named[cluster].astype(object).where(named[cluster].notna(), "(not recorded)")
+        return bool((levels.groupby(named[column].to_numpy()).nunique() <= 1).all())
+    except Exception:  # a sentence never fails a decision; it says less
+        log.debug("could not read the units' levels", exc_info=True)
+        return False
+
+
 @register_sentence("set_split")
 def _set_split(d: Any, state: Any, ctx: Any) -> str:
     task = getattr(state, "task", None) or _get(ctx, "detected_task")  # answered, else detected
@@ -1443,14 +1468,26 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
             boot += (f"; each family's own performance interval is the nested cross-validation "
                      f"interval ({tick(NESTED_REPS)} repetitions of {tick(d.folds)} folds; Bates, "
                      f"Hastie & Tibshirani 2023)")
-    # MS6 (MODELING_SEQUENCE §2): when the seal could not keep a unit's rows together, the folds
-    # are drawn by row and every score is within-unit performance; said, never silent.
+    # MS6 (MODELING_SEQUENCE §2): when the seal could not keep a unit's rows together, a unit's
+    # rows can sit on both sides of a fold or a resample; said, never silent. This sentence is
+    # written when the split is answered, before any fold is drawn, so it says what the answers and
+    # the table settle and no more (C-110): under internal–external validation the folds are the
+    # grouping's levels, and where every unit lies in one level none spans two, however the rows
+    # are drawn, while the comparisons' folds are drawn by row; one unit spans every fold; else a
+    # fold may split a unit, which the split's note, reading the drawn folds, counts.
     if basis is not None and not group:
-        from turbotab.core.models.validation import WITHIN_UNIT, unit_spans
+        from turbotab.core.models.validation import (compared_within_unit, resampled_within_unit,
+                                                     within_unit_clauses, within_unit_parts)
 
-        spans = unit_spans({k: _attr(basis, k) for k in ("state", "column", "n_units")})
-        if spans:
-            boot += f"; {spans}: {WITHIN_UNIT}"
+        unit = {k: _attr(basis, k) for k in ("state", "column", "n_units")}
+        cluster = (getattr(d, "cluster", None) if validation == "internal_external" else None)
+        headline = (None if cluster and _units_within_levels(ctx, unit.get("column"), cluster)
+                    else within_unit_clauses(unit, cluster=cluster or None))
+        comparisons = (compared_within_unit(unit) if getattr(state, "purpose", None) != "inference"
+                       and not time_ordered else None)
+        resampled = resampled_within_unit(unit) if validation == "bootstrap" else None
+        for part in within_unit_parts(headline, comparisons, resampled):
+            boot += f"; {part.why}: {part.then}"
     # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
     r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
           "prediction" if task == "regression" else "")

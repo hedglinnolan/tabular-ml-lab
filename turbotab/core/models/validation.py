@@ -120,7 +120,13 @@ in one fold is still scored as a new unit, and under internal–external validat
 grouping's levels, not rows, so the split's note reads the drawn folds, each draw of them, wherever
 a column names the unit: it says nothing of units where no unit's rows fall in two folds, says
 every score is within-unit only where every unit's do in every draw, and otherwise counts them and
-reads only their rows' scores as within-unit (:func:`within_unit_sentence`).
+reads only their rows' scores as within-unit (:func:`within_unit_sentence`). The split artifact
+keeps those counts, so the headline's performance sentences and the chain say the same of the same
+folds (:func:`headline_within`), and the chain says beside them what the comparisons' draws by row
+did, counted the same way, and Harrell's bootstrap where it resampled rows
+(:func:`compared_within_unit`, :func:`resampled_within_unit`). The split's sentence is written
+when the split is answered, before any fold is drawn: it says only what the answers and the table
+settle (``voice``'s set_split).
 
 **Performance across sites** (MODELING_SEQUENCE §2: clusters imply, under prediction, "performance
 heterogeneity across sites"; §1 row 11: "internal–external CV when clusters exist"; TRIPOD+AI 12d
@@ -136,7 +142,7 @@ from __future__ import annotations
 import math
 import time
 import warnings
-from typing import Any, Callable, Literal, Mapping, Sequence
+from typing import Any, Callable, Literal, Mapping, NamedTuple, Sequence
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
@@ -922,8 +928,10 @@ def _register_contracts() -> None:
                      enforced_by="turbotab.core.models.folds:kfold_assignment",
                      id="repeated_units_group_resampling"),
             Relation("implies", "within_unit_scores",
-                     "the folds, the resamples and BBC-CV are drawn by row, and every score is "
-                     "stated as within-unit performance, never as performance on new units",
+                     "the folds (unless they are a grouping's levels), the comparisons' folds, "
+                     "the resamples and BBC-CV are drawn by row, and each score whose rows share a "
+                     "unit with rows the models were fit on, as the drawn folds show, is stated as "
+                     "within-unit performance, never as performance on new units",
                      condition="rows repeat within a unit, but the seal could not keep units whole "
                                "(one unit, too few, an unconfirmed identifier, a grain not known)",
                      enforced_by=f"{here}:unit_spans", id="within_unit_performance"),
@@ -1073,9 +1081,11 @@ def score_words(metric: str) -> str:
 
 
 def headline_how(validation: str, scheme: str, folds: int, repeats: int,
-                 cluster: str | None = None, *, by_row: bool = False) -> str:
-    """How the headline cross-validated score was made, in words; ``by_row``: the folds could not
-    keep a unit's rows together (:func:`unit_spans`), so the score is within-unit performance."""
+                 cluster: str | None = None, *, within: "WithinUnit | None" = None) -> str:
+    """How the headline cross-validated score was made, in words; ``within``: what the headline's
+    drawn folds did to a unit's rows, as the split's note says it (:func:`headline_within`), whose
+    few words follow: within-unit performance where every score is, the scores of the rows of the
+    units with rows in more than one fold where only theirs are, nothing where no unit's are."""
     if scheme == "time_ordered":
         how = f"cross-validation over {folds} time-ordered folds"
     elif validation == "internal_external" and cluster:
@@ -1084,7 +1094,7 @@ def headline_how(validation: str, scheme: str, folds: int, repeats: int,
         how = f"{folds}-fold cross-validation repeated {repeats} times"
     else:
         how = f"{folds}-fold cross-validation"
-    return f"{how} over rows, not units (within-unit performance)" if by_row else how
+    return f"{how} {within.short}" if within is not None else how
 
 
 def unit_spans(basis: Mapping[str, Any] | None) -> str | None:
@@ -1117,10 +1127,56 @@ def _units(n: Any) -> str:
     return f" (`{int(n):,}` units)" if n else ""
 
 
-def within_unit_sentence(basis: Mapping[str, Any] | None, *, cluster: str | None = None,
-                         spanning: int | Sequence[int] | None = None,
-                         units: int | None = None, ordered: bool = False) -> str | None:
-    """:func:`unit_spans` and what follows from it, as one sentence (the split's note), or None.
+class WithinUnit(NamedTuple):
+    """What a draw by row did to a unit's rows: why a unit's rows can sit on both sides of a fold
+    or a resample (``why``), what follows for the scores (``then``), the few words a performance
+    sentence carries for the headline's folds (``short``), and whether ``then`` is said of every
+    score in its scope (each is, or each may be) rather than of some units' rows (``whole``)."""
+
+    why: str
+    then: str
+    short: str = ""
+    whole: bool = False
+
+
+def units_spanning(draws: Sequence[Any], units: Any, keep: Any = None) -> list[int]:
+    """For each draw of folds (``draws``: a fold per row), the units whose rows, among those
+    ``keep`` marks (every row by default), fall in more than one fold. ``units`` names each row's
+    unit; a row with none is its own unit, which no fold can split."""
+    import pandas as pd
+
+    ids = pd.Series(np.asarray(units, dtype=object))
+    named = ids.notna().to_numpy()
+    if keep is not None:
+        named = named & np.asarray(keep, dtype=bool)
+    return [int((pd.Series(np.asarray(d)[named]).groupby(ids[named].to_numpy()).nunique()
+                 > 1).sum()) for d in draws]
+
+
+_EVERY = "every cross-validated score here is"  # WITHIN_UNIT's subject, which each scope replaces
+
+
+def _span_counts(spanning: int | Sequence[int] | None, column: Any,
+                 state: Any) -> tuple[int, ...] | None:
+    """The units spanning folds in each draw, as given, or None where no column names the unit or
+    it was not read."""
+    if spanning is None or not column or state == "undetermined":
+        return None
+    if isinstance(spanning, (int, np.integer)):
+        return (int(spanning),)
+    return tuple(int(k) for k in spanning)
+
+
+def _many(counts: Sequence[int]) -> tuple[str, bool]:
+    """The count's chip, or its range's over the draws, and whether it is one unit in each."""
+    lo, hi = min(counts), max(counts)
+    return (f"`{lo:,}` to `{hi:,}`" if lo != hi else f"`{hi:,}`"), lo == hi == 1
+
+
+def within_unit_clauses(basis: Mapping[str, Any] | None, *, cluster: str | None = None,
+                        spanning: int | Sequence[int] | None = None,
+                        units: int | None = None, ordered: bool = False) -> WithinUnit | None:
+    """:func:`unit_spans` and what follows from it for the headline's folds, or None.
 
     ``cluster`` names the column whose levels are the folds (internal–external validation), so
     they were not drawn by row; ``spanning`` counts, for each draw of the folds (one, or one per
@@ -1133,45 +1189,162 @@ def within_unit_sentence(basis: Mapping[str, Any] | None, *, cluster: str | None
     it, as a new unit. So where no unit's rows fall in two folds no score is within-unit, and there
     is nothing to say (the RF-1 verifier's round-2 P3, the RF-1b verifier's round-2 V2); where
     every unit's do, in every draw, every score is; where some do, only their rows are scored by
-    models fit on rows of the same unit, so the sentence counts them (their range over the draws)
-    and reads only their rows' scores as within-unit (the RF-1b verifier's P3 and round-2 V2);
-    where no column can tell, it says a fold may split a unit."""
+    models fit on rows of the same unit, so the clauses count them (their range over the draws)
+    and read only their rows' scores as within-unit (the RF-1b verifier's P3 and round-2 V2);
+    where no column can tell, they say a fold may split a unit. The split's note says them as one
+    sentence (:func:`within_unit_sentence`); the fit's performance sentences and its chain say the
+    same of the same folds (:func:`headline_within`)."""
     spans = unit_spans(basis)
     if spans is None:
         return None
     state, column, n = basis.get("state"), basis.get("column"), basis.get("n_units")
-    every, may = "every cross-validated score here is", "every cross-validated score here may be"
-    counts = (None if spanning is None or not column or state == "undetermined" else
-              (int(spanning),) if isinstance(spanning, (int, np.integer)) else
-              tuple(int(k) for k in spanning))
+    counts = _span_counts(spanning, column, state)
     if counts is not None and not any(counts):
         return None
-    if counts is None:  # no column names the unit, or its column was not read
+    lead = "over rows, not units " if cluster is None else ""
+    # One unit holds every row, so every fold drawn by row holds rows of it, read or not.
+    if counts is None and not (column and n == 1 and cluster is None):
+        # no column names the unit, its column was not read, or no fold is drawn yet
         if cluster is not None:
             across = (f"the folds, the levels of `{cluster}`, may put rows of one unit in more "
                       f"than one of them")
             spans = (f"rows repeat within `{column}`{_units(n)}, and {across}" if column else
                      f"{_NOT_KNOWN if state == 'undetermined' else _UNNAMED}, so {across}")
-        then = WITHIN_UNIT.replace(every, may)
-    elif n == 1 or (cluster is None and not ordered and units is not None
-                    and all(k == units for k in counts)):
-        then = WITHIN_UNIT  # one unit ("no fold can leave a unit out"), or every unit in each draw
+        return WithinUnit(spans, WITHIN_UNIT.replace(_EVERY, "every cross-validated score here "
+                                                             "may be"),
+                          f"{lead}(may be within-unit performance)", whole=True)
+    if n == 1 or (cluster is None and not ordered and units is not None
+                  and all(k == units for k in counts)):
+        # one unit ("no fold can leave a unit out"), or every unit in each draw
+        return WithinUnit(spans, WITHIN_UNIT, f"{lead}(within-unit performance)", whole=True)
+    many, one = _many(counts)
+    has = "unit has" if one else "units have"
+    if cluster is not None:
+        spans = (f"rows repeat within `{column}`{_units(n)}, and {many} of them "
+                 f"{'has' if one else 'have'} rows in more than one of the folds, the levels "
+                 f"of `{cluster}`")
+        rows_in = f"rows in more than one level of `{cluster}`"
     else:
-        lo, hi = min(counts), max(counts)
-        one = lo == hi == 1
-        many = f"`{lo:,}` to `{hi:,}`" if lo != hi else f"`{hi:,}`"
-        if cluster is not None:
-            spans = (f"rows repeat within `{column}`{_units(n)}, and {many} of them "
-                     f"{'has' if one else 'have'} rows in more than one of the folds, the levels "
-                     f"of `{cluster}`")
-        else:
-            draws = f"in each of their `{len(counts)}` draws " if len(counts) > 1 else ""
-            spans = (f"{spans}, and {draws}{many} {'unit has' if one else 'units have'} rows in "
-                     f"more than one fold")
-        whose = "that unit's" if one else "those units'"
-        after = f" after {'its' if one else 'their'} first fold" if ordered else ""
-        then = WITHIN_UNIT.replace(every, f"the cross-validated scores of {whose} rows{after} are")
-    return f"{spans[0].upper()}{spans[1:]}: {then}."
+        draws = f"in each of their `{len(counts)}` draws " if len(counts) > 1 else ""
+        spans = f"{spans}, and {draws}{many} {has} rows in more than one fold"
+        rows_in = "rows in more than one fold"
+    whose = "that unit's" if one else "those units'"
+    after = f" after {'its' if one else 'their'} first fold" if ordered else ""
+    each = "in each draw " if cluster is None and len(counts) > 1 else ""
+    return WithinUnit(
+        spans, WITHIN_UNIT.replace(_EVERY, f"the cross-validated scores of {whose} rows{after} are"),
+        f"{lead}({each}{many} {has} {rows_in}; {'its' if one else 'their'} rows' scores{after} "
+        f"are within-unit performance)")
+
+
+def within_unit_sentence(basis: Mapping[str, Any] | None, *, cluster: str | None = None,
+                         spanning: int | Sequence[int] | None = None,
+                         units: int | None = None, ordered: bool = False) -> str | None:
+    """:func:`within_unit_clauses` as one sentence (the split's note), or None."""
+    found = within_unit_clauses(basis, cluster=cluster, spanning=spanning, units=units,
+                                ordered=ordered)
+    if found is None:
+        return None
+    return f"{found.why[0].upper()}{found.why[1:]}: {found.then}."
+
+
+def headline_within(split: Mapping[str, Any] | None) -> WithinUnit | None:
+    """What the headline's drawn folds did to a unit's rows, read off the split artifact as its
+    note reads them (``stages.rows.split_stage``: the units each draw puts in more than one fold,
+    ``units_spanning``, and the units with training rows, ``n_train_units``); under
+    internal–external validation the folds are the grouping's levels. A split that counted
+    neither (no column names the unit, or it was not read) reads as one whose folds may split a
+    unit."""
+    split = split or {}
+    cluster = split.get("cluster") if split.get("validation") == "internal_external" else None
+    return within_unit_clauses(split.get("basis"), cluster=cluster,
+                               spanning=split.get("units_spanning"),
+                               units=split.get("n_train_units"),
+                               ordered=split.get("fold_scheme") == "time_ordered")
+
+
+def _by_row(basis: Mapping[str, Any], drawn: str) -> str:
+    """Why a draw by row (``drawn``: "the comparisons' folds were drawn by row") can put a unit's
+    rows on both sides: the unit's column and count, or why no column names it."""
+    column, n = basis.get("column"), basis.get("n_units")
+    if column:
+        return f"rows repeat within `{column}`{_units(n)}, but {drawn}"
+    return f"{_NOT_KNOWN if basis.get('state') == 'undetermined' else _UNNAMED}, so {drawn}"
+
+
+def compared_within_unit(basis: Mapping[str, Any] | None, *,
+                         spanning: Sequence[int] | None = None,
+                         units: int | None = None) -> WithinUnit | None:
+    """What the comparison substrate's draws did to a unit's rows, or None. Under prediction the
+    families and the baseline are compared on repeated k-fold of at least 10 × K
+    (``models.folds.comparison_folds``), drawn by row where the seal could not keep a unit's rows
+    together, whatever folds give the headline: internal–external validation's levels, or k-fold
+    whose draw is the substrate's first. ``spanning`` counts, for each of its draws, the units
+    whose training rows it puts in more than one fold (None where no column names the unit, or
+    before the draws are made: the record's sentence), ``units`` how many units have training
+    rows; read as :func:`within_unit_clauses` reads the headline's."""
+    if unit_spans(basis) is None:
+        return None
+    column, n = basis.get("column"), basis.get("n_units")
+    counts = _span_counts(spanning, column, basis.get("state"))
+    if counts is not None and not any(counts):
+        return None
+    why = _by_row(basis, "the comparisons' folds were drawn by row")
+    if column and n == 1:
+        return WithinUnit(unit_spans(basis), WITHIN_UNIT.replace(_EVERY, "the comparisons' "
+                                                                        "scores are"), whole=True)
+    if counts is None:
+        return WithinUnit(why, WITHIN_UNIT.replace(_EVERY, "the comparisons' scores may be"),
+                          whole=True)
+    if units is not None and all(k == units for k in counts):
+        return WithinUnit(why, WITHIN_UNIT.replace(_EVERY, "the comparisons' scores are"),
+                          whole=True)
+    many, one = _many(counts)
+    draws = f"in each of their `{len(counts)}` draws " if len(counts) > 1 else ""
+    whose = "that unit's" if one else "those units'"
+    return WithinUnit(
+        f"{why}, and {draws}{many} {'unit has' if one else 'units have'} rows in more than one fold",
+        WITHIN_UNIT.replace(_EVERY, f"the comparisons' scores of {whose} rows are"))
+
+
+def resampled_within_unit(basis: Mapping[str, Any] | None, *, units: int | None = None,
+                          n_rows: int | None = None) -> WithinUnit | None:
+    """What Harrell's bootstrap, resampling rows where the seal could not keep a unit's rows
+    together, did to a unit's rows, or None. Each resample's model is scored on every training
+    row, so a unit with one row drawn and another not sits on both sides; none can where each
+    unit has one training row (``units`` of the ``n_rows`` training rows). Where the units were not
+    counted (no column names the unit, or before the rows are drawn: the record's sentence), the
+    optimism-corrected scores may be within-unit."""
+    if unit_spans(basis) is None:
+        return None
+    if units is not None and n_rows is not None and units >= n_rows:
+        return None
+    column, n = basis.get("column"), basis.get("n_units")
+    known = bool(column) and (n == 1 or (units is not None and n_rows is not None))
+    return WithinUnit(_by_row(basis, "the bootstrap resampled rows, not units"),
+                      WITHIN_UNIT.replace(_EVERY, "the optimism-corrected scores are" if known
+                                          else "the optimism-corrected scores may be"))
+
+
+def within_unit_parts(headline: WithinUnit | None, compared: WithinUnit | None = None,
+                      resampled: WithinUnit | None = None) -> list[WithinUnit]:
+    """Each part that found a unit's rows on both sides, the headline's folds, the comparisons'
+    and the bootstrap's resamples, in that order. The comparisons' part is left out where it and
+    the headline's are each said of every score in its scope: every cross-validated score here
+    (the comparisons' among them) is within-unit, or may be."""
+    if headline is not None and headline.whole and compared is not None and compared.whole:
+        compared = None
+    return [p for p in (headline, compared, resampled) if p is not None]
+
+
+def within_unit_link(headline: WithinUnit | None, compared: WithinUnit | None = None,
+                     resampled: WithinUnit | None = None) -> tuple[str, str] | None:
+    """The chain's within-unit link from :func:`within_unit_parts`: (because, then), or None where
+    no part found a unit's rows on both sides."""
+    found = within_unit_parts(headline, compared, resampled)
+    if not found:
+        return None
+    return "; ".join(p.why for p in found), "; ".join(p.then for p in found)
 
 
 def nested_offer_label(fits_each: int, n_families: int) -> str:
@@ -1238,13 +1411,16 @@ def calibration_by(task: str, y: Any, prediction: Any, classes: Sequence[Any] | 
 def fired_chain(task: str, primary: str, *, inference: bool, grouped_by: str | None,
                 families: Sequence[str], n_holdout: int, comparison: Any, selection: Any,
                 result: Any, n_boot: int, horizon_note: str | None, notes: Sequence[str | None],
-                narrow: str | None, nested: bool, spans: str | None = None,
+                narrow: str | None, nested: bool,
+                within: tuple[str, str] | None = None,
                 sites: Mapping[str, Any] | None = None) -> list[ChainLink]:
     """The relations of :data:`CONTRACTS` that fired on this fit, each said as "because …, …".
 
-    ``spans``: why the folds could not keep a unit's rows together (:func:`unit_spans`);
-    ``sites``: the grouping the question named under prediction (``column``, ``levels``, and
-    ``ran`` or the ``why`` it did not)."""
+    ``within``: where the seal could not keep a unit's rows together, what the draws by row did to
+    a unit's rows, the headline's folds as the split's note says it and the comparisons' and the
+    bootstrap's beside them (:func:`within_unit_link`), None where none put a unit's rows on both
+    sides; ``sites``: the grouping the question named under prediction (``column``, ``levels``,
+    and ``ran`` or the ``why`` it did not)."""
     from turbotab.core.models.metrics import HEADLINE, SPOKEN, headline_words
 
     links: list[ChainLink] = []
@@ -1273,9 +1449,9 @@ def fired_chain(task: str, primary: str, *, inference: bool, grouped_by: str | N
             because=f"rows repeat within `{grouped_by}`",
             then=("every fold of every repeat, the held-out rows, every bootstrap resample, the "
                   "BBC-CV resamples and the nested folds keep each unit's rows together")))
-    elif spans:
-        links.append(ChainLink(relation="within_unit_performance", because=spans,
-                               then=WITHIN_UNIT))
+    elif within:
+        links.append(ChainLink(relation="within_unit_performance", because=within[0],
+                               then=within[1]))
     if not inference and sites and sites.get("column"):
         column, levels = sites["column"], sites.get("levels")
         links.append(ChainLink(
@@ -1333,5 +1509,7 @@ __all__ = ["BOOTSTRAP_CAUTION", "CALIBRATION_KEYS", "COMPARISONS_NOTE", "ChainLi
            "performance_points", "performance_sentence", "relation_ids", "resample_concern",
            "validation_plan", "wide", "wide_clause", "calibration_by", "fired_chain",
            "headline_how", "level_words", "score_words", "VALIDATION_CONTRACTS", "SITE_LIMIT",
-           "WITHIN_UNIT", "nested_offer_label", "site_folds", "unit_spans",
+           "WITHIN_UNIT", "WithinUnit", "compared_within_unit", "headline_within",
+           "nested_offer_label", "resampled_within_unit", "site_folds", "unit_spans",
+           "units_spanning", "within_unit_clauses", "within_unit_link", "within_unit_parts",
            "within_unit_sentence"]
