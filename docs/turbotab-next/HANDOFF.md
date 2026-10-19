@@ -93,18 +93,17 @@ Each line gives the package's fresh subagent tokens, measured from its transcrip
 
 ## Next, in order
 
-The goal (Nolan, 2026-10-18): everything up to the swarm's start, then a discussion with him
-before any pilot run. His usage resets Thursday at 1 pm; nothing optional runs before it (his
-words of 2026-10-18: a buffer for other tasks this week). Each step's status ends with one line of
-cost against the ~80M reference, which is not a cap.
+The goal (Nolan, 2026-10-18): everything up to the swarm's start, then the pilot. The plan is
+`plans/SWARM_PLAN.md` version 5, reviewed by five independent readers (`notes/swarm-audit/`); the
+fifth's verdict was BUILD (2026-10-19). Each step's status ends with one line of cost against the
+reference, which is not a cap.
 
-1. **The discussion** of `plans/PILOT_READINESS.md` (§4's four questions). **[Nolan]**
-2. **Nolan restarts Claude Code** (`claude --resume`) so the analyst agent type loads; then the
-   live lockdown check and the analyst's model id (Haiku 5.5, not 4.5).
-3. **After the reset:** RB (its brief: the orchestrator's `rb_args.json`, 25 claims at most), and
-   the `quest-nhanes-predict` shell race; then CI green and turbotab-next pushed.
-4. **The measured pair** (one Haiku, one Opus analyst on the Predict fixture), then the pilot,
-   daytime and unthrottled, as Nolan schedules it.
+1. **After Nolan's usage resets (Thursday 1 pm),** the build in SWARM_PLAN §10, packages 1–7
+   (36–58M fresh, about 40–65M with a buffer), with its order and its notes for the builders.
+2. **The pilot in the same week** (SWARM_PLAN §6–§7), on the thin buffer Nolan accepted: daytime,
+   unthrottled, within 40% of the week, the Estimate fixture first.
+3. **The live lockdown check and the analyst's model id** (package 7) need a fresh session on the
+   home machine, since agent types load when a session starts.
 
 ## Open for Nolan
 
