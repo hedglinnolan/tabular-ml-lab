@@ -5,6 +5,7 @@ are named as ``assemble.answers_of`` names them."""
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any
 
 T0 = "2026-10-18T10:00:00+00:00"
@@ -132,7 +133,7 @@ def predict_record(control: str | None = None) -> dict[str, Any]:
               "n_holdout": 96, "scores": copy.deepcopy(SCORES),
               "intervals": {"auc": {"estimate": 0.71, "ci_low": 0.45, "ci_high": 0.97,
                                     "level": 0.95, "method": "DeLong"}},
-              "intervals_why": None, "lock": None, "effects": None, "refused": None}
+              "intervals_why": None, "lock": None, "refused": None}
     return {"version": 1, "run": run(), **surroundings(control),
             "question": {"purpose": "prediction", "target": "y", "estimand": None,
                          "intended_use": None, "stated": None, "paper": None},
@@ -143,6 +144,41 @@ def predict_record(control: str | None = None) -> dict[str, Any]:
 
 EFFECT = [{"feature": "x", "estimate": 0.30, "ci_low": 0.10, "ci_high": 0.50, "p": 0.003}]
 YES = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+
+
+def reported(family: str, row: dict[str, Any], *, ratio: bool = False, **kw: Any) -> dict[str, Any]:
+    """A coefficient row as the result reports it on its measure's scale (``record.Estimate``):
+    on a ratio scale its ``ratio`` columns, on a difference scale the coefficient itself."""
+    cols = ("ratio", "ratio_low", "ratio_high") if ratio else ("estimate", "ci_low", "ci_high")
+    return {"family": family, "feature": row["feature"], "setting": None,
+            "estimate": row.get(cols[0]), "ci_low": row.get(cols[1]), "ci_high": row.get(cols[2]),
+            "why": None, **kw}
+
+
+# A yes/no outcome under Estimate whose locked fit's exposure row is the conditional log odds per
+# unit of `x` (0.5, 0.3 to 0.7; its odds ratio exp of each), while the estimand declares the
+# marginal risk difference, which the effects stage standardizes to 0.10 (0.05 to 0.15) for one
+# unit higher than observed: two different numbers, constructed apart.
+LOG_ODDS = {"feature": "x", "estimate": 0.5, "ci_low": 0.3, "ci_high": 0.7, "p": 0.0001,
+            "ratio": math.exp(0.5), "ratio_low": math.exp(0.3), "ratio_high": math.exp(0.7)}
+RISK_DIFFERENCE = {"family": "linear", "feature": "x", "setting": "one unit higher than observed",
+                   "estimate": 0.10, "ci_low": 0.05, "ci_high": 0.15, "why": None}
+
+
+def marginal_record(control: str | None = None) -> dict[str, Any]:
+    """:func:`estimate_record` with a yes/no outcome and the marginal risk difference declared: its
+    locked fit's row is :data:`LOG_ODDS`, and its result the risk difference the results served
+    (:data:`RISK_DIFFERENCE`) for that fit's key."""
+    data = estimate_record(control)
+    for a in data["attempts"]:
+        a["effects"] = {"linear": [dict(LOG_ODDS)]}
+    data["decisions"][1]["option"]["measure"] = "risk_difference"
+    data["question"]["estimand"] = {"exposure": "x", "measure": "risk_difference"}
+    data["regime"].update(task="binary", event="1", events=230)
+    data["result"].update(measure="risk_difference", scale="difference", conditioning="marginal",
+                          source="results", served_fit="key1",
+                          estimates=[dict(RISK_DIFFERENCE)])
+    return data
 
 
 def estimate_record(control: str | None = None) -> dict[str, Any]:
@@ -176,7 +212,9 @@ def estimate_record(control: str | None = None) -> dict[str, Any]:
     result = {"purpose": "inference", "attempt": "fit1", "plan_digest": "lockdigest",
               "decisions": [1, 2, 3, 4], "opening": None, "family": None, "metric": None,
               "n_holdout": None, "scores": None, "intervals": None, "intervals_why": None,
-              "lock": 4, "effects": {"linear": copy.deepcopy(EFFECT)}, "refused": None}
+              "lock": 4, "measure": "mean_difference", "scale": "difference",
+              "conditioning": "conditional and marginal", "source": "fits", "served_fit": None,
+              "estimates": [reported("linear", EFFECT[0])], "refused": None}
     return {"version": 1, "run": run("run-2"), **surroundings(control),
             "question": {"purpose": "inference", "target": "y", "estimand": {"exposure": "x"},
                          "intended_use": None, "stated": None, "paper": None},

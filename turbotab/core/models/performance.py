@@ -8,7 +8,10 @@ probability model is checked for calibration as well as discrimination.
 
 **Intervals on a held-out score.** The AUC's is DeLong's (DeLong, DeLong & Clarke-Pearson 1988,
 Biometrics 44:837), computed by Sun & Xu's midrank algorithm (IEEE Signal Process Lett 2014;
-21:1389), the variance pROC's ``ci.auc(method = "delong")`` reports. Every other score is a mean
+21:1389), the variance pROC's ``ci.auc(method = "delong")`` reports. Where every case–control pair
+ties (the model gives every row the same score), the AUC is 0.5 by its ties alone and DeLong's
+variance is 0: that interval of no width is refused, with the reason (:data:`TIED`), and the AUC
+stands. Every other score is a mean
 of per-row losses, or a smooth function of such means (R² = 1 − SSE/SST, RMSE = √MSE), and its
 standard error is the influence-function (delta-method) one. When a unit's rows repeat, the
 influence values are summed within each unit first, so the interval is cluster-robust (Obuchowski
@@ -93,7 +96,7 @@ from statistics import NormalDist
 from typing import Any, Literal, Sequence
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 LEVEL = 0.95
 SLOPE_TOLERANCE = 0.1  # Riley et al. 2019: shrinkage ≥ 0.9, applied either side of 1
@@ -113,8 +116,13 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
 
+def _absent_when_none(schema: dict[str, Any]) -> None:
+    """A field left out of the JSON where it is None is optional in the contract, with no default."""
+    schema.pop("default", None)
+
+
 class Interval(_Model):
-    """A score with its standard error and its 95% interval."""
+    """A score with its standard error and its 95% interval, or why no interval is reported."""
 
     estimate: float | None
     se: float | None = None
@@ -122,6 +130,11 @@ class Interval(_Model):
     ci_high: float | None = None
     level: float = LEVEL
     method: str = ""  # "DeLong" · "influence function" · "… clustered by <unit>"
+    # Why no interval is reported, in plain words (:data:`TIED`). Left out of the JSON where there
+    # is none, so every interval reported serializes as before and the field is optional in the
+    # API's contract.
+    refused: str | None = Field(default=None, exclude_if=lambda v: v is None,
+                                json_schema_extra=_absent_when_none)
 
 
 def _finite(x: Any) -> float | None:
@@ -237,17 +250,38 @@ def auc_influence(positive: Any, score: Any) -> tuple[float, np.ndarray]:
     return auc, ic
 
 
+# DRV-FIX: where every case–control pair ties, the scores are one value for every row: the AUC is
+# 0.5 by its ties alone, and DeLong's variance (every placement value 0.5) is 0, an interval of no
+# width. A model that ranks no one has no interval to report, and the reason is said instead.
+TIED = ("The model gives everyone the same score, so it does not rank anyone, and no interval is "
+        "reported.")
+
+
+def ranks_no_one(positive: Any, score: Any) -> bool:
+    """Whether every case–control pair ties: both classes are present and every row's score is
+    the same value (a positive and a negative tie only where every score is that one value)."""
+    pos = np.asarray(positive, dtype=bool)
+    s = np.asarray(score, dtype=float)
+    return bool(pos.any() and (~pos).any() and np.all(s == s[0]))
+
+
 def auc_interval(positive: Any, score: Any, groups: Any = None, unit: str | None = None) -> Interval:
-    """The AUC with DeLong's interval; cluster-robust (summed influence values) when ``groups``."""
+    """The AUC with DeLong's interval; cluster-robust (summed influence values) when ``groups``.
+    Where every case–control pair ties (:func:`ranks_no_one`), the AUC stands at 0.5 and the
+    interval is refused (:data:`TIED`)."""
     pos = np.asarray(positive, dtype=bool)
     codes = unit_codes(groups, len(pos))
-    if codes is None or len(np.unique(codes)) == len(codes):
+    clustered = not (codes is None or len(np.unique(codes)) == len(codes))
+    method = f"DeLong, clustered by {unit or 'unit'}" if clustered else "DeLong"
+    if ranks_no_one(pos, score):
+        return Interval(estimate=_finite(auc_components(pos, score)[0]), method=method,
+                        refused=TIED)
+    if not clustered:
         auc, var = delong(pos, score)
-        return interval(auc, _root(var), "DeLong", (0.0, 1.0))
+        return interval(auc, _root(var), method, (0.0, 1.0))
     auc, ic = auc_influence(pos, score)
     var = variance_of_mean(ic, codes)
-    return interval(auc, _root(var),
-                    f"DeLong, clustered by {unit or 'unit'}", (0.0, 1.0))
+    return interval(auc, _root(var), method, (0.0, 1.0))
 
 
 # ── per-row losses ───────────────────────────────────────────────────────────
@@ -960,10 +994,10 @@ def random_effects(metric: str, estimates: Sequence[float], ses: Sequence[float]
 __all__ = [
     "Calibration", "CurvePoint", "HorizonCalibration", "INTERCEPT_TOLERANCE", "Interval", "LEVEL",
     "LevelCalibration", "NOT_ASSESSED", "Pooled", "RiskGroup", "SLOPE_TOLERANCE", "SUPPORT_BINS",
-    "SupportBin",
+    "SupportBin", "TIED",
     "auc_components", "auc_influence", "auc_interval", "breslow", "brier_at", "brier_rows",
     "calibration", "censoring_survival", "delayed_entry", "delong", "fold_variance",
     "horizon_calibration", "interval", "kaplan_meier", "level_calibration", "log_loss_rows",
     "logistic_fit", "random_effects", "regression_intervals", "regression_parts", "risk_by",
-    "rps_rows", "score_intervals", "unit_codes", "variance_of_mean", "z_value",
+    "ranks_no_one", "rps_rows", "score_intervals", "unit_codes", "variance_of_mean", "z_value",
 ]

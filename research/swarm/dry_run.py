@@ -15,8 +15,9 @@ grouping, the exposure, the adjustment set, the time-varying exposure and the fo
 the server asks from the fixture's declared truth (``truths.FIXTURE_TRUTHS``) with the journey's
 readings beside it, else the app's own guess. The analyst's choices are limited to what the
 driver offers: a declaration the driver lists no option for (the survey journey's scale) is not
-made. One run explores (a preview of another roles answer, two revisits, three fits); the others
-pass once.
+made. One run explores (a preview of another roles answer, two revisits, three presses of Fit,
+the last for answers already fitted, so two fits); the others pass once. Each run's id is the one
+``start`` makes itself (``run_`` and a counter): no name of the dry run's reaches its analyst.
 
 With the server still up the record is assembled (``research.swarm.assemble``) into ``--out``, the
 checks run on it (``research.swarm.checks``), the server is stopped by its own PID, and each
@@ -84,11 +85,12 @@ def specs() -> dict[str, Spec]:
     support, with journeys.py's ``survey-inference`` journey's roles and readings: the ten items
     the journey scores as its scale (item_01 to item_10) enter one by one as covariates beside age,
     sex and education, and the other thirty are excluded, since a scale is a declaration no driver
-    command makes (the card names none, so which columns enter is the analyst's decision). Age's form is declared a straight line (a reading journeys
-    takes in place of the form card's proposal), so the known answer is one row; its declared truth
-    is that age has no effect, on every scale (``answers.json``), and the linear family's rows for a
-    yes/no outcome are log odds (``models/inference.py``: "each odds ratio is exp(estimate)"), so
-    the known answer is 0 on the rows' scale; the run gives the linear family as its own models
+    command makes (the card names none, so which columns enter is the analyst's decision). Age's
+    form is declared a straight line (a reading journeys takes in place of the form card's
+    proposal), so the known answer is one row; its declared truth is that age has no effect, on
+    every scale (``answers.json``), so the known answer is no effect (``null``): 0 on the
+    difference scale of the marginal risk difference the estimand declares (the card's exposure,
+    its first-ranked measure), 1 on a ratio's; the run gives the linear family as its own models
     answer, as the journey's capture answered it (without the scale the driver offers no way to
     declare, the shelf ranks the elastic net first, which reports no effect: the export refuses
     it). The Predict fixture and the decoy have no journey:
@@ -110,7 +112,7 @@ def specs() -> dict[str, Spec]:
              readings={**_truth("survey_instrument.csv"), **SURVEY_READINGS, "form:age": "linear"},
              roles=dict(SURVEY_INFERENCE_ROLES), exposure="age",
              answers={"models": (["linear"], [])},
-             known={"family": "linear", "feature": "age", "value": 0.0}),
+             known={"family": "linear", "feature": "age", "null": True}),
         Spec("decoy_single", "outpatient_admission_predict", target="admitted_2y", event="1",
              purpose="prediction", lenses=["clinical"], readings={}, repairs=True,
              answers={"split": (["0.2"], [])}),
@@ -151,9 +153,12 @@ WHY: dict[str, dict[str, str]] = {
                    "TurboTab's own.",
         "single_pass": "No preview, no revisit, and one fit: flagged as a single pass.",
         "known_answer": "Fact readings answered from the declared truth; age has no effect by "
-                        "construction, so a 95% interval for its log odds holds 0 (in 1 run in 20 "
+                        "construction, so its marginal risk difference, the number the app "
+                        "reports for the estimand, is 0: its 95% interval holds 0 (in 1 run in 20 "
                         "it would not by chance; that would be checked against an independent fit "
-                        "before calling it a defect).",
+                        "before calling it a defect), or the effects stage refuses it, as it does "
+                        "under multiple imputation (the app's first-ranked missing-values answer "
+                        "here): right or refused.",
         "null_decoy": "Not a decoy.",
         "robustness": "The script's own export returns the bundle, and no person helps."},
     "decoy_single": {
@@ -162,7 +167,9 @@ WHY: dict[str, dict[str, str]] = {
         "single_pass": "No preview, no revisit, and one fit: flagged as a single pass.",
         "known_answer": "Not a known-answer control.",
         "null_decoy": "No column enters the outcome (decoys.py), so the held-out AUC's interval "
-                      "lies above 0.5 in about 1 run in 40 by chance only: none expected.",
+                      "lies above 0.5 in about 1 run in 40 by chance only: none expected; a model "
+                      "that gives everyone the same score has an AUC of 0.5, no skill itself, and "
+                      "its interval refused.",
         "robustness": "The script's own export returns the bundle, and no person helps."},
 }
 
@@ -609,8 +616,7 @@ def one(spec: Spec, runs: Path, out: Path) -> dict[str, Any]:
     data = table_of(spec.dataset, runs / "data" / spec.dataset)
     a = Analyst(spec, runs)
     code, started = a.drv("start", "--data", str(data), "--budget-fits", str(BUDGET_FITS),
-                          "--budget-seconds", str(BUDGET_SECONDS), "--label", spec.name,
-                          "--scripted")
+                          "--budget-seconds", str(BUDGET_SECONDS), "--scripted")
     if code != 0:
         raise RuntimeError(f"start refused: {json.dumps(started)[:1000]}")
     a.run = started["started"]["run"]

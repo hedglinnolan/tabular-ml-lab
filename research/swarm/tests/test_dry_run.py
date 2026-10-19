@@ -59,3 +59,29 @@ def test_the_committed_dry_run_records_still_give_what_their_construction_implie
         assert got == D.EXPECTED[row["run"]], row["run"]
         assert all(c["agrees"] for c in row["checks"]), row["run"]
         assert not row["refused"] or "not_for_the_analyst" not in row["refused"]
+
+
+def test_the_docstring_counts_the_exploring_runs_fits_as_its_record_holds_them():
+    """DRV-FIX (h): the exploring run presses Fit three times, and its third press, for answers
+    already fitted, makes no new fit, so its record holds two; the module docstring says two."""
+    words = {1: "one", 2: "two", 3: "three", 4: "four"}
+    table = json.loads((DRYRUN / "comparison.json").read_text("utf-8"))
+    explores = [r for r in table if D.specs()[r["run"]].explore]
+    assert len(explores) == 1
+    rec = validate(json.loads((D.REPO / explores[0]["record"]).read_text("utf-8")))
+    text = " ".join(D.__doc__.split())
+    assert f"{words[rec.run.fits]} fits)" in text
+    assert [f"{w} fits)" in text for w in words.values()].count(True) == 1
+
+
+def test_no_run_is_started_with_a_label_of_its_own():
+    """DRV-FIX (c): the dry run's names (``decoy_single``) never reach its analyst: each committed
+    record's run id is one ``start`` made itself, ``run_`` and a counter, and names no run of the
+    dry run, no dataset and no control kind."""
+    from research.swarm import driver
+
+    table = json.loads((DRYRUN / "comparison.json").read_text("utf-8"))
+    for row in table:
+        label = row["run_id"].rsplit("-", 1)[0]
+        assert driver.RUN_ID.fullmatch(row["run_id"]) and label.startswith("run_"), row["run_id"]
+        assert label[4:].isdigit()

@@ -294,6 +294,31 @@ def test_the_performance_table_labels_only_the_declared_result():
     assert [r["key"] for r in t.rows][:2] == ["a/cv/log_loss", "a/cv/auc"]  # primary first
 
 
+
+def test_the_performance_table_says_why_a_held_out_interval_is_refused():
+    """DRV-FIX (b): a held-out score whose interval is refused (``performance.TIED``: the model
+    gives everyone the same score) shows its estimate with no interval, and the caption says why,
+    naming the family and the score. The other way: a score with its interval adds nothing."""
+    from turbotab.core.models.performance import TIED
+
+    brier = {"estimate": 0.15, "se": 0.01, "ci_low": 0.13, "ci_high": 0.17, "level": 0.95,
+             "method": "influence function", "refused": None}
+    auc = {"estimate": 0.5, "se": None, "ci_low": None, "ci_high": None, "level": 0.95,
+           "method": "DeLong", "refused": TIED}
+    fit = {"primary_metric": "brier", "metric_labels": {"brier": "Brier score", "auc": "AUC"},
+           "models": [{"family": "a", "label": "Elastic net", "holdout": {"auc": 0.5, "brier": 0.15},
+                       "holdout_detail": {"intervals": {"auc": auc, "brier": brier}}}],
+           "result": {"basis": "holdout", "sentence": "S."}}
+    [t] = tables.performance(fit)
+    row = next(r for r in t.rows if r["key"] == "a/holdout/auc")
+    assert (row["estimate"], row["ci_low"], row["ci_high"], row["se"]) == (0.5, None, None, None)
+    assert t.caption == ("S. Elastic net's held-out AUC: the model gives everyone the same score, "
+                         "so it does not rank anyone, and no interval is reported.")
+    fit["models"][0]["holdout_detail"]["intervals"]["auc"] = {
+        **auc, "se": 0.05, "ci_low": 0.4, "ci_high": 0.6, "refused": None}
+    assert tables.performance(fit)[0].caption == "S."
+
+
 # ── the model matrix ─────────────────────────────────────────────────────────
 
 

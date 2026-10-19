@@ -12049,7 +12049,7 @@ export interface components {
         };
         /**
          * Interval
-         * @description A score with its standard error and its 95% interval.
+         * @description A score with its standard error and its 95% interval, or why no interval is reported.
          */
         Interval: {
             /** Estimate */
@@ -12079,6 +12079,8 @@ export interface components {
              * @default
              */
             method: string;
+            /** Refused */
+            refused?: string | null;
         };
         /**
          * JoinCounts

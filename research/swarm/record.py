@@ -19,9 +19,12 @@ analyst's account of it, and validated here before it is kept. Its fields are SW
   it both ways (the records that entered force and those that left it, each credited to the record
   that made the change: itself, the record that replaced it, or the revert that withdrew or
   restored it) and the reasons of the records credited;
-* ``result``: the reported result, once: the first opening's held-out scores under Predict, the
-  estimate of the fit whose plan is the lock's under Estimate, or why there is none and of which
-  kind (none reported, none served, or none the record can know);
+* ``result``: the reported result, once: the first opening's held-out scores under Predict; under
+  Estimate the number the app reports for the estimand the lock's plan declares, on its measure's
+  scale (a marginal risk difference or ratio as ``GET …/results`` serves the effects stage's
+  standardization, a conditional measure as the locked fit's exposure rows), each with its
+  interval; or why there is none and of which kind (none reported, none served, or none the
+  record can know);
 * ``claims``: every registry claim rendered for the project, as the analyst log serves it;
 * ``surfacings``: each refusal the driver met and the command that followed it, and each concern
   the materiality ledger measured;
@@ -60,12 +63,18 @@ VERSION = 1
 Phase = Literal["before", "after_estimates", "after_seal"]
 Control = Literal["known_answer", "null_decoy"]
 # Why a result has no numbers (``assemble.result_of``): "not_reported", the run reported none (the
-# seal never opened, the plan never locked, no goal); "not_served", the engine served none (the
-# opening recorded no held-out scores and its fit serves none, or the locked fit serves no exposure
-# rows and withholds none); "not_known", the record cannot say what the run reported (no fit record,
-# or several, is marked the one the lock was recorded on; the route withholds the locked fit's rows
-# now; the opening recorded no scores while its fit serves held-out scores).
+# seal never opened, the plan never locked, no goal, no estimand in the lock's plan);
+# "not_served", the engine served none (the opening recorded no held-out scores and its fit serves
+# none; the locked fit serves no exposure rows and withholds none; the effects stage served no
+# marginal risk for any family); "not_known", the record cannot say what the run reported (no fit
+# record, or several, is marked the one the lock was recorded on; the route withholds the locked
+# fit's rows now; the opening recorded no scores while its fit serves held-out scores; the results
+# no longer serve the locked plan's marginal risks).
 RefusedKind = Literal["not_reported", "not_served", "not_known"]
+# The two scales of an effect measure (``estimand.measure_facts``, MODELING_SEQUENCE ruling 9), and
+# the value of no effect on each.
+Scale = Literal["difference", "ratio"]
+NULL_OF: dict[str, float] = {"difference": 0.0, "ratio": 1.0}
 
 
 class _Strict(BaseModel):
@@ -311,14 +320,36 @@ class Attempt(_Strict):
 # ── result, claims, surfacings, export, replication ──────────────────────────
 
 
+class Estimate(_Strict):
+    """One number the app reports for the estimand (``assemble.result_of``), on the measure's
+    scale (``Result.scale``): under a marginal measure one contrast of the effects stage's
+    standardization (g-computation) as ``GET …/results`` serves it, its ``rd`` or ``rr`` with the
+    bootstrap's percentile interval; under a conditional measure one exposure row of the locked
+    fit as ``GET …/fits`` serves it, on a ratio scale its ``ratio`` columns (exp of the coefficient
+    and of its interval's ends), on a difference scale the coefficient itself. ``why``: why it has
+    no number, or no interval, in the engine's words where it gives them."""
+
+    family: str
+    feature: str | None  # the exposure's row; a marginal contrast's exposure
+    setting: str | None = None  # a marginal contrast: the settings it compares, as served
+    estimate: float | None
+    ci_low: float | None
+    ci_high: float | None
+    why: str | None = None
+
+
 class Result(_Strict):
     """The reported result, once (SWARM_PLAN §4): under Predict the held-out scores the first
     opening of the seal recorded (``open_seal``'s ``scores``), from the fit it was recorded on, with
-    the intervals beside them only while the scores served are the opening's; under Estimate each
-    family's exposure rows of the fit the plan's lock in force was recorded on, the one fit record
-    ``GET …/fits`` marks so (``Attempt.locked``), under the lock's digest. ``refused`` says why there is
-    none, and ``refused_kind`` which kind of none it is (:data:`RefusedKind`): a check judges a
-    result none was reported or served for as refused, and does not judge one it cannot know."""
+    the intervals beside them only while the scores served are the opening's; under Estimate the
+    number the app reports for the estimand the plan's lock in force recorded (``measure``, on its
+    ``scale``), from the fit the lock was recorded on, the one fit record ``GET …/fits`` marks so
+    (``Attempt.locked``), under the lock's digest: each family's :class:`Estimate`, read where
+    ``source`` says (``"results"``: ``GET …/results``' effects stage, served for the fit
+    ``served_fit``; ``"fits"``: the locked fit's record). The fit's coefficient rows stay its
+    attempt's (``Attempt.effects``). ``refused`` says why there is none, and ``refused_kind`` which
+    kind of none it is (:data:`RefusedKind`): a check judges a result none was reported or served
+    for as refused, and does not judge one it cannot know."""
 
     purpose: str | None
     attempt: str | None  # the fit record the result is from
@@ -332,19 +363,27 @@ class Result(_Strict):
     intervals: dict[str, Any] | None = None
     intervals_why: str | None = None
     lock: int | None = None  # Estimate: the lock's record seq
-    effects: dict[str, list[dict[str, Any]] | None] | None = None
+    measure: str | None = None  # Estimate: the estimand's effect measure, as the lock's plan holds it
+    scale: Scale | None = None  # ... its scale, and whether it is conditional or marginal
+    conditioning: str | None = None
+    estimates: list[Estimate] | None = None
+    source: Literal["results", "fits"] | None = None  # where the estimates were read
+    served_fit: str | None = None  # source "results": the fit key the results served them with
     refused: str | None = None
     refused_kind: RefusedKind | None = None
 
     @model_validator(mode="after")
     def _numbers_or_refused(self) -> "Result":
-        has = bool(self.scores) or bool(self.effects)
+        has = bool(self.scores) or any(e.estimate is not None for e in self.estimates or ())
         if has == (self.refused is not None):
             raise ValueError("a result holds its numbers or why it has none, not both and not "
                              "neither")
         if (self.refused is None) != (self.refused_kind is None):
             raise ValueError("a result with no numbers says which kind of none it is, and only "
                              "then")
+        if self.estimates and (self.measure is None or self.scale is None or self.source is None):
+            raise ValueError("a result's estimates name their measure, its scale and where they "
+                             "were read")
         return self
 
 
@@ -448,6 +487,7 @@ def validate(data: Any) -> Record:
     return Record.model_validate(data)
 
 
-__all__ = ["Answer", "Attempt", "Claim", "Dataset", "DatasetFile", "Decision", "Examined", "Export",
-           "Materiality", "Question", "Reason", "Record", "RefusedKind", "Refusal", "Regime",
-           "Replication", "Result", "Run", "Shift", "Spend", "Surfacings", "VERSION", "validate"]
+__all__ = ["Answer", "Attempt", "Claim", "Dataset", "DatasetFile", "Decision", "Estimate",
+           "Examined", "Export", "Materiality", "NULL_OF", "Question", "Reason", "Record",
+           "RefusedKind", "Refusal", "Regime", "Replication", "Result", "Run", "Scale", "Shift",
+           "Spend", "Surfacings", "VERSION", "validate"]

@@ -2,7 +2,7 @@
 own API, one small command at a time, each printing JSON.
 
     python -m research.swarm.driver start --data <file> [--provenance url,date,license]
-                                         --budget-fits N --budget-seconds S [--label <word>]
+                                         --budget-fits N --budget-seconds S [--scripted]
     python -m research.swarm.driver ask      --run <id>
     python -m research.swarm.driver preview  --run <id> <option> [--set name=value ...]
     python -m research.swarm.driver answer   --run <id> <option> [<option> ...] [--set ...] --reason <why>
@@ -14,13 +14,16 @@ own API, one small command at a time, each printing JSON.
     python -m research.swarm.driver stop     --run <id>
 
 **One run** is one directory, ``research/runs/<run id>/`` (``$TURBOTAB_SWARM_RUNS`` in its place
-for a test), named by the id ``start`` gives and prints: a label and a secret part
-(:func:`new_run_id`), so no analyst reaches another's run by guessing its id, and ``--run`` names
-only an id of that form whose folder is in the runs' home itself (:meth:`Run.load`). ``home/`` is
-the server's ``TURBOTAB_HOME``; ``driver.json`` holds the run's id, the
-PID and port of the server the driver started, the project's id, the fit budget, the data file
-and where it came from, and when the run started and ended; ``commands.jsonl`` holds every command
-with its arguments and a summary of its response; ``server.log`` is the server's output;
+for a test), named by the id ``start`` gives and prints (:func:`new_run_id`): a neutral label
+``start`` makes itself, ``run_`` and one more than the runs in the runs' home (``run_01``,
+``run_02``, …), never one taken from the data or chosen by the caller, since the analyst is shown
+it and no label may name a control kind; and a secret part, so no analyst reaches another's run
+by guessing its id. ``--run`` names only an id of that form whose folder is in the runs' home
+itself (:meth:`Run.load`). ``home/`` is the server's ``TURBOTAB_HOME``; ``driver.json`` holds the
+run's id, the PID and port of the server the driver started, the project's id, the fit budget, the
+data file and where it came from, and when the run started and, once ``stop`` ran, ended;
+``commands.jsonl`` holds every command with when it began (``at``) and returned (``done``), its
+arguments and a summary of its response; ``server.log`` is the server's output;
 ``exits.json`` the ways forward of the last refusal, so ``answer`` can take one; ``export.zip``
 the bundle. ``start`` runs ``python -m turbotab.server --analyst`` on a free local port with two
 workers and uploads the file; ``stop`` stops that PID and no other.
@@ -65,7 +68,8 @@ an import statement or by ``importlib``, is refused, so nothing it prints can co
 driver itself imports none of those modules, so none is loaded before a command runs.
 
 Exit status: 0 when the command did what it says, 1 when the server or the driver refused it (the
-JSON says why, with the ways forward), 2 when the command line does not read.
+JSON says why under ``refused``: a refusal by the server lists its ways forward under ``exits``,
+one by the driver none), 2 when the command line does not read.
 """
 from __future__ import annotations
 
@@ -95,9 +99,11 @@ RUNS_ENV = "TURBOTAB_SWARM_RUNS"
 WORKERS = 2  # DRIVER_PLAN D1: two workers per run's server
 # A run's id, as ``start`` gives it (:func:`new_run_id`): a label (a plain word) and a secret part,
 # 32 hex digits from ``secrets``, so no analyst reaches another's run by guessing its id (three
-# analysts run on one dataset at once, SWARM_PLAN §6).
-LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_]{0,39}$")
-RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_]{0,39}-[0-9a-f]{32}$")
+# analysts run on one dataset at once, SWARM_PLAN §6). Each is matched whole (``fullmatch``: a
+# ``$`` would match before a final newline).
+LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9_]{0,39}")
+RUN_ID = re.compile(rf"{LABEL.pattern}-[0-9a-f]{{32}}")
+LABEL_STEM = "run_"  # the neutral label ``start`` makes: ``run_`` and the run's count
 REQUEST_SECONDS = 120.0
 HEALTH_SECONDS = 180.0
 INGEST_SECONDS = 600.0
@@ -139,7 +145,9 @@ class DriverError(Exception):
 UNREAD_MODULES = ("turbotab.core.tests.truths", "research.swarm.intake", "research.swarm.decoys",
                   "research.swarm.record", "research.swarm.assemble", "research.swarm.checks",
                   "research.swarm.referee")
-UNREAD_FOLDERS = (REPO / "research" / "datasets", REPO / "research" / "corpus")
+# The dry run's folder holds corpus-shaped records with known answers for three pilot datasets.
+UNREAD_FOLDERS = (REPO / "research" / "datasets", REPO / "research" / "corpus",
+                  REPO / "research" / "swarm" / "dryrun")
 UNREAD_FILES = (REPO / "turbotab" / "core" / "tests" / "truths.py",
                 REPO / "research" / "swarm" / "decoys.py", REPO / "research" / "swarm" / "intake.py")
 _SEALED = {"on": False, "in_hook": False}
@@ -214,13 +222,16 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def new_run_id(label: str | None) -> str:
-    """A new run's id: ``label`` (the UTC time by default; letters, digits and ``_``, up to 40)
-    and 32 hex digits from ``secrets``, so an id cannot be guessed from another's."""
-    label = label if label is not None else datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    if not LABEL.match(label):
-        raise DriverError("bad_label", f"{label!r} is not a run's label (letters, digits and _, up "
-                                       f"to 40).")
+def new_run_id(home: Path) -> str:
+    """A new run's id: a neutral label made here, ``run_`` and one more than the runs in ``home``
+    (the folders named by a run's id), two digits at least, never taken from the data or chosen
+    by the caller (the module docstring); and 32 hex digits from ``secrets``, so an id cannot be
+    guessed from another's. Two runs started at once can share a label; never an id."""
+    try:
+        made = sum(1 for p in home.iterdir() if RUN_ID.fullmatch(p.name))
+    except OSError:
+        made = 0  # no runs' home yet
+    label = f"{LABEL_STEM}{made + 1:02d}"
     return f"{label}-{secrets.token_hex(16)}"
 
 
@@ -309,7 +320,7 @@ class Run:
     def load(cls, run_id: str) -> "Run":
         """The run ``run_id`` names: an id of the form ``start`` gives (:data:`RUN_ID`), whose
         folder is in the runs' home itself, not a link to a folder elsewhere."""
-        if not RUN_ID.match(run_id or ""):
+        if not RUN_ID.fullmatch(run_id or ""):
             raise DriverError("no_such_run", f"{run_id!r} is not a run id.")
         home = runs_root()
         folder = home / run_id
@@ -789,7 +800,7 @@ def cmd_start(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None
         if len(parts) != 3:
             raise DriverError("bad_provenance", "--provenance takes url,date,license.")
         provenance = dict(zip(("url", "release_date", "license"), (p.strip() for p in parts)))
-    run_id = new_run_id(args.label)
+    run_id = new_run_id(runs_root())
     folder = runs_root() / run_id
     if folder.exists():
         raise DriverError("run_exists", f"Run {run_id} exists already.")
@@ -974,19 +985,24 @@ def budget_now(run: Run, client: Client, view: dict[str, Any] | None = None) -> 
 
 def budget_met(spent: dict[str, Any]) -> bool:
     """Whether the fits made, the one under way among them, meet the budget's count or seconds."""
-    return (spent["fits"] + spent["running"] >= int(spent["budget_fits"])
-            or spent["seconds"] >= float(spent["budget_seconds"]))
+    return count_met(spent) or spent["seconds"] >= float(spent["budget_seconds"])
 
 
-def budget_words(spent: dict[str, Any]) -> str:
-    """The budget and what was spent of it, from ``GET /fits``, as a refusal says them."""
+def budget_words(spent: dict[str, Any], count: bool) -> str:
+    """The budget and what was spent of it, from ``GET /fits``, as a refusal says them: the
+    count's words where the count's rule fired (``count``), else the seconds'."""
     budget, made = int(spent["budget_fits"]), int(spent["fits"])
-    if made + spent["running"] >= budget:
+    if count:
         done = (f"{made} {'was' if made == 1 else 'were'} made and 1 is under way" if spent["running"]
                 else f"{made} {'was' if made == 1 else 'were'} made already")
         return f"the run's fit budget is {budget} {'fit' if budget == 1 else 'fits'}, and {done}"
     return (f"the run's fit budget is {float(spent['budget_seconds']):g} seconds of fitting, and "
             f"{spent['seconds']:g} were spent already")
+
+
+def count_met(spent: dict[str, Any]) -> bool:
+    """:func:`budget_met`'s count: the fits made, the one under way among them, meet the budget's."""
+    return spent["fits"] + spent["running"] >= int(spent["budget_fits"])
 
 
 PAST_BUDGET = ("Past the budget, Fit is pressed only for answers already fitted, which makes no "
@@ -998,12 +1014,13 @@ def over_budget(spent: dict[str, Any], fit_key: str | None) -> str | None:
     they stand whose fit was made already (its key among ``GET /fits``' records: one the
     scheduler ran before the press) makes no new fit, so neither rule refuses it; any other press
     would make one (the fit under way counts as that one), so it is refused once the fits made
-    reach the budget's count or their seconds its seconds."""
+    reach the budget's count or their seconds its seconds. It says the rule that fired: the
+    count's where the fits made reach it, else the seconds'."""
     if fit_key in spent["keys"]:
         return None
-    if spent["fits"] + 1 > int(spent["budget_fits"]) \
-            or spent["seconds"] >= float(spent["budget_seconds"]):
-        return f"Fit is not pressed: {budget_words(spent)}. {PAST_BUDGET}"
+    count = spent["fits"] + 1 > int(spent["budget_fits"])
+    if count or spent["seconds"] >= float(spent["budget_seconds"]):
+        return f"Fit is not pressed: {budget_words(spent, count)}. {PAST_BUDGET}"
     return None
 
 
@@ -1017,8 +1034,8 @@ def attempt_over_budget(spent: dict[str, Any], after: str | None) -> str | None:
     already made, or the one under way."""
     if not budget_met(spent) or after is None or after in spent["keys"] or after == spent["running_key"]:
         return None
-    return (f"Not recorded: this would make a new fit if recorded, and {budget_words(spent)}. "
-            f"{AFTER_BUDGET}")
+    return (f"Not recorded: this would make a new fit if recorded, and "
+            f"{budget_words(spent, count_met(spent))}. {AFTER_BUDGET}")
 
 
 class CannotTell(Exception):
@@ -1329,17 +1346,20 @@ def guard_budget(run: Run, client: Client, view: dict[str, Any], decision: dict[
     try:
         afters = fits_after(run, view, decision, reader(run, client))
     except CannotTell as exc:
-        raise DriverError("fit_budget_unknown", f"Not recorded: {budget_words(spent)}, and the driver "
-                                                f"cannot tell whether this would make a new fit: "
-                                                f"{exc}.", spent=public_budget(spent)) from None
+        raise DriverError("fit_budget_unknown", f"Not recorded: "
+                                                f"{budget_words(spent, count_met(spent))}, and "
+                                                f"the driver cannot tell whether this would make "
+                                                f"a new fit: {exc}.",
+                          spent=public_budget(spent)) from None
     new = [key for key, _ in afters if attempt_over_budget(spent, key)]
     if not new:
         return
     if len(new) < len(afters):  # some of the ways the server may record it make a new fit
-        raise DriverError("fit_budget_unknown", f"Not recorded: {budget_words(spent)}, and the driver "
-                                                f"cannot tell whether this would make a new fit: "
-                                                f"that depends on whether TurboTab records "
-                                                f"{afters[-1][1]} itself with it.",
+        raise DriverError("fit_budget_unknown", f"Not recorded: "
+                                                f"{budget_words(spent, count_met(spent))}, and "
+                                                f"the driver cannot tell whether this would make "
+                                                f"a new fit: that depends on whether TurboTab "
+                                                f"records {afters[-1][1]} itself with it.",
                           spent=public_budget(spent))
     raise DriverError("fit_budget", attempt_over_budget(spent, new[0]), spent=public_budget(spent))
 
@@ -1532,8 +1552,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--provenance", help="url,release date (YYYY-MM-DD),license")
     p.add_argument("--budget-fits", type=int, required=True)
     p.add_argument("--budget-seconds", type=float, required=True)
-    p.add_argument("--label", help="the run id's label (default: the time); start adds a secret "
-                                   "part, and prints the id")
     p.add_argument("--scripted", action="store_true",
                    help="the analyst is a script, not an agent (the dry run, the tests)")
 
@@ -1608,7 +1626,7 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] | None = None
     write(json.dumps(payload, ensure_ascii=False, default=str))
     if run is not None:
         given = {k: v for k, v in vars(args).items() if k not in ("command",) and v is not None}
-        run.log({"at": started, "command": args.command, "args": given,
+        run.log({"at": started, "done": now(), "command": args.command, "args": given,
                  "summary": summary(args.command, code, payload)})
     return code
 

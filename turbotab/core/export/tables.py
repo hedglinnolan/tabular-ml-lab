@@ -446,6 +446,7 @@ def performance(fit: Mapping[str, Any]) -> list[Table]:
                 "bootstrap" if scheme == "bootstrap" else
                 "internal–external" if scheme == "internal_external" else "k-fold")
     rows: list[dict[str, Any]] = []
+    refused: list[str] = []  # DRV-FIX: each held-out interval refused, said under the table
     for m in fit.get("models") or []:
         fam = m.get("family")
         for metric in order:
@@ -475,6 +476,10 @@ def performance(fit: Mapping[str, Any]) -> list[Table]:
                          "score": labels.get(metric, metric), "basis": "held-out rows",
                          "estimate": value, "ci_low": ci.get("ci_low"),
                          "ci_high": ci.get("ci_high"), "se": ci.get("se"), "role": role})
+            why = ci.get("refused")
+            if why:  # ``performance.Interval.refused``: the interval is refused, and why
+                refused.append(f"{family_label[fam]}'s held-out {labels.get(metric, metric)}: "
+                               f"{why[:1].lower()}{why[1:]}")
         cal = m.get("calibration") or {}
         for part in ("intercept", "slope"):
             c = cal.get(part)
@@ -517,7 +522,7 @@ def performance(fit: Mapping[str, Any]) -> list[Table]:
                          "score": labels.get(primary, primary), "basis": BASIS["holdout"],
                          "estimate": score, "ci_low": None, "ci_high": None, "se": None,
                          "role": RESULT})
-    caption = result.get("sentence") or "No result is declared."
+    caption = " ".join([result.get("sentence") or "No result is declared.", *refused])
     unseen = UNSEEN_RESULT if basis in SCORED_BASES else None
     if fit.get("withheld_for") == "fit":
         # Before Fit is pressed the fit is served without its scores or its result (P0.8): the
