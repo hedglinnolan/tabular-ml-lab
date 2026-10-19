@@ -239,6 +239,11 @@ UNMET = {
              audited_by=Audit("a domain reviewer, 2026-10-18", checked=claims.checked(
                  _graded(Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 9"))),
                  Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 9")))))),
+    # Audits are appended, oldest first, and the last is the one in force.
+    "a basis audit in force by its author, after someone else's": bound(_graded(
+        Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"),
+             audited_by=(Audit("a domain reviewer, 2026-10-16"),
+                         Audit("the R0a builder, 2026-10-18"))))),
 }
 MET = {
     "proved by a theorem": _graded(Part("value", "proved", Basis(theorem="Lean: planted.thm"))),
@@ -261,6 +266,10 @@ MET = {
     "a basis audit by someone else, of the part as it stands": bound(_graded(
         Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"),
              audited_by=Audit("a domain reviewer, 2026-10-18")))),
+    "a basis audit in force by someone else, after its author's": bound(_graded(
+        Part("value", "sourced", Basis(cites=("friedman2001",), where="p. 3"),
+             audited_by=(Audit("the R0a builder, 2026-10-16"),
+                         Audit("a domain reviewer, 2026-10-18"))))),
     "a retired part, which asserts nothing": _graded(
         Part("value", "judgment", Basis(reason="we use it")), Part("scope", "retired"),
         graded_by="", requires=()),
@@ -555,6 +564,18 @@ GATE_UNMET = {
         _promoted(referees=(FRESH_A, Referee("referee C, 2026-10-18", "upheld",
                                              fork_of="the orchestrator"))),
         "a fork of 'the orchestrator'"),
+    # Fork status and authorship are the agent's, not one verdict's (RG's verifier, P1): a name
+    # one record marks stops counting in every record of the part, compared as same_person does.
+    "an upholder another of the part's records declares a fork of its author": (
+        _promoted(referees=(FRESH_A, FRESH_B, _as(FRESH_A, fork_of="theorist A"))),
+        "'referee A' is marked a fork, or possibly its author, by another record of the part"),
+    "an upholder another of the part's records declares a fork of another agent": (
+        _promoted(referees=(FRESH_A, FRESH_B, _as(FRESH_B, fork_of="the orchestrator"))),
+        "'referee B' is marked a fork, or possibly its author, by another record of the part"),
+    "an upholder whose name another record of the part gives as possibly its author's": (
+        _promoted(referees=(Referee("theorist B, 2026-10-18", "upheld"), FRESH_A,
+                            Referee("theorist, 2026-10-18", "upheld"))),
+        "'theorist B' is marked a fork, or possibly its author, by another record of the part"),
     "two upholders and a third referee who did not uphold": (
         _promoted(referees=(FRESH_A, FRESH_B, Referee("referee C, 2026-10-18", "not_upheld"))),
         "did not uphold"),
@@ -584,6 +605,9 @@ GATE_UNMET = {
         _promoted(audited_by=Audit(AUDIT.who, STALE)), "basis audit read another version"),
     "a basis audit dated before the part entered": (
         _promoted(audited_by=Audit("a basis audit, 2020-01-01")), f"before {ENTERED}"),
+    "a basis audit in force by its author, after someone else's": (
+        _promoted(audited_by=(AUDIT, Audit("theorist A, 2026-10-18"))),
+        "its basis audit is by 'theorist A'"),
     "proved by a derivation, with no referee": (
         _promoted(grade="proved", basis=Basis(derivation=DERIVATION), referees=()),
         "two distinct referees"),
@@ -602,6 +626,11 @@ GATE_MET = {
     "two fresh upholders beside the author's and a fork's dissent, which do not count": _promoted(
         referees=(FRESH_A, FRESH_B, Referee("theorist A, 2026-10-18", "not_upheld"),
                   Referee("referee C, 2026-10-18", "not_upheld", fork_of="theorist A"))),
+    "two fresh upholders beside a fork of its author who is neither of them": _promoted(
+        referees=(FRESH_A, FRESH_B, Referee("referee F, 2026-10-18", "upheld",
+                                            fork_of="theorist A"))),
+    "a basis audit in force by someone else, after its author's": _promoted(
+        audited_by=(Audit("theorist A, 2026-10-18"), AUDIT)),
     "referees and a basis audit dated the day the part entered": _promoted(
         referees=(Referee(f"referee A, {ENTERED}", "upheld"),
                   Referee(f"referee B, {ENTERED}", "upheld")),
@@ -678,7 +707,8 @@ def test_7_fires_where_referees_and_an_audit_are_carried_to_a_higher_grade_on_a_
     """The verifier's sequence (RG-1), through the generator: the part enters unsupported, rises
     to sourced through the whole gate, then to proved on a derivation with the same referees and
     basis audit, who never read proved or the derivation. Re-refereed and re-audited, its earlier
-    referees kept beside the new as the history recorded them, it passes meta-tests 7 and 8."""
+    referees and basis audit kept beside the new as the history recorded them (audits are
+    appended, the last in force), it passes meta-tests 7 and 8."""
     reg = registry(tmp_path, swarm())
     assert _generate(reg, "2026-10-18") == 0
     sourced = _promoted(referees=(Referee("referee A, 2026-10-19", "upheld"),
@@ -700,7 +730,7 @@ def test_7_fires_where_referees_and_an_audit_are_carried_to_a_higher_grade_on_a_
     redone = _promoted(grade="proved", basis=Basis(derivation=DERIVATION),
                        referees=(*was.referees, Referee("referee C, 2026-10-20", "upheld"),
                                  Referee("referee D, 2026-10-20", "upheld")),
-                       audited_by=Audit("a basis audit, 2026-10-20"),
+                       audited_by=(was.audited_by, Audit("a basis audit, 2026-10-20")),
                        graded_by="the orchestrator, 2026-10-20",
                        regraded="a derivation proves it")
     reg = registry(tmp_path, redone)
@@ -940,9 +970,12 @@ def test_8_holds_a_swarm_part_s_retirement_to_someone_other_than_its_author(tmp_
 
 
 # A swarm claim's review stays as the history recorded it (RG-V2-1): its author, each part's
-# grader while its grade stands, and every referee as given. Each case is the planted swarm claim's
-# versions after it entered, each written by the generator a day after the one before; the last
-# makes the edit, and meta-test 7, which reads the claim as it now stands, passes it.
+# grader while its grade stands, every referee as given and every basis audit (audits are appended,
+# the last in force). Each case is the planted swarm claim's versions after it entered, each
+# written by the generator a day after the one before, except the last, which makes the edit:
+# the generator refuses it, so it is appended as the generator would write it without that
+# refusal (:func:`_by_hand`), as a history written by hand holds it. Meta-test 7, which reads the
+# claim as it now stands, passes it.
 SELF = Referee("theorist A, 2026-10-18", "upheld")  # its author, as a referee
 FORK = Referee("referee F, 2026-10-18", "upheld", fork_of="theorist A")
 DISSENT = Referee("referee C, 2026-10-18", "not_upheld")
@@ -961,17 +994,37 @@ def _reviewed(referees, author="theorist A", basis=PASSAGE, audit=AUDIT):
     return bound(swarm(author=author, parts=(part,)))
 
 
-def _through(tmp_path, *versions):
+def _day(n):
+    return (date.fromisoformat(ENTERED) + timedelta(days=n)).isoformat()
+
+
+def _through(tmp_path, *versions, last_by_hand=False):
     """Each version of one planted claim in turn, written by the generator a day after the one
-    before, from ENTERED; the registry of the last."""
+    before, from ENTERED (the last by :func:`_by_hand` where ``last_by_hand``); the registry of the
+    last."""
     for day, c in enumerate(versions):
         reg = registry(tmp_path, c)
-        when = (date.fromisoformat(ENTERED) + timedelta(days=day)).isoformat()
-        assert _generate(reg, when) == 0, c.id
+        if last_by_hand and day == len(versions) - 1:
+            _by_hand(reg, _day(day))
+        else:
+            assert _generate(reg, _day(day)) == 0, c.id
     return reg
 
 
+def _by_hand(reg, today):
+    """Append to ``reg``'s history the version lines and grade lines the generator would, with
+    none of its refusals: a history written before a refusal, or by hand, holds such lines."""
+    path = reg.history_path
+    todo = reference.pending(reg, reference.read_history(path))
+    graded, _ = reference.grade_lines(reg, reference.read_grades(path), today)
+    with path.open("a", encoding="utf-8") as f:
+        for c in reg:
+            f.writelines(reference.line(r) for r in todo if r["id"] == c.id)
+            f.writelines(reference.line(g) for g in graded if g["id"] == c.id)
+
+
 DISSENTED = _reviewed((FRESH_A, FRESH_B, DISSENT))
+REVIEWED = _reviewed((FRESH_A, FRESH_B))
 RECORD_EDITS = {
     "its author relabeled, so its own uphold and audit count": (
         (_reviewed((SELF, FRESH_B), author="theorist Z", audit=Audit("theorist A, 2026-10-18")),),
@@ -985,19 +1038,29 @@ RECORD_EDITS = {
         (DISSENTED, _reviewed((FRESH_A, FRESH_B, _as(DISSENT, verdict="upheld")))),
         "its verdict as 'upheld'"),
     "two upholds rebound to a basis they never read": (
-        (_reviewed((FRESH_A, FRESH_B)),
-         _reviewed((FRESH_A, FRESH_B), basis=NEW_PASSAGE, audit=NEW_AUDIT)),
+        (REVIEWED, _reviewed((FRESH_A, FRESH_B), basis=NEW_PASSAGE,
+                             audit=(REVIEWED.parts[0].audited_by, NEW_AUDIT))),
         "the fingerprint it read"),
     "a part's grader relabeled while its grade stands": (
         (swarm(parts=(OWN,)), swarm(parts=(dataclasses.replace(OWN, graded_by=GRADER),))),
         "records that grade by theorist A, 2026-10-18"),
+    "its author's basis audit relabeled, its fingerprint kept": (
+        (_reviewed((FRESH_A, FRESH_B), audit=Audit("theorist A, 2026-10-18")), REVIEWED),
+        "recorded the basis audit by 'theorist A, 2026-10-18'"),
+    "a basis audit rebound to a basis it never read": (
+        (REVIEWED, _reviewed((*REVIEWED.parts[0].referees, LATER,
+                              Referee("referee E, 2026-10-19", "upheld")),
+                             basis=NEW_PASSAGE, audit=AUDIT)),
+        "the basis audit by 'a basis audit, 2026-10-18' now gives the fingerprint it read"),
 }
 RECORD_KEPT = {
-    "a referee added": (_reviewed((FRESH_A, FRESH_B)), _reviewed((FRESH_A, FRESH_B, LATER))),
+    "a referee added": (REVIEWED, _reviewed((FRESH_A, FRESH_B, LATER))),
     "a dissent kept, answered by a new basis two more referees upheld": (
         DISSENTED,
         _reviewed((*DISSENTED.parts[0].referees, LATER, Referee("referee E, 2026-10-19", "upheld")),
-                  basis=NEW_PASSAGE, audit=NEW_AUDIT)),
+                  basis=NEW_PASSAGE, audit=(DISSENTED.parts[0].audited_by, NEW_AUDIT))),
+    "a basis audit added after the one recorded": (
+        REVIEWED, _reviewed((FRESH_A, FRESH_B), audit=(REVIEWED.parts[0].audited_by, NEW_AUDIT))),
 }
 
 
@@ -1005,17 +1068,37 @@ RECORD_KEPT = {
 def test_8_fires_where_a_swarm_claim_s_review_is_edited_after_the_history_recorded_it(
         tmp_path, case):
     versions, phrase = RECORD_EDITS[case]
-    reg = _through(tmp_path, swarm(), *versions)
+    reg = _through(tmp_path, swarm(), *versions, last_by_hand=True)
     assert claims.swarm_gate(reg) == [], "the edit fools meta-test 7, which reads only the claim"
     found = claims.grades_recorded(reg)
     assert found and all(v.startswith(SWARM) and phrase in v for v in found), found
+
+
+@pytest.mark.parametrize("case", sorted(RECORD_EDITS))
+def test_the_generator_refuses_an_edited_swarm_review_and_writes_nothing(tmp_path, capsys, case):
+    """INBOX (RG's repairs): the generator refuses the version that edits what the history
+    recorded of a swarm claim's review, before it appends any line, so no history it writes holds
+    the edit; ``--check`` exits 1 on it too. A review added to is written
+    (:func:`test_8_is_silent_where_a_swarm_claim_s_later_version_adds_to_its_review`)."""
+    versions, phrase = RECORD_EDITS[case]
+    _through(tmp_path, swarm(), *versions[:-1])
+    reg = registry(tmp_path, versions[-1])
+    out = reg.history_path.with_name("CLAIMS_REFERENCE.md")
+    before = (reg.history_path.read_bytes(), out.read_bytes())
+    capsys.readouterr()
+    assert _generate(reg, _day(len(versions))) == 1
+    assert phrase in capsys.readouterr().err
+    assert (reg.history_path.read_bytes(), out.read_bytes()) == before
+    assert reference.main(["--check", "--out", str(out), "--history", str(reg.history_path)],
+                          registry=reg) == 1
+    assert phrase in capsys.readouterr().err
 
 
 def test_8_fires_where_a_swarm_part_s_grader_is_cleared_while_its_grade_stands(tmp_path):
     """Meta-test 7 refuses it too, as naming no grader; meta-test 8 holds it to its line."""
     judged = dataclasses.replace(OWN, graded_by=GRADER)
     reg = _through(tmp_path, swarm(), swarm(parts=(judged,)),
-                   swarm(parts=(dataclasses.replace(judged, graded_by=""),)))
+                   swarm(parts=(dataclasses.replace(judged, graded_by=""),)), last_by_hand=True)
     found = claims.grades_recorded(reg)
     assert len(found) == 1 and found[0].startswith(f"{SWARM}: part 'value' names no dated grader")
     assert "records that grade by the orchestrator, 2026-10-18" in found[0]
@@ -1023,8 +1106,9 @@ def test_8_fires_where_a_swarm_part_s_grader_is_cleared_while_its_grade_stands(t
 
 @pytest.mark.parametrize("case", sorted(RECORD_KEPT))
 def test_8_is_silent_where_a_swarm_claim_s_later_version_adds_to_its_review(tmp_path, case):
-    """A later verdict is a referee added beside those recorded; one on a version since changed
-    stays, and no longer counts."""
+    """A later verdict is a referee added beside those recorded, and a later audit one appended
+    after them; one on a version since changed stays, and no longer counts. The generator writes
+    each version (``_through`` holds it to exit 0)."""
     reg = _through(tmp_path, swarm(), *RECORD_KEPT[case])
     assert claims.grades_recorded(reg) == []
     assert claims.swarm_gate(reg) == []
@@ -1038,3 +1122,29 @@ def test_8_is_silent_where_an_engine_or_audit_claim_s_author_or_grader_is_edited
     reg = _through(tmp_path, rule(origin=origin),
                    rule(origin=origin, author="the R0b builder", parts=(edited,)))
     assert claims.grades_recorded(reg) == []
+
+
+# ── 7 again, through the generator: a later record that marks an upholder a fork ─────────────
+
+@pytest.mark.parametrize("added, counts", [
+    (_as(FRESH_A, fork_of="theorist A"), False),
+    (FORK, True),
+], ids=["a record marking referee A a fork of its author", "a fork of its author named apart"])
+def test_7_holds_a_name_one_record_marks_a_fork_to_every_record_of_the_part(tmp_path, added,
+                                                                            counts):
+    """RG's verifier's probe (INBOX, open: RM): referees A and B uphold the part fresh, through
+    the generator, and a later version adds a record of A as a fork of its author. A fork is the
+    agent's, not one verdict's, so A stops counting in every record of the part and the gate
+    refuses; a fork named apart from A and B leaves both counting. The record added is a referee
+    added, so meta-test 8 and the generator keep it either way."""
+    reg = _through(tmp_path, swarm(), _reviewed((FRESH_A, FRESH_B)))
+    assert claims.swarm_gate(reg) == []
+    reg = registry(tmp_path, _reviewed((FRESH_A, FRESH_B, added)))
+    assert _generate(reg, "2026-10-19") == 0 and claims.grades_recorded(reg) == []
+    found = claims.swarm_gate(reg)
+    if counts:
+        assert found == []
+    else:
+        assert len(found) == 1 and "two distinct referees" in found[0], found
+        assert ("'referee A' is marked a fork, or possibly its author, by another record of the "
+                "part") in found[0]

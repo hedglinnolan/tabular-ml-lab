@@ -213,6 +213,27 @@ def test_one_batch_is_refused_where_a_decoy_would_share_it_with_its_sibling(tmp_
     assert not (tmp_path / "queue").exists(), "a refused queue writes nothing"
 
 
+@pytest.mark.parametrize("decoys", [0, 2])
+def test_more_batches_than_items_is_refused_and_writes_nothing(tmp_path, decoys):
+    """RG's verifier: eight candidates and their decoys dealt into more batches than they are
+    items would leave a batch empty, a file no referee has anything to read in."""
+    items = 8 + decoys
+    with pytest.raises(ValueError, match=f"{items + 1} batches for {items} items"):
+        decoy_queue.build(_pool()[:8], tmp_path / "queue", decoys=decoys, seed=5,
+                          batches=items + 1)
+    assert not (tmp_path / "queue").exists(), "a refused queue writes nothing"
+
+
+@pytest.mark.parametrize("decoys", [0, 2])
+def test_as_many_batches_as_items_deals_one_item_to_each(tmp_path, decoys):
+    items = 8 + decoys
+    key = decoy_queue.build(_pool()[:8], tmp_path / "queue", decoys=decoys, seed=5, batches=items)
+    files = sorted((tmp_path / "queue" / "batches").glob("batch_*.jsonl"))
+    assert len(files) == items
+    assert all(len(p.read_text(encoding="utf-8").splitlines()) == 1 for p in files)
+    assert sorted(it["batch"] for it in key["items"]) == list(range(1, items + 1))
+
+
 def test_one_batch_is_built_where_the_queue_holds_no_decoy(tmp_path):
     key = decoy_queue.build(_pool()[:8], tmp_path / "queue", decoys=0, seed=5, batches=1)
     assert key["decoys"] == [] and {it["batch"] for it in key["items"]} == {1}

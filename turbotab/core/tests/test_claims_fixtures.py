@@ -8,8 +8,8 @@ its claims render (``test_claims_frozen.py``), and :func:`write_history` writes 
 generator does, so meta-test 8 has the grade lines it reads. The predicates below are real
 functions, named as ``"module:function"`` strings, so a regime check imports them as it would an
 engine predicate. :func:`swarm` is a claim the research swarm proposed, as it enters: every part
-unsupported. :func:`bound` binds each referee and basis audit a planted claim names to its part as
-it stands, as a promotion records them.
+unsupported. :func:`bound` binds each referee and basis audit a planted claim names (each audit of
+a tuple of them too) to its part as it stands, as a promotion records them.
 
 This module holds no test; the claims tests import it.
 """
@@ -146,6 +146,9 @@ def bound(c: Claim) -> Claim:
         audit = p.audited_by
         if isinstance(audit, Audit) and not audit.checked:
             audit = dataclasses.replace(audit, checked=now)
+        elif isinstance(audit, tuple):  # audits appended, oldest first: each bound alike
+            audit = tuple(dataclasses.replace(a, checked=a.checked or now)
+                          if isinstance(a, Audit) else a for a in audit)
         parts.append(dataclasses.replace(p, referees=referees, audited_by=audit))
     return dataclasses.replace(c, parts=tuple(parts))
 
