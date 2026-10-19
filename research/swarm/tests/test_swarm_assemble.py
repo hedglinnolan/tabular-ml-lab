@@ -22,6 +22,7 @@ import copy
 import functools
 import hashlib
 import json
+import math
 import os
 import subprocess
 import time
@@ -915,13 +916,28 @@ def test_under_predict_the_result_is_the_openings_scores_once():
     assert A.result_of("prediction", records[:1], fits, A.Read(200, doc))["refused"]
 
 
+# The plan a constructed lock records: a numeric outcome's difference in its mean, whose number is
+# the locked fit's exposure row itself (``estimand.measure_facts``: a difference, conditional and
+# marginal).
+PLAN = {"estimand": {"exposure": "x", "measure": "mean_difference"}}
+
+
+def _reported(rows: dict[str, Any], ratio: bool = False) -> list[dict[str, Any]]:
+    """Each family's exposure rows as the result reports them (``record.Estimate``): on a ratio
+    scale the rows' ``ratio`` columns, on a difference scale the coefficient itself."""
+    cols = ("ratio", "ratio_low", "ratio_high") if ratio else ("estimate", "ci_low", "ci_high")
+    return [{"family": f, "feature": row["feature"], "setting": None, "estimate": row.get(cols[0]),
+             "ci_low": row.get(cols[1]), "ci_high": row.get(cols[2]), "why": None}
+            for f, rs in rows.items() for row in rs or ()]
+
+
 def test_under_estimate_the_result_is_the_fit_the_lock_in_force_was_recorded_on():
     """A fit the scheduler held for Fit completes after the lock (its records hold it), and GET
     …/fits marks it the one the lock was recorded on (``locked``); a fit after a change made with
     the estimates in view holds another plan."""
     effect = [{"feature": "x", "estimate": 0.3, "ci_low": 0.1, "ci_high": 0.5}]
     records = [_rec(1, 1, {"kind": "set_estimand"}), _rec(2, 2, {"kind": "set_adjustment"}),
-               _rec(3, 3, {"kind": "lock_plan", "digest": "lockdigest"}),
+               _rec(3, 3, {"kind": "lock_plan", "digest": "lockdigest", "plan": PLAN}),
                _rec(4, 6, {"kind": "set_exclusions", "rules": []})]
     fits = [{"id": "fit1", "plan_digest": "d1", "decisions": [1], "effects": {}, "locked": False},
             {"id": "fit2", "plan_digest": "lockdigest", "decisions": [1, 2, 3],
@@ -929,15 +945,18 @@ def test_under_estimate_the_result_is_the_fit_the_lock_in_force_was_recorded_on(
             {"id": "fit3", "plan_digest": "d3", "decisions": [1, 2, 3, 4],
              "effects": {"linear": effect}, "locked": False}]
     got = A.result_of("inference", records, fits, A.Read(200, {}))
-    assert (got["attempt"], got["lock"], got["plan_digest"], got["effects"]) == (
-        "fit2", 3, "lockdigest", {"linear": effect})
+    assert (got["attempt"], got["lock"], got["plan_digest"], got["estimates"]) == (
+        "fit2", 3, "lockdigest", _reported({"linear": effect}))
+    assert (got["measure"], got["scale"], got["source"]) == ("mean_difference", "difference",
+                                                             "fits")
     assert A.result_of("inference", records[:2], fits, A.Read(200, {}))["refused"]
 
 
 A_ROWS = [{"feature": "sugar", "estimate": -0.0276, "ci_low": -0.0395, "ci_high": -0.0156}]
 B_ROWS = [{"feature": "sugar", "estimate": -0.0262, "ci_low": -0.0384, "ci_high": -0.0140}]
 TRIED = [_rec(1, 1, {"kind": "set_estimand"}), _rec(2, 2, _rule(500)), _rec(3, 4, _rule(600)),
-         _rec(4, 6, _rule(500)), _rec(5, 7, {"kind": "lock_plan", "digest": "plan-A"})]
+         _rec(4, 6, _rule(500)), _rec(5, 7, {"kind": "lock_plan", "digest": "plan-A",
+                                             "plan": PLAN})]
 TRIED_FITS = [{"id": "fit1", "plan_digest": "plan-A", "decisions": [1, 2],
                "effects": {"linear": A_ROWS}, "locked": True},
               {"id": "fit2", "plan_digest": "plan-B", "decisions": [1, 3],
@@ -950,11 +969,11 @@ def test_under_estimate_the_result_is_the_fit_whose_plan_is_the_locks_not_the_la
     makes rule B's fit current again. The result is fit 1 both times, the fit GET …/fits marks
     as the one the lock was recorded on."""
     got = A.result_of("inference", TRIED, TRIED_FITS, A.Read(200, {}))
-    assert (got["attempt"], got["decisions"], got["effects"], got["plan_digest"]) == (
-        "fit1", [1, 2], {"linear": A_ROWS}, "plan-A")
+    assert (got["attempt"], got["decisions"], got["estimates"], got["plan_digest"]) == (
+        "fit1", [1, 2], _reported({"linear": A_ROWS}), "plan-A")
     reverted = {**_rec(6, 9, {"kind": "revert", "decision_id": "r4"}), "after_estimates": True}
     got = A.result_of("inference", TRIED + [reverted], TRIED_FITS, A.Read(200, {}))
-    assert (got["attempt"], got["effects"]) == ("fit1", {"linear": A_ROWS})
+    assert (got["attempt"], got["estimates"]) == ("fit1", _reported({"linear": A_ROWS}))
 
 
 def test_under_estimate_the_result_is_the_locked_fit_whatever_its_plans_digest():
@@ -962,10 +981,10 @@ def test_under_estimate_the_result_is_the_locked_fit_whatever_its_plans_digest()
     the sensitivity analyses) came between the fit and the press, so the lock records a digest no
     fit record holds; GET …/fits marks the fit the lock was recorded on all the same (its key), and
     the result is that fit's, under the lock's digest. Before, it was refused as not known."""
-    other = [*TRIED[:4], _rec(5, 7, {"kind": "lock_plan", "digest": "plan-C"})]
+    other = [*TRIED[:4], _rec(5, 7, {"kind": "lock_plan", "digest": "plan-C", "plan": PLAN})]
     got = A.result_of("inference", other, TRIED_FITS, A.Read(200, {}))
-    assert (got["attempt"], got["lock"], got["plan_digest"], got["effects"]) == (
-        "fit1", 5, "plan-C", {"linear": A_ROWS})
+    assert (got["attempt"], got["lock"], got["plan_digest"], got["estimates"]) == (
+        "fit1", 5, "plan-C", _reported({"linear": A_ROWS}))
     assert got.get("refused") is None
 
 
@@ -975,7 +994,7 @@ def test_under_estimate_a_lock_no_fit_record_is_marked_with_is_refused():
     the lock; nor where two are marked."""
     unmarked = [{**f, "locked": False} for f in TRIED_FITS]
     got = A.result_of("inference", TRIED, unmarked, A.Read(200, {}))
-    assert (got["attempt"], got["lock"], got["plan_digest"], got.get("effects")) == (
+    assert (got["attempt"], got["lock"], got["plan_digest"], got.get("estimates")) == (
         None, 5, "plan-A", None)
     assert (got["refused"], got["refused_kind"]) == (A.no_locked_fit(5), "not_known")
     twice = [{**f, "locked": True} for f in TRIED_FITS]
@@ -1031,6 +1050,206 @@ def test_a_lock_the_server_withdrew_is_not_the_lock_in_force():
                                   A.in_force_of([rules, undone]),
                                   A.cancelled([rules, undone])) == {"source": None,
                                                                     "why": A.WITHDRAWN}
+
+
+# ── DRV-FIX (a): under Estimate, the number the app reports for the estimand ─────────────────
+
+LOG_ODDS = {"feature": "x", "estimate": 0.5, "ci_low": 0.3, "ci_high": 0.7, "p": 0.0001,
+            "ratio": math.exp(0.5), "ratio_low": math.exp(0.3), "ratio_high": math.exp(0.7)}
+SETTING = "one unit higher than observed"
+CONTRAST = {"setting": SETTING, "risk_low": 0.30, "risk_high": 0.40, "rd": 0.10, "rr": 4 / 3,
+            "rd_low": 0.05, "rd_high": 0.15, "rr_low": 1.15, "rr_high": 1.52,
+            "rr_unbounded": False, "n_boot": 1000, "n_limit": 0, "n_failed": 0}
+
+
+def _locked(measure: str, *after: dict[str, Any]) -> list[dict[str, Any]]:
+    """A decision log as GET /projects/{pid} serves it: the goal, the outcome and the estimand
+    (`x`'s total effect as ``measure``), then the plan's lock recording the plan those hold as
+    the server records it (``plan_lock.plan_of`` and ``plan_lock.digest`` over the log's fold),
+    then ``after``, each made with the estimates in view."""
+    from turbotab.core import decisions as D, plan_lock
+
+    log = [_rec(1, 1, {"kind": "set_purpose", "purpose": "inference"}),
+           _rec(2, 2, {"kind": "set_target", "column": "y"}),
+           _rec(3, 3, {"kind": "set_estimand", "exposure": "x", "measure": measure})]
+    plan = plan_lock.plan_of(D.fold([D.DecisionRecord.model_validate(r) for r in log]))
+    log.append({**_rec(4, 4, {"kind": "lock_plan", "plan": plan,
+                              "digest": plan_lock.digest(plan)}, note=None),
+                "recorded_by": "turbotab"})
+    return log + [{**_rec(5 + i, 6 + i, d), "after_estimates": True} for i, d in enumerate(after)]
+
+
+def _locked_fit() -> list[dict[str, Any]]:
+    return [{"id": "fit1", "fit_key": "key1", "decisions": [1, 2, 3, 4],
+             "effects": {"linear": [dict(LOG_ODDS)]}, "withheld": None, "locked": True}]
+
+
+def _results(measure: str, **marginal: Any) -> dict[str, Any]:
+    """GET …/results under Estimate, served for the locked fit's key with the effects stage
+    current: the fit's exposure row (the log odds) and the effects stage's standardization of
+    ``measure`` (one contrast, :data:`CONTRAST`, unless ``marginal`` says otherwise)."""
+    served = {"declared": measure, "method": "g-computation", "contrasts": [dict(CONTRAST)],
+              "refused": None, "interval_refused": None, "exits": [], "concerns": [], **marginal}
+    return {"purpose": "inference", "fit": {"key": "key1", "fresh": True, "status": "fresh"},
+            "effects": {"key": "e1", "fresh": True, "status": "fresh"}, "withheld": None,
+            "estimand": {"exposure": "x", "measure": measure},
+            "families": [{"family": "linear", "label": "Logistic regression",
+                          "effect": [dict(LOG_ODDS)], "sequence": [], "marginal": served,
+                          "e_values": []}]}
+
+
+@pytest.mark.parametrize("measure,cols,scale", [("risk_difference", ("rd", "rd_low", "rd_high"),
+                                                 "difference"),
+                                                ("risk_ratio", ("rr", "rr_low", "rr_high"),
+                                                 "ratio")])
+def test_under_estimate_a_marginal_measure_is_the_results_standardization_not_the_log_odds(
+        measure, cols, scale):
+    """The estimand declares a marginal measure; the locked fit's row is the conditional log odds
+    per unit of `x` (0.5, 0.3 to 0.7), and the effects stage's standardization, as GET …/results
+    serves it for that fit, the risk difference 0.10 (0.05 to 0.15) or ratio 4/3 (1.15 to 1.52),
+    each constructed apart: the result is the latter, on its scale, read from the results with
+    the fit key they served it for."""
+    got = A.result_of("inference", _locked(measure), _locked_fit(),
+                      A.Read(200, _results(measure)))
+    assert (got.get("refused"), got["attempt"], got["lock"]) == (None, "fit1", 4)
+    assert (got["measure"], got["scale"], got["conditioning"], got["source"],
+            got["served_fit"]) == (measure, scale, "marginal", "results", "key1")
+    assert got["estimates"] == [{"family": "linear", "feature": "x", "setting": SETTING,
+                                 "estimate": CONTRAST[cols[0]], "ci_low": CONTRAST[cols[1]],
+                                 "ci_high": CONTRAST[cols[2]], "why": None}]
+    assert got["estimates"][0]["estimate"] not in (LOG_ODDS["estimate"], LOG_ODDS["ratio"])
+    assert validate_result(got)
+
+
+def validate_result(raw: dict[str, Any]) -> bool:
+    from research.swarm.record import Result
+
+    Result.model_validate(raw)
+    return True
+
+
+def test_a_marginal_measure_the_results_no_longer_serve_for_the_locked_plan_is_not_known():
+    """The results serve what the plan in force gives now. Both ways: a change to the plan after
+    the lock (an exclusion rule), and a fit or effects stage that is not the locked plan's or not
+    current, leave the reported risk difference not known; the same rule withdrawn again by its
+    revert leaves the plan the lock's (the server's own rule, ``plan_lock.plan_changed``), and the
+    number stands."""
+    rules = {"kind": "set_exclusions", "rules": [{"column": "x", "low": 0, "high": 9,
+                                                  "reason": "range"}]}
+    doc = _results("risk_difference")
+    changed = A.result_of("inference", _locked("risk_difference", rules), _locked_fit(),
+                          A.Read(200, doc))
+    assert (changed["refused"], changed["refused_kind"]) == (A.plan_changed_why(4),
+                                                             "not_known")
+    assert changed.get("estimates") is None and changed["attempt"] == "fit1"
+    undone = A.result_of("inference", _locked("risk_difference", rules,
+                                              {"kind": "revert", "decision_id": "r5"}),
+                         _locked_fit(), A.Read(200, doc))
+    assert undone.get("refused") is None and undone["estimates"][0]["estimate"] == 0.10
+    for part, served in (("fit", {"key": "key2", "fresh": True, "status": "fresh"}),
+                         ("fit", {"key": "key1", "fresh": False, "status": "stale"}),
+                         ("effects", {"key": "e1", "fresh": False, "status": "running"})):
+        got = A.result_of("inference", _locked("risk_difference"), _locked_fit(),
+                          A.Read(200, {**doc, part: served}))
+        assert (got["refused"], got["refused_kind"]) == (A.not_current_why(4), "not_known"), part
+    gated = A.result_of("inference", _locked("risk_difference"), _locked_fit(),
+                        A.Read(200, {**doc, "withheld": "A question the estimates rest on is open."}))
+    assert (gated["refused"], gated["refused_kind"]) == (
+        "A question the estimates rest on is open.", "not_known")
+
+
+def test_a_marginal_measure_the_effects_stage_refused_is_refused_with_its_words():
+    """The effects stage refuses the marginal risks (under multiple imputation, say), serves none
+    for a family it does not standardize, or serves the risks with their interval refused: the
+    result is refused with the stage's words where no family has a number, each family's why
+    beside it otherwise, and a number with no interval says why."""
+    words = ("The marginal risks are not pooled over multiple imputations here: the bootstrap "
+             "would have to repeat the imputation in every resample.")
+    refused = _results("risk_difference", contrasts=[], refused=words)
+    got = A.result_of("inference", _locked("risk_difference"), _locked_fit(), A.Read(200, refused))
+    assert (got["refused"], got["refused_kind"], got.get("estimates")) == (words, "not_served",
+                                                                          None)
+    assert validate_result(got)
+    two = _results("risk_difference")
+    two["families"].append({"family": "elastic_net", "label": "Elastic net", "effect": None,
+                            "sequence": [], "marginal": None, "e_values": []})
+    got = A.result_of("inference", _locked("risk_difference"), _locked_fit(), A.Read(200, two))
+    assert [(e["family"], e["estimate"], e["why"]) for e in got["estimates"]] == [
+        ("linear", 0.10, None),
+        ("elastic_net", None, "The results serve no marginal risk difference for `elastic_net`.")]
+    floor = "Too few units for an interval."
+    bare = _results("risk_difference", interval_refused=floor,
+                    contrasts=[{**CONTRAST, "rd_low": None, "rd_high": None}])
+    got = A.result_of("inference", _locked("risk_difference"), _locked_fit(), A.Read(200, bare))
+    assert got["estimates"] == [{"family": "linear", "feature": "x", "setting": SETTING,
+                                 "estimate": 0.10, "ci_low": None, "ci_high": None, "why": floor}]
+
+
+@pytest.mark.parametrize("measure,ratio,scale,conditioning", [
+    ("odds_ratio", True, "ratio", "conditional"),
+    ("mean_difference", False, "difference", "conditional and marginal")])
+def test_a_conditional_measure_is_the_locked_fits_row_on_its_scale(measure, ratio, scale,
+                                                                   conditioning):
+    """A conditional measure's number is the locked fit's exposure row as GET …/fits serves it,
+    on the measure's scale: the odds ratio its ``ratio`` columns (exp of the log odds and of its
+    interval's ends), a difference the coefficient itself. A change to the plan after the lock
+    leaves it standing (the fit record is the locked fit's); where the results serve the locked
+    plan, a row they serve otherwise leaves the number not known."""
+    log = _locked(measure)
+    got = A.result_of("inference", log, _locked_fit(), A.Read(200, _results(measure)))
+    assert (got.get("refused"), got["measure"], got["scale"], got["conditioning"],
+            got["source"]) == (None, measure, scale, conditioning, "fits")
+    assert got["estimates"] == _reported({"linear": [LOG_ODDS]}, ratio=ratio)
+    assert got["estimates"][0]["estimate"] == (math.exp(0.5) if ratio else 0.5)
+    rules = {"kind": "set_exclusions", "rules": []}
+    later = A.result_of("inference", _locked(measure, rules), _locked_fit(), A.Read(200, {}))
+    assert later["estimates"] == got["estimates"]
+    other = _results(measure)
+    other["families"][0]["effect"] = [{**LOG_ODDS, "estimate": 0.6, "ratio": math.exp(0.6)}]
+    differ = A.result_of("inference", log, _locked_fit(), A.Read(200, other))
+    assert (differ["refused"], differ["refused_kind"]) == (A.rows_differ_why(4), "not_known")
+
+
+def test_a_lock_whose_plan_declares_no_estimand_reports_no_estimate():
+    no_estimand = [*_locked("odds_ratio")[:3], _rec(4, 4, {"kind": "lock_plan", "plan": {},
+                                                            "digest": "d"})]
+    got = A.result_of("inference", no_estimand, _locked_fit(), A.Read(200, {}))
+    assert (got["refused"], got["refused_kind"]) == (A.no_estimand_why(4), "not_reported")
+
+
+# ── DRV-FIX (f): the run's end ──────────────────────────────────────────────
+
+
+def test_the_runs_end_is_when_its_last_command_returned_unless_stop_recorded_one(tmp_path):
+    """SWARM_PLAN §4's run holds its start and its end. The record is assembled with the server
+    still up, before ``stop`` writes driver.json's ``ended``, so the run's end is when the last
+    command the driver ran for it returned (``commands.jsonl``' ``done``; a line logged before
+    ``done`` was kept, its ``at``), and driver.json's own ``ended`` where it holds one."""
+    from research.swarm import driver as drv
+
+    def assembled(name: str, ended: str | None, lines: list[dict[str, Any]]) -> Any:
+        folder = tmp_path / "runs" / name
+        folder.mkdir(parents=True)
+        run = drv.Run(folder, {"run": name, "pid": 1, "port": 1, "project": "p1",
+                               "started": "2026-10-18T10:00:00+00:00", "ended": ended})
+        run.save()
+        for line in lines:
+            run.log({"command": "ask", "args": {}, "summary": {"exit": 0}, **line})
+        path, ok = A.assemble(folder, meta=META, client=FakeClient(_served_routes()),
+                              corpus=tmp_path / "corpus", mattered_wait=0)
+        assert ok, path.read_text("utf-8")[:2000]
+        return validate(json.loads(path.read_text("utf-8"))).run
+
+    lines = [{"at": "2026-10-18T10:10:00+00:00", "done": "2026-10-18T10:12:00+00:00"},
+             {"at": "2026-10-18T10:20:00+00:00", "done": "2026-10-18T10:24:30+00:00"}]
+    run = assembled("pilot-" + "1" * 32, None, lines)
+    assert (run.started.isoformat(), run.ended.isoformat()) == ("2026-10-18T10:00:00+00:00",
+                                                                "2026-10-18T10:24:30+00:00")
+    older = assembled("pilot-" + "2" * 32, None, [{"at": "2026-10-18T10:20:00+00:00"}])
+    assert older.ended.isoformat() == "2026-10-18T10:20:00+00:00"
+    stopped = assembled("pilot-" + "3" * 32, "2026-10-18T10:30:00+00:00", lines)
+    assert stopped.ended.isoformat() == "2026-10-18T10:30:00+00:00"
+    assert assembled("pilot-" + "4" * 32, None, []).ended is None  # nothing ran: no end known
 
 
 # ── reading the server ───────────────────────────────────────────────────────
@@ -1544,7 +1763,9 @@ def test_under_estimate_the_result_is_the_fit_the_lock_was_recorded_on(estimate_
     fits = served["fits"]["records"]
     locked = next(f for f in fits if f["id"] == r.attempt)
     assert changed["seq"] not in locked["decisions"]
-    assert r.effects == {f: rows for f, rows in locked["effects"].items() if rows}
+    assert (r.measure, r.scale, r.source) == ("mean_difference", "difference", "fits")
+    assert [e.model_dump() for e in r.estimates] == _reported(
+        {f: rows for f, rows in locked["effects"].items() if rows})
     later = [f for f in fits if changed["seq"] in (f["decisions"] or ())]
     assert later and all(f["id"] != r.attempt for f in later)  # the secondary analysis is not it
     mine = {d.seq: d.reason for d in rec.decisions if d.source == "analyst"}
@@ -1733,7 +1954,8 @@ def relock_e2e(tmp_path_factory) -> dict[str, Any]:
                     "locked_key": service._locked_fit(pid, records,
                                                       plan_lock.current_lock(records)),
                     "fits": client.get(f"/api/projects/{pid}/fits").json()["records"],
-                    "log": client.get(f"/api/projects/{pid}").json()["decisions"]}
+                    "log": client.get(f"/api/projects/{pid}").json()["decisions"],
+                    "results": client.get(f"/api/projects/{pid}/results").json()}
 
         e1 = snapshot("corpus_e1")
         restore = next(r for r in reversed(e1["log"])
@@ -1766,9 +1988,16 @@ def test_under_estimate_a_rule_tried_and_undone_before_the_lock_leaves_the_locke
     assert locked["fit_key"] == e1["locked_key"]
     r = e1["rec"].result
     assert r.refused is None and (r.attempt, r.decisions) == (locked["id"], locked["decisions"])
-    assert r.effects == _rows(locked) and r.effects
+    assert [e.model_dump() for e in r.estimates] == _reported(_rows(locked)) and r.estimates
     assert tried["seq"] not in r.decisions
     assert C.seal_integrity(e1["rec"]).outcome == "pass"
+    # DRV-FIX (a): the results serve the locked plan (the server's own plan rule over the log as
+    # served, the locked fit current), so the record's rows were held to the rows they serve
+    lock = next(x for x in e1["log"] if x["decision"]["kind"] == "lock_plan")
+    assert A.serves_lock(e1["results"], locked, lock, e1["log"]) is None
+    assert r.source == "fits" and _reported({f["family"]: f["effect"] for f in e1["results"]
+                                             ["families"] if f["effect"]}) == _reported(
+        _rows(locked))
 
 
 def test_under_estimate_a_revert_after_the_lock_leaves_the_locked_fits_estimate(relock_e2e):
@@ -1781,18 +2010,25 @@ def test_under_estimate_a_revert_after_the_lock_leaves_the_locked_fits_estimate(
     other = next(f for f in e3["fits"] if f["id"] != locked["id"])
     assert _rows(other) and _rows(other) != _rows(locked)
     rec = e3["rec"]
-    assert (rec.result.attempt, rec.result.effects) == (locked["id"], _rows(locked))
+    assert rec.result.attempt == locked["id"]
+    # DRV-FIX (a): the revert after the lock changed the plan by the server's own rule, so the
+    # results serve another plan's estimate, and the locked fit's own rows stand
+    lock = next(x for x in e3["log"] if x["decision"]["kind"] == "lock_plan")
+    assert A.serves_lock(e3["results"], locked, lock, e3["log"]) == (A.plan_changed_why(
+        lock["seq"]), "not_known")
+    assert [e.model_dump() for e in rec.result.estimates] == _reported(_rows(locked))
     assert C.seal_integrity(rec).outcome == "pass"
     wrong = rec.model_dump(mode="json", by_alias=True)
     wrong["result"].update(attempt=other["id"], decisions=other["decisions"],
-                           effects=_rows(other))
+                           estimates=_reported(_rows(other)))
     assert C.seal_integrity(validate(wrong)).outcome != "pass"
 
 
 # ── end to end: own answers previewed, one fit, and a lock the fit records do not name ──
 # (DB-V4, DB-V5)
 
-KNOWN = {"family": "linear", "feature": "sugar", "value": 9.0}  # constructed: no interval near it
+# Constructed: no interval near it, a value of the NHANES estimand's measure.
+KNOWN = {"family": "linear", "feature": "sugar", "measure": "mean_difference", "value": 9.0}
 
 
 class PreviewingDriver(ScriptedDriver):
@@ -1894,7 +2130,8 @@ def test_on_the_server_the_locked_fit_is_the_result_whatever_its_plans_digest(lo
     assert any(row["estimate"] is not None for rs in rows.values() for row in rs)
     r = rec.result
     assert (r.refused, r.lock, r.plan_digest) == (None, lock["seq"], lock["decision"]["digest"])
-    assert (r.attempt, r.decisions, r.effects) == (locked["id"], locked["decisions"], rows)
+    assert (r.attempt, r.decisions) == (locked["id"], locked["decisions"])
+    assert [e.model_dump() for e in r.estimates] == _reported(rows)
     known = C.known_answer(rec)
     assert known.outcome == "fail" and all("excludes the known answer 9.0" in p
                                            for p in known.problems), known

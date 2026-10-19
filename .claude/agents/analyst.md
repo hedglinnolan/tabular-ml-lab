@@ -61,7 +61,8 @@ app computes; if `ask` still shows the question waiting, run it again.
 - `fit`: presses Fit. Under Estimate this locks the plan. The run has a fit budget, a number of
   fits and of seconds, and `fit` says what is spent. Once either is spent, `fit` is refused
   unless the answers as they stand were fitted already, since pressing Fit for them makes no new
-  fit. An `answer` or `revisit` that would make a new fit is refused then too, and so is one the
+  fit; the refusal's message says which was spent: the fits where they were, else the seconds.
+  An `answer` or `revisit` that would make a new fit is refused then too, and so is one the
   driver cannot tell makes none; one it can tell makes none, such as going back to a model
   already fitted, still goes through.
 

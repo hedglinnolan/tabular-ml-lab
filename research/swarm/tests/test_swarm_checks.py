@@ -13,10 +13,13 @@ from research.swarm import checks as C
 from research.swarm.assemble import write
 from research.swarm.record import validate
 from research.swarm.tests.constructed import (
+    EFFECT,
     decision,
     estimate_record,
+    marginal_record,
     movement,
     predict_record,
+    reported,
     revert_record,
 )
 
@@ -94,10 +97,21 @@ def test_seal_integrity_fires_on_a_record_after_the_seal_in_the_result_when_no_o
 def test_seal_integrity_fires_on_estimates_that_are_not_its_named_fits():
     """DB-V3 (b): the post-lock fit's estimate reported under the locked fit's name."""
     data = estimate_record()
-    data["result"]["effects"] = copy.deepcopy(data["attempts"][1]["effects"])
+    data["result"]["estimates"] = [reported("linear", data["attempts"][1]["effects"]["linear"][0])]
     got = outcome(C.seal_integrity, data)
     assert got.outcome == "fail"
     assert got.problems == ["The result's estimates are not those its fit #1 serves."]
+
+
+def test_seal_integrity_fires_on_estimates_the_results_served_for_another_fit():
+    """DRV-FIX (a): a marginal risk difference is read from GET …/results, which serves it with
+    the fit it was computed for: the locked fit's key passes, another fit's fails."""
+    data = marginal_record()
+    assert outcome(C.seal_integrity, data).outcome == "pass"
+    data["result"]["served_fit"] = "key2"
+    got = outcome(C.seal_integrity, data)
+    assert got.problems == ["The result's estimates were served for fit `key2`, not for fit #1, "
+                            "the one the lock at record #4 was recorded on."]
 
 
 def test_seal_integrity_fires_on_a_named_fit_that_read_a_change_made_with_the_estimates_in_view():
@@ -448,7 +462,8 @@ def test_known_answer_reads_the_repos_fixture_truths_by_default():
                                           (-0.01, "fail")])
 def test_known_answer_holds_an_estimate_whose_interval_covers_the_declared_value(value, status):
     data = estimate_record("known_answer")
-    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": value}
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "measure": "mean_difference",
+                                "value": value}
     got = outcome(C.known_answer, data, truths={"table.csv": {}})
     assert got.outcome == status
 
@@ -494,20 +509,22 @@ def test_a_result_with_no_row_of_the_known_answers_family_says_which_family():
     does hold an estimate of `x`. With no family named, a result with no row of `x` says so as
     before."""
     data = estimate_record("known_answer")
-    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": 0.3}
-    data["result"]["effects"] = {"elastic_net": copy.deepcopy(data["result"]["effects"]["linear"])}
-    data["attempts"][0]["effects"] = copy.deepcopy(data["result"]["effects"])
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "measure": "mean_difference",
+                                "value": 0.3}
+    data["result"]["estimates"] = [reported("elastic_net", EFFECT[0])]
+    data["attempts"][0]["effects"] = {"elastic_net": copy.deepcopy(EFFECT)}
     got = outcome(C.known_answer, data, truths={"table.csv": {}})
     assert got.problems == ["The result holds no `linear` estimate of `x`, the known answer's."]
-    data["dataset"]["known"] = {"feature": "z", "value": 0.3}
+    data["dataset"]["known"] = {"feature": "z", "measure": "mean_difference", "value": 0.3}
     got = outcome(C.known_answer, data, truths={"table.csv": {}})
     assert got.problems == ["The result holds no estimate of `z`, the known answer's."]
 
 
 def test_known_answer_holds_a_refused_result():
     data = estimate_record("known_answer")
-    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": 9.0}
-    data["result"].update(effects=None, refused="The plan was never locked.",
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "measure": "mean_difference",
+                                "value": 9.0}
+    data["result"].update(estimates=None, refused="The plan was never locked.",
                           refused_kind="not_reported")
     assert outcome(C.known_answer, data, truths={"table.csv": {}}).outcome == "pass"
     data["result"].update(refused="The locked fit serves no exposure rows.",
@@ -519,7 +536,7 @@ def test_known_answer_holds_a_refused_result():
 
 
 def _unknown(data):
-    data["result"].update(attempt=None, decisions=None, effects=None,
+    data["result"].update(attempt=None, decisions=None, estimates=None,
                           refused="No fit record holds the plan the lock at record #4 recorded.",
                           refused_kind="not_known")
     return data
@@ -529,7 +546,8 @@ def test_known_answer_does_not_judge_a_result_the_record_cannot_know():
     """The known answer 9.0 lies outside every interval the record could hold (constructed): a
     result whose fit is not identified is neither right nor refused, so it is not checked."""
     data = _unknown(estimate_record("known_answer"))
-    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": 9.0}
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "measure": "mean_difference",
+                                "value": 9.0}
     got = outcome(C.known_answer, data, truths={"table.csv": {}})
     assert (got.outcome, got.problems) == ("not_checked", [])
     assert got.unchecked == ["The record cannot say what result the run reported, so it is not "
@@ -545,7 +563,7 @@ def test_null_decoy_does_not_judge_a_result_the_record_cannot_know():
 
 def test_a_result_with_no_numbers_names_its_kind():
     data = estimate_record()
-    data["result"].update(effects=None, refused="The plan was never locked.")
+    data["result"].update(estimates=None, refused="The plan was never locked.")
     with pytest.raises(ValueError, match="which kind of none"):
         validate(data)
     numbered = estimate_record()
@@ -560,8 +578,9 @@ def test_a_result_with_no_numbers_names_its_kind():
 @pytest.mark.parametrize("value", [0.0, 0.9])
 def test_known_answer_does_not_judge_an_estimate_with_no_interval(value):
     data = estimate_record("known_answer")
-    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": value}
-    data["result"]["effects"]["linear"][0].update(estimate=0.9, ci_low=None, ci_high=None)
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "measure": "mean_difference",
+                                "value": value}
+    data["result"]["estimates"][0].update(estimate=0.9, ci_low=None, ci_high=None)
     got = outcome(C.known_answer, data, truths={"table.csv": {}})
     assert (got.outcome, got.problems) == ("not_checked", [])
     assert got.unchecked == [f"`linear` estimates `x` at 0.9 with no interval, so whether it holds "
@@ -569,9 +588,12 @@ def test_known_answer_does_not_judge_an_estimate_with_no_interval(value):
 
 
 def test_known_answer_holds_a_row_the_engine_did_not_estimate():
+    """The linear family's row is not estimated (refused), beside another family's number."""
     data = estimate_record("known_answer")
-    data["dataset"]["known"] = {"family": "linear", "feature": "x", "value": 9.0}
-    data["result"]["effects"]["linear"][0].update(estimate=None, ci_low=None, ci_high=None)
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "measure": "mean_difference",
+                                "value": 9.0}
+    data["result"]["estimates"] = [reported("linear", {"feature": "x"}, why="not estimated"),
+                                   reported("elastic_net", EFFECT[0])]
     assert outcome(C.known_answer, data, truths={"table.csv": {}}).outcome == "pass"
 
 
@@ -593,7 +615,7 @@ def test_null_decoy_is_not_judged_on_a_run_that_is_not_a_decoy():
                                              (-0.10, 0.50, "pass")])
 def test_null_decoy_fires_on_an_exposure_interval_that_excludes_no_effect(low, high, status):
     data = estimate_record("null_decoy")
-    data["result"]["effects"]["linear"][0].update(ci_low=low, ci_high=high)
+    data["result"]["estimates"][0].update(ci_low=low, ci_high=high)
     got = outcome(C.null_decoy, data)
     assert got.outcome == status
 
@@ -615,7 +637,7 @@ def test_null_decoy_does_not_pass_a_result_with_no_interval_to_judge():
 
 def test_null_decoy_holds_a_run_that_reported_no_result():
     data = estimate_record("null_decoy")
-    data["result"].update(effects=None, refused="The plan was never locked.",
+    data["result"].update(estimates=None, refused="The plan was never locked.",
                           refused_kind="not_reported")
     got = outcome(C.null_decoy, data)
     assert (got.outcome, got.notes) == ("pass", ["No result was reported: The plan was never "
@@ -629,14 +651,118 @@ def test_null_decoy_holds_a_run_that_reported_no_result():
 
 def test_null_decoy_does_not_judge_an_estimate_with_no_interval():
     data = estimate_record("null_decoy")
-    data["result"]["effects"]["linear"][0].update(estimate=0.9, ci_low=None, ci_high=None)
+    data["result"]["estimates"][0].update(estimate=0.9, ci_low=None, ci_high=None)
     got = outcome(C.null_decoy, data)
     assert (got.outcome, got.problems) == ("not_checked", [])
     assert got.unchecked == ["`linear` reports `x` at 0.9 with no interval, so whether it excludes "
                              "no effect is not checked."]
     refused = estimate_record("null_decoy")
-    refused["result"]["effects"]["linear"][0].update(estimate=None, ci_low=None, ci_high=None)
+    refused["result"]["estimates"] = [reported("linear", {"feature": "x"}, why="not estimated"),
+                                      reported("elastic_net", {**EFFECT[0], "ci_low": -0.1})]
     assert outcome(C.null_decoy, refused).outcome == "pass"  # not estimated: no finding
+
+
+# ── DRV-FIX (a): the checks read the number the app reports for the estimand ─────────────────
+
+
+@pytest.mark.parametrize("value,status", [(0.10, "pass"), (0.5, "fail")])
+def test_known_answer_reads_the_reported_risk_difference_not_the_log_odds(value, status):
+    """The locked fit's row is the conditional log odds per unit of `x` (0.3 to 0.7) and the
+    result the marginal risk difference the results served (0.05 to 0.15), constructed apart
+    (``constructed.marginal_record``): a known risk difference of 0.10 is held by the reported
+    interval, which the log odds' would exclude, and one of 0.5 is not, which the log odds' would
+    hold."""
+    data = marginal_record("known_answer")
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "measure": "risk_difference",
+                                "value": value}
+    got = outcome(C.known_answer, data, truths={"table.csv": {}})
+    assert got.outcome == status
+    assert got.problems == ([] if status == "pass" else [
+        "`linear` estimates `x` at 0.1 (0.05 to 0.15), an interval that excludes the known answer "
+        "0.5."])
+
+
+@pytest.mark.parametrize("measure,scale,low,high,status", [
+    ("risk_difference", "difference", -0.05, 0.15, "pass"),
+    ("risk_difference", "difference", 0.05, 0.15, "fail"),
+    ("risk_ratio", "ratio", 0.9, 1.3, "pass"),
+    ("risk_ratio", "ratio", 1.1, 1.5, "fail")])
+def test_a_known_null_effect_is_the_null_of_the_reported_scale(measure, scale, low, high, status):
+    """A declared null ("no effect on every scale") is 0 on a difference and 1 on a ratio: a risk
+    ratio from 0.9 to 1.3 holds it, though it excludes 0; one from 1.1 to 1.5 does not."""
+    data = marginal_record("known_answer")
+    data["result"].update(measure=measure, scale=scale)
+    data["result"]["estimates"][0].update(estimate=round((low + high) / 2, 3), ci_low=low,
+                                          ci_high=high)
+    data["dataset"]["known"] = {"family": "linear", "feature": "x", "null": True}
+    assert outcome(C.known_answer, data, truths={"table.csv": {}}).outcome == status
+
+
+def test_known_answer_does_not_compare_an_answer_of_another_measure():
+    """A known answer is a value of one measure: against a result reporting another, or naming
+    none, it is not checked, and says which; of the result's own measure it is."""
+    data = marginal_record("known_answer")
+    data["dataset"]["known"] = {"feature": "x", "measure": "odds_ratio", "value": 1.0}
+    got = outcome(C.known_answer, data, truths={"table.csv": {}})
+    assert (got.outcome, got.problems) == ("not_checked", [])
+    assert got.unchecked == ["The known answer is a value of `odds_ratio`, and the result reports "
+                             "`risk_difference`, so whether it holds the known answer is not "
+                             "checked."]
+    data["dataset"]["known"] = {"feature": "x", "value": 0.1}
+    got = outcome(C.known_answer, data, truths={"table.csv": {}})
+    assert (got.outcome, got.unchecked) == ("not_checked", [
+        "The known answer names no measure, so it is not compared with the result's "
+        "`risk_difference`."])
+    data["dataset"]["known"] = {"feature": "x", "measure": "risk_difference", "value": 0.1}
+    assert outcome(C.known_answer, data, truths={"table.csv": {}}).outcome == "pass"
+
+
+@pytest.mark.parametrize("measure,low,high,status", [
+    ("odds_ratio", 0.9, 1.3, "pass"), ("odds_ratio", 1.1, 1.5, "fail"),
+    ("odds_ratio", 0.6, 0.95, "fail"), ("risk_difference", 0.05, 0.15, "fail"),
+    ("risk_difference", -0.05, 0.15, "pass")])
+def test_null_decoy_reads_no_effect_on_the_reported_scale(measure, low, high, status):
+    """On a ratio scale no effect is 1, on a difference 0: an odds ratio from 0.9 to 1.3 is no
+    finding (an interval read as if 0 were no effect would be one), one from 1.1 to 1.5 or from
+    0.6 to 0.95 is; the reported marginal risk difference is judged on its own scale."""
+    data = marginal_record("null_decoy")
+    if measure == "odds_ratio":
+        data["result"].update(measure=measure, scale="ratio", conditioning="conditional",
+                              source="fits", served_fit=None,
+                              estimates=[reported("linear", data["attempts"][0]["effects"]
+                                                  ["linear"][0], ratio=True)])
+    middle = round((low + high) / 2, 3)
+    data["result"]["estimates"][0].update(estimate=middle, ci_low=low, ci_high=high)
+    got = outcome(C.null_decoy, data)
+    assert got.outcome == status
+    null = 1.0 if measure == "odds_ratio" else 0.0
+    assert got.problems == ([] if status == "pass" else [
+        f"`linear` reports `x` at {middle} ({low} to {high}), an interval that excludes no effect "
+        f"({null})."])
+
+
+TIED = ("The model gives everyone the same score, so it does not rank anyone, and no interval is "
+        "reported.")
+
+
+@pytest.mark.parametrize("auc,status", [(0.5, "pass"), (0.6, "not_checked")])
+def test_null_decoy_reads_a_score_whose_interval_is_refused(auc, status):
+    """DRV-FIX (b): a model that gives everyone the same score has its held-out AUC's interval
+    refused and an AUC of 0.5, no skill itself: no finding, said so. A score above no skill with
+    no interval is not checked: whether its interval would lie above no skill is not known."""
+    data = predict_record("null_decoy")
+    data["result"]["intervals"]["auc"] = {"estimate": auc, "se": None, "ci_low": None,
+                                          "ci_high": None, "level": 0.95, "method": "DeLong",
+                                          "refused": TIED}
+    got = outcome(C.null_decoy, data)
+    assert (got.outcome, got.problems) == (status, [])
+    if status == "pass":
+        assert got.notes == [f"`linear` scores a held-out auc of {auc}, at or below the 0.5 of no "
+                             f"skill, with no interval ({TIED}): no finding."]
+    else:
+        assert got.unchecked == [f"`linear` scores a held-out auc of {auc} with no interval, so "
+                                 f"whether it lies above the 0.5 of no skill is not checked: "
+                                 f"{TIED}"]
 
 
 # ── 6. robustness ────────────────────────────────────────────────────────────

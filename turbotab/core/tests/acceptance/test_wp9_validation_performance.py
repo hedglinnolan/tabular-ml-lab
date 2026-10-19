@@ -354,6 +354,45 @@ def test_2a_the_holdout_auc_interval_is_delongs_and_matches_proc():
     assert clustered.method == "DeLong, clustered by person"
 
 
+
+def test_2a2_a_model_that_gives_everyone_one_score_has_its_auc_interval_refused():
+    """DRV-FIX (b): where every case–control pair ties (one score for every row), the AUC is 0.5 by
+    its ties alone, as scikit-learn's ``roc_auc_score`` gives it, and DeLong's variance is 0: an
+    interval of no width, which says nothing of a model that ranks no one. It is refused with the
+    plain reason, unclustered and clustered, and so on the held-out rows (``score_intervals``, which
+    the fit stage's held-out detail is built from), the other scores keeping theirs. The other way:
+    scores with a few ties, and one score for every row but one, keep DeLong's interval, its
+    variance written from its definition (``references_validation.delong_by_definition``)."""
+    rng = np.random.default_rng(11)
+    positive = rng.random(200) < 0.3
+    flat = np.full(200, 0.27)
+    got = perf.auc_interval(positive, flat)
+    assert got.estimate == roc_auc_score(positive, flat) == 0.5
+    assert (got.se, got.ci_low, got.ci_high, got.method) == (None, None, None, "DeLong")
+    assert got.refused == perf.TIED == ("The model gives everyone the same score, so it does not "
+                                        "rank anyone, and no interval is reported.")
+    clustered = perf.auc_interval(positive, flat, groups=np.repeat(np.arange(40), 5), unit="person")
+    assert (clustered.estimate, clustered.se, clustered.ci_low, clustered.refused) == (
+        0.5, None, None, perf.TIED)
+    assert clustered.method == "DeLong, clustered by person"
+    held = perf.score_intervals("binary", np.where(positive, 1, 0),
+                                np.column_stack([1 - flat, flat]), classes=[0, 1])
+    assert (held["auc"].estimate, held["auc"].ci_low, held["auc"].refused) == (0.5, None, perf.TIED)
+    assert held["brier"].ci_low is not None and held["brier"].refused is None
+
+    few = np.round(rng.random(200), 2)  # two decimals: some pairs tie, most do not
+    assert len(np.unique(few)) < 200
+    all_but_one = np.where(np.arange(200) == 0, 0.9, 0.27)
+    for score in (few, all_but_one):
+        got = perf.auc_interval(positive, score)
+        auc, var = ref.delong_by_definition(positive, score)
+        assert got.refused is None and var > 0
+        assert got.estimate == pytest.approx(auc, abs=1e-12)
+        assert got.estimate == pytest.approx(roc_auc_score(positive, score), abs=1e-12)
+        assert got.se == pytest.approx(math.sqrt(var), rel=1e-10)
+        assert got.ci_low < got.estimate < got.ci_high
+
+
 def test_2b_cross_validated_scores_carry_ledells_standard_error():
     """Formula: the SE of a 5-fold AUC is LeDell, Petersen & van der Laan's (Electron J Stat
     2015;9:1583) ``√(Σ_v Var_v)/V`` with each fold's DeLong variance, recomputed here from

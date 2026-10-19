@@ -19,6 +19,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -121,6 +122,29 @@ def test_a_fit_under_way_counts_as_made():
                                             "and 1 was made and 1 is under way. Past the "
                                             "budget, Fit is pressed only for answers already "
                                             "fitted, which makes no new fit.")
+
+
+def test_the_budgets_refusal_names_the_rule_that_fired():
+    """DRV-FIX (g, M1): two fits and 100 seconds budgeted. The seconds spent with one fit made and
+    one under way: a press for a new fit is refused by the seconds (one more fit would not pass
+    the count), and says the seconds, not the count; with two fits made the count fired too, and
+    says the count. An answer is held to ``budget_met``'s count, which counts the fit under way:
+    with one made and one under way the count is met, and says so; with none made and the seconds
+    spent, the seconds."""
+    seconds = spent(1, 100.0, keys=["a"], running="b")
+    assert driver.over_budget(seconds, "new") == (
+        "Fit is not pressed: the run's fit budget is 100 seconds of fitting, and 100 were spent "
+        "already. Past the budget, Fit is pressed only for answers already fitted, which makes no "
+        "new fit.")
+    assert driver.over_budget(spent(2, 100.0, keys=["a", "b"]), "new") == (
+        "Fit is not pressed: the run's fit budget is 2 fits, and 2 were made already. Past the "
+        "budget, Fit is pressed only for answers already fitted, which makes no new fit.")
+    assert driver.attempt_over_budget(spent(1, 9.0, keys=["a"], running="b"), "new").startswith(
+        "Not recorded: this would make a new fit if recorded, and the run's fit budget is 2 fits, "
+        "and 1 was made and 1 is under way.")
+    assert driver.attempt_over_budget(spent(0, 100.0, keys=[]), "new").startswith(
+        "Not recorded: this would make a new fit if recorded, and the run's fit budget is 100 "
+        "seconds of fitting, and 100 were spent already.")
 
 
 def test_past_the_budget_an_answer_that_makes_a_new_fit_is_refused():
@@ -385,7 +409,10 @@ def test_an_answer_says_why(tmp_path, monkeypatch):
                                     # DRV-INT: well-formed once, guessable now (no secret part)
                                     "r1", "full", "20261018T101500-1a2b3c",
                                     "test-" + "0123456789ABCDEF" * 2, "test-" + "0" * 31,
-                                    "../test-" + "0" * 32, "test/" + "0" * 32])
+                                    "../test-" + "0" * 32, "test/" + "0" * 32,
+                                    # DRV-FIX (e): ``$`` matches before a final newline
+                                    "test-" + "0123456789abcdef" * 2 + "\n",
+                                    "run_01-" + "0" * 32 + "\n"])
 def test_a_run_is_named_by_its_id_alone(tmp_path, monkeypatch, run_id):
     """A run id is a label and a secret part (:func:`driver.new_run_id`); anything else names no
     run, whatever folder it would reach."""
@@ -395,24 +422,56 @@ def test_a_run_is_named_by_its_id_alone(tmp_path, monkeypatch, run_id):
     assert payload["refused"]["message"] == f"{run_id!r} is not a run id."
 
 
-def test_each_run_id_start_gives_carries_an_unguessable_part():
+def test_each_run_id_start_gives_carries_a_neutral_label_and_an_unguessable_part(tmp_path):
     """DRV-INT (DRV-A's verifier): three analysts run at once, each naming its run with --run, so
-    no analyst may reach another's run by guessing its id. ``start`` gives each run its id: a
-    label and 32 hex digits from ``secrets`` (128 bits), so ids drawn for one label differ; a
-    label that is not a plain word is refused, and ``start`` takes no id of its own."""
-    ids = {driver.new_run_id("pilot") for _ in range(50)}
+    no analyst may reach another's run by guessing its id: 32 hex digits from ``secrets`` (128
+    bits), so ids drawn alike differ. DRV-FIX (c): the label is shown to the run's analyst (ask's
+    ``run``, the id its prompt names), so ``start`` makes it itself, ``run_`` and one more than
+    the runs in the runs' home, two digits at least: never taken from the data or chosen by the
+    caller, so no label names a control kind. ``start`` takes no id of its own."""
+    home = tmp_path / "runs"
+    ids = {driver.new_run_id(home) for _ in range(50)}  # no home yet: each the first run's
     assert len(ids) == 50
     for run_id in ids:
         label, secret = run_id.rsplit("-", 1)
-        assert label == "pilot" and len(secret) == 32 and int(secret, 16) >= 0
-        assert driver.RUN_ID.match(run_id)
-    assert driver.RUN_ID.match(driver.new_run_id(None))  # the time, by default
-    for label in ("a/b", "../x", "", "x" * 41, "a b"):
-        with pytest.raises(driver.DriverError):
-            driver.new_run_id(label)
+        assert label == "run_01" and len(secret) == 32 and int(secret, 16) >= 0
+        assert driver.RUN_ID.fullmatch(run_id)
+    for made in sorted(ids)[:2]:
+        (home / made).mkdir(parents=True)
+    (home / "data").mkdir()  # not a run
+    (home / "run_07-notarun").mkdir()  # not a run's id either
+    assert driver.new_run_id(home).startswith("run_03-")
+    for n in range(3, 120):
+        (home / f"run_{n:02d}-{n:032x}").mkdir()
+    assert driver.new_run_id(home).startswith("run_120-")
     with pytest.raises(SystemExit):
         driver.build_parser().parse_args(["start", "--data", "x.csv", "--budget-fits", "1",
                                           "--budget-seconds", "1", "--run", RID])
+
+
+def test_start_takes_no_label_from_its_caller(tmp_path, monkeypatch):
+    """DRV-FIX (c): a caller's label (here the dry run's ``decoy_single``, which would tell its
+    analyst it is on a decoy) is a command line that does not read (2), and nothing is made; on a
+    data file named for the decoy, the run ``start`` makes is ``run_01-…``, naming none of it.
+    The server is not started here: ``start_server`` is replaced by one that refuses, so the start
+    stops right after the run's folder is made."""
+    monkeypatch.setenv(driver.RUNS_ENV, str(tmp_path / "runs"))
+
+    def no_server(folder: Path, port: int) -> Any:
+        raise RuntimeError("no server in this test")
+
+    monkeypatch.setattr(driver, "start_server", no_server)
+    data = tmp_path / "decoy_single.csv"
+    data.write_bytes(FIXTURE.read_bytes())
+    argv = ["start", "--data", str(data), "--budget-fits", "1", "--budget-seconds", "60",
+            "--scripted"]
+    assert driver.main([*argv, "--label", "decoy_single"], out=lambda s: None) == 2
+    assert not (tmp_path / "runs").exists()
+    code, payload = run_main(argv)
+    assert code == 1 and payload["refused"]["code"] == "driver_failed"
+    (made,) = (tmp_path / "runs").iterdir()
+    assert driver.RUN_ID.fullmatch(made.name) and made.name.startswith("run_01-")
+    assert "decoy" not in made.name and "single" not in made.name
 
 
 def test_a_run_id_that_reaches_outside_the_runs_home_names_no_run(tmp_path, monkeypatch):
@@ -444,7 +503,10 @@ def test_an_analysts_command_reads_no_answer_truth_decoy_or_record(tmp_path, mon
                repo / "research" / "datasets" / "outpatient_admission_predict" / "manifest.json",
                repo / "research" / "corpus" / f"{RID}.json",
                repo / "turbotab" / "core" / "tests" / "truths.py",
-               repo / "research" / "swarm" / "decoys.py"]
+               repo / "research" / "swarm" / "decoys.py",
+               # DRV-FIX (d): corpus-shaped records with known answers for three pilot datasets
+               repo / "research" / "swarm" / "dryrun" / "comparison.json",
+               repo / "research" / "swarm" / "dryrun" / "comparison.md"]
     folder = fake_run(tmp_path, monkeypatch)
     allowed = [folder / "driver.json", FIXTURE]
     with driver.analyst_sealed():
@@ -556,12 +618,38 @@ def test_a_server_that_does_not_answer_is_said_in_json(tmp_path, monkeypatch):
     assert logged == ["server_unreachable", "driver_failed"]
 
 
+def test_each_command_is_logged_with_when_it_began_and_when_it_returned(tmp_path, monkeypatch):
+    """DRV-FIX (f): the record's run ends when its last command returned, so each line of
+    ``commands.jsonl`` keeps ``done`` beside ``at``, both UTC times, ``done`` no earlier."""
+    from datetime import datetime
+
+    folder = fake_run(tmp_path, monkeypatch)
+    run_main(["answer", "--run", RID, "impute", "--reason", "   "])
+    logged = json.loads((folder / "commands.jsonl").read_text().splitlines()[-1])
+    began, done = (datetime.fromisoformat(logged[k]) for k in ("at", "done"))
+    assert began.utcoffset().total_seconds() == done.utcoffset().total_seconds() == 0
+    assert began <= done
+
+
 def test_a_stopped_run_takes_no_more_commands(tmp_path, monkeypatch):
     folder = fake_run(tmp_path, monkeypatch)
     meta = json.loads((folder / "driver.json").read_text())
     (folder / "driver.json").write_text(json.dumps({**meta, "ended": "2026-10-18T00:00:00+00:00"}))
     code, payload = run_main(["ask", "--run", RID])
     assert code == 1 and payload["refused"]["code"] == "run_stopped"
+
+
+
+def test_the_exit_status_is_said_as_the_driver_answers():
+    """DRV-FIX (h): a refusal by the server carries its ways forward and one by the driver none
+    (``main``: the driver's refusal is its code, message and what it says beside them;
+    ``analyst.md`` says so), so the module docstring says that, and not that every refusal lists
+    ways forward."""
+    text = " ".join(driver.__doc__.split())
+    assert "(the JSON says why, with the ways forward)" not in text
+    assert ("1 when the server or the driver refused it (the JSON says why under ``refused``: a "
+            "refusal by the server lists its ways forward under ``exits``, one by the driver "
+            "none)") in text
 
 
 HOOKED = {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
@@ -591,7 +679,7 @@ def test_a_run_does_not_start_where_the_analyst_is_not_held(tmp_path, monkeypatc
     monkeypatch.setenv(driver.RUNS_ENV, str(tmp_path / "runs"))
     monkeypatch.setattr(driver, "SETTINGS_FILES", (tmp_path / "none.json",))
     code, payload = run_main(["start", "--data", str(FIXTURE), "--budget-fits", "1",
-                              "--budget-seconds", "60", "--label", "unguarded"])
+                              "--budget-seconds", "60"])
     assert code == 1 and payload["refused"]["code"] == "unguarded"
     assert "analyst_hook.py" in payload["refused"]["message"]
     assert not (tmp_path / "runs").exists()
@@ -843,12 +931,12 @@ def listening(port: int) -> bool:
 
 def start(analyst: Analyst, budget_fits: int) -> dict[str, Any]:
     out = analyst.drv("start", "--data", str(FIXTURE), "--provenance", PROVENANCE,
-                      "--budget-fits", str(budget_fits), "--budget-seconds", "900",
-                      "--label", analyst.run, "--scripted")
+                      "--budget-fits", str(budget_fits), "--budget-seconds", "900", "--scripted")
     meta = out["started"]
     assert meta["analyst"] == "scripted"
-    label, secret = meta["run"].rsplit("-", 1)  # the id start gives: the label, a secret part
-    assert label == analyst.run and len(secret) == 32 and driver.RUN_ID.match(meta["run"])
+    label, secret = meta["run"].rsplit("-", 1)  # the id start gives: its own label, a secret part
+    assert re.fullmatch(r"run_\d{2,}", label) and len(secret) == 32
+    assert driver.RUN_ID.fullmatch(meta["run"])
     analyst.run = meta["run"]
     folder = analyst.runs / analyst.run
     assert json.loads((folder / "driver.json").read_text()) == meta
@@ -1250,3 +1338,74 @@ def test_an_estimate_run_through_the_driver(tmp_path):
         assert "results/table2.csv" in exported["files"]
     finally:
         stop(analyst, meta)
+
+
+# DRV-FIX (a): the comorbidity index's total effect on readmission declared as the marginal risk
+# difference, everything else as the Estimate run above (complete cases, so the effects stage
+# standardizes the risks: under multiple imputation it refuses them).
+MARGINAL_ESTIMATE: Plan = {**ESTIMATE,
+                           "estimand": [(["charlson_index"], ["measure=risk_difference"])]}
+
+
+@pytest.mark.slow
+def test_an_estimate_runs_record_holds_the_marginal_risk_difference_the_app_reports(tmp_path):
+    """DRV-FIX (a), on a real server: a yes/no outcome under Estimate, the marginal risk difference
+    declared. Right after Fit locks the plan, ``GET …/results`` is read here over HTTP: its effects
+    stage's standardization of the comorbidity index (the engine's g-computation, held to R and to
+    NumPy by ``acceptance/test_estimand_2_g_computation``). The record assembled from the run holds
+    that risk difference with its interval, on the difference scale, served for the locked fit's
+    key, not the locked fit's row (the conditional log odds, per unit of the index, nor its odds
+    ratio): the two differ, the outcome not being null. The known-answer check reads it: a known
+    risk difference at the served one holds, and one at the log odds, outside its interval, fails.
+    Then the run is stopped: the record's run holds its start and its end."""
+    from research.swarm import assemble as A
+    from research.swarm import checks as C
+    from research.swarm.record import validate
+
+    analyst = Analyst(tmp_path, "marginal", MARGINAL_ESTIMATE)
+    meta = start(analyst, budget_fits=1)
+    try:
+        q = analyst.until_fit()
+        assert q["question"] is None and q["fit_reached"] is True
+        assert analyst.cmd("fit")["pressed"]["locked"] is True
+        out = analyst.cmd("results", "--wait", "240")
+        assert out["stages"].get("effects") == "fresh", out["stages"]
+        _, served = http(meta["port"], f"/projects/{meta['project']}/results")
+        assert served["estimand"]["measure"] == "risk_difference"
+        (family,) = [f for f in served["families"] if f["family"] == "linear"]
+        (contrast,) = family["marginal"]["contrasts"]
+        (row,) = family["effect"]
+        assert row["feature"] == "charlson_index" and row["estimate"] is not None
+        (locked,) = [f for f in records_of(meta) if f["locked"]]
+        assert served["fit"]["key"] == locked["fit_key"] and served["fit"]["fresh"]
+        analyst.cmd("export", "--wait", "240")
+        path, ok = A.assemble(analyst.runs / analyst.run, corpus=tmp_path / "corpus",
+                              meta={"design": 2, "analyst_model": "scripted",
+                                    "prompt_version": "test", "dataset": {
+                                        "id": "clinical", "control": "known_answer",
+                                        "fixture": "clinical_risk.csv"}})
+        assert ok, path.read_text("utf-8")[:2000]
+    finally:
+        stop(analyst, meta)
+    rec = validate(json.loads(path.read_text("utf-8")))
+    r = rec.result
+    assert (r.refused, r.attempt, r.measure, r.scale, r.conditioning, r.source, r.served_fit) == (
+        None, locked["id"], "risk_difference", "difference", "marginal", "results",
+        locked["fit_key"])
+    assert [e.model_dump() for e in r.estimates] == [{
+        "family": "linear", "feature": "charlson_index", "setting": contrast["setting"],
+        "estimate": contrast["rd"], "ci_low": contrast["rd_low"], "ci_high": contrast["rd_high"],
+        "why": None}]
+    assert contrast["rd"] not in (row["estimate"], row["ratio"])
+    assert not contrast["rd_low"] <= row["estimate"] <= contrast["rd_high"]
+    assert C.seal_integrity(rec).outcome == "pass"
+    data = rec.model_dump(mode="json", by_alias=True)
+    for value, status in ((contrast["rd"], "pass"), (row["estimate"], "fail")):
+        data["dataset"]["known"] = {"family": "linear", "feature": "charlson_index",
+                                    "measure": "risk_difference", "value": value}
+        assert C.known_answer(validate(data), truths={"clinical_risk.csv": {}}).outcome == status
+    assert rec.run.started.isoformat() == meta["started"].replace("Z", "+00:00")
+    logged = [json.loads(line) for line in
+              (analyst.runs / analyst.run / "commands.jsonl").read_text().splitlines()]
+    export_line = next(x for x in reversed(logged) if x["command"] == "export")
+    assert rec.run.ended.isoformat() == export_line["done"]  # the last command before the record

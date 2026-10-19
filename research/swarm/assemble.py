@@ -11,17 +11,20 @@ reads the run directory the driver wrote and the server's own data, builds the r
 **The run directory** (``research/runs/<run id>/``, written by the driver, ``research.swarm.driver``):
 
 * ``driver.json`` (``driver.cmd_start``): ``run`` (its id), ``pid`` (the server's process),
-  ``port``, ``project``, ``budget`` (the fit budget), ``started`` and ``ended``; and, where the
+  ``port``, ``project``, ``budget`` (the fit budget), ``started`` and ``ended`` (written by
+  ``stop``, after the record is assembled, so null here unless the run stopped first); and, where the
   driver or its launcher writes them, the run's ``design``, ``analyst_model``, ``effort``,
   ``prompt_version``, ``transcript`` (the analyst agent's transcript JSONL, relative to the run
   directory or absolute), ``dataset`` (the intake's ``id``, ``control``, ``fixture``, ``known``
   answer, ``codebook`` and ``card``) and ``help`` (each intervention a person made). An argument
   given to :func:`assemble` takes the place of the file's.
 * ``commands.jsonl`` (``driver.main``): one line per command the driver ran, oldest first, each
-  with ``command`` (its name), ``at`` and ``summary`` (``driver.summary`` of the JSON it printed):
-  a summary holding ``refused`` (``code``, ``message``, ``exits``) is a refusal met, the server's
-  or the driver's, and one holding ``exported`` with exit status 0 is the export returned. No other
-  key is read.
+  with ``command`` (its name), ``at`` and ``done`` (when it began and returned) and ``summary``
+  (``driver.summary`` of the JSON it printed): a summary holding ``refused`` (``code``,
+  ``message``, ``exits``) is a refusal met, the server's or the driver's, and one holding
+  ``exported`` with exit status 0 is the export returned. The last line's ``done`` (its ``at`` on
+  a line from before ``done`` was kept) is when the run ended, unless driver.json holds its
+  ``ended``. No other key is read.
 * ``home/``: the server's home.
 
 **The server's reads.** The analyst log comes first, since any later read can render a claim and
@@ -69,12 +72,32 @@ to any record.
   specifications that change the choices those answers recorded, beside the primary;
 * otherwise none, and why: the route's own words where it gave them.
 
-**The result** under Estimate is the fit the lock in force was recorded on: the one fit record
-``GET …/fits`` marks so (``locked``: its key is the one the answers at the lock give, the server's
-own rule, whatever its plan's digest, which differs when an answer the fit does not read came
-between the fit and the press). Where no record, or more than one, is marked, the result is
+**The result** under Estimate is from the fit the lock in force was recorded on: the one fit
+record ``GET …/fits`` marks so (``locked``: its key is the one the answers at the lock give, the
+server's own rule, whatever its plan's digest, which differs when an answer the fit does not read
+came between the fit and the press). Where no record, or more than one, is marked, the result is
 refused and says so, as a result the record cannot know (``refused_kind``), never as one the run
 did not report; it is never the last fit before the lock, nor a fit matched by its digest.
+
+Its numbers are the ones the app reports for the estimand the lock's plan declares, on that
+measure's scale (``estimand.measure_facts``), never the fit's coefficients read on another:
+
+* **a marginal risk difference or ratio** is the effects stage's standardization (g-computation),
+  each contrast's ``rd`` or ``rr`` with its percentile interval as ``GET …/results`` serves it.
+  The results serve the plan in force now, so these are the lock's only where the plan in force is
+  the lock's (``plan_lock.plan_changed``, the server's own rule over the log as served), the fit
+  the results serve is the locked fit, current, and the effects stage is current; otherwise the
+  numbers reported under the lock are not known (a change after the lock, say), and the result
+  says so. A family the stage serves no marginal risks for has none, with why; where none has, the
+  result is the stage's refusal (under multiple imputation, say), none served;
+* **a conditional measure** (an odds, hazard or relative-risk ratio; a difference in the mean) is
+  the locked fit's exposure rows as ``GET …/fits`` serves them, the fit's primary model number for
+  number: on a ratio scale each row's ``ratio`` columns (exp of the coefficient and of its
+  interval's ends), on a difference scale the coefficient itself. They stand after a change made
+  after the lock, which the fit record does not follow; where the results serve the locked plan,
+  rows they serve otherwise leave the numbers not known.
+
+The fit's coefficient rows themselves stay its attempt's (``Attempt.effects``).
 
 **Examined options.** A decision answers one or more questions (:func:`answers_of`: each answer
 the server keeps apart is its own question, so a preview of another covariate's adjustment answer
@@ -208,6 +231,48 @@ def _before_unserved(fit: Mapping[str, Any]) -> str:
 def _unseen_revert(target: int | None) -> str:
     withdrawn = f"record #{target}" if target is not None else "the record it names"
     return f"No fit's change from the fit before it is credited to this revert of {withdrawn}."
+
+
+def plan_changed_why(lock: int) -> str:
+    return (f"The plan was changed after the lock at record #{lock}, so the results serve the "
+            f"changed plan's estimate, and the marginal risks reported under the lock are not "
+            f"known.")
+
+
+def not_current_why(lock: int) -> str:
+    return (f"The results do not serve the plan the lock at record #{lock} recorded as current (its "
+            f"fit or its effects stage is another, or not computed), so the marginal risks "
+            f"reported under the lock are not known.")
+
+
+def unread_log_why(lock: int) -> str:
+    return (f"The decision log does not read as the server's, so whether the plan changed after "
+            f"the lock at record #{lock} is not known.")
+
+
+def rows_differ_why(lock: int) -> str:
+    return (f"The results serve the plan the lock at record #{lock} recorded with exposure rows "
+            f"other than its fit record's, so which the run reported is not known.")
+
+
+def no_estimand_why(lock: int) -> str:
+    return (f"The plan the lock at record #{lock} recorded declares no estimand, so no estimate of "
+            f"an exposure was reported.")
+
+
+def no_marginal_why(words: str, family: str) -> str:
+    return f"The results serve no {words} for `{family}`."
+
+
+UNBOUNDED = "The risk ratio's upper limit is unbounded (``rr_unbounded``)."
+NO_INTERVAL = "The results serve no interval for this contrast."
+NO_RATIO = "The fit serves no ratio for this row."
+# The served columns of each scale: a coefficient row's (``models.artifacts.Coefficient``), and a
+# marginal contrast's by its measure (``stages.effects.MarginalContrast``).
+ROW_COLUMNS = {"difference": ("estimate", "ci_low", "ci_high"),
+               "ratio": ("ratio", "ratio_low", "ratio_high")}
+CONTRAST_COLUMNS = {"risk_difference": ("rd", "rd_low", "rd_high"),
+                    "risk_ratio": ("rr", "rr_low", "rr_high")}
 
 
 def no_locked_fit(lock: int) -> str:
@@ -1016,11 +1081,14 @@ def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
               attempts: Sequence[Mapping[str, Any]], results: Read) -> dict[str, Any]:
     """The reported result, once (:class:`record.Result`), or why there is none, with its kind
     (``refused_kind``): ``not_reported``, the run reported none (the seal never opened, the plan
-    never locked, no goal); ``not_served``, the engine served none (the opening recorded no
-    held-out scores and its fit serves none; the locked fit serves no exposure rows and withholds
-    none); ``not_known``, the record cannot say what the run reported (no fit record, or several,
-    is marked the one the lock was recorded on; the route withholds the locked fit's rows now; the
-    opening recorded no scores while its fit serves held-out scores)."""
+    never locked, no goal, no estimand in the lock's plan); ``not_served``, the engine served none
+    (the opening recorded no held-out scores and its fit serves none; the locked fit serves no
+    exposure rows and withholds none; the effects stage served no marginal risk for any family);
+    ``not_known``, the record cannot say what the run reported (no fit record, or several, is
+    marked the one the lock was recorded on; the route withholds the locked fit's rows now; the
+    opening recorded no scores while its fit serves held-out scores; the results no longer serve
+    the locked plan's marginal risks). Under Estimate the numbers are the estimand's measure's
+    (the module docstring)."""
     base: dict[str, Any] = {"purpose": purpose, "attempt": None, "plan_digest": None,
                             "decisions": None}
     if purpose == "prediction":
@@ -1058,29 +1126,136 @@ def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
                        refused_kind="not_known" if served else "not_served")
         return out
     if purpose == "inference":
-        lock = _last(records, "lock_plan")
-        if lock is None:
-            return {**base, "refused": "The plan was never locked, so no estimate was served.",
-                    "refused_kind": "not_reported"}
-        digest = lock["decision"].get("digest")
-        out = {**base, "lock": lock["seq"], "plan_digest": digest}
-        held = [a for a in attempts if a.get("locked")]
-        if not held:
-            return {**out, "refused": no_locked_fit(lock["seq"]),
-                    "refused_kind": "not_known"}
-        if len(held) > 1:
-            return {**out, "refused": locked_twice(lock["seq"], [a["id"] for a in held]),
-                    "refused_kind": "not_known"}
-        fit = held[0]
-        out.update(attempt=fit["id"], decisions=fit.get("decisions"))
-        effects = {f: rows for f, rows in (fit.get("effects") or {}).items() if rows}
-        if not effects:
-            # Withheld by the route's gate now: what was served during the run is not known.
-            withheld = fit.get("withheld")
-            return {**out, "refused": str(withheld or "The locked fit serves no exposure rows."),
-                    "refused_kind": "not_known" if withheld else "not_served"}
-        return {**out, "effects": effects}
+        return _estimate_of(base, records, attempts, results)
     return {**base, "refused": "No goal was declared.", "refused_kind": "not_reported"}
+
+
+def fit_estimates(effects: Mapping[str, Any], scale: str) -> list[dict[str, Any]]:
+    """Each family's exposure rows as a conditional measure reports them, on ``scale``
+    (:data:`ROW_COLUMNS`): a ratio's ``ratio`` columns, a difference's coefficient itself
+    (``record.Estimate``)."""
+    cols = ROW_COLUMNS[scale]
+    out = []
+    for family, rows in effects.items():
+        for row in rows or ():
+            est, low, high = (row.get(k) for k in cols)
+            out.append({"family": str(family), "feature": row.get("feature"), "setting": None,
+                        "estimate": est, "ci_low": low, "ci_high": high,
+                        "why": NO_RATIO if est is None and row.get("estimate") is not None
+                        else None})
+    return out
+
+
+def marginal_estimates(doc: Mapping[str, Any], exposure: Any, measure: str, words: str
+                       ) -> list[dict[str, Any]]:
+    """Each family's marginal contrasts as ``GET …/results`` serves the effects stage's
+    standardization of ``measure`` (:data:`CONTRAST_COLUMNS`), or why it has none."""
+    cols = CONTRAST_COLUMNS[measure]
+    out: list[dict[str, Any]] = []
+    for f in doc.get("families") or []:
+        family = str(f.get("family"))
+        base = {"family": family, "feature": exposure, "setting": None}
+        m = f.get("marginal")
+        if not isinstance(m, Mapping) or m.get("refused") or not m.get("contrasts"):
+            why = (m or {}).get("refused") if isinstance(m, Mapping) else None
+            out.append({**base, "estimate": None, "ci_low": None, "ci_high": None,
+                        "why": str(why or no_marginal_why(words, family))})
+            continue
+        for c in m["contrasts"]:
+            est, low, high = (c.get(k) for k in cols)
+            why = None
+            if low is None or high is None:
+                why = (m.get("interval_refused")
+                       or (UNBOUNDED if measure == "risk_ratio" and c.get("rr_unbounded")
+                           else NO_INTERVAL))
+            out.append({**base, "setting": c.get("setting"), "estimate": est, "ci_low": low,
+                        "ci_high": high, "why": None if why is None else str(why)})
+    return out
+
+
+def serves_lock(doc: Mapping[str, Any], fit: Mapping[str, Any], lock: Mapping[str, Any],
+                records: Sequence[Mapping[str, Any]]) -> tuple[str, str] | None:
+    """Why ``GET …/results`` (``doc``) does not serve the plan the lock recorded, with the kind of
+    none it leaves, or None where it does (the module docstring): its numbers withheld now; the
+    plan in force not the lock's (``plan_lock.plan_changed``, over the log as served); its fit not
+    the locked fit, or not current; its effects stage not current."""
+    from turbotab.core import decisions as D, plan_lock
+
+    seq = lock["seq"]
+    if doc.get("withheld"):
+        return str(doc["withheld"]), "not_known"
+    log = Prefixes(records).log
+    held = next((r for r in log or () if r.seq == seq), None)
+    try:
+        state = D.fold(log) if held is not None else None
+    except D.Refusal:
+        state = None
+    if state is None:
+        return unread_log_why(seq), "not_known"
+    if plan_lock.plan_changed(held.decision, state):
+        return plan_changed_why(seq), "not_known"
+    served, effects = doc.get("fit") or {}, doc.get("effects") or {}
+    if not (served.get("key") and served.get("key") == fit.get("fit_key") and served.get("fresh")
+            and effects.get("fresh")):
+        return not_current_why(seq), "not_known"
+    return None
+
+
+def _estimate_of(base: dict[str, Any], records: Sequence[Mapping[str, Any]],
+                 attempts: Sequence[Mapping[str, Any]], results: Read) -> dict[str, Any]:
+    """:func:`result_of` under Estimate (the module docstring)."""
+    from turbotab.core.estimand import MARGINAL, MEASURE_WORDS, measure_facts
+
+    lock = _last(records, "lock_plan")
+    if lock is None:
+        return {**base, "refused": "The plan was never locked, so no estimate was served.",
+                "refused_kind": "not_reported"}
+    digest = lock["decision"].get("digest")
+    out = {**base, "lock": lock["seq"], "plan_digest": digest}
+    held = [a for a in attempts if a.get("locked")]
+    if not held:
+        return {**out, "refused": no_locked_fit(lock["seq"]), "refused_kind": "not_known"}
+    if len(held) > 1:
+        return {**out, "refused": locked_twice(lock["seq"], [a["id"] for a in held]),
+                "refused_kind": "not_known"}
+    fit = held[0]
+    out.update(attempt=fit["id"], decisions=fit.get("decisions"))
+    estimand = (lock["decision"].get("plan") or {}).get("estimand")
+    measure = estimand.get("measure") if isinstance(estimand, Mapping) else None
+    if not measure:
+        return {**out, "refused": no_estimand_why(lock["seq"]), "refused_kind": "not_reported"}
+    facts = measure_facts(str(measure))
+    out.update(measure=str(measure), scale=facts["scale"], conditioning=facts["conditioning"])
+    doc = results.body if results.ok and isinstance(results.body, Mapping) else {}
+    unserved = serves_lock(doc, fit, lock, records)
+    if measure in MARGINAL:
+        if unserved is not None:
+            return {**out, "refused": unserved[0], "refused_kind": unserved[1]}
+        words = MEASURE_WORDS[str(measure)]
+        rows = marginal_estimates(doc, estimand.get("exposure"), str(measure), words)
+        if not any(r["estimate"] is not None for r in rows):
+            whys = list(dict.fromkeys(r["why"] for r in rows if r["why"]))
+            return {**out, "refused": " ".join(whys) or f"The results serve no {words}.",
+                    "refused_kind": "not_served"}
+        return {**out, "estimates": rows, "source": "results",
+                "served_fit": (doc.get("fit") or {}).get("key")}
+    effects = {f: rows for f, rows in (fit.get("effects") or {}).items() if rows}
+    if not effects:
+        # Withheld by the route's gate now: what was served during the run is not known.
+        withheld = fit.get("withheld")
+        return {**out, "refused": str(withheld or "The locked fit serves no exposure rows."),
+                "refused_kind": "not_known" if withheld else "not_served"}
+    rows = fit_estimates(effects, facts["scale"])
+    if unserved is None:
+        shown = fit_estimates({f.get("family"): f.get("effect") for f in doc.get("families") or []
+                               if f.get("effect")}, facts["scale"])
+        key = lambda r: (r["family"], str(r["feature"]))  # noqa: E731
+        if sorted(shown, key=key) != sorted(rows, key=key):
+            return {**out, "refused": rows_differ_why(lock["seq"]), "refused_kind": "not_known"}
+    if not any(r["estimate"] is not None for r in rows):
+        return {**out, "refused": "The locked fit estimates no exposure row.",
+                "refused_kind": "not_served"}
+    return {**out, "estimates": rows, "source": "fits"}
 
 
 # ── the rest of the record ───────────────────────────────────────────────────
@@ -1211,7 +1386,8 @@ def run_of(run: RunDir, meta: Mapping[str, Any], attempts: Sequence[Mapping[str,
         "engine_commit": engine.get("commit"), "engine_modified": engine.get("modified"),
         "engine_version": (h or {}).get("version"), "analyst_model": meta.get("analyst_model"),
         "effort": meta.get("effort"), "prompt_version": meta.get("prompt_version"),
-        "started": d.get("started"), "ended": d.get("ended"), "spend": spent, "spend_why": why,
+        "started": d.get("started"), "ended": d.get("ended") or ended_of(run.commands),
+        "spend": spent, "spend_why": why,
         "fits": len(attempts), "fit_seconds": float(sum(seconds)),
         "fits_unseen": len(attempts) - len(seconds), "fit_budget": d.get("budget"),
         "help": [str(h_) if not isinstance(h_, Mapping) else json.dumps(h_, sort_keys=True)
@@ -1219,6 +1395,14 @@ def run_of(run: RunDir, meta: Mapping[str, Any], attempts: Sequence[Mapping[str,
         "server": {"pid": d.get("pid"), "port": d.get("port"), "mode": (h or {}).get("mode"),
                    "workers": (h or {}).get("workers")},
     }
+
+
+def ended_of(commands: Sequence[Mapping[str, Any]]) -> str | None:
+    """When the run's last command returned (its line's ``done``; its ``at`` on a line from before
+    ``done`` was kept), or None where no command ran: the run is over when it is assembled, and
+    ``stop`` writes driver.json's ``ended`` only after."""
+    last = commands[-1] if commands else {}
+    return last.get("done") or last.get("at")
 
 
 class RunUnreadable(RuntimeError):

@@ -1,12 +1,12 @@
 [
  {
   "run": "clinical_explore",
-  "run_id": "clinical_explore-18aebb257587732c517c624d59e3662d",
+  "run_id": "run_02-d9d23e39a300f659ada796f8e94ca5f8",
   "dataset": "clinical_readmission_predict",
-  "record": "research/swarm/dryrun/clinical_explore-18aebb257587732c517c624d59e3662d.json",
+  "record": "research/swarm/dryrun/run_02-d9d23e39a300f659ada796f8e94ca5f8.json",
   "valid": true,
   "error": null,
-  "seconds": 210.3,
+  "seconds": 205.0,
   "commands": 60,
   "refused": [],
   "checks": [
@@ -80,12 +80,12 @@
  },
  {
   "run": "survey_single",
-  "run_id": "survey_single-b1411971f16554c645cfb0a1c447025f",
+  "run_id": "run_01-8248db232eedff228a8c90d67f0eeac3",
   "dataset": "survey_support_estimate",
-  "record": "research/swarm/dryrun/survey_single-b1411971f16554c645cfb0a1c447025f.json",
+  "record": "research/swarm/dryrun/run_01-8248db232eedff228a8c90d67f0eeac3.json",
   "valid": true,
   "error": null,
-  "seconds": 62.8,
+  "seconds": 60.6,
   "commands": 52,
   "refused": [],
   "checks": [
@@ -128,7 +128,7 @@
     "expected": "pass",
     "got": "pass",
     "agrees": true,
-    "why": "Fact readings answered from the declared truth; age has no effect by construction, so a 95% interval for its log odds holds 0 (in 1 run in 20 it would not by chance; that would be checked against an independent fit before calling it a defect).",
+    "why": "Fact readings answered from the declared truth; age has no effect by construction, so its marginal risk difference, the number the app reports for the estimand, is 0: its 95% interval holds 0 (in 1 run in 20 it would not by chance; that would be checked against an independent fit before calling it a defect), or the effects stage refuses it, as it does under multiple imputation (the app's first-ranked missing-values answer here): right or refused.",
     "problems": [],
     "unchecked": [],
     "notes": []
@@ -159,12 +159,12 @@
  },
  {
   "run": "decoy_single",
-  "run_id": "decoy_single-e91810f5c78f8ec4fe15445a9e1679c2",
+  "run_id": "run_03-79e1f2f210a8f430862abd831bfc2824",
   "dataset": "outpatient_admission_predict",
-  "record": "research/swarm/dryrun/decoy_single-e91810f5c78f8ec4fe15445a9e1679c2.json",
+  "record": "research/swarm/dryrun/run_03-79e1f2f210a8f430862abd831bfc2824.json",
   "valid": true,
   "error": null,
-  "seconds": 299.3,
+  "seconds": 290.2,
   "commands": 55,
   "refused": [
    "triage_open"
@@ -221,10 +221,12 @@
     "expected": "pass",
     "got": "pass",
     "agrees": true,
-    "why": "No column enters the outcome (decoys.py), so the held-out AUC's interval lies above 0.5 in about 1 run in 40 by chance only: none expected.",
+    "why": "No column enters the outcome (decoys.py), so the held-out AUC's interval lies above 0.5 in about 1 run in 40 by chance only: none expected; a model that gives everyone the same score has an AUC of 0.5, no skill itself, and its interval refused.",
     "problems": [],
     "unchecked": [],
-    "notes": []
+    "notes": [
+     "`elastic_net` scores a held-out auc of 0.5, at or below the 0.5 of no skill, with no interval (The model gives everyone the same score, so it does not rank anyone, and no interval is reported.): no finding."
+    ]
    },
    {
     "check": "robustness",

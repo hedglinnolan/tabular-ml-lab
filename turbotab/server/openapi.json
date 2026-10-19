@@ -32670,7 +32670,7 @@
       },
       "Interval": {
         "additionalProperties": false,
-        "description": "A score with its standard error and its 95% interval.",
+        "description": "A score with its standard error and its 95% interval, or why no interval is reported.",
         "properties": {
           "estimate": {
             "anyOf": [
@@ -32728,6 +32728,17 @@
             "default": "",
             "title": "Method",
             "type": "string"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused"
           }
         },
         "required": [
