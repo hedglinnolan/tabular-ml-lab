@@ -5055,7 +5055,8 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
     Multiple imputation puts the outcome in the imputation model, so unless the purpose is
     inference (under prediction, or with none answered) it is refused: a held-out row's own outcome
     would fill its predictors, and a new row has none. The refusal cites Sisk et al. 2023 in their
-    regime, rows that may arrive with blanks (claims backtest A-117; its claim,
+    regime, rows that may arrive with blanks, and with their condition for using the outcome with
+    complete rows, multiple imputation and not a single fill (claims backtest A-117; its claim,
     ``missing.mi_refused_unless_inference``). Under inference a single fill and the
     missing-indicator method (a missing indicator, or blanks as a level) are blocked and recorded:
     refused with their exits, multiple imputation first, and kept only with the attestation

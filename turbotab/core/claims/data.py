@@ -750,20 +750,24 @@ RF1_TESTS = "turbotab/core/tests/test_rf1_sentences.py"
 register(Claim(
     id="substitution.isocaloric_units",
     kind="teaching",
-    card="Adjusting for total energy does not by itself make a substitution isocaloric: the swap "
-         "must be counted in calories. A nutrient's grams are a fixed multiple of its calories, "
-         "so TurboTab converts a swap in grams by the nutrient's Atwater factor. A food's energy "
-         "per gram or per serving varies, so a swap in a food's grams or servings is not the one "
-         "intended; TurboTab moves a food only once it is recorded in kcal or kJ.",
+    card="TurboTab counts a swap in calories. A macronutrient's grams are a fixed multiple of its "
+         "calories, so TurboTab converts a swap in grams by the macronutrient's Atwater factor. A "
+         "food's energy per gram or per serving varies, so TurboTab moves a food only once it is "
+         "recorded in kcal or kJ.",
     regime=Regime("a substitution between two energy sources at fixed total energy, each in a "
                   "unit the reading records (grams, kcal or kJ; alcohol in standard drinks)"),
     decision="set_substitution",
     parts=(
         Part("grams_convert", grade="judgment", basis=Basis(
-            reason="We convert a nutrient recorded in grams by its Atwater factor "
+            reason="We convert a macronutrient recorded in grams by its Atwater factor "
                    "(readings.kcal_per_unit), a constant multiple, so a swap of its grams at "
                    "fixed total energy is a swap of its calories; the fires test moves k kcal "
-                   "each way and finds total energy unchanged.")),
+                   "each way and finds total energy unchanged. A nutrient the factors do not "
+                   "cover by name (EPA, a fatty acid named apart from fat) has no factor, so the "
+                   "sentence says a macronutrient's grams, not any nutrient's (the RF-1 "
+                   "verifier's V4). The sentence is TurboTab's rule, which NUTRITION_PACK §05 "
+                   "does not say, so it sits in a section of its own badged CONVENTION, beside "
+                   "the pack's SETTLED sentence (the verifier's V2).")),
         Part("foods", grade="judgment", basis=Basis(
             reason="A food's calories per gram are no general factor (fatty fish is about two "
                    "kcal a gram, not fat's nine) and the reading records no serving unit, so the "
@@ -775,6 +779,8 @@ register(Claim(
               "energy", truth="construction"),
         Silent(f"{RF1_TESTS}::test_a_foods_grams_or_servings_move_nothing_until_it_is_recorded_"
                "in_kcal", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_settled_section_says_only_its_packs_words_and_turbotabs_"
+              "rules_are_not_settled", truth="construction"),
     ),
     enforced_by=("turbotab.core.readings:kcal_per_unit",
                  "turbotab.core.teaching.content:SUBSTITUTION"),
@@ -878,6 +884,8 @@ register(Claim(
                "not_pool_them", truth="construction"),
         Fires(f"{RF1_TESTS}::test_the_copies_option_names_both_conditions_the_fit_pools_under",
               truth="construction"),
+        Silent(f"{RF1_TESTS}::test_numbered_copies_whose_rows_are_combined_are_said_not_pooled_as_"
+               "the_fit_does_not_pool_them", truth="construction"),
     ),
     enforced_by=("turbotab.core.stages.modeling:imputed_copies_column",
                  "turbotab.core.voice:_set_repeat_kind"),
@@ -888,12 +896,14 @@ register(Claim(
 register(Claim(
     id="energy.no_energy_no_swap",
     kind="teaching",
-    card="the nutrient carries no energy, so nothing is substituted for it",
+    card="the nutrient carries no energy, so it displaces no energy source",
     regime=Regime("an energy-adjusted model (standard, or residual with energy kept or dropped) "
-                  "whose study factors the recognizers read as nutrients that carry no energy "
-                  "(sodium, potassium, a vitamin; not a fatty acid or fiber), with no covariate "
-                  "carrying energy in a stated unit; not a food, servings, drinks or a name the "
-                  "recognizers do not read, which carry energy no general factor converts"),
+                  "whose study factors and adjusted nutrients the recognizers read as nutrients "
+                  "that carry no energy (sodium, potassium, a vitamin; not a fatty acid or fiber), "
+                  "whatever the covariates carry: a covariate that carries energy in a stated unit "
+                  "(alcohol_g) keeps a swap of its own, said of it by name; not a food, servings, "
+                  "drinks or a name the recognizers do not read, which carry energy no general "
+                  "factor converts"),
     decision="set_energy_adjustment",
     parts=(
         Part("no_swap", grade="judgment", basis=Basis(
@@ -904,8 +914,12 @@ register(Claim(
                    "fires on that positive reading, never on a missing energy factor: a food in "
                    "grams, servings, alcoholic drinks, a fatty acid named apart from fat and a "
                    "fiber named by its method have no factor yet carry energy (the RF-1 "
-                   "verifier's P1). The fires test reads describe_model for sodium and "
-                   "potassium; the silent tests keep protein's substitution and that of red "
+                   "verifier's P1). The reading is of the study factors and adjusted nutrients "
+                   "alone: a covariate that carries energy (alcohol or fat in grams) is a swap "
+                   "of its own at fixed total energy, which the sentence names, and leaves the "
+                   "nutrient's reading as it is (the RF-1 verifier's V1). The fires tests read "
+                   "describe_model for sodium and potassium, alone and beside alcohol or fat; the "
+                   "silent tests keep protein's substitution, beside alcohol too, and that of red "
                    "meat, fatty fish, sugar-sweetened beverages, alcoholic drinks, EPA and AOAC "
                    "fiber.")),
     ),
@@ -918,10 +932,17 @@ register(Claim(
                "still_a_substitution", truth="construction"),
         Silent(f"{RF1_TESTS}::test_a_food_beside_sodium_keeps_the_substitution_reading",
                truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_nutrient_with_no_energy_beside_a_covariate_that_carries_"
+              "energy_is_substituted_for_nothing", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_nutrient_that_carries_energy_beside_a_covariate_that_"
+               "carries_energy_keeps_its_swap", truth="construction"),
         Fires(f"{RF1_TESTS}::test_the_teaching_scopes_the_substitution_reading_to_nutrients_"
               "that_carry_energy", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_settled_section_says_only_its_packs_words_and_turbotabs_"
+              "rules_are_not_settled", truth="construction"),
     ),
-    enforced_by=("turbotab.core.methods.energy:describe_model",),
+    enforced_by=("turbotab.core.methods.energy:describe_model",
+                 "turbotab.core.teaching.content:NO_ENERGY_SWAP"),
     author=RF1_AUTHOR,
     origin="audit",
 ))

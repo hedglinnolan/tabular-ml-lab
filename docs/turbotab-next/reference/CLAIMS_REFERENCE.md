@@ -99,7 +99,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `copies.pooled_by_rubin`
 
-*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `d5565c9c54b9`
+*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `0891c5294620`
 
 - **Card:** Imputed copies of one record; under inference, Rubin's rules pool numbered copies kept as records.
 - **Methods:** kept as records, each copy is analyzed as a completed dataset with its own outcome and the estimates pooled by Rubin's rules, which carries the imputation's uncertainty (NCHS's combining rules)
@@ -108,7 +108,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 - **Parts:**
   - pooled: *judgment*, graded by not graded (reason: The fit pools the copies only where a column numbers them and each is kept as a record (stages.modeling.imputed_copies_column), and the record's sentence says pooled only then. The pooled numbers are held to R's mitools and mice elsewhere (test_ms1_ms3_multiple_imputation.py), which no one has graded for this claim.)
   - records: *judgment*, graded by not graded (reason: Under inference, combining the copies into one row per unit is blocked and recorded (structural._imputed_copies_are_not_combined_unrecorded), so a numbered copy is kept as a record unless that limitation is recorded, which records the repeats answer again with its own sentence.)
-- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_numbered_copies_kept_as_records_are_said_pooled_as_the_fit_pools_them` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_not_pool_them` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_copies_option_names_both_conditions_the_fit_pools_under` (construction)
+- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_numbered_copies_kept_as_records_are_said_pooled_as_the_fit_pools_them` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_not_pool_them` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_copies_option_names_both_conditions_the_fit_pools_under` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_numbered_copies_whose_rows_are_combined_are_said_not_pooled_as_the_fit_does_not_pool_them` (construction)
 - **Enforced by:** `turbotab.core.stages.modeling:imputed_copies_column`, `turbotab.core.voice:_set_repeat_kind`
 - **Author:** RF-1 builder
 
@@ -265,16 +265,16 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `energy.no_energy_no_swap`
 
-*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `18ffd72a90e9`
+*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `e37fe3fb97cd`
 
-- **Card:** the nutrient carries no energy, so nothing is substituted for it
+- **Card:** the nutrient carries no energy, so it displaces no energy source
 - **Methods:** none
-- **Regime:** an energy-adjusted model (standard, or residual with energy kept or dropped) whose study factors the recognizers read as nutrients that carry no energy (sodium, potassium, a vitamin; not a fatty acid or fiber), with no covariate carrying energy in a stated unit; not a food, servings, drinks or a name the recognizers do not read, which carry energy no general factor converts
+- **Regime:** an energy-adjusted model (standard, or residual with energy kept or dropped) whose study factors and adjusted nutrients the recognizers read as nutrients that carry no energy (sodium, potassium, a vitamin; not a fatty acid or fiber), whatever the covariates carry: a covariate that carries energy in a stated unit (alcohol_g) keeps a swap of its own, said of it by name; not a food, servings, drinks or a name the recognizers do not read, which carry energy no general factor converts
 - **Decision:** decision `set_energy_adjustment`
 - **Parts:**
-  - no_swap: *judgment*, graded by not graded (reason: A mineral, a vitamin or caffeine has no Atwater factor and adds no calories (FAO 2003's general factors are for protein, carbohydrate, fat, alcohol and fiber), so more of it at fixed total energy leaves every energy source where it was: the coefficient is more of it at the same total energy. The sentence fires on that positive reading, never on a missing energy factor: a food in grams, servings, alcoholic drinks, a fatty acid named apart from fat and a fiber named by its method have no factor yet carry energy (the RF-1 verifier's P1). The fires test reads describe_model for sodium and potassium; the silent tests keep protein's substitution and that of red meat, fatty fish, sugar-sweetened beverages, alcoholic drinks, EPA and AOAC fiber.)
-- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_nutrient_with_no_energy_is_substituted_for_nothing` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_nutrient_that_carries_energy_is_a_substitution` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_food_a_drink_or_a_fatty_acid_is_still_a_substitution` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_a_food_beside_sodium_keeps_the_substitution_reading` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_teaching_scopes_the_substitution_reading_to_nutrients_that_carry_energy` (construction)
-- **Enforced by:** `turbotab.core.methods.energy:describe_model`
+  - no_swap: *judgment*, graded by not graded (reason: A mineral, a vitamin or caffeine has no Atwater factor and adds no calories (FAO 2003's general factors are for protein, carbohydrate, fat, alcohol and fiber), so more of it at fixed total energy leaves every energy source where it was: the coefficient is more of it at the same total energy. The sentence fires on that positive reading, never on a missing energy factor: a food in grams, servings, alcoholic drinks, a fatty acid named apart from fat and a fiber named by its method have no factor yet carry energy (the RF-1 verifier's P1). The reading is of the study factors and adjusted nutrients alone: a covariate that carries energy (alcohol or fat in grams) is a swap of its own at fixed total energy, which the sentence names, and leaves the nutrient's reading as it is (the RF-1 verifier's V1). The fires tests read describe_model for sodium and potassium, alone and beside alcohol or fat; the silent tests keep protein's substitution, beside alcohol too, and that of red meat, fatty fish, sugar-sweetened beverages, alcoholic drinks, EPA and AOAC fiber.)
+- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_nutrient_with_no_energy_is_substituted_for_nothing` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_nutrient_that_carries_energy_is_a_substitution` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_with_energy_held_fixed_a_food_a_drink_or_a_fatty_acid_is_still_a_substitution` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_a_food_beside_sodium_keeps_the_substitution_reading` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_a_nutrient_with_no_energy_beside_a_covariate_that_carries_energy_is_substituted_for_nothing` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_a_nutrient_that_carries_energy_beside_a_covariate_that_carries_energy_keeps_its_swap` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_the_teaching_scopes_the_substitution_reading_to_nutrients_that_carry_energy` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_a_settled_section_says_only_its_packs_words_and_turbotabs_rules_are_not_settled` (construction)
+- **Enforced by:** `turbotab.core.methods.energy:describe_model`, `turbotab.core.teaching.content:NO_ENERGY_SWAP`
 - **Author:** RF-1 builder
 
 ### `explore.missing_by_group`
@@ -402,15 +402,15 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `missing.mi_refused_unless_inference`
 
-*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `9ca735e4ebee`
+*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `cc925ffcf022`
 
-- **Card:** TurboTab's multiple imputation puts the outcome in the imputation model, so a held-out row's own outcome would fill its blanks, and a new row to predict has no outcome to fill from. Unless the purpose is inference, the fill offered is fit in each training fold without the outcome: where new rows may arrive with blanks, Sisk et al. (2023) found leaving the outcome out preferred, while with complete rows at deployment they recommend using it.
+- **Card:** TurboTab's multiple imputation puts the outcome in the imputation model, so a held-out row's own outcome would fill its blanks, and a new row to predict has no outcome to fill from. Unless the purpose is inference, the fill offered is fit in each training fold without the outcome: where new rows may arrive with blanks, Sisk et al. (2023) found leaving the outcome out preferred, while with complete rows at deployment they recommend using it in multiple imputation, not in a single regression fill.
 - **Methods:** none
 - **Regime:** the multiple-imputation answer when the purpose is not inference: prediction, or no purpose answered yet
 - **Decision:** decision `set_missing.strategy`; options `multiple_imputation`, `impute`, `complete_case`; verdict *refused*
 - **Parts:**
   - leak: *judgment*, graded by not graded (reason: The imputation the app runs is fit on the whole table with the outcome in its model, so it would read a held-out row's own outcome; an in-fold imputation with the outcome is not built, so no valid alternative is held back.)
-  - sisk_scope: *judgment*, graded by not graded (cites `sisk2023missing`; reason: We read Sisk et al. 2023 as methods/missing.py quotes it: "the outcome should be used to impute development data when using multiple imputation … When missingness is allowed at deployment, omitting the outcome from the imputation model at the development was preferred"; the refusal cites them for that regime only. The author read the quotation, not the paper.)
+  - sisk_scope: *judgment*, graded by not graded (cites `sisk2023missing`; reason: We read Sisk et al. 2023 as methods/missing.py quotes it: "the outcome should be used to impute development data when using multiple imputation and omitted under regression imputation. When missingness is allowed at deployment, omitting the outcome from the imputation model at the development was preferred"; the refusal cites them for that regime, and says their use of the outcome with complete rows is for multiple imputation, not for a single fill such as the one it offers (the RF-1 verifier's V6, who read the abstract on PubMed). The author read the quotation, not the paper.)
 - **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_multiple_imputation_is_refused_unless_the_purpose_is_inference_in_sisks_scope` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_multiple_imputation_under_inference_is_not_refused` (construction)
 - **Enforced by:** `turbotab.core.decisions:_missing_fits_the_purpose`
 - **Author:** RF-1 builder
@@ -480,16 +480,16 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `substitution.isocaloric_units`
 
-*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `fa14997b27b6`
+*teaching* · from *audit* · weakest part *judgment* · built · version 1 · hash `f9c5ca5cb80c`
 
-- **Card:** Adjusting for total energy does not by itself make a substitution isocaloric: the swap must be counted in calories. A nutrient's grams are a fixed multiple of its calories, so TurboTab converts a swap in grams by the nutrient's Atwater factor. A food's energy per gram or per serving varies, so a swap in a food's grams or servings is not the one intended; TurboTab moves a food only once it is recorded in kcal or kJ.
+- **Card:** TurboTab counts a swap in calories. A macronutrient's grams are a fixed multiple of its calories, so TurboTab converts a swap in grams by the macronutrient's Atwater factor. A food's energy per gram or per serving varies, so TurboTab moves a food only once it is recorded in kcal or kJ.
 - **Methods:** none
 - **Regime:** a substitution between two energy sources at fixed total energy, each in a unit the reading records (grams, kcal or kJ; alcohol in standard drinks)
 - **Decision:** decision `set_substitution`
 - **Parts:**
-  - grams_convert: *judgment*, graded by not graded (reason: We convert a nutrient recorded in grams by its Atwater factor (readings.kcal_per_unit), a constant multiple, so a swap of its grams at fixed total energy is a swap of its calories; the fires test moves k kcal each way and finds total energy unchanged.)
+  - grams_convert: *judgment*, graded by not graded (reason: We convert a macronutrient recorded in grams by its Atwater factor (readings.kcal_per_unit), a constant multiple, so a swap of its grams at fixed total energy is a swap of its calories; the fires test moves k kcal each way and finds total energy unchanged. A nutrient the factors do not cover by name (EPA, a fatty acid named apart from fat) has no factor, so the sentence says a macronutrient's grams, not any nutrient's (the RF-1 verifier's V4). The sentence is TurboTab's rule, which NUTRITION_PACK §05 does not say, so it sits in a section of its own badged CONVENTION, beside the pack's SETTLED sentence (the verifier's V2).)
   - foods: *judgment*, graded by not graded (reason: A food's calories per gram are no general factor (fatty fish is about two kcal a gram, not fat's nine) and the reading records no serving unit, so the substitution refuses a food until it is recorded in kcal or kJ; the silent test reads that refusal.)
-- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_a_nutrients_grams_move_at_its_atwater_factor_and_hold_total_energy` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_a_foods_grams_or_servings_move_nothing_until_it_is_recorded_in_kcal` (construction)
+- **Tests:** fires `turbotab/core/tests/test_rf1_sentences.py::test_a_nutrients_grams_move_at_its_atwater_factor_and_hold_total_energy` (construction); silent `turbotab/core/tests/test_rf1_sentences.py::test_a_foods_grams_or_servings_move_nothing_until_it_is_recorded_in_kcal` (construction); fires `turbotab/core/tests/test_rf1_sentences.py::test_a_settled_section_says_only_its_packs_words_and_turbotabs_rules_are_not_settled` (construction)
 - **Enforced by:** `turbotab.core.readings:kcal_per_unit`, `turbotab.core.teaching.content:SUBSTITUTION`
 - **Author:** RF-1 builder
 

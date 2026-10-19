@@ -909,7 +909,7 @@ MISSING_MI_UNLESS_INFERENCE = register(Claim(
          "fill from. Unless the purpose is inference, the fill offered is fit in each training "
          "fold without the outcome: where new rows may arrive with blanks, Sisk et al. (2023) "
          "found leaving the outcome out preferred, while with complete rows at deployment they "
-         "recommend using it.",
+         "recommend using it in multiple imputation, not in a single regression fill.",
     regime=Regime("the multiple-imputation answer when the purpose is not inference: prediction, "
                   "or no purpose answered yet"),
     decision="set_missing.strategy",
@@ -924,10 +924,14 @@ MISSING_MI_UNLESS_INFERENCE = register(Claim(
         Part("sisk_scope", grade="judgment", basis=Basis(
             cites=("sisk2023missing",),
             reason="We read Sisk et al. 2023 as methods/missing.py quotes it: \"the outcome should "
-                   "be used to impute development data when using multiple imputation … When "
-                   "missingness is allowed at deployment, omitting the outcome from the "
-                   "imputation model at the development was preferred\"; the refusal cites them "
-                   "for that regime only. The author read the quotation, not the paper.")),
+                   "be used to impute development data when using multiple imputation and "
+                   "omitted under regression imputation. When missingness is allowed at "
+                   "deployment, omitting the outcome from the imputation model at the "
+                   "development was preferred\"; the refusal cites them for that regime, and "
+                   "says their use of the outcome with complete rows is for multiple "
+                   "imputation, not for a single fill such as the one it offers (the RF-1 "
+                   "verifier's V6, who read the abstract on PubMed). The author read the "
+                   "quotation, not the paper.")),
     ),
     tests=(
         Fires(f"{RF1_TESTS}::test_multiple_imputation_is_refused_unless_the_purpose_is_inference_"

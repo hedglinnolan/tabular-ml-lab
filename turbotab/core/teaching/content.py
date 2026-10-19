@@ -3,7 +3,12 @@
 Every drawer section names its pack section and carries the status the pack gives the claim
 (SETTLED · CONVENTION · DISPUTED). Where the pack gives a claim no status, the claim is not here.
 A section no pack covers names instead the registered works that say it, with the status its claim's
-grade supports (claims backtest D-021: the pairwise interval, CONVENTION, its parts judgments).
+grade supports (claims backtest D-021: the pairwise interval, CONVENTION, its parts judgments). A
+SETTLED section says only its pack section's sentence, narrowed at most; a rule of TurboTab's own
+beside it (claims backtest D-001 and D-009: a nutrient that carries no energy; how a swap is
+counted in calories), which the pack does not say, is a section of its own, badged by its claim's
+grade (CONVENTION, its parts judgments) and naming the pack section it rests on (the Atwater
+factors, §01), as D-037 split its handling half (the RF-1 verifier's V2).
 Budgets: ``turbotab.core.teaching.BUDGETS`` (tested). American spelling.
 
 One precision the packs leave implicit, stated here on purpose (energy adjustment, §04): the
@@ -92,6 +97,16 @@ WHOLE_PIPELINE = section(
     "Internal validation must resample the entire modeling pipeline: imputation, transformation, "
     "selection and tuning.",
     "SETTLED", CLIN_A55)
+# Claims backtest D-001 (its claim, ``energy.no_energy_no_swap``, which methods/energy.py's
+# describe_model says of the model): total energy is the calories of protein, carbohydrate, fat and
+# alcohol (NUTRITION_PACK §01's Atwater check), so a nutrient outside them displaces nothing. The
+# pack's §04 says the substitution reading for every nutrient, so this is TurboTab's rule, badged by
+# its claim's grade, one section on both cards that teach the reading.
+NO_ENERGY_SWAP = section(
+    "A nutrient with no energy",
+    "A nutrient that carries no energy, such as sodium, displaces nothing: with total energy held "
+    "fixed, its coefficient is more of it at the same total energy.",
+    "CONVENTION", NUT01)
 # Claims backtest D-018: the pack's order, scoped as the app acts on it (its claim,
 # ``validation.resampling_first``): under prediction below the plan's size, and only for the
 # families the bootstrap suits (``bootstrap_optimism``; models/validation.py, Coley et al. 2023).
@@ -709,9 +724,11 @@ _ROLE_UNITS = section(
 # unusable or the adjustment answers leave a predictor-role column out of them
 # (``decisions.left_out``), and under inference a grouping answered "adjust for it" puts its
 # column in them as fixed effects, whatever its role (``models.pipeline.model_predictors``). So
-# the one-liner and each option name the role a column holds, a predictor role or not, and no
-# option names a step that reads it. ``tests/test_rf1_sentences.py`` holds every word to it, with a
-# drop, a fixed-effects column and neither.
+# the one-liner and each option name the role a column holds, a predictor role or not, no option
+# names a step that reads it, and the covariate term says a covariate is one to adjust for, never
+# that it is adjusted for (the RF-1 verifier's V7: a mediator of a total effect keeps the role and
+# leaves the model). ``tests/test_rf1_sentences.py`` holds every word to it, with a drop, a
+# covariate the adjustment answers leave out, a fixed-effects column and none of them.
 ROLES = {
     "key": "roles",
     "title": "What each column is",
@@ -749,8 +766,8 @@ ROLES = {
     "terms": [
         term("exposure", "The variable whose relationship with the outcome the study is about, "
                          "such as a nutrient intake."),
-        term("covariate", "A variable adjusted for so that the estimate of what you study is not "
-                          "confounded by it, such as age or sex."),
+        term("covariate", "A variable to adjust for, so that the estimate of what you study is "
+                          "not confounded by it, such as age or sex."),
         term("identifier", "A column that names a row or a person rather than measuring anything; "
                            "a value that appears once cannot generalize."),
     ],
@@ -1182,16 +1199,16 @@ ENERGY_ADJUSTMENT = {
                 "energy, and its interval is wider even then; otherwise it differs, sometimes in "
                 "sign.",
                 "SETTLED", NUT04),
-        # Claims backtest D-001: a nutrient that carries no energy displaces nothing (its claim,
-        # ``energy.no_energy_no_swap``, which methods/energy.py's describe_model says).
+        # Claims backtest D-001: the pack's reading, scoped to a nutrient that carries energy; a
+        # nutrient that carries none is TurboTab's rule, in a section of its own.
         section("What the coefficient means",
                 "For a nutrient that carries energy, an energy-adjusted coefficient is a "
                 "substitution estimate: more of this nutrient and correspondingly less of "
                 "everything else, at the same total intake — not the effect of simply eating more "
                 "of it. With several energy sources in the model, \"everything else\" is only the "
-                "sources left out of it; name them. A nutrient that carries no energy, such as "
-                "sodium, displaces nothing: its coefficient is more of it at the same total energy.",
+                "sources left out of it; name them.",
                 "SETTLED", NUT04),
+        NO_ENERGY_SWAP,
         section("All components",
                 "Every energy source its own term in kcal: each coefficient is the total effect of "
                 "adding that source's calories, and its average swap is the coefficient less the "
@@ -1308,8 +1325,8 @@ SUBSTITUTION = {
                  "nutrient to another at fixed total energy.",
     "why": "Energy-adjusted effects are substitutions, so name what replaces what. The curve moves "
            "calories from the donor to the recipient through each fitted model, only as far as "
-           "your data hold people with such diets. Both must carry energy: a nutrient in grams "
-           "moves at its Atwater factor, and a food only once recorded in kcal.",
+           "your data hold people with such diets. Both must carry energy: a macronutrient in "
+           "grams moves at its Atwater factor, and a food only once recorded in kcal or kJ.",
     "consumer": "The substitution stage draws one curve per fitted model family.",
     "options": [
         option("50", "50 kcal steps",
@@ -1323,19 +1340,27 @@ SUBSTITUTION = {
         term("donor", "The nutrient whose calories are taken away in a substitution."),
         term("recipient", "The nutrient that receives those calories, so total energy stays the "
                           "same."),
-        term("isocaloric", "At the same total energy: a swap counted in calories. A nutrient's "
-                           "grams convert by its Atwater factor; a food's grams or servings do "
-                           "not."),
+        term("isocaloric", "At the same total energy: a swap counted in calories. A "
+                           "macronutrient's grams convert by its Atwater factor; a food's grams or "
+                           "servings do not."),
         term("support", "The range of diets actually present in your data; a curve beyond it is "
                         "extrapolation, so the curve stops there."),
         NESTED,
     ],
     "drawer": {"sections": [
-        # Claims backtest D-009 (its claim, ``substitution.isocaloric_units``): a nutrient's
-        # grams are a fixed multiple of its calories, which ``readings.kcal_per_unit`` converts by
-        # its Atwater factor; a food's grams or servings carry no fixed calories.
-        section("Adjusting for energy is not enough", claims.card("substitution.isocaloric_units"),
+        # Claims backtest D-009: NUTRITION_PACK §05's SETTLED warning, narrowed: a swap must be
+        # analyzed in calories, and a food's grams or servings carry no fixed calories. TurboTab's
+        # rule (its claim, ``substitution.isocaloric_units``) is a section of its own: a
+        # macronutrient's grams are a fixed multiple of its calories, which
+        # ``readings.kcal_per_unit`` converts by its Atwater factor, and a food moves only in kcal
+        # or kJ.
+        section("Adjusting for energy is not enough",
+                "Adjusting for total energy does not by itself make a substitution isocaloric. The "
+                "components must also be analyzed in calories: if a food is in grams or servings, "
+                "the 'substitution' you report is not the one you think it is.",
                 "SETTLED", NUT05),
+        section("How TurboTab counts a swap", claims.card("substitution.isocaloric_units"),
+                "CONVENTION", NUT01),
         section("Parts of a whole",
                 "When shares of energy sum to 100%, one part is determined by the others, and a "
                 "coefficient on percent energy from fat has no meaning until you say what the fat "
@@ -1487,13 +1512,15 @@ ESTIMAND_QUESTION = {
                                 "the outcome is added, even without confounding."),
     ],
     "drawer": {"sections": [
+        # Claims backtest D-001: NUTRITION_PACK §04's sentence, scoped to a nutrient that carries
+        # energy; a nutrient that carries none is TurboTab's rule, the energy card's section.
         section("A substitution, not an addition",
                 "For a nutrient that carries energy, an energy-adjusted coefficient is a "
                 "substitution estimate. It answers 'what if this person got more of their calories "
                 "from X and correspondingly fewer from everything else, at the same total intake?' "
-                "— not 'what if this person ate more X?' A nutrient that carries no energy, such "
-                "as sodium, displaces nothing.",
+                "— not 'what if this person ate more X?'",
                 "SETTLED", NUT04),
+        NO_ENERGY_SWAP,
     ]},
     "evidence": None,
 }

@@ -2,8 +2,12 @@
 ``docs/turbotab-next/notes/claims-backtest/FIXES.md``): the sentences an analyst reads on a card, in
 teaching, in a refusal or in a reading, each held to what the code does, both ways.
 
-* **D-009**: a swap is counted in calories; a nutrient's grams convert by its Atwater factor, and a
-  food moves only when recorded in kcal (``readings.kcal_per_unit``).
+* **D-009**: a swap is counted in calories; a macronutrient's grams convert by its Atwater factor
+  (a fatty acid named apart, which the factors do not cover, has none), and a food moves only when
+  recorded in kcal or kJ (``readings.kcal_per_unit``). The pack's sentence keeps its SETTLED badge;
+  TurboTab's rules sit in a section of their own, badged by their claim's grade.
+* **The badges** (the RF-1 verifier's V2): a SETTLED section says only what its pack section says,
+  narrowed at most, and a sentence the pack does not say sits in a section that is not SETTLED.
 * **D-018**: bootstrap optimism correction leads under prediction below about 20,000 units (Harrell
   2017's figure) where the folds need not follow time, and the near-interpolating families keep
   their cross-validated score.
@@ -16,14 +20,15 @@ teaching, in a refusal or in a reading, each held to what the code does, both wa
 * **D-044**: blanking a count too numerous to count says it removes a count above the countable
   range, and that this biases the column low (built here so every such count is above the rest).
 * **D-070**: the imputed copies' sentence and option say they are pooled only where the fit pools
-  them: numbered by a column, each kept as a record.
-* **D-001**: a nutrient that carries no energy is substituted for nothing; a food, servings, a
-  drink, a fatty acid or a fiber, which no general factor converts, keeps the substitution.
+  them: numbered by a column, each kept as a record, so not where each unit's rows are combined.
+* **D-001**: a nutrient that carries no energy is substituted for nothing, whatever the covariates
+  carry; a food, servings, a drink, a fatty acid or a fiber, which no general factor converts,
+  keeps the substitution, and so does a covariate that carries energy.
 * **D-012**: averaging replicates divides each mean's error variance by up to their number, fully
   when the errors are independent (a simulation built here), whatever the error's source.
 * **A-106**: the event-share sentence says no resampling only where the fit applied none.
 * **A-117**: multiple imputation is refused unless the purpose is inference, in Sisk et al.'s
-  scope.
+  scope, with their condition for using the outcome (multiple imputation, not a single fill).
 * **A-121**: inside a near dependency the estimate's contrast changes; "less of what it replaces"
   is said only of a part beside its total.
 * **C-110**: an ungrouped seal labels its held-out scores exploratory and says nothing of the
@@ -33,8 +38,8 @@ teaching, in a refusal or in a reading, each held to what the code does, both wa
 * **C-241**: the missing-values option says whether the group is in the imputation model, right
   after the variables it refers to.
 * **The roles ruling** (the orchestrator's, at the landing's cap): the roles teaching says what a
-  role is, never what reaches the models, since a missing-values drop or a fixed-effects grouping
-  column changes what the models get (``models.pipeline.model_predictors``).
+  role is, never what reaches the models, since a missing-values drop, the adjustment answers or a
+  fixed-effects grouping column changes what the models get (``models.pipeline.model_predictors``).
 
 Every expectation comes from construction, an independent library or the cited source. This file
 names no claim id and none of the constants the claims set (meta-test 2).
@@ -85,20 +90,26 @@ def _units(**units: str) -> ProjectState:
 def test_a_nutrients_grams_move_at_its_atwater_factor_and_hold_total_energy():
     """The substitution's own conversion (``readings.kcal_per_unit``): protein recorded in grams
     moves at 4 kcal/g and fat at 9 (the Atwater factors, NUTRITION_PACK §01), so moving k kcal from
-    one to the other changes total energy by nothing. The teaching says a nutrient's grams convert,
-    where the base said any swap in grams is not the one intended."""
+    one to the other changes total energy by nothing. EPA recorded in grams is a fatty acid the
+    factors do not cover by name, and has none, so the teaching says a macronutrient's grams
+    convert, not any nutrient's (the RF-1 verifier's V4), where the base said any swap in grams is
+    not the one intended."""
     from turbotab.core.readings import kcal_per_unit
 
-    state = _units(protein_g="g", fat_g="g")
+    state = _units(protein_g="g", fat_g="g", epa_g="g")
     protein, fat = kcal_per_unit(state, "protein_g"), kcal_per_unit(state, "fat_g")
     assert (protein.factor, fat.factor) == (4.0, 9.0)
     for k in (50.0, 100.0, 200.0):
         assert -k / protein.factor * 4.0 + k / fat.factor * 9.0 == pytest.approx(0.0, abs=1e-12)
+    epa = kcal_per_unit(state, "epa_g")
+    assert epa.factor is None and "no nutrient the Atwater factors cover" in epa.why, epa
     entry = _entry("substitution")
     said = [entry["why"], _term(entry, "isocaloric")["definition"],
-            _section(entry, "Adjusting for energy is not enough")["body"]]
+            _section(entry, "How TurboTab counts a swap")["body"]]
     for text in said:
         assert "Atwater factor" in text, text
+        assert re.search(r"\bmacronutrient(?:'s grams| in grams)", text), text
+        assert not re.search(r"\ba nutrient(?:'s grams| in grams)", text, re.I), text
         assert not re.search(r"in grams or servings, the substitution reported", text), text
         assert "grams and servings do not make" not in text, text
 
@@ -106,17 +117,71 @@ def test_a_nutrients_grams_move_at_its_atwater_factor_and_hold_total_energy():
 def test_a_foods_grams_or_servings_move_nothing_until_it_is_recorded_in_kcal():
     """The other side: a food in grams has no factor (fatty fish is about 2 kcal/g, not fat's 9), a
     food with no recorded unit (servings are no unit the reading records) has none, and a food
-    recorded in kcal moves at 1 kcal per unit. The teaching says a food moves only in kcal."""
+    recorded in kcal moves at 1 kcal per unit, in kJ at 1/4.184 (1 kcal = 4.184 kJ, NUTRITION_PACK
+    §01). The teaching says a food moves only in kcal or kJ, in the why too (the RF-1 verifier's
+    V4)."""
     from turbotab.core.readings import kcal_per_unit
 
-    state = _units(fatty_fish_g="g", fish_kcal="kcal")
+    state = _units(fatty_fish_g="g", fish_kcal="kcal", fish_kj="kj")
     assert kcal_per_unit(state, "fatty_fish_g").factor is None
     assert kcal_per_unit(state, "fish_servings").factor is None
     assert kcal_per_unit(state, "fish_kcal").factor == 1.0
+    assert kcal_per_unit(state, "fish_kj").factor == pytest.approx(1 / 4.184, rel=1e-12)
     entry = _entry("substitution")
-    body = _section(entry, "Adjusting for energy is not enough")["body"]
-    assert "serving" in body and "kcal" in body
-    assert "food" in entry["why"] and "kcal" in entry["why"]
+    body = _section(entry, "How TurboTab counts a swap")["body"]
+    assert "serving" in body and "kcal or kJ" in body
+    assert "food" in entry["why"] and "kcal or kJ" in entry["why"]
+
+
+def _pack_section(number: str) -> str:
+    """NUTRITION_PACK's section ``number`` (``"04"``), its block quotes joined across lines and its
+    emphasis dropped."""
+    raw = (REPO / "docs/turbotab-next/reference/research/NUTRITION_PACK.md").read_text("utf-8")
+    body = raw.split(f"\n## {number} · ", 1)[1].split("\n## ", 1)[0]
+    return " ".join(body.replace("\n>", " ").replace("**", "").split())
+
+
+# The sentences TurboTab adds that the pack does not say: its conversion of a swap (D-009) and a
+# nutrient that carries no energy (D-001).
+ADDED = re.compile(r"\bsodium\b|\bcarries no energy\b|\bAtwater\b|\bTurboTab (?:converts|moves)\b")
+
+
+def test_a_settled_section_says_only_its_packs_words_and_turbotabs_rules_are_not_settled():
+    """The RF-1 verifier's V2. NUTRITION_PACK §04's SETTLED interpretation says "an energy-adjusted
+    coefficient is a substitution estimate", for every nutrient, and names no nutrient that
+    carries no energy; §05's SETTLED warning says a substitution is isocaloric only "measured and
+    analyzed in calories", and names no Atwater factor. So the sections badged SETTLED from them say
+    the pack's sentence, narrowed at most (to a nutrient that carries energy; to a food), and the
+    sentences the pack does not say (sodium displaces nothing; TurboTab's conversion of grams, and
+    of a food only in kcal or kJ) sit in sections of their own badged CONVENTION, their claims'
+    grade, as the badges of D-021 and D-037 were mended. Read from the pack; both ways: every such
+    sentence is said, and none sits under SETTLED."""
+    s04, s05 = _pack_section("04"), _pack_section("05")
+    assert "an energy-adjusted coefficient is a substitution estimate" in s04
+    assert ("Adjusting for total energy does not by itself make a substitution isocaloric. The "
+            "components must also be measured and analyzed in calories.") in s05
+    assert not ADDED.search(s04) and not ADDED.search(s05)
+    energy, estimand, swap = _entry("energy_adjustment"), _entry("estimand"), _entry("substitution")
+    settled = [(_section(energy, "What the coefficient means"), "an energy-adjusted coefficient is a "
+                "substitution estimate"),
+               (_section(estimand, "A substitution, not an addition"), "an energy-adjusted "
+                "coefficient is a substitution estimate. It answers 'what if this person got more "
+                "of their calories from X and correspondingly fewer from everything else, at the "
+                "same total intake?' — not 'what if this person ate more X?'"),
+               (_section(swap, "Adjusting for energy is not enough"), "Adjusting for total energy "
+                "does not by itself make a substitution isocaloric.")]
+    for sec, words in settled:
+        assert sec["evidence"]["status"] == "SETTLED", sec
+        assert words in sec["body"] and words in (s04 + s05), (sec, words)
+        assert not ADDED.search(sec["body"]), sec["body"]
+    added = [sec for e in (energy, estimand, swap) for sec in e["drawer"]["sections"]
+             if ADDED.search(sec["body"])]
+    assert {sec["heading"] for sec in added} == {"A nutrient with no energy",
+                                                  "How TurboTab counts a swap"}, added
+    for sec in added:
+        assert sec["evidence"]["status"] == "CONVENTION", sec
+    for e in (energy, estimand):
+        assert _section(e, "A nutrient with no energy")["evidence"]["status"] == "CONVENTION"
 
 
 # ── D-018 · bootstrap first, for the families it suits, below about 20,000 units ──
@@ -355,19 +420,20 @@ def test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_one():
 # ── D-070 · imputed copies, pooled only where the fit pools them ──────────────
 
 
-def _copies_sentence(implicate: str | None, purpose: str = "inference") -> str:
+def _copies_sentence(implicate: str | None, purpose: str = "inference",
+                     unit: str | None = None) -> str:
     from turbotab.core.voice import sentence_for
 
-    before = ProjectState(target="bmd", purpose=purpose,
+    before = ProjectState(target="bmd", purpose=purpose, unit=unit,
                           grain={"grain": "repeated", "id_column": "SEQN"})
     return sentence_for(d.SetRepeatKind(repeat_kind="imputed_copies", implicate_column=implicate),
                         before)
 
 
-def _fit_pools(implicate: str | None) -> str | None:
+def _fit_pools(implicate: str | None, unit: str = "row") -> str | None:
     from turbotab.core.stages.modeling import imputed_copies_column
 
-    state = ProjectState(target="bmd", purpose="inference", unit="row",
+    state = ProjectState(target="bmd", purpose="inference", unit=unit,
                          grain={"grain": "repeated", "id_column": "SEQN"},
                          repeat_kind={"repeat_kind": "imputed_copies",
                                       "implicate_column": implicate})
@@ -409,6 +475,28 @@ def test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_not_pool_t
     assert "were not pooled by Rubin's rules" in _copies_sentence("_MULT_", "prediction")
 
 
+@pytest.mark.parametrize("unit", ["unit", "row", None])
+def test_numbered_copies_whose_rows_are_combined_are_said_not_pooled_as_the_fit_does_not_pool_them(
+        unit):
+    """The RF-1 verifier's V3: the sentence's second condition, tested apart from the column. With
+    a column numbering the copies, the fit pools them only where each is kept as a record
+    (``set_unit`` "row"); with each unit's rows combined into one ("unit") it pools nothing, and the
+    sentence says so. Before the unit is answered (None) the copies are still records, the unit
+    question comes after this answer, and combining them under inference is recorded as a
+    limitation that says this answer again, so the sentence says pooled; once "row" is answered the
+    fit pools them, as the sentence says."""
+    said = _copies_sentence("_MULT_", unit=unit)
+    if unit == "unit":
+        assert _fit_pools("_MULT_", "unit") is None
+        assert ("were not pooled by Rubin's rules (each unit's rows are combined into one)"
+                in said), said
+        assert "carries the imputation's uncertainty" not in said, said
+    else:
+        assert _fit_pools("_MULT_", "row") == "_MULT_"
+        assert "pooled by Rubin's rules, which carries the imputation's uncertainty" in said, said
+        assert "were not pooled" not in said, said
+
+
 # ── D-001 · a nutrient that carries no energy ─────────────────────────────────
 
 
@@ -434,7 +522,11 @@ def test_with_energy_held_fixed_a_nutrient_with_no_energy_is_substituted_for_not
     assert energy_factor(exposure).factor is None
     text = _describe(method, exposure).text
     assert "substitution" not in text and "in place of" not in text, text
-    assert "carries no energy" in text and "held fixed" in text
+    assert "held fixed" in text, text
+    # The nutrient displaces nothing ("X is substituted for Y" says X replaces Y, so the base's
+    # "nothing is substituted for it" said that nothing replaces the nutrient: the verifier's V5).
+    assert "the nutrient carries no energy, so it displaces no energy source" in text, text
+    assert "nothing is substituted for it" not in text, text
 
 
 @pytest.mark.parametrize("method", ["standard", "residual"])
@@ -467,7 +559,7 @@ def test_with_energy_held_fixed_a_food_a_drink_or_a_fatty_acid_is_still_a_substi
 
     assert energy_factor(exposure).factor is None
     text = _describe(method, exposure).text
-    assert "carries no energy" not in text and "nothing is substituted" not in text, text
+    assert "carries no energy" not in text and "displaces no energy source" not in text, text
     assert "substitution" in text, text
 
 
@@ -484,13 +576,82 @@ def test_a_food_beside_sodium_keeps_the_substitution_reading():
     assert "carries no energy" not in text, text
 
 
+# Covariates that carry energy in a unit their names state, which ``energy_terms`` reads: alcohol
+# at 7 kcal/g (``alcohol_g``, and NHANES's DR1TALCO, alcohol in grams in DR1TOT_L's codebook) and
+# fat at 9 (FAO 2003's general factors). Sodium and blood-pressure models routinely adjust for
+# alcohol.
+ENERGY_COVARIATES = [["alcohol_g"], ["DR1TALCO"], ["fat_g"], ["fat_g", "alcohol_g"]]
+
+
+def _beside(method: str, exposure: str, covariates: list[str]):
+    """``describe_model`` for one study factor beside ``covariates``, total energy kept; and the
+    study factor's column in the model."""
+    from turbotab.core.methods.energy import describe_model
+
+    adjustment = d.EnergyAdjustment(method=method, energy_column="kcal", nutrients=[exposure])
+    roles = {exposure: "exposure", "kcal": "energy", **{c: "covariate" for c in covariates}}
+    name = f"{exposure}_adj" if method == "residual" else exposure
+    columns = [exposure, "kcal", *covariates]
+    return describe_model(adjustment, columns, roles, [name, "kcal", *covariates]), name
+
+
+@pytest.mark.parametrize("method", ["standard", "residual"])
+@pytest.mark.parametrize("covariates", ENERGY_COVARIATES, ids="+".join)
+def test_a_nutrient_with_no_energy_beside_a_covariate_that_carries_energy_is_substituted_for_nothing(
+        method, covariates):
+    """The RF-1 verifier's V1. Sodium carries no energy (no Atwater factor), so with total energy
+    fixed more of it displaces no source, whatever the covariates carry; alcohol and fat do carry
+    energy, so a covariate's own coefficient, at fixed total energy, is a swap for the sources
+    left out. The sentence says the nutrient displaces nothing and speaks of the covariates'
+    coefficients by name, never of "each coefficient", which would cover sodium's; sodium's column
+    has no swap, and each covariate's has one."""
+    from turbotab.core.methods.energy import energy_factor
+
+    assert energy_factor("sodium_mg").factor is None
+    assert [energy_factor(c).factor for c in covariates] == [
+        {"alcohol_g": 7.0, "DR1TALCO": 7.0, "fat_g": 9.0}[c] for c in covariates]
+    described, name = _beside(method, "sodium_mg", covariates)
+    text = described.text
+    assert "the nutrient carries no energy, so it displaces no energy source" in text, text
+    assert "each coefficient is a substitution" not in text, text
+    assert "implicitly a substitution" not in text, text
+    assert "more of the nutrient at the same total energy, in place of" not in text, text
+    assert name not in described.swaps and name not in described.terms, described
+    assert set(described.swaps) == set(covariates), described.swaps
+    for c in covariates:
+        assert c in text, text
+
+
+@pytest.mark.parametrize("method", ["standard", "residual"])
+def test_a_nutrient_that_carries_energy_beside_a_covariate_that_carries_energy_keeps_its_swap(
+        method):
+    """The other side: protein carries energy (4 kcal/g), and beside alcohol (7) both are named, so
+    each coefficient, protein's among them, is a swap for the sources left out of the model:
+    carbohydrate, fat and the rest (NUTRITION_PACK §04: "each coefficient is a substitution for the
+    energy sources not in the model")."""
+    from turbotab.core.methods.energy import energy_factor
+
+    assert (energy_factor("protein_g").factor, energy_factor("alcohol_g").factor) == (4.0, 7.0)
+    described, name = _beside(method, "protein_g", ["alcohol_g"])
+    assert "carries no energy" not in described.text, described.text
+    assert ("each coefficient is a substitution in place of the energy sources not in the model: "
+            "carbohydrate, fat, other") in described.text, described.text
+    assert name in described.swaps and "alcohol_g" in described.swaps, described.swaps
+
+
 def test_the_teaching_scopes_the_substitution_reading_to_nutrients_that_carry_energy():
+    """The pack's substitution reading, scoped to a nutrient that carries energy under its SETTLED
+    badge; sodium's reading in a section of its own, the same one on both cards (the verifier's
+    V2)."""
     energy = _entry("energy_adjustment")
     estimand = _entry("estimand")
     for body in (_section(energy, "What the coefficient means")["body"],
                  _section(estimand, "A substitution, not an addition")["body"]):
-        assert "carries energy" in body or "carry energy" in body, body
-        assert "sodium" in body, body
+        assert body.startswith("For a nutrient that carries energy, "), body
+        assert "sodium" not in body, body
+    nothing = [_section(e, "A nutrient with no energy") for e in (energy, estimand)]
+    assert nothing[0] == nothing[1]
+    assert "sodium" in nothing[0]["body"] and "displaces nothing" in nothing[0]["body"]
     assert "energy source" in _term(energy, "substitution")["definition"].split(";")[1]
 
 
@@ -590,11 +751,14 @@ def test_a_fit_with_class_weights_never_says_none_was_applied(tmp_path):
 
 @pytest.mark.parametrize("purpose", ["prediction", None])
 def test_multiple_imputation_is_refused_unless_the_purpose_is_inference_in_sisks_scope(purpose):
-    """Sisk et al. 2023 (quoted in methods/missing.py): "the outcome should be used to impute
-    development data when using multiple imputation … When missingness is allowed at deployment,
-    omitting the outcome from the imputation model at the development was preferred." The
-    refusal fires with no purpose too, so it says "unless the purpose is inference", and it cites
-    them only for rows that can arrive with blanks."""
+    """Sisk et al. 2023's abstract (Stat Methods Med Res 32:1461; quoted in methods/missing.py, and
+    read on PubMed 37105540 by the RF-1 verifier): "With complete data available at deployment, the
+    outcome should be used to impute development data when using multiple imputation and omitted
+    under regression imputation. When missingness is allowed at deployment, omitting the outcome
+    from the imputation model at the development was preferred." The refusal fires with no purpose
+    too, so it says "unless the purpose is inference"; it cites them for rows that can arrive with
+    blanks, and says their use of the outcome with complete rows is for multiple imputation, not
+    for a single fill such as the one it offers (the verifier's V6)."""
     state = ProjectState(target="y", roles={"x": "exposure", "z": "covariate"}, purpose=purpose)
     with pytest.raises(Refusal) as refused:
         validate(d.SetMissing(strategy="multiple_imputation"), {"state": state})
@@ -603,7 +767,10 @@ def test_multiple_imputation_is_refused_unless_the_purpose_is_inference_in_sisks
     assert "Unless the purpose is inference" in message
     assert "under prediction the imputation is fit" not in message
     assert "blanks" in message and "Sisk et al. (2023)" in message
-    assert "complete" in message
+    assert ("with complete rows at deployment they recommend using it in multiple imputation, not "
+            "in a single regression fill") in message, message
+    assert not message.endswith("they recommend using it."), message
+    assert refused.value.exits[0]["decision"]["strategy"] == "impute"  # the single fill offered
 
 
 def test_multiple_imputation_under_inference_is_not_refused():
@@ -787,7 +954,10 @@ def test_a_group_that_is_no_predictor_is_said_to_be_left_out_of_the_imputation_m
 
 MODELS_GET = re.compile(r"\b(?:enters?|stays? out of|kept out of) the (?:models?|predictors)\b"
                         r"|\bthe models? reads?\b|\bbecomes? (?:a )?predictors?\b"
-                        r"|\bcan become predictors\b|\bnever a predictor\b", re.I)
+                        r"|\bcan become predictors\b|\bnever a predictor\b"
+                        # "adjusted for" says the models hold it (the verifier's V7); "to adjust
+                        # for" says what the role is for.
+                        r"|\badjusted for\b", re.I)
 
 BASE_WORDS = (
     "Only study factors, covariates and the energy column can become predictors; every other role "
@@ -796,6 +966,8 @@ BASE_WORDS = (
     "Groups participants, such as a site or household; kept out of the predictors.",
     "A column the model reads to predict the outcome, such as a nutrient intake or age.",
     "Names a participant; never a predictor, and keeps a person's rows together in the split.",
+    "A variable adjusted for so that the estimate of what you study is not confounded by it, such "
+    "as age or sex.",
 )
 
 
@@ -812,6 +984,8 @@ def test_the_guard_fires_on_the_base_words_and_is_silent_on_a_roles_definition()
         assert MODELS_GET.search(old), old
     assert not MODELS_GET.search("Groups participants, such as a site or household; not a "
                                  "predictor role.")
+    assert not MODELS_GET.search("Something to adjust for, such as age or sex: a predictor role "
+                                 "beside the study factors.")
 
 
 def test_under_predict_no_grouping_reaches_the_models_so_the_one_liner_holds():
@@ -841,32 +1015,56 @@ def _inference(**slots) -> ProjectState:
                         **slots)
 
 
-@pytest.mark.parametrize("case", ["plain", "fixed_effects", "identifier_fixed_effects", "drop"])
+def _waist_a_mediator() -> dict:
+    """The adjustment answers for a total effect of sugar: age, set before it, causes the outcome
+    (adjusted); waist, which sugar can change and which causes the outcome, is a mediator, which a
+    total effect leaves out (VanderWeele 2019's criterion, ``estimand.derive``)."""
+    def answer(after: str):
+        return d.AdjustmentAnswer(exposure="sugar", causes_exposure="no", causes_outcome="yes",
+                                  after_exposure=after)
+
+    return {"estimand": d.EstimandSpec(exposure="sugar", effect="total",
+                                       measure="mean_difference"),
+            "adjustment": {"age": answer("no"), "waist": answer("yes")}}
+
+
+@pytest.mark.parametrize("case", ["plain", "fixed_effects", "identifier_fixed_effects", "drop",
+                                  "left_out"])
 def test_under_estimate_the_roles_say_what_each_role_is_whatever_the_models_get(case):
     """The cases the landing's verifier reproduced: with nothing changed the models get the three
     predictor roles; a fixed-effects grouping column puts a cluster-role column in them (and an
-    identifier-role one, named as the grouping); a missing-values drop leaves a covariate out. The
-    roles card is one card for all of them, so it says what each role is and nothing of what the
-    models get."""
+    identifier-role one, named as the grouping); a missing-values drop leaves a covariate out, and
+    so do the adjustment answers that make it a mediator of a total effect (the RF-1 verifier's
+    V7), while it keeps the covariate role. The roles card is one card for all of them, so it says
+    what each role is and nothing of what the models get: the covariate term says a covariate is
+    one to adjust for, never that it is adjusted for."""
+    from turbotab.core.decisions import left_out
     from turbotab.core.models.pipeline import model_predictors
 
     slots = {"plain": {},
              "fixed_effects": {"clusters": {"column": "site", "adjust": "fixed_effects"}},
              "identifier_fixed_effects": {"clusters": {"column": "pid",
                                                        "adjust": "fixed_effects"}},
-             "drop": {"missing": MissingSpec(strategy="complete_case", drop_columns=["waist"])}}
-    got = model_predictors(_inference(**slots[case]))
+             "drop": {"missing": MissingSpec(strategy="complete_case", drop_columns=["waist"])},
+             "left_out": _waist_a_mediator()}
+    state = _inference(**slots[case])
+    got = model_predictors(state)
     want = {"plain": ["sugar", "age", "waist", "kcal"],
             "fixed_effects": ["sugar", "age", "waist", "kcal", "site"],
             "identifier_fixed_effects": ["sugar", "age", "waist", "kcal", "pid"],
-            "drop": ["sugar", "age", "kcal"]}[case]
+            "drop": ["sugar", "age", "kcal"],
+            "left_out": ["sugar", "age", "kcal"]}[case]
     assert got == want
+    assert state.roles["waist"] == "covariate"
+    assert ("waist" in left_out(state)) is (case in ("drop", "left_out"))
     for text in _role_words("inference"):
         assert not MODELS_GET.search(text), text
     roles = _entry("roles", "inference")
     assert "predictor role" in roles["one_liner"]
     assert "predictor role" in _option(roles, "covariate")["consequence"]
     assert "not a predictor role" in _option(roles, "cluster")["consequence"]
+    covariate = _term(roles, "covariate")["definition"]
+    assert covariate.startswith("A variable to adjust for, so that"), covariate
 
 
 @pytest.mark.parametrize("case", ["plain", "drop"])

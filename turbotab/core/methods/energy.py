@@ -1705,6 +1705,8 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
             "fiber", "omega", "epa", "dha", "dpa"}
 
     # The columns the sentence's "the nutrient" is: the study factors and the adjusted nutrients.
+    # Whether they carry energy is read off them alone, whatever the covariates carry: alcohol_g
+    # beside sodium is a swap of its own, not sodium's (the RF-1 verifier's V1).
     read = [c for c in dict.fromkeys([*(c for c in predictors if roles.get(c) == "exposure"),
                                       *(getattr(adjustment, "nutrients", None) or [])])
             if c not in energy_cols]
@@ -1715,22 +1717,15 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
         if slopes:
             text += " Fitted elasticities: " + ", ".join(
                 f"b = {_slope(b)} for {n}" for n, b in slopes.items()) + "."
-    elif form == "standard" and named:
-        text = ("More of each nutrient with total energy held fixed: " + clause +
-                " It is not a swap for the average of all other sources (NUTRITION_PACK §05a: "
-                "name the omitted component).")
-    elif form == "residual" and named:
-        text = ("The standard model's substitution, in each nutrient's own units: the residuals "
-                "and total energy span the same model as the nutrients and total energy, so each "
-                f"coefficient is the standard model's exactly ({_MCCULLOUGH}). "
-                + clause[0].upper() + clause[1:])
-    elif not terms and no_energy and form in ("standard", "residual", "residual_energy_dropped"):
-        # Claims backtest D-001 (its claim, ``energy.no_energy_no_swap``): every study factor is a
-        # nutrient that carries no energy (sodium) and no covariate carries energy in a stated
-        # unit, so more of it at fixed total energy displaces no source, and METHOD_TABLE's
-        # substitution, written for an energy-bearing exposure, is not its meaning. A missing
-        # energy factor is no such reading: a food, servings, drinks or a fatty acid carry energy
-        # that no general factor converts, and keep the substitution.
+    elif no_energy and form in ("standard", "residual", "residual_energy_dropped"):
+        # Claims backtest D-001 (its claim, ``energy.no_energy_no_swap``): every study factor and
+        # adjusted nutrient is one that carries no energy (sodium), so more of it at fixed total
+        # energy displaces no source, and METHOD_TABLE's substitution, written for an
+        # energy-bearing exposure, is not its meaning. A missing energy factor is no such reading:
+        # a food, servings, drinks or a fatty acid carry energy that no general factor converts,
+        # and keep the substitution. A covariate that carries energy in a stated unit (alcohol_g)
+        # is in ``terms``: with total energy in the model its own coefficient is a swap, said of
+        # it by name, so no "each coefficient" covers the nutrient's.
         from turbotab.core import claims
 
         nothing = claims.card("energy.no_energy_no_swap")
@@ -1746,6 +1741,21 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
                 "different number, which can differ in sign, and its interval is wider. "
                 f"{nothing[0].upper()}{nothing[1:]}."),
         }[form]
+        swapped = [t.column for t, _ in present if t.column not in children]
+        if form != "residual_energy_dropped" and len(swapped) >= 2:
+            text += (f" The coefficients of {_and(swapped)} are each a substitution in place of "
+                     f"the energy sources not in the model: {', '.join(omitted)}.")
+        elif form != "residual_energy_dropped" and swapped:
+            text += f" The coefficient of {swapped[0]} is a substitution {swap}."
+    elif form == "standard" and named:
+        text = ("More of each nutrient with total energy held fixed: " + clause +
+                " It is not a swap for the average of all other sources (NUTRITION_PACK §05a: "
+                "name the omitted component).")
+    elif form == "residual" and named:
+        text = ("The standard model's substitution, in each nutrient's own units: the residuals "
+                "and total energy span the same model as the nutrients and total energy, so each "
+                f"coefficient is the standard model's exactly ({_MCCULLOUGH}). "
+                + clause[0].upper() + clause[1:])
     else:
         text = METHOD_TABLE[form]["estimand"]
         if form == "residual_energy_dropped" and named:
