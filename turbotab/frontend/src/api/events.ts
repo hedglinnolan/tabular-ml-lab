@@ -13,7 +13,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { eventsUrl } from "./client";
-import { keys, logDerivedKeys } from "./queries";
+import { changedState, keys, logDerivedKeys } from "./queries";
 import type {
   DecisionRecord,
   JobView,
@@ -31,11 +31,6 @@ function newer(a: StageStatus | undefined, b: StageStatus): boolean {
   if (!b.updated_at) return !a.updated_at;
   if (!a.updated_at) return true;
   return Date.parse(b.updated_at) >= Date.parse(a.updated_at);
-}
-
-/** Whether a stage really changed (its state, a stop, the hold), as against a progress tick. */
-function changedState(a: StageStatus | undefined, b: StageStatus): boolean {
-  return a?.status !== b.status || a?.cancelled !== b.cancelled || a?.held !== b.held;
 }
 
 function applyDecision(qc: QueryClient, pid: string, record: DecisionRecord): void {
@@ -64,7 +59,8 @@ function applyStage(qc: QueryClient, pid: string, status: StageStatus): void {
     const current = view.stages[status.stage];
     if (!newer(current, status)) return;
     // The quest log counts what is answered and what is computed, and the fit lock says whether
-    // the fit is held: a stage changing state (not a progress tick) reads it again.
+    // the fit is held: a stage changing state (not a progress tick) reads it again. A read of the
+    // view that brought this state before the event has read it again already (useProjectView).
     if (changedState(current, status)) void qc.invalidateQueries({ queryKey: keys.quest(pid), exact: true });
     // The methods' sections (P8) are built from the fresh stages as well as the log (the fit's
     // cross-validation paragraphs, the design's matrix), and pressing Fit records no decision: a
