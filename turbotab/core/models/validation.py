@@ -115,7 +115,12 @@ units: every score is *within-unit* performance, new rows of units the models we
 record-wise cross-validation overestimates as an estimate of the other (Saeb et al., GigaScience
 2017;6(5): "record-wise CV often massively overestimates the prediction accuracy of the
 algorithms"). It is stated, never silent (:func:`unit_spans`): in the split's note and sentence, in
-every performance sentence and the result, and in the chain.
+every performance sentence and the result, and in the chain. A unit whose training rows all fall
+in one fold is still scored as a new unit, and under internal–external validation the folds are a
+grouping's levels, not rows, so the split's note reads the drawn folds, each draw of them, wherever
+a column names the unit: it says nothing of units where no unit's rows fall in two folds, says
+every score is within-unit only where every unit's do in every draw, and otherwise counts them and
+reads only their rows' scores as within-unit (:func:`within_unit_sentence`).
 
 **Performance across sites** (MODELING_SEQUENCE §2: clusters imply, under prediction, "performance
 heterogeneity across sites"; §1 row 11: "internal–external CV when clusters exist"; TRIPOD+AI 12d
@@ -1092,25 +1097,80 @@ def unit_spans(basis: Mapping[str, Any] | None) -> str | None:
     column = basis.get("column")
     n = basis.get("n_units")
     if state == "undetermined":
-        return ("whether a unit can appear in more than one row was answered as not known, so the "
-                "folds were drawn by row")
+        return f"{_NOT_KNOWN}, so the folds were drawn by row"
     if state != "abandoned":
         return None
     if column and n == 1:
         return f"every row belongs to the one `{column}` unit, so no fold can leave a unit out"
     if column:
-        units = f" (`{int(n):,}` units)" if n else ""
-        return f"rows repeat within `{column}`{units}, but the folds were drawn by row"
-    return "units were said to repeat, but no column names the unit, so the folds were drawn by row"
+        return f"rows repeat within `{column}`{_units(n)}, but the folds were drawn by row"
+    return f"{_UNNAMED}, so the folds were drawn by row"
 
 
-def within_unit_sentence(basis: Mapping[str, Any] | None) -> str | None:
-    """:func:`unit_spans` and what follows from it, as one sentence (the split's note), or None."""
+# Why a unit's rows can sit on both sides of a fold where no column names the unit
+# (:func:`unit_spans`).
+_NOT_KNOWN = "whether a unit can appear in more than one row was answered as not known"
+_UNNAMED = "units were said to repeat, but no column names the unit"
+
+
+def _units(n: Any) -> str:
+    return f" (`{int(n):,}` units)" if n else ""
+
+
+def within_unit_sentence(basis: Mapping[str, Any] | None, *, cluster: str | None = None,
+                         spanning: int | Sequence[int] | None = None,
+                         units: int | None = None, ordered: bool = False) -> str | None:
+    """:func:`unit_spans` and what follows from it, as one sentence (the split's note), or None.
+
+    ``cluster`` names the column whose levels are the folds (internal–external validation), so
+    they were not drawn by row; ``spanning`` counts, for each draw of the folds (one, or one per
+    repeat of repeated k-fold), the units whose training rows the drawn folds put in more than one
+    of them, read where a column names the unit (None where none does or it was not read), and
+    ``units`` how many units have training rows; ``ordered``: the folds are time-ordered blocks,
+    fold j scored by models fit on the folds before it (``models.folds.forward_blocks``), so only
+    a unit's rows after its first fold are scored by models fit on a row of it, and never every
+    score. A unit whose training rows all fall in one fold is scored by models fit on no row of
+    it, as a new unit. So where no unit's rows fall in two folds no score is within-unit, and there
+    is nothing to say (the RF-1 verifier's round-2 P3, the RF-1b verifier's round-2 V2); where
+    every unit's do, in every draw, every score is; where some do, only their rows are scored by
+    models fit on rows of the same unit, so the sentence counts them (their range over the draws)
+    and reads only their rows' scores as within-unit (the RF-1b verifier's P3 and round-2 V2);
+    where no column can tell, it says a fold may split a unit."""
     spans = unit_spans(basis)
     if spans is None:
         return None
-    then = WITHIN_UNIT if basis.get("state") != "undetermined" else WITHIN_UNIT.replace(
-        "every cross-validated score here is", "every cross-validated score here may be")
+    state, column, n = basis.get("state"), basis.get("column"), basis.get("n_units")
+    every, may = "every cross-validated score here is", "every cross-validated score here may be"
+    counts = (None if spanning is None or not column or state == "undetermined" else
+              (int(spanning),) if isinstance(spanning, (int, np.integer)) else
+              tuple(int(k) for k in spanning))
+    if counts is not None and not any(counts):
+        return None
+    if counts is None:  # no column names the unit, or its column was not read
+        if cluster is not None:
+            across = (f"the folds, the levels of `{cluster}`, may put rows of one unit in more "
+                      f"than one of them")
+            spans = (f"rows repeat within `{column}`{_units(n)}, and {across}" if column else
+                     f"{_NOT_KNOWN if state == 'undetermined' else _UNNAMED}, so {across}")
+        then = WITHIN_UNIT.replace(every, may)
+    elif n == 1 or (cluster is None and not ordered and units is not None
+                    and all(k == units for k in counts)):
+        then = WITHIN_UNIT  # one unit ("no fold can leave a unit out"), or every unit in each draw
+    else:
+        lo, hi = min(counts), max(counts)
+        one = lo == hi == 1
+        many = f"`{lo:,}` to `{hi:,}`" if lo != hi else f"`{hi:,}`"
+        if cluster is not None:
+            spans = (f"rows repeat within `{column}`{_units(n)}, and {many} of them "
+                     f"{'has' if one else 'have'} rows in more than one of the folds, the levels "
+                     f"of `{cluster}`")
+        else:
+            draws = f"in each of their `{len(counts)}` draws " if len(counts) > 1 else ""
+            spans = (f"{spans}, and {draws}{many} {'unit has' if one else 'units have'} rows in "
+                     f"more than one fold")
+        whose = "that unit's" if one else "those units'"
+        after = f" after {'its' if one else 'their'} first fold" if ordered else ""
+        then = WITHIN_UNIT.replace(every, f"the cross-validated scores of {whose} rows{after} are")
     return f"{spans[0].upper()}{spans[1:]}: {then}."
 
 

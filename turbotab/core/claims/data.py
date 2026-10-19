@@ -731,3 +731,442 @@ register(Claim(
     author=AUTHOR,
     origin="audit",
 ))
+
+
+# ── R1-F's first batch (R1_PLAN.md R1-F; claims backtest FIXES.md) ───────────────────────────
+#
+# The data area's sentences an analyst reads on a card, in teaching or in a reading, each fixed
+# test first: what a swap in grams is (D-009), how food-frequency blanks are filled (D-037), a
+# count too numerous to count blanked, alone or beside values below a detection limit (D-044),
+# imputed copies pooled (D-070), a nutrient with no energy (D-001), what averaging replicates does
+# (D-012) and the demographic guess (C-144). Each part is the author's judgment: no grader other
+# than the author has checked one yet
+# (CLAIMS_REGISTRY.md §2.4). Where the sentence a card shows holds the data's own words (a
+# column's name, a count), the claim holds its fixed words and the code that enforces it composes
+# the rest around them.
+
+RF1_AUTHOR = "RF-1 builder"
+RF1_TESTS = "turbotab/core/tests/test_rf1_sentences.py"
+
+register(Claim(
+    id="substitution.isocaloric_units",
+    kind="teaching",
+    card="TurboTab counts a swap in calories. A macronutrient's grams are a fixed multiple of its "
+         "calories, so TurboTab converts a swap in grams by the macronutrient's Atwater factor. A "
+         "food's energy per gram or per serving varies, so TurboTab moves a food only once it is "
+         "recorded in kcal or kJ.",
+    regime=Regime("a substitution between two energy sources at fixed total energy, each in a "
+                  "unit the reading records (grams, kcal or kJ; alcohol in standard drinks)"),
+    decision="set_substitution",
+    parts=(
+        Part("grams_convert", grade="judgment", basis=Basis(
+            reason="We convert a macronutrient recorded in grams by its Atwater factor "
+                   "(readings.kcal_per_unit), a constant multiple, so a swap of its grams at "
+                   "fixed total energy is a swap of its calories; the fires test moves k kcal "
+                   "each way and finds total energy unchanged. A nutrient the factors do not "
+                   "cover by name (EPA, a fatty acid named apart from fat) has no factor, so the "
+                   "sentence says a macronutrient's grams, not any nutrient's (the RF-1 "
+                   "verifier's V4). The sentence is TurboTab's rule, which NUTRITION_PACK §05 "
+                   "does not say, so it sits in a section of its own badged CONVENTION, beside "
+                   "the pack's SETTLED sentence (the verifier's V2).")),
+        Part("foods", grade="judgment", basis=Basis(
+            reason="A food's calories per gram are no general factor (fatty fish is about two "
+                   "kcal a gram, not fat's nine) and the reading records no serving unit, so the "
+                   "substitution refuses a food until it is recorded in kcal or kJ; the silent "
+                   "test reads that refusal.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_a_nutrients_grams_move_at_its_atwater_factor_and_hold_total_"
+              "energy", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_foods_grams_or_servings_move_nothing_until_it_is_recorded_"
+               "in_kcal", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_settled_section_says_only_its_packs_words_and_turbotabs_"
+              "rules_are_not_settled", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.readings:kcal_per_unit",
+                 "turbotab.core.teaching.content:SUBSTITUTION"),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="missing.ffq_blank_handling",
+    kind="teaching",
+    card="Coding blanks as zero is the field's convention: it costs little for rarely eaten "
+         "foods and biases frequently eaten ones. Standard multiple imputation assumes missing at "
+         "random, so it is no solution here. Which handling is better is disputed.",
+    regime=Regime("blank food lines on a food-frequency questionnaire, a blank often meaning "
+                  "never (NUTRITION_PACK §06)"),
+    parts=(
+        Part("zero_coding", grade="judgment", basis=Basis(
+            reason="NUTRITION_PACK §06 marks zero-coding a convention with documented limits: "
+                   "little bias except for frequently consumed foods.")),
+        Part("imputation", grade="judgment", basis=Basis(
+            reason="The pack says standard multiple imputation assumes missing at random, which a "
+                   "blank that often means never is not, so it is no solution here. The pack also "
+                   "calls it an improvement, and the claims backtest's adjudicator asked to name "
+                   "what it improves on (D-037), but under a blank that means never, ranking it "
+                   "over complete cases is itself the handling the pack marks DISPUTED (the RF-1 "
+                   "verifier's round-2 P5), so the sentence ranks no handling.")),
+        Part("disputed", grade="judgment", basis=Basis(
+            reason="The pack marks the handling DISPUTED while the mechanism is SETTLED, so the "
+                   "handling is a section of its own, badged DISPUTED.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_the_food_frequency_blanks_carry_the_packs_own_badges",
+              truth="independent:NUTRITION_PACK §06"),
+    ),
+    enforced_by=("turbotab.core.teaching.content:MISSING",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="repairs.tntc_censored",
+    kind="teaching",
+    card="too numerous to count, biasing it low",
+    methods="a count above the countable range, right-censored rather than missing, so blanking "
+            "such a count biases the column low",
+    regime=Regime("a column of counts written as text, its kept counts within the countable "
+                  "range, some cells too numerous to count (TNTC), which reading the column as "
+                  "numbers, or setting its values below a limit to a fraction of it, sets blank; "
+                  "the card, which says the column is biased low, only where every other blanked "
+                  "cell is known to hold no value (a missing mark such as '.', or a measurement "
+                  "failure the clinical pack names, such as QNS) or to lie above every kept count "
+                  "('>ULOQ', or above a limit at or above the most the column keeps), so none is "
+                  "below a detection limit, whether written with its limit ('<10') or with a mark "
+                  "that names none ('ND', '<LOD', 'BLQ', 'not detected'), and none is a label read "
+                  "as neither ('N/D', 'trace')"),
+    decision="apply_repair.text_numbers",
+    parts=(
+        Part("censored", grade="judgment", basis=Basis(
+            cites=("fda_bam_ch3",),
+            reason="FDA's Bacteriological Analytical Manual reads a plate too numerous to count "
+                   "as a lower bound, above its countable range (stages/finding_words.py quotes "
+                   "it); the author read the quotation, not the manual.")),
+        Part("direction", grade="judgment", basis=Basis(
+            reason="Every count too numerous to count is above every count kept within the "
+                   "range, and above every value below a limit set to a fraction of it, so "
+                   "blanking them alone lowers the column's mean, whatever values above the range "
+                   "they hold: the methods sentence of either lever (reading the column as "
+                   "numbers, or setting its values below a limit to a fraction of it) says that "
+                   "of every such blank (the RF-1b verifier's P1). The card says the column is "
+                   "biased low only where no other blank can raise the mean: each other blanked "
+                   "cell holds no value (repairs.is_missing_mark, or the clinical pack's "
+                   "measurement failures, such as QNS or a hemolyzed specimen, which it reads as "
+                   "no value) or lies above every kept count ('>ULOQ', above the upper limit of "
+                   "quantification, or '>L' with L at or above the most the column keeps), so "
+                   "every blanked value is above the kept mean (the RF-1b verifier's round-2 V1). "
+                   "A cell below a limit, whether its limit is written ('<10') or a mark names "
+                   "none ('ND', '<LOD', 'BLQ', 'not detected'), raises it, which "
+                   "repairs.tntc_beside_below_limit says instead (the RF-1 verifier's round-2 P1); "
+                   "a label the engine reads as neither ('N/D', which can mean not done or not "
+                   "detected, 'Below LOD', 'trace') may, which repairs.tntc_beside_unplaced says "
+                   "instead. The fires tests build each case. A column whose kept counts pass the "
+                   "range is outside the construction.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_blanking_counts_too_numerous_to_count_says_it_biases_the_"
+              "column_low", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_one_count_too_numerous_to_count_is_said_as_one",
+              truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_mark_above_a_limit_beside_a_count_too_numerous_to_count_keeps_"
+              "the_column_biased_low", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_beside_blanks_with_no_value_or_above_every_kept_count_the_column_"
+              "is_biased_low", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_beside_a_label_the_engine_cannot_place_a_count_too_numerous_"
+              "says_only_its_own_direction", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_fraction_of_the_limit_says_the_count_too_numerous_to_count_was_"
+              "blanked", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_blanking_counts_above_the_range_and_below_a_limit_says_they_"
+              "pull_opposite_ways", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_"
+               "one", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_fraction_of_the_limit_with_no_count_too_numerous_names_its_"
+               "blanks_and_nothing_of_one", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.repairs:_offer_text_numbers",
+                 "turbotab.core.repairs:_offer_below_detection"),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="repairs.tntc_beside_unplaced",
+    kind="teaching",
+    card="too numerous to count biases it low",
+    regime=Regime("a column of counts written as text, its kept counts within the countable "
+                  "range, read as numbers, which blanks cells too numerous to count (TNTC) beside "
+                  "a label the engine reads as neither no value, nor above every kept count, nor "
+                  "below a limit ('N/D', 'Below LOD', 'non-detect', 'BLOD', 'trace'), and no cell "
+                  "it reads as below a limit"),
+    decision="apply_repair.text_numbers",
+    parts=(
+        Part("direction", grade="judgment", basis=Basis(
+            reason="Blanking a count too numerous to count lowers the column's mean, as "
+                   "repairs.tntc_censored's direction part says; the card says that of the TNTC "
+                   "blanks alone and nothing of the column's direction, since the other label "
+                   "may be a value below a detection limit, whose blank raises the mean, or no "
+                   "value. The fires test builds the RF-1b verifier's round-2 column (60 counts "
+                   "from 20 to 279, kept mean 149.55, 5 cells so labeled and 1 TNTC): read as "
+                   "values from 0 to 19.99 and the TNTC count as 301, the full mean is 140.5 to "
+                   "142.0, below the kept mean, so the kept column is biased high; read as no "
+                   "value, it is biased low.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_beside_a_label_the_engine_cannot_place_a_count_too_numerous_"
+              "says_only_its_own_direction", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_beside_blanks_with_no_value_or_above_every_kept_count_the_"
+               "column_is_biased_low", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_blanking_counts_above_the_range_and_below_a_limit_says_they_"
+               "pull_opposite_ways", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_"
+               "one", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.repairs:_offer_text_numbers",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="repairs.tntc_beside_below_limit",
+    kind="teaching",
+    card="those too numerous or below a limit pull opposite ways",
+    methods="and blanking a value below a limit biases it high: the two pull opposite ways",
+    regime=Regime("a column of counts written as text, its kept counts within the countable "
+                  "range and at or above each limit, with both kinds blanked: cells too numerous "
+                  "to count (TNTC) and cells below a limit, written with its limit ('<10') or with "
+                  "a mark that names none ('ND', '<LOD', 'BLQ', 'not detected'), which the "
+                  "sentence then says it read as below the detection, quantification or reporting "
+                  "limit the mark names; reading the column as numbers blanks both, and setting "
+                  "its values below a limit to a fraction of it blanks a mark that names none, "
+                  "named as such"),
+    decision="apply_repair.text_numbers",
+    parts=(
+        Part("direction", grade="judgment", basis=Basis(
+            reason="A value below its detection or quantification limit is below every kept "
+                   "count at or above that limit, so blanking it raises the column's mean, while "
+                   "blanking a count above the range lowers it; the column's direction rests on "
+                   "values neither kind gives, so the sentences name none. The fires test builds "
+                   "the RF-1 verifier's round-2 column (60 counts from 20 to 279, 30 read below "
+                   "10, one too numerous to count): its kept mean, 149.6, is above the full mean "
+                   "at the least the unread values can be (101.9) and below it at a TNTC count of "
+                   "20,000. A mark that names no limit ('ND', '<LOD', 'BLQ', 'not detected') is "
+                   "below one too, and no quantified count is under it, so the same column with "
+                   "its 30 cells so respelled pulls the same two ways (the RF-1b verifier's P1); "
+                   "the sentence says the mark was read as below the limit it names, since BLQ, "
+                   "LOQ and LLOQ are limits of quantification, not detection (the RF-1b verifier's "
+                   "round-2 V4). The second lever, which has no limit to take a fraction of for "
+                   "such a mark, blanks it and names it as a blanked value below a limit, the "
+                   "clause's referent (the RF-1b verifier's round-2 V5).")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_blanking_counts_above_the_range_and_below_a_limit_says_they_"
+              "pull_opposite_ways", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_mark_below_a_limit_naming_none_beside_a_count_too_numerous_"
+              "pulls_the_other_way", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_marks_below_two_kinds_of_limit_beside_a_count_too_numerous_name_"
+              "both_limits", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_fraction_of_the_limit_beside_a_blanked_nd_says_they_pull_"
+              "opposite_ways", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_blanking_counts_too_numerous_to_count_says_it_biases_the_"
+               "column_low", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_mark_above_a_limit_beside_a_count_too_numerous_to_count_"
+               "keeps_the_column_biased_low", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_fraction_of_the_limit_says_the_count_too_numerous_to_count_"
+               "was_blanked", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_column_with_no_count_too_numerous_to_count_says_nothing_of_"
+               "one", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_with_no_count_too_numerous_a_mark_that_names_no_limit_is_said_"
+               "as_not_a_number", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.repairs:_offer_text_numbers",
+                 "turbotab.core.repairs:_offer_below_detection"),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="copies.pooled_by_rubin",
+    kind="rule",
+    card="Imputed copies of one record; under inference, Rubin's rules pool numbered copies kept "
+         "as records.",
+    methods="kept as records, each copy is analyzed as a completed dataset with its own outcome "
+            "and the estimates pooled by Rubin's rules, which carries the imputation's "
+            "uncertainty (NCHS's combining rules)",
+    goal=("inference",),
+    regime=Regime("under inference, rows that are imputed copies of one record, numbered by a "
+                  "column (NHANES DXA's _MULT_), each copy kept as a record"),
+    decision="set_repeat_kind.imputed_copies",
+    options=("imputed_copies", "repeats", "time_points"),
+    verdict="recommended",
+    parts=(
+        Part("pooled", grade="judgment", basis=Basis(
+            reason="The fit pools the copies only where a column numbers them and each is kept "
+                   "as a record (stages.modeling.imputed_copies_column), and the record's "
+                   "sentence says pooled only then. The pooled numbers are held to R's mitools "
+                   "and mice elsewhere (test_ms1_ms3_multiple_imputation.py), which no one has "
+                   "graded for this claim.")),
+        Part("records", grade="judgment", basis=Basis(
+            reason="Under inference, combining the copies into one row per unit is blocked and "
+                   "recorded (structural._imputed_copies_are_not_combined_unrecorded), so a "
+                   "numbered copy is kept as a record unless that limitation is recorded, which "
+                   "records the repeats answer again with its own sentence.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_numbered_copies_kept_as_records_are_said_pooled_as_the_fit_"
+              "pools_them", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_copies_no_column_numbers_are_said_not_pooled_as_the_fit_does_"
+               "not_pool_them", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_the_copies_option_names_both_conditions_the_fit_pools_under",
+              truth="construction"),
+        Silent(f"{RF1_TESTS}::test_numbered_copies_whose_rows_are_combined_are_said_not_pooled_as_"
+               "the_fit_does_not_pool_them", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.stages.modeling:imputed_copies_column",
+                 "turbotab.core.voice:_set_repeat_kind"),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="energy.no_energy_no_swap",
+    kind="teaching",
+    card="carries no energy, so it displaces no energy source",
+    regime=Regime("an energy-adjusted model (standard, or residual with energy kept or dropped), "
+                  "said of a study factor or adjusted nutrient the recognizers read as a nutrient "
+                  "that carries no energy (sodium, potassium, a vitamin; not a fatty acid or "
+                  "fiber), whatever the others carry: as \"the nutrient\" where every study "
+                  "factor and adjusted nutrient is one, and by name beside those that carry "
+                  "energy, which, like a covariate that carries energy in a stated unit "
+                  "(alcohol_g), keep a swap of their own, said by name; never of a food, "
+                  "servings, drinks or a name the recognizers do not read, which carry energy no "
+                  "general factor converts"),
+    decision="set_energy_adjustment",
+    parts=(
+        Part("no_swap", grade="judgment", basis=Basis(
+            reason="A mineral, a vitamin or caffeine has no Atwater factor and adds no calories "
+                   "(FAO 2003's general factors are for protein, carbohydrate, fat, alcohol and "
+                   "fiber), so more of it at fixed total energy leaves every energy source where "
+                   "it was: the coefficient is more of it at the same total energy. The sentence "
+                   "fires on that positive reading, never on a missing energy factor: a food in "
+                   "grams, servings, alcoholic drinks, a fatty acid named apart from fat and a "
+                   "fiber named by its method have no factor yet carry energy (the RF-1 "
+                   "verifier's P1). The reading is of the study factors and adjusted nutrients "
+                   "alone: a covariate that carries energy (alcohol or fat in grams) is a swap "
+                   "of its own at fixed total energy, which the sentence names, and leaves the "
+                   "nutrient's reading as it is (the RF-1 verifier's V1). Where the study factors "
+                   "are mixed, sodium beside protein or red meat, no sentence of \"the nutrient\" "
+                   "or of \"each coefficient\" holds of them all, so each that carries no energy "
+                   "is named as displacing none, and each that carries energy keeps its "
+                   "substitution by name, the swap its term already holds (the RF-1 verifier's "
+                   "round-2 P2). The "
+                   "fires tests read describe_model for sodium and potassium, alone and beside "
+                   "alcohol or fat, and for sodium beside protein or red meat, whose terms and "
+                   "swaps are those of protein or red meat alone; the silent tests keep protein's "
+                   "substitution, beside alcohol or fat too, and that of red meat, fatty fish, "
+                   "sugar-sweetened beverages, alcoholic drinks, EPA and AOAC fiber.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_with_energy_held_fixed_a_nutrient_with_no_energy_is_"
+              "substituted_for_nothing", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_with_energy_held_fixed_a_nutrient_that_carries_energy_is_a_"
+               "substitution", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_with_energy_held_fixed_a_food_a_drink_or_a_fatty_acid_is_"
+               "still_a_substitution", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_food_beside_sodium_keeps_the_substitution_reading",
+              truth="construction"),
+        Fires(f"{RF1_TESTS}::test_mixed_study_factors_name_each_with_no_energy_and_give_each_"
+              "others_swap_by_name", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_study_factors_that_all_carry_energy_keep_each_coefficients_"
+               "swap", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_nutrient_with_no_energy_beside_a_covariate_that_carries_"
+              "energy_is_substituted_for_nothing", truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_nutrient_that_carries_energy_beside_a_covariate_that_"
+               "carries_energy_keeps_its_swap", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_the_teaching_scopes_the_substitution_reading_to_nutrients_"
+              "that_carry_energy", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_a_settled_section_says_only_its_packs_words_and_turbotabs_"
+              "rules_are_not_settled", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.methods.energy:describe_model",
+                 "turbotab.core.teaching.content:NO_ENERGY_SWAP"),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="aggregation.replicate_mean",
+    kind="teaching",
+    card="Averaging k replicates of one quantity divides the error variance of each person's "
+         "mean by up to k, and by k when the replicates' errors are independent, as for "
+         "non-consecutive recalls.",
+    regime=Regime("a unit's rows that repeat one quantity (the repeats answer), combined by their "
+                  "mean"),
+    decision="set_aggregation",
+    parts=(
+        Part("quantity", grade="judgment", basis=Basis(
+            reason="Averaging shrinks the error variance of each person's mean, not the "
+                   "within-person variance itself (the claims backtest's D-012), whatever the "
+                   "error's source: replicates may be recalls on different days or readings at "
+                   "one visit, so the note and the mean option name no source (the RF-1 "
+                   "verifier's P5).")),
+        Part("up_to", grade="judgment", basis=Basis(
+            reason="With k errors of variance s² correlated at ρ ≥ 0 the mean's error variance is "
+                   "s²(1 + (k − 1)ρ)/k, so the cut is k only at ρ = 0 (non-consecutive recalls) "
+                   "and smaller for consecutive days, as the teaching's own section on "
+                   "consecutive recalls says. The derivation is supported by a simulation of both "
+                   "(test_averaging_replicates_divides_the_error_variance_by_up_to_their_number), "
+                   "which calls no engine code, so it is no test of the claim's: the fires tests "
+                   "read the note the coach writes and the mean option (the RF-1 verifier's "
+                   "round 2).")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_the_replicates_note_names_the_error_variance_of_each_mean",
+              truth="construction"),
+        Silent(f"{RF1_TESTS}::test_time_points_get_no_replicates_note", truth="construction"),
+        Fires(f"{RF1_TESTS}::test_the_mean_option_names_no_source_for_the_replicates_error",
+              truth="construction"),
+    ),
+    enforced_by=("turbotab.core.coach:aggregation_coach",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))
+
+register(Claim(
+    id="adjustment.demographic_guess",
+    kind="rule",
+    card="age, sex and race or ethnicity are set before what you study, while income, education, "
+         "occupation and marital status measured at the same visit may also follow it or the "
+         "outcome; the field's Models 1 and 2 adjust for them as what else could explain the "
+         "link",
+    goal=("inference",),
+    regime=Regime("under inference, a covariate whose name reads as a demographic characteristic "
+                  "(age, sex, race or ethnicity, education, income or the poverty ratio, "
+                  "occupation, marital status), under any lens"),
+    decision="set_adjustment.guess",
+    verdict="recommended",
+    parts=(
+        Part("set_before", grade="judgment", basis=Basis(
+            reason="Age, sex and race or ethnicity are fixed for an adult before any study factor "
+                   "is measured, so nothing studied can have changed them.")),
+        Part("may_follow", grade="judgment", basis=Basis(
+            reason="Both referees and the audit (claims backtest C-144) agree that income, "
+                   "occupation and marital status measured at the same visit can follow what is "
+                   "studied or the outcome; the guess still answers them as set before, the "
+                   "field's convention, and the reason says they may follow, so the person "
+                   "answers.")),
+        Part("convention", grade="judgment", basis=Basis(
+            reason="NUTRITION_PACK §08's Models 1 and 2 adjust for demographics; we carry the "
+                   "convention to every lens, worded without the diet.")),
+    ),
+    tests=(
+        Fires(f"{RF1_TESTS}::test_a_demographic_guess_names_no_diet_and_says_which_may_follow",
+              truth="construction"),
+        Silent(f"{RF1_TESTS}::test_a_body_measure_takes_no_demographic_guess",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.covariate_guesses:guess",),
+    author=RF1_AUTHOR,
+    origin="audit",
+))

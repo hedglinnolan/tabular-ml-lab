@@ -663,7 +663,10 @@ def test_under_estimate_the_roles_card_is_as_before():
 
     for purpose in ("inference", None):
         assert _roles_entry(purpose) == TODAY
-    assert _roles_entry(None)["one_liner"].startswith("Only study factors, covariates and the energy")
+    # the roles ruling at the landing's cap: the Estimate one-liner says which roles are the
+    # predictor roles, never what reaches the models (tests/test_rf1_sentences.py)
+    assert _roles_entry(None)["one_liner"].startswith("Study factors, covariates and the energy "
+                                                      "column hold the predictor roles")
 
 
 def test_the_dietary_lens_offers_the_energy_model_and_substitution_for_estimating_effects():

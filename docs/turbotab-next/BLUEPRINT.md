@@ -585,9 +585,14 @@ So the invariant moves into the architecture.
   it.** Confirmation is one reading at a time, never a bulk confirm of uncertain readings.
 - **Every number-changing consumer reads only settled readings.** These consumers are fits,
   intervals and clusters, screens and exclusions, weights, combining rules, units in sentences, and
-  defaults. When a needed reading is unsettled, the consumer asks, or takes the conservative path:
-  no unit in the sentence, no clustering without a confirmed unit, no screen until the unit is
-  settled.
+  defaults. When a needed reading is unsettled, the consumer asks, or takes the leash-safe path,
+  which acts on no unsettled reading: no unit in the sentence, no clustering without a confirmed
+  unit, no screen until the unit is settled. Leash-safe is not conservative: without a confirmed
+  unit the held-out rows are drawn by row, and so are the folds unless each is one level of a
+  grouping (internal–external validation), so a unit's rows can sit on both sides and its scores
+  read high. The seal labels the held-out scores exploratory, and the split's note says the
+  cross-validated scores from folds drawn by row are within-unit performance (claims backtest
+  C-110).
 - **The gate checks the invariant structurally.** An independent census of readers and consumers
   must find no consumer reading an unsettled reading. Fresh real-world variants are then the
   confirmation, not the method.

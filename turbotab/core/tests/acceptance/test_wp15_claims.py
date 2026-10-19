@@ -549,7 +549,8 @@ def test_2_identical_claims_with_the_same_source_share_one_badge():
     whole = [c for c in claims if "resample the entire modeling pipeline" in c[1]]
     assert {c[0].split("/")[0] for c in whole} == {"temporal", "split", "open_seal"}
     assert {c[2] for c in whole} == {"SETTLED"}
-    split = [c for c in claims if "a single train and test split is the weakest" in c[1]]
+    # claims backtest D-018: the sentence now starts its own ("A single train and test split …")
+    split = [c for c in claims if "single train and test split is the weakest" in c[1]]
     assert {c[2] for c in split} == {"CONVENTION"} and len(split) == 2
 
 

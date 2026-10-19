@@ -71,14 +71,31 @@ def test_teaching_text_is_finished_and_free_of_machinery(entry):
     assert entry.question.endswith("?"), entry.question
 
 
+def _cites_only_registered_works(source: str) -> bool:
+    """A badge's source that is one or more works the citation registry holds, each wholly a
+    citation ("Nadeau & Bengio 2003; Bouckaert & Frank 2004")."""
+    from turbotab.core.export import citations as C
+
+    return bool(source.strip()) and not C.problems([C.Cited("teaching:badge", source, whole=True)])
+
+
 @pytest.mark.parametrize("entry", teaching.entries(), ids=lambda e: e.key)
 def test_every_drawer_claim_carries_a_badge_and_a_section(entry):
-    """The packs are the source; each section says where the field stands, and where it says so."""
+    """The packs are the source; each section says where the field stands, and where it says so:
+    its pack section, or, where no pack says it (claims backtest D-021: the pairwise interval had
+    borrowed the pack's section on discrimination and calibration), the registered works that do."""
     assert entry.drawer and entry.drawer.sections, f"{entry.key} has no drawer"
     for s in entry.drawer.sections:
         assert s.evidence is not None, s.heading
         assert s.evidence.status in ("SETTLED", "CONVENTION", "DISPUTED")
-        assert re.match(r"research/[A-Z_]+\.md#[0-9A-Z.]+ · ", s.evidence.source), s.evidence.source
+        assert (re.match(r"research/[A-Z_]+\.md#[0-9A-Z.]+ · ", s.evidence.source)
+                or _cites_only_registered_works(s.evidence.source)), s.evidence.source
+
+
+def test_a_badge_names_a_pack_section_or_registered_works_and_nothing_else():
+    assert _cites_only_registered_works("Nadeau & Bengio 2003; Bouckaert & Frank 2004")
+    assert not _cites_only_registered_works("Nobody et al. 2019")
+    assert not _cites_only_registered_works("our own reading")
 
 
 def test_every_choice_has_options_and_every_option_a_consequence():

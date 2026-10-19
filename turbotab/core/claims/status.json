@@ -1,6 +1,16 @@
 {
   "claims": [
     {
+      "hash": "bc3d52ff2944f74d268afaf69eced299329c44c375057c62a67f3e7abbe7fbbf",
+      "id": "adjustment.demographic_guess",
+      "status": "built"
+    },
+    {
+      "hash": "c3b94d5653005332067e453710bcafc9d225cbec4b512d7e866ff6434f0d53bf",
+      "id": "aggregation.replicate_mean",
+      "status": "built"
+    },
+    {
       "hash": "e43628a317c101bd286a7f579b9d66762771f980242cead872252488bc8fc7d0",
       "id": "baseline.min_gain",
       "status": "built"
@@ -13,6 +23,11 @@
     {
       "hash": "c62fe7e9d10c178b74a2dbac3cac9de37f4c509d2f673d039a0235b1afbd0869",
       "id": "causal.numeric_exposure_r2",
+      "status": "built"
+    },
+    {
+      "hash": "0891c529462055ee28b40abd8116e83f77593ce23f435ed1bf453e2b1199fa72",
+      "id": "copies.pooled_by_rubin",
       "status": "built"
     },
     {
@@ -51,6 +66,11 @@
       "status": "built"
     },
     {
+      "hash": "ca711aafc3b7a49fda3c0a8329db35e7b514d7bc820048522ea2269d8f315374",
+      "id": "designs.adjustment_by_design",
+      "status": "built"
+    },
+    {
       "hash": "b2adb1ceaef579d097a432861e8250f9fed5d4028fefb24a4024b8492d1497d1",
       "id": "designs.observational_default",
       "status": "built"
@@ -61,6 +81,16 @@
       "status": "built"
     },
     {
+      "hash": "3ea24f93186cb79401fff1b0e7f3bfe886b45210bf689c67d4b8d955fc29d8b0",
+      "id": "energy.no_energy_no_swap",
+      "status": "built"
+    },
+    {
+      "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+      "id": "explore.missing_by_group",
+      "status": "built"
+    },
+    {
       "hash": "69da1b7c6ddb489adefc69241a2a33650760d1ddb337309aca5a7b8aa6259a28",
       "id": "forest.small_rows",
       "status": "built"
@@ -68,6 +98,11 @@
     {
       "hash": "fa3507d692eaa653aeb28c54e4a35fd7479058f1824cdbad2ad44c8f92f484c6",
       "id": "inference.few_clusters",
+      "status": "built"
+    },
+    {
+      "hash": "3e814e9b3b333e0ef1d828972377d9f89c0dfb9210a9d4cc39b645a48682312d",
+      "id": "materiality.collinear_inside",
       "status": "built"
     },
     {
@@ -86,14 +121,54 @@
       "status": "built"
     },
     {
+      "hash": "ef8a5b438c1bbdd1b8ebf3e428247cdffc6cead83efca0c9163df0ba8806eaaf",
+      "id": "missing.ffq_blank_handling",
+      "status": "built"
+    },
+    {
+      "hash": "cc925ffcf0221bd0085e3480fb8b8eb549f159c68c6ff24f7b39525922336ebd",
+      "id": "missing.mi_refused_unless_inference",
+      "status": "built"
+    },
+    {
+      "hash": "8b0068a3b24760b83a4e2f829041b14f548bae9b6d9ff7ae01bfa7933ff46a8f",
+      "id": "modeling.no_resampling",
+      "status": "built"
+    },
+    {
       "hash": "f757d93e9fbc97f8360b174c983fcc11b139f1e038778ce460ade505eee0c60c",
       "id": "ordinal.cluster_robust_intervals",
+      "status": "built"
+    },
+    {
+      "hash": "0eac24d05aafbdf7841d857915798ea636deec4ba473b65074b04f281f3b4301",
+      "id": "repairs.tntc_beside_below_limit",
+      "status": "built"
+    },
+    {
+      "hash": "38cef92b3ab36b1a814b3f94fe614a5331cf30f11654b2ed94776b6bd95454a8",
+      "id": "repairs.tntc_beside_unplaced",
+      "status": "built"
+    },
+    {
+      "hash": "e6e767dd69bc56bde0332f12ec3ccb7ec1eaf86d0eb75355c853e7851da2c581",
+      "id": "repairs.tntc_censored",
       "status": "built"
     },
     {
       "hash": "f27f745a4e22d3e8beb6b7e367bb3500a3cfe918f1eaa0ddaca1efde2e157919",
       "id": "results.tail_share",
       "status": "proposed"
+    },
+    {
+      "hash": "1d25073ea52f8138321ad350d684929d51f84b656b12b68648a6914da4f79147",
+      "id": "seal.by_row_exploratory",
+      "status": "built"
+    },
+    {
+      "hash": "f9c5ca5cb80caba593cf32213eb459dfe00fd8cec27de48596053c730524407f",
+      "id": "substitution.isocaloric_units",
+      "status": "built"
     },
     {
       "hash": "b5f40ed68c0337e82ec2a17532491394066563ebe073e9f15598c928b4dcd33c",
@@ -133,6 +208,16 @@
     {
       "hash": "2fa28534c61a107e07623d87ad34d28d52d554ccdbf924af930a437e9279f3ed",
       "id": "tuning.small_sample_standard_estimate",
+      "status": "built"
+    },
+    {
+      "hash": "fe32fffe17b84603419614d97c0f3a0ff58abe011c8c39cf19b95ad0f4940650",
+      "id": "validation.paired_interval",
+      "status": "built"
+    },
+    {
+      "hash": "55a2db60696078f99802bcf9f1fa184c80ddc0fef44432cb6fe0a9b07a71acd8",
+      "id": "validation.resampling_first",
       "status": "built"
     }
   ],
