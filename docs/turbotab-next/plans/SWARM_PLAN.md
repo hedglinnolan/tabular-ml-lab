@@ -1,11 +1,13 @@
 # The research swarm: what it measures, how, and the pilot
 
-Version 4, written 2026-10-19 by the orchestrator. It makes the fixes a third independent review
-(`notes/swarm-audit/2026-10-19-plan-review-3.md`, a fresh Fable 5.1 reader at xhigh effort) found
-version 3 needed before it could be built ("ready after small fixes"), adds the glucose benchmark
-(`notes/replication/glucose_benchmarks.md`) and Nolan's answers of the same day. The earlier
-reviews are `2026-10-19-plan-audit.md` (version 1) and `2026-10-19-plan-review-2.md` (version 2);
-earlier versions are in git history. Under the swarm program (CLAIMS_REGISTRY §8 and §11) and
+Version 5, written 2026-10-19 by the orchestrator. It makes the small fixes a fourth independent
+review (`notes/swarm-audit/2026-10-19-plan-review-4.md`, a fresh Fable 5.1 reader at xhigh effort)
+found version 4 needed ("a buildable plan ... none needs a redesign"), with Nolan's answers of the
+same day. Earlier reviews: `2026-10-19-plan-audit.md` (version 1), `-plan-review-2.md` (version 2),
+`-plan-review-3.md` (version 3); earlier versions are in git history. **Stopping rule for review**
+(Nolan agreed, 2026-10-19): one last fresh reader checks only whether anything left changes the
+build's design; if nothing does, revision stops and the build starts, since what a further reader
+finds is cheaper to fix in the build than on paper. Under the swarm program (CLAIMS_REGISTRY §8 and §11) and
 Nolan's go-ahead of 2026-10-18.
 
 ## TL;DR
@@ -34,10 +36,11 @@ Nolan's go-ahead of 2026-10-18.
   - The analysts: Haiku 5.5 and Sonnet 5.5 under three personas, and Opus 5.5 as a reference.
   - It decides the production analyst; cost breaks a tie. Its claim cycle is a plumbing test, and
     §9 says what the first real cycle needs.
-- **When:** the build in §10 (about 40–65M fresh, honestly sized) and the pilot both run in the
-  week after Nolan's usage resets, on a thin buffer he accepted (2026-10-19).
+- **When:** the build in §10 (36–58M fresh by its packages' estimates, about 40–65M with a
+  buffer) and the pilot both run in the week after Nolan's usage resets, on a thin buffer he
+  accepted (2026-10-19).
 - **Built today:** the driver, version 1 of the record, the six checks, the intake, the dry run (18
-  checks agree), replay of a decision log (`core/export/replay.py`), and R1-F's first batch of
+  checks agree at 8a3e0fff, on today's fixtures; redone in package 2 on the hardened ones), replay of a decision log (`core/export/replay.py`), and R1-F's first batch of
   sentence fixes (RF-1).
 
 ## 1. What the swarm is for
@@ -115,9 +118,12 @@ Unchanged in principle (Nolan, 2026-10-16). Under Predict, discovery is on the c
 scores, then one seal. Under Estimate, discovery is outcome-blind until Fit records the lock.
 
 - **An examined alternative** is an option previewed or fitted before the choice, with a reason.
-- **Coverage:** the share of a dataset's material decisions that a run examined. The denominator
-  is the union of the decisions found material by all of that dataset's sweeps (§6); coverage is
-  reported only where that union holds at least three.
+- **Reach:** the share of a dataset's material decisions that a run examined. The denominator is
+  the union of the decisions found material by all of that dataset's sweeps (§6); reach is
+  reported only where that union holds at least three. ("Coverage" in this plan means only an
+  interval's coverage.) A decision offered only on a path no sweep follows cannot be material, so
+  reach is scored on the swept menu; §6 adds the explorer's plan on the Estimate fixture to widen
+  it where the persona comparison is read.
 - **A single-pass run** (no alternative examined, one fit) is flagged and its rate reported.
 - **The referee audit** samples a pre-registered number of attempts per run, previews included,
   and scores whether each reason is real and matches what the analyst was shown. Planted
@@ -193,19 +199,27 @@ Built for version 1 (`research/swarm/intake.py`). Version 2 of the intake adds:
    - **The predictors:** his 21 mapped to their variables, plus others NHANES gives cheaply.
      Each is known before the fasting draw's result; same-draw glycemic measures (HbA1c, insulin,
      an oral glucose tolerance test) are left out by design.
+   - **The population:** adults 20 and over without diagnosed diabetes and not taking a
+     glucose-lowering medication, matching Bang (Nolan, 2026-10-19: "match bang"). The table keeps
+     those columns; the exclusion is made in the app as eligibility decisions (the categorical
+     rule, §10), so it is recorded with its provenance and the sweep measures how much it matters.
    - **The test:** held out by a cycle cut-point (§10).
    - **Its score on the later cycle,** reported both per participant (primary, for comparison
      with published AUCs) and weighted by the 2017–March 2020 fasting weights (Nolan concurred,
      2026-10-19).
    - **The benchmark** (`notes/replication/glucose_benchmarks.md`): no paper predicts fasting
-     glucose as a number without glycemic inputs, so the model's predictions thresholded at 126
-     mg/dL are compared:
-     - with Bang's published points score, computed by a research script on the same later-cycle
-       participants (Bang's population: adults 20 and over, pregnancy and diagnosed diabetes
-       excluded);
-     - with Bang's reported AUC of 0.83 on its own later cycle.
-   - A threshold at 100 mg/dL gives prediabetes, against Yoo 2026's about 0.77 and De Silva 2020's
-     about 0.70. Each figure is checked against its paper before it is cited.
+     glucose as a number without glycemic inputs, so the comparison is an AUC: the *outcome*
+     thresholded (fasting glucose of 126 mg/dL or more in a person without diagnosed diabetes),
+     and the model's continuous prediction ranked against it:
+     - **the primary benchmark:** Bang's points score computed by a research script on the same
+       later-cycle participants. Bang's activity item (PAQ520) was discontinued after 2005–06, so
+       the score is *adapted* to the later cycle's activity questions; the script declares and
+       quotes the mapping for activity and for family history (MCQ300C), and Nolan accepted the
+       adapted score as primary (2026-10-19);
+     - beside it, Bang's reported AUC of 0.83 on its own later cycle.
+   - **Reference points, not benchmarks:** Yoo 2026 (about 0.77) and De Silva 2020 (about 0.70)
+     define dysglycemia with HbA1c or an oral glucose tolerance test, a different outcome. Each
+     figure is checked against its paper before it is cited.
 4. **The hardened Predict fixture:** `clinical_readmission_predict`'s generator with a
    nonlinearity the default path misses and an interaction, so a path's choices change its
    regret. (A predictor measured differently at use is dropped from it: the analyst could not
@@ -216,15 +230,24 @@ Built for version 1 (`research/swarm/intake.py`). Version 2 of the intake adds:
    - missingness in a covariate that depends on the observed outcome (missing at random), so
      complete cases are biased and imputation is not.
 
-   Each choice has a gradable right answer.
+   Each choice has a gradable right answer. The generator is tuned so that half the smallest
+   planted bias is at least four times the standard error of the oracle plan's mean bias over 100
+   draws, so §7's two conditions on b₀ hold together.
 6. **The measurement fixture** (added to the build, Nolan, 2026-10-19), from the repo's untargeted
    metabolomics table (`metabolomics_untargeted.csv`):
-   - **Its generator:** a known set of truly associated features with known effect sizes, under
-     detection-limit censoring, run-order drift, batches and dilution, with QC samples.
+   - **Its generator, new:** the repo's `make_fixtures.metabolomics` draws its outcome
+     independently of every feature and makes batch the first half of the run order, so it cannot
+     grade these decisions. The new generator plants a known set of truly associated features with
+     known effect sizes, under detection-limit censoring, run-order drift, batch offsets that are
+     not monotone in run order (so drift and batch correction are graded apart) and dilution, with
+     QC samples.
    - **Its question:** which features are associated with the outcome, analyzed feature by feature
      with a false-discovery rate.
    - **Its grading:** the discovered features' false-discovery proportion and power against the
-     truth, and the bias of their effect sizes.
+     truth, and the bias of their effect sizes on the log2 scale.
+   - **Material here:** a decision that changes the discovery set at q < 0.05 by at least k
+     features, k fixed in `prereg.json`.
+   - **In the pilot it decides nothing:** it is reported, as the measurement axis's first contrast.
 
    The decisions it grades are measurement decisions: drift correction, normalization,
    detection-limit handling and the log scale. This gives the pilot a measurement-axis contrast
@@ -269,20 +292,26 @@ false-promotion rate (§9).
   - each refit rebuilds the plan with `core/export/replay.py` from the log truncated before
     `open_seal` (under Estimate, before `lock_plan`), revisits the one decision, fits, and reads
     the cross-validated scores or the estimate;
+  - every refit is scored with random repeated 5-fold cross-validation, 5 repeats, within the
+    training rows, whatever folds the plan chose: a plan with time-ordered folds would otherwise
+    give five scores (`models/folds.py`);
+  - on the Estimate fixture the explorer's final plan is swept too, so reach there includes the
+    decisions only an explorer's path offers;
   - under Predict with more than one family, the engine's comparison substrate runs at least
     10 × 5 folds whatever the plan's validation, so a refit costs about 50 fits per family. The
     sweep's compute cap in `prereg.json` is set knowing that.
 
 **The engine is frozen** at one commit for the pilot.
 
-**Order:**
+**Order:** the Estimate fixture is the first wave, so the early-stopping rule (§7) acts before the
+expensive datasets (Nolan, 2026-10-19).
 1. **Sizing:**
    - a scripted fit on each dataset sets its fit budget and the sweep's compute estimate;
    - the measured trio: Haiku and Sonnet, explorer persona, on Bang (the largest table), and Opus
-     on the Estimate fixture (its only dataset);
+     on the Estimate fixture (its only dataset). The trio's three runs are among the 45;
    - Nolan reads his usage meter before and after.
-2. **The waves,** dataset by dataset, in randomized order within each wave, under the stopping
-   rule (§7).
+2. **The waves:** the Estimate fixture first, then the other datasets, in randomized order within
+   each wave, under the stopping rule (§7).
 3. **The sweeps,** within the compute cap.
 4. **The claim cycle** (§9) on the pilot corpus and its shuffled control.
 5. **Nolan's walkthrough** of a Haiku analyst's record of his glucose project (2026-10-19).
@@ -315,33 +344,39 @@ cross-validation, 5 repeats.
     primary score's own interval half-width.
   - A decision that changes the analyzed rows (an exclusion, an eligibility rule, complete cases
     against a fill) leaves no shared folds. It is scored by an unpaired interval over the two
-    plans' fold scores, labeled unpaired in the sweep, under the same size rule.
+    plans' 25 fold scores, each arm's variance inflated by the same Nadeau–Bengio factor
+    (1/k + n_test/n_train) the paired interval uses, since repeated folds are correlated; labeled
+    unpaired in the sweep, under the same size rule.
 - **Estimate:** a decision is material where it shifts the reported estimate by at least half the
   estimate's interval half-width.
 
 **Decision quality, anchored to known truth.** Each final plan is replayed on fresh draws of its
 fixture's generator: at least 100 draws, so a coverage band is testable.
 - **The Estimate fixture decides the model.**
-  - b₀, the bias margin, is half the smallest bias the fixture plants (keeping the collider,
-    dropping the confounder, complete cases), and at least four times the oracle plan's bias
-    standard error over the draws. The oracle passes, and every planted wrong path fails.
+  - b₀, the bias margin, is half the smallest population bias the generator plants (keeping the
+    collider, dropping the confounder, complete cases), computed from the generator, not the
+    draws; and at least four times the standard error of the oracle plan's mean bias (its SD over
+    the draws divided by √draws). A plan passes on its mean bias. The oracle passes and every
+    planted wrong path fails; if the Opus reference fails, the fixture is re-examined, not the
+    models.
   - Coverage must lie in the binomial band of a 95% interval at that number of draws.
 - **The Predict fixture adds regret:** the replayed plan's loss against the oracle's. r₀ is half
   the default path's regret on the planted nonlinearity.
-- **The measurement fixture adds discovery quality:** the false-discovery proportion against the
-  nominal rate, and power against the oracle plan's.
+- **The measurement fixture is reported:** the false-discovery proportion against the nominal
+  rate, power against the oracle plan's, and effect-size bias on the log2 scale.
 - b₀, r₀ and the bands are computed from the generators and written into `prereg.json` before the
   trio.
 
-**The unit:** a model is within the margins on a fixture when at least two-thirds of its plans
-there are within them (Haiku 6 of 9, Sonnet 2 of 3, Opus 2 of 3 on the Estimate fixture). A
-refused plan counts as neither, and goes into the refusal rate.
+**The unit:** a model is within the margins on a fixture when at least two-thirds of its non-refused
+plans there are within them, with at least two non-refused plans (Haiku 6 of 9, Sonnet 2 of 3, Opus
+2 of 3 on the Estimate fixture; Haiku 2 of 3 if its replicates are cut). A refused plan counts as
+neither, and goes into the refusal rate.
 
 **The two comparisons with the mechanical arms:**
 - **Choosing well:** agent plans against the default and random plans on regret, bias, coverage
   and discovery quality on the fixtures, and on the sealed score (or the later cycle) on real data.
-- **Finding what matters:** each agent's coverage of the material decisions per fresh token,
-  against the sweep's coverage (complete by construction) per fit-hour.
+- **Finding what matters:** each agent's reach per fresh token, against the sweep's (complete by
+  construction) per fit-hour.
 
 **Other statistics:**
 - reason faithfulness and the referees' catch rate of planted reasons;
@@ -356,8 +391,9 @@ refused plan counts as neither, and goes into the refusal rate.
   faithful at least 4 times in 5, and at least 9 runs in 10 reach the export.
 - Of acceptable models the cheaper is the production analyst; cost breaks a tie (Nolan,
   2026-10-19). If none is acceptable, the plan returns to Nolan.
-- A persona is kept if its coverage on the Estimate fixture exceeds the range of the three Haiku
-  replicates' coverage for that persona.
+- A persona is kept if its mean reach on the Estimate fixture differs from the conventional
+  persona's by more than the larger of the two personas' within-persona ranges over their Haiku
+  replicates.
 
 **Expected false alarms,** stated in advance: about 2.5% for the decoy's interval, and the coverage
 band's own miss rate at the number of draws. A miss on a control is settled by fresh seeds, never
@@ -416,10 +452,13 @@ want us to get into discovering real new theories that are not slop"). Its pre-s
 - zero promotions in both, as expected;
 - the planted effect's claim proposed and routed;
 - **the prior-driven share:** the overlap between the two corpora's proposals, computed by a script
-  that matches proposals on their decision, markers and direction. A high share means the
+  that matches proposals on their decision, the set of live-marker names (thresholds ignored) and
+  direction. A high share means the
   proposals come from the theorist's prior, not the data.
 
-**The first real cycle** (after the pilot, its five needs):
+**The first real cycle** (after the pilot, its five needs, plus a baseline and a cost: a
+mechanical rule-miner over the sweeps' materiality tables, against which the theorist's "better
+prior" is measured; and the roster's cost, three datasets per cell at the intake's prices):
 1. **A roster by regime cell.** "Replicated" needs held-out cases from at least two datasets not
    used to fit the rule (CLAIMS_REGISTRY §2.4), so each cell needs at least three datasets; the
    roster is chosen per cell before the cycle.
@@ -452,7 +491,7 @@ sentence fixes R1_PLAN requires before the pilot.
 | # | Package | Contents | Size |
 |---|---|---|---|
 | 1 | Record version 2 and the driver | §4's fields with live and post hoc tags; preview `--reason`, `--marker`, `want` and the vocabulary; model and persona with redaction; the signed change; the shuffled-corpus tool | 5–8M |
-| 2 | Replay and the fixtures | the fresh-draw flag, the findings rule and truncation on `core/export/replay.py`; predictions on new rows; the hardened Predict fixture, the new Estimate fixture and the measurement fixture with their generators; the decoy's seeds | 8–12M |
+| 2 | Replay and the fixtures | the fresh-draw flag, the findings rule and truncation on `core/export/replay.py`; predictions on new rows; the hardened Predict fixture, the new Estimate fixture and the new measurement generator; the fixtures' truths regenerated and the three-record dry run redone; the decoy's seeds | 8–12M |
 | 3 | The sweep and the mechanical arms | the sweep runner (dedupe, truncated replay), the default and random paths, the compute sizing | 4–6M |
 | 4 | Two engine additions | the temporal seal by cut-point; the categorical eligibility rule, a guard touching decisions, the rows stage, options, its card, its methods sentence and the registry (guard waves have run about three times a wording wave's cost) | 8–12M |
 | 5 | Intake version 2 | the declared measurement markers with checked quotes; the glucose table rebuilt from the NCHS files; Bang's eligibility by code; the benchmark script (Bang's points score on the later cycle) | 5–9M |
@@ -462,8 +501,10 @@ sentence fixes R1_PLAN requires before the pilot.
 | 6d | The claim cycle's tools | the theorist's and experimentalist's prompts, structured proposals, the overlap script | 1–2M |
 | 7 | The live lockdown check | and the analyst's model id, in a fresh session on the home machine | small |
 
-About 40–65M in all, on the evidence of this build's own overruns. Packages 1 and 2 can start
-first; 3 waits for 2; 5 waits for 4; 6b waits for 2.
+The packages sum to 36–58M; about 40–65M with a buffer, on the evidence of this build's own
+overruns. Packages 1 and 2 can start first; 3 waits for 2; 5 waits for 4; 6b waits for 2; 6c
+waits for 3 and 5. The claim cycle's own runs (the theorist on two corpora, the referees, the
+planted reasons) come out of the pilot's 40%.
 
 ## 11. Rulings and what is open
 
@@ -476,7 +517,10 @@ first; 3 waits for 2; 5 waits for 4; 6b waits for 2.
 - the analyst's audited account;
 - surfacing first;
 - the glucose project rebuilt and scored on a later cycle (per participant first, weighted
-  beside), benchmarked against Bang;
+  beside), its population matching Bang's by eligibility decisions made in the app, benchmarked
+  against Bang's score adapted to the later cycle;
+- the Estimate fixture as the first wave;
+- the stopping rule for review;
 - Bang's replication on its odds ratios;
 - the measurement fixture in the build;
 - the claim cycle as a plumbing test;
@@ -493,5 +537,5 @@ first; 3 waits for 2; 5 waits for 4; 6b waits for 2.
 - the Decide cap after the pilot;
 - the admission rule.
 
-**Reviews:** version 4 goes to a fourth fresh reader to check that the third review's fixes hold,
-before §10 is built (Nolan, 2026-10-19: revise "until we are happy").
+**Reviews:** version 5 goes to one last fresh reader, asked only whether anything left changes the
+build's design; if nothing does, the build starts after the reset.
