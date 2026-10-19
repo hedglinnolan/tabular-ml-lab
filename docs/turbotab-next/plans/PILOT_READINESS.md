@@ -105,7 +105,7 @@ Predict fixture, run one after the other. Their fresh tokens, fits and wall time
 
 That puts the whole pilot near 13–40M fresh, or roughly 10–30% of a week at this week's rate.
 That range is why the measured pair comes first. If the projection threatens the week's usage the
-build needs, you are told before the rest runs (§7.6).
+build needs, you are told before the rest runs (SWARM_PLAN §6).
 
 **The lesson from last night:**
 - **What happened:** under the quiet-hours throttle, test commands took 5–9 minutes. That is past
