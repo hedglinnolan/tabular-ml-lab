@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -195,6 +196,21 @@ def test_a_torn_last_line_is_skipped_and_never_glued_onto(tmp_path):
     assert [r.fit_key for r in log.records()] == ["k1"]
     log.append(lambda existing: fields("k2"))
     assert [r.fit_key for r in log.records()] == ["k1", "k2"]
+
+
+def test_an_append_needs_no_pread_and_ends_each_line_in_a_newline_alone(tmp_path, monkeypatch):
+    """Windows has no ``os.pread``, which the fit record's torn-line check called (the decision
+    log's, in test_decisions.py, stopped the first answer on Windows)."""
+    monkeypatch.delattr(os, "pread", raising=False)
+    path = tmp_path / runs.RUNS_FILE
+    log = runs.RunLog(path)
+    log.append(lambda existing: fields("k1"))
+    with open(path, "ab") as fh:
+        fh.write(b'{"id": "torn')
+    log.append(lambda existing: fields("k2"))
+    raw = path.read_bytes()
+    assert b"\r" not in raw and raw.endswith(b"\n")
+    assert [r.fit_key for r in runs.RunLog(path).records()] == ["k1", "k2"]
 
 
 # ── which records keyed a fit ────────────────────────────────────────────────

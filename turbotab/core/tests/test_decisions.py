@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import multiprocessing as mp
+import os
 import threading
 from datetime import timezone
 from pathlib import Path
@@ -219,6 +220,21 @@ def test_a_torn_last_line_is_skipped_and_the_next_append_starts_clean(tmp_path):
         f.write('{"id": "torn", "seq": 2, "at"')  # a crash mid-write
     assert [r.decision.column for r in log.records()] == ["a"]
     log.append(SetTarget(column="b"))
+    assert [r.decision.column for r in DecisionLog(path).records()] == ["a", "b"]
+
+
+def test_an_append_needs_no_pread_and_ends_each_line_in_a_newline_alone(tmp_path, monkeypatch):
+    """Windows has no ``os.pread``: the first answer on a Windows laptop raised AttributeError. The
+    log reads its last byte without it, and its lines end in b"\\n" alone on every platform."""
+    monkeypatch.delattr(os, "pread", raising=False)
+    path = tmp_path / "decisions.jsonl"
+    log = DecisionLog(path)
+    log.append(SetTarget(column="a"))
+    with open(path, "ab") as f:
+        f.write(b'{"id": "torn", "seq": 2, "at"')  # a crash mid-write
+    log.append(SetTarget(column="b"))
+    raw = path.read_bytes()
+    assert b"\r" not in raw and raw.endswith(b"\n")
     assert [r.decision.column for r in DecisionLog(path).records()] == ["a", "b"]
 
 

@@ -43,7 +43,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
-from turbotab.core.decisions import Purpose
+from turbotab.core.decisions import APPEND_FLAGS, Purpose, ends_mid_line
 from turbotab.core.materiality import Movement, paired_folds
 
 try:  # POSIX: one append at a time across processes, as the decision log does
@@ -314,7 +314,7 @@ class RunLog:
         as they stand under the lock (the last is the one before it). Returns the record written."""
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            fd = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o644)
+            fd = os.open(self.path, APPEND_FLAGS, 0o644)
             try:
                 if fcntl is not None:
                     fcntl.flock(fd, fcntl.LOCK_EX)
@@ -324,8 +324,7 @@ class RunLog:
                     return None
                 record = FitRecord(id=uuid.uuid4().hex, seq=len(existing) + 1, **fields)
                 data = (record.model_dump_json() + "\n").encode("utf-8")
-                size = os.fstat(fd).st_size
-                if size and os.pread(fd, 1, size - 1) != b"\n":
+                if ends_mid_line(fd):
                     data = b"\n" + data  # never glue onto a torn line
                 view = memoryview(data)
                 while view:

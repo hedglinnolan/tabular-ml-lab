@@ -55,6 +55,22 @@ try:  # POSIX only; on Windows the in-process lock is the whole of it.
 except ImportError:  # pragma: no cover - exercised on Windows only
     fcntl = None  # type: ignore[assignment]
 
+# How an append-only log is opened: binary on Windows too (``O_BINARY`` exists there alone), so a
+# line ends in b"\n" and never b"\r\n", on every platform.
+APPEND_FLAGS = os.O_RDWR | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0)
+
+
+def ends_mid_line(fd: int) -> bool:
+    """Whether the log open at ``fd`` holds bytes after its last newline (a torn last line).
+    ``lseek`` and ``read``, since Windows has no ``os.pread``; a write after it still lands at the
+    end, because the log is opened with ``O_APPEND``."""
+    size = os.fstat(fd).st_size
+    if not size:
+        return False
+    os.lseek(fd, size - 1, os.SEEK_SET)
+    return os.read(fd, 1) != b"\n"
+
+
 log = logging.getLogger(__name__)
 
 # "other" is "Something else, or not sure" (audit RO-11, WP18): a first-class answer that runs the
@@ -5946,7 +5962,7 @@ class DecisionLog:
         note = check_note(note)
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            fd = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o644)
+            fd = os.open(self.path, APPEND_FLAGS, 0o644)
             try:
                 if fcntl is not None:
                     fcntl.flock(fd, fcntl.LOCK_EX)
@@ -5984,8 +6000,7 @@ class DecisionLog:
                     decision=decision,
                 )
                 data = record_line(record)
-                size = os.fstat(fd).st_size
-                if size and os.pread(fd, 1, size - 1) != b"\n":
+                if ends_mid_line(fd):
                     data = b"\n" + data  # never glue onto a torn line
                 view = memoryview(data)
                 while view:

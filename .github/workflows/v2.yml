@@ -293,3 +293,15 @@ jobs:
             python .github/scripts/annotate_failures.py pytest-report.xml
             exit 1
           }
+
+      - name: The decision log and the fit record on Windows (no os.pread, lines end in a newline alone)
+        # The first answer on a Windows laptop stopped with AttributeError (2026-10-20): the launcher
+        # step above posts no decision, so nothing here had appended to either log.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pytest turbotab/core/tests/test_decisions.py turbotab/core/tests/test_runs.py -k newline_alone -q -rfE --junitxml=pytest-logs.xml
+          if ($LASTEXITCODE -ne 0) {
+            python .github/scripts/annotate_failures.py pytest-logs.xml
+            exit 1
+          }
