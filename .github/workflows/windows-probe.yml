@@ -59,22 +59,28 @@ jobs:
             fi
             # Every traceback the server printed, as annotations anyone can read through the API.
             python - "$logs/$spec.log" "$spec" <<'EOF'
-          import sys
+          import re, sys
           text = open(sys.argv[1], encoding="utf-8", errors="replace").read().replace("\r", "")
-          blocks = text.split("Traceback (most recent call last):")[1:]
-          seen = set()
-          for b in blocks:
-              lines = [l for l in b.strip().splitlines() if l.strip()]
-              last = lines[-1] if lines else "?"
-              if last in seen:
+          lines = text.splitlines()
+          exc = re.compile(r"^([A-Za-z_][\w.]*(Error|Exception|Warning|Exit|Interrupt))(:|$)")
+          found = {}
+          for i, l in enumerate(lines):
+              if not l.startswith("Traceback (most recent call last):"):
                   continue
-              seen.add(last)
-              frames = [l.strip() for l in lines if l.strip().startswith("File ") and "site-packages" not in l][-6:]
-              msg = "\n".join(frames + [last])[:3000]
-              print(f"::error title=server traceback in {sys.argv[2]}::" + msg.replace("%", "%25").replace("\n", "%0A"))
-          if not blocks:
-              tail = "\n".join(text.splitlines()[-30:])[:3000]
-              print(f"::notice title=server log tail of {sys.argv[2]} (no traceback)::" + tail.replace("%", "%25").replace("\n", "%0A"))
+              frames, j = [], i + 1
+              while j < len(lines) and (lines[j].startswith(" ") or not lines[j].strip()):
+                  if lines[j].strip().startswith("File "):
+                      frames.append(lines[j].strip())
+                  j += 1
+              head = lines[i - 1].strip() if i else ""
+              what = lines[j].strip() if j < len(lines) and exc.match(lines[j]) else "(no exception line)"
+              key = (what.split(":")[0], frames[-1] if frames else "")
+              n, _ = found.get(key, (0, None))
+              found[key] = (n + 1, "\n".join([head] + frames[-5:] + [what])[:3000])
+          for (name, frame), (n, msg) in found.items():
+              print(f"::error title=server traceback in {sys.argv[2]} (x{n}): {name}::" + msg.replace("%", "%25").replace("\n", "%0A"))
+          if not found:
+              print(f"::notice title=no server traceback in {sys.argv[2]}::{len(lines)} log lines")
           EOF
             kill "$server" 2>/dev/null || true
           done
