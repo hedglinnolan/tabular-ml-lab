@@ -104,3 +104,41 @@ def test_the_models_preview_with_a_selection_shows_the_candidates_and_names_the_
 def test_the_models_preview_without_a_selection_names_none(previews):
     caption = previews["none"]["views"][0]["caption"]
     assert "picking among them" not in caption
+
+
+@pytest.fixture(scope="module")
+def selection_previews(tmp_path_factory):
+    """The selection question's own preview of the elastic net under Predict, on the walk's table
+    (glucose depends on the diet, age, BMI and sex) and on the same table with its outcome re-paired
+    (glucose given to the rows in a fixed random order, so it relates to nothing)."""
+    out = {}
+    state = L.walk_state(purpose="prediction")
+    for repaired in (False, True):
+        project = Project(L.walk_table(repaired), Path(tmp_path_factory.mktemp(f"sel{repaired}")),
+                          state, upto=["design", "cohort", "split"])
+        try:
+            out[repaired] = L.served(project, d.SetSelection(method="elastic_net"), state)
+        finally:
+            project.close()
+    return out
+
+
+def test_a_selection_that_keeps_nothing_says_so_and_that_fit_would_refuse(selection_previews):
+    served = selection_previews[True]
+    assert "refused" not in served and served["views"], served
+    caption = served["views"][0]["caption"]
+    assert "it keeps none of" in caption and "Fit would refuse" in caption
+
+
+def test_a_selection_that_keeps_columns_says_how_many_as_before(selection_previews):
+    caption = selection_previews[False]["views"][0]["caption"]
+    assert "it keeps none" not in caption and "every training fold repeats it" in caption
+
+
+def test_the_kept_columns_of_a_fit_that_kept_nothing_are_none_without_a_refusal():
+    X, y = orthogonal(carried=False)
+    fitted = selector("elastic_net", list(X.columns)).fit(X, y)
+    assert list(fitted.kept_columns(X).columns) == []
+    X, y = orthogonal(carried=True)
+    fitted = selector("elastic_net", list(X.columns)).fit(X, y)
+    assert fitted.kept_columns(X).equals(fitted.transform(X))

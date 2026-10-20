@@ -79,7 +79,8 @@ def explored(design: Design, task: str, y: np.ndarray | None,
     fitted: list[tuple[str, Any]] = []
     for name, step in steps:
         step.fit(X, y)
-        X = step.transform(X)
+        # The selection's preview shows what it keeps, none included (the fit refuses that one).
+        X = step.kept_columns(X) if name == "select" else step.transform(X)
         fitted.append((name, step))
     lineage = trace([*design.fitted.steps, *fitted], design.spec.inputs, design.spec.roles,
                     missing_counts(design.frame[design.spec.inputs]))
@@ -252,11 +253,14 @@ def selection_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     terms = [str(c) for c in getattr(select, "feature_names_in_", [])]
     leave = [c for c in terms if c not in set(kept)]
     ctx.read["selection"] = {"method": decision.method, "kept": kept, "dropped": leave}
+    rows = f"On these {fmt_count(int(keep.sum()))} {drawn(ctx)}{rows_word(ctx)} rows"
+    said = (f"{rows} it keeps none of {fmt_count(len(terms))} columns, so Fit would refuse: only "
+            f"the intercept remains." if not kept else
+            f"{rows} it keeps {fmt_count(len(kept))} of {fmt_count(len(terms))} columns; every "
+            f"training fold repeats it.")
     return [LineageView(
         title=title(label),
-        caption=caption(f"On these {fmt_count(int(keep.sum()))} {drawn(ctx)}{rows_word(ctx)} rows "
-                        f"it keeps {fmt_count(len(kept))} of {fmt_count(len(terms))} columns; "
-                        f"every training fold repeats it."),
+        caption=caption(said),
         emphasis=leave[:12], before=before, after=lineage)]
 
 

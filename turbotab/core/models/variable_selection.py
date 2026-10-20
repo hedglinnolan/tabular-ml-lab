@@ -609,15 +609,20 @@ class Selector(TransformerMixin, BaseEstimator):
             return lifted(pls_vip(Z, y) > 1.0)
         raise ValueError(f"Unknown selection method {m!r}.")
 
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+    def kept_columns(self, X: pd.DataFrame) -> pd.DataFrame:
+        """``X``'s columns the fit kept, none if it kept none: what the selection preview reads."""
         if not hasattr(self, "kept_"):
             raise ValueError("Selector is not fitted yet.")
-        if not self.kept_ and len(X.columns):
-            # A fit that kept nothing stays inspectable (its frequencies, the inclusion counts across
-            # folds); only a model handed no column is refused.
-            raise ValueError(nothing_kept(self.method, getattr(self, "rows_", len(X))))
         keep = set(self.kept_)
         return X.loc[:, [c for c in X.columns if str(c) in keep]]
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        kept = self.kept_columns(X)
+        if not len(kept.columns) and len(X.columns):
+            # A fit that kept nothing stays inspectable (its frequencies, the inclusion counts across
+            # folds, the selection's own preview); only a model handed no column is refused.
+            raise ValueError(nothing_kept(self.method, getattr(self, "rows_", len(X))))
+        return kept
 
     def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
         return np.asarray(self.kept_, dtype=object)
