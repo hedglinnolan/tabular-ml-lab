@@ -83,6 +83,27 @@ LABELS = {
     "univariable": "Univariable screen, p < 0.25",
     "vip": "VIP > 1 from PLS",
 }
+# Each method as a sentence names it (the preview's caption, the refusal of an empty selection).
+NAMES = {
+    "elastic_net": "the elastic net",
+    "stability": "stability selection",
+    "screening": "in-fold screening",
+    "stepwise": "backward elimination by AIC",
+    "univariable": "the univariable screen",
+    "vip": "the VIP rule",
+}
+
+
+def nothing_kept(method: str, rows: int) -> str:
+    """Why a fit stops when a selection keeps no predictor: the model would be the intercept alone,
+    which this version does not fit. In-fold screening always keeps at least one."""
+    name = NAMES.get(method, method)
+    return (f"{name[0].upper()}{name[1:]} kept no predictor on {rows:,} training rows, so the model "
+            f"there would be the intercept alone, the same prediction for everyone, which this "
+            f"version does not fit. In the selection question, choose No selection, or in-fold "
+            f"screening, which always keeps at least one predictor.")
+
+
 INSTABILITY = ("its selected set changes from sample to sample (Heinze et al. 2018); the inclusion "
                "frequencies across folds and resamples show by how much")
 
@@ -531,6 +552,7 @@ class Selector(TransformerMixin, BaseEstimator):
         dropped = {c for t, cols in self.terms_.items() if t not in set(self.selected_)
                    for c in cols}
         self.kept_ = [str(c) for c in X.columns if str(c) not in dropped]
+        self.rows_ = int(len(X))
         return self
 
     def _kept(self, Z: np.ndarray, y: np.ndarray, groups: Sequence[Sequence[int]]) -> np.ndarray:
@@ -590,6 +612,10 @@ class Selector(TransformerMixin, BaseEstimator):
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         if not hasattr(self, "kept_"):
             raise ValueError("Selector is not fitted yet.")
+        if not self.kept_ and len(X.columns):
+            # A fit that kept nothing stays inspectable (its frequencies, the inclusion counts across
+            # folds); only a model handed no column is refused.
+            raise ValueError(nothing_kept(self.method, getattr(self, "rows_", len(X))))
         keep = set(self.kept_)
         return X.loc[:, [c for c in X.columns if str(c) in keep]]
 

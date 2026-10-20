@@ -492,6 +492,7 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         shared_steps,
         transformer,
     )
+    from turbotab.core.models.variable_selection import NAMES
 
     if ctx.training_row_ids is None:
         from turbotab.core.plan_previews import rows_not_ready
@@ -532,9 +533,16 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
             continue
         steps = family_steps(spec, family)
         extra = [name for name, _ in steps if name not in shared_names]
-        fitted = transformer(steps).fit(X) if extra else shared
-        after = trace(fitted.steps, spec.inputs, spec.roles, missing) if extra else base
-        phrases = [STEP_PHRASES.get(name, name.replace("_", " ")) for name in extra]
+        # The selection step chooses its columns on each training fold's outcome, so the preview
+        # (which reads no outcome) shows the candidates it chooses among and names it.
+        shown = [(name, step) for name, step in steps if name != "select"]
+        fitted = (transformer(shown).fit(X) if any(name not in shared_names for name, _ in shown)
+                  else shared)
+        after = trace(fitted.steps, spec.inputs, spec.roles, missing) if fitted is not shared else base
+        method = (getattr(spec, "selection", None) or {}).get("method")
+        phrases = [f"{NAMES.get(method, 'a selection')} picking among them in each training fold"
+                   if name == "select" else STEP_PHRASES.get(name, name.replace("_", " "))
+                   for name in extra]
         if getattr(state, "purpose", None) == "inference":
             phrases = [ph.replace("on training rows", "on every analyzed row") for ph in phrases]
         how = ", ".join(phrases) if phrases else "taken as they are, unscaled"
