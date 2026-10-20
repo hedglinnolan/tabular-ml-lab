@@ -33,9 +33,20 @@ in the documents they amend.
     to ubuntu-24.04), feat/rm-core (RM's referee and audit fixes, without R1-M), feat/rf-1b (R1-F's
     first batch), feat/drv-int and feat/drv-fix (the driver, record, checks, intake, analyst type
     and hook, the dry run), and three fixes made at integration.
-- **CI:** full tier green on 5901298a (all 13 jobs, real-server journeys included; the shell's
-  quest-log race fixed; an omics acceptance test killed by SIGTERM on an earlier run passed, a
-  runner flake). Later commits on turbotab-next are documents only.
+- **CI:** full tier green on db92976e (all 13 jobs; `m1-journey` timed out once waiting for the
+  old screen's exclusions card and passed on a rerun of the same commit, its second flake after
+  e7fd917f's). Earlier: green on 5901298a.
+- **Windows, 2026-10-20** (Nolan's first start on a Windows laptop; three fixes, each with its test):
+  - the launcher installs with uv's copy mode on Windows: a OneDrive-managed user folder refused
+    uv's hard links (os error 396);
+  - the decision log and the fit record no longer call `os.pread`, which Windows lacks (the first
+    answer raised AttributeError); CI's Windows job runs both checks;
+  - every file the engine moves into place goes through `core/atomic.py`, which on Windows retries
+    while another process holds the target open: stage jobs failed, and a stage's `latest` pointer
+    stayed on the previous result.
+  - `probe/windows` (never merged) walks the two quest journeys on a Windows runner and annotates
+    every server traceback. On db92976e's code both journeys pass, and the only traceback is
+    asyncio's harmless connection reset (INBOX).
 - **Since 8a3e0fff, on turbotab-next:** the analyst model set to `claude-haiku-5-5`; the shell
   race fix; SWARM_PLAN version 2 (after the independent audit in `notes/swarm-audit/`), under
   review by a Fable xhigh reader before anything in its §10 is built.
