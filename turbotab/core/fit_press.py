@@ -45,6 +45,8 @@ from typing import Any, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
+from turbotab.core import atomic
+
 # A fit expected to take over about 2 minutes does not start on its own (the ruling of
 # 2026-10-06, a convention); the hold re-arms when a new estimate exceeds 1.5 times the last one
 # confirmed (RECIPES §4.4).
@@ -176,7 +178,7 @@ def _write(project_dir: str | Path, press: Mapping[str, Any]) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(dict(press), f, sort_keys=True)
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise

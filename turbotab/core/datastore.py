@@ -38,6 +38,8 @@ import duckdb
 import numpy as np
 import pandas as pd
 
+from turbotab.core import atomic
+
 ROW_ID = "__row_id"
 INDEX_NAME = "row_id"
 SIDECAR_VERSION = 1
@@ -1351,7 +1353,7 @@ def _null_the_nans(con: duckdb.DuckDBPyConnection, parquet: Path, nan_columns: l
     con.execute(f"COPY (SELECT {', '.join(select)} FROM {_parquet_rel(parquet)} "
                 f"ORDER BY {ROW_ID}) TO {_lit(out)} "
                 f"{_parquet_options(len(select), _count_rows(con, parquet))}")
-    os.replace(out, parquet)
+    atomic.replace(out, parquet)
 
 
 def _sidecar_path(parquet: Path) -> Path:
@@ -1367,7 +1369,7 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, allow_nan=False)
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)
@@ -1434,7 +1436,7 @@ def ingest(source: Path, dest_parquet: Path, *,
             joined = tmp.with_name(f"{tmp.name}.join{i}")
             try:
                 renamed = _apply_join(con, tmp, join, joined, warnings)
-                os.replace(joined, tmp)
+                atomic.replace(joined, tmp)
             finally:
                 try:
                     joined.unlink()
@@ -1463,7 +1465,7 @@ def ingest(source: Path, dest_parquet: Path, *,
                 stale.unlink()  # what described a previous ingest is void
             except FileNotFoundError:
                 pass
-        os.replace(tmp, dest)
+        atomic.replace(tmp, dest)
     except BaseException:
         stop.set()
         raise

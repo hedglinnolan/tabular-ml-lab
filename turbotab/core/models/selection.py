@@ -70,10 +70,11 @@ from typing import Any, Callable, Literal, Mapping, Sequence
 import numpy as np
 from pydantic import BaseModel, ConfigDict
 
-from turbotab.core import decisions
+from turbotab.core import atomic, decisions
 from turbotab.core.decisions import OpenSeal, Refusal, SelectModels, SplitSpec
 
 from turbotab.core.models.metrics import LOWER_IS_BETTER  # noqa: E402 - one list for every score
+
 METHOD = "bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018)"
 REPLICATES = 1000  # the paper's B
 LARGE = 10_000  # above this many scored rows, fewer resamples: each costs more, the optimism is small
@@ -554,7 +555,7 @@ def note_seen(project_dir: str | os.PathLike[str] | None, target: str | None,
         try:
             with os.fdopen(handle, "w", encoding="utf-8") as out:
                 json.dump({"targets": seen}, out, ensure_ascii=False, indent=1)
-            os.replace(tmp, folder / SEEN_FILE)
+            atomic.replace(tmp, folder / SEEN_FILE)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise

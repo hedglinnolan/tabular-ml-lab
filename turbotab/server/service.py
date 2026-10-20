@@ -47,6 +47,7 @@ from turbotab.core.sweep import ForTheRecord, Triage, for_the_record, triage
 from turbotab.core.claims._registry import render_log
 from turbotab.core.workspace import STAGE_GRAPH, ProjectMeta, Workspace
 from turbotab.server.errors import ApiError
+from turbotab.core import atomic
 
 log = logging.getLogger(__name__)
 
@@ -448,7 +449,7 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(payload, fh)
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
@@ -823,7 +824,7 @@ class ProjectService:
         folder = self.workspace.project_dir(meta.id) / "source"
         folder.mkdir(exist_ok=True)
         dest = folder / staged.name
-        os.replace(staged, dest)
+        atomic.replace(staged, dest)
         shutil.rmtree(staged.parent, ignore_errors=True)  # the upload's own staging folder
         meta.source_path = str(dest)
         self.workspace.save(meta)
@@ -886,7 +887,7 @@ class ProjectService:
         if copy:
             (folder / "source").mkdir()
             dest = folder / "source" / source.name
-            os.replace(source, dest)
+            atomic.replace(source, dest)
         try:
             info = ingest(dest, folder / "raw.parquet")
         except (ValueError, OSError) as exc:
