@@ -1,6 +1,7 @@
 # The research swarm: what it measures, how, and the pilot
 
-Version 5, written 2026-10-19 by the orchestrator. It makes the small fixes a fourth independent
+Version 5.1, amended 2026-10-20 after a sixth review (`notes/swarm-audit/2026-10-20-plan-review-6.md`)
+found the driver answers no declaration; version 5, written 2026-10-19 by the orchestrator. It makes the small fixes a fourth independent
 review (`notes/swarm-audit/2026-10-19-plan-review-4.md`, a fresh Fable 5.1 reader at xhigh effort)
 found version 4 needed ("a buildable plan ... none needs a redesign"), with Nolan's answers of the
 same day. Earlier reviews: `2026-10-19-plan-audit.md` (version 1), `-plan-review-2.md` (version 2),
@@ -36,7 +37,7 @@ Nolan's go-ahead of 2026-10-18.
   - The analysts: Haiku 5.5 and Sonnet 5.5 under three personas, and Opus 5.5 as a reference.
   - It decides the production analyst; cost breaks a tie. Its claim cycle is a plumbing test, and
     §9 says what the first real cycle needs.
-- **When:** the build in §10 (36–58M fresh by its packages' estimates, about 40–65M with a
+- **When:** the build in §10 (38–61M fresh by its packages' estimates, about 42–67M with a
   buffer) and the pilot both run in the week after Nolan's usage resets, on a thin buffer he
   accepted (2026-10-19).
 - **Built today:** the driver, version 1 of the record, the six checks, the intake, the dry run (18
@@ -111,7 +112,7 @@ run's label is neutral (`run_NN` and a secret part).
 **The controlled vocabulary** for `--marker` and `want` (the marker names of §4 and four want
 kinds: an option, a check, a reading, an eligibility rule) is fixed before any run.
 
-**The fit budget** per dataset comes from a scripted fit on it before the pilot (§6).
+**The fit budget** per dataset comes from the crash sweep on it before the pilot (§6 step 1).
 
 ## 3. Exploration before the lock, and none after the seal
 
@@ -307,16 +308,28 @@ false-promotion rate (§9).
 
 **Order:** the Estimate fixture is the first wave, so the early-stopping rule (§7) acts before the
 expensive datasets (Nolan, 2026-10-19).
-1. **Sizing:**
-   - a scripted fit on each dataset sets its fit budget and the sweep's compute estimate;
+1. **The crash sweep, which is also the sizing,** before the freeze (sixth review, 2026-10-20):
+   - on each dataset, the sweep around the default plan: every option the driver offers at every
+     decision of the default plan, the declarations included, each previewed, then answered and
+     fitted once; after each change, every later decision's default is previewed again;
+   - an HTTP 500, or a failed fit whose message the engine did not write, is an engine defect,
+     fixed before the freeze, and the sweep runs again on the fixed commit;
+   - a refusal is recorded with the engine's reason and the option refused;
+   - the commit the crash sweep passes on is the frozen one, and its fits are the default-plan half
+     of the sweep (step 4), so no fit is paid twice;
+   - its run time sets each dataset's fit budget and the sweep's compute estimate;
+   - why: Nolan's first walk (2026-10-20) failed twice after a non-default selection answer (the
+     Models preview, and a fold whose selection kept no predictor), on paths no automated walk had
+     taken.
+2. **Sizing:**
    - the measured trio: Haiku and Sonnet, explorer persona, on Bang (the largest table), and Opus
      on the Estimate fixture (its only dataset). The trio's three runs are among the 45;
    - Nolan reads his usage meter before and after.
-2. **The waves:** the Estimate fixture first, then the other datasets, in randomized order within
+3. **The waves:** the Estimate fixture first, then the other datasets, in randomized order within
    each wave, under the stopping rule (§7).
-3. **The sweeps,** within the compute cap.
-4. **The claim cycle** (§9) on the pilot corpus and its shuffled control.
-5. **Nolan's walkthrough** of a Haiku analyst's record of his glucose project (2026-10-19).
+4. **The sweeps,** within the compute cap.
+5. **The claim cycle** (§9) on the pilot corpus and its shuffled control.
+6. **Nolan's walkthrough** of a Haiku analyst's record of his glucose project (2026-10-19).
 
 **Compute and timing:** daytime, unthrottled (Nolan, 2026-10-19), since under the throttle long
 commands make agents miss their prompt cache and cost about four times as much. At most three
@@ -351,6 +364,11 @@ cross-validation, 5 repeats.
     unpaired in the sweep, under the same size rule.
 - **Estimate:** a decision is material where it shifts the reported estimate by at least half the
   estimate's interval half-width.
+
+**Refused refits.** A refit the engine refuses has no score. The sweep records it with the engine's
+reason and the option refused. A decision's materiality on a dataset is reported beside the share of
+its refits refused and their reasons. The sweep's share is its own (its 5 × 5 folds refuse where the
+analyst's folds did not) and is kept apart from the analysts' refusal rate.
 
 **Decision quality, anchored to known truth.** Each final plan is replayed on fresh draws of its
 fixture's generator: at least 100 draws, so a coverage band is testable.
@@ -426,6 +444,15 @@ Needed (§10):
 - **A temporal seal by cut-point:** hold out every row at or after a time value, beside today's
   chronological draw by fraction (`core/seal.py`; `SplitSpec.holdout` is a fraction from 0 to 0.4).
 - **The categorical eligibility rule** (§5).
+- **A typed fit-time refusal:** a refusal at fit time carries a code and its exits, as an answer-time
+  refusal does, so the record, §7's classing of stuck runs and the crash sweep read it by script.
+  Today it is the stage's `error` string, `ValueError: …` (`core/graph.py`), the same shape as a
+  crash.
+
+After the pilot: **the intercept-only model where a selection keeps no predictor in a fold.** The
+mean or the base rate is scored in that fold, the final model and the held-out score included, and
+the folds that kept nothing are counted beside the inclusion frequencies. Until then the fit refuses
+(c0b6e126), and §9 scopes claims about selection.
 
 ## 9. From corpus to the middle layer
 
@@ -434,6 +461,13 @@ The corpus never reaches a user. A pattern becomes advice only through the regis
 1. **Propose.** A theorist (Opus) reads the corpus and the sweeps. Each proposal is structured
    (the decision, the live markers that define its region, the direction, the size, the loss) and
    enters as proposed and unsupported. A proposal with no live marker is not a surfacing claim.
+   - A proposal about a decision states the share of that decision's refits refused in its region,
+     and whether the refusals sit in one marker region.
+   - A refusal that is the method's own limit (backward elimination where the columns outnumber the
+     fold's rows) is part of the claim.
+   - A refusal that is the engine's gap is not. Until the engine fits the intercept alone where a
+     selection keeps no predictor (§8), a claim about variable selection is scoped to the datasets
+     where every swept selection kept a predictor, and says so.
 2. **Pull.** A claim gets work if it answers a decision a person got stuck on, or would change a
    judgment-graded default, ranked by the sweeps' measured materiality.
 3. **Try to break it:**
@@ -492,9 +526,9 @@ sentence fixes R1_PLAN requires before the pilot.
 
 | # | Package | Contents | Size |
 |---|---|---|---|
-| 1 | Record version 2 and the driver | §4's fields with live and post hoc tags; preview `--reason`, `--marker`, `want` and the vocabulary; model and persona with redaction; the signed change; the shuffled-corpus tool | 5–8M |
+| 1 | Record version 2 and the driver | §4's fields with live and post hoc tags; preview `--reason`, `--marker`, `want` and the vocabulary; model and persona with redaction; the signed change; the shuffled-corpus tool; the open declaration lines in `ask`, with their contracts' options, answered and previewed like a question, so the analysts and the sweep reach selection, batch handling (§5 item 6's graded decision), intended use, scales, levers, shrinkage, validation and the sensitivity analyses; the typed fit-time refusal (§8) | 7–11M |
 | 2 | Replay and the fixtures | the fresh-draw flag, the findings rule and truncation on `core/export/replay.py`; predictions on new rows; the hardened Predict fixture, the new Estimate fixture and the new measurement generator; the fixtures' truths regenerated and the three-record dry run redone; the decoy's seeds | 8–12M |
-| 3 | The sweep and the mechanical arms | the sweep runner (dedupe, truncated replay), the default and random paths, the compute sizing | 4–6M |
+| 3 | The sweep and the mechanical arms | the sweep runner (dedupe, truncated replay), the default and random paths, the compute sizing; each refit classed as scored, refused (the engine's reason) or failed (an HTTP 500, or a fit error the engine did not write); the crash sweep (§6 step 1) and its report | 4–6M |
 | 4 | Two engine additions | the temporal seal by cut-point; the categorical eligibility rule, a guard touching decisions, the rows stage, options, its card, its methods sentence and the registry (guard waves have run about three times a wording wave's cost) | 8–12M |
 | 5 | Intake version 2 | the declared measurement markers with checked quotes; the glucose table rebuilt from the NCHS files; Bang's eligibility by code; the benchmark script (Bang's points score on the later cycle) | 5–9M |
 | 6a | RB | the NHANES glucose journey's claims registered (R1_PLAN R1-B), so a record's `claims` traces each sentence an analyst read | 2–3M |
@@ -514,7 +548,7 @@ sentence fixes R1_PLAN requires before the pilot.
   analyst cannot choose a random split and lose comparability with the benchmark.
 - **Package 2:** the measurement fixture's graded list is the engine's current menu (§5 item 6).
 
-The packages sum to 36–58M; about 40–65M with a buffer, on the evidence of this build's own
+The packages sum to 38–61M; about 42–67M with a buffer, on the evidence of this build's own
 overruns. Packages 1 and 2 can start first; 3 waits for 2; 5 waits for 4; 6b waits for 2; 6c
 waits for 3 and 5. The claim cycle's own runs (the theorist on two corpora, the referees, the
 planted reasons) come out of the pilot's 40%.
@@ -548,8 +582,12 @@ planted reasons) come out of the pilot's 40%.
 - the definition of material, the margins and the unit;
 - the swept plans;
 - the Decide cap after the pilot;
+- the intercept-only fit after the pilot (the sixth review's call, 2026-10-20);
 - the admission rule.
 
 **Reviews:** five independent readers reviewed versions 1 to 5 (`notes/swarm-audit/`). The fifth,
-asked only whether anything left changes the build's design, answered BUILD (2026-10-19). Revision
-stops; the build starts after the reset.
+asked only whether anything left changes the build's design, answered BUILD (2026-10-19). A sixth
+(2026-10-20), asked by Nolan to try to refute two notes after his first walk, found that the driver
+answers no declaration, so the analysts and the sweep could reach none of twelve decisions; its
+amendments are in §6, §7, §8, §9 and §10 (version 5.1). Revision stops; the build starts after the
+reset.

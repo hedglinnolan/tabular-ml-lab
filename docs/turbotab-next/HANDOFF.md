@@ -104,12 +104,13 @@ Each line gives the package's fresh subagent tokens, measured from its transcrip
 ## Next, in order
 
 The goal (Nolan, 2026-10-18): everything up to the swarm's start, then the pilot. The plan is
-`plans/SWARM_PLAN.md` version 5, reviewed by five independent readers (`notes/swarm-audit/`); the
-fifth's verdict was BUILD (2026-10-19). Each step's status ends with one line of cost against the
+`plans/SWARM_PLAN.md` version 5.1, reviewed by five independent readers (`notes/swarm-audit/`); the
+fifth's verdict was BUILD (2026-10-19). A sixth (2026-10-20, after Nolan's first walk) found the
+driver answers no declaration; package 1 now adds them, and a crash sweep runs before the freeze. Each step's status ends with one line of cost against the
 reference, which is not a cap.
 
 1. **After Nolan's usage resets (Thursday 1 pm),** the build in SWARM_PLAN §10, packages 1–7
-   (36–58M fresh, about 40–65M with a buffer), with its order and its notes for the builders.
+   (38–61M fresh, about 42–67M with a buffer), with its order and its notes for the builders.
 2. **The pilot in the same week** (SWARM_PLAN §6–§7), on the thin buffer Nolan accepted: daytime,
    unthrottled, within 40% of the week, the Estimate fixture first.
 3. **The live lockdown check and the analyst's model id** (package 7) need a fresh session on the
