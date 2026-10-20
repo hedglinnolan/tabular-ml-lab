@@ -94,6 +94,18 @@ def venv_python(venv: Path) -> Path:
     return venv / ("Scripts/python.exe" if WINDOWS else "bin/python")
 
 
+def install_command(uv: str | None, python: Path, env) -> list[str]:
+    """The command that installs the libraries into ``python``'s environment: uv when it is on
+    the PATH, else pip. On Windows uv copies from its cache instead of hard-linking, unless
+    ``UV_LINK_MODE`` names a mode: a user folder OneDrive manages refuses the links (os error 396)."""
+    if not uv:
+        return [str(python), "-m", "pip", "install", "--disable-pip-version-check",
+                "-c", str(CONSTRAINTS), "-r", str(REQUIREMENTS)]
+    copy = ["--link-mode", "copy"] if WINDOWS and not env.get("UV_LINK_MODE") else []
+    return [uv, "pip", "install", "--python", str(python), *copy, "-c", str(CONSTRAINTS),
+            "-r", str(REQUIREMENTS)]
+
+
 def run(cmd: list[str], **kwargs) -> int:
     if WINDOWS and Path(cmd[0]).suffix.lower() in (".cmd", ".bat"):
         cmd = ["cmd", "/c", *cmd]  # npm is a batch file on Windows
@@ -174,16 +186,9 @@ def ensure_environment(venv: Path) -> Path:
         say("Python environment: up to date.")
         return python
     say("installing TurboTab's Python libraries (once; a few hundred MB, a few minutes)...")
-    uv = shutil.which("uv")
-    if uv:
-        code = run([uv, "pip", "install", "--python", str(python), "-c", str(CONSTRAINTS),
-                    "-r", str(REQUIREMENTS)])
-    else:
-        code = run([str(python), "-m", "pip", "install", "--disable-pip-version-check",
-                    "-c", str(CONSTRAINTS), "-r", str(REQUIREMENTS)])
-    if code != 0:
-        sys.exit("TurboTab: installing the libraries failed (see above). Check the internet "
-                 "connection and start TurboTab again; what was installed is kept.")
+    if run(install_command(shutil.which("uv"), python, os.environ)) != 0:
+        sys.exit("TurboTab: installing the libraries failed; the message above says why. Start "
+                 "TurboTab again once that is fixed; what was installed is kept.")
     stamp.write_text(wanted, "utf-8")
     say("Python environment: ready.")
     return python
