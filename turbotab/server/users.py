@@ -41,6 +41,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+from turbotab.core import atomic
+
 log = logging.getLogger(__name__)
 
 # OWASP's scrypt floor (Password Storage Cheat Sheet): N = 2^17, r = 8, p = 1, which is 128 MiB per
@@ -193,7 +195,7 @@ def write_accounts(path: Path, accounts: Iterable[Account]) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write("\n".join(lines))
         os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)

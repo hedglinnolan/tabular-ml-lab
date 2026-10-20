@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 from urllib.parse import urlsplit
 
 from turbotab.core.config import Settings
+from turbotab.core import atomic
 
 if TYPE_CHECKING:  # pragma: no cover
     from turbotab.core.datastore import DataStore
@@ -142,7 +143,7 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        atomic.replace(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)

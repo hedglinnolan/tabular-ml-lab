@@ -64,6 +64,7 @@ from turbotab.core.decisions import ProjectState
 from turbotab.core.events import EventBus
 from turbotab.core.jobs import Cancelled, JobRunner, JobView
 from turbotab.core.jobs import current as current_job
+from turbotab.core import atomic
 
 log = logging.getLogger(__name__)
 
@@ -545,7 +546,7 @@ def write_artifact(
             shutil.rmtree(tmp, ignore_errors=True)
     pointer = stage_dir / f".{LATEST}-{uuid.uuid4().hex}"
     pointer.write_text(key, "utf-8")
-    os.replace(pointer, stage_dir / LATEST)
+    atomic.replace(pointer, stage_dir / LATEST)
     return fmt
 
 
