@@ -232,3 +232,87 @@ def test_a_field_the_server_fills_is_not_offered():
     got = D.compose("set_measurement_error", view(purpose="inference"), served())
     assert "adjustment" not in {f["name"] for f in got["fields"]}
     assert all("adjustment" not in (o["decision"] or {}) for o in got["options"])
+
+
+# ── what an option needs before it records anything (the verifier's P9) ─────
+
+
+def test_internal_external_validation_needs_the_cluster_the_seal_plan_says_it_needs():
+    """The seal plan serves internal–external validation with ``needs_cluster`` (the engine's
+    ``ValidationOption``): with no cluster named, the option records nothing by itself, says it
+    needs ``cluster``, and takes one of the table's columns but the outcome, as the shell's
+    validation card offers them."""
+    from turbotab.core.models.validation import ValidationOption
+
+    served_option = ValidationOption(validation="internal_external", label="By cluster",
+                                     measures="m", cost="c", needs_cluster=True)
+    plan = {"validation": {"options": [
+        {"validation": "kfold", "label": "Once", "needs_cluster": False},
+        served_option.model_dump(mode="json")]}}
+    got = D.compose("set_validation", view(), served({"seal_plan": plan}))
+    option = {o["id"]: o for o in got["options"]}
+    assert option["set_validation:internal_external"]["decision"] is None
+    assert option["set_validation:internal_external"]["needs"] == ["cluster"]
+    assert option["set_validation:kfold"]["decision"] is not None
+    assert not option["set_validation:kfold"].get("needs")
+    cluster = {f["name"]: f for f in got["fields"]}["cluster"]
+    assert [c["value"] for c in cluster["choices"]] == [c for c in COLUMNS if c != "y"]
+    assert cluster["applies_to"] == ["set_validation:internal_external"]
+    with pytest.raises(Unanswerable, match="cluster"):
+        D.resolve(got, ["set_validation:internal_external"], [])
+    decided = D.resolve(got, ["set_validation:internal_external"], ["cluster=site"])
+    assert (decided["validation"], decided["cluster"]) == ("internal_external", "site")
+    decisions.parse_decision(decided)
+    with pytest.raises(Unanswerable, match="does not apply"):
+        D.resolve(got, ["set_validation:kfold"], ["cluster=site"])
+
+
+def test_internal_external_validation_with_the_cluster_the_plan_names_needs_nothing():
+    plan = {"validation": {"options": [{"validation": "internal_external", "label": "By site",
+                                        "needs_cluster": True, "cluster": "site"}]}}
+    got = D.compose("set_validation", view(), served({"seal_plan": plan}))
+    option = got["options"][0]
+    assert option["decision"]["cluster"] == "site" and not option.get("needs")
+
+
+def test_keeping_the_most_variable_predictors_needs_how_many_where_the_engine_refuses_it_without():
+    """The engine refuses ``variance_filter: top`` with no ``keep`` (``keep_how_many``, its way
+    forward setting ``keep``): the option says it needs ``keep``; given one, it records it."""
+    with pytest.raises(decisions.Refusal) as refused:
+        decisions.validate({"kind": "set_levers", "variance_filter": "top"}, None)
+    assert refused.value.code == "keep_how_many"  # the engine's own rule, read here
+    got = D.compose("set_levers", view(), served())
+    option = {o["id"]: o for o in got["options"]}
+    assert option["set_levers:top"]["decision"] is None
+    assert option["set_levers:top"]["needs"] == ["keep"]
+    assert option["set_levers:near_zero"]["decision"] is not None
+    assert not option["set_levers:near_zero"].get("needs")
+    with pytest.raises(Unanswerable, match="keep"):
+        D.resolve(got, ["set_levers:top"], [])
+    decided = D.resolve(got, ["set_levers:top"], ["keep=1000"])
+    assert decided["variance_filter"] == "top" and decided["keep"] == 1000
+    decisions.validate(decided, None)
+
+
+def test_keeping_the_most_variable_with_a_keep_recorded_needs_nothing():
+    levers = {"forms": "none", "variance_filter": "none", "keep": 500, "imbalance": "none"}
+    got = D.compose("set_levers", view(levers=levers), served())
+    option = {o["id"]: o for o in got["options"]}["set_levers:top"]
+    assert option["decision"]["keep"] == 500 and not option.get("needs")
+
+
+def test_with_no_seal_plan_internal_external_validation_still_needs_its_cluster():
+    """The model itself does not read internal–external validation without a cluster
+    (``decisions._validation_fields``): with no seal plan served, the option says it needs one."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="cluster"):
+        decisions.parse_decision({"kind": "set_validation", "validation": "internal_external"})
+    got = D.compose("set_validation", view(), served())
+    option = {o["id"]: o for o in got["options"]}
+    assert option["set_validation:internal_external"]["needs"] == ["cluster"]
+    assert option["set_validation:internal_external"]["decision"] is None
+    assert all(not o.get("needs") for i, o in option.items()
+               if i != "set_validation:internal_external")
+    decided = D.resolve(got, ["set_validation:internal_external"], ["cluster=site"])
+    decisions.parse_decision(decided)

@@ -32,7 +32,8 @@ reads the run directory the driver wrote and the server's own data, builds the r
   status and an ``ask``'s ``fit_failed``, each fit that failed, classed by its status's typed
   refusal. No other key is read.
 * ``markers.jsonl`` (``driver.keep_markers``): the live markers read at each command that read the
-  run's results, by the current fit's key.
+  run's results, and the facts of the split the current fit is scored on, by the current fit's
+  key.
 * ``home/``: the server's home.
 
 **The server's reads.** The analyst log comes first, since any later read can render a claim and
@@ -130,7 +131,9 @@ an answer the fit does not read can change while its key stands. A fit no snapsh
 has none, and says so.
 
 **The signed change** (``signed.py``) of each family's primary score from the fit before, paired
-where the two fits scored the same folds (their ``folds`` digests are one), else unpaired.
+where the two fits scored the same folds (their ``folds`` digests are one), else unpaired, each
+fit's n_test/n_train read from the facts of the split its digest was drawn by, as the driver read
+them at a fit scored on it (:func:`splits_by_folds`); a digest no snapshot read has no change.
 
 **Spend** (:func:`spend`): the transcript's assistant lines, once per message id. A message
 streams as several lines with one id, the same input counts and a growing output count, so each
@@ -872,6 +875,7 @@ def attempts_of(fits: Sequence[Mapping[str, Any]], records: Sequence[Mapping[str
     and its signed change from the fit before (:func:`signed_change`)."""
     notes = {r["seq"]: r.get("note") for r in records}
     prefixes = Prefixes(records)
+    splits = splits_by_folds(fits, snapshots)
     out: list[dict[str, Any]] = []
     for i, rec in enumerate(fits):
         change = change_of(fits[i - 1] if i else None, rec, records, prefixes)
@@ -879,7 +883,7 @@ def attempts_of(fits: Sequence[Mapping[str, Any]], records: Sequence[Mapping[str
         keep = {k: rec.get(k) for k in R.Attempt.model_fields
                 if k not in (*CHANGE, "reasons", *V2_ATTEMPT)}
         markers, why = fit_markers(rec, snapshots, prefixes)
-        changes, change_why = signed_change(rec, fits[i - 1] if i else None)
+        changes, change_why = signed_change(rec, fits[i - 1] if i else None, splits)
         out.append({**keep, **change, "reasons": reasons, "markers": markers,
                     "markers_why": why, "change": changes, "change_why": change_why})
     return out
@@ -910,10 +914,30 @@ def fit_markers(fit: Mapping[str, Any], snapshots: Sequence[Mapping[str, Any]],
     return [merged[name] for name in V.LIVE if name in merged], None
 
 
-def signed_change(fit: Mapping[str, Any], before: Mapping[str, Any] | None
+def splits_by_folds(fits: Sequence[Mapping[str, Any]], snapshots: Sequence[Mapping[str, Any]]
+                    ) -> dict[str, dict[str, Any] | None]:
+    """The facts of the split each fold digest was drawn by (``signed.SPLIT_FACTS``), from the
+    driver's snapshots at the fits that were scored on it (``markers.jsonl``' ``split``, read while
+    the fit's key was current): two fits with one digest scored the same rows in the same folds,
+    so the facts read at one hold for both. A digest the snapshots read two ways is not known
+    (None)."""
+    digest_of = {f.get("fit_key"): f.get("folds") for f in fits if f.get("fit_key")}
+    out: dict[str, dict[str, Any] | None] = {}
+    for snap in snapshots:
+        digest, facts = digest_of.get(snap.get("fit_key")), snap.get("split")
+        if digest is None or not isinstance(facts, Mapping):
+            continue
+        facts = S.split_facts(facts)
+        out[digest] = facts if out.get(digest, facts) == facts else None
+    return out
+
+
+def signed_change(fit: Mapping[str, Any], before: Mapping[str, Any] | None,
+                  splits: Mapping[str, Mapping[str, Any] | None] | None = None
                   ) -> tuple[list[dict[str, Any]], str | None]:
     """Each family's signed change in the primary score from the fit before (``signed.change``):
-    paired where both fits' ``folds`` digests are one; or why there is none."""
+    paired where both fits' ``folds`` digests are one, each fit's share read from the facts of the
+    split its digest was drawn by (``splits``, :func:`splits_by_folds`); or why there is none."""
     from turbotab.core.models.metrics import higher_is_better
 
     if before is None:
@@ -929,7 +953,9 @@ def signed_change(fit: Mapping[str, Any], before: Mapping[str, Any] | None
         now, then = (scores or {}).get(metric), ((before.get("scores") or {}).get(family) or {}).get(metric)
         if not isinstance(now, Mapping) or not isinstance(then, Mapping):
             continue  # the family was not fitted in both
-        got = S.change(now, then, same_folds=same, higher_is_better=higher_is_better(metric))
+        got = S.change(now, then, same_folds=same, higher_is_better=higher_is_better(metric),
+                       metric=metric, after_split=(splits or {}).get(fit.get("folds") or ""),
+                       before_split=(splits or {}).get(before.get("folds") or ""))
         out.append({"family": family, "metric": metric, "against": before["id"], **got})
     return out, None if out else "No family's primary score is served by both fits."
 

@@ -15,27 +15,55 @@ none, the donor's regime's live markers). Everything else stays the record's own
 materiality is read beside markers that are not its dataset's: a pattern the claim pipeline finds
 in the copy comes from its prior, or from the planted effect.
 
-**The planted effect.** ``--planted K`` records are appended to the copy, each a clone of a record
-of the copy (the template, drawn from the seed) under a new neutral run id and dataset id, with one
-true effect written in by construction: where the live marker M is below a threshold t (half the
-clones), the decision D (one of the template's own, by the analyst) moved its fit's primary
-score by a material amount (its materiality's movement, and the fit's signed change, whose
-interval excludes zero); where M is above t (the other half), by none. M is a numeric live marker
-of the template's regime, t the template's own value of it; both are drawn from the seed.
+**The planted effect.** ``--planted K`` records are appended to the copy, each a clone of one
+record of the copy (the template, drawn from the seed) carrying one true effect written in by
+construction: where the live marker M is below a threshold t (half the clones), the decision D
+moved its fit's primary score materially (its fit's paired change has an interval excluding zero);
+where M is above t (the other half), by little (an interval holding zero). Nothing else tells a
+planted record from a real one in form:
 
-**The sealed file** (``--sealed``, which must lie outside the copy) lists the planted records by
-run id, with M, t, D, the direction and the size, the seed and the derangement, so the theorist,
-who reads only the copy, never sees which records are planted; the pipeline's routing of the
-planted claim is scored against it after the cycle. Nothing in the corpus itself is written.
+* **the template** is a Predict record whose last fit's whole change from the fit before is one
+  decision of the analyst's, D (so D's materiality is that fit's movement, as the assembler reads
+  it), and whose two fits scored the same folds with a signed change computed for a family (its
+  share of rows a fold scores is the one the planted change uses); M is one of its regime's
+  numeric live markers above zero, t its value there;
+* **the run** takes a run id as ``start`` draws one, a label and 32 hex digits: the label of a real
+  record of the copy, as runs started together share one (``driver.new_run_id``), with every time
+  the template holds moved by one offset to start beside that record's start; **the dataset** is
+  the template's own, one of the copy's datasets, so its files, columns and markers agree with it;
+* **M's value** is drawn below t or above it in M's own type (a count stays a whole number, a share
+  stays within 0 and 1), in the regime and in each fit's live markers that hold M, with the
+  regime's own count of it where it has one (``n_rows``, ``n_analyzed``);
+* **the effect** is in the last fit's fold scores of that family's primary score: the fit before's
+  scores plus a constructed difference whose fold-to-fold spread is a share of theirs and whose
+  mean, toward a better score by the metric's direction, is a drawn number of that spread (inside:
+  past the corrected interval's reach; outside: a small one, either way). The fit's summary of
+  that score, its movement against the fit before (``runs.movement``, the engine's), D's
+  materiality and the fit's signed change (``signed.from_shares``, with the template's share) are
+  recomputed from them, as the engine and the assembler compute a real record's; each planted
+  change is against the fit before, ``better`` by the metric's direction.
+
+What a clone keeps of its template's own (its reasons, its account, its export's SHA-256) is said
+in the sealed file's ``kept``: a reader who compares records' words can find the template's
+clones, so which of a record's fields the theorist reads is for the claim cycle's tools to decide.
+
+**The sealed file** (``--sealed``, which must lie outside the copy and the corpus) lists the
+planted records by run id, with M, t, D, the direction, each record's side, movement and change,
+the seed and the derangement, so the theorist, who reads only the copy, never sees which records
+are planted; the pipeline's routing of the planted claim is scored against it after the cycle.
+Nothing in the corpus itself is written: a copy at, under or above the corpus is refused, as is a
+sealed file at or under the corpus or the copy.
 """
 from __future__ import annotations
 
 import argparse
 import copy
 import json
+import math
 import random
 import secrets
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -43,8 +71,6 @@ from research.swarm import record as R
 from research.swarm import vocabulary as V
 
 FAILED = "failed"
-MATERIAL = 1.0  # the planted movement in-region, in SDs of the fold differences (``movement``)
-NONE = 0.0
 NUMERIC = (int, float)
 
 
@@ -105,71 +131,238 @@ def shuffled(records: list[dict[str, Any]], mapping: dict[str, str]) -> list[dic
     return sorted(out, key=lambda d: d["run"]["id"])
 
 
+# The regime's own count a marker restates, set with it.
+RESTATED = {"rows": "n_rows", "rows_analyzed": "n_analyzed"}
+# The planted mean difference, in its fold-to-fold spread: inside, this many times what puts the
+# corrected interval's edge at zero; outside, a share of a spread at most.
+INSIDE = (1.5, 2.5)
+OUTSIDE = (0.02, 0.25)
+SPREAD = 0.5  # the planted difference's spread, as a share of the fit before's fold scores' SD
+KEPT = ("the template's reasons, tags, wants and account", "its export and its SHA-256",
+        "its fit keys and plan digests", "its server's pid and port")
+
+
 def _numeric_markers(rec: dict[str, Any]) -> list[dict[str, Any]]:
-    return [m for m in _live(rec["regime"]) if isinstance(m.get("value"), NUMERIC)
-            and not isinstance(m.get("value"), bool)]
+    """The regime's numeric live markers a value can be drawn on either side of: above zero (a
+    count at least 2, so a whole number lies below it), a share below 1."""
+    out = []
+    for m in _live(rec["regime"]):
+        v = m.get("value")
+        if isinstance(v, bool) or not isinstance(v, NUMERIC) or v <= 0:
+            continue
+        if isinstance(v, int) and v < 2 or _share(m) and v >= 1:
+            continue
+        out.append(m)
+    return out
+
+
+def _share(m: dict[str, Any]) -> bool:
+    return str(m.get("name", "")).endswith("_share")
+
+
+def _side(m: dict[str, Any], below: bool, rng: random.Random) -> int | float:
+    """A value of marker ``m`` below its value t, or above it, in its own type."""
+    t = m["value"]
+    if isinstance(t, int):
+        return rng.randint(-(-t // 2), t - 1) if below else rng.randint(t + 1, t + t // 2)
+    if below:
+        return t * rng.uniform(0.5, 0.95)
+    return t + (1 - t) * rng.uniform(0.05, 0.5) if _share(m) else t * rng.uniform(1.05, 1.5)
+
+
+def _computed(change: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {c["family"]: c for c in change or () if c.get("difference") is not None
+            and c.get("paired") and c.get("test_share")}
+
+
+def _plantable(rec: dict[str, Any]) -> tuple[dict[str, Any], list[str]] | None:
+    """The decision D and the families a planted effect can be written in, where ``rec`` can be a
+    template (the module docstring); else None."""
+    attempts = rec.get("attempts") or []
+    if rec["question"].get("purpose") != "prediction" or len(attempts) < 2:
+        return None
+    before, fit = attempts[-2], attempts[-1]
+    seqs = fit.get("changed") or []
+    loose = [s for s in (fit.get("withdrawn") or []) + (fit.get("reinstated") or [])
+             if s.get("by") is None]
+    decision = next((d for d in rec["decisions"] if len(seqs) == 1 and d["seq"] == seqs[0]), None)
+    if decision is None or decision["source"] != "analyst" or loose or not _numeric_markers(rec):
+        return None
+    if fit.get("folds") is None or fit.get("folds") != before.get("folds"):
+        return None
+    metric = fit.get("primary_metric")
+    families = []
+    for family, c in _computed(fit.get("change")).items():
+        now = ((fit.get("scores") or {}).get(family) or {}).get(metric) or {}
+        then = ((before.get("scores") or {}).get(family) or {}).get(metric) or {}
+        if c.get("against") == before["id"] and c.get("metric") == metric and \
+                isinstance(now.get("folds"), list) and len(now["folds"]) == len(then.get("folds") or ()):
+            families.append(family)
+    return (decision, families) if families else None
+
+
+def _standard(rng: random.Random, n: int) -> list[float]:
+    """``n`` draws, standardized to mean 0 and SD 1 exactly (n ≥ 2)."""
+    xs = [rng.gauss(0.0, 1.0) for _ in range(n)]
+    m = sum(xs) / n
+    sd = math.sqrt(sum((x - m) ** 2 for x in xs) / (n - 1)) or 1.0
+    return [(x - m) / sd for x in xs]
+
+
+def _rescored(score: dict[str, Any], folds: list[float], metric: str) -> dict[str, Any]:
+    """``score`` (a metric's summary, ``metrics.summarize``'s) with these fold scores: its mean,
+    SD, estimate and repeats' SD read from them, its interval moved with its estimate and kept
+    inside the metric's range as the summary keeps it."""
+    from turbotab.core.models.metrics import LOWER_IS_BETTER
+
+    out = dict(score)
+    repeats = int(score.get("repeats") or 1)
+    k = len(folds) // repeats
+    each = [sum(folds[r * k:(r + 1) * k]) / k for r in range(repeats)]
+    estimate = sum(each) / repeats
+    shift = estimate - float(score["estimate"])
+    m = sum(folds) / len(folds)
+    out.update(folds=folds, mean=m, estimate=estimate,
+               sd=math.sqrt(sum((x - m) ** 2 for x in folds) / (len(folds) - 1)),
+               repeat_sd=(math.sqrt(sum((x - estimate) ** 2 for x in each) / (repeats - 1))
+                          if repeats > 1 else score.get("repeat_sd")))
+    lo, hi = score.get("ci_low"), score.get("ci_high")
+    if lo is not None and hi is not None:
+        lo, hi = float(lo) + shift, float(hi) + shift
+        if metric in ("auc", "accuracy", "macro_f1", "brier"):
+            lo, hi = max(lo, 0.0), min(hi, 1.0)
+        elif metric == "r2":
+            hi = min(hi, 1.0)
+        elif metric in LOWER_IS_BETTER:
+            lo = max(lo, 0.0)
+        out.update(ci_low=lo, ci_high=hi)
+    return out
+
+
+def _moved(times: Any, offset: timedelta) -> Any:
+    """``times`` (a record's JSON) with every time in it moved by ``offset``, each in its form."""
+    if isinstance(times, dict):
+        return {k: _moved(v, offset) for k, v in times.items()}
+    if isinstance(times, list):
+        return [_moved(v, offset) for v in times]
+    if not isinstance(times, str):
+        return times
+
+    def move(m: Any) -> str:
+        text = m.group()
+        t = datetime.fromisoformat(text.replace(" ", "T")) + offset
+        out = t.isoformat(sep=text[10], timespec="microseconds" if "." in text else "seconds")
+        return out.replace("+00:00", "Z") if text.endswith("Z") else out
+
+    return R.STAMP.sub(move, times)
+
+
+def _started(rec: dict[str, Any]) -> datetime:
+    t = datetime.fromisoformat(str(rec["run"]["started"]).replace("Z", "+00:00"))
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
 def planted(records: list[dict[str, Any]], k: int, rng: random.Random
             ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """``k`` records carrying one true effect (the module docstring), and the effect itself."""
+    from turbotab.core import runs
+    from turbotab.core.models.metrics import higher_is_better
+
+    from research.swarm import signed as S
+    from research.swarm.driver import LABEL_STEM
+
     if k < 2:
         raise ShuffleRefused("A planted effect needs at least two records: one on each side of "
                              "its threshold.")
-    templates = [r for r in records if _numeric_markers(r) and r.get("attempts")
-                 and any(d["source"] == "analyst" for d in r["decisions"])]
+    templates = [(r, got) for r in records if (got := _plantable(r)) is not None]
     if not templates:
-        raise ShuffleRefused("No record of the copy has a numeric live marker, a fit and an "
-                             "analyst's decision to plant an effect in.")
-    template = rng.choice(templates)
+        raise ShuffleRefused("No record of the copy is a Predict run whose last fit's whole change "
+                             "is one decision of the analyst's, paired with a signed change over "
+                             "the same folds, beside a numeric live marker, to plant an effect in.")
+    template, (decision, families) = rng.choice(templates)
     marker = rng.choice(_numeric_markers(template))
-    decision = rng.choice([d for d in template["decisions"] if d["source"] == "analyst"])
-    t = float(marker["value"])
-    fit = template["attempts"][-1]
+    family = rng.choice(families)
+    t = marker["value"]
+    before, fit = template["attempts"][-2], template["attempts"][-1]
+    metric = fit["primary_metric"]
+    higher = higher_is_better(metric)
+    share = _computed(fit["change"])[family]["test_share"]
+    then = before["scores"][family][metric]
+    base = [float(x) for x in then["folds"]]
+    j = len(base)
+    sd = math.sqrt(sum((x - sum(base) / j) ** 2 for x in base) / (j - 1)) if j > 1 else 0.0
+    spread = SPREAD * (sd or 0.01 * abs(sum(base) / j) or 0.01)
+    reach = S._t(j - 1, S.LEVEL) * math.sqrt(1.0 / j + float(share[0]))  # mean/SD at the edge
+    stamped = [r for r in records if r["run"]["id"].startswith(LABEL_STEM)] or records
     effect = {"decision": decision["kind"], "decision_id": decision["id"],
-              "marker": marker["name"], "threshold": t,
-              "direction": "material below the threshold, none above", "size": MATERIAL,
-              "template": template["run"]["id"]}
+              "marker": marker["name"], "threshold": t, "family": family, "metric": metric,
+              "direction": "material below the threshold, none above",
+              "template": template["run"]["id"], "kept": list(KEPT), "records": []}
     out = []
     for n in range(k):
         inside = n % 2 == 0
-        value = t * (0.5 if inside else 1.5) if t else (-1.0 if inside else 1.0)
-        rec = copy.deepcopy(template)
-        rec["run"]["id"] = f"run_{900 + n:03d}-{rng.getrandbits(128):032x}"
-        rec["dataset"]["id"] = f"ds_{rng.getrandbits(32):08x}"
-        for m in rec["regime"]["markers"]:
-            if m["name"] == marker["name"]:
-                whole = isinstance(marker["value"], int) and value == int(value)
-                m["value"] = int(value) if whole else value
-        size = MATERIAL if inside else NONE
-        family = (fit.get("families") or ["linear"])[0]
+        beside = rng.choice(stamped)
+        offset = (_started(beside) - _started(template)
+                  + timedelta(seconds=rng.randint(0, 120)))
+        # Every time the record holds but its dataset's (each record of a dataset holds the same).
+        rec = {key: (copy.deepcopy(v) if key == "dataset" else _moved(copy.deepcopy(v), offset))
+               for key, v in template.items()}
+        label = beside["run"]["id"].rsplit("-", 1)[0]
+        rec["run"]["id"] = f"{label}-{rng.getrandbits(128):032x}"
+        value = _side(marker, inside, rng)
+        for m in [*rec["regime"]["markers"], *(m for a in rec["attempts"]
+                                               for m in a.get("markers") or ())]:
+            if m["name"] == marker["name"] and m.get("value") is not None:
+                m["value"] = value
+        if marker["name"] in RESTATED:
+            rec["regime"][RESTATED[marker["name"]]] = value
+        size = rng.uniform(*INSIDE) * reach if inside else rng.uniform(*OUTSIDE) * rng.choice((-1, 1))
+        sign = 1.0 if higher else -1.0  # toward a better score
+        after = [b + sign * spread * (size + e) for b, e in zip(base, _standard(rng, j))]
+        last, previous = rec["attempts"][-1], rec["attempts"][-2]
+        last["scores"][family][metric] = _rescored(last["scores"][family][metric], after, metric)
+        moved, why = runs.movement(
+            runs.FitRecord.model_validate({f: previous.get(f) for f in runs.FitRecord.model_fields
+                                           if f in previous}),
+            purpose="prediction", target=last.get("target"), metric=metric,
+            folds=last.get("folds"), seed=last.get("seed"), scores=last["scores"])
+        last["movement"] = [m.model_dump(mode="json") for m in moved]
+        last["movement_why"] = why
         for d in rec["decisions"]:
             if d["id"] == decision["id"]:
-                d["materiality"] = {"source": "fits", "attempt": fit["id"], "movement": [{
-                    "family": family, "against": fit["id"], "why": None,
-                    "movement": {"instrument": "paired_folds", "regime": "realized",
-                                 "value": size, "band": 2 if inside else 0}}]}
-        for a in rec["attempts"]:
-            a["markers"] = [dict(m) for m in _live(rec["regime"])]
-            a["markers_why"] = None
-        rec["attempts"][-1]["change"] = [{
-            "family": family, "metric": fit.get("primary_metric") or "score",
-            "against": fit["id"], "paired": True, "difference": size / 10,
-            "better": True if inside else None, "se": 0.01, "df": 4.0,
-            "ci_low": size / 10 - 0.03, "ci_high": size / 10 + 0.03,
-            "excludes_zero": inside, "folds": [5, 5], "half_width": 0.05, "why": None}]
-        rec["attempts"][-1]["change_why"] = None
+                d["materiality"] = {"source": "fits", "attempt": last["id"],
+                                    "movement": last["movement"]}
+        changed = S.from_shares(last["scores"][family][metric], previous["scores"][family][metric],
+                                same_folds=True, higher_is_better=higher,
+                                shares=(share[0], share[1]))
+        last["change"] = [({"family": family, "metric": metric, "against": previous["id"],
+                            **changed} if c["family"] == family else c) for c in last["change"]]
         R.validate(rec)
         out.append(rec)
+        fm = next(m for m in last["movement"] if m["family"] == family)
+        effect["records"].append({"run": rec["run"]["id"], "below": inside, "value": value,
+                                  "movement": fm["movement"]["value"],
+                                  "difference": changed["difference"],
+                                  "excludes_zero": changed["excludes_zero"]})
     return out, effect
+
+
+def _within(path: Path, folder: Path) -> bool:
+    """Whether ``path`` is ``folder`` or lies under it (both resolved)."""
+    return path == folder or folder in path.parents
 
 
 def write(corpus: Path, out: Path, sealed: Path, seed: int, k: int) -> dict[str, Any]:
     """The shuffled copy in ``out`` and the sealed file (the module docstring)."""
-    out, sealed = Path(out).absolute(), Path(sealed).absolute()
-    if out == Path(corpus).absolute() or out in Path(corpus).absolute().parents:
-        raise ShuffleRefused("The copy is written apart from the corpus, never over it.")
-    if sealed == out or out in sealed.parents:
+    home = Path(corpus).resolve()
+    out, sealed = Path(out).resolve(), Path(sealed).resolve()
+    if _within(out, home) or _within(home, out):
+        raise ShuffleRefused("The copy is written apart from the corpus, never in it, over it or "
+                             "above it.")
+    if _within(sealed, home):
+        raise ShuffleRefused("The sealed file lies outside the corpus: the theorist's real cycle "
+                             "reads the corpus.")
+    if _within(sealed, out):
         raise ShuffleRefused("The sealed file lies outside the copy: the theorist reads the copy.")
     if out.exists() and any(out.iterdir()):
         raise ShuffleRefused(f"{out} is not empty; a shuffled copy is written once.")

@@ -267,3 +267,56 @@ def test_a_grouping_too_small_for_intercepts_is_typed_with_the_cluster_only_way_
     plain = _small_groups_typed("too few rows per group",
                                 st.model_copy(update={"purpose": "prediction"}))
     assert plain.code == "incidental_parameters" and plain.exits == []
+
+
+# ── stepwise's in-fit backstop (the verifier's P8) ───────────────────────────
+
+
+def wide(rows: int, columns: int) -> tuple[pd.DataFrame, pd.Series]:
+    """``columns`` candidates on ``rows`` rows, drawn here: backward elimination starts from all of
+    them, which an intercept and every column can be fit to only when columns < rows − 1."""
+    rng = np.random.default_rng(7)
+    X = pd.DataFrame(rng.normal(size=(rows, columns)), columns=[f"x{i}" for i in range(columns)])
+    return X, pd.Series(X["x0"] + rng.normal(size=rows), name="y")
+
+
+def answer_time_stepwise_refusal(monkeypatch, columns: int, rows: int):
+    """The refusal the selection answer gives where the smallest training fold has ``rows`` rows
+    for ``columns`` candidates (``_stepwise_has_rows``, its room read as given)."""
+    from turbotab.core.models import variable_selection as vs
+
+    monkeypatch.setattr(vs, "stepwise_room", lambda *a, **k: (columns, rows))
+    with pytest.raises(d.Refusal) as refused:
+        vs._stepwise_has_rows(d.SetSelection(method="stepwise"), None, None, "regression")
+    return refused.value
+
+
+def test_stepwise_with_more_columns_than_its_rows_allow_refuses_typed_as_the_answer_does(
+        monkeypatch):
+    """10 candidates on 8 training rows: backward elimination cannot start (10 ≥ 8 − 1). The fit
+    refuses with the answer-time code and its three ways forward (elastic net, screening, no
+    selection), and its words are the ones a person read before."""
+    X, y = wide(8, 10)
+    with pytest.raises(StageRefusal) as refused:
+        selector("stepwise", list(X.columns)).fit(X, y)
+    r = refused.value
+    answer = answer_time_stepwise_refusal(monkeypatch, 10, 8)
+    assert r.code == answer.code == "stepwise_needs_rows"
+    assert [(e["label"], e["decision"]["kind"], e["decision"]["method"]) for e in r.exits] == [
+        (e["label"], e["decision"]["kind"], e["decision"]["method"]) for e in answer.exits]
+    assert [e["decision"]["method"] for e in r.exits] == ["elastic_net", "screening", "none"]
+    assert str(r) == ("Backward elimination starts from all 10 candidate columns, and these "
+                      "training rows number 8: a model with every column and an intercept needs "
+                      "more rows than that. Choose the elastic net or in-fold screening in the "
+                      "selection question.")
+    from turbotab.core.jobs import failure_of
+
+    text, refusal = failure_of(r)
+    assert text == f"ValueError: {r}" and refusal["code"] == "stepwise_needs_rows"
+
+
+def test_stepwise_with_room_for_every_column_refuses_nothing():
+    """6 candidates on 64 rows (6 < 64 − 1): the backstop stays silent and the fit runs."""
+    X, y = wide(64, 6)
+    fitted = selector("stepwise", list(X.columns)).fit(X, y)
+    assert "x0" in fitted.transform(X).columns

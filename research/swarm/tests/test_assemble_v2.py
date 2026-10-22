@@ -14,7 +14,7 @@ import pytest
 
 from research.swarm import assemble as A
 from research.swarm import vocabulary as V
-from research.swarm.record import FailedFit, validate
+from research.swarm.record import FailedFit, SignedChange, validate
 from research.swarm.tests.test_swarm_assemble import META, FakeClient, _run_dir, _served_routes
 
 T = "2026-10-22T10:00:"
@@ -133,16 +133,40 @@ def fit(fid: str, folds: str, auc: list[float] | None, purpose: str = "predictio
             else None, "folds": folds, "scores": scores}
 
 
+# 100 training rows in five random folds of 20: n_test/n_train is 20/80 = 1/4 in each.
+FIVE = {"n_train": 100, "folds": 5, "repeats": 1, "fold_scheme": "random", "validation": "kfold",
+        "grouped_by": None}
+
+
 def test_a_fit_on_the_same_folds_is_changed_paired_and_on_others_unpaired():
     before = fit("f1", "D", [0.70, 0.70, 0.70, 0.70, 0.70])
     after = fit("f2", "D", [0.71, 0.72, 0.73, 0.74, 0.75])
-    (paired,), why = A.signed_change(after, before)
+    (paired,), why = A.signed_change(after, before, {"D": FIVE, "E": FIVE})
     se = math.sqrt((1 / 5 + 1 / 4) * 2.5e-4)  # differences .01 to .05: s² = 2.5e-4
     assert why is None and paired["paired"] is True and paired["against"] == "f1"
     assert paired["difference"] == pytest.approx(0.03) and paired["se"] == pytest.approx(se)
     assert paired["better"] is True and paired["half_width"] == pytest.approx(0.1)
-    (unpaired,), _ = A.signed_change({**after, "folds": "E"}, before)
+    assert paired["test_share"] == pytest.approx([0.25, 0.25])
+    (unpaired,), _ = A.signed_change({**after, "folds": "E"}, before, {"D": FIVE, "E": FIVE})
     assert unpaired["paired"] is False and unpaired["difference"] == pytest.approx(0.03)
+
+
+def test_a_fit_whose_folds_no_snapshot_read_has_no_change_and_says_why():
+    before = fit("f1", "D", [0.70] * 5)
+    after = fit("f2", "D", [0.71, 0.72, 0.73, 0.74, 0.75])
+    (got,), why = A.signed_change(after, before, {})
+    assert why is None and got["difference"] is None and "not read" in got["why"]
+    SignedChange.model_validate(got)
+
+
+def test_each_digest_takes_the_split_read_at_a_fit_scored_on_it():
+    fits = [{"fit_key": "k1", "folds": "D"}, {"fit_key": "k2", "folds": "D"},
+            {"fit_key": "k3", "folds": "E"}, {"fit_key": "k4", "folds": "G"}]
+    other = {**FIVE, "n_train": 103}
+    snaps = [{"fit_key": "k1", "split": FIVE}, {"fit_key": "k3", "split": FIVE},
+             {"fit_key": "k3", "split": other},  # E read two ways: not known
+             {"fit_key": "k4", "split": None}, {"fit_key": "k9", "split": FIVE}]
+    assert A.splits_by_folds(fits, snaps) == {"D": FIVE, "E": None}
 
 
 @pytest.mark.parametrize("after,before,why", [

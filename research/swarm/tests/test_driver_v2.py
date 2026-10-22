@@ -343,6 +343,31 @@ def test_the_markers_are_kept_by_the_current_fits_key(tmp_path, monkeypatch):
     assert next(m for m in kept[0]["markers"] if m["name"] == "purpose")["value"] == "prediction"
 
 
+SPLIT = {"stage": "split", "fresh": True, "artifact": {
+    "n_train": 103, "n_holdout": 0, "folds": 5, "repeats": 1, "fold_scheme": "random",
+    "validation": "kfold", "grouped_by": None, "seed": 0, "stratified": False}}
+
+
+@pytest.mark.parametrize("served, kept", [
+    (SPLIT, {"n_train": 103, "folds": 5, "repeats": 1, "fold_scheme": "random",
+             "validation": "kfold", "grouped_by": None}),
+    ({**SPLIT, "fresh": False}, None),  # a split not computed for the current answers: none
+    (None, None),
+])
+def test_the_folds_facts_are_kept_beside_the_markers_from_the_fresh_split_only(
+        tmp_path, monkeypatch, served, kept):
+    """The verifier's P3 and P4: the record's signed change reads each fit's n_test/n_train from
+    the facts of the split its folds were drawn by, which the fit record does not serve."""
+    folder = fake_run(tmp_path, monkeypatch)
+    run = driver.Run.load(RID)
+    monkeypatch.setattr(driver, "view_of", lambda run, client: VIEW)
+    monkeypatch.setattr(driver, "reader", lambda run, client: (
+        lambda path: served if path == "stages/split" else None))
+    driver.keep_markers(run, driver.Client(9), "fit")
+    snapshot = json.loads((folder / driver.MARKERS_FILE).read_text().splitlines()[0])
+    assert snapshot["fit_key"] == "k1" and snapshot["split"] == kept
+
+
 def test_markers_that_cannot_be_read_keep_nothing_and_never_fail_the_command(tmp_path, monkeypatch):
     folder = fake_run(tmp_path, monkeypatch)
     run = driver.Run.load(RID)

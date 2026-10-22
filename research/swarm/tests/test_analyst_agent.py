@@ -92,6 +92,38 @@ def test_it_says_what_a_refusal_lists_as_the_driver_prints_it():
     assert "lists the ways forward, each with an id" not in text
     assert 'A refusal by the driver (`"by": "driver"`) lists none, and its `message` says why.' in text
     assert ('A refusal by the app (`"by": "server"`) lists its ways forward under `exits`.' in text)
+    # ``answer`` takes a marker (SWARM_PLAN §2; the verifier's P1), so the way forward's form
+    # names it, and a fit the engine refused lists its ways forward as the server's refusal does.
     assert ("A way forward with an id, in a refusal or in `ask`, is taken with "
-            "`answer <id> --reason <why>`; one whose id is null records nothing, and `answer` "
-            "cannot take it.") in text
+            "`answer <id> --marker <marker> --reason <why>`; one whose id is null records "
+            "nothing, and `answer` cannot take it.") in text
+    assert 'A fit the app refused (`"by": "engine"`) lists them the same way.' in text
+    args = driver.build_parser().parse_args(["answer", "--run", "r1", "x-1", "--marker", "design",
+                                             "--reason", "why"])
+    assert args.option == ["x-1"] and args.marker == "design"
+
+
+def test_it_names_every_marker_and_want_kind_of_the_vocabulary_and_no_other():
+    """The verifier's P1: the analyst is told the controlled vocabulary the driver takes
+    (``vocabulary.py``), whole, and nothing else is offered as a marker."""
+    from research.swarm import vocabulary as V
+
+    _, body = parts()
+    section = body.split("## The markers", 1)[1].split("## The commands", 1)[0]
+    named = [w for w in re.findall(r"`([a-z_]+)`", section) if w not in driver.ANALYST_COMMANDS]
+    assert sorted(set(named) - set(V.WANT_KINDS)) == sorted(V.NAMES)
+    assert [w for w in named if w in V.WANT_KINDS] == list(V.WANT_KINDS)
+
+
+def test_it_names_what_the_hook_refuses_even_in_quotes_and_a_word_to_write_instead():
+    """A reason, a want or an account holding <, > or $ is refused by the hook even in quotes
+    (``analyst_hook.FORBIDDEN``): the analyst is told so, with the words to write instead."""
+    _, body = parts()
+    text = " ".join(body.split())
+    for c in ("<", ">", "$"):
+        assert c in analyst_hook.FORBIDDEN
+        assert analyst_hook.bash_refusal(
+            f'scripts/py -m research.swarm.driver want --run RUN "x {c} y" --kind check '
+            f'--marker rows --reason "r"', REPO) is not None
+    assert ('write "below" for `<`, "above" for `>`, "dollars" for `$`' in text)
+    assert "give your `account` once" in text

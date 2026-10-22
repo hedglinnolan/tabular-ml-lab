@@ -5,10 +5,10 @@ A record is assembled after the run from the server's own data and the driver's 
 Version 2 (SWARM_PLAN §4, the build's package 1) adds the fields marked new. Its fields:
 
 * ``run``: the run's id and design, the engine's commit, the analyst's model, **its persona**
-  (new; both redacted in the view a blind reader is shown, :func:`redacted`), effort and prompt
-  version, **the vocabulary its tags were taken under** (new, ``vocabulary.DIGEST``), when it
-  started and ended, its spend (fresh and cached tokens, counted from the analyst's transcript
-  once per message) and its fits and their seconds;
+  (new; both redacted in the view a blind reader is shown, :func:`redacted`, whose times keep
+  their order only), effort and prompt version, **the vocabulary its tags were taken under**
+  (new, ``vocabulary.DIGEST``), when it started and ended, its spend (fresh and cached tokens,
+  counted from the analyst's transcript once per message) and its fits and their seconds;
 * ``dataset``: the files the run read, each with its SHA-256 and where it came from, and, from the
   intake, whether the dataset is a known-answer control or a null decoy (never on the analyst's
   card), and **the declared measurement markers** (new, SWARM_PLAN §5: each quoted, or recorded
@@ -69,7 +69,8 @@ measure of whys alone, fails its schema.
 """
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -133,7 +134,8 @@ class Run(_Strict):
     effort: str | None
     prompt_version: str = Field(min_length=1)
     vocabulary: str = Field(min_length=1)  # the vocabulary's digest (``vocabulary.DIGEST``)
-    redacted: bool = False  # the view a blind reader is shown (:func:`redacted`)
+    # The view a blind reader is shown (:func:`redacted`): every time in it is its order only.
+    redacted: bool = False
     started: datetime
     ended: datetime | None
     spend: Spend | None
@@ -475,7 +477,10 @@ class SignedChange(_Strict):
     over the same folds, else unpaired with each arm's Nadeau–Bengio inflation; ``difference`` is
     this fit's mean less the earlier's on the metric's scale, ``better`` whether this fit scored
     better by the metric's direction; ``half_width`` is half the earlier fit's own interval
-    width. Without a number, ``why``."""
+    width; ``test_share`` is each arm's n_test/n_train (this fit's first), the engine's measured
+    share on the folds the split drew (``signed.test_share``). Without a number, ``why``: among
+    others, folds whose share the split's facts do not fix (time-ordered, internal–external,
+    grouped) and a pooled score that is not the mean of its fold scores."""
 
     family: str
     metric: str
@@ -490,6 +495,7 @@ class SignedChange(_Strict):
     excludes_zero: bool | None
     folds: list[int] | None
     half_width: float | None
+    test_share: list[float] | None = None
     why: str | None
 
     @model_validator(mode="after")
@@ -774,24 +780,68 @@ def validate(data: Any) -> Record:
     return Record.model_validate(data)
 
 
+# A time as a record's JSON holds it (``datetime``'s ISO form, the driver's and the server's), in a
+# field of its own or inside words (a refusal that says when the account was given).
+STAMP = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?")
+# Where the redacted view's order of times starts: its n-th distinct time is n seconds after it.
+ORDER_FROM = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _instant(text: str) -> datetime:
+    t = datetime.fromisoformat(text.replace(" ", "T"))
+    return t if t.tzinfo is not None else t.replace(tzinfo=timezone.utc)
+
+
+def _stamps(obj: Any) -> list[str]:
+    if isinstance(obj, dict):
+        return [t for v in obj.values() for t in _stamps(v)]
+    if isinstance(obj, list):
+        return [t for v in obj for t in _stamps(v)]
+    return STAMP.findall(obj) if isinstance(obj, str) else []
+
+
+def _ordered(obj: Any, place: dict[str, str]) -> Any:
+    if isinstance(obj, dict):
+        return {k: _ordered(v, place) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_ordered(v, place) for v in obj]
+    return STAMP.sub(lambda m: place[m.group()], obj) if isinstance(obj, str) else obj
+
+
+def order_only(data: Any) -> Any:
+    """``data`` (a record's JSON) with every time it holds, in a field or inside words, replaced by
+    its place in the record's order of times: the n-th distinct instant is ``ORDER_FROM`` plus n
+    seconds, so two times compare as they did and no gap between them is kept."""
+    instants = {t: _instant(t) for t in _stamps(data)}
+    rank = {t: n for n, t in enumerate(sorted(set(instants.values())), start=1)}
+    place = {text: (ORDER_FROM + timedelta(seconds=rank[t])).isoformat().replace("+00:00", "Z")
+             for text, t in instants.items()}
+    return _ordered(data, place)
+
+
 def redacted(record: Record | Any) -> dict[str, Any]:
     """The view of ``record`` a blind reader is shown (SWARM_PLAN §7: the stuck runs' classing,
     the referee): the analyst's model and persona, its effort, its prompt version (which can name
-    the persona) and its spend (whose size can tell the model) taken out, ``run.redacted`` set. It
-    validates as a record. What the analyst wrote (its reasons, wants and account) is kept as
-    written: a reader is told the model was redacted, not that no word of the analyst's can
+    the persona) and its spend (whose size can tell the model) taken out, ``run.redacted`` set;
+    and every time it holds, the run's start and end and each ``at`` (of its decisions, previews,
+    fits, claims, refusals, failed fits, tags, wants and account) included, turned into its order
+    only (:func:`order_only`), since with an agent analyst the gaps between its commands are its
+    model's response time. It validates as a record, and the checks read it as they read the
+    record. What the analyst wrote (its reasons, wants and account) is kept as written but for a
+    time in it: a reader is told the model was redacted, not that no word of the analyst's can
     reveal it."""
     rec = record if isinstance(record, Record) else validate(record)
     data = rec.model_dump(mode="json", by_alias=True)
     data["run"].update(analyst_model=REDACTED, persona=None, effort=None, prompt_version=REDACTED,
                        spend=None, spend_why=REDACTED_SPEND, redacted=True)
+    data = order_only(data)
     validate(data)
     return data
 
 
 __all__ = ["Account", "Answer", "Attempt", "Claim", "Dataset", "DatasetFile", "DeclaredMarker",
            "Decision", "Estimate", "Examined", "Export", "FailedFit", "Marker", "Materiality",
-           "NULL_OF", "Persona", "Question", "REDACTED", "REDACTED_SPEND", "Reason", "Record",
-           "RefusedKind", "Refusal", "Regime", "Replay", "Replication", "Result", "Run", "Scale",
-           "Shift", "SignedChange", "Spend", "Surfacings", "Tag", "VERSION", "Want", "redacted",
-           "validate"]
+           "NULL_OF", "ORDER_FROM", "Persona", "Question", "REDACTED", "REDACTED_SPEND", "Reason",
+           "Record", "RefusedKind", "Refusal", "Regime", "Replay", "Replication", "Result", "Run",
+           "STAMP", "Scale", "Shift", "SignedChange", "Spend", "Surfacings", "Tag", "VERSION",
+           "Want", "order_only", "redacted", "validate"]

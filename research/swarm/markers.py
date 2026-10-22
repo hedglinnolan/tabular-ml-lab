@@ -11,9 +11,10 @@ fresh at its current key, so every marker is the one the current answers give; t
 value with where it was served (``basis``), or why it has none; it never raises.
 
 The driver reads them at the commands that read the run's results (``fit``, ``results``, ``seal``,
-``export``) and keeps them by the current fit's key (``markers.jsonl``), so the record's attempts
-hold the live markers at each fit; the assembler reads them once more at the end for the record's
-regime, beside the two post hoc markers (:func:`post_hoc`).
+``export``) and keeps them by the current fit's key (``markers.jsonl``), with the facts of the
+split the fit is scored on (:func:`split_now`), so the record's attempts hold the live markers at
+each fit and its signed change reads each fit's folds; the assembler reads them once more at the
+end for the record's regime, beside the two post hoc markers (:func:`post_hoc`).
 
 **What each live marker is, here** (its basis says the same):
 
@@ -459,9 +460,47 @@ def live(view: Mapping[str, Any], read: Read) -> list[dict[str, Any]]:
     return out
 
 
+def split_now(view: Mapping[str, Any], read: Read) -> dict[str, Any] | None:
+    """The facts of the folds the current answers draw (``signed.SPLIT_FACTS``: the training
+    rows, the folds and their repeats, their scheme, the validation and the grouping), from the
+    split stage when it is fresh at its current key, or None: kept beside the markers, so the
+    record's signed change reads each fit's share of rows a fold scores (``signed.test_share``)."""
+    from research.swarm.signed import split_facts
+
+    try:
+        return split_facts(_Reads(view, read).fresh("split"))
+    except Exception:  # noqa: BLE001 - a read that fails keeps nothing
+        return None
+
+
 def fit_key(view: Mapping[str, Any]) -> str | None:
     """The current fit's key, which the live markers read now belong to."""
     return ((view.get("stages") or {}).get("fit") or {}).get("key")
+
+
+def _signal(scale: str, estimate: float, low: Any, high: Any) -> dict[str, Any]:
+    """The ``signal`` marker of an estimate (:func:`post_hoc`): its distance from no effect in
+    half-widths of its interval, on the log scale for a ratio."""
+    import math
+
+    from research.swarm.record import NULL_OF
+
+    if low is None or high is None:
+        return marker("signal", why="The estimate has no interval.")
+    low, high = float(low), float(high)
+    if scale == "ratio":
+        if min(estimate, low, high) <= 0:
+            return marker("signal", why="A ratio's interval reaches zero, where its log is not "
+                                        "defined.")
+        away, half = math.log(estimate), (math.log(high) - math.log(low)) / 2
+        basis = ("the first estimate's distance from no effect (1) in half-widths of its "
+                 "interval, on the log scale")
+    else:
+        away, half = estimate - NULL_OF.get(scale, 0.0), (high - low) / 2
+        basis = "the first estimate's distance from no effect in half-widths of its interval"
+    if not half:
+        return marker("signal", why="The estimate's interval has no width.")
+    return marker("signal", abs(away) / half, basis)
 
 
 def post_hoc(result: Mapping[str, Any], attempts: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -469,12 +508,13 @@ def post_hoc(result: Mapping[str, Any], attempts: list[Mapping[str, Any]]) -> li
 
     * ``signal``: under Predict, the reported family's cross-validated primary score at the
       result's fit; under Estimate, the first reported estimate's distance from no effect in
-      half-widths of its interval (|estimate − null| / half-width);
+      half-widths of its interval, on the scale its interval is symmetric on: |estimate| /
+      ((high − low) / 2) on a difference scale, |log estimate| / ((log high − log low) / 2) on a
+      ratio scale, so an odds ratio and its reciprocal lie as far from 1 (none where a ratio's
+      interval reaches zero, whose log is not defined);
     * ``result``: the reported result in brief, the sealed primary score or the first estimate
       with its interval, or why there is none (the result's own refusal).
     """
-    from research.swarm.record import NULL_OF
-
     refused = result.get("refused")
     if refused:
         return [marker("signal", why=f"No result was reported: {refused}"),
@@ -498,12 +538,8 @@ def post_hoc(result: Mapping[str, Any], attempts: list[Mapping[str, Any]]) -> li
     if estimate is None:
         return [marker("signal", why="No estimate was reported."),
                 marker("result", why="No estimate was reported.")]
-    null = NULL_OF.get(str(result.get("scale")), 0.0)
     low, high = estimate.get("ci_low"), estimate.get("ci_high")
-    half = (float(high) - float(low)) / 2 if low is not None and high is not None else None
-    signal = (marker("signal", abs(float(estimate["estimate"]) - null) / half,
-                     "the first estimate's distance from no effect in half-widths of its interval")
-              if half else marker("signal", why="The estimate has no interval."))
+    signal = _signal(str(result.get("scale")), float(estimate["estimate"]), low, high)
     return [signal, marker("result", {"family": estimate.get("family"),
                                       "feature": estimate.get("feature"),
                                       "measure": result.get("measure"),
@@ -512,4 +548,4 @@ def post_hoc(result: Mapping[str, Any], attempts: list[Mapping[str, Any]]) -> li
 
 
 __all__ = ["ASSAY_LENSES", "READERS", "STATE_ONLY", "fit_key", "from_answers", "live", "marker",
-           "post_hoc"]
+           "post_hoc", "split_now"]

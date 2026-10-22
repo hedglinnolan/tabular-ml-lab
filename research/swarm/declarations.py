@@ -15,9 +15,10 @@ decisions with no Router question that the quest log lists as lines of their own
   value (or a true/false field's name, the explanation as an effect) is an option, with its label,
   its customary and sound labels and its leash rung for the purpose, in the contract's order;
 * **what the engine serves for the line**: the seal plan's validation schemes (each with its
-  words and, for internal–external validation, its cluster), the proposals' model sequence card,
-  the sensitivity stage's every-row analysis (``stages.sensitivity.EVERY_ROW``), the columns whose
-  names read as a batch (``methods.batch.batch_columns_of``).
+  words and, for internal–external validation, its cluster, or that it needs one), the proposals'
+  model sequence card, the sensitivity stage's every-row analysis
+  (``stages.sensitivity.EVERY_ROW``), the columns whose names read as a batch
+  (``methods.batch.batch_columns_of``).
 
 **Options.** One per value of the field the contracts' options are values of (else the model's
 first field with a fixed set of values), each recording the answer as it stands with that value:
@@ -25,7 +26,10 @@ its id is ``<kind>:<value>`` (``set_selection:elastic_net``), or ``<kind>:<field
 another field's value took that id first (the levers' ``none``). Values the contracts do not label
 are offered too, unlabeled; two that would record the same decision are one. An option the answer
 as it stands leaves a needed field unset for records nothing by itself and lists the fields it
-``needs``. The scales question
+``needs``: a field its model requires, one the seal plan says a scheme needs (internal–external
+validation's cluster), one without which the model does not read the option at all, or one the
+engine's answer-time check sets in its way forward when it refuses the option as it stands
+(:func:`needs_said`: the variance filter's ``top`` needs how many to keep). The scales question
 offers no scale (``set_scales:none``) and one scale of one's own (``set_scales:custom``, its fields
 the scale's); the sensitivity analyses, the every-row analysis or none.
 
@@ -253,6 +257,58 @@ def _required(model: Any, base: Mapping[str, Any], types: Mapping[str, Any]) -> 
             and base.get(n) is None]
 
 
+def _needs_to_read(decision: Mapping[str, Any], types: Mapping[str, dict[str, Any]], ctx: Ctx
+                   ) -> list[str]:
+    """The one unset field without which the decision's own model does not read ``decision``,
+    where setting it to a value it offers makes the model read it (internal–external validation's
+    cluster, with no seal plan to say so); else none."""
+    from pydantic import ValidationError
+
+    from turbotab.core.decisions import parse_decision
+
+    try:
+        parse_decision(dict(decision))
+        return []
+    except ValidationError:
+        pass
+    for name, t in types.items():
+        if decision.get(name) is not None:
+            continue
+        values = (t.get("values") if t["kind"] == "choice"
+                  else ctx.columns() if t["kind"] == "column" else None)
+        for value in [v for v in values or () if v is not None][:1]:
+            try:
+                parse_decision({**decision, name: value})
+            except ValidationError:
+                continue
+            return [name]
+    return []
+
+
+def needs_said(decision: Mapping[str, Any]) -> list[str]:
+    """The fields the engine's own answer-time check says ``decision`` needs set: where it refuses
+    the decision on what the decision alone shows (``decisions.validate`` with no context checks
+    only that) and a way forward sets fields the decision leaves unset, keeping every other field
+    as it is (the variance filter's ``top`` with no ``keep``: ``keep_how_many``), those fields;
+    else none."""
+    from turbotab.core.decisions import Refusal, validate
+
+    try:
+        validate(dict(decision), None)
+    except Refusal as exc:
+        for way in exc.exits or ():
+            filled = way.get("decision") if isinstance(way, Mapping) else None
+            if not isinstance(filled, Mapping):
+                continue
+            filled = json.loads(json.dumps(filled, default=str))
+            unset = [n for n, v in filled.items() if decision.get(n) is None and v is not None]
+            if unset and all(filled.get(n) == v for n, v in decision.items() if n not in unset):
+                return unset
+    except Exception:  # noqa: BLE001 - a decision the model does not read says so when answered
+        return []
+    return []
+
+
 def _generic(ctx: Ctx, kind: str, base: dict[str, Any], types: dict[str, dict[str, Any]],
              purpose: str | None) -> dict[str, Any]:
     offered = contract_options(kind, types, purpose)
@@ -273,7 +329,8 @@ def _generic(ctx: Ctx, kind: str, base: dict[str, Any], types: dict[str, dict[st
             oid = f"{kind}:{field}:{value}"
         extra = ({"labels": {"customary": labels.get("customary"), "sound": labels.get("sound")},
                   "rung": labels.get("rung")} if labels else {})
-        unset = [n for n in required if n != field]
+        unset = ([n for n in required if n != field] or _needs_to_read(decision, types, ctx)
+                 or needs_said(decision))
         options.append(_option(oid, None if unset else decision, label=(labels or {}).get("label"),
                                _base=decision if unset else None, needs=unset or None,
                                **extra))
@@ -307,14 +364,26 @@ def _validation(ctx: Ctx, kind: str, base: dict[str, Any], types: dict[str, dict
                if isinstance(v, Mapping) and v.get("validation")]
     if not schemes:
         return None
-    options = []
+    options, folding = [], []
     for v in schemes:
         decision = {**base, "validation": v["validation"], "cluster": v.get("cluster")}
-        options.append(_option(f"{kind}:{v['validation']}", decision, label=v.get("label"),
+        oid = f"{kind}:{v['validation']}"
+        # The plan says a scheme needs the cluster column whose levels are its folds
+        # (``ValidationOption.needs_cluster``); one the plan names already needs nothing more.
+        needs = ["cluster"] if v.get("needs_cluster") and not v.get("cluster") else None
+        if v.get("needs_cluster"):
+            folding.append(oid)
+        options.append(_option(oid, None if needs else decision, label=v.get("label"),
                                consequence=v.get("measures"), cost=v.get("cost"),
-                               caution=v.get("caution")))
-    fields = [_field_entry(kind, n, t, base.get(n), ctx) for n, t in types.items()
-              if n != "validation"]
+                               caution=v.get("caution"), _base=decision if needs else None,
+                               needs=needs))
+    fields = [_field_entry(kind, n, t, base.get(n), ctx,
+                           applies=folding if n == "cluster" and folding else None)
+              for n, t in types.items() if n != "validation"]
+    for f in fields:
+        if f["name"] == "cluster":  # a column whose levels fold, never the outcome (the shell's card)
+            f["choices"] = [c for c in f.get("choices") or []
+                            if c.get("value") != ctx.state.get("target")]
     data = {"reason": (plan.get("validation") or {}).get("reason")}
     return {"options": options, "fields": fields, "data": data}
 

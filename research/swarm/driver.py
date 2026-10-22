@@ -1489,15 +1489,17 @@ def wait_fit(run: Run, client: Client, seconds: float) -> dict[str, Any]:
 
 
 def keep_markers(run: Run, client: Client, command: str) -> None:
-    """The live markers as the project stands, kept by the current fit's key in
-    ``markers.jsonl`` (``research/swarm/markers.py``). It never fails the command: a read that
-    fails keeps nothing."""
+    """The live markers as the project stands, and the facts of the folds its fit is scored on
+    (``markers.split_now``), kept by the current fit's key in ``markers.jsonl``
+    (``research/swarm/markers.py``). It never fails the command: a read that fails keeps
+    nothing."""
     from research.swarm import markers
 
     try:
         view = view_of(run, client)
+        read = reader(run, client)
         snapshot = {"at": now_us(), "command": command, "fit_key": markers.fit_key(view),
-                    "markers": markers.live(view, reader(run, client))}
+                    "markers": markers.live(view, read), "split": markers.split_now(view, read)}
         with (run.folder / MARKERS_FILE).open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(snapshot, ensure_ascii=False, default=str) + "\n")
     except Exception:  # noqa: BLE001 - the markers are the record's, never the command's

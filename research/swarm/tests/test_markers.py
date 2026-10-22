@@ -5,6 +5,7 @@ it is read; and each guard both ways: a stage that is not fresh at its key serve
 no estimate stage is ever read."""
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import pytest
@@ -172,8 +173,44 @@ def test_the_post_hoc_markers_under_predict_and_estimate():
                 "estimates": [{"family": "linear", "feature": "x", "estimate": 1.5,
                                "ci_low": 1.25, "ci_high": 1.75}]}
     signal, result = M.post_hoc(estimate, [])
-    assert signal["value"] == pytest.approx(abs(1.5 - 1.0) / 0.25)  # null 1 on a ratio scale
+    # null 1 on a ratio scale, whose interval is symmetric on the log scale (the verifier's P5)
+    assert signal["value"] == pytest.approx(abs(math.log(1.5))
+                                             / ((math.log(1.75) - math.log(1.25)) / 2))
     assert result["value"]["estimate"] == 1.5
     for m in M.post_hoc({"refused": "The held-out rows were never opened."}, []):
         assert m["value"] is None and "never opened" in m["why"]
         Marker.model_validate(m)
+
+
+def _signal(scale: str, estimate: float, low: float, high: float):
+    result = {"purpose": "inference", "scale": scale, "refused": None,
+              "estimates": [{"family": "linear", "feature": "x", "estimate": estimate,
+                             "ci_low": low, "ci_high": high}]}
+    return M.post_hoc(result, [])[0]
+
+
+@pytest.mark.parametrize("estimate, low, high, expected", [
+    # Two odds ratios whose intervals just touch 1, mirror images on the log scale: one half-width.
+    (2.0, 1.0, 4.0, 1.0),
+    (0.5, 0.25, 1.0, 1.0),
+    # An interval that excludes 1 lies more than one half-width away: log 3 / (log 4 / 2).
+    (3.0, 1.5, 6.0, math.log(3.0) / (math.log(4.0) / 2)),
+])
+def test_a_ratios_signal_is_its_distance_from_one_in_half_widths_on_the_log_scale(
+        estimate, low, high, expected):
+    m = _signal("ratio", estimate, low, high)
+    assert m["value"] == pytest.approx(expected, rel=1e-12)
+    assert "log scale" in m["basis"]
+
+
+def test_a_differences_signal_is_its_distance_from_zero_in_half_widths_on_its_own_scale():
+    m = _signal("difference", 0.3, 0.1, 0.5)
+    assert m["value"] == pytest.approx(0.3 / 0.2, rel=1e-12)
+    assert "log scale" not in m["basis"]
+    assert _signal("difference", -0.3, -0.5, -0.1)["value"] == pytest.approx(1.5, rel=1e-12)
+
+
+def test_a_ratio_whose_interval_reaches_zero_has_no_signal_and_says_why():
+    m = _signal("ratio", 0.5, 0.0, 1.2)
+    assert m["value"] is None and "log" in m["why"]
+    Marker.model_validate(m)

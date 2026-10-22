@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 
 import pytest
 from pydantic import ValidationError
@@ -147,11 +148,87 @@ def test_the_redacted_view_holds_no_model_persona_effort_prompt_or_spend():
     assert run["analyst_model"] == run["prompt_version"] == R.REDACTED
     assert run["spend"] is None and run["spend_why"] == R.REDACTED_SPEND
     assert R.validate(blind).run.redacted
-    # Nothing else moves: the rest of the record is the record.
-    assert {k: v for k, v in blind.items() if k != "run"} == {
-        k: v for k, v in R.validate(data).model_dump(mode="json", by_alias=True).items()
-        if k != "run"}
+    # Nothing else moves but the times, which keep their order only (the verifier's P2): the rest
+    # of the record is the record.
+    source = R.validate(data).model_dump(mode="json", by_alias=True)
+    assert {k: v for k, v in _timeless(blind).items() if k != "run"} == {
+        k: v for k, v in _timeless(source).items() if k != "run"}
     assert data["run"]["analyst_model"] == "claude-haiku-5-5"  # the record itself is untouched
+
+
+STAMP = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?")
+
+
+def _timeless(obj):
+    """``obj`` with every time in its strings blanked, so what else it holds can be compared."""
+    if isinstance(obj, dict):
+        return {k: _timeless(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_timeless(v) for v in obj]
+    return STAMP.sub("T", obj) if isinstance(obj, str) else obj
+
+
+def _times(obj, path=()):
+    """Every time in ``obj``'s strings, by where it sits and its place in the string."""
+    if isinstance(obj, dict):
+        return [t for k, v in obj.items() for t in _times(v, (*path, k))]
+    if isinstance(obj, list):
+        return [t for i, v in enumerate(obj) for t in _times(v, (*path, i))]
+    if isinstance(obj, str):
+        return [((*path, j), m.group()) for j, m in enumerate(STAMP.finditer(obj))]
+    return []
+
+
+def _instant(text):
+    from datetime import datetime, timezone
+
+    t = datetime.fromisoformat(text.replace(" ", "T"))
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def _dry_run_record():
+    from pathlib import Path
+
+    path = sorted((Path(R.__file__).parent / "dryrun").glob("run_02-*.json"))[0]
+    data = json.loads(path.read_text("utf-8"))
+    data["run"].update(analyst_model="claude-haiku-5-5", persona="skeptical",
+                       prompt_version="analyst-v2-skeptical")
+    return data
+
+
+@pytest.mark.parametrize("make", [predict_record, estimate_record, _dry_run_record])
+def test_the_redacted_view_keeps_no_time_of_the_record_only_their_order(make):
+    """With an agent analyst, the gaps between its commands are its model's response time (the
+    verifier's P2): no time the record holds survives in the view, each is its place in the
+    record's order of times, and every comparison between two of them reads as it did."""
+    data = make()
+    source = R.validate(data).model_dump(mode="json", by_alias=True)
+    blind = R.redacted(data)
+    before, after = _times(source), _times(blind)
+    assert before and [where for where, _ in before] == [where for where, _ in after]
+    shown = json.dumps(blind)
+    assert not [t for _, t in before if t in shown]  # no time of the record's survives
+    old = [_instant(t) for _, t in before]
+    new = [_instant(t) for _, t in after]
+    for i in range(len(old)):
+        for j in range(len(old)):
+            assert (old[i] < old[j]) == (new[i] < new[j]) and (old[i] == old[j]) == (new[i] == new[j])
+    # Each is its order only: the n-th distinct time of the record is n seconds after the epoch.
+    ranks = {t: n for n, t in enumerate(sorted(set(old)), start=1)}
+    assert [int(t.timestamp()) for t in new] == [ranks[t] for t in old]
+    R.validate(blind)
+
+
+def test_the_checks_read_the_redacted_view_as_they_read_the_record():
+    from research.swarm import checks
+
+    for make in (predict_record, estimate_record, _dry_run_record):
+        data = make()
+        said = [(o.check, o.outcome, o.problems, o.unchecked)
+                for o in checks.run_checks([R.validate(data)])]
+        blind = [(o.check, o.outcome, o.problems, o.unchecked)
+                 for o in checks.run_checks([R.validate(R.redacted(data))])]
+        assert said == blind, make.__name__
 
 
 @pytest.mark.parametrize("field,value", [("analyst_model", "claude-haiku-5-5"),

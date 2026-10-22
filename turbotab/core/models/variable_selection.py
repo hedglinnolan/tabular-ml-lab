@@ -596,12 +596,20 @@ class Selector(TransformerMixin, BaseEstimator):
         if m == "stepwise":
             if p >= len(y) - 1:
                 # The answer is refused where the cohort shows it (``_stepwise_has_rows``); this is
-                # the backstop when a later answer added columns, and it names the way forward.
-                raise ValueError(
+                # the backstop when a later answer added columns, and it names the way forward,
+                # typed with the answer's code and its three ways forward (SWARM_PLAN §8).
+                from turbotab.core.graph import StageRefusal
+
+                raise StageRefusal(
+                    "stepwise_needs_rows",
                     f"Backward elimination starts from all {p:,} candidate columns, and these "
                     f"training rows number {len(y):,}: a model with every column and an intercept "
                     f"needs more rows than that. Choose the elastic net or in-fold screening in the "
-                    f"selection question.")
+                    f"selection question.",
+                    exits=[{"label": label, "decision": {"kind": "set_selection", "method": way}}
+                           for way, label in (("elastic_net", LABELS["elastic_net"]),
+                                              ("screening", LABELS["screening"]),
+                                              ("none", "No selection"))])
             return backward_aic(Z, y, self.task_, groups)
         if m == "univariable":
             return univariable_p(Z, y, self.task_, groups) < float(self.threshold or UNIVARIABLE_P)
