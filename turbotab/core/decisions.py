@@ -3956,13 +3956,16 @@ def _sorted_levels(keys: Iterable[str]) -> list[str]:
 SHOWN_LEVELS = 12  # a refusal lists at most this many of a column's levels
 
 
-def _levels_are_the_columns(rule: LevelRule, ctx: Any, drop: Mapping[str, Any]) -> None:
+def _levels_are_the_columns(rule: LevelRule, ctx: Any, drop: Mapping[str, Any],
+                            before: Sequence[Any] = ()) -> None:
     """A level rule's column exists, and at least one level it excludes is held by some row: a
     rule whose excluded levels no row holds (``Yes`` on a column coded 1 and 2) would be recorded
     as an exclusion by a level that removed no one (claim ``eligibility.no_such_level``). The
     refusal says only that: the blank, refused and don't-know answers the rule would still leave
-    out as not confirmed eligible are counted beside it, never said to stay. A refused or
-    don't-know code nobody gave is no reason to refuse: the line it would name is then empty."""
+    out as not confirmed eligible are counted beside it, never said to stay, as the participant
+    flow counts them (:func:`_unconfirmed_reaching`: among the rows with the outcome recorded that
+    the rules ``before`` it keep). A refused or don't-know code nobody gave is no reason to
+    refuse: the line it would name is then empty."""
     from turbotab.core import claims
     from turbotab.core.stages.rows import _level_key
 
@@ -3981,11 +3984,10 @@ def _levels_are_the_columns(rule: LevelRule, ctx: Any, drop: Mapping[str, Any]) 
     shown = _sorted_levels(held)
     listed = ", ".join(f"`{k}`" for k in shown[:SHOWN_LEVELS])
     more = f" and `{len(shown) - SHOWN_LEVELS}` more" if len(shown) > SHOWN_LEVELS else ""
-    # The rows the rule would still leave out (``stages.rows.rule_keep``): a blank, or a code it
-    # names as refused or don't know, unless it keeps them.
-    codes = {_level_key(level) for level in [*rule.refused, *rule.dont_know]}
-    unconfirmed = (int(values.isna().sum()) + sum(_level_key(v) in codes
-                                                  for v in values.dropna().tolist())
+    # The rows the rule would still leave out: a blank, or a code it names as refused or don't
+    # know, unless it keeps them, among the rows the flow brings to it (the package 4 verifier's
+    # V1); none said where they cannot be counted.
+    unconfirmed = (_unconfirmed_reaching(rule, ctx, store, before)
                    if rule.missing == "exclude" else 0)
     still = (f"; `{unconfirmed:,}` would leave only as not confirmed eligible" if unconfirmed
              else "")
@@ -3993,6 +3995,28 @@ def _levels_are_the_columns(rule: LevelRule, ctx: Any, drop: Mapping[str, Any]) 
                   f"No row of `{rule.column}` holds {named}, "
                   f"{claims.card('eligibility.no_such_level', rule)}{still}. "
                   f"`{rule.column}` holds {listed}{more}.", exits=[drop])
+
+
+def _unconfirmed_reaching(rule: LevelRule, ctx: Any, store: Any, before: Sequence[Any]) -> int:
+    """The rows a level rule would leave out as not confirmed eligible, counted as the
+    participant flow counts them (``stages.rows.rule_flow``): among the rows with the outcome
+    recorded that the rules ``before`` it keep. 0 when they cannot be read (a column a rule
+    before it reads is not in the table: that rule is refused on its own)."""
+    from turbotab.core.stages.rows import rule_flow, rule_unconfirmed
+
+    target = _target_of(ctx)
+    target = target if isinstance(target, str) else None
+    names = set(store.columns)
+    reads = [c for r in [*before, rule] for c in as_rule(r).reads()]
+    if not set(reads) <= names:
+        return 0
+    wanted = list(dict.fromkeys([*([target] if target in names else []), *reads]))
+    try:
+        steps = rule_flow(store.materialize(wanted), target, [*before, rule])
+    except Exception:  # noqa: BLE001 - a count it cannot make is not said
+        log.debug("could not count the unconfirmed rows", exc_info=True)
+        return 0
+    return rule_unconfirmed(steps)[len(before)]
 
 
 def _exclusions_are_ranges_on_numbers(decision: SetExclusions, ctx: Any) -> None:
@@ -4003,7 +4027,7 @@ def _exclusions_are_ranges_on_numbers(decision: SetExclusions, ctx: Any) -> None
             _goldberg_reads_numbers(rule, ctx, drop)
             continue
         if isinstance(rule, LevelRule):  # levels, not a range: text levels are levels too
-            _levels_are_the_columns(rule, ctx, drop)
+            _levels_are_the_columns(rule, ctx, drop, decision.rules[:i])
             continue
         for name in [rule.column] + ([rule.by.column] if rule.by is not None else []):
             if columns is not None and (name not in columns or name == ROW_ID):

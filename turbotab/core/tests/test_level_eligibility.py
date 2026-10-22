@@ -225,11 +225,20 @@ def test_the_preview_of_ranges_alone_says_what_it_said(tmp_path):
 
 
 def test_the_sentence_counts_what_the_flow_counts_and_names_each_code():
+    """The rows at the excluded level leave as the rule's reason, and the blank, refused and
+    don't-know answers on a clause of their own as not confirmed eligible (the package 4
+    verifier's V4), each count the flow's: of ``coded()``'s ten rows, the two coded 1, then the
+    refused answer, the two don't-knows and the blank (by pandas)."""
+    frame = coded()
+    at_level = int((frame["DIQ010"] == 1).sum())
+    unconfirmed = int((frame["DIQ010"].isna() | frame["DIQ010"].isin([7, 9])).sum())
+    assert (at_level, unconfirmed) == (2, 4)
     text = voice.sentence_for(d.SetExclusions(rules=[bang()]), ProjectState(target="y"),
-                              {"frame": coded()})
-    # the blank, the refused answer, the two don't-knows and the two yes's
-    assert text == ("`6` rows with `DIQ010` `1`, or refused (`7`), don't know (`9`) or not "
-                    "recorded were excluded as diagnosed diabetes.")
+                              {"frame": frame})
+    assert text == (
+        f"`{at_level}` rows with `DIQ010` `1` were excluded as diagnosed diabetes, and "
+        f"`{unconfirmed}` with `DIQ010` refused (`7`), don't know (`9`) or not recorded were "
+        f"excluded as not confirmed eligible.")
     kept = voice.sentence_for(d.SetExclusions(rules=[bang(exclude=[1, 3], missing="keep")]),
                               ProjectState(target="y"), {"frame": coded()})
     assert kept == "`3` rows with `DIQ010` `1` or `3` were excluded as diagnosed diabetes."
@@ -270,3 +279,84 @@ def test_with_unconfirmed_answers_kept_the_preview_counts_only_the_rows_that_lea
     level leave, and the caption says no count of unconfirmed rows that leave."""
     assert preview_caption(tmp_path, [bang(missing="keep")]) == (
         "`2` of `10` rows would leave at an excluded level; `8` stay.")
+
+
+# ── repair round 2: the verifier's problems ──────────────────────────────────
+
+# Eight rows: a refused answer with no outcome recorded (row 2), a child's don't-know (row 6) that
+# an adults-only rule before the level rule removes, and three unconfirmed answers that reach the
+# level rule (the don't-know in row 3, the blank in row 4, the refused answer in row 7). No row is
+# coded 1.
+REACHING = pd.DataFrame({"age": [30, 30, 30, 30, 30, 30, 12, 30],
+                         "DIQ010": [2, 2, 7, 9, np.nan, 3, 9, 7],
+                         "y": [0.0, 1.0, np.nan, 3.0, 4.0, 5.0, 6.0, 7.0]})
+ADULTS = d.ExclusionRule(column="age", low=18, reason="adults only")
+
+
+def test_the_refusal_counts_only_the_unconfirmed_rows_the_flow_brings_to_the_rule():
+    """V1: the rows that would still leave as not confirmed eligible are counted as the flow counts
+    them: among the rows with the outcome recorded that the rules before it keep, not over every
+    row of the table (five here, by pandas, against the three that reach the rule)."""
+    frame = REACHING
+    unconfirmed = frame["DIQ010"].isna() | frame["DIQ010"].isin([7, 9])
+    reaching = frame["y"].notna() & (frame["age"] >= 18)
+    n = int((unconfirmed & reaching).sum())
+    assert (n, int(unconfirmed.sum())) == (3, 5)
+    ctx = {**context(frame), "column_info": {**COLUMN_INFO,
+                                             "age": {"dtype": "numeric", "n_unique": 2}}}
+    rules = [ADULTS.model_dump(mode="json"), bang().model_dump(mode="json")]
+    with pytest.raises(Refusal) as found:
+        validate({"kind": "set_exclusions", "rules": rules}, ctx)
+    assert found.value.code == "no_such_level"
+    assert found.value.message == (
+        f"No row of `DIQ010` holds `1`, so no row would leave at an excluded level; `{n}` would "
+        f"leave only as not confirmed eligible. `DIQ010` holds `2`, `3`, `7`, `9`.")
+    # Alone, the rule reaches every adult and child with the outcome recorded: four, by pandas.
+    alone = int((unconfirmed & frame["y"].notna()).sum())
+    assert alone == 4
+    with pytest.raises(Refusal) as found:
+        validate(answer(bang()), ctx)
+    assert f"`{alone}` would leave only as not confirmed eligible" in found.value.message
+
+
+def sentence(rules, frame=None):
+    return voice.sentence_for(d.SetExclusions(rules=rules), ProjectState(target="y"),
+                              {"frame": coded() if frame is None else frame})
+
+
+def test_the_sentence_counts_the_unconfirmed_rows_the_flow_brings_to_the_rule():
+    """V4 beside V1: after the adults-only rule, only the rows it keeps with the outcome recorded
+    reach the level rule, and each clause counts those (by pandas), with the total in all."""
+    frame = REACHING.assign(DIQ010=[2, 1, 7, 9, np.nan, 3, 9, 1])
+    reaching = frame["y"].notna() & (frame["age"] >= 18)
+    children = int((frame["y"].notna() & (frame["age"] < 18)).sum())
+    at_level = int((reaching & (frame["DIQ010"] == 1)).sum())
+    unconfirmed = int((reaching & (frame["DIQ010"].isna() | frame["DIQ010"].isin([7, 9]))).sum())
+    assert (children, at_level, unconfirmed) == (1, 2, 2)
+    assert sentence([ADULTS, bang()], frame) == (
+        f"`{children}` row with `age` below `18` or not recorded was excluded as adults only; "
+        f"`{at_level}` rows with "
+        f"`DIQ010` `1` were excluded as diagnosed diabetes, and `{unconfirmed}` with `DIQ010` "
+        f"refused (`7`), don't know (`9`) or not recorded were excluded as not confirmed eligible, "
+        f"`{children + at_level + unconfirmed}` in all.")
+
+
+def test_without_the_rows_the_sentence_counts_no_clause_it_cannot_and_keeps_the_reasons_apart():
+    """Silent on the split: given only the flow's total for the rule (no rows to split it), the
+    sentence says the total and each reason, never a split it did not count; with no count at
+    all, neither; given the unconfirmed count beside the total (as the export would pass it), the
+    split; and a rule that keeps its unconfirmed answers says one clause, as before."""
+    assert voice.sentence_for(d.SetExclusions(rules=[bang()]), ProjectState(target="y"),
+                              {"exclusion_counts": [6]}) == (
+        "`6` rows with `DIQ010` `1`, refused (`7`), don't know (`9`) or not recorded were "
+        "excluded, at `1` as diagnosed diabetes and otherwise as not confirmed eligible.")
+    assert voice.sentence_for(d.SetExclusions(rules=[bang()]), ProjectState(target="y"), {}) == (
+        "Rows with `DIQ010` `1` were excluded as diagnosed diabetes, and rows with `DIQ010` "
+        "refused (`7`), don't know (`9`) or not recorded were excluded as not confirmed eligible.")
+    # Given the flow's unconfirmed count beside its total (the export's counts), the split is said.
+    assert voice.sentence_for(d.SetExclusions(rules=[bang()]), ProjectState(target="y"),
+                              {"exclusion_counts": [6], "exclusion_unconfirmed": [4]}) == (
+        "`2` rows with `DIQ010` `1` were excluded as diagnosed diabetes, and `4` with `DIQ010` "
+        "refused (`7`), don't know (`9`) or not recorded were excluded as not confirmed eligible.")
+    assert sentence([bang(missing="keep")]) == (
+        "`2` rows with `DIQ010` `1` were excluded as diagnosed diabetes.")

@@ -381,9 +381,14 @@ def _time_columns(ctx: Context) -> list[str]:
 
 def _split(ctx: Context) -> Composed:
     """The seal card's options (``SealAsk``): each holdout the seal plan offers, with the scheme
-    as a field, and a cut-point of one's own (``cut``, SWARM_PLAN §8): every row at or after a
-    value of a time column held out, set by ``cut_column`` and ``cut_at`` (a number or a date, as
-    the column reads), and its folds' order, ``fold_order``, random or time."""
+    as a field (``validation``), and a cut-point of one's own (``cut``, SWARM_PLAN §8): every row
+    at or after a value of a time column held out, set by ``cut_column`` and ``cut_at`` (a number
+    or a date, as the column reads), its folds' order, ``fold_order``, random or time, and its
+    scheme, ``cut_validation``. The plan words its schemes for the folds the held-out draw orders
+    (``time_ordered_folds``), and a cut-point's folds' order is its own answer, so each of the
+    cut-point's schemes carries the plan's words only under the order they were made for
+    (``with_fold_order``): random, where the plan's folds are not time-ordered; else none (the
+    package 4 verifier's V5)."""
     plan = _art(ctx.served, "seal_plan")
     validation = [dict(v) for v in (plan.get("validation") or {}).get("options") or []
                   if isinstance(v, Mapping)]
@@ -403,18 +408,22 @@ def _split(ctx: Context) -> Composed:
                        labels=_two_labels(labels.get(_num(o["holdout"])) or {}))
                for o in plan.get("options") or [] if isinstance(o, Mapping) and "holdout" in o]
     fields: list[dict[str, Any]] = []
+    words = ("label", "measures", "cost", "caution")
+    schemes = {v.get("validation"): v for v in validation}
     if validation:
         fields.append({"name": "validation",
-                       "choices": [{k: v.get(k) for k in ("validation", "label", "measures", "cost",
-                                                          "caution", "cluster") if v.get(k) is not None}
+                       "choices": [{k: v.get(k) for k in ("validation", *words, "cluster")
+                                    if v.get(k) is not None}
                                    for v in validation],
                        "initial": first.get("validation"),
-                       "_apply": ("validation", {v.get("validation"): v for v in validation})})
+                       "applies_to": [o["id"] for o in options],
+                       "_apply": ("validation", schemes)})
     if plan:
         cut = {str(o.get("value")): o for o in _taught(ctx.entry)}.get("cut") or {}
         options.append(_option("cut", None, label=cut.get("label"),
                                consequence=cut.get("consequence"),
                                _base=body(0.0, first)))
+        made_for = "time" if plan.get("time_ordered_folds") else "random"
         fields += [
             {"name": "cut_column", "choices": [{"value": c} for c in _time_columns(ctx)],
              "initial": None, "applies_to": ["cut"], "_apply": ("map", "cut_point", "column")},
@@ -422,6 +431,17 @@ def _split(ctx: Context) -> Composed:
              "_apply": ("map", "cut_point", "at")},
             {"name": "fold_order", "choices": [{"value": v} for v in FOLD_ORDERS], "initial": None,
              "applies_to": ["cut"], "_apply": ("set", "fold_order")}]
+        if validation:
+            fields.append({
+                "name": "cut_validation",
+                "choices": [{"validation": v.get("validation"),
+                             **({"cluster": v["cluster"]} if v.get("cluster") else {}),
+                             **({"with_fold_order": {"random": {k: v[k] for k in words
+                                                                if v.get(k) is not None}}}
+                                if made_for == "random" else {})}
+                            for v in validation],
+                "initial": first.get("validation"), "applies_to": ["cut"],
+                "_apply": ("validation", schemes)})
     keep = ("reason", "precision_note", "refusal", "exploratory", "n_measured", "n_analyzed")
     data = {k: plan.get(k) for k in keep if plan.get(k) not in (None, "")}
     if (plan.get("floor") or {}).get("text"):

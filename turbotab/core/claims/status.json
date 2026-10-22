@@ -86,12 +86,12 @@
       "status": "built"
     },
     {
-      "hash": "5cb96867bfc48b4a8eb09f9fbf3511a645f906c964da6088586b3c2146392893",
+      "hash": "319c7d093358501ef593bc3127ab18e623570d02088ab9bfc5a1c47c9418d178",
       "id": "eligibility.no_such_level",
       "status": "built"
     },
     {
-      "hash": "6fdeb42ca9b613e945ceadd22071af58b757b326851559a645751d10beebf93b",
+      "hash": "4c010e652b95f0e8a29974d653b1b75d7468b0cd0cb958e8af3c16bd900af92d",
       "id": "eligibility.unconfirmed_answer",
       "status": "built"
     },
@@ -183,6 +183,11 @@
     {
       "hash": "bd217cc956a9aca2ffba68ad5c4687aacb2420d992b6dc522c3aa90135beff45",
       "id": "seal.cut_point",
+      "status": "built"
+    },
+    {
+      "hash": "6d1dde844cfb3866a8451291578ade433d7b9e9ac3935672e09489144d8f76e6",
+      "id": "seal.cut_point_analyzed",
       "status": "built"
     },
     {

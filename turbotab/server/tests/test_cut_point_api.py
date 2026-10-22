@@ -53,7 +53,14 @@ def test_a_cut_point_seal_by_cycle_on_the_rows_a_level_rule_keeps_fits_and_opens
     decide(client, pid, {"kind": "set_purpose", "purpose": "prediction"})
     rule = {"kind": "levels", "column": "DIQ010", "exclude": [1], "refused": [7], "dont_know": [9],
             "reason": "diagnosed diabetes"}
-    decide(client, pid, {"kind": "set_exclusions", "rules": [rule]})
+    view = decide(client, pid, {"kind": "set_exclusions", "rules": [rule]})
+    # The sentence counts the rows at the excluded level apart from the refused and don't-know
+    # answers, as the flow does (the package 4 verifier's V4).
+    at_level, unconfirmed = int((frame["DIQ010"] == 1).sum()), int(frame["DIQ010"].isin([7, 9]).sum())
+    assert view["decisions"][-1]["sentence"] == (
+        f"`{at_level}` rows with `DIQ010` `1` were excluded as diagnosed diabetes, and "
+        f"`{unconfirmed}` with `DIQ010` refused (`7`), don't know (`9`) or not recorded were "
+        f"excluded as not confirmed eligible.")
     cut = {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5, "validation": "kfold",
            "cut_point": {"column": "cycle", "at": 2017}, "fold_order": "random"}
     view = decide(client, pid, cut)
@@ -71,6 +78,9 @@ def test_a_cut_point_seal_by_cycle_on_the_rows_a_level_rule_keeps_fits_and_opens
     held = int((eligible & (frame["cycle"] >= 2017)).sum())
     assert split["n_holdout"] == held and split["n_train"] == int(eligible.sum()) - held
     assert split["chronology"]["cut_point"] == "2017" and split["fold_scheme"] == "random"
+    # Restated on the flow for the export, the refused and don't-know rows keep their own reason.
+    text = client.get(f"/api/projects/{pid}/methods").json()["text"]
+    assert "as not confirmed eligible" in text and "or not recorded were excluded as" not in text
     # The seal counts the rows the exclusion leaves, as the split's own counts do (P1).
     assert split["chronology"]["sentence"].startswith(
         f"Held out by a cut-point at `2017` on `cycle`: `{held}` rows held out and "

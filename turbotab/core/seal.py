@@ -516,7 +516,8 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
     ``decisions.CutPoint``) holds out every row at or after it in place of a share, and then the
     temporal answer draws nothing: the folds are time-ordered only where ``fold_order`` is "time".
     ``analyzed`` (the cohort's rows, the split's ``row_ids``) is what the cut-point's sentence
-    counts, as the split's own counts do; None counts every row of ``universe``.
+    counts, as the split's own counts do, and a cut-point that leaves none of them held out, or
+    none to train, is refused; None counts every row of ``universe``.
     """
     from turbotab.core.stages.working import with_effective_grain
 
@@ -759,7 +760,8 @@ def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, se
     the held-out mask, a refusal when the cut-point cannot hold rows out and leave some to train
     (or reads an outcome column: ``outcome`` names the target it is part of), and each row's unit
     rank in time when the folds' order is time (None for random folds). ``analyzed`` is what the
-    sentence counts (:func:`cut_holdout`)."""
+    sentence counts (:func:`cut_holdout`), and the draw is refused where it leaves no analyzed row
+    held out or none to train (:func:`_cut_leaves_the_analysis`)."""
     column, shown = cut.column, decisions.cut_shown(cut.at)
     if outcome is not None:
         said = cut_on_outcome(column, outcome)
@@ -782,6 +784,9 @@ def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, se
             problem = ("cut_point_trains_nothing",
                        f"Every unit with a readable `{column}` has a row at or after `{shown}`, "
                        f"so held out whole, no row would train before it.")
+        elif analyzed is not None:
+            problem = _cut_leaves_the_analysis(mask, ~np.isnan(times), np.asarray(analyzed, bool),
+                                               cut, column, shown)
     if problem is not None:
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
                            n_undated=0, sentence=problem[1], cut_point=shown), None, problem[1],
@@ -791,6 +796,33 @@ def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, se
         ranks = time_order(times, groups, seed)
         order = ranks if int(np.unique(ranks[~np.isnan(ranks)]).size) >= 2 else None
     return chronology, mask, None, order
+
+
+CUT_POINT_ANALYZED = "seal.cut_point_analyzed"  # … drawn only with analyzed rows on both sides
+LEFT_OUT = ("are all left out by the answers that choose the analyzed rows, an exclusion or the "
+            "missing-values answer among them")
+
+
+def _cut_leaves_the_analysis(mask: Any, dated: Any, analyzed: Any, cut: Any, column: str,
+                             shown: str) -> tuple[str, str] | None:
+    """Why a cut-point that holds rows out and leaves some to train among the rows with the outcome
+    recorded is still refused at the draw: the answers that choose the analyzed rows (the
+    exclusions, the missing-values answer) leave none of them on one side (the package 4
+    verifier's V2), so the split would hold out, or train on, no analyzed row while every reader
+    of ``decisions.holds_out`` took it for a seal. None when the analyzed rows fall on both sides,
+    a row with a readable time among those that train, as :func:`_cut` asks of every row."""
+    said = claims.card(CUT_POINT_ANALYZED, {"cut_point": cut, "holdout": 0.0})
+    if not (mask & analyzed).any():
+        return ("cut_point_holds_no_analyzed_row",
+                f"No analyzed row would be held out: the `{int(mask.sum()):,}` rows with the "
+                f"outcome recorded that the cut-point at `{shown}` on `{column}` would hold out "
+                f"{LEFT_OUT}. {said}")
+    if not (~mask & dated & analyzed).any():  # a row with no readable time is not before it
+        return ("cut_point_trains_no_analyzed_row",
+                f"No analyzed row with a readable `{column}` would train before `{shown}`: the "
+                f"`{int((~mask & dated).sum()):,}` rows with the outcome recorded there "
+                f"{LEFT_OUT}. {said}")
+    return None
 
 
 # ── what a holdout of this size can measure ──────────────────────────────────

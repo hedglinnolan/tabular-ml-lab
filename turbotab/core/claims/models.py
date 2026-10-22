@@ -1062,16 +1062,56 @@ SEAL_CUT_POINT_UNDATED = register(Claim(
     origin="engine",
 ))
 
+SEAL_CUT_POINT_ANALYZED = register(Claim(
+    id="seal.cut_point_analyzed",
+    kind="rule",
+    card="A cut-point is drawn only where some analyzed rows are held out and some before it "
+         "train.",
+    regime=Regime("a split that holds rows out by a cut-point that holds rows out and leaves some "
+                  "to train among the rows with the outcome recorded, drawn where the cohort's "
+                  "rows (the analyzed ones) are known: the split stage and its preview",
+                  requires=(f"{HERE}:held_out_by_a_cut_point",)),
+    decision="set_split.cut_point_analyzed",
+    verdict="refused",
+    parts=(
+        Part("refused", grade="judgment", basis=Basis(
+            reason="The cut-point is drawn over the rows with the outcome recorded, and the "
+                   "answers that choose the analyzed rows (an exclusion, the missing-values "
+                   "answer under complete cases: NHANES's later cycle can lack a predictor "
+                   "outright) can leave none of them on one side. Drawn so, the split would hold "
+                   "out no analyzed row, or train on none, while the opening, the Router and the "
+                   "compared-families guard read a cut-point as rows held out "
+                   "(decisions.holds_out); so the draw is refused, naming the answers that leave "
+                   "them out, and never drawn empty (the package 4 verifier's V2). The answers "
+                   "come after the split in the interview, so this is checked at the draw, not "
+                   "at the split's answer.")),
+    ),
+    tests=(
+        Fires(f"{P4_CUT_TESTS}::test_an_exclusion_that_leaves_no_analyzed_row_at_or_after_the_"
+              "cut_point_refuses_the_draw", truth="independent:pandas"),
+        Fires(f"{P4_CUT_TESTS}::test_an_exclusion_that_leaves_no_analyzed_row_before_the_cut_"
+              "point_refuses_the_draw", truth="independent:pandas"),
+        Fires(f"{P4_CUT_TESTS}::test_complete_cases_that_leave_no_analyzed_row_held_out_refuse_"
+              "the_draw", truth="construction"),
+        Silent(f"{P4_CUT_TESTS}::test_an_exclusion_that_thins_a_side_of_the_cut_point_is_drawn",
+               truth="independent:pandas"),
+    ),
+    enforced_by=("turbotab.core.seal:_cut_leaves_the_analysis", "turbotab.core.seal:_cut"),
+    author=P4_AUTHOR,
+    origin="engine",
+))
+
 CLAIMS = (SMALL_SAMPLE_STANDARD, SMALL_SAMPLE_STANDARD_ESTIMATE, SMALL_SAMPLE_STANDARD_CLASSES,
           SMALL_SAMPLE_NO_SEARCH, BOOSTED_TREES_SMALL_ROWS, FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR,
           ROWS_SMD_FLOOR_PREDICTION, COLLINEAR_UNDER_PREDICTION, VALIDATION_RESAMPLING_FIRST,
           VALIDATION_PAIRED_INTERVAL, MODELING_NO_RESAMPLING, SEAL_BY_ROW, SEAL_CUT_POINT,
-          SEAL_CUT_POINT_UNITS, SEAL_CUT_POINT_UNDATED)
+          SEAL_CUT_POINT_UNITS, SEAL_CUT_POINT_UNDATED, SEAL_CUT_POINT_ANALYZED)
 
 __all__ = ["AUTHOR", "BASELINE_FLOOR", "BOOSTED_TREES_SMALL_ROWS", "CLAIMS",
            "COLLINEAR_UNDER_PREDICTION", "FOREST_SMALL_ROWS", "MODELING_NO_RESAMPLING",
            "ROWS_SMD_FLOOR", "ROWS_SMD_FLOOR_PREDICTION", "SEAL_BY_ROW", "SEAL_CUT_POINT",
-           "SEAL_CUT_POINT_UNDATED", "SEAL_CUT_POINT_UNITS", "SMALL_SAMPLE_STANDARD",
+           "SEAL_CUT_POINT_ANALYZED", "SEAL_CUT_POINT_UNDATED", "SEAL_CUT_POINT_UNITS",
+           "SMALL_SAMPLE_STANDARD",
            "SMALL_SAMPLE_STANDARD_CLASSES", "SMALL_SAMPLE_STANDARD_ESTIMATE",
            "SMALL_SAMPLE_NO_SEARCH", "VALIDATION_PAIRED_INTERVAL", "VALIDATION_RESAMPLING_FIRST",
            "classes_or_ordered", "drawn_by_row", "held_out_by_a_cut_point",

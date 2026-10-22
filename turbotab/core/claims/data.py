@@ -1174,8 +1174,9 @@ register(Claim(
 
 # ── SWARM_PLAN §10 package 4: the categorical eligibility rule ───────────────────────────────
 # Its line's reason is the claim's card; the flow names the column and the code around it
-# (stages.rows._level_lines), and the methods sentence names each code (voice._level_phrase). The
-# author grades no part above judgment (CLAIMS_REGISTRY.md §2.4).
+# (stages.rows._level_lines), and the methods sentence names each code on a clause of its own,
+# with the claim's methods register as its reason (voice._level_clause). The author grades no
+# part above judgment (CLAIMS_REGISTRY.md §2.4).
 
 P4_AUTHOR = "swarm package 4 builder"
 P4_LEVEL_TESTS = "turbotab/core/tests/test_level_eligibility.py"
@@ -1191,6 +1192,9 @@ register(Claim(
     id="eligibility.unconfirmed_answer",
     kind="rule",
     card="a refused or don't-know answer cannot confirm the row is eligible",
+    # The methods sentence's reason for those rows, on a clause of their own beside the rows at
+    # the excluded levels (voice._level_clause; the package 4 verifier's V4).
+    methods="not confirmed eligible",
     regime=Regime("a categorical eligibility rule that names the codes recording a refused or a "
                   "don't-know answer, by default (the rule keeps them only when told to)",
                   requires=(f"{HERE}:names_a_refused_or_unknown_code",)),
@@ -1219,10 +1223,14 @@ register(Claim(
         Silent(f"{P4_LEVEL_TESTS}::test_a_code_the_rule_does_not_name_is_an_answer_like_any_other",
                truth="construction"),
         Fires(f"{P4_LEVEL_TESTS}::test_the_sentence_counts_what_the_flow_counts_and_names_each_code",
-              truth="construction"),
+              truth="independent:pandas"),
+        Fires(f"{P4_LEVEL_TESTS}::test_the_sentence_counts_the_unconfirmed_rows_the_flow_brings_to_"
+              "the_rule", truth="independent:pandas"),
+        Silent(f"{P4_LEVEL_TESTS}::test_without_the_rows_the_sentence_counts_no_clause_it_cannot_"
+               "and_keeps_the_reasons_apart", truth="construction"),
     ),
     enforced_by=("turbotab.core.stages.rows:rule_keep", "turbotab.core.stages.rows:_level_lines",
-                 "turbotab.core.voice:_level_phrase"),
+                 "turbotab.core.voice:_level_clause", "turbotab.core.voice:exclusion_unconfirmed"),
     author=P4_AUTHOR,
     origin="engine",
 ))
@@ -1254,13 +1262,16 @@ register(Claim(
                    "refused and don't-know answers the rule would still leave out as not "
                    "confirmed eligible (eligibility.unconfirmed_answer) are counted beside it, "
                    "so it never says the rule would exclude no one (the package 4 verifier's "
-                   "P8).")),
+                   "P8), and counted as the participant flow counts them: among the rows with "
+                   "the outcome recorded that the rules before it keep (its V1).")),
     ),
     tests=(
         Fires(f"{P4_LEVEL_TESTS}::test_a_rule_whose_excluded_levels_no_row_holds_is_refused",
               truth="construction"),
         Fires(f"{P4_LEVEL_TESTS}::test_the_refusal_of_a_level_no_row_holds_says_only_what_it_"
               "checks", truth="construction"),
+        Fires(f"{P4_LEVEL_TESTS}::test_the_refusal_counts_only_the_unconfirmed_rows_the_flow_"
+              "brings_to_the_rule", truth="independent:pandas"),
         Silent(f"{P4_LEVEL_TESTS}::test_a_rule_on_a_categorical_column_is_accepted",
                truth="construction"),
     ),

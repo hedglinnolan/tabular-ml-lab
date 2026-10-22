@@ -163,7 +163,9 @@ def test_the_split_offers_each_holdout_and_its_validation_as_a_field():
     assert q["options"][1]["decision"] == {"kind": "set_split", "holdout": 0.2,
                                            "validation": "bootstrap"}  # the card's first scheme
     field = q["fields"][0]
-    assert [f.get("applies_to") for f in q["fields"]] == [None, ["cut"], ["cut"], ["cut"]]
+    # the plan's scheme is the shares'; the cut-point's fields, its own scheme among them (V5)
+    assert [f.get("applies_to") for f in q["fields"]] == [["0", "0.2"], ["cut"], ["cut"], ["cut"],
+                                                          ["cut"]]
     assert field["name"] == "validation" and field["initial"] == "bootstrap"
     assert [c["validation"] for c in field["choices"]] == ["bootstrap", "kfold", "internal_external"]
     assert opts.resolve(q, ["0.2"], ["validation=kfold"]) == {
@@ -202,9 +204,12 @@ def test_a_cut_point_of_ones_own_sets_its_column_its_value_and_its_folds_order()
     assert [c["value"] for c in fields["fold_order"]["choices"]] == ["random", "time"]
     assert all(fields[n]["initial"] is None for n in ("cut_column", "cut_at", "fold_order"))
     assert opts.resolve(q, ["cut"], ["cut_column=cycle", "cut_at=2017", "fold_order=random",
-                                     "validation=kfold"]) == {
+                                     "cut_validation=kfold"]) == {
         "kind": "set_split", "holdout": 0.0, "validation": "kfold",
         "cut_point": {"column": "cycle", "at": "2017"}, "fold_order": "random"}
+    with pytest.raises(opts.Unanswerable):  # the shares' scheme, worded for the shares' folds
+        opts.resolve(q, ["cut"], ["cut_column=cycle", "cut_at=2017", "fold_order=random",
+                                  "validation=kfold"])
     with pytest.raises(opts.Unanswerable):
         opts.resolve(q, ["cut"], [])  # nothing set: it records nothing
     with pytest.raises(opts.Unanswerable):
@@ -226,6 +231,34 @@ def test_what_the_cut_point_option_records_the_engine_accepts():
                                                         "fold_order=time"]))
     assert decision.cut_point.column == "cycle" and cut_shown(decision.cut_point.at) == "2017"
     assert decision.holdout == 0.0 and decision.fold_order == "time"
+
+
+def test_the_cut_points_scheme_carries_the_plans_words_only_for_the_folds_they_were_made_for():
+    """V5: the seal plan words its validation choices for the folds the held-out draw orders
+    (``time_ordered_folds``), and a cut-point's folds' order is its own answer, so its scheme's
+    choices carry those words only under the order they were made for: random, where the plan's
+    folds are not time-ordered; none where they are. The shares' field keeps the plan's words."""
+    q = compose("split", {"seal_plan": SEAL_PLAN, "ingest": TIME_COLUMNS}, SPLIT_ENTRY,
+                target="LBXGLU")
+    fields = {f["name"]: f for f in q["fields"]}
+    cut = fields["cut_validation"]
+    assert cut["applies_to"] == ["cut"] and cut["initial"] == "bootstrap"
+    assert [c["validation"] for c in cut["choices"]] == ["bootstrap", "kfold", "internal_external"]
+    plan = SEAL_PLAN["validation"]["options"]
+    assert [c["with_fold_order"] for c in cut["choices"]] == [
+        {"random": {k: o[k] for k in ("label", "measures", "cost")}} for o in plan]
+    assert all("label" not in c for c in cut["choices"])  # never at the top, read for any order
+    timed = compose("split", {"seal_plan": {**SEAL_PLAN, "time_ordered_folds": True},
+                              "ingest": TIME_COLUMNS}, SPLIT_ENTRY, target="LBXGLU")
+    by_name = {f["name"]: f for f in timed["fields"]}
+    assert [set(c) for c in by_name["cut_validation"]["choices"]] == [
+        {"validation"}, {"validation"}, {"validation", "cluster"}]
+    assert [c["label"] for c in by_name["validation"]["choices"]] == [o["label"] for o in plan]
+    # the scheme set on the cut-point records as the shares' does, a grouping carried
+    assert opts.resolve(timed, ["cut"], ["cut_column=cycle", "cut_at=2017", "fold_order=random",
+                                         "cut_validation=internal_external"]) == {
+        "kind": "set_split", "holdout": 0.0, "validation": "internal_external", "cluster": "site",
+        "cut_point": {"column": "cycle", "at": "2017"}, "fold_order": "random"}
 
 
 def test_the_roles_are_the_proposal_with_one_field_per_column():

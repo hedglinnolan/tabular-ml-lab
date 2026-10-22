@@ -19,6 +19,8 @@ optional; a sentence says only what its context can support and never prints a p
     frame            a pandas frame with the columns an exclusion names (and the target)
     datastore        a ``DataStore``: the columns an exclusion names are read from it
     exclusion_counts rows each exclusion rule removes, in order (overrides counting)
+    exclusion_unconfirmed  of those, the rows each rule could not confirm (its lines before its
+                     step); counted from ``frame`` or ``datastore`` when not given
     n_cohort         rows entering the split (for its sentence)
     n_complete       rows left after complete cases, with ``n_before`` the rows before
     repeats          ``{column, n_units, max_rows_per_unit}`` when the identifier repeats
@@ -1060,20 +1062,62 @@ def _goldberg_phrase(rule: Any) -> str:
             f"cut-offs for {pal} and {days}{unconfirmed}")
 
 
-def _level_phrase(rule: Any) -> str:
-    """"`DIQ010` `1`, or refused (`7`), don't know (`9`) or not recorded": the levels a level rule
-    excludes and, unless it keeps them, the answers it cannot confirm (``stages.rows.rule_keep``),
-    each refused or don't-know code named."""
+def _unconfirmed_words(rule: Any) -> str:
+    """"refused (`7`), don't know (`9`) or not recorded": the answers a level rule cannot confirm
+    (``stages.rows.rule_keep``), each refused or don't-know code named."""
     from turbotab.core.stages.rows import UNCONFIRMED_LINES, _named_levels
+
+    unknown = [f"{words} ({_named_levels(getattr(rule, field))})"
+               for _, words, field in UNCONFIRMED_LINES if getattr(rule, field)]
+    unknown.append("not recorded")
+    return unknown[0] if len(unknown) == 1 else f"{', '.join(unknown[:-1])} or {unknown[-1]}"
+
+
+def _level_phrase(rule: Any) -> str:
+    """"`DIQ010` `1`, or not recorded": the levels a level rule excludes and, unless it keeps
+    them, the answers it cannot confirm (``stages.rows.rule_keep``). A rule that names refused or
+    don't-know codes is said by :func:`_level_clause` instead, its unconfirmed answers apart."""
+    from turbotab.core.stages.rows import _named_levels
 
     text = f"{tick(rule.column)} {_named_levels(rule.exclude)}"
     if rule.missing != "exclude":
         return text
-    unknown = [f"{words} ({_named_levels(getattr(rule, field))})"
-               for _, words, field in UNCONFIRMED_LINES if getattr(rule, field)]
-    unknown.append("not recorded")
-    return text + ", or " + (unknown[0] if len(unknown) == 1 else
-                             f"{', '.join(unknown[:-1])} or {unknown[-1]}")
+    return f"{text}, or {_unconfirmed_words(rule)}"
+
+
+def _names_unconfirmed_codes(rule: Any) -> bool:
+    """A level rule that leaves out the refused or don't-know codes it names (claim
+    ``eligibility.unconfirmed_answer``'s regime): its sentence gives them a clause of their own."""
+    return (getattr(rule, "kind", "range") == "levels" and rule.missing == "exclude"
+            and bool(rule.refused or rule.dont_know))
+
+
+def _level_clause(rule: Any, n: int | None, unconfirmed: int | None) -> str:
+    """A level rule's clause when it names refused or don't-know codes (the package 4 verifier's
+    V4): the rows at its excluded levels leave as its reason, and the blank, refused and
+    don't-know answers as not confirmed eligible (claim ``eligibility.unconfirmed_answer``), each
+    count the flow's. ``n`` is the rule's rows in all and ``unconfirmed`` those it could not
+    confirm; with ``n`` alone the clause says the total and each reason, with neither no count."""
+    from turbotab.core import claims
+    from turbotab.core.stages.rows import _named_levels
+
+    column, levels = tick(rule.column), _named_levels(rule.exclude)
+    reason, answers = _as_reason(rule.reason), _unconfirmed_words(rule)
+    eligible = claims.methods("eligibility.unconfirmed_answer", rule)
+
+    def verb(k: int) -> str:
+        return "was" if k == 1 else "were"
+
+    if n is None:
+        return (f"Rows with {column} {levels} were excluded as {reason}, and rows with {column} "
+                f"{answers} were excluded as {eligible}")
+    if unconfirmed is None or not 0 <= unconfirmed <= n:
+        return (f"{count(n)} {plural(n, 'row')} with {column} {levels}, {answers} {verb(n)} "
+                f"excluded, at {levels} as {reason} and otherwise as {eligible}")
+    at = n - unconfirmed
+    return (f"{count(at)} {plural(at, 'row')} with {column} {levels} {verb(at)} excluded as "
+            f"{reason}, and {count(unconfirmed)} with {column} {answers} {verb(unconfirmed)} "
+            f"excluded as {eligible}")
 
 
 def _rule_phrase(rule: Any) -> str:
@@ -1146,6 +1190,40 @@ def exclusion_counts(rules: Sequence[Any], state: Any, ctx: Any) -> tuple[list[i
         return None, None
 
 
+def exclusion_unconfirmed(rules: Sequence[Any], state: Any, ctx: Any,
+                          counts: Sequence[int]) -> list[int] | None:
+    """Rows each rule left out as not confirmed eligible (its lines before its step: no value, a
+    refused or don't-know code it names), as the participant flow counts them; None when they
+    cannot be counted, or when the flow counted here does not give the rules' own ``counts``
+    (``exclusion_counts``), so a split never disagrees with the total beside it. Given in the
+    context as ``exclusion_unconfirmed`` (the export's counts), or counted on ``frame`` or
+    ``datastore`` (``stages.rows.rule_flow``)."""
+    given = _get(ctx, "exclusion_unconfirmed")
+    if given is not None:
+        return [int(n) for n in given] if len(given) == len(rules) else None
+    frame = _get(ctx, "frame")
+    columns = list(dict.fromkeys(c for rule in rules for c in rule.reads()))
+    target = getattr(state, "target", None)
+    try:
+        if frame is None:
+            store = _get(ctx, "datastore")
+            if store is None or not set(columns) <= set(store.columns):
+                return None
+            frame = store.materialize([c for c in {*columns, target} if c and c in
+                                       set(store.columns)])
+        if not set(columns) <= set(frame.columns):
+            return None
+        from turbotab.core.stages.rows import rule_drops, rule_flow, rule_unconfirmed
+
+        steps = rule_flow(frame, target, rules)
+        if rule_drops(steps) != [int(n) for n in counts]:
+            return None
+        return rule_unconfirmed(steps)
+    except Exception:  # a sentence never fails a decision; it says less
+        log.debug("could not count the unconfirmed rows", exc_info=True)
+        return None
+
+
 @register_sentence("set_exclusions")
 def _set_exclusions(d: Any, state: Any, ctx: Any) -> str:
     target = getattr(state, "target", None)
@@ -1153,8 +1231,16 @@ def _set_exclusions(d: Any, state: Any, ctx: Any) -> str:
         who = f"every row with {tick(target)} measured" if target else "every row"
         return f"No rows were excluded: {who} stays in the analysis"
     counts, _ = exclusion_counts(d.rules, state, ctx)
+    unconfirmed = (exclusion_unconfirmed(d.rules, state, ctx, counts)
+                   if counts is not None and any(_names_unconfirmed_codes(r) for r in d.rules)
+                   else None)
     clauses = []
     for i, rule in enumerate(d.rules):
+        if _names_unconfirmed_codes(rule):
+            clause = _level_clause(rule, None if counts is None else counts[i],
+                                   None if unconfirmed is None else unconfirmed[i])
+            clauses.append(clause if i == 0 else clause[:1].lower() + clause[1:])
+            continue
         rows = f"{count(counts[i])} {plural(counts[i], 'row')}" if counts is not None else "Rows"
         verb = "was" if counts is not None and counts[i] == 1 else "were"
         clause = f"{rows} with {_rule_phrase(rule)} {verb} excluded as {_as_reason(rule.reason)}"
@@ -2932,7 +3018,8 @@ def kinds() -> list[str]:
 
 
 __all__ = [
-    "count", "exclusion_counts", "finish", "kinds", "listing", "machinery", "number", "plural",
+    "count", "exclusion_counts", "exclusion_unconfirmed", "finish", "kinds", "listing",
+    "machinery", "number", "plural",
     "register_repair_sentence", "register_sentence", "role_as", "sentence_for", "strip_markdown",
     "table_number", "tick", "words",
 ]

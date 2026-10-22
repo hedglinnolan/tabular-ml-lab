@@ -684,3 +684,74 @@ def test_under_a_cut_point_the_temporal_answer_previews_that_it_draws_nothing(tm
     assert captions["cut"] == ("A cut-point at `2017` on `cycle` holds the rows out, so this "
                                "answer draws none.")
     assert captions["share"].startswith("The latest `12` rows by their last `cycle` are held out")
+
+
+# ── repair round 2: the verifier's problems ──────────────────────────────────
+
+LEFT_OUT = ("are all left out by the answers that choose the analyzed rows, an exclusion or the "
+            "missing-values answer among them. A cut-point is drawn only where some analyzed rows "
+            "are held out and some before it train.")
+
+
+def _excluding(tmp_path, rule):
+    t, frame = table(tmp_path)
+    return t, frame, state(CutPoint(column="cycle", at=2017)).model_copy(update={"exclusions": [rule]})
+
+
+def test_an_exclusion_that_leaves_no_analyzed_row_at_or_after_the_cut_point_refuses_the_draw(tmp_path):
+    """V2: among the rows with the outcome recorded the cut-point holds twenty out, but an
+    exclusion of every cycle after 2016 leaves the analysis none of them: the draw refuses, naming
+    the answers that leave them out, rather than a split that holds out no analyzed row (which
+    every reader of ``decisions.holds_out`` would take for one that does). Counts by pandas."""
+    t, frame, s = _excluding(tmp_path, d.ExclusionRule(column="cycle", high=2016, reason="early"))
+    later = frame["cycle"] >= 2017
+    kept = frame["cycle"] <= 2016
+    assert int((later & kept).sum()) == 0 and int(later.sum()) == 20
+    with pytest.raises(ValueError) as found:
+        drawn(t, s)
+    assert str(found.value) == (
+        f"No analyzed row would be held out: the `{int(later.sum())}` rows with the outcome "
+        f"recorded that the cut-point at `2017` on `cycle` would hold out {LEFT_OUT}")
+
+
+def test_an_exclusion_that_leaves_no_analyzed_row_before_the_cut_point_refuses_the_draw(tmp_path):
+    """V2, the other side: an exclusion of every cycle before 2017 leaves no analyzed row to train
+    on, though forty rows with the outcome recorded would."""
+    t, frame, s = _excluding(tmp_path, d.ExclusionRule(column="cycle", low=2017, reason="late"))
+    earlier = frame["cycle"] < 2017
+    assert int((earlier & (frame["cycle"] >= 2017)).sum()) == 0 and int(earlier.sum()) == 40
+    with pytest.raises(ValueError) as found:
+        drawn(t, s)
+    assert str(found.value) == (
+        f"No analyzed row with a readable `cycle` would train before `2017`: the "
+        f"`{int(earlier.sum())}` rows with the outcome recorded there {LEFT_OUT}")
+
+
+def test_complete_cases_that_leave_no_analyzed_row_held_out_refuse_the_draw(tmp_path):
+    """V2 as NHANES meets it: a predictor the later cycle never recorded, under complete cases,
+    drops every row the cut-point holds out."""
+    rng = np.random.default_rng(5)
+    frame = pd.DataFrame({"cycle": np.repeat(CYCLES, 10), "x": rng.normal(size=60)})
+    frame["y"] = frame["x"] + rng.normal(scale=0.5, size=60)
+    frame["z"] = np.where(frame["cycle"] >= 2017, np.nan, rng.normal(size=60))
+    t = _write(tmp_path, frame)
+    s = state(CutPoint(column="cycle", at=2017)).model_copy(update={
+        "roles": {"x": "covariate", "z": "covariate"}})
+    held = frame["cycle"] >= 2017
+    assert int((held & frame["z"].notna()).sum()) == 0
+    with pytest.raises(ValueError) as found:
+        drawn(t, s)
+    assert str(found.value) == (
+        f"No analyzed row would be held out: the `{int(held.sum())}` rows with the outcome "
+        f"recorded that the cut-point at `2017` on `cycle` would hold out {LEFT_OUT}")
+
+
+def test_an_exclusion_that_thins_a_side_of_the_cut_point_is_drawn(tmp_path):
+    """Silent: an exclusion of the earliest cycle leaves rows on both sides, so the cut-point is
+    drawn, and its counts are the analyzed rows' (by pandas)."""
+    t, frame, s = _excluding(tmp_path, d.ExclusionRule(column="cycle", low=2013, reason="later"))
+    kept = frame["cycle"] >= 2013
+    held, train = int((kept & (frame["cycle"] >= 2017)).sum()), int((kept & (frame["cycle"] < 2017)).sum())
+    assert (held, train) == (20, 30)
+    split = drawn(t, s)
+    assert (split.data["n_holdout"], split.data["n_train"]) == (held, train)

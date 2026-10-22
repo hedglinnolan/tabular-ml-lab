@@ -1374,6 +1374,31 @@ def rule_drops(steps: Sequence[Mapping[str, Any]]) -> list[int]:
     return [out[i] for i in sorted(out)]
 
 
+def rule_unconfirmed(steps: Sequence[Mapping[str, Any]]) -> list[int]:
+    """Rows each exclusion rule left out as not confirmed eligible, in rule order: the lines before
+    its step alone (no value, not screened, a refused or don't-know code it names), so its step's
+    own rows are :func:`rule_drops`' less these. Read by the level rule's sentence and refusal."""
+    out: dict[int, int] = {}
+    for s in steps:
+        parts = str(s["key"]).split(":")
+        if parts[0] != "exclusion":
+            continue
+        i = int(parts[1])
+        out[i] = out.get(i, 0) + (int(s["dropped"]) if len(parts) == 3 else 0)
+    return [out[i] for i in sorted(out)]
+
+
+def rule_flow(frame: Any, target: str | None, rules: Sequence[Any]) -> list[dict[str, Any]]:
+    """The participant flow's steps through ``rules`` alone, over ``frame`` (the target, when
+    chosen, and every column the rules read): what :func:`rule_drops` and
+    :func:`rule_unconfirmed` read when no flow is given, counted as the cohort's own flow counts
+    its eligibility rules (the outcome recorded, then each rule on the rows the ones before it
+    kept), since those come before any repair or complete-case step."""
+    steps, _ = cohort_flow(frame, target=target if target in frame.columns else None,
+                           rules=list(rules), missing=None, predictor_columns=[])
+    return steps
+
+
 def _measured(series: Any) -> Any:
     import pandas as pd
 
