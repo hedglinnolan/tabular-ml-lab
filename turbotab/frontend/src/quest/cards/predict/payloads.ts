@@ -113,6 +113,8 @@ export const DEFAULTS = {
     n_boot: 500,
     cluster: null,
     nested_cv: false,
+    fold_order: null,
+    cut_point: null,
     acknowledged: false,
   },
   set_levers: { forms: "none", variance_filter: "none", keep: null, imbalance: "none" },
@@ -254,6 +256,9 @@ export function validation(kind: Validation["validation"], f: ValidationFields):
     n_boot: f.n_boot,
     cluster,
     nested_cv: f.nested_cv,
+    // The folds' order and the draw's cut-point are the seal's (SealAsk): null keeps them.
+    fold_order: null,
+    cut_point: null,
     acknowledged: false,
   };
 }
@@ -312,7 +317,9 @@ export function sensitivity(choice: SensitivityChoice): Sensitivity {
 
 /** Which of the card's answers a recorded list is, or null for any other (analyses set elsewhere,
  *  on rules of their own). */
-export function sensitivityOf(analyses: readonly { label: string; rules: readonly unknown[] }[] | null | undefined): SensitivityChoice | null {
+export function sensitivityOf(
+  analyses: readonly { label: string; rules: readonly unknown[] }[] | null | undefined,
+): SensitivityChoice | null {
   if (!analyses) return null;
   if (analyses.length === 0) return "none";
   return analyses.length === 1 && analyses[0]!.rules.length === 0 ? "every_row" : null;

@@ -365,7 +365,25 @@ def _missing(ctx: Context) -> Composed:
     return {"options": options}
 
 
+# The columns a cut-point is read on, as the seal's card lists them (``SealAsk``'s ``timeColumns``,
+# turbotab/frontend/src/components/record/ask/SealQuestions.tsx): numbers or dates, never the
+# outcome. The folds' order under it is the split's own answer, unchosen until set
+# (``decisions.FoldOrder``).
+TIME_DTYPES = ("numeric", "integer", "datetime", "text")
+FOLD_ORDERS = ("random", "time")
+
+
+def _time_columns(ctx: Context) -> list[str]:
+    columns = _art(ctx.served, "oriented").get("columns") or _art(ctx.served, "ingest").get("columns")
+    return [str(c["name"]) for c in columns or [] if isinstance(c, Mapping) and c.get("name")
+            and c.get("dtype") in TIME_DTYPES and c["name"] not in (ROW_ID, ctx.target)]
+
+
 def _split(ctx: Context) -> Composed:
+    """The seal card's options (``SealAsk``): each holdout the seal plan offers, with the scheme
+    as a field, and a cut-point of one's own (``cut``, SWARM_PLAN §8): every row at or after a
+    value of a time column held out, set by ``cut_column`` and ``cut_at`` (a number or a date, as
+    the column reads), and its folds' order, ``fold_order``, random or time."""
     plan = _art(ctx.served, "seal_plan")
     validation = [dict(v) for v in (plan.get("validation") or {}).get("options") or []
                   if isinstance(v, Mapping)]
@@ -384,7 +402,7 @@ def _split(ctx: Context) -> Composed:
                        below_floor=o.get("below_floor"),
                        labels=_two_labels(labels.get(_num(o["holdout"])) or {}))
                for o in plan.get("options") or [] if isinstance(o, Mapping) and "holdout" in o]
-    fields = []
+    fields: list[dict[str, Any]] = []
     if validation:
         fields.append({"name": "validation",
                        "choices": [{k: v.get(k) for k in ("validation", "label", "measures", "cost",
@@ -392,6 +410,18 @@ def _split(ctx: Context) -> Composed:
                                    for v in validation],
                        "initial": first.get("validation"),
                        "_apply": ("validation", {v.get("validation"): v for v in validation})})
+    if plan:
+        cut = {str(o.get("value")): o for o in _taught(ctx.entry)}.get("cut") or {}
+        options.append(_option("cut", None, label=cut.get("label"),
+                               consequence=cut.get("consequence"),
+                               _base=body(0.0, first)))
+        fields += [
+            {"name": "cut_column", "choices": [{"value": c} for c in _time_columns(ctx)],
+             "initial": None, "applies_to": ["cut"], "_apply": ("map", "cut_point", "column")},
+            {"name": "cut_at", "initial": None, "applies_to": ["cut"],
+             "_apply": ("map", "cut_point", "at")},
+            {"name": "fold_order", "choices": [{"value": v} for v in FOLD_ORDERS], "initial": None,
+             "applies_to": ["cut"], "_apply": ("set", "fold_order")}]
     keep = ("reason", "precision_note", "refusal", "exploratory", "n_measured", "n_analyzed")
     data = {k: plan.get(k) for k in keep if plan.get(k) not in (None, "")}
     if (plan.get("floor") or {}).get("text"):

@@ -28,6 +28,14 @@ What this module decides, and where each piece runs:
   trade one leak for another). A time column that cannot be read refuses; none named discloses.
   The cross-validation folds follow the same ranking (:func:`time_order`): forward chaining by whole
   unit, each fold scored by models fit on the folds before it (``turbotab/core/models/folds.py``).
+* **The temporal seal by cut-point** (SWARM_PLAN §8), in place of a share: the split names a
+  column and a value (``SplitSpec.cut_point``), and every row at or after it is held out, a unit
+  with rows on both sides held out whole by its last observation (:func:`cut_holdout`, its earlier
+  rows counted), the other rows training. It reads its own column, not the temporal answer (which
+  is asked only when time points stay as rows), and refuses a value the column cannot read or one
+  that holds out nothing or leaves nothing to train (:func:`cut_problem`). Its folds' order is the
+  split's own answer (``fold_order``: random, repeated or not, or time-ordered by the cut-point's
+  column), never the draw's, so the same held-out rows can be scored either way.
 * **What a holdout of this size can measure**: the split question's options, each with the
   precision of a held-out score on that many rows, ordered so cross-validation alone comes first
   when the usual holdout falls below a stated floor (:func:`holdout_options`). Never a refusal.
@@ -144,6 +152,10 @@ class Chronology(_Model):
     n_held_rows: int | None = None
     n_held_earlier: int | None = None  # held-out rows observed before the latest training row
     earlier: list[EarlierRows] = []
+    # A temporal seal by cut-point (SWARM_PLAN §8): the value every row at or after which is held
+    # out, as the split recorded it; None for the draw by share. Its ``n_held_earlier`` counts the
+    # held-out rows observed before the cut-point.
+    cut_point: str | None = None
 
 
 # ── the basis ────────────────────────────────────────────────────────────────
@@ -487,13 +499,16 @@ class SealDraw:
 
 
 def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
-                holdout: float, seed: int, structure: Mapping[str, Any] | None = None) -> SealDraw:
+                holdout: float, seed: int, structure: Mapping[str, Any] | None = None,
+                cut_point: Any = None, fold_order: str | None = None) -> SealDraw:
     """Read what the seal is drawn from (identifiers, the outcome's classes, time) and decide it.
 
     ``universe`` is every row the held-out rows are drawn over (every row with the outcome
     measured), in any order; every array returned aligns with it. ``structure`` (the structure
     stage's artifact) supplies the grain stated from a unique identifier when none is answered;
-    with neither, nothing is drawn and ``refusal`` says the grain comes first.
+    with neither, nothing is drawn and ``refusal`` says the grain comes first. ``cut_point`` (a
+    ``decisions.CutPoint``) holds out every row at or after it in place of a share, and then the
+    temporal answer draws nothing: the folds are time-ordered only where ``fold_order`` is "time".
     """
     from turbotab.core.stages.working import with_effective_grain
 
@@ -521,6 +536,10 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
     wanted = [*every, *([named] if named in columns else [])]
     if classify and target in columns:
         wanted.append(target)
+    if cut_point is not None:
+        requested = False  # the cut-point is the draw: the temporal answer's share draws nothing
+        if cut_point.column in columns:
+            wanted.append(cut_point.column)
     if requested and time_column in columns:
         wanted.append(time_column)
     wanted = list(dict.fromkeys(wanted))
@@ -541,7 +560,11 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
     if classify and target in frame.columns:
         draw.y = frame[target].to_numpy(dtype=object)
         draw.labels = draw.y
-    if requested:
+    if cut_point is not None:
+        draw.chronology, draw.held, draw.refusal, draw.order = _cut(
+            frame, cut_point, draw.groups, fold_order=fold_order, seed=seed,
+            present=cut_point.column in columns)
+    elif requested:
         draw.chronology, draw.held, draw.refusal, draw.order = _chronology(
             frame, time_column, draw.groups, holdout=holdout, seed=seed, present=time_column in columns)
     return draw
@@ -596,6 +619,136 @@ def _isna(value: Any) -> bool:
         return bool(pd.isna(value))  # None, NaN, NaT and pd.NA alike
     except (TypeError, ValueError):
         return False
+
+
+# ── the temporal seal by cut-point (SWARM_PLAN §8) ───────────────────────────
+# Beside the draw by share: every row at or after a value of a time column is held out, a unit
+# with rows on both sides held out whole (by its last observation, as ``_units_by_time`` ranks
+# units), and the other rows train. Its folds' order is the split's own answer (``fold_order``),
+# never the held-out draw's, so the same held-out rows take random or time-ordered folds.
+
+
+def _dated(raw: Any) -> bool:
+    import pandas as pd
+
+    return not pd.api.types.is_numeric_dtype(raw) or pd.api.types.is_bool_dtype(raw)
+
+
+def cut_value(at: Any, raw: Any) -> float | None:
+    """``at`` as :func:`read_times` reads the column ``raw``: a number for a numeric column (a
+    numeral written as text reads as that number), a date for a dated one; None when it does not
+    read so."""
+    if not _dated(raw):
+        try:
+            value = float(at)
+        except (TypeError, ValueError):
+            return None
+        return value if math.isfinite(value) else None
+    if not isinstance(at, str):
+        return None  # a date is written as one: a bare number on a dated column reads as no date
+    out = read_times(np.asarray([at], dtype=object))
+    return None if np.isnan(out[0]) else float(out[0])
+
+
+def cut_problem(raw: Any, cut: Any) -> tuple[str, str] | None:
+    """Why a cut-point cannot hold rows out of the column ``raw`` and leave some to train, as a
+    refusal's ``(code, message)``; None when it can. Judged row by row: the draw judges units
+    (:func:`cut_holdout`), which can only refuse more."""
+    shown = decisions.cut_shown(cut.at)
+    column = cut.column
+    at = cut_value(cut.at, raw)
+    if at is None:
+        kind = "date" if _dated(raw) else "number"
+        return ("cut_point_unreadable",
+                f"`{shown}` does not read as a {kind} on `{column}`, so no row can be held out at "
+                f"or after it.")
+    times = read_times(raw)
+    dated = times[~np.isnan(times)]
+    if not len(dated):
+        return ("cut_point_unreadable",
+                f"No value of `{column}` reads as a time, so no row can be held out at or after "
+                f"`{shown}`.")
+    if not (dated >= at).any():
+        return ("cut_point_holds_nothing",
+                f"No row of `{column}` is at or after `{shown}`, so nothing would be held out.")
+    if not (dated < at).any():
+        return ("cut_point_trains_nothing",
+                f"Every row with a readable `{column}` is at or after `{shown}`, so no row would "
+                f"train before it.")
+    return None
+
+
+CUT_POINT = "seal.cut_point"  # its claim: what a cut-point holds out, said on the seal
+
+
+def cut_holdout(times: Any, groups: Any | None, at: float, column: str, shown: str
+                ) -> tuple[Any, Chronology]:
+    """The held-out mask for a cut-point at ``at``: every unit whose last observation is at or
+    after it, whole (a unit with no groups is a row), and the seal's sentence. Units with no
+    readable time train and are counted; their share is refused above :data:`MAX_UNDATED_SHARE`
+    before this is called (:func:`_cut`)."""
+    keys, dated_units, _, n_undated = _units_by_time(times, groups, 0)
+    held = dated_units.index[dated_units.to_numpy() >= at].to_numpy(dtype=object)
+    mask = np.isin(keys, held) if len(held) else np.zeros(len(keys), dtype=bool)
+    times = np.asarray(times, dtype=float)
+    n_rows, n_train = int(mask.sum()), int((~mask).sum())
+    held_times = times[mask]
+    n_before = int(np.sum(held_times[~np.isnan(held_times)] < at))
+    word = "units" if groups is not None else "rows"
+    if groups is not None:
+        lead = (f"Held out by a cut-point at `{shown}` on `{column}`: `{len(held):,}` units whole, "
+                f"`{n_rows:,}` rows, and `{n_train:,}` rows train.")
+    else:
+        lead = (f"Held out by a cut-point at `{shown}` on `{column}`: `{n_rows:,}` rows held out "
+                f"and `{n_train:,}` train.")
+    # Audit IN-24's disclosure, for a cut-point: a unit held out whole can hold rows before it.
+    before = (f" Whole units are held out, earlier rows included: `{n_before:,}` of the held-out "
+              f"rows were observed before `{shown}`." if groups is not None and n_before else "")
+    undated = (f" `{n_undated:,}` {word} with no readable `{column}` train and are never held out."
+               if n_undated else "")
+    said = claims.card(CUT_POINT, {"cut_point": {"column": column, "at": shown}, "holdout": 0.0})
+    sentence = f"{lead} {said}{before}{undated}"
+    return mask, Chronology(drawn=True, time_column=column, boundary=shown, n_units=int(len(held)),
+                            n_undated=n_undated, sentence=sentence, n_held_rows=n_rows,
+                            n_held_earlier=n_before, cut_point=shown)
+
+
+def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, seed: int,
+         present: bool) -> tuple[Chronology, Any | None, str | None, Any | None]:
+    """The cut-point's draw, as :func:`_chronology` returns the draw by share's: its disclosure,
+    the held-out mask, a refusal when the cut-point cannot hold rows out and leave some to train,
+    and each row's unit rank in time when the folds' order is time (None for random folds)."""
+    column, shown = cut.column, decisions.cut_shown(cut.at)
+    if not present:
+        return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
+                           n_undated=0, sentence=f"`{column}` is named for the cut-point but is not "
+                                                 f"in the table.", cut_point=shown),
+                None,
+                f"`{column}` was named as the cut-point's column, but the table has no column by "
+                f"that name, so no row can be held out by it.", None)
+    raw = frame[column]
+    problem = cut_problem(raw, cut)
+    times = read_times(raw)
+    unreadable = int(np.isnan(times).sum())
+    if problem is None and len(times) and unreadable > MAX_UNDATED_SHARE * len(times):
+        problem = ("cut_point_undated",
+                   f"`{unreadable:,}` of `{len(times):,}` rows have no readable `{column}`: they "
+                   f"would train, though any of them may fall at or after `{shown}`.")
+    if problem is None:
+        mask, chronology = cut_holdout(times, groups, cut_value(cut.at, raw), column, shown)
+        if not (~mask & ~np.isnan(times)).any():  # every dated unit holds a row at or after it
+            problem = ("cut_point_trains_nothing",
+                       f"Every unit with a readable `{column}` has a row at or after `{shown}`, "
+                       f"so held out whole, no row would train before it.")
+    if problem is not None:
+        return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
+                           n_undated=0, sentence=problem[1], cut_point=shown), None, problem[1],
+                None)
+    order = None
+    if fold_order == "time":
+        ranks = time_order(times, groups, seed)
+        order = ranks if int(np.unique(ranks[~np.isnan(ranks)]).size) >= 2 else None
+    return chronology, mask, None, order
 
 
 # ── what a holdout of this size can measure ──────────────────────────────────
@@ -1220,7 +1373,7 @@ def split_writer(records: Sequence[Any] | None) -> str | None:
 
 def draw_record(records: Sequence[Any] | None) -> Any:
     """The record that drew the current held-out rows: the first of the latest run of live
-    ``set_split`` records that keep its holdout and seed (crosswalk disagreement 5). A split
+    ``set_split`` records that keep its holdout, seed and cut-point (crosswalk disagreement 5). A split
     recorded again with the same draw keeps the draw's time, which RECIPES §3.3's holdout status
     reads; ``split_writer`` is the latest one, the record a re-seal withdraws. None with no
     split."""
@@ -1234,10 +1387,10 @@ def draw_record(records: Sequence[Any] | None) -> Any:
     live = [r for r in ordered if r.decision.kind == "set_split" and r.id not in cancelled]
     if not live:
         return None
-    drawn = (live[-1].decision.holdout, live[-1].decision.seed)
+    drawn = decisions.draw_key(live[-1].decision)
     first = live[-1]
     for r in reversed(live):
-        if (r.decision.holdout, r.decision.seed) != drawn:
+        if decisions.draw_key(r.decision) != drawn:
             break
         first = r
     return first
@@ -1259,7 +1412,7 @@ DECISION_A_SLOTS = tuple(slot for slot, _ in DECISION_A.values())
 
 def _cross_validation_only(state: Any) -> bool:
     split = getattr(state, "split", None)
-    return split is not None and float(getattr(split, "holdout", 0) or 0) == 0
+    return split is not None and not decisions.holds_out(split)
 
 
 # ── analyst mode (SWARM_ENGINE_PLAN E4) ──
@@ -1355,14 +1508,14 @@ def _decision_a_waits_for_a_reseal(decision: Any, ctx: Any) -> None:
 
 
 def holds_rows_out(state: Any) -> bool:
-    split = getattr(state, "split", None)
-    return split is not None and float(getattr(split, "holdout", 0) or 0) > 0
+    """Whether the split holds rows out, by a share or by a cut-point (``decisions.holds_out``)."""
+    return decisions.holds_out(getattr(state, "split", None))
 
 
 def draw_columns(state: Any) -> list[str]:
     """The columns whose values the held-out draw reads: the outcome (which rows have it measured,
     and its classes), the column naming the unit when rows repeat, and the time column of a
-    chronological draw."""
+    chronological draw, or a cut-point's column, in place of the temporal answer's."""
     out: list[str] = []
     target = getattr(state, "target", None)
     if target:
@@ -1373,8 +1526,11 @@ def draw_columns(state: Any) -> list[str]:
             out.append(grain.id_column)
         else:  # ``decide_basis`` then groups by a repeating identifier
             out += [c for c, r in (getattr(state, "roles", None) or {}).items() if r == "identifier"]
+    cut = getattr(getattr(state, "split", None), "cut_point", None)
     requested, column = temporal_request(state)
-    if requested and column:
+    if cut is not None:
+        out.append(cut.column)
+    elif requested and column:
         out.append(column)
     return list(dict.fromkeys(out))
 
@@ -1425,7 +1581,9 @@ def _redrawn_by(now: Any, after: Any, ctx: Any) -> str | None:
                 f"{before_task or 'it is read now'}, and reading it as "
                 f"{after_task or 'something else'} would draw them again")
     (asked, column), (asks, new_column) = temporal_request(now), temporal_request(after)
-    if (asked, column) != (asks, new_column):
+    # Under a cut-point the temporal answer draws nothing: the cut-point holds the rows out.
+    cut = getattr(getattr(now, "split", None), "cut_point", None)
+    if cut is None and (asked, column) != (asks, new_column):
         if asked and asks:
             return (f"The held-out rows are the latest by `{column}`, and ordering them by "
                     f"`{new_column}` would draw them again")
@@ -1574,7 +1732,7 @@ def _the_draw_reads_settled_values(decision: Any, ctx: Any) -> None:
     from turbotab.core.decisions import DismissFinding, SplitSpec
 
     state = _ctx(ctx, "state")
-    if state is None or decision.holdout <= 0:
+    if state is None or not decisions.holds_out(decision):
         return
     if state.split == SplitSpec(**decision.model_dump(exclude={"kind"})):
         return  # the same answer again draws nothing new
@@ -1732,10 +1890,13 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
     if spec is None:
         raise Refusal("no_seal", "No rows are held out yet, so there is nothing to open.",
                       exits=[{"label": "Choose how many rows to hold out", "decision": None}])
-    hold = [{"label": f"Hold out {USUAL:.0%} first",
-             # The validation answer (WP9) is kept; only the holdout changes.
-             "decision": SetSplit(**{**spec.model_dump(), "holdout": USUAL})}]
-    if spec.holdout == 0:
+    if spec.cut_point is None:
+        hold = [{"label": f"Hold out {USUAL:.0%} first",
+                 # The validation answer (WP9) is kept; only the holdout changes.
+                 "decision": SetSplit(**{**spec.model_dump(), "holdout": USUAL})}]
+    else:  # a cut-point holds rows out: a fit that holds none is not the current one
+        hold = [{"label": "Run the fit again", "decision": None}]
+    if not decisions.holds_out(spec):
         raise Refusal("nothing_sealed",
                       "Every row trains under cross-validation alone, so there are no held-out rows "
                       "to open.", exits=hold)
@@ -1928,15 +2089,41 @@ def _the_reseal_names_its_outcome(decision: Any, ctx: Any) -> Any:
     return decision.model_copy(update={"target": getattr(state, "target", None)})
 
 
-def _membership_change(then: Any, after: Any, ctx: Any) -> str | None:
-    """How the held-out rows under ``after`` differ from those drawn under ``then`` (the state the
-    seal was opened in), as a clause; None when the same rows are held out."""
-    was, now = then.split, after.split
-    if was is not None and now is not None and (was.holdout, was.seed) != (now.holdout, now.seed):
+def _share_words(split: Any) -> str:
+    return "nothing" if not split.holdout else f"`{split.holdout:.0%}`"
+
+
+def _drawn_otherwise(was: Any, now: Any) -> str | None:
+    """How the split ``now`` draws other held-out rows than ``was``, as a clause; None when it
+    draws the same. Under one cut-point the seed draws other folds, never other held-out rows."""
+    cut_was, cut_now = was.cut_point, now.cut_point
+    if cut_was is None and cut_now is None:
+        if (was.holdout, was.seed) == (now.holdout, now.seed):
+            return None
         if was.holdout != now.holdout:
             return (f"holding out {now.holdout:.0%} instead of {was.holdout:.0%} would draw other "
                     f"rows")
         return f"seed {now.seed} in place of seed {was.seed} would draw other rows"
+    if decisions.cut_key(cut_was) == decisions.cut_key(cut_now):
+        return None
+    if cut_was is None:
+        return (f"holding out the rows at or after `{decisions.cut_shown(cut_now.at)}` on "
+                f"`{cut_now.column}` instead of {_share_words(was)} would draw other rows")
+    if cut_now is None:
+        return (f"holding out {_share_words(now)} instead of the rows at or after "
+                f"`{decisions.cut_shown(cut_was.at)}` would draw other rows")
+    on = f" on `{cut_was.column}`" if cut_was.column != cut_now.column else ""
+    return (f"holding out from `{decisions.cut_shown(cut_now.at)}` on `{cut_now.column}` instead "
+            f"of from `{decisions.cut_shown(cut_was.at)}`{on} would draw other rows")
+
+
+def _membership_change(then: Any, after: Any, ctx: Any) -> str | None:
+    """How the held-out rows under ``after`` differ from those drawn under ``then`` (the state the
+    seal was opened in), as a clause; None when the same rows are held out."""
+    was, now = then.split, after.split
+    clause = _drawn_otherwise(was, now) if was is not None and now is not None else None
+    if clause is not None:
+        return clause
     for slot, what in DECISION_A.values():
         if getattr(then, slot) != getattr(after, slot):
             return f"changing {what} would draw them again"
@@ -2031,17 +2218,18 @@ def _a_scheme_after_the_opening_is_recorded(decision: Any, ctx: Any) -> None:
 
 
 def _a_changed_scheme_is_its_own_kind(decision: Any, ctx: Any) -> None:
-    """A split that keeps the current draw (the holdout and the seed) and changes only how the
-    training rows compare the models is a changed scheme, which is its own kind
+    """A split that keeps the current draw (the holdout, the seed and the cut-point) and changes
+    only how the training rows compare the models (a cut-point's folds' order among them) is a
+    changed scheme, which is its own kind
     (``set_validation``; crosswalk disagreement 5): recorded as a split it would move the draw's
     record without moving the draw. The same split again is still the split's (it restarts its
     work)."""
     state = _ctx(ctx, "state")
     split = getattr(state, "split", None) if state is not None else None
-    if split is None or (split.holdout, split.seed) != (decision.holdout, decision.seed):
+    if split is None or decisions.draw_key(split) != decisions.draw_key(decision):
         return
     scheme = {k: v for k, v in decision.model_dump(mode="json").items()
-              if k not in ("kind", "holdout", "seed")}
+              if k not in ("kind", "holdout", "seed", "cut_point")}
     now = {k: v for k, v in split.model_dump(mode="json").items() if k in scheme}
     if scheme == now:
         return
@@ -2055,7 +2243,71 @@ def _a_changed_scheme_is_its_own_kind(decision: Any, ctx: Any) -> None:
                {"label": "Keep the scheme as it is", "decision": None}])
 
 
+def _the_cut_point_reads_its_column(decision: Any, ctx: Any) -> None:
+    """A cut-point names a column of the table, and holds rows out of it and leaves some to train,
+    among the rows with the outcome recorded (:func:`cut_problem`; the draw judges units and can
+    only refuse more). The exit holds out the usual share instead, the scheme kept."""
+    cut = getattr(decision, "cut_point", None)
+    if cut is None:
+        return
+    share = {"label": f"Hold out {USUAL:.0%} instead",
+             "decision": {**decision.model_dump(mode="json"), "holdout": USUAL, "cut_point": None,
+                          "fold_order": None}}
+    columns = decisions._columns_of(ctx)
+    if columns is not None and cut.column not in columns:
+        raise Refusal("unknown_column", f"This dataset has no column named `{cut.column}`.",
+                      exits=[share])
+    store = decisions._store_of(ctx)
+    if store is None or cut.column not in set(store.columns):
+        return
+    state = _ctx(ctx, "state")
+    target = getattr(state, "target", None) or _ctx(ctx, "target")
+    read = [cut.column, *([target] if target in set(store.columns) and target != cut.column else [])]
+    frame = store.materialize(read)
+    raw = frame[cut.column] if target not in frame.columns else frame.loc[frame[target].notna(),
+                                                                          cut.column]
+    problem = cut_problem(raw, cut)
+    if problem is not None:
+        raise Refusal(problem[0], problem[1], exits=[share])
+
+
+def _a_folds_order_needs_a_cut(decision: Any, ctx: Any) -> None:
+    """The folds' order is a cut-point seal's own answer; where a share holds the rows out (or none
+    does) the held-out draw sets it (a draw by time orders the folds), so it is not answered."""
+    state = _ctx(ctx, "state")
+    split = getattr(state, "split", None) if state is not None else None
+    if decision.fold_order is None or split is None or split.cut_point is not None:
+        return
+    raise Refusal(
+        "no_cut_point",
+        "The folds' order is answered only when a cut-point holds the rows out; here the held-out "
+        "draw sets it.",
+        exits=[{"label": "Change the scheme, the folds' order left to the draw",
+                "decision": {**decision.model_dump(mode="json"), "fold_order": None}}])
+
+
+def _a_scheme_keeps_the_cut_point(decision: Any, ctx: Any) -> None:
+    """A scheme compares the models on the training rows the draw leaves; one that names another
+    cut-point than the split's would move the draw, which is the split's answer."""
+    cut = getattr(decision, "cut_point", None)
+    state = _ctx(ctx, "state")
+    split = getattr(state, "split", None) if state is not None else None
+    if cut is None or split is None or decisions.cut_key(cut) == decisions.cut_key(split.cut_point):
+        return
+    raise Refusal(
+        "scheme_keeps_the_draw",
+        "A validation scheme compares the models on the training rows the draw leaves, and never "
+        "moves the draw: another cut-point is the held-out rows question's answer.",
+        exits=[{"label": "Change the scheme only",
+                "decision": {**decision.model_dump(mode="json"), "cut_point": None}},
+               {"label": "Keep the scheme as it is", "decision": None}])
+
+
 decisions.register_validator("set_split", _a_changed_scheme_is_its_own_kind)
+decisions.register_validator("set_split", _the_cut_point_reads_its_column)
+# First: a probe folded by another validator would fold onto a scheme these refuse.
+decisions.register_validator("set_validation", _a_folds_order_needs_a_cut, first=True)
+decisions.register_validator("set_validation", _a_scheme_keeps_the_cut_point, first=True)
 decisions.register_validator("set_validation", _the_scheme_needs_a_draw)
 decisions.register_validator("set_validation", _a_scheme_after_the_opening_is_recorded)
 decisions.register_validator("open_seal", _open_seal_once_on_a_fresh_fit)

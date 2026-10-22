@@ -1208,7 +1208,8 @@ def rule_parts(frame: Any, rule: Any) -> tuple[Any, Any, Any]:
     always, with ``by`` when the row's level of ``by.column`` has its own range or the rule has
     bounds of its own (a row whose sex is missing or unrecognized, under a by-sex rule with no
     bounds of its own, is screened by nothing: audit D16). ``inside``: ``low <= value <= high``
-    (either bound may be open).
+    (either bound may be open). A level rule's ``screened`` is an answer other than its refused
+    and don't-know codes, and ``inside`` a level it does not exclude.
     """
     import pandas as pd
 
@@ -1217,6 +1218,12 @@ def rule_parts(frame: Any, rule: Any) -> tuple[Any, Any, Any]:
         from turbotab.core.methods.misreporting import parts
 
         return parts(frame, rule)
+    if _is_levels(rule):
+        # ``screened``: the answer is not a refused or don't-know code; ``inside``: its level is
+        # not one the rule excludes. A row is confirmed eligible when recorded and screened.
+        levels = _levels_of(frame, rule.column)
+        return (levels.notna(), ~levels.isin(_keys(rule.refused) | _keys(rule.dont_know)),
+                ~levels.isin(_keys(rule.exclude)))
     values = pd.to_numeric(frame[rule.column], errors="coerce").astype(float)
     low = pd.Series(np.nan if rule.low is None else float(rule.low), index=frame.index, dtype=float)
     high = pd.Series(np.nan if rule.high is None else float(rule.high), index=frame.index, dtype=float)
@@ -1236,8 +1243,9 @@ def rule_parts(frame: Any, rule: Any) -> tuple[Any, Any, Any]:
 def rule_keep(frame: Any, rule: Any) -> Any:
     """Boolean Series: True where ``rule`` keeps the row.
 
-    A range keeps ``low <= value <= high``. A row it cannot confirm (no value, or under ``by`` no
-    range for its level) is left out by default, the STROBE reading of "confirmed eligible"; with
+    A range keeps ``low <= value <= high``; a level rule keeps every level it does not exclude. A
+    row it cannot confirm (no value, under ``by`` no range for its level, or a level rule's refused
+    or don't-know code) is left out by default, the STROBE reading of "confirmed eligible"; with
     ``missing="keep"`` it is kept, and the flow's label says so (audit MA-19).
     """
     rule = _as_rule(rule)
@@ -1256,6 +1264,52 @@ def _as_rule(rule: Any) -> Any:
 
 def _is_goldberg(rule: Any) -> bool:
     return getattr(rule, "kind", "range") == "goldberg"
+
+
+def _is_levels(rule: Any) -> bool:
+    return getattr(rule, "kind", "range") == "levels"
+
+
+def _keys(levels: Iterable[Any]) -> set[str]:
+    return {_level_key(v) for v in levels}
+
+
+def _levels_of(frame: Any, column: str) -> Any:
+    """Each row's level of ``column`` in its one spelling (:func:`_level_key`); None when blank."""
+    import pandas as pd
+
+    return frame[column].map(lambda v: None if pd.isna(v) else _level_key(v)).astype(object)
+
+
+def _named_levels(levels: Iterable[Any], word: str = "or") -> str:
+    """"`1`", "`1` or `3`", "`1`, `3` or `4`": the levels a rule names, each in its spelling."""
+    shown = [f"`{_level_key(v)}`" for v in levels]
+    return shown[0] if len(shown) == 1 else f"{', '.join(shown[:-1])} {word} {shown[-1]}"
+
+
+# The lines a level rule's unconfirmed answers leave on, before its step: the refused and the
+# don't-know codes, each named in its own words (``LevelRule``; claim
+# ``eligibility.unconfirmed_answer``).
+UNCONFIRMED_LINES = (("refused", "refused", "refused"), ("dont_know", "don't know", "dont_know"))
+
+
+def _level_lines(frame: Any, rule: Any, i: int, keep: Any, recorded: Any
+                 ) -> list[tuple[str, str, Any, str]]:
+    """A level rule's own lines before its step, ``(key, label, rows, reason)``: no value, then
+    each named code that records a refused or a don't-know answer."""
+    from turbotab.core import claims
+
+    col = f"`{rule.column}`"
+    levels = _levels_of(frame, rule.column)
+    out = [(f"exclusion:{i}:not_recorded", f"{col} not recorded", keep & ~recorded,
+            f"no value for {col}, so the rule cannot confirm the row")]
+    for suffix, words, field in UNCONFIRMED_LINES:
+        codes = list(getattr(rule, field))
+        if codes:
+            out.append((f"exclusion:{i}:{suffix}", f"{col} {words} ({_named_levels(codes)})",
+                        keep & recorded & levels.isin(_keys(codes)),
+                        claims.card("eligibility.unconfirmed_answer", rule)))
+    return out
 
 
 def rule_lines(rule: Any) -> tuple[str, str | None, str, str]:
@@ -1288,6 +1342,14 @@ def rule_label(rule: Any) -> str:
 
         return label(rule)
     col = f"`{rule.column}`"
+    if _is_levels(rule):
+        text = f"{col} not {_named_levels(rule.exclude)}"
+        if rule.missing == "keep":
+            unknown = ["not recorded", *(words for _, words, field in UNCONFIRMED_LINES
+                                         if getattr(rule, field))]
+            text += ", or " + (unknown[0] if len(unknown) == 1 else
+                               f"{', '.join(unknown[:-1])} or {unknown[-1]}")
+        return text
     if rule.by is not None:
         text = f"{col} within its range for each `{rule.by.column}`"
     elif rule.low is not None and rule.high is not None:
@@ -1379,13 +1441,16 @@ def cohort_flow(
         # label and a line of its own say so.
         rule = _as_rule(rule)
         recorded, screened, inside = rule_parts(frame, rule)
-        unknown = keep & ~recorded
-        unscreened = keep & recorded & ~screened
-        unrecorded_label, unscreened_label, unrecorded_why, unscreened_why = rule_lines(rule)
-        lines = [(f"exclusion:{i}:not_recorded", unrecorded_label, unknown, unrecorded_why)]
-        if unscreened_label is not None:
-            lines.append((f"exclusion:{i}:not_screened", unscreened_label, unscreened,
-                          unscreened_why))
+        if _is_levels(rule):  # a refused or don't-know answer is named on a line of its own
+            lines = _level_lines(frame, rule, i, keep, recorded)
+        else:
+            unknown = keep & ~recorded
+            unscreened = keep & recorded & ~screened
+            unrecorded_label, unscreened_label, unrecorded_why, unscreened_why = rule_lines(rule)
+            lines = [(f"exclusion:{i}:not_recorded", unrecorded_label, unknown, unrecorded_why)]
+            if unscreened_label is not None:
+                lines.append((f"exclusion:{i}:not_screened", unscreened_label, unscreened,
+                              unscreened_why))
         for key, label, rows, reason in lines:
             n_rows = int(rows.sum())
             if not n_rows:
@@ -1837,7 +1902,8 @@ def draw_split(
     held out) and the facts the split artifact reports, plus ``sealed``: every row of the
     universe drawn to be held out, in or out of ``row_ids`` — the rows nothing may read.
     ``held`` (aligned like ``groups``) is a held-out mask drawn elsewhere — the seal's
-    chronological draw (``turbotab/core/seal.py``) — used in place of a random draw. ``order``
+    chronological draw or its cut-point (``turbotab/core/seal.py``) — used in place of a random
+    draw. ``order``
     (aligned like ``groups``: each row's unit rank in time, ``seal.time_order``) makes the folds
     time-ordered: forward chaining by whole unit (audit MA-11), with fold stratification decided
     on its own, never inherited from how the held-out rows were drawn (A17).
@@ -2011,7 +2077,9 @@ def split_stage(ctx: StageContext) -> Bundle:
     structure = ctx.inputs.get("structure")  # the grain stated from a unique identifier
     with open_store(ctx) as store:
         seal = seal_inputs(ctx.state, universe, store, task, holdout=spec.holdout, seed=spec.seed,
-                           structure=getattr(structure, "data", structure))
+                           structure=getattr(structure, "data", structure),
+                           cut_point=getattr(spec, "cut_point", None),
+                           fold_order=getattr(spec, "fold_order", None))
     if seal.refusal:
         raise ValueError(seal.refusal)
     validation = getattr(spec, "validation", "kfold")

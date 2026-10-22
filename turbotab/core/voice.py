@@ -567,8 +567,14 @@ def _set_validation(d: Any, state: Any, ctx: Any) -> str:
     from turbotab.core.decisions import SetSplit
 
     split = getattr(state, "split", None)
+    cut = getattr(split, "cut_point", None)  # the draw's cut-point and, unless changed, its folds'
+    scheme = d.scheme()
+    if cut is None:
+        scheme.pop("fold_order", None)  # answered only under a cut-point (refused elsewhere)
     drawn = SetSplit(holdout=getattr(split, "holdout", 0.0), seed=getattr(split, "seed", 0),
-                     **d.scheme())
+                     cut_point=cut,
+                     **{"fold_order": getattr(split, "fold_order", None) if cut is not None else None,
+                        **scheme})
     said = _set_split(drawn, state, ctx)
     body = said[0].lower() + said[1:] if said[:1].isupper() and not said[1:2].isupper() else said
     return f"The validation scheme was changed, the held-out rows kept as drawn: {body}"
@@ -1049,9 +1055,27 @@ def _goldberg_phrase(rule: Any) -> str:
             f"cut-offs for {pal} and {days}{unconfirmed}")
 
 
+def _level_phrase(rule: Any) -> str:
+    """"`DIQ010` `1`, or refused (`7`), don't know (`9`) or not recorded": the levels a level rule
+    excludes and, unless it keeps them, the answers it cannot confirm (``stages.rows.rule_keep``),
+    each refused or don't-know code named."""
+    from turbotab.core.stages.rows import UNCONFIRMED_LINES, _named_levels
+
+    text = f"{tick(rule.column)} {_named_levels(rule.exclude)}"
+    if rule.missing != "exclude":
+        return text
+    unknown = [f"{words} ({_named_levels(getattr(rule, field))})"
+               for _, words, field in UNCONFIRMED_LINES if getattr(rule, field)]
+    unknown.append("not recorded")
+    return text + ", or " + (unknown[0] if len(unknown) == 1 else
+                             f"{', '.join(unknown[:-1])} or {unknown[-1]}")
+
+
 def _rule_phrase(rule: Any) -> str:
     if getattr(rule, "kind", "range") == "goldberg":
         return _goldberg_phrase(rule)
+    if getattr(rule, "kind", "range") == "levels":
+        return _level_phrase(rule)
     column = tick(rule.column)
     # A rule leaves out the rows it cannot confirm unless told to keep them (stages.rows.rule_keep).
     unconfirmed = " or not recorded" if getattr(rule, "missing", "exclude") == "exclude" else ""
@@ -1418,6 +1442,11 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         grouped = _attr(basis, "state") == "grouped" and _attr(basis, "source") != "aggregation"
         group = _attr(basis, "column") if grouped else None  # combined per unit: nothing repeats
     latest = bool(chron is not None and _attr(chron, "drawn") and _attr(chron, "time_column"))
+    # SWARM_PLAN §8: a cut-point holds the rows out in place of a share, and its folds' order is
+    # its own answer (``SplitSpec.fold_order``), never the seal plan's reading of the temporal one.
+    cut = getattr(d, "cut_point", None)
+    if cut is not None:
+        latest = False
     how = []
     if group:
         how.append(f"keeping each {tick(group)}'s rows together")
@@ -1429,7 +1458,9 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     manner = " (" + ", ".join([f"seed {tick(d.seed)}", *how]) + ")"
     folds = f"{tick(d.folds)}-fold cross-validation"
     compared = f"models were compared by {folds} on the rest"
-    if plan is not None and _attr(plan, "time_ordered_folds"):  # audit MA-11: folds follow time
+    time_ordered = (getattr(d, "fold_order", None) == "time" if cut is not None
+                    else plan is not None and bool(_attr(plan, "time_ordered_folds")))
+    if time_ordered:  # audit MA-11: folds follow time
         folds = (f"cross-validation over {tick(d.folds)} time-ordered folds, each scored by models "
                  f"fit on earlier units")
         compared = f"models were compared on the rest by {folds}"
@@ -1451,7 +1482,6 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
                 f"whose cross-validated score stands because the bootstrap overstates it")
     # MS6 (MODELING_SEQUENCE ruling 4): under prediction the comparisons run on repeated k-fold,
     # at least 10 × K, whatever validation gives the score (models/folds.py).
-    time_ordered = plan is not None and bool(_attr(plan, "time_ordered_folds"))
     if getattr(state, "purpose", None) != "inference" and not time_ordered:
         from turbotab.core.models.folds import COMPARISON_REPEATS
 
@@ -1505,11 +1535,23 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         # cross-validated score is shown, so the record says none was estimated, never how.
         compared, boot, r2 = (f"no cross-validated score is reported under inference: the declared "
                               f"model is reported by its estimates"), "", ""
-        if d.holdout == 0:
+        if d.holdout == 0 and cut is None:
             return (f"No rows were held out: every analyzed row estimates the coefficients, and "
                     f"{compared}")
-    elif d.holdout == 0:
+    elif d.holdout == 0 and cut is None:
         return f"No rows were held out; performance was estimated by {folds}{manner}{boot}{r2}"
+    if cut is not None:
+        # No count, as for a share: the rows held out are drawn over every row with the outcome
+        # recorded, and the seal's own sentence counts them (``seal.cut_holdout``).
+        from turbotab.core import claims
+        from turbotab.core.decisions import cut_shown
+
+        text = (f"A cut-point at {tick(cut_shown(cut.at))} on {tick(cut.column)} "
+                f"{claims.methods('seal.cut_point', d)}; {compared}{boot}{r2}")
+        if basis is not None and _attr(basis, "exploratory"):
+            text += (f"; the held-out score is exploratory, as the split's basis is "
+                     f"{_attr(basis, 'label')}")
+        return text
     share = tick(f"{d.holdout:.0%}")
     # No count: the held-out rows are drawn over every row with the outcome recorded, and the
     # analysis count changes with any later exclusion or missing-values answer; the banner and

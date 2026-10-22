@@ -81,6 +81,11 @@
       "status": "built"
     },
     {
+      "hash": "6fdeb42ca9b613e945ceadd22071af58b757b326851559a645751d10beebf93b",
+      "id": "eligibility.unconfirmed_answer",
+      "status": "built"
+    },
+    {
       "hash": "3ea24f93186cb79401fff1b0e7f3bfe886b45210bf689c67d4b8d955fc29d8b0",
       "id": "energy.no_energy_no_swap",
       "status": "built"
@@ -163,6 +168,11 @@
     {
       "hash": "1d25073ea52f8138321ad350d684929d51f84b656b12b68648a6914da4f79147",
       "id": "seal.by_row_exploratory",
+      "status": "built"
+    },
+    {
+      "hash": "9e8c8f7037724060273a1889f4d51f68dc6b04297ad7a031ca189476e6e89be4",
+      "id": "seal.cut_point",
       "status": "built"
     },
     {

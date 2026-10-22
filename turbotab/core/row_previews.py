@@ -27,6 +27,7 @@ from turbotab.core.consequences import (
     PreviewContext, RowFlowView, RowStep, TableFocusView, TableRow, _histogram_pair, clip_words,
     fmt_count, fmt_value, lineage_of, register_consequence,
 )
+from turbotab.core import decisions
 from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState
 from turbotab.core.plan_previews import specifies_the_model
 from turbotab.core.stages.rows import (
@@ -106,6 +107,17 @@ def exclusions_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if not decision.rules:
         caption = f"No rule excludes a row: all {fmt_count(entering)} {_pool_words(ctx)} pass"
         caption += f"; the current rules exclude {fmt_count(now)}." if now else "."
+    elif any(getattr(r, "kind", "range") == "levels" for r in decision.rules):
+        # A level rule's blank, refused and don't-know answers leave on lines of their own, as a
+        # range's rows with no value do (stages.rows.cohort_flow): each a line before its step.
+        unconfirmed = sum(s["dropped"] for s in after
+                          if s["key"].startswith("exclusion:") and s["key"].count(":") == 2)
+        ranges = any(getattr(r, "kind", "range") != "levels" for r in decision.rules)
+        where = "outside these ranges or at an excluded level" if ranges else "at an excluded level"
+        caption = (f"{fmt_count(excluded)} of {fmt_count(entering)} {_pool_words(ctx)} would "
+                   f"leave: {fmt_count(excluded - unconfirmed)} {where}, "
+                   f"{fmt_count(unconfirmed)} not confirmed eligible; "
+                   f"{fmt_count(entering - excluded)} stay.")
     else:
         # Rows with no value to check leave on lines of their own (stages.rows.cohort_flow).
         unchecked = sum(s["dropped"] for s in after
@@ -603,7 +615,9 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
     structure = _structure(ctx)
     draw = seal.seal_inputs(state, universe, ctx.datastore, task, holdout=decision.holdout,
-                            seed=decision.seed, structure=structure)
+                            seed=decision.seed, structure=structure,
+                            cut_point=getattr(decision, "cut_point", None),
+                            fold_order=getattr(decision, "fold_order", None))
     if draw.refusal:
         ctx.read["note"] = draw.refusal
         return []
@@ -621,8 +635,11 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         held_counts = seal.outcome_counts(task, np.asarray(draw.labels, dtype=object)[in_held],
                                           getattr(state, "event", None))
     measures, below = seal.measure(task, int(info["n_holdout"]), held_counts)
+    chron = draw.chronology if draw.chronology is not None and draw.chronology.drawn else None
     if info["n_holdout"]:
-        how = (f"the latest by `{draw.chronology.time_column}`" if draw.chronology and draw.chronology.drawn
+        how = (f"at or after `{chron.cut_point}` on `{chron.time_column}`"
+               if chron is not None and chron.cut_point is not None
+               else f"the latest by `{chron.time_column}`" if chron is not None
                else f"grouped by `{info['grouped_by']}`" if info["grouped_by"] else "by row")
         caption = f"{fmt_count(info['n_holdout'])} rows held out, {how}. {measures}"
     else:
@@ -630,11 +647,12 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                    + (f"{fmt_count(info['folds'])} time-ordered folds."
                       if info.get("fold_scheme") == "time_ordered"
                       else f"{fmt_count(info['folds'])}-fold cross-validation."))
-    if draw.exploratory and decision.holdout > 0:
+    held_out = decisions.holds_out(decision)
+    if draw.exploratory and held_out:
         basis = draw.basis
         ctx.caution = Caution(text=basis.sentence if basis.exploratory else draw.chronology.sentence,
                               exits=seal_exits(draw, decision, structure))
-    elif below and decision.holdout > 0:
+    elif below and held_out:
         floor = seal.floor_for(task)
         ctx.caution = Caution(
             text=f"{measures} {floor.text}",

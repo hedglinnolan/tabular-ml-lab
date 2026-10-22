@@ -1382,6 +1382,8 @@ export interface components {
              * @default []
              */
             earlier: components["schemas"]["EarlierRows"][];
+            /** Cut Point */
+            cut_point: string | null;
         };
         /**
          * ClaimRendered
@@ -1927,6 +1929,20 @@ export interface components {
         CreateProject: {
             /** Path */
             path: string;
+        };
+        /**
+         * CutPoint
+         * @description A temporal seal by cut-point (SWARM_PLAN §8; ``core/seal.py``): every row whose ``column``
+         *     reads at or after ``at`` is held out, a unit with rows on both sides held out whole (by its last
+         *     observation, as the chronological draw ranks units), and the other rows train. ``at`` is a
+         *     value of the column as it reads: a number for a numeric column (a numeral written as text reads
+         *     as that number), a date for a dated one.
+         */
+        CutPoint: {
+            /** Column */
+            column: string;
+            /** At */
+            at: number | string;
         };
         /** DecisionRecord */
         DecisionRecord: {
@@ -3230,6 +3246,74 @@ export interface components {
             sentence: string;
         };
         /**
+         * LevelRule
+         * @description Exclude rows by a level of a categorical or coded column (SWARM_PLAN §5, §8): diagnosed
+         *     diabetes by its code. The codes that record a refused answer and a don't-know answer are named
+         *     on their own (``refused``, ``dont_know``), never read as levels: such an answer cannot confirm
+         *     that a row is eligible (STROBE item 13a's "confirmed eligible"), so, like a blank, the row
+         *     leaves on a line of its own named with its code, or with ``missing="keep"`` stays and the line
+         *     says so. A code the rule does not name is an answer like any other level, and every level the
+         *     rule does not exclude stays.
+         */
+        "LevelRule-Input": {
+            /**
+             * Kind
+             * @default levels
+             * @constant
+             */
+            kind: "levels";
+            /** Column */
+            column: string;
+            /** Exclude */
+            exclude: (string | number)[];
+            /** Refused */
+            refused?: (string | number)[];
+            /** Dont Know */
+            dont_know?: (string | number)[];
+            /** Reason */
+            reason: string;
+            /**
+             * Missing
+             * @default exclude
+             * @enum {string}
+             */
+            missing: "exclude" | "keep";
+        };
+        /**
+         * LevelRule
+         * @description Exclude rows by a level of a categorical or coded column (SWARM_PLAN §5, §8): diagnosed
+         *     diabetes by its code. The codes that record a refused answer and a don't-know answer are named
+         *     on their own (``refused``, ``dont_know``), never read as levels: such an answer cannot confirm
+         *     that a row is eligible (STROBE item 13a's "confirmed eligible"), so, like a blank, the row
+         *     leaves on a line of its own named with its code, or with ``missing="keep"`` stays and the line
+         *     says so. A code the rule does not name is an answer like any other level, and every level the
+         *     rule does not exclude stays.
+         */
+        "LevelRule-Output": {
+            /**
+             * Kind
+             * @default levels
+             * @constant
+             */
+            kind: "levels";
+            /** Column */
+            column: string;
+            /** Exclude */
+            exclude: (string | number)[];
+            /** Refused */
+            refused: (string | number)[];
+            /** Dont Know */
+            dont_know: (string | number)[];
+            /** Reason */
+            reason: string;
+            /**
+             * Missing
+             * @default exclude
+             * @enum {string}
+             */
+            missing: "exclude" | "keep";
+        };
+        /**
          * LevelValues
          * @description A number per level of another column (a PAL per activity category).
          */
@@ -4125,7 +4209,7 @@ export interface components {
             } | null;
             energy_adjustment: components["schemas"]["EnergyAdjustment"] | null;
             /** Exclusions */
-            exclusions: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"])[] | null;
+            exclusions: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"] | components["schemas"]["LevelRule-Output"])[] | null;
             missing: components["schemas"]["MissingSpec"] | null;
             split: components["schemas"]["SplitSpec"] | null;
             /** Models */
@@ -5137,7 +5221,7 @@ export interface components {
             /** Label */
             label: string;
             /** Rules */
-            rules?: (components["schemas"]["ExclusionRule-Input"] | components["schemas"]["GoldbergRule-Input"])[];
+            rules?: (components["schemas"]["ExclusionRule-Input"] | components["schemas"]["GoldbergRule-Input"] | components["schemas"]["LevelRule-Input"])[];
         };
         /**
          * SensitivityAnalysis
@@ -5147,7 +5231,7 @@ export interface components {
             /** Label */
             label: string;
             /** Rules */
-            rules: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"])[];
+            rules: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"] | components["schemas"]["LevelRule-Output"])[];
         };
         /**
          * ServedFit
@@ -5832,7 +5916,7 @@ export interface components {
              */
             kind: "set_exclusions";
             /** Rules */
-            rules: (components["schemas"]["ExclusionRule-Input"] | components["schemas"]["GoldbergRule-Input"])[];
+            rules: (components["schemas"]["ExclusionRule-Input"] | components["schemas"]["GoldbergRule-Input"] | components["schemas"]["LevelRule-Input"])[];
         };
         /**
          * SetExclusions
@@ -5845,7 +5929,7 @@ export interface components {
              */
             kind: "set_exclusions";
             /** Rules */
-            rules: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"])[];
+            rules: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"] | components["schemas"]["LevelRule-Output"])[];
         };
         /** SetExplain */
         "SetExplain-Input": {
@@ -6959,6 +7043,9 @@ export interface components {
              * @default false
              */
             nested_cv: boolean;
+            cut_point?: components["schemas"]["CutPoint"] | null;
+            /** Fold Order */
+            fold_order?: ("random" | "time") | null;
         };
         /** SetSplit */
         "SetSplit-Output": {
@@ -7002,6 +7089,9 @@ export interface components {
              * @default false
              */
             nested_cv: boolean;
+            cut_point: components["schemas"]["CutPoint"] | null;
+            /** Fold Order */
+            fold_order: ("random" | "time") | null;
         };
         /**
          * SetSubstitution
@@ -7530,6 +7620,9 @@ export interface components {
              * @default false
              */
             nested_cv: boolean;
+            /** Fold Order */
+            fold_order?: ("random" | "time") | null;
+            cut_point?: components["schemas"]["CutPoint"] | null;
             /**
              * Acknowledged
              * @default false
@@ -7579,6 +7672,9 @@ export interface components {
              * @default false
              */
             nested_cv: boolean;
+            /** Fold Order */
+            fold_order: ("random" | "time") | null;
+            cut_point: components["schemas"]["CutPoint"] | null;
             /**
              * Acknowledged
              * @default false
@@ -7636,6 +7732,9 @@ export interface components {
              * @default false
              */
             nested_cv: boolean;
+            cut_point: components["schemas"]["CutPoint"] | null;
+            /** Fold Order */
+            fold_order: ("random" | "time") | null;
         };
         /** StageResult */
         StageResult: {
@@ -10641,7 +10740,7 @@ export interface components {
             /** Key */
             key: string;
             /** Rule */
-            rule: components["schemas"]["ExclusionRule"] | components["schemas"]["GoldbergRule"];
+            rule: components["schemas"]["ExclusionRule"] | components["schemas"]["GoldbergRule"] | components["schemas"]["LevelRule"];
             /** Label */
             label: string;
             /** Affected */
@@ -12252,6 +12351,40 @@ export interface components {
              */
             kind: "at_or_above" | "is";
             calibration: components["schemas"]["Calibration"] | null;
+        };
+        /**
+         * LevelRule
+         * @description Exclude rows by a level of a categorical or coded column (SWARM_PLAN §5, §8): diagnosed
+         *     diabetes by its code. The codes that record a refused answer and a don't-know answer are named
+         *     on their own (``refused``, ``dont_know``), never read as levels: such an answer cannot confirm
+         *     that a row is eligible (STROBE item 13a's "confirmed eligible"), so, like a blank, the row
+         *     leaves on a line of its own named with its code, or with ``missing="keep"`` stays and the line
+         *     says so. A code the rule does not name is an answer like any other level, and every level the
+         *     rule does not exclude stays.
+         */
+        LevelRule: {
+            /**
+             * Kind
+             * @default levels
+             * @constant
+             */
+            kind: "levels";
+            /** Column */
+            column: string;
+            /** Exclude */
+            exclude: (string | number)[];
+            /** Refused */
+            refused: (string | number)[];
+            /** Dont Know */
+            dont_know: (string | number)[];
+            /** Reason */
+            reason: string;
+            /**
+             * Missing
+             * @default exclude
+             * @enum {string}
+             */
+            missing: "exclude" | "keep";
         };
         /** Lever */
         Lever: {
@@ -14433,7 +14566,7 @@ export interface components {
             /** Label */
             label: string;
             /** Rules */
-            rules: (components["schemas"]["ExclusionRule"] | components["schemas"]["GoldbergRule"])[];
+            rules: (components["schemas"]["ExclusionRule"] | components["schemas"]["GoldbergRule"] | components["schemas"]["LevelRule"])[];
         };
         /** SensitivityArtifact */
         SensitivityArtifact: {
@@ -14900,7 +15033,7 @@ export interface components {
              */
             kind: "set_exclusions";
             /** Rules */
-            rules: (components["schemas"]["ExclusionRule"] | components["schemas"]["GoldbergRule"])[];
+            rules: (components["schemas"]["ExclusionRule"] | components["schemas"]["GoldbergRule"] | components["schemas"]["LevelRule"])[];
         };
         /** SetExplain */
         SetExplain: {
@@ -15545,6 +15678,13 @@ export interface components {
              * @default false
              */
             nested_cv: boolean;
+            /** @default null */
+            cut_point: components["schemas"]["CutPoint"] | null;
+            /**
+             * Fold Order
+             * @default null
+             */
+            fold_order: ("random" | "time") | null;
         };
         /**
          * SetSubstitution
@@ -15866,6 +16006,13 @@ export interface components {
              * @default false
              */
             nested_cv: boolean;
+            /**
+             * Fold Order
+             * @default null
+             */
+            fold_order: ("random" | "time") | null;
+            /** @default null */
+            cut_point: components["schemas"]["CutPoint"] | null;
             /**
              * Acknowledged
              * @default false

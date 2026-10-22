@@ -1170,3 +1170,59 @@ register(Claim(
     author=RF1_AUTHOR,
     origin="audit",
 ))
+
+
+# ── SWARM_PLAN §10 package 4: the categorical eligibility rule ───────────────────────────────
+# Its line's reason is the claim's card; the flow names the column and the code around it
+# (stages.rows._level_lines), and the methods sentence names each code (voice._level_phrase). The
+# author grades no part above judgment (CLAIMS_REGISTRY.md §2.4).
+
+P4_AUTHOR = "swarm package 4 builder"
+P4_LEVEL_TESTS = "turbotab/core/tests/test_level_eligibility.py"
+
+
+def names_a_refused_or_unknown_code(ctx: Any) -> bool:
+    """A categorical eligibility rule (its ``kind`` "levels") that names at least one code
+    recording a refused answer or a don't-know one."""
+    return _get(ctx, "kind") == "levels" and bool(_get(ctx, "refused") or _get(ctx, "dont_know"))
+
+
+register(Claim(
+    id="eligibility.unconfirmed_answer",
+    kind="rule",
+    card="a refused or don't-know answer cannot confirm the row is eligible",
+    regime=Regime("a categorical eligibility rule that names the codes recording a refused or a "
+                  "don't-know answer, by default (the rule keeps them only when told to)",
+                  requires=(f"{HERE}:names_a_refused_or_unknown_code",)),
+    decision="set_exclusions",
+    options=("exclude", "keep"),
+    verdict="recommended",
+    parts=(
+        Part("default", grade="judgment", basis=Basis(
+            cites=("vonelm2007strobe",),
+            reason="STROBE item 13a counts the participants confirmed eligible; a refused or "
+                   "don't-know answer to an eligibility question confirms nothing, so we leave "
+                   "the row out by default, as a blank already is (audit MA-19), on a line that "
+                   "names the code, and keep it only where the rule says to, the line then "
+                   "saying it was kept.")),
+        Part("named_only", grade="judgment", basis=Basis(
+            reason="Which codes record a refused or a don't-know answer is the codebook's, not "
+                   "the data's (NHANES uses 7 and 9, or 77 and 99, beside real levels), so only "
+                   "a code the rule names is read so; any other code is a level, kept unless "
+                   "excluded.")),
+    ),
+    tests=(
+        Fires(f"{P4_LEVEL_TESTS}::test_a_refused_or_dont_know_answer_leaves_on_a_named_line_of_its_"
+              "own", truth="construction"),
+        Silent(f"{P4_LEVEL_TESTS}::test_a_rule_that_keeps_unconfirmed_answers_keeps_them_and_each_"
+               "line_says_so", truth="construction"),
+        Silent(f"{P4_LEVEL_TESTS}::test_a_code_the_rule_does_not_name_is_an_answer_like_any_other",
+               truth="construction"),
+        Fires(f"{P4_LEVEL_TESTS}::test_the_sentence_counts_what_the_flow_counts_and_names_each_code",
+              truth="construction"),
+    ),
+    enforced_by=("turbotab.core.stages.rows:rule_keep", "turbotab.core.stages.rows:_level_lines",
+                 "turbotab.core.voice:_level_phrase"),
+    author=P4_AUTHOR,
+    origin="engine",
+))

@@ -936,6 +936,11 @@ EXCLUSIONS = {
                "is excluded."),
         option("custom", "Your own range",
                "Rows outside a range you set on a numeric column, never the outcome, are excluded."),
+        # SWARM_PLAN §5, §8: the categorical eligibility rule (decisions.LevelRule); a refused or
+        # don't-know code cannot confirm a row (claim eligibility.unconfirmed_answer).
+        option("levels", "By level",
+               "Rows at levels you name are excluded, as are blanks and refused or don't-know "
+               "codes named."),
     ],
     "terms": [
         term("eligibility criterion", "Who the study is about, such as an age range: applied to "
@@ -1078,6 +1083,9 @@ SPLIT = {
                "One row in five is sealed for the final score."),
         option("0.3", "Hold out 30%",
                "Nearly a third is sealed: a steadier final score, fewer rows to train."),
+        # SWARM_PLAN §8: the temporal seal by cut-point (decisions.CutPoint; claim seal.cut_point).
+        option("cut", "Hold out by cut-point",
+               "Rows at or after a time value you name are sealed, each unit kept whole."),
     ],
     "terms": [
         term("holdout", "Rows set aside before any modeling and scored once, at the end; the "

@@ -128,6 +128,14 @@ def yes_no_left_uncorrected(ctx: Any) -> bool:
     return _field(ctx, "task") == "binary" and _field(ctx, "imbalance") in (None, "none")
 
 
+def held_out_by_a_cut_point(ctx: Any) -> bool:
+    """The split holds rows out by a cut-point: it names a column and a value, and draws no share
+    beside it (SWARM_PLAN §8's temporal seal by cut-point)."""
+    cut = _field(ctx, "cut_point")
+    return (cut is not None and bool(_field(cut, "column")) and _field(cut, "at") not in (None, "")
+            and not _field(ctx, "holdout"))
+
+
 def drawn_by_row(ctx: Any) -> bool:
     """The seal could not keep a unit's rows together: its basis is ``abandoned`` (a unit's rows
     repeat, or were said to, and nothing groups them) or ``undetermined`` (whether they can repeat
@@ -899,17 +907,73 @@ SEAL_BY_ROW = register(Claim(
     origin="audit",
 ))
 
+# ── SWARM_PLAN §10 package 4: the temporal seal by cut-point ─────────────────────────────────
+# The seal's sentence leads with the cut-point's column, value and counts and then says the
+# claim's card (seal.cut_holdout); the split's methods sentence names the column and value and
+# then says its methods register (voice._set_split). The author grades no part above judgment.
+
+P4_AUTHOR = "swarm package 4 builder"
+P4_CUT_TESTS = "turbotab/core/tests/test_cut_point_seal.py"
+
+SEAL_CUT_POINT = register(Claim(
+    id="seal.cut_point",
+    kind="rule",
+    card="A cut-point holds out every row at or after it, with the earlier rows of any unit it "
+         "holds out; the other rows train.",
+    methods="held out every row at or after it for one final score, with the earlier rows of any "
+            "unit it held out",
+    regime=Regime("a split that holds rows out by a cut-point on a column that reads as numbers "
+                  "or dates, in place of a share, whatever the folds' order",
+                  requires=(f"{HERE}:held_out_by_a_cut_point",)),
+    decision="set_split.cut_point",
+    verdict="noted",
+    parts=(
+        Part("boundary", grade="judgment", basis=Basis(
+            reason="At or after: a row at the cut-point itself is held out, so a later cycle's "
+                   "first value (2017-March 2020's, SWARM_PLAN §5) is all held out; the fires "
+                   "test puts rows at the value and a hair before it.")),
+        Part("whole_units", grade="judgment", basis=Basis(
+            reason="A unit with rows on both sides is held out whole, by its last observation, as "
+                   "the chronological draw ranks units (GUIDED-143: a unit split across the "
+                   "boundary trades one leak for another), so its earlier rows are held out too "
+                   "and the seal counts them (audit IN-24).")),
+        Part("folds_free", grade="judgment", basis=Basis(
+            reason="The training folds' order is the split's own answer under a cut-point "
+                   "(SWARM_PLAN §10's watch note on package 3), so the same held-out rows can be "
+                   "scored with random repeated folds or time-ordered ones; random folds there "
+                   "are the analyst's call, which the methods sentence states.")),
+    ),
+    tests=(
+        Fires(f"{P4_CUT_TESTS}::test_every_row_at_or_after_the_cut_point_is_held_out_and_every_"
+              "earlier_row_trains", truth="construction"),
+        Fires(f"{P4_CUT_TESTS}::test_a_unit_seen_on_both_sides_is_held_out_whole_and_its_earlier_"
+              "rows_are_counted", truth="construction"),
+        Silent(f"{P4_CUT_TESTS}::test_the_draw_by_share_still_orders_its_folds_by_time",
+               truth="construction"),
+        Fires(f"{P4_CUT_TESTS}::test_the_same_held_out_rows_take_random_repeated_folds_or_time_"
+              "ordered_ones", truth="construction"),
+        Fires(f"{P4_CUT_TESTS}::test_the_split_sentence_says_what_the_cut_point_held_out",
+              truth="construction"),
+    ),
+    enforced_by=("turbotab.core.seal:cut_holdout", "turbotab.core.seal:_cut",
+                 "turbotab.core.voice:_set_split"),
+    author=P4_AUTHOR,
+    origin="engine",
+))
+
 CLAIMS = (SMALL_SAMPLE_STANDARD, SMALL_SAMPLE_STANDARD_ESTIMATE, SMALL_SAMPLE_STANDARD_CLASSES,
           SMALL_SAMPLE_NO_SEARCH, BOOSTED_TREES_SMALL_ROWS, FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR,
           ROWS_SMD_FLOOR_PREDICTION, COLLINEAR_UNDER_PREDICTION, VALIDATION_RESAMPLING_FIRST,
-          VALIDATION_PAIRED_INTERVAL, MODELING_NO_RESAMPLING, SEAL_BY_ROW)
+          VALIDATION_PAIRED_INTERVAL, MODELING_NO_RESAMPLING, SEAL_BY_ROW, SEAL_CUT_POINT)
 
 __all__ = ["AUTHOR", "BASELINE_FLOOR", "BOOSTED_TREES_SMALL_ROWS", "CLAIMS",
            "COLLINEAR_UNDER_PREDICTION", "FOREST_SMALL_ROWS", "MODELING_NO_RESAMPLING",
-           "ROWS_SMD_FLOOR", "ROWS_SMD_FLOOR_PREDICTION", "SEAL_BY_ROW", "SMALL_SAMPLE_STANDARD",
+           "ROWS_SMD_FLOOR", "ROWS_SMD_FLOOR_PREDICTION", "SEAL_BY_ROW", "SEAL_CUT_POINT",
+           "SMALL_SAMPLE_STANDARD",
            "SMALL_SAMPLE_STANDARD_CLASSES", "SMALL_SAMPLE_STANDARD_ESTIMATE",
            "SMALL_SAMPLE_NO_SEARCH", "VALIDATION_PAIRED_INTERVAL", "VALIDATION_RESAMPLING_FIRST",
-           "classes_or_ordered", "drawn_by_row", "rated_before_any_fit", "rows_times_smd",
+           "classes_or_ordered", "drawn_by_row", "held_out_by_a_cut_point", "rated_before_any_fit",
+           "rows_times_smd",
            "searched_without_a_small_sample_standard", "standard_from_the_study",
            "under_either_purpose", "under_inference", "under_prediction", "verdict_metric",
            "yes_no_left_uncorrected", "yes_no_or_numeric"]

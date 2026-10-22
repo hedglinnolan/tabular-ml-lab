@@ -10,11 +10,15 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { SealPlan } from "../../../api/m2-types";
 import type { Decision, ProjectState } from "../../../api/schema";
-import { SealAsk } from "./SealQuestions";
+import { SealAsk, cutDecision } from "./SealQuestions";
 
 type Split = NonNullable<ProjectState["split"]>;
 
-function renderSeal(current: ProjectState["split"], plan: SealPlan | null = null) {
+function renderSeal(
+  current: ProjectState["split"],
+  plan: SealPlan | null = null,
+  timeColumns: { name: string; numeric: boolean }[] = [],
+) {
   const record = vi.fn<(d: Decision, at?: string) => void>();
   render(
     <SealAsk
@@ -33,6 +37,7 @@ function renderSeal(current: ProjectState["split"], plan: SealPlan | null = null
       plan={plan}
       roles={undefined}
       current={current}
+      timeColumns={timeColumns}
     />,
   );
   return record;
@@ -54,6 +59,8 @@ const CHANGED: Split = {
   n_boot: 700,
   cluster: null,
   nested_cv: true,
+  cut_point: null,
+  fold_order: null,
 };
 const SCHEME_OF_CHANGED = {
   folds: 10,
@@ -63,6 +70,8 @@ const SCHEME_OF_CHANGED = {
   cluster: null,
   nested_cv: true,
 };
+// A share holds no cut-point, and its folds' order is the draw's (decisions.py SplitSpec).
+const BY_SHARE = { cut_point: null, fold_order: null };
 
 describe("re-answering the seal", () => {
   it.each([
@@ -76,6 +85,7 @@ describe("re-answering the seal", () => {
       holdout,
       seed: 0,
       ...SCHEME_OF_CHANGED,
+      ...BY_SHARE,
     });
   });
 
@@ -109,6 +119,7 @@ describe("re-answering the seal", () => {
       n_boot: 500,
       cluster: null,
       nested_cv: false,
+      ...BY_SHARE,
     });
   });
 
@@ -131,6 +142,56 @@ describe("re-answering the seal", () => {
       holdout: 0,
       seed: 0,
       ...SCHEME_OF_CHANGED,
+      ...BY_SHARE,
     });
+  });
+});
+
+// SWARM_PLAN §8: a temporal seal by cut-point, its folds' order its own answer.
+describe("a cut-point", () => {
+  const TIME = [
+    { name: "cycle", numeric: true },
+    { name: "visit", numeric: false },
+  ];
+
+  it("records nothing until its value and its folds' order are given", () => {
+    const record = renderSeal(CHANGED, null, TIME);
+    fireEvent.change(screen.getByLabelText("The first value held out"), {
+      target: { value: "2017" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Seal from here" }));
+    expect(record).not.toHaveBeenCalled(); // no folds' order chosen yet
+    fireEvent.change(screen.getByLabelText("How the training folds are ordered"), {
+      target: { value: "random" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Seal from here" }));
+    expect(record.mock.calls[0]![0]).toEqual({
+      kind: "set_split",
+      holdout: 0,
+      seed: 0,
+      ...SCHEME_OF_CHANGED,
+      cut_point: { column: "cycle", at: 2017 },
+      fold_order: "random",
+    });
+  });
+
+  it("sends a numeral on a numeric column as the number, and a date as written", () => {
+    expect(cutDecision("cycle", " 2017 ", "time", true, null)?.cut_point).toEqual({
+      column: "cycle",
+      at: 2017,
+    });
+    expect(cutDecision("visit", "2020-01-01", "time", false, null)?.cut_point).toEqual({
+      column: "visit",
+      at: "2020-01-01",
+    });
+    expect(cutDecision("cycle", "", "time", true, null)).toBeNull();
+    expect(cutDecision("cycle", "2017", null, true, null)).toBeNull();
+  });
+
+  it("shows a recorded cut-point as the recorded answer, not as cross-validation alone", () => {
+    const cut = { column: "cycle", at: 2017 };
+    renderSeal({ ...CHANGED, holdout: 0, cut_point: cut, fold_order: "time" }, null, TIME);
+    expect(screen.getByTestId("option-cut")).toHaveAttribute("data-recorded", "true");
+    expect(screen.getByTestId("option-0")).not.toHaveAttribute("data-recorded", "true");
   });
 });

@@ -100,6 +100,12 @@ def rule_excludes(frame: pd.DataFrame, rule: Any) -> pd.Series:
 
         s = screen(frame, rule)
         return (s["screened"] & ~s["inside"]).astype(bool)
+    if getattr(rule, "kind", "range") == "levels":
+        # A row at a level the rule excludes; a blank, refused or don't-know answer is no level.
+        from turbotab.core.stages.rows import rule_parts
+
+        recorded, screened, inside = rule_parts(frame, rule)
+        return (recorded & screened & ~inside).astype(bool)
     values = pd.to_numeric(frame[rule.column], errors="coerce")
     low = pd.Series(np.nan if rule.low is None else float(rule.low), index=frame.index)
     high = pd.Series(np.nan if rule.high is None else float(rule.high), index=frame.index)

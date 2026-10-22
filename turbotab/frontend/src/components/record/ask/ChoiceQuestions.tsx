@@ -11,6 +11,7 @@ import type {
   EnergyReading,
   EligibilityRule,
   ExclusionRule,
+  LevelRule,
   MissingColumn,
   ProposalsArtifact,
   ShelfArtifact,
@@ -38,15 +39,59 @@ function KeepRow({ keep }: { keep?: (() => void) | undefined }) {
 
 // ── exclusions ───────────────────────────────────────────────────────────────
 
+/** Levels as typed, comma-separated: each trimmed, blanks dropped. */
+export const parseLevels = (text: string): string[] =>
+  text
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v !== "");
+
+/** One spelling per level, as the server compares them (stages/rows.py `_level_key`): `2`,
+ *  `2.0` and `"2"` are one level. */
+const levelKey = (v: string): string => {
+  const n = Number(v);
+  return v !== "" && Number.isFinite(n) && Number.isInteger(n) ? String(n) : v;
+};
+
+/**
+ * The categorical eligibility rule a card's fields make (decisions.py LevelRule; SWARM_PLAN §5):
+ * the levels it excludes and the codes that record a refused or a don't-know answer, each its own
+ * list. Null while it excludes no level or names one level twice, which the server refuses too.
+ * A refused or don't-know answer, like a blank, cannot confirm a row and leaves on a line of its
+ * own (the server's default).
+ */
+export function levelRule(
+  column: string,
+  exclude: string,
+  refused: string,
+  dontKnow: string,
+): LevelRule | null {
+  const lists = [parseLevels(exclude), parseLevels(refused), parseLevels(dontKnow)] as const;
+  const keys = lists.flat().map(levelKey);
+  if (!column || lists[0].length === 0 || new Set(keys).size !== keys.length) return null;
+  return {
+    kind: "levels",
+    column,
+    exclude: lists[0],
+    refused: lists[1],
+    dont_know: lists[2],
+    reason: "not in the study population (your own levels)",
+    missing: "exclude",
+  };
+}
+
 export function ExclusionsAsk({
   proposals,
   current,
   numericColumns,
+  levelColumns = [],
   ...p
 }: AskProps & {
   proposals: ProposalsArtifact | undefined;
   current: EligibilityRule[] | null;
   numericColumns: string[];
+  /** The columns a level rule can read: every column but the outcome. */
+  levelColumns?: string[];
 }) {
   const offered = proposals?.exclusions ?? [];
   const energy = proposals?.energy?.energy_column ?? null;
@@ -73,11 +118,20 @@ export function ExclusionsAsk({
       }
     : null;
 
+  const [levelColumn, setLevelColumn] = useState("");
+  const shownLevelColumn = levelColumn || levelColumns[0] || "";
+  const [excluded, setExcluded] = useState("");
+  const [refusedCodes, setRefusedCodes] = useState("");
+  const [unknownCodes, setUnknownCodes] = useState("");
+  const levelsRef = useRef<HTMLInputElement>(null);
+  const byLevel = levelRule(shownLevelColumn, excluded, refusedCodes, unknownCodes);
+
   const matches = (rules: EligibilityRule[]) =>
     current !== null && current.length === rules.length && same(current, rules);
   let recordedKey: string | null = null;
   if (current !== null) {
     if (current.length === 0) recordedKey = "none";
+    else if (current.length === 1 && current[0]!.kind === "levels") recordedKey = "levels";
     else recordedKey = offered.find((o) => matches([o.rule]))?.key ?? "custom";
   }
 
@@ -155,6 +209,66 @@ export function ExclusionsAsk({
         </form>
       ),
     },
+    {
+      key: "levels",
+      label: taught(p.entry, "levels")?.label ?? "By level",
+      line:
+        taught(p.entry, "levels")?.consequence ??
+        "Rows at levels you name are excluded, as are blanks and refused or don't-know codes named.",
+      decision: byLevel ? { kind: "set_exclusions", rules: [byLevel] } : null,
+      previewLabel: byLevel ? `${shownLevelColumn} at ${byLevel.exclude.join(", ")}` : undefined,
+      extra: (
+        <form
+          className={c.range}
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            if (byLevel) p.record({ kind: "set_exclusions", rules: [byLevel] }, "levels");
+          }}
+        >
+          <label className={c.field}>
+            <span>column</span>
+            <select value={shownLevelColumn} onChange={(e) => setLevelColumn(e.target.value)}>
+              {levelColumns.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={c.field}>
+            <span>exclude</span>
+            <input
+              ref={levelsRef}
+              value={excluded}
+              onChange={(e) => setExcluded(e.target.value)}
+              placeholder="levels, by commas"
+              aria-label="Levels excluded"
+            />
+          </label>
+          <label className={c.field}>
+            <span>refused codes</span>
+            <input
+              value={refusedCodes}
+              onChange={(e) => setRefusedCodes(e.target.value)}
+              placeholder="none"
+              aria-label="Codes that record a refused answer"
+            />
+          </label>
+          <label className={c.field}>
+            <span>don't know codes</span>
+            <input
+              value={unknownCodes}
+              onChange={(e) => setUnknownCodes(e.target.value)}
+              placeholder="none"
+              aria-label="Codes that record a don't-know answer"
+            />
+          </label>
+          <button type="submit" className={c.small} disabled={!byLevel || p.pending}>
+            Exclude these
+          </button>
+        </form>
+      ),
+    },
   ];
 
   return (
@@ -174,6 +288,7 @@ export function ExclusionsAsk({
         mode="single"
         onRecord={(o) => {
           if (o.decision) p.record(o.decision, o.key);
+          else if (o.key === "levels") levelsRef.current?.focus();
           else lowRef.current?.focus();
         }}
         recordedKey={recordedKey}
@@ -527,7 +642,8 @@ export const NOTEWORTHY_SECONDS = 10;
  * records them, so it says Fit; a screen where Fit is pressed elsewhere provides its own words.
  */
 export type FamiliesLabel = (one: string | null, n: number) => string;
-const FIT_FAMILIES: FamiliesLabel = (one, n) => (one ? `Fit the ${one}` : `Fit these ${n} families`);
+const FIT_FAMILIES: FamiliesLabel = (one, n) =>
+  one ? `Fit the ${one}` : `Fit these ${n} families`;
 /** The words ModelsAsk uses where its `label` prop is not given (the quest shell provides them
  *  around today's card, src/quest/cards/CardFor.tsx); today's Fit words by default. */
 export const FamiliesLabelContext = createContext<FamiliesLabel>(FIT_FAMILIES);

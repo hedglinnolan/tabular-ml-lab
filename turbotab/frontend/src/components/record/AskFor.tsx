@@ -395,6 +395,10 @@ export const AskFor = ({
                 (col.dtype === "numeric" || col.dtype === "integer") && col.name !== state.target,
             )
             .map((col) => col.name)}
+          // A rule by level reads any column but the outcome: codes or text (SWARM_PLAN §5).
+          levelColumns={(columns ?? [])
+            .filter((col) => col.name !== state.target)
+            .map((col) => col.name)}
         />
       );
     case "missing":
@@ -414,6 +418,17 @@ export const AskFor = ({
           plan={sealPlan?.artifact ?? null}
           roles={roles?.artifact ?? undefined}
           current={state.split}
+          // A cut-point reads numbers or dates (core/seal.py `cut_value`), never the outcome.
+          timeColumns={(columns ?? [])
+            .filter(
+              (col) =>
+                ["numeric", "integer", "datetime", "text"].includes(col.dtype) &&
+                col.name !== state.target,
+            )
+            .map((col) => ({
+              name: col.name,
+              numeric: col.dtype === "numeric" || col.dtype === "integer",
+            }))}
         />
       );
     case "energy_adjustment":
