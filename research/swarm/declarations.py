@@ -11,9 +11,9 @@ decisions with no Router question that the quest log lists as lines of their own
   now (its state slot), which each field starts at, so an option changes only what it names;
 * **the method contracts that record it** (``core/contracts.py``): a contract whose ``decision`` is
   the kind, or one with no decision of its own whose every option is a value of one of the
-  kind's fields (the batch and multiplicity contracts); each contract option that is a field's
-  value (or a true/false field's name, the explanation as an effect) is an option, with its label,
-  its customary and sound labels and its leash rung for the purpose, in the contract's order;
+  kind's fields (the batch and multiplicity contracts); each contract option that is a value (or
+  the name) of a field no card holds (**Held**, below) is an option, with its label, its
+  customary and sound labels and its leash rung for the purpose, in the contract's order;
 * **what the engine serves for the line**: the seal plan's validation schemes (each with its
   words and, for internal–external validation, its cluster, or that it needs one), the proposals'
   model sequence card, the sensitivity stage's every-row analysis
@@ -40,6 +40,14 @@ name=value``): a choice (``choices``), a number (``type``, with its ``bounds``),
 ``SetMeasurementError``'s docstring) is not offered. The decision is read by the model before it
 is posted, so an answer missing a field the model needs says which here.
 
+**Held** (:func:`held`), offered neither as an option nor as a field, and recorded by every option
+at one value: a field the shell's own cards never ask and always post at one value (the cards'
+fixture's ``fixed``, :data:`CARDS`: the selection's ``where`` and its sensitivity analysis, the
+explanation as an effect), at that value; and an attestation that keeps a blocked answer
+(``acknowledged``), at its default, false, since the engine offers it only as a way forward of its
+refusal of the answer as it stands, which ``answer`` takes by its id. An answer recorded with a
+held field set is posted with the held value.
+
 **Not composed:** a join and a data dictionary need a file the driver cannot hand over
 (:data:`NEEDS_A_FILE`); the outcome views are recorded by the views themselves (``only_recorded``).
 """
@@ -48,6 +56,7 @@ from __future__ import annotations
 import json
 import math
 import typing
+from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
 from research.swarm.options import Unanswerable, _art, _option, canonical
@@ -60,6 +69,36 @@ NEEDS_A_FILE = {"join_files": "A join adds a second file, which the driver canno
 # A field the server fills from the state, never the client (the model's own docstring).
 SERVER_FILLED = {"set_measurement_error": ("adjustment",)}
 ROW_ID = "__row_id"
+# What the shell's Predict declaration cards post: its ``fixed`` holds the fields a card never
+# asks and always sends at one value (``core/tests/test_w1_declaration_cards.py`` holds them to the
+# cards' payloads and to decisions.py's defaults).
+CARDS = Path(__file__).resolve().parents[2] / (
+    "turbotab/frontend/src/quest/cards/predict/payloads.fixture.json")
+
+
+def held_by_the_cards() -> dict[str, dict[str, Any]]:
+    """Each declaration's fields the shell's cards hold fixed, with the value they post: read from
+    the cards' own fixture (:data:`CARDS`), never kept here. A fixture that cannot be read refuses
+    to compose (the driver says so on the line) rather than offer them."""
+    fixed = json.loads(CARDS.read_text("utf-8"))["fixed"]
+    return {str(k): dict(v) for k, v in fixed.items()}
+
+
+def attestations(model: Any) -> list[str]:
+    """The fields of a decision model that keep a blocked answer: decisions.py names each
+    ``acknowledged`` (or ``<what>_acknowledged``), false unless the engine's refusal of the answer
+    as it stands offers it as a way forward, which ``answer`` takes by its id."""
+    return [n for n in model.model_fields if n == "acknowledged" or n.endswith("_acknowledged")]
+
+
+def held(kind: str) -> dict[str, Any]:
+    """The fields of ``kind`` no option or ``--set`` offers, each with the value every option
+    records: those the shell's cards hold fixed, at the value they post, and its attestations, at
+    the model's default (false)."""
+    model = models()[kind]
+    out = {n: _default(model.model_fields[n]) for n in attestations(model)}
+    out.update(held_by_the_cards().get(kind, {}))
+    return out
 
 
 def models() -> dict[str, Any]:
@@ -231,14 +270,19 @@ def compose(kind: str, view: Mapping[str, Any], served: Served) -> dict[str, Any
     model = models()[kind]
     purpose = ctx.state.get("purpose")
     skip = set(SERVER_FILLED.get(kind, ())) | {"kind"}
+    fixed = held(kind)
     types = {n: t for n, f in model.model_fields.items() if n not in skip
              and (t := field_type(n, f)) is not None}
     recorded = ctx.recorded(kind)
     base: dict[str, Any] = {"kind": kind}
     for n, f in model.model_fields.items():
-        if n in types:
+        if n in fixed:
+            base[n] = fixed[n]
+        elif n in types:
             base[n] = json.loads(json.dumps(recorded[n], default=str)) if n in recorded \
                 else _default(f)
+    # The fields an option or --set may set: none held (:func:`held`).
+    types = {n: t for n, t in types.items() if n not in fixed}
     special = SPECIAL.get(kind)
     out = special(ctx, kind, base, types) if special is not None else None
     if out is None:
@@ -553,5 +597,5 @@ def resolve(composed: Mapping[str, Any], ids: list[str], sets: Iterable[str]) ->
     return decision
 
 
-__all__ = ["NEEDS_A_FILE", "SERVER_FILLED", "compose", "contract_options", "field_type", "kinds",
-           "models", "owner", "resolve"]
+__all__ = ["CARDS", "NEEDS_A_FILE", "SERVER_FILLED", "attestations", "compose", "contract_options",
+           "field_type", "held", "held_by_the_cards", "kinds", "models", "owner", "resolve"]

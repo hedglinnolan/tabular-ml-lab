@@ -39,11 +39,15 @@ compares the change with, and each arm's share it used (``test_share``, the late
 whether a change is material is
 the pre-registration's to say (``research/swarm/prereg.json``), not this module's. A change with
 fewer than two fold scores in an arm, a paired change whose arms are not the same folds, or scores
-that are not k-fold scores has no number, and says why.
+that are not k-fold scores has no number, and says why; so has a change with no fold-to-fold
+spread, its differences (paired) or both its arms (unpaired) each one value but for float64's
+rounding of the scores (:data:`ROUNDING`), whose interval would have no width and certify nothing
+(the engine's own paired movement, ``runs.movement``, refuses the same).
 """
 from __future__ import annotations
 
 import math
+import sys
 from typing import Any, Mapping, Sequence
 
 LEVEL = 0.95
@@ -57,6 +61,9 @@ WEIGHTED_MEAN = ("mse", "mae")
 SPLIT_FACTS = ("n_train", "folds", "repeats", "fold_scheme", "validation", "grouped_by")
 NO_SPLIT = ("The facts of the folds this fit was scored on were not read (the driver keeps them at "
             "each fit), so the rows each fold scores are not known.")
+# Values that differ by no more than this many units of float64's precision of the largest score
+# are one value: what rounding each score once, and their difference once, can part.
+ROUNDING = 8
 
 
 def _finite(values: Sequence[Any]) -> list[float]:
@@ -74,6 +81,14 @@ def _finite(values: Sequence[Any]) -> list[float]:
 def _variance(xs: Sequence[float]) -> float:
     m = sum(xs) / len(xs)
     return sum((x - m) ** 2 for x in xs) / (len(xs) - 1)
+
+
+def _no_spread(xs: Sequence[float], scores: Sequence[float]) -> bool:
+    """Whether ``xs`` are one value but for float64's rounding of the ``scores`` they come from
+    (:data:`ROUNDING`): their variance is then zero, or rounding's, and an interval on it has no
+    width it can certify."""
+    scale = max((abs(float(x)) for x in scores), default=0.0)
+    return max(xs) - min(xs) <= ROUNDING * sys.float_info.epsilon * scale
 
 
 def _t(df: float, level: float) -> float:
@@ -148,13 +163,22 @@ def paired(after: Sequence[Any], before: Sequence[Any], share: float, *,
     if len(after) != len(before):
         return {"why": f"The two fits hold {len(after)} and {len(before)} fold scores, so they "
                        f"are not the same folds."}
-    d = [float(a) - float(b) for a, b in zip(after, before)
-         if _finite([a]) and _finite([b])]
+    pairs = [(float(a), float(b)) for a, b in zip(after, before) if _finite([a]) and _finite([b])]
+    d = [a - b for a, b in pairs]
     if len(d) < 2:
         return {"why": "Fewer than two folds hold both fits' scores."}
+    if _no_spread(d, [x for pair in pairs for x in pair]):
+        # The engine's own paired movement refuses the same (``runs.movement``).
+        moved = (f"changed by the same {d[0]:+.4g} from the earlier fit's" if d[0] else
+                 "is the earlier fit's")
+        return {"why": f"Every fold's score {moved}, so the change has no fold-to-fold spread and "
+                       f"its corrected interval, of no width, is not defined."}
     j = len(d)
     mean = sum(d) / j
     se = math.sqrt((1.0 / j + share) * _variance(d))
+    if se == 0:  # a spread too small for float64 to square
+        return {"why": "The differences' spread is too small for float64 to give the change an "
+                       "interval."}
     q = _t(j - 1, level)
     return {"difference": mean, "se": se, "df": float(j - 1), "ci_low": mean - q * se,
             "ci_high": mean + q * se, "folds": [j, j]}
@@ -166,14 +190,19 @@ def unpaired(after: Sequence[Any], before: Sequence[Any], share_after: float,
     a, b = _finite(after), _finite(before)
     if len(a) < 2 or len(b) < 2:
         return {"why": "An arm holds fewer than two fold scores."}
-    va = (1.0 / len(a) + share_after) * _variance(a)
-    vb = (1.0 / len(b) + share_before) * _variance(b)
+    if _no_spread(a, a) and _no_spread(b, b):
+        return {"why": f"Each fit scored the same in every fold ({a[0]:.4g} and {b[0]:.4g}), so "
+                       f"the change has no fold-to-fold spread and its interval, of no width, is "
+                       f"not defined."}
+    # An arm with no spread but rounding's adds none (Welch's interval rests on the other's).
+    va = 0.0 if _no_spread(a, a) else (1.0 / len(a) + share_after) * _variance(a)
+    vb = 0.0 if _no_spread(b, b) else (1.0 / len(b) + share_before) * _variance(b)
     mean = sum(a) / len(a) - sum(b) / len(b)
     se = math.sqrt(va + vb)
     denominator = (va ** 2 / (len(a) - 1) if va else 0.0) + (vb ** 2 / (len(b) - 1) if vb else 0.0)
-    if se == 0 or denominator == 0:
-        return {"difference": mean, "se": 0.0, "df": None, "ci_low": mean, "ci_high": mean,
-                "folds": [len(a), len(b)]}
+    if se == 0 or denominator == 0:  # spreads too small for float64 to square
+        return {"why": "The fold scores' spread is too small for float64 to give the change an "
+                       "interval."}
     df = (va + vb) ** 2 / denominator
     q = _t(df, level)
     return {"difference": mean, "se": se, "df": df, "ci_low": mean - q * se,
@@ -261,6 +290,6 @@ def change(after: Mapping[str, Any], before: Mapping[str, Any], *, same_folds: b
                        shares=(share_after, share_before), level=level)
 
 
-__all__ = ["LEVEL", "NO_SPLIT", "RANDOM_KFOLD", "SPLIT_FACTS", "WEIGHTED_MEAN", "change",
-           "fold_sizes", "folds_per_repeat", "from_shares", "paired", "split_facts", "test_share",
-           "unpaired"]
+__all__ = ["LEVEL", "NO_SPLIT", "RANDOM_KFOLD", "ROUNDING", "SPLIT_FACTS", "WEIGHTED_MEAN",
+           "change", "fold_sizes", "folds_per_repeat", "from_shares", "paired", "split_facts",
+           "test_share", "unpaired"]

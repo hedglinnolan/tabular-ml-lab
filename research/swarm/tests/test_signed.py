@@ -97,9 +97,60 @@ def test_a_loss_is_better_lower():
 
 
 def test_no_change_is_neither_better_nor_worse():
-    same = score([1, 2, 3, 4, 5])
-    got = S.change(same, same, same_folds=True, higher_is_better=True, after_split=FIVE)
+    """Differences +1, −1, +2, −2, 0: a mean of exactly zero, with a spread."""
+    got = S.change(score([2, 1, 5, 2, 5]), score([1, 2, 3, 4, 5]), same_folds=True,
+                   higher_is_better=True, after_split=FIVE)
     assert got["difference"] == 0 and got["better"] is None and got["excludes_zero"] is False
+    assert got["se"] > 0
+
+
+# ── differences with no spread (the verifier's V2) ───────────────────────────
+
+BEFORE = [0.70, 0.72, 0.69, 0.71, 0.73]
+
+
+@pytest.mark.parametrize("after,before,shift", [
+    ([b + 0.01 for b in BEFORE], BEFORE, 0.01),  # the verifier's case: exactly equal in float64
+    # +0.3 on these scores leaves differences apart by float64's rounding alone (s² ≈ 2e-33)
+    ([b + 0.3 for b in [0.1, 0.2, 0.3, 0.7, 0.9]], [0.1, 0.2, 0.3, 0.7, 0.9], 0.3),
+    (BEFORE, BEFORE, 0.0),  # no fold's score changed
+])
+def test_a_paired_change_whose_differences_have_no_spread_is_refused(after, before, shift):
+    """Every fold's difference the same: s²_d is zero (or float64's rounding of the scores), so
+    the corrected interval has no width and certifies nothing; the engine's own paired movement
+    refuses the same input (``runs.movement``). The change has no number, and says why."""
+    d = np.subtract(after, before)
+    assert np.ptp(d) <= 1e-15 and d.mean() == pytest.approx(shift, abs=1e-12)  # the construction
+    got = S.change(score(after, low=0.65, high=0.75), score(before, low=0.66, high=0.74),
+                   same_folds=True, higher_is_better=True, after_split=FIVE)
+    assert got["difference"] is None and got["excludes_zero"] is None and got["se"] is None
+    assert "no fold-to-fold spread" in got["why"]
+    assert got["half_width"] == pytest.approx(0.04)  # the earlier fit's own, as for any change
+
+
+@pytest.mark.parametrize("after,before", [([0.8] * 5, [0.7] * 5), ([0.8] * 5, [0.8] * 5)])
+def test_an_unpaired_change_whose_arms_both_have_no_spread_is_refused(after, before):
+    got = S.change(score(after), score(before), same_folds=False, higher_is_better=True,
+                   after_split=FIVE, before_split=FIVE)
+    assert got["difference"] is None and got["excludes_zero"] is None and got["df"] is None
+    assert "no fold-to-fold spread" in got["why"]
+
+
+def test_differences_with_a_spread_keep_their_number():
+    """The same scores with one fold moved by 0.001 more: a spread, so a number (paired), and an
+    unpaired change with one arm constant keeps Welch's interval on the other arm's spread."""
+    after = [b + 0.01 for b in BEFORE]
+    after[2] += 0.001
+    got = S.change(score(after), score(BEFORE), same_folds=True, higher_is_better=True,
+                   after_split=FIVE)
+    d = np.subtract(after, BEFORE)
+    se = math.sqrt((1 / 5 + 1 / 4) * np.var(d, ddof=1))
+    assert got["why"] is None and got["difference"] == pytest.approx(d.mean())
+    assert got["se"] == pytest.approx(se) and got["se"] > 0
+    one = S.change(score([0.8] * 5), score(BEFORE), same_folds=False, higher_is_better=True,
+                   after_split=FIVE, before_split=FIVE)
+    assert one["why"] is None and one["df"] == pytest.approx(4.0)
+    assert one["se"] == pytest.approx(math.sqrt((1 / 5 + 1 / 4) * np.var(BEFORE, ddof=1)))
 
 
 FOUR, TWO_BY_FOUR, TWO_BY_TWO = split(k=4), split(k=4, repeats=2), split(k=2, repeats=2)

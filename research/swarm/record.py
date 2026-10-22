@@ -480,7 +480,8 @@ class SignedChange(_Strict):
     width; ``test_share`` is each arm's n_test/n_train (this fit's first), the engine's measured
     share on the folds the split drew (``signed.test_share``). Without a number, ``why``: among
     others, folds whose share the split's facts do not fix (time-ordered, internal–external,
-    grouped) and a pooled score that is not the mean of its fold scores."""
+    grouped), a pooled score that is not the mean of its fold scores, and a change with no
+    fold-to-fold spread."""
 
     family: str
     metric: str

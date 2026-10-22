@@ -5,7 +5,9 @@ fields, the method contracts' options for the purpose, the seal plan's served sc
 composer's output; each guard both ways."""
 from __future__ import annotations
 
+import json
 import typing
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -97,7 +99,8 @@ def test_a_field_takes_what_its_model_does():
         typing.get_args(decisions.SetSelection.model_fields["pre_selected"].annotation)[0]))
     assert got["threshold"]["bounds"] == {"gt": 0, "lt": 1}
     assert got["keep"]["bounds"] == {"ge": 1}
-    assert [c["value"] for c in got["sensitivity"]["choices"]] == ["true", "false"]
+    validation = {f["name"]: f for f in D.compose("set_validation", view(), served())["fields"]}
+    assert [c["value"] for c in validation["nested_cv"]["choices"]] == ["true", "false"]
     assert "method" not in got  # the options choose it
     intended = {f["name"]: f for f in D.compose("set_intended_use", view(), served())["fields"]}
     assert intended["subgroups"]["type"] == "columns"
@@ -185,19 +188,129 @@ def test_a_batch_column_read_by_its_name_is_the_one_offered():
 @pytest.mark.parametrize("sets,word", [
     (["threshold=0"], "threshold"), (["threshold=1"], "threshold"), (["keep=0"], "keep"),
     (["keep=1.5"], "whole number"), (["q=nan"], "q"), (["pre_selected=maybe"], "pre_selected"),
-    (["sensitivity=yes"], "true or false"), (["where"], "name=value"), (["nope=1"], "nope")])
+    (["where"], "name=value"), (["nope=1"], "nope")])
 def test_a_field_set_outside_what_its_model_takes_is_refused(sets, word):
     got = D.compose("set_selection", view(), served())
     with pytest.raises(Unanswerable, match=word):
         D.resolve(got, ["set_selection:stability"], sets)
 
 
+def test_a_true_or_false_field_takes_only_true_or_false():
+    got = D.compose("set_validation", view(), served())
+    with pytest.raises(Unanswerable, match="true or false"):
+        D.resolve(got, ["set_validation:kfold"], ["nested_cv=yes"])
+    assert D.resolve(got, ["set_validation:kfold"], ["nested_cv=true"])["nested_cv"] is True
+
+
 def test_a_field_set_inside_what_its_model_takes_is_recorded():
     got = D.compose("set_selection", view(), served())
     decision = D.resolve(got, ["set_selection:stability"],
-                         ["threshold=0.7", "q=3", "pre_selected=no", "sensitivity=false"])
+                         ["threshold=0.7", "q=3", "pre_selected=no"])
     assert (decision["threshold"], decision["q"], decision["pre_selected"]) == (0.7, 3, "no")
     assert isinstance(decision["q"], int)
+
+
+# ── what the shell's cards hold fixed, and the attestations (the verifier's V1) ─────
+
+CARDS = Path(__file__).resolve().parents[3] / (
+    "turbotab/frontend/src/quest/cards/predict/payloads.fixture.json")
+
+
+def held_by_the_cards() -> dict[str, dict[str, Any]]:
+    """What the shell's Predict cards never ask and always post (the fixture's ``fixed``, which
+    ``core/tests/test_w1_declaration_cards.py`` holds to the cards' payloads and to decisions.py's
+    defaults), read here from the fixture itself."""
+    return json.loads(CARDS.read_text("utf-8"))["fixed"]
+
+
+def attestations(kind: str) -> list[str]:
+    """The fields of ``kind``'s model that keep a blocked answer (decisions.py names each
+    ``acknowledged``, or ``<what>_acknowledged``): true or false, false unless a refusal's way
+    forward sets it."""
+    model = D.models()[kind]
+    return [n for n in model.model_fields if n == "acknowledged" or n.endswith("_acknowledged")]
+
+
+def test_the_cards_hold_fixed_the_fields_the_verifier_named():
+    """The construction the guard below rests on: the fixture holds where, the sensitivity
+    analysis and the explanation as an effect fixed; every attestation in decisions.py is a true
+    or false field false by default."""
+    held = held_by_the_cards()
+    assert held["set_selection"] == {"where": "in_fold", "sensitivity": False}
+    assert held["set_explain"] == {"as_effect": False}
+    assert attestations("set_multiplicity") == ["acknowledged"]
+    assert "acknowledged" in attestations("set_validation")
+    for kind, model in D.models().items():
+        for name in attestations(kind):
+            f = model.model_fields[name]
+            assert f.annotation is bool and f.default is False, (kind, name)
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_no_field_the_cards_hold_fixed_and_no_attestation_is_offered(purpose):
+    """``ask`` lists none of them, as a field or as an option, on any line, and every option
+    records each one as the shell's cards post it (an attestation at its default, false)."""
+    held = held_by_the_cards()
+    extra = {"seal_plan": {"validation": {"options": [{"validation": "kfold", "label": "Once"}]}}}
+    for kind in D.kinds():
+        got = D.compose(kind, view(purpose=purpose, exclusions=[{"kind": "range"}]),
+                        served(extra))
+        hidden = {**held.get(kind, {}), **{n: False for n in attestations(kind)}}
+        names = {f["name"] for f in got["fields"]}
+        assert not names & set(hidden), (kind, names & set(hidden))
+        for option in got["options"]:
+            assert option["id"].split(":")[1] not in hidden, (kind, option["id"])
+            recorded = option["decision"] or option.get("_base") or {}
+            for name, value in hidden.items():
+                if name in recorded:
+                    assert recorded[name] == value, (kind, option["id"], name)
+
+
+def test_the_fields_the_cards_do_send_stay_offered():
+    held = held_by_the_cards()
+    selection = {f["name"] for f in D.compose("set_selection", view(), served())["fields"]}
+    assert selection == {"keep", "threshold", "q", "pre_selected"}
+    explain = D.compose("set_explain", view(), served())
+    assert {f["name"] for f in explain["fields"]} == {"exposures", "reseeds"}
+    assert ids(explain) == ["set_explain:ale", "set_explain:partial_dependence"]
+    validation = {f["name"] for f in D.compose("set_validation", view(), served())["fields"]}
+    assert validation == {"folds", "repeats", "n_boot", "cluster", "nested_cv"}
+    # Each is a field the model takes and the fixture does not hold.
+    for kind, names in (("set_selection", selection), ("set_validation", validation)):
+        assert names <= set(D.models()[kind].model_fields) - set(held[kind])
+
+
+@pytest.mark.parametrize("kind,option,sets", [
+    ("set_selection", "set_selection:stepwise", ["sensitivity=true"]),
+    ("set_selection", "set_selection:elastic_net", ["sensitivity=true"]),
+    ("set_selection", "set_selection:elastic_net", ["where=outside"]),
+    ("set_validation", "set_validation:kfold", ["acknowledged=true"]),
+    ("set_multiplicity", "set_multiplicity:none", ["acknowledged=true"]),
+    ("set_explain", "set_explain:ale", ["as_effect=true"])])
+def test_a_field_the_cards_hold_fixed_or_an_attestation_set_by_hand_is_refused(kind, option,
+                                                                               sets):
+    got = D.compose(kind, view(purpose="inference" if kind == "set_multiplicity" else
+                               "prediction"), served())
+    name = sets[0].split("=")[0]
+    with pytest.raises(Unanswerable, match=f"No field '{name}'"):
+        D.resolve(got, [option], sets)
+
+
+def test_an_answer_recorded_with_a_held_field_set_is_posted_as_the_cards_post_it():
+    """A recorded selection carrying the sensitivity analysis keeps its pre-selection answer but
+    is posted with the cards' fixed values; a recorded attestation is never carried into another
+    answer, which meets the engine's refusal and its way forward on its own."""
+    got = D.compose("set_selection", view(selection={
+        "method": "stepwise", "where": "outside", "sensitivity": True, "pre_selected": "no",
+        "keep": None, "threshold": None, "q": None}), served())
+    for option in got["options"]:
+        decision = option["decision"]
+        assert decision["sensitivity"] is False and decision["where"] == "in_fold"
+        assert decision["pre_selected"] == "no"
+    multiplicity = D.compose("set_multiplicity", view(
+        purpose="inference", multiplicity={"method": "stated_count", "acknowledged": True}),
+        served())
+    assert all(o["decision"]["acknowledged"] is False for o in multiplicity["options"])
 
 
 def test_one_option_at_a_time_and_only_one_offered():

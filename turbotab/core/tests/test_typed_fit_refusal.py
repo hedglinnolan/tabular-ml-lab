@@ -7,7 +7,10 @@ Each guard both ways, on stages built here: a refusal in words is served with it
 same ``ValueError`` text with no refusal, is served with none. The fit's own refusals are held to
 their construction: an empty selection (columns of a Hadamard matrix, exactly uncorrelated with
 the outcome, so nothing is kept) refuses with ``nothing_kept`` and the two selections the words
-name; the design stage's refusals in words keep their words and gain a code."""
+name; the design stage's refusals in words keep their words and gain a code. A selection's
+fit-time ways forward are the recorded answer with only its method changed (its pre-selection
+answer kept), as the answer-time refusal builds them, wherever the stage ran; with no answer
+recorded, as raised."""
 from __future__ import annotations
 
 import pickle
@@ -320,3 +323,116 @@ def test_stepwise_with_room_for_every_column_refuses_nothing():
     X, y = wide(64, 6)
     fitted = selector("stepwise", list(X.columns)).fit(X, y)
     assert "x0" in fitted.transform(X).columns
+
+
+# ── a fit-time way forward keeps the recorded selection (the verifier's V3) ──
+
+RECORDED = d.SelectionSpec(method="stepwise", pre_selected="no", keep=3)
+
+
+def answer_time_exits(monkeypatch, recorded: d.SelectionSpec):
+    """The ways forward the selection answer's own refusal gives for ``recorded`` (each the
+    answer with only its method changed, ``decision.model_copy``), as a refusal stores them."""
+    from turbotab.core.models import variable_selection as vs
+
+    monkeypatch.setattr(vs, "stepwise_room", lambda *a, **k: (10, 8))
+    answer = d.SetSelection(**recorded.model_dump())
+    with pytest.raises(d.Refusal) as refused:
+        vs._stepwise_has_rows(answer, None, None, "regression")
+    return [{"label": e["label"], "decision": d.parse_decision(
+        e["decision"].model_dump(mode="json") if hasattr(e["decision"], "model_dump")
+        else e["decision"]).model_dump(mode="json")} for e in refused.value.exits]
+
+
+def stepwise_backstop() -> StageRefusal:
+    X, y = wide(8, 10)
+    with pytest.raises(StageRefusal) as refused:
+        selector("stepwise", list(X.columns)).fit(X, y)
+    return refused.value
+
+
+def test_the_stepwise_backstops_ways_forward_are_the_recorded_answers_as_the_answer_gives_them(
+        monkeypatch):
+    """The recorded selection answered pre_selected "no" (TRIPOD+AI 9a) and keep 3: each way
+    forward on that state is that answer with only its method changed, labeled and recorded as
+    the answer-time refusal's ways forward are."""
+    r = stepwise_backstop().on_answers(d.ProjectState(purpose="prediction", selection=RECORDED))
+    assert r.exits == answer_time_exits(monkeypatch, RECORDED)
+    assert [(e["decision"]["method"], e["decision"]["pre_selected"], e["decision"]["keep"])
+            for e in r.exits] == [("elastic_net", "no", 3), ("screening", "no", 3),
+                                  ("none", "no", 3)]
+
+
+def test_nothing_kepts_ways_forward_keep_the_recorded_answer_but_its_method():
+    from turbotab.core.models.variable_selection import LABELS
+
+    recorded = d.SelectionSpec(method="univariable", threshold=0.01, pre_selected="other_data")
+    X, y = orthogonal(carried=False)
+    fitted = selector("univariable", list(X.columns)).fit(X, y)
+    with pytest.raises(StageRefusal) as refused:
+        fitted.transform(X)
+    r = refused.value.on_answers(d.ProjectState(purpose="prediction", selection=recorded))
+    assert r.exits == normalized([
+        {"label": LABELS[m], "decision": {**recorded.model_dump(mode="json"),
+                                          "kind": "set_selection", "method": m}}
+        for m in ("none", "screening")])
+
+
+def test_with_no_selection_recorded_or_a_refusal_that_changes_none_the_ways_forward_stay():
+    """Where the state records no selection the ways forward are as raised (the method alone, on
+    the model's defaults); a refusal whose ways forward are not changes of an answer (the toy's)
+    is the same on a state that records one."""
+    raised = stepwise_backstop()
+    before = [dict(e) for e in raised.exits]
+    assert raised.on_answers(d.ProjectState(purpose="prediction")).exits == before
+    assert raised.on_answers(None).exits == before
+    toy = StageRefusal("toy_refused", WORDS, exits=EXITS)
+    assert toy.on_answers(d.ProjectState(selection=RECORDED)).exits == normalized(EXITS)
+
+
+def test_a_refusal_whose_ways_forward_were_made_the_recorded_answers_pickles_whole():
+    r = stepwise_backstop().on_answers(d.ProjectState(purpose="prediction", selection=RECORDED))
+    again = pickle.loads(pickle.dumps(r))
+    assert (again.code, again.message, again.exits) == (r.code, r.message, r.exits)
+
+
+SELECTING = "turbotab.core.tests.test_typed_fit_refusal:selecting_graph"
+
+
+def stage_selects(ctx):
+    X, y = wide(8, 10)
+    selector("stepwise", list(X.columns)).fit(X, y)  # the backstop refuses
+    return {}
+
+
+def selecting_graph() -> Graph:
+    """S runs the stepwise backstop on this engine's threads, SH in a job worker."""
+    return Graph([Stage("S", 1, (), (), stage_selects),
+                  Stage("SH", 1, (), (), stage_selects, heavy=True)])
+
+
+@pytest.mark.parametrize("stage", ["S", "SH"])
+def test_the_served_ways_forward_keep_the_selection_the_fit_ran_with(runner, tmp_path, stage):
+    """Light or in a job worker, the status serves each way forward as the project's recorded
+    selection with only its method changed; a project with none recorded is served them as
+    raised."""
+    projects, bus = Projects(tmp_path), RecordingBus()
+    engine = Engine(graph_factory=SELECTING, runner=runner, bus=bus, project_ctx=projects)
+    recorded, bare = uuid.uuid4().hex[:8], uuid.uuid4().hex[:8]
+    projects.states[recorded] = ToyState(purpose="prediction", selection=RECORDED)
+    projects.states[bare] = ToyState(purpose="prediction")
+    try:
+        served = {}
+        for pid in (recorded, bare):
+            engine.on_decision(pid)
+            served[pid] = wait_for(engine, pid, lambda s: all(x.status == "error"
+                                                              for x in s.values()), timeout=30)
+    finally:
+        engine.shutdown()
+    kept = served[recorded][stage].refusal
+    assert kept is not None and kept.code == "stepwise_needs_rows"
+    assert [(e["decision"]["method"], e["decision"]["pre_selected"]) for e in kept.exits] == [
+        ("elastic_net", "no"), ("screening", "no"), ("none", "no")]
+    raised = served[bare][stage].refusal
+    assert [e["decision"]["pre_selected"] for e in raised.exits] == [None, None, None]
+    assert [e["label"] for e in kept.exits] == [e["label"] for e in raised.exits]

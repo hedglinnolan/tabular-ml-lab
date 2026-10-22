@@ -235,17 +235,37 @@ class StageRefusal(ValueError):
     why it was not fit) handles it as before; and its error text is the one a ``ValueError`` with
     its words gives (:attr:`shown_as`, read by ``jobs.failure_of``), so what a person reads does
     not move. A way forward whose decision the decision model does not read is refused when the
-    refusal is raised."""
+    refusal is raised.
+
+    ``changes``: each way forward's decision names only what it changes of the answer the
+    project records for its kind (a step that refuses deep in a fit, such as the selection, knows
+    its method but not the answer's other fields). Where the stage's state is known, the engine
+    makes each the recorded answer with those fields changed (:meth:`on_answers`), as an
+    answer-time refusal builds its ways forward (``decision.model_copy(update=...)``)."""
 
     shown_as = "ValueError"
 
-    def __init__(self, code: str, message: str, exits: Sequence[Mapping[str, Any]] = ()):
+    def __init__(self, code: str, message: str, exits: Sequence[Mapping[str, Any]] = (),
+                 changes: bool = False):
         super().__init__(message)
-        self.code, self.message = str(code), str(message)
+        self.code, self.message, self.changes = str(code), str(message), bool(changes)
         self.exits: list[dict[str, Any]] = [_way_forward(e) for e in exits]
+        # What each way forward names, kept to make it the recorded answer (:meth:`on_answers`).
+        self._raised = [dict(e) for e in exits] if self.changes else self.exits
 
     def __reduce__(self) -> tuple[Any, ...]:
-        return (type(self), (self.code, self.message, self.exits))
+        return (type(self), (self.code, self.message, self._raised, self.changes))
+
+    def on_answers(self, state: Any) -> "StageRefusal":
+        """This refusal, its ways forward made the answers ``state`` records where they are
+        ``changes`` (the class docstring): each the answer recorded for its kind (its slot,
+        ``decisions.SLOTS``) with only the fields the way forward names changed. A way forward of a
+        kind the state records no answer for, or of a refusal that changes none, stays as raised."""
+        if not self.changes or state is None:
+            return self
+        made = [_on_recorded(e, state) for e in self._raised]
+        self.exits, self._raised, self.changes = [_way_forward(e) for e in made], made, False
+        return self
 
     def as_refusal(self) -> dict[str, Any]:
         """The refusal as the job pipe carries it and :class:`Refused` serves it."""
@@ -259,6 +279,31 @@ def _way_forward(item: Mapping[str, Any]) -> dict[str, Any]:
     if decision is not None:
         decision = parse_decision(decision).model_dump(mode="json")
     return {"label": str(item["label"]), "decision": decision}
+
+
+def _on_recorded(item: Mapping[str, Any], state: Any) -> dict[str, Any]:
+    """A way forward whose decision changes the answer ``state`` records for its kind, made that
+    answer with the fields it names changed; as raised where none is recorded or the two do not
+    read as one decision."""
+    from turbotab.core.decisions import SLOTS, parse_decision
+
+    decision = item.get("decision")
+    slot = SLOTS.get(decision.get("kind", "")) if isinstance(decision, Mapping) else None
+    recorded = getattr(state, slot, None) if slot else None
+    if not isinstance(recorded, BaseModel):
+        return dict(item)
+    made = {**recorded.model_dump(mode="json"), **decision}
+    try:
+        parse_decision(made)
+    except ValueError:
+        return dict(item)
+    return {**item, "decision": made}
+
+
+def _refused_on(exc: BaseException, state: Any) -> BaseException:
+    """A stage's failure with a refusal's ways forward made the answers its state records
+    (:meth:`StageRefusal.on_answers`); any other failure as it is."""
+    return exc.on_answers(state) if isinstance(exc, StageRefusal) else exc
 
 
 class Refused(BaseModel):
@@ -659,7 +704,10 @@ def run_stage_job(spec: dict[str, Any]) -> dict[str, Any]:
         is_cancelled=job.cancelled if job is not None else None,
     )
     started = time.perf_counter()
-    result = stage.fn(ctx)
+    try:
+        result = stage.fn(ctx)
+    except StageRefusal as exc:  # its ways forward the answers the stage ran with
+        raise _refused_on(exc, ctx.state)
     if ctx.cancelled():
         raise Cancelled()  # whatever came back may be partial: never cache it
     fmt = write_artifact(cache_root, stage.name, spec["key"], stage.version, result)
@@ -1036,7 +1084,7 @@ class Engine:
             outcome = "cancelled"
         except BaseException as exc:  # noqa: BLE001 - a stage failure is a status
             outcome = "error"
-            error, refusal = failure_of(exc)
+            error, refusal = failure_of(_refused_on(exc, ctx.state))
             log.exception("stage %s failed for project %s", stage.name, p.pid)
         self._finish_run(p, run, outcome, error, refusal)
 

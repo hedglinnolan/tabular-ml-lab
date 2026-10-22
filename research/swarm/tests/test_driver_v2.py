@@ -142,7 +142,9 @@ def test_a_declaration_is_answered_by_its_id_with_its_fields(posted):
 
 
 @pytest.mark.parametrize("sets,word", [(["threshold=1.5"], "threshold"), (["keep=2.5"], "keep"),
-                                       (["where=sideways"], "where"), (["nope=1"], "nope")])
+                                       (["where=sideways"], "where"), (["nope=1"], "nope"),
+                                       (["sensitivity=true"], "No field 'sensitivity'"),
+                                       (["where=outside"], "No field 'where'")])
 def test_a_declarations_field_outside_what_its_model_takes_is_refused(posted, sets, word):
     args = [a for s in sets for a in ("--set", s)]
     code, payload = run_main(["answer", "--run", RID, "set_selection:screening", *args,
@@ -430,6 +432,7 @@ def test_a_declaration_a_fit_refused_in_words_and_its_way_forward_through_the_dr
                         "--reason", "Would a strict screen keep any of four noise columns?")
         assert p["previewed"]["method"] == "univariable" and "preview" in p
         rec = analyst.cmd("answer", "set_selection:univariable", "--set", "threshold=0.000001",
+                          "--set", "pre_selected=no",
                           "--reason", "A strict screen, to see what it keeps.",
                           "--marker", "predictors_per_row", "--rejected", "set_selection:none")
         assert rec["recorded"]["decision"]["kind"] == "set_selection"
@@ -439,6 +442,9 @@ def test_a_declaration_a_fit_refused_in_words_and_its_way_forward_through_the_dr
         assert (refused["by"], refused["code"]) == ("engine", "nothing_kept"), refused
         ways = {e["decision"]["method"]: e["id"] for e in refused["exits"]}
         assert set(ways) == {"none", "screening"}
+        # Each way forward is the recorded answer with only its method changed (the verifier's V3).
+        assert all((e["decision"]["pre_selected"], e["decision"]["threshold"]) == ("no", 0.000001)
+                   for e in refused["exits"])
         asked = analyst.cmd("ask")
         failed = asked["fit_failed"]
         assert failed[0]["kind"] == "refused" and failed[0]["refusal"]["code"] == "nothing_kept"

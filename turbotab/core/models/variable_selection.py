@@ -597,7 +597,8 @@ class Selector(TransformerMixin, BaseEstimator):
             if p >= len(y) - 1:
                 # The answer is refused where the cohort shows it (``_stepwise_has_rows``); this is
                 # the backstop when a later answer added columns, and it names the way forward,
-                # typed with the answer's code and its three ways forward (SWARM_PLAN §8).
+                # typed with the answer's code and its three ways forward (SWARM_PLAN §8), each the
+                # recorded answer with only its method changed (``changes``), as the answer's are.
                 from turbotab.core.graph import StageRefusal
 
                 raise StageRefusal(
@@ -609,7 +610,7 @@ class Selector(TransformerMixin, BaseEstimator):
                     exits=[{"label": label, "decision": {"kind": "set_selection", "method": way}}
                            for way, label in (("elastic_net", LABELS["elastic_net"]),
                                               ("screening", LABELS["screening"]),
-                                              ("none", "No selection"))])
+                                              ("none", "No selection"))], changes=True)
             return backward_aic(Z, y, self.task_, groups)
         if m == "univariable":
             return univariable_p(Z, y, self.task_, groups) < float(self.threshold or UNIVARIABLE_P)
@@ -629,13 +630,14 @@ class Selector(TransformerMixin, BaseEstimator):
         if not len(kept.columns) and len(X.columns):
             # A fit that kept nothing stays inspectable (its frequencies, the inclusion counts across
             # folds, the selection's own preview); only a model handed no column is refused, typed
-            # with the two selections its words name as its ways forward (SWARM_PLAN §8).
+            # with the two selections its words name as its ways forward (SWARM_PLAN §8), each the
+            # recorded answer with only its method changed (``changes``).
             from turbotab.core.graph import StageRefusal
 
             words = nothing_kept(self.method, getattr(self, "rows_", len(X)))
             raise StageRefusal("nothing_kept", words, exits=[
                 {"label": LABELS[m], "decision": {"kind": "set_selection", "method": m}}
-                for m in ("none", "screening")])
+                for m in ("none", "screening")], changes=True)
         return kept
 
     def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
