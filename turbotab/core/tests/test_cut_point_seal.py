@@ -755,3 +755,225 @@ def test_an_exclusion_that_thins_a_side_of_the_cut_point_is_drawn(tmp_path):
     assert (held, train) == (20, 30)
     split = drawn(t, s)
     assert (split.data["n_holdout"], split.data["n_train"]) == (held, train)
+
+
+# ── repair round 3: the verifier's problems ──────────────────────────────────
+
+
+def _answered(t: Ingested, frame: pd.DataFrame, at) -> Refusal:
+    """The refusal the split's answer gets for a cut-point at ``at`` on ``cycle``."""
+    with t.store() as store:
+        ctx = {"columns": list(frame.columns), "target": "y", "store": store,
+               "state": ProjectState(target="y", task="regression")}
+        body = {"kind": "set_split", "holdout": 0.0, "seed": 0, "fold_order": "random",
+                "cut_point": {"column": "cycle", "at": at}}
+        with pytest.raises(Refusal) as found:
+            validate(body, ctx)
+    return found.value
+
+
+def _one_side_blank(cycles, blank) -> pd.DataFrame:
+    """Twenty rows at each of ``cycles``, with ``y`` blank on the rows ``blank`` picks."""
+    rng = np.random.default_rng(13)
+    frame = pd.DataFrame({"cycle": np.repeat(cycles, 20), "x": rng.normal(size=20 * len(cycles))})
+    frame["y"] = frame["x"] + rng.normal(scale=0.5, size=len(frame))
+    frame.loc[blank(frame), "y"] = np.nan
+    return frame
+
+
+@pytest.mark.parametrize("cycles, blank, words", [
+    # y is blank on every row at or after 2017: the table holds 20 such rows, none with y recorded.
+    ((2011.0, 2017.0), lambda f: f["cycle"] >= 2017,
+     "No row with `y` recorded has `cycle` at or after `2017`, so nothing would be held out."),
+    # y is blank on every row before 2017: 20 rows train in the table, none with y recorded.
+    ((2011.0, 2017.0), lambda f: f["cycle"] < 2017,
+     "Every row with `y` recorded and a readable `cycle` is at or after `2017`, so no row would "
+     "train before it."),
+    # Every row with y recorded has no cycle; the rows with a cycle have y blank.
+    ((np.nan, 2011.0, 2017.0), lambda f: f["cycle"].notna(),
+     "No value of `cycle` reads as a time among the rows with `y` recorded, so no row can be held "
+     "out at or after `2017`."),
+])
+def test_the_cut_points_refusals_name_the_rows_with_the_outcome_recorded(tmp_path, cycles, blank,
+                                                                         words):
+    """V6: the cut-point is judged over the rows with the outcome recorded, at the answer and at
+    the draw, so where some row has none its refusal says so, rather than speak of every row of the
+    column; pandas shows the table holds the rows today's words said it did not."""
+    frame = _one_side_blank(cycles, blank)
+    recorded = frame["y"].notna()
+    dated = frame.loc[recorded, "cycle"].dropna()
+    assert 0 < int(recorded.sum()) < len(frame)
+    assert ((dated >= 2017).any(), (dated < 2017).any()) != (True, True)  # the check's own rows
+    assert (frame["cycle"] >= 2017).any() and (frame["cycle"] < 2017).any()  # the table's
+    t = _write(tmp_path, frame)
+    assert _answered(t, frame, 2017).message == words
+    with pytest.raises(ValueError) as found:
+        drawn(t, state(CutPoint(column="cycle", at=2017)))
+    assert str(found.value) == words
+
+
+def test_with_every_outcome_recorded_the_cut_points_refusals_keep_the_columns_words(tmp_path):
+    """V6, silent: where every row has the outcome recorded, the rows the check reads are every row
+    of the column, and the refusals say so as before."""
+    t, frame = table(tmp_path)
+    assert frame["y"].notna().all()
+    assert _answered(t, frame, 2030).message == (
+        "No row of `cycle` is at or after `2030`, so nothing would be held out.")
+    assert _answered(t, frame, 2011).message == (
+        "Every row with a readable `cycle` is at or after `2011`, so no row would train before it.")
+
+
+def test_the_undated_share_is_counted_on_the_rows_with_the_outcome_recorded(tmp_path):
+    """V6: 6 of the 50 rows with y recorded have no cycle, more than a tenth; ten more rows have
+    neither, and the refusal counts the 50 the check reads, naming them so (pandas counts)."""
+    rng = np.random.default_rng(5)
+    frame = pd.DataFrame({"cycle": np.repeat([2011.0, 2013.0, 2015.0, 2017.0, 2019.0, np.nan], 10),
+                          "x": rng.normal(size=60)})
+    frame["y"] = frame["x"] + rng.normal(scale=0.5, size=60)
+    frame.loc[50:, "y"] = np.nan
+    frame.loc[:5, "cycle"] = np.nan
+    recorded = frame["y"].notna()
+    undated, rows = int((recorded & frame["cycle"].isna()).sum()), int(recorded.sum())
+    assert (undated, rows) == (6, 50) and int(frame["cycle"].isna().sum()) == 16
+    words = (f"`{undated}` of `{rows}` rows with `y` recorded have no readable `cycle`: rows with "
+             f"no readable time would train")
+    t = _write(tmp_path, frame)
+    found = _answered(t, frame, 2017)
+    assert found.code == "cut_point_undated" and found.message.startswith(words)
+    with pytest.raises(ValueError) as drew:
+        drawn(t, state(CutPoint(column="cycle", at=2017)))
+    assert str(drew.value).startswith(words)
+
+
+
+def test_a_cut_point_every_unit_with_the_outcome_spans_names_the_rows_with_it(tmp_path):
+    """V6, the draw's unit form: every person with y recorded is seen in 2015 and again in 2019, so
+    held out whole none would train; ten people seen only in 2011 have y blank, so the refusal
+    speaks of the rows with y recorded (pandas)."""
+    rng = np.random.default_rng(3)
+    frame = pd.DataFrame({"pid": [f"p{i}" for i in range(20)] * 2 + [f"q{i}" for i in range(10)],
+                          "cycle": [2015.0] * 20 + [2019.0] * 20 + [2011.0] * 10,
+                          "x": rng.normal(size=50)})
+    frame["y"] = frame["x"] + rng.normal(scale=0.5, size=50)
+    frame.loc[40:, "y"] = np.nan
+    recorded = frame["y"].notna()
+    last = frame.loc[recorded].groupby("pid")["cycle"].max()
+    assert (last >= 2017).all() and (frame.groupby("pid")["cycle"].max() < 2017).sum() == 10
+    t = _write(tmp_path, frame)
+    with pytest.raises(ValueError) as found:
+        drawn(t, state(CutPoint(column="cycle", at=2017), grouped=True))
+    assert str(found.value) == (
+        "Every unit with a readable `cycle` among the rows with `y` recorded has a row at or after "
+        "`2017`, so held out whole, no row would train before it.")
+
+
+def _counted(before: int, after: int, undated: int = 0) -> pd.DataFrame:
+    """``before`` rows in 2011, ``after`` in 2017 and ``undated`` with no cycle, y on each."""
+    rng = np.random.default_rng(17)
+    n = before + after + undated
+    frame = pd.DataFrame({"cycle": [2011.0] * before + [2017.0] * after + [np.nan] * undated,
+                          "x": rng.normal(size=n)})
+    frame["y"] = frame["x"] + rng.normal(scale=0.5, size=n)
+    return frame
+
+
+ROWS = "A cut-point holds out every row at or after it, and every other analyzed row trains."
+
+
+@pytest.mark.parametrize("before, after, undated, words", [
+    (40, 1, 1, "`1` row held out and `41` train. {ROWS} `1` row with no readable `cycle` trains "
+               "and is never held out."),
+    (1, 40, 0, "`40` rows held out and `1` trains. {ROWS}"),
+    (40, 2, 2, "`2` rows held out and `42` train. {ROWS} `2` rows with no readable `cycle` train "
+               "and are never held out."),
+])
+def test_the_seal_sentence_agrees_with_its_counts_row_by_row(tmp_path, before, after, undated,
+                                                             words):
+    """V9: each count of one takes a singular noun and verb, and two or more the plural (the
+    counts by construction, checked with pandas)."""
+    frame = _counted(before, after, undated)
+    held = int((frame["cycle"] >= 2017).sum())
+    assert (held, len(frame) - held, int(frame["cycle"].isna().sum())) == (
+        after, before + undated, undated)
+    split = drawn(_write(tmp_path, frame), state(CutPoint(column="cycle", at=2017)))
+    assert split.data["chronology"]["sentence"] == (
+        "Held out by a cut-point at `2017` on `cycle`: " + words.format(ROWS=ROWS))
+
+
+def test_one_undated_row_of_too_few_is_said_in_the_singular(tmp_path):
+    """V9: one of eight rows with no cycle is more than a tenth, and the refusal says that one row
+    has none; six of fifty (above) have none."""
+    frame = _counted(4, 3, 1)
+    assert int(frame["cycle"].isna().sum()) == 1 and 1 > 0.1 * len(frame) == 0.8
+    found = _answered(_write(tmp_path, frame), frame, 2017)
+    assert found.code == "cut_point_undated"
+    assert found.message.startswith("`1` of `8` rows has no readable `cycle`: rows with no "
+                                    "readable time would train")
+
+UNITS = ("A cut-point holds out every row at or after it, with the earlier rows of any unit it "
+         "holds out, and every other analyzed row trains.")
+
+
+def _people(rows: list[tuple[str, float]]) -> pd.DataFrame:
+    rng = np.random.default_rng(19)
+    frame = pd.DataFrame(rows, columns=["pid", "cycle"])
+    frame["x"] = rng.normal(size=len(frame))
+    frame["y"] = frame["x"] + rng.normal(scale=0.5, size=len(frame))
+    return frame
+
+
+TWICE_BEFORE = [(f"q{i}", c) for i in range(20) for c in (2011.0, 2013.0)]  # 20 people, 40 rows
+SPANNING = [(f"p{i}", c) for i in range(20) for c in (2015.0, 2019.0)]  # 20 people, both sides
+
+
+@pytest.mark.parametrize("rows, counts, words", [
+    (TWICE_BEFORE + [("p0", 2019.0)], (1, 1, 40, 0),
+     "`1` unit whole, `1` row, and `40` rows train. {UNITS}"),
+    (TWICE_BEFORE + [("p0", 2015.0), ("p0", 2019.0)], (1, 2, 40, 1),
+     "`1` unit whole, `2` rows, and `40` rows train. {UNITS} Whole units are held out, earlier "
+     "rows included: `1` of the held-out rows was observed before `2017`."),
+    (SPANNING + [("q0", 2011.0)], (20, 40, 1, 20),
+     "`20` units whole, `40` rows, and `1` row trains. {UNITS} Whole units are held out, earlier "
+     "rows included: `20` of the held-out rows were observed before `2017`."),
+    (SPANNING + TWICE_BEFORE + [("u0", np.nan)], (20, 40, 41, 20),
+     "`20` units whole, `40` rows, and `41` rows train. {UNITS} Whole units are held out, earlier "
+     "rows included: `20` of the held-out rows were observed before `2017`. `1` unit with no "
+     "readable `cycle` trains and is never held out."),
+])
+def test_the_seal_sentence_agrees_with_its_counts_in_whole_units(tmp_path, rows, counts, words):
+    """V9, grouped: a unit, a row and a held-out row observed before the cut-point, each counted
+    once, take the singular. ``counts`` (units held out, their rows, the rows that train, the
+    held-out rows before the cut-point) are pandas' over the table written."""
+    frame = _people(rows)
+    held = frame.groupby("pid")["cycle"].transform("max") >= 2017
+    assert (int(frame.loc[held, "pid"].nunique()), int(held.sum()), int((~held).sum()),
+            int((held & (frame["cycle"] < 2017)).sum())) == counts
+    split = drawn(_write(tmp_path, frame), state(CutPoint(column="cycle", at=2017), grouped=True))
+    assert split.data["chronology"]["sentence"] == (
+        "Held out by a cut-point at `2017` on `cycle`: " + words.format(UNITS=UNITS))
+
+
+LEFT_OUT_ONE = ("is left out by the answers that choose the analyzed rows, an exclusion or the "
+                "missing-values answer among them. A cut-point is drawn only where some analyzed "
+                "rows are held out and some before it train.")
+
+
+def test_the_draws_refusal_agrees_with_one_row_left_out(tmp_path):
+    """V9: where the one row with the outcome recorded on a side of the cut-point is the one an
+    exclusion leaves out, the refusal says that row is left out; the plural is pinned by the
+    repair-round-2 tests above (twenty and forty rows)."""
+    rule = d.ExclusionRule(column="age", low=18, reason="adults")
+    for before, after, side in ((40, 1, "held"), (1, 40, "train")):
+        frame = _counted(before, after)
+        child = frame["cycle"] >= 2017 if side == "held" else frame["cycle"] < 2017
+        frame["age"] = np.where(child, 12, 30)
+        assert int(child.sum()) == 1 and int((frame["age"] >= 18).sum()) == 40
+        s = state(CutPoint(column="cycle", at=2017)).model_copy(update={
+            "roles": {"x": "covariate", "age": "covariate"}, "exclusions": [rule]})
+        with pytest.raises(ValueError) as found:
+            drawn(_write(tmp_path, frame, f"{side}.csv"), s)
+        assert str(found.value) == (
+            "No analyzed row would be held out: the `1` row with the outcome recorded that the "
+            f"cut-point at `2017` on `cycle` would hold out {LEFT_OUT_ONE}" if side == "held" else
+            "No analyzed row with a readable `cycle` would train before `2017`: the `1` row with "
+            f"the outcome recorded there {LEFT_OUT_ONE}")

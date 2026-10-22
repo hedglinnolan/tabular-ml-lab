@@ -571,10 +571,15 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
         draw.labels = draw.y
     if cut_point is not None:
         counted = None if analyzed is None else np.isin(ids, np.asarray(analyzed, dtype=np.int64))
+        # The universe is the rows with the outcome recorded: where the table has others, the
+        # cut-point's refusals say whose rows they judged (the package 4 verifier's V6).
+        n_table = getattr(store, "n_rows", None)
+        recorded = target if target and (n_table is None or len(ids) < int(n_table)) else None
         draw.chronology, draw.held, draw.refusal, draw.order = _cut(
             frame, cut_point, draw.groups, fold_order=fold_order, seed=seed,
             present=cut_point.column in columns, analyzed=counted,
-            outcome=(target if cut_point.column in decisions.outcome_columns(state) else None))
+            outcome=(target if cut_point.column in decisions.outcome_columns(state) else None),
+            recorded=recorded)
     elif requested:
         draw.chronology, draw.held, draw.refusal, draw.order = _chronology(
             frame, time_column, draw.groups, holdout=holdout, seed=seed, present=time_column in columns)
@@ -662,14 +667,17 @@ def cut_value(at: Any, raw: Any) -> float | None:
     return None if np.isnan(out[0]) else float(out[0])
 
 
-def cut_problem(raw: Any, cut: Any) -> tuple[str, str] | None:
+def cut_problem(raw: Any, cut: Any, recorded: str | None = None) -> tuple[str, str] | None:
     """Why a cut-point cannot hold rows out of the column ``raw`` and leave some to train, as a
     refusal's ``(code, message)``; None when it can. Judged row by row: the draw judges units
     (:func:`cut_holdout`), which can only refuse more. More than :data:`MAX_UNDATED_SHARE` of the
     rows with no readable time is refused too: they would train, though any may fall at or after
-    it."""
+    it. ``recorded`` names the outcome where ``raw`` holds only the rows with it recorded and some
+    row of the column has none, so the message speaks of those rows, not of every row of the
+    column (the package 4 verifier's V6); None where ``raw`` is every row of the column."""
     shown = decisions.cut_shown(cut.at)
     column = cut.column
+    among = f" among the rows with `{recorded}` recorded" if recorded else ""
     at = cut_value(cut.at, raw)
     if at is None:
         kind = "date" if _dated(raw) else "number"
@@ -680,19 +688,24 @@ def cut_problem(raw: Any, cut: Any) -> tuple[str, str] | None:
     dated = times[~np.isnan(times)]
     if not len(dated):
         return ("cut_point_unreadable",
-                f"No value of `{column}` reads as a time, so no row can be held out at or after "
-                f"`{shown}`.")
+                f"No value of `{column}` reads as a time{among}, so no row can be held out at or "
+                f"after `{shown}`.")
     if not (dated >= at).any():
+        no_row = (f"No row with `{recorded}` recorded has `{column}`" if recorded
+                  else f"No row of `{column}` is")
         return ("cut_point_holds_nothing",
-                f"No row of `{column}` is at or after `{shown}`, so nothing would be held out.")
+                f"{no_row} at or after `{shown}`, so nothing would be held out.")
     if not (dated < at).any():
+        scope = f"`{recorded}` recorded and " if recorded else ""
         return ("cut_point_trains_nothing",
-                f"Every row with a readable `{column}` is at or after `{shown}`, so no row would "
-                f"train before it.")
+                f"Every row with {scope}a readable `{column}` is at or after `{shown}`, so no row "
+                f"would train before it.")
     unreadable = int(len(times) - len(dated))
     if unreadable > MAX_UNDATED_SHARE * len(times):
+        rows = f"rows with `{recorded}` recorded" if recorded else "rows"
+        has = "has" if unreadable == 1 else "have"
         return ("cut_point_undated",
-                f"`{unreadable:,}` of `{len(times):,}` rows have no readable `{column}`: "
+                f"`{unreadable:,}` of `{len(times):,}` {rows} {has} no readable `{column}`: "
                 f"{claims.card(CUT_POINT_UNDATED, {'cut_point': cut, 'holdout': 0.0})}.")
     return None
 
@@ -719,7 +732,10 @@ def cut_holdout(times: Any, groups: Any | None, at: float, column: str, shown: s
     None: every row), as the split's own counts do, so with an exclusion it never says rows train
     that do not. Units with no readable time train and are counted; their share is refused above
     :data:`MAX_UNDATED_SHARE` before this is called (:func:`cut_problem`). Units are named only
-    where some unit has more than one row."""
+    where some unit has more than one row, and each count takes a singular noun and verb at one
+    (the package 4 verifier's V9)."""
+    from turbotab.core.voice import plural
+
     keys, dated_units, _, _ = _units_by_time(times, groups, 0)
     held = dated_units.index[dated_units.to_numpy() >= at].to_numpy(dtype=object)
     mask = np.isin(keys, held) if len(held) else np.zeros(len(keys), dtype=bool)
@@ -732,18 +748,22 @@ def cut_holdout(times: Any, groups: Any | None, at: float, column: str, shown: s
     n_units = len(set(keys[mask & counted].tolist()))
     undated = ~np.isin(keys, dated_units.index.to_numpy(dtype=object))  # a unit with no time
     n_undated = len(set(keys[undated & counted].tolist()))
-    word = "units" if grouped else "rows"
+    word = "unit" if grouped else "row"
+    trains = "trains" if n_train == 1 else "train"
     if grouped:
-        lead = (f"Held out by a cut-point at `{shown}` on `{column}`: `{n_units:,}` units whole, "
-                f"`{n_rows:,}` rows, and `{n_train:,}` rows train.")
+        lead = (f"Held out by a cut-point at `{shown}` on `{column}`: `{n_units:,}` "
+                f"{plural(n_units, 'unit')} whole, `{n_rows:,}` {plural(n_rows, 'row')}, and "
+                f"`{n_train:,}` {plural(n_train, 'row')} {trains}.")
     else:
-        lead = (f"Held out by a cut-point at `{shown}` on `{column}`: `{n_rows:,}` rows held out "
-                f"and `{n_train:,}` train.")
+        lead = (f"Held out by a cut-point at `{shown}` on `{column}`: `{n_rows:,}` "
+                f"{plural(n_rows, 'row')} held out and `{n_train:,}` {trains}.")
     # Audit IN-24's disclosure, for a cut-point: a unit held out whole can hold rows before it.
     before = (f" Whole units are held out, earlier rows included: `{n_before:,}` of the held-out "
-              f"rows were observed before `{shown}`." if grouped and n_before else "")
-    undated_words = (f" `{n_undated:,}` {word} with no readable `{column}` train and are never "
-                     f"held out." if n_undated else "")
+              f"rows {'was' if n_before == 1 else 'were'} observed before `{shown}`."
+              if grouped and n_before else "")
+    undated_words = (f" `{n_undated:,}` {plural(n_undated, word)} with no readable `{column}` "
+                     f"{'trains and is' if n_undated == 1 else 'train and are'} never held out."
+                     if n_undated else "")
     said = claims.card(CUT_POINT_UNITS if grouped else CUT_POINT,
                        {"cut_point": {"column": column, "at": shown}, "holdout": 0.0,
                         "grouped": grouped})
@@ -754,14 +774,16 @@ def cut_holdout(times: Any, groups: Any | None, at: float, column: str, shown: s
 
 
 def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, seed: int,
-         present: bool, analyzed: Any | None = None, outcome: str | None = None
-         ) -> tuple[Chronology, Any | None, str | None, Any | None]:
+         present: bool, analyzed: Any | None = None, outcome: str | None = None,
+         recorded: str | None = None) -> tuple[Chronology, Any | None, str | None, Any | None]:
     """The cut-point's draw, as :func:`_chronology` returns the draw by share's: its disclosure,
     the held-out mask, a refusal when the cut-point cannot hold rows out and leave some to train
     (or reads an outcome column: ``outcome`` names the target it is part of), and each row's unit
     rank in time when the folds' order is time (None for random folds). ``analyzed`` is what the
     sentence counts (:func:`cut_holdout`), and the draw is refused where it leaves no analyzed row
-    held out or none to train (:func:`_cut_leaves_the_analysis`)."""
+    held out or none to train (:func:`_cut_leaves_the_analysis`). ``recorded`` names the outcome
+    where ``frame`` holds only the rows with it recorded and the table has others, so a refusal
+    speaks of those rows (:func:`cut_problem`)."""
     column, shown = cut.column, decisions.cut_shown(cut.at)
     if outcome is not None:
         said = cut_on_outcome(column, outcome)
@@ -775,15 +797,16 @@ def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, se
                 f"`{column}` was named as the cut-point's column, but the table has no column by "
                 f"that name, so no row can be held out by it.", None)
     raw = frame[column]
-    problem = cut_problem(raw, cut)
+    problem = cut_problem(raw, cut, recorded)
     times = read_times(raw)
+    among = f" among the rows with `{recorded}` recorded" if recorded else ""
     if problem is None:
         mask, chronology = cut_holdout(times, groups, cut_value(cut.at, raw), column, shown,
                                        analyzed)
         if not (~mask & ~np.isnan(times)).any():  # every dated unit holds a row at or after it
             problem = ("cut_point_trains_nothing",
-                       f"Every unit with a readable `{column}` has a row at or after `{shown}`, "
-                       f"so held out whole, no row would train before it.")
+                       f"Every unit with a readable `{column}`{among} has a row at or after "
+                       f"`{shown}`, so held out whole, no row would train before it.")
         elif analyzed is not None:
             problem = _cut_leaves_the_analysis(mask, ~np.isnan(times), np.asarray(analyzed, bool),
                                                cut, column, shown)
@@ -799,7 +822,7 @@ def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, se
 
 
 CUT_POINT_ANALYZED = "seal.cut_point_analyzed"  # … drawn only with analyzed rows on both sides
-LEFT_OUT = ("are all left out by the answers that choose the analyzed rows, an exclusion or the "
+LEFT_OUT = ("left out by the answers that choose the analyzed rows, an exclusion or the "
             "missing-values answer among them")
 
 
@@ -811,17 +834,26 @@ def _cut_leaves_the_analysis(mask: Any, dated: Any, analyzed: Any, cut: Any, col
     verifier's V2), so the split would hold out, or train on, no analyzed row while every reader
     of ``decisions.holds_out`` took it for a seal. None when the analyzed rows fall on both sides,
     a row with a readable time among those that train, as :func:`_cut` asks of every row."""
+    from turbotab.core.voice import plural
+
     said = claims.card(CUT_POINT_ANALYZED, {"cut_point": cut, "holdout": 0.0})
+
+    def rows(n: int) -> str:  # the package 4 verifier's V9: one row is left out, not "all"
+        return f"`{n:,}` {plural(n, 'row')} with the outcome recorded"
+
+    def left(n: int) -> str:
+        return f"{'is' if n == 1 else 'are all'} {LEFT_OUT}"
+
     if not (mask & analyzed).any():
+        n = int(mask.sum())
         return ("cut_point_holds_no_analyzed_row",
-                f"No analyzed row would be held out: the `{int(mask.sum()):,}` rows with the "
-                f"outcome recorded that the cut-point at `{shown}` on `{column}` would hold out "
-                f"{LEFT_OUT}. {said}")
+                f"No analyzed row would be held out: the {rows(n)} that the cut-point at "
+                f"`{shown}` on `{column}` would hold out {left(n)}. {said}")
     if not (~mask & dated & analyzed).any():  # a row with no readable time is not before it
+        n = int((~mask & dated).sum())
         return ("cut_point_trains_no_analyzed_row",
                 f"No analyzed row with a readable `{column}` would train before `{shown}`: the "
-                f"`{int((~mask & dated).sum()):,}` rows with the outcome recorded there "
-                f"{LEFT_OUT}. {said}")
+                f"{rows(n)} there {left(n)}. {said}")
     return None
 
 
@@ -2320,8 +2352,9 @@ def _a_changed_scheme_is_its_own_kind(decision: Any, ctx: Any) -> None:
 def _the_cut_point_reads_its_column(decision: Any, ctx: Any) -> None:
     """A cut-point names a column of the table that is not an outcome (the verifier's P10), and
     holds rows out of it and leaves some to train, among the rows with the outcome recorded
-    (:func:`cut_problem`; the draw judges units and can only refuse more). The exit holds out the
-    usual share instead, the scheme kept."""
+    (:func:`cut_problem`, whose refusal names those rows where some row has none; the draw judges
+    units and can only refuse more). The exit holds out the usual share instead, the scheme
+    kept."""
     cut = getattr(decision, "cut_point", None)
     if cut is None:
         return
@@ -2343,9 +2376,12 @@ def _the_cut_point_reads_its_column(decision: Any, ctx: Any) -> None:
         return
     read = [cut.column, *([target] if target in set(store.columns) and target != cut.column else [])]
     frame = store.materialize(read)
-    raw = frame[cut.column] if target not in frame.columns else frame.loc[frame[target].notna(),
-                                                                          cut.column]
-    problem = cut_problem(raw, cut)
+    if target in frame.columns:
+        kept = frame[target].notna()
+        problem = cut_problem(frame.loc[kept, cut.column], cut,
+                              None if bool(kept.all()) else target)
+    else:
+        problem = cut_problem(frame[cut.column], cut)
     if problem is not None:
         raise Refusal(problem[0], problem[1], exits=[share])
 

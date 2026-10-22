@@ -981,6 +981,8 @@ SEAL_CUT_POINT = register(Claim(
               truth="construction"),
         Silent(f"{P4_CUT_TESTS}::test_the_split_sentence_names_units_only_where_the_seal_keeps_"
                "units_whole", truth="construction"),
+        Fires(f"{P4_CUT_TESTS}::test_the_seal_sentence_agrees_with_its_counts_row_by_row",
+              truth="construction"),
     ),
     enforced_by=("turbotab.core.seal:cut_holdout", "turbotab.core.seal:_cut",
                  "turbotab.core.voice:_set_split"),
@@ -1019,6 +1021,8 @@ SEAL_CUT_POINT_UNITS = register(Claim(
               "units_whole", truth="construction"),
         Silent(f"{P4_CUT_TESTS}::test_every_row_at_or_after_the_cut_point_is_held_out_and_every_"
                "earlier_row_trains", truth="construction"),
+        Fires(f"{P4_CUT_TESTS}::test_the_seal_sentence_agrees_with_its_counts_in_whole_units",
+              truth="independent:pandas"),
     ),
     enforced_by=("turbotab.core.seal:cut_holdout", "turbotab.core.voice:_set_split"),
     author=P4_AUTHOR,
@@ -1056,6 +1060,10 @@ SEAL_CUT_POINT_UNDATED = register(Claim(
               truth="construction"),
         Silent(f"{P4_CUT_TESTS}::test_a_tenth_of_the_rows_undated_is_drawn_and_the_undated_rows_"
                "train", truth="construction"),
+        Fires(f"{P4_CUT_TESTS}::test_the_undated_share_is_counted_on_the_rows_with_the_outcome_"
+              "recorded", truth="independent:pandas"),
+        Fires(f"{P4_CUT_TESTS}::test_one_undated_row_of_too_few_is_said_in_the_singular",
+              truth="construction"),
     ),
     enforced_by=("turbotab.core.seal:cut_problem", "turbotab.core.seal:cut_holdout"),
     author=P4_AUTHOR,
@@ -1095,6 +1103,8 @@ SEAL_CUT_POINT_ANALYZED = register(Claim(
               "the_draw", truth="construction"),
         Silent(f"{P4_CUT_TESTS}::test_an_exclusion_that_thins_a_side_of_the_cut_point_is_drawn",
                truth="independent:pandas"),
+        Fires(f"{P4_CUT_TESTS}::test_the_draws_refusal_agrees_with_one_row_left_out",
+              truth="construction"),
     ),
     enforced_by=("turbotab.core.seal:_cut_leaves_the_analysis", "turbotab.core.seal:_cut"),
     author=P4_AUTHOR,

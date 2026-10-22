@@ -11,7 +11,9 @@
  * "predictors" or "kept out of the models" (the roles ruling at the landing's cap). And SWARM_PLAN
  * §10 package 4 added one option to two cards, each its last, and changed nothing else in any
  * block: the exclusions card's rule by level ("By level", in exclusions.html and in the coach and
- * ask blocks that hold that card) and the seal card's cut-point ("cut", in split.html).
+ * ask blocks that hold that card) and the seal card's cut-point ("cut", in split.html), whose line
+ * says the rows are sealed row by row on that card's one-row-per-unit basis (the package 4
+ * verifier's V7: a unit is said to be kept whole only under a grouped basis).
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

@@ -553,7 +553,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `seal.cut_point`
 
-*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `bd217cc956a9`
+*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `40ef70f9862f`
 
 - **Card:** A cut-point holds out every row at or after it, and every other analyzed row trains.
 - **Methods:** held out every row at or after it for one final score
@@ -563,13 +563,13 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
   - boundary: *judgment*, graded by not graded (reason: At or after: a row at the cut-point itself is held out, so a later cycle's first value (2017-March 2020's, SWARM_PLAN §5) is all held out; the fires test puts rows at the value and a hair before it. Every other analyzed row trains, one with no readable time among them (seal.cut_point_undated). A row an exclusion leaves out is sealed with the rest where it falls at or after the cut-point, so an exclusion relaxed later brings it back held out, but it never trains; so the seal counts the analyzed rows, as the split's own counts do (the package 4 verifier's P1).)
   - whole_units: *retired*, graded by swarm package 4 builder, repair round 1, 2026-10-22 (reason: A unit with rows on both sides is held out whole, by its last observation, as the chronological draw ranks units (GUIDED-143: a unit split across the boundary trades one leak for another), so its earlier rows are held out too and the seal counts them (audit IN-24).); regraded: The sentence no longer says a unit's earlier rows are held out: on a table of one row per unit it named units that do not exist (the package 4 verifier's P14). Where the seal keeps units whole, seal.cut_point_units says it.
   - folds_free: *judgment*, graded by not graded (reason: The training folds' order is the split's own answer under a cut-point (SWARM_PLAN §10's watch note on package 3), so the same held-out rows can be scored with random repeated folds or time-ordered ones; random folds there are the analyst's call, which the methods sentence states.)
-- **Tests:** fires `turbotab/core/tests/test_cut_point_seal.py::test_every_row_at_or_after_the_cut_point_is_held_out_and_every_earlier_row_trains` (construction); fires `turbotab/core/tests/test_cut_point_seal.py::test_with_rows_excluded_the_seal_counts_the_analyzed_rows_it_holds_out_and_trains` (independent:pandas); silent `turbotab/core/tests/test_cut_point_seal.py::test_the_draw_by_share_still_orders_its_folds_by_time` (construction); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_same_held_out_rows_take_random_repeated_folds_or_time_ordered_ones` (construction); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_split_sentence_says_what_the_cut_point_held_out` (construction); silent `turbotab/core/tests/test_cut_point_seal.py::test_the_split_sentence_names_units_only_where_the_seal_keeps_units_whole` (construction)
+- **Tests:** fires `turbotab/core/tests/test_cut_point_seal.py::test_every_row_at_or_after_the_cut_point_is_held_out_and_every_earlier_row_trains` (construction); fires `turbotab/core/tests/test_cut_point_seal.py::test_with_rows_excluded_the_seal_counts_the_analyzed_rows_it_holds_out_and_trains` (independent:pandas); silent `turbotab/core/tests/test_cut_point_seal.py::test_the_draw_by_share_still_orders_its_folds_by_time` (construction); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_same_held_out_rows_take_random_repeated_folds_or_time_ordered_ones` (construction); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_split_sentence_says_what_the_cut_point_held_out` (construction); silent `turbotab/core/tests/test_cut_point_seal.py::test_the_split_sentence_names_units_only_where_the_seal_keeps_units_whole` (construction); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_seal_sentence_agrees_with_its_counts_row_by_row` (construction)
 - **Enforced by:** `turbotab.core.seal:cut_holdout`, `turbotab.core.seal:_cut`, `turbotab.core.voice:_set_split`
 - **Author:** swarm package 4 builder
 
 ### `seal.cut_point_analyzed`
 
-*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `6d1dde844cfb`
+*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `fb04f74202de`
 
 - **Card:** A cut-point is drawn only where some analyzed rows are held out and some before it train.
 - **Methods:** none
@@ -577,13 +577,13 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 - **Decision:** decision `set_split.cut_point_analyzed`; verdict *refused*
 - **Parts:**
   - refused: *judgment*, graded by not graded (reason: The cut-point is drawn over the rows with the outcome recorded, and the answers that choose the analyzed rows (an exclusion, the missing-values answer under complete cases: NHANES's later cycle can lack a predictor outright) can leave none of them on one side. Drawn so, the split would hold out no analyzed row, or train on none, while the opening, the Router and the compared-families guard read a cut-point as rows held out (decisions.holds_out); so the draw is refused, naming the answers that leave them out, and never drawn empty (the package 4 verifier's V2). The answers come after the split in the interview, so this is checked at the draw, not at the split's answer.)
-- **Tests:** fires `turbotab/core/tests/test_cut_point_seal.py::test_an_exclusion_that_leaves_no_analyzed_row_at_or_after_the_cut_point_refuses_the_draw` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_an_exclusion_that_leaves_no_analyzed_row_before_the_cut_point_refuses_the_draw` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_complete_cases_that_leave_no_analyzed_row_held_out_refuse_the_draw` (construction); silent `turbotab/core/tests/test_cut_point_seal.py::test_an_exclusion_that_thins_a_side_of_the_cut_point_is_drawn` (independent:pandas)
+- **Tests:** fires `turbotab/core/tests/test_cut_point_seal.py::test_an_exclusion_that_leaves_no_analyzed_row_at_or_after_the_cut_point_refuses_the_draw` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_an_exclusion_that_leaves_no_analyzed_row_before_the_cut_point_refuses_the_draw` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_complete_cases_that_leave_no_analyzed_row_held_out_refuse_the_draw` (construction); silent `turbotab/core/tests/test_cut_point_seal.py::test_an_exclusion_that_thins_a_side_of_the_cut_point_is_drawn` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_draws_refusal_agrees_with_one_row_left_out` (construction)
 - **Enforced by:** `turbotab.core.seal:_cut_leaves_the_analysis`, `turbotab.core.seal:_cut`
 - **Author:** swarm package 4 builder
 
 ### `seal.cut_point_undated`
 
-*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `2ccb3dec32d3`
+*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `7720daab5384`
 
 - **Card:** rows with no readable time would train, though any of them may fall at or after the cut-point, so a cut-point is refused where more than 10% of the rows with the outcome recorded have none
 - **Methods:** none
@@ -593,13 +593,13 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 - **Parts:**
   - undated_train: *judgment*, graded by not graded (reason: A row with no readable time cannot be placed before or after the cut-point, so it is never held out and trains, as under the chronological draw by share; the seal counts such rows.)
   - ceiling: *judgment*, graded by not graded (reason: Above a tenth, rows that train though they may fall at or after the cut-point are too many for the held-out rows to stand for the later period; the tenth is the chronological draw's own ceiling (MAX_UNDATED_SHARE), kept so both draws by time refuse alike. It is our call, not a published threshold.)
-- **Tests:** fires `turbotab/core/tests/test_cut_point_seal.py::test_more_than_a_tenth_of_the_rows_undated_refuses_the_cut_point` (construction); silent `turbotab/core/tests/test_cut_point_seal.py::test_a_tenth_of_the_rows_undated_is_drawn_and_the_undated_rows_train` (construction)
+- **Tests:** fires `turbotab/core/tests/test_cut_point_seal.py::test_more_than_a_tenth_of_the_rows_undated_refuses_the_cut_point` (construction); silent `turbotab/core/tests/test_cut_point_seal.py::test_a_tenth_of_the_rows_undated_is_drawn_and_the_undated_rows_train` (construction); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_undated_share_is_counted_on_the_rows_with_the_outcome_recorded` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_one_undated_row_of_too_few_is_said_in_the_singular` (construction)
 - **Enforced by:** `turbotab.core.seal:cut_problem`, `turbotab.core.seal:cut_holdout`
 - **Author:** swarm package 4 builder
 
 ### `seal.cut_point_units`
 
-*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `2bd3700aa3ed`
+*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `88205dee43dc`
 
 - **Card:** A cut-point holds out every row at or after it, with the earlier rows of any unit it holds out, and every other analyzed row trains.
 - **Methods:** held out every row at or after it for one final score, with the earlier rows of any unit it held out
@@ -608,7 +608,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 - **Parts:**
   - boundary: *judgment*, graded by not graded (reason: At or after: a row at the cut-point itself is held out, so a later cycle's first value (2017-March 2020's, SWARM_PLAN §5) is all held out; the fires test puts rows at the value and a hair before it. Every other analyzed row trains, one with no readable time among them (seal.cut_point_undated). A row an exclusion leaves out is sealed with the rest where it falls at or after the cut-point, so an exclusion relaxed later brings it back held out, but it never trains; so the seal counts the analyzed rows, as the split's own counts do (the package 4 verifier's P1).)
   - whole_units: *judgment*, graded by not graded (reason: A unit with rows on both sides is held out whole, by its last observation, as the chronological draw ranks units (GUIDED-143: a unit split across the boundary trades one leak for another), so its earlier rows are held out too and the seal counts them (audit IN-24).)
-- **Tests:** fires `turbotab/core/tests/test_cut_point_seal.py::test_a_unit_seen_on_both_sides_is_held_out_whole_and_its_earlier_rows_are_counted` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_a_grouped_preview_says_whole_units_are_held_out_with_their_earlier_rows` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_split_sentence_names_units_only_where_the_seal_keeps_units_whole` (construction); silent `turbotab/core/tests/test_cut_point_seal.py::test_every_row_at_or_after_the_cut_point_is_held_out_and_every_earlier_row_trains` (construction)
+- **Tests:** fires `turbotab/core/tests/test_cut_point_seal.py::test_a_unit_seen_on_both_sides_is_held_out_whole_and_its_earlier_rows_are_counted` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_a_grouped_preview_says_whole_units_are_held_out_with_their_earlier_rows` (independent:pandas); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_split_sentence_names_units_only_where_the_seal_keeps_units_whole` (construction); silent `turbotab/core/tests/test_cut_point_seal.py::test_every_row_at_or_after_the_cut_point_is_held_out_and_every_earlier_row_trains` (construction); fires `turbotab/core/tests/test_cut_point_seal.py::test_the_seal_sentence_agrees_with_its_counts_in_whole_units` (independent:pandas)
 - **Enforced by:** `turbotab.core.seal:cut_holdout`, `turbotab.core.voice:_set_split`
 - **Author:** swarm package 4 builder
 

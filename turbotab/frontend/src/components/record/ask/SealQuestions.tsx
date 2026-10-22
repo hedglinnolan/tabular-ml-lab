@@ -82,6 +82,21 @@ export function cutShown(at: number | string): string {
 }
 
 /**
+ * The cut-point option's line, which says a unit is kept whole only where the seal keeps it so:
+ * under a grouped basis the draw groups rows by its column, and a unit seen on both sides of the
+ * cut is held out whole (core/seal.py `seal_inputs`, `cut_holdout`; claim seal.cut_point_units);
+ * under any other basis the rows are held out one by one (seal.cut_point); with no basis yet it
+ * says neither. The teaching entry's line is not read: it says units are kept whole whatever the
+ * basis (the package 4 verifier's V7).
+ */
+export function cutLine(basis: SealBasis | null | undefined): string {
+  const lead = "Rows at or after a time value you name are sealed";
+  if (basis?.state === "grouped" && basis.column)
+    return `${lead}; a \`${basis.column}\` seen on both sides is sealed whole.`;
+  return basis ? `${lead}, row by row.` : `${lead}.`;
+}
+
+/**
  * The chronology the seal's basis line states. The seal plan's is a usual share's draw, which a
  * recorded cut-point replaces (the temporal answer then draws nothing): under one, the line states
  * the split's own sentence once the split is drawn for that cut-point, else the basis alone.
@@ -186,9 +201,7 @@ export function SealAsk({
   items.push({
     key: CUT,
     label: taught(p.entry, CUT)?.label ?? "Hold out by cut-point",
-    line:
-      taught(p.entry, CUT)?.consequence ??
-      "Rows at or after a time value you name are sealed, each unit kept whole.",
+    line: cutLine(plan?.basis),
     decision: cut,
     previewLabel: cut ? `${cutColumn} from ${cutAt.trim()}` : undefined,
     extra: (

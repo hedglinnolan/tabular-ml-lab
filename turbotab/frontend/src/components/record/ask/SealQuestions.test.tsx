@@ -7,11 +7,12 @@
  * sends the recorded scheme with the new holdout, and the model's own defaults only where no
  * split is recorded yet. The expected schemes are written out here, not read from the card.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { SealPlan } from "../../../api/m2-types";
 import type { Decision, ProjectState } from "../../../api/schema";
 import type { SplitArtifact } from "../../../api/m1-types";
-import { SealAsk, basisChronology, cutDecision, cutShown } from "./SealQuestions";
+import type { TeachingEntry } from "../../../api/m1-types";
+import { SealAsk, basisChronology, cutDecision, cutLine, cutShown } from "./SealQuestions";
 
 type Split = NonNullable<ProjectState["split"]>;
 
@@ -19,11 +20,12 @@ function renderSeal(
   current: ProjectState["split"],
   plan: SealPlan | null = null,
   timeColumns: { name: string; numeric: boolean }[] = [],
+  entry: TeachingEntry | undefined = undefined,
 ) {
   const record = vi.fn<(d: Decision, at?: string) => void>();
   render(
     <SealAsk
-      entry={undefined}
+      entry={entry}
       pending={false}
       record={record}
       answerAt={null}
@@ -275,5 +277,83 @@ describe("the seal's basis line under a cut-point", () => {
       "2016.5",
       "2020-01-01",
     ]);
+  });
+});
+
+// The package 4 verifier's V7: the cut-point's option says a unit is kept whole only where the seal
+// groups rows by a column (core/seal.py `seal_inputs`: a grouped basis is the one whose column the
+// draw groups by, and `cut_holdout` holds a unit seen on both sides out whole); where it holds
+// rows out one by one (one row per unit, repetition found but not grouped, undetermined) its line
+// says so; with no basis yet it says neither.
+describe("the cut-point option's line", () => {
+  const basis = (state: string, column: string | null) => ({
+    state,
+    column,
+    label: state,
+    sentence: "",
+    exploratory: state === "abandoned" || state === "undetermined",
+    source: "grain",
+    n_units: null,
+  });
+  const planOn = (b: ReturnType<typeof basis> | null) =>
+    ({
+      basis: b,
+      chronology: null,
+      refusal: null,
+      precision_note: null,
+      cv_first: false,
+      reason: "",
+      options: [{ holdout: 0.2, label: "Hold out 20%", measures: "" }],
+    }) as unknown as SealPlan;
+  // The teaching entry the server serves (core/teaching/content.py SPLIT): its cut-point line
+  // promises whole units whatever the basis, so the card does not read it.
+  const served = {
+    key: "split",
+    title: "The seal: held-out rows",
+    question: "",
+    one_liner: "",
+    why: "",
+    consumer: "",
+    terms: [],
+    options: [
+      {
+        value: "cut",
+        label: "Hold out by cut-point",
+        consequence: "Rows at or after a time value you name are sealed, each unit kept whole.",
+      },
+    ],
+  } as unknown as TeachingEntry;
+  const shown = () => screen.getByTestId("option-cut").textContent ?? "";
+
+  it("keeps a unit whole where the seal groups by its column", () => {
+    const line = cutLine(basis("grouped", "pid") as never);
+    expect(line).toBe(
+      "Rows at or after a time value you name are sealed; a `pid` seen on both sides is sealed whole.",
+    );
+    renderSeal(null, planOn(basis("grouped", "pid")), [], served);
+    expect(shown()).toContain("a pid seen on both sides is sealed whole.");
+  });
+
+  it.each([
+    ["one_row_per_unit", null],
+    ["abandoned", "pid"],
+    ["undetermined", null],
+  ])("says the rows are sealed one by one where the basis is %s", (state, column) => {
+    expect(cutLine(basis(state, column) as never)).toBe(
+      "Rows at or after a time value you name are sealed, row by row.",
+    );
+    renderSeal(null, planOn(basis(state, column)), [], served);
+    expect(shown()).toContain("Rows at or after a time value you name are sealed, row by row.");
+    expect(shown()).not.toMatch(/whole|unit/);
+  });
+
+  it("promises nothing of units before the seal has a basis", () => {
+    expect(cutLine(null)).toBe("Rows at or after a time value you name are sealed.");
+    renderSeal(null, planOn(null), [], served);
+    expect(shown()).toContain("Rows at or after a time value you name are sealed.");
+    expect(shown()).not.toMatch(/whole|unit|row by row/);
+    cleanup();
+    renderSeal(null, null, [], served);
+    expect(shown()).not.toMatch(/whole|unit|row by row/);
   });
 });
