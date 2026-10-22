@@ -3,6 +3,8 @@ reproduces the model matrix and the estimates"; BLUEPRINT §9's M3 item 4).
 
     python -m turbotab.replay <bundle.zip> --data <the input file> [--file <id>=<path> …]
                               [--home <empty folder>] [--keep] [--json]
+                              [--truncate [open_seal|lock_plan]]
+                              [--fresh-draw MODULE:FUNCTION --recorded-seed S0 --seed S]
 
 **First, the inputs** (:func:`verify_inputs`). Each input file the provenance record names is hashed
 and compared with its recorded SHA-256; a file that differs is refused with both hashes named, and
@@ -26,6 +28,33 @@ each result stage's key (equal when the engine's stage versions are), and which 
 bundle come out identical. The report says what matched, and the command exits 0 when the matrix
 and every estimate are reproduced, 1 when they are not, and 2 when the replay was refused.
 
+**For the swarm's sweep and its decision quality** (SWARM_PLAN §6, §7 and §8), two flags rebuild
+an analysis without comparing it with the record; the report then holds the rebuilt bundle's
+estimates (``estimates_again``) and the rebuilt project's id, and the command exits 0 when the
+rebuild finished:
+
+* **The log truncated** (``--truncate``, :func:`truncate`): every record before the first live
+  ``open_seal`` (under Estimate, ``lock_plan``), the kind read from the log's purpose unless
+  named; the opening or the lock and every record after it are left out. A log with no such record
+  is replayed whole, and the report says nothing was cut. Cut before the lock, the rebuild's
+  bundle carries no estimate, since the engine serves none before the plan is locked; the sweep's
+  own press of Fit locks it after its revisit.
+* **A fresh draw** (``--fresh-draw MODULE:FUNCTION --recorded-seed S0 --seed S``,
+  :class:`FreshDraw`): the generator, a function of a seed that returns the table, must write the
+  recorded table's bytes at ``S0`` (the same SHA-256), or the replay is refused; the analysis is
+  then rebuilt on its table at ``S``, which must be another seed. A record with joined files is
+  refused (a draw replaces one table).
+* **The findings rule on a fresh draw** (:func:`findings_rule`): a record tied to a finding by its
+  ``finding_id`` (``apply_repair``, ``dismiss_finding``, ``defer_finding``) is replayed as
+  recorded where its finding fires on the new bytes, and left out where it does not, with every
+  revert of a record left out: a repair answers a finding, and with no finding there is nothing to
+  repair. Each record left out is named in the report with why. Which findings fire is read from
+  the findings stage on the new bytes under the log's other answers (the records the findings
+  stage and the stages before it read), before any finding's record is written. Every finding with
+  a repair that the new bytes raise and no record kept answers by its id is named
+  (``unanswered``): one that fires only on the new bytes stays unanswered, as an analyst who never
+  saw it left it.
+
 This module drives the server's project service (the same code a client is served by), imported
 when a replay runs.
 """
@@ -33,6 +62,8 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
+import importlib
 import json
 import math
 import shutil
@@ -40,7 +71,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
@@ -89,6 +120,39 @@ class EstimateCheck(_Model):
     extra: list[str]  # recomputed, not recorded
 
 
+class Cut(_Model):
+    """Where :func:`truncate` cut the log: before the first live record of ``kind`` (its ``seq``),
+    or nowhere (``seq`` None) when the log holds none."""
+
+    kind: str
+    seq: int | None
+    kept: int
+    left: int
+
+
+class FreshDrawCheck(_Model):
+    """The fresh draw's table: the generator's bytes at the recorded seed against the record's, and
+    the new draw's."""
+
+    generator: str
+    recorded_seed: int
+    seed: int
+    recorded_sha256: str
+    regenerated_sha256: str
+    sha256: str
+    rows: int
+    path: str
+
+
+class LeftOut(_Model):
+    """A record the findings rule leaves out of a fresh draw's log, and why."""
+
+    seq: int
+    kind: str
+    finding_id: str | None
+    why: str
+
+
 class ReplayReport(_Model):
     bundle: str
     reproduced: bool
@@ -105,6 +169,15 @@ class ReplayReport(_Model):
     files_same: list[str] = []
     files_different: list[str] = []
     messages: list[str] = []
+    # A truncated or fresh-draw rebuild (module docstring): nothing is compared; ``finished`` says
+    # the rebuild reached its result stages, and ``estimates_again`` is the rebuilt bundle's.
+    project: str | None = None
+    cut: Cut | None = None
+    fresh: FreshDrawCheck | None = None
+    left_out: list[LeftOut] = []
+    unanswered: list[str] = []
+    finished: bool | None = None
+    estimates_again: dict[str, float | None] | None = None
 
 
 class Refused(Exception):
@@ -238,6 +311,181 @@ def compare(prov: Mapping[str, Any], again: Mapping[str, Any], files: Mapping[st
     }
 
 
+# ── the log: its lines, truncation, the findings rule ───────────────────────
+
+# The record a truncation cuts before, by the log's purpose (SWARM_PLAN §6, the sweep's refits).
+CUT_KINDS = {"prediction": "open_seal", "inference": "lock_plan"}
+# The records tied to a finding by their ``finding_id`` (the findings rule).
+FINDING_KINDS = ("apply_repair", "dismiss_finding", "defer_finding")
+
+
+def log_lines(log: bytes) -> list[tuple[Any, bytes]]:
+    """Each record of a decision log with its line's bytes, in the log's order (a blank line is
+    skipped, as the log's reader skips it)."""
+    from turbotab.core.decisions import read_record
+
+    out = []
+    for number, line in enumerate(log.split(b"\n"), start=1):
+        if not line.strip():
+            continue
+        out.append((read_record(json.loads(line), where=f"decisions.jsonl:{number}"), line))
+    return out
+
+
+def join_lines(lines: Sequence[tuple[Any, bytes]]) -> bytes:
+    return b"".join(line + b"\n" for _, line in lines)
+
+
+def _reverts_of(lines: Sequence[tuple[Any, bytes]], gone: set[str]) -> set[str]:
+    """``gone`` with every revert of a record in it, and every revert of those, and so on."""
+    gone = set(gone)
+    while True:
+        more = {r.id for r, _ in lines if r.decision.kind == "revert"
+                and r.decision.decision_id in gone and r.id not in gone}
+        if not more:
+            return gone
+        gone |= more
+
+
+def truncate(log: bytes, before: str | None = None) -> tuple[bytes, Cut]:
+    """The log up to its first live record of kind ``before`` (``open_seal`` or ``lock_plan``;
+    by default the one :data:`CUT_KINDS` names for the log's purpose), that record and every
+    later one left out; the lines kept are the log's own bytes. A record a revert withdrew is not
+    live: a lock withdrawn before any estimate was served under it is passed over for the lock that
+    holds. A log with no live record of the kind is returned whole."""
+    from turbotab.core.decisions import fold, reverted
+
+    lines = log_lines(log)
+    records = [r for r, _ in lines]
+    kind = before or CUT_KINDS.get(str(fold(records).purpose), "open_seal")
+    if kind not in CUT_KINDS.values():
+        raise Refused(f"A log is cut before {' or '.join(CUT_KINDS.values())}, not {kind!r}.")
+    withdrawn = reverted(records)
+    cut = next((r for r in sorted(records, key=lambda r: r.seq)
+                if r.decision.kind == kind and r.id not in withdrawn), None)
+    if cut is None:
+        return join_lines(lines), Cut(kind=kind, seq=None, kept=len(lines), left=0)
+    kept = [(r, line) for r, line in lines if r.seq < cut.seq]
+    return join_lines(kept), Cut(kind=kind, seq=cut.seq, kept=len(kept),
+                                 left=len(lines) - len(kept))
+
+
+def findings_rule(lines: Sequence[tuple[Any, bytes]], fired: set[str]
+                  ) -> tuple[list[tuple[Any, bytes]], list[LeftOut]]:
+    """The fresh draw's log by the findings rule (module docstring): each record of
+    :data:`FINDING_KINDS` whose finding is not in ``fired`` (the finding ids the new bytes raise)
+    left out, with every revert of a record left out; every other line as recorded."""
+    why: dict[str, LeftOut] = {}
+    for r, _ in lines:
+        fid = getattr(r.decision, "finding_id", None)
+        if r.decision.kind in FINDING_KINDS and fid not in fired:
+            why[r.id] = LeftOut(seq=r.seq, kind=r.decision.kind, finding_id=fid,
+                                why=f"its finding `{fid}` does not fire on this draw")
+    for r, _ in lines:
+        if r.id in _reverts_of(lines, set(why)) and r.id not in why:
+            why[r.id] = LeftOut(seq=r.seq, kind=r.decision.kind, finding_id=None,
+                                why=f"it reverts a record left out (`{r.decision.decision_id}`)")
+    kept = [(r, line) for r, line in lines if r.id not in why]
+    return kept, sorted(why.values(), key=lambda o: o.seq)
+
+
+def findings_inputs(lines: Sequence[tuple[Any, bytes]], reads: set[str]
+                    ) -> list[tuple[Any, bytes]]:
+    """The lines whose records write a slot in ``reads`` (the slots the findings stage and the
+    stages before it read), with each revert of one of them, and no record tied to a finding: what
+    the findings on the new bytes are computed under. A record whose slots cannot be read is kept,
+    since leaving out a slot the findings read would change them."""
+    from turbotab.core.decisions import ProjectState, fold_onto
+
+    empty = ProjectState()
+    keep: set[str] = set()
+    for r, _ in lines:
+        kind = r.decision.kind
+        if kind in FINDING_KINDS or kind == "revert":
+            continue
+        try:
+            after = fold_onto(empty, r.decision)
+            written = {f for f in ProjectState.model_fields
+                       if getattr(after, f) != getattr(empty, f)}
+        except Exception:  # noqa: BLE001 - kept when its slots cannot be read (docstring)
+            written = set(reads)
+        if written & reads:
+            keep.add(r.id)
+    for r, _ in lines:
+        if r.decision.kind == "revert" and r.decision.decision_id in keep:
+            keep.add(r.id)
+    return [(r, line) for r, line in lines if r.id in keep]
+
+
+# ── a fresh draw ─────────────────────────────────────────────────────────────
+
+
+@dataclasses.dataclass(frozen=True)
+class FreshDraw:
+    """A new draw of the generator the recorded table came from (module docstring).
+    ``generator`` is a function of a seed that returns the table (a pandas DataFrame, written as
+    the intake writes it: CSV, no index), or ``"module:function"`` naming one."""
+
+    generator: Callable[[int], Any] | str
+    recorded_seed: int
+    seed: int
+
+    def function(self) -> Callable[[int], Any]:
+        if callable(self.generator):
+            return self.generator
+        module, sep, name = str(self.generator).partition(":")
+        if not sep or not module or not name:
+            raise Refused(f"A generator is named MODULE:FUNCTION, not {self.generator!r}.")
+        try:
+            return getattr(importlib.import_module(module), name)
+        except (ImportError, AttributeError) as exc:
+            raise Refused(f"The generator {self.generator} cannot be loaded: {exc}") from None
+
+    def name(self) -> str:
+        if isinstance(self.generator, str):
+            return self.generator
+        return f"{getattr(self.generator, '__module__', '?')}:" \
+               f"{getattr(self.generator, '__qualname__', repr(self.generator))}"
+
+
+def write_draw(generator: Callable[[int], Any], seed: int, path: Path) -> tuple[str, int]:
+    """The generator's table at ``seed`` written to ``path`` (CSV, no index); its SHA-256 and rows."""
+    frame = generator(seed)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False)
+    return hashlib.sha256(path.read_bytes()).hexdigest(), int(len(frame))
+
+
+def fresh_table(prov: Mapping[str, Any], fresh: FreshDraw, folder: Path) -> FreshDrawCheck:
+    """The fresh draw's table in ``folder`` (named as the recorded table), after the generator is
+    shown to write the recorded table at the recorded seed; raises :class:`Refused` otherwise, for
+    the recorded seed given as the new one, and for a record with joined files."""
+    inputs = [e for e in prov.get("inputs") or [] if e.get("role") != "codebook"]
+    joined = [e for e in inputs if e.get("role") != "table"]
+    if joined:
+        raise Refused(f"A fresh draw replaces the one table; this record also reads "
+                      f"{len(joined)} joined file(s) ({', '.join(str(e.get('name')) for e in joined)}).")
+    table = next((e for e in inputs if e.get("role") == "table"), None)
+    if table is None:
+        raise Refused("The record names no table for a fresh draw to replace.")
+    if fresh.seed == fresh.recorded_seed:
+        raise Refused(f"Seed {fresh.seed} is the recorded table's own: a fresh draw takes another "
+                      f"seed.")
+    generator = fresh.function()
+    name = Path(str(table.get("name") or Path(str(table.get("path"))).name)).name
+    recorded = str(table.get("sha256") or "")
+    again, _ = write_draw(generator, fresh.recorded_seed, folder / "recorded" / name)
+    if again != recorded:
+        raise Refused(f"The generator {fresh.name()} does not write the recorded table at seed "
+                      f"{fresh.recorded_seed}: its SHA-256 is {again}, the record's is {recorded}. "
+                      f"A fresh draw is a draw of the generator the record was made from.")
+    path = folder / "fresh" / name
+    sha, rows = write_draw(generator, fresh.seed, path)
+    return FreshDrawCheck(generator=fresh.name(), recorded_seed=fresh.recorded_seed,
+                          seed=fresh.seed, recorded_sha256=recorded, regenerated_sha256=again,
+                          sha256=sha, rows=rows, path=str(path))
+
+
 # ── the run ──────────────────────────────────────────────────────────────────
 
 
@@ -288,14 +536,22 @@ def _wait(service: Any, pid: str, stages: Sequence[str], timeout: float) -> None
 
 def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str] | None = None,
         home: str | None = None, keep: bool = False, timeout: float = 3600.0,
-        workers: int | None = None) -> ReplayReport:
+        workers: int | None = None, cut: bool | str = False,
+        fresh: FreshDraw | None = None) -> ReplayReport:
     """Replay ``bundle`` (module docstring). Never raises for a refusal or a failed comparison:
-    the report says which."""
+    the report says which. ``cut``: True truncates the log by its purpose, or names the kind to cut
+    before (:func:`truncate`); ``fresh``: rebuild on a fresh draw (:class:`FreshDraw`). Either
+    rebuilds without comparing (``finished`` and ``estimates_again``)."""
     started = time.monotonic()
     report = ReplayReport(bundle=str(bundle), reproduced=False)
+    rebuild = bool(cut) or fresh is not None
     try:
         recorded_files, prov = load_bundle(bundle)
-        report.inputs = verify_inputs(prov, data, files)
+        log = recorded_files["decisions.jsonl"]
+        if cut:
+            log, report.cut = truncate(log, None if cut is True else str(cut))
+        if fresh is None:
+            report.inputs = verify_inputs(prov, data, files)
     except Refused as exc:
         report.refused = exc.message
         report.inputs = exc.inputs
@@ -305,12 +561,26 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
     from turbotab.core.decisions import fold
     from turbotab.core.export import gate
     from turbotab.core.export.bundle import contents, matrix_bytes
+    from turbotab.core.repairs import findings_of
     from turbotab.server.service import SOURCE_FILE, ProjectService
 
     try:
         path = _fresh_home(home)
+        if fresh is not None:
+            report.fresh = fresh_table(prov, fresh, path / "draws")
+            table = next(e for e in prov["inputs"] if e.get("role") == "table")
+            report.inputs = [InputCheck(
+                role="table", name=str(table.get("name")), path=report.fresh.path,
+                recorded_sha256=report.fresh.recorded_sha256, sha256=report.fresh.sha256,
+                matches=False,
+                message=(f"The table `{table.get('name')}` is a fresh draw: {report.fresh.generator} "
+                         f"writes the recorded table at seed {report.fresh.recorded_seed} (SHA-256 "
+                         f"{report.fresh.recorded_sha256}), and its draw at seed "
+                         f"{report.fresh.seed} is SHA-256 {report.fresh.sha256}."))]
     except Refused as exc:
         report.refused = exc.message
+        if home is None and "path" in locals():
+            shutil.rmtree(path, ignore_errors=True)
         return report
     report.home = str(path)
     settings = dataclasses.replace(Settings.from_env(), home=path, mode="local",
@@ -325,6 +595,7 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
         name = str((prov.get("project") or {}).get("name") or Path(table.path).stem)
         meta = service.workspace.create_project(name, table.path, "path",
                                                 source_name=table.name)
+        report.project = meta.id
         pdir = service.workspace.project_dir(meta.id)
         (pdir / SOURCE_FILE).write_text(json.dumps({"fingerprint": fingerprint_file(
             Path(table.path))}), "utf-8")
@@ -333,19 +604,41 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
                 check = next(c for c in report.inputs if c.role == "joined file"
                              and c.name == entry.get("name"))
                 _restore_joined(pdir, entry, check.path)
-        service.workspace.decisions_path(meta.id).write_bytes(recorded_files["decisions.jsonl"])
+        written = service.workspace.decisions_path(meta.id)
+        lines = log_lines(log)
+        if fresh is not None and any(r.decision.kind in FINDING_KINDS for r, _ in lines):
+            # The findings rule: the findings the new bytes raise under the log's other answers.
+            graph = service.engine.graph
+            reads = {s for name_ in graph.upstream("findings") | {"findings"}
+                     for s in graph[name_].reads}
+            written.write_bytes(join_lines(findings_inputs(lines, reads)))
+            service.engine.on_decision(meta.id)
+            _wait(service, meta.id, ("findings",), timeout)
+            raised = findings_of(service.engine.get(meta.id, "findings").artifact)
+            fired = {str(f.get("id")) for f in raised}
+            lines, report.left_out = findings_rule(lines, fired)
+            answered = {getattr(r.decision, "finding_id", None) for r, _ in lines}
+            report.unanswered = sorted(str(f.get("id")) for f in raised
+                                       if f.get("repairs") and f.get("id") not in answered)
+            log = join_lines(lines)
+        written.write_bytes(log)
         records = service.log(meta.id).records()
         report.decisions = len(records)
         service.engine.on_decision(meta.id)
         _wait(service, meta.id, gate.result_stages(fold(records)), timeout)
         source = service.export_source(meta.id)
-        again = contents(source)
+        # A rebuild is not the recorded analysis: its bundle is assembled as it stands, ungated.
+        again = contents(source, gated=not rebuild)
         out = path / "replay"
         out.mkdir(exist_ok=True)
         raw = matrix_bytes(source)
         if raw is not None:
             (out / "model_matrix.parquet").write_bytes(raw)
         (out / "bundle.zip").write_bytes(again.zip())
+        if rebuild:
+            report.estimates_again = dict(again.provenance.get("estimates") or {})
+            report.finished = True
+            return report
         found = compare(prov, again.provenance, recorded_files, again.files)
         report.matrix = found["matrix"]
         report.estimates = found["estimates"]
@@ -360,6 +653,8 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
                                  and not report.estimates.extra)
     except Exception as exc:  # noqa: BLE001 - a replay that cannot finish says why, never a trace
         report.messages.append(f"The replay could not finish: {exc}")
+        if rebuild:
+            report.finished = False
     finally:
         service.close()
         report.seconds = round(time.monotonic() - started, 3)
@@ -381,8 +676,19 @@ def summary(report: ReplayReport) -> str:
     if report.refused:
         lines.append(f"Refused: {report.refused}")
         return "\n".join(lines)
+    if report.cut is not None:
+        c = report.cut
+        lines.append(f"  The log cut before its first `{c.kind}` (record {c.seq}): {c.kept} records "
+                     f"kept, {c.left} left out." if c.seq is not None else
+                     f"  The log holds no live `{c.kind}`: nothing was cut.")
+    for o in report.left_out:
+        lines.append(f"  Record {o.seq} ({o.kind}) left out of the fresh draw: {o.why}.")
+    if report.unanswered:
+        lines.append(f"  Findings the fresh draw raises that no record answers: "
+                     f"{', '.join(report.unanswered)}.")
     if report.decisions is not None:
-        lines.append(f"  The decision log: {report.decisions} records, replayed as recorded.")
+        lines.append(f"  The decision log: {report.decisions} records, replayed as "
+                     + ("rebuilt above." if report.cut or report.fresh else "recorded."))
     if report.matrix is not None:
         m = report.matrix
         lines.append(f"  The model matrix ({m.n_rows or 0:,} rows by {m.n_cols or 0:,} columns): "
@@ -403,6 +709,10 @@ def summary(report: ReplayReport) -> str:
     if report.files_different:
         lines.append(f"  Files that differ: {', '.join(report.files_different)}.")
     lines += [f"  {m}" for m in report.messages]
+    if report.finished is not None:
+        lines.append(f"Rebuilt ({len(report.estimates_again or {})} estimates); nothing compared."
+                     if report.finished else "Not rebuilt.")
+        return "\n".join(lines)
     lines.append("Reproduced." if report.reproduced else "Not reproduced.")
     return "\n".join(lines)
 
@@ -421,7 +731,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--keep", action="store_true", help="keep the temporary home afterwards")
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
     parser.add_argument("--timeout", type=float, default=3600.0, help="seconds to wait (default 3600)")
+    parser.add_argument("--truncate", nargs="?", const=True, default=False, metavar="KIND",
+                        help="rebuild from the log before its first open_seal (under Estimate "
+                             "lock_plan), or before KIND; nothing is compared")
+    parser.add_argument("--fresh-draw", metavar="MODULE:FUNCTION",
+                        help="rebuild on a fresh draw of this generator (a function of a seed); "
+                             "nothing is compared")
+    parser.add_argument("--recorded-seed", type=int, help="the seed the recorded table was drawn at")
+    parser.add_argument("--seed", type=int, help="the fresh draw's seed")
     args = parser.parse_args(argv)
+    fresh = None
+    if args.fresh_draw is not None:
+        if args.recorded_seed is None or args.seed is None:
+            parser.error("--fresh-draw takes --recorded-seed and --seed")
+        fresh = FreshDraw(args.fresh_draw, args.recorded_seed, args.seed)
     given: dict[str, str] = {}
     for item in args.file:
         key, sep, value = item.partition("=")
@@ -429,16 +752,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(f"--file takes ID=PATH, not {item!r}")
         given[key] = value
     report = run(args.bundle, data=args.data, files=given, home=args.home, keep=args.keep,
-                 timeout=args.timeout)
+                 timeout=args.timeout, cut=args.truncate, fresh=fresh)
     if args.json:
         sys.stdout.write(report.model_dump_json(indent=1) + "\n")
     else:
         sys.stdout.write(summary(report) + "\n")
     if report.refused:
         return 2
+    if report.finished is not None:
+        return 0 if report.finished else 1
     return 0 if report.reproduced else 1
 
 
-__all__ = ["EstimateCheck", "InputCheck", "MatrixCheck", "Refused", "ReplayReport", "close",
-           "compare", "compare_estimates", "load_bundle", "main", "run", "summary",
-           "verify_inputs"]
+__all__ = ["CUT_KINDS", "Cut", "EstimateCheck", "FINDING_KINDS", "FreshDraw", "FreshDrawCheck",
+           "InputCheck", "LeftOut", "MatrixCheck", "Refused", "ReplayReport", "close", "compare",
+           "compare_estimates", "findings_inputs", "findings_rule", "fresh_table", "join_lines",
+           "load_bundle", "log_lines", "main", "run", "summary", "truncate", "verify_inputs",
+           "write_draw"]
