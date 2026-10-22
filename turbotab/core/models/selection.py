@@ -634,8 +634,8 @@ def _openable_fit(ctx: Any) -> Mapping[str, Any] | None:
     gate = _ctx(ctx, "fit_gate")
     if callable(gate) and gate() is not None:
         return None  # no score is quoted before Fit (SIZING P0.8): the seal's validator says why
-    split = getattr(state, "split", None)
-    if split is None or float(getattr(split, "holdout", 0) or 0) == 0:
+    # A share or a cut-point holds rows out (``decisions.holds_out``): either waits to be opened.
+    if not decisions.holds_out(getattr(state, "split", None)):
         return None
     artifact = _ctx(ctx, "artifact")
     if not callable(artifact):
@@ -754,8 +754,7 @@ def compared_families(state: Any, seen: Sequence[str]) -> list[str]:
     score the family declared before they are opened), or with no family selected."""
     if state is None or getattr(state, "purpose", None) == "inference":
         return []
-    split = getattr(state, "split", None)
-    if split is not None and float(getattr(split, "holdout", 0) or 0) > 0:
+    if decisions.holds_out(getattr(state, "split", None)):  # a share or a cut-point
         return []
     models = list(getattr(state, "models", None) or [])
     if not models:

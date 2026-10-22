@@ -498,8 +498,10 @@ def _survey_gate(state: Any) -> Gate:
 
 
 def _open_seal_gate(state: Any) -> Gate:
+    from turbotab.core.decisions import holds_out  # a share or a cut-point holds rows out
+
     split = state.split
-    if split is not None and float(_get(split, "holdout") or 0) == 0:
+    if split is not None and not holds_out(split):
         return ("not_applicable",
                 "Every row trains under cross-validation alone, so no held-out rows wait to be opened.")
     return None

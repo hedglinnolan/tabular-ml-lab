@@ -24,7 +24,9 @@
       "n_boot": 500,
       "cluster": null,
       "nested_cv": false,
-      "acknowledged": false
+      "acknowledged": false,
+      "fold_order": null,
+      "cut_point": null
     },
     "set_levers": {
       "forms": "none",
@@ -48,7 +50,9 @@
       "sensitivity": false
     },
     "set_validation": {
-      "acknowledged": false
+      "acknowledged": false,
+      "fold_order": null,
+      "cut_point": null
     },
     "set_explain": {
       "as_effect": false
@@ -552,7 +556,9 @@
         "n_boot": 500,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -567,7 +573,9 @@
         "n_boot": 500,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -582,7 +590,9 @@
         "n_boot": 500,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -606,7 +616,9 @@
         "n_boot": 500,
         "cluster": "cycle_begin_year",
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -624,7 +636,9 @@
         "n_boot": 500,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -642,7 +656,9 @@
         "n_boot": 500,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -660,7 +676,9 @@
         "n_boot": 1000,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -676,7 +694,9 @@
         "n_boot": 500,
         "cluster": null,
         "nested_cv": true,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -694,7 +714,9 @@
         "n_boot": 500,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -722,7 +744,9 @@
         "n_boot": 700,
         "cluster": null,
         "nested_cv": true,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -740,7 +764,9 @@
         "n_boot": 500,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -758,7 +784,9 @@
         "n_boot": 500,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -776,7 +804,9 @@
         "n_boot": 20,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -794,7 +824,9 @@
         "n_boot": 2000,
         "cluster": null,
         "nested_cv": false,
-        "acknowledged": false
+        "acknowledged": false,
+        "fold_order": null,
+        "cut_point": null
       }
     },
     {
@@ -1134,7 +1166,9 @@
         "repeats": 30,
         "n_boot": 700,
         "cluster": null,
-        "nested_cv": true
+        "nested_cv": true,
+        "cut_point": null,
+        "fold_order": null
       },
       "press": "0.1",
       "served": false,
@@ -1147,7 +1181,9 @@
         "repeats": 30,
         "n_boot": 700,
         "cluster": null,
-        "nested_cv": true
+        "nested_cv": true,
+        "cut_point": null,
+        "fold_order": null
       }
     },
     {
@@ -1160,7 +1196,9 @@
         "repeats": 30,
         "n_boot": 700,
         "cluster": null,
-        "nested_cv": true
+        "nested_cv": true,
+        "cut_point": null,
+        "fold_order": null
       },
       "press": "0",
       "served": false,
@@ -1173,7 +1211,9 @@
         "repeats": 30,
         "n_boot": 700,
         "cluster": null,
-        "nested_cv": true
+        "nested_cv": true,
+        "cut_point": null,
+        "fold_order": null
       }
     },
     {
@@ -1186,7 +1226,9 @@
         "repeats": 30,
         "n_boot": 700,
         "cluster": null,
-        "nested_cv": true
+        "nested_cv": true,
+        "cut_point": null,
+        "fold_order": null
       },
       "press": "0",
       "served": true,
@@ -1199,7 +1241,9 @@
         "repeats": 30,
         "n_boot": 700,
         "cluster": null,
-        "nested_cv": true
+        "nested_cv": true,
+        "cut_point": null,
+        "fold_order": null
       }
     },
     {
@@ -1212,7 +1256,9 @@
         "repeats": 20,
         "n_boot": 700,
         "cluster": "cycle_begin_year",
-        "nested_cv": false
+        "nested_cv": false,
+        "cut_point": null,
+        "fold_order": null
       },
       "press": "0.2",
       "served": false,
@@ -1225,7 +1271,9 @@
         "repeats": 20,
         "n_boot": 700,
         "cluster": "cycle_begin_year",
-        "nested_cv": false
+        "nested_cv": false,
+        "cut_point": null,
+        "fold_order": null
       }
     },
     {
@@ -1242,7 +1290,9 @@
         "repeats": 10,
         "n_boot": 500,
         "cluster": null,
-        "nested_cv": false
+        "nested_cv": false,
+        "cut_point": null,
+        "fold_order": null
       }
     }
   ]

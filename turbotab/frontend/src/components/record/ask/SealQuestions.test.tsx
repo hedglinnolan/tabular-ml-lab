@@ -7,18 +7,25 @@
  * sends the recorded scheme with the new holdout, and the model's own defaults only where no
  * split is recorded yet. The expected schemes are written out here, not read from the card.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { SealPlan } from "../../../api/m2-types";
 import type { Decision, ProjectState } from "../../../api/schema";
-import { SealAsk } from "./SealQuestions";
+import type { SplitArtifact } from "../../../api/m1-types";
+import type { TeachingEntry } from "../../../api/m1-types";
+import { SealAsk, basisChronology, cutDecision, cutLine, cutShown } from "./SealQuestions";
 
 type Split = NonNullable<ProjectState["split"]>;
 
-function renderSeal(current: ProjectState["split"], plan: SealPlan | null = null) {
+function renderSeal(
+  current: ProjectState["split"],
+  plan: SealPlan | null = null,
+  timeColumns: { name: string; numeric: boolean }[] = [],
+  entry: TeachingEntry | undefined = undefined,
+) {
   const record = vi.fn<(d: Decision, at?: string) => void>();
   render(
     <SealAsk
-      entry={undefined}
+      entry={entry}
       pending={false}
       record={record}
       answerAt={null}
@@ -33,6 +40,7 @@ function renderSeal(current: ProjectState["split"], plan: SealPlan | null = null
       plan={plan}
       roles={undefined}
       current={current}
+      timeColumns={timeColumns}
     />,
   );
   return record;
@@ -54,6 +62,8 @@ const CHANGED: Split = {
   n_boot: 700,
   cluster: null,
   nested_cv: true,
+  cut_point: null,
+  fold_order: null,
 };
 const SCHEME_OF_CHANGED = {
   folds: 10,
@@ -63,6 +73,8 @@ const SCHEME_OF_CHANGED = {
   cluster: null,
   nested_cv: true,
 };
+// A share holds no cut-point, and its folds' order is the draw's (decisions.py SplitSpec).
+const BY_SHARE = { cut_point: null, fold_order: null };
 
 describe("re-answering the seal", () => {
   it.each([
@@ -76,6 +88,7 @@ describe("re-answering the seal", () => {
       holdout,
       seed: 0,
       ...SCHEME_OF_CHANGED,
+      ...BY_SHARE,
     });
   });
 
@@ -109,6 +122,7 @@ describe("re-answering the seal", () => {
       n_boot: 500,
       cluster: null,
       nested_cv: false,
+      ...BY_SHARE,
     });
   });
 
@@ -131,6 +145,215 @@ describe("re-answering the seal", () => {
       holdout: 0,
       seed: 0,
       ...SCHEME_OF_CHANGED,
+      ...BY_SHARE,
     });
+  });
+});
+
+// SWARM_PLAN §8: a temporal seal by cut-point, its folds' order its own answer.
+describe("a cut-point", () => {
+  const TIME = [
+    { name: "cycle", numeric: true },
+    { name: "visit", numeric: false },
+  ];
+
+  it("records nothing until its value and its folds' order are given", () => {
+    const record = renderSeal(CHANGED, null, TIME);
+    fireEvent.change(screen.getByLabelText("The first value held out"), {
+      target: { value: "2017" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Seal from here" }));
+    expect(record).not.toHaveBeenCalled(); // no folds' order chosen yet
+    fireEvent.change(screen.getByLabelText("How the training folds are ordered"), {
+      target: { value: "random" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Seal from here" }));
+    expect(record.mock.calls[0]![0]).toEqual({
+      kind: "set_split",
+      holdout: 0,
+      seed: 0,
+      ...SCHEME_OF_CHANGED,
+      cut_point: { column: "cycle", at: 2017 },
+      fold_order: "random",
+    });
+  });
+
+  it("sends a numeral on a numeric column as the number, and a date as written", () => {
+    expect(cutDecision("cycle", " 2017 ", "time", true, null)?.cut_point).toEqual({
+      column: "cycle",
+      at: 2017,
+    });
+    expect(cutDecision("visit", "2020-01-01", "time", false, null)?.cut_point).toEqual({
+      column: "visit",
+      at: "2020-01-01",
+    });
+    expect(cutDecision("cycle", "", "time", true, null)).toBeNull();
+    expect(cutDecision("cycle", "2017", null, true, null)).toBeNull();
+  });
+
+  it("shows a recorded cut-point as the recorded answer, not as cross-validation alone", () => {
+    const cut = { column: "cycle", at: 2017 };
+    renderSeal({ ...CHANGED, holdout: 0, cut_point: cut, fold_order: "time" }, null, TIME);
+    expect(screen.getByTestId("option-cut")).toHaveAttribute("data-recorded", "true");
+    expect(screen.getByTestId("option-0")).not.toHaveAttribute("data-recorded", "true");
+  });
+});
+
+// The package 4 verifier's P7: under a recorded cut-point the seal plan's chronology is a usual
+// share's draw by time, which the cut-point replaces, so the basis line states the split's own
+// sentence once it is drawn for that cut-point, and the basis alone until then.
+describe("the seal's basis line under a cut-point", () => {
+  const LATEST = "The latest `6` units by their last `cycle` are held out, from `2021` on.";
+  const CUT_SENTENCE =
+    "Held out by a cut-point at `2017` on `cycle`: `20` rows held out and `40` train.";
+  const plan = {
+    basis: {
+      state: "one_row_per_unit",
+      column: null,
+      label: "one row per unit",
+      sentence: "Each row is its own unit.",
+      exploratory: false,
+      source: "grain",
+      n_units: null,
+    },
+    chronology: { drawn: true, time_column: "cycle", cut_point: null, sentence: LATEST },
+    refusal: null,
+    precision_note: null,
+    cv_first: false,
+    reason: "",
+    options: [],
+  } as unknown as SealPlan;
+  const drawnAt = (at: string) =>
+    ({
+      chronology: { drawn: true, time_column: "cycle", cut_point: at, sentence: CUT_SENTENCE },
+    }) as unknown as SplitArtifact;
+  const cut: Split = {
+    ...CHANGED,
+    holdout: 0,
+    cut_point: { column: "cycle", at: 2017 },
+    fold_order: "random",
+  };
+
+  it("states the split's own sentence once drawn for this cut-point", () => {
+    expect(basisChronology(plan, cut, drawnAt("2017"))?.sentence).toBe(CUT_SENTENCE);
+    render(
+      <SealAsk
+        entry={undefined}
+        pending={false}
+        record={vi.fn()}
+        answerAt={null}
+        shell={{
+          qkey: "split",
+          now: true,
+          arriving: false,
+          onArrived: () => {},
+          onOpenDrawer: () => {},
+          reopened: false,
+        }}
+        plan={plan}
+        roles={undefined}
+        current={cut}
+        split={drawnAt("2017")}
+      />,
+    );
+    const line = screen.getByTestId("seal-basis").textContent ?? "";
+    expect(line).toContain("Held out by a cut-point at");
+    expect(line).not.toContain("The latest");
+  });
+
+  it("states the basis alone before the split is drawn, or drawn for another cut-point", () => {
+    expect(basisChronology(plan, cut, undefined)).toBeNull();
+    expect(basisChronology(plan, cut, drawnAt("2015"))).toBeNull();
+  });
+
+  it("keeps the plan's chronology where no cut-point is recorded", () => {
+    expect(basisChronology(plan, CHANGED, drawnAt("2017"))?.sentence).toBe(LATEST);
+    expect(basisChronology(plan, null, undefined)?.sentence).toBe(LATEST);
+  });
+
+  it("shows a cut-point's value as the server does", () => {
+    expect([cutShown(2017), cutShown(2016.5), cutShown(" 2020-01-01 ")]).toEqual([
+      "2017",
+      "2016.5",
+      "2020-01-01",
+    ]);
+  });
+});
+
+// The package 4 verifier's V7: the cut-point's option says a unit is kept whole only where the seal
+// groups rows by a column (core/seal.py `seal_inputs`: a grouped basis is the one whose column the
+// draw groups by, and `cut_holdout` holds a unit seen on both sides out whole); where it holds
+// rows out one by one (one row per unit, repetition found but not grouped, undetermined) its line
+// says so; with no basis yet it says neither.
+describe("the cut-point option's line", () => {
+  const basis = (state: string, column: string | null) => ({
+    state,
+    column,
+    label: state,
+    sentence: "",
+    exploratory: state === "abandoned" || state === "undetermined",
+    source: "grain",
+    n_units: null,
+  });
+  const planOn = (b: ReturnType<typeof basis> | null) =>
+    ({
+      basis: b,
+      chronology: null,
+      refusal: null,
+      precision_note: null,
+      cv_first: false,
+      reason: "",
+      options: [{ holdout: 0.2, label: "Hold out 20%", measures: "" }],
+    }) as unknown as SealPlan;
+  // The teaching entry the server serves (core/teaching/content.py SPLIT): its cut-point line
+  // promises whole units whatever the basis, so the card does not read it.
+  const served = {
+    key: "split",
+    title: "The seal: held-out rows",
+    question: "",
+    one_liner: "",
+    why: "",
+    consumer: "",
+    terms: [],
+    options: [
+      {
+        value: "cut",
+        label: "Hold out by cut-point",
+        consequence: "Rows at or after a time value you name are sealed, each unit kept whole.",
+      },
+    ],
+  } as unknown as TeachingEntry;
+  const shown = () => screen.getByTestId("option-cut").textContent ?? "";
+
+  it("keeps a unit whole where the seal groups by its column", () => {
+    const line = cutLine(basis("grouped", "pid") as never);
+    expect(line).toBe(
+      "Rows at or after a time value you name are sealed; a `pid` seen on both sides is sealed whole.",
+    );
+    renderSeal(null, planOn(basis("grouped", "pid")), [], served);
+    expect(shown()).toContain("a pid seen on both sides is sealed whole.");
+  });
+
+  it.each([
+    ["one_row_per_unit", null],
+    ["abandoned", "pid"],
+    ["undetermined", null],
+  ])("says the rows are sealed one by one where the basis is %s", (state, column) => {
+    expect(cutLine(basis(state, column) as never)).toBe(
+      "Rows at or after a time value you name are sealed, row by row.",
+    );
+    renderSeal(null, planOn(basis(state, column)), [], served);
+    expect(shown()).toContain("Rows at or after a time value you name are sealed, row by row.");
+    expect(shown()).not.toMatch(/whole|unit/);
+  });
+
+  it("promises nothing of units before the seal has a basis", () => {
+    expect(cutLine(null)).toBe("Rows at or after a time value you name are sealed.");
+    renderSeal(null, planOn(null), [], served);
+    expect(shown()).toContain("Rows at or after a time value you name are sealed.");
+    expect(shown()).not.toMatch(/whole|unit|row by row/);
+    cleanup();
+    renderSeal(null, null, [], served);
+    expect(shown()).not.toMatch(/whole|unit|row by row/);
   });
 });

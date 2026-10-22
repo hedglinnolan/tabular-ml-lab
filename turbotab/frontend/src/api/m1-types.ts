@@ -68,11 +68,15 @@ export type EvidenceBadge = S["Evidence"];
 
 export type Role = S["RoleProposal"]["proposed"];
 export type EnergyMethod = Extract<Decision, { kind: "set_energy_adjustment" }>["method"];
-/** Any eligibility rule: a range, or the Goldberg screen (WP12). */
+/** Any eligibility rule: a range, the Goldberg screen (WP12), or a rule by level (SWARM_PLAN §5). */
 export type EligibilityRule = Extract<Decision, { kind: "set_exclusions" }>["rules"][number];
 /** A range rule on one column (optionally per level of another). */
-export type ExclusionRule = Exclude<EligibilityRule, { kind: "goldberg" }>;
-export const isRangeRule = (rule: EligibilityRule): rule is ExclusionRule => rule.kind !== "goldberg";
+export type ExclusionRule = Exclude<EligibilityRule, { kind: "goldberg" } | { kind: "levels" }>;
+export const isRangeRule = (rule: EligibilityRule): rule is ExclusionRule =>
+  rule.kind !== "goldberg" && rule.kind !== "levels";
+/** Rows at a level of a coded column leave; its refused and don't-know codes are named on their
+ *  own and cannot confirm a row (decisions.py LevelRule). */
+export type LevelRule = Extract<EligibilityRule, { kind: "levels" }>;
 /** §12.4: `drop_columns` leaves the mostly-blank columns out before the strategy applies. */
 export type SetMissing = Extract<Decision, { kind: "set_missing" }>;
 export type MissingSpec = S["MissingSpec"];

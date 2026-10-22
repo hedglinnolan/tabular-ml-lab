@@ -81,6 +81,21 @@
       "status": "built"
     },
     {
+      "hash": "b25ce93f22db0166121bc245b26031d3d0221bad7d96c50f35020f075bba752d",
+      "id": "eligibility.level_spelling",
+      "status": "built"
+    },
+    {
+      "hash": "319c7d093358501ef593bc3127ab18e623570d02088ab9bfc5a1c47c9418d178",
+      "id": "eligibility.no_such_level",
+      "status": "built"
+    },
+    {
+      "hash": "4c010e652b95f0e8a29974d653b1b75d7468b0cd0cb958e8af3c16bd900af92d",
+      "id": "eligibility.unconfirmed_answer",
+      "status": "built"
+    },
+    {
       "hash": "3ea24f93186cb79401fff1b0e7f3bfe886b45210bf689c67d4b8d955fc29d8b0",
       "id": "energy.no_energy_no_swap",
       "status": "built"
@@ -163,6 +178,26 @@
     {
       "hash": "1d25073ea52f8138321ad350d684929d51f84b656b12b68648a6914da4f79147",
       "id": "seal.by_row_exploratory",
+      "status": "built"
+    },
+    {
+      "hash": "40ef70f9862fc6ec90db119968f20debbab77119f87fac44505929547988ff65",
+      "id": "seal.cut_point",
+      "status": "built"
+    },
+    {
+      "hash": "fb04f74202de585656426d9f0ee6aff75004d4604e99253222b6707b3dbdb0c0",
+      "id": "seal.cut_point_analyzed",
+      "status": "built"
+    },
+    {
+      "hash": "7720daab5384204c7fcee6952f613fede9143a7904e17975d7453ed5f40538e6",
+      "id": "seal.cut_point_undated",
+      "status": "built"
+    },
+    {
+      "hash": "88205dee43dc5c40210e0181f4f0f5c0409009b91cc028ad23a7dd322c3976df",
+      "id": "seal.cut_point_units",
       "status": "built"
     },
     {

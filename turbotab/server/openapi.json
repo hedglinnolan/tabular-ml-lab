@@ -4390,6 +4390,17 @@
             "type": "array",
             "title": "Earlier",
             "default": []
+          },
+          "cut_point": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cut Point"
           }
         },
         "additionalProperties": false,
@@ -4403,7 +4414,8 @@
           "sentence",
           "n_held_rows",
           "n_held_earlier",
-          "earlier"
+          "earlier",
+          "cut_point"
         ],
         "title": "Chronology",
         "description": "The chronological draw the temporal answer asked for, and whether it was drawn.\n\nWhole units are held out by their last observation, so with repeated rows a held-out unit's\nearlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).\n``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the\nsplit question offers, at this draw's seed, so the split's sentence can state it."
@@ -5648,6 +5660,34 @@
         ],
         "title": "CreateProject",
         "description": "Open a file on this machine by its path (local mode only)."
+      },
+      "CutPoint": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "at"
+        ],
+        "title": "CutPoint",
+        "description": "A temporal seal by cut-point (SWARM_PLAN §8; ``core/seal.py``): every row whose ``column``\nreads at or after ``at`` is held out, a unit with rows on both sides held out whole (by its last\nobservation, as the chronological draw ranks units), and the other rows train. ``at`` is a\nvalue of the column as it reads: a number for a numeric column (a numeral written as text reads\nas that number), a date for a dated one."
       },
       "DecisionRecord": {
         "properties": {
@@ -9610,6 +9650,172 @@
         "title": "LedgerRow",
         "description": "One row of the materiality ledger (§2.2)."
       },
+      "LevelRule-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "levels",
+            "title": "Kind",
+            "default": "levels"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "exclude": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Exclude"
+          },
+          "refused": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Refused"
+          },
+          "dont_know": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Dont Know"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "missing": {
+            "type": "string",
+            "enum": [
+              "exclude",
+              "keep"
+            ],
+            "title": "Missing",
+            "default": "exclude"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "exclude",
+          "reason"
+        ],
+        "title": "LevelRule",
+        "description": "Exclude rows by a level of a categorical or coded column (SWARM_PLAN §5, §8): diagnosed\ndiabetes by its code. The codes that record a refused answer and a don't-know answer are named\non their own (``refused``, ``dont_know``), never read as levels: such an answer cannot confirm\nthat a row is eligible (STROBE item 13a's \"confirmed eligible\"), so, like a blank, the row\nleaves on a line of its own named with its code, or with ``missing=\"keep\"`` stays and the line\nsays so. A code the rule does not name is an answer like any other level, and every level the\nrule does not exclude stays."
+      },
+      "LevelRule-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "levels",
+            "title": "Kind",
+            "default": "levels"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "exclude": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Exclude"
+          },
+          "refused": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Refused"
+          },
+          "dont_know": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Dont Know"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "missing": {
+            "type": "string",
+            "enum": [
+              "exclude",
+              "keep"
+            ],
+            "title": "Missing",
+            "default": "exclude"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "exclude",
+          "refused",
+          "dont_know",
+          "reason",
+          "missing"
+        ],
+        "title": "LevelRule",
+        "description": "Exclude rows by a level of a categorical or coded column (SWARM_PLAN §5, §8): diagnosed\ndiabetes by its code. The codes that record a refused answer and a don't-know answer are named\non their own (``refused``, ``dont_know``), never read as levels: such an answer cannot confirm\nthat a row is eligible (STROBE item 13a's \"confirmed eligible\"), so, like a blank, the row\nleaves on a line of its own named with its code, or with ``missing=\"keep\"`` stays and the line\nsays so. A code the rule does not name is an answer like any other level, and every level the\nrule does not exclude stays."
+      },
       "LevelValues": {
         "properties": {
           "column": {
@@ -12287,6 +12493,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/GoldbergRule-Output"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LevelRule-Output"
                     }
                   ]
                 },
@@ -15501,6 +15710,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/GoldbergRule-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/LevelRule-Input"
                 }
               ]
             },
@@ -15531,6 +15743,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/GoldbergRule-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/LevelRule-Output"
                 }
               ]
             },
@@ -17135,6 +17350,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/GoldbergRule-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/LevelRule-Input"
                 }
               ]
             },
@@ -17167,6 +17385,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/GoldbergRule-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/LevelRule-Output"
                 }
               ]
             },
@@ -19647,6 +19868,31 @@
             "type": "boolean",
             "title": "Nested Cv",
             "default": false
+          },
+          "cut_point": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CutPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fold_order": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "random",
+                  "time"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fold Order"
           }
         },
         "additionalProperties": false,
@@ -19723,6 +19969,31 @@
             "type": "boolean",
             "title": "Nested Cv",
             "default": false
+          },
+          "cut_point": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CutPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fold_order": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "random",
+                  "time"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fold Order"
           }
         },
         "additionalProperties": false,
@@ -19736,7 +20007,9 @@
           "repeats",
           "n_boot",
           "cluster",
-          "nested_cv"
+          "nested_cv",
+          "cut_point",
+          "fold_order"
         ],
         "title": "SetSplit"
       },
@@ -20921,6 +21194,31 @@
             "title": "Nested Cv",
             "default": false
           },
+          "fold_order": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "random",
+                  "time"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fold Order"
+          },
+          "cut_point": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CutPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "acknowledged": {
             "type": "boolean",
             "title": "Acknowledged",
@@ -20991,6 +21289,31 @@
             "title": "Nested Cv",
             "default": false
           },
+          "fold_order": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "random",
+                  "time"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fold Order"
+          },
+          "cut_point": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CutPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "acknowledged": {
             "type": "boolean",
             "title": "Acknowledged",
@@ -21007,6 +21330,8 @@
           "n_boot",
           "cluster",
           "nested_cv",
+          "fold_order",
+          "cut_point",
           "acknowledged"
         ],
         "title": "SetValidation",
@@ -21092,6 +21417,31 @@
             "type": "boolean",
             "title": "Nested Cv",
             "default": false
+          },
+          "cut_point": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CutPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fold_order": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "random",
+                  "time"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fold Order"
           }
         },
         "additionalProperties": false,
@@ -21104,7 +21454,9 @@
           "repeats",
           "n_boot",
           "cluster",
-          "nested_cv"
+          "nested_cv",
+          "cut_point",
+          "fold_order"
         ],
         "title": "SplitSpec"
       },
@@ -28794,6 +29146,9 @@
               },
               {
                 "$ref": "#/components/schemas/GoldbergRule"
+              },
+              {
+                "$ref": "#/components/schemas/LevelRule"
               }
             ],
             "title": "Rule"
@@ -33141,6 +33496,91 @@
           "calibration"
         ],
         "title": "LevelCalibration",
+        "type": "object"
+      },
+      "LevelRule": {
+        "additionalProperties": false,
+        "description": "Exclude rows by a level of a categorical or coded column (SWARM_PLAN §5, §8): diagnosed\ndiabetes by its code. The codes that record a refused answer and a don't-know answer are named\non their own (``refused``, ``dont_know``), never read as levels: such an answer cannot confirm\nthat a row is eligible (STROBE item 13a's \"confirmed eligible\"), so, like a blank, the row\nleaves on a line of its own named with its code, or with ``missing=\"keep\"`` stays and the line\nsays so. A code the rule does not name is an answer like any other level, and every level the\nrule does not exclude stays.",
+        "properties": {
+          "kind": {
+            "const": "levels",
+            "default": "levels",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "exclude": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Exclude",
+            "type": "array"
+          },
+          "refused": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "title": "Refused",
+            "type": "array"
+          },
+          "dont_know": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "title": "Dont Know",
+            "type": "array"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "missing": {
+            "default": "exclude",
+            "enum": [
+              "exclude",
+              "keep"
+            ],
+            "title": "Missing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "exclude",
+          "refused",
+          "dont_know",
+          "reason",
+          "missing"
+        ],
+        "title": "LevelRule",
         "type": "object"
       },
       "Lever": {
@@ -38521,6 +38961,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/GoldbergRule"
+                },
+                {
+                  "$ref": "#/components/schemas/LevelRule"
                 }
               ]
             },
@@ -39580,6 +40023,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/GoldbergRule"
+                },
+                {
+                  "$ref": "#/components/schemas/LevelRule"
                 }
               ]
             },
@@ -40834,6 +41280,33 @@
             "default": false,
             "title": "Nested Cv",
             "type": "boolean"
+          },
+          "cut_point": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CutPoint"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "fold_order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "random",
+                  "time"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fold Order"
           }
         },
         "required": [
@@ -40845,7 +41318,9 @@
           "repeats",
           "n_boot",
           "cluster",
-          "nested_cv"
+          "nested_cv",
+          "cut_point",
+          "fold_order"
         ],
         "title": "SetSplit",
         "type": "object"
@@ -41464,6 +41939,33 @@
             "title": "Nested Cv",
             "type": "boolean"
           },
+          "fold_order": {
+            "anyOf": [
+              {
+                "enum": [
+                  "random",
+                  "time"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fold Order"
+          },
+          "cut_point": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CutPoint"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "acknowledged": {
             "default": false,
             "title": "Acknowledged",
@@ -41478,6 +41980,8 @@
           "n_boot",
           "cluster",
           "nested_cv",
+          "fold_order",
+          "cut_point",
           "acknowledged"
         ],
         "title": "SetValidation",

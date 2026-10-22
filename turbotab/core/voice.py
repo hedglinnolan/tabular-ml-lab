@@ -19,6 +19,8 @@ optional; a sentence says only what its context can support and never prints a p
     frame            a pandas frame with the columns an exclusion names (and the target)
     datastore        a ``DataStore``: the columns an exclusion names are read from it
     exclusion_counts rows each exclusion rule removes, in order (overrides counting)
+    exclusion_unconfirmed  of those, the rows each rule could not confirm (its lines before its
+                     step); counted from ``frame`` or ``datastore`` when not given
     n_cohort         rows entering the split (for its sentence)
     n_complete       rows left after complete cases, with ``n_before`` the rows before
     repeats          ``{column, n_units, max_rows_per_unit}`` when the identifier repeats
@@ -567,8 +569,14 @@ def _set_validation(d: Any, state: Any, ctx: Any) -> str:
     from turbotab.core.decisions import SetSplit
 
     split = getattr(state, "split", None)
+    cut = getattr(split, "cut_point", None)  # the draw's cut-point and, unless changed, its folds'
+    scheme = d.scheme()
+    if cut is None:
+        scheme.pop("fold_order", None)  # answered only under a cut-point (refused elsewhere)
     drawn = SetSplit(holdout=getattr(split, "holdout", 0.0), seed=getattr(split, "seed", 0),
-                     **d.scheme())
+                     cut_point=cut,
+                     **{"fold_order": getattr(split, "fold_order", None) if cut is not None else None,
+                        **scheme})
     said = _set_split(drawn, state, ctx)
     body = said[0].lower() + said[1:] if said[:1].isupper() and not said[1:2].isupper() else said
     return f"The validation scheme was changed, the held-out rows kept as drawn: {body}"
@@ -635,6 +643,11 @@ def _slot_value(slot: str, value: Any) -> str | None:
         return f"{how}, with {listing(dropped)} left out" if dropped else how
     if slot == "split":
         holdout = float(_attr(value, "holdout") or 0)
+        cut = _attr(value, "cut_point")
+        if cut is not None:  # a temporal seal by cut-point holds rows out with no share
+            from turbotab.core.decisions import cut_shown
+
+            return f"a cut-point at {tick(cut_shown(_attr(cut, 'at')))} on {tick(_attr(cut, 'column'))}"
         return "cross-validation only" if holdout == 0 else f"a {tick(f'{holdout:.0%}')} holdout"
     if slot == "models":
         return listing(value)
@@ -1049,9 +1062,69 @@ def _goldberg_phrase(rule: Any) -> str:
             f"cut-offs for {pal} and {days}{unconfirmed}")
 
 
+def _unconfirmed_words(rule: Any) -> str:
+    """"refused (`7`), don't know (`9`) or not recorded": the answers a level rule cannot confirm
+    (``stages.rows.rule_keep``), each refused or don't-know code named."""
+    from turbotab.core.stages.rows import UNCONFIRMED_LINES, _named_levels
+
+    unknown = [f"{words} ({_named_levels(getattr(rule, field))})"
+               for _, words, field in UNCONFIRMED_LINES if getattr(rule, field)]
+    unknown.append("not recorded")
+    return unknown[0] if len(unknown) == 1 else f"{', '.join(unknown[:-1])} or {unknown[-1]}"
+
+
+def _level_phrase(rule: Any) -> str:
+    """"`DIQ010` `1`, or not recorded": the levels a level rule excludes and, unless it keeps
+    them, the answers it cannot confirm (``stages.rows.rule_keep``). A rule that names refused or
+    don't-know codes is said by :func:`_level_clause` instead, its unconfirmed answers apart."""
+    from turbotab.core.stages.rows import _named_levels
+
+    text = f"{tick(rule.column)} {_named_levels(rule.exclude)}"
+    if rule.missing != "exclude":
+        return text
+    return f"{text}, or {_unconfirmed_words(rule)}"
+
+
+def _names_unconfirmed_codes(rule: Any) -> bool:
+    """A level rule that leaves out the refused or don't-know codes it names (claim
+    ``eligibility.unconfirmed_answer``'s regime): its sentence gives them a clause of their own."""
+    return (getattr(rule, "kind", "range") == "levels" and rule.missing == "exclude"
+            and bool(rule.refused or rule.dont_know))
+
+
+def _level_clause(rule: Any, n: int | None, unconfirmed: int | None) -> str:
+    """A level rule's clause when it names refused or don't-know codes (the package 4 verifier's
+    V4): the rows at its excluded levels leave as its reason, and the blank, refused and
+    don't-know answers as not confirmed eligible (claim ``eligibility.unconfirmed_answer``), each
+    count the flow's. ``n`` is the rule's rows in all and ``unconfirmed`` those it could not
+    confirm; with ``n`` alone the clause says the total and each reason, with neither no count."""
+    from turbotab.core import claims
+    from turbotab.core.stages.rows import _named_levels
+
+    column, levels = tick(rule.column), _named_levels(rule.exclude)
+    reason, answers = _as_reason(rule.reason), _unconfirmed_words(rule)
+    eligible = claims.methods("eligibility.unconfirmed_answer", rule)
+
+    def verb(k: int) -> str:
+        return "was" if k == 1 else "were"
+
+    if n is None:
+        return (f"Rows with {column} {levels} were excluded as {reason}, and rows with {column} "
+                f"{answers} were excluded as {eligible}")
+    if unconfirmed is None or not 0 <= unconfirmed <= n:
+        return (f"{count(n)} {plural(n, 'row')} with {column} {levels}, {answers} {verb(n)} "
+                f"excluded, at {levels} as {reason} and otherwise as {eligible}")
+    at = n - unconfirmed
+    return (f"{count(at)} {plural(at, 'row')} with {column} {levels} {verb(at)} excluded as "
+            f"{reason}, and {count(unconfirmed)} with {column} {answers} {verb(unconfirmed)} "
+            f"excluded as {eligible}")
+
+
 def _rule_phrase(rule: Any) -> str:
     if getattr(rule, "kind", "range") == "goldberg":
         return _goldberg_phrase(rule)
+    if getattr(rule, "kind", "range") == "levels":
+        return _level_phrase(rule)
     column = tick(rule.column)
     # A rule leaves out the rows it cannot confirm unless told to keep them (stages.rows.rule_keep).
     unconfirmed = " or not recorded" if getattr(rule, "missing", "exclude") == "exclude" else ""
@@ -1117,6 +1190,40 @@ def exclusion_counts(rules: Sequence[Any], state: Any, ctx: Any) -> tuple[list[i
         return None, None
 
 
+def exclusion_unconfirmed(rules: Sequence[Any], state: Any, ctx: Any,
+                          counts: Sequence[int]) -> list[int] | None:
+    """Rows each rule left out as not confirmed eligible (its lines before its step: no value, a
+    refused or don't-know code it names), as the participant flow counts them; None when they
+    cannot be counted, or when the flow counted here does not give the rules' own ``counts``
+    (``exclusion_counts``), so a split never disagrees with the total beside it. Given in the
+    context as ``exclusion_unconfirmed`` (the export's counts), or counted on ``frame`` or
+    ``datastore`` (``stages.rows.rule_flow``)."""
+    given = _get(ctx, "exclusion_unconfirmed")
+    if given is not None:
+        return [int(n) for n in given] if len(given) == len(rules) else None
+    frame = _get(ctx, "frame")
+    columns = list(dict.fromkeys(c for rule in rules for c in rule.reads()))
+    target = getattr(state, "target", None)
+    try:
+        if frame is None:
+            store = _get(ctx, "datastore")
+            if store is None or not set(columns) <= set(store.columns):
+                return None
+            frame = store.materialize([c for c in {*columns, target} if c and c in
+                                       set(store.columns)])
+        if not set(columns) <= set(frame.columns):
+            return None
+        from turbotab.core.stages.rows import rule_drops, rule_flow, rule_unconfirmed
+
+        steps = rule_flow(frame, target, rules)
+        if rule_drops(steps) != [int(n) for n in counts]:
+            return None
+        return rule_unconfirmed(steps)
+    except Exception:  # a sentence never fails a decision; it says less
+        log.debug("could not count the unconfirmed rows", exc_info=True)
+        return None
+
+
 @register_sentence("set_exclusions")
 def _set_exclusions(d: Any, state: Any, ctx: Any) -> str:
     target = getattr(state, "target", None)
@@ -1124,8 +1231,16 @@ def _set_exclusions(d: Any, state: Any, ctx: Any) -> str:
         who = f"every row with {tick(target)} measured" if target else "every row"
         return f"No rows were excluded: {who} stays in the analysis"
     counts, _ = exclusion_counts(d.rules, state, ctx)
+    unconfirmed = (exclusion_unconfirmed(d.rules, state, ctx, counts)
+                   if counts is not None and any(_names_unconfirmed_codes(r) for r in d.rules)
+                   else None)
     clauses = []
     for i, rule in enumerate(d.rules):
+        if _names_unconfirmed_codes(rule):
+            clause = _level_clause(rule, None if counts is None else counts[i],
+                                   None if unconfirmed is None else unconfirmed[i])
+            clauses.append(clause if i == 0 else clause[:1].lower() + clause[1:])
+            continue
         rows = f"{count(counts[i])} {plural(counts[i], 'row')}" if counts is not None else "Rows"
         verb = "was" if counts is not None and counts[i] == 1 else "were"
         clause = f"{rows} with {_rule_phrase(rule)} {verb} excluded as {_as_reason(rule.reason)}"
@@ -1373,8 +1488,9 @@ def split_states_plan(d: Any, state: Any) -> bool:
     """Whether the split's sentence states the seal plan (its grouping, its draw, time-ordered
     folds): every split but one under inference that holds no rows out, whose sentence says only
     that none were (WAVE_C6A ruling 5: only such a sentence waits for the plan to settle)."""
-    return not (getattr(state, "purpose", None) == "inference"
-                and float(getattr(d, "holdout", 0) or 0) == 0)
+    from turbotab.core.decisions import holds_out
+
+    return not (getattr(state, "purpose", None) == "inference" and not holds_out(d))
 
 
 def _units_within_levels(ctx: Any, column: str | None, cluster: str) -> bool:
@@ -1418,6 +1534,11 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         grouped = _attr(basis, "state") == "grouped" and _attr(basis, "source") != "aggregation"
         group = _attr(basis, "column") if grouped else None  # combined per unit: nothing repeats
     latest = bool(chron is not None and _attr(chron, "drawn") and _attr(chron, "time_column"))
+    # SWARM_PLAN §8: a cut-point holds the rows out in place of a share, and its folds' order is
+    # its own answer (``SplitSpec.fold_order``), never the seal plan's reading of the temporal one.
+    cut = getattr(d, "cut_point", None)
+    if cut is not None:
+        latest = False
     how = []
     if group:
         how.append(f"keeping each {tick(group)}'s rows together")
@@ -1429,13 +1550,20 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     manner = " (" + ", ".join([f"seed {tick(d.seed)}", *how]) + ")"
     folds = f"{tick(d.folds)}-fold cross-validation"
     compared = f"models were compared by {folds} on the rest"
-    if plan is not None and _attr(plan, "time_ordered_folds"):  # audit MA-11: folds follow time
+    time_ordered = (getattr(d, "fold_order", None) == "time" if cut is not None
+                    else plan is not None and bool(_attr(plan, "time_ordered_folds")))
+    if time_ordered:  # audit MA-11: folds follow time
         folds = (f"cross-validation over {tick(d.folds)} time-ordered folds, each scored by models "
                  f"fit on earlier units")
         compared = f"models were compared on the rest by {folds}"
     # How the training rows validated the models (audit ME-11, E16; models/validation.py).
     validation = getattr(d, "validation", "kfold")
-    if validation == "repeated_kfold":
+    if validation == "repeated_kfold" and cut is not None and time_ordered:
+        # Time-ordered folds are the same in every repeat, so the draw runs them once
+        # (``stages.rows.draw_split``): said, never "repeated" (the package 4 verifier's P3).
+        folds += ", run once, since time-ordered folds are the same in every repeat"
+        compared = f"models were compared on the rest by {folds}"
+    elif validation == "repeated_kfold":
         folds = (f"{tick(d.folds)}-fold cross-validation repeated {tick(d.repeats)} times, each "
                  f"score the mean over the repeats")
         compared = f"models were compared on the rest by {folds}"
@@ -1451,7 +1579,6 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
                 f"whose cross-validated score stands because the bootstrap overstates it")
     # MS6 (MODELING_SEQUENCE ruling 4): under prediction the comparisons run on repeated k-fold,
     # at least 10 × K, whatever validation gives the score (models/folds.py).
-    time_ordered = plan is not None and bool(_attr(plan, "time_ordered_folds"))
     if getattr(state, "purpose", None) != "inference" and not time_ordered:
         from turbotab.core.models.folds import COMPARISON_REPEATS
 
@@ -1505,11 +1632,27 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         # cross-validated score is shown, so the record says none was estimated, never how.
         compared, boot, r2 = (f"no cross-validated score is reported under inference: the declared "
                               f"model is reported by its estimates"), "", ""
-        if d.holdout == 0:
+        if d.holdout == 0 and cut is None:
             return (f"No rows were held out: every analyzed row estimates the coefficients, and "
                     f"{compared}")
-    elif d.holdout == 0:
+    elif d.holdout == 0 and cut is None:
         return f"No rows were held out; performance was estimated by {folds}{manner}{boot}{r2}"
+    if cut is not None:
+        # No count, as for a share: the rows held out are drawn over every row with the outcome
+        # recorded, and the seal's own sentence counts them (``seal.cut_holdout``).
+        from turbotab.core import claims
+        from turbotab.core.decisions import cut_shown
+
+        # A unit's earlier rows are named only where the seal keeps units whole (the plan's
+        # basis, or the repeats reading), so a table of one row per unit is told of none (P14).
+        said = claims.methods("seal.cut_point_units" if group else "seal.cut_point",
+                              {"cut_point": cut, "holdout": d.holdout, "grouped": bool(group)})
+        text = (f"A cut-point at {tick(cut_shown(cut.at))} on {tick(cut.column)} {said}; "
+                f"{compared}{boot}{r2}")
+        if basis is not None and _attr(basis, "exploratory"):
+            text += (f"; the held-out score is exploratory, as the split's basis is "
+                     f"{_attr(basis, 'label')}")
+        return text
     share = tick(f"{d.holdout:.0%}")
     # No count: the held-out rows are drawn over every row with the outcome recorded, and the
     # analysis count changes with any later exclusion or missing-values answer; the banner and
@@ -1674,7 +1817,9 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
               f"chosen: {listing(labels, limit=8, ticked=False)}")
     # MS6 (MODELING_SEQUENCE §1 row 12 (b)): with no rows held out, what the result is.
     split = getattr(state, "split", None)
-    if (n > 1 and split is not None and float(getattr(split, "holdout", 0) or 0) == 0
+    from turbotab.core.decisions import holds_out  # a share or a cut-point holds rows out
+
+    if (n > 1 and split is not None and not holds_out(split)
             and getattr(state, "purpose", None) != "inference"):
         chosen += ("; with no rows held out, the choice among them is corrected by bootstrap "
                    "bias-corrected cross-validation (Tsamardinos et al. 2018), and that "
@@ -2873,7 +3018,8 @@ def kinds() -> list[str]:
 
 
 __all__ = [
-    "count", "exclusion_counts", "finish", "kinds", "listing", "machinery", "number", "plural",
+    "count", "exclusion_counts", "exclusion_unconfirmed", "finish", "kinds", "listing",
+    "machinery", "number", "plural",
     "register_repair_sentence", "register_sentence", "role_as", "sentence_for", "strip_markdown",
     "table_number", "tick", "words",
 ]

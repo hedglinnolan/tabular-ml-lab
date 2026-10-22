@@ -1170,3 +1170,147 @@ register(Claim(
     author=RF1_AUTHOR,
     origin="audit",
 ))
+
+
+# ── SWARM_PLAN §10 package 4: the categorical eligibility rule ───────────────────────────────
+# Its line's reason is the claim's card; the flow names the column and the code around it
+# (stages.rows._level_lines), and the methods sentence names each code on a clause of its own,
+# with the claim's methods register as its reason (voice._level_clause). The author grades no
+# part above judgment (CLAIMS_REGISTRY.md §2.4).
+
+P4_AUTHOR = "swarm package 4 builder"
+P4_LEVEL_TESTS = "turbotab/core/tests/test_level_eligibility.py"
+
+
+def names_a_refused_or_unknown_code(ctx: Any) -> bool:
+    """A categorical eligibility rule (its ``kind`` "levels") that names at least one code
+    recording a refused answer or a don't-know one."""
+    return _get(ctx, "kind") == "levels" and bool(_get(ctx, "refused") or _get(ctx, "dont_know"))
+
+
+register(Claim(
+    id="eligibility.unconfirmed_answer",
+    kind="rule",
+    card="a refused or don't-know answer cannot confirm the row is eligible",
+    # The methods sentence's reason for those rows, on a clause of their own beside the rows at
+    # the excluded levels (voice._level_clause; the package 4 verifier's V4).
+    methods="not confirmed eligible",
+    regime=Regime("a categorical eligibility rule that names the codes recording a refused or a "
+                  "don't-know answer, by default (the rule keeps them only when told to)",
+                  requires=(f"{HERE}:names_a_refused_or_unknown_code",)),
+    decision="set_exclusions",
+    options=("exclude", "keep"),
+    verdict="recommended",
+    parts=(
+        Part("default", grade="judgment", basis=Basis(
+            cites=("vonelm2007strobe",),
+            reason="STROBE item 13a counts the participants confirmed eligible; a refused or "
+                   "don't-know answer to an eligibility question confirms nothing, so we leave "
+                   "the row out by default, as a blank already is (audit MA-19), on a line that "
+                   "names the code, and keep it only where the rule says to, the line then "
+                   "saying it was kept.")),
+        Part("named_only", grade="judgment", basis=Basis(
+            reason="Which codes record a refused or a don't-know answer is the codebook's, not "
+                   "the data's (NHANES uses 7 and 9, or 77 and 99, beside real levels), so only "
+                   "a code the rule names is read so; any other code is a level, kept unless "
+                   "excluded.")),
+    ),
+    tests=(
+        Fires(f"{P4_LEVEL_TESTS}::test_a_refused_or_dont_know_answer_leaves_on_a_named_line_of_its_"
+              "own", truth="construction"),
+        Silent(f"{P4_LEVEL_TESTS}::test_a_rule_that_keeps_unconfirmed_answers_keeps_them_and_each_"
+               "line_says_so", truth="construction"),
+        Silent(f"{P4_LEVEL_TESTS}::test_a_code_the_rule_does_not_name_is_an_answer_like_any_other",
+               truth="construction"),
+        Fires(f"{P4_LEVEL_TESTS}::test_the_sentence_counts_what_the_flow_counts_and_names_each_code",
+              truth="independent:pandas"),
+        Fires(f"{P4_LEVEL_TESTS}::test_the_sentence_counts_the_unconfirmed_rows_the_flow_brings_to_"
+              "the_rule", truth="independent:pandas"),
+        Silent(f"{P4_LEVEL_TESTS}::test_without_the_rows_the_sentence_counts_no_clause_it_cannot_"
+               "and_keeps_the_reasons_apart", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.stages.rows:rule_keep", "turbotab.core.stages.rows:_level_lines",
+                 "turbotab.core.voice:_level_clause", "turbotab.core.voice:exclusion_unconfirmed"),
+    author=P4_AUTHOR,
+    origin="engine",
+))
+
+
+def a_level_rule(ctx: Any) -> bool:
+    """A categorical eligibility rule (its ``kind`` "levels")."""
+    return _get(ctx, "kind") == "levels"
+
+
+register(Claim(
+    id="eligibility.no_such_level",
+    kind="rule",
+    card="so no row would leave at an excluded level",
+    regime=Regime("a categorical eligibility rule whose excluded levels no row of its column "
+                  "holds, on the table as the store holds it",
+                  requires=(f"{HERE}:a_level_rule",)),
+    decision="set_exclusions.levels_held",
+    verdict="refused",
+    parts=(
+        Part("refused", grade="judgment", basis=Basis(
+            reason="A rule whose excluded levels no row holds (`Yes` on a column coded 1 and 2) is "
+                   "most likely a level spelled as the codebook does not write it, and recorded "
+                   "it would read as a population restricted by a level that removed no one; so "
+                   "it is refused with the levels the column does hold. A refused or don't-know "
+                   "code nobody gave is no reason to refuse.")),
+        Part("unconfirmed_counted", grade="judgment", basis=Basis(
+            reason="The refusal says only what it checks: rows at an excluded level. The blank, "
+                   "refused and don't-know answers the rule would still leave out as not "
+                   "confirmed eligible (eligibility.unconfirmed_answer) are counted beside it, "
+                   "so it never says the rule would exclude no one (the package 4 verifier's "
+                   "P8), and counted as the participant flow counts them: among the rows with "
+                   "the outcome recorded that the rules before it keep (its V1).")),
+    ),
+    tests=(
+        Fires(f"{P4_LEVEL_TESTS}::test_a_rule_whose_excluded_levels_no_row_holds_is_refused",
+              truth="construction"),
+        Fires(f"{P4_LEVEL_TESTS}::test_the_refusal_of_a_level_no_row_holds_says_only_what_it_"
+              "checks", truth="construction"),
+        Fires(f"{P4_LEVEL_TESTS}::test_the_refusal_counts_only_the_unconfirmed_rows_the_flow_"
+              "brings_to_the_rule", truth="independent:pandas"),
+        Silent(f"{P4_LEVEL_TESTS}::test_a_rule_on_a_categorical_column_is_accepted",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.decisions:_levels_are_the_columns",),
+    author=P4_AUTHOR,
+    origin="engine",
+))
+
+register(Claim(
+    id="eligibility.level_spelling",
+    kind="rule",
+    regime=Regime("a categorical eligibility rule, its levels compared with its column's values",
+                  requires=(f"{HERE}:a_level_rule",)),
+    decision="set_exclusions.level_spelling",
+    verdict="noted",
+    parts=(
+        Part("one_number", grade="judgment", basis=Basis(
+            reason="A level that reads as a whole number names that number however it is "
+                   "written: 7, 7.0, \"7\" and \"07\" are one level, since a coded column reaches "
+                   "the store as numbers or as text depending on its file (NHANES's DIQ010 is "
+                   "1, 2, 3, 7, 9 either way), and a rule naming its codes should not depend on "
+                   "which. A text code whose leading zero is part of the code (\"07\" beside "
+                   "\"7\" as two answers) would be merged; we judge that rarer than a coded "
+                   "column read as text.")),
+        Part("text_as_written", grade="judgment", basis=Basis(
+            reason="A level that reads as no number is compared as written, case and spacing "
+                   "included: the rule names the codebook's own words, and a near spelling is "
+                   "refused by eligibility.no_such_level rather than guessed at.")),
+    ),
+    tests=(
+        Fires(f"{P4_LEVEL_TESTS}::test_a_level_matches_however_it_is_spelled",
+              truth="construction"),
+        Fires(f"{P4_LEVEL_TESTS}::test_a_level_named_in_two_roles_is_refused",
+              truth="construction"),
+        Silent(f"{P4_LEVEL_TESTS}::test_a_text_level_that_is_not_a_number_is_matched_as_written",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.stages.rows:_level_key", "turbotab.core.stages.rows:rule_parts",
+                 "turbotab.core.decisions:LevelRule"),
+    author=P4_AUTHOR,
+    origin="engine",
+))

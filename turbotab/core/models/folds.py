@@ -6,6 +6,11 @@ against forward chaining's 0.23–0.24 on the audit's drift fixture). Roberts et
 40:913): "We recommend that block cross-validation be used wherever dependence structures exist in
 a dataset".
 
+The folds keep time order where the held-out draw is by time (the temporal answer's chronological
+draw), and under a temporal seal by cut-point only where the split answers that they do
+(``SplitSpec.fold_order`` "time"; ``core/seal.py``): there the order is its own answer, and random
+folds, repeated or not, score the same held-out rows.
+
 **The scheme.** Units (a person, or a row when nothing repeats) are ordered by their order key —
 the seal's rank of each unit's last observation, the same order the chronological holdout uses —
 and cut into ``B`` contiguous blocks, balanced by rows. Fold ``j`` (``j = 1 … B − 1``) is scored

@@ -514,6 +514,7 @@ function sealPlan(
           n_held_rows: null,
           n_held_earlier: null,
           earlier: [],
+          cut_point: null, // the seal plan's draw is a share's, never a cut-point's
         }
       : null,
     exploratory: basis.exploratory,

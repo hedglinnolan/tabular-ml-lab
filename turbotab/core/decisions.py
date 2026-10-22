@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import threading
 import uuid
@@ -272,6 +273,48 @@ class GoldbergRule(_Value):
         return rule_columns(self)
 
 
+# A level as a rule names it: a column's text, or a number for a coded column. ``2``, ``2.0`` and
+# ``"2"`` name one level (``stages.rows._level_key``, the one spelling the flow compares).
+Level = str | float
+
+
+class LevelRule(_Value):
+    """Exclude rows by a level of a categorical or coded column (SWARM_PLAN §5, §8): diagnosed
+    diabetes by its code. The codes that record a refused answer and a don't-know answer are named
+    on their own (``refused``, ``dont_know``), never read as levels: such an answer cannot confirm
+    that a row is eligible (STROBE item 13a's "confirmed eligible"), so, like a blank, the row
+    leaves on a line of its own named with its code, or with ``missing="keep"`` stays and the line
+    says so. A code the rule does not name is an answer like any other level, and every level the
+    rule does not exclude stays."""
+
+    kind: Literal["levels"] = "levels"
+    column: str = Field(min_length=1)
+    exclude: list[Level] = Field(min_length=1)
+    refused: list[Level] = Field(default_factory=list)
+    dont_know: list[Level] = Field(default_factory=list)
+    reason: str = Field(min_length=1)
+    missing: Literal["exclude", "keep"] = "exclude"
+
+    @model_validator(mode="after")
+    def _one_meaning_each(self) -> "LevelRule":
+        from turbotab.core.stages.rows import _level_key
+
+        seen: dict[str, str] = {}
+        for role, levels in (("excluded", self.exclude), ("refused", self.refused),
+                             ("don't know", self.dont_know)):
+            for level in levels:
+                key = _level_key(level)
+                if key in seen:
+                    raise ValueError(f"the level `{key}` is named {seen[key]} and {role}: each "
+                                     f"level has one meaning" if seen[key] != role else
+                                     f"the level `{key}` is named twice as {role}")
+                seen[key] = role
+        return self
+
+    def reads(self) -> list[str]:
+        return [self.column]
+
+
 def _rule_kind(value: Any) -> str:
     """A rule's kind; a rule written before the Goldberg screen existed is a range."""
     if isinstance(value, Mapping):
@@ -280,15 +323,16 @@ def _rule_kind(value: Any) -> str:
 
 
 EligibilityRule = Annotated[
-    Union[Annotated[ExclusionRule, Tag("range")], Annotated[GoldbergRule, Tag("goldberg")]],
+    Union[Annotated[ExclusionRule, Tag("range")], Annotated[GoldbergRule, Tag("goldberg")],
+          Annotated[LevelRule, Tag("levels")]],
     Discriminator(_rule_kind),
 ]
 RULE_ADAPTER: TypeAdapter[Any] = TypeAdapter(EligibilityRule)
 
 
-def as_rule(value: Any) -> "ExclusionRule | GoldbergRule":
+def as_rule(value: Any) -> "ExclusionRule | GoldbergRule | LevelRule":
     """An eligibility rule from a model or its JSON form."""
-    if isinstance(value, (ExclusionRule, GoldbergRule)):
+    if isinstance(value, (ExclusionRule, GoldbergRule, LevelRule)):
         return value
     return RULE_ADAPTER.validate_python(value)
 
@@ -441,6 +485,41 @@ def _validation_fields(validation: str, cluster: str | None) -> None:
         raise ValueError("a cluster column is read only by internal–external validation")
 
 
+class CutPoint(_Value):
+    """A temporal seal by cut-point (SWARM_PLAN §8; ``core/seal.py``): every row whose ``column``
+    reads at or after ``at`` is held out, a unit with rows on both sides held out whole (by its last
+    observation, as the chronological draw ranks units), and the other rows train. ``at`` is a
+    value of the column as it reads: a number for a numeric column (a numeral written as text reads
+    as that number), a date for a dated one."""
+
+    column: str = Field(min_length=1)
+    at: float | str
+
+
+# How the training rows' folds are ordered under a cut-point seal (SWARM_PLAN §10, the watch note
+# on package 3): its own answer, never forced by the held-out draw, so the same held-out rows can
+# be scored under random folds (repeated or not, as ``validation`` says) or time-ordered ones
+# (forward chaining by the cut-point's column, ``models/folds.py``).
+FoldOrder = Literal["random", "time"]
+
+
+def _cut_fields(holdout: float, cut_point: CutPoint | None, fold_order: str | None,
+                validation: str) -> None:
+    if cut_point is None:
+        if fold_order is not None:
+            raise ValueError("the folds' order is answered only under a cut-point seal; otherwise "
+                             "the held-out draw sets it (a draw by time orders them)")
+        return
+    if holdout != 0.0:
+        raise ValueError("a cut-point holds out the rows at or after it, so no share is drawn as "
+                         "well: the holdout is 0")
+    if fold_order is None:
+        raise ValueError("a cut-point seal needs its folds' order: random or time")
+    if fold_order == "time" and validation == "internal_external":
+        raise ValueError("time-ordered folds and internal–external validation's folds are two "
+                         "answers to one question: choose one")
+
+
 class SplitSpec(_Value):
     holdout: float = Field(ge=0.0, le=0.4)
     seed: int = 0
@@ -452,6 +531,10 @@ class SplitSpec(_Value):
     # MS6: Bates, Hastie & Tibshirani's nested cross-validation interval for each family's primary
     # (models/validation.py), offered with its compute estimate where predictors outnumber rows.
     nested_cv: bool = False
+    # A temporal seal by cut-point in place of a share (``holdout`` is then 0), and the order of
+    # its training folds; None without a cut-point, where the held-out draw sets the folds' order.
+    cut_point: CutPoint | None = None
+    fold_order: FoldOrder | None = None
 
     @field_validator("holdout")
     @classmethod
@@ -463,7 +546,39 @@ class SplitSpec(_Value):
     @model_validator(mode="after")
     def _scheme(self) -> "SplitSpec":
         _validation_fields(self.validation, self.cluster)
+        _cut_fields(self.holdout, self.cut_point, self.fold_order, self.validation)
         return self
+
+
+def holds_out(split: Any) -> bool:
+    """Whether a split (``SplitSpec``, ``SetSplit`` or its JSON form) holds rows out: a share, or a
+    cut-point. Everything that asks whether rows are sealed reads this, never the share alone."""
+    if split is None:
+        return False
+    get = split.get if isinstance(split, Mapping) else (lambda k, v=None: getattr(split, k, v))
+    return float(get("holdout", 0) or 0) > 0 or get("cut_point", None) is not None
+
+
+def cut_shown(at: Any) -> str:
+    """A cut-point's value as a sentence shows it, and as two answers are compared: ``2017.0``,
+    ``2017`` and ``"2017"`` alike read "2017"; a date stays as it was written."""
+    if isinstance(at, (int, float)) and not isinstance(at, bool):
+        value = float(at)
+        return str(int(value)) if math.isfinite(value) and value.is_integer() else f"{value:.10g}"
+    return str(at).strip()
+
+
+def cut_key(cut: Any) -> tuple[str, str] | None:
+    """A cut-point's column and value as compared (:func:`cut_shown`); None for no cut-point."""
+    return None if cut is None else (str(cut.column), cut_shown(cut.at))
+
+
+def draw_key(split: Any) -> tuple[Any, ...] | None:
+    """What a split's held-out draw is (the share, the seed and the cut-point), for telling one
+    draw from another; None with no split."""
+    if split is None:
+        return None
+    return (float(split.holdout), int(split.seed), cut_key(getattr(split, "cut_point", None)))
 
 
 # A percentile band needs 1,000 to 2,000 refits (Carpenter & Bithell 2000, Stat Med 19:1141).
@@ -773,10 +888,13 @@ class SetSplit(_DecisionModel):
     n_boot: int = Field(default=OPTIMISM_BOOT, ge=20, le=2000)
     cluster: str | None = None
     nested_cv: bool = False  # MS6: the nested cross-validation interval (SplitSpec)
+    cut_point: CutPoint | None = None  # a temporal seal by cut-point (SplitSpec)
+    fold_order: FoldOrder | None = None
 
     @model_validator(mode="after")
     def _scheme(self) -> "SetSplit":
         _validation_fields(self.validation, self.cluster)
+        _cut_fields(self.holdout, self.cut_point, self.fold_order, self.validation)
         return self
 
 
@@ -795,6 +913,14 @@ class SetValidation(_DecisionModel):
     n_boot: int = Field(default=OPTIMISM_BOOT, ge=20, le=2000)
     cluster: str | None = None
     nested_cv: bool = False
+    # The training folds' order under a cut-point seal (SplitSpec); None keeps the one recorded,
+    # and is the only answer where no cut-point holds the rows out (``_a_folds_order_needs_a_cut``).
+    fold_order: FoldOrder | None = None
+    # The draw's cut-point as the split holds it, when a scheme is written from the split's own
+    # fields (``stages.modeling``'s nested cross-validation offer): a scheme never moves the draw,
+    # so one naming another cut-point is refused (``_a_scheme_keeps_the_cut_point``); not a field
+    # of the scheme.
+    cut_point: CutPoint | None = None
     acknowledged: bool = False
 
     @model_validator(mode="after")
@@ -803,8 +929,11 @@ class SetValidation(_DecisionModel):
         return self
 
     def scheme(self) -> dict[str, Any]:
-        """The scheme's fields as the split holds them."""
-        return self.model_dump(exclude={"kind", "acknowledged"})
+        """The scheme's fields as the split holds them (a folds' order of None keeps the split's)."""
+        out = self.model_dump(exclude={"kind", "acknowledged", "cut_point"})
+        if out.get("fold_order") is None:
+            out.pop("fold_order", None)
+        return out
 
 
 class SelectModels(_DecisionModel):
@@ -2831,7 +2960,12 @@ def _scheme_onto_the_draw(decision: Any, split: Any) -> Any:
     if split is None:
         return None
     drawn = split.model_dump() if isinstance(split, BaseModel) else dict(split)
-    return SplitSpec(**{**drawn, **decision.scheme()})
+    scheme = decision.scheme()
+    if drawn.get("cut_point") is None:
+        # A folds' order is answered only under a cut-point; one sent beside a share is refused
+        # (``seal._a_folds_order_needs_a_cut``), and a probe folded before that refusal keeps none.
+        scheme.pop("fold_order", None)
+    return SplitSpec(**{**drawn, **scheme})
 
 
 register_kind(SetValidation, "split", value=lambda d: None, onto=_scheme_onto_the_draw)
@@ -3809,12 +3943,91 @@ def _goldberg_reads_numbers(rule: GoldbergRule, ctx: Any, drop: Mapping[str, Any
                           f"cannot compute with it.", exits=[drop])
 
 
+def _sorted_levels(keys: Iterable[str]) -> list[str]:
+    """Levels in reading order: numbers by value first, then text."""
+    def order(key: str) -> tuple[int, float, str]:
+        try:
+            return (0, float(key), key)
+        except ValueError:
+            return (1, 0.0, key)
+    return sorted(set(keys), key=order)
+
+
+SHOWN_LEVELS = 12  # a refusal lists at most this many of a column's levels
+
+
+def _levels_are_the_columns(rule: LevelRule, ctx: Any, drop: Mapping[str, Any],
+                            before: Sequence[Any] = ()) -> None:
+    """A level rule's column exists, and at least one level it excludes is held by some row: a
+    rule whose excluded levels no row holds (``Yes`` on a column coded 1 and 2) would be recorded
+    as an exclusion by a level that removed no one (claim ``eligibility.no_such_level``). The
+    refusal says only that: the blank, refused and don't-know answers the rule would still leave
+    out as not confirmed eligible are counted beside it, never said to stay, as the participant
+    flow counts them (:func:`_unconfirmed_reaching`: among the rows with the outcome recorded that
+    the rules ``before`` it keep). A refused or don't-know code nobody gave is no reason to
+    refuse: the line it would name is then empty."""
+    from turbotab.core import claims
+    from turbotab.core.stages.rows import _level_key
+
+    columns = _columns_of(ctx)
+    if columns is not None and (rule.column not in columns or rule.column == ROW_ID):
+        raise Refusal("unknown_column", f"This dataset has no column named `{rule.column}`.",
+                      exits=[drop])
+    store = _store_of(ctx)
+    if store is None or rule.column not in set(store.columns):
+        return
+    values = store.materialize([rule.column])[rule.column]
+    held = {_level_key(v) for v in values.dropna().tolist()}
+    if not held or held & {_level_key(level) for level in rule.exclude}:
+        return
+    named = " or ".join(f"`{_level_key(level)}`" for level in rule.exclude)
+    shown = _sorted_levels(held)
+    listed = ", ".join(f"`{k}`" for k in shown[:SHOWN_LEVELS])
+    more = f" and `{len(shown) - SHOWN_LEVELS}` more" if len(shown) > SHOWN_LEVELS else ""
+    # The rows the rule would still leave out: a blank, or a code it names as refused or don't
+    # know, unless it keeps them, among the rows the flow brings to it (the package 4 verifier's
+    # V1); none said where they cannot be counted.
+    unconfirmed = (_unconfirmed_reaching(rule, ctx, store, before)
+                   if rule.missing == "exclude" else 0)
+    still = (f"; `{unconfirmed:,}` would leave only as not confirmed eligible" if unconfirmed
+             else "")
+    raise Refusal("no_such_level",
+                  f"No row of `{rule.column}` holds {named}, "
+                  f"{claims.card('eligibility.no_such_level', rule)}{still}. "
+                  f"`{rule.column}` holds {listed}{more}.", exits=[drop])
+
+
+def _unconfirmed_reaching(rule: LevelRule, ctx: Any, store: Any, before: Sequence[Any]) -> int:
+    """The rows a level rule would leave out as not confirmed eligible, counted as the
+    participant flow counts them (``stages.rows.rule_flow``): among the rows with the outcome
+    recorded that the rules ``before`` it keep. 0 when they cannot be read (a column a rule
+    before it reads is not in the table: that rule is refused on its own)."""
+    from turbotab.core.stages.rows import rule_flow, rule_unconfirmed
+
+    target = _target_of(ctx)
+    target = target if isinstance(target, str) else None
+    names = set(store.columns)
+    reads = [c for r in [*before, rule] for c in as_rule(r).reads()]
+    if not set(reads) <= names:
+        return 0
+    wanted = list(dict.fromkeys([*([target] if target in names else []), *reads]))
+    try:
+        steps = rule_flow(store.materialize(wanted), target, [*before, rule])
+    except Exception:  # noqa: BLE001 - a count it cannot make is not said
+        log.debug("could not count the unconfirmed rows", exc_info=True)
+        return 0
+    return rule_unconfirmed(steps)[len(before)]
+
+
 def _exclusions_are_ranges_on_numbers(decision: SetExclusions, ctx: Any) -> None:
     columns = _columns_of(ctx)
     for i, rule in enumerate(decision.rules):
         drop = {"label": f"Drop the rule on `{rule.column}`", "decision": _rule_without(decision, i)}
         if isinstance(rule, GoldbergRule):
             _goldberg_reads_numbers(rule, ctx, drop)
+            continue
+        if isinstance(rule, LevelRule):  # levels, not a range: text levels are levels too
+            _levels_are_the_columns(rule, ctx, drop, decision.rules[:i])
             continue
         for name in [rule.column] + ([rule.by.column] if rule.by is not None else []):
             if columns is not None and (name not in columns or name == ROW_ID):
@@ -3886,9 +4099,9 @@ def _screens_keep_most_rows(decision: SetExclusions, ctx: Any) -> None:
     names = set(store.columns)
     for i, rule in enumerate(decision.rules):
         column = rule.column
-        if column not in names or not (roles.get(column) == "energy"
-                                       or reads_as_total_energy(column)):
-            continue
+        if isinstance(rule, LevelRule) or column not in names or not (
+                roles.get(column) == "energy" or reads_as_total_energy(column)):
+            continue  # an intake screen is a range or a Goldberg screen, never a level rule
         reads = [c for c in as_rule(rule).reads() if c in names]
         if len(reads) < len(as_rule(rule).reads()):
             continue
@@ -3953,9 +4166,9 @@ def _screens_wait_for_the_unit(decision: SetExclusions, ctx: Any) -> None:
     names = set(store.columns)
     for rule in decision.rules:
         column = rule.column
-        if column not in names or not (roles.get(column) == "energy"
-                                       or reads_as_total_energy(column)):
-            continue
+        if isinstance(rule, LevelRule) or column not in names or not (
+                roles.get(column) == "energy" or reads_as_total_energy(column)):
+            continue  # a level rule reads no unit
         totals = [c for c in names if c != column and _names_a_macro_total(c)]
         frame = store.materialize([column, *totals])
         macros = macro_totals(frame, exclude=[column])

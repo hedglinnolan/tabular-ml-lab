@@ -976,8 +976,10 @@ def stepwise_room(state: Any, ctx: Any, task: str | None) -> tuple[int, int] | N
     levels k − 1, a declared spline its k − 1, a form rule's splines theirs
     (``stages.modeling.rule_spline_terms``, k read on the fold's rows, never fewer than its
     effective size gives), and a missing-value indicator per predictor with blanks when indicators
-    are kept. The fold holds (K − 1)/K of the training rows, the holdout drawn first."""
-    from turbotab.core.decisions import _ctx
+    are kept. The fold holds (K − 1)/K of the training rows, the holdout drawn first. A cut-point
+    holds out the rows at or after it, a count no share gives, so under one the training rows are
+    the split's own count, read once the split is drawn for that cut-point (None until then)."""
+    from turbotab.core.decisions import _ctx, cut_key
     from turbotab.core.methods.exposure_form import model_terms
     from turbotab.core.readings import confirmed_codes
     from turbotab.core.sequence import artifact
@@ -992,7 +994,16 @@ def stepwise_room(state: Any, ctx: Any, task: str | None) -> tuple[int, int] | N
     split = getattr(state, "split", None)
     holdout = float(getattr(split, "holdout", 0.0) or 0.0)
     folds = int(getattr(split, "folds", 5) or 5)
-    n_train = int(math.floor(int(n) * (1.0 - holdout)))
+    cut = cut_key(getattr(split, "cut_point", None))
+    if cut is not None:  # the package 4 verifier's P6: the split's count, for this cut-point
+        drawn = artifact(ctx, "split") or {}
+        chronology = drawn.get("chronology") or {}
+        if (drawn.get("n_train") is None
+                or (chronology.get("time_column"), chronology.get("cut_point")) != cut):
+            return None
+        n_train = int(drawn["n_train"])
+    else:
+        n_train = int(math.floor(int(n) * (1.0 - holdout)))
     n_fold = int(math.floor(n_train * (folds - 1) / folds))
     columns = (predictor_parameters(predictors, info, confirmed_codes(state))
                + model_terms(predictors, getattr(state, "exposure_forms", None)) - len(predictors)

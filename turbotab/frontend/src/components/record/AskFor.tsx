@@ -151,6 +151,7 @@ export const AskFor = ({
   const roles = useStage(pid, view, "roles");
   const proposals = useStage(pid, view, "proposals");
   const sealPlan = useStage(pid, view, "seal_plan");
+  const split = useStage(pid, view, "split"); // a recorded cut-point's own sentence (SealAsk)
   const shelf = useStage(pid, view, "shelf");
   const design = useStage(pid, view, "design");
   // The generic question's cards (compose.ts): the causal lane's and the time-varying lane's.
@@ -395,6 +396,10 @@ export const AskFor = ({
                 (col.dtype === "numeric" || col.dtype === "integer") && col.name !== state.target,
             )
             .map((col) => col.name)}
+          // A rule by level reads any column but the outcome: codes or text (SWARM_PLAN §5).
+          levelColumns={(columns ?? [])
+            .filter((col) => col.name !== state.target)
+            .map((col) => col.name)}
         />
       );
     case "missing":
@@ -414,6 +419,18 @@ export const AskFor = ({
           plan={sealPlan?.artifact ?? null}
           roles={roles?.artifact ?? undefined}
           current={state.split}
+          split={split?.artifact ?? undefined}
+          // A cut-point reads numbers or dates (core/seal.py `cut_value`), never the outcome.
+          timeColumns={(columns ?? [])
+            .filter(
+              (col) =>
+                ["numeric", "integer", "datetime", "text"].includes(col.dtype) &&
+                col.name !== state.target,
+            )
+            .map((col) => ({
+              name: col.name,
+              numeric: col.dtype === "numeric" || col.dtype === "integer",
+            }))}
         />
       );
     case "energy_adjustment":
