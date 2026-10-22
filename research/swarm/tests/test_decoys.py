@@ -111,3 +111,44 @@ def test_the_columns_are_related_to_one_another_as_the_docstring_says():
     assert r("sbp", "bmi") * np.sqrt(n) > BOUND
     assert r("waist_cm", "bmi") * np.sqrt(n) > BOUND
     assert -r("hdl", "bmi") * np.sqrt(n) > BOUND
+
+
+# ── the mechanical runs' distinct seeds (SWARM_PLAN §5) ─────────────────────
+
+
+def test_each_mechanical_run_has_a_seed_of_its_own_and_none_is_the_analysts_tables():
+    from research.swarm import intake
+
+    seeds = decoys.seeds(200)
+    assert len(seeds) == len(set(seeds)) == 200
+    assert intake.DECOY_SEED not in seeds and PILOT_SEED not in seeds
+    assert seeds == decoys.seeds(200)  # fixed before any run
+    assert decoys.seeds(0) == []
+    with pytest.raises(ValueError):
+        decoys.seeds(-1)
+
+
+def test_two_runs_outcomes_are_independent_past_the_bound_and_one_shared_would_fire_it():
+    """Two runs' outcomes, from their own seeds, correlate no more than the independence bound
+    allows (sqrt(n) |r| < 4); the same outcome given to both, as one seed for every run did, is
+    the bound's opposite (|r| = 1)."""
+    first, second = decoys.seeds(2)
+    a = decoys.outcome(first, decoys.ROWS).astype(float)
+    b = decoys.outcome(second, decoys.ROWS).astype(float)
+    assert abs(np.corrcoef(a, b)[0, 1]) * np.sqrt(decoys.ROWS) < BOUND
+    assert abs(np.corrcoef(a, a)[0, 1]) * np.sqrt(decoys.ROWS) >= BOUND
+
+
+def test_a_runs_table_is_a_fresh_draw_of_the_analysts_decoy_generator():
+    """A mechanical run's table is ``generate`` at its seed, written as a fresh draw writes it
+    (``core/export/replay.py``): the generator at the intake's seed writes the analysts' table, so
+    the replay's check accepts it, and each run's seed writes another table."""
+    import hashlib
+
+    from research.swarm import intake
+
+    manifest = intake.load(intake.DECOY_ID)["manifest"]
+    pilot = decoys.generate(intake.DECOY_SEED).to_csv(index=False).encode()
+    assert hashlib.sha256(pilot).hexdigest() == manifest["table"]["sha256"]
+    run = decoys.generate(decoys.seeds(1)[0]).to_csv(index=False).encode()
+    assert hashlib.sha256(run).hexdigest() != manifest["table"]["sha256"]

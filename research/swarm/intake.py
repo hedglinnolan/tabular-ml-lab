@@ -475,6 +475,29 @@ SHARED_NUMBERS: dict[str, dict[str, str]] = {
         "one": "the population's 'one row per encounter'; it meets the answers as 1 does",
         "0": "the outcome's coding (0 no); the generating model's coefficients up to 0.5 in size "
              "round to 0, and so does every number up to 50 divided by 100"},
+    "inpatient_readmission_predict": {
+        "1": "the outcome's coding (readmit_30d is 1 yes); the generating model's coefficients "
+             "and centers of 0.5 to 1.5 in size, its C-statistic and its centers of 50 to 150 "
+             "divided by 100 round to 1",
+        "one": "the population's 'one row per encounter'; it meets the answers as 1 does",
+        "0": "the outcome's coding (0 no); the generating model's coefficients up to 0.5 in size, "
+             "the model classes' regrets and the oracle's 0 round to 0, and so does every number "
+             "up to 50 divided by 100"},
+    "walking_bp_estimate": {
+        "1": "the exposure's and chronic pain's coding (1 yes); the model's numbers of 0.5 to 1.5 "
+             "in size (a probit slope, a bias, b0, the tuning run's ratios and coverage) round to "
+             "1, as do its numbers from 50 to 150 divided by 100",
+        "one": "the population's 'one row per person'; it meets the answers as 1 does",
+        "0": "the same columns' coding (0 no); the model's numbers up to 0.5 in size (the "
+             "prevalence, standard errors) round to 0, and so does every number up to 50 divided "
+             "by 100"},
+    "plasma_panel_estimate": {
+        "1": "the outcome's coding (disease is 1 yes); the run's parameters and fold changes of "
+             "0.5 to 1.5 in size round to 1, as do its numbers from 50 to 150 divided by 100",
+        "one": "the population's 'one row per injection'; it meets the answers as 1 does",
+        "0": "the outcome's coding (0 no); the run's parameters up to 0.5 in size and the "
+             "unassociated features' fold change of 0 round to 0, and so does every number up to "
+             "50 divided by 100"},
 }
 
 
@@ -1087,6 +1110,177 @@ def intake_clinical_readmission_predict(old: dict | None) -> tuple[dict, dict, d
     return manifest, card, answers
 
 
+# ── the generated fixtures: the hardened Predict, the Estimate and the measurement fixture ──────
+# (SWARM_PLAN §5 items 4–6; ``research/swarm/generators.py``). Each table is the committed file its
+# generator writes at its seed (``generators.TABLES``); the manifest names the generator and the
+# seed, so a fresh draw (``core/export/replay.py``) is the same generator at another seed.
+
+GENERATORS_PY = "research/swarm/generators.py"
+SWARM_FIXTURES = REPO / "research" / "swarm" / "fixtures"
+
+
+def generated_manifest(id_: str, key: str, table: Path, frame: Any, about: str) -> dict[str, Any]:
+    from research.swarm import generators as G
+
+    entry = G.TABLES[key]
+    source = SWARM_FIXTURES / key
+    manifest = fixture_manifest(id_, source, f"{GENERATORS_PY}::{entry['function']}", table, frame,
+                                about)
+    manifest["generator"] = {"module": GENERATORS_PY, "function": entry["function"],
+                             "seed": entry["seed"], "rows": entry["rows"]}
+    return manifest
+
+
+def _copied(key: str, id_: str) -> tuple[Path, Any]:
+    """The committed table copied to the dataset's data folder, refused unless it is its generator's
+    bytes; its path and frame."""
+    import pandas as pd
+
+    from research.swarm import generators as G
+    source, table = SWARM_FIXTURES / key, TABLES / id_ / key
+    if source.read_bytes() != G.table_bytes(key):
+        raise SystemExit(f"{rel(source)} is not its generator's bytes: run "
+                         f"python -m research.swarm.generators")
+    copy_table(source, table)
+    return table, pd.read_csv(table)
+
+
+def intake_inpatient_readmission_predict(old: dict | None) -> tuple[dict, dict, dict]:
+    from sklearn.metrics import roc_auc_score
+
+    from research.swarm import generators as G
+    id_, key = "inpatient_readmission_predict", G.READMISSION_FILE
+    table, frame = _copied(key, id_)
+    card = generated_card(
+        id_, "Predict", "How well do the table's measures predict a readmission within 30 days?",
+        "A generated (synthetic) cohort of adult hospital encounters, one row per encounter.",
+        {"column": G.READMISSION_OUTCOME, "meaning": "readmitted within 30 days (1 yes, 0 no)"},
+        table)
+    source = f"{GENERATORS_PY}::readmission"
+    regrets = G.readmission_regrets()
+    answers = {
+        "id": id_, "kind": "known_answer", "fixture_key": key,
+        "about": ("A generated cohort whose outcome is drawn from a logistic model of its columns "
+                  "with a U-shaped sodium term and an age-by-albumin interaction "
+                  f"({source}): the true risk of every row is known."),
+        "truths": [
+            {"name": "the outcome's generating model", "source": source,
+             "value": G.READMISSION_MODEL},
+            {"name": "the C-statistic of ranking every row by its true risk",
+             "source": "the generating model on the table's rows, by scikit-learn's roc_auc_score",
+             "value": float(roc_auc_score(frame[G.READMISSION_OUTCOME],
+                                          G.readmission_risk(frame)))},
+            {"name": "each model class's Brier regret against the true risk, E[(p̂ − p)²] of its "
+                     "population-best fit (the oracle's is 0; additive straight lines are the "
+                     "default path's class, so r0's planted nonlinearity is its regret)",
+             "source": (f"{GENERATORS_PY}::readmission_regrets: an unpenalized logistic fit on "
+                        f"{G.REGRET_ROWS[0]:,} rows at seed {G.REGRET_SEEDS[0]}, read on "
+                        f"{G.REGRET_ROWS[1]:,} rows at seed {G.REGRET_SEEDS[1]}"),
+             "value": {"linear": regrets["linear"], "spline": regrets["spline"],
+                       "interaction": regrets["interaction"], "oracle": 0.0}},
+            {"name": "leakage", "source": source,
+             "value": "none: no column is measured after the outcome or stands in for it"},
+            {"name": "the readings a user who knows the table gives",
+             "source": "turbotab/core/tests/truths.py FIXTURE_TRUTHS", "value": readings(key)},
+        ],
+    }
+    manifest = generated_manifest(id_, key, table, frame,
+                                  "A generated fixture of this repository, copied as committed.")
+    return manifest, card, answers
+
+
+def intake_walking_bp_estimate(old: dict | None) -> tuple[dict, dict, dict]:
+    from research.swarm import generators as G
+    id_, key = "walking_bp_estimate", G.ESTIMATE_FILE
+    table, frame = _copied(key, id_)
+    m = G.ESTIMATE_MODEL
+    card = generated_card(
+        id_, "Estimate", "Is walking every day associated with systolic blood pressure?",
+        "A generated (synthetic) cohort of adults, one row per person.",
+        {"column": m["outcome"], "meaning": "systolic blood pressure (mmHg)"}, table,
+        exposure={"column": m["exposure"], "meaning": "walks every day (1 yes, 0 no)"},
+        documentation=[
+            "Each person's age, height, chronic pain (1 yes, 0 no) and daily walking were recorded "
+            "when they enrolled; their health-concern score (a questionnaire's score) and their "
+            "systolic blood pressure were measured at a later visit.",
+            "A blank chronic_pain is a question the person did not answer.",
+        ])
+    source = f"{GENERATORS_PY}::blood_pressure"
+    planted = G.planted_biases()
+    tuning = G.b0_tuning()
+    answers = {
+        "id": id_, "kind": "known_answer", "fixture_key": key,
+        "about": (f"A generated cohort ({source}) in which walking every day changes systolic "
+                  "blood pressure by a known difference in means, chronic pain causes both, the "
+                  "health-concern score is caused by both, and chronic pain is left blank more "
+                  "often where blood pressure is high: each plan's population bias is known."),
+        "truths": [
+            {"name": "the generating model", "source": source, "value": m},
+            {"name": "the effect of walks_daily on sbp_mmhg, a difference in means", "source": source,
+             "value": planted["effect"]},
+            {"name": "each plan's population coefficient on walks_daily and its bias, and b0 (half "
+                     "the smallest planted bias in size)",
+             "source": f"{GENERATORS_PY}::planted_biases (closed form, population_effects)",
+             "value": {"plans": G.ESTIMATE_PLANS, **planted}},
+            {"name": "b0 against the oracle plan's mean bias over fresh draws (SWARM_PLAN §5 item "
+                     "5), from an analysis independent of the engine",
+             "source": f"{GENERATORS_PY}::b0_tuning (statsmodels; multiple imputation of its own)",
+             "value": tuning},
+            {"name": "the readings a user who knows the table gives",
+             "source": "turbotab/core/tests/truths.py FIXTURE_TRUTHS", "value": readings(key)},
+        ],
+    }
+    manifest = generated_manifest(id_, key, table, frame,
+                                  "A generated fixture of this repository, copied as committed.")
+    return manifest, card, answers
+
+
+def intake_plasma_panel_estimate(old: dict | None) -> tuple[dict, dict, dict]:
+    from research.swarm import generators as G
+    id_, key = "plasma_panel_estimate", G.PANEL_FILE
+    table, frame = _copied(key, id_)
+    features = [c for c in frame.columns if c.startswith("mz_")]
+    card = generated_card(
+        id_, "Estimate",
+        "Which plasma features differ between people with and without the disease?",
+        "A generated (synthetic) untargeted metabolomics run: one row per injection, each a "
+        "participant's plasma sample or a pooled QC sample, with the participants' age, sex and "
+        "BMI.",
+        {"column": G.PANEL_OUTCOME,
+         "meaning": "has the disease (1 yes, 0 no); blank on a pooled QC injection"}, table,
+        # The card names one exposure column: the family's first, its meaning the whole family.
+        exposure={"column": features[0],
+                  "meaning": f"each feature's measured intensity, {features[0]} to "
+                             f"{features[-1]}, tested feature by feature (the first named here)"},
+        documentation=[
+            "The samples were injected in run_order, in the batches batch names; pooled QC "
+            "injections (sample_type pooled_qc) open and close each batch and recur within it.",
+            "A blank intensity is a value below the instrument's detection limit.",
+        ])
+    source = f"{GENERATORS_PY}::metabolite_panel"
+    answers = {
+        "id": id_, "kind": "known_answer", "fixture_key": key,
+        "about": (f"A generated run ({source}) with a known set of features associated with the "
+                  "disease and their log2 fold changes, under detection-limit censoring, drift "
+                  "within each batch, batch offsets that go up and down in run order, sample "
+                  "dilution and pooled QC injections."),
+        "truths": [
+            {"name": "the associated features and each one's log2 fold change in the true "
+                     "concentration (every other feature's is 0)",
+             "source": f"{GENERATORS_PY}::panel_truth", "value": G.panel_truth()},
+            {"name": "the run's parameters", "source": f"{GENERATORS_PY}::PANEL", "value": G.PANEL},
+            {"name": "the measurement decisions graded: the engine's own menus",
+             "source": f"{GENERATORS_PY}::graded_measurement_decisions",
+             "value": G.graded_measurement_decisions()},
+            {"name": "the readings a user who knows the table gives",
+             "source": "turbotab/core/tests/truths.py FIXTURE_TRUTHS", "value": readings(key)},
+        ],
+    }
+    manifest = generated_manifest(id_, key, table, frame,
+                                  "A generated fixture of this repository, copied as committed.")
+    return manifest, card, answers
+
+
 SURVEY_RESPONSES = (1, 5)  # each item's response levels, 1 to 5 (survey_instrument.md's own table)
 
 
@@ -1192,6 +1386,9 @@ INTAKES: dict[str, Callable[[dict | None], tuple[dict, dict, dict]]] = {
     "clinical_readmission_predict": intake_clinical_readmission_predict,
     "survey_support_estimate": intake_survey_support_estimate,
     DECOY_ID: intake_outpatient_admission_predict,
+    "inpatient_readmission_predict": intake_inpatient_readmission_predict,
+    "walking_bp_estimate": intake_walking_bp_estimate,
+    "plasma_panel_estimate": intake_plasma_panel_estimate,
 }
 
 

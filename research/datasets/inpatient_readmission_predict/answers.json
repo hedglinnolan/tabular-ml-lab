@@ -1,0 +1,117 @@
+{
+ "id": "inpatient_readmission_predict",
+ "kind": "known_answer",
+ "fixture_key": "readmissions.csv",
+ "about": "A generated cohort whose outcome is drawn from a logistic model of its columns with a U-shaped sodium term and an age-by-albumin interaction (research/swarm/generators.py::readmission): the true risk of every row is known.",
+ "truths": [
+  {
+   "name": "the outcome's generating model",
+   "source": "research/swarm/generators.py::readmission",
+   "value": {
+    "link": "logit",
+    "intercept": -1.35,
+    "terms": [
+     {
+      "column": "age",
+      "coef": 0.03,
+      "center": 68,
+      "transform": "identity"
+     },
+     {
+      "column": "charlson_index",
+      "coef": 0.26,
+      "center": 2.2,
+      "transform": "identity"
+     },
+     {
+      "column": "prior_admissions_12mo",
+      "coef": 0.5,
+      "center": 0.9,
+      "transform": "identity"
+     },
+     {
+      "column": "albumin_g_dl",
+      "coef": -0.95,
+      "center": 3.6,
+      "transform": "identity"
+     },
+     {
+      "column": "creatinine_mg_dl",
+      "coef": 0.45,
+      "center": 1.05,
+      "transform": "log_ratio"
+     },
+     {
+      "column": "hemoglobin_g_dl",
+      "coef": -0.16,
+      "center": 11.9,
+      "transform": "identity"
+     },
+     {
+      "column": "length_of_stay_days",
+      "coef": 0.075,
+      "center": 4.6,
+      "transform": "identity"
+     }
+    ],
+    "u_shape": {
+     "column": "sodium_mmol_l",
+     "coef": 0.5,
+     "center": 138,
+     "scale": 4.0
+    },
+    "interaction": {
+     "columns": [
+      "age",
+      "albumin_g_dl"
+     ],
+     "coef": -0.4,
+     "centers": [
+      68,
+      3.6
+     ],
+     "scales": [
+      13,
+      0.45
+     ]
+    },
+    "no_signal": [
+     "encounter_id",
+     "sex"
+    ]
+   }
+  },
+  {
+   "name": "the C-statistic of ranking every row by its true risk",
+   "source": "the generating model on the table's rows, by scikit-learn's roc_auc_score",
+   "value": 0.797871964417752
+  },
+  {
+   "name": "each model class's Brier regret against the true risk, E[(p̂ − p)²] of its population-best fit (the oracle's is 0; additive straight lines are the default path's class, so r0's planted nonlinearity is its regret)",
+   "source": "research/swarm/generators.py::readmission_regrets: an unpenalized logistic fit on 300,000 rows at seed 1, read on 200,000 rows at seed 2",
+   "value": {
+    "linear": 0.018836723665748026,
+    "spline": 0.003314605930783614,
+    "interaction": 1.724097806807192e-05,
+    "oracle": 0.0
+   }
+  },
+  {
+   "name": "leakage",
+   "source": "research/swarm/generators.py::readmission",
+   "value": "none: no column is measured after the outcome or stands in for it"
+  },
+  {
+   "name": "the readings a user who knows the table gives",
+   "source": "turbotab/core/tests/truths.py FIXTURE_TRUTHS",
+   "value": {
+    "code_or_count:age": "amount",
+    "code_or_count:charlson_index": "amount",
+    "code_or_count:prior_admissions_12mo": "amount",
+    "code_or_count:sodium_mmol_l": "amount",
+    "code_or_count:length_of_stay_days": "amount",
+    "sex_coding:sex": "female=F,male=M"
+   }
+  }
+ ]
+}

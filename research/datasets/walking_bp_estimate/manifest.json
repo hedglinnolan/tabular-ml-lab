@@ -1,0 +1,29 @@
+{
+ "about": "A generated fixture of this repository, copied as committed.",
+ "dataset": "walking_bp_estimate",
+ "license": "MIT",
+ "basis": "the repository's LICENSE: the table is generated here",
+ "files": [
+  {
+   "file": "research/swarm/fixtures/walking_bp.csv",
+   "origin": "this repository",
+   "generator": "research/swarm/generators.py::blood_pressure",
+   "bytes": 36740,
+   "sha256": "cacf2daf71a6c12a556f8b8e97a396f5abaff5693ac5d9fcb2ab8e363396071f"
+  }
+ ],
+ "table": {
+  "file": "research/data/datasets/walking_bp_estimate/walking_bp.csv",
+  "format": "csv",
+  "rows": 1200,
+  "columns": 7,
+  "bytes": 36740,
+  "sha256": "cacf2daf71a6c12a556f8b8e97a396f5abaff5693ac5d9fcb2ab8e363396071f"
+ },
+ "generator": {
+  "module": "research/swarm/generators.py",
+  "function": "blood_pressure",
+  "seed": 20261023,
+  "rows": 1200
+ }
+}

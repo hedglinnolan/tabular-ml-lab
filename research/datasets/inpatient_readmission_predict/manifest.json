@@ -1,0 +1,29 @@
+{
+ "about": "A generated fixture of this repository, copied as committed.",
+ "dataset": "inpatient_readmission_predict",
+ "license": "MIT",
+ "basis": "the repository's LICENSE: the table is generated here",
+ "files": [
+  {
+   "file": "research/swarm/fixtures/readmissions.csv",
+   "origin": "this repository",
+   "generator": "research/swarm/generators.py::readmission",
+   "bytes": 79828,
+   "sha256": "0c861105150238019b8de6e3ba1db9cd8fa5b9ed6f0e661c88a921d15c21bf29"
+  }
+ ],
+ "table": {
+  "file": "research/data/datasets/inpatient_readmission_predict/readmissions.csv",
+  "format": "csv",
+  "rows": 2000,
+  "columns": 11,
+  "bytes": 79828,
+  "sha256": "0c861105150238019b8de6e3ba1db9cd8fa5b9ed6f0e661c88a921d15c21bf29"
+ },
+ "generator": {
+  "module": "research/swarm/generators.py",
+  "function": "readmission",
+  "seed": 20261022,
+  "rows": 2000
+ }
+}
