@@ -1,12 +1,12 @@
 [
  {
   "run": "clinical_explore",
-  "run_id": "run_02-d9d23e39a300f659ada796f8e94ca5f8",
+  "run_id": "run_02-74496dcdd1f77036768f30561f267ae5",
   "dataset": "clinical_readmission_predict",
-  "record": "research/swarm/dryrun/run_02-d9d23e39a300f659ada796f8e94ca5f8.json",
+  "record": "research/swarm/dryrun/run_02-74496dcdd1f77036768f30561f267ae5.json",
   "valid": true,
   "error": null,
-  "seconds": 205.0,
+  "seconds": 225.6,
   "commands": 60,
   "refused": [],
   "checks": [
@@ -80,12 +80,12 @@
  },
  {
   "run": "survey_single",
-  "run_id": "run_01-8248db232eedff228a8c90d67f0eeac3",
+  "run_id": "run_01-beba0938b0496f07e4425c7212700356",
   "dataset": "survey_support_estimate",
-  "record": "research/swarm/dryrun/run_01-8248db232eedff228a8c90d67f0eeac3.json",
+  "record": "research/swarm/dryrun/run_01-beba0938b0496f07e4425c7212700356.json",
   "valid": true,
   "error": null,
-  "seconds": 60.6,
+  "seconds": 77.3,
   "commands": 52,
   "refused": [],
   "checks": [
@@ -159,12 +159,12 @@
  },
  {
   "run": "decoy_single",
-  "run_id": "run_03-79e1f2f210a8f430862abd831bfc2824",
+  "run_id": "run_03-b2b9da17de767a10743600864cc38d12",
   "dataset": "outpatient_admission_predict",
-  "record": "research/swarm/dryrun/run_03-79e1f2f210a8f430862abd831bfc2824.json",
+  "record": "research/swarm/dryrun/run_03-b2b9da17de767a10743600864cc38d12.json",
   "valid": true,
   "error": null,
-  "seconds": 290.2,
+  "seconds": 310.1,
   "commands": 55,
   "refused": [
    "triage_open"

@@ -1,7 +1,8 @@
 {
+ "account": null,
  "attempts": [
   {
-   "at": "2026-10-19T03:10:56.352992Z",
+   "at": "2026-10-22T19:57:41.818984Z",
    "at_opening": {
     "current": true,
     "family": "elastic_net",
@@ -22,6 +23,8 @@
     },
     "seq": 24
    },
+   "change": [],
+   "change_why": "This is the run's first fit: there is no fit before it to compare with.",
    "changed": [
     1,
     2,
@@ -76,7 +79,7 @@
     "elastic_net",
     "screened_elastic_net"
    ],
-   "fit_key": "9c34bb4a36d2f13d3d0b25a00681d30b99582945bf75cd7bfb8846b492bc2c6b",
+   "fit_key": "51fd17aba5f65df32f0767ce5535127155021d529b4727b2d17bb2392355452d",
    "folds": "2de4d1fe9405cf6a631b62e5ac8526a67336e64da2ec3169efd0c8bc25d6a0dc",
    "held_out": "b5a16062bf4253b7651c567dbb8644a921429711708ae1aa8a95da9bcd6b00d9",
    "holdout": {
@@ -92,13 +95,261 @@
     }
    },
    "holdout_why": null,
-   "id": "36ada95243e44d49947c98ae514741ab",
+   "id": "7b6c3de9be564e9e8a30ffa69b8f2748",
    "locked": false,
+   "markers": [
+    {
+     "axis": "regime",
+     "basis": "the table's rows (the ingest)",
+     "name": "rows",
+     "timing": "live",
+     "value": 1600,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the participant flow's final count",
+     "name": "rows_analyzed",
+     "timing": "live",
+     "value": 1600,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the grain and repeats answers, and the units the held-out draw groups by (the seal plan)",
+     "name": "repeated_units",
+     "timing": "live",
+     "value": {
+      "grain": null,
+      "repeat_kind": null,
+      "unit_column": null,
+      "units": null
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the smallest outcome class's rows in the outcome's own value counts (every row of the table)",
+     "name": "effective_size",
+     "timing": "live",
+     "value": 304,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the effective size over the shelf's candidate predictor parameters",
+     "name": "events_per_parameter",
+     "timing": "live",
+     "value": 16.0,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the roles answer, counted by role",
+     "name": "predictors_by_role",
+     "timing": "live",
+     "value": {
+      "covariate": 8,
+      "exposure": 7,
+      "identifier": 1
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the participant flow's predictors over its rows",
+     "name": "predictors_per_row",
+     "timing": "live",
+     "value": 0.009375,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the outcome's type, as read from its values",
+     "name": "outcome_type",
+     "timing": "live",
+     "value": "binary",
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the event level's rows over every row with the outcome (its own value counts)",
+     "name": "event_share",
+     "timing": "live",
+     "value": 0.19,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "each column's blanks over the table's rows (the ingest); a column with none is not listed",
+     "name": "missingness",
+     "timing": "live",
+     "value": {
+      "drinks_per_week": 0.03,
+      "hdl": 0.07625,
+      "ldl": 0.07625,
+      "steps_per_day": 0.1275
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": null,
+     "name": "complete_case_share",
+     "timing": "live",
+     "value": null,
+     "why": "The participant flow counts the complete cases only under complete cases."
+    },
+    {
+     "axis": "regime",
+     "basis": "the design answers as recorded",
+     "name": "design",
+     "timing": "live",
+     "value": {
+      "clusters": null,
+      "design": null,
+      "grain": null,
+      "repeat_kind": null,
+      "survey": null,
+      "unit": null
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the temporal answer, the structure's time column and whether the seal plan's folds follow time (null where either stage is not computed)",
+     "name": "time_order",
+     "timing": "live",
+     "value": {
+      "temporal": null,
+      "time_column": null,
+      "time_ordered_folds": false
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "each unit read from the values with its evidence (the readings), and each recorded",
+     "name": "units",
+     "timing": "live",
+     "value": [],
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns the findings found values below a detection limit in; each column's share is not served",
+     "name": "detection_limit_share",
+     "timing": "live",
+     "value": {
+      "columns": [],
+      "shares": null
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns whose names read as a batch, a run or a plate, and the batch answer",
+     "name": "batch_columns",
+     "timing": "live",
+     "value": {
+      "answered": null,
+      "read": []
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns whose names read as a run order",
+     "name": "run_order",
+     "timing": "live",
+     "value": [],
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the repeats answer: whether a unit's rows are imputed copies",
+     "name": "imputed_copies",
+     "timing": "live",
+     "value": false,
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the grain, repeats and aggregation answers",
+     "name": "repeated_measurement",
+     "timing": "live",
+     "value": {
+      "aggregation": null,
+      "grain": null,
+      "repeat_kind": null
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": null,
+     "name": "omics_scale",
+     "timing": "live",
+     "value": null,
+     "why": "No assay lens is chosen, so no scale is read."
+    },
+    {
+     "axis": "purpose",
+     "basis": "the purpose answer",
+     "name": "purpose",
+     "timing": "live",
+     "value": "prediction",
+     "why": null
+    },
+    {
+     "axis": "purpose",
+     "basis": "the primary metric the newest fit record names",
+     "name": "primary_score",
+     "timing": "live",
+     "value": {
+      "metric": "log_loss"
+     },
+     "why": null
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "intended_use",
+     "timing": "live",
+     "value": null,
+     "why": "No intended use is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "thresholds",
+     "timing": "live",
+     "value": null,
+     "why": "No intended use is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "estimand",
+     "timing": "live",
+     "value": null,
+     "why": "No estimand is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "multiplicity_family",
+     "timing": "live",
+     "value": null,
+     "why": "No estimand is declared."
+    }
+   ],
+   "markers_why": null,
    "movement": [],
    "movement_why": "No earlier fit is recorded to compare this one with.",
    "plan_digest": "b6abfa04d3a23e0d568c3ed2baf4684ece3c31dfa3e80559b08b58055cb14187",
    "press": {
-    "seconds": 267.1,
+    "seconds": 273.9,
     "seq": 22,
     "target": "admitted_2y"
    },
@@ -309,7 +560,7 @@
      }
     }
    },
-   "seconds": 229.34091204195283,
+   "seconds": 232.58848708309233,
    "seed": 0,
    "seq": 1,
    "target": "admitted_2y",
@@ -318,7 +569,140 @@
    "workers": 2
   }
  ],
- "claims": [],
+ "claims": [
+  {
+   "at": "2026-10-22T19:53:17.219926Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:21.066681Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:25.008786Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:28.790452Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:32.599799Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:36.408368Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:36.409172Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:40.216800Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:40.217694Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:44.063101Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:53:44.063930Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:57:41.804484Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "8b0068a3b24760b83a4e2f829041b14f548bae9b6d9ff7ae01bfa7933ff46a8f",
+   "id": "modeling.no_resampling",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  }
+ ],
  "dataset": {
   "card": {
    "design": "analysts",
@@ -340,6 +724,7 @@
   },
   "codebook": null,
   "control": "null_decoy",
+  "declared": [],
   "files": [
    {
     "bytes": 123595,
@@ -368,13 +753,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:15.356331Z",
+   "at": "2026-10-22T19:52:46.330444Z",
    "early": null,
    "examined": [],
-   "id": "d8051c8f1c5045efb0d6c99eb45cc4c3",
+   "id": "ad5b95f8697c4348ac3036c2c459d911",
    "kind": "set_lens",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -391,7 +776,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 1: lens answered from the journey's lens.",
    "seq": 1,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:52:45Z",
+    "command": "answer",
+    "marker": "purpose",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -412,13 +803,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:17.307727Z",
+   "at": "2026-10-22T19:52:48.302599Z",
    "early": null,
    "examined": [],
-   "id": "faf419c5c07f4b19a8b217765fe23327",
+   "id": "a4c137adf010449bafd85e59245ef3af",
    "kind": "apply_repair",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -440,7 +831,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 2: a finding acted on with its first repair",
    "seq": 2,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:52:47Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -452,13 +849,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:19.239569Z",
+   "at": "2026-10-22T19:52:50.285775Z",
    "early": null,
    "examined": [],
-   "id": "4cb4ba9bb9674f76bb5de7f5e368dcab",
+   "id": "a5d9c07c200449dbb369d76fd174724f",
    "kind": "set_target",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -473,7 +870,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 3: target answered from the card's outcome.",
    "seq": 3,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:52:49Z",
+    "command": "answer",
+    "marker": "outcome_type",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -486,13 +889,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:21.194987Z",
+   "at": "2026-10-22T19:52:52.246923Z",
    "early": null,
    "examined": [],
-   "id": "d7deaaa168194bb3aa9e8cc9419f91e4",
+   "id": "7eb0f9a9473040409e3f67519b56db52",
    "kind": "set_event",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -508,7 +911,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 4: event answered from the card's outcome level.",
    "seq": 4,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:52:51Z",
+    "command": "answer",
+    "marker": "event_share",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -521,13 +930,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:23.121524Z",
+   "at": "2026-10-22T19:52:54.198752Z",
    "early": null,
    "examined": [],
-   "id": "76c4e4bdad55464d97d931ef8b696618",
+   "id": "37247e66605444e3bcbdf1da01ddb102",
    "kind": "set_censoring",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -543,7 +952,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 5: follow_up answered from one period for everyone, the acceptance drivers' answer.",
    "seq": 5,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:52:53Z",
+    "command": "answer",
+    "marker": "time_order",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -555,13 +970,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:25.040468Z",
+   "at": "2026-10-22T19:52:56.235602Z",
    "early": null,
    "examined": [],
-   "id": "c3046f3c94c7469b8a4096b52637ca9e",
+   "id": "2270c677dec54e8ca9141d16a3ac88d6",
    "kind": "set_purpose",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -576,7 +991,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 6: purpose answered from the card's purpose.",
    "seq": 6,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:52:55Z",
+    "command": "answer",
+    "marker": "purpose",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -646,13 +1067,13 @@
      "value": "covariate"
     }
    ],
-   "at": "2026-10-19T03:06:26.997471Z",
+   "at": "2026-10-22T19:52:58.854636Z",
    "early": null,
    "examined": [],
-   "id": "ba383075a3994ca8b277b1fcb6c5ead0",
+   "id": "34a2498284dc4e24a2eeb18950db0d56",
    "kind": "set_roles",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -698,7 +1119,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 7: roles answered from the app's proposed roles, confirmed.",
    "seq": 7,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:52:57Z",
+    "command": "answer",
+    "marker": "predictors_by_role",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -708,13 +1135,13 @@
      "value": "exposure"
     }
    ],
-   "at": "2026-10-19T03:06:28.967835Z",
+   "at": "2026-10-22T19:53:01.483158Z",
    "early": null,
    "examined": [],
-   "id": "77efa9edd83a41bab7780991be1a592f",
+   "id": "72ebd4f38d8d47b1a5adce7262211d44",
    "kind": "confirm_role",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -730,7 +1157,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 8: a role confirmed as the roles answer gave it",
    "seq": 8,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:00Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -756,13 +1189,13 @@
      "value": "covariate"
     }
    ],
-   "at": "2026-10-19T03:06:30.914834Z",
+   "at": "2026-10-22T19:53:04.086686Z",
    "early": null,
    "examined": [],
-   "id": "d7bd5c6431d04afab33beed8d2c75d99",
+   "id": "01b78ae2aba648da8d3afd4659264273",
    "kind": "confirm_readings",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -803,7 +1236,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 9: a role confirmed as the roles answer gave it",
    "seq": 9,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:02Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -825,13 +1264,13 @@
      "value": "exposure"
     }
    ],
-   "at": "2026-10-19T03:06:32.862365Z",
+   "at": "2026-10-22T19:53:06.682402Z",
    "early": null,
    "examined": [],
-   "id": "456caf97eda4475fadffc582526ca448",
+   "id": "537a8e8911ce403f8a6460468ca5e06c",
    "kind": "confirm_readings",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -867,7 +1306,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 10: a role confirmed as the roles answer gave it",
    "seq": 10,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:05Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -881,13 +1326,13 @@
      "value": "exposure"
     }
    ],
-   "at": "2026-10-19T03:06:34.792174Z",
+   "at": "2026-10-22T19:53:09.319092Z",
    "early": null,
    "examined": [],
-   "id": "ec73100b24b444aba9642b7ddc21257d",
+   "id": "a840ac7cb4624052b7d98c6d20134dde",
    "kind": "confirm_readings",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -913,7 +1358,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 11: a role confirmed as the roles answer gave it",
    "seq": 11,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:08Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -925,13 +1376,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:36.767342Z",
+   "at": "2026-10-22T19:53:11.941243Z",
    "early": null,
    "examined": [],
-   "id": "7cf505743ca14fc7ac4d426428404b55",
+   "id": "da6fa0dcc5b84ebc947e1769d80e9357",
    "kind": "set_exclusions",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -946,7 +1397,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 12: exclusions answered from the app's first-ranked option (journeys).",
    "seq": 12,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:10Z",
+    "command": "answer",
+    "marker": "rows_analyzed",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -968,13 +1425,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:38.707331Z",
+   "at": "2026-10-22T19:53:14.555967Z",
    "early": null,
    "examined": [],
-   "id": "b8a12c110ff74dad8e3c168ece6be9a5",
+   "id": "d1aa7572d5c34481ac392a1875763d0d",
    "kind": "set_missing",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -999,7 +1456,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 13: missing answered from the app's first-ranked option (journeys).",
    "seq": 13,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:13Z",
+    "command": "answer",
+    "marker": "missingness",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1018,13 +1481,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:40.651265Z",
+   "at": "2026-10-22T19:53:17.182230Z",
    "early": null,
    "examined": [],
-   "id": "318464e3717f47448dc904ee8078127f",
+   "id": "6a78668fee3d49f2b5956af0e9a3bcd6",
    "kind": "set_split",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1046,7 +1509,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 14: split answered from the run's own answer.",
    "seq": 14,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:16Z",
+    "command": "answer",
+    "marker": "rows_analyzed",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1056,13 +1525,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:06:43.835807Z",
+   "at": "2026-10-22T19:53:20.940181Z",
    "early": null,
    "examined": [],
-   "id": "096260d04026476daa21645680ec6d7f",
+   "id": "aff0bffde8a44007a0d72d0665315058",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1079,7 +1548,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 15: a reading the server asked, from the declared truth or the app's guess",
    "seq": 15,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:19Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1089,13 +1564,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:06:46.985305Z",
+   "at": "2026-10-22T19:53:24.881982Z",
    "early": null,
    "examined": [],
-   "id": "2e218bcfd8894bfb8d899df60bf83f61",
+   "id": "24de21a61d9949a789335c672d6ddb3a",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1112,7 +1587,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 16: a reading the server asked, from the declared truth or the app's guess",
    "seq": 16,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:23Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1122,13 +1603,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:06:50.122730Z",
+   "at": "2026-10-22T19:53:28.663899Z",
    "early": null,
    "examined": [],
-   "id": "02e47bb8457043b09009746c96c6d320",
+   "id": "c5f1f8e562a04ea09a4c85ec269f8986",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1145,7 +1626,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 17: a reading the server asked, from the declared truth or the app's guess",
    "seq": 17,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:27Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1155,13 +1642,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:06:53.271001Z",
+   "at": "2026-10-22T19:53:32.472293Z",
    "early": null,
    "examined": [],
-   "id": "3f1024d3108d46d0b8d5ce12417cd062",
+   "id": "3a09abaae7ff4950bea6ce825a425ffb",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1178,7 +1665,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 18: a reading the server asked, from the declared truth or the app's guess",
    "seq": 18,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:31Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1188,13 +1681,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:06:56.414319Z",
+   "at": "2026-10-22T19:53:36.282658Z",
    "early": null,
    "examined": [],
-   "id": "84515b039b034c85b7d51edecc00983e",
+   "id": "a264a86e334442519750a7940de6f620",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1211,7 +1704,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 19: a reading the server asked, from the declared truth or the app's guess",
    "seq": 19,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:35Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1221,13 +1720,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:06:59.556350Z",
+   "at": "2026-10-22T19:53:40.083143Z",
    "early": null,
    "examined": [],
-   "id": "21fc6ec46eb84deda94ec8975141f9c7",
+   "id": "bf0878a0a40b46b2b09b5834325791df",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1244,7 +1743,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 20: a reading the server asked, from the declared truth or the app's guess",
    "seq": 20,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:38Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1254,13 +1759,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:07:02.692792Z",
+   "at": "2026-10-22T19:53:43.937880Z",
    "early": null,
    "examined": [],
-   "id": "c788bca3f5414485b5859e2e5d870c74",
+   "id": "e80e8bee55dd4b04b2d6ecdb18f4fc15",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1277,7 +1782,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 21: a reading the server asked, from the declared truth or the app's guess",
    "seq": 21,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:42Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1292,13 +1803,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:07:05.849756Z",
+   "at": "2026-10-22T19:53:47.744166Z",
    "early": null,
    "examined": [],
-   "id": "534d394e053b432cbf665bc23ef7b023",
+   "id": "fce7da873dd5485c8b3c242c6e8d4174",
    "kind": "select_models",
    "materiality": {
-    "attempt": "36ada95243e44d49947c98ae514741ab",
+    "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1316,7 +1827,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 22: models answered from the shelf's first-ranked families (journeys).",
    "seq": 22,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:53:46Z",
+    "command": "answer",
+    "marker": "events_per_parameter",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1337,10 +1854,10 @@
      }
     }
    ],
-   "at": "2026-10-19T03:10:58.598508Z",
+   "at": "2026-10-22T19:57:47.580838Z",
    "early": null,
    "examined": [],
-   "id": "135bcc7b19d54ce99c5a0d187550dbd1",
+   "id": "057400ae5a6d4e6897140e9ea9308d38",
    "kind": "confirm_sweep",
    "materiality": {
     "attempt": null,
@@ -1367,7 +1884,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 24: the opening's way forward, Keep the recommended dispositions",
    "seq": 23,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:57:46Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1394,10 +1917,10 @@
      }
     }
    ],
-   "at": "2026-10-19T03:10:58.733110Z",
+   "at": "2026-10-22T19:57:48.578551Z",
    "early": null,
    "examined": [],
-   "id": "1d8bf0985b1140f2b1b5767a68060b3f",
+   "id": "873cb898db4e4f42a84cec3a8ad596c1",
    "kind": "open_seal",
    "materiality": {
     "attempt": null,
@@ -1430,7 +1953,8 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 23: elastic_net is the shelf's first-ranked family fitted; its held-out score is the result.",
    "seq": 24,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": null
   }
  ],
  "export": {
@@ -1519,7 +2043,7 @@
        "file": "methods.md",
        "kind": "set_purpose",
        "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
-       "record_id": "c3046f3c94c7469b8a4096b52637ca9e",
+       "record_id": "2270c677dec54e8ca9141d16a3ac88d6",
        "record_ids": null,
        "seq": 6,
        "seqs": null,
@@ -1578,7 +2102,7 @@
        "file": "methods.md",
        "kind": "set_exclusions",
        "quote": "No rows were excluded: every row with `admitted_2y` measured stays in the analysis.",
-       "record_id": "7cf505743ca14fc7ac4d426428404b55",
+       "record_id": "da6fa0dcc5b84ebc947e1769d80e9357",
        "record_ids": null,
        "seq": 12,
        "seqs": null,
@@ -1613,7 +2137,7 @@
        "file": "methods.md",
        "kind": "apply_repair",
        "quote": "`sex` was recoded with `f` as `1` and `m` as `0`.",
-       "record_id": "faf419c5c07f4b19a8b217765fe23327",
+       "record_id": "a4c137adf010449bafd85e59245ef3af",
        "record_ids": null,
        "seq": 2,
        "seqs": null,
@@ -1623,7 +2147,7 @@
        "file": "methods.md",
        "kind": "confirm_role",
        "quote": "`clinic` was confirmed as a measure on its own, after the evidence for its proposal was read.",
-       "record_id": "77efa9edd83a41bab7780991be1a592f",
+       "record_id": "72ebd4f38d8d47b1a5adce7262211d44",
        "record_ids": null,
        "seq": 8,
        "seqs": null,
@@ -1633,7 +2157,7 @@
        "file": "methods.md",
        "kind": "confirm_readings",
        "quote": "The 5 columns `waist_cm`, `sbp` and 3 more, proposed as characteristics at medium confidence, below high, for one reason (\"A person's characteristic.\"), were confirmed together as one group, after the evidence for their proposal was read.",
-       "record_id": "d7bd5c6431d04afab33beed8d2c75d99",
+       "record_id": "01b78ae2aba648da8d3afd4659264273",
        "record_ids": null,
        "seq": 9,
        "seqs": null,
@@ -1643,7 +2167,7 @@
        "file": "methods.md",
        "kind": "confirm_readings",
        "quote": "The 4 columns `ldl`, `hdl` and 2 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read.",
-       "record_id": "456caf97eda4475fadffc582526ca448",
+       "record_id": "537a8e8911ce403f8a6460468ca5e06c",
        "record_ids": null,
        "seq": 10,
        "seqs": null,
@@ -1653,7 +2177,7 @@
        "file": "methods.md",
        "kind": "confirm_readings",
        "quote": "The 2 columns `drinks_per_week` and `steps_per_day`, proposed as measures at low confidence, below high, for one reason (\"An amount per day or week: a rate, read as a predictor for now.\"), were confirmed together as one group, after the evidence for their proposal was read.",
-       "record_id": "ec73100b24b444aba9642b7ddc21257d",
+       "record_id": "a840ac7cb4624052b7d98c6d20134dde",
        "record_ids": null,
        "seq": 11,
        "seqs": null,
@@ -1663,15 +2187,15 @@
        "file": "methods.md",
        "kind": "confirm_reading",
        "quote": "`steps_per_day`, `ldl`, `sbp`, `hdl`, `age`, `dbp` and `drinks_per_week` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.",
-       "record_id": "c788bca3f5414485b5859e2e5d870c74",
+       "record_id": "e80e8bee55dd4b04b2d6ecdb18f4fc15",
        "record_ids": [
-        "096260d04026476daa21645680ec6d7f",
-        "2e218bcfd8894bfb8d899df60bf83f61",
-        "02e47bb8457043b09009746c96c6d320",
-        "3f1024d3108d46d0b8d5ce12417cd062",
-        "84515b039b034c85b7d51edecc00983e",
-        "21fc6ec46eb84deda94ec8975141f9c7",
-        "c788bca3f5414485b5859e2e5d870c74"
+        "aff0bffde8a44007a0d72d0665315058",
+        "24de21a61d9949a789335c672d6ddb3a",
+        "c5f1f8e562a04ea09a4c85ec269f8986",
+        "3a09abaae7ff4950bea6ce825a425ffb",
+        "a264a86e334442519750a7940de6f620",
+        "bf0878a0a40b46b2b09b5834325791df",
+        "e80e8bee55dd4b04b2d6ecdb18f4fc15"
        ],
        "seq": 21,
        "seqs": [
@@ -1702,7 +2226,7 @@
        "file": "methods.md",
        "kind": "set_target",
        "quote": "`admitted_2y` was chosen as the outcome; it is measured on all `1,600` rows.",
-       "record_id": "4cb4ba9bb9674f76bb5de7f5e368dcab",
+       "record_id": "a5d9c07c200449dbb369d76fd174724f",
        "record_ids": null,
        "seq": 3,
        "seqs": null,
@@ -1712,7 +2236,7 @@
        "file": "methods.md",
        "kind": "set_event",
        "quote": "`1` of `admitted_2y` was taken as the event and coded 1; `0` was coded 0.",
-       "record_id": "d7deaaa168194bb3aa9e8cc9419f91e4",
+       "record_id": "7eb0f9a9473040409e3f67519b56db52",
        "record_ids": null,
        "seq": 4,
        "seqs": null,
@@ -1722,7 +2246,7 @@
        "file": "methods.md",
        "kind": "set_censoring",
        "quote": "`admitted_2y` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.",
-       "record_id": "76c4e4bdad55464d97d931ef8b696618",
+       "record_id": "37247e66605444e3bcbdf1da01ddb102",
        "record_ids": null,
        "seq": 5,
        "seqs": null,
@@ -1769,7 +2293,7 @@
        "file": "methods.md",
        "kind": "set_roles",
        "quote": "Column roles were set for `16` columns: predictors `clinic`, `age`, `sex` and 12 more; identifier `patient_id`.",
-       "record_id": "ba383075a3994ca8b277b1fcb6c5ead0",
+       "record_id": "34a2498284dc4e24a2eeb18950db0d56",
        "record_ids": null,
        "seq": 7,
        "seqs": null,
@@ -1792,7 +2316,7 @@
        "file": "methods.md",
        "kind": "set_roles",
        "quote": "Column roles were set for `16` columns: predictors `clinic`, `age`, `sex` and 12 more; identifier `patient_id`.",
-       "record_id": "ba383075a3994ca8b277b1fcb6c5ead0",
+       "record_id": "34a2498284dc4e24a2eeb18950db0d56",
        "record_ids": null,
        "seq": 7,
        "seqs": null,
@@ -1802,7 +2326,7 @@
        "file": "methods.md",
        "kind": "confirm_role",
        "quote": "`clinic` was confirmed as a measure on its own, after the evidence for its proposal was read.",
-       "record_id": "77efa9edd83a41bab7780991be1a592f",
+       "record_id": "72ebd4f38d8d47b1a5adce7262211d44",
        "record_ids": null,
        "seq": 8,
        "seqs": null,
@@ -1812,7 +2336,7 @@
        "file": "methods.md",
        "kind": "confirm_readings",
        "quote": "The 5 columns `waist_cm`, `sbp` and 3 more, proposed as characteristics at medium confidence, below high, for one reason (\"A person's characteristic.\"), were confirmed together as one group, after the evidence for their proposal was read.",
-       "record_id": "d7bd5c6431d04afab33beed8d2c75d99",
+       "record_id": "01b78ae2aba648da8d3afd4659264273",
        "record_ids": null,
        "seq": 9,
        "seqs": null,
@@ -1822,7 +2346,7 @@
        "file": "methods.md",
        "kind": "confirm_readings",
        "quote": "The 4 columns `ldl`, `hdl` and 2 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read.",
-       "record_id": "456caf97eda4475fadffc582526ca448",
+       "record_id": "537a8e8911ce403f8a6460468ca5e06c",
        "record_ids": null,
        "seq": 10,
        "seqs": null,
@@ -1832,7 +2356,7 @@
        "file": "methods.md",
        "kind": "confirm_readings",
        "quote": "The 2 columns `drinks_per_week` and `steps_per_day`, proposed as measures at low confidence, below high, for one reason (\"An amount per day or week: a rate, read as a predictor for now.\"), were confirmed together as one group, after the evidence for their proposal was read.",
-       "record_id": "ec73100b24b444aba9642b7ddc21257d",
+       "record_id": "a840ac7cb4624052b7d98c6d20134dde",
        "record_ids": null,
        "seq": 11,
        "seqs": null,
@@ -1842,15 +2366,15 @@
        "file": "methods.md",
        "kind": "confirm_reading",
        "quote": "`steps_per_day`, `ldl`, `sbp`, `hdl`, `age`, `dbp` and `drinks_per_week` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.",
-       "record_id": "c788bca3f5414485b5859e2e5d870c74",
+       "record_id": "e80e8bee55dd4b04b2d6ecdb18f4fc15",
        "record_ids": [
-        "096260d04026476daa21645680ec6d7f",
-        "2e218bcfd8894bfb8d899df60bf83f61",
-        "02e47bb8457043b09009746c96c6d320",
-        "3f1024d3108d46d0b8d5ce12417cd062",
-        "84515b039b034c85b7d51edecc00983e",
-        "21fc6ec46eb84deda94ec8975141f9c7",
-        "c788bca3f5414485b5859e2e5d870c74"
+        "aff0bffde8a44007a0d72d0665315058",
+        "24de21a61d9949a789335c672d6ddb3a",
+        "c5f1f8e562a04ea09a4c85ec269f8986",
+        "3a09abaae7ff4950bea6ce825a425ffb",
+        "a264a86e334442519750a7940de6f620",
+        "bf0878a0a40b46b2b09b5834325791df",
+        "e80e8bee55dd4b04b2d6ecdb18f4fc15"
        ],
        "seq": 21,
        "seqs": [
@@ -1905,7 +2429,7 @@
        "file": "methods.md",
        "kind": "set_missing",
        "quote": "Missing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.",
-       "record_id": "b8a12c110ff74dad8e3c168ece6be9a5",
+       "record_id": "d1aa7572d5c34481ac392a1875763d0d",
        "record_ids": null,
        "seq": 13,
        "seqs": null,
@@ -1928,7 +2452,7 @@
        "file": "methods.md",
        "kind": "set_purpose",
        "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
-       "record_id": "c3046f3c94c7469b8a4096b52637ca9e",
+       "record_id": "2270c677dec54e8ca9141d16a3ac88d6",
        "record_ids": null,
        "seq": 6,
        "seqs": null,
@@ -1938,7 +2462,7 @@
        "file": "methods.md",
        "kind": "set_split",
        "quote": "A random `20%` of the rows with `admitted_2y` recorded (seed `0`, stratified by `admitted_2y`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004).",
-       "record_id": "318464e3717f47448dc904ee8078127f",
+       "record_id": "6a78668fee3d49f2b5956af0e9a3bcd6",
        "record_ids": null,
        "seq": 14,
        "seqs": null,
@@ -1984,7 +2508,7 @@
        "file": "methods.md",
        "kind": "set_split",
        "quote": "A random `20%` of the rows with `admitted_2y` recorded (seed `0`, stratified by `admitted_2y`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004).",
-       "record_id": "318464e3717f47448dc904ee8078127f",
+       "record_id": "6a78668fee3d49f2b5956af0e9a3bcd6",
        "record_ids": null,
        "seq": 14,
        "seqs": null,
@@ -1994,7 +2518,7 @@
        "file": "methods.md",
        "kind": "select_models",
        "quote": "Two model families were chosen: elastic net and screened elastic net.",
-       "record_id": "534d394e053b432cbf665bc23ef7b023",
+       "record_id": "fce7da873dd5485c8b3c242c6e8d4174",
        "record_ids": null,
        "seq": 22,
        "seqs": null,
@@ -2519,10 +3043,10 @@
    ],
    "waiting": []
   },
-  "methods": "# Methods: outpatient_visits\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `clinical` lens.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `admitted_2y` measured stays in the analysis.\n\n## Data preparation (TRIPOD+AI 7)\n\n`sex` was recoded with `f` as `1` and `m` as `0`.\n\n## Outcome (TRIPOD+AI 8)\n\n`admitted_2y` was chosen as the outcome; it is measured on all `1,600` rows. `1` of `admitted_2y` was taken as the event and coded 1; `0` was coded 0. `admitted_2y` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `16` columns: predictors `clinic`, `age`, `sex` and 12 more; identifier `patient_id`. `clinic` was confirmed as a measure on its own, after the evidence for its proposal was read. The 5 columns `waist_cm`, `sbp` and 3 more, proposed as characteristics at medium confidence, below high, for one reason (\"A person's characteristic.\"), were confirmed together as one group, after the evidence for their proposal was read. The 4 columns `ldl`, `hdl` and 2 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read. The 2 columns `drinks_per_week` and `steps_per_day`, proposed as measures at low confidence, below high, for one reason (\"An amount per day or week: a rate, read as a predictor for now.\"), were confirmed together as one group, after the evidence for their proposal was read. `steps_per_day`, `ldl`, `sbp`, `hdl`, `age`, `dbp` and `drinks_per_week` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.\n\nRead from the values, no question asked: `patient_id` is the unit's identifier (Named like a participant's identifier; `1,600` labels, one per row); `age` is a characteristic (A person's characteristic); `sex` is a characteristic (A person's characteristic); `bmi` is a characteristic (A person's characteristic); `admitted_2y` is a binary outcome (Only `0` and `1` \u2014 read as a binary outcome); `bmi` is an amount (one slope) (`246` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist_cm` is an amount (one slope) (`538` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `hba1c` is an amount (one slope) (`29` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `sleep_hours` is an amount (one slope) (`67` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `clinic` holds codes for categories (one indicator per label) (`3` labels, not numbers); `smoking` holds codes for categories (one indicator per label) (`3` labels, not numbers); `education` holds codes for categories (one indicator per label) (`4` labels, not numbers).\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `admitted_2y` recorded (seed `0`, stratified by `admitted_2y`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004). Two model families were chosen: elastic net and screened elastic net.\n\nWithin each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.\n\nCross-validated scores are the mean over folds; the fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith elastic net declared the final model on cross-validation beforehand, the `320` held-out rows were opened once and scored: held-out log loss `0.487` (AUC `0.5`, the customary headline); its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Other decisions\n\nThe open noticings were triaged in Results: 1 left as a limitation.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `e6a0fc9b9099`, with local changes). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `outpatient_visits.csv` (SHA-256 `e3b11600ffd1`), the analysis plan (SHA-256 `b6abfa04d3a2`) and the model matrix (`1,280` rows by `22` columns; SHA-256 `ac07e96c5607` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "methods": "# Methods: outpatient_visits\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `clinical` lens.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `admitted_2y` measured stays in the analysis.\n\n## Data preparation (TRIPOD+AI 7)\n\n`sex` was recoded with `f` as `1` and `m` as `0`.\n\n## Outcome (TRIPOD+AI 8)\n\n`admitted_2y` was chosen as the outcome; it is measured on all `1,600` rows. `1` of `admitted_2y` was taken as the event and coded 1; `0` was coded 0. `admitted_2y` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `16` columns: predictors `clinic`, `age`, `sex` and 12 more; identifier `patient_id`. `clinic` was confirmed as a measure on its own, after the evidence for its proposal was read. The 5 columns `waist_cm`, `sbp` and 3 more, proposed as characteristics at medium confidence, below high, for one reason (\"A person's characteristic.\"), were confirmed together as one group, after the evidence for their proposal was read. The 4 columns `ldl`, `hdl` and 2 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read. The 2 columns `drinks_per_week` and `steps_per_day`, proposed as measures at low confidence, below high, for one reason (\"An amount per day or week: a rate, read as a predictor for now.\"), were confirmed together as one group, after the evidence for their proposal was read. `steps_per_day`, `ldl`, `sbp`, `hdl`, `age`, `dbp` and `drinks_per_week` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.\n\nRead from the values, no question asked: `patient_id` is the unit's identifier (Named like a participant's identifier; `1,600` labels, one per row); `age` is a characteristic (A person's characteristic); `sex` is a characteristic (A person's characteristic); `bmi` is a characteristic (A person's characteristic); `admitted_2y` is a binary outcome (Only `0` and `1` \u2014 read as a binary outcome); `bmi` is an amount (one slope) (`246` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist_cm` is an amount (one slope) (`538` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `hba1c` is an amount (one slope) (`29` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `sleep_hours` is an amount (one slope) (`67` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `clinic` holds codes for categories (one indicator per label) (`3` labels, not numbers); `smoking` holds codes for categories (one indicator per label) (`3` labels, not numbers); `education` holds codes for categories (one indicator per label) (`4` labels, not numbers).\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `admitted_2y` recorded (seed `0`, stratified by `admitted_2y`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004). Two model families were chosen: elastic net and screened elastic net.\n\nWithin each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.\n\nCross-validated scores are the mean over folds; the fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith elastic net declared the final model on cross-validation beforehand, the `320` held-out rows were opened once and scored: held-out log loss `0.487` (AUC `0.5`, the customary headline); its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Other decisions\n\nThe open noticings were triaged in Results: 1 left as a limitation.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `4c5db134f399`, with local changes). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `outpatient_visits.csv` (SHA-256 `e3b11600ffd1`), the analysis plan (SHA-256 `b6abfa04d3a2`) and the model matrix (`1,280` rows by `22` columns; SHA-256 `ac07e96c5607` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
   "reached": true,
   "refused": null,
-  "sha256": "792e21b9b6e3054cfa423ec6ecbb958db1b46e7981c0c092d16f8334ef877122"
+  "sha256": "6694cfec6885d094a163914c46ca7577a1c545c9f6d0d7323060fe66fb6c58a7"
  },
  "question": {
   "estimand": null,
@@ -2546,6 +3070,279 @@
   "lenses": [
    "clinical"
   ],
+  "markers": [
+   {
+    "axis": "regime",
+    "basis": "the table's rows (the ingest)",
+    "name": "rows",
+    "timing": "live",
+    "value": 1600,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the participant flow's final count",
+    "name": "rows_analyzed",
+    "timing": "live",
+    "value": 1600,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the grain and repeats answers, and the units the held-out draw groups by (the seal plan)",
+    "name": "repeated_units",
+    "timing": "live",
+    "value": {
+     "grain": null,
+     "repeat_kind": null,
+     "unit_column": null,
+     "units": null
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the smallest outcome class's rows in the outcome's own value counts (every row of the table)",
+    "name": "effective_size",
+    "timing": "live",
+    "value": 304,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the effective size over the shelf's candidate predictor parameters",
+    "name": "events_per_parameter",
+    "timing": "live",
+    "value": 16.0,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the roles answer, counted by role",
+    "name": "predictors_by_role",
+    "timing": "live",
+    "value": {
+     "covariate": 8,
+     "exposure": 7,
+     "identifier": 1
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the participant flow's predictors over its rows",
+    "name": "predictors_per_row",
+    "timing": "live",
+    "value": 0.009375,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the outcome's type, as read from its values",
+    "name": "outcome_type",
+    "timing": "live",
+    "value": "binary",
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the event level's rows over every row with the outcome (its own value counts)",
+    "name": "event_share",
+    "timing": "live",
+    "value": 0.19,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "each column's blanks over the table's rows (the ingest); a column with none is not listed",
+    "name": "missingness",
+    "timing": "live",
+    "value": {
+     "drinks_per_week": 0.03,
+     "hdl": 0.07625,
+     "ldl": 0.07625,
+     "steps_per_day": 0.1275
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": null,
+    "name": "complete_case_share",
+    "timing": "live",
+    "value": null,
+    "why": "The participant flow counts the complete cases only under complete cases."
+   },
+   {
+    "axis": "regime",
+    "basis": "the design answers as recorded",
+    "name": "design",
+    "timing": "live",
+    "value": {
+     "clusters": null,
+     "design": null,
+     "grain": null,
+     "repeat_kind": null,
+     "survey": null,
+     "unit": null
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the temporal answer, the structure's time column and whether the seal plan's folds follow time (null where either stage is not computed)",
+    "name": "time_order",
+    "timing": "live",
+    "value": {
+     "temporal": null,
+     "time_column": null,
+     "time_ordered_folds": false
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "each unit read from the values with its evidence (the readings), and each recorded",
+    "name": "units",
+    "timing": "live",
+    "value": [],
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the columns the findings found values below a detection limit in; each column's share is not served",
+    "name": "detection_limit_share",
+    "timing": "live",
+    "value": {
+     "columns": [],
+     "shares": null
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the columns whose names read as a batch, a run or a plate, and the batch answer",
+    "name": "batch_columns",
+    "timing": "live",
+    "value": {
+     "answered": null,
+     "read": []
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the columns whose names read as a run order",
+    "name": "run_order",
+    "timing": "live",
+    "value": [],
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the repeats answer: whether a unit's rows are imputed copies",
+    "name": "imputed_copies",
+    "timing": "live",
+    "value": false,
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the grain, repeats and aggregation answers",
+    "name": "repeated_measurement",
+    "timing": "live",
+    "value": {
+     "aggregation": null,
+     "grain": null,
+     "repeat_kind": null
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": null,
+    "name": "omics_scale",
+    "timing": "live",
+    "value": null,
+    "why": "No assay lens is chosen, so no scale is read."
+   },
+   {
+    "axis": "purpose",
+    "basis": "the purpose answer",
+    "name": "purpose",
+    "timing": "live",
+    "value": "prediction",
+    "why": null
+   },
+   {
+    "axis": "purpose",
+    "basis": "the primary metric the newest fit record names",
+    "name": "primary_score",
+    "timing": "live",
+    "value": {
+     "metric": "log_loss"
+    },
+    "why": null
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "intended_use",
+    "timing": "live",
+    "value": null,
+    "why": "No intended use is declared."
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "thresholds",
+    "timing": "live",
+    "value": null,
+    "why": "No intended use is declared."
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "estimand",
+    "timing": "live",
+    "value": null,
+    "why": "No estimand is declared."
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "multiplicity_family",
+    "timing": "live",
+    "value": null,
+    "why": "No estimand is declared."
+   },
+   {
+    "axis": "regime",
+    "basis": "the reported family's cross-validated primary score at the result's fit",
+    "name": "signal",
+    "timing": "post_hoc",
+    "value": {
+     "ci_high": 0.5209680449055156,
+     "ci_low": 0.4575272739027199,
+     "estimate": 0.48924765940411774,
+     "family": "elastic_net",
+     "metric": "log_loss"
+    },
+    "why": null
+   },
+   {
+    "axis": "purpose",
+    "basis": "the held-out primary score the opening recorded",
+    "name": "result",
+    "timing": "post_hoc",
+    "value": {
+     "family": "elastic_net",
+     "held_out": 0.4871299351160971,
+     "metric": "log_loss"
+    },
+    "why": null
+   }
+  ],
   "missing": {
    "drinks_per_week": 48,
    "hdl": 122,
@@ -2556,9 +3353,10 @@
   "n_rows": 1600,
   "task": "binary"
  },
+ "replay": null,
  "replication": null,
  "result": {
-  "attempt": "36ada95243e44d49947c98ae514741ab",
+  "attempt": "7b6c3de9be564e9e8a30ffa69b8f2748",
   "conditioning": null,
   "decisions": [
    1,
@@ -2643,35 +3441,40 @@
   "analyst_model": "scripted",
   "design": 2,
   "effort": null,
-  "ended": "2026-10-19T03:10:59Z",
-  "engine_commit": "e6a0fc9b9099a117f04f3966cef30ffdc37acad1",
+  "ended": "2026-10-22T19:57:50Z",
+  "engine_commit": "4c5db134f39903c1d7c6784c975eb88ac6876193",
   "engine_modified": true,
   "engine_version": "2.0.0.dev0",
   "fit_budget": {
    "fits": 4,
    "seconds": 600.0
   },
-  "fit_seconds": 229.34091204195283,
+  "fit_seconds": 232.58848708309233,
   "fits": 1,
   "fits_unseen": 0,
   "help": [],
-  "id": "run_03-79e1f2f210a8f430862abd831bfc2824",
-  "prompt_version": "dry-run-1",
+  "id": "run_03-b2b9da17de767a10743600864cc38d12",
+  "persona": null,
+  "prompt_version": "dry-run-2",
+  "redacted": false,
   "server": {
    "mode": "local",
-   "pid": 35742,
-   "port": 64095,
+   "pid": 1301,
+   "port": 59432,
    "workers": 2
   },
   "spend": null,
   "spend_why": "No transcript of the analyst agent was given.",
-  "started": "2026-10-19T03:06:10Z"
+  "started": "2026-10-22T19:52:41Z",
+  "vocabulary": "82014c44e597cef378fee676fe6c5b3b7d6623f48bb08a1e577dc5e37f424eeb"
  },
  "surfacings": {
   "concerns": [],
+  "failed_fits": [],
   "refusals": [
    {
-    "at": "2026-10-19T03:10:57Z",
+    "at": "2026-10-22T19:57:45Z",
+    "by": "server",
     "code": "triage_open",
     "command": "seal",
     "exits": [
@@ -2679,9 +3482,11 @@
      "Keep the recommended dispositions"
     ],
     "message": "The held-out rows open once, after every open noticing is triaged: 1 is still open, each with its recommended disposition: `clinic` groups `1,600` rows into `3` clusters, such as sites or households; rows within one are not independent (could bias the score). Triage it in Results first, so each is decided before any held-out score is seen.",
+    "stage": null,
     "then": "answer"
    }
   ]
  },
- "version": 1
+ "version": 2,
+ "wants": []
 }
