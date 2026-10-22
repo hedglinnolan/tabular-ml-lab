@@ -1,8 +1,11 @@
 {
+ "account": null,
  "attempts": [
   {
-   "at": "2026-10-19T03:04:37.790595Z",
+   "at": "2026-10-22T19:50:49.070602Z",
    "at_opening": null,
+   "change": [],
+   "change_why": "This is the run's first fit: there is no fit before it to compare with.",
    "changed": [
     1,
     2,
@@ -51,13 +54,260 @@
     "elastic_net",
     "screened_elastic_net"
    ],
-   "fit_key": "91392689a8ec35dd1ab4fd4985b2c8dffb88197558efaebeffb264fca1f0246a",
+   "fit_key": "49f63b11ae817f1af15d47ee26780323e50c07bc762e2fda3ddc4f3d116eb83a",
    "folds": "683dfb10aaf0a6a58f61dd25b1f66a0199c3db9d2045a0221d03bf0daf298340",
    "held_out": "d5d640fae84fd5ca12617653854aa293aaff6ad878b13a37a554ef3df6776a57",
    "holdout": null,
    "holdout_why": "This fit was computed before the opening at decision #23, which opened another fit's held-out scores, so this fit's are not served.",
-   "id": "d93a371d4a8041408bdd002d97c93332",
+   "id": "63a3f88aa57341deae80c060e86b61c9",
    "locked": false,
+   "markers": [
+    {
+     "axis": "regime",
+     "basis": "the table's rows (the ingest)",
+     "name": "rows",
+     "timing": "live",
+     "value": 480,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the participant flow's final count",
+     "name": "rows_analyzed",
+     "timing": "live",
+     "value": 480,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the grain and repeats answers, and the units the held-out draw groups by (the seal plan)",
+     "name": "repeated_units",
+     "timing": "live",
+     "value": {
+      "grain": "one_row_per_unit",
+      "repeat_kind": null,
+      "unit_column": null,
+      "units": null
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the smallest outcome class's rows in the outcome's own value counts (every row of the table)",
+     "name": "effective_size",
+     "timing": "live",
+     "value": 112,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the effective size over the shelf's candidate predictor parameters",
+     "name": "events_per_parameter",
+     "timing": "live",
+     "value": 12.444444444444445,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the roles answer, counted by role",
+     "name": "predictors_by_role",
+     "timing": "live",
+     "value": {
+      "covariate": 2,
+      "exposure": 7,
+      "identifier": 1
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the participant flow's predictors over its rows",
+     "name": "predictors_per_row",
+     "timing": "live",
+     "value": 0.01875,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the outcome's type, as read from its values",
+     "name": "outcome_type",
+     "timing": "live",
+     "value": "binary",
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the event level's rows over every row with the outcome (its own value counts)",
+     "name": "event_share",
+     "timing": "live",
+     "value": 0.23333333333333334,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "each column's blanks over the table's rows (the ingest); a column with none is not listed",
+     "name": "missingness",
+     "timing": "live",
+     "value": {},
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": null,
+     "name": "complete_case_share",
+     "timing": "live",
+     "value": null,
+     "why": "The participant flow counts the complete cases only under complete cases."
+    },
+    {
+     "axis": "regime",
+     "basis": "the design answers as recorded",
+     "name": "design",
+     "timing": "live",
+     "value": {
+      "clusters": null,
+      "design": null,
+      "grain": {
+       "acknowledged": false,
+       "grain": "one_row_per_unit",
+       "id_column": null
+      },
+      "repeat_kind": null,
+      "survey": null,
+      "unit": null
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the temporal answer, the structure's time column and whether the seal plan's folds follow time (null where either stage is not computed)",
+     "name": "time_order",
+     "timing": "live",
+     "value": {
+      "temporal": null,
+      "time_column": null,
+      "time_ordered_folds": false
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "each unit read from the values with its evidence (the readings), and each recorded",
+     "name": "units",
+     "timing": "live",
+     "value": [],
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns the findings found values below a detection limit in; each column's share is not served",
+     "name": "detection_limit_share",
+     "timing": "live",
+     "value": {
+      "columns": [],
+      "shares": null
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns whose names read as a batch, a run or a plate, and the batch answer",
+     "name": "batch_columns",
+     "timing": "live",
+     "value": {
+      "answered": null,
+      "read": []
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns whose names read as a run order",
+     "name": "run_order",
+     "timing": "live",
+     "value": [],
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the repeats answer: whether a unit's rows are imputed copies",
+     "name": "imputed_copies",
+     "timing": "live",
+     "value": false,
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the grain, repeats and aggregation answers",
+     "name": "repeated_measurement",
+     "timing": "live",
+     "value": {
+      "aggregation": null,
+      "grain": "one_row_per_unit",
+      "repeat_kind": null
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": null,
+     "name": "omics_scale",
+     "timing": "live",
+     "value": null,
+     "why": "No assay lens is chosen, so no scale is read."
+    },
+    {
+     "axis": "purpose",
+     "basis": "the purpose answer",
+     "name": "purpose",
+     "timing": "live",
+     "value": "prediction",
+     "why": null
+    },
+    {
+     "axis": "purpose",
+     "basis": "the primary metric the newest fit record names",
+     "name": "primary_score",
+     "timing": "live",
+     "value": {
+      "metric": "log_loss"
+     },
+     "why": null
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "intended_use",
+     "timing": "live",
+     "value": null,
+     "why": "No intended use is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "thresholds",
+     "timing": "live",
+     "value": null,
+     "why": "No intended use is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "estimand",
+     "timing": "live",
+     "value": null,
+     "why": "No estimand is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "multiplicity_family",
+     "timing": "live",
+     "value": null,
+     "why": "No estimand is declared."
+    }
+   ],
+   "markers_why": null,
    "movement": [],
    "movement_why": "No earlier fit is recorded to compare this one with.",
    "plan_digest": "85f72115f78f010a6e95bdb4dea0473082fabdb751f1103b8e91476695452291",
@@ -94,51 +344,51 @@
      "seq": 7
     },
     {
-     "note": "Scripted analyst, step 8: roles answered from the app's proposed roles, confirmed.",
+     "note": "Scripted analyst, step 9: roles answered from the app's proposed roles, confirmed.",
      "seq": 8
     },
     {
-     "note": "Scripted analyst, step 9: a role confirmed as the roles answer gave it",
+     "note": "Scripted analyst, step 10: a role confirmed as the roles answer gave it",
      "seq": 9
     },
     {
-     "note": "Scripted analyst, step 10: a role confirmed as the roles answer gave it",
+     "note": "Scripted analyst, step 11: a role confirmed as the roles answer gave it",
      "seq": 10
     },
     {
-     "note": "Scripted analyst, step 11: exclusions answered from the app's first-ranked option (journeys).",
+     "note": "Scripted analyst, step 12: exclusions answered from the app's first-ranked option (journeys).",
      "seq": 11
     },
     {
-     "note": "Scripted analyst, step 12: missing answered from the app's first-ranked option (journeys).",
+     "note": "Scripted analyst, step 13: missing answered from the app's first-ranked option (journeys).",
      "seq": 12
     },
     {
-     "note": "Scripted analyst, step 13: split answered from the run's own answer.",
+     "note": "Scripted analyst, step 14: split answered from the run's own answer.",
      "seq": 13
     },
     {
-     "note": "Scripted analyst, step 14: a reading the server asked, from the declared truth or the app's guess",
+     "note": "Scripted analyst, step 15: a reading the server asked, from the declared truth or the app's guess",
      "seq": 14
     },
     {
-     "note": "Scripted analyst, step 15: a reading the server asked, from the declared truth or the app's guess",
+     "note": "Scripted analyst, step 16: a reading the server asked, from the declared truth or the app's guess",
      "seq": 15
     },
     {
-     "note": "Scripted analyst, step 16: a reading the server asked, from the declared truth or the app's guess",
+     "note": "Scripted analyst, step 17: a reading the server asked, from the declared truth or the app's guess",
      "seq": 16
     },
     {
-     "note": "Scripted analyst, step 17: a reading the server asked, from the declared truth or the app's guess",
+     "note": "Scripted analyst, step 18: a reading the server asked, from the declared truth or the app's guess",
      "seq": 17
     },
     {
-     "note": "Scripted analyst, step 18: a reading the server asked, from the declared truth or the app's guess",
+     "note": "Scripted analyst, step 19: a reading the server asked, from the declared truth or the app's guess",
      "seq": 18
     },
     {
-     "note": "Scripted analyst, step 19: models answered from the shelf's first-ranked families (journeys).",
+     "note": "Scripted analyst, step 20: models answered from the shelf's first-ranked families (journeys).",
      "seq": 19
     }
    ],
@@ -257,7 +507,7 @@
      }
     }
    },
-   "seconds": 74.7721494580619,
+   "seconds": 75.51414441689849,
    "seed": 0,
    "seq": 1,
    "target": "readmit_30d",
@@ -266,7 +516,7 @@
    "workers": 2
   },
   {
-   "at": "2026-10-19T03:05:57.077273Z",
+   "at": "2026-10-22T19:52:13.196353Z",
    "at_opening": {
     "current": true,
     "family": "elastic_net",
@@ -287,6 +537,47 @@
     },
     "seq": 23
    },
+   "change": [
+    {
+     "against": "63a3f88aa57341deae80c060e86b61c9",
+     "better": false,
+     "ci_high": 0.008366437795236718,
+     "ci_low": -0.007795608304924609,
+     "df": 4.0,
+     "difference": 0.00028541474515605405,
+     "excludes_zero": false,
+     "family": "elastic_net",
+     "folds": [
+      5,
+      5
+     ],
+     "half_width": 0.05520417578876469,
+     "metric": "log_loss",
+     "paired": true,
+     "se": 0.0029105646767343426,
+     "why": null
+    },
+    {
+     "against": "63a3f88aa57341deae80c060e86b61c9",
+     "better": false,
+     "ci_high": 0.008366437795236718,
+     "ci_low": -0.007795608304924609,
+     "df": 4.0,
+     "difference": 0.00028541474515605405,
+     "excludes_zero": false,
+     "family": "screened_elastic_net",
+     "folds": [
+      5,
+      5
+     ],
+     "half_width": 0.05520417578876469,
+     "metric": "log_loss",
+     "paired": true,
+     "se": 0.0029105646767343426,
+     "why": null
+    }
+   ],
+   "change_why": null,
    "changed": [
     20,
     21
@@ -318,7 +609,7 @@
     "elastic_net",
     "screened_elastic_net"
    ],
-   "fit_key": "e8a8c8340e8f354b1deecec04e26b85e7f42b2371e96a2618dbedc0c6638a0b5",
+   "fit_key": "6f5f53b08fb360d625a64c875c5049d403b2aae48d9ee11e964b7841869cc92c",
    "folds": "683dfb10aaf0a6a58f61dd25b1f66a0199c3db9d2045a0221d03bf0daf298340",
    "held_out": "d5d640fae84fd5ca12617653854aa293aaff6ad878b13a37a554ef3df6776a57",
    "holdout": {
@@ -334,11 +625,259 @@
     }
    },
    "holdout_why": null,
-   "id": "2e4142ec6c8e491bae32d133304e1de2",
+   "id": "2812aeec007145bab9901a8b5e0f89d3",
    "locked": false,
+   "markers": [
+    {
+     "axis": "regime",
+     "basis": "the table's rows (the ingest)",
+     "name": "rows",
+     "timing": "live",
+     "value": 480,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the participant flow's final count",
+     "name": "rows_analyzed",
+     "timing": "live",
+     "value": 480,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the grain and repeats answers, and the units the held-out draw groups by (the seal plan)",
+     "name": "repeated_units",
+     "timing": "live",
+     "value": {
+      "grain": "one_row_per_unit",
+      "repeat_kind": null,
+      "unit_column": null,
+      "units": null
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the smallest outcome class's rows in the outcome's own value counts (every row of the table)",
+     "name": "effective_size",
+     "timing": "live",
+     "value": 112,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the effective size over the shelf's candidate predictor parameters",
+     "name": "events_per_parameter",
+     "timing": "live",
+     "value": 14.0,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the roles answer, counted by role",
+     "name": "predictors_by_role",
+     "timing": "live",
+     "value": {
+      "covariate": 2,
+      "excluded": 1,
+      "exposure": 6,
+      "identifier": 1
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the participant flow's predictors over its rows",
+     "name": "predictors_per_row",
+     "timing": "live",
+     "value": 0.016666666666666666,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the outcome's type, as read from its values",
+     "name": "outcome_type",
+     "timing": "live",
+     "value": "binary",
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the event level's rows over every row with the outcome (its own value counts)",
+     "name": "event_share",
+     "timing": "live",
+     "value": 0.23333333333333334,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "each column's blanks over the table's rows (the ingest); a column with none is not listed",
+     "name": "missingness",
+     "timing": "live",
+     "value": {},
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": null,
+     "name": "complete_case_share",
+     "timing": "live",
+     "value": null,
+     "why": "The participant flow counts the complete cases only under complete cases."
+    },
+    {
+     "axis": "regime",
+     "basis": "the design answers as recorded",
+     "name": "design",
+     "timing": "live",
+     "value": {
+      "clusters": null,
+      "design": null,
+      "grain": {
+       "acknowledged": false,
+       "grain": "one_row_per_unit",
+       "id_column": null
+      },
+      "repeat_kind": null,
+      "survey": null,
+      "unit": null
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the temporal answer, the structure's time column and whether the seal plan's folds follow time (null where either stage is not computed)",
+     "name": "time_order",
+     "timing": "live",
+     "value": {
+      "temporal": null,
+      "time_column": null,
+      "time_ordered_folds": false
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "each unit read from the values with its evidence (the readings), and each recorded",
+     "name": "units",
+     "timing": "live",
+     "value": [],
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns the findings found values below a detection limit in; each column's share is not served",
+     "name": "detection_limit_share",
+     "timing": "live",
+     "value": {
+      "columns": [],
+      "shares": null
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns whose names read as a batch, a run or a plate, and the batch answer",
+     "name": "batch_columns",
+     "timing": "live",
+     "value": {
+      "answered": null,
+      "read": []
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns whose names read as a run order",
+     "name": "run_order",
+     "timing": "live",
+     "value": [],
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the repeats answer: whether a unit's rows are imputed copies",
+     "name": "imputed_copies",
+     "timing": "live",
+     "value": false,
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the grain, repeats and aggregation answers",
+     "name": "repeated_measurement",
+     "timing": "live",
+     "value": {
+      "aggregation": null,
+      "grain": "one_row_per_unit",
+      "repeat_kind": null
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": null,
+     "name": "omics_scale",
+     "timing": "live",
+     "value": null,
+     "why": "No assay lens is chosen, so no scale is read."
+    },
+    {
+     "axis": "purpose",
+     "basis": "the purpose answer",
+     "name": "purpose",
+     "timing": "live",
+     "value": "prediction",
+     "why": null
+    },
+    {
+     "axis": "purpose",
+     "basis": "the primary metric the newest fit record names",
+     "name": "primary_score",
+     "timing": "live",
+     "value": {
+      "metric": "log_loss"
+     },
+     "why": null
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "intended_use",
+     "timing": "live",
+     "value": null,
+     "why": "No intended use is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "thresholds",
+     "timing": "live",
+     "value": null,
+     "why": "No intended use is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "estimand",
+     "timing": "live",
+     "value": null,
+     "why": "No estimand is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "multiplicity_family",
+     "timing": "live",
+     "value": null,
+     "why": "No estimand is declared."
+    }
+   ],
+   "markers_why": null,
    "movement": [
     {
-     "against": "d93a371d4a8041408bdd002d97c93332",
+     "against": "63a3f88aa57341deae80c060e86b61c9",
      "family": "elastic_net",
      "movement": {
       "band": 0,
@@ -356,7 +895,7 @@
      "why": null
     },
     {
-     "against": "d93a371d4a8041408bdd002d97c93332",
+     "against": "63a3f88aa57341deae80c060e86b61c9",
      "family": "screened_elastic_net",
      "movement": {
       "band": 0,
@@ -377,7 +916,7 @@
    "movement_why": null,
    "plan_digest": "8295fe53b87772c4fcc6c4ee48204835baa9c24ba0d750710463193a074321bf",
    "press": {
-    "seconds": 80.5,
+    "seconds": 84.3,
     "seq": 21,
     "target": "readmit_30d"
    },
@@ -385,11 +924,11 @@
    "purpose": "prediction",
    "reasons": [
     {
-     "note": "Scripted analyst, step 20: Revisit the roles: testing whether sodium, which no card reason ties to readmission, carries signal. CV AUC with it: elastic_net 0.763, screened_elastic_net 0.763.",
+     "note": "Scripted analyst, step 21: Revisit the roles: testing whether sodium, which no card reason ties to readmission, carries signal. CV AUC with it: elastic_net 0.763, screened_elastic_net 0.763.",
      "seq": 20
     },
     {
-     "note": "Scripted analyst, step 21: roles with sodium left out, to test whether it carries signal.",
+     "note": "Scripted analyst, step 22: roles with sodium left out, to test whether it carries signal.",
      "seq": 21
     }
    ],
@@ -508,7 +1047,7 @@
      }
     }
    },
-   "seconds": 74.24086445802823,
+   "seconds": 75.64704329194501,
    "seed": 0,
    "seq": 2,
    "target": "readmit_30d",
@@ -522,7 +1061,173 @@
    "workers": 2
   }
  ],
- "claims": [],
+ "claims": [
+  {
+   "at": "2026-10-22T19:49:14.217435Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:17.466446Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:17.467002Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:20.703447Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:20.703969Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:23.928287Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:23.928828Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:27.153279Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:27.153811Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:30.384881Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:49:30.385423Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:50:49.056850Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "8b0068a3b24760b83a4e2f829041b14f548bae9b6d9ff7ae01bfa7933ff46a8f",
+   "id": "modeling.no_resampling",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:50:56.989126Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:50:56.990169Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-22T19:52:13.183415Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "8b0068a3b24760b83a4e2f829041b14f548bae9b6d9ff7ae01bfa7933ff46a8f",
+   "id": "modeling.no_resampling",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  }
+ ],
  "dataset": {
   "card": {
    "design": "analysts",
@@ -544,6 +1249,7 @@
   },
   "codebook": null,
   "control": "known_answer",
+  "declared": [],
   "files": [
    {
     "bytes": 18803,
@@ -572,13 +1278,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:02:43.502740Z",
+   "at": "2026-10-22T19:48:45.111647Z",
    "early": null,
    "examined": [],
-   "id": "242008f2aa0042c6b148faa22e863b00",
+   "id": "5fd690799b93486ab6a10201a0d8c5b4",
    "kind": "set_lens",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -595,7 +1301,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 1: lens answered from the journey's lens.",
    "seq": 1,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:48:44Z",
+    "command": "answer",
+    "marker": "purpose",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -616,13 +1328,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:02:45.416706Z",
+   "at": "2026-10-22T19:48:47.062969Z",
    "early": null,
    "examined": [],
-   "id": "778e20946132424a9248de4fc71f8b2b",
+   "id": "431c9f32ae25464cad2e6dee5ee880c9",
    "kind": "apply_repair",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -644,7 +1356,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 2: a finding acted on with its first repair",
    "seq": 2,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:48:46Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -656,13 +1374,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:02:47.328223Z",
+   "at": "2026-10-22T19:48:49.010764Z",
    "early": null,
    "examined": [],
-   "id": "f55b64858869455880bb8c73407c56b7",
+   "id": "6d41f8e430584ad393e1d506a31cd5e1",
    "kind": "set_target",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -677,7 +1395,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 3: target answered from the card's outcome.",
    "seq": 3,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:48:48Z",
+    "command": "answer",
+    "marker": "outcome_type",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -690,13 +1414,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:02:49.243263Z",
+   "at": "2026-10-22T19:48:50.981762Z",
    "early": null,
    "examined": [],
-   "id": "8cc913dbfcba44c6bc5422c19adb23c1",
+   "id": "87be72bb760f4d4989feed9946410949",
    "kind": "set_event",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -712,7 +1436,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 4: event answered from the card's outcome level.",
    "seq": 4,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:48:50Z",
+    "command": "answer",
+    "marker": "event_share",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -725,13 +1455,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:02:51.152702Z",
+   "at": "2026-10-22T19:48:52.927984Z",
    "early": null,
    "examined": [],
-   "id": "b9313da0ec4c41dbaba5d3e7d9d776c6",
+   "id": "ca7b0a8ebc7c4810b655b910cf503c1f",
    "kind": "set_censoring",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -747,7 +1477,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 5: follow_up answered from one period for everyone, the acceptance drivers' answer.",
    "seq": 5,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:48:52Z",
+    "command": "answer",
+    "marker": "time_order",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -759,13 +1495,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:02:53.042195Z",
+   "at": "2026-10-22T19:48:54.854995Z",
    "early": null,
    "examined": [],
-   "id": "cbf6cf8e5a94410590c3911432b0b66d",
+   "id": "763ce335ca5f4751b7d6a99843fd6300",
    "kind": "set_purpose",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -780,7 +1516,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 6: purpose answered from the card's purpose.",
    "seq": 6,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:48:54Z",
+    "command": "answer",
+    "marker": "purpose",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -794,13 +1536,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:02:54.959416Z",
+   "at": "2026-10-22T19:48:57.408557Z",
    "early": null,
    "examined": [],
-   "id": "42ea9935b564448c83eb82493df2fb79",
+   "id": "becec0e5b4164b71b975ea2a43d5a55d",
    "kind": "set_grain",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -817,7 +1559,13 @@
    "post_seal": false,
    "reason": "Scripted analyst, step 7: grain answered from one row per unit, the card's population.",
    "seq": 7,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:48:56Z",
+    "command": "answer",
+    "marker": "repeated_units",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -863,114 +1611,124 @@
      "value": "exposure"
     }
    ],
-   "at": "2026-10-19T03:02:57.849220Z",
+   "at": "2026-10-22T19:49:01.272285Z",
    "early": null,
    "examined": [
     {
      "alternative": false,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:age",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "covariate"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:albumin_g_dl",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:charlson_index",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:creatinine_mg_dl",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:encounter_id",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "identifier"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:hemoglobin_g_dl",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:length_of_stay_days",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:prior_admissions_12mo",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:sex",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "covariate"
     },
     {
      "alternative": true,
-     "at": "2026-10-19T03:02:56.895316Z",
+     "at": "2026-10-22T19:48:59.992156Z",
      "attempt": null,
      "how": "preview",
      "question": "role:sodium_mmol_l",
+     "reason": "Scripted analyst, step 8: what the roles would record with sodium_mmol_l left out",
      "refused": null,
      "seq": null,
      "value": "excluded"
     }
    ],
-   "id": "51e3975b22cb417eb1b85e5d8921849c",
+   "id": "30f60b1ad7b944a9897e730c1e48cad8",
    "kind": "set_roles",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1004,9 +1762,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 8: roles answered from the app's proposed roles, confirmed.",
+   "reason": "Scripted analyst, step 9: roles answered from the app's proposed roles, confirmed.",
    "seq": 8,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:00Z",
+    "command": "answer",
+    "marker": "predictors_by_role",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1016,13 +1780,13 @@
      "value": "identifier"
     }
    ],
-   "at": "2026-10-19T03:02:59.783053Z",
+   "at": "2026-10-22T19:49:03.864501Z",
    "early": null,
    "examined": [],
-   "id": "cfa6cdcd758f4276ac48f79e3ad51e2e",
+   "id": "5f7952ade47c4ff2b85e70c0c5db8f7d",
    "kind": "confirm_role",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1036,9 +1800,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 9: a role confirmed as the roles answer gave it",
+   "reason": "Scripted analyst, step 10: a role confirmed as the roles answer gave it",
    "seq": 9,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:02Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1072,13 +1842,13 @@
      "value": "exposure"
     }
    ],
-   "at": "2026-10-19T03:03:01.701607Z",
+   "at": "2026-10-22T19:49:06.448584Z",
    "early": null,
    "examined": [],
-   "id": "714af3c3b98041608772eee663fad78f",
+   "id": "093031ad9fa44c45bcb57f14e23bdbce",
    "kind": "confirm_readings",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1127,9 +1897,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 10: a role confirmed as the roles answer gave it",
+   "reason": "Scripted analyst, step 11: a role confirmed as the roles answer gave it",
    "seq": 10,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:05Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1141,13 +1917,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:03:03.643652Z",
+   "at": "2026-10-22T19:49:09.042508Z",
    "early": null,
    "examined": [],
-   "id": "02af80e92b694e7ea6af9a3f8142ea0b",
+   "id": "606c2ad6c1a54856aa44f113534f05d0",
    "kind": "set_exclusions",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1160,9 +1936,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 11: exclusions answered from the app's first-ranked option (journeys).",
+   "reason": "Scripted analyst, step 12: exclusions answered from the app's first-ranked option (journeys).",
    "seq": 11,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:07Z",
+    "command": "answer",
+    "marker": "rows_analyzed",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1184,13 +1966,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:03:05.560019Z",
+   "at": "2026-10-22T19:49:11.614021Z",
    "early": null,
    "examined": [],
-   "id": "8fca5dacdb3f43dcaa6b405f7a87ffd8",
+   "id": "33c0b55fca524ababb97f519c1debcd8",
    "kind": "set_missing",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1213,9 +1995,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 12: missing answered from the app's first-ranked option (journeys).",
+   "reason": "Scripted analyst, step 13: missing answered from the app's first-ranked option (journeys).",
    "seq": 12,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:10Z",
+    "command": "answer",
+    "marker": "missingness",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1234,13 +2022,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:03:07.518793Z",
+   "at": "2026-10-22T19:49:14.188274Z",
    "early": null,
    "examined": [],
-   "id": "114984da3abc47eea770af39f20d46da",
+   "id": "cc518094d6d840df9ed8453048c4d317",
    "kind": "set_split",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1260,9 +2048,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 13: split answered from the run's own answer.",
+   "reason": "Scripted analyst, step 14: split answered from the run's own answer.",
    "seq": 13,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:13Z",
+    "command": "answer",
+    "marker": "rows_analyzed",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1272,13 +2066,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:03:10.086171Z",
+   "at": "2026-10-22T19:49:17.399773Z",
    "early": null,
    "examined": [],
-   "id": "dac090b5145043c19c483d31755514d5",
+   "id": "9321e7d5b59a4712bf47d2afb2831414",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1293,9 +2087,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 14: a reading the server asked, from the declared truth or the app's guess",
+   "reason": "Scripted analyst, step 15: a reading the server asked, from the declared truth or the app's guess",
    "seq": 14,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:16Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1305,13 +2105,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:03:12.673487Z",
+   "at": "2026-10-22T19:49:20.638844Z",
    "early": null,
    "examined": [],
-   "id": "7afe110b1dee4425873dc69dc19d4cef",
+   "id": "e9a204cb2e06412f95c26208628947c4",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1326,9 +2126,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 15: a reading the server asked, from the declared truth or the app's guess",
+   "reason": "Scripted analyst, step 16: a reading the server asked, from the declared truth or the app's guess",
    "seq": 15,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:19Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1338,13 +2144,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:03:15.276827Z",
+   "at": "2026-10-22T19:49:23.862502Z",
    "early": null,
    "examined": [],
-   "id": "7391326ec12643adb0ca96a68ddb3780",
+   "id": "a2cb30be8b574a57a305d98fe932aa13",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1359,9 +2165,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 16: a reading the server asked, from the declared truth or the app's guess",
+   "reason": "Scripted analyst, step 17: a reading the server asked, from the declared truth or the app's guess",
    "seq": 16,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:22Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1371,13 +2183,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:03:17.850893Z",
+   "at": "2026-10-22T19:49:27.088898Z",
    "early": null,
    "examined": [],
-   "id": "6f1b516ddf1f46a68a866e1f13b21b3c",
+   "id": "5f02870db9ce4b4fbcb104526efd6f5e",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1392,9 +2204,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 17: a reading the server asked, from the declared truth or the app's guess",
+   "reason": "Scripted analyst, step 18: a reading the server asked, from the declared truth or the app's guess",
    "seq": 17,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:25Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1404,13 +2222,13 @@
      "value": "amount"
     }
    ],
-   "at": "2026-10-19T03:03:20.424775Z",
+   "at": "2026-10-22T19:49:30.319298Z",
    "early": null,
    "examined": [],
-   "id": "104a6462109243b3901395052d55e5c1",
+   "id": "892a3045c416421a8b3f9161ba4a1f9e",
    "kind": "confirm_reading",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1425,9 +2243,15 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 18: a reading the server asked, from the declared truth or the app's guess",
+   "reason": "Scripted analyst, step 19: a reading the server asked, from the declared truth or the app's guess",
    "seq": 18,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:29Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
@@ -1442,13 +2266,13 @@
      }
     }
    ],
-   "at": "2026-10-19T03:03:22.982866Z",
+   "at": "2026-10-22T19:49:33.520750Z",
    "early": null,
    "examined": [],
-   "id": "ad67e5e3f76540e1801c4c6e926f9be7",
+   "id": "d233c844ba1e4f73a251a52ffa3bceeb",
    "kind": "select_models",
    "materiality": {
-    "attempt": "d93a371d4a8041408bdd002d97c93332",
+    "attempt": "63a3f88aa57341deae80c060e86b61c9",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1464,27 +2288,33 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 19: models answered from the shelf's first-ranked families (journeys).",
+   "reason": "Scripted analyst, step 20: models answered from the shelf's first-ranked families (journeys).",
    "seq": 19,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:49:32Z",
+    "command": "answer",
+    "marker": "events_per_parameter",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
    "answers": [
     {
-     "question": "revert:51e3975b22cb417eb1b85e5d8921849c",
+     "question": "revert:30f60b1ad7b944a9897e730c1e48cad8",
      "value": {
-      "decision_id": "51e3975b22cb417eb1b85e5d8921849c"
+      "decision_id": "30f60b1ad7b944a9897e730c1e48cad8"
      }
     }
    ],
-   "at": "2026-10-19T03:04:39.441968Z",
+   "at": "2026-10-22T19:50:53.229739Z",
    "early": null,
    "examined": [],
-   "id": "ccfa3eb6644740c5b9d3d8cc082b10b9",
+   "id": "76f34ecff4a144d49ec5d0162a543d70",
    "kind": "revert",
    "materiality": {
-    "attempt": "2e4142ec6c8e491bae32d133304e1de2",
+    "attempt": "2812aeec007145bab9901a8b5e0f89d3",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1492,14 +2322,15 @@
     "why": "It took effect at fit #2 together with record #21: the fit records measure the change between two fits, not each record's share of it."
    },
    "option": {
-    "decision_id": "51e3975b22cb417eb1b85e5d8921849c",
+    "decision_id": "30f60b1ad7b944a9897e730c1e48cad8",
     "kind": "revert"
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 20: Revisit the roles: testing whether sodium, which no card reason ties to readmission, carries signal. CV AUC with it: elastic_net 0.763, screened_elastic_net 0.763.",
+   "reason": "Scripted analyst, step 21: Revisit the roles: testing whether sodium, which no card reason ties to readmission, carries signal. CV AUC with it: elastic_net 0.763, screened_elastic_net 0.763.",
    "seq": 20,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": null
   },
   {
    "after_estimates": false,
@@ -1545,114 +2376,124 @@
      "value": "exposure"
     }
    ],
-   "at": "2026-10-19T03:04:42.226192Z",
+   "at": "2026-10-22T19:50:56.901300Z",
    "early": null,
    "examined": [
     {
      "alternative": false,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:encounter_id",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "identifier"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:age",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "covariate"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:sex",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "covariate"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:charlson_index",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:prior_admissions_12mo",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:albumin_g_dl",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:creatinine_mg_dl",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:hemoglobin_g_dl",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "exposure"
     },
     {
      "alternative": true,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:sodium_mmol_l",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "exposure"
     },
     {
      "alternative": false,
-     "at": "2026-10-19T03:04:37.790595Z",
-     "attempt": "d93a371d4a8041408bdd002d97c93332",
+     "at": "2026-10-22T19:50:49.070602Z",
+     "attempt": "63a3f88aa57341deae80c060e86b61c9",
      "how": "fit",
      "question": "role:length_of_stay_days",
+     "reason": null,
      "refused": null,
      "seq": 8,
      "value": "exposure"
     }
    ],
-   "id": "8e1d323073a14c7f8bdf9deb0b3f013a",
+   "id": "b5ec1b4df16541a7aea43ac1c81141a0",
    "kind": "set_roles",
    "materiality": {
-    "attempt": "2e4142ec6c8e491bae32d133304e1de2",
+    "attempt": "2812aeec007145bab9901a8b5e0f89d3",
     "departures": null,
     "movement": null,
     "primary": null,
@@ -1677,24 +2518,30 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 21: roles with sodium left out, to test whether it carries signal.",
+   "reason": "Scripted analyst, step 22: roles with sodium left out, to test whether it carries signal.",
    "seq": 21,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-22T19:50:55Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
   },
   {
    "after_estimates": false,
    "answers": [
     {
-     "question": "revert:ccfa3eb6644740c5b9d3d8cc082b10b9",
+     "question": "revert:76f34ecff4a144d49ec5d0162a543d70",
      "value": {
-      "decision_id": "ccfa3eb6644740c5b9d3d8cc082b10b9"
+      "decision_id": "76f34ecff4a144d49ec5d0162a543d70"
      }
     }
    ],
-   "at": "2026-10-19T03:05:58.656844Z",
+   "at": "2026-10-22T19:52:16.509156Z",
    "early": null,
    "examined": [],
-   "id": "f69a259a750e4847959a895fa63bb941",
+   "id": "8e30ae098f65406ab169c4c186e4d812",
    "kind": "revert",
    "materiality": {
     "attempt": null,
@@ -1705,14 +2552,15 @@
     "why": "No fit's change from the fit before it is credited to this revert of record #20."
    },
    "option": {
-    "decision_id": "ccfa3eb6644740c5b9d3d8cc082b10b9",
+    "decision_id": "76f34ecff4a144d49ec5d0162a543d70",
     "kind": "revert"
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 22: Withdraw the revisit's revert: the roles without sodium stand, CV AUC elastic_net 0.768, screened_elastic_net 0.768 against elastic_net 0.763, screened_elastic_net 0.763 with it.",
+   "reason": "Scripted analyst, step 23: Withdraw the revisit's revert: the roles without sodium stand, CV AUC elastic_net 0.768, screened_elastic_net 0.768 against elastic_net 0.763, screened_elastic_net 0.763 with it.",
    "seq": 22,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": null
   },
   {
    "after_estimates": false,
@@ -1739,10 +2587,10 @@
      }
     }
    ],
-   "at": "2026-10-19T03:06:01.698592Z",
+   "at": "2026-10-22T19:52:22.888853Z",
    "early": null,
    "examined": [],
-   "id": "92fce97759614a86b50a4babbf7d7c91",
+   "id": "98bd3b817c2744038a44fc3b7575d8e9",
    "kind": "open_seal",
    "materiality": {
     "attempt": null,
@@ -1773,9 +2621,10 @@
    },
    "phase": "before",
    "post_seal": false,
-   "reason": "Scripted analyst, step 23: elastic_net is the shelf's first-ranked family fitted; its held-out score is the result.",
+   "reason": "Scripted analyst, step 24: elastic_net is the shelf's first-ranked family fitted; its held-out score is the result.",
    "seq": 23,
-   "source": "analyst"
+   "source": "analyst",
+   "tag": null
   }
  ],
  "export": {
@@ -1864,7 +2713,7 @@
        "file": "methods.md",
        "kind": "set_purpose",
        "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
-       "record_id": "cbf6cf8e5a94410590c3911432b0b66d",
+       "record_id": "763ce335ca5f4751b7d6a99843fd6300",
        "record_ids": null,
        "seq": 6,
        "seqs": null,
@@ -1923,7 +2772,7 @@
        "file": "methods.md",
        "kind": "set_exclusions",
        "quote": "No rows were excluded: every row with `readmit_30d` measured stays in the analysis.",
-       "record_id": "02af80e92b694e7ea6af9a3f8142ea0b",
+       "record_id": "606c2ad6c1a54856aa44f113534f05d0",
        "record_ids": null,
        "seq": 11,
        "seqs": null,
@@ -1958,7 +2807,7 @@
        "file": "methods.md",
        "kind": "apply_repair",
        "quote": "`sex` was recoded with `f` as `1` and `m` as `0`.",
-       "record_id": "778e20946132424a9248de4fc71f8b2b",
+       "record_id": "431c9f32ae25464cad2e6dee5ee880c9",
        "record_ids": null,
        "seq": 2,
        "seqs": null,
@@ -1968,7 +2817,7 @@
        "file": "methods.md",
        "kind": "confirm_role",
        "quote": "`encounter_id` was confirmed as the unit's identifier on its own, after the evidence for its proposal was read.",
-       "record_id": "cfa6cdcd758f4276ac48f79e3ad51e2e",
+       "record_id": "5f7952ade47c4ff2b85e70c0c5db8f7d",
        "record_ids": null,
        "seq": 9,
        "seqs": null,
@@ -1978,7 +2827,7 @@
        "file": "methods.md",
        "kind": "confirm_readings",
        "quote": "The 7 columns `charlson_index`, `prior_admissions_12mo` and 5 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read.",
-       "record_id": "714af3c3b98041608772eee663fad78f",
+       "record_id": "093031ad9fa44c45bcb57f14e23bdbce",
        "record_ids": null,
        "seq": 10,
        "seqs": null,
@@ -1988,13 +2837,13 @@
        "file": "methods.md",
        "kind": "confirm_reading",
        "quote": "`age`, `sodium_mmol_l`, `length_of_stay_days`, `charlson_index` and `prior_admissions_12mo` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.",
-       "record_id": "104a6462109243b3901395052d55e5c1",
+       "record_id": "892a3045c416421a8b3f9161ba4a1f9e",
        "record_ids": [
-        "dac090b5145043c19c483d31755514d5",
-        "7afe110b1dee4425873dc69dc19d4cef",
-        "7391326ec12643adb0ca96a68ddb3780",
-        "6f1b516ddf1f46a68a866e1f13b21b3c",
-        "104a6462109243b3901395052d55e5c1"
+        "9321e7d5b59a4712bf47d2afb2831414",
+        "e9a204cb2e06412f95c26208628947c4",
+        "a2cb30be8b574a57a305d98fe932aa13",
+        "5f02870db9ce4b4fbcb104526efd6f5e",
+        "892a3045c416421a8b3f9161ba4a1f9e"
        ],
        "seq": 18,
        "seqs": [
@@ -2023,7 +2872,7 @@
        "file": "methods.md",
        "kind": "set_target",
        "quote": "`readmit_30d` was chosen as the outcome; it is measured on all `480` rows.",
-       "record_id": "f55b64858869455880bb8c73407c56b7",
+       "record_id": "6d41f8e430584ad393e1d506a31cd5e1",
        "record_ids": null,
        "seq": 3,
        "seqs": null,
@@ -2033,7 +2882,7 @@
        "file": "methods.md",
        "kind": "set_event",
        "quote": "`1` of `readmit_30d` was taken as the event and coded 1; `0` was coded 0.",
-       "record_id": "8cc913dbfcba44c6bc5422c19adb23c1",
+       "record_id": "87be72bb760f4d4989feed9946410949",
        "record_ids": null,
        "seq": 4,
        "seqs": null,
@@ -2043,7 +2892,7 @@
        "file": "methods.md",
        "kind": "set_censoring",
        "quote": "`readmit_30d` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.",
-       "record_id": "b9313da0ec4c41dbaba5d3e7d9d776c6",
+       "record_id": "ca7b0a8ebc7c4810b655b910cf503c1f",
        "record_ids": null,
        "seq": 5,
        "seqs": null,
@@ -2090,7 +2939,7 @@
        "file": "methods.md",
        "kind": "set_roles",
        "quote": "Column roles were set for `10` columns: predictors `age`, `sex`, `charlson_index` and 5 more; identifier `encounter_id`; excluded `sodium_mmol_l`.",
-       "record_id": "8e1d323073a14c7f8bdf9deb0b3f013a",
+       "record_id": "b5ec1b4df16541a7aea43ac1c81141a0",
        "record_ids": null,
        "seq": 21,
        "seqs": null,
@@ -2113,7 +2962,7 @@
        "file": "methods.md",
        "kind": "confirm_role",
        "quote": "`encounter_id` was confirmed as the unit's identifier on its own, after the evidence for its proposal was read.",
-       "record_id": "cfa6cdcd758f4276ac48f79e3ad51e2e",
+       "record_id": "5f7952ade47c4ff2b85e70c0c5db8f7d",
        "record_ids": null,
        "seq": 9,
        "seqs": null,
@@ -2123,7 +2972,7 @@
        "file": "methods.md",
        "kind": "confirm_readings",
        "quote": "The 7 columns `charlson_index`, `prior_admissions_12mo` and 5 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read.",
-       "record_id": "714af3c3b98041608772eee663fad78f",
+       "record_id": "093031ad9fa44c45bcb57f14e23bdbce",
        "record_ids": null,
        "seq": 10,
        "seqs": null,
@@ -2133,13 +2982,13 @@
        "file": "methods.md",
        "kind": "confirm_reading",
        "quote": "`age`, `sodium_mmol_l`, `length_of_stay_days`, `charlson_index` and `prior_admissions_12mo` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.",
-       "record_id": "104a6462109243b3901395052d55e5c1",
+       "record_id": "892a3045c416421a8b3f9161ba4a1f9e",
        "record_ids": [
-        "dac090b5145043c19c483d31755514d5",
-        "7afe110b1dee4425873dc69dc19d4cef",
-        "7391326ec12643adb0ca96a68ddb3780",
-        "6f1b516ddf1f46a68a866e1f13b21b3c",
-        "104a6462109243b3901395052d55e5c1"
+        "9321e7d5b59a4712bf47d2afb2831414",
+        "e9a204cb2e06412f95c26208628947c4",
+        "a2cb30be8b574a57a305d98fe932aa13",
+        "5f02870db9ce4b4fbcb104526efd6f5e",
+        "892a3045c416421a8b3f9161ba4a1f9e"
        ],
        "seq": 18,
        "seqs": [
@@ -2155,7 +3004,7 @@
        "file": "methods.md",
        "kind": "set_roles",
        "quote": "Column roles were set for `10` columns: predictors `age`, `sex`, `charlson_index` and 5 more; identifier `encounter_id`; excluded `sodium_mmol_l`.",
-       "record_id": "8e1d323073a14c7f8bdf9deb0b3f013a",
+       "record_id": "b5ec1b4df16541a7aea43ac1c81141a0",
        "record_ids": null,
        "seq": 21,
        "seqs": null,
@@ -2202,7 +3051,7 @@
        "file": "methods.md",
        "kind": "set_missing",
        "quote": "Missing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.",
-       "record_id": "8fca5dacdb3f43dcaa6b405f7a87ffd8",
+       "record_id": "33c0b55fca524ababb97f519c1debcd8",
        "record_ids": null,
        "seq": 12,
        "seqs": null,
@@ -2225,7 +3074,7 @@
        "file": "methods.md",
        "kind": "set_purpose",
        "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
-       "record_id": "cbf6cf8e5a94410590c3911432b0b66d",
+       "record_id": "763ce335ca5f4751b7d6a99843fd6300",
        "record_ids": null,
        "seq": 6,
        "seqs": null,
@@ -2235,7 +3084,7 @@
        "file": "methods.md",
        "kind": "set_split",
        "quote": "A random `20%` of the rows with `readmit_30d` recorded (seed `0`, stratified by `readmit_30d`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004).",
-       "record_id": "114984da3abc47eea770af39f20d46da",
+       "record_id": "cc518094d6d840df9ed8453048c4d317",
        "record_ids": null,
        "seq": 13,
        "seqs": null,
@@ -2281,7 +3130,7 @@
        "file": "methods.md",
        "kind": "set_split",
        "quote": "A random `20%` of the rows with `readmit_30d` recorded (seed `0`, stratified by `readmit_30d`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004).",
-       "record_id": "114984da3abc47eea770af39f20d46da",
+       "record_id": "cc518094d6d840df9ed8453048c4d317",
        "record_ids": null,
        "seq": 13,
        "seqs": null,
@@ -2291,7 +3140,7 @@
        "file": "methods.md",
        "kind": "select_models",
        "quote": "Two model families were chosen: elastic net and screened elastic net.",
-       "record_id": "ad67e5e3f76540e1801c4c6e926f9be7",
+       "record_id": "d233c844ba1e4f73a251a52ffa3bceeb",
        "record_ids": null,
        "seq": 19,
        "seqs": null,
@@ -2816,10 +3665,10 @@
    ],
    "waiting": []
   },
-  "methods": "# Methods: clinical_risk\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `clinical` lens. Each row was declared a different participant: no one appears in more than one row.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `readmit_30d` measured stays in the analysis.\n\n## Data preparation (TRIPOD+AI 7)\n\n`sex` was recoded with `f` as `1` and `m` as `0`.\n\n## Outcome (TRIPOD+AI 8)\n\n`readmit_30d` was chosen as the outcome; it is measured on all `480` rows. `1` of `readmit_30d` was taken as the event and coded 1; `0` was coded 0. `readmit_30d` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.\n\n## Predictors (TRIPOD+AI 9)\n\n`encounter_id` was confirmed as the unit's identifier on its own, after the evidence for its proposal was read. The 7 columns `charlson_index`, `prior_admissions_12mo` and 5 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read. `age`, `sodium_mmol_l`, `length_of_stay_days`, `charlson_index` and `prior_admissions_12mo` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read. Column roles were set for `10` columns: predictors `age`, `sex`, `charlson_index` and 5 more; identifier `encounter_id`; excluded `sodium_mmol_l`.\n\nRead from the values, no question asked: `age` is a characteristic (A person's characteristic); `sex` is a characteristic (A person's characteristic); `readmit_30d` is a binary outcome (Only `0` and `1` \u2014 read as a binary outcome); `albumin_g_dl` is an amount (one slope) (`27` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `creatinine_mg_dl` is an amount (one slope) (`170` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `hemoglobin_g_dl` is an amount (one slope) (`87` values with decimals that fill their grid as a measurement's do (a code list's sit apart)).\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `readmit_30d` recorded (seed `0`, stratified by `readmit_30d`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004). Two model families were chosen: elastic net and screened elastic net.\n\nWithin each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.\n\nCross-validated scores are the mean over folds; the fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith elastic net declared the final model on cross-validation beforehand, the `96` held-out rows were opened once and scored: held-out log loss `0.528` (AUC `0.658`, the customary headline); its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `e6a0fc9b9099`, with local changes). The supplementary provenance record holds the decision log (`23` records), the SHA-256 of the input file `clinical_risk.csv` (SHA-256 `c33f2a5a9286`), the analysis plan (SHA-256 `8295fe53b877`) and the model matrix (`384` rows by `8` columns; SHA-256 `a1defbc8e2ce` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "methods": "# Methods: clinical_risk\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `clinical` lens. Each row was declared a different participant: no one appears in more than one row.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `readmit_30d` measured stays in the analysis.\n\n## Data preparation (TRIPOD+AI 7)\n\n`sex` was recoded with `f` as `1` and `m` as `0`.\n\n## Outcome (TRIPOD+AI 8)\n\n`readmit_30d` was chosen as the outcome; it is measured on all `480` rows. `1` of `readmit_30d` was taken as the event and coded 1; `0` was coded 0. `readmit_30d` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.\n\n## Predictors (TRIPOD+AI 9)\n\n`encounter_id` was confirmed as the unit's identifier on its own, after the evidence for its proposal was read. The 7 columns `charlson_index`, `prior_admissions_12mo` and 5 more, proposed as measures at low confidence, below high, for one reason (\"A measured column: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read. `age`, `sodium_mmol_l`, `length_of_stay_days`, `charlson_index` and `prior_admissions_12mo` were each confirmed to hold amounts or counts, on its own, after the evidence for its reading was read. Column roles were set for `10` columns: predictors `age`, `sex`, `charlson_index` and 5 more; identifier `encounter_id`; excluded `sodium_mmol_l`.\n\nRead from the values, no question asked: `age` is a characteristic (A person's characteristic); `sex` is a characteristic (A person's characteristic); `readmit_30d` is a binary outcome (Only `0` and `1` \u2014 read as a binary outcome); `albumin_g_dl` is an amount (one slope) (`27` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `creatinine_mg_dl` is an amount (one slope) (`170` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `hemoglobin_g_dl` is an amount (one slope) (`87` values with decimals that fill their grid as a measurement's do (a code list's sit apart)).\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `readmit_30d` recorded (seed `0`, stratified by `readmit_30d`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004). Two model families were chosen: elastic net and screened elastic net.\n\nWithin each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.\n\nCross-validated scores are the mean over folds; the fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith elastic net declared the final model on cross-validation beforehand, the `96` held-out rows were opened once and scored: held-out log loss `0.528` (AUC `0.658`, the customary headline); its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `4c5db134f399`, with local changes). The supplementary provenance record holds the decision log (`23` records), the SHA-256 of the input file `clinical_risk.csv` (SHA-256 `c33f2a5a9286`), the analysis plan (SHA-256 `8295fe53b877`) and the model matrix (`384` rows by `8` columns; SHA-256 `a1defbc8e2ce` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
   "reached": true,
   "refused": null,
-  "sha256": "13cf7cd9b136ee7ea65aa897895552f4ab31ad7a50f7f14cb88590e2ff75ecab"
+  "sha256": "9f3599a6a78f0c1da0946ae974a907b820af3e586c38a4903ec46e2bf8d7932e"
  },
  "question": {
   "estimand": null,
@@ -2847,14 +3696,288 @@
   "lenses": [
    "clinical"
   ],
+  "markers": [
+   {
+    "axis": "regime",
+    "basis": "the table's rows (the ingest)",
+    "name": "rows",
+    "timing": "live",
+    "value": 480,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the participant flow's final count",
+    "name": "rows_analyzed",
+    "timing": "live",
+    "value": 480,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the grain and repeats answers, and the units the held-out draw groups by (the seal plan)",
+    "name": "repeated_units",
+    "timing": "live",
+    "value": {
+     "grain": "one_row_per_unit",
+     "repeat_kind": null,
+     "unit_column": null,
+     "units": null
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the smallest outcome class's rows in the outcome's own value counts (every row of the table)",
+    "name": "effective_size",
+    "timing": "live",
+    "value": 112,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the effective size over the shelf's candidate predictor parameters",
+    "name": "events_per_parameter",
+    "timing": "live",
+    "value": 14.0,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the roles answer, counted by role",
+    "name": "predictors_by_role",
+    "timing": "live",
+    "value": {
+     "covariate": 2,
+     "excluded": 1,
+     "exposure": 6,
+     "identifier": 1
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the participant flow's predictors over its rows",
+    "name": "predictors_per_row",
+    "timing": "live",
+    "value": 0.016666666666666666,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the outcome's type, as read from its values",
+    "name": "outcome_type",
+    "timing": "live",
+    "value": "binary",
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the event level's rows over every row with the outcome (its own value counts)",
+    "name": "event_share",
+    "timing": "live",
+    "value": 0.23333333333333334,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "each column's blanks over the table's rows (the ingest); a column with none is not listed",
+    "name": "missingness",
+    "timing": "live",
+    "value": {},
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": null,
+    "name": "complete_case_share",
+    "timing": "live",
+    "value": null,
+    "why": "The participant flow counts the complete cases only under complete cases."
+   },
+   {
+    "axis": "regime",
+    "basis": "the design answers as recorded",
+    "name": "design",
+    "timing": "live",
+    "value": {
+     "clusters": null,
+     "design": null,
+     "grain": {
+      "acknowledged": false,
+      "grain": "one_row_per_unit",
+      "id_column": null
+     },
+     "repeat_kind": null,
+     "survey": null,
+     "unit": null
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the temporal answer, the structure's time column and whether the seal plan's folds follow time (null where either stage is not computed)",
+    "name": "time_order",
+    "timing": "live",
+    "value": {
+     "temporal": null,
+     "time_column": null,
+     "time_ordered_folds": false
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "each unit read from the values with its evidence (the readings), and each recorded",
+    "name": "units",
+    "timing": "live",
+    "value": [],
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the columns the findings found values below a detection limit in; each column's share is not served",
+    "name": "detection_limit_share",
+    "timing": "live",
+    "value": {
+     "columns": [],
+     "shares": null
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the columns whose names read as a batch, a run or a plate, and the batch answer",
+    "name": "batch_columns",
+    "timing": "live",
+    "value": {
+     "answered": null,
+     "read": []
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the columns whose names read as a run order",
+    "name": "run_order",
+    "timing": "live",
+    "value": [],
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the repeats answer: whether a unit's rows are imputed copies",
+    "name": "imputed_copies",
+    "timing": "live",
+    "value": false,
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the grain, repeats and aggregation answers",
+    "name": "repeated_measurement",
+    "timing": "live",
+    "value": {
+     "aggregation": null,
+     "grain": "one_row_per_unit",
+     "repeat_kind": null
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": null,
+    "name": "omics_scale",
+    "timing": "live",
+    "value": null,
+    "why": "No assay lens is chosen, so no scale is read."
+   },
+   {
+    "axis": "purpose",
+    "basis": "the purpose answer",
+    "name": "purpose",
+    "timing": "live",
+    "value": "prediction",
+    "why": null
+   },
+   {
+    "axis": "purpose",
+    "basis": "the primary metric the newest fit record names",
+    "name": "primary_score",
+    "timing": "live",
+    "value": {
+     "metric": "log_loss"
+    },
+    "why": null
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "intended_use",
+    "timing": "live",
+    "value": null,
+    "why": "No intended use is declared."
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "thresholds",
+    "timing": "live",
+    "value": null,
+    "why": "No intended use is declared."
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "estimand",
+    "timing": "live",
+    "value": null,
+    "why": "No estimand is declared."
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "multiplicity_family",
+    "timing": "live",
+    "value": null,
+    "why": "No estimand is declared."
+   },
+   {
+    "axis": "regime",
+    "basis": "the reported family's cross-validated primary score at the result's fit",
+    "name": "signal",
+    "timing": "post_hoc",
+    "value": {
+     "ci_high": 0.5249154795086013,
+     "ci_low": 0.4139984260605935,
+     "estimate": 0.46945695278459737,
+     "family": "elastic_net",
+     "metric": "log_loss"
+    },
+    "why": null
+   },
+   {
+    "axis": "purpose",
+    "basis": "the held-out primary score the opening recorded",
+    "name": "result",
+    "timing": "post_hoc",
+    "value": {
+     "family": "elastic_net",
+     "held_out": 0.5278277087071518,
+     "metric": "log_loss"
+    },
+    "why": null
+   }
+  ],
   "missing": {},
   "n_analyzed": 480,
   "n_rows": 480,
   "task": "binary"
  },
+ "replay": null,
  "replication": null,
  "result": {
-  "attempt": "2e4142ec6c8e491bae32d133304e1de2",
+  "attempt": "2812aeec007145bab9901a8b5e0f89d3",
   "conditioning": null,
   "decisions": [
    1,
@@ -2935,33 +4058,38 @@
   "analyst_model": "scripted",
   "design": 2,
   "effort": null,
-  "ended": "2026-10-19T03:06:02Z",
-  "engine_commit": "e6a0fc9b9099a117f04f3966cef30ffdc37acad1",
+  "ended": "2026-10-22T19:52:24Z",
+  "engine_commit": "4c5db134f39903c1d7c6784c975eb88ac6876193",
   "engine_modified": true,
   "engine_version": "2.0.0.dev0",
   "fit_budget": {
    "fits": 4,
    "seconds": 600.0
   },
-  "fit_seconds": 149.01301391609013,
+  "fit_seconds": 151.1611877088435,
   "fits": 2,
   "fits_unseen": 0,
   "help": [],
-  "id": "run_02-d9d23e39a300f659ada796f8e94ca5f8",
-  "prompt_version": "dry-run-1",
+  "id": "run_02-74496dcdd1f77036768f30561f267ae5",
+  "persona": null,
+  "prompt_version": "dry-run-2",
+  "redacted": false,
   "server": {
    "mode": "local",
-   "pid": 35404,
-   "port": 63427,
+   "pid": 537,
+   "port": 58611,
    "workers": 2
   },
   "spend": null,
   "spend_why": "No transcript of the analyst agent was given.",
-  "started": "2026-10-19T03:02:38Z"
+  "started": "2026-10-22T19:48:40Z",
+  "vocabulary": "82014c44e597cef378fee676fe6c5b3b7d6623f48bb08a1e577dc5e37f424eeb"
  },
  "surfacings": {
   "concerns": [],
+  "failed_fits": [],
   "refusals": []
  },
- "version": 1
+ "version": 2,
+ "wants": []
 }

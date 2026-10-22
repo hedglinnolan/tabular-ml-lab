@@ -2944,6 +2944,10 @@ export interface components {
             message: string | null;
             /** Error */
             error: string | null;
+            /** Refusal */
+            refusal: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * JoinCounts
@@ -4617,6 +4621,26 @@ export interface components {
             message: string;
             /** Exits */
             exits: components["schemas"]["Exit"][];
+        };
+        /**
+         * Refused
+         * @description A stage's refusal in words, as its status serves it: the ``stage`` that refused (the stage
+         *     itself, or the one it waits on), the refusal's ``code``, its words and its ways forward.
+         */
+        Refused: {
+            /** Stage */
+            stage: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Exits
+             * @default []
+             */
+            exits: {
+                [key: string]: unknown;
+            }[];
         };
         /** RelationshipFrame */
         RelationshipFrame: {
@@ -7805,6 +7829,7 @@ export interface components {
             cancelled: boolean;
             /** Held */
             held: string | null;
+            refusal: components["schemas"]["Refused"] | null;
         };
         /** SubstitutionSpec */
         SubstitutionSpec: {

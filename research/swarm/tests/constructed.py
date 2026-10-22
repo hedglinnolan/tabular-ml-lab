@@ -8,7 +8,22 @@ import copy
 import math
 from typing import Any
 
+from research.swarm import vocabulary as V
+
 T0 = "2026-10-18T10:00:00+00:00"
+
+
+def marker(name: str, value: Any = None, *, basis: str = "constructed",
+           why: str | None = None) -> dict[str, Any]:
+    """One marker as the record holds it, its axis and timing the vocabulary's."""
+    fixed = V.BY_NAME[name]
+    return {"name": name, "axis": fixed.axis, "timing": fixed.timing, "value": value,
+            "basis": basis if value is not None else None, "why": why}
+
+
+def regime_markers(rows: int, analyzed: int) -> list[dict[str, Any]]:
+    return [marker("rows", rows), marker("rows_analyzed", analyzed),
+            marker("signal", why="constructed: none read")]
 
 
 def at(minute: int) -> str:
@@ -59,7 +74,9 @@ def attempt(seq: int, decisions: list[int], changed: list[int], *, minute: int,
            "holdout_why": None if holdout is not None else "constructed: none served",
            "changed_after_seal": changed_after_seal,
            "at_opening": at_opening, "effects": effects or {}, "movement": moved or [],
-           "movement_why": movement_why, "withheld": None, "locked": locked}
+           "movement_why": movement_why, "withheld": None, "locked": locked,
+           "markers": [marker("rows", 480)], "markers_why": None, "change": [],
+           "change_why": "constructed: none computed"}
     out["withdrawn"] = [{"seq": s, "by": b} for s, b in withdrawn or ()]
     out["reinstated"] = [{"seq": s, "by": b} for s, b in reinstated or ()]
     return out
@@ -67,8 +84,9 @@ def attempt(seq: int, decisions: list[int], changed: list[int], *, minute: int,
 
 def run(run_id: str = "run-1") -> dict[str, Any]:
     return {"id": run_id, "design": 2, "engine_commit": "c0ffee", "engine_modified": False,
-            "engine_version": "2.0.0.dev0", "analyst_model": "claude-haiku-5-5", "effort": "high",
-            "prompt_version": "v1", "started": T0, "ended": at(59),
+            "engine_version": "2.0.0.dev0", "analyst_model": "claude-haiku-5-5",
+            "persona": "conventional", "effort": "high", "prompt_version": "v1",
+            "vocabulary": V.DIGEST, "started": T0, "ended": at(59),
             "spend": {"fresh": 1000, "cached": 50000, "messages": 12}, "spend_why": None,
             "fits": 2, "fit_seconds": 3.0, "fits_unseen": 0, "fit_budget": {"count": 10},
             "help": [], "server": {"pid": 1, "port": 8765, "mode": "local", "workers": 2}}
@@ -134,11 +152,12 @@ def predict_record(control: str | None = None) -> dict[str, Any]:
               "intervals": {"auc": {"estimate": 0.71, "ci_low": 0.45, "ci_high": 0.97,
                                     "level": 0.95, "method": "DeLong"}},
               "intervals_why": None, "lock": None, "refused": None}
-    return {"version": 1, "run": run(), **surroundings(control),
+    return {"version": 2, "run": run(), **surroundings(control),
             "question": {"purpose": "prediction", "target": "y", "estimand": None,
                          "intended_use": None, "stated": None, "paper": None},
             "regime": {"n_rows": 480, "n_analyzed": 480, "task": "binary", "event": "1",
-                       "events": 112, "missing": {}, "design": {}, "lenses": ["clinical"]},
+                       "events": 112, "missing": {}, "design": {}, "lenses": ["clinical"],
+                       "markers": regime_markers(480, 480)},
             "decisions": decisions, "attempts": attempts, "result": result}
 
 
@@ -215,11 +234,12 @@ def estimate_record(control: str | None = None) -> dict[str, Any]:
               "lock": 4, "measure": "mean_difference", "scale": "difference",
               "conditioning": "conditional and marginal", "source": "fits", "served_fit": None,
               "estimates": [reported("linear", EFFECT[0])], "refused": None}
-    return {"version": 1, "run": run("run-2"), **surroundings(control),
+    return {"version": 2, "run": run("run-2"), **surroundings(control),
             "question": {"purpose": "inference", "target": "y", "estimand": {"exposure": "x"},
                          "intended_use": None, "stated": None, "paper": None},
             "regime": {"n_rows": 700, "n_analyzed": 690, "task": "regression", "event": None,
-                       "events": None, "missing": {"z": 10}, "design": {}, "lenses": []},
+                       "events": None, "missing": {"z": 10}, "design": {}, "lenses": [],
+                       "markers": regime_markers(700, 690)},
             "decisions": decisions, "attempts": attempts, "result": result}
 
 
@@ -256,10 +276,11 @@ def revert_record() -> dict[str, Any]:
     ]
     result = {"purpose": "prediction", "attempt": None, "plan_digest": None, "decisions": None,
               "refused": "The held-out rows were never opened.", "refused_kind": "not_reported"}
-    return {"version": 1, "run": {**run("run-3"), "fits": 4, "fit_seconds": 6.0},
+    return {"version": 2, "run": {**run("run-3"), "fits": 4, "fit_seconds": 6.0},
             **surroundings(),
             "question": {"purpose": "prediction", "target": "y", "estimand": None,
                          "intended_use": None, "stated": None, "paper": None},
             "regime": {"n_rows": 480, "n_analyzed": 480, "task": "binary", "event": "1",
-                       "events": 112, "missing": {}, "design": {}, "lenses": []},
+                       "events": 112, "missing": {}, "design": {}, "lenses": [],
+                       "markers": regime_markers(480, 480)},
             "decisions": decisions, "attempts": attempts, "result": result}

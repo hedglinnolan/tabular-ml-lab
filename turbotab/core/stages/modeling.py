@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 import turbotab.core.models  # noqa: F401 - registers the families and their previews
-from turbotab.core.graph import Bundle, StageContext
+from turbotab.core.graph import Bundle, StageContext, StageRefusal
 from turbotab.core.jobs import Cancelled
 from turbotab.core.row_floor import stage_exits
 from turbotab.core.stages.data import open_store
@@ -102,7 +102,8 @@ def _families(ctx: StageContext, task: str) -> list[Any]:
     for key in ctx.state.models or []:
         family = get_family(key)
         if task not in family.tasks:
-            raise ValueError(f"{family.label} cannot model a {task} outcome.")
+            raise StageRefusal("family_cannot_model_task",
+                               f"{family.label} cannot model a {task} outcome.")
         chosen.append(family)
     return chosen
 
@@ -575,6 +576,36 @@ def substitution_pairs(predictors: Sequence[str], energy_column: str | Sequence[
             if nested.get(d) != r and nested.get(r) != d][:MAX_PAIRS]
 
 
+def _confounding_typed(words: str | None, columns: list[str], target: str | None) -> Any:
+    """The design's refusal of a batch confounded with the outcome (``words``, the answer's own
+    refusal's message, ``batch.confounding_refusal``) typed with that refusal's code and exits;
+    None when there is none."""
+    if not words:
+        return None
+    from turbotab.core.methods.batch import confounding_refusal
+
+    for column in columns:
+        answer = confounding_refusal(column, target)
+        if answer.message == words:
+            return StageRefusal(answer.code, words, exits=answer.exits)
+    return StageRefusal("batch_confounded_with_outcome", words)
+
+
+def _small_groups_typed(words: str, state: Any) -> StageRefusal:
+    """The design's refusal of a grouping too small for an intercept each (D-058), typed as the
+    grouping answer's own refusal is (``incidental_parameters``), with its way forward: the
+    intervals clustered by the grouping only."""
+    from turbotab.core.estimand import fixed_effects_column
+
+    column = fixed_effects_column(state)
+    if column is None:
+        return StageRefusal("incidental_parameters", words)
+    spec = state.clusters.model_dump(mode="json") if state.clusters is not None else {}
+    return StageRefusal("incidental_parameters", words, exits=[{
+        "label": f"Cluster the intervals by `{column}` only",
+        "decision": {**spec, "kind": "set_clusters", "column": column, "adjust": "cluster_only"}}])
+
+
 def design_stage(ctx: StageContext) -> Bundle:
     """Each chosen family's pipeline, and the lineage from raw columns to the model matrix."""
     from turbotab.core.decisions import left_out
@@ -605,15 +636,19 @@ def design_stage(ctx: StageContext) -> Bundle:
         predictors_or_ask(state, summaries, drop=left_out(state), store=store)
     predictors = model_predictors(state)
     if not predictors:
-        raise ValueError("No column is marked as what you study, a covariate or energy, so there is "
-                         "nothing to model the outcome with.")
+        raise StageRefusal("no_predictors", "No column is marked as what you study, a covariate or "
+                                            "energy, so there is nothing to model the outcome with.")
     if task == "time_to_event":
         from turbotab.core.models.survival import follow_up_columns
 
         inside = [c for c in follow_up_columns(state) if c in predictors]
         if inside:
-            raise ValueError(f"`{inside[0]}` is the outcome's follow-up time, so it cannot also be "
-                             f"a predictor: give it the role time.")
+            raise StageRefusal(
+                "follow_up_is_a_predictor",
+                f"`{inside[0]}` is the outcome's follow-up time, so it cannot also be a predictor: "
+                f"give it the role time.",
+                exits=[{"label": f"Give `{inside[0]}` the role time",
+                        "decision": {"kind": "confirm_role", "column": inside[0], "role": "time"}}])
     assignment = read_assignment(ctx.inputs["split"])
     train_ids = assignment.index[assignment["train"]].to_numpy()
     # The rows the design describes: under inference every analyzed row, held-out ones included,
@@ -629,8 +664,8 @@ def design_stage(ctx: StageContext) -> Bundle:
     if not len(design_ids):
         # The cohort refuses too few rows with what removed them (``core.row_floor``); never
         # scikit-learn's "Found array with 0 sample(s)" from a design handed none.
-        raise ValueError(f"There are no {rows_word} to build the models on; the row flow says "
-                         f"which answers removed them.")
+        raise StageRefusal("no_rows", f"There are no {rows_word} to build the models on; the row "
+                                      f"flow says which answers removed them.")
     adj = state.energy_adjustment
     ctx.progress(0.05, f"Reading the {rows_word}")
     y_rows = None
@@ -648,7 +683,7 @@ def design_stage(ctx: StageContext) -> Bundle:
                 outcome_values(store.materialize([state.target], design_ids), state.target,
                                design_ids), state.target, len(design_ids), rows_word)
             if one:
-                raise ValueError(one)
+                raise StageRefusal("one_outcome_value", one)
         # MS7: the batch column a reference ComBat step reads, whether or not a model sees it.
         X = modeling_frame(store, list(dict.fromkeys([*input_columns(predictors, adj),
                                                       *batch_inputs(state)])), design_ids)
@@ -663,8 +698,10 @@ def design_stage(ctx: StageContext) -> Bundle:
             # (:data:`DROPPED_ENERGY`), and the gap is kept beside the design for the server to
             # serve in its place once the plan is locked (:func:`design_as_served`).
             y_rows = store.materialize([state.target], design_ids)[state.target]
-        # MS7: a batch perfectly confounded with the outcome is refused under both purposes.
+        # MS7: a batch perfectly confounded with the outcome is refused under both purposes, with
+        # the answer's own refusal's code and exits (``batch.confounding_refusal``).
         confounded = batch_refusal(state, store, design_ids, task)
+        confounded_typed = _confounding_typed(confounded, list(store.columns), state.target)
         # Claims backtest D-058: a yes/no outcome's intercept per group, on the rows the design
         # describes, whatever answer moved them after the grouping was answered.
         from turbotab.core.estimand import intercepts_refusal
@@ -680,8 +717,10 @@ def design_stage(ctx: StageContext) -> Bundle:
             from turbotab.core.readings import energy_source_factors
 
             factors = energy_source_factors(state, list(adj.nutrients), store=store)
-    if confounded or small_groups:
-        raise ValueError(confounded or small_groups)
+    if confounded:
+        raise confounded_typed
+    if small_groups:
+        raise _small_groups_typed(small_groups, state)
     from turbotab.core.methods.qc_drift import working_qc_sd
 
     spec = design_spec(state, X, predictors, column_info=info,
@@ -690,7 +729,12 @@ def design_stage(ctx: StageContext) -> Bundle:
 
     refused = design_refusal(state, X, families)  # WP11: raw omics values into a linear family
     if refused:
-        raise ValueError(refused)
+        from turbotab.core.methods.omics import normalization_of
+
+        # design_refusal's own two cases: zeros a log would meet (the normalization's refusal),
+        # else raw values a linear family would read.
+        raise StageRefusal("zeros_cannot_be_logged" if normalization_of(state) is not None
+                           else "raw_values_unnormalized", refused)
     numeric_set = set(spec.numeric)  # a set: 20,000 predictors made the list test quadratic
     numeric = [c for c in spec.predictors if c in numeric_set]
     nested = design_nesting(state, X, numeric)  # on the design's rows: what the substitution moves

@@ -19,12 +19,21 @@ reads the run directory the driver wrote and the server's own data, builds the r
   answer, ``codebook`` and ``card``) and ``help`` (each intervention a person made). An argument
   given to :func:`assemble` takes the place of the file's.
 * ``commands.jsonl`` (``driver.main``): one line per command the driver ran, oldest first, each
-  with ``command`` (its name), ``at`` and ``done`` (when it began and returned) and ``summary``
+  with ``command`` (its name), ``at`` and ``done`` (when it began and returned; ``began`` and
+  ``returned`` to the microsecond, where kept), ``args`` (what it was given) and ``summary``
   (``driver.summary`` of the JSON it printed): a summary holding ``refused`` (``code``,
-  ``message``, ``exits``) is a refusal met, the server's or the driver's, and one holding
-  ``exported`` with exit status 0 is the export returned. The last line's ``done`` (its ``at`` on
-  a line from before ``done`` was kept) is when the run ended, unless driver.json holds its
-  ``ended``. No other key is read.
+  ``message``, ``exits``; ``by`` and, from the engine, ``stage``) is a refusal met, the server's,
+  the driver's or the engine's at fit time, and one holding ``exported`` with exit status 0 is the
+  export returned. The last line's ``done`` (its ``at`` on a line from before ``done`` was kept)
+  is when the run ended, unless driver.json holds its ``ended``. Version 2 reads, besides: an
+  ``answer``'s ``tag`` (its marker and the alternative it rejected) beside the record it posted
+  (``recorded``); a ``preview``'s ``reason``, given to the analyst log's preview made while the
+  command ran; a ``want``'s ``wanted`` and the ``account``'s ``account``; a ``fit``'s ``fit``
+  status and an ``ask``'s ``fit_failed``, each fit that failed, classed by its status's typed
+  refusal. No other key is read.
+* ``markers.jsonl`` (``driver.keep_markers``): the live markers read at each command that read the
+  run's results, and the facts of the split the current fit is scored on, by the current fit's
+  key.
 * ``home/``: the server's home.
 
 **The server's reads.** The analyst log comes first, since any later read can render a claim and
@@ -112,6 +121,20 @@ as the chosen answer does, each as the log stood where it was given: a scheme an
 draw then in force with its scheme (:func:`same_answer`), so another draw previewed while a scheme
 answer stands is an alternative to it.
 
+**The markers** (version 2, ``markers.py``): the regime's are read from the server at assembly,
+the vocabulary's live markers and the two post hoc ones (the signal and the result, from the
+record's own result). A fit's live markers are those the driver read while the fit was current
+(the snapshots whose fit key is the fit's): each marker the first snapshot holding a value for it
+gives, the markers read from the answers alone (``markers.STATE_ONLY``) read again from the
+answers the fit read (the log folded through the prefix the fit read, :class:`Prefixes`), since
+an answer the fit does not read can change while its key stands. A fit no snapshot was taken at
+has none, and says so.
+
+**The signed change** (``signed.py``) of each family's primary score from the fit before, paired
+where the two fits scored the same folds (their ``folds`` digests are one), else unpaired, each
+fit's n_test/n_train read from the facts of the split its digest was drawn by, as the driver read
+them at a fit scored on it (:func:`splits_by_folds`); a digest no snapshot read has no change.
+
 **Spend** (:func:`spend`): the transcript's assistant lines, once per message id. A message
 streams as several lines with one id, the same input counts and a growing output count, so each
 count is the largest its lines give: fresh is input plus cache creation plus output, cached is
@@ -133,7 +156,10 @@ from typing import Any, Callable, Mapping, Sequence
 
 from pydantic import ValidationError
 
+from research.swarm import markers as M
 from research.swarm import record as R
+from research.swarm import signed as S
+from research.swarm import vocabulary as V
 
 REPO = Path(__file__).resolve().parents[2]
 CORPUS = REPO / "research" / "corpus"
@@ -142,7 +168,12 @@ API = "/api"
 
 DRIVER_FILE = "driver.json"
 COMMANDS_FILE = "commands.jsonl"
-META_KEYS = ("design", "analyst_model", "effort", "prompt_version", "transcript", "dataset", "help")
+MARKERS_FILE = "markers.jsonl"
+META_KEYS = ("design", "analyst_model", "persona", "effort", "prompt_version", "transcript",
+             "dataset", "help")
+NO_SNAPSHOT = "No command of the run read the live markers while this fit was current."
+NO_FIT_BEFORE = "This is the run's first fit: there is no fit before it to compare with."
+NOT_PREDICT = "Under Estimate a fit's result is its estimate, not a cross-validated score."
 
 # A repair of values below a detection limit answers that reading (``truths.answers``).
 BELOW_DETECTION = "below_detection__"
@@ -301,19 +332,25 @@ class RunDir:
     path: Path
     driver: dict[str, Any]
     commands: list[dict[str, Any]]
+    markers: list[dict[str, Any]] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.markers is None:
+            self.markers = []
+
+
+def _lines(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines() if line.strip()]
 
 
 def read_run_dir(path: str | Path) -> RunDir:
-    """The driver's ``driver.json`` and ``commands.jsonl`` (the module docstring), as written."""
+    """The driver's ``driver.json``, ``commands.jsonl`` and ``markers.jsonl`` (the module
+    docstring), as written."""
     path = Path(path)
     driver = json.loads((path / DRIVER_FILE).read_text("utf-8"))
-    commands: list[dict[str, Any]] = []
-    log = path / COMMANDS_FILE
-    if log.exists():
-        for line in log.read_text("utf-8").splitlines():
-            if line.strip():
-                commands.append(json.loads(line))
-    return RunDir(path, driver, commands)
+    return RunDir(path, driver, _lines(path / COMMANDS_FILE), _lines(path / MARKERS_FILE))
 
 
 # ── spend ────────────────────────────────────────────────────────────────────
@@ -378,6 +415,7 @@ class Served:
     stages: dict[str, Read]
     export: Read
     health: Read
+    readings: Read | None = None
 
 
 def _json(response: Any) -> Read:
@@ -404,13 +442,34 @@ def fetch(client: Any, pid: str, *, mattered_wait: float = 600.0, poll: float = 
             break
         time.sleep(poll)
     ledger = _json(client.get(f"{base}/materiality"))
-    stages = {s: _json(client.get(f"{base}/stages/{s}")) for s in ("ingest", "target_info",
-                                                                    "cohort")}
+    stages = {s: _json(client.get(f"{base}/stages/{s}")) for s in MARKER_STAGES}
+    readings = _json(client.get(f"{base}/readings"))
     response = client.get(f"{base}/export")
     export = Read(response.status_code, response.content) if response.status_code == 200 \
         else _json(response)
     health = _json(client.get(f"{API}/health"))
-    return Served(log, project, fits, results, mattered, ledger, stages, export, health)
+    return Served(log, project, fits, results, mattered, ledger, stages, export, health, readings)
+
+
+# The stages the record reads: the regime's and the live markers' (``markers.py``: no estimate's).
+MARKER_STAGES = ("ingest", "target_info", "cohort", "structure", "seal_plan", "shelf", "findings")
+
+
+def served_reader(served: Served) -> Callable[[str], Any]:
+    """``markers.live``'s reads, from what the record read: a stage's body as served, the
+    readings, the fit records."""
+    def read(path: str) -> Any:
+        if path.startswith("stages/"):
+            got = served.stages.get(path.split("/", 1)[1])
+        elif path == "readings":
+            got = served.readings
+        elif path == "fits":
+            got = served.fits
+        else:
+            got = None
+        return got.body if got is not None and got.ok else None
+
+    return read
 
 
 # ── what a decision answers ──────────────────────────────────────────────────
@@ -806,19 +865,99 @@ def change_of(before: Mapping[str, Any] | None, fit: Mapping[str, Any],
             "reinstated": [{"seq": x, "by": b} for x, b in reinstated.items()]}
 
 
-def attempts_of(fits: Sequence[Mapping[str, Any]], records: Sequence[Mapping[str, Any]]
-                ) -> list[dict[str, Any]]:
-    """Each fit record as served, with its change from the fit before it (:func:`change_of`) and
-    the notes of the records credited with it (``reasons``)."""
+V2_ATTEMPT = ("markers", "markers_why", "change", "change_why")
+
+
+def attempts_of(fits: Sequence[Mapping[str, Any]], records: Sequence[Mapping[str, Any]],
+                snapshots: Sequence[Mapping[str, Any]] = ()) -> list[dict[str, Any]]:
+    """Each fit record as served, with its change from the fit before it (:func:`change_of`), the
+    notes of the records credited with it (``reasons``), its live markers (:func:`fit_markers`)
+    and its signed change from the fit before (:func:`signed_change`)."""
     notes = {r["seq"]: r.get("note") for r in records}
     prefixes = Prefixes(records)
+    splits = splits_by_folds(fits, snapshots)
     out: list[dict[str, Any]] = []
     for i, rec in enumerate(fits):
         change = change_of(fits[i - 1] if i else None, rec, records, prefixes)
         reasons = [{"seq": s, "note": notes[s]} for s in change["changed"] or () if notes.get(s)]
-        keep = {k: rec.get(k) for k in R.Attempt.model_fields if k not in (*CHANGE, "reasons")}
-        out.append({**keep, **change, "reasons": reasons})
+        keep = {k: rec.get(k) for k in R.Attempt.model_fields
+                if k not in (*CHANGE, "reasons", *V2_ATTEMPT)}
+        markers, why = fit_markers(rec, snapshots, prefixes)
+        changes, change_why = signed_change(rec, fits[i - 1] if i else None, splits)
+        out.append({**keep, **change, "reasons": reasons, "markers": markers,
+                    "markers_why": why, "change": changes, "change_why": change_why})
     return out
+
+
+def fit_markers(fit: Mapping[str, Any], snapshots: Sequence[Mapping[str, Any]],
+                prefixes: Prefixes) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """The live markers at ``fit`` (the module docstring): each from the first snapshot at its key
+    holding a value for it, else the last one's why; the markers read from the answers alone read
+    again from the answers the fit read, or why they are not known."""
+    at = [s for s in snapshots if s.get("fit_key") == fit.get("fit_key")]
+    if not at:
+        return None, NO_SNAPSHOT
+    merged: dict[str, dict[str, Any]] = {}
+    for snap in at:
+        for m in snap.get("markers") or ():
+            name = m.get("name")
+            if name in V.LIVE and (name not in merged or merged[name].get("value") is None):
+                merged[name] = dict(m)
+    n = prefixes.read_through(fit)
+    held = prefixes.at(n) if n is not None else None
+    if held is None:
+        for name in M.STATE_ONLY:
+            merged[name] = M.marker(name, why="The answers this fit read are not known (the log "
+                                              "does not account for its records).")
+    else:
+        merged.update({m["name"]: m for m in M.from_answers(held[1])})
+    return [merged[name] for name in V.LIVE if name in merged], None
+
+
+def splits_by_folds(fits: Sequence[Mapping[str, Any]], snapshots: Sequence[Mapping[str, Any]]
+                    ) -> dict[str, dict[str, Any] | None]:
+    """The facts of the split each fold digest was drawn by (``signed.SPLIT_FACTS``), from the
+    driver's snapshots at the fits that were scored on it (``markers.jsonl``' ``split``, read while
+    the fit's key was current): two fits with one digest scored the same rows in the same folds,
+    so the facts read at one hold for both. A digest the snapshots read two ways is not known
+    (None)."""
+    digest_of = {f.get("fit_key"): f.get("folds") for f in fits if f.get("fit_key")}
+    out: dict[str, dict[str, Any] | None] = {}
+    for snap in snapshots:
+        digest, facts = digest_of.get(snap.get("fit_key")), snap.get("split")
+        if digest is None or not isinstance(facts, Mapping):
+            continue
+        facts = S.split_facts(facts)
+        out[digest] = facts if out.get(digest, facts) == facts else None
+    return out
+
+
+def signed_change(fit: Mapping[str, Any], before: Mapping[str, Any] | None,
+                  splits: Mapping[str, Mapping[str, Any] | None] | None = None
+                  ) -> tuple[list[dict[str, Any]], str | None]:
+    """Each family's signed change in the primary score from the fit before (``signed.change``):
+    paired where both fits' ``folds`` digests are one, each fit's share read from the facts of the
+    split its digest was drawn by (``splits``, :func:`splits_by_folds`); or why there is none."""
+    from turbotab.core.models.metrics import higher_is_better
+
+    if before is None:
+        return [], NO_FIT_BEFORE
+    if fit.get("purpose") != "prediction" or before.get("purpose") != "prediction":
+        return [], NOT_PREDICT
+    metric = fit.get("primary_metric")
+    if not metric or metric != before.get("primary_metric"):
+        return [], "The two fits name different primary scores, or none."
+    same = fit.get("folds") is not None and fit.get("folds") == before.get("folds")
+    out = []
+    for family, scores in (fit.get("scores") or {}).items():
+        now, then = (scores or {}).get(metric), ((before.get("scores") or {}).get(family) or {}).get(metric)
+        if not isinstance(now, Mapping) or not isinstance(then, Mapping):
+            continue  # the family was not fitted in both
+        got = S.change(now, then, same_folds=same, higher_is_better=higher_is_better(metric),
+                       metric=metric, after_split=(splits or {}).get(fit.get("folds") or ""),
+                       before_split=(splits or {}).get(before.get("folds") or ""))
+        out.append({"family": family, "metric": metric, "against": before["id"], **got})
+    return out, None if out else "No family's primary score is served by both fits."
 
 
 # ── the decisions ────────────────────────────────────────────────────────────
@@ -867,7 +1006,7 @@ def examined_of(rec: Mapping[str, Any], records: Sequence[Mapping[str, Any]],
             if question in chosen and within(question, _at(p["at"])) \
                     and once(question, value, "preview", p.get("refused")):
                 out.append({"question": question, "value": value, "how": "preview", "at": p["at"],
-                            "refused": p.get("refused"),
+                            "refused": p.get("refused"), "reason": p.get("reason"),
                             "alternative": p.get("refused") is None
                             and not same_answer(question, p["decision"], value, rec["decision"],
                                                 chosen[question],
@@ -1039,9 +1178,52 @@ def mattered_materiality(rec: Mapping[str, Any], mattered: Read, in_force: Mappi
     return {"source": "mattered", "primary": primary, "departures": departures}
 
 
+def preview_reasons(previews: Sequence[Mapping[str, Any]], commands: Sequence[Mapping[str, Any]]
+                    ) -> list[dict[str, Any]]:
+    """The analyst log's previews, each with the reason of the driver's ``preview`` command that
+    made it: the one command whose run (``began`` to ``returned``, else ``at`` to ``done`` widened
+    to the second) holds the preview's time, previewing a decision of its kind; None where no
+    command, or more than one, does."""
+    ran = []
+    for c in commands:
+        if c.get("command") != "preview":
+            continue
+        start, end = c.get("began") or c.get("at"), c.get("returned") or c.get("done")
+        if not start or not end:
+            continue
+        start_at, end_at = _at(start), _at(end)
+        if not c.get("returned"):
+            end_at = end_at.replace(microsecond=999_999)
+        kind = (_summary(c).get("previewed") or {}).get("kind")
+        ran.append((start_at, end_at, kind, (c.get("args") or {}).get("reason")))
+    out = []
+    for p in previews:
+        when = _at(p["at"]) if p.get("at") else None
+        kind = (p.get("decision") or {}).get("kind")
+        hits = [r for s, e, k, r in ran if when is not None and s <= when <= e and k == kind]
+        out.append({**p, "reason": hits[0] if len(hits) == 1 else None})
+    return out
+
+
+def tags_of(commands: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Each ``answer``'s tag by the id of the record it posted (its summary's ``recorded``)."""
+    out = {}
+    for c in commands:
+        s = _summary(c)
+        rec, tag = s.get("recorded") or {}, s.get("tag")
+        if c.get("command") == "answer" and s.get("exit") == 0 and rec.get("id") \
+                and isinstance(tag, Mapping) and tag.get("marker"):
+            out[str(rec["id"])] = {"marker": tag["marker"], "rejected": tag.get("rejected"),
+                                   "command": "answer", "at": c.get("at")}
+    return out
+
+
 def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mapping[str, Any]],
                  attempts: Sequence[Mapping[str, Any]], *, purpose: str | None,
-                 mattered: Read) -> list[dict[str, Any]]:
+                 mattered: Read, commands: Sequence[Mapping[str, Any]] = ()
+                 ) -> list[dict[str, Any]]:
+    previews = preview_reasons(previews, commands)
+    tags = tags_of(commands)
     in_force = in_force_of(records)
     withdrawn = set(cancelled(records))
     prefixes = Prefixes(records)
@@ -1062,6 +1244,7 @@ def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mappin
             "after_estimates": bool(rec.get("after_estimates")), "early": rec.get("early"),
             "examined": examined_of(rec, records, previews, attempts, prefixes),
             "materiality": materiality,
+            "tag": tags.get(str(rec["id"])) if rec.get("recorded_by") != "turbotab" else None,
         })
     return out
 
@@ -1317,8 +1500,59 @@ def surfacings_of(commands: Sequence[Mapping[str, Any]], ledger: Read) -> dict[s
         refusals.append({"at": c.get("at"), "command": str(c.get("command")),
                          "code": str(error["code"]), "message": str(error["message"]),
                          "exits": [str(e) for e in exits if e is not None],
-                         "then": str(nxt.get("command")) if nxt is not None else None})
-    return {"refusals": refusals, "concerns": (ledger.body or {}).get("rows") or []}
+                         "then": str(nxt.get("command")) if nxt is not None else None,
+                         "by": error.get("by"), "stage": error.get("stage")})
+    return {"refusals": refusals, "concerns": (ledger.body or {}).get("rows") or [],
+            "failed_fits": failed_fits_of(commands)}
+
+
+def failed_fits_of(commands: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Each fit that failed while the driver watched (a ``fit``'s status in error, an ``ask``'s
+    ``fit_failed``), once per stage, key and error, classed by its status's typed refusal alone:
+    ``refused`` where the engine served one, else ``failed``."""
+    out, seen = [], set()
+    for c in commands:
+        s = _summary(c)
+        found = []
+        fit = s.get("fit") if c.get("command") == "fit" else None
+        if isinstance(fit, Mapping) and fit.get("status") == "error":
+            refusal = fit.get("refusal")
+            found.append({"stage": (refusal or {}).get("stage") or "fit", "key": fit.get("key"),
+                          "error": fit.get("error"), "refusal": refusal})
+        for f in s.get("fit_failed") or () if c.get("command") == "ask" else ():
+            found.append({"stage": (f.get("refusal") or {}).get("stage") or f.get("stage"),
+                          "key": f.get("key"), "error": f.get("error"),
+                          "refusal": f.get("refusal")})
+        for f in found:
+            key = (f["stage"], f["key"], f["error"])
+            if key in seen or not f["error"]:
+                continue
+            seen.add(key)
+            refusal = f["refusal"]
+            if refusal is not None:
+                refusal = {"code": refusal.get("code"), "message": refusal.get("message"),
+                           "exits": [{"label": e.get("label"), "decision": e.get("decision")}
+                                     for e in refusal.get("exits") or [] if isinstance(e, Mapping)]}
+            out.append({"at": c.get("at"), "command": str(c.get("command")), "stage": f["stage"],
+                        "key": f["key"], "error": str(f["error"]),
+                        "kind": "refused" if refusal else "failed", "refusal": refusal})
+    return out
+
+
+def wants_of(commands: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Each ``want`` the driver recorded (its summary's ``wanted``)."""
+    return [dict(_summary(c)["wanted"]) for c in commands
+            if c.get("command") == "want" and _summary(c).get("exit") == 0
+            and isinstance(_summary(c).get("wanted"), Mapping)]
+
+
+def account_of(commands: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """The account the driver recorded (its summary's ``account``), its source the driver."""
+    for c in commands:
+        if c.get("command") == "account" and _summary(c).get("exit") == 0 \
+                and isinstance(_summary(c).get("account"), Mapping):
+            return {**_summary(c)["account"], "source": "driver"}
+    return None
 
 
 def regime_of(state: Mapping[str, Any], stages: Mapping[str, Read]) -> dict[str, Any]:
@@ -1354,7 +1588,8 @@ def dataset_of(meta: Mapping[str, Any], provenance: Mapping[str, Any],
                   "bytes": (ingest or {}).get("source_bytes")}]
     return {"id": given.get("id"), "control": given.get("control"),
             "fixture": given.get("fixture"), "known": given.get("known"), "files": files,
-            "codebook": given.get("codebook"), "card": given.get("card")}
+            "codebook": given.get("codebook"), "card": given.get("card"),
+            "declared": list(given.get("declared") or [])}
 
 
 def question_of(state: Mapping[str, Any], meta: Mapping[str, Any]) -> dict[str, Any]:
@@ -1385,7 +1620,9 @@ def run_of(run: RunDir, meta: Mapping[str, Any], attempts: Sequence[Mapping[str,
         "id": d.get("run") or run.path.name, "design": meta.get("design"),
         "engine_commit": engine.get("commit"), "engine_modified": engine.get("modified"),
         "engine_version": (h or {}).get("version"), "analyst_model": meta.get("analyst_model"),
-        "effort": meta.get("effort"), "prompt_version": meta.get("prompt_version"),
+        "persona": meta.get("persona"), "effort": meta.get("effort"),
+        "prompt_version": meta.get("prompt_version"),
+        "vocabulary": d.get("vocabulary") or V.DIGEST,
         "started": d.get("started"), "ended": d.get("ended") or ended_of(run.commands),
         "spend": spent, "spend_why": why,
         "fits": len(attempts), "fit_seconds": float(sum(seconds)),
@@ -1431,23 +1668,29 @@ def build(served: Served, run: RunDir, meta: Mapping[str, Any]) -> dict[str, Any
     state = view.get("state") or {}
     purpose = state.get("purpose")
     fit_records = (served.fits.body or {}).get("records") or []
-    attempts = attempts_of(fit_records, records)
+    attempts = attempts_of(fit_records, records, run.markers)
     log = served.analyst_log.body
     export, provenance = export_of(served, run.commands)
+    result = result_of(purpose, records, attempts, served.results)
+    regime = regime_of(state, served.stages)
+    regime["markers"] = M.live(view, served_reader(served)) + M.post_hoc(result, attempts)
     return {
         "version": R.VERSION,
         "run": run_of(run, meta, attempts, provenance, served.health),
         "dataset": dataset_of(meta, provenance, served.stages, view.get("summary") or {}),
         "question": question_of(state, meta),
-        "regime": regime_of(state, served.stages),
+        "regime": regime,
         "decisions": decisions_of(records, log.get("previews") or [], attempts, purpose=purpose,
-                                  mattered=served.mattered),
+                                  mattered=served.mattered, commands=run.commands),
         "attempts": attempts,
-        "result": result_of(purpose, records, attempts, served.results),
+        "result": result,
         "claims": list(log.get("claims") or []),
         "surfacings": surfacings_of(run.commands, served.ledger),
         "export": export,
         "replication": None,
+        "wants": wants_of(run.commands),
+        "account": account_of(run.commands),
+        "replay": None,
     }
 
 
@@ -1517,6 +1760,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--design", type=int, choices=(1, 2, 3))
     parser.add_argument("--analyst-model")
+    parser.add_argument("--persona", choices=("conventional", "skeptical", "explorer"))
     parser.add_argument("--effort")
     parser.add_argument("--prompt-version")
     parser.add_argument("--transcript")
@@ -1526,7 +1770,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="an intervention a person made (repeat for each)")
     parser.add_argument("--corpus", type=Path, default=CORPUS)
     args = parser.parse_args(argv)
-    meta = {"design": args.design, "analyst_model": args.analyst_model, "effort": args.effort,
+    meta = {"design": args.design, "analyst_model": args.analyst_model,
+            "persona": args.persona, "effort": args.effort,
             "prompt_version": args.prompt_version, "transcript": args.transcript,
             "dataset": json.loads(args.dataset.read_text("utf-8")) if args.dataset else None,
             "help": args.helped}

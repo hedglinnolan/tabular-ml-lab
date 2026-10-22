@@ -397,9 +397,11 @@ def test_an_answer_says_why(tmp_path, monkeypatch):
     refused by the driver before anything is posted (1), and the refusal is logged in the run."""
     folder = fake_run(tmp_path, monkeypatch)
     with pytest.raises(SystemExit):
-        driver.build_parser().parse_args(["answer", "--run", RID, "impute"])
-    assert driver.main(["answer", "--run", RID, "impute"], out=lambda s: None) == 2
-    code, payload = run_main(["answer", "--run", RID, "impute", "--reason", "   "])
+        driver.build_parser().parse_args(["answer", "--run", RID, "impute", "--marker", "rows"])
+    assert driver.main(["answer", "--run", RID, "impute", "--marker", "rows"],
+                       out=lambda s: None) == 2
+    code, payload = run_main(["answer", "--run", RID, "impute", "--reason", "   ", "--marker",
+                              "rows"])
     assert code == 1 and payload["refused"]["code"] == "reason_required"
     logged = [json.loads(line) for line in (folder / "commands.jsonl").read_text().splitlines()]
     assert logged[-1]["command"] == "answer" and logged[-1]["summary"]["refused"]["code"] == "reason_required"
@@ -624,7 +626,7 @@ def test_each_command_is_logged_with_when_it_began_and_when_it_returned(tmp_path
     from datetime import datetime
 
     folder = fake_run(tmp_path, monkeypatch)
-    run_main(["answer", "--run", RID, "impute", "--reason", "   "])
+    run_main(["answer", "--run", RID, "impute", "--reason", "   ", "--marker", "rows"])
     logged = json.loads((folder / "commands.jsonl").read_text().splitlines()[-1])
     began, done = (datetime.fromisoformat(logged[k]) for k in ("at", "done"))
     assert began.utcoffset().total_seconds() == done.utcoffset().total_seconds() == 0
@@ -647,9 +649,10 @@ def test_the_exit_status_is_said_as_the_driver_answers():
     ways forward."""
     text = " ".join(driver.__doc__.split())
     assert "(the JSON says why, with the ways forward)" not in text
-    assert ("1 when the server or the driver refused it (the JSON says why under ``refused``: a "
-            "refusal by the server lists its ways forward under ``exits``, one by the driver "
-            "none)") in text
+    # Package 1: a fit the engine refused in words is a refusal too, with its ways forward.
+    assert ("1 when the server, the engine (a fit it refused in words) or the driver refused it "
+            "(the JSON says why under ``refused``: a refusal by the server or the engine lists its "
+            "ways forward under ``exits``, one by the driver none)") in text
 
 
 HOOKED = {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
@@ -715,6 +718,7 @@ def truth() -> dict[str, str]:
 
 
 Plan = dict[str, list[tuple[list[str], list[str]]]]  # each question's answers, in turn
+MARKER = "design"  # the scripted analyst's tag on every answer, a marker of the vocabulary
 
 # Under Predict: the outcome, one row each, the proposed roles, every row, a fill in each training
 # fold (complete cases previewed first), a fifth held out with k-fold beside it, logistic regression.
@@ -784,6 +788,12 @@ class Analyst:
         return payload
 
     def cmd(self, name: str, *args: str, expect: int | None = 0) -> dict[str, Any]:
+        # Package 1: an answer names a marker of the vocabulary and a preview says why; a call
+        # here that gives neither takes the scripted analyst's own.
+        if name == "answer" and "--marker" not in args:
+            args = (*args, "--marker", MARKER)
+        if name == "preview" and "--reason" not in args:
+            args = (*args, "--reason", "Scripted analyst: what would this option record?")
         return self.drv(name, "--run", self.run, *args, expect=expect)
 
     def answer(self, ids: list[str], sets: list[str] = (), why: str = "") -> dict[str, Any]:
@@ -791,7 +801,8 @@ class Analyst:
         self.reasons.append(reason)
         told = self.tell(ids, sets) if self.keys else None
         out = self.cmd("answer", *ids, *[a for s in sets for a in ("--set", s)], "--reason", reason)
-        assert set(out) == {"recorded", "next"}, out
+        assert set(out) == {"recorded", "next", "tag"}, out  # package 1: the answer's tag
+        assert out["tag"]["marker"] == MARKER
         assert out["recorded"]["note"] == reason and out["recorded"]["id"]
         if self.keys:
             meta = json.loads((self.runs / self.run / "driver.json").read_text())

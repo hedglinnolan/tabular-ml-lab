@@ -398,7 +398,7 @@ def test_status_serializes_to_the_contract_shape():
     fields = set(StageStatus(stage="s", status="idle").model_dump(mode="json"))
     assert fields == {
         "stage", "status", "key", "fresh", "missing", "error", "job_id", "progress", "updated_at",
-        "cancelled", "held",
+        "cancelled", "held", "refusal",  # a refusal in words beside an error (SWARM_PLAN §8)
     }
 
 

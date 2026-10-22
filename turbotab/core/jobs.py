@@ -13,7 +13,9 @@
   is still running after a short grace period its worker is terminated and a
   fresh one spawned. CPU stops within about 1.5 s either way.
 * A worker that dies mid-job (``os._exit``, a segfault, the OOM killer) marks
-  that job ``error``; the slot is respawned and the pool keeps working.
+  that job ``error``; the slot is respawned and the pool keeps working. A job
+  that raises reports ``<type>: <words>``, and a refusal in words beside it
+  (``JobView.refusal``: its code and ways forward, :func:`failure_of`).
 * A worker says what it is doing while it starts. One that dies before it is
   ready, or says nothing for ``TURBOTAB_WORKER_START_TIMEOUT`` seconds (default
   180) while starting, is a failed start; when no worker is left to take the
@@ -74,6 +76,25 @@ class JobView(BaseModel):
     progress: float | None = None
     message: str | None = None
     error: str | None = None
+    # A refusal in words (its ``code``, ``message`` and ``exits``) beside ``error`` where the job
+    # refused rather than crashed (:func:`failure_of`); None otherwise.
+    refusal: dict[str, Any] | None = None
+
+
+def failure_of(exc: BaseException) -> tuple[str, dict[str, Any] | None]:
+    """A failure as a job or a stage reports it: its error text, ``<type>: <words>`` (a refusal
+    in words as the type it says it is shown as, its ``shown_as``: a ``ValueError``), and, where
+    the failure is a refusal in words (it has ``as_refusal()``, ``graph.StageRefusal``), its
+    code, words and ways forward; None for a crash."""
+    shown = getattr(type(exc), "shown_as", None) or type(exc).__name__
+    as_refusal = getattr(exc, "as_refusal", None)
+    refusal = None
+    if callable(as_refusal):
+        try:
+            refusal = dict(as_refusal())
+        except Exception:  # noqa: BLE001 - a refusal that cannot say itself is a crash
+            refusal = None
+    return f"{shown}: {exc}", refusal
 
 
 class Cancelled(BaseException):
@@ -159,7 +180,8 @@ def _worker_main(conn: Any, flag: Any, preload: tuple[str, ...]) -> None:
         except Cancelled:
             reply = ("cancelled", job_id)
         except BaseException as exc:  # noqa: BLE001 - everything is reported
-            reply = ("error", job_id, f"{type(exc).__name__}: {exc}", traceback.format_exc())
+            text, refusal = failure_of(exc)
+            reply = ("error", job_id, text, traceback.format_exc(), refusal)
         finally:
             _CURRENT = None
         try:
@@ -226,6 +248,7 @@ class _Job:
     progress: float | None = None
     message: str | None = None
     error: str | None = None
+    refusal: dict[str, Any] | None = None
     cancel_requested: bool = False
     worker: _Worker | None = None
 
@@ -238,6 +261,7 @@ class _Job:
             progress=self.progress,
             message=self.message,
             error=self.error,
+            refusal=self.refusal,
         )
 
 
@@ -550,11 +574,14 @@ class JobRunner:
         elif tag == "error":
             if message[3]:
                 log.warning("job %s (%s) failed:\n%s", job.id, job.label, message[3])
-            self._finish(job, "error", error=message[2])
+            self._finish(job, "error", error=message[2],
+                         refusal=message[4] if len(message) > 4 else None)
 
-    def _finish(self, job: _Job, state: str, *, result: Any = None, error: str | None = None) -> None:
+    def _finish(self, job: _Job, state: str, *, result: Any = None, error: str | None = None,
+                refusal: dict[str, Any] | None = None) -> None:
         job.state = state
         job.error = error
+        job.refusal = refusal
         worker = job.worker
         job.worker = None
         if worker is not None and worker.job is job:
