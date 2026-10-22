@@ -22,8 +22,8 @@ leaves reference rows out and numbers the rest again). Refused too: a plan under
 (its result is an estimate, not a prediction), a task other than a yes/no outcome or a number, a
 feature-major table, model updating by shrinkage (applied after the fit, which this module does not
 apply), a family the fit did not keep, more than one family with none named, a fit or design not
-computed, and new rows whose predictor reads as text where the plan's read numbers, or the
-reverse.
+computed, new rows without a predictor that is a column of the table (each named), and new rows
+whose predictor reads as text where the plan's read numbers, or the reverse.
 """
 from __future__ import annotations
 
@@ -87,6 +87,12 @@ def _same(a: pd.Series, b: pd.Series) -> bool:
     return bool(np.array_equal(av.astype(str), bv.astype(str)))
 
 
+def _columns(parquet: str | Path) -> list[str]:
+    import pyarrow.parquet as pq
+
+    return list(pq.read_schema(str(parquet)).names)
+
+
 def _ingested(frame: pd.DataFrame | str | Path, folder: Path) -> Path:
     """The new rows as the engine's ingest reads a file into Parquet."""
     from turbotab.core.datastore import ingest
@@ -110,6 +116,7 @@ def predict(service: Any, pid: str, rows: pd.DataFrame | str | Path, *,
     from turbotab.core.repairs import column_expressions, evaluate
     from turbotab.core.stages.modeling import row_ids_of
     from turbotab.core.stages.working import ROW_MAP, TABLE
+    from turbotab.core.voice import listing
 
     state = fold(service.log(pid).records())
     if state.purpose != "prediction":
@@ -166,9 +173,14 @@ def predict(service: Any, pid: str, rows: pd.DataFrame | str | Path, *,
                            f"way.")
     with tempfile.TemporaryDirectory(prefix="turbotab-score-") as folder:
         parquet = _ingested(rows, Path(folder))
+        given, table = set(_columns(parquet)), set(_columns(raw))
+        lacking = [c for c in inputs if c in table and c not in given]
+        if lacking:
+            raise ScoreRefused(f"The new rows cannot be read as the plan's predictors: they lack "
+                               f"{listing(lacking)}.")
         try:
             new = normalize_frame(evaluate(parquet, inputs, sql))
-        except Exception as exc:  # noqa: BLE001 - a column the rows lack, said
+        except Exception as exc:  # noqa: BLE001 - another column the steps read, said
             raise ScoreRefused(f"The new rows cannot be read as the plan's predictors: {exc}") \
                 from None
     kinds = [c for c in inputs if _kind(new[c]) != _kind(theirs[c])]

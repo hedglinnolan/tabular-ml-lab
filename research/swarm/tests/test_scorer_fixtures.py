@@ -6,11 +6,15 @@ the engine: statsmodels' least squares, the logs' own lines.
 * A numeric outcome under prediction, two families fitted: unnamed, the scorer refuses and names
   both; named, the straight line's predictions on new rows are statsmodels' OLS refit on the same
   training rows.
-* Refused, each by what it names: new rows whose ``age`` is text where the plan read numbers; a
-  plan that shrinks its model after the fit (``set_updating``, recorded by the engine on a copy of
-  a rebuilt plan); a working table that combines each patient's visits into one row; and one that
-  leaves a metabolite panel's pooled QC injections out (its rows numbered again), which combines
-  nothing and is said so.
+* Refused, each by what it names: new rows whose ``age`` is text where the plan read numbers, and
+  new rows with no ``age`` at all; a plan that shrinks its model after the fit (``set_updating``,
+  recorded by the engine on a copy of a rebuilt plan); a working table that combines each
+  patient's visits into one row; one that leaves a metabolite panel's pooled QC injections out
+  (its rows numbered again), which combines nothing and is said so; an outcome of three levels
+  (the readmission draw's, the readmitted split by a coin of its own), which a yes/no's event
+  probability would misreport; and a metabolite panel exported features-in-rows and turned.
+
+Each plan is built the first time a test asks for it, so a test run by name pays for its own.
 
 The binary branch's own number (statsmodels' Logit) and the refusals of a plan under inference, a
 family not kept and a working table the steps do not reproduce are in ``test_replay_fixtures.py``.
@@ -36,6 +40,8 @@ pytestmark = pytest.mark.slow
 
 SEED, ROWS = 101, 400
 NUMERIC_OUTCOME = "albumin_g_dl"
+THREE_LEVELS = "readmission"  # none, within_7d or after_7d
+TURNED_FEATURES = 8
 SPLIT = {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5}
 
 
@@ -53,6 +59,29 @@ def visits(seed: int) -> pd.DataFrame:
     frame.insert(1, "visit_date", (pd.Timestamp("2025-01-01")
                                    + pd.to_timedelta(30 * (i % 3), unit="D")).strftime("%Y-%m-%d"))
     return frame
+
+
+def three_levels(seed: int, n: int = ROWS) -> pd.DataFrame:
+    """The readmission draw with its outcome in three levels: not readmitted, or readmitted within
+    a week or after it, by a fair coin from a stream of its own."""
+    frame = G.readmission(seed, n)
+    coin = np.random.default_rng([seed, 3]).random(n) < 0.5
+    readmitted = frame.pop(G.READMISSION_OUTCOME).to_numpy() == 1
+    frame[THREE_LEVELS] = np.where(~readmitted, "none", np.where(coin, "within_7d", "after_7d"))
+    return frame
+
+
+def turned_panel(seed: int) -> pd.DataFrame:
+    """The measurement fixture's participants exported features-in-rows, as an assay table often
+    is: a row for age, BMI, each of the first features detected in every participant, and the
+    outcome; a column per sample, named by its id."""
+    frame = G.metabolite_panel(seed)
+    frame = frame[frame["sample_type"] == "participant"].set_index("sample_id")
+    features = [c for c in frame.columns if c.startswith("mz_") and frame[c].notna().all()]
+    block = frame[["age", "bmi", *features[:TURNED_FEATURES], G.PANEL_OUTCOME]]
+    turned = block.astype(float).T
+    turned.index.name = "feature_id"
+    return turned.reset_index()
 
 
 def small_panel(seed: int) -> pd.DataFrame:
@@ -83,18 +112,44 @@ def _service(home: Path):
                                               workers=2), replay=True)
 
 
+class Plans:
+    """Each journey's bundle, rebuilt by replay cut before its opening and kept, the first time a
+    test asks for it by name (``plans["folder"]`` holds the bundles)."""
+
+    def __init__(self, folder: Path, specs: list):
+        self.folder, self.specs, self.built = folder, {s.name: s for s in specs}, {}
+
+    def __getitem__(self, name: str):
+        from turbotab.core.export import replay
+        from turbotab.core.reference import journeys as J
+
+        if name == "folder":
+            return self.folder
+        if name not in self.built:
+            spec, folder = self.specs[name], self.folder
+            capture = J.run_journey(spec, bundles=folder, out_dir=folder / "captures")
+            assert capture["export"]["status"] == 200, capture["notes"]
+            home = folder / f"kept-{spec.name}"
+            report = replay.run(folder / f"{spec.name}.zip", workers=2, cut=True, keep=True,
+                                home=str(home))
+            assert report.finished is True, report.messages
+            self.built[name] = (home, report.project)
+        return self.built[name]
+
+
 @pytest.fixture(scope="module")
 def plans(tmp_path_factory):
-    """Three journeys' bundles, each rebuilt by replay cut before its opening and kept: the numeric
-    outcome with two families, the yes/no outcome with one, the visits combined per patient."""
-    from turbotab.core.export import replay
+    """The journeys: the numeric outcome with two families, the yes/no outcome with one, the
+    visits combined per patient, the panel with its pooled QCs set aside, the outcome of three
+    levels and the panel turned."""
     from turbotab.core.reference import journeys as J
     from turbotab.core.tests.truths import FIXTURE_TRUTHS
 
     folder = tmp_path_factory.mktemp("plans")
     truth = dict(FIXTURE_TRUTHS[G.READMISSION_FILE])
     tables = {"numeric": numeric_outcome(SEED), "binary": G.readmission(SEED, ROWS),
-              "visits": visits(SEED), "panel": small_panel(G.PANEL_SEED)}
+              "visits": visits(SEED), "panel": small_panel(G.PANEL_SEED),
+              "multiclass": three_levels(SEED), "turned": turned_panel(G.PANEL_SEED)}
     paths = {}
     for name, frame in tables.items():
         paths[name] = folder / f"{name}.csv"
@@ -133,17 +188,23 @@ def plans(tmp_path_factory):
                   answers={"split": SPLIT, "models": {"kind": "select_models",
                                                       "models": ["linear"]}},
                   before={"target": qc_aside}),
+        J.Journey("multiclass", "clinical", "prediction", "?", str(paths["multiclass"]), "test",
+                  lambda: paths["multiclass"], lambda: J.truth(truth, fixture="multiclass.csv"),
+                  target=THREE_LEVELS, lenses=("clinical",),
+                  answers={"split": SPLIT, "models": {"kind": "select_models",
+                                                      "models": ["linear"]}},
+                  # sex's coding only: the outcome's "none" against the rest is a finding too
+                  before={"target": J.apply_first_repair("sex")}),
+        J.Journey("turned", "metabolomics", "prediction", "?", str(paths["turned"]), "test",
+                  lambda: paths["turned"],
+                  lambda: J.truth(dict(FIXTURE_TRUTHS[G.PANEL_FILE]), fixture="turned.csv"),
+                  target=G.PANEL_OUTCOME, lenses=("metabolomics",), event="1",
+                  answers={"orientation": {"kind": "set_orientation",
+                                           "orientation": "feature_major"},
+                           "split": SPLIT, "models": {"kind": "select_models",
+                                                      "models": ["linear"]}}),
     ]
-    out = {"folder": folder}
-    for spec in specs:
-        capture = J.run_journey(spec, bundles=folder, out_dir=folder / "captures")
-        assert capture["export"]["status"] == 200, capture["notes"]
-        home = folder / f"kept-{spec.name}"
-        report = replay.run(folder / f"{spec.name}.zip", workers=2, cut=True, keep=True,
-                            home=str(home))
-        assert report.finished is True, report.messages
-        out[spec.name] = (home, report.project)
-    return out
+    return Plans(folder, specs)
 
 
 def _training_rows(home: Path, pid: str) -> np.ndarray:
@@ -254,3 +315,54 @@ def test_a_working_table_that_leaves_the_pooled_qcs_out_is_refused_as_such(plans
                        match="leaves reference rows out and numbers the rest again") as refused:
         scorer.predict_in(home, pid, new, workers=2)
     assert "combines" not in refused.value.message
+
+
+def test_new_rows_with_no_age_are_refused_by_name(plans):
+    """``age`` is a column of the table and one of the plan's predictors (``spec.inputs``): rows
+    without it are refused before any prediction, the column named; rows without ``sex`` too
+    name both, in the plan's order."""
+    from turbotab.core.export import scorer
+
+    home, pid = plans["binary"]
+    new = G.readmission(SEED + 54, 50).drop(columns=[G.READMISSION_OUTCOME])
+    with pytest.raises(scorer.ScoreRefused,
+                       match=r"^The new rows cannot be read as the plan's predictors: they lack "
+                             r"`age`\.$"):
+        scorer.predict_in(home, pid, new.drop(columns=["age"]), workers=2)
+    with pytest.raises(scorer.ScoreRefused, match=r"they lack `age` and `sex`\.$"):
+        scorer.predict_in(home, pid, new.drop(columns=["sex", "age"]), workers=2)
+
+
+def test_an_outcome_of_three_levels_is_refused_not_read_as_an_event(plans):
+    """The plan's own record says multiclass (its ``set_task``, the engine's detection): a yes/no's
+    probability of the level coded 1 would be one class's probability reported as the event's."""
+    from turbotab.core.export import scorer
+
+    home, pid = plans["multiclass"]
+    with zipfile.ZipFile(plans["folder"] / "multiclass.zip") as z:
+        log = [json.loads(x)["decision"] for x in z.read("turbotab-export/decisions.jsonl")
+               .splitlines()]
+    assert {"kind": "set_task", "column": THREE_LEVELS, "task": "multiclass"} in [
+        {k: d.get(k) for k in ("kind", "column", "task")} for d in log]
+    new = three_levels(SEED + 55, 50).drop(columns=[THREE_LEVELS])
+    with pytest.raises(scorer.ScoreRefused,
+                       match="A multiclass outcome is not scored here: only a yes/no outcome or "
+                             "a number"):
+        scorer.predict_in(home, pid, new, workers=2)
+
+
+def test_a_panel_exported_features_in_rows_is_refused_as_turned(plans):
+    """The table's rows are features (``set_orientation`` feature_major, recorded): new samples
+    would come as columns of such a table, which the scorer does not turn."""
+    from turbotab.core.export import scorer
+
+    home, pid = plans["turned"]
+    with zipfile.ZipFile(plans["folder"] / "turned.zip") as z:
+        log = [json.loads(x)["decision"] for x in z.read("turbotab-export/decisions.jsonl")
+               .splitlines()]
+    assert {"kind": "set_orientation", "orientation": "feature_major"} in [
+        {k: d.get(k) for k in ("kind", "orientation")} for d in log]
+    new = turned_panel(G.PANEL_SEED + 1)
+    with pytest.raises(scorer.ScoreRefused, match="The table is feature-major: new rows cannot be "
+                                                  "read the way its turned working table was"):
+        scorer.predict_in(home, pid, new, workers=2)

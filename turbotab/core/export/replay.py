@@ -824,8 +824,8 @@ def summary(report: ReplayReport) -> str:
         return "\n".join(lines)
     if report.cut is not None:
         c = report.cut
-        lines.append(f"  The log cut before its first `{c.kind}` (record {c.seq}): {c.kept} records "
-                     f"kept, {c.left} left out." if c.seq is not None else
+        lines.append(f"  The log cut before its first live `{c.kind}` (record {c.seq}): {c.kept} "
+                     f"records kept, {c.left} left out." if c.seq is not None else
                      f"  The log holds no live `{c.kind}`: nothing was cut.")
     for o in report.left_out:
         lines.append(f"  Record {o.seq} ({o.kind}) left out of the fresh draw: {o.why}.")
@@ -882,8 +882,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
     parser.add_argument("--timeout", type=float, default=3600.0, help="seconds to wait (default 3600)")
     parser.add_argument("--truncate", nargs="?", const=True, default=False, metavar="KIND",
-                        help="rebuild from the log before its first open_seal (under Estimate "
-                             "lock_plan), or before KIND; nothing is compared")
+                        help="rebuild from the log before its first live open_seal (under "
+                             "Estimate lock_plan), or before KIND; nothing is compared")
     parser.add_argument("--fresh-draw", metavar="MODULE:FUNCTION",
                         help="rebuild on a fresh draw of this generator (a function of a seed); "
                              "nothing is compared")

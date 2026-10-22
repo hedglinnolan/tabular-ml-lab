@@ -347,3 +347,30 @@ def test_the_summary_says_each_record_left_out_and_each_repair_redrawn():
             "does not fire on this draw.") in text
     assert (f"Record 2 (apply_repair) replayed with the fresh draw's settings for `qc_rlsc_lc` of "
             f"`{QC}`; these differ from the record's: dropped, kept.") in text
+
+
+def test_the_summary_and_the_help_name_the_live_record_the_log_was_cut_before(tmp_path, capsys):
+    """A lock withdrawn by a revert (Fit pressed, then cancelled) stays in the rebuilt log, so the
+    summary says the cut came before the first *live* lock, and the help says the same of the
+    flag; with no live one it says nothing was cut."""
+    log = _log(tmp_path, [
+        {"kind": "set_target", "column": "y"},
+        {"kind": "set_purpose", "purpose": "inference"},
+        {"kind": "lock_plan"},
+        {"kind": "revert", "decision_id": 3},
+        {"kind": "select_models", "models": ["linear"]},
+        {"kind": "lock_plan"},
+    ])
+    _, where = replay.truncate(log)
+    assert where == replay.Cut(kind="lock_plan", seq=6, kept=5, left=1)
+    text = replay.summary(replay.ReplayReport(bundle="b.zip", reproduced=False, finished=True,
+                                              estimates_again={}, cut=where))
+    assert ("The log cut before its first live `lock_plan` (record 6): 5 records kept, 1 left "
+            "out.") in text
+    _, nowhere = replay.truncate(log, "open_seal")
+    text = replay.summary(replay.ReplayReport(bundle="b.zip", reproduced=False, finished=True,
+                                              estimates_again={}, cut=nowhere))
+    assert "The log holds no live `open_seal`: nothing was cut." in text
+    with pytest.raises(SystemExit):
+        replay.main(["--help"])
+    assert "before its first live open_seal" in " ".join(capsys.readouterr().out.split())
