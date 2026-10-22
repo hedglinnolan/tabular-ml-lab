@@ -10,7 +10,12 @@ lines, hashlib, statsmodels.
   cross-validated ones; the Estimate log is cut before its lock and gives the same estimate.
 * A fresh draw: the table is the generator's own bytes at the new seed, and the rebuilt crude
   estimate is statsmodels' least squares on that table; a generator that does not write the
-  recorded table at the recorded seed is refused before anything is built.
+  recorded table at the recorded seed is refused before anything is built, and so is the Predict
+  log uncut, whose opening holds the recorded draw's held-out scores.
+* A spline whose k the server set by Harrell's rule, under each purpose: rebuilt on a new draw
+  whose analyzed rows give the effective sample size the record states (a numeric outcome's row
+  count; the smaller of the events and non-events, counted by pandas), refused on one whose rows
+  give another.
 * The findings rule: the sex repair is kept as its own bytes where its finding fires on the new
   draw, and left out, named, where the new draw's sex has a third level and the finding cannot
   fire; a missing-value code only the new draw holds raises a finding no record answers, and the
@@ -257,6 +262,169 @@ def test_a_fresh_draw_from_a_generator_that_did_not_write_the_table_is_refused(b
                         fresh=replay.FreshDraw(small_bp, ESTIMATE_SEED + 5, ESTIMATE_SEED + 6))
     assert report.refused and "does not write the recorded table" in report.refused
     assert report.home is None and report.project is None and report.finished is None
+
+
+def test_a_fresh_draw_of_the_uncut_predict_log_is_refused_naming_its_opening(bundles):
+    """The Predict log opens its held-out rows; uncut, its opening's scores (the recorded draw's)
+    would be the rebuilt result. Refused before any project is built, the record and its score
+    named, and ``--truncate open_seal`` given; cut, the same draw is rebuilt (the findings-rule
+    tests below), as is the Estimate log uncut (above)."""
+    from turbotab.core.export import replay
+
+    log = [json.loads(x) for x in _bundle_files(bundles["predict"])["decisions.jsonl"].splitlines()]
+    [opening] = [r for r in log if r["decision"]["kind"] == "open_seal"]
+    score = opening["decision"]["scores"]["linear"]["log_loss"]
+    assert opening["decision"]["n_holdout"] == int(round(ROWS * 0.2))
+    report = replay.run(bundles["predict"], workers=2,
+                        fresh=replay.FreshDraw(small_readmission, PREDICT_SEED, PREDICT_SEED + 3))
+    assert report.refused is not None, report.messages
+    assert report.refused.startswith(
+        f"Record {opening['seq']} (open_seal) holds the recorded draw's held-out scores as the "
+        f"plan's reported result (`linear`'s held-out `log_loss` {score:.3g} on "
+        f"{int(round(ROWS * 0.2))} rows)")
+    assert "--truncate open_seal" in report.refused
+    assert report.finished is None and report.project is None and report.home is None
+
+
+# ── a spline whose k is Harrell's rule ───────────────────────────────────────
+
+
+def fewer_bp_rows(seed: int) -> pd.DataFrame:
+    """``small_bp`` at the recorded seed; at any other seed 20 rows fewer, so the analyzed rows'
+    effective sample size (their number, for a numeric outcome) is another."""
+    return G.blood_pressure(seed, ROWS if seed == ESTIMATE_SEED else ROWS - 20)
+
+
+def harrell_k(n: float) -> int:
+    """Harrell's rule as the record states it: 3 knots below an effective sample size of 30, 5
+    from 100, else 4."""
+    return 3 if n < 30 else 5 if n >= 100 else 4
+
+
+def events_or_not(frame: pd.DataFrame) -> int:
+    """The smaller of the events and the non-events: a yes/no outcome's effective sample size."""
+    y = frame[G.READMISSION_OUTCOME].to_numpy()
+    return int(min(y.sum(), len(y) - y.sum()))
+
+
+def spline_once_the_rows_are_read(run, view) -> None:
+    """Before the models: ``age`` read as an amount (as the fixture's truth reads it; a form waits
+    for that reading), then, once the outcome's task, the working table, the cohort and the split
+    are computed again (what the rule reads), a spline of ``age`` with no k given."""
+    from turbotab.core.reference import journeys as J
+
+    J.post_answer(run, {"kind": "confirm_reading", "reading": "code_or_count", "column": "age",
+                        "value": "amount"})
+    for stage in ("target_info", "working", "cohort", "split"):
+        J._artifact(run, stage)
+    J.post_answer(run, {"kind": "set_exposure_form", "column": "age", "form": "spline"})
+
+
+@pytest.fixture(scope="module")
+def splines(tmp_path_factory):
+    """Two journeys whose ``age`` takes a spline with no k given, so the server records k by
+    Harrell's rule and the effective sample size it read: the Estimate fixture's oracle answers
+    with ``set_forms``, and the Predict fixture's default path with ``set_exposure_form``."""
+    from turbotab.core.reference import journeys as J
+    from turbotab.core.tests.truths import FIXTURE_TRUTHS
+
+    folder = tmp_path_factory.mktemp("splines")
+    predict = folder / G.READMISSION_FILE
+    small_readmission(PREDICT_SEED).to_csv(predict, index=False)
+    estimate = folder / G.ESTIMATE_FILE
+    small_bp(ESTIMATE_SEED).to_csv(estimate, index=False)
+    specs = [
+        J.Journey("spline-estimate", "clinical", "inference", "?", str(estimate), "test",
+                  lambda: estimate,
+                  lambda: J.truth(dict(FIXTURE_TRUTHS[G.ESTIMATE_FILE]), fixture=estimate.name),
+                  target="sbp_mmhg", lenses=("clinical",), exposure="walks_daily",
+                  roles={"person_id": "identifier", "age": "covariate", "chronic_pain": "covariate",
+                         "walks_daily": "exposure", "height_cm": "covariate",
+                         "health_concern_score": "covariate"},
+                  before={"models": J.declare({"kind": "set_forms",
+                                               "forms": {"age": {"form": "spline"}}})}),
+        J.Journey("spline-predict", "clinical", "prediction", "?", str(predict), "test",
+                  lambda: predict,
+                  lambda: J.truth(dict(FIXTURE_TRUTHS[G.READMISSION_FILE]), fixture=predict.name),
+                  target=G.READMISSION_OUTCOME, lenses=("clinical",), event="1",
+                  answers={"split": {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5},
+                           "models": {"kind": "select_models", "models": ["linear"]}},
+                  before={"target": J.apply_first_repair("."),
+                          "models": spline_once_the_rows_are_read}),
+    ]
+    for spec in specs:
+        capture = J.run_journey(spec, bundles=folder, out_dir=folder / "captures")
+        assert capture["export"]["status"] == 200, capture["notes"]
+    return {"estimate": folder / "spline-estimate.zip", "predict": folder / "spline-predict.zip"}
+
+
+def _age_spline(path: Path) -> tuple[int, str, dict]:
+    """The last record that gives ``age`` its form: its seq, kind and form."""
+    found = None
+    for line in _bundle_files(path)["decisions.jsonl"].splitlines():
+        r = json.loads(line)
+        d = r["decision"]
+        if d["kind"] == "set_forms" and "age" in d["forms"]:
+            found = (r["seq"], d["kind"], d["forms"]["age"])
+        elif d["kind"] == "set_exposure_form" and d["column"] == "age":
+            found = (r["seq"], d["kind"], {k: v for k, v in d.items() if k not in ("kind", "column")})
+    assert found is not None
+    return found
+
+
+def test_an_estimate_spline_is_rebuilt_where_the_new_draw_reads_its_size_and_refused_elsewhere(
+        splines):
+    """The record's k = 5 by the rule on 400 analyzed rows (the table's, a numeric outcome's size
+    is its rows). A new draw of 400 rows reads the same size: rebuilt, the estimate served. A new
+    draw of 380 rows reads 380 (k = 5 still, but the record states 400): refused, both sizes
+    named, nothing kept."""
+    from turbotab.core.export import replay
+
+    seq, kind, form = _age_spline(splines["estimate"])
+    assert (form["form"], form["knots_rule"], form["n_effective"], form["knots"]) == (
+        "spline", "harrell", float(ROWS), harrell_k(ROWS))
+    same = replay.run(splines["estimate"], workers=2,
+                      fresh=replay.FreshDraw(small_bp, ESTIMATE_SEED, ESTIMATE_SEED + 1))
+    assert same.refused is None and same.finished is True, (same.refused, same.messages)
+    assert "table2|linear/model_2/walks_daily|estimate" in same.estimates_again
+    fewer = replay.run(splines["estimate"], workers=2,
+                       fresh=replay.FreshDraw(fewer_bp_rows, ESTIMATE_SEED, ESTIMATE_SEED + 1))
+    assert fewer.refused == (
+        f"Record {seq} ({kind}) gives `age` a spline whose k is Harrell's rule on the analyzed "
+        f"rows: k = {harrell_k(ROWS)} on an effective sample size of {ROWS} on the recorded draw, "
+        f"and on this draw the rule reads {ROWS - 20} (k = {harrell_k(ROWS - 20)}). A fresh draw "
+        f"replays the record's k and the size it states as recorded, so the rebuild is refused."
+    ), (fewer.refused, fewer.messages)
+    assert fewer.project is None and fewer.home is None and fewer.finished is None
+
+
+def test_a_predict_spline_is_rebuilt_where_the_new_draw_reads_its_size_and_refused_elsewhere(
+        splines):
+    """Under prediction the record's k reads the smaller of the events and the non-events on the
+    split's rows (all 400): 117 at the recorded seed (pandas, on the generator's frame), k = 5.
+    Cut before the opening, a draw with 117 again is rebuilt; one with 95 (k = 4) is refused."""
+    from turbotab.core.export import replay
+
+    seq, kind, form = _age_spline(splines["predict"])
+    recorded = events_or_not(small_readmission(PREDICT_SEED))
+    assert (form["form"], form["knots_rule"], form["n_effective"], form["knots"]) == (
+        "spline", "harrell", float(recorded), harrell_k(recorded))
+    alike, other = PREDICT_SEED + 122, PREDICT_SEED + 3
+    assert events_or_not(small_readmission(alike)) == recorded
+    fewer = events_or_not(small_readmission(other))
+    assert harrell_k(fewer) != harrell_k(recorded)
+    same = replay.run(splines["predict"], workers=2, cut=True,
+                      fresh=replay.FreshDraw(small_readmission, PREDICT_SEED, alike))
+    assert same.refused is None and same.finished is True, (same.refused, same.messages)
+    assert any("/cv/" in k for k in same.estimates_again)
+    refused = replay.run(splines["predict"], workers=2, cut=True,
+                         fresh=replay.FreshDraw(small_readmission, PREDICT_SEED, other))
+    assert refused.refused == (
+        f"Record {seq} ({kind}) gives `age` a spline whose k is Harrell's rule on the analyzed "
+        f"rows: k = {harrell_k(recorded)} on an effective sample size of {recorded} on the "
+        f"recorded draw, and on this draw the rule reads {fewer} (k = {harrell_k(fewer)}). A "
+        f"fresh draw replays the record's k and the size it states as recorded, so the rebuild "
+        f"is refused."), (refused.refused, refused.messages)
 
 
 # ── the findings rule ────────────────────────────────────────────────────────

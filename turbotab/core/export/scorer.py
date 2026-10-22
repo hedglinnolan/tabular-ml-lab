@@ -19,11 +19,14 @@ the project was made from, and each predictor compared with the working table th
 predictor that differs (one QC-RLSC corrected, say, or any step but the repairs' own SQL) is
 refused by name, as is a working table whose rows are not the table's own (it combines rows, or
 leaves reference rows out and numbers the rest again). Refused too: a plan under inference
-(its result is an estimate, not a prediction), a task other than a yes/no outcome or a number, a
-feature-major table, model updating by shrinkage (applied after the fit, which this module does not
-apply), a family the fit did not keep, more than one family with none named, a fit or design not
-computed, new rows without a predictor that is a column of the table (each named), and new rows
-whose predictor reads as text where the plan's read numbers, or the reverse.
+(its result is an estimate, not a prediction), a plan whose outcome is analyzed on the log scale
+(its model predicts ``ln_<column>``, named, not the column), a task other than a yes/no outcome or
+a number, a feature-major table, model updating by shrinkage (applied after the fit, which this
+module does not apply), a family the fit did not keep, more than one family with none named, a fit
+or design not computed, new rows without a predictor that is a column of the table (each named),
+new rows whose predictor reads as text where the plan's read numbers, or the reverse, and new rows
+holding a blank in a predictor the fitted pipeline does not fill (a plan fit on complete cases holds
+no imputer), the columns named and the rows with a blank counted, before anything is predicted.
 """
 from __future__ import annotations
 
@@ -110,7 +113,7 @@ def predict(service: Any, pid: str, rows: pd.DataFrame | str | Path, *,
     """The plan's predictions on ``rows`` (a frame, or a table file the engine reads), for
     ``family`` (by default the one family fitted). Raises :class:`ScoreRefused` (module docstring)."""
     from turbotab.core.datastore import DataStore
-    from turbotab.core.decisions import fold
+    from turbotab.core.decisions import fold, log_outcome_name
     from turbotab.core.models.metrics import predict as predict_with
     from turbotab.core.models.pipeline import DesignSpec, normalize_frame
     from turbotab.core.repairs import column_expressions, evaluate
@@ -122,6 +125,12 @@ def predict(service: Any, pid: str, rows: pd.DataFrame | str | Path, *,
     if state.purpose != "prediction":
         raise ScoreRefused(f"The plan is declared for {state.purpose or 'no purpose'}: its result is "
                            f"an estimate, not a prediction on new rows.")
+    scale = getattr(state, "outcome_scale", None)
+    if getattr(scale, "scale", None) == "log" and state.target == log_outcome_name(scale.column):
+        raise ScoreRefused(f"The plan analyzes `{state.target}`, the log of its outcome "
+                           f"`{scale.column}` (the outcome's scale answer is log): its model "
+                           f"predicts `{state.target}`, so no prediction of `{scale.column}` is "
+                           f"returned.")
     if state.orientation == "feature_major":
         raise ScoreRefused("The table is feature-major: new rows cannot be read the way its "
                            "turned working table was.")
@@ -183,6 +192,19 @@ def predict(service: Any, pid: str, rows: pd.DataFrame | str | Path, *,
         except Exception as exc:  # noqa: BLE001 - another column the steps read, said
             raise ScoreRefused(f"The new rows cannot be read as the plan's predictors: {exc}") \
                 from None
+    # Right or refused: a blank the fitted pipeline does not fill is no row the plan predicts for.
+    filled = set(spec.levels) | (set(inputs) if spec.impute else set())
+    blank = [c for c in inputs if c not in filled and bool(new[c].isna().any())]
+    if blank:
+        count = int(new[blank].isna().any(axis=1).sum())
+        answer = getattr(getattr(state, "missing", None), "strategy", None)
+        why = (f"its missing-values answer is `{answer}`" if answer else
+               "it was given no missing-values answer")
+        raise ScoreRefused(f"{count:,} of the {len(new):,} new rows "
+                           f"{'holds' if count == 1 else 'hold'} a blank in {listing(blank)}, "
+                           f"{'a predictor' if len(blank) == 1 else 'predictors'} the plan's "
+                           f"fitted pipeline does not fill: it holds no imputer ({why}). Nothing "
+                           f"was predicted.")
     kinds = [c for c in inputs if _kind(new[c]) != _kind(theirs[c])]
     if kinds:
         raise ScoreRefused(f"In the new rows {', '.join(f'`{c}`' for c in kinds)} read as "

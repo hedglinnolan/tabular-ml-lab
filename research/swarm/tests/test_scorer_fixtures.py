@@ -12,7 +12,11 @@ the engine: statsmodels' least squares, the logs' own lines.
   patient's visits into one row; one that leaves a metabolite panel's pooled QC injections out
   (its rows numbered again), which combines nothing and is said so; an outcome of three levels
   (the readmission draw's, the readmitted split by a coin of its own), which a yes/no's event
-  probability would misreport; and a metabolite panel exported features-in-rows and turned.
+  probability would misreport; a metabolite panel exported features-in-rows and turned; a plan
+  whose outcome is analyzed on the log scale (``ln_albumin_g_dl``), whose model predicts the log;
+  and, from a plan fit on complete cases, new rows with a blank in a predictor its pipeline does
+  not fill, the columns named and the rows counted (the same rows with no blank are scored as
+  statsmodels' Logit).
 
 Each plan is built the first time a test asks for it, so a test run by name pays for its own.
 
@@ -68,6 +72,14 @@ def three_levels(seed: int, n: int = ROWS) -> pd.DataFrame:
     coin = np.random.default_rng([seed, 3]).random(n) < 0.5
     readmitted = frame.pop(G.READMISSION_OUTCOME).to_numpy() == 1
     frame[THREE_LEVELS] = np.where(~readmitted, "none", np.where(coin, "within_7d", "after_7d"))
+    return frame
+
+
+def tenth_blank(seed: int, n: int = ROWS) -> pd.DataFrame:
+    """The readmission draw with every tenth row's hemoglobin blank: a complete-case plan's
+    table."""
+    frame = G.readmission(seed, n)
+    frame.loc[frame.index % 10 == 0, "hemoglobin_g_dl"] = np.nan
     return frame
 
 
@@ -141,7 +153,8 @@ class Plans:
 def plans(tmp_path_factory):
     """The journeys: the numeric outcome with two families, the yes/no outcome with one, the
     visits combined per patient, the panel with its pooled QCs set aside, the outcome of three
-    levels and the panel turned."""
+    levels, the panel turned, the numeric outcome on the log scale, and the yes/no outcome fit on
+    complete cases."""
     from turbotab.core.reference import journeys as J
     from turbotab.core.tests.truths import FIXTURE_TRUTHS
 
@@ -149,7 +162,8 @@ def plans(tmp_path_factory):
     truth = dict(FIXTURE_TRUTHS[G.READMISSION_FILE])
     tables = {"numeric": numeric_outcome(SEED), "binary": G.readmission(SEED, ROWS),
               "visits": visits(SEED), "panel": small_panel(G.PANEL_SEED),
-              "multiclass": three_levels(SEED), "turned": turned_panel(G.PANEL_SEED)}
+              "multiclass": three_levels(SEED), "turned": turned_panel(G.PANEL_SEED),
+              "logscale": numeric_outcome(SEED), "complete": tenth_blank(SEED)}
     paths = {}
     for name, frame in tables.items():
         paths[name] = folder / f"{name}.csv"
@@ -203,6 +217,21 @@ def plans(tmp_path_factory):
                                            "orientation": "feature_major"},
                            "split": SPLIT, "models": {"kind": "select_models",
                                                       "models": ["linear"]}}),
+        J.Journey("logscale", "clinical", "prediction", "?", str(paths["logscale"]), "test",
+                  lambda: paths["logscale"], lambda: J.truth(truth, fixture="logscale.csv"),
+                  target=NUMERIC_OUTCOME, lenses=("clinical",),
+                  answers={"split": SPLIT, "models": {"kind": "select_models",
+                                                      "models": ["linear"]}},
+                  before={"target": J.apply_first_repair("."),
+                          "split": J.declare({"kind": "set_outcome_scale",
+                                              "column": NUMERIC_OUTCOME, "scale": "log"})}),
+        J.Journey("complete", "clinical", "prediction", "?", str(paths["complete"]), "test",
+                  lambda: paths["complete"], lambda: J.truth(truth, fixture="complete.csv"),
+                  target=G.READMISSION_OUTCOME, lenses=("clinical",), event="1",
+                  answers={"missing": {"kind": "set_missing", "strategy": "complete_case"},
+                           "split": SPLIT, "models": {"kind": "select_models",
+                                                      "models": ["linear"]}},
+                  before={"target": J.apply_first_repair(".")}),
     ]
     return Plans(folder, specs)
 
@@ -366,3 +395,76 @@ def test_a_panel_exported_features_in_rows_is_refused_as_turned(plans):
     with pytest.raises(scorer.ScoreRefused, match="The table is feature-major: new rows cannot be "
                                                   "read the way its turned working table was"):
         scorer.predict_in(home, pid, new, workers=2)
+
+
+def _log_of(name: str, folder: Path) -> list[dict]:
+    with zipfile.ZipFile(folder / f"{name}.zip") as z:
+        return [json.loads(x)["decision"] for x in z.read("turbotab-export/decisions.jsonl")
+                .splitlines()]
+
+
+def test_a_plan_that_analyzes_the_log_of_its_outcome_is_refused_naming_it(plans):
+    """``set_outcome_scale`` log makes ``ln_<column>`` the outcome (the record's own answer): the
+    model predicts the log, so the scorer refuses, naming the analyzed outcome and the column,
+    rather than return log-scale numbers as predictions of albumin. The plan on the original
+    scale is scored as statsmodels' OLS (the least-squares test above)."""
+    from turbotab.core.export import scorer
+
+    home, pid = plans["logscale"]
+    assert {"kind": "set_outcome_scale", "column": NUMERIC_OUTCOME, "scale": "log"} in [
+        {k: d.get(k) for k in ("kind", "column", "scale")} for d in _log_of("logscale",
+                                                                             plans["folder"])]
+    new = numeric_outcome(SEED + 56, 100).drop(columns=[NUMERIC_OUTCOME])
+    with pytest.raises(scorer.ScoreRefused) as refused:
+        scorer.predict_in(home, pid, new, workers=2)
+    assert refused.value.message.startswith(
+        f"The plan analyzes `ln_{NUMERIC_OUTCOME}`, the log of its outcome `{NUMERIC_OUTCOME}`")
+    assert f"no prediction of `{NUMERIC_OUTCOME}` is returned" in refused.value.message
+
+
+def test_a_complete_case_plan_refuses_new_rows_with_a_blank_it_does_not_fill(plans):
+    """Fit on complete cases (``set_missing`` complete_case, recorded), the pipeline holds no
+    imputer. New rows with no blank are scored as statsmodels' Logit refit on the plan's training
+    rows, none of which has a blank; the same rows with every fifth hemoglobin blank and one age
+    blank are refused before any prediction, both columns named in the plan's order and the 11
+    rows with a blank counted, and so are rows whose hemoglobin is blank throughout (said as
+    blanks, not as text)."""
+    import statsmodels.api as sm
+
+    from turbotab.core.export import scorer
+
+    home, pid = plans["complete"]
+    assert {"kind": "set_missing", "strategy": "complete_case"} in [
+        {k: d.get(k) for k in ("kind", "strategy")} for d in _log_of("complete", plans["folder"])]
+    new = G.readmission(SEED + 57, 50).drop(columns=[G.READMISSION_OUTCOME])
+    assert not new.isna().any().any()
+    scored = scorer.predict_in(home, pid, new, workers=2)
+    table = tenth_blank(SEED)
+    predictors = [c for c in table.columns if c not in ("encounter_id", G.READMISSION_OUTCOME)]
+    assert scored.inputs == predictors
+
+    def design(frame: pd.DataFrame) -> pd.DataFrame:
+        X = frame[predictors].copy()
+        X["sex"] = (X["sex"] == "F").astype(float)
+        return sm.add_constant(X.astype(float), has_constant="add")
+
+    train = _training_rows(home, pid)
+    assert len(train) == scored.checked_rows and not table.loc[train].isna().any().any()
+    refit = sm.Logit(table.loc[train, G.READMISSION_OUTCOME].to_numpy(),
+                     design(table.loc[train])).fit(disp=0, tol=1e-12, maxiter=200)
+    assert np.max(np.abs(scored.predictions - np.asarray(refit.predict(design(new))))) < 1e-6
+    blank = new.copy()
+    blank.loc[blank.index % 5 == 0, "hemoglobin_g_dl"] = np.nan
+    blank.loc[3, "age"] = np.nan
+    count = int(blank[predictors].isna().any(axis=1).sum())
+    assert count == 11
+    with pytest.raises(scorer.ScoreRefused) as refused:
+        scorer.predict_in(home, pid, blank, workers=2)
+    assert refused.value.message.startswith(
+        f"{count} of the 50 new rows hold a blank in `age` and `hemoglobin_g_dl`, predictors the "
+        f"plan's fitted pipeline does not fill")
+    assert "`complete_case`" in refused.value.message
+    empty = new.assign(hemoglobin_g_dl=np.nan)  # no value to read: blanks, not text
+    with pytest.raises(scorer.ScoreRefused, match=r"^50 of the 50 new rows hold a blank in "
+                                                  r"`hemoglobin_g_dl`, a predictor the plan's"):
+        scorer.predict_in(home, pid, empty, workers=2)

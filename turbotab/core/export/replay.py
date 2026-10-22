@@ -43,7 +43,17 @@ rebuild finished:
   :class:`FreshDraw`): the generator, a function of a seed that returns the table, must write the
   recorded table's bytes at ``S0`` (the same SHA-256), or the replay is refused; the analysis is
   then rebuilt on its table at ``S``, which must be another seed. A record with joined files is
-  refused (a draw replaces one table).
+  refused (a draw replaces one table), and so is a log that holds a live ``open_seal`` unless it
+  is cut before it (``--truncate open_seal``; :func:`refuse_live_opening`): the opening keeps the
+  held-out scores of the draw it was recorded on as the plan's reported result, so replayed as
+  written it would report the recorded draw's.
+* **A spline's k on a fresh draw** (:func:`rule_forms`): a spline whose k the server set by
+  Harrell's rule records the effective sample size the rule read on the analyzed rows. Once the
+  rebuild's result stages are computed, the rule is read again on the new draw's rows as the engine
+  records it, and where it reads another size than the record states (compared as the engine
+  compares a form with its card) the rebuild is refused, since the record's k and size would be
+  replayed as recorded. A form's cut points and knot places are not in its record: the form step
+  learns them on the rows the fit reads, and declared categories' cut points are the analyst's.
 * **The findings rule on a fresh draw** (:func:`findings_rule`): a record tied to a finding by its
   ``finding_id`` (``apply_repair``, ``dismiss_finding``, ``defer_finding``) is left out where its
   finding does not fire on the new bytes, with every revert of a record left out: a repair answers
@@ -375,22 +385,30 @@ def _reverts_of(lines: Sequence[tuple[Any, bytes]], gone: set[str]) -> set[str]:
         gone |= more
 
 
+def live_record(lines: Sequence[tuple[Any, bytes]], kind: str) -> Any:
+    """The first record of ``kind`` in the log's order that no revert withdrew, or None."""
+    from turbotab.core.decisions import reverted
+
+    records = [r for r, _ in lines]
+    withdrawn = reverted(records)
+    return next((r for r in sorted(records, key=lambda r: r.seq)
+                 if r.decision.kind == kind and r.id not in withdrawn), None)
+
+
 def truncate(log: bytes, before: str | None = None) -> tuple[bytes, Cut]:
     """The log up to its first live record of kind ``before`` (``open_seal`` or ``lock_plan``;
     by default the one :data:`CUT_KINDS` names for the log's purpose), that record and every
     later one left out; the lines kept are the log's own bytes. A record a revert withdrew is not
     live: a lock withdrawn before any estimate was served under it is passed over for the lock that
     holds. A log with no live record of the kind is returned whole."""
-    from turbotab.core.decisions import fold, reverted
+    from turbotab.core.decisions import fold
 
     lines = log_lines(log)
     records = [r for r, _ in lines]
     kind = before or CUT_KINDS.get(str(fold(records).purpose), "open_seal")
     if kind not in CUT_KINDS.values():
         raise Refused(f"A log is cut before {' or '.join(CUT_KINDS.values())}, not {kind!r}.")
-    withdrawn = reverted(records)
-    cut = next((r for r in sorted(records, key=lambda r: r.seq)
-                if r.decision.kind == kind and r.id not in withdrawn), None)
+    cut = live_record(lines, kind)
     if cut is None:
         return join_lines(lines), Cut(kind=kind, seq=None, kept=len(lines), left=0)
     kept = [(r, line) for r, line in lines if r.seq < cut.seq]
@@ -573,6 +591,75 @@ def fresh_findings(service: Any, pid: str, written: Path, lines: Sequence[tuple[
 # ── a fresh draw ─────────────────────────────────────────────────────────────
 
 
+def refuse_live_opening(log: bytes) -> None:
+    """Raises :class:`Refused` when ``log`` holds a live ``open_seal`` (:func:`live_record`): the
+    opening keeps the held-out scores of the draw it was recorded on as the plan's reported
+    result, so a fresh draw that replays it as written would report the recorded draw's."""
+    from turbotab.core.voice import table_number
+
+    opening = live_record(log_lines(log), "open_seal")
+    if opening is None:
+        return
+    d = opening.decision
+    score = ((d.scores or {}).get(d.family or "") or {}).get(d.metric or "")
+    said = (f" (`{d.family}`'s held-out `{d.metric}` {table_number(score)}"
+            + (f" on {d.n_holdout:,} rows" if d.n_holdout else "") + ")"
+            if score is not None else "")
+    raise Refused(f"Record {opening.seq} (open_seal) holds the recorded draw's held-out scores as "
+                  f"the plan's reported result{said}; a fresh draw would replay it as written, and "
+                  f"the rebuilt result would be the recorded draw's, not this draw's. Replayed with "
+                  f"--truncate open_seal (cut=\"open_seal\"), the log is cut before it and the plan "
+                  f"rebuilt on the new draw to its fit.")
+
+
+def _size(n: float) -> str:
+    """An effective sample size as the rule's sentence states one (``exposure_form.rule_words``)."""
+    return f"{n:,.0f}" if abs(n - round(n)) < 1e-9 else f"{n:,.1f}"
+
+
+def rule_forms(service: Any, pid: str) -> list[str]:
+    """Each standing spline of the project ``pid`` whose k the server set by Harrell's rule
+    (``knots_rule`` "harrell") and whose record states an effective sample size the rule does not
+    read on these rows, said: the rule read again as the engine records it now
+    (``exposure_form.complete_spec`` under the project's decision context) and compared as the
+    engine compares a form's size with the form card's (``exposure_form.rule_stale``). A fresh
+    draw replays the record's k and size as recorded, so the caller refuses it (module
+    docstring)."""
+    from turbotab.core.decisions import Refusal, reverted
+    from turbotab.core.methods import exposure_form as ef
+
+    records = sorted(service.log(pid).records(), key=lambda r: r.seq)
+    withdrawn = reverted(records)
+    ctx = service.decision_context(pid)
+    out: list[str] = []
+    for column, spec in ef.current_forms(ctx.state).items():
+        given = spec.model_dump() if hasattr(spec, "model_dump") else dict(spec)
+        if given.get("form") not in ef.SPLINE_FORMS or given.get("knots_rule") != "harrell":
+            continue
+        try:
+            again = ef.complete_spec(column, given, ctx)
+        except Refusal:  # the rule cannot read these rows: the record's size is not certified
+            again = {"knots": None, "n_effective": None}
+        said, read = given.get("n_effective"), again.get("n_effective")
+        if not ef.rule_stale(given, {"n_effective": read}) and not (read is None and
+                                                                    said is not None):
+            continue
+        last = [r for r in records if r.id not in withdrawn and (
+            (r.decision.kind == "set_exposure_form" and r.decision.column == column)
+            or (r.decision.kind == "set_forms" and column in r.decision.forms))]
+        where = f"Record {last[-1].seq} ({last[-1].decision.kind})" if last else "The plan"
+        before = (f"k = {given.get('knots')} on an effective sample size of {_size(said)}"
+                  if said is not None else
+                  f"k = {given.get('knots')} with no effective sample size read")
+        now = (f"{_size(read)} (k = {again.get('knots')})" if read is not None else
+               "no effective sample size")
+        out.append(f"{where} gives `{column}` a spline whose k is Harrell's rule on the analyzed "
+                   f"rows: {before} on the recorded draw, and on this draw the rule reads {now}. "
+                   f"A fresh draw replays the record's k and the size it states as recorded, so "
+                   f"the rebuild is refused.")
+    return out
+
+
 @dataclasses.dataclass(frozen=True)
 class FreshDraw:
     """A new draw of the generator the recorded table came from (module docstring).
@@ -693,8 +780,9 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
         fresh: FreshDraw | None = None) -> ReplayReport:
     """Replay ``bundle`` (module docstring). Never raises for a refusal or a failed comparison:
     the report says which. ``cut``: True truncates the log by its purpose, or names the kind to cut
-    before (:func:`truncate`); ``fresh``: rebuild on a fresh draw (:class:`FreshDraw`). Either
-    rebuilds without comparing (``finished`` and ``estimates_again``)."""
+    before (:func:`truncate`); ``fresh``: rebuild on a fresh draw (:class:`FreshDraw`), refused
+    for a log with a live opening left uncut and for a spline whose rule reads another size on the
+    new draw. Either rebuilds without comparing (``finished`` and ``estimates_again``)."""
     started = time.monotonic()
     report = ReplayReport(bundle=str(bundle), reproduced=False)
     rebuild = bool(cut) or fresh is not None
@@ -720,6 +808,7 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
         path = _fresh_home(home)
         if fresh is not None:
             report.fresh = fresh_table(prov, fresh, path / "draws")
+            refuse_live_opening(log)
             table = next(e for e in prov["inputs"] if e.get("role") == "table")
             report.inputs = [InputCheck(
                 role="table", name=str(table.get("name")), path=report.fresh.path,
@@ -769,6 +858,10 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
         report.decisions = len(records)
         service.engine.on_decision(meta.id)
         _wait(service, meta.id, gate.result_stages(fold(records)), timeout)
+        if fresh is not None:
+            stale = rule_forms(service, meta.id)
+            if stale:
+                raise Refused(" ".join(stale))
         source = service.export_source(meta.id)
         # A rebuild is not the recorded analysis: its bundle is assembled as it stands, ungated.
         again = contents(source, gated=not rebuild)
@@ -794,7 +887,7 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
                                  and not report.estimates.mismatched
                                  and not report.estimates.missing
                                  and not report.estimates.extra)
-    except Refused as exc:  # the findings rule refuses the fresh draw: nothing is rebuilt
+    except Refused as exc:  # the findings rule or a spline's rule refuses the fresh draw
         report.refused = exc.message
         report.project = None
     except Exception as exc:  # noqa: BLE001 - a replay that cannot finish says why, never a trace
@@ -886,7 +979,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                              "Estimate lock_plan), or before KIND; nothing is compared")
     parser.add_argument("--fresh-draw", metavar="MODULE:FUNCTION",
                         help="rebuild on a fresh draw of this generator (a function of a seed); "
-                             "nothing is compared")
+                             "nothing is compared, and a log with a live open_seal is refused "
+                             "unless --truncate open_seal cuts it")
     parser.add_argument("--recorded-seed", type=int, help="the seed the recorded table was drawn at")
     parser.add_argument("--seed", type=int, help="the fresh draw's seed")
     args = parser.parse_args(argv)
@@ -917,5 +1011,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = ["CUT_KINDS", "Cut", "EstimateCheck", "FINDING_KINDS", "FreshDraw", "FreshDrawCheck",
            "InputCheck", "LeftOut", "MatrixCheck", "Redrawn", "Refused", "ReplayReport", "Ruled",
            "close", "compare", "compare_estimates", "findings_inputs", "findings_rule",
-           "fresh_findings", "fresh_table", "join_lines", "load_bundle", "log_lines", "main", "run",
-           "summary", "truncate", "verify_inputs", "write_draw"]
+           "fresh_findings", "fresh_table", "join_lines", "live_record", "load_bundle", "log_lines",
+           "main", "refuse_live_opening", "rule_forms", "run", "summary", "truncate",
+           "verify_inputs", "write_draw"]

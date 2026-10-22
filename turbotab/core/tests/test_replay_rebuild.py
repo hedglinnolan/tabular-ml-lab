@@ -19,6 +19,11 @@ hashed here with hashlib.
 * :func:`replay.fresh_table` refuses a generator that does not write the recorded bytes at the
   recorded seed, the recorded seed given as the new one, and a record with joined files, and
   writes the new draw, whose SHA-256 is hashlib's of the generator's own CSV.
+* A fresh draw of a log holding a live ``open_seal`` is refused before anything is built, the
+  record and ``--truncate open_seal`` named; the log cut before it, and an opening a revert
+  withdrew, hold none. A form's cut points and knot places are not in its record (a record of
+  quintiles, a spline or a data-derived cut with cut points is refused) but learned by the form
+  step on the rows it is given (numpy's quantiles).
 
 The engine-level rebuilds on the swarm's fixtures are ``research/swarm/tests/test_replay_fixtures.py``.
 """
@@ -333,6 +338,77 @@ def test_the_command_takes_the_flags_and_a_refused_draw_exits_2(tmp_path, capsys
     assert out["home"] is None and out["project"] is None
     with pytest.raises(SystemExit):
         replay.main([str(bundle), "--fresh-draw", "x:y"])  # no seeds: a usage error
+
+
+def _bundle_with(tmp_path: Path, log: bytes, seed: int = 7) -> Path:
+    """A bundle of ``log`` whose table is :func:`draw` at ``seed`` (its provenance hashed here)."""
+    import zipfile
+
+    prov = _prov(tmp_path, seed)
+    prov["decisions"] = {"sha256": hashlib.sha256(log).hexdigest()}
+    bundle = tmp_path / "bundle.zip"
+    with zipfile.ZipFile(bundle, "w") as z:
+        z.writestr("turbotab-export/provenance.json", json.dumps(prov))
+        z.writestr("turbotab-export/decisions.jsonl", log)
+    return bundle
+
+
+OPENING = {"kind": "open_seal", "family": "linear", "target": "y", "n_holdout": 80,
+           "metric": "log_loss", "scores": {"linear": {"log_loss": 0.6089974194457624,
+                                                      "auc": 0.6559877955758963}}}
+
+
+def test_a_fresh_draw_of_a_log_that_opened_the_held_out_rows_is_refused_naming_the_cut(tmp_path):
+    """The opening keeps the recorded draw's held-out scores as the plan's result, and a fresh
+    draw would replay it as written: refused before any project is built, the record, its score
+    and ``--truncate open_seal`` named. The generator writes the recorded table (checked first),
+    so nothing else refuses it."""
+    log = _log(tmp_path, [*PREDICT[:4], OPENING, PREDICT[5]])
+    report = replay.run(_bundle_with(tmp_path, log), fresh=replay.FreshDraw(draw, 7, 8))
+    assert report.refused is not None
+    assert report.refused.startswith("Record 5 (open_seal) holds the recorded draw's held-out "
+                                     "scores as the plan's reported result (`linear`'s held-out "
+                                     "`log_loss` 0.609 on 80 rows)")
+    assert "--truncate open_seal" in report.refused
+    assert report.home is None and report.project is None and report.finished is None
+    assert report.fresh.regenerated_sha256 == report.fresh.recorded_sha256
+
+
+def test_a_cut_log_and_a_withdrawn_opening_hold_no_live_opening(tmp_path):
+    """The check reads what the replay writes: a log cut before the opening holds none, and an
+    opening a revert withdrew is not live, as :func:`replay.truncate` reads it."""
+    log = _log(tmp_path, [*PREDICT[:4], OPENING, PREDICT[5]])
+    assert replay.live_record(replay.log_lines(log), "open_seal").seq == 5
+    cut, _ = replay.truncate(log)
+    assert replay.live_record(replay.log_lines(cut), "open_seal") is None
+    replay.refuse_live_opening(cut)  # silent
+    withdrawn = _log(tmp_path / "w", [*PREDICT[:4], OPENING, {"kind": "revert", "decision_id": 5},
+                                      PREDICT[5]])
+    assert replay.live_record(replay.log_lines(withdrawn), "open_seal") is None
+    replay.refuse_live_opening(withdrawn)  # silent
+    with pytest.raises(replay.Refused, match=r"^Record 5 \(open_seal\)"):
+        replay.refuse_live_opening(log)
+
+
+def test_a_forms_cut_points_and_knot_places_are_not_in_its_record_but_learned_on_the_rows():
+    """Why a fresh draw needs no rule for them: a record of quintiles, a spline or a data-derived
+    cut cannot carry cut points (refused), and the form step learns quintiles' cut points and a
+    spline's knots from the values it is given (numpy's type-7 quantiles, Harrell's percentiles
+    for 5 knots), so each draw's rows give their own. Declared categories' cut points are the
+    analyst's, from outside the data."""
+    from turbotab.core import decisions
+    from turbotab.core.methods import exposure_form as ef
+
+    for form in ("quintiles", "spline", "optimal"):
+        with pytest.raises(decisions.Refusal, match=f"the {form} form has none"):
+            decisions.validate({"kind": "set_exposure_form", "column": "x", "form": form,
+                                "cuts": [1.0]})
+    for seed in (1, 2):
+        x = np.random.default_rng(seed).normal(size=1000)
+        assert np.allclose(ef.place({"form": "quintiles"}, x)["cuts"],
+                           np.quantile(x, [0.2, 0.4, 0.6, 0.8]), rtol=0, atol=1e-12)
+        assert np.allclose(ef.place({"form": "spline", "knots": 5}, x)["knots"],
+                           np.quantile(x, [0.05, 0.275, 0.5, 0.725, 0.95]), rtol=0, atol=1e-12)
 
 
 def test_the_summary_says_each_record_left_out_and_each_repair_redrawn():
