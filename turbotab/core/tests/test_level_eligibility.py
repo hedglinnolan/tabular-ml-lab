@@ -89,6 +89,7 @@ def test_a_level_matches_however_it_is_spelled():
     assert rule_keep(as_text, bang()).tolist() == rule_keep(coded(), bang()).tolist()
     assert rule_keep(coded(), bang(exclude=["1"], refused=["7.0"])).tolist() == \
         rule_keep(coded(), bang()).tolist()
+    assert rule_keep(coded(), bang(refused=["07"])).tolist() == rule_keep(coded(), bang()).tolist()
     words = pd.DataFrame({"told": ["Yes", "No", "Refused", "Don't know", "No"]})
     rule = LevelRule(column="told", exclude=["Yes"], refused=["Refused"], dont_know=["Don't know"],
                      reason=REASON)
@@ -232,3 +233,40 @@ def test_the_sentence_counts_what_the_flow_counts_and_names_each_code():
     kept = voice.sentence_for(d.SetExclusions(rules=[bang(exclude=[1, 3], missing="keep")]),
                               ProjectState(target="y"), {"frame": coded()})
     assert kept == "`3` rows with `DIQ010` `1` or `3` were excluded as diagnosed diabetes."
+
+
+# ── repair round 1: the verifier's problems ──────────────────────────────────
+
+
+def test_the_refusal_of_a_level_no_row_holds_says_only_what_it_checks():
+    """P8: no row holds the excluded level, so no row would leave at it; the blank, the refused
+    answer and the don't-know answer would still leave as not confirmed eligible (three rows, by
+    construction), and the refusal counts them rather than saying the rule excludes no one. With
+    those answers kept, none would leave, and the refusal says nothing of them."""
+    frame = pd.DataFrame({"DIQ010": [2, 2, 7, 9, np.nan, 3], "y": np.arange(6, dtype=float)})
+    with pytest.raises(Refusal) as found:
+        validate(answer(bang()), context(frame))
+    assert found.value.code == "no_such_level"
+    assert found.value.message == (
+        "No row of `DIQ010` holds `1`, so no row would leave at an excluded level; `3` would "
+        "leave only as not confirmed eligible. `DIQ010` holds `2`, `3`, `7`, `9`.")
+    with pytest.raises(Refusal) as found:
+        validate(answer(bang(missing="keep")), context(frame))
+    assert found.value.message == (
+        "No row of `DIQ010` holds `1`, so no row would leave at an excluded level. `DIQ010` holds "
+        "`2`, `3`, `7`, `9`.")
+
+
+def test_a_text_level_that_is_not_a_number_is_matched_as_written():
+    """Silent, beside the spellings of one number: a text level that reads as no number names
+    only itself, so `yes` does not name `Yes`."""
+    words = pd.DataFrame({"told": ["Yes", "No", "yes"]})
+    rule = LevelRule(column="told", exclude=["yes"], reason=REASON)
+    assert rule_keep(words, rule).tolist() == [True, True, False]
+
+
+def test_with_unconfirmed_answers_kept_the_preview_counts_only_the_rows_that_leave(tmp_path):
+    """P13: with the blank, refused and don't-know answers kept, only the two rows at the excluded
+    level leave, and the caption says no count of unconfirmed rows that leave."""
+    assert preview_caption(tmp_path, [bang(missing="keep")]) == (
+        "`2` of `10` rows would leave at an excluded level; `8` stay.")

@@ -10,7 +10,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { SealPlan } from "../../../api/m2-types";
 import type { Decision, ProjectState } from "../../../api/schema";
-import { SealAsk, cutDecision } from "./SealQuestions";
+import type { SplitArtifact } from "../../../api/m1-types";
+import { SealAsk, basisChronology, cutDecision, cutShown } from "./SealQuestions";
 
 type Split = NonNullable<ProjectState["split"]>;
 
@@ -193,5 +194,86 @@ describe("a cut-point", () => {
     renderSeal({ ...CHANGED, holdout: 0, cut_point: cut, fold_order: "time" }, null, TIME);
     expect(screen.getByTestId("option-cut")).toHaveAttribute("data-recorded", "true");
     expect(screen.getByTestId("option-0")).not.toHaveAttribute("data-recorded", "true");
+  });
+});
+
+// The package 4 verifier's P7: under a recorded cut-point the seal plan's chronology is a usual
+// share's draw by time, which the cut-point replaces, so the basis line states the split's own
+// sentence once it is drawn for that cut-point, and the basis alone until then.
+describe("the seal's basis line under a cut-point", () => {
+  const LATEST = "The latest `6` units by their last `cycle` are held out, from `2021` on.";
+  const CUT_SENTENCE =
+    "Held out by a cut-point at `2017` on `cycle`: `20` rows held out and `40` train.";
+  const plan = {
+    basis: {
+      state: "one_row_per_unit",
+      column: null,
+      label: "one row per unit",
+      sentence: "Each row is its own unit.",
+      exploratory: false,
+      source: "grain",
+      n_units: null,
+    },
+    chronology: { drawn: true, time_column: "cycle", cut_point: null, sentence: LATEST },
+    refusal: null,
+    precision_note: null,
+    cv_first: false,
+    reason: "",
+    options: [],
+  } as unknown as SealPlan;
+  const drawnAt = (at: string) =>
+    ({
+      chronology: { drawn: true, time_column: "cycle", cut_point: at, sentence: CUT_SENTENCE },
+    }) as unknown as SplitArtifact;
+  const cut: Split = {
+    ...CHANGED,
+    holdout: 0,
+    cut_point: { column: "cycle", at: 2017 },
+    fold_order: "random",
+  };
+
+  it("states the split's own sentence once drawn for this cut-point", () => {
+    expect(basisChronology(plan, cut, drawnAt("2017"))?.sentence).toBe(CUT_SENTENCE);
+    render(
+      <SealAsk
+        entry={undefined}
+        pending={false}
+        record={vi.fn()}
+        answerAt={null}
+        shell={{
+          qkey: "split",
+          now: true,
+          arriving: false,
+          onArrived: () => {},
+          onOpenDrawer: () => {},
+          reopened: false,
+        }}
+        plan={plan}
+        roles={undefined}
+        current={cut}
+        split={drawnAt("2017")}
+      />,
+    );
+    const line = screen.getByTestId("seal-basis").textContent ?? "";
+    expect(line).toContain("Held out by a cut-point at");
+    expect(line).not.toContain("The latest");
+  });
+
+  it("states the basis alone before the split is drawn, or drawn for another cut-point", () => {
+    expect(basisChronology(plan, cut, undefined)).toBeNull();
+    expect(basisChronology(plan, cut, drawnAt("2015"))).toBeNull();
+  });
+
+  it("keeps the plan's chronology where no cut-point is recorded", () => {
+    expect(basisChronology(plan, CHANGED, drawnAt("2017"))?.sentence).toBe(LATEST);
+    expect(basisChronology(plan, null, undefined)?.sentence).toBe(LATEST);
+  });
+
+  it("shows a cut-point's value as the server does", () => {
+    expect([cutShown(2017), cutShown(2016.5), cutShown(" 2020-01-01 ")]).toEqual([
+      "2017",
+      "2016.5",
+      "2020-01-01",
+    ]);
   });
 });

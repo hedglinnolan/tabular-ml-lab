@@ -71,6 +71,10 @@ def test_a_cut_point_seal_by_cycle_on_the_rows_a_level_rule_keeps_fits_and_opens
     held = int((eligible & (frame["cycle"] >= 2017)).sum())
     assert split["n_holdout"] == held and split["n_train"] == int(eligible.sum()) - held
     assert split["chronology"]["cut_point"] == "2017" and split["fold_scheme"] == "random"
+    # The seal counts the rows the exclusion leaves, as the split's own counts do (P1).
+    assert split["chronology"]["sentence"].startswith(
+        f"Held out by a cut-point at `2017` on `cycle`: `{held}` rows held out and "
+        f"`{int(eligible.sum()) - held}` train.")
 
     decide(client, pid, {"kind": "select_models", "models": ["linear"]})
     wait_for(client, pid, {"fit": "fresh"}, timeout=240)

@@ -1472,7 +1472,12 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         compared = f"models were compared on the rest by {folds}"
     # How the training rows validated the models (audit ME-11, E16; models/validation.py).
     validation = getattr(d, "validation", "kfold")
-    if validation == "repeated_kfold":
+    if validation == "repeated_kfold" and cut is not None and time_ordered:
+        # Time-ordered folds are the same in every repeat, so the draw runs them once
+        # (``stages.rows.draw_split``): said, never "repeated" (the package 4 verifier's P3).
+        folds += ", run once, since time-ordered folds are the same in every repeat"
+        compared = f"models were compared on the rest by {folds}"
+    elif validation == "repeated_kfold":
         folds = (f"{tick(d.folds)}-fold cross-validation repeated {tick(d.repeats)} times, each "
                  f"score the mean over the repeats")
         compared = f"models were compared on the rest by {folds}"
@@ -1552,8 +1557,12 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         from turbotab.core import claims
         from turbotab.core.decisions import cut_shown
 
-        text = (f"A cut-point at {tick(cut_shown(cut.at))} on {tick(cut.column)} "
-                f"{claims.methods('seal.cut_point', d)}; {compared}{boot}{r2}")
+        # A unit's earlier rows are named only where the seal keeps units whole (the plan's
+        # basis, or the repeats reading), so a table of one row per unit is told of none (P14).
+        said = claims.methods("seal.cut_point_units" if group else "seal.cut_point",
+                              {"cut_point": cut, "holdout": d.holdout, "grouped": bool(group)})
+        text = (f"A cut-point at {tick(cut_shown(cut.at))} on {tick(cut.column)} {said}; "
+                f"{compared}{boot}{r2}")
         if basis is not None and _attr(basis, "exploratory"):
             text += (f"; the held-out score is exploratory, as the split's basis is "
                      f"{_attr(basis, 'label')}")

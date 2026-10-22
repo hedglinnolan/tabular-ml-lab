@@ -416,7 +416,8 @@ def grain_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 def temporal_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     """Yes: the seal's own chronological draw at the usual size (the latest units held out);
-    no: a random draw, grouped by the unit."""
+    no: a random draw, grouped by the unit. Under a recorded cut-point, either answer draws
+    nothing: the cut-point holds the rows out."""
     import numpy as np
 
     from turbotab.core import seal
@@ -429,6 +430,21 @@ def temporal_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     measured = frames.get("measured")
     universe = (measured["row_id"].to_numpy(dtype=np.int64) if measured is not None
                 else np.arange(int(store.n_rows), dtype=np.int64))
+    cut = getattr(getattr(ctx.state, "split", None), "cut_point", None)
+    if cut is not None:
+        # A cut-point holds the rows out, and the temporal answer then draws none
+        # (``seal.seal_inputs``): said, never a draw by time this answer would not make (the
+        # package 4 verifier's P7).
+        from turbotab.core.decisions import cut_shown
+
+        n = int(len(universe))
+        loaded = RowStep(key="loaded", label="Rows with the outcome", n=n)
+        ctx.read["counted"] = n
+        return [RowFlowView(title="Held out by the cut-point",
+                            caption=clip_words(f"A cut-point at `{cut_shown(cut.at)}` on "
+                                               f"`{cut.column}` holds the rows out, so this answer "
+                                               f"draws none.", CAPTION_WORDS),
+                            before=[loaded], after=[loaded])]
     probe = ctx.state.model_copy(update={"temporal": TemporalSpec(
         temporal=decision.temporal, time_column=decision.time_column)})
     usual = getattr(seal, "USUAL", 0.2)

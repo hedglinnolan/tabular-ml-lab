@@ -81,6 +81,16 @@
       "status": "built"
     },
     {
+      "hash": "b25ce93f22db0166121bc245b26031d3d0221bad7d96c50f35020f075bba752d",
+      "id": "eligibility.level_spelling",
+      "status": "built"
+    },
+    {
+      "hash": "5cb96867bfc48b4a8eb09f9fbf3511a645f906c964da6088586b3c2146392893",
+      "id": "eligibility.no_such_level",
+      "status": "built"
+    },
+    {
       "hash": "6fdeb42ca9b613e945ceadd22071af58b757b326851559a645751d10beebf93b",
       "id": "eligibility.unconfirmed_answer",
       "status": "built"
@@ -171,8 +181,18 @@
       "status": "built"
     },
     {
-      "hash": "9e8c8f7037724060273a1889f4d51f68dc6b04297ad7a031ca189476e6e89be4",
+      "hash": "bd217cc956a9aca2ffba68ad5c4687aacb2420d992b6dc522c3aa90135beff45",
       "id": "seal.cut_point",
+      "status": "built"
+    },
+    {
+      "hash": "2ccb3dec32d3d92f21802a3f49f67114f66a24584326ee8766d24204baf75ad3",
+      "id": "seal.cut_point_undated",
+      "status": "built"
+    },
+    {
+      "hash": "2bd3700aa3ed74c1b21eecd7fa7c95a85e5f1b961ea71bf46159802885935d3d",
+      "id": "seal.cut_point_units",
       "status": "built"
     },
     {

@@ -2079,7 +2079,7 @@ def split_stage(ctx: StageContext) -> Bundle:
         seal = seal_inputs(ctx.state, universe, store, task, holdout=spec.holdout, seed=spec.seed,
                            structure=getattr(structure, "data", structure),
                            cut_point=getattr(spec, "cut_point", None),
-                           fold_order=getattr(spec, "fold_order", None))
+                           fold_order=getattr(spec, "fold_order", None), analyzed=rows)
     if seal.refusal:
         raise ValueError(seal.refusal)
     validation = getattr(spec, "validation", "kfold")

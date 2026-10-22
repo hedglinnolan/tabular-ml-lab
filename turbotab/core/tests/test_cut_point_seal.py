@@ -1,8 +1,8 @@
 """A temporal seal by cut-point (SWARM_PLAN §8 and §10's watch note on package 3).
 
 Every row whose time column reads at or after a value is held out, a unit with rows on both sides
-held out whole, and the other rows train; the training folds' order is its own answer, random
-(repeated or not) or time-ordered, so the same held-out rows can be scored under either. Each
+held out whole, and every other analyzed row trains; the training folds' order is its own answer,
+random (repeated or not) or time-ordered, so the same held-out rows can be scored under either. Each
 expected row set below is computed from the table the test writes, with numpy or pandas, never
 read from the engine.
 """
@@ -76,10 +76,10 @@ def test_every_row_at_or_after_the_cut_point_is_held_out_and_every_earlier_row_t
     assert set(a.loc[frame.index[frame["cycle"] == 2016.99], "partition"]) == {"train"}
     chron = split.data["chronology"]
     assert chron["drawn"] and chron["cut_point"] == "2017" and chron["time_column"] == "cycle"
+    # One row per unit: the sentence names no unit (the verifier's P14).
     assert chron["sentence"] == (
         "Held out by a cut-point at `2017` on `cycle`: `20` rows held out and `40` train. A "
-        "cut-point holds out every row at or after it, with the earlier rows of any unit it holds "
-        "out; the other rows train.")
+        "cut-point holds out every row at or after it, and every other analyzed row trains.")
     assert split.data["n_holdout"] == 20 and split.data["n_train"] == 40
 
 
@@ -113,9 +113,9 @@ def test_a_unit_seen_on_both_sides_is_held_out_whole_and_its_earlier_rows_are_co
     assert split.data["chronology"]["sentence"] == (
         f"Held out by a cut-point at `2017` on `cycle`: `{units}` units whole, `{len(expect)}` rows, "
         f"and `{60 - len(expect)}` rows train. A cut-point holds out every row at or after it, with "
-        f"the earlier rows of any unit it holds out; the other rows train. Whole units are held "
-        f"out, earlier rows included: `{earlier}` of the held-out rows were observed before "
-        f"`2017`.")
+        f"the earlier rows of any unit it holds out, and every other analyzed row trains. Whole "
+        f"units are held out, earlier rows included: `{earlier}` of the held-out rows were "
+        f"observed before `2017`.")
 
 
 # ── what is refused, and what is not ─────────────────────────────────────────
@@ -331,7 +331,7 @@ def test_the_split_sentence_says_what_the_cut_point_held_out():
                                          fold_order="random"),
                               ProjectState(target="glucose", task="regression"))
     assert text == ("A cut-point at `2017` on `cycle` held out every row at or after it for one "
-                    "final score, with the earlier rows of any unit it held out; performance was "
+                    "final score; performance was "
                     "estimated on the rest by `5`-fold cross-validation; models were compared with "
                     "each other and with the no-predictor baseline on `5`-fold cross-validation "
                     "repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; "
@@ -346,7 +346,7 @@ def test_the_split_sentence_says_what_the_cut_point_held_out():
                                                 purpose="inference"))
     assert inference.startswith("A cut-point at `2017` on `cycle` held out every row")  # not "No rows"
     assert timed == ("A cut-point at `2017` on `cycle` held out every row at or after it for one "
-                     "final score, with the earlier rows of any unit it held out; models were "
+                     "final score; models were "
                      "compared on the rest by cross-validation over `5` time-ordered folds, each "
                      "scored by models fit on earlier units; R² was measured against the training "
                      "rows' mean and pooled over every out-of-fold prediction.")
@@ -378,3 +378,309 @@ def test_the_other_sentences_that_read_the_split_count_a_cut_point_as_rows_held_
     inference = ProjectState(target="y", task="regression", purpose="inference")
     assert voice.split_states_plan(d.SetSplit(**cut.model_dump()), inference)
     assert not voice.split_states_plan(d.SetSplit(holdout=0.0), inference)
+
+
+# ── repair round 1: the verifier's problems, each from the table its test writes ──
+
+
+def _write(tmp_path, frame: pd.DataFrame, name: str = "cut.csv") -> Ingested:
+    path = tmp_path / name
+    frame.to_csv(path, index=False)
+    return Ingested(path, tmp_path)
+
+
+def test_with_rows_excluded_the_seal_counts_the_analyzed_rows_it_holds_out_and_trains(tmp_path):
+    """P1: the seal's counts are the analyzed rows', as the split's own are, so with an exclusion
+    the note never says rows train that do not; rows with no readable time are counted the same
+    way. Every count here is pandas' over the table written."""
+    rng = np.random.default_rng(11)
+    frame = pd.DataFrame({"cycle": np.repeat(CYCLES, 10), "x": rng.normal(size=60),
+                          "age": np.tile([30, 30, 12], 20)})
+    frame["y"] = frame["x"] + rng.normal(scale=0.5, size=60)
+    frame.loc[[3, 4, 5], "cycle"] = np.nan  # three undated rows, one of them a child
+    t = _write(tmp_path, frame)
+    s = state(CutPoint(column="cycle", at=2017)).model_copy(update={
+        "roles": {"x": "covariate", "age": "covariate"},
+        "exclusions": [d.ExclusionRule(column="age", low=18, reason="adults")]})
+    split = drawn(t, s)
+    adult = frame["age"] >= 18
+    held = int((adult & (frame["cycle"] >= 2017)).sum())
+    train = int((adult & ~(frame["cycle"] >= 2017)).sum())
+    undated = int((adult & frame["cycle"].isna()).sum())
+    assert (held, train, undated) == (13, 27, 2)
+    assert split.data["n_holdout"] == held and split.data["n_train"] == train
+    sentence = (f"Held out by a cut-point at `2017` on `cycle`: `{held}` rows held out and "
+                f"`{train}` train. A cut-point holds out every row at or after it, and every other "
+                f"analyzed row trains. `{undated}` rows with no readable `cycle` train and are "
+                f"never held out.")
+    assert split.data["chronology"]["sentence"] == sentence
+    assert split.data["note"].startswith(f"`{held}` rows are held out and `{train}` train;")
+    assert sentence in split.data["note"]
+
+
+def test_the_split_sentence_names_units_only_where_the_seal_keeps_units_whole():
+    """P14: the methods sentence says a unit's earlier rows are held out only where the seal is
+    grouped by a unit (the seal plan's basis); with one row per unit it names no unit."""
+    split = d.SetSplit(holdout=0.0, seed=3, folds=5, cut_point={"column": "cycle", "at": 2017.0},
+                       fold_order="random")
+    s = ProjectState(target="glucose", task="regression", purpose="inference")
+    grouped = {"seal_plan": {"basis": {"state": "grouped", "column": "pid", "source": "grain",
+                                       "exploratory": False}}}
+    single = {"seal_plan": {"basis": {"state": "one_row_per_unit", "column": None,
+                                      "source": "grain", "exploratory": False}}}
+    head = "A cut-point at `2017` on `cycle` held out every row at or after it for one final score"
+    assert voice.sentence_for(split, s, grouped).startswith(
+        f"{head}, with the earlier rows of any unit it held out; ")
+    assert voice.sentence_for(split, s, single).startswith(f"{head}; ")
+
+
+def test_a_grouped_preview_says_whole_units_are_held_out_with_their_earlier_rows(tmp_path):
+    """P2: where a unit spans the cut-point the preview says each such unit is held out whole and
+    counts its earlier rows; by row it says the rows at or after it, as before."""
+    from turbotab.core import fact_previews, row_previews  # noqa: F401 - registers the builders
+    from turbotab.core.consequences import PreviewContext, plan
+    from turbotab.core.datastore import DataStore, ingest
+
+    _, frame = table(tmp_path, grouped=True)
+    ingest(tmp_path / "cycles.csv", tmp_path / "cycles.parquet")
+    s = state(None, holdout=0.2, grouped=True)
+    cut = {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 3, "fold_order": "random",
+           "cut_point": {"column": "cycle", "at": 2017}}
+    with DataStore(tmp_path / "cycles.parquet", 2 << 30) as store:
+        ctx = PreviewContext(project_id="p", state=s, datastore=store, artifact={}.get,
+                             training_row_ids=None, cohort_row_ids=None, sealed_row_ids=None)
+        flow = plan(d.parse_decision(cut), ctx, basis="b").views[0]
+    last = frame.groupby("pid")["cycle"].transform("max")
+    held = int((last >= 2017).sum())
+    earlier = int(((last >= 2017) & (frame["cycle"] < 2017)).sum())
+    assert (held, earlier) == (40, 20)
+    assert flow.caption.startswith(
+        f"`{held}` rows held out: every unit seen at or after `2017` on `cycle`, whole "
+        f"(`{earlier}` rows before it). About")
+
+
+def test_time_ordered_folds_under_repeated_k_fold_are_said_to_run_once(tmp_path):
+    """P3: time-ordered folds are the same in every repeat, so the draw runs them once, and the
+    split's sentence says so; random folds under repeated k-fold are still said to repeat."""
+    cut = {"column": "cycle", "at": 2017.0}
+    s = ProjectState(target="glucose", task="regression")
+    timed = voice.sentence_for(d.SetSplit(holdout=0.0, seed=3, folds=5, cut_point=cut,
+                                          fold_order="time", validation="repeated_kfold",
+                                          repeats=3), s)
+    assert timed == ("A cut-point at `2017` on `cycle` held out every row at or after it for one "
+                     "final score; models were compared on the rest by cross-validation over `5` "
+                     "time-ordered folds, each scored by models fit on earlier units, run once, "
+                     "since time-ordered folds are the same in every repeat; R² was measured "
+                     "against the training rows' mean and pooled over every out-of-fold "
+                     "prediction.")
+    random = voice.sentence_for(d.SetSplit(holdout=0.0, seed=3, folds=5, cut_point=cut,
+                                           fold_order="random", validation="repeated_kfold",
+                                           repeats=3), s)
+    assert "`5`-fold cross-validation repeated `3` times, each score the mean" in random
+    t, _ = table(tmp_path)
+    split = drawn(t, state(CutPoint(**cut), fold_order="time",
+                           scheme={"validation": "repeated_kfold", "repeats": 3}))
+    assert split.data["repeats"] == 1 and "fold_r1" not in split.frames["assignment"]
+
+
+# ── the guards the verifier's mutations left untested (P9) ───────────────────
+
+
+def _undated(tmp_path, n_undated: int) -> tuple[Ingested, pd.DataFrame]:
+    """Fifty rows over five cycles, the first ``n_undated`` with no cycle."""
+    rng = np.random.default_rng(5)
+    frame = pd.DataFrame({"cycle": np.repeat([2011.0, 2013.0, 2015.0, 2017.0, 2019.0], 10),
+                          "x": rng.normal(size=50)})
+    frame["y"] = frame["x"] + rng.normal(scale=0.5, size=50)
+    frame.loc[:n_undated - 1, "cycle"] = np.nan
+    return _write(tmp_path, frame, f"undated{n_undated}.csv"), frame
+
+
+def test_a_tenth_of_the_rows_undated_is_drawn_and_the_undated_rows_train(tmp_path):
+    """Silent: 5 of 50 rows with no cycle is a tenth, no more, so the cut-point is drawn; the five
+    train, never held out, and the seal counts them."""
+    t, frame = _undated(tmp_path, 5)
+    split = drawn(t, state(CutPoint(column="cycle", at=2017)))
+    a = split.frames["assignment"].set_index("row_id")
+    undated = frame.index[frame["cycle"].isna()]
+    assert len(undated) == 5 and set(a.loc[undated, "partition"]) == {"train"}
+    assert split.data["chronology"]["sentence"].endswith(
+        "`5` rows with no readable `cycle` train and are never held out.")
+
+
+def test_more_than_a_tenth_of_the_rows_undated_refuses_the_cut_point(tmp_path):
+    """Fires: 6 of 50 rows with no cycle is more than a tenth, and any of them may fall at or after
+    the cut-point, so the draw refuses, and so does the answer."""
+    t, frame = _undated(tmp_path, 6)
+    with pytest.raises(ValueError, match="`6` of `50` rows have no readable `cycle`"):
+        drawn(t, state(CutPoint(column="cycle", at=2017)))
+    with t.store() as store:
+        ctx = {"columns": list(frame.columns), "target": "y", "store": store,
+               "state": ProjectState(target="y", task="regression")}
+        body = {"kind": "set_split", "holdout": 0.0, "seed": 0, "fold_order": "random",
+                "cut_point": {"column": "cycle", "at": 2017}}
+        with pytest.raises(Refusal) as found:
+            validate(body, ctx)
+        assert found.value.code == "cut_point_undated"
+    t5, frame5 = _undated(tmp_path, 5)
+    with t5.store() as store:
+        validate(body, {**ctx, "columns": list(frame5.columns), "store": store})  # silent
+
+
+def _spanning(tmp_path, before_only: int) -> tuple[Ingested, pd.DataFrame]:
+    """Twenty people, each seen twice; the first ``before_only`` in 2011 and 2013, every other
+    one in 2015 and again in 2019."""
+    rng = np.random.default_rng(9)
+    first = [2011.0 if i < before_only else 2015.0 for i in range(20)]
+    second = [2013.0 if i < before_only else 2019.0 for i in range(20)]
+    frame = pd.DataFrame({"pid": [f"p{i}" for i in range(20)] * 2, "cycle": first + second,
+                          "x": rng.normal(size=40)})
+    frame["y"] = frame["x"] + rng.normal(scale=0.5, size=40)
+    return _write(tmp_path, frame, f"spanning{before_only}.csv"), frame
+
+
+def test_a_cut_point_every_unit_spans_refuses_and_one_unit_before_it_trains(tmp_path):
+    """Fires: every person has a row at or after 2017, so held out whole, no row would train,
+    though rows before 2017 exist; silent: one person seen only before it trains, the rest held
+    out."""
+    t, _ = _spanning(tmp_path, 0)
+    with pytest.raises(ValueError, match="Every unit with a readable `cycle` has a row at or"):
+        drawn(t, state(CutPoint(column="cycle", at=2017), grouped=True))
+    t1, frame = _spanning(tmp_path, 1)
+    split = drawn(t1, state(CutPoint(column="cycle", at=2017), grouped=True))
+    assert held_rows(split) == set(np.flatnonzero(frame["pid"].to_numpy() != "p0").tolist())
+
+
+def test_a_cut_point_on_the_outcome_is_refused(tmp_path):
+    """P10: a cut-point on an outcome column (the target, or a time to event's follow-up time)
+    would choose the held-out rows by their outcome: refused at the answer and at the draw; one on
+    a time column is not."""
+    t, frame = table(tmp_path)
+    body = {"kind": "set_split", "holdout": 0.0, "seed": 0, "fold_order": "random"}
+    with t.store() as store:
+        ctx = {"columns": list(frame.columns), "target": "y", "store": store,
+               "state": ProjectState(target="y", task="regression")}
+        with pytest.raises(Refusal) as found:
+            validate({**body, "cut_point": {"column": "y", "at": 0.5}}, ctx)
+        assert found.value.code == "cut_point_on_outcome"
+        assert found.value.exits[0]["decision"]["cut_point"] is None
+        survival = ProjectState(target="y", task="time_to_event",
+                                follow_up=d.FollowUpSpec(time_column="x"))
+        with pytest.raises(Refusal) as found:
+            validate({**body, "cut_point": {"column": "x", "at": 0.0}}, {**ctx, "state": survival})
+        assert found.value.code == "cut_point_on_outcome"
+        validate({**body, "cut_point": {"column": "cycle", "at": 2017}}, ctx)  # silent
+        validate({**body, "cut_point": {"column": "x", "at": 0.0}}, ctx)  # x is no outcome here
+    with pytest.raises(ValueError, match="outcome"):
+        drawn(t, state(CutPoint(column="y", at=0.5)))
+
+
+# ── what else reads whether rows are held out (P4 to P7) ─────────────────────
+
+CUT = SplitSpec(holdout=0.0, seed=0, folds=5, fold_order="random",
+                cut_point=CutPoint(column="cycle", at=2017))
+ALONE = SplitSpec(holdout=0.0, seed=0, folds=5)  # cross-validation alone
+
+
+def _fit(*families: str) -> dict:
+    return {"n_holdout": 30, "primary_metric": "rmse", "metric_labels": {"rmse": "RMSE"},
+            "models": [{"family": f, "label": f, "cv": {"rmse": {"mean": 1.0 + i / 10}}}
+                       for i, f in enumerate(families)]}
+
+
+def test_under_a_cut_point_opening_the_seal_needs_the_final_model_named():
+    """P4: with two families fitted and rows held out by a cut-point, an opening that names no
+    final model is refused, one that names it is not, and with one family the opening declares it;
+    under cross-validation alone neither acts (no held-out rows wait)."""
+    from turbotab.core.models import selection
+
+    for split, acts in ((CUT, True), (ALONE, False)):
+        s = ProjectState(target="y", task="regression", purpose="prediction", split=split)
+        two = {"state": s, "artifact": lambda stage: _fit("linear", "random_forest")
+               if stage == "fit" else None}
+        one = {"state": s, "artifact": lambda stage: _fit("linear") if stage == "fit" else None}
+        if acts:
+            with pytest.raises(Refusal) as found:
+                selection._a_final_model_is_declared(d.OpenSeal(), two)
+            assert found.value.code == "final_model_needed"
+        else:
+            selection._a_final_model_is_declared(d.OpenSeal(), two)
+        selection._a_final_model_is_declared(d.OpenSeal(family="linear"), two)
+        declared = selection._the_only_family_is_the_final_one(d.OpenSeal(), one)
+        assert declared.family == ("linear" if acts else None)
+
+
+def test_under_a_cut_point_the_opening_is_offered_and_a_compared_family_may_be_dropped():
+    """P5: rows held out by a cut-point wait to be opened, so the Router's last step applies, and
+    a family whose score was shown may be dropped (the held-out rows score the final model);
+    under cross-validation alone the step does not apply and dropping it is refused."""
+    from turbotab.core import interview
+
+    seen = {"y": ["linear", "random_forest"]}
+    drop = d.SelectModels(models=["linear"])
+    for split, held in ((CUT, True), (ALONE, False)):
+        s = ProjectState(target="y", task="regression", purpose="prediction",
+                         models=["linear", "random_forest"], split=split)
+        gate = interview._open_seal_gate(s)
+        ctx = {"state": s, "seen": seen, "records": []}
+        if held:
+            assert gate is None
+            validate(drop, ctx)
+        else:
+            assert gate is not None and gate[0] == "not_applicable"
+            with pytest.raises(Refusal) as found:
+                validate(drop, ctx)
+            assert found.value.code == "compared_families_stay"
+
+
+def test_under_a_cut_point_the_stepwise_room_counts_the_rows_the_split_drew_to_train():
+    """P6: a cut-point's training rows are known once it is drawn, so the smallest training fold
+    is (K − 1)/K of the split's own training count, by definition; until the split for that
+    cut-point is drawn nothing is judged. A share and cross-validation alone keep their arithmetic
+    on the cohort's count."""
+    import math
+
+    from turbotab.core.models.variable_selection import stepwise_room
+
+    cols = ["g0", "g1", "g2"]
+    info = {c: {"dtype": "numeric", "n_unique": 100, "n_missing": 0} for c in cols}
+    cohort = {"n_final": 100, "predictors": cols}
+    drawn_here = {"n_train": 70, "n_holdout": 30,
+                  "chronology": {"drawn": True, "time_column": "cycle", "cut_point": "2017"}}
+    elsewhere = {**drawn_here, "chronology": {**drawn_here["chronology"], "cut_point": "2015"}}
+
+    def room(split, artifacts):
+        s = ProjectState(target="y", task="regression", purpose="prediction",
+                         roles={c: "covariate" for c in cols}, split=split)
+        return stepwise_room(s, {"state": s, "column_info": info,
+                                 "artifact": lambda stage: artifacts.get(stage)}, "regression")
+
+    assert room(CUT, {"cohort": cohort, "split": drawn_here})[1] == math.floor(70 * 4 / 5)
+    assert room(CUT, {"cohort": cohort}) is None  # not drawn yet
+    assert room(CUT, {"cohort": cohort, "split": elsewhere}) is None  # drawn for another cut
+    assert room(ALONE, {"cohort": cohort, "split": drawn_here})[1] == math.floor(100 * 4 / 5)
+    share = SplitSpec(holdout=0.2, seed=0, folds=5)
+    assert room(share, {"cohort": cohort})[1] == math.floor(math.floor(100 * 0.8) * 4 / 5)
+
+
+def test_under_a_cut_point_the_temporal_answer_previews_that_it_draws_nothing(tmp_path):
+    """P7: with a cut-point recorded the temporal answer draws no held-out rows (the cut-point
+    holds them out), so its preview says so instead of a draw by time; with a share it still
+    previews the latest units held out."""
+    from turbotab.core import structure_previews  # noqa: F401 - registers the builders
+    from turbotab.core.consequences import PreviewContext, plan
+    from turbotab.core.datastore import DataStore, ingest
+
+    table(tmp_path)
+    ingest(tmp_path / "cycles.csv", tmp_path / "cycles.parquet")
+    answer = d.SetTemporal(temporal=True, time_column="cycle")
+    captions = {}
+    with DataStore(tmp_path / "cycles.parquet", 2 << 30) as store:
+        for name, s in (("cut", state(CutPoint(column="cycle", at=2017))),
+                        ("share", state(None, holdout=0.2))):
+            ctx = PreviewContext(project_id="p", state=s, datastore=store, artifact={}.get,
+                                 training_row_ids=None, cohort_row_ids=None, sealed_row_ids=None)
+            captions[name] = plan(answer, ctx, basis="b").views[0].caption
+    assert captions["cut"] == ("A cut-point at `2017` on `cycle` holds the rows out, so this "
+                               "answer draws none.")
+    assert captions["share"].startswith("The latest `12` rows by their last `cycle` are held out")

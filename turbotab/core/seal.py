@@ -31,11 +31,13 @@ What this module decides, and where each piece runs:
 * **The temporal seal by cut-point** (SWARM_PLAN §8), in place of a share: the split names a
   column and a value (``SplitSpec.cut_point``), and every row at or after it is held out, a unit
   with rows on both sides held out whole by its last observation (:func:`cut_holdout`, its earlier
-  rows counted), the other rows training. It reads its own column, not the temporal answer (which
-  is asked only when time points stay as rows), and refuses a value the column cannot read or one
-  that holds out nothing or leaves nothing to train (:func:`cut_problem`). Its folds' order is the
-  split's own answer (``fold_order``: random, repeated or not, or time-ordered by the cut-point's
-  column), never the draw's, so the same held-out rows can be scored either way.
+  rows counted), every other analyzed row training; its sentence counts the analyzed rows, as the
+  split's own counts do. It reads its own column, not the temporal answer (which is asked only
+  when time points stay as rows), and refuses an outcome column, a value the column cannot read,
+  one that holds out nothing or leaves nothing to train, and more than
+  :data:`MAX_UNDATED_SHARE` of the rows with no readable time (:func:`cut_problem`). Its folds'
+  order is the split's own answer (``fold_order``: random, repeated or not, or time-ordered by the
+  cut-point's column), never the draw's, so the same held-out rows can be scored either way.
 * **What a holdout of this size can measure**: the split question's options, each with the
   precision of a held-out score on that many rows, ordered so cross-validation alone comes first
   when the usual holdout falls below a stated floor (:func:`holdout_options`). Never a refusal.
@@ -88,8 +90,11 @@ DEFAULT_MIN_GROUPS = 8
 
 # The chronological draw refuses when more than this share of rows has no readable time: ordering
 # units by a last observation that is mostly missing would place them arbitrarily, and the seal
-# would report a chronology it did not draw (``turbotab/engine.py::draw_holdout``).
-MAX_UNDATED_SHARE = 0.10
+# would report a chronology it did not draw (``turbotab/engine.py::draw_holdout``). A cut-point
+# refuses above the same share (rows with no readable time train, though any may fall at or after
+# it), and the value is that claim's (``seal.cut_point_undated``), so its refusal states it.
+CUT_POINT_UNDATED = "seal.cut_point_undated"
+MAX_UNDATED_SHARE = claims.value("seal.cut_point_undated", "max_undated")
 
 SEALED_SCORES = "sealed_scores"  # the fit Bundle frame that holds the held-out scores
 SEALED_DETAIL = "sealed_detail"  # … and the one that holds their intervals and calibration
@@ -500,7 +505,8 @@ class SealDraw:
 
 def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
                 holdout: float, seed: int, structure: Mapping[str, Any] | None = None,
-                cut_point: Any = None, fold_order: str | None = None) -> SealDraw:
+                cut_point: Any = None, fold_order: str | None = None,
+                analyzed: Any | None = None) -> SealDraw:
     """Read what the seal is drawn from (identifiers, the outcome's classes, time) and decide it.
 
     ``universe`` is every row the held-out rows are drawn over (every row with the outcome
@@ -509,6 +515,8 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
     with neither, nothing is drawn and ``refusal`` says the grain comes first. ``cut_point`` (a
     ``decisions.CutPoint``) holds out every row at or after it in place of a share, and then the
     temporal answer draws nothing: the folds are time-ordered only where ``fold_order`` is "time".
+    ``analyzed`` (the cohort's rows, the split's ``row_ids``) is what the cut-point's sentence
+    counts, as the split's own counts do; None counts every row of ``universe``.
     """
     from turbotab.core.stages.working import with_effective_grain
 
@@ -561,9 +569,11 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
         draw.y = frame[target].to_numpy(dtype=object)
         draw.labels = draw.y
     if cut_point is not None:
+        counted = None if analyzed is None else np.isin(ids, np.asarray(analyzed, dtype=np.int64))
         draw.chronology, draw.held, draw.refusal, draw.order = _cut(
             frame, cut_point, draw.groups, fold_order=fold_order, seed=seed,
-            present=cut_point.column in columns)
+            present=cut_point.column in columns, analyzed=counted,
+            outcome=(target if cut_point.column in decisions.outcome_columns(state) else None))
     elif requested:
         draw.chronology, draw.held, draw.refusal, draw.order = _chronology(
             frame, time_column, draw.groups, holdout=holdout, seed=seed, present=time_column in columns)
@@ -624,8 +634,9 @@ def _isna(value: Any) -> bool:
 # ── the temporal seal by cut-point (SWARM_PLAN §8) ───────────────────────────
 # Beside the draw by share: every row at or after a value of a time column is held out, a unit
 # with rows on both sides held out whole (by its last observation, as ``_units_by_time`` ranks
-# units), and the other rows train. Its folds' order is the split's own answer (``fold_order``),
-# never the held-out draw's, so the same held-out rows take random or time-ordered folds.
+# units), and every other analyzed row trains. Its folds' order is the split's own answer
+# (``fold_order``), never the held-out draw's, so the same held-out rows take random or
+# time-ordered folds.
 
 
 def _dated(raw: Any) -> bool:
@@ -653,7 +664,9 @@ def cut_value(at: Any, raw: Any) -> float | None:
 def cut_problem(raw: Any, cut: Any) -> tuple[str, str] | None:
     """Why a cut-point cannot hold rows out of the column ``raw`` and leave some to train, as a
     refusal's ``(code, message)``; None when it can. Judged row by row: the draw judges units
-    (:func:`cut_holdout`), which can only refuse more."""
+    (:func:`cut_holdout`), which can only refuse more. More than :data:`MAX_UNDATED_SHARE` of the
+    rows with no readable time is refused too: they would train, though any may fall at or after
+    it."""
     shown = decisions.cut_shown(cut.at)
     column = cut.column
     at = cut_value(cut.at, raw)
@@ -675,50 +688,83 @@ def cut_problem(raw: Any, cut: Any) -> tuple[str, str] | None:
         return ("cut_point_trains_nothing",
                 f"Every row with a readable `{column}` is at or after `{shown}`, so no row would "
                 f"train before it.")
+    unreadable = int(len(times) - len(dated))
+    if unreadable > MAX_UNDATED_SHARE * len(times):
+        return ("cut_point_undated",
+                f"`{unreadable:,}` of `{len(times):,}` rows have no readable `{column}`: "
+                f"{claims.card(CUT_POINT_UNDATED, {'cut_point': cut, 'holdout': 0.0})}.")
     return None
 
 
+def cut_on_outcome(column: str, target: str | None) -> str:
+    """Why a cut-point on an outcome column (``decisions.outcome_columns``: the target, or a time to
+    event's follow-up time) is refused: the held-out rows would be chosen by their outcome."""
+    what = ("the outcome" if column == target
+            else f"the follow-up time of `{target}`, half its outcome")
+    return (f"`{column}` is {what}, so a cut-point on it would choose the held-out rows by their "
+            f"outcome, and their score would not stand for new rows, whose outcome is not yet "
+            f"known. Name a time known before the outcome instead.")
+
+
 CUT_POINT = "seal.cut_point"  # its claim: what a cut-point holds out, said on the seal
+CUT_POINT_UNITS = "seal.cut_point_units"  # … where the seal keeps each unit's rows together
 
 
-def cut_holdout(times: Any, groups: Any | None, at: float, column: str, shown: str
-                ) -> tuple[Any, Chronology]:
+def cut_holdout(times: Any, groups: Any | None, at: float, column: str, shown: str,
+                analyzed: Any | None = None) -> tuple[Any, Chronology]:
     """The held-out mask for a cut-point at ``at``: every unit whose last observation is at or
-    after it, whole (a unit with no groups is a row), and the seal's sentence. Units with no
-    readable time train and are counted; their share is refused above :data:`MAX_UNDATED_SHARE`
-    before this is called (:func:`_cut`)."""
-    keys, dated_units, _, n_undated = _units_by_time(times, groups, 0)
+    after it, whole (a unit with no groups is a row), and the seal's sentence. The mask covers
+    every row given; the sentence counts the ``analyzed`` ones (a mask aligned with ``times``;
+    None: every row), as the split's own counts do, so with an exclusion it never says rows train
+    that do not. Units with no readable time train and are counted; their share is refused above
+    :data:`MAX_UNDATED_SHARE` before this is called (:func:`cut_problem`). Units are named only
+    where some unit has more than one row."""
+    keys, dated_units, _, _ = _units_by_time(times, groups, 0)
     held = dated_units.index[dated_units.to_numpy() >= at].to_numpy(dtype=object)
     mask = np.isin(keys, held) if len(held) else np.zeros(len(keys), dtype=bool)
     times = np.asarray(times, dtype=float)
-    n_rows, n_train = int(mask.sum()), int((~mask).sum())
-    held_times = times[mask]
-    n_before = int(np.sum(held_times[~np.isnan(held_times)] < at))
-    word = "units" if groups is not None else "rows"
-    if groups is not None:
-        lead = (f"Held out by a cut-point at `{shown}` on `{column}`: `{len(held):,}` units whole, "
+    counted = (np.ones(len(keys), dtype=bool) if analyzed is None
+               else np.asarray(analyzed, dtype=bool))
+    grouped = groups is not None and len(set(keys.tolist())) < len(keys)
+    n_rows, n_train = int((mask & counted).sum()), int((~mask & counted).sum())
+    n_before = int((mask & counted & (np.nan_to_num(times, nan=at) < at)).sum())
+    n_units = len(set(keys[mask & counted].tolist()))
+    undated = ~np.isin(keys, dated_units.index.to_numpy(dtype=object))  # a unit with no time
+    n_undated = len(set(keys[undated & counted].tolist()))
+    word = "units" if grouped else "rows"
+    if grouped:
+        lead = (f"Held out by a cut-point at `{shown}` on `{column}`: `{n_units:,}` units whole, "
                 f"`{n_rows:,}` rows, and `{n_train:,}` rows train.")
     else:
         lead = (f"Held out by a cut-point at `{shown}` on `{column}`: `{n_rows:,}` rows held out "
                 f"and `{n_train:,}` train.")
     # Audit IN-24's disclosure, for a cut-point: a unit held out whole can hold rows before it.
     before = (f" Whole units are held out, earlier rows included: `{n_before:,}` of the held-out "
-              f"rows were observed before `{shown}`." if groups is not None and n_before else "")
-    undated = (f" `{n_undated:,}` {word} with no readable `{column}` train and are never held out."
-               if n_undated else "")
-    said = claims.card(CUT_POINT, {"cut_point": {"column": column, "at": shown}, "holdout": 0.0})
-    sentence = f"{lead} {said}{before}{undated}"
-    return mask, Chronology(drawn=True, time_column=column, boundary=shown, n_units=int(len(held)),
+              f"rows were observed before `{shown}`." if grouped and n_before else "")
+    undated_words = (f" `{n_undated:,}` {word} with no readable `{column}` train and are never "
+                     f"held out." if n_undated else "")
+    said = claims.card(CUT_POINT_UNITS if grouped else CUT_POINT,
+                       {"cut_point": {"column": column, "at": shown}, "holdout": 0.0,
+                        "grouped": grouped})
+    sentence = f"{lead} {said}{before}{undated_words}"
+    return mask, Chronology(drawn=True, time_column=column, boundary=shown, n_units=n_units,
                             n_undated=n_undated, sentence=sentence, n_held_rows=n_rows,
                             n_held_earlier=n_before, cut_point=shown)
 
 
 def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, seed: int,
-         present: bool) -> tuple[Chronology, Any | None, str | None, Any | None]:
+         present: bool, analyzed: Any | None = None, outcome: str | None = None
+         ) -> tuple[Chronology, Any | None, str | None, Any | None]:
     """The cut-point's draw, as :func:`_chronology` returns the draw by share's: its disclosure,
-    the held-out mask, a refusal when the cut-point cannot hold rows out and leave some to train,
-    and each row's unit rank in time when the folds' order is time (None for random folds)."""
+    the held-out mask, a refusal when the cut-point cannot hold rows out and leave some to train
+    (or reads an outcome column: ``outcome`` names the target it is part of), and each row's unit
+    rank in time when the folds' order is time (None for random folds). ``analyzed`` is what the
+    sentence counts (:func:`cut_holdout`)."""
     column, shown = cut.column, decisions.cut_shown(cut.at)
+    if outcome is not None:
+        said = cut_on_outcome(column, outcome)
+        return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
+                           n_undated=0, sentence=said, cut_point=shown), None, said, None)
     if not present:
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
                            n_undated=0, sentence=f"`{column}` is named for the cut-point but is not "
@@ -729,13 +775,9 @@ def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, se
     raw = frame[column]
     problem = cut_problem(raw, cut)
     times = read_times(raw)
-    unreadable = int(np.isnan(times).sum())
-    if problem is None and len(times) and unreadable > MAX_UNDATED_SHARE * len(times):
-        problem = ("cut_point_undated",
-                   f"`{unreadable:,}` of `{len(times):,}` rows have no readable `{column}`: they "
-                   f"would train, though any of them may fall at or after `{shown}`.")
     if problem is None:
-        mask, chronology = cut_holdout(times, groups, cut_value(cut.at, raw), column, shown)
+        mask, chronology = cut_holdout(times, groups, cut_value(cut.at, raw), column, shown,
+                                       analyzed)
         if not (~mask & ~np.isnan(times)).any():  # every dated unit holds a row at or after it
             problem = ("cut_point_trains_nothing",
                        f"Every unit with a readable `{column}` has a row at or after `{shown}`, "
@@ -2244,9 +2286,10 @@ def _a_changed_scheme_is_its_own_kind(decision: Any, ctx: Any) -> None:
 
 
 def _the_cut_point_reads_its_column(decision: Any, ctx: Any) -> None:
-    """A cut-point names a column of the table, and holds rows out of it and leaves some to train,
-    among the rows with the outcome recorded (:func:`cut_problem`; the draw judges units and can
-    only refuse more). The exit holds out the usual share instead, the scheme kept."""
+    """A cut-point names a column of the table that is not an outcome (the verifier's P10), and
+    holds rows out of it and leaves some to train, among the rows with the outcome recorded
+    (:func:`cut_problem`; the draw judges units and can only refuse more). The exit holds out the
+    usual share instead, the scheme kept."""
     cut = getattr(decision, "cut_point", None)
     if cut is None:
         return
@@ -2257,11 +2300,15 @@ def _the_cut_point_reads_its_column(decision: Any, ctx: Any) -> None:
     if columns is not None and cut.column not in columns:
         raise Refusal("unknown_column", f"This dataset has no column named `{cut.column}`.",
                       exits=[share])
+    state = _ctx(ctx, "state")
+    target = getattr(state, "target", None) or _ctx(ctx, "target")
+    outcome = (decisions.outcome_columns(state) if getattr(state, "target", None) is not None
+               else [target] if target else [])
+    if cut.column in outcome:  # as a range rule on the outcome is (``rule_on_outcome``)
+        raise Refusal("cut_point_on_outcome", cut_on_outcome(cut.column, target), exits=[share])
     store = decisions._store_of(ctx)
     if store is None or cut.column not in set(store.columns):
         return
-    state = _ctx(ctx, "state")
-    target = getattr(state, "target", None) or _ctx(ctx, "target")
     read = [cut.column, *([target] if target in set(store.columns) and target != cut.column else [])]
     frame = store.materialize(read)
     raw = frame[cut.column] if target not in frame.columns else frame.loc[frame[target].notna(),

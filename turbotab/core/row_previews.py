@@ -114,10 +114,14 @@ def exclusions_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                           if s["key"].startswith("exclusion:") and s["key"].count(":") == 2)
         ranges = any(getattr(r, "kind", "range") != "levels" for r in decision.rules)
         where = "outside these ranges or at an excluded level" if ranges else "at an excluded level"
-        caption = (f"{fmt_count(excluded)} of {fmt_count(entering)} {_pool_words(ctx)} would "
-                   f"leave: {fmt_count(excluded - unconfirmed)} {where}, "
-                   f"{fmt_count(unconfirmed)} not confirmed eligible; "
-                   f"{fmt_count(entering - excluded)} stay.")
+        if unconfirmed:
+            caption = (f"{fmt_count(excluded)} of {fmt_count(entering)} {_pool_words(ctx)} would "
+                       f"leave: {fmt_count(excluded - unconfirmed)} {where}, "
+                       f"{fmt_count(unconfirmed)} not confirmed eligible; "
+                       f"{fmt_count(entering - excluded)} stay.")
+        else:  # none leaves unconfirmed (none given, or kept): the clause would count nothing
+            caption = (f"{fmt_count(excluded)} of {fmt_count(entering)} {_pool_words(ctx)} would "
+                       f"leave {where}; {fmt_count(entering - excluded)} stay.")
     else:
         # Rows with no value to check leave on lines of their own (stages.rows.cohort_flow).
         unchecked = sum(s["dropped"] for s in after
@@ -617,7 +621,7 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     draw = seal.seal_inputs(state, universe, ctx.datastore, task, holdout=decision.holdout,
                             seed=decision.seed, structure=structure,
                             cut_point=getattr(decision, "cut_point", None),
-                            fold_order=getattr(decision, "fold_order", None))
+                            fold_order=getattr(decision, "fold_order", None), analyzed=rows)
     if draw.refusal:
         ctx.read["note"] = draw.refusal
         return []
@@ -636,7 +640,16 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                                           getattr(state, "event", None))
     measures, below = seal.measure(task, int(info["n_holdout"]), held_counts)
     chron = draw.chronology if draw.chronology is not None and draw.chronology.drawn else None
-    if info["n_holdout"]:
+    cut_earlier = (int(chron.n_held_earlier or 0)
+                   if chron is not None and chron.cut_point is not None else 0)
+    if info["n_holdout"] and cut_earlier:
+        # A unit with rows on both sides of the cut-point is held out whole, so some held-out rows
+        # come before it: counted, never said to be at or after it (the verifier's P2). The seal
+        # counts the rows analyzed, as ``n_holdout`` does (``seal.cut_holdout``).
+        caption = (f"{fmt_count(info['n_holdout'])} rows held out: every unit seen at or after "
+                   f"`{chron.cut_point}` on `{chron.time_column}`, whole "
+                   f"({fmt_count(cut_earlier)} rows before it). {measures}")
+    elif info["n_holdout"]:
         how = (f"at or after `{chron.cut_point}` on `{chron.time_column}`"
                if chron is not None and chron.cut_point is not None
                else f"the latest by `{chron.time_column}`" if chron is not None

@@ -117,8 +117,11 @@ BACKTEST_RF1 = {
 }
 RF1_IDS = set().union(*BACKTEST_RF1.values())
 # SWARM_PLAN §10 package 4's engine claims, in the data and models areas' modules: the categorical
-# eligibility rule's unconfirmed answers and the temporal seal by cut-point.
-P4_IDS = {"eligibility.unconfirmed_answer", "seal.cut_point"}
+# eligibility rule's unconfirmed answers, its refusal of a level no row holds and its levels'
+# spellings, and the temporal seal by cut-point (by row, in whole units, and its undated rows).
+P4_IDS = {"eligibility.unconfirmed_answer", "eligibility.no_such_level",
+          "eligibility.level_spelling", "seal.cut_point", "seal.cut_point_units",
+          "seal.cut_point_undated"}
 
 
 def test_the_default_registry_holds_r0bs_claims():

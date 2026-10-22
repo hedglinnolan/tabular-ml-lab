@@ -3959,8 +3959,11 @@ SHOWN_LEVELS = 12  # a refusal lists at most this many of a column's levels
 def _levels_are_the_columns(rule: LevelRule, ctx: Any, drop: Mapping[str, Any]) -> None:
     """A level rule's column exists, and at least one level it excludes is held by some row: a
     rule whose excluded levels no row holds (``Yes`` on a column coded 1 and 2) would be recorded
-    as an exclusion that removed no one. A refused or don't-know code nobody gave is no reason to
-    refuse: the line it would name is then empty."""
+    as an exclusion by a level that removed no one (claim ``eligibility.no_such_level``). The
+    refusal says only that: the blank, refused and don't-know answers the rule would still leave
+    out as not confirmed eligible are counted beside it, never said to stay. A refused or
+    don't-know code nobody gave is no reason to refuse: the line it would name is then empty."""
+    from turbotab.core import claims
     from turbotab.core.stages.rows import _level_key
 
     columns = _columns_of(ctx)
@@ -3978,8 +3981,17 @@ def _levels_are_the_columns(rule: LevelRule, ctx: Any, drop: Mapping[str, Any]) 
     shown = _sorted_levels(held)
     listed = ", ".join(f"`{k}`" for k in shown[:SHOWN_LEVELS])
     more = f" and `{len(shown) - SHOWN_LEVELS}` more" if len(shown) > SHOWN_LEVELS else ""
+    # The rows the rule would still leave out (``stages.rows.rule_keep``): a blank, or a code it
+    # names as refused or don't know, unless it keeps them.
+    codes = {_level_key(level) for level in [*rule.refused, *rule.dont_know]}
+    unconfirmed = (int(values.isna().sum()) + sum(_level_key(v) in codes
+                                                  for v in values.dropna().tolist())
+                   if rule.missing == "exclude" else 0)
+    still = (f"; `{unconfirmed:,}` would leave only as not confirmed eligible" if unconfirmed
+             else "")
     raise Refusal("no_such_level",
-                  f"No row of `{rule.column}` holds {named}, so the rule would exclude no one. "
+                  f"No row of `{rule.column}` holds {named}, "
+                  f"{claims.card('eligibility.no_such_level', rule)}{still}. "
                   f"`{rule.column}` holds {listed}{more}.", exits=[drop])
 
 

@@ -136,6 +136,17 @@ def held_out_by_a_cut_point(ctx: Any) -> bool:
             and not _field(ctx, "holdout"))
 
 
+def held_out_in_whole_units(ctx: Any) -> bool:
+    """The seal keeps each unit's rows together, and some unit has more than one row: its
+    ``grouped`` is true (``seal.cut_holdout``, ``voice._set_split``)."""
+    return bool(_field(ctx, "grouped"))
+
+
+def held_out_row_by_row(ctx: Any) -> bool:
+    """The seal holds rows out one by one: one row per unit, or rows the seal does not group."""
+    return not held_out_in_whole_units(ctx)
+
+
 def drawn_by_row(ctx: Any) -> bool:
     """The seal could not keep a unit's rows together: its basis is ``abandoned`` (a unit's rows
     repeat, or were said to, and nothing groups them) or ``undetermined`` (whether they can repeat
@@ -908,35 +919,49 @@ SEAL_BY_ROW = register(Claim(
 ))
 
 # ── SWARM_PLAN §10 package 4: the temporal seal by cut-point ─────────────────────────────────
-# The seal's sentence leads with the cut-point's column, value and counts and then says the
-# claim's card (seal.cut_holdout); the split's methods sentence names the column and value and
-# then says its methods register (voice._set_split). The author grades no part above judgment.
+# The seal's sentence leads with the cut-point's column, value and counts of the analyzed rows and
+# then says the claim's card (seal.cut_holdout); the split's methods sentence names the column and
+# value and then says its methods register (voice._set_split). A seal that keeps units whole says
+# seal.cut_point_units instead, so a table of one row per unit is never told of units (the
+# verifier's P14). The author grades no part above judgment.
 
 P4_AUTHOR = "swarm package 4 builder"
+P4_REPAIR = "swarm package 4 builder, repair round 1, 2026-10-22"
 P4_CUT_TESTS = "turbotab/core/tests/test_cut_point_seal.py"
+
+BOUNDARY = Part("boundary", grade="judgment", basis=Basis(
+    reason="At or after: a row at the cut-point itself is held out, so a later cycle's first "
+           "value (2017-March 2020's, SWARM_PLAN §5) is all held out; the fires test puts rows at "
+           "the value and a hair before it. Every other analyzed row trains, one with no readable "
+           "time among them (seal.cut_point_undated). A row an exclusion leaves out is sealed "
+           "with the rest where it falls at or after the cut-point, so an exclusion relaxed later "
+           "brings it back held out, but it never trains; so the seal counts the analyzed rows, "
+           "as the split's own counts do (the package 4 verifier's P1)."))
 
 SEAL_CUT_POINT = register(Claim(
     id="seal.cut_point",
     kind="rule",
-    card="A cut-point holds out every row at or after it, with the earlier rows of any unit it "
-         "holds out; the other rows train.",
-    methods="held out every row at or after it for one final score, with the earlier rows of any "
-            "unit it held out",
+    card="A cut-point holds out every row at or after it, and every other analyzed row trains.",
+    methods="held out every row at or after it for one final score",
     regime=Regime("a split that holds rows out by a cut-point on a column that reads as numbers "
-                  "or dates, in place of a share, whatever the folds' order",
-                  requires=(f"{HERE}:held_out_by_a_cut_point",)),
+                  "or dates, in place of a share, whatever the folds' order, where the seal holds "
+                  "out rows one by one (one row per unit, or rows it does not group)",
+                  requires=(f"{HERE}:held_out_by_a_cut_point", f"{HERE}:held_out_row_by_row"),
+                  disjoint_from=("seal.cut_point_units",)),
     decision="set_split.cut_point",
     verdict="noted",
     parts=(
-        Part("boundary", grade="judgment", basis=Basis(
-            reason="At or after: a row at the cut-point itself is held out, so a later cycle's "
-                   "first value (2017-March 2020's, SWARM_PLAN §5) is all held out; the fires "
-                   "test puts rows at the value and a hair before it.")),
-        Part("whole_units", grade="judgment", basis=Basis(
-            reason="A unit with rows on both sides is held out whole, by its last observation, as "
-                   "the chronological draw ranks units (GUIDED-143: a unit split across the "
-                   "boundary trades one leak for another), so its earlier rows are held out too "
-                   "and the seal counts them (audit IN-24).")),
+        BOUNDARY,
+        Part("whole_units", grade=RETIRED, graded_by=P4_REPAIR,
+             regraded="The sentence no longer says a unit's earlier rows are held out: on a table "
+                      "of one row per unit it named units that do not exist (the package 4 "
+                      "verifier's P14). Where the seal keeps units whole, seal.cut_point_units "
+                      "says it.",
+             basis=Basis(
+                 reason="A unit with rows on both sides is held out whole, by its last "
+                        "observation, as the chronological draw ranks units (GUIDED-143: a unit "
+                        "split across the boundary trades one leak for another), so its earlier "
+                        "rows are held out too and the seal counts them (audit IN-24).")),
         Part("folds_free", grade="judgment", basis=Basis(
             reason="The training folds' order is the split's own answer under a cut-point "
                    "(SWARM_PLAN §10's watch note on package 3), so the same held-out rows can be "
@@ -946,14 +971,16 @@ SEAL_CUT_POINT = register(Claim(
     tests=(
         Fires(f"{P4_CUT_TESTS}::test_every_row_at_or_after_the_cut_point_is_held_out_and_every_"
               "earlier_row_trains", truth="construction"),
-        Fires(f"{P4_CUT_TESTS}::test_a_unit_seen_on_both_sides_is_held_out_whole_and_its_earlier_"
-              "rows_are_counted", truth="construction"),
+        Fires(f"{P4_CUT_TESTS}::test_with_rows_excluded_the_seal_counts_the_analyzed_rows_it_holds_"
+              "out_and_trains", truth="independent:pandas"),
         Silent(f"{P4_CUT_TESTS}::test_the_draw_by_share_still_orders_its_folds_by_time",
                truth="construction"),
         Fires(f"{P4_CUT_TESTS}::test_the_same_held_out_rows_take_random_repeated_folds_or_time_"
               "ordered_ones", truth="construction"),
         Fires(f"{P4_CUT_TESTS}::test_the_split_sentence_says_what_the_cut_point_held_out",
               truth="construction"),
+        Silent(f"{P4_CUT_TESTS}::test_the_split_sentence_names_units_only_where_the_seal_keeps_"
+               "units_whole", truth="construction"),
     ),
     enforced_by=("turbotab.core.seal:cut_holdout", "turbotab.core.seal:_cut",
                  "turbotab.core.voice:_set_split"),
@@ -961,18 +988,94 @@ SEAL_CUT_POINT = register(Claim(
     origin="engine",
 ))
 
+SEAL_CUT_POINT_UNITS = register(Claim(
+    id="seal.cut_point_units",
+    kind="rule",
+    card="A cut-point holds out every row at or after it, with the earlier rows of any unit it "
+         "holds out, and every other analyzed row trains.",
+    methods="held out every row at or after it for one final score, with the earlier rows of any "
+            "unit it held out",
+    regime=Regime("a split that holds rows out by a cut-point on a column that reads as numbers "
+                  "or dates, in place of a share, where the seal keeps each unit's rows together "
+                  "and some unit has more than one row",
+                  requires=(f"{HERE}:held_out_by_a_cut_point", f"{HERE}:held_out_in_whole_units"),
+                  disjoint_from=("seal.cut_point",)),
+    decision="set_split.cut_point",
+    verdict="noted",
+    parts=(
+        BOUNDARY,
+        Part("whole_units", grade="judgment", basis=Basis(
+            reason="A unit with rows on both sides is held out whole, by its last observation, as "
+                   "the chronological draw ranks units (GUIDED-143: a unit split across the "
+                   "boundary trades one leak for another), so its earlier rows are held out too "
+                   "and the seal counts them (audit IN-24).")),
+    ),
+    tests=(
+        Fires(f"{P4_CUT_TESTS}::test_a_unit_seen_on_both_sides_is_held_out_whole_and_its_earlier_"
+              "rows_are_counted", truth="independent:pandas"),
+        Fires(f"{P4_CUT_TESTS}::test_a_grouped_preview_says_whole_units_are_held_out_with_their_"
+              "earlier_rows", truth="independent:pandas"),
+        Fires(f"{P4_CUT_TESTS}::test_the_split_sentence_names_units_only_where_the_seal_keeps_"
+              "units_whole", truth="construction"),
+        Silent(f"{P4_CUT_TESTS}::test_every_row_at_or_after_the_cut_point_is_held_out_and_every_"
+               "earlier_row_trains", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.seal:cut_holdout", "turbotab.core.voice:_set_split"),
+    author=P4_AUTHOR,
+    origin="engine",
+))
+
+SEAL_CUT_POINT_UNDATED = register(Claim(
+    id="seal.cut_point_undated",
+    kind="rule",
+    card="rows with no readable time would train, though any of them may fall at or after the "
+         "cut-point, so a cut-point is refused where more than {max_undated:.0%} of the rows with "
+         "the outcome recorded have none",
+    regime=Regime("a split that holds rows out by a cut-point on a column some of whose rows do "
+                  "not read as a time; the chronological draw by share reads the same ceiling "
+                  "(seal.MAX_UNDATED_SHARE), which this claim does not cover",
+                  requires=(f"{HERE}:held_out_by_a_cut_point",)),
+    decision="set_split.cut_point_undated",
+    verdict="refused",
+    params={"max_undated": Param(0.1, unit="share of the rows with the outcome recorded",
+                                 constant="turbotab.core.seal:MAX_UNDATED_SHARE")},
+    parts=(
+        Part("undated_train", grade="judgment", basis=Basis(
+            reason="A row with no readable time cannot be placed before or after the cut-point, "
+                   "so it is never held out and trains, as under the chronological draw by share; "
+                   "the seal counts such rows.")),
+        Part("ceiling", grade="judgment", basis=Basis(
+            reason="Above a tenth, rows that train though they may fall at or after the "
+                   "cut-point are too many for the held-out rows to stand for the later period; "
+                   "the tenth is the chronological draw's own ceiling (MAX_UNDATED_SHARE), kept "
+                   "so both draws by time refuse alike. It is our call, not a published "
+                   "threshold.")),
+    ),
+    tests=(
+        Fires(f"{P4_CUT_TESTS}::test_more_than_a_tenth_of_the_rows_undated_refuses_the_cut_point",
+              truth="construction"),
+        Silent(f"{P4_CUT_TESTS}::test_a_tenth_of_the_rows_undated_is_drawn_and_the_undated_rows_"
+               "train", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.seal:cut_problem", "turbotab.core.seal:cut_holdout"),
+    author=P4_AUTHOR,
+    origin="engine",
+))
+
 CLAIMS = (SMALL_SAMPLE_STANDARD, SMALL_SAMPLE_STANDARD_ESTIMATE, SMALL_SAMPLE_STANDARD_CLASSES,
           SMALL_SAMPLE_NO_SEARCH, BOOSTED_TREES_SMALL_ROWS, FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR,
           ROWS_SMD_FLOOR_PREDICTION, COLLINEAR_UNDER_PREDICTION, VALIDATION_RESAMPLING_FIRST,
-          VALIDATION_PAIRED_INTERVAL, MODELING_NO_RESAMPLING, SEAL_BY_ROW, SEAL_CUT_POINT)
+          VALIDATION_PAIRED_INTERVAL, MODELING_NO_RESAMPLING, SEAL_BY_ROW, SEAL_CUT_POINT,
+          SEAL_CUT_POINT_UNITS, SEAL_CUT_POINT_UNDATED)
 
 __all__ = ["AUTHOR", "BASELINE_FLOOR", "BOOSTED_TREES_SMALL_ROWS", "CLAIMS",
            "COLLINEAR_UNDER_PREDICTION", "FOREST_SMALL_ROWS", "MODELING_NO_RESAMPLING",
            "ROWS_SMD_FLOOR", "ROWS_SMD_FLOOR_PREDICTION", "SEAL_BY_ROW", "SEAL_CUT_POINT",
-           "SMALL_SAMPLE_STANDARD",
+           "SEAL_CUT_POINT_UNDATED", "SEAL_CUT_POINT_UNITS", "SMALL_SAMPLE_STANDARD",
            "SMALL_SAMPLE_STANDARD_CLASSES", "SMALL_SAMPLE_STANDARD_ESTIMATE",
            "SMALL_SAMPLE_NO_SEARCH", "VALIDATION_PAIRED_INTERVAL", "VALIDATION_RESAMPLING_FIRST",
-           "classes_or_ordered", "drawn_by_row", "held_out_by_a_cut_point", "rated_before_any_fit",
+           "classes_or_ordered", "drawn_by_row", "held_out_by_a_cut_point",
+           "held_out_in_whole_units", "held_out_row_by_row", "rated_before_any_fit",
            "rows_times_smd",
            "searched_without_a_small_sample_standard", "standard_from_the_study",
            "under_either_purpose", "under_inference", "under_prediction", "verdict_metric",

@@ -151,6 +151,7 @@ export const AskFor = ({
   const roles = useStage(pid, view, "roles");
   const proposals = useStage(pid, view, "proposals");
   const sealPlan = useStage(pid, view, "seal_plan");
+  const split = useStage(pid, view, "split"); // a recorded cut-point's own sentence (SealAsk)
   const shelf = useStage(pid, view, "shelf");
   const design = useStage(pid, view, "design");
   // The generic question's cards (compose.ts): the causal lane's and the time-varying lane's.
@@ -418,6 +419,7 @@ export const AskFor = ({
           plan={sealPlan?.artifact ?? null}
           roles={roles?.artifact ?? undefined}
           current={state.split}
+          split={split?.artifact ?? undefined}
           // A cut-point reads numbers or dates (core/seal.py `cut_value`), never the outcome.
           timeColumns={(columns ?? [])
             .filter(

@@ -71,6 +71,34 @@ export function cutDecision(
   return { ...splitDecision(0, current), cut_point: { column, at: value }, fold_order: order };
 }
 
+/**
+ * A cut-point's value as the server shows and compares it (decisions.py `cut_shown`): a whole
+ * number without its decimals, another number to ten significant digits, text as written.
+ */
+export function cutShown(at: number | string): string {
+  if (typeof at === "number")
+    return Number.isInteger(at) ? String(at) : String(+at.toPrecision(10));
+  return at.trim();
+}
+
+/**
+ * The chronology the seal's basis line states. The seal plan's is a usual share's draw, which a
+ * recorded cut-point replaces (the temporal answer then draws nothing): under one, the line states
+ * the split's own sentence once the split is drawn for that cut-point, else the basis alone.
+ */
+export function basisChronology(
+  plan: SealPlan,
+  current: ProjectState["split"],
+  split: SplitArtifact | undefined,
+): SealPlan["chronology"] {
+  const cut = current?.cut_point;
+  if (!cut) return plan.chronology;
+  const drawn = split?.chronology;
+  return drawn?.drawn && drawn.time_column === cut.column && drawn.cut_point === cutShown(cut.at)
+    ? drawn
+    : null;
+}
+
 /** The seal's basis, said once: the glyph, its label, and the sentence that says how it was drawn. */
 export function SealBasisLine({
   basis,
@@ -99,12 +127,15 @@ export function SealAsk({
   plan,
   roles,
   current,
+  split,
   timeColumns = [],
   ...p
 }: AskProps & {
   plan: SealPlan | null;
   roles: RolesArtifact | undefined;
   current: ProjectState["split"];
+  /** The split as drawn: under a recorded cut-point, its sentence is the basis line's. */
+  split?: SplitArtifact;
   /** The columns a cut-point can be read on, numbers or dates, never the outcome. */
   timeColumns?: { name: string; numeric: boolean }[];
 }) {
@@ -220,7 +251,12 @@ export function SealAsk({
         plan ? (
           <>
             {/* No basis until there is a grain: the refusal below says the grain comes first. */}
-            {plan.basis ? <SealBasisLine basis={plan.basis} chronology={plan.chronology} /> : null}
+            {plan.basis ? (
+              <SealBasisLine
+                basis={plan.basis}
+                chronology={basisChronology(plan, current, split)}
+              />
+            ) : null}
             {plan.refusal ? (
               <span className={c.dataNote}>
                 <Taught text={plan.refusal} />
