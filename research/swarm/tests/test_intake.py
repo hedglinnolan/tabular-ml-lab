@@ -54,7 +54,10 @@ IDS = list(I.INTAKES)
 PINNED_SHARED = {"bang2009": {"0", "1", "one"},
                  "sullivan2021": {"0", "zero", "1", "one", "two", "five", "10", "20", "24"},
                  "nhanes_glucose_predict": {"one"},
-                 "clinical_readmission_predict": {"0", "1", "one"}}
+                 "clinical_readmission_predict": {"0", "1", "one"},
+                 "inpatient_readmission_predict": {"0", "1", "one"},
+                 "walking_bp_estimate": {"0", "1", "one"},
+                 "plasma_panel_estimate": {"0", "1", "one"}}
 XPT = I.XPT_MAGIC + b"!!!!!!!000000000000000000000000000000  " + bytes(range(256)) * 40
 CODEBOOK = (b"<html><head><title>LAB10AM Codebook</title></head><body><p>First Published: "
             b"June 2002</p><p>Last Revised: September 2009</p></body></html>")
@@ -225,16 +228,23 @@ def test_each_card_and_answers_file_validates(id_):
 
 
 def test_the_six_pilot_datasets_have_the_purposes_swarm_plan_names():
+    """SWARM_PLAN §5's six, the decoy, and the version-1 dry run's two fixtures, which its
+    committed records still name until the dry run is made again on the hardened fixtures (the
+    hardened Predict, the Estimate and the measurement fixture: items 4 to 6)."""
     purposes = {i: committed(i)["card"]["purpose"] for i in IDS}
     kinds = {i: committed(i)["answers"]["kind"] for i in IDS}
     assert purposes == {"bang2009": "Predict", "sullivan2021": "Estimate",
                         "nhanes_glucose_predict": "Predict",
                         "clinical_readmission_predict": "Predict",
-                        "survey_support_estimate": "Estimate", I.DECOY_ID: "Predict"}
+                        "survey_support_estimate": "Estimate", I.DECOY_ID: "Predict",
+                        "inpatient_readmission_predict": "Predict",
+                        "walking_bp_estimate": "Estimate", "plasma_panel_estimate": "Estimate"}
     assert kinds == {"bang2009": "replication", "sullivan2021": "replication",
                      "nhanes_glucose_predict": "no_known_answer",
                      "clinical_readmission_predict": "known_answer",
-                     "survey_support_estimate": "known_answer", I.DECOY_ID: "decoy"}
+                     "survey_support_estimate": "known_answer", I.DECOY_ID: "decoy",
+                     "inpatient_readmission_predict": "known_answer",
+                     "walking_bp_estimate": "known_answer", "plasma_panel_estimate": "known_answer"}
 
 
 @pytest.mark.parametrize("id_", IDS)

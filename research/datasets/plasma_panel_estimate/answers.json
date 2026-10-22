@@ -1,0 +1,168 @@
+{
+ "id": "plasma_panel_estimate",
+ "kind": "known_answer",
+ "fixture_key": "plasma_panel.csv",
+ "about": "A generated run (research/swarm/generators.py::metabolite_panel) with a known set of features associated with the disease and their log2 fold changes, under detection-limit censoring, drift within each batch, batch offsets that go up and down in run order, sample dilution and pooled QC injections.",
+ "truths": [
+  {
+   "name": "the associated features and each one's log2 fold change in the true concentration (every other feature's is 0)",
+   "source": "research/swarm/generators.py::panel_truth",
+   "value": {
+    "associated": [
+     "mz_0012",
+     "mz_0032",
+     "mz_0033",
+     "mz_0035",
+     "mz_0044",
+     "mz_0048",
+     "mz_0062",
+     "mz_0068",
+     "mz_0075",
+     "mz_0116",
+     "mz_0122",
+     "mz_0136",
+     "mz_0139",
+     "mz_0141",
+     "mz_0144"
+    ],
+    "log2_fold_change": {
+     "mz_0012": 0.8704572192725827,
+     "mz_0032": -0.748919198560878,
+     "mz_0033": 0.9784517260151663,
+     "mz_0035": -0.6294056394179928,
+     "mz_0044": 0.9495676093621941,
+     "mz_0048": -0.8944745900040663,
+     "mz_0062": 0.6763782800256788,
+     "mz_0068": -1.196616617340693,
+     "mz_0075": 1.1124474988037396,
+     "mz_0116": -0.7335280896917288,
+     "mz_0122": 0.8162882062729002,
+     "mz_0136": -1.0497845433136928,
+     "mz_0139": 0.9705144666951439,
+     "mz_0141": -0.9808236302671215,
+     "mz_0144": 0.8061888799141591
+    },
+    "features": 150,
+    "detection_limit_log2": 8.5
+   }
+  },
+  {
+   "name": "the run's parameters",
+   "source": "research/swarm/generators.py::PANEL",
+   "value": {
+    "batches": 4,
+    "injections_per_batch": 32,
+    "qc_positions": [
+     0,
+     5,
+     10,
+     15,
+     20,
+     25,
+     31
+    ],
+    "features": 150,
+    "associated": 15,
+    "log2_mean": [
+     8.0,
+     18.0
+    ],
+    "log2_sd": [
+     0.4,
+     0.9
+    ],
+    "log2_effect": [
+     0.6,
+     1.2
+    ],
+    "dilution": {
+     "sd": 0.3,
+     "case_shift": -0.35
+    },
+    "drift": 1.5,
+    "batch_pattern": [
+     0.4,
+     -0.4,
+     0.4,
+     -0.4
+    ],
+    "batch_size": [
+     0.3,
+     1.0
+    ],
+    "batch_noise": 0.05,
+    "technical_sd": 0.12,
+    "detection_limit_log2": 8.5,
+    "case_log_odds": {
+     "intercept": -0.3,
+     "batch_shift": 1.5,
+     "order_slope": 1.2
+    }
+   }
+  },
+  {
+   "name": "the measurement decisions graded: the engine's own menus",
+   "source": "research/swarm/generators.py::graded_measurement_decisions",
+   "value": [
+    {
+     "decision": "normalization and the log scale",
+     "records": "apply_repair on the omics_scale finding",
+     "options": [
+      "pqn_log2",
+      "qc_pqn_log2",
+      "log2",
+      "declared_normalized"
+     ]
+    },
+    {
+     "decision": "batch handling",
+     "records": "set_batch",
+     "options": [
+      "covariate",
+      "reference_combat",
+      "outcome_combat",
+      "none",
+      "not_a_batch"
+     ]
+    },
+    {
+     "decision": "drift and batch correction from the pooled QCs",
+     "records": "apply_repair on pack::metabolomics::pooled_qc",
+     "options": [
+      "qc_rlsc_lc",
+      "qc_rlsc_lc_dratio",
+      "qc_rlsc_gc",
+      "qc_rlsc_gc_dratio",
+      "exclude_rows"
+     ]
+    },
+    {
+     "decision": "detection-limit handling",
+     "records": "set_missing below_detection",
+     "options": [
+      "half_minimum",
+      "censoring_aware",
+      "as_missing",
+      "qrilc"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "the readings a user who knows the table gives",
+   "source": "turbotab/core/tests/truths.py FIXTURE_TRUTHS",
+   "value": {
+    "code_or_count:age": "amount",
+    "code_or_count:run_order": "amount",
+    "code_or_count:batch": "code",
+    "code_or_count:disease": "code",
+    "exposure:disease": "family",
+    "adjust:run_order": "yes,yes,no",
+    "adjust:batch": "yes,yes,no",
+    "adjust:age": "no,no,no",
+    "adjust:sex": "no,no,no",
+    "adjust:bmi": "no,no,no"
+   }
+  }
+ ]
+}

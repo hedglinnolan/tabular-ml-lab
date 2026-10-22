@@ -1,0 +1,4 @@
+# The repository root ignores *.csv so nobody commits a participant file by accident. These tables
+# are generated (research/swarm/generators.py writes each from its seed) and the swarm's runs
+# upload them, so they are re-included here rather than by weakening the rule everywhere.
+!*.csv

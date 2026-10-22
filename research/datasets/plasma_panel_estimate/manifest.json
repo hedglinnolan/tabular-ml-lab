@@ -1,0 +1,29 @@
+{
+ "about": "A generated fixture of this repository, copied as committed.",
+ "dataset": "plasma_panel_estimate",
+ "license": "MIT",
+ "basis": "the repository's LICENSE: the table is generated here",
+ "files": [
+  {
+   "file": "research/swarm/fixtures/plasma_panel.csv",
+   "origin": "this repository",
+   "generator": "research/swarm/generators.py::metabolite_panel",
+   "bytes": 156879,
+   "sha256": "bb59c6d961760fb3a3c8fa376df2070d3432c415eb546bcd19ff930070945655"
+  }
+ ],
+ "table": {
+  "file": "research/data/datasets/plasma_panel_estimate/plasma_panel.csv",
+  "format": "csv",
+  "rows": 128,
+  "columns": 158,
+  "bytes": 156879,
+  "sha256": "bb59c6d961760fb3a3c8fa376df2070d3432c415eb546bcd19ff930070945655"
+ },
+ "generator": {
+  "module": "research/swarm/generators.py",
+  "function": "metabolite_panel",
+  "seed": 20261024,
+  "rows": 128
+ }
+}

@@ -1,0 +1,181 @@
+{
+ "id": "walking_bp_estimate",
+ "kind": "known_answer",
+ "fixture_key": "walking_bp.csv",
+ "about": "A generated cohort (research/swarm/generators.py::blood_pressure) in which walking every day changes systolic blood pressure by a known difference in means, chronic pain causes both, the health-concern score is caused by both, and chronic pain is left blank more often where blood pressure is high: each plan's population bias is known.",
+ "truths": [
+  {
+   "name": "the generating model",
+   "source": "research/swarm/generators.py::blood_pressure",
+   "value": {
+    "exposure": "walks_daily",
+    "outcome": "sbp_mmhg",
+    "intercept": 118.0,
+    "effect": -5.0,
+    "sd": 12.0,
+    "age": {
+     "column": "age",
+     "low": 40,
+     "high": 79,
+     "center": 60,
+     "slope": 0.5
+    },
+    "confounder": {
+     "column": "chronic_pain",
+     "prevalence": 0.35,
+     "on_outcome": 8.0,
+     "exposure_log_odds": [
+      0.2,
+      -1.4
+     ]
+    },
+    "collider": {
+     "column": "health_concern_score",
+     "intercept": 50.0,
+     "on_exposure": 6.0,
+     "on_outcome": 0.6,
+     "center": 118.0,
+     "sd": 8.0
+    },
+    "unrelated": {
+     "column": "height_cm",
+     "mean": 170.0,
+     "sd": 9.0
+    },
+    "missing": {
+     "column": "chronic_pain",
+     "link": "probit",
+     "intercept": 0.6,
+     "slope": -1.0,
+     "center": 118.0,
+     "scale": 12.0
+    }
+   }
+  },
+  {
+   "name": "the effect of walks_daily on sbp_mmhg, a difference in means",
+   "source": "research/swarm/generators.py::blood_pressure",
+   "value": -5.0
+  },
+  {
+   "name": "each plan's population coefficient on walks_daily and its bias, and b0 (half the smallest planted bias in size)",
+   "source": "research/swarm/generators.py::planted_biases (closed form, population_effects)",
+   "value": {
+    "plans": {
+     "oracle": {
+      "columns": [
+       "walks_daily",
+       "chronic_pain",
+       "age"
+      ],
+      "rows": "all"
+     },
+     "collider_kept": {
+      "columns": [
+       "walks_daily",
+       "chronic_pain",
+       "age",
+       "health_concern_score"
+      ],
+      "rows": "all"
+     },
+     "confounder_dropped": {
+      "columns": [
+       "walks_daily",
+       "age"
+      ],
+      "rows": "all"
+     },
+     "complete_cases": {
+      "columns": [
+       "walks_daily",
+       "chronic_pain",
+       "age"
+      ],
+      "rows": "complete"
+     }
+    },
+    "effect": -5.0,
+    "coefficients": {
+     "oracle": -5.000000000001392,
+     "collider_kept": -7.237569060774501,
+     "confounder_dropped": -7.353362049312083,
+     "complete_cases": -3.7548174037139663
+    },
+    "bias": {
+     "oracle": -1.3917755836700962e-12,
+     "collider_kept": -2.2375690607745007,
+     "confounder_dropped": -2.353362049312083,
+     "complete_cases": 1.2451825962860337
+    },
+    "smallest_planted_bias": 1.2451825962860337,
+    "b0": 0.6225912981430168
+   }
+  },
+  {
+   "name": "b0 against the oracle plan's mean bias over fresh draws (SWARM_PLAN §5 item 5), from an analysis independent of the engine",
+   "source": "research/swarm/generators.py::b0_tuning (statsmodels; multiple imputation of its own)",
+   "value": {
+    "draws": 100,
+    "imputations": 20,
+    "rows": 1200,
+    "seeds": [
+     1,
+     100
+    ],
+    "b0": 0.6225912981430168,
+    "plans": {
+     "oracle": {
+      "mean": -4.940223635360469,
+      "mean_bias": 0.05977636463953129,
+      "sd": 0.7541993321121564,
+      "se_of_mean_bias": 0.07541993321121564
+     },
+     "collider_kept": {
+      "mean": -7.150932711345714,
+      "mean_bias": -2.150932711345714,
+      "sd": 0.5569307494258807,
+      "se_of_mean_bias": 0.05569307494258807
+     },
+     "confounder_dropped": {
+      "mean": -7.297149163754326,
+      "mean_bias": -2.2971491637543258,
+      "sd": 0.730345496870796,
+      "se_of_mean_bias": 0.07303454968707959
+     },
+     "complete_cases": {
+      "mean": -3.641215470141183,
+      "mean_bias": 1.3587845298588168,
+      "sd": 0.8009225266317722,
+      "se_of_mean_bias": 0.08009225266317722
+     }
+    },
+    "oracle_coverage": 0.95,
+    "b0_over_oracle_se": 8.254996678390478,
+    "holds": true,
+    "oracle_within_b0": true,
+    "wrong_paths_beyond_b0": {
+     "collider_kept": true,
+     "confounder_dropped": true,
+     "complete_cases": true
+    }
+   }
+  },
+  {
+   "name": "the readings a user who knows the table gives",
+   "source": "turbotab/core/tests/truths.py FIXTURE_TRUTHS",
+   "value": {
+    "code_or_count:age": "amount",
+    "code_or_count:chronic_pain": "code",
+    "code_or_count:walks_daily": "code",
+    "unit:age": "years",
+    "exposure:sbp_mmhg": "walks_daily",
+    "form:age": "linear",
+    "adjust:chronic_pain": "yes,yes,no",
+    "adjust:age": "no,yes,no",
+    "adjust:health_concern_score": "no,no,yes",
+    "adjust:height_cm": "no,no,no"
+   }
+  }
+ ]
+}

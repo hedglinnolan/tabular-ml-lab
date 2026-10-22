@@ -1,0 +1,26 @@
+{
+ "id": "walking_bp_estimate",
+ "design": "analysts",
+ "purpose": "Estimate",
+ "question": "Is walking every day associated with systolic blood pressure?",
+ "population": "A generated (synthetic) cohort of adults, one row per person.",
+ "outcome": {
+  "column": "sbp_mmhg",
+  "meaning": "systolic blood pressure (mmHg)"
+ },
+ "exposure": {
+  "column": "walks_daily",
+  "meaning": "walks every day (1 yes, 0 no)"
+ },
+ "documentation": [
+  "Each person's age, height, chronic pain (1 yes, 0 no) and daily walking were recorded when they enrolled; their health-concern score (a questionnaire's score) and their systolic blood pressure were measured at a later visit.",
+  "A blank chronic_pain is a question the person did not answer."
+ ],
+ "table": {
+  "path": "research/data/datasets/walking_bp_estimate/walking_bp.csv",
+  "format": "csv"
+ },
+ "source": "A generated (synthetic) table.",
+ "prepared": [],
+ "manifest": "research/datasets/walking_bp_estimate/manifest.json"
+}

@@ -222,6 +222,35 @@ FIXTURE_TRUTHS: dict[str, dict[str, str]] = {
         **{f"adjust:{c}": "no,yes,yes" for c in (
             "bp_sys", "bp_di", "hdl", "triglycerides", "meds_hbp", "meds_chol")},
     },
+    # The swarm's generated fixtures (``research/swarm/generators.py``; SWARM_PLAN §5 items 4–6).
+    # The hardened Predict fixture: clinical_risk.csv's columns, drawn as its generator draws them.
+    "readmissions.csv": {
+        "code_or_count:age": "amount", "code_or_count:charlson_index": "amount",
+        "code_or_count:prior_admissions_12mo": "amount", "code_or_count:sodium_mmol_l": "amount",
+        "code_or_count:length_of_stay_days": "amount", "sex_coding:sex": "female=F,male=M",
+    },
+    # The Estimate fixture: walking daily lowers systolic pressure; chronic pain causes both
+    # (a confounder); the health-concern score is caused by both (a collider, after the exposure);
+    # age causes the outcome alone, as a straight line; height causes nothing. Pain and walking are
+    # yes/no codes, age whole years.
+    "walking_bp.csv": {
+        "code_or_count:age": "amount", "code_or_count:chronic_pain": "code",
+        "code_or_count:walks_daily": "code", "unit:age": "years",
+        "exposure:sbp_mmhg": "walks_daily", "form:age": "linear",
+        "adjust:chronic_pain": "yes,yes,no", "adjust:age": "no,yes,no",
+        "adjust:health_concern_score": "no,no,yes", "adjust:height_cm": "no,no,no",
+    },
+    # The measurement fixture: every feature is an exposure of the family; the batch and the
+    # injection order move the measured intensities and, by how the samples were placed, go with
+    # case status (causes of both); age, sex and BMI touch nothing. Run order counts injections,
+    # batch and disease are codes.
+    "plasma_panel.csv": {
+        "code_or_count:age": "amount", "code_or_count:run_order": "amount",
+        "code_or_count:batch": "code", "code_or_count:disease": "code",
+        "exposure:disease": "family",
+        "adjust:run_order": "yes,yes,no", "adjust:batch": "yes,yes,no",
+        "adjust:age": "no,no,no", "adjust:sex": "no,no,no", "adjust:bmi": "no,no,no",
+    },
     "binary_shapes.csv": {"code_or_count:age": "amount", "code_or_count:sbp": "amount"},
     "multiclass_stage.csv": {"code_or_count:age": "amount"},
     # One 40-item five-point Likert instrument (survey_instrument.md): each item's 1–5 is a response

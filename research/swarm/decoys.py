@@ -15,6 +15,14 @@ nothing about the outcome either.
     scripts/py -m research.swarm.decoys <seed> <out.csv> [--rows N]
 
 writes one decoy table (the intake, ``research/swarm/intake.py``, writes the pilot's).
+
+**Distinct seeds** (SWARM_PLAN §5: the null decoy is mechanical only, "with distinct seeds"). The
+decoy's runs are its mechanical arms, each a plan replayed on a fresh draw
+(``core/export/replay.py``, ``FreshDraw("research.swarm.decoys:generate", <the intake's seed>,
+<the run's seed>)``). One table and one split for every run made them close to one test (the plan
+audit, 2026-10-19); :func:`seeds` gives run k its own seed, :data:`FIRST_SEED` + k, so no two runs
+share an outcome stream, none is the analysts' table's (the intake's ``DECOY_SEED``), and each
+run's false finding is its own chance.
 """
 from __future__ import annotations
 
@@ -27,6 +35,9 @@ import pandas as pd
 
 ROWS = 1600
 OUTCOME = "admitted_2y"
+# The mechanical runs' seeds start above the analysts' table's (the intake's DECOY_SEED): run k
+# (1 up) draws its table at FIRST_SEED + k.
+FIRST_SEED = 20262000
 PREVALENCE = 0.2  # the probability of the outcome on every row, whatever its columns
 # The share of rows left blank, by column, at random (from the columns' stream).
 BLANKS = {"ldl": 0.07, "hdl": 0.07, "steps_per_day": 0.12, "drinks_per_week": 0.03}
@@ -88,6 +99,14 @@ def generate(seed: int, n: int = ROWS) -> pd.DataFrame:
         frame[name] = frame[name].astype("Int64")  # whole numbers, written without a decimal
     frame[OUTCOME] = outcome(seed, n)
     return frame
+
+
+def seeds(count: int, first: int = FIRST_SEED) -> list[int]:
+    """The seeds of ``count`` mechanical decoy runs: ``first`` + 1 to ``first`` + ``count``,
+    distinct by construction."""
+    if count < 0:
+        raise ValueError("a count of runs is not negative")
+    return [first + k for k in range(1, count + 1)]
 
 
 def main(argv: list[str] | None = None) -> int:

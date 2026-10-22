@@ -1,0 +1,18 @@
+{
+ "id": "inpatient_readmission_predict",
+ "design": "analysts",
+ "purpose": "Predict",
+ "question": "How well do the table's measures predict a readmission within 30 days?",
+ "population": "A generated (synthetic) cohort of adult hospital encounters, one row per encounter.",
+ "outcome": {
+  "column": "readmit_30d",
+  "meaning": "readmitted within 30 days (1 yes, 0 no)"
+ },
+ "table": {
+  "path": "research/data/datasets/inpatient_readmission_predict/readmissions.csv",
+  "format": "csv"
+ },
+ "source": "A generated (synthetic) table.",
+ "prepared": [],
+ "manifest": "research/datasets/inpatient_readmission_predict/manifest.json"
+}
