@@ -16,12 +16,13 @@ with"), and normalized as every modeling stage reads its frame (``pipeline.norma
 **Right or refused.** A plan whose working table is not those steps cannot be scored that way, so
 before any new row is read the same steps are run on the plan's own training rows, from the table
 the project was made from, and each predictor compared with the working table the fit read; a
-predictor that differs (a unit converted, rows combined, QC-based drift correction, a step this
-module does not run) is refused by name. Refused too: a plan under inference (its result is an
-estimate, not a prediction), a task other than a yes/no outcome or a number, a feature-major table,
-model updating by shrinkage (applied after the fit, which this module does not apply), a family the
-fit did not keep, more than one family with none named, a fit or design not computed, and new rows
-whose predictor reads as text where the plan's read numbers, or the reverse.
+predictor that differs (one QC-RLSC corrected, say, or any step but the repairs' own SQL) is
+refused by name, as is a working table that combines rows. Refused too: a plan under inference
+(its result is an estimate, not a prediction), a task other than a yes/no outcome or a number, a
+feature-major table, model updating by shrinkage (applied after the fit, which this module does not
+apply), a family the fit did not keep, more than one family with none named, a fit or design not
+computed, and new rows whose predictor reads as text where the plan's read numbers, or the
+reverse.
 """
 from __future__ import annotations
 
@@ -153,9 +154,10 @@ def predict(service: Any, pid: str, rows: pd.DataFrame | str | Path, *,
     differ = [c for c in inputs if not _same(mine[c].reset_index(drop=True),
                                              theirs[c].reset_index(drop=True))]
     if differ:
-        raise ScoreRefused(f"The working table holds {', '.join(f'`{c}`' for c in differ)} as no "
-                           f"step these predictions run computes it (a converted unit, a drift "
-                           f"correction, a combined row): new rows cannot be read the same way.")
+        raise ScoreRefused(f"On the training rows the working table holds "
+                           f"{', '.join(f'`{c}`' for c in differ)} otherwise than the repairs' own "
+                           f"steps compute it from the table: new rows cannot be read the same "
+                           f"way.")
     with tempfile.TemporaryDirectory(prefix="turbotab-score-") as folder:
         parquet = _ingested(rows, Path(folder))
         try:
