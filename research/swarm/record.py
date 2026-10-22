@@ -1,24 +1,33 @@
 """The corpus record: one JSON document per swarm run (DRIVER_PLAN D3; SWARM_PLAN §4).
 
-A record is assembled after the run from the server's own data (``assemble.py``), never from the
-analyst's account of it, and validated here before it is kept. Its fields are SWARM_PLAN §4's:
+A record is assembled after the run from the server's own data and the driver's run directory
+(``assemble.py``), never from the analyst's account of it, and validated here before it is kept.
+Version 2 (SWARM_PLAN §4, the build's package 1) adds the fields marked new. Its fields:
 
-* ``run``: the run's id and design, the engine's commit, the analyst's model, effort and prompt
-  version, when it started and ended, its spend (fresh and cached tokens, counted from the
-  analyst's transcript once per message) and its fits and their seconds;
+* ``run``: the run's id and design, the engine's commit, the analyst's model, **its persona**
+  (new; both redacted in the view a blind reader is shown, :func:`redacted`), effort and prompt
+  version, **the vocabulary its tags were taken under** (new, ``vocabulary.DIGEST``), when it
+  started and ended, its spend (fresh and cached tokens, counted from the analyst's transcript
+  once per message) and its fits and their seconds;
 * ``dataset``: the files the run read, each with its SHA-256 and where it came from, and, from the
   intake, whether the dataset is a known-answer control or a null decoy (never on the analyst's
-  card);
+  card), and **the declared measurement markers** (new, SWARM_PLAN §5: each quoted, or recorded
+  as not stated);
 * ``question``: the goal G (the purpose) and the estimand or intended use Q the analyst declared;
 * ``regime``: the engine's readings of the table: rows, rows analyzed, events, blanks, the design,
-  the lenses;
+  the lenses; and **each marker of the vocabulary the engine reads, tagged live or post hoc**
+  (new, :class:`Marker`: its value with where the engine served it, or why it has none);
 * ``decisions``: each decision record of the log with its option, the options examined for it
-  (previewed or fitted), its reason (the record's ``note``), its phase, who recorded it and its
-  materiality M;
+  (previewed, **with the preview's reason**, new, or fitted), its reason (the record's ``note``),
+  **the analyst's tag at the decision: its marker and the alternative it rejected** (new,
+  :class:`Tag`, from the driver's ``answer``), its phase, who recorded it and its materiality M;
 * ``attempts``: each fit's record as ``GET …/fits`` serves it, with its change from the fit before
   it both ways (the records that entered force and those that left it, each credited to the record
   that made the change: itself, the record that replaced it, or the revert that withdrew or
-  restored it) and the reasons of the records credited;
+  restored it) and the reasons of the records credited; **the live markers at that fit** (new,
+  read by the driver while the fit's answers stood); and **the signed change in each family's
+  primary score from the fit before** (new, :class:`SignedChange`: paired over the same folds,
+  else unpaired with the Nadeau–Bengio inflation, ``signed.py``);
 * ``result``: the reported result, once: the first opening's held-out scores under Predict; under
   Estimate the number the app reports for the estimand the lock's plan declares, on its measure's
   scale (a marginal risk difference or ratio as ``GET …/results`` serves the effects stage's
@@ -26,8 +35,17 @@ analyst's account of it, and validated here before it is kept. Its fields are SW
   interval; or why there is none and of which kind (none reported, none served, or none the
   record can know);
 * ``claims``: every registry claim rendered for the project, as the analyst log serves it;
-* ``surfacings``: each refusal the driver met and the command that followed it, and each concern
-  the materiality ledger measured;
+* ``surfacings``: each refusal the driver met and the command that followed it, each concern
+  the materiality ledger measured, and **each fit that failed while the driver watched, classed
+  refused (the engine's typed refusal: its code and ways forward) or failed** (new,
+  :class:`FailedFit`);
+* ``wants`` (new): each option, check, reading or eligibility rule the analyst said the engine
+  lacks, with its reason and marker, as the driver's ``want`` recorded it;
+* ``account`` (new): the analyst's end-of-run account, as the driver's ``account`` recorded it,
+  never the agent's final message, marked whether it was written after the results were read and
+  after the seal; context for hypotheses, never evidence;
+* ``replay`` (new, fixtures only): the final plan on fresh draws of the fixture's generator
+  (SWARM_PLAN §7), filled by the replay scorer; its schema only here;
 * ``export``: the bundle's SHA-256, its methods text and its checklist, and whether the analyst's
   own export reached it;
 * ``replication``: for a replication (design 1), the paper's decisions against ours, filled by its
@@ -36,7 +54,9 @@ analyst's account of it, and validated here before it is kept. Its fields are SW
 **Who fills what.** The analyst fills G, Q, D and O through its answers; the engine fills the
 regime R and the materiality M; **no field holds a validity V**. Every model here forbids fields it
 does not declare, so a record that carries a validity, or any field a run invents, fails its schema.
-Only a mechanical check (``checks.py``) or an independent grader judges a run.
+Only a mechanical check (``checks.py``) or an independent grader judges a run. Every tag and want
+names a marker of the vocabulary (``vocabulary.py``), and a want a kind of it; a record that names
+another fails.
 
 **Materiality is the engine's number.** A decision's ``materiality`` holds either what the engine
 measured (``GET …/fits``' paired movement for the fit whose whole change from the fit before is
@@ -54,7 +74,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-VERSION = 1
+from research.swarm import vocabulary as V
+
+VERSION = 2
 
 # When a decision was made, by the decision log's own marks (SWARM_PLAN §4's phases):
 # "after_seal", recorded after the held-out rows were opened (``post_seal``); "after_estimates",
@@ -71,6 +93,11 @@ Control = Literal["known_answer", "null_decoy"]
 # fit's rows now; the opening recorded no scores while its fit serves held-out scores; the results
 # no longer serve the locked plan's marginal risks).
 RefusedKind = Literal["not_reported", "not_served", "not_known"]
+# SWARM_PLAN §6's personas: stances toward the field's defaults, under one protocol.
+Persona = Literal["conventional", "skeptical", "explorer"]
+# What a redacted field holds in the view a blind reader is shown (:func:`redacted`).
+REDACTED = "redacted"
+REDACTED_SPEND = "Redacted for a blind reader: a run's spend can tell its model."
 # The two scales of an effect measure (``estimand.measure_facts``, MODELING_SEQUENCE ruling 9), and
 # the value of no effect on each.
 Scale = Literal["difference", "ratio"]
@@ -101,8 +128,12 @@ class Run(_Strict):
     engine_modified: bool | None  # whether tracked files differed from it
     engine_version: str | None  # GET /health's version
     analyst_model: str = Field(min_length=1)
+    # The persona the analyst ran under; None for a run under none (design 1's sweep, design 3).
+    persona: Persona | None = None
     effort: str | None
     prompt_version: str = Field(min_length=1)
+    vocabulary: str = Field(min_length=1)  # the vocabulary's digest (``vocabulary.DIGEST``)
+    redacted: bool = False  # the view a blind reader is shown (:func:`redacted`)
     started: datetime
     ended: datetime | None
     spend: Spend | None
@@ -118,6 +149,14 @@ class Run(_Strict):
     def _spend_or_why(self) -> "Run":
         if (self.spend is None) == (self.spend_why is None):
             raise ValueError("a run holds its spend or why it has none, not both and not neither")
+        hidden = (self.analyst_model == REDACTED and self.persona is None and self.effort is None
+                  and self.prompt_version == REDACTED and self.spend is None
+                  and self.spend_why == REDACTED_SPEND)
+        if self.redacted and not hidden:
+            raise ValueError("a redacted run holds no model, persona, effort, prompt version or "
+                             "spend")
+        if not self.redacted and REDACTED in (self.analyst_model, self.prompt_version):
+            raise ValueError("a run that is not redacted names its model and prompt version")
         return self
 
 
@@ -136,6 +175,30 @@ class DatasetFile(_Strict):
     license: str | None = None
 
 
+DeclaredName = Literal[V.DECLARED]  # type: ignore[valid-type]
+
+
+class DeclaredMarker(_Strict):
+    """A declared measurement marker (SWARM_PLAN §5), as the intake reads it from the paper's
+    methods or the NCHS documentation: its value with the passage quoted and where it is, or, where
+    the source does not say, ``not_stated`` with neither; whether a referee checked the quote."""
+
+    name: DeclaredName
+    status: Literal["declared", "not_stated"]
+    value: str | None = None
+    quote: str | None = None
+    source: str | None = None
+    checked: bool | None = None
+
+    @model_validator(mode="after")
+    def _quoted_or_not_stated(self) -> "DeclaredMarker":
+        if self.status == "declared" and not (self.value and self.quote and self.source):
+            raise ValueError("a declared marker holds its value, the passage quoted and where it is")
+        if self.status == "not_stated" and (self.value is not None or self.quote is not None):
+            raise ValueError("a marker the source does not state holds no value and no quote")
+        return self
+
+
 class Dataset(_Strict):
     id: str = Field(min_length=1)
     # From the intake's manifest, never the analyst's card: a known-answer control or a null decoy.
@@ -147,6 +210,14 @@ class Dataset(_Strict):
     files: list[DatasetFile]
     codebook: str | None = None
     card: dict[str, Any] | None = None  # the question card the analyst was given
+    declared: list[DeclaredMarker] = []  # SWARM_PLAN §5, from the intake's version 2
+
+    @model_validator(mode="after")
+    def _each_declared_once(self) -> "Dataset":
+        names = [m.name for m in self.declared]
+        if len(names) != len(set(names)):
+            raise ValueError("a declared marker is listed once")
+        return self
 
 
 class Question(_Strict):
@@ -158,8 +229,45 @@ class Question(_Strict):
     paper: str | None = None  # a replication's paper
 
 
+MarkerName = Literal[V.NAMES]  # type: ignore[valid-type]
+
+
+class Marker(_Strict):
+    """One marker of the vocabulary as the engine reads it (``markers.py``): its name, its axis and
+    whether it is known live or post hoc, as the vocabulary fixes them; its value, with where the
+    engine served it (``basis``), or why it has none. A declared marker is the dataset's
+    (:class:`DeclaredMarker`), never one the engine reads."""
+
+    name: MarkerName
+    axis: V.Axis
+    timing: Literal["live", "post_hoc"]
+    value: Any = None
+    basis: str | None = None
+    why: str | None = None
+
+    @model_validator(mode="after")
+    def _as_the_vocabulary_fixes_it(self) -> "Marker":
+        fixed = V.BY_NAME[self.name]
+        if (self.axis, self.timing) != (fixed.axis, fixed.timing):
+            raise ValueError(f"the marker {self.name} is {fixed.axis} and {fixed.timing} in the "
+                             f"vocabulary")
+        if (self.value is None) == (self.why is None):
+            raise ValueError(f"the marker {self.name} holds its value or why it has none, not "
+                             f"both and not neither")
+        if self.value is not None and not self.basis:
+            raise ValueError(f"the marker {self.name}'s value says where the engine served it")
+        return self
+
+
+def _once(markers: list[Marker], where: str) -> None:
+    names = [m.name for m in markers]
+    if len(names) != len(set(names)):
+        raise ValueError(f"{where} lists a marker more than once")
+
+
 class Regime(_Strict):
-    """The engine's readings, each its own number as served."""
+    """The engine's readings, each its own number as served, and (version 2) each marker of the
+    vocabulary it reads at the end of the run, live and post hoc."""
 
     n_rows: int | None  # the ingest's rows
     n_analyzed: int | None  # the participant flow's final count
@@ -169,6 +277,12 @@ class Regime(_Strict):
     missing: dict[str, int]  # each column with blanks, and how many
     design: dict[str, Any]  # survey, clusters, grain, repeats, unit and design, as recorded
     lenses: list[str]
+    markers: list[Marker]
+
+    @model_validator(mode="after")
+    def _markers_once(self) -> "Regime":
+        _once(self.markers, "the regime")
+        return self
 
 
 # ── decisions and attempts ───────────────────────────────────────────────────
@@ -198,6 +312,9 @@ class Examined(_Strict):
     seq: int | None = None  # how == "fit": the earlier record that held the option
     attempt: str | None = None  # how == "fit": the fit it was in force in
     refused: str | None = None  # how == "preview": the refusal's code
+    # how == "preview": the reason the driver's ``preview`` took with it; None where no preview
+    # command of the run's is found for it (a preview made outside the driver).
+    reason: str | None = None
     alternative: bool
 
 
@@ -235,6 +352,18 @@ class Materiality(_Strict):
         return self
 
 
+class Tag(_Strict):
+    """What the analyst said at a decision beside its reason (SWARM_PLAN §4, the analyst's account
+    written at each decision, before it had seen what mattered): the marker of the vocabulary the
+    decision answers to, and the alternative it rejected (an option offered for the same question,
+    by its id and the decision it would record), as the driver's ``answer`` took them."""
+
+    marker: MarkerName
+    rejected: dict[str, Any] | None = None
+    command: Literal["answer"] = "answer"
+    at: datetime | None = None
+
+
 class Decision(_Strict):
     id: str
     seq: int = Field(ge=1)
@@ -250,6 +379,9 @@ class Decision(_Strict):
     early: str | None = None
     examined: list[Examined]
     materiality: Materiality
+    # The analyst's tag, for a record the driver's ``answer`` posted; None for every other (one
+    # TurboTab recorded itself, a revisit, the seal).
+    tag: Tag | None = None
 
 
 class Reason(_Strict):
@@ -315,6 +447,57 @@ class Attempt(_Strict):
     withheld: str | None
     # Estimate: GET …/fits marks this the fit the plan's lock in force was recorded on.
     locked: bool = False
+    # The live markers at this fit, as the driver read them while its answers stood (a command
+    # whose current fit was this one), or why there are none.
+    markers: list[Marker] | None = None
+    markers_why: str | None = None
+    # Under Predict, each family's signed change in its primary score from the fit before
+    # (:class:`SignedChange`), or why there is none (the first fit; no score served).
+    change: list["SignedChange"] = []
+    change_why: str | None = None
+
+    @model_validator(mode="after")
+    def _markers_or_why(self) -> "Attempt":
+        if (self.markers is None) == (self.markers_why is None):
+            raise ValueError(f"fit #{self.seq} holds its live markers or why it has none, not "
+                             f"both and not neither")
+        if self.markers is not None:
+            _once(self.markers, f"fit #{self.seq}")
+            if any(m.timing != "live" for m in self.markers):
+                raise ValueError(f"fit #{self.seq}'s markers are live markers: a post hoc one is "
+                                 f"not known at a fit")
+        return self
+
+
+class SignedChange(_Strict):
+    """One family's signed change in the primary score from the fit before (``against``),
+    computed from the two fits' per-fold scores (``signed.change``, SWARM_PLAN §7): ``paired``
+    over the same folds, else unpaired with each arm's Nadeau–Bengio inflation; ``difference`` is
+    this fit's mean less the earlier's on the metric's scale, ``better`` whether this fit scored
+    better by the metric's direction; ``half_width`` is half the earlier fit's own interval
+    width. Without a number, ``why``."""
+
+    family: str
+    metric: str
+    against: str
+    paired: bool
+    difference: float | None
+    better: bool | None
+    se: float | None
+    df: float | None
+    ci_low: float | None
+    ci_high: float | None
+    excludes_zero: bool | None
+    folds: list[int] | None
+    half_width: float | None
+    why: str | None
+
+    @model_validator(mode="after")
+    def _number_or_why(self) -> "SignedChange":
+        if (self.difference is None) == (self.why is None):
+            raise ValueError("a signed change holds its number or why it has none, not both and "
+                             "not neither")
+        return self
 
 
 # ── result, claims, surfacings, export, replication ──────────────────────────
@@ -412,11 +595,39 @@ class Refusal(_Strict):
     message: str
     exits: list[str]
     then: str | None  # the next command the driver ran; null when none followed
+    # Who refused: the server at the answer, the driver, or the engine at fit time (a stage's
+    # typed refusal, ``stage`` the stage that refused).
+    by: Literal["server", "driver", "engine"] | None = None
+    stage: str | None = None
+
+
+class FailedFit(_Strict):
+    """A fit that failed while the driver watched (a command whose current fit, or a stage the
+    open question waits on, ended in error), classed by the stage's status alone: ``refused``
+    where it served a typed refusal (``refusal``: its code, words and ways forward, as the engine
+    wrote them), else ``failed`` (an error the engine did not write as a refusal: a crash)."""
+
+    at: datetime | None
+    command: str
+    stage: str
+    key: str | None
+    error: str
+    kind: Literal["refused", "failed"]
+    refusal: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _classed_by_the_refusal(self) -> "FailedFit":
+        if (self.kind == "refused") != (self.refusal is not None):
+            raise ValueError("a failed fit is refused exactly where the engine served a refusal")
+        if self.refusal is not None and not {"code", "message", "exits"} <= set(self.refusal):
+            raise ValueError("a fit's refusal holds its code, its words and its ways forward")
+        return self
 
 
 class Surfacings(_Strict):
     refusals: list[Refusal]
     concerns: list[dict[str, Any]]  # the materiality ledger's rows, as served
+    failed_fits: list[FailedFit] = []
 
 
 class Export(_Strict):
@@ -434,6 +645,72 @@ class Export(_Strict):
         return self
 
 
+WantKind = Literal[V.WANT_KINDS]  # type: ignore[valid-type]
+
+
+class Want(_Strict):
+    """An option, a check, a reading or an eligibility rule the engine lacks, as the analyst named
+    it with the driver's ``want``: its kind, what, why and the marker it answers to."""
+
+    at: datetime
+    kind: WantKind
+    what: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    marker: MarkerName
+
+
+class Account(_Strict):
+    """The analyst's end-of-run account (SWARM_PLAN §4), as the driver's ``account`` recorded it:
+    its source is the driver, never the agent's final message. ``after_results``: a ``results``
+    command had returned before it; ``after_seal``: the held-out rows were open. It sits beside the
+    engine's record, never in its place: context for hypotheses, never evidence."""
+
+    at: datetime
+    text: str = Field(min_length=1)
+    after_results: bool
+    after_seal: bool
+    source: Literal["driver"] = "driver"
+
+
+class Replay(_Strict):
+    """The final plan replayed on fresh draws of its fixture's generator (SWARM_PLAN §7), filled by
+    the replay scorer (the build's package 2); fixtures only. The decision-quality numbers are
+    the scorer's, each None where the fixture grades none: the mean bias with its SD and standard
+    error over the draws and the interval's coverage (the Estimate fixture), the regret against
+    the oracle (the Predict fixture), the false-discovery proportion, the power and the
+    effect-size bias on the log2 scale (the measurement fixture). ``refused``: the draws the plan
+    was refused on. With no number, ``why``."""
+
+    scorer: str = Field(min_length=1)
+    generator: str = Field(min_length=1)
+    draws: int = Field(ge=1)
+    seeds: list[int] | None = None
+    plan_digest: str | None = None
+    mean_bias: float | None = None
+    bias_sd: float | None = None
+    bias_se: float | None = None
+    coverage: float | None = Field(default=None, ge=0, le=1)
+    regret: float | None = None
+    fdp: float | None = Field(default=None, ge=0, le=1)
+    power: float | None = Field(default=None, ge=0, le=1)
+    effect_bias_log2: float | None = None
+    refused: int = Field(default=0, ge=0)
+    why: str | None = None
+
+    @model_validator(mode="after")
+    def _numbers_or_why(self) -> "Replay":
+        if self.seeds is not None and len(self.seeds) != self.draws:
+            raise ValueError("a replay lists one seed per draw")
+        if self.refused > self.draws:
+            raise ValueError("a replay refuses at most every draw")
+        numbers = [self.mean_bias, self.coverage, self.regret, self.fdp, self.power,
+                   self.effect_bias_log2]
+        if any(n is not None for n in numbers) == (self.why is not None):
+            raise ValueError("a replay holds its numbers or why it has none, not both and not "
+                             "neither")
+        return self
+
+
 class Replication(_Strict):
     paper: str
     stated: list[dict[str, Any]]
@@ -443,7 +720,7 @@ class Replication(_Strict):
 
 
 class Record(_Strict):
-    version: Literal[1]
+    version: Literal[2]
     run: Run
     dataset: Dataset
     question: Question
@@ -455,6 +732,9 @@ class Record(_Strict):
     surfacings: Surfacings
     export: Export
     replication: Replication | None = None
+    wants: list[Want] = []
+    account: Account | None = None
+    replay: Replay | None = None
 
     @model_validator(mode="after")
     def _references_hold(self) -> "Record":
@@ -479,6 +759,13 @@ class Record(_Strict):
         for d in self.decisions:
             if d.materiality.attempt is not None and d.materiality.attempt not in ids:
                 raise ValueError(f"record #{d.seq}'s materiality names a fit no attempt holds")
+            if d.tag is not None and d.source != "analyst":
+                raise ValueError(f"record #{d.seq} was recorded by TurboTab itself, so it holds "
+                                 f"no analyst's tag")
+        for a in self.attempts:
+            stray = sorted({c.against for c in a.change} - ids)
+            if stray:
+                raise ValueError(f"fit #{a.seq}'s change is against fits {stray} no attempt holds")
         return self
 
 
@@ -487,7 +774,24 @@ def validate(data: Any) -> Record:
     return Record.model_validate(data)
 
 
-__all__ = ["Answer", "Attempt", "Claim", "Dataset", "DatasetFile", "Decision", "Estimate",
-           "Examined", "Export", "Materiality", "NULL_OF", "Question", "Reason", "Record",
-           "RefusedKind", "Refusal", "Regime", "Replication", "Result", "Run", "Scale", "Shift",
-           "Spend", "Surfacings", "VERSION", "validate"]
+def redacted(record: Record | Any) -> dict[str, Any]:
+    """The view of ``record`` a blind reader is shown (SWARM_PLAN §7: the stuck runs' classing,
+    the referee): the analyst's model and persona, its effort, its prompt version (which can name
+    the persona) and its spend (whose size can tell the model) taken out, ``run.redacted`` set. It
+    validates as a record. What the analyst wrote (its reasons, wants and account) is kept as
+    written: a reader is told the model was redacted, not that no word of the analyst's can
+    reveal it."""
+    rec = record if isinstance(record, Record) else validate(record)
+    data = rec.model_dump(mode="json", by_alias=True)
+    data["run"].update(analyst_model=REDACTED, persona=None, effort=None, prompt_version=REDACTED,
+                       spend=None, spend_why=REDACTED_SPEND, redacted=True)
+    validate(data)
+    return data
+
+
+__all__ = ["Account", "Answer", "Attempt", "Claim", "Dataset", "DatasetFile", "DeclaredMarker",
+           "Decision", "Estimate", "Examined", "Export", "FailedFit", "Marker", "Materiality",
+           "NULL_OF", "Persona", "Question", "REDACTED", "REDACTED_SPEND", "Reason", "Record",
+           "RefusedKind", "Refusal", "Regime", "Replay", "Replication", "Result", "Run", "Scale",
+           "Shift", "SignedChange", "Spend", "Surfacings", "Tag", "VERSION", "Want", "redacted",
+           "validate"]

@@ -68,6 +68,13 @@ ALLOWED = [
     f"{DRIVER} answer --run r1 time:los fixed_effects:site --reason \"a: b, c+d @ 5%\"",
     f"{DRIVER} answer --run r1 proposed --set 'age (y)=excluded' --reason \"(y) is in the name\"",
     f"{DRIVER}\task\t--run\tr1",
+    # package 1: a preview's reason, an answer's marker, a want and the account
+    f"{DRIVER} preview --run r1 set_selection:elastic_net --reason 'does a penalty keep fewer?'",
+    f"{DRIVER} answer --run r1 impute --reason 'a fill keeps the rows' --marker complete_case_share "
+    f"--rejected complete_case",
+    f"{DRIVER} want --run r1 'drift correction by run order' --kind option --reason 'the QC "
+    f"samples drift' --marker run_order",
+    f"{DRIVER} account --run r1 \"I kept the linear model: the penalties scored alike.\"",
 ]
 
 FORBIDDEN = {
@@ -158,6 +165,20 @@ def test_every_tool_but_bash_is_denied_to_an_analyst(tool):
     answer = hook.decide(call(tool=tool, tool_input={"file_path": str(REPO / "x"), "url": "https://x"}))
     assert denied(answer)
     assert tool in answer["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("tool", ["SubagentHandback", "StructuredOutput"])
+def test_an_analyst_hands_its_report_back(tool):
+    """The live check of 2026-10-22 found the harness's report tools denied, so no analyst's
+    report reached the orchestrator: an analyst may call them, whatever their input."""
+    assert hook.decide(call(tool=tool, tool_input={"report": "done", "outcome": "exported"})) is None
+    assert hook.decide(call(tool=tool, tool_input={})) is None
+
+
+@pytest.mark.parametrize("tool", ["SubagentHandbackX", "subagenthandback", "Structured_Output",
+                                  "StructuredOutputs", "SubagentHandback ", ""])
+def test_a_tool_named_near_the_report_tools_is_still_denied(tool):
+    assert denied(hook.decide(call(tool=tool, tool_input={})))
 
 
 @pytest.mark.parametrize("agent", [None, "builder", "verifier", "integrator", "auditor",

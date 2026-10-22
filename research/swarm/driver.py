@@ -3,14 +3,18 @@ own API, one small command at a time, each printing JSON.
 
     python -m research.swarm.driver start --data <file> [--provenance url,date,license]
                                          --budget-fits N --budget-seconds S [--scripted]
+                                         [--model M] [--persona P] [--effort E] [--prompt-version V]
     python -m research.swarm.driver ask      --run <id>
-    python -m research.swarm.driver preview  --run <id> <option> [--set name=value ...]
+    python -m research.swarm.driver preview  --run <id> <option> [--set name=value ...] --reason <why>
     python -m research.swarm.driver answer   --run <id> <option> [<option> ...] [--set ...] --reason <why>
+                                             --marker <marker> [--rejected <option>]
     python -m research.swarm.driver revisit  --run <id> <decision id> --reason <why>
     python -m research.swarm.driver fit      --run <id>
     python -m research.swarm.driver results  --run <id>
     python -m research.swarm.driver seal     --run <id> <family> --reason <why>
     python -m research.swarm.driver export   --run <id>
+    python -m research.swarm.driver want     --run <id> <what> --kind <kind> --reason <why> --marker <marker>
+    python -m research.swarm.driver account  --run <id> <the account>
     python -m research.swarm.driver stop     --run <id>
 
 **One run** is one directory, ``research/runs/<run id>/`` (``$TURBOTAB_SWARM_RUNS`` in its place
@@ -22,8 +26,11 @@ by guessing its id. ``--run`` names only an id of that form whose folder is in t
 itself (:meth:`Run.load`). ``home/`` is the server's ``TURBOTAB_HOME``; ``driver.json`` holds the
 run's id, the PID and port of the server the driver started, the project's id, the fit budget, the
 data file and where it came from, and when the run started and, once ``stop`` ran, ended;
-``commands.jsonl`` holds every command with when it began (``at``) and returned (``done``), its
-arguments and a summary of its response; ``server.log`` is the server's output;
+``commands.jsonl`` holds every command with when it began (``at``; ``began`` to the microsecond)
+and returned (``done``; ``returned``), its arguments and a summary of its response;
+``markers.jsonl`` the live markers read at each command that reads the run's results (``fit``,
+``results``, ``seal``, ``export``), by the current fit's key (``research/swarm/markers.py``);
+``server.log`` is the server's output;
 ``exits.json`` the ways forward of the last refusal, so ``answer`` can take one; ``export.zip``
 the bundle. ``start`` runs ``python -m turbotab.server --analyst`` on a free local port with two
 workers and uploads the file; ``stop`` stops that PID and no other.
@@ -40,7 +47,22 @@ log and its ask card serve it (its words from the question's teaching entry, its
 options with the ids the server serves, the readings it rests on, and the ways forward on hand),
 read as ``turbotab/core/reference/journeys.py`` reads open questions (:data:`journeys.OPEN`,
 :func:`journeys.reaches_fit`); none of journeys.py's answer sources is used. Options are composed
-by :mod:`research.swarm.options`.
+by :mod:`research.swarm.options`. Each open declaration line (a decision with no Router question:
+the selection, the batch handling, the intended use, the scales, the levers, the shrinkage, the
+validation scheme, the explanations, the model sequence, the measurement error, the usual intake,
+the multiplicity and the sensitivity analyses; ``quest.DECLARATIONS``) is listed under
+``also_open`` with its options and fields, composed by :mod:`research.swarm.declarations` from the
+engine's own definitions, and ``preview`` and ``answer`` take them by id like a question's. A fit
+the engine refused in words (its stage status's typed ``refusal``) is said with its code and its
+ways forward, which ``answer`` takes by id; a fit that failed otherwise is said as it failed.
+
+**The analyst's tags** (SWARM_PLAN §2, §4): ``preview`` and ``answer`` take a reason; ``answer``
+takes a marker of the controlled vocabulary (``research/swarm/vocabulary.py``) and may name the
+alternative it rejected, an option offered for the same question; ``want`` records an option, a
+check, a reading or an eligibility rule the engine lacks, with its kind, its reason and its
+marker; ``account`` records the analyst's end-of-run account, once, marked whether the results had
+been read and whether the held-out rows were open. None of these is posted to the server: the
+run's record reads them from ``commands.jsonl``, so their source is the driver.
 
 **What the driver refuses**, whatever the analyst asks (SWARM_PLAN §2; DRIVER_PLAN D1):
 
@@ -60,16 +82,18 @@ by :mod:`research.swarm.options`.
   ``seal`` again goes to the server, which refuses a second opening.
 
 **What an analyst's command never reads** (:func:`analyst_sealed`): while ``ask``, ``preview``,
-``answer``, ``revisit``, ``fit``, ``results``, ``seal`` or ``export`` runs, opening anything a run
+``answer``, ``revisit``, ``fit``, ``results``, ``seal``, ``export``, ``want`` or ``account``
+runs (:data:`ANALYST_COMMANDS`), opening anything a run
 is judged against (a dataset's declared answers and its manifest under ``research/datasets/``, the
 corpus records and their materiality under ``research/corpus/``, the fixtures' declared truths, the
 decoy's generator) or importing a module that holds or builds them (:data:`UNREAD_MODULES`), by
 an import statement or by ``importlib``, is refused, so nothing it prints can come from them. The
 driver itself imports none of those modules, so none is loaded before a command runs.
 
-Exit status: 0 when the command did what it says, 1 when the server or the driver refused it (the
-JSON says why under ``refused``: a refusal by the server lists its ways forward under ``exits``,
-one by the driver none), 2 when the command line does not read.
+Exit status: 0 when the command did what it says, 1 when the server, the engine (a fit it refused
+in words) or the driver refused it (the JSON says why under ``refused``: a refusal by the server or
+the engine lists its ways forward under ``exits``, one by the driver none), 2 when the command line
+does not read.
 """
 from __future__ import annotations
 
@@ -92,7 +116,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from research.swarm import declarations as decl
 from research.swarm import options as opts
+from research.swarm import vocabulary as V
 
 REPO = Path(__file__).resolve().parents[2]
 RUNS_ENV = "TURBOTAB_SWARM_RUNS"
@@ -112,6 +138,8 @@ WAIT_DEFAULT = 90.0  # under the analyst's shell's own two-minute limit
 WAIT_MAX = 540.0
 NOT_YET_SECONDS = 60.0
 HOOK_SCRIPT = "research/swarm/analyst_hook.py"
+MARKERS_FILE = "markers.jsonl"
+PERSONAS = ("conventional", "skeptical", "explorer")  # SWARM_PLAN §6
 AGENT_FILE = REPO / ".claude" / "agents" / "analyst.md"
 # Where Claude Code reads hooks from, project first (the owner wires the hook locally).
 SETTINGS_FILES = (REPO / ".claude" / "settings.local.json", REPO / ".claude" / "settings.json",
@@ -220,6 +248,10 @@ class analyst_sealed:
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def now_us() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 def new_run_id(home: Path) -> str:
@@ -517,6 +549,26 @@ def failed_on(view: dict[str, Any], step: dict[str, Any]) -> dict[str, Any]:
             if (stages.get(w) or {}).get("status") == "error"}
 
 
+def failures(view: dict[str, Any], names: list[str]) -> list[dict[str, Any]]:
+    """Each stage of ``names`` in error, classed by its status alone: ``refused`` where it serves
+    the engine's typed refusal (its code, words and ways forward, each way with its id), else
+    ``failed``."""
+    stages = view.get("stages") or {}
+    out = []
+    for name in dict.fromkeys(names):
+        status = stages.get(name) or {}
+        if status.get("status") != "error":
+            continue
+        refusal = status.get("refusal")
+        out.append({"stage": name, "key": status.get("key"), "error": status.get("error"),
+                    "kind": "refused" if refusal else "failed",
+                    "refusal": None if not refusal else {
+                        "stage": refusal.get("stage"), "code": refusal.get("code"),
+                        "message": refusal.get("message"),
+                        "exits": opts.exits(refusal.get("exits"))}})
+    return out
+
+
 def wait_open(run: Run, client: Client, seconds: float) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """The view once its first unsettled question is open, Fit is reached, a stage it waits on
     failed, or ``seconds`` pass."""
@@ -651,23 +703,40 @@ def the_question(run: Run, client: Client, wait: float) -> dict[str, Any]:
             if settled:
                 out["readings"]["read_from_data"] = settled
             ways += card_exits + [w for s in settled for w in s["change"]]
-    others = [ln for ln in lines if ln.get("status") == "open" and ln.get("counted")
-              and not (step is not None and ln.get("source") == "question" and ln.get("key") == step["key"])]
+    declarable = set(decl.kinds())
+    others = [ln for ln in lines
+              if (ln.get("status") == "open" and ln.get("counted")
+                  and not (step is not None and ln.get("source") == "question"
+                           and ln.get("key") == step["key"]))
+              or (ln.get("source") == "declaration" and ln.get("key") in declarable
+                  and ln.get("status") in ("open", "set_for_you"))]
+    declared: dict[str, Any] = {}
     if others:
         described = [describe_line(ln) for ln in others]
         acts = finding_options(run, client, state.get("purpose"))
+        artifact = served(run, client)
         for line in described:
             if line.get("source") == "finding" and line.get("key") in acts:
                 line["options"] = acts[line["key"]]
                 ways += line["options"]
+            if line.get("source") == "declaration" and line.get("key") in declarable:
+                composed = decl.compose(line["key"], view, artifact)
+                declared[line["key"]] = composed
+                line.update({k: composed[k] for k in ("words", "options", "fields", "data")
+                             if composed.get(k)})
         out["also_open"] = described
         ways += [w for ln in others for item in line_items(ln) for w in item["options"]]
+    failed = failures(view, [*((step or {}).get("waiting_on") or []), "fit"])
+    if failed:
+        out["fit_failed"] = failed
+        ways += [w for f in failed for w in (f["refusal"] or {}).get("exits") or []]
     kept = run.kept_exits()
     if kept:
         out["last_refusal_exits"] = kept
         ways += kept
     out["decisions"] = decision_log(view)
     out["_composed"], out["_ways"], out["_view"] = composed, ways, view
+    out["_declared"] = declared
     return out
 
 
@@ -814,7 +883,10 @@ def cmd_start(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None
         "started": now(), "ended": None, "workers": WORKERS, **guard,
         "data": {"path": str(data), "name": data.name, "bytes": data.stat().st_size, "sha256": digest},
         "provenance": provenance, "home": str(folder / "home"), "python": sys.executable,
-        "commit": _git_head()})
+        "commit": _git_head(), "vocabulary": V.DIGEST,
+        **{k: v for k, v in (("analyst_model", args.model), ("persona", args.persona),
+                             ("effort", args.effort), ("prompt_version", args.prompt_version))
+           if v is not None}})
     proc = start_server(folder, port)
     run.meta["pid"] = proc.pid
     run.save()
@@ -885,16 +957,46 @@ def chosen(run: Run, client: Client, ids: list[str], sets: list[str]) -> tuple[d
     # working table, and the question waits on it for a moment (journeys' ``not_yet`` wait).
     q = the_question(run, client, NOT_YET_SECONDS)
     guard_sealed(q["_view"])
+    kind = decl.owner(ids[0], q["_declared"]) if ids else None
     try:
-        decision = opts.resolve(q["_composed"], ids, sets, q["_ways"])
+        if kind is not None:
+            decision = decl.resolve(q["_declared"][kind], ids, sets)
+        else:
+            decision = opts.resolve(q["_composed"], ids, sets, q["_ways"])
     except opts.Unanswerable as exc:
         raise DriverError("not_offered", str(exc)) from None
     return decision, q
 
 
+def marker_of(name: str | None) -> str:
+    """``--marker``'s name, one of the controlled vocabulary's (SWARM_PLAN §2)."""
+    if name not in V.NAMES:
+        raise DriverError("marker_unknown", "--marker names a marker of the vocabulary: "
+                                            + V.unknown(str(name), V.NAMES))
+    return str(name)
+
+
+def rejected_of(q: dict[str, Any], chosen_id: str, rejected: str | None) -> dict[str, Any] | None:
+    """The alternative ``--rejected`` names: an option offered for the same question as
+    ``chosen_id`` (the open question's own options, or the same declaration line's), not the one
+    chosen, with the decision it would record; None when none is named."""
+    if rejected is None:
+        return None
+    kind = decl.owner(chosen_id, q["_declared"])
+    offered = (q["_declared"][kind] if kind is not None else q["_composed"]).get("options") or []
+    option = next((o for o in offered if str(o.get("id")) == rejected), None)
+    if option is None or rejected == chosen_id:
+        ids = [str(o.get("id")) for o in offered if str(o.get("id")) != chosen_id]
+        raise DriverError("not_offered", f"--rejected names another option offered for the same "
+                                         f"question: one of {', '.join(ids) or 'none'}; not "
+                                         f"{rejected!r}.")
+    return {"id": rejected, "decision": option.get("decision")}
+
+
 def cmd_preview(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
     run = Run.load(args.run)
     client = run.client()
+    reason_of(args.reason)  # SWARM_PLAN §2: a preview says why, as an answer does
     decision, _ = chosen(run, client, [args.option], args.set or [])
     guard_kind(decision, allowed=("open_seal",))  # what opening would show, without opening
     r = client.post(f"/projects/{run.project}/preview", decision)
@@ -907,14 +1009,16 @@ def cmd_answer(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | Non
     run = Run.load(args.run)
     client = run.client()
     note = reason_of(args.reason)
+    marker = marker_of(args.marker)
     decision, q = chosen(run, client, list(args.option), args.set or [])
+    tag = {"marker": marker, "rejected": rejected_of(q, args.option[0], args.rejected)}
     guard_kind(decision)
     guard_budget(run, client, q["_view"], decision)
     r = post_decision(run, client, decision, note)
     if r.status != 200:
-        return 1, {"posted": decision} | refused(r, run, "answer"), run
+        return 1, {"posted": decision, "tag": tag} | refused(r, run, "answer"), run
     run.keep_exits([], None, "answer")
-    return 0, recorded(r.json(), str(decision["kind"])), run
+    return 0, recorded(r.json(), str(decision["kind"])) | {"tag": tag}, run
 
 
 def cmd_revisit(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
@@ -1370,9 +1474,26 @@ def wait_fit(run: Run, client: Client, seconds: float) -> dict[str, Any]:
         status = (view_of(run, client).get("stages") or {}).get("fit") or {}
         if status.get("status") in ("fresh", "error", "blocked") or status.get("held") \
                 or time.monotonic() >= end:
-            return {k: status.get(k) for k in ("status", "key", "error", "held", "progress")
+            return {k: status.get(k) for k in ("status", "key", "error", "held", "progress",
+                                               "refusal")
                     if status.get(k) is not None}
         time.sleep(0.5)
+
+
+def keep_markers(run: Run, client: Client, command: str) -> None:
+    """The live markers as the project stands, kept by the current fit's key in
+    ``markers.jsonl`` (``research/swarm/markers.py``). It never fails the command: a read that
+    fails keeps nothing."""
+    from research.swarm import markers
+
+    try:
+        view = view_of(run, client)
+        snapshot = {"at": now_us(), "command": command, "fit_key": markers.fit_key(view),
+                    "markers": markers.live(view, reader(run, client))}
+        with (run.folder / MARKERS_FILE).open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(snapshot, ensure_ascii=False, default=str) + "\n")
+    except Exception:  # noqa: BLE001 - the markers are the record's, never the command's
+        return
 
 
 def cmd_fit(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
@@ -1390,7 +1511,17 @@ def cmd_fit(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
     run.keep_exits([], None, "fit")
     lock = r.json() or {}
     status = wait_fit(run, client, args.wait)
-    return 0, {"pressed": lock, "fit": status, "spent": public_budget(budget_now(run, client))}, run
+    keep_markers(run, client, "fit")
+    out = {"pressed": lock, "fit": status, "spent": public_budget(budget_now(run, client))}
+    refusal = status.get("refusal")
+    if status.get("status") == "error" and refusal:
+        # The engine refused the fit in words: a refusal with its ways forward, as the server's.
+        ways = opts.exits(refusal.get("exits"))
+        run.keep_exits(ways, refusal.get("code"), "fit")
+        return 1, out | {"refused": {"by": "engine", "stage": refusal.get("stage"),
+                                     "code": refusal.get("code"),
+                                     "message": refusal.get("message"), "exits": ways}}, run
+    return 0, out, run
 
 
 def public_budget(spent: dict[str, Any]) -> dict[str, Any]:
@@ -1410,6 +1541,7 @@ def cmd_results(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | No
             break
         time.sleep(0.5)
     r = client.get(f"/projects/{run.project}/results")
+    keep_markers(run, client, "results")
     if r.status != 200:
         return 1, refused(r, run, "results"), run
     out: dict[str, Any] = {"results": r.json(),
@@ -1431,6 +1563,7 @@ def cmd_seal(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]
     if args.family not in families:
         raise DriverError("not_offered", f"{args.family} is not a fitted family; the fitted families "
                                          f"are {', '.join(families) or 'none yet'}.")
+    keep_markers(run, client, "seal")
     r = post_decision(run, client, {"kind": "open_seal", "family": args.family}, note)
     if r.status != 200:
         return 1, refused(r, run, "seal"), run
@@ -1450,6 +1583,7 @@ def cmd_export(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | Non
         if r.status == 200 or r.error().get("code") != "result_not_ready" or time.monotonic() >= end:
             break
         time.sleep(1.0)
+    keep_markers(run, client, "export")
     if r.status != 200:
         return 1, refused(r, run, "export"), run
     path = run.folder / "export.zip"
@@ -1461,6 +1595,66 @@ def cmd_export(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | Non
     return 0, {"exported": {"path": str(path), "bytes": len(r.body),
                             "sha256": hashlib.sha256(r.body).hexdigest(),
                             "files": [n.split("/", 1)[-1] for n in names], "methods": methods}}, run
+
+
+def cmd_want(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
+    """An option, a check, a reading or an eligibility rule the engine lacks (SWARM_PLAN §2):
+    its kind, what, why and the marker it answers to, kept in ``commands.jsonl``; nothing is
+    posted."""
+    run = Run.load(args.run)
+    run.client()  # a stopped run takes no more commands
+    what = (args.what or "").strip()
+    if not what:
+        raise DriverError("want_unsaid", "Say what the engine lacks: want takes its words.")
+    if args.kind not in V.WANT_KINDS:
+        raise DriverError("want_kind_unknown", "--kind names what is wanted: "
+                                               + V.unknown(str(args.kind), V.WANT_KINDS))
+    reason = reason_of(args.reason)
+    marker = marker_of(args.marker)
+    return 0, {"wanted": {"at": now_us(), "kind": args.kind, "what": what, "reason": reason,
+                          "marker": marker}}, run
+
+
+def account_given(run: Run) -> str | None:
+    """When the run's account was given, from ``commands.jsonl``, or None."""
+    for entry in _commands(run):
+        if entry.get("command") == "account" and (entry.get("summary") or {}).get("exit") == 0:
+            return str(entry.get("at"))
+    return None
+
+
+def _commands(run: Run) -> list[dict[str, Any]]:
+    try:
+        lines = (run.folder / "commands.jsonl").read_text("utf-8").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
+def cmd_account(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
+    """The analyst's end-of-run account (SWARM_PLAN §4), once per run, kept in
+    ``commands.jsonl`` and marked whether a ``results`` command had returned the results before
+    it and whether the held-out rows were open; nothing is posted."""
+    run = Run.load(args.run)
+    client = run.client()
+    text = (args.text or "").strip()
+    if not text:
+        raise DriverError("account_unsaid", "The account takes the analyst's words.")
+    given = account_given(run)
+    if given is not None:
+        raise DriverError("account_given", f"The run's account was given at {given}; it is "
+                                           f"given once.")
+    after_results = any(e.get("command") == "results"
+                        and (e.get("summary") or {}).get("exit") == 0 for e in _commands(run))
+    after_seal = bool((view_of(run, client).get("state") or {}).get("seal_opened"))
+    return 0, {"account": {"at": now_us(), "text": text, "after_results": after_results,
+                           "after_seal": after_seal}}, run
 
 
 # ── output ───────────────────────────────────────────────────────────────────
@@ -1489,11 +1683,18 @@ def summary(name: str, code: int, payload: dict[str, Any]) -> dict[str, Any]:
         out["refused"] = {k: r.get(k) for k in ("by", "status", "code", "message")}
         out["refused"]["exits"] = [{"id": e.get("id"), "label": e.get("label")}
                                    for e in r.get("exits") or [] if isinstance(e, dict)]
+    if "by" in (payload.get("refused") or {}) and payload["refused"].get("stage"):
+        out["refused"]["stage"] = payload["refused"]["stage"]
     if name == "ask":
         q = payload.get("question") or {}
         out.update({"question": q.get("key"), "status": q.get("status"),
                     "options": [o.get("id") for o in payload.get("options") or []],
                     "fit_reached": payload.get("fit_reached")})
+        if payload.get("fit_failed"):
+            out["fit_failed"] = payload["fit_failed"]
+    for key in ("tag", "wanted", "account"):
+        if key in payload:
+            out[key] = payload[key]
     for key in ("posted", "previewed"):
         if key in payload:
             out[key] = payload[key]
@@ -1530,9 +1731,10 @@ def summary(name: str, code: int, payload: dict[str, Any]) -> dict[str, Any]:
 COMMANDS: dict[str, Callable[[argparse.Namespace], tuple[int, dict[str, Any], Run | None]]] = {
     "start": cmd_start, "stop": cmd_stop, "ask": cmd_ask, "preview": cmd_preview,
     "answer": cmd_answer, "revisit": cmd_revisit, "fit": cmd_fit, "results": cmd_results,
-    "seal": cmd_seal, "export": cmd_export,
+    "seal": cmd_seal, "export": cmd_export, "want": cmd_want, "account": cmd_account,
 }
-ANALYST_COMMANDS = ("ask", "preview", "answer", "revisit", "fit", "results", "seal", "export")
+ANALYST_COMMANDS = ("ask", "preview", "answer", "revisit", "fit", "results", "seal", "export",
+                    "want", "account")
 
 
 def _wait(text: str) -> float:
@@ -1554,6 +1756,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--budget-seconds", type=float, required=True)
     p.add_argument("--scripted", action="store_true",
                    help="the analyst is a script, not an agent (the dry run, the tests)")
+    p.add_argument("--model", help="the analyst's model, kept for the record")
+    p.add_argument("--persona", choices=PERSONAS, help="the analyst's persona (SWARM_PLAN §6)")
+    p.add_argument("--effort", help="the analyst's effort, kept for the record")
+    p.add_argument("--prompt-version", help="the analyst's prompt version, kept for the record")
 
     def with_run(name: str, help_: str, wait: bool = False) -> argparse.ArgumentParser:
         q = sub.add_parser(name, help=help_)
@@ -1565,13 +1771,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     with_run("stop", "stop the run's server")
     with_run("ask", "the open question", wait=True)
-    p = with_run("preview", "what recording an option would do; nothing is recorded")
+    p = with_run("preview", "what recording an option would do, with why; nothing is recorded")
     p.add_argument("option")
     p.add_argument("--set", action="append", metavar="NAME=VALUE")
-    p = with_run("answer", "record an option, with why")
+    p.add_argument("--reason", required=True)
+    p = with_run("answer", "record an option, with why and the marker it answers to")
     p.add_argument("option", nargs="+")
     p.add_argument("--set", action="append", metavar="NAME=VALUE")
     p.add_argument("--reason", required=True)
+    p.add_argument("--marker", required=True, help="a marker of the controlled vocabulary")
+    p.add_argument("--rejected", help="the option offered for the same question it rejected")
     p = with_run("revisit", "change an earlier decision (the log keeps it), with why")
     p.add_argument("decision")
     p.add_argument("--reason", required=True)
@@ -1581,6 +1790,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("family")
     p.add_argument("--reason", required=True)
     with_run("export", "the methods, the checklist and the bundle", wait=True)
+    p = with_run("want", "an option, a check, a reading or an eligibility rule the engine lacks")
+    p.add_argument("what")
+    p.add_argument("--kind", required=True, help=f"one of {', '.join(V.WANT_KINDS)}")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--marker", required=True, help="a marker of the controlled vocabulary")
+    p = with_run("account", "the analyst's end-of-run account, given once")
+    p.add_argument("text")
     return parser
 
 
@@ -1600,7 +1816,7 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] | None = None
         return int(exc.code or 0) if exc.code in (0, None) else 2
     write = out or (lambda text: print(text, flush=True))
     run: Run | None = None
-    started = now()
+    started, began = now(), now_us()
     try:
         try:
             if args.command in ANALYST_COMMANDS:
@@ -1626,7 +1842,8 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] | None = None
     write(json.dumps(payload, ensure_ascii=False, default=str))
     if run is not None:
         given = {k: v for k, v in vars(args).items() if k not in ("command",) and v is not None}
-        run.log({"at": started, "done": now(), "command": args.command, "args": given,
+        run.log({"at": started, "done": now(), "began": began, "returned": now_us(),
+                 "command": args.command, "args": given,
                  "summary": summary(args.command, code, payload)})
     return code
 

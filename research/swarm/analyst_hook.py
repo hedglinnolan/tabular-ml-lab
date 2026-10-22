@@ -5,8 +5,12 @@ Claude Code runs this script before each tool call, with the call as JSON on sta
 (``tool_name``, ``tool_input``, ``cwd``, and ``agent_type`` when a subagent makes the call). For an
 ``analyst`` it denies, with a plain reason the analyst reads:
 
-* every tool but Bash (the agent type's own ``tools: Bash`` and ``disallowedTools`` list say the
-  same; this is the second lock);
+* every tool but Bash and the harness's two report tools, ``SubagentHandback`` and
+  ``StructuredOutput`` (:data:`REPORT_TOOLS`), by which an analyst hands its report back: the live
+  check of 2026-10-22 found them denied here, so no analyst's report reached the orchestrator.
+  (The agent type's own ``tools: Bash`` and ``disallowedTools`` list say the same for the rest;
+  this is the second lock.) A report says what the analyst did; the run's record is never read
+  from it (the driver's ``account`` is the analyst's account);
 * every Bash command that is not exactly the driver's invocation: ``python``, ``python3`` or
   ``scripts/py``, then ``-m research.swarm.driver`` and one of the analyst's commands
   (:data:`ANALYST_COMMANDS`; ``start`` and ``stop`` are the orchestrator's), from the repo root,
@@ -49,7 +53,10 @@ INTERPRETERS = ("python", "python3", "scripts/py", "./scripts/py")
 MODULE = "research.swarm.driver"
 # The driver's commands an analyst runs (``research.swarm.driver.ANALYST_COMMANDS``; a test holds
 # the two lists equal).
-ANALYST_COMMANDS = ("ask", "preview", "answer", "revisit", "fit", "results", "seal", "export")
+ANALYST_COMMANDS = ("ask", "preview", "answer", "revisit", "fit", "results", "seal", "export",
+                    "want", "account")
+# The harness's tools by which a subagent hands its report back, exactly as named.
+REPORT_TOOLS = ("SubagentHandback", "StructuredOutput")
 # Anything that chains, substitutes or redirects in a shell, quoted or not.
 FORBIDDEN = (";", "&", "|", "`", "$", "<", ">", "\n", "\r")
 # What a word holds outside quotes: no shell reads any of these as anything but itself.
@@ -143,6 +150,8 @@ def decide(call: Any) -> dict[str, Any] | None:
     if not isinstance(call, dict) or call.get("agent_type") != ANALYST:
         return None
     tool = call.get("tool_name")
+    if tool in REPORT_TOOLS:
+        return None
     if tool != "Bash":
         return deny(f"An analyst works only through the driver's commands, run with Bash; {tool} "
                     f"is not open to it.")
