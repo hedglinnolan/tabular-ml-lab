@@ -859,3 +859,8 @@ Candidate work for after the pilot. The citations are from the orchestrator's ge
 - [UQ, engine] Bounds where weights over choices cannot be defended (after Gong's belief functions): report the envelope of the estimate across defensible choices rather than an average, from what the specification curve (`core/mattered.py`) already computes — 2026-10-21
 - [UQ, engine] A Rashomon warning: when the top families are tied on the fold-paired differences but their SHAP explanations rank the predictors differently, the Results screen says the explanation is not identified by the data. Both inputs exist per fitted family today — 2026-10-21
 - [UQ, engine, standard] Stacking (Yao, Vehtari, Simpson & Gelman 2018) and conformal intervals on the Predict shelf: the engine has neither — 2026-10-21
+
+## From the build's verifiers, packages 1, 2 and 4 (2026-10-22)
+
+- [engine, seal, touches k] Under prediction, Harrell's rule reads its effective sample size on every cohort row, the held-out rows included, so the held-out outcomes help choose a spline's k: the forms stage reads working, cohort and target_info, not the split (core/stages/__init__.py, the forms Stage), and `_n_effective` reads the forms card's size (core/methods/exposure_form.py). A 400-row probe: all rows give 117 (k 5), the 320 training rows give 94 (k 4). At the pilot's 2,000 readmission rows k is 5 either way — package 2's refusal verifier, 2026-10-22
+- [engine, sentence] `decisions.validate` accepts set_selection with sensitivity=true under prediction; no selection then runs, yet the methods sentence says a labeled sensitivity analysis was run. The shell's cards and the driver no longer post it; any other API client can — package 1's verifiers, 2026-10-22

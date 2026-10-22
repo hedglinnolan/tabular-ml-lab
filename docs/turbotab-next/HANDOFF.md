@@ -109,12 +109,22 @@ fifth's verdict was BUILD (2026-10-19). A sixth (2026-10-20, after Nolan's first
 driver answers no declaration; package 1 now adds them, and a crash sweep runs before the freeze. Each step's status ends with one line of cost against the
 reference, which is not a cap.
 
-1. **After Nolan's usage resets (Thursday 1 pm),** the build in SWARM_PLAN §10, packages 1–7
-   (38–61M fresh, about 42–67M with a buffer), with its order and its notes for the builders.
+1. **The build in SWARM_PLAN §10, packages 1–7** (38–61M fresh, about 42–67M with a buffer).
+   Packages 1, 2 and 4 ran in parallel on 2026-10-22 from de75a875, each through a builder, a
+   verifier and two repair rounds, then a narrow refusal or wording round. Their branches, not yet
+   merged: feat/swarm-p1 at 1dc53a97, feat/swarm-p2 at e40b4a0f, feat/swarm-p4 at bc8dc23e. Each
+   last verifier left one fix for the integration: P1, type the fit's Unsettled refusal and
+   pipeline.py's three refusals in words; P2, the spline refusal compares k, not the effective
+   sample size, under prediction (it refused every fresh draw of the Predict fixture); P4, the
+   teaching entry's cut-point line. The integration on 2026-10-23 makes these, the driver's
+   level-rule option and the dry run's rerun on package 2's fixtures, then CI. Spend: about 9.0M
+   fresh (about 725M re-read from cache) for the three packages, against 23–34M estimated.
 2. **The pilot in the same week** (SWARM_PLAN §6–§7), on the thin buffer Nolan accepted: daytime,
    unthrottled, within 40% of the week, the Estimate fixture first.
-3. **The live lockdown check and the analyst's model id** (package 7) need a fresh session on the
-   home machine, since agent types load when a session starts.
+3. **Done 2026-10-22: the live lockdown check and the analyst's model id** (package 7). A real
+   analyst agent's edit, write, fetch and `ls` were each refused by the hook, the target file was
+   unchanged, and it ran on `claude-haiku-5-5`. The hook also refused its report-back tool;
+   package 1 (g) lets SubagentHandback and StructuredOutput through, every other refusal kept.
 
 ## Open for Nolan
 

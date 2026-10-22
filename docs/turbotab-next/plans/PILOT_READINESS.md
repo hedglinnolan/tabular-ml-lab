@@ -16,7 +16,8 @@ record of the state on the morning of 2026-10-19.
   Two smaller items remain before the first run:
   - **RB**, the claims your NHANES glucose walkthrough shows, which the first gate names;
   - **the live lockdown check**, which needs Claude Code restarted so the analyst agent type
-    loads.
+    loads. *Done 2026-10-22: every refusal held, the model is `claude-haiku-5-5`, and the
+    report-back tool the hook also refused is let through by SWARM_PLAN package 1 (g).*
 - **The driver works end to end.** A scripted analyst ran the Predict fixture, the Estimate
   fixture and the null decoy through the driver to their records. All 18 mechanical checks gave
   the result written down before the runs.
