@@ -8845,6 +8845,18 @@
               }
             ],
             "title": "Error"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal"
           }
         },
         "type": "object",
@@ -8855,7 +8867,8 @@
           "state",
           "progress",
           "message",
-          "error"
+          "error",
+          "refusal"
         ],
         "title": "JobView"
       },
@@ -13802,6 +13815,40 @@
           "exits"
         ],
         "title": "RefusalDetail"
+      },
+      "Refused": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "exits": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Exits",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "code",
+          "message",
+          "exits"
+        ],
+        "title": "Refused",
+        "description": "A stage's refusal in words, as its status serves it: the ``stage`` that refused (the stage\nitself, or the one it waits on), the refusal's ``code``, its words and its ways forward."
       },
       "RelationshipFrame": {
         "properties": {
@@ -21308,6 +21355,16 @@
               }
             ],
             "title": "Held"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Refused"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -21322,7 +21379,8 @@
           "progress",
           "updated_at",
           "cancelled",
-          "held"
+          "held",
+          "refusal"
         ],
         "title": "StageStatus"
       },

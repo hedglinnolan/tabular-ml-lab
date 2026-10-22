@@ -620,8 +620,14 @@ class Selector(TransformerMixin, BaseEstimator):
         kept = self.kept_columns(X)
         if not len(kept.columns) and len(X.columns):
             # A fit that kept nothing stays inspectable (its frequencies, the inclusion counts across
-            # folds, the selection's own preview); only a model handed no column is refused.
-            raise ValueError(nothing_kept(self.method, getattr(self, "rows_", len(X))))
+            # folds, the selection's own preview); only a model handed no column is refused, typed
+            # with the two selections its words name as its ways forward (SWARM_PLAN §8).
+            from turbotab.core.graph import StageRefusal
+
+            words = nothing_kept(self.method, getattr(self, "rows_", len(X)))
+            raise StageRefusal("nothing_kept", words, exits=[
+                {"label": LABELS[m], "decision": {"kind": "set_selection", "method": m}}
+                for m in ("none", "screening")])
         return kept
 
     def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
