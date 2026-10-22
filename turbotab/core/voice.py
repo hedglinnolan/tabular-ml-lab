@@ -641,6 +641,11 @@ def _slot_value(slot: str, value: Any) -> str | None:
         return f"{how}, with {listing(dropped)} left out" if dropped else how
     if slot == "split":
         holdout = float(_attr(value, "holdout") or 0)
+        cut = _attr(value, "cut_point")
+        if cut is not None:  # a temporal seal by cut-point holds rows out with no share
+            from turbotab.core.decisions import cut_shown
+
+            return f"a cut-point at {tick(cut_shown(_attr(cut, 'at')))} on {tick(_attr(cut, 'column'))}"
         return "cross-validation only" if holdout == 0 else f"a {tick(f'{holdout:.0%}')} holdout"
     if slot == "models":
         return listing(value)
@@ -1397,8 +1402,9 @@ def split_states_plan(d: Any, state: Any) -> bool:
     """Whether the split's sentence states the seal plan (its grouping, its draw, time-ordered
     folds): every split but one under inference that holds no rows out, whose sentence says only
     that none were (WAVE_C6A ruling 5: only such a sentence waits for the plan to settle)."""
-    return not (getattr(state, "purpose", None) == "inference"
-                and float(getattr(d, "holdout", 0) or 0) == 0)
+    from turbotab.core.decisions import holds_out
+
+    return not (getattr(state, "purpose", None) == "inference" and not holds_out(d))
 
 
 def _units_within_levels(ctx: Any, column: str | None, cluster: str) -> bool:
@@ -1716,7 +1722,9 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
               f"chosen: {listing(labels, limit=8, ticked=False)}")
     # MS6 (MODELING_SEQUENCE §1 row 12 (b)): with no rows held out, what the result is.
     split = getattr(state, "split", None)
-    if (n > 1 and split is not None and float(getattr(split, "holdout", 0) or 0) == 0
+    from turbotab.core.decisions import holds_out  # a share or a cut-point holds rows out
+
+    if (n > 1 and split is not None and not holds_out(split)
             and getattr(state, "purpose", None) != "inference"):
         chosen += ("; with no rows held out, the choice among them is corrected by bootstrap "
                    "bias-corrected cross-validation (Tsamardinos et al. 2018), and that "

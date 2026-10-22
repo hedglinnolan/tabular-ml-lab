@@ -340,8 +340,41 @@ def test_the_split_sentence_says_what_the_cut_point_held_out():
     timed = voice.sentence_for(d.SetSplit(holdout=0.0, seed=3, folds=5, cut_point=cut,
                                           fold_order="time"),
                                ProjectState(target="glucose", task="regression"))
+    inference = voice.sentence_for(d.SetSplit(holdout=0.0, seed=3, folds=5, cut_point=cut,
+                                              fold_order="random"),
+                                   ProjectState(target="glucose", task="regression",
+                                                purpose="inference"))
+    assert inference.startswith("A cut-point at `2017` on `cycle` held out every row")  # not "No rows"
     assert timed == ("A cut-point at `2017` on `cycle` held out every row at or after it for one "
                      "final score, with the earlier rows of any unit it held out; models were "
                      "compared on the rest by cross-validation over `5` time-ordered folds, each "
                      "scored by models fit on earlier units; R² was measured against the training "
                      "rows' mean and pooled over every out-of-fold prediction.")
+
+
+def test_the_other_sentences_that_read_the_split_count_a_cut_point_as_rows_held_out(tmp_path):
+    """A cut-point holds rows out with no share beside it: the revert that brings one back names
+    it, the families' sentence says nothing of a choice made with no rows held out, and under
+    inference the split's sentence still states its plan. Each stays as it was for a share."""
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    log.append(d.SetSplit(holdout=0.0, seed=0, cut_point={"column": "cycle", "at": 2017.0},
+                          fold_order="random"))
+    second = log.append(d.SetSplit(holdout=0.2, seed=0))
+    text = voice.sentence_for(d.Revert(decision_id=second.id), log.state(),
+                              {"records": log.records()})
+    assert text == "Decision `#2` was reverted, so the split is a cut-point at `2017` on `cycle` again."
+    third = log.append(d.SetSplit(holdout=0.0, seed=0))
+    text = voice.sentence_for(d.Revert(decision_id=third.id), log.state(), {"records": log.records()})
+    assert text == "Decision `#3` was reverted, so the split is a `20%` holdout again."
+
+    cut = SplitSpec(holdout=0.0, seed=0, fold_order="random",
+                    cut_point=CutPoint(column="cycle", at=2017))
+    models = d.SelectModels(models=["linear", "random_forest"])
+    with_cut = voice.sentence_for(models, ProjectState(target="y", task="regression", split=cut))
+    with_none = voice.sentence_for(models, ProjectState(target="y", task="regression",
+                                                        split=SplitSpec(holdout=0.0)))
+    assert "with no rows held out" not in with_cut and "with no rows held out" in with_none
+
+    inference = ProjectState(target="y", task="regression", purpose="inference")
+    assert voice.split_states_plan(d.SetSplit(**cut.model_dump()), inference)
+    assert not voice.split_states_plan(d.SetSplit(holdout=0.0), inference)
