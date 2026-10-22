@@ -14,8 +14,12 @@ own first-ranked option as the driver offers it; else the acceptance drivers' an
 grouping, the exposure, the adjustment set, the time-varying exposure and the forms; every reading
 the server asks from the fixture's declared truth (``truths.FIXTURE_TRUTHS``) with the journey's
 readings beside it, else the app's own guess. The analyst's choices are limited to what the
-driver offers: a declaration the driver lists no option for (the survey journey's scale) is not
-made. One run explores (a preview of another roles answer, two revisits, three presses of Fit,
+driver offers, and it answers only the Router's questions, the readings, the role lines and the
+findings, as journeys.py does: it makes no declaration (the open declaration lines ``ask`` lists,
+the survey journey's scale among them), so each run's construction is what it was before the
+driver offered them. Each answer is tagged with a marker of the controlled vocabulary by the
+question it answers (:data:`MARKER_OF`; record version 2's ``Tag``), and its one preview says why.
+One run explores (a preview of another roles answer, two revisits, three presses of Fit,
 the last for answers already fitted, so two fits); the others pass once. Each run's id is the one
 ``start`` makes itself (``run_`` and a counter): no name of the dry run's reaches its analyst.
 
@@ -48,7 +52,21 @@ OUT = REPO / "research" / "swarm" / "dryrun"
 COMMAND_SECONDS = 300.0
 RUN_SECONDS = 600.0  # each run stays under ten minutes (the task's bound)
 BUDGET_FITS, BUDGET_SECONDS = 4, 600.0
-PROMPT_VERSION = "dry-run-1"
+PROMPT_VERSION = "dry-run-2"  # record version 2: each answer tagged, each preview with a reason
+# The scripted analyst's tag on each answer, by the question it answers: a marker of the
+# vocabulary (``research/swarm/vocabulary.py``) the question's answer rests on; a reading, a role
+# line, a finding or a way forward takes the default's.
+MARKER_OF = {
+    "lens": "purpose", "orientation": "design", "target": "outcome_type", "event": "event_share",
+    "task": "outcome_type", "follow_up": "time_order", "design": "design", "purpose": "purpose",
+    "grain": "repeated_units", "repeat_kind": "repeated_measurement", "unit": "repeated_units",
+    "aggregation": "repeated_measurement", "temporal": "time_order", "roles": "predictors_by_role",
+    "clusters": "design", "survey": "design", "exclusions": "rows_analyzed",
+    "missing": "missingness", "split": "rows_analyzed", "estimand": "estimand",
+    "adjustment": "estimand", "time_varying": "time_order", "energy_adjustment": "units",
+    "form": "predictors_per_row", "causal": "estimand", "models": "events_per_parameter",
+    "substitution": "units"}
+DEFAULT_MARKER = "design"
 
 # ── each run's construction ─────────────────────────────────────────────────
 
@@ -84,15 +102,16 @@ def specs() -> dict[str, Spec]:
     """The runs. The survey run asks the card's question, age's association with having sought
     support, with journeys.py's ``survey-inference`` journey's roles and readings: the ten items
     the journey scores as its scale (item_01 to item_10) enter one by one as covariates beside age,
-    sex and education, and the other thirty are excluded, since a scale is a declaration no driver
-    command makes (the card names none, so which columns enter is the analyst's decision). Age's
+    sex and education, and the other thirty are excluded, since the scripted analyst makes no
+    declaration, a scale among them (the card names none, so which columns enter is the analyst's
+    decision). Age's
     form is declared a straight line (a reading journeys takes in place of the form card's
     proposal), so the known answer is one row; its declared truth is that age has no effect, on
     every scale (``answers.json``), so the known answer is no effect (``null``): 0 on the
     difference scale of the marginal risk difference the estimand declares (the card's exposure,
     its first-ranked measure), 1 on a ratio's; the run gives the linear family as its own models
-    answer, as the journey's capture answered it (without the scale the driver offers no way to
-    declare, the shelf ranks the elastic net first, which reports no effect: the export refuses
+    answer, as the journey's capture answered it (without the scale, which the scripted analyst
+    does not declare, the shelf ranks the elastic net first, which reports no effect: the export refuses
     it). The Predict fixture and the decoy have no journey:
     their specs are the card's outcome and purpose, the clinical lens, the fixture's declared
     truth (none for the decoy), and each finding's first repair, as journeys' clinical journey takes
@@ -240,8 +259,10 @@ class Analyst:
         self.n += 1
         return f"Scripted analyst, step {self.n}: {what}"
 
-    def answer(self, ids: list[str], sets: list[str], why: str) -> dict[str, Any]:
-        args = [*ids, *[a for s in sets for a in ("--set", s)], "--reason", self.reason(why)]
+    def answer(self, ids: list[str], sets: list[str], why: str,
+               marker: str = DEFAULT_MARKER) -> dict[str, Any]:
+        args = [*ids, *[a for s in sets for a in ("--set", s)], "--reason", self.reason(why),
+                "--marker", marker]
         code, out = self.cmd("answer", *args)
         if code != 0:
             raise Refused(json.dumps(out)[:1500])
@@ -479,7 +500,8 @@ class Analyst:
                 explore.pop(key)(q)
             ids, sets, source = self.choose(key, q)
             try:
-                self.answer(ids, sets, f"{key} answered from {source}.")
+                self.answer(ids, sets, f"{key} answered from {source}.",
+                            MARKER_OF.get(key, DEFAULT_MARKER))
             except Refused as exc:
                 out = json.loads(str(exc)) if str(exc).startswith("{") else {}
                 ways = [w for w in (out.get("refused") or {}).get("exits") or []
@@ -557,7 +579,8 @@ def drive(a: Analyst) -> None:
 
     def preview_roles(q: dict[str, Any]) -> None:
         column = "sodium_mmol_l"
-        code, out = a.cmd("preview", "proposed", "--set", f"{column}=excluded")
+        code, out = a.cmd("preview", "proposed", "--set", f"{column}=excluded", "--reason",
+                          a.reason(f"what the roles would record with {column} left out"))
         if code != 0:
             raise RuntimeError(f"preview refused: {json.dumps(out)[:800]}")
 

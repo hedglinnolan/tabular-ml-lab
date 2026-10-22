@@ -158,6 +158,50 @@ def test_a_declaration_is_previewed_by_its_id(posted):
     assert posted[-1][1]["kind"] == "set_selection" and posted[-1][1]["method"] == "elastic_net"
 
 
+def test_ask_lists_each_open_declaration_beside_the_question_and_keeps_the_questions_own(
+        tmp_path, monkeypatch):
+    """The open question's options stay its own when declaration lines are listed beside it (the
+    walk of 2026-10-22 found the last line's options in their place, so no option of the
+    question was offered); a Confirm line set for the person is listed too, a line waiting is
+    not, and a composer that fails says so on its line alone."""
+    fake_run(tmp_path, monkeypatch)
+    run = driver.Run.load(RID)
+    step = {"key": "missing", "status": "open"}
+    lines = [{"source": "question", "key": "missing", "status": "open", "counted": True},
+             {"source": "declaration", "key": "set_selection", "status": "open", "counted": True,
+              "name": "the predictor-selection question"},
+             {"source": "declaration", "key": "set_levers", "status": "set_for_you",
+              "counted": False, "name": "the rules repeated inside each fold"},
+             {"source": "declaration", "key": "set_updating", "status": "waiting",
+              "counted": True, "name": "the shrinkage question"},
+             {"source": "declaration", "key": "set_explain", "status": "open", "counted": False,
+              "name": "the explanations"}]
+    monkeypatch.setattr(driver, "wait_open", lambda run, client, wait: (VIEW, step))
+    monkeypatch.setattr(driver, "quest_lines", lambda run, client: (lines, None))
+    monkeypatch.setattr(driver, "teaching", lambda client, purpose, key: None)
+    monkeypatch.setattr(driver, "finding_options", lambda run, client, purpose: {})
+    monkeypatch.setattr(driver, "served", lambda run, client: (lambda stage: None))
+    monkeypatch.setattr(driver.opts, "compose", lambda key, step, view, served, entry: {
+        "options": question()["_composed"]["options"], "fields": [], "data": {}})
+    real = decl.compose
+
+    def compose(kind, view, served):
+        if kind == "set_explain":
+            raise KeyError("curves")
+        return real(kind, view, served)
+
+    monkeypatch.setattr(driver.decl, "compose", compose)
+    q = driver.the_question(run, driver.Client(9), 0)
+    assert [o["id"] for o in q["_composed"]["options"]] == ["impute", "complete_case"]
+    assert [o["id"] for o in q["options"]] == ["impute", "complete_case"]
+    assert set(q["_declared"]) == {"set_selection", "set_levers"}
+    listed = {ln["key"]: ln for ln in q["also_open"]}
+    assert set(listed) == {"set_selection", "set_levers", "set_explain"}
+    assert listed["set_selection"]["options"][0]["id"] == "set_selection:none"
+    assert "KeyError" in listed["set_explain"]["options_why"]
+    assert "options" not in listed["set_explain"]
+
+
 # ── a want and the account ───────────────────────────────────────────────────
 
 
@@ -309,6 +353,102 @@ def test_markers_that_cannot_be_read_keep_nothing_and_never_fail_the_command(tmp
     monkeypatch.setattr(driver, "view_of", broken)
     driver.keep_markers(run, driver.Client(9), "fit")  # no exception
     assert not (folder / driver.MARKERS_FILE).exists()
+
+
+# ── a real run: a declaration answered, a fit refused in words, its way forward taken ─────────
+
+NOISE_PLAN = {
+    "lens": [(["clinical"], [])], "target": [(["y"], [])], "task": [(["regression"], [])],
+    "follow_up": [(["same"], [])], "purpose": [(["prediction"], [])],
+    "grain": [(["one_row_per_unit"], [])], "roles": [(["proposed"], [])],
+    "exclusions": [(["none"], [])], "missing": [(["impute"], [])], "split": [(["0.2"], [])],
+    "models": [(["linear"], [])],
+}
+
+
+def noise_table(path: Path) -> Path:
+    """120 rows: an outcome and four predictors drawn independently (seed 0), so a univariable
+    screen at p < 10⁻⁶ keeps no predictor in any training fold (each p-value is uniform under the
+    construction; one below 10⁻⁶ in 4 × 50 tests has probability about 2 × 10⁻⁴, and the seed
+    fixes the draw)."""
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(0)
+    frame = pd.DataFrame({"y": rng.normal(size=120).round(4),
+                          **{f"x{i}": rng.normal(size=120).round(4) for i in range(1, 5)}})
+    frame.to_csv(path, index=False)
+    return path
+
+
+@pytest.mark.slow
+def test_a_declaration_a_fit_refused_in_words_and_its_way_forward_through_the_driver(tmp_path):
+    from research.swarm import assemble as A
+    from research.swarm.record import validate
+    from research.swarm.tests import test_driver as T
+
+    data = noise_table(tmp_path / "noise.csv")
+    analyst = T.Analyst(tmp_path / "runs", "", plan=NOISE_PLAN)
+    out = analyst.drv("start", "--data", str(data), "--budget-fits", "4", "--budget-seconds",
+                      "900", "--scripted", "--model", "scripted", "--persona", "skeptical")
+    meta = out["started"]
+    analyst.run = meta["run"]
+    assert (meta["persona"], meta["vocabulary"]) == ("skeptical", V.DIGEST)
+    try:
+        analyst.until_fit()
+        q = analyst.cmd("ask")
+        line = next(ln for ln in q.get("also_open") or [] if ln.get("key") == "set_selection")
+        assert [o["id"] for o in line["options"]][:2] == ["set_selection:none",
+                                                          "set_selection:elastic_net"]
+        assert "threshold" in {f["name"] for f in line["fields"]}
+        p = analyst.cmd("preview", "set_selection:univariable", "--set", "threshold=0.000001",
+                        "--reason", "Would a strict screen keep any of four noise columns?")
+        assert p["previewed"]["method"] == "univariable" and "preview" in p
+        rec = analyst.cmd("answer", "set_selection:univariable", "--set", "threshold=0.000001",
+                          "--reason", "A strict screen, to see what it keeps.",
+                          "--marker", "predictors_per_row", "--rejected", "set_selection:none")
+        assert rec["recorded"]["decision"]["kind"] == "set_selection"
+        assert rec["tag"]["rejected"]["id"] == "set_selection:none"
+
+        refused = analyst.cmd("fit", "--wait", "300", expect=1)["refused"]
+        assert (refused["by"], refused["code"]) == ("engine", "nothing_kept"), refused
+        ways = {e["decision"]["method"]: e["id"] for e in refused["exits"]}
+        assert set(ways) == {"none", "screening"}
+        asked = analyst.cmd("ask")
+        failed = asked["fit_failed"]
+        assert failed[0]["kind"] == "refused" and failed[0]["refusal"]["code"] == "nothing_kept"
+
+        analyst.cmd("answer", ways["none"], "--reason", "No selection, the refusal's way forward.",
+                    "--marker", "predictors_per_row")
+        fitted = analyst.cmd("fit", "--wait", "300")
+        assert fitted["fit"]["status"] == "fresh", fitted
+        analyst.cmd("want", "an intercept-only model where a selection keeps nothing",
+                    "--kind", "option", "--reason", "The screen kept no predictor.",
+                    "--marker", "predictors_per_row")
+        analyst.cmd("results", "--wait", "120")
+        analyst.cmd("account", "The strict screen kept nothing; with no selection the fit ran.")
+
+        path, ok = A.assemble(tmp_path / "runs" / analyst.run, corpus=tmp_path / "corpus",
+                              meta={"design": 2, "analyst_model": "scripted",
+                                    "prompt_version": "test", "dataset": {"id": "noise"}},
+                              mattered_wait=0)
+        assert ok, json.loads(path.read_text())["error"]
+        record = validate(json.loads(path.read_text("utf-8")))
+    finally:
+        analyst.drv("stop", "--run", analyst.run)
+    (refusal,) = [f for f in record.surfacings.failed_fits if f.kind == "refused"]
+    assert refusal.refusal["code"] == "nothing_kept" and refusal.stage == "fit"
+    assert any(r.by == "engine" and r.code == "nothing_kept" for r in record.surfacings.refusals)
+    tagged = [d for d in record.decisions if d.kind == "set_selection"]
+    assert [d.tag.marker for d in tagged] == ["predictors_per_row", "predictors_per_row"]
+    assert tagged[0].tag.rejected["decision"]["method"] == "none"
+    assert record.run.persona == "skeptical"
+    assert record.attempts and record.attempts[-1].markers is not None
+    rows = next(m for m in record.attempts[-1].markers if m.name == "rows")
+    assert rows.value == 120
+    assert record.wants[0].kind == "option" and record.account.after_results is True
+    previewed = [e for d in tagged for e in d.examined if e.how == "preview"]
+    assert previewed and previewed[0].reason == "Would a strict screen keep any of four noise columns?"
 
 
 # ── the run's model and persona ──────────────────────────────────────────────

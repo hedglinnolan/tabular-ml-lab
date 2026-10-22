@@ -720,10 +720,15 @@ def the_question(run: Run, client: Client, wait: float) -> dict[str, Any]:
                 line["options"] = acts[line["key"]]
                 ways += line["options"]
             if line.get("source") == "declaration" and line.get("key") in declarable:
-                composed = decl.compose(line["key"], view, artifact)
-                declared[line["key"]] = composed
-                line.update({k: composed[k] for k in ("words", "options", "fields", "data")
-                             if composed.get(k)})
+                try:
+                    offered = decl.compose(line["key"], view, artifact)
+                except Exception as exc:  # noqa: BLE001 - a driver defect on one line, said there
+                    line["options_why"] = (f"The driver could not compose this line's options "
+                                           f"({type(exc).__name__}: {str(exc)[:200]}).")
+                    continue
+                declared[line["key"]] = offered
+                line.update({k: offered[k] for k in ("words", "options", "fields", "data")
+                             if offered.get(k)})
         out["also_open"] = described
         ways += [w for ln in others for item in line_items(ln) for w in item["options"]]
     failed = failures(view, [*((step or {}).get("waiting_on") or []), "fit"])
@@ -1469,10 +1474,13 @@ def guard_budget(run: Run, client: Client, view: dict[str, Any], decision: dict[
 
 
 def wait_fit(run: Run, client: Client, seconds: float) -> dict[str, Any]:
+    """The fit's status once it is fresh, failed or blocked, once it waits for a press of Fit
+    (``held: "fit"``), or after ``seconds``. A fit held while the shelf measures its time
+    (``held: "estimate"``) is waited for: the hold ends by itself (``ProjectService._hold``)."""
     end = time.monotonic() + seconds
     while True:
         status = (view_of(run, client).get("stages") or {}).get("fit") or {}
-        if status.get("status") in ("fresh", "error", "blocked") or status.get("held") \
+        if status.get("status") in ("fresh", "error", "blocked") or status.get("held") == "fit" \
                 or time.monotonic() >= end:
             return {k: status.get(k) for k in ("status", "key", "error", "held", "progress",
                                                "refusal")

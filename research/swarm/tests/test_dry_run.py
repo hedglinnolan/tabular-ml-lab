@@ -74,6 +74,17 @@ def test_the_docstring_counts_the_exploring_runs_fits_as_its_record_holds_them()
     assert [f"{w} fits)" in text for w in words.values()].count(True) == 1
 
 
+def test_each_scripted_answer_is_tagged_with_a_marker_of_the_vocabulary():
+    """Record version 2: the scripted analyst's tag on each answer, by its question, is a marker
+    the vocabulary holds (the driver refuses any other)."""
+    from research.swarm import vocabulary as V
+
+    assert set(D.MARKER_OF.values()) | {D.DEFAULT_MARKER} <= set(V.NAMES)
+    from turbotab.core.interview import QUESTION_KEYS
+
+    assert set(D.MARKER_OF) <= set(QUESTION_KEYS)
+
+
 def test_no_run_is_started_with_a_label_of_its_own():
     """DRV-FIX (c): the dry run's names (``decoy_single``) never reach its analyst: each committed
     record's run id is one ``start`` made itself, ``run_`` and a counter, and names no run of the

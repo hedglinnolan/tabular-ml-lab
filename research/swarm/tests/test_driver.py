@@ -801,7 +801,8 @@ class Analyst:
         self.reasons.append(reason)
         told = self.tell(ids, sets) if self.keys else None
         out = self.cmd("answer", *ids, *[a for s in sets for a in ("--set", s)], "--reason", reason)
-        assert set(out) == {"recorded", "next"}, out
+        assert set(out) == {"recorded", "next", "tag"}, out  # package 1: the answer's tag
+        assert out["tag"]["marker"] == MARKER
         assert out["recorded"]["note"] == reason and out["recorded"]["id"]
         if self.keys:
             meta = json.loads((self.runs / self.run / "driver.json").read_text())
