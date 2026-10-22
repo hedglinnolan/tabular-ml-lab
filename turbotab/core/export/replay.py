@@ -45,15 +45,32 @@ rebuild finished:
   then rebuilt on its table at ``S``, which must be another seed. A record with joined files is
   refused (a draw replaces one table).
 * **The findings rule on a fresh draw** (:func:`findings_rule`): a record tied to a finding by its
-  ``finding_id`` (``apply_repair``, ``dismiss_finding``, ``defer_finding``) is replayed as
-  recorded where its finding fires on the new bytes, and left out where it does not, with every
-  revert of a record left out: a repair answers a finding, and with no finding there is nothing to
-  repair. Each record left out is named in the report with why. Which findings fire is read from
-  the findings stage on the new bytes under the log's other answers (the records the findings
-  stage and the stages before it read), before any finding's record is written. Every finding with
-  a repair that the new bytes raise and no record kept answers by its id is named
-  (``unanswered``): one that fires only on the new bytes stays unanswered, as an analyst who never
-  saw it left it.
+  ``finding_id`` (``apply_repair``, ``dismiss_finding``, ``defer_finding``) is left out where its
+  finding does not fire on the new bytes, with every revert of a record left out: a repair answers
+  a finding, and with no finding there is nothing to repair. Each record left out is named in the
+  report with why. Where its finding fires, the record is kept, and a repair's settings (its
+  ``params``) are read against what the finding offers on the new bytes for the same option
+  (``repairs.admits``, as the engine checks an answer):
+  - settings the new finding offers, or a part of them, are replayed as recorded;
+  - otherwise the repair is replayed with the new draw's own settings for its option, when exactly
+    one form of the option is offered with the same choices, every setting that is text, yes or
+    no, or empty (a column, a level, the batch column, the platform), equal to the record's. The
+    settings that are numbers, lists or mappings are what the data decide (the features a QC-RLSC
+    correction drops, its counts), so they are the new draw's, and the record's sentence is
+    authored again from them. Each such record is named in the report with the settings that
+    differ (``redrawn``);
+  - otherwise (the option is not offered, or several forms have its choices) the replay is
+    refused, naming the record.
+  Only a repair that stands is read this way (the last of its finding's records, not withdrawn by a
+  revert): one that does not stand changes nothing and is kept as recorded.
+  Which findings fire is read from the findings stage on the new bytes, first under the log's
+  answers that the findings stage and the stages before it read and that are not tied to a finding,
+  then also under each record the rule keeps that writes a slot those stages read (an applied
+  read-numbers repair writes ``numbers_read``, and the findings are checked on the numbers it
+  reads), read again until those records no longer change; findings that have not settled within
+  two readings more than the log has such records refuse the replay. Every finding with a repair that
+  the new bytes raise and no record kept answers by its id is named (``unanswered``): one that
+  fires only on the new bytes stays unanswered, as an analyst who never saw it left it.
 
 This module drives the server's project service (the same code a client is served by), imported
 when a replay runs.
@@ -153,6 +170,16 @@ class LeftOut(_Model):
     why: str
 
 
+class Redrawn(_Model):
+    """A repair the findings rule replays with the new draw's settings for its option, and the
+    settings whose values differ from the record's."""
+
+    seq: int
+    finding_id: str
+    option: str
+    settings: list[str]
+
+
 class ReplayReport(_Model):
     bundle: str
     reproduced: bool
@@ -175,6 +202,7 @@ class ReplayReport(_Model):
     cut: Cut | None = None
     fresh: FreshDrawCheck | None = None
     left_out: list[LeftOut] = []
+    redrawn: list[Redrawn] = []
     unanswered: list[str] = []
     finished: bool | None = None
     estimates_again: dict[str, float | None] | None = None
@@ -370,15 +398,64 @@ def truncate(log: bytes, before: str | None = None) -> tuple[bytes, Cut]:
                                  left=len(lines) - len(kept))
 
 
-def findings_rule(lines: Sequence[tuple[Any, bytes]], fired: set[str]
-                  ) -> tuple[list[tuple[Any, bytes]], list[LeftOut]]:
-    """The fresh draw's log by the findings rule (module docstring): each record of
-    :data:`FINDING_KINDS` whose finding is not in ``fired`` (the finding ids the new bytes raise)
-    left out, with every revert of a record left out; every other line as recorded."""
+@dataclasses.dataclass
+class Ruled:
+    """The findings rule's reading of a log against the findings a draw raises
+    (:func:`findings_rule`): the lines kept (a redrawn repair's line rewritten), the records left
+    out and the repairs redrawn, each with why, and the repairs whose settings the draw's finding
+    does not offer in any one form, which refuse the replay (``unmatched``)."""
+
+    kept: list[tuple[Any, bytes]]
+    left_out: list[LeftOut]
+    redrawn: list[Redrawn]
+    unmatched: list[LeftOut]
+
+
+def _choices(params: Mapping[str, Any]) -> dict[str, Any]:
+    """The settings of a repair that its answer names rather than the data decide: each one that
+    is text, yes or no, or empty (module docstring)."""
+    return {k: v for k, v in params.items() if v is None or isinstance(v, (str, bool))}
+
+
+def _offered(finding: Mapping[str, Any], option: str) -> list[tuple[dict[str, Any], dict]]:
+    """Each form of ``option`` the finding offers: its settings, and the offer itself."""
+    return [(dict(((o.get("decision") or {}).get("params")) or {}), dict(o))
+            for o in finding.get("repairs") or [] if o.get("key") == option]
+
+
+def _redrawn_line(record: Any, params: Mapping[str, Any], finding: Mapping[str, Any],
+                  offer: Mapping[str, Any], before: Sequence[Any]) -> bytes:
+    """``record`` with the new draw's settings, its sentence authored again as the log authors one
+    (``voice.sentence_for`` on the state before it, then led by what had been seen when it was
+    made), every other field as recorded."""
+    from turbotab.core import voice
+    from turbotab.core.decisions import decided_early, disclose, fold, record_line
+
+    decision = record.decision.model_copy(update={"params": dict(params)})
+    text = voice.sentence_for(decision, fold(list(before)), {"finding": finding, "repair": offer})
+    if isinstance(text, str) and record.early:
+        text = decided_early(text, record.early)
+    text = disclose(text, post_seal=record.post_seal, after_estimates=record.after_estimates)
+    again = record.model_copy(update={"decision": decision,
+                                      "sentence": text if text and text.strip() else None})
+    return record_line(again).rstrip(b"\n")
+
+
+def findings_rule(lines: Sequence[tuple[Any, bytes]], raised: Sequence[Mapping[str, Any]]) -> Ruled:
+    """The fresh draw's log by the findings rule (module docstring), against ``raised``, the
+    findings the new bytes raise (each with its offered ``repairs``): each record of
+    :data:`FINDING_KINDS` whose finding is not raised left out, with every revert of a record left
+    out; each standing repair kept as recorded where the finding offers its settings, redrawn where
+    exactly one form of its option has its choices, and otherwise unmatched; every other line as
+    recorded."""
+    from turbotab.core.decisions import read_record, reverted
+    from turbotab.core.repairs import admits
+
+    by_id = {str(f.get("id")): f for f in raised}
     why: dict[str, LeftOut] = {}
     for r, _ in lines:
         fid = getattr(r.decision, "finding_id", None)
-        if r.decision.kind in FINDING_KINDS and fid not in fired:
+        if r.decision.kind in FINDING_KINDS and fid not in by_id:
             why[r.id] = LeftOut(seq=r.seq, kind=r.decision.kind, finding_id=fid,
                                 why=f"its finding `{fid}` does not fire on this draw")
     for r, _ in lines:
@@ -386,35 +463,111 @@ def findings_rule(lines: Sequence[tuple[Any, bytes]], fired: set[str]
             why[r.id] = LeftOut(seq=r.seq, kind=r.decision.kind, finding_id=None,
                                 why=f"it reverts a record left out (`{r.decision.decision_id}`)")
     kept = [(r, line) for r, line in lines if r.id not in why]
-    return kept, sorted(why.values(), key=lambda o: o.seq)
+    withdrawn = reverted([r for r, _ in kept])
+    standing: dict[str, Any] = {}  # each finding's last record not withdrawn: the one that stands
+    for r, _ in kept:
+        if r.decision.kind in FINDING_KINDS and r.id not in withdrawn:
+            standing[str(r.decision.finding_id)] = r
+    redrawn: list[Redrawn] = []
+    unmatched: list[LeftOut] = []
+    out: list[tuple[Any, bytes]] = []
+    for i, (r, line) in enumerate(kept):
+        fid = str(getattr(r.decision, "finding_id", ""))
+        if r.decision.kind != "apply_repair" or standing.get(fid) is not r:
+            out.append((r, line))
+            continue
+        given = dict(r.decision.params or {})
+        forms = _offered(by_id[fid], r.decision.option)
+        if any(admits(params, given) for params, _ in forms):
+            out.append((r, line))
+            continue
+        same = [(params, offer) for params, offer in forms if _choices(params) == _choices(given)]
+        if len(same) != 1:
+            unmatched.append(LeftOut(
+                seq=r.seq, kind=r.decision.kind, finding_id=fid,
+                why=(f"its finding `{fid}` does not offer `{r.decision.option}` on this draw"
+                     if not forms else
+                     f"its finding `{fid}` offers `{r.decision.option}` on this draw only with "
+                     f"other choices than the record's" if not same else
+                     f"its finding `{fid}` offers {len(same)} forms of `{r.decision.option}` on "
+                     f"this draw with the record's choices, none with its settings")))
+            out.append((r, line))
+            continue
+        params, offer = same[0]
+        changed = sorted(k for k in set(params) | set(given)
+                         if k not in params or k not in given or params[k] != given[k])
+        redrawn.append(Redrawn(seq=r.seq, finding_id=fid, option=str(r.decision.option),
+                               settings=changed))
+        line = _redrawn_line(r, params, by_id[fid], offer, [x for x, _ in kept[:i]])
+        out.append((read_record(json.loads(line), where=f"record {r.seq} redrawn"), line))
+    return Ruled(kept=out, left_out=sorted(why.values(), key=lambda o: o.seq), redrawn=redrawn,
+                 unmatched=unmatched)
 
 
 def findings_inputs(lines: Sequence[tuple[Any, bytes]], reads: set[str]
                     ) -> list[tuple[Any, bytes]]:
     """The lines whose records write a slot in ``reads`` (the slots the findings stage and the
-    stages before it read), with each revert of one of them, and no record tied to a finding: what
-    the findings on the new bytes are computed under. A record whose slots cannot be read is kept,
-    since leaving out a slot the findings read would change them."""
-    from turbotab.core.decisions import ProjectState, fold_onto
-
-    empty = ProjectState()
+    stages before it read), with each revert of one of them: what the findings on the new bytes are
+    computed under. A record tied to a finding is among them when it writes such a slot (an
+    applied read-numbers repair writes ``numbers_read``); the caller passes the lines the findings
+    rule keeps (:func:`fresh_findings`). A record whose slots cannot be read is kept, since leaving
+    out a slot the findings read would change them."""
     keep: set[str] = set()
     for r, _ in lines:
-        kind = r.decision.kind
-        if kind in FINDING_KINDS or kind == "revert":
-            continue
-        try:
-            after = fold_onto(empty, r.decision)
-            written = {f for f in ProjectState.model_fields
-                       if getattr(after, f) != getattr(empty, f)}
-        except Exception:  # noqa: BLE001 - kept when its slots cannot be read (docstring)
-            written = set(reads)
-        if written & reads:
+        if r.decision.kind != "revert" and _writes(r.decision, reads) & reads:
             keep.add(r.id)
     for r, _ in lines:
         if r.decision.kind == "revert" and r.decision.decision_id in keep:
             keep.add(r.id)
     return [(r, line) for r, line in lines if r.id in keep]
+
+
+def _writes(decision: Any, reads: set[str]) -> set[str]:
+    """The slots ``decision`` writes onto an empty state (``reads`` when they cannot be read)."""
+    from turbotab.core.decisions import ProjectState, fold_onto
+
+    empty = ProjectState()
+    try:
+        after = fold_onto(empty, decision)
+    except Exception:  # noqa: BLE001 - kept when its slots cannot be read (findings_inputs)
+        return set(reads)
+    return {f for f in ProjectState.model_fields if getattr(after, f) != getattr(empty, f)}
+
+
+def fresh_findings(service: Any, pid: str, written: Path, lines: Sequence[tuple[Any, bytes]],
+                   timeout: float) -> tuple[Ruled, list[str]]:
+    """The findings rule on the project ``pid`` (made from a fresh draw; its log at ``written``),
+    as the module docstring says: the findings read under the probe, the rule applied, the probe
+    taken again from the lines the rule keeps, until it no longer changes. Returns the rule's
+    reading and the findings with a repair that no kept record answers; raises :class:`Refused`
+    for findings that do not settle and for a repair whose settings are unmatched."""
+    from turbotab.core.repairs import findings_of
+
+    graph = service.engine.graph
+    reads = {s for name in graph.upstream("findings") | {"findings"} for s in graph[name].reads}
+    probe = findings_inputs([x for x in lines if x[0].decision.kind not in FINDING_KINDS], reads)
+    rounds = 2 + sum(1 for r, _ in lines
+                     if r.decision.kind in FINDING_KINDS and _writes(r.decision, reads) & reads)
+    for _ in range(rounds):
+        written.write_bytes(join_lines(probe))
+        service.engine.on_decision(pid)
+        _wait(service, pid, ("findings",), timeout)
+        raised = findings_of(service.engine.get(pid, "findings").artifact)
+        ruled = findings_rule(lines, raised)
+        again = findings_inputs(ruled.kept, reads)
+        if join_lines(again) != join_lines(probe):
+            probe = again
+            continue
+        if ruled.unmatched:
+            raise Refused(" ".join(f"Record {o.seq} ({o.kind}) cannot be replayed on this draw: "
+                                   f"{o.why}." for o in ruled.unmatched)
+                          + " Nothing was replayed: a repair is replayed only with settings its "
+                            "finding offers on the new bytes.")
+        answered = {getattr(r.decision, "finding_id", None) for r, _ in ruled.kept}
+        return ruled, sorted(str(f.get("id")) for f in raised
+                             if f.get("repairs") and f.get("id") not in answered)
+    raise Refused(f"The findings on this draw did not settle under the record's repairs within "
+                  f"{rounds} readings: nothing was replayed.")
 
 
 # ── a fresh draw ─────────────────────────────────────────────────────────────
@@ -561,7 +714,6 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
     from turbotab.core.decisions import fold
     from turbotab.core.export import gate
     from turbotab.core.export.bundle import contents, matrix_bytes
-    from turbotab.core.repairs import findings_of
     from turbotab.server.service import SOURCE_FILE, ProjectService
 
     try:
@@ -607,20 +759,11 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
         written = service.workspace.decisions_path(meta.id)
         lines = log_lines(log)
         if fresh is not None and any(r.decision.kind in FINDING_KINDS for r, _ in lines):
-            # The findings rule: the findings the new bytes raise under the log's other answers.
-            graph = service.engine.graph
-            reads = {s for name_ in graph.upstream("findings") | {"findings"}
-                     for s in graph[name_].reads}
-            written.write_bytes(join_lines(findings_inputs(lines, reads)))
-            service.engine.on_decision(meta.id)
-            _wait(service, meta.id, ("findings",), timeout)
-            raised = findings_of(service.engine.get(meta.id, "findings").artifact)
-            fired = {str(f.get("id")) for f in raised}
-            lines, report.left_out = findings_rule(lines, fired)
-            answered = {getattr(r.decision, "finding_id", None) for r, _ in lines}
-            report.unanswered = sorted(str(f.get("id")) for f in raised
-                                       if f.get("repairs") and f.get("id") not in answered)
-            log = join_lines(lines)
+            # The findings rule: the findings the new bytes raise, and each finding's record read
+            # against them (module docstring).
+            ruled, report.unanswered = fresh_findings(service, meta.id, written, lines, timeout)
+            report.left_out, report.redrawn = ruled.left_out, ruled.redrawn
+            log = join_lines(ruled.kept)
         written.write_bytes(log)
         records = service.log(meta.id).records()
         report.decisions = len(records)
@@ -651,6 +794,9 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
                                  and not report.estimates.mismatched
                                  and not report.estimates.missing
                                  and not report.estimates.extra)
+    except Refused as exc:  # the findings rule refuses the fresh draw: nothing is rebuilt
+        report.refused = exc.message
+        report.project = None
     except Exception as exc:  # noqa: BLE001 - a replay that cannot finish says why, never a trace
         report.messages.append(f"The replay could not finish: {exc}")
         if rebuild:
@@ -683,6 +829,10 @@ def summary(report: ReplayReport) -> str:
                      f"  The log holds no live `{c.kind}`: nothing was cut.")
     for o in report.left_out:
         lines.append(f"  Record {o.seq} ({o.kind}) left out of the fresh draw: {o.why}.")
+    for d in report.redrawn:
+        lines.append(f"  Record {d.seq} (apply_repair) replayed with the fresh draw's settings for "
+                     f"`{d.option}` of `{d.finding_id}`; these differ from the record's: "
+                     f"{', '.join(d.settings)}.")
     if report.unanswered:
         lines.append(f"  Findings the fresh draw raises that no record answers: "
                      f"{', '.join(report.unanswered)}.")
@@ -765,7 +915,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = ["CUT_KINDS", "Cut", "EstimateCheck", "FINDING_KINDS", "FreshDraw", "FreshDrawCheck",
-           "InputCheck", "LeftOut", "MatrixCheck", "Refused", "ReplayReport", "close", "compare",
-           "compare_estimates", "findings_inputs", "findings_rule", "fresh_table", "join_lines",
-           "load_bundle", "log_lines", "main", "run", "summary", "truncate", "verify_inputs",
-           "write_draw"]
+           "InputCheck", "LeftOut", "MatrixCheck", "Redrawn", "Refused", "ReplayReport", "Ruled",
+           "close", "compare", "compare_estimates", "findings_inputs", "findings_rule",
+           "fresh_findings", "fresh_table", "join_lines", "load_bundle", "log_lines", "main", "run",
+           "summary", "truncate", "verify_inputs", "write_draw"]

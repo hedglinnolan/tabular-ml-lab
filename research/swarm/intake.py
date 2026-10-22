@@ -1171,8 +1171,9 @@ def intake_inpatient_readmission_predict(old: dict | None) -> tuple[dict, dict, 
              "value": float(roc_auc_score(frame[G.READMISSION_OUTCOME],
                                           G.readmission_risk(frame)))},
             {"name": "each model class's Brier regret against the true risk, E[(p̂ − p)²] of its "
-                     "population-best fit (the oracle's is 0; additive straight lines are the "
-                     "default path's class, so r0's planted nonlinearity is its regret)",
+                     "population-best fit (the oracle's is 0): linear is every column as a "
+                     "straight line, spline the continuous columns as cubic B-splines, "
+                     "interaction those splines and age × albumin",
              "source": (f"{GENERATORS_PY}::readmission_regrets: an unpenalized logistic fit on "
                         f"{G.REGRET_ROWS[0]:,} rows at seed {G.REGRET_SEEDS[0]}, read on "
                         f"{G.REGRET_ROWS[1]:,} rows at seed {G.REGRET_SEEDS[1]}"),
@@ -1248,10 +1249,12 @@ def intake_plasma_panel_estimate(old: dict | None) -> tuple[dict, dict, dict]:
         "BMI.",
         {"column": G.PANEL_OUTCOME,
          "meaning": "has the disease (1 yes, 0 no); blank on a pooled QC injection"}, table,
-        # The card names one exposure column: the family's first, its meaning the whole family.
+        # The card names one exposure column (validate_card takes one): the family's first, its
+        # meaning the whole family.
         exposure={"column": features[0],
-                  "meaning": f"each feature's measured intensity, {features[0]} to "
-                             f"{features[-1]}, tested feature by feature (the first named here)"},
+                  "meaning": f"every feature column, {features[0]} to {features[-1]}, is an "
+                             f"exposure, each tested on its own; the card names {features[0]} "
+                             f"because it takes one column"},
         documentation=[
             "The samples were injected in run_order, in the batches batch names; pooled QC "
             "injections (sample_type pooled_qc) open and close each batch and recur within it.",

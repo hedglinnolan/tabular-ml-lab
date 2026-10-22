@@ -10,11 +10,11 @@ true feature set, each feature's batch offsets) are fixed: only the rows are dra
 
 * :func:`readmission` (the hardened Predict fixture, item 4): ``clinical_readmission_predict``'s
   columns and logistic model (``make_fixtures.clinical_risk``), plus a U-shaped sodium term and an
-  age-by-albumin interaction, so the default path's additive straight lines miss part of the
-  risk. :func:`readmission_regrets` computes, from the generator, the Brier regret of the
-  population-best model of three classes against the true risk: additive and linear (the default
-  path's), additive with splines, and splines with the interaction, so a path's choices change its
-  regret; r0 (SWARM_PLAN §7) is half the first.
+  age-by-albumin interaction, which additive straight lines miss. :func:`readmission_regrets`
+  computes, from the generator, the Brier regret of the population-best model of three classes
+  against the true risk: additive and linear, additive with splines, and splines with the
+  interaction, so a path's choices change its regret. Which class a path's plan falls in, and so
+  r0 (SWARM_PLAN §7), is not settled here.
 * :func:`blood_pressure` (the Estimate fixture, item 5): a non-null effect of a daily walking habit
   on systolic blood pressure (a difference in means, the measure the engine reports for a numeric
   outcome), a confounder (chronic pain), a collider (a health-concern score caused by both), and
@@ -180,8 +180,8 @@ def readmission_regrets(rows: tuple[int, int] = REGRET_ROWS,
                         seeds: tuple[int, int] = REGRET_SEEDS) -> dict[str, float]:
     """The Brier regret against the true risk, E[(p̂ − p)²], of the population-best model of each
     class (an unpenalized logistic fit on ``rows[0]`` rows of the generator at ``seeds[0]``, read
-    on ``rows[1]`` rows at ``seeds[1]``): ``linear`` (additive straight lines, the default path's
-    class), ``spline`` (additive splines) and ``interaction`` (splines and age × albumin). The
+    on ``rows[1]`` rows at ``seeds[1]``): ``linear`` (additive straight lines), ``spline``
+    (additive splines) and ``interaction`` (splines and age × albumin). The
     oracle's regret is 0. E[(p̂ − y)²] − E[(p − y)²] = E[(p̂ − p)²] for a binary y with risk p, so
     this is the Brier score's excess over the oracle's."""
     fit_frame, read_frame = readmission(seeds[0], rows[0]), readmission(seeds[1], rows[1])

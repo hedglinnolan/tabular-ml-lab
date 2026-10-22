@@ -87,7 +87,7 @@
    "value": 0.797871964417752
   },
   {
-   "name": "each model class's Brier regret against the true risk, E[(p̂ − p)²] of its population-best fit (the oracle's is 0; additive straight lines are the default path's class, so r0's planted nonlinearity is its regret)",
+   "name": "each model class's Brier regret against the true risk, E[(p̂ − p)²] of its population-best fit (the oracle's is 0): linear is every column as a straight line, spline the continuous columns as cubic B-splines, interaction those splines and age × albumin",
    "source": "research/swarm/generators.py::readmission_regrets: an unpenalized logistic fit on 300,000 rows at seed 1, read on 200,000 rows at seed 2",
    "value": {
     "linear": 0.018836723665748026,

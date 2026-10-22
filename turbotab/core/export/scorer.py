@@ -17,7 +17,8 @@ with"), and normalized as every modeling stage reads its frame (``pipeline.norma
 before any new row is read the same steps are run on the plan's own training rows, from the table
 the project was made from, and each predictor compared with the working table the fit read; a
 predictor that differs (one QC-RLSC corrected, say, or any step but the repairs' own SQL) is
-refused by name, as is a working table that combines rows. Refused too: a plan under inference
+refused by name, as is a working table whose rows are not the table's own (it combines rows, or
+leaves reference rows out and numbers the rest again). Refused too: a plan under inference
 (its result is an estimate, not a prediction), a task other than a yes/no outcome or a number, a
 feature-major table, model updating by shrinkage (applied after the fit, which this module does not
 apply), a family the fit did not keep, more than one family with none named, a fit or design not
@@ -142,7 +143,12 @@ def predict(service: Any, pid: str, rows: pd.DataFrame | str | Path, *,
     inputs = list(spec.inputs)
     files = getattr(working, "files", None) or {}
     if ROW_MAP in files:
-        raise ScoreRefused("The working table combines rows: a new row is not one of its rows.")
+        if (working.data or {}).get("aggregation"):
+            raise ScoreRefused("The working table combines rows: a new row is not one of its "
+                               "rows.")
+        raise ScoreRefused("The working table leaves reference rows out and numbers the rest "
+                           "again: its rows are not the table's own, so the steps a new row would "
+                           "go through cannot be checked on the training rows.")
     findings = service.engine.get(pid, "findings").artifact
     sql = column_expressions(findings, state)
     raw = service.workspace.table_path(pid, state)

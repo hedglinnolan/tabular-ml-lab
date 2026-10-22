@@ -10,7 +10,7 @@
  },
  "exposure": {
   "column": "mz_0001",
-  "meaning": "each feature's measured intensity, mz_0001 to mz_0150, tested feature by feature (the first named here)"
+  "meaning": "every feature column, mz_0001 to mz_0150, is an exposure, each tested on its own; the card names mz_0001 because it takes one column"
  },
  "documentation": [
   "The samples were injected in run_order, in the batches batch names; pooled QC injections (sample_type pooled_qc) open and close each batch and recur within it.",

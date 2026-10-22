@@ -93,7 +93,7 @@ def regrets():
 
 
 def test_the_regret_ladder_falls_with_each_term_a_path_can_add(regrets):
-    """Additive lines (the default path's class) miss the U-shape and the interaction; splines
+    """Additive lines miss the U-shape and the interaction; splines
     catch the U-shape; the interaction leaves only the fit's own noise."""
     assert regrets["linear"] > 4 * regrets["spline"] > 0
     assert regrets["spline"] > 50 * regrets["interaction"]

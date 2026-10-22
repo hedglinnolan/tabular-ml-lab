@@ -11,9 +11,20 @@ lines, hashlib, statsmodels.
 * A fresh draw: the table is the generator's own bytes at the new seed, and the rebuilt crude
   estimate is statsmodels' least squares on that table; a generator that does not write the
   recorded table at the recorded seed is refused before anything is built.
-* The findings rule: the sex repair is kept where its finding fires on the new draw, and left out,
-  named, where the new draw's sex has a third level and the finding cannot fire; a missing-value
-  code only the new draw holds raises a finding no record answers, and the report names it.
+* The findings rule: the sex repair is kept as its own bytes where its finding fires on the new
+  draw, and left out, named, where the new draw's sex has a third level and the finding cannot
+  fire; a missing-value code only the new draw holds raises a finding no record answers, and the
+  report names it; where the new draw spells sex otherwise, the recorded coding is not one its
+  finding offers, and the replay is refused naming the record.
+* Read-numbers repairs: hemoglobin written with "." for a blank and 999 for a missing value, so the
+  missing-value finding fires only once the text is read as numbers. On a new draw of the same
+  kind both repairs are kept and the working table holds no 999 (its blanks counted from the
+  generator's own frame); on a new draw whose hemoglobin is plain numbers neither finding fires and
+  both repairs are left out.
+* QC-RLSC on the measurement fixture, through the engine's findings on two draws of the panel: the
+  per-batch correction recorded on the committed draw is replayed on the next with that draw's
+  offered settings, so a feature only the new draw's correction drops leaves the predictors; the
+  sex repair, whose settings both draws offer, is its own bytes.
 * The scorer: its predictions on new rows are statsmodels' maximum likelihood refit on the same
   training rows; it refuses a working table it cannot reproduce (one value changed), a plan under
   inference, and a family the fit did not keep.
@@ -63,8 +74,54 @@ def sentinel_codes(seed: int) -> pd.DataFrame:
     return frame
 
 
+def spelled_sex(seed: int) -> pd.DataFrame:
+    """``small_readmission`` at the recorded seed; at any other seed sex is spelled out ("female",
+    "male"), so the recorded coding ("f" counts as 1) is not one the new draw's finding offers."""
+    frame = small_readmission(seed)
+    if seed != PREDICT_SEED:
+        frame["sex"] = frame["sex"].map({"F": "female", "M": "male"})
+    return frame
+
+
+def text_hemoglobin(seed: int) -> pd.DataFrame:
+    """``small_readmission`` with hemoglobin written as text: "." in every 20th row (a blank) and
+    999 in every 25th otherwise (a missing-value code)."""
+    frame = small_readmission(seed)
+    hb = frame["hemoglobin_g_dl"].astype(object)
+    hb[frame.index % 25 == 0] = 999.0
+    hb[frame.index % 20 == 0] = "."
+    frame["hemoglobin_g_dl"] = hb
+    return frame
+
+
+def numbers_at_new_seeds(seed: int) -> pd.DataFrame:
+    """``text_hemoglobin`` at the recorded seed; at any other seed hemoglobin is plain numbers, with
+    no blank and no code, so neither of its findings fires."""
+    return text_hemoglobin(seed) if seed == PREDICT_SEED else small_readmission(seed)
+
+
 def small_bp(seed: int) -> pd.DataFrame:
     return G.blood_pressure(seed, ROWS)
+
+
+def repair_each(run, view) -> None:
+    """Before the outcome: each finding's first repair, one at a time, reading the findings again
+    after each (a finding that fires only once a repair is applied is answered too)."""
+    import time
+
+    from turbotab.core.reference import journeys as J
+
+    done: set[str] = set()
+    for _ in range(8):
+        time.sleep(1.0)
+        todo = [f for f in J._artifact(run, "findings")["findings"]
+                if f.get("repairs") and f["id"] not in done]
+        if not todo:
+            return
+        done.add(todo[0]["id"])
+        J.post_answer(run, {"kind": "apply_repair", "finding_id": todo[0]["id"],
+                            "option": todo[0]["repairs"][0]["key"]})
+    raise AssertionError(f"the findings kept raising new repairs: {sorted(done)}")
 
 
 @pytest.fixture(scope="module")
@@ -93,11 +150,21 @@ def bundles(tmp_path_factory):
                          "walks_daily": "exposure", "height_cm": "covariate",
                          "health_concern_score": "covariate"}),
     ]
+    readings = folder / "readings" / G.READMISSION_FILE
+    readings.parent.mkdir()
+    text_hemoglobin(PREDICT_SEED).to_csv(readings, index=False)
+    specs.append(J.Journey(
+        "p2-readings", "clinical", "prediction", "?", str(readings), "test", lambda: readings,
+        lambda: J.truth(dict(FIXTURE_TRUTHS[G.READMISSION_FILE]), fixture=readings.name),
+        target=G.READMISSION_OUTCOME, lenses=("clinical",), event="1",
+        answers={"split": {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5},
+                 "models": {"kind": "select_models", "models": ["linear"]}},
+        before={"target": repair_each}))
     for spec in specs:
         capture = J.run_journey(spec, bundles=folder, out_dir=folder / "captures")
         assert capture["export"]["status"] == 200, capture["notes"]
     return {"predict": folder / "p2-predict.zip", "estimate": folder / "p2-estimate.zip",
-            "folder": folder}
+            "readings": folder / "p2-readings.zip", "folder": folder}
 
 
 def _bundle_files(path: Path) -> dict[str, bytes]:
@@ -203,7 +270,7 @@ def test_the_sex_repair_is_kept_where_its_finding_fires_on_the_new_draw(bundles)
                         fresh=replay.FreshDraw(small_readmission, PREDICT_SEED, PREDICT_SEED + 3))
     assert report.finished is True, report.messages
     assert report.left_out == [] and report.decisions == report.cut.kept
-    assert report.unanswered == []
+    assert report.unanswered == [] and report.redrawn == []  # its settings are the draw's own
 
 
 def test_a_finding_only_the_new_draw_raises_stays_unanswered_and_is_named(bundles):
@@ -226,6 +293,160 @@ def test_the_sex_repair_is_left_out_and_named_where_its_finding_cannot_fire(bund
     assert left.kind == "apply_repair" and left.finding_id == "binary_text__sex"
     assert "does not fire on this draw" in left.why
     assert report.decisions == report.cut.kept - 1
+
+
+def test_a_coding_the_new_draws_finding_does_not_offer_refuses_the_replay(bundles):
+    from turbotab.core.export import replay
+
+    seq = next(seq for seq, kind in _kinds(bundles["predict"]) if kind == "apply_repair")
+    report = replay.run(bundles["predict"], workers=2, cut=True,
+                        fresh=replay.FreshDraw(spelled_sex, PREDICT_SEED, PREDICT_SEED + 3))
+    assert report.refused is not None, report.messages
+    assert f"Record {seq} (apply_repair) cannot be replayed on this draw" in report.refused
+    assert "`binary_text__sex` offers `level` on this draw only with other choices" in \
+        report.refused
+    assert report.finished is None and report.project is None and report.home is None
+
+
+# ── read-numbers repairs ─────────────────────────────────────────────────────
+
+
+def _finding_records(path: Path) -> list[tuple[int, str]]:
+    log = _bundle_files(path)["decisions.jsonl"]
+    return [(json.loads(x)["seq"], json.loads(x)["decision"]["finding_id"])
+            for x in log.splitlines()
+            if json.loads(x)["decision"]["kind"] in ("apply_repair", "dismiss_finding",
+                                                     "defer_finding")]
+
+
+def _working_column(home: Path, pid: str, column: str) -> pd.Series:
+    import dataclasses
+
+    from turbotab.core.config import Settings
+    from turbotab.core.datastore import DataStore
+    from turbotab.core.export.replay import _wait
+    from turbotab.core.export.scorer import _bundle
+    from turbotab.core.stages.working import TABLE
+    from turbotab.server.service import ProjectService
+
+    service = ProjectService(dataclasses.replace(Settings.from_env(), home=home, mode="local",
+                                                 workers=2), replay=True)
+    try:
+        service.engine.on_decision(pid)
+        _wait(service, pid, ("working",), 600)
+        working = _bundle(service, pid, "working", service.engine.status(pid))
+        return DataStore(Path(working.files[TABLE]), 10 ** 9).materialize([column])[column]
+    finally:
+        service.close()
+
+
+def test_a_finding_that_fires_once_a_kept_read_numbers_repair_reads_the_text_keeps_its_record(
+        bundles):
+    """The record read hemoglobin's text as numbers, then marked 999 missing (a finding the text
+    alone does not raise). On a new draw of the same kind both are kept, and the working table's
+    hemoglobin is blank exactly where the generator wrote "." or 999."""
+    from turbotab.core.export import replay
+
+    ids = [fid for _, fid in _finding_records(bundles["readings"])]
+    assert ids[0] == "text_numbers__hemoglobin_g_dl"
+    assert "sentinel_missing__hemoglobin_g_dl" in ids[1:]
+    seed = PREDICT_SEED + 3
+    home = bundles["folder"] / "kept-readings"
+    report = replay.run(bundles["readings"], workers=2, cut=True, keep=True, home=str(home),
+                        fresh=replay.FreshDraw(text_hemoglobin, PREDICT_SEED, seed))
+    assert report.finished is True, report.messages
+    assert report.left_out == [] and report.redrawn == [] and report.unanswered == []
+    hb = _working_column(home, report.project, "hemoglobin_g_dl")
+    written = text_hemoglobin(seed)["hemoglobin_g_dl"]
+    blank = written.isin([".", 999.0]).to_numpy()
+    assert hb.isna().to_numpy().tolist() == blank.tolist() and blank.sum() > 0
+    assert not (hb == 999).any()
+    assert np.array_equal(hb.to_numpy()[~blank], written[~blank].astype(float).to_numpy())
+
+
+def test_where_the_read_numbers_finding_does_not_fire_both_repairs_are_left_out(bundles):
+    from turbotab.core.export import replay
+
+    records = dict((fid, seq) for seq, fid in _finding_records(bundles["readings"]))
+    report = replay.run(bundles["readings"], workers=2, cut=True,
+                        fresh=replay.FreshDraw(numbers_at_new_seeds, PREDICT_SEED,
+                                               PREDICT_SEED + 3))
+    assert report.finished is True, report.messages
+    assert [(o.seq, o.finding_id) for o in report.left_out] == sorted(
+        (records[f], f) for f in ("text_numbers__hemoglobin_g_dl",
+                                  "sentinel_missing__hemoglobin_g_dl"))
+    assert all("does not fire on this draw" in o.why for o in report.left_out)
+    assert report.decisions == report.cut.kept - 2
+
+
+# ── QC-RLSC on the measurement fixture ───────────────────────────────────────
+
+
+def test_a_qc_rlsc_repair_is_replayed_with_the_new_draws_dropped_features(tmp_path):
+    """Recorded on the panel's committed draw: the engine's own per-batch QC-RLSC offer, answered
+    as offered, and the sex repair. On the next seed's draw the per-batch form drops other
+    features, so the record is replayed with that draw's offered settings (the findings rule run on
+    a project made from it); every feature only that draw's correction drops leaves the
+    predictors, which the recorded settings kept. The sex repair is its own bytes."""
+    import dataclasses
+
+    from turbotab.core import decisions
+    from turbotab.core.config import Settings
+    from turbotab.core.export import replay
+    from turbotab.core.methods.qc_drift import FINDING
+    from turbotab.core.repairs import findings_of
+    from turbotab.server.service import ProjectService
+
+    def per_batch(service, pid) -> dict:
+        replay._wait(service, pid, ("findings",), 900)
+        found = {f["id"]: f for f in findings_of(service.engine.get(pid, "findings").artifact)}
+        [form] = [o for o in found[FINDING]["repairs"]
+                  if o["key"] == "qc_rlsc_lc" and o["decision"]["params"].get("batch_column")]
+        return {"params": form["decision"]["params"], "sex": found["binary_text__sex"]}
+
+    def dropped(params: dict) -> set[str]:
+        return {c for v in (params.get("dropped") or {}).values() for c in v}
+
+    tables = {}
+    for name, seed in (("first", G.PANEL_SEED), ("second", G.PANEL_SEED + 1)):
+        tables[name] = tmp_path / name / G.PANEL_FILE
+        tables[name].parent.mkdir()
+        G.metabolite_panel(seed).to_csv(tables[name], index=False)
+    service = ProjectService(dataclasses.replace(Settings.from_env(), home=tmp_path / "home",
+                                                 mode="local", workers=2), replay=True)
+    try:
+        first = service.workspace.create_project("first", str(tables["first"]), "path").id
+        service.decide(first, {"kind": "set_lens", "lenses": ["metabolomics"]})
+        service.decide(first, {"kind": "set_orientation", "orientation": "sample_major"})
+        offer = per_batch(service, first)
+        service.decide(first, {"kind": "apply_repair", "finding_id": FINDING,
+                               "option": "qc_rlsc_lc", "params": offer["params"]})
+        sex = offer["sex"]["repairs"][0]
+        service.decide(first, {"kind": "apply_repair", "finding_id": "binary_text__sex",
+                               "option": sex["key"], "params": sex["decision"]["params"]})
+        lines = replay.log_lines(service.workspace.decisions_path(first).read_bytes())
+        second = service.workspace.create_project("second", str(tables["second"]), "path").id
+        written = service.workspace.decisions_path(second)
+        ruled, _ = replay.fresh_findings(service, second, written, lines, 900)
+        written.write_bytes(replay.join_lines(ruled.kept))
+        service.engine.on_decision(second)
+        again = per_batch(service, second)
+    finally:
+        service.close()
+    qc_seq = next(r.seq for r, _ in lines if getattr(r.decision, "finding_id", None) == FINDING)
+    assert ruled.left_out == [] and ruled.unmatched == []
+    [redrawn] = ruled.redrawn
+    assert (redrawn.seq, redrawn.finding_id, redrawn.option) == (qc_seq, FINDING, "qc_rlsc_lc")
+    assert "dropped" in redrawn.settings
+    by_seq = {r.seq: (r, line) for r, line in ruled.kept}
+    assert json.loads(by_seq[qc_seq][1])["decision"]["params"] == again["params"]
+    recorded = {r.seq: line for r, line in lines}
+    assert all(line == recorded[seq] for seq, (_, line) in by_seq.items() if seq != qc_seq)
+    only_new = dropped(again["params"]) - dropped(offer["params"])
+    assert only_new  # the two draws' corrections drop different features (the premise)
+    out_then = decisions.left_out(decisions.fold([r for r, _ in lines]))
+    out_now = decisions.left_out(decisions.fold([r for r, _ in ruled.kept]))
+    assert only_new <= set(out_now) and not only_new & set(out_then)
 
 
 # ── the scorer ───────────────────────────────────────────────────────────────
