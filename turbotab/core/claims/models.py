@@ -859,6 +859,7 @@ VALIDATION_PAIRED_INTERVAL = register(Claim(
 
 REPEATS_AUTHOR = "swarm-large-n builder"
 REPEATS_TESTS = "turbotab/core/tests/test_comparison_repeats.py"
+REPEATS_METHODS_TESTS = "turbotab/server/tests/test_comparison_repeats_methods_api.py"
 
 COMPARISONS = register(Claim(
     id="models.comparisons",
@@ -928,16 +929,33 @@ COMPARISONS = register(Claim(
               "states_the_rule", truth="construction"),
         Fires(f"{REPEATS_TESTS}::test_the_shelfs_estimate_counts_the_comparisons_refits_by_the_"
               "training_units", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_where_the_most_a_share_holds_out_leaves_5000_rows_to_train_"
+              "the_sentence_says_5", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_a_later_answer_that_moves_the_training_units_across_5000_"
+              "restates_the_repeats", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_a_changed_scheme_is_restated_with_the_repeats_the_fit_runs",
+              truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_while_no_split_is_drawn_on_the_answers_as_they_stand_the_"
+              "rule_is_said", truth="construction"),
+        Fires(f"{REPEATS_METHODS_TESTS}::test_an_exclusion_after_the_split_moves_the_repeats_the_"
+              "methods_text_says", truth="construction"),
+        Fires(f"{REPEATS_METHODS_TESTS}::test_an_exclusion_withdrawn_after_the_split_moves_the_"
+              "repeats_back", truth="construction"),
         Silent(f"{REPEATS_TESTS}::test_below_5000_training_units_the_substrate_keeps_10_repeats",
                truth="construction"),
         Silent(f"{REPEATS_TESTS}::test_with_nothing_held_out_the_split_sentence_keeps_10_repeats_"
                "below_5000_units", truth="construction"),
+        Silent(f"{REPEATS_TESTS}::test_with_no_later_answer_the_methods_text_keeps_the_split_"
+               "sentence_as_said", truth="construction"),
     ),
     enforced_by=("turbotab.core.models.folds:comparison_repeats",
                  "turbotab.core.models.folds:comparison_folds",
                  "turbotab.core.models.validation:validation_plan",
                  "turbotab.core.voice:_comparison_repeats",
-                 "turbotab.core.stages.modeling:_estimates"),
+                 "turbotab.core.voice:_repeats_now",
+                 "turbotab.core.stages.modeling:_estimates",
+                 "turbotab.core.stages.modeling:substrate_repeats",
+                 "turbotab.server.service:ProjectService._comparisons_run"),
     author=REPEATS_AUTHOR,
     origin="engine",
     ruled="the owner's ruling of 2026-10-23 (option 3: lighten the model comparison on large "

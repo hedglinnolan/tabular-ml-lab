@@ -483,6 +483,23 @@ def _training_units(store: Any, grouped_by: str | None, train_ids: Any) -> int:
     return len(pd.unique(unit_labels(values.to_numpy(dtype=object), n)))
 
 
+def substrate_repeats(split: Any, store: Any) -> int | None:
+    """How many times the fit draws the comparisons' folds on this drawn split under prediction
+    (``folds.comparison_folds``): the repeats its training units take, counted as the fit stage
+    counts them (:func:`_training_units`), or the split's own draws of the folds where they are
+    more; None where the folds are time-ordered, run once. The methods text restates the split's
+    sentence with it (``voice.restated_repeats``)."""
+    from turbotab.core.models.folds import comparison_repeats
+
+    data = (split.data or {}) if isinstance(split, Bundle) else {}
+    assignment = read_assignment(split)
+    if data.get("fold_scheme") == "time_ordered" and "order" in assignment.columns:
+        return None
+    train_ids = assignment.index[assignment["train"].to_numpy()]
+    units = _training_units(store, data.get("grouped_by"), train_ids)
+    return max(1 + len(repeat_columns(assignment)), comparison_repeats(units))
+
+
 def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[Any]) -> dict[str, Any]:
     """Each family's measured fit time on these training rows (``models.cost``); {} without them.
 
@@ -3824,4 +3841,4 @@ def _in_outcome_unit(label: str | None, unit: str | None) -> str | None:
 
 __all__ = ["DROPPED_ENERGY", "WITHHELD_GAP", "design_as_served", "design_stage", "fit_stage",
            "pinned_to_full_fit", "read_assignment", "row_ids_of", "shelf_stage",
-           "substitution_pairs", "substitution_stage"]
+           "substitution_pairs", "substitution_stage", "substrate_repeats"]

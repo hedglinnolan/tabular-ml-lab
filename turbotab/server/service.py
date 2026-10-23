@@ -2611,10 +2611,50 @@ class ProjectService:
                   "set_estimand": {"nested": self._values_nesting(pid, decisions.fold(records))},
                   # TRUST: the band's refits say which rows they resample: the analyzed rows,
                   # as the participant flow counts them now (the table's rows bound them).
-                  "set_substitution": {"n_analyzed": facts.n_cohort, "n_rows": facts.n_rows}}
+                  "set_substitution": {"n_analyzed": facts.n_cohort, "n_rows": facts.n_rows},
+                  # The large-table ruling of 2026-10-23: the split's sentence says the
+                  # comparisons' repeats the fit runs, as the rows stand.
+                  **self._comparisons_run(pid, facts.n_cohort)}
         # A group's press (ruling R-g) is restated with the proposal its columns share.
         return methods_text(records, {"detected_task": facts.detected_task, "counts": stages,
                                       "roles": facts.roles})
+
+    def _comparisons_run(self, pid: str, n_analyzed: int | None = None) -> dict[str, Any]:
+        """How many times the comparisons' folds are drawn, as the rows stand, by the decision kinds
+        whose sentence says it (``voice.restated_repeats``): the fresh fit's, else what the fit
+        draws on the fresh split (``stages.modeling.substrate_repeats``); while neither is fresh,
+        None, with ``n_analyzed`` (the fresh cohort's rows, the most that can train) and whether
+        the newest split drawn kept units whole, so the count or the rule is said. Empty before
+        any split is drawn, and for time-ordered folds, run once: the sentences stay as said."""
+        from turbotab.core.stages.modeling import substrate_repeats
+
+        statuses = self.engine.status(pid)
+        fit, split = statuses.get("fit"), statuses.get("split")
+        run: int | None = None
+        try:
+            if fit is not None and fit.status == "fresh" and fit.key:
+                comparison = (self._artifact(pid, "fit", fit.key, public=True) or {}).get("comparison")
+                if comparison and comparison.get("note"):
+                    return {}  # time-ordered folds, run once
+                run = int(comparison["repeats"]) if comparison else None
+            store = (self._store_or_none(pid) if run is None and split is not None
+                     and split.status == "fresh" and split.key else None)
+            if store is not None:
+                run = substrate_repeats(self._artifact(pid, "split", split.key), store)
+                if run is None:
+                    return {}
+        except Exception:  # noqa: BLE001 - the methods text never fails on it: it says less
+            log.debug("could not count the comparisons' repeats", exc_info=True)
+            run = None
+        if run is not None:
+            facts: dict[str, Any] = {"comparison_repeats": run}
+        else:
+            shown = self._shown(pid, "split")
+            if not isinstance(shown, dict):
+                return {}
+            facts = {"comparison_repeats": None, "n_analyzed": n_analyzed,
+                     "grouped": bool(shown.get("grouped_by"))}
+        return {"set_split": facts, "set_validation": facts}
 
     def _flow_counts(self, pid: str) -> dict[str, Any]:
         """The counts the participant flow has now, by the decision kind whose sentence states them
