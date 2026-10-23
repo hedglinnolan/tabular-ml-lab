@@ -1022,8 +1022,6 @@ EXPLORE_MISSING_BY_GROUP = register(Claim(
 ))
 
 POOLED_FIRTH_TESTS = "turbotab/core/tests/test_pooled_firth.py"
-# A relative effect θ_j = β_j − Σ_k w_k β_k reads a separated source's β with weight 1 or −w (> 0).
-RELATIVE_DERIVED = "derivation:relative_effect_reads_the_separated_coefficient"
 
 POOLED_SEPARATION = register(Claim(
     id="inference.pooled_separation",
@@ -1033,11 +1031,13 @@ POOLED_SEPARATION = register(Claim(
           "pool"),
     methods=("Under multiple imputation, a coefficient whose maximum-likelihood value is infinite "
              "in any completed copy (a column that separates the outcome, the intercept beside it, "
-             "or an all-components relative effect resting on it) keeps its pooled estimate and "
-             "standard error, and no pooled interval or p-value is reported for it: Rubin's rules "
-             "pool each copy's estimate and standard error into a Wald interval, which is not "
-             "certified on a separated coefficient's Firth estimate, and the profile "
-             "penalized-likelihood interval advised in its place is not one they pool."),
+             "an all-components relative effect resting on it, or a form test's coefficient, a "
+             "companion quintile, trend or cut point, that the copy's refit or table finds so) "
+             "keeps its pooled estimate, and no pooled "
+             "standard error, interval or p-value is reported for it: Rubin's rules pool each "
+             "copy's estimate and standard error into a Wald interval, which is not certified on a "
+             "separated coefficient's Firth estimate, and the profile penalized-likelihood "
+             "interval advised in its place is not one they pool."),
     goal=("inference",),
     regime=Regime("a logistic coefficient table pooled by Rubin's rules over completed copies, in "
                   "some of which a coefficient separates the outcome (its maximum-likelihood "
@@ -1060,12 +1060,17 @@ POOLED_SEPARATION = register(Claim(
             "A coefficient is withheld where the linear program finds it infinite in at least one "
             "copy, since its pooled interval then rests on that copy's Firth estimate: a separated "
             "column, the intercept where the program finds it infinite beside one (a reference "
-            "level every row of which has the event), and an all-components relative effect "
-            "whose refit on the moved energy columns finds it infinite (each one resting on a "
-            "separated energy source). A coefficient no copy finds infinite keeps Rubin's "
-            "interval, even beside one that is withheld. A copy no column separates is a "
-            "maximum-likelihood fit, and the caption says how many such copies the pooled table "
-            "holds."))),
+            "level every row of which has the event), an all-components relative effect whose "
+            "refit on the moved energy columns finds it infinite (each one resting on a "
+            "separated energy source), and a form test's coefficient (a companion quintile, a "
+            "trend, a cut point) whose copy's refit or table finds it infinite. A coefficient no "
+            "copy finds infinite keeps Rubin's interval, even beside one that is withheld. A copy "
+            "no column separates is a maximum-likelihood fit, and the caption says how many such "
+            "copies the pooled table holds. The standard error goes with the interval: with it "
+            "and the degrees of freedom the withheld interval is the estimate plus or minus t "
+            "standard errors, and the fraction of missing information with the Monte Carlo "
+            "error gives the standard error back, so all three are withheld; the Monte Carlo "
+            "error, a property of the estimate kept, stays."))),
     ),
     tests=(
         Fires(f"{POOLED_FIRTH_TESTS}::test_a_coefficient_separated_in_the_copies_keeps_its_pooled_"
@@ -1077,13 +1082,18 @@ POOLED_SEPARATION = register(Claim(
         Fires(f"{POOLED_FIRTH_TESTS}::test_an_intercept_infinite_in_the_copies_keeps_its_estimate_"
               "and_withholds_its_interval", truth="construction"),
         Fires(f"{POOLED_FIRTH_TESTS}::test_a_relative_effect_resting_on_a_separated_source_keeps_"
-              "its_estimate_and_withholds_its_interval", truth=RELATIVE_DERIVED),
+              "its_estimate_and_withholds_its_interval", truth="construction"),
         Fires(f"{POOLED_FIRTH_TESTS}::test_the_effects_relative_effect_resting_on_a_separated_"
-              "source_is_withheld", truth=RELATIVE_DERIVED),
+              "source_is_withheld", truth="construction"),
         Silent(f"{POOLED_FIRTH_TESTS}::test_relative_effects_no_copy_separates_keep_rubins_wald_"
                "interval_on_t", truth="independent:statsmodels"),
+        Fires(f"{POOLED_FIRTH_TESTS}::test_a_companion_quintile_separated_in_the_copies_keeps_its_"
+              "estimate_alone", truth="construction"),
+        Silent(f"{POOLED_FIRTH_TESTS}::test_a_companion_quintile_no_copy_separates_keeps_rubins_"
+               "wald_interval_on_t", truth="independent:scipy"),
     ),
-    enforced_by=("turbotab.core.models.inference:pooled_firth",),
+    enforced_by=("turbotab.core.models.inference:pooled_firth",
+                 "turbotab.core.stages.modeling:_pool_form_tests"),
     author="swarm-mi-firth builder",
     origin="engine",
 ))

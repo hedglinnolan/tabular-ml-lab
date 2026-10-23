@@ -1656,11 +1656,14 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
     data carried with their own outcomes (``Imputations.outcomes``, NHANES DXA) are fit as
     ``fit(model, X_k, y_k)``. A table refused in one copy (too few clusters) is refused: the reason
     does not depend on the imputed values. ``rows`` = None in the result marks such a refusal.
-    Each copy's table and energy rows are made for Rubin's rules (``inference.for_pooling``: a
-    Firth copy computes no profile), and where a column separates the outcome in some copy the
-    pooled table says its intervals are Wald ones from Firth's standard errors and withholds the
-    interval of each row infinite in a copy: a separated column, the intercept beside it, a relative
-    effect resting on it (``inference.pooled_firth``; :func:`relative_refit`).
+    Each copy's table, energy rows and form tests (the trend's and companion quintiles' refits
+    too) are made for Rubin's rules (``inference.for_pooling``: a Firth copy computes no profile),
+    and where a column separates the outcome in some copy the pooled table says its intervals are
+    Wald ones from Firth's standard errors and reports only the estimate of each row infinite in a
+    copy: a separated column, the intercept beside it, a relative effect resting on it
+    (``inference.pooled_firth``; :func:`relative_refit`), and a form test's coefficient its copy's
+    refit finds so (:func:`_pool_form_tests`). Its concerns leave out the Firth copies' own
+    separation concern, which the pooled one replaces.
     ``collect``, when given, receives each copy's fit (``fits``) and table (``tables``).
     ``models``: the chosen families, which a block's exit keeps (``_inference_table``)."""
     from turbotab.core.methods.exposure_form import exposure_tests
@@ -1689,8 +1692,8 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
             row_sets.append(_energy_rows(table.rows, design, spec, family, fitted, X_k, y_k, task,
                                          clusters, outcome, survey, infinite=table.infinite)
                             if energy_rows else table.rows)
-        found, worries = exposure_tests(family, fitted, X_k, y_k, task=task, clusters=clusters,
-                                        table=table, outcome=outcome, survey=survey)
+            found, worries = exposure_tests(family, fitted, X_k, y_k, task=task, clusters=clusters,
+                                            table=table, outcome=outcome, survey=survey)
         if k == 0:
             form_concerns = list(worries)
         tables.append(table)
@@ -1716,13 +1719,15 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
                        f"degrees of freedom. {each}").strip()
     if firth is not None:
         info.update(firth.info)
-    form_tests = _pool_form_tests(tests, tables, fits, m)
+    form_tests = _pool_form_tests(tests, tables, fits, m,
+                                  answer=None if copies else (spec.missing or {}))
     df_com = _design_df(tables[0])
     info["missing"] = multiple_imputation_info(
         imputations, spec, len(y if outcomes is None else outcomes[0]), rows=pooled, df_com=df_com,
         tests=sum(1 for t in form_tests if t.get("distribution") in ("F", "chi2")
                   and int(t.get("df_num") or 0) > 1))
-    concerns = (list(tables[0].concerns) + ([firth.concern] if firth is not None else [])
+    concerns = ([c for c in tables[0].concerns if firth is None or c not in firth.replaces]
+                + ([firth.concern] if firth is not None else [])
                 + mi_concerns(imputations, pooled, len(y if outcomes is None else outcomes[0])))
     covs = [t.cov for t in tables]
     cov = None
@@ -1753,25 +1758,36 @@ def _design_df(table: Any) -> float | None:
 
 
 def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence[Any],
-                     fits: Sequence[Any], m: int) -> list[dict[str, Any]]:
+                     fits: Sequence[Any], m: int,
+                     answer: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     """Each exposure-form test pooled over the imputations: a spline's Wald tests and quintiles'
     global test by Li, Raghunathan & Rubin's D1 (on each copy's estimates and covariance; under a
     survey design on Reiter's denominator df from the design's), the quintile trend's coefficient
-    by Rubin's rules."""
-    from turbotab.core.methods.exposure_form import form_step
+    by Rubin's rules, as are a companion quintile's and a cut point's.
+
+    A coefficient whose maximum-likelihood value is infinite in some copy's refit (or, a cut
+    point's, in the copy's own table; each copy's test says so, ``exposure_form.INFINITE``) keeps
+    its pooled estimate, and its statistic, interval and p-value are not reported, as the pooled
+    table withholds a separated coefficient's (claim ``inference.pooled_separation``), with the
+    reason and, where ``answer`` (the missing-values answer the copies were drawn by; None for the
+    data's own copies) is given, complete cases as the way forward."""
+    from turbotab.core.methods.exposure_form import INFINITE, form_step
     from turbotab.core.methods.imputation import pool_scalar, pooled_wald
-    from turbotab.core.models.inference import format_p
+    from turbotab.core.models.inference import (COMPLETE_CASES, copies_words, format_p,
+                                                withheld_reason)
 
     if not tests or not tests[0]:
         return []
     out: list[dict[str, Any]] = []
     step = form_step(fits[0])
     df_com = _design_df(tables[0])
-    for test in tests[0]:
-        same = [next((t for t in ts if t["column"] == test["column"] and t["test"] == test["test"]),
-                     None) for ts in tests]
+    for first in tests[0]:
+        same = [next((t for t in ts if t["column"] == first["column"]
+                      and t["test"] == first["test"]), None) for ts in tests]
         if any(t is None for t in same):
             continue
+        held = sum(1 for t in same if t.get(INFINITE))  # the copies whose refit finds it infinite
+        test = {k: v for k, v in first.items() if k != INFINITE}
         if test["test"] in ("overall", "nonlinear", "global"):
             if step is None:
                 continue
@@ -1838,22 +1854,33 @@ def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence
         dfs = [t.get("df_den") for t in same]
         df_com_t = None if any(d is None for d in dfs) else float(np.mean(dfs))
         pooled = pool_scalar(ests, variances, df_com_t)
-        if pooled.p is None:
+        if pooled.p is None and not held:
             continue
         medians = [t.get("medians") for t in same]
+        # FORM: a test that names what it pools (a companion quintile, a cut point).
+        lead = (f"Pooled over {m} imputations by Rubin's rules: "
+                + (f"{test['what']} {pooled.estimate:+.4g}" if test.get("what")
+                   else f"the trend coefficient {pooled.estimate:+.4g} per unit "
+                        f"(each copy scored by its own quintile medians)"))
+        averaged = ([float(np.mean([mm[g] for mm in medians])) for g in range(len(medians[0]))]
+                    if all(mm for mm in medians) else test.get("medians"))
+        if held:
+            # Its pooled interval would be a Wald one on a separated coefficient's Firth estimate.
+            ways = f" To report them, {COMPLETE_CASES}." if answer is not None else ""
+            why = withheld_reason(m, [test["column"]])
+            out.append({**test, "estimate": pooled.estimate, "ci_low": None, "ci_high": None,
+                        "p": None, "statistic": None, "df_den": None, "medians": averaged,
+                        "caption": (f"{lead}. It separates the outcome {copies_words(held, m)}, so "
+                                    f"its statistic, interval and p-value are not reported, only "
+                                    f"its estimate: {why}.{ways}")})
+            continue
         out.append({**test, "estimate": pooled.estimate, "ci_low": pooled.ci_low,
                     "ci_high": pooled.ci_high, "p": pooled.p,
                     "statistic": pooled.estimate / math.sqrt(pooled.total), "df_den": pooled.df,
                     "distribution": "t" if pooled.df is not None else "z",
-                    "medians": ([float(np.mean([mm[g] for mm in medians])) for g in range(len(medians[0]))]
-                                if all(mm for mm in medians) else test.get("medians")),
-                    # FORM: a test that names what it pools (a companion quintile, a cut point).
-                    "caption": (f"Pooled over {m} imputations by Rubin's rules: "
-                                + (f"{test['what']} {pooled.estimate:+.4g}" if test.get("what")
-                                   else f"the trend coefficient {pooled.estimate:+.4g} per unit "
-                                        f"(each copy scored by its own quintile medians)")
-                                + f", p = {format_p(pooled.p)}. Within each imputation: "
-                                  f"{test['caption']}")})
+                    "medians": averaged,
+                    "caption": (f"{lead}, p = {format_p(pooled.p)}. Within each imputation: "
+                                f"{test['caption']}")})
     return out
 
 

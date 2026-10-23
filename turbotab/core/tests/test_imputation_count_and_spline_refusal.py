@@ -8,8 +8,10 @@
 * **A spline on too few values** (``exposure_form.rcs_knots``): ``Hmisc::rcspline.eval`` stops
   below six values; the engine's stop is a fit-time refusal with its code and ways forward, so the
   record classes it as refused, not a crash (``jobs.failure_of``), with the words a person reads
-  unchanged. Model 3 under complete cases, fit on the rows its added column is recorded on, holds
-  none when that column is never recorded.
+  unchanged; its last way forward, more rows that record the column, holds wherever it fires, the
+  imputation's knots too. Model 3 under any answer but multiple imputation (complete cases, a
+  single fill), fit on the rows its added column is recorded on, holds none when that column is
+  never recorded.
 
 Expected values come from the construction: the count of incomplete rows each table is drawn
 with, and Hmisc's six values.
@@ -32,8 +34,10 @@ from turbotab.core.models import get_family
 from turbotab.core.models.pipeline import describe_steps, design_spec
 
 LINEAR = get_family("linear")
-MORE_ROWS = (
-    "Keep more rows: under inference, multiple imputation keeps the rows complete cases drop")
+
+
+def more_rows(named: str = "the column") -> str:
+    return f"Keep more rows that record {named}: the knots are placed on its recorded values"
 
 
 # ── N1: the impute step says the number of imputations the table draws ──────
@@ -96,7 +100,7 @@ def test_a_spline_on_five_values_is_a_typed_refusal_with_its_ways_forward():
     assert isinstance(exc, ValueError)
     assert exc.code == "spline_too_few_values"
     assert [e["label"] for e in exc.exits] == [
-        "Enter the column as a straight line, which places no knots", MORE_ROWS]
+        "Enter the column as a straight line, which places no knots", more_rows()]
     shown, refusal = failure_of(exc)
     assert shown == ("ValueError: A spline needs at least 6 recorded values to place its knots; "
                      "there are 5.")
@@ -113,11 +117,11 @@ def test_a_spline_of_a_named_column_says_its_name_and_offers_no_straight_line_on
     assert str(refused.value) == ("A spline of `fiber` needs at least 6 recorded values to place "
                                   "its knots; there are 5.")
     assert [e["label"] for e in refused.value.exits] == [
-        "Enter `fiber` as a straight line, which places no knots", MORE_ROWS]
+        "Enter `fiber` as a straight line, which places no knots", more_rows("`fiber`")]
     with pytest.raises(StageRefusal) as refused:
         ef_methods.rcs_knots(np.array([np.nan, np.nan]), 4, column="fiber")
     assert str(refused.value).endswith("there are 0.")
-    assert [e["label"] for e in refused.value.exits] == [MORE_ROWS]
+    assert [e["label"] for e in refused.value.exits] == [more_rows("`fiber`")]
 
 
 def test_a_spline_on_six_values_places_its_knots():
@@ -127,10 +131,10 @@ def test_a_spline_on_six_values_places_its_knots():
 
 
 def _model_three_run(tmp_path: Path, recorded: int, *, form: str = "spline",
-                     waist: int | None = None) -> dict:
+                     waist: int | None = None, missing: object = None) -> dict:
     """``ef.cohort(300)`` with `bmi` (unknown timing: Model 3's added column) recorded on its first
-    ``recorded`` rows, `fiber` entered as ``form``, under complete cases; with ``waist``, a second
-    added column recorded on the last ``waist`` rows."""
+    ``recorded`` rows, `fiber` entered as ``form``, under complete cases (or the ``missing``
+    answer given); with ``waist``, a second added column recorded on the last ``waist`` rows."""
     from turbotab.core.tests.acceptance import estimand_fixtures as ef
 
     frame = ef.cohort(300, seed=5)
@@ -142,7 +146,8 @@ def _model_three_run(tmp_path: Path, recorded: int, *, form: str = "spline",
         roles["waist"], answers["waist"] = "covariate", ef.UNKNOWN_TIMING
     forms = {"fiber": d.ExposureFormSpec(form="spline", knots=4)} if form == "spline" else None
     st = ef.state(target="glucose", task="regression", measure="mean_difference", roles=roles,
-                  answers=answers, **({"exposure_forms": forms} if forms else {}))
+                  answers=answers, **({"exposure_forms": forms} if forms else {}),
+                  **({"missing": missing} if missing is not None else {}))
     return ef.run(frame, tmp_path, st, fit=False)
 
 
@@ -156,9 +161,8 @@ def test_model_three_with_no_row_recording_its_added_column_is_refused_not_a_cra
     with pytest.raises(StageRefusal) as refused:
         _model_three_run(tmp_path, recorded=0, form=form)
     shown, refusal = failure_of(refused.value)
-    assert shown == ("ValueError: Model 3 adds `bmi`, and under complete cases it is fit on the "
-                     "rows that record it: none of the 300 analyzed rows does, so Model 3 cannot "
-                     "be fit.")
+    assert shown == ("ValueError: Model 3 adds `bmi` and is fit on the rows that record it: none "
+                     "of the 300 analyzed rows does, so Model 3 cannot be fit.")
     assert refusal is not None and refusal["code"] == "model_3_no_complete_rows"
     assert [e["label"] for e in refusal["exits"]] == ["Leave `bmi` out of Model 3"]
 
@@ -172,9 +176,9 @@ def test_model_three_whose_added_columns_no_row_records_together_offers_multiple
 
     with pytest.raises(StageRefusal) as refused:
         _model_three_run(tmp_path, recorded=150, waist=150)
-    assert str(refused.value) == ("Model 3 adds `bmi` and `waist`, and under complete cases it is "
-                                  "fit on the rows that record them all: none of the 300 analyzed "
-                                  "rows does, so Model 3 cannot be fit.")
+    assert str(refused.value) == ("Model 3 adds `bmi` and `waist` and is fit on the rows that "
+                                  "record them all: none of the 300 analyzed rows does, so Model 3 "
+                                  "cannot be fit.")
     leave, impute = refused.value.exits
     assert leave == {"label": "Leave `bmi` and `waist` out of Model 3", "decision": None}
     assert impute["label"] == ("Multiple imputation (m at least 20, more when more rows are "
@@ -191,7 +195,47 @@ def test_model_three_on_five_rows_names_the_spline_column_it_cannot_place_knots_
     assert str(refused.value) == ("A spline of `fiber` needs at least 6 recorded values to place "
                                   "its knots; there are 5.")
     assert [e["label"] for e in refused.value.exits] == [
-        "Enter `fiber` as a straight line, which places no knots", MORE_ROWS]
+        "Enter `fiber` as a straight line, which places no knots", more_rows("`fiber`")]
+
+
+def test_model_three_under_a_single_fill_with_no_row_recording_its_added_column_names_no_answer(
+        tmp_path):
+    """A single fill kept as a recorded limitation under inference fits Model 3, as complete cases
+    do, on the rows that record `bmi`, so with none it is refused in the same words, which name
+    no missing-values answer (they said "under complete cases", which misnamed this one)."""
+    with pytest.raises(StageRefusal) as refused:
+        _model_three_run(tmp_path, recorded=0,
+                         missing={"strategy": "impute", "acknowledged": True})
+    assert refused.value.code == "model_3_no_complete_rows"
+    assert str(refused.value) == ("Model 3 adds `bmi` and is fit on the rows that record it: none "
+                                  "of the 300 analyzed rows does, so Model 3 cannot be fit.")
+    assert "complete cases" not in str(refused.value)
+    assert [e["label"] for e in refused.value.exits] == ["Leave `bmi` out of Model 3"]
+
+
+def test_a_spline_too_few_values_under_multiple_imputation_offers_no_multiple_imputation(
+        tmp_path):
+    """Under multiple imputation the knots are placed once on `fiber`'s recorded values, here
+    five: the refusal's last way forward asks for more rows that record it, true there too, and
+    no longer offers multiple imputation, the answer in use."""
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(300, seed=5)
+    frame.loc[frame.index[5:], "fiber"] = np.nan
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  missing={"strategy": "multiple_imputation", "m": 20},
+                  exposure_forms={"fiber": d.ExposureFormSpec(form="spline", knots=4)},
+                  reading_confirmations={"code_or_count:fiber": "amount",
+                                         "code_or_count:age": "amount"})
+    with pytest.raises(StageRefusal) as refused:
+        ef.run(frame, tmp_path, st, fit=True)
+    assert refused.value.code == "spline_too_few_values"
+    assert str(refused.value).endswith("needs at least 6 recorded values to place its knots; "
+                                       "there are 5.")
+    labels = [e["label"] for e in refused.value.exits]
+    assert labels[-1].startswith("Keep more rows that record ")
+    assert labels[-1].endswith(": the knots are placed on its recorded values")
+    assert not [label for label in labels if "multiple imputation" in label]
 
 
 def test_model_three_on_the_rows_recording_its_added_column_is_fit(tmp_path):

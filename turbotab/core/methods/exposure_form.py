@@ -125,23 +125,28 @@ def _quantile(values: np.ndarray, p: Sequence[float]) -> np.ndarray:
 # ``Hmisc::rcspline.eval`` stops below this many values: the fewest a spline's knots can be placed on.
 SPLINE_MIN_VALUES = 6
 SPLINE_TOO_FEW = "spline_too_few_values"  # its fit-time refusal's code (SWARM_PLAN §8)
-# Its last way forward, in words: the rows it is fit on are the caller's (a model's own complete
-# cases, a fold), so no one answer is named.
-MORE_ROWS = ("Keep more rows: under inference, multiple imputation keeps the rows complete cases "
-             "drop")
+
+
+def more_rows(column: str | None = None) -> str:
+    """The refusal's last way forward, in words that hold wherever it fires: the values a spline's
+    knots are placed on are the recorded ones among the caller's rows (a model's own complete
+    cases, a fold's, every analyzed row's observed values under multiple imputation), so it names
+    no answer, only rows that record ``column``."""
+    named = f"`{column}`" if column else "the column"
+    return f"Keep more rows that record {named}: the knots are placed on its recorded values"
 
 
 def _too_few(n: int, column: str | None) -> Any:
     """The refusal of a spline on ``n`` < :data:`SPLINE_MIN_VALUES` values of ``column`` (named
     where the caller knows it): its ways forward enter the column as a straight line, where it has
-    a value to be fit on, or keep more rows."""
+    a value to be fit on, or keep more rows that record it (:func:`more_rows`)."""
     from turbotab.core.graph import StageRefusal
 
     named = f"`{column}`" if column else "the column"
     of = f"A spline of `{column}`" if column else "A spline"
     exits = ([{"label": f"Enter {named} as a straight line, which places no knots",
                "decision": None}] if n else [])
-    exits.append({"label": MORE_ROWS, "decision": None})
+    exits.append({"label": more_rows(column), "decision": None})
     return StageRefusal(SPLINE_TOO_FEW, f"{of} needs at least {SPLINE_MIN_VALUES} recorded values "
                                         f"to place its knots; there are {n}.", exits=exits)
 
@@ -1828,17 +1833,54 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
         row = rows[idx[0]]
         found = step.optimal_.get(column) or {}
         tests.append(_test(
-            column, form, "cut", None, statistic=(row["estimate"] / row["se"]) if row.get("se")
+            column, form, "cut", None, **_copy_mark(table, outputs[0]),
+            statistic=(row["estimate"] / row["se"]) if row.get("se")
             else None, df_num=1, df_den=row.get("df"),
             distribution="t" if row.get("df") is not None else "z", p=row.get("p"),
             estimate=row.get("estimate"), ci_low=row.get("ci_low"), ci_high=row.get("ci_high"),
             boundaries=[float(step.cuts_[column][0])],
             reference=f"`{column}` ≤ {step.cuts_[column][0]:.4g}",
+            # What the pooled test names (``stages.modeling._pool_form_tests``).
+            what=f"`{column}` above {step.cuts_[column][0]:.4g} against below it",
             caption=(f"`{column}` above {step.cuts_[column][0]:.4g} against below it: a cut point "
                      f"the data chose (the smallest of {found.get('tried')} p-values on these "
                      f"rows), so its p-value and interval are too small: data-derived cut points "
                      f"lead to serious bias ({ALTMAN}).")))
     return tests, concerns
+
+
+# Set on a test made in one completed copy (``inference.pooling``): whether its coefficient's
+# maximum-likelihood value is infinite in that copy's table (``InferenceTable.infinite``), which
+# ``stages.modeling._pool_form_tests`` reads to withhold the pooled interval, and removes.
+INFINITE = "infinite"
+
+
+def _copy_mark(table: Any, name: str) -> dict[str, Any]:
+    """``{INFINITE: …}`` for a test read from ``table``'s row ``name`` in one completed copy, made
+    for Rubin's rules (``inference.for_pooling``); nothing otherwise."""
+    from turbotab.core.models.inference import pooling
+
+    if not pooling():
+        return {}
+    return {INFINITE: name in (getattr(table, "infinite", None) or [])}
+
+
+def _readable(row: Mapping[str, Any] | None) -> bool:
+    """Whether a refit's row gives a test: its estimate with its p-value, or, in one completed
+    copy's table made for Rubin's rules, with its standard error (a Firth copy computes no p-value
+    there, ``inference.for_pooling``: the pooling reads the estimate and standard error)."""
+    from turbotab.core.models.inference import pooling
+
+    if row is None or row.get("estimate") is None:
+        return False
+    return row.get("p") is not None or (pooling() and row.get("se") is not None)
+
+
+def _p_words(row: Mapping[str, Any]) -> str:
+    """", p = …" where the row has a p-value; nothing where it has none (a Firth copy's, pooled)."""
+    from turbotab.core.models.inference import format_p
+
+    return f", p = {format_p(row['p'])}" if row.get("p") is not None else ""
 
 
 def _refit(family: Any, matrix: pd.DataFrame, y: Any, *, pipeline: Any, task: str, clusters: Any,
@@ -1862,8 +1904,8 @@ def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.D
            *, task: str, clusters: Any, outcome: Any = None,
            survey: Any = None) -> dict[str, Any] | None:
     """The trend test on quintile medians: the model matrix with ``column``'s indicators replaced
-    by one column, each row's quintile median, refit by the family's own inference table."""
-    from turbotab.core.models.inference import format_p
+    by one column, each row's quintile median, refit by the family's own inference table (in one
+    completed copy, made for Rubin's rules: its estimate and standard error, :func:`_readable`)."""
     from turbotab.core.models.linear import model_matrix
 
     matrix = model_matrix(pipeline, X)
@@ -1880,23 +1922,23 @@ def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.D
     if table is None:
         return None
     row = next((r for r in table.rows if str(r["feature"]) == score_name), None)
-    if row is None or row.get("p") is None:
+    if not _readable(row):
         return None
     medians = ", ".join(f"{m:.4g}" for m in step.medians_[column])
     reference = "t" if row.get("df") is not None else "z"
     caption = (f"The {TREND_LABEL} across quintiles of `{column}`: each row scored by its "
                f"quintile's median ({medians}, from the fitting rows), entered as one continuous "
                f"term in place of the four indicators; its coefficient {row['estimate']:+.4g} per "
-               f"unit, p = {format_p(row['p'])} ({table.info.get('caption', '').rstrip('.')}). A "
+               f"unit{_p_words(row)} ({table.info.get('caption', '').rstrip('.')}). A "
                f"test of a linear trend, not of a dose–response.")
     if survey is not None:
         # The review of the modeling sequence (§1 step 5, quintiles): "Under survey design, state
         # whether cut points are weighted."
         caption += (" The cut points and medians are the analyzed rows' own, unweighted; the "
                     "trend's coefficient and interval are design-based.")
-    return _test(column, "quintiles", "trend", None,
+    return _test(column, "quintiles", "trend", None, **_copy_mark(table, score_name),
                  statistic=(row["estimate"] / row["se"]) if row.get("se") else None,
-                 df_num=1, df_den=row.get("df"), distribution=reference, p=row["p"],
+                 df_num=1, df_den=row.get("df"), distribution=reference, p=row.get("p"),
                  estimate=row["estimate"], ci_low=row.get("ci_low"), ci_high=row.get("ci_high"),
                  medians=[float(m) for m in step.medians_[column]],
                  boundaries=[float(v) for v in step.cuts_[column]], label=TREND_LABEL,
@@ -1912,8 +1954,10 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
     against the lowest, the boundaries and the reference stated), and by each row's quintile
     median (the {TREND_LABEL}). The cut points are the companion's own, placed on the fitting
     rows (on the observed values under multiple imputation, fixed across copies); the medians are
-    each fit's."""
-    from turbotab.core.models.inference import format_p
+    each fit's. In one completed copy the refits are made for Rubin's rules, as the copy's table
+    is (``inference.for_pooling``): a Firth refit's row has its estimate and standard error and no
+    p-value or interval, and each test says whether its coefficient is infinite there
+    (:data:`INFINITE`)."""
     from turbotab.core.models.linear import model_matrix
 
     matrix = model_matrix(pipeline, X)
@@ -1953,7 +1997,7 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
         ratio = (f" (ratio {row['ratio']:.3g}, {row['ratio_low']:.3g} to {row['ratio_high']:.3g})"
                  if row.get("ratio") is not None and row.get("ratio_low") is not None else "")
         out.append(_test(
-            column, "quintiles", f"companion_q{g}", None,
+            column, "quintiles", f"companion_q{g}", None, **_copy_mark(table, name),
             statistic=(row["estimate"] / row["se"]) if row.get("se") else None, df_num=1,
             df_den=row.get("df"), distribution="t" if row.get("df") is not None else "z",
             p=row.get("p"), estimate=row["estimate"], ci_low=row.get("ci_low"),
@@ -1961,8 +2005,7 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
             boundaries=[float(c) for c in cuts], reference=reference,
             what=f"quintile {g} of `{column}` against the lowest",
             caption=(f"Beside the spline: quintile {g} of `{column}` against the lowest, "
-                     f"{row['estimate']:+.4g}{ratio}, p = {format_p(row.get('p'))}; {bounds}."
-                     f"{design}")))
+                     f"{row['estimate']:+.4g}{ratio}{_p_words(row)}; {bounds}.{design}")))
     score_name = f"{column}{SCORE_SUFFIX}"
     scored = matrix.drop(columns=terms)
     scored.insert(at, score_name, np.where(group < 0, np.nan,
@@ -1971,19 +2014,19 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
                          outcome=outcome, survey=survey)
     row = next((r for r in (trend_table.rows if trend_table is not None else [])
                 if str(r["feature"]) == score_name), None)
-    if row is not None and row.get("p") is not None:
+    if _readable(row):
         listed = ", ".join(f"{m:.4g}" for m in medians)
         out.append(_test(
-            column, "quintiles", "companion_trend", None,
+            column, "quintiles", "companion_trend", None, **_copy_mark(trend_table, score_name),
             statistic=(row["estimate"] / row["se"]) if row.get("se") else None, df_num=1,
             df_den=row.get("df"), distribution="t" if row.get("df") is not None else "z",
-            p=row["p"], estimate=row["estimate"], ci_low=row.get("ci_low"),
+            p=row.get("p"), estimate=row["estimate"], ci_low=row.get("ci_low"),
             ci_high=row.get("ci_high"), medians=[float(m) for m in medians],
             boundaries=[float(c) for c in cuts], label=TREND_LABEL, reference=reference,
             what=f"the {TREND_LABEL} coefficient per unit of `{column}`",
             caption=(f"Beside the spline, the {TREND_LABEL}: each row scored by its quintile's "
                      f"median ({listed}), one term in place of the spline; its coefficient "
-                     f"{row['estimate']:+.4g} per unit, p = {format_p(row['p'])}. The spline's "
+                     f"{row['estimate']:+.4g} per unit{_p_words(row)}. The spline's "
                      f"overall test is the test of association; this is a test of a linear trend, "
                      f"not of a dose–response.{design}")))
     return out, []

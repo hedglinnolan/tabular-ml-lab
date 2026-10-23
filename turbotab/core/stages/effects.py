@@ -37,14 +37,16 @@ stage builds what the results show of the exposure:
   the one analyzed, and said so.
 
 **The rows** are every analyzed row (BLUEPRINT §12 ruling 3), so Model 2 is the fit's primary
-estimate, number for number. Under complete cases, when Model 3 adds columns that are sometimes
-missing, Model 3 alone is fit on the rows where they are recorded, with the primary's adjustment
-refit on those same rows beside it, so the two differ by the added columns alone; it says how many.
+estimate, number for number. Under any missing-values answer but multiple imputation, when Model 3
+adds columns that are sometimes missing, Model 3 alone is fit on the rows where they are recorded
+(refused where none is), with the primary's adjustment refit on those same rows beside it, so the
+two differ by the added columns alone; it says how many.
 Under multiple imputation each model is fit in each completed copy and pooled by Rubin's rules, the
 crude model, Model 1 and Model 2 in the fit's own copies and Model 3 in copies imputed with its
 added columns; the diagnostics and the robustness value read the first copy, and say so. Where a
 column separates the outcome in some copy, the pooled intervals are Wald ones from Firth's standard
-errors, and each separated coefficient's is withheld (``inference.pooled_firth``), as the fit's.
+errors, and each separated coefficient is reported by its estimate alone, its standard error,
+interval and p-value withheld (``inference.pooled_firth``), as the fit's.
 
 **The surveyed population** (MODELING_SEQUENCE §0 ruling 6, "binds every family and every
 display"): every model of a family with a design-based estimator (least squares, logistic, Cox,
@@ -535,8 +537,9 @@ def effects_stage(ctx: StageContext) -> Bundle:
     split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
     strategy = state.missing.strategy if state.missing is not None else None
     # Every model but Model 3 is fit on every analyzed row, as the fit is (ruling 3). Model 3's
-    # added columns may be missing where the primary's are not: under complete cases it alone is
-    # fit on the rows where they are recorded; under multiple imputation they are imputed.
+    # added columns may be missing where the primary's are not: under multiple imputation they are
+    # imputed; under any other answer (complete cases, a single fill) Model 3 alone is fit on the
+    # rows where they are recorded.
     rows3 = None
     if strategy != "multiple_imputation" and extra:
         recorded = frame[extra].notna().all(axis=1).to_numpy()
@@ -857,8 +860,9 @@ class _Run:
         (``copy_pipeline``), on the knots its own imputation placed. ``lineage`` receives its
         first copy's matrix columns by their sources (:func:`matrix_sources`).
 
-        Under complete cases with no analyzed row recording every added column, Model 3 has no
-        row to be fit on: refused before any fit (:meth:`_no_rows_three`)."""
+        Outside multiple imputation (any other missing-values answer: ``rows3``) Model 3 is fit
+        on the rows that record every column it adds; with no analyzed row recording them all it
+        has no row to be fit on: refused before any fit (:meth:`_no_rows_three`)."""
         from turbotab.core import estimand as est
         from turbotab.core.methods.missing import copy_pipeline
         from turbotab.core.models.linear import model_matrix
@@ -911,8 +915,9 @@ class _Run:
         return comparison
 
     def _no_rows_three(self) -> Any:
-        """The refusal of Model 3 under complete cases when no analyzed row records every column
-        it adds (coded :data:`NO_ROWS_THREE`): its ways forward leave out the added columns no row
+        """The refusal of Model 3, fit on the rows that record every column it adds (under any
+        missing-values answer but multiple imputation, ``rows3``), when no analyzed row records
+        them all (coded :data:`NO_ROWS_THREE`): its ways forward leave out the added columns no row
         records (all of them where each is recorded on some row), or, where each is recorded on
         some row, impute them (multiple imputation starts from a column's recorded values, so it
         is not offered for a column that has none)."""
@@ -923,9 +928,9 @@ class _Run:
         added = list(self.extra)
         one = len(added) == 1
         never = [c for c in added if not self.frame[c].notna().any()]
-        message = (f"Model 3 adds {listing(added)}, and under complete cases it is fit on the rows "
-                   f"that record {'it' if one else 'them all'}: none of the "
-                   f"{len(self.frame):,} analyzed rows does, so Model 3 cannot be fit.")
+        message = (f"Model 3 adds {listing(added)} and is fit on the rows that record "
+                   f"{'it' if one else 'them all'}: none of the {len(self.frame):,} analyzed rows "
+                   f"does, so Model 3 cannot be fit.")
         exits: list[dict[str, Any]] = [
             {"label": f"Leave {listing(never or added)} out of Model 3", "decision": None}]
         if not never:
@@ -1098,7 +1103,10 @@ class _Run:
 
         info["missing"] = multiple_imputation_info(imputations, spec, len(y), rows=pooled,
                                                    df_com=_design_df(tables[0]))
-        concerns = (list(tables[0].concerns) + ([firth.concern] if firth is not None else [])
+        # The pooled concern replaces the Firth copies' own (``PooledFirth.replaces``), which say
+        # the table reports Firth's fit, true of a Firth copy and not of every pooled table.
+        concerns = ([c for c in tables[0].concerns if firth is None or c not in firth.replaces]
+                    + ([firth.concern] if firth is not None else [])
                     + mi_concerns(imputations, pooled, len(y)))
         return InferenceTable(pooled, info, concerns)
 

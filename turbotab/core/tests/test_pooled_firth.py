@@ -3,10 +3,14 @@
 ``stages.effects``; claim ``inference.pooled_separation``).
 
 Rubin's rules read each completed copy's estimate and standard error and make the interval and
-p-value themselves (``imputation.pool_rows``), so a Firth copy computes no profile, and the pooled
+p-value themselves (``imputation.pool_rows``), so a Firth copy computes no profile, nor do its form
+tests' refits (the companion quintiles beside a declared spline, the trend), and the pooled
 estimates and standard errors are the ones today's profiled copies pool to. The pooled numbers are
 Wald intervals on t from Firth's standard errors, and the table says so; a coefficient that
-separates the outcome in any copy keeps its estimate and has its interval and p-value withheld.
+separates the outcome in any copy keeps its estimate alone, its standard error, degrees of freedom
+and fraction of missing information withheld with its interval and p-value (with them the
+withheld interval is estimate ± t·se), and the copies' own separation concern, which says the
+table reports Firth's fit, is replaced by the pooled one.
 
 Every expected value comes from the construction (a column that separates the outcome by how the
 rows are drawn), or from Firth's penalized likelihood maximized by scipy's general-purpose
@@ -105,15 +109,19 @@ def separated() -> dict[str, Any]:
 
 def _firth_by_scipy(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Firth's estimate, the maximum of l(β) + ½ log |XᵀWX| (Firth 1993) written out in numpy and
-    maximized by scipy's BFGS, and the inverse information XᵀWX at it."""
-    def negative(beta: np.ndarray) -> float:
+    maximized by scipy's BFGS on its gradient, Firth's modified score Xᵀ(y − μ + h(½ − μ)) with h
+    the hat matrix's diagonal, and the inverse information XᵀWX at it."""
+    def negative(beta: np.ndarray) -> tuple[float, np.ndarray]:
         eta = X @ beta
         mu = 1 / (1 + np.exp(-eta))
         w = mu * (1 - mu)
-        sign, logdet = np.linalg.slogdet(X.T @ (X * w[:, None]))
-        return -(float(np.sum(y * eta - np.logaddexp(0.0, eta))) + 0.5 * logdet)
+        info = X.T @ (X * w[:, None])
+        sign, logdet = np.linalg.slogdet(info)
+        h = w * np.einsum("ij,jk,ik->i", X, np.linalg.inv(info), X)
+        score = X.T @ (y - mu + h * (0.5 - mu))
+        return -(float(np.sum(y * eta - np.logaddexp(0.0, eta))) + 0.5 * logdet), -score
 
-    found = optimize.minimize(negative, np.zeros(X.shape[1]), method="BFGS",
+    found = optimize.minimize(negative, np.zeros(X.shape[1]), method="BFGS", jac=True,
                               options={"gtol": 1e-10, "maxiter": 10_000})
     mu = 1 / (1 + np.exp(-(X @ found.x)))
     return found.x, np.linalg.inv(X.T @ (X * (mu * (1 - mu))[:, None]))
@@ -152,24 +160,28 @@ def _rubin(q: list[float], u: list[float]) -> dict[str, float]:
 
 def test_under_imputation_no_copy_profiles_and_the_pooled_estimates_and_errors_hold(separated):
     """Each copy's Firth table is made for Rubin's rules, so ``firth_profile`` is never called
-    (today's per-copy tables call it for every coefficient of every copy), and the pooled
-    estimates and standard errors are those today's profiled tables pool to, to 1e-12; both are
-    Firth's estimate and Rubin's total variance, recomputed by scipy and numpy."""
+    (today's per-copy tables call it for every coefficient of every copy), and Rubin's rules over
+    the copies give the estimates and standard errors today's profiled tables pool to, to 1e-12;
+    both are Firth's estimate and Rubin's total variance, recomputed by scipy and numpy. The
+    table reports them, but for `x`'s standard error, which is withheld (it separates)."""
     m = separated["imputations"].m
     assert m >= 20 and all(t.info["estimator"] == "Firth-penalized logistic regression"
                             for t in separated["tables"])
     assert separated["profiles"] == 0
     assert separated["full_profiles"] == 3 * m  # the base's work: three coefficients a copy
+    rubin = {r["feature"]: r for r in pool_rows([t.rows for t in separated["tables"]])}
     for name in ("(intercept)", "x", "z"):
-        ours, base = separated["rows"][name], separated["full"][name]
+        ours, base = rubin[name], separated["full"][name]
         assert ours["estimate"] == pytest.approx(base["estimate"], rel=1e-12, abs=1e-12), name
         assert ours["se"] == pytest.approx(base["se"], rel=1e-12, abs=1e-12), name
+        shown = separated["rows"][name]
+        assert shown["estimate"] == pytest.approx(base["estimate"], rel=1e-12, abs=1e-12), name
+        assert shown["se"] == (None if name == "x" else pytest.approx(base["se"], rel=1e-12)), name
     frames = separated["imputations"].frames
     for j, name in enumerate(("(intercept)", "x", "z")):
         truth = _rubin_by_hand(frames, separated["y"], j)
-        ours = separated["rows"][name]
-        assert ours["estimate"] == pytest.approx(truth["estimate"], abs=1e-6), name
-        assert ours["se"] == pytest.approx(truth["se"], rel=1e-5), name
+        assert rubin[name]["estimate"] == pytest.approx(truth["estimate"], abs=1e-6), name
+        assert rubin[name]["se"] == pytest.approx(truth["se"], rel=1e-5), name
 
 
 def test_a_table_not_pooled_keeps_its_profile_intervals(separated):
@@ -188,25 +200,34 @@ def test_a_table_not_pooled_keeps_its_profile_intervals(separated):
 
 def test_a_coefficient_separated_in_the_copies_keeps_its_pooled_estimate_and_withholds_its_interval(
         separated):
-    """x separates the outcome in every copy by construction: its pooled estimate and standard
-    error stand (Firth's, pooled), its interval, p-value and odds-ratio interval are withheld, and
-    the table names it, says why and gives the ways forward, complete cases a decision."""
+    """x separates the outcome in every copy by construction: its pooled estimate stands
+    (Firth's, pooled) with its odds ratio and its Monte Carlo error (the copies' estimates' spread,
+    √(B/m)), and its standard error, degrees of freedom and fraction of missing information are
+    withheld with its interval, p-value and odds-ratio interval, since estimate ± t·se would give
+    the withheld interval back; the table names it, says why and gives the ways forward, complete
+    cases a decision."""
     m = separated["imputations"].m
     x = separated["rows"]["x"]
     truth = _rubin_by_hand(separated["imputations"].frames, separated["y"], 1)
     assert x["estimate"] == pytest.approx(truth["estimate"], abs=1e-6)
-    assert x["se"] == pytest.approx(truth["se"], rel=1e-5)
+    assert (x["se"], x["df"], x["fmi"]) == (None, None, None)
     assert (x["ci_low"], x["ci_high"], x["p"]) == (None, None, None)
     assert x["ratio"] == pytest.approx(math.exp(truth["estimate"]), rel=1e-5)
     assert (x["ratio_low"], x["ratio_high"]) == (None, None)
+    q = [_firth_by_scipy(_x_and_z(X_k), separated["y"])[0][1]
+         for X_k in separated["imputations"].frames]
+    assert x["mc_se"] == pytest.approx(float(np.std(q, ddof=1)) / math.sqrt(m), rel=1e-4)
     info = separated["table"].info
     assert info["separated"] == ["x"] and info["covariance"] == "model"
     [said] = [c for c in separated["table"].concerns if "not reported" in c]
     assert said == (f"`x` separates the outcome in every one of the {m} imputed copies, so its "
-                    f"pooled interval and p-value are not reported, only its estimate: {CARD} "
-                    f"(Heinze & Schemper 2002). To report it, read `x` another way or combine its "
-                    f"sparse levels, or analyze complete cases, where one table is fit and none "
-                    f"is pooled.")
+                    f"pooled standard error, interval and p-value are not reported, only its "
+                    f"estimate: {CARD} (Heinze & Schemper 2002). To report it, read `x` another "
+                    f"way or combine its sparse levels, or analyze complete cases, where one table "
+                    f"is fit and none is pooled.")
+    # The copies' own concern says the table reports Firth's fit; the pooled one replaces it.
+    assert I.separation_concern(["x"]) in separated["tables"][0].concerns
+    assert I.separation_concern(["x"]) not in separated["table"].concerns
     first, cases = info["exits"]
     assert first == {"label": "Read `x` another way, or combine its sparse levels",
                      "decision": None}
@@ -298,6 +319,8 @@ def test_copies_of_both_kinds_say_how_many_are_maximum_likelihood_and_withhold_t
         "interval is computed.")
     assert "because the maximum-likelihood estimate does not exist" not in found.caption
     assert found.concern.startswith("`x` separates the outcome in 1 of the 2 imputed copies, so ")
+    assert (by["x"]["se"], by["x"]["df"], by["x"]["fmi"]) == (None, None, None)
+    assert by["z"]["se"] is not None
     assert found.concern.endswith("To report it, read `x` another way or combine its sparse "
                                   "levels.")
     assert [e["label"] for e in found.info["exits"]] == [
@@ -309,14 +332,15 @@ def test_the_copies_a_coefficient_separates_in_are_counted_as_they_are():
     concern says that number once ("every one of" when it is all of them); where the numbers
     differ it gives each one's; and with several Firth copies the caption says "each is"."""
     ml = "logistic regression (maximum likelihood)"
+    their = "so their pooled standard errors, intervals and p-values are not reported, only their "
     cases = [
         ([_table(I.FIRTH, ["x", "z"], 4.0)] * 3,
-         "`x` and `z` separate the outcome in every one of the 3 imputed copies, so their "),
+         f"`x` and `z` separate the outcome in every one of the 3 imputed copies, {their}"),
         ([_table(ml, [], 2.0)] + [_table(I.FIRTH, ["x", "z"], 4.0)] * 2,
-         "`x` and `z` separate the outcome in 2 of the 3 imputed copies, so their "),
+         f"`x` and `z` separate the outcome in 2 of the 3 imputed copies, {their}"),
         ([_table(I.FIRTH, ["x"], 4.0)] + [_table(I.FIRTH, ["x", "z"], 4.0)] * 2,
          "`x` and `z` separate the outcome in some of the 3 imputed copies (`x` in 3, `z` in 2), "
-         "so their "),
+         f"{their}"),
     ]
     for tables, start in cases:
         found = I.pooled_firth(tables, pool_rows([t.rows for t in tables]))
@@ -365,10 +389,10 @@ def categorical() -> dict[str, Any]:
 def test_an_intercept_infinite_in_the_copies_keeps_its_estimate_and_withholds_its_interval(
         categorical):
     """The intercept's log-odds is infinite in every copy with `g_b`'s and `g_c`'s, by
-    construction: its pooled estimate and standard error stand (Firth's, pooled, recomputed by
-    scipy and numpy), its interval and p-value are withheld as theirs are, and the concern says
-    so; the copies' own concern still names the columns alone. `z`, which no direction moves,
-    keeps Rubin's Wald interval on t."""
+    construction: its pooled estimate stands (Firth's, pooled, recomputed by scipy and numpy), its
+    standard error, interval and p-value are withheld as theirs are, and the concern says so; the
+    copies' own concern still names the columns alone. `z`, which no direction moves, keeps
+    Rubin's Wald interval on t."""
     m = categorical["imputations"].m
     frames, y, rows = categorical["imputations"].frames, categorical["y"], categorical["rows"]
     assert all(t.info["separated"] == ["g_b", "g_c"] for t in categorical["tables"])
@@ -376,7 +400,7 @@ def test_an_intercept_infinite_in_the_copies_keeps_its_estimate_and_withholds_it
         truth = _rubin_by_hand(frames, y, j, _g_and_z)
         row = rows[name]
         assert row["estimate"] == pytest.approx(truth["estimate"], abs=1e-6), name
-        assert row["se"] == pytest.approx(truth["se"], rel=1e-5), name
+        assert (row["se"], row["df"], row["fmi"]) == (None, None, None), name
         assert (row["ci_low"], row["ci_high"], row["p"]) == (None, None, None), name
     truth = _rubin_by_hand(frames, y, 3, _g_and_z)
     z = rows["z"]
@@ -386,11 +410,11 @@ def test_an_intercept_infinite_in_the_copies_keeps_its_estimate_and_withholds_it
     [said] = [c for c in categorical["table"].concerns if "not reported" in c]
     assert said == (
         f"`g_b` and `g_c` separate the outcome in every one of the {m} imputed copies, so their "
-        f"pooled interval and p-value are not reported, only their estimate: {CARD} (Heinze & "
-        f"Schemper 2002). The interval and p-value of the intercept are withheld too: its "
-        f"maximum-likelihood value is infinite in every one of the {m} imputed copies. To report "
-        f"them, read `g` another way or combine its sparse levels, or analyze complete cases, "
-        f"where one table is fit and none is pooled.")
+        f"pooled standard errors, intervals and p-values are not reported, only their estimates: "
+        f"{CARD} (Heinze & Schemper 2002). The standard error, interval and p-value of the "
+        f"intercept are withheld too: its maximum-likelihood value is infinite in every one of "
+        f"the {m} imputed copies. To report them, read `g` another way or combine its sparse "
+        f"levels, or analyze complete cases, where one table is fit and none is pooled.")
 
 
 def test_the_way_forward_names_the_column_a_separated_indicator_comes_from(categorical):
@@ -466,15 +490,15 @@ def test_a_relative_effect_resting_on_a_separated_source_keeps_its_estimate_and_
     its own direction alone (the non-drinkers hold both outcomes at every value of the rest).
     Each relative effect θ_j = β_j − Σ_k w_k β_k (Tomova et al. 2022) reads β_alc with weight 1
     (j = alc) or −w_alc (the drinkers' kcal's share of the other sources', above zero), so each
-    is infinite along it too: every relative row keeps its pooled estimate and standard error and
-    has its interval, p-value and odds-ratio interval withheld, and the concern says so, naming
+    is infinite along it too: every relative row keeps its pooled estimate and has its standard
+    error, interval, p-value and odds-ratio interval withheld, and the concern says so, naming
     `alc_g` as the column to read another way. The other coefficients' intervals stand."""
     rows, model = drinkers_all_events["rows"], drinkers_all_events["model"]
     m = len(drinkers_all_events["frames"])
     relative = [f"{n}_relative" for n in SOURCES]
     for name in [*relative, "kcal_from_alc_g"]:
         row = rows[name]
-        assert row["estimate"] is not None and row["se"] is not None, name
+        assert row["estimate"] is not None and row["se"] is None, name
         assert (row["ci_low"], row["ci_high"], row["p"]) == (None, None, None), name
         assert (row["ratio_low"], row["ratio_high"]) == (None, None), name
     for name in ("kcal_from_protein_g", "kcal_from_carb_g", "kcal_from_fat_g", "kcal_from_other",
@@ -482,11 +506,12 @@ def test_a_relative_effect_resting_on_a_separated_source_keeps_its_estimate_and_
         assert rows[name]["ci_low"] is not None and rows[name]["p"] is not None, name
     [said] = [c for c in model["concerns"] if "not reported" in c]
     assert said.startswith(f"`kcal_from_alc_g` separates the outcome in every one of the {m} "
-                           f"imputed copies, so its pooled interval and p-value are not reported")
-    assert (f"The intervals and p-values of `protein_g_relative`, `carb_g_relative`, "
-            f"`fat_g_relative` and `alc_g_relative` are withheld too: their maximum-likelihood "
-            f"values are infinite in every one of the {m} imputed copies. To report it, read "
-            f"`alc_g` another way or combine its sparse levels") in said
+                           f"imputed copies, so its pooled standard error, interval and p-value "
+                           f"are not reported")
+    assert (f"The standard errors, intervals and p-values of `protein_g_relative`, "
+            f"`carb_g_relative`, `fat_g_relative` and `alc_g_relative` are withheld too: their "
+            f"maximum-likelihood values are infinite in every one of the {m} imputed copies. To "
+            f"report them, read `alc_g` another way or combine its sparse levels") in said
 
 
 def test_relative_effects_no_copy_separates_keep_rubins_wald_interval_on_t(tmp_path):
@@ -530,7 +555,8 @@ def test_relative_effects_no_copy_separates_keep_rubins_wald_interval_on_t(tmp_p
 def test_the_effects_pooled_tables_withhold_a_separated_term_and_say_wald_from_firth(tmp_path):
     """Through the design and effects stages: every smoker has the event, so `smoking` separates
     the outcome in every copy; under multiple imputation Model 2's pooled appendix term for it
-    keeps its estimate and has no interval or p-value, the model says why, its caption says the
+    keeps its estimate and has no standard error, interval or p-value, the model says why (and no
+    longer that the table reports Firth's fit, which its copies say), its caption says the
     intervals are Wald ones on t from Firth's standard errors, and the exposure's interval
     stands."""
     from turbotab.core.tests.acceptance import estimand_fixtures as ef
@@ -548,7 +574,7 @@ def test_the_effects_pooled_tables_withhold_a_separated_term_and_say_wald_from_f
     assert fiber["feature"] == "fiber" and fiber["ci_low"] is not None and fiber["p"] is not None
     [appendix] = [a for a in run["effects"]["families"][0]["appendix"] if a["key"] == "model_2"]
     [smoking] = [t for t in appendix["terms"] if t["feature"] == "smoking"]
-    assert smoking["estimate"] is not None and smoking["se"] is not None
+    assert smoking["estimate"] is not None and (smoking["se"], smoking["df"]) == (None, None)
     assert (smoking["ci_low"], smoking["ci_high"], smoking["p"]) == (None, None, None)
     assert two["inference"]["separated"] == ["smoking"]
     assert two["inference"]["covariance"] == "model"
@@ -562,6 +588,7 @@ def test_the_effects_pooled_tables_withhold_a_separated_term_and_say_wald_from_f
         f"Rubin's rules, each interval on t with Barnard–Rubin degrees of freedom. ")
     assert any(c.startswith("`smoking` separates the outcome in ") and "not reported" in c
                for c in two["concerns"])
+    assert I.separation_concern(["smoking"]) not in two["concerns"]
 
 
 def test_the_effects_relative_effect_resting_on_a_separated_source_is_withheld(tmp_path):
@@ -600,3 +627,245 @@ def test_the_effects_relative_effect_resting_on_a_separated_source_is_withheld(t
         assert terms[name]["estimate"] is not None, name
         assert (terms[name]["ci_low"], terms[name]["p"]) == (None, None), name
     assert any("are withheld too" in c and "`protein_g_relative`" in c for c in two["concerns"])
+
+
+# ── copies of both kinds: the pooled concerns whichever comes first ──────────
+
+
+def _sometimes_separated(n: int = 240, seed: int = 7) -> tuple[pd.DataFrame, np.ndarray]:
+    """``x`` 0/1, every row recording x = 1 has the event; ``x`` is blank on 24 rows, four of them
+    without the event, so a copy that imputes x = 1 on any of those four is not separated by x
+    and one that imputes x = 0 on all four is. ``z`` is blank on about 20% of the rows."""
+    rng = np.random.default_rng(seed)
+    z = rng.normal(size=n)
+    x = (rng.random(n) < 0.2).astype(float)
+    y = (rng.random(n) < 1 / (1 + np.exp(-(-0.3 + 0.8 * z)))).astype(float)
+    y = np.where(x == 1, 1.0, y)
+    blank = rng.choice(np.where(y == 0)[0], 4, replace=False)
+    x[blank] = np.nan
+    x[rng.choice(np.setdiff1d(np.arange(n), blank), 20, replace=False)] = np.nan
+    return pd.DataFrame({"x": x, "z": np.where(rng.random(n) < 0.2, np.nan, z)}), y
+
+
+@pytest.mark.parametrize("first", ["Firth", "maximum likelihood"])
+def test_copies_of_both_kinds_leave_out_the_copies_own_separation_concern_whichever_is_first(
+        first):
+    """In the copies that impute x = 0 on every blank row without the event, every x = 1 row has
+    the event and x separates (counted here from the copies themselves); in the rest it does not.
+    With the copies put in either order, a Firth copy first or a maximum-likelihood one, the
+    pooled table's concerns name the separated count and never repeat the Firth copy's own
+    concern, which says the table reports Firth's fit (true of the copy, false of a table pooled
+    over both kinds)."""
+    import dataclasses
+
+    frame, y = _sometimes_separated()
+    roles = {"x": "exposure", "z": "covariate"}
+    st = ProjectState(target="y", task="binary", purpose="inference", roles=roles,
+                      missing=MissingSpec(strategy="multiple_imputation", m=20))
+    spec = design_spec(st, frame, list(roles))
+    imputations = impute_for_inference(spec, frame, y, "binary", seed=1)
+    m = imputations.m
+    separated = [bool(np.all(y[X_k["x"].to_numpy() == 1] == 1)) for X_k in imputations.frames]
+    k = sum(separated)
+    assert 0 < k < m
+    wanted = first == "Firth"
+    order = sorted(range(m), key=lambda j: separated[j] != wanted)
+    copies = dataclasses.replace(imputations, frames=[imputations.frames[j] for j in order])
+    pipe = build_pipeline(spec, LINEAR, "binary", "inference", len(frame), 2)
+    collected: dict[str, Any] = {}
+    table, _, _, _ = pooled_table(LINEAR, pipe, copies, y, task="binary", clusters=I.INDEPENDENT,
+                                  outcome=I.Outcome(name="y"), survey=None, design=None, spec=spec,
+                                  rows="all", fit=lambda model, X_k: fit_pipeline(model, X_k, y),
+                                  collect=collected)
+    kinds = [t.info["estimator"] == I.FIRTH for t in collected["tables"]]
+    assert kinds == [separated[j] for j in order] and kinds[0] == wanted
+    assert not [c for c in table.concerns if "the table reports Firth" in c]
+    assert I.separation_concern(["x"]) not in table.concerns
+    [said] = [c for c in table.concerns if "not reported" in c]
+    assert said.startswith(f"`x` separates the outcome in {k} of the {m} imputed copies, so its "
+                           f"pooled standard error, interval and p-value are not reported, only "
+                           f"its estimate: ")
+    assert f"In {k} of the {m} copies a column separates the outcome" in table.info["caption"]
+
+
+# ── the companion quintiles beside a declared spline ─────────────────────────
+
+
+def _companion_fit(folder: Any) -> dict[str, Any]:
+    """The design and fit stages under multiple imputation (`age` blank on about 15% of the
+    rows), `fiber` the declared exposure as a 4-knot spline, so its companion quintiles are fit
+    beside it, and every row above `fiber`'s 80th percentile has the event: the companion's
+    quintile 5 separates the outcome in every copy (`fiber` is never blank), the spline does
+    not. Every call of ``firth_profile`` is counted."""
+    from turbotab.core import decisions as d
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(400, seed=12)
+    cut = float(np.quantile(frame["fiber"], 0.8))
+    frame.loc[frame["fiber"] > cut + 1e-9, "dm"] = "yes"
+    frame.loc[np.random.default_rng(4).random(len(frame)) < 0.15, "age"] = np.nan
+    roles = {c: r for c, r in ef.ROLES.items() if c != "bmi"}
+    answers = {c: a for c, a in ef.ANSWERS.items() if c != "bmi"}
+    st = ef.state(target="dm", task="binary", event="yes", measure="odds_ratio", roles=roles,
+                  answers=answers, missing={"strategy": "multiple_imputation", "m": 20},
+                  exposure_forms={"fiber": d.ExposureFormSpec(form="spline", knots=4)})
+    paths = mf.ingest_frame(frame, folder)
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed)
+    info = mf.target_info(st.task, st.target)
+    design = design_stage(mf.context(st, {"split": split, "target_info": info}, paths))
+    calls = {"n": 0}
+    real = I.firth_profile
+
+    def counting(*a: Any, **k: Any) -> Any:
+        calls["n"] += 1
+        return real(*a, **k)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(I, "firth_profile", counting)
+        fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": info},
+                                   paths))
+    [model] = [mm for mm in fit.data["models"] if mm["family"] == "linear"]
+    imputations = fit.objects["imputations"]
+    return {"model": model, "tests": {t["test"]: t for t in model["exposure_tests"]},
+            "fits": imputations["fits"]["linear"], "frames": imputations["frames"],
+            "y": (frame["dm"] == "yes").to_numpy(float), "cut": cut, "profiles": calls["n"]}
+
+
+@pytest.fixture(scope="module")
+def companion(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    return _companion_fit(tmp_path_factory.mktemp("companion"))
+
+
+def _companion_designs(found: dict[str, Any]) -> list[tuple[pd.DataFrame, np.ndarray]]:
+    """Each copy's model matrix with `fiber`'s spline terms dropped, and `fiber`'s quintile group
+    (0 to 4) on cut points at its 20th, 40th, 60th and 80th percentiles (numpy's linear
+    quantiles, `fiber` recorded on every row), each group holding the values above the cut point
+    below it and up to its own (the boundaries the caption states)."""
+    from turbotab.core.models.linear import model_matrix
+
+    out = []
+    for fitted, X_k in zip(found["fits"], found["frames"]):
+        M = model_matrix(fitted, X_k).astype(float)
+        rest = M[[c for c in M.columns if not str(c).startswith("fiber")]]
+        x = X_k["fiber"].to_numpy(float)
+        cuts = np.quantile(x, [0.2, 0.4, 0.6, 0.8])
+        assert cuts[-1] == pytest.approx(found["cut"], abs=1e-12)
+        out.append((rest, np.digitize(x, cuts, right=True)))
+    return out
+
+
+def test_under_imputation_the_companion_refits_compute_no_profile(companion):
+    """The companion quintiles' refit is Firth's in every copy (quintile 5 separates), and is made
+    for Rubin's rules as the copy's table is: no copy calls ``firth_profile`` (the base profiled
+    each of the refit's nine coefficients in each of the 20 copies, 180 calls)."""
+    assert len(companion["frames"]) == 20
+    assert companion["profiles"] == 0
+    assert {"companion_q2", "companion_q5", "companion_trend"} <= set(companion["tests"])
+
+
+def test_a_companion_quintile_separated_in_the_copies_keeps_its_estimate_alone(companion):
+    """Quintile 5 of `fiber` has the event on every row, in every copy: its pooled estimate is
+    Rubin's mean of the copies' Firth estimates (recomputed by scipy on the companion's design),
+    and its statistic, interval and p-value are not reported, with the reason and complete cases
+    as the way forward. No copy's profile interval or p-value is quoted beside it."""
+    m = len(companion["frames"])
+    q, u = [], []
+    for rest, group in _companion_designs(companion):
+        X = np.column_stack([np.ones(len(rest)), rest.to_numpy(float),
+                             *[(group == g).astype(float) for g in range(1, 5)]])
+        beta, cov = _firth_by_scipy(X, companion["y"])
+        q.append(beta[-1])
+        u.append(cov[-1, -1])
+    truth = _rubin(q, u)
+    q5 = companion["tests"]["companion_q5"]
+    assert q5["estimate"] == pytest.approx(truth["estimate"], abs=1e-6)
+    assert (q5["ci_low"], q5["ci_high"], q5["p"], q5["statistic"], q5["df_den"]) == (
+        None, None, None, None, None)
+    assert "infinite" not in q5
+    assert q5["caption"] == (
+        f"Pooled over {m} imputations by Rubin's rules: quintile 5 of `fiber` against the lowest "
+        f"{q5['estimate']:+.4g}. It separates the outcome in every one of the {m} imputed copies, "
+        f"so its statistic, interval and p-value are not reported, only its estimate: {CARD} "
+        f"(Heinze & Schemper 2002). To report them, analyze complete cases, where one table is "
+        f"fit and none is pooled.")
+
+
+def test_a_companion_quintile_no_copy_separates_keeps_rubins_wald_interval_on_t(companion):
+    """Quintiles 2 to 4 hold both outcomes: each keeps Rubin's Wald interval on t and its p-value,
+    from each copy's Firth estimate and standard error on the companion's design (recomputed by
+    scipy and numpy), and the copy's words beside it quote no p-value or ratio interval, which
+    no copy computes. The trend on the quintile medians separates in no copy, so its refit is
+    the logistic model's: its pooled interval is Rubin's over statsmodels' fits."""
+    import statsmodels.api as sm
+
+    designs = _companion_designs(companion)
+    for g in (2, 3, 4):
+        q, u = [], []
+        for rest, group in designs:
+            X = np.column_stack([np.ones(len(rest)), rest.to_numpy(float),
+                                 *[(group == h).astype(float) for h in range(1, 5)]])
+            beta, cov = _firth_by_scipy(X, companion["y"])
+            q.append(beta[g - 6])  # quintiles 2 to 5 are the last four columns
+            u.append(cov[g - 6, g - 6])
+        truth, test = _rubin(q, u), companion["tests"][f"companion_q{g}"]
+        for key in ("estimate", "ci_low", "ci_high"):
+            assert test[key] == pytest.approx(truth[key], rel=1e-5, abs=1e-6), (g, key)
+        assert test["p"] == pytest.approx(truth["p"], rel=1e-4, abs=1e-10), g
+        within = test["caption"].split("Within each imputation: ")[1]
+        assert " p = " not in within and "ratio" not in within, within
+    q, u = [], []
+    for (rest, group), X_k in zip(designs, companion["frames"]):
+        x = X_k["fiber"].to_numpy(float)
+        medians = np.array([np.median(x[group == g]) for g in range(5)])
+        X = np.column_stack([np.ones(len(rest)), rest.to_numpy(float), medians[group]])
+        logit = sm.Logit(companion["y"], X).fit(disp=0, maxiter=200)
+        q.append(float(logit.params[-1]))
+        u.append(float(logit.bse[-1]) ** 2)
+    truth, trend = _rubin(q, u), companion["tests"]["companion_trend"]
+    for key in ("estimate", "ci_low", "ci_high"):
+        assert trend[key] == pytest.approx(truth[key], rel=1e-5, abs=1e-8), key
+    assert trend["p"] == pytest.approx(truth["p"], rel=1e-4, abs=1e-12)
+
+
+def _cut_test(estimate: float, se: float, infinite: bool | None) -> dict[str, Any]:
+    """One copy's cut-point test, as ``exposure_form.exposure_tests`` makes it from the copy's
+    own row (its statistic the estimate over its standard error), marked as a copy's is."""
+    test = {"column": "x", "form": "optimal", "test": "cut", "statistic": estimate / se,
+            "df_num": 1, "df_den": None, "distribution": "z", "p": None, "estimate": estimate,
+            "ci_low": None, "ci_high": None, "knots": None, "medians": None, "label": None,
+            "boundaries": [1.0], "reference": "`x` ≤ 1", "what": "`x` above 1 against below it",
+            "caption": "`x` above 1 against below it: a cut point the data chose."}
+    if infinite is not None:
+        test["infinite"] = infinite
+    return test
+
+
+def test_a_cut_point_infinite_in_one_copy_keeps_its_estimate_alone_and_otherwise_rubins():
+    """A data-derived cut point's coefficient pooled over three copies: where one copy's table
+    finds it infinite, only its pooled estimate (the copies' mean) is reported, and without the
+    missing-values answer (the data's own copies) no way forward is named; where none does, its
+    interval and p-value are Rubin's, written out here. The copies' mark never reaches the
+    pooled test."""
+    from turbotab.core.stages.modeling import _pool_form_tests
+
+    copies = [(1.2, 0.5), (1.6, 0.6), (0.9, 0.4)]
+    tables = [I.InferenceTable([], {"covariance": "model"}, []) for _ in copies]
+    for marks, withheld in (([False, True, False], True), ([False, False, False], False)):
+        tests = [[_cut_test(b, s, mark)] for (b, s), mark in zip(copies, marks)]
+        [pooled] = _pool_form_tests(tests, tables, [None] * 3, 3)
+        assert "infinite" not in pooled
+        assert pooled["estimate"] == pytest.approx(np.mean([b for b, _ in copies]), rel=1e-12)
+        if withheld:
+            assert (pooled["ci_low"], pooled["ci_high"], pooled["p"], pooled["statistic"]) == (
+                None, None, None, None)
+            assert pooled["caption"] == (
+                "Pooled over 3 imputations by Rubin's rules: `x` above 1 against below it +1.233. "
+                "It separates the outcome in 1 of the 3 imputed copies, so its statistic, interval "
+                f"and p-value are not reported, only its estimate: {CARD} (Heinze & Schemper "
+                "2002).")
+            continue
+        truth = _rubin([b for b, _ in copies], [s ** 2 for _, s in copies])
+        for key in ("ci_low", "ci_high", "p"):
+            assert pooled[key] == pytest.approx(truth[key], rel=1e-10), key
