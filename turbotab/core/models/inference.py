@@ -22,7 +22,12 @@ Under inference the linear family's coefficient table is made here, in four part
   programming algorithms for detecting separated data in binary logistic regression models*,
   DPhil thesis, Oxford), named, and the table becomes Firth's penalized likelihood (Firth 1993,
   *Biometrika* 80:27) with profile penalized-likelihood intervals and likelihood-ratio p-values
-  (Heinze & Schemper 2002, *Stat Med* 21:2409), whose estimates are finite.
+  (Heinze & Schemper 2002, *Stat Med* 21:2409), whose estimates are finite. Under multiple
+  imputation each completed copy's table, and each refit its form tests make on it, is made for
+  Rubin's rules (:func:`for_pooling`), which read an estimate and its standard error: a Firth copy
+  computes no profile, and the pooled table reports only the estimate of a coefficient that
+  separates the outcome in any copy, withholding the standard error and the Wald interval and
+  p-value built from it (:func:`pooled_firth`).
 
 And on the outcome's own scale (AUDIT_REPORT §5 WP8: ME-07): every table says what one unit of an
 input does, in words that name the outcome (:class:`Outcome`). A least-squares row is a difference
@@ -34,8 +39,10 @@ class against the reference class (the first, as the model codes it), which the 
 from __future__ import annotations
 
 import math
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Iterator, Literal, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -58,6 +65,9 @@ _BATCH = 1_000_000  # floats per block of clusters in the CR2 engine (8 MB)
 # and the caption says so.
 BM_BUDGET = 1e11
 _EIG_FLOOR = 1e-10  # 1 − λ below this is a zero eigenvalue of I − H_gg: pseudo-inverted (clubSandwich)
+# Set while each completed copy's table is made for Rubin's rules (:func:`for_pooling`).
+_POOLING: ContextVar[bool] = ContextVar("inference_pooling", default=False)
+FIRTH = "Firth-penalized logistic regression"
 
 # CR1: the cluster sandwich with the G/(G − 1) correction, on t(G − 1), for a model with no
 # working linear form here (the proportional-odds family, ``turbotab/core/models/ordinal.py``).
@@ -552,6 +562,31 @@ def firth_profile(X: np.ndarray, y: np.ndarray, fit: FirthFit, j: int, *,
     return bounds[0], bounds[1], float(chi2.sf(statistic, 1))
 
 
+@contextmanager
+def for_pooling() -> Iterator[None]:
+    """While open, each table made is one completed copy's, for Rubin's rules
+    (``imputation.pool_rows``, ``imputation.pool_scalar``), which read a row's estimate, standard
+    error and df and make the interval and p-value themselves: a Firth table then gives each
+    coefficient its estimate and standard error only, with no profile (each bound a search of
+    penalized fits) for the pooling to discard. That holds for the copy's coefficient table and
+    for each refit its form tests make (``exposure_form``'s trend and companion quintiles, which
+    read a row's estimate and standard error where it has no p-value, :func:`pooling`). Its
+    ``covariance`` stays ``profile``, so the joint form tests on it are still the penalized
+    likelihood-ratio tests (``exposure_form.exposure_tests``), pooled by D2."""
+    token = _POOLING.set(True)
+    try:
+        yield
+    finally:
+        _POOLING.reset(token)
+
+
+def pooling() -> bool:
+    """Whether the table being made is one completed copy's, for Rubin's rules
+    (:func:`for_pooling`): a Firth row then has its estimate and standard error and no interval or
+    p-value, which a refit reading a row (``exposure_form``'s trend and companion) allows for."""
+    return _POOLING.get()
+
+
 # ── the table ────────────────────────────────────────────────────────────────
 
 
@@ -567,6 +602,12 @@ class InferenceTable:
     # intervals are not Wald: Firth's profile ones). Joint tests read it (WP12a: a spline's
     # nonlinearity, ``turbotab/core/methods/exposure_form.py``); it is never serialized.
     cov: Any = None
+    # The rows whose maximum-likelihood value the linear program finds infinite on this table's
+    # matrix (``separated_columns``): the separated columns, the intercept where it is among them,
+    # and an all-components relative effect whose refit finds it so
+    # (``stages.modeling.relative_refit``). Rubin's rules withhold their pooled intervals
+    # (:func:`pooled_firth`); never serialized.
+    infinite: list[str] = field(default_factory=list)
 
 
 def _clean(value: Any) -> float | None:
@@ -863,9 +904,12 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     import statsmodels.api as sm
 
     X = exog.to_numpy(dtype=float)
-    separated = _named(names, separated_columns(X, y))
+    found = separated_columns(X, y)
+    separated = _named(names, found)
     if separated:
-        return _firth_table(names, X, y, clusters, separated)
+        table = _firth_table(names, X, y, clusters, separated)
+        table.infinite = [names[j] for j in found]  # the intercept too, where it is infinite
+        return table
     fit = sm.Logit(y, exog).fit(disp=0, maxiter=200)
     est = np.asarray(fit.params, dtype=float)
     estimator = "logistic regression (maximum likelihood)"
@@ -883,16 +927,23 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
                           cov=np.asarray(fit.cov_params(), dtype=float))
 
 
+def separation_concern(separated: Sequence[str]) -> str:
+    """A Firth table's first concern, naming the columns that separate the outcome in it, which a
+    table pooled over completed copies replaces with its own (:attr:`PooledFirth.replaces`)."""
+    one = len(separated) == 1
+    return (f"{_and(separated)} {'separates' if one else 'separate'} the outcome (the "
+            f"maximum-likelihood log-odds is infinite), so a Wald interval or p-value for "
+            f"{'it' if one else 'them'} would be meaningless; the table reports Firth-penalized "
+            f"logistic regression instead (Heinze & Schemper 2002).")
+
+
 def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clusters,
                  separated: list[str]) -> InferenceTable:
     fit = firth_fit(X, y)
     est = fit.beta
-    estimator = "Firth-penalized logistic regression"
+    estimator = FIRTH
     verb = "separates" if len(separated) == 1 else "separate"
-    concern = (f"{_and(separated)} {verb} the outcome (the maximum-likelihood log-odds is infinite), "
-               f"so a Wald interval or p-value for {'it' if len(separated) == 1 else 'them'} would be "
-               f"meaningless; the table reports Firth-penalized logistic regression instead "
-               f"(Heinze & Schemper 2002).")
+    concern = separation_concern(separated)
     extra = {"separated": separated}
     refusal = floor_refusal(clusters, task="binary")
     if refusal is None and clusters.clustered:
@@ -908,6 +959,14 @@ def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clust
         table.concerns.insert(0, concern)
         return table
     se = np.sqrt(np.clip(np.diag(fit.cov), 0, None))
+    concerns = [concern] + ([clusters.note] if clusters.note else [])
+    if not fit.converged:
+        concerns.append("Firth's penalized fit stopped before converging; treat these numbers with care.")
+    if _POOLING.get():
+        # One completed copy's table, for Rubin's rules (:func:`for_pooling`): no profile.
+        rows = [_row(name, est[j], se[j]) for j, name in enumerate(names)]
+        return InferenceTable(rows, _info(estimator, "profile", POOLED_FIRTH_CAPTION, clusters,
+                                          **extra), concerns)
     rows = []
     for j, name in enumerate(names):
         low, high, p = firth_profile(X, y, fit, j)
@@ -915,10 +974,170 @@ def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clust
     caption = ("95% profile penalized-likelihood intervals of a Firth-penalized logistic regression, "
                "because the maximum-likelihood estimate does not exist; p-values from penalized "
                "likelihood-ratio tests.")
-    concerns = [concern] + ([clusters.note] if clusters.note else [])
-    if not fit.converged:
-        concerns.append("Firth's penalized fit stopped before converging; treat these numbers with care.")
     return InferenceTable(rows, _info(estimator, "profile", caption, clusters, **extra), concerns)
+
+
+# What each completed copy's Firth table says it holds (:func:`for_pooling`), and so what the
+# pooled table's intervals are.
+POOLED_FIRTH_CAPTION = (
+    "Firth-penalized logistic regression, because the maximum-likelihood estimate does not "
+    "exist: each estimate with its standard error from the information at the penalized "
+    "estimate, which Rubin's rules pool into Wald intervals and p-values; no profile interval is "
+    "computed.")
+
+
+@dataclass
+class PooledFirth:
+    """What a table pooled over completed copies says when some copy is Firth's
+    (:func:`pooled_firth`): the caption that replaces the first copy's, the ``info`` fields it
+    sets, the concern that names each coefficient whose interval is withheld, and the copies' own
+    separation concerns (:func:`separation_concern`) it replaces, which the pooled table leaves
+    out of the first copy's concerns."""
+
+    caption: str
+    info: dict[str, Any]
+    concern: str
+    replaces: list[str] = field(default_factory=list)
+
+
+# What a withheld pooled row does not report (:func:`pooled_firth`): with its standard error and
+# degrees of freedom (and its fraction of missing information, which with its Monte Carlo error
+# gives the standard error back) the withheld Wald interval would be rebuilt as estimate ± t·se.
+WITHHELD = ("se", "df", "fmi", "ci_low", "ci_high", "p")
+
+
+def copies_words(k: int, m: int) -> str:
+    """"in every one of the m imputed copies", or "in k of the m imputed copies"."""
+    return (f"in every one of the {m:,} imputed copies" if k == m else
+            f"in {k:,} of the {m:,} imputed copies")
+
+
+def _in_copies(counts: Mapping[str, int], names: Sequence[str], m: int) -> str:
+    """In how many of the ``m`` copies each of ``names`` is counted: once when they agree."""
+    each = {counts[n] for n in names}
+    if len(each) == 1:
+        return copies_words(each.pop(), m)
+    return (f"in some of the {m:,} imputed copies ("
+            + ", ".join(f"{_term(n)} in {counts[n]:,}" for n in names) + ")")
+
+
+def _term(name: str) -> str:
+    return "the intercept" if name == "(intercept)" else f"`{name}`"
+
+
+def withheld_reason(m: int, named: Sequence[str]) -> str:
+    """Why a coefficient infinite in some of the ``m`` copies is reported by its estimate alone:
+    the claim's card (``inference.pooled_separation``), with its citation."""
+    from turbotab.core import claims
+
+    because = claims.card("inference.pooled_separation", {"copies": m, "separated": list(named)})
+    return f"{because} (Heinze & Schemper 2002)"
+
+
+COMPLETE_CASES = "analyze complete cases, where one table is fit and none is pooled"
+
+
+def pooled_firth(tables: Sequence[InferenceTable], rows: list[dict[str, Any]], *,
+                 answer: Mapping[str, Any] | None = None,
+                 sources: Mapping[str, Sequence[str] | set[str]] | None = None
+                 ) -> PooledFirth | None:
+    """Rubin's rules over completed copies some of whose logistic tables are Firth's (a column
+    separates the outcome there), or None when none is.
+
+    The pooled rows (``rows``, ``imputation.pool_rows``: changed in place) are Wald intervals and
+    p-values on t from each copy's estimate and standard error. A row whose maximum-likelihood
+    value is infinite in any copy (``separated_columns`` on that copy: the copy's
+    ``info["separated"]``, and its ``infinite``, which adds the intercept and the all-components
+    relative effects that rest on a separated column) keeps its pooled estimate (and its ratio,
+    and its Monte Carlo error), and its standard error, degrees of freedom, fraction of missing
+    information, interval, p-value and ratio interval are withheld (:data:`WITHHELD`; claim
+    ``inference.pooled_separation``), with the ways forward: read the separated columns' source
+    columns (``sources``: each model-matrix column's raw columns, as
+    ``stages.effects.matrix_sources`` reads them; the column itself without) another way or
+    combine their sparse levels, or complete cases (one table, nothing pooled) where ``answer``,
+    the missing-values answer the copies were drawn by, is given. The caption is the first Firth
+    copy's (:data:`POOLED_FIRTH_CAPTION`), or, where not every copy is Firth's, says how many of
+    each kind there are and that only the Firth copies have no maximum-likelihood estimate. The
+    concern replaces the Firth copies' own (:attr:`PooledFirth.replaces`), which say the table
+    reports Firth's fit, true of a Firth copy and not of every pooled table."""
+    firth = [t for t in tables if t.info.get("estimator") == FIRTH]
+    m = len(tables)
+    counts: dict[str, int] = {}  # the separated columns the copies' own concerns name
+    held: dict[str, int] = {}  # every row withheld: those, the intercept, the relative effects
+    for t in tables:
+        for name in dict.fromkeys(str(n) for n in t.info.get("separated") or []):
+            counts[name] = counts.get(name, 0) + 1
+        for name in dict.fromkeys(str(n) for n in [*(t.info.get("separated") or []),
+                                                   *t.infinite]):
+            held[name] = held.get(name, 0) + 1
+    if not held:
+        return None
+    for row in rows:
+        if str(row["feature"]) in held:
+            row.update(dict.fromkeys(WITHHELD))
+            if "ratio" in row:
+                row.update(ratio_low=None, ratio_high=None)
+    order = [str(r["feature"]) for r in rows if str(r["feature"]) in held]
+    names = [n for n in order if n in counts] or list(counts)
+    others = [n for n in order if n not in counts]
+    caption = (firth or tables)[0].info.get("caption", "")
+    if firth and len(firth) < m:
+        k, rest = len(firth), m - len(firth)
+        fits = ("is a maximum-likelihood fit, its standard errors" if rest == 1 else
+                "are maximum-likelihood fits, their standard errors")
+        mixed = (f"In {k:,} of the {m:,} copies a column separates the outcome, so the "
+                 f"maximum-likelihood estimate does not exist in {'it' if k == 1 else 'them'} and "
+                 f"{'it' if k == 1 else 'each'} is fit by Firth's penalized likelihood, its "
+                 f"standard errors from the information at the penalized estimate; the other "
+                 f"{rest:,} {fits} from the logistic model's information. Rubin's rules pool each "
+                 f"copy's estimates and standard errors into Wald intervals and p-values; no "
+                 f"profile interval is computed.")
+        caption = (caption.replace(POOLED_FIRTH_CAPTION, mixed) if POOLED_FIRTH_CAPTION in caption
+                   else f"{caption} {mixed}")
+    subject = names or others
+    one = len(subject) == 1
+    its = "its" if one else "their"
+    because = withheld_reason(m, subject)
+    unreported = ("standard error, interval and p-value" if one else
+                  "standard errors, intervals and p-values")
+    if names:
+        concern = (f"{_and(names)} {'separates' if one else 'separate'} the outcome "
+                   f"{_in_copies(counts, names, m)}, so {its} pooled {unreported} are not "
+                   f"reported, only {its} estimate{'' if one else 's'}: {because}.")
+    if others:
+        single = len(others) == 1
+        listed = [_term(n) for n in others]
+        words = listed[0] if single else f"{', '.join(listed[:-1])} and {listed[-1]}"
+        what = ("standard error, interval and p-value" if single else
+                "standard errors, intervals and p-values")
+        value = ("its maximum-likelihood value is" if single else
+                 "their maximum-likelihood values are")
+        where = _in_copies(held, others, m)
+        concern = (f"{concern} The {what} of {words} are withheld too: {value} infinite "
+                   f"{where}." if names else
+                   f"The {what} of {words} are not reported, only "
+                   f"{its} estimate{'' if single else 's'}: {value} infinite {where}, and "
+                   f"{because}.")
+    columns: list[str] = []
+    for n in names or [o for o in others if o != "(intercept)"] or others:
+        columns.extend(c for c in sorted(str(c) for c in (sources or {}).get(n) or [n])
+                       if c not in columns)
+    whose = "its" if len(columns) == 1 else "their"
+    ways = f"read {_and(columns)} another way or combine {whose} sparse levels"
+    if answer is not None:
+        ways += f", or {COMPLETE_CASES}"
+    concern += f" To report {'it' if len(order) == 1 else 'them'}, {ways}."
+    exits: list[dict[str, Any]] = [
+        {"label": f"Read {_and(columns)} another way, or combine {whose} sparse levels",
+         "decision": None}]
+    if answer is not None:
+        exits.append({"label": "Complete cases, with their assumption stated",
+                      "decision": {**dict(answer), "kind": "set_missing",
+                                   "strategy": "complete_case"}})
+    replaces = list(dict.fromkeys(separation_concern(t.info["separated"]) for t in firth
+                                  if t.info.get("separated")))
+    return PooledFirth(caption=caption, concern=concern, replaces=replaces,
+                       info={"separated": list(counts), "covariance": "model", "exits": exits})
 
 
 def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: list[Any],
@@ -948,9 +1167,10 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
 
 
 __all__ = [
-    "Clusters", "FEW_CLUSTERS", "FirthFit", "INDEPENDENT", "InferenceTable", "Outcome", "Rows",
-    "Scale", "bread_of",
-    "cluster_columns", "cr2", "logistic_working", "multinomial_working",
-    "firth_fit", "firth_profile", "floor_refusal", "format_p", "heteroskedasticity_concern",
-    "inference_table", "min_clusters", "resolve_clusters", "separated_columns",
+    "COMPLETE_CASES", "Clusters", "FEW_CLUSTERS", "FIRTH", "FirthFit", "INDEPENDENT",
+    "InferenceTable", "Outcome", "POOLED_FIRTH_CAPTION", "PooledFirth", "Rows", "Scale", "WITHHELD",
+    "bread_of", "cluster_columns", "copies_words", "cr2", "logistic_working",
+    "multinomial_working", "firth_fit", "firth_profile", "floor_refusal", "for_pooling",
+    "format_p", "heteroskedasticity_concern", "pooled_firth", "pooling", "separation_concern",
+    "inference_table", "min_clusters", "resolve_clusters", "separated_columns", "withheld_reason",
 ]

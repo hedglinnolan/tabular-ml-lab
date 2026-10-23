@@ -37,12 +37,16 @@ stage builds what the results show of the exposure:
   the one analyzed, and said so.
 
 **The rows** are every analyzed row (BLUEPRINT §12 ruling 3), so Model 2 is the fit's primary
-estimate, number for number. Under complete cases, when Model 3 adds columns that are sometimes
-missing, Model 3 alone is fit on the rows where they are recorded, with the primary's adjustment
-refit on those same rows beside it, so the two differ by the added columns alone; it says how many.
+estimate, number for number. Under any missing-values answer but multiple imputation, when Model 3
+adds columns that are sometimes missing, Model 3 alone is fit on the rows where they are recorded
+(refused where none is), with the primary's adjustment refit on those same rows beside it, so the
+two differ by the added columns alone; it says how many.
 Under multiple imputation each model is fit in each completed copy and pooled by Rubin's rules, the
 crude model, Model 1 and Model 2 in the fit's own copies and Model 3 in copies imputed with its
-added columns; the diagnostics and the robustness value read the first copy, and say so.
+added columns; the diagnostics and the robustness value read the first copy, and say so. Where a
+column separates the outcome in some copy, the pooled intervals are Wald ones from Firth's standard
+errors, and each separated coefficient is reported by its estimate alone, its standard error,
+interval and p-value withheld (``inference.pooled_firth``), as the fit's.
 
 **The surveyed population** (MODELING_SEQUENCE §0 ruling 6, "binds every family and every
 display"): every model of a family with a design-based estimator (least squares, logistic, Cox,
@@ -259,6 +263,9 @@ EFFECTS_READS = ("adjustment", "estimand", "multiplicity", "model_sequence", "di
 LABELS = {"crude": "Unadjusted", "model_1": "Model 1", "model_2": "Model 2 (primary)",
           "model_3": "Model 3"}
 STRAIGHT_LINE = "the straight-line estimate beside the curve"
+# The fit-time refusal (SWARM_PLAN §8) of Model 3 under complete cases with no row recording every
+# column it adds (``_Run._no_rows_three``).
+NO_ROWS_THREE = "model_3_no_complete_rows"
 
 
 # ── what a family declares, as this stage reads it (MODEL_FAMILY_CONTRACT §1; MC-2b-3) ────────
@@ -530,8 +537,9 @@ def effects_stage(ctx: StageContext) -> Bundle:
     split_seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
     strategy = state.missing.strategy if state.missing is not None else None
     # Every model but Model 3 is fit on every analyzed row, as the fit is (ruling 3). Model 3's
-    # added columns may be missing where the primary's are not: under complete cases it alone is
-    # fit on the rows where they are recorded; under multiple imputation they are imputed.
+    # added columns may be missing where the primary's are not: under multiple imputation they are
+    # imputed; under any other answer (complete cases, a single fill) Model 3 alone is fit on the
+    # rows where they are recorded.
     rows3 = None
     if strategy != "multiple_imputation" and extra:
         recorded = frame[extra].notna().all(axis=1).to_numpy()
@@ -692,6 +700,7 @@ class _Run:
         energy_named = bool(allowed_one & set(est.energy_terms_columns(self.state)))
         per_copy: dict[str, list[Any]] = {}
         failures: dict[str, str] = {}
+        lineage: dict[str, Any] = {}  # each model's first copy's matrix columns by their sources
         adjusted_for: dict[str, list[str]] = {}
         features: list[str] = []
         first: dict[str, Any] = {}
@@ -711,7 +720,8 @@ class _Run:
             if not supported:
                 table = self._table(lambda: _inference_table(
                     family, fitted, X, self.y, task=self.task, clusters=self.clusters,
-                    outcome=self.outcome, rows="all", survey=design), "model_2", failures)
+                    outcome=self.outcome, rows="all", survey=design), "model_2", failures,
+                    pooled=imputed is not None)
                 per_copy.setdefault("model_2", []).append(table)
                 if k == 0 and table is not None:
                     features = sorted({f for e in self.exposures for f in est.primary_features(
@@ -744,17 +754,18 @@ class _Run:
                 per_copy.setdefault(name, []).append(self._table(
                     lambda _c=cols: self._with_relative(
                         family, fitted, M[_c], self.y, matrix_table(family, M[_c], self.y, **kw),
-                        kw), name, failures))
+                        kw), name, failures, pooled=imputed is not None))
             if k == 0:
                 features = feats
                 first = {"fitted": fitted, "matrix": M, "sources": sources, "classes": classes}
+                lineage.update(dict.fromkeys(subsets, sources))
                 adjusted_for = {"crude": [], "model_2": self._raw(M.columns, feats, sources)}
                 if "model_1" in subsets:
                     adjusted_for["model_1"] = self._raw(subsets["model_1"], feats, sources)
         comparison = None
         if self.spec3 is not None and supported:
             comparison = self._model_three(family, build_pipeline, per_copy, failures, predictors,
-                                           design)
+                                           design, lineage)
             adjusted_for["model_3"] = [*adjusted_for.get("model_2", []),
                                        *[c for c in self.further
                                          if c not in adjusted_for.get("model_2", [])]]
@@ -770,7 +781,8 @@ class _Run:
             missing = self.missing3 if name == "model_3" else self.missing
             spec = self.spec3 if name == "model_3" else self.spec
             n_model = len(self.frame3) if name == "model_3" else len(self.frame)
-            table = self._pool(tables, missing, spec) if name not in failures else None
+            table = (self._pool(tables, missing, spec, lineage.get(name))
+                     if name not in failures else None)
             if table is None:
                 # Model 3's own imputation refused, or asked what only the user can settle (a
                 # column's time-invariance under clustered imputation, MI repair): its exits stand
@@ -828,7 +840,8 @@ class _Run:
                                               reading=f"Not assessed: {exc}")]
             straight = None
             if curve is not None and "straight" not in failures:
-                straight = self._pool(per_copy.get("straight") or [], self.missing, self.spec)
+                straight = self._pool(per_copy.get("straight") or [], self.missing, self.spec,
+                                      lineage.get("straight"))
             try:
                 out.sensitivity = self.sensitivity(family, first, features, primary, out.marginal,
                                                    curve, straight)
@@ -839,11 +852,17 @@ class _Run:
         return out.model_dump(mode="json")
 
     def _model_three(self, family: Any, build_pipeline: Any, per_copy: dict[str, list[Any]],
-                     failures: dict[str, str], predictors: Sequence[str], design: Any) -> Any:
+                     failures: dict[str, str], predictors: Sequence[str], design: Any,
+                     lineage: dict[str, Any] | None = None) -> Any:
         """Model 3 in each of its copies (its own rows; under multiple imputation, copies imputed
         with its added columns), and, when its rows are fewer than the primary's, the primary's
         adjustment refit on those rows (returned). Each copy is fit as the fit stage fits one
-        (``copy_pipeline``), on the knots its own imputation placed."""
+        (``copy_pipeline``), on the knots its own imputation placed. ``lineage`` receives its
+        first copy's matrix columns by their sources (:func:`matrix_sources`).
+
+        Outside multiple imputation (any other missing-values answer: ``rows3``) Model 3 is fit
+        on the rows that record every column it adds; with no analyzed row recording them all it
+        has no row to be fit on: refused before any fit (:meth:`_no_rows_three`)."""
         from turbotab.core import estimand as est
         from turbotab.core.methods.missing import copy_pipeline
         from turbotab.core.models.linear import model_matrix
@@ -855,6 +874,8 @@ class _Run:
             per_copy.setdefault("model_3", []).append(None)
             failures.setdefault("model_3", self.missing3.refusal)
             return None
+        if self.rows3 is not None and len(self.frame3) == 0:
+            raise self._no_rows_three()
         pipeline3 = build_pipeline(self.spec3, family, self.task, "inference", len(self.frame3),
                                    len(self.spec3.inputs) + 1)
         units3 = (pd.Series(self.clusters3.codes, index=self.frame3.index)
@@ -879,9 +900,11 @@ class _Run:
             per_copy.setdefault("model_3", []).append(self._table(
                 lambda: self._with_relative(family, fitted3, M3, self.y3,
                                             matrix_table(family, M3, self.y3, **kw3), kw3),
-                "model_3", failures))
+                "model_3", failures, pooled=imputed3 is not None))
+            sources3 = matrix_sources(fitted3, self.spec3.inputs) if k == 0 else {}
+            if k == 0 and lineage is not None:
+                lineage["model_3"] = sources3
             if self.rows3 is not None and k == 0:
-                sources3 = matrix_sources(fitted3, self.spec3.inputs)
                 added = set(self.extra)
                 own = [c for c in M3.columns
                        if not (sources3.get(str(c), ({str(c)}, set()))[0] & added)]
@@ -890,6 +913,32 @@ class _Run:
                 if comparison is not None:
                     comparison = self._multiplicity(family, comparison)
         return comparison
+
+    def _no_rows_three(self) -> Any:
+        """The refusal of Model 3, fit on the rows that record every column it adds (under any
+        missing-values answer but multiple imputation, ``rows3``), when no analyzed row records
+        them all (coded :data:`NO_ROWS_THREE`): its ways forward leave out the added columns no row
+        records (all of them where each is recorded on some row), or, where each is recorded on
+        some row, impute them (multiple imputation starts from a column's recorded values, so it
+        is not offered for a column that has none)."""
+        from turbotab.core.graph import StageRefusal
+        from turbotab.core.methods.missing import MI_LABEL
+        from turbotab.core.voice import listing
+
+        added = list(self.extra)
+        one = len(added) == 1
+        never = [c for c in added if not self.frame[c].notna().any()]
+        message = (f"Model 3 adds {listing(added)} and is fit on the rows that record "
+                   f"{'it' if one else 'them all'}: none of the {len(self.frame):,} analyzed rows "
+                   f"does, so Model 3 cannot be fit.")
+        exits: list[dict[str, Any]] = [
+            {"label": f"Leave {listing(never or added)} out of Model 3", "decision": None}]
+        if not never:
+            answer = {k: v for k, v in dict(self.spec.missing or {}).items() if k != "kind"}
+            exits.append({"label": MI_LABEL, "decision": {
+                "kind": "set_missing", **answer, "strategy": "multiple_imputation",
+                "indicators": False, "categorical": "impute"}})
+        return StageRefusal(NO_ROWS_THREE, message, exits=exits)
 
     def _multiplicity(self, family: Any, table: Any) -> Any:
         if tests_only(family) and not table.info.get("refused"):
@@ -924,11 +973,17 @@ class _Run:
 
             raise Cancelled()
 
-    def _table(self, fn: Any, name: str, failures: dict[str, str]) -> Any:
+    def _table(self, fn: Any, name: str, failures: dict[str, str], pooled: bool = False) -> Any:
         """``fn()``, the table of one declared model in one copy; a model that cannot be fit is
-        listed with its reason, never dropped silently and never taking the others down."""
+        listed with its reason, never dropped silently and never taking the others down.
+        ``pooled``: one completed copy's, made for Rubin's rules (``inference.for_pooling``)."""
+        from contextlib import nullcontext
+
+        from turbotab.core.models.inference import for_pooling
+
         try:
-            return fn()
+            with for_pooling() if pooled else nullcontext():
+                return fn()
         except Exception as exc:  # noqa: BLE001
             self._unless_cancelled()
             failures.setdefault(name, str(exc))
@@ -945,12 +1000,16 @@ class _Run:
                 or not one_regression_on_matrix(family) or self.task == "multiclass"):
             return table
         from turbotab.core.methods.energy import relative_effect_rows
+        from turbotab.core.stages.modeling import relative_refit
 
         step = getattr(fitted, "named_steps", {}).get("energy")
         factors = dict(getattr(getattr(step, "pooled_", step), "factors_", {}) or {})
+        # A relative effect its refit finds infinite is named in this table's ``infinite``, so
+        # its pooled interval is withheld as the fit's is (``modeling.relative_refit``).
         found = relative_effect_rows(
             matrix, list(adj.nutrients), factors,
-            table=lambda m: matrix_table(family, m, y, **kw).rows, coefficients=table.rows)
+            table=relative_refit(matrix, lambda m: matrix_table(family, m, y, **kw),
+                                 table.infinite), coefficients=table.rows)
         table.rows = [*table.rows, *found]
         return table
 
@@ -1003,7 +1062,11 @@ class _Run:
                      f"rows is shown beside it.")
         return note
 
-    def _pool(self, tables: Sequence[Any], missing: Any, spec: Any) -> Any:
+    def _pool(self, tables: Sequence[Any], missing: Any, spec: Any,
+              sources: Mapping[str, Any] | None = None) -> Any:
+        """The model's copies pooled by Rubin's rules (or its one table). ``sources``: the first
+        copy's model-matrix columns by their raw columns (:func:`matrix_sources`), which a
+        separated column's way forward names."""
         from turbotab.core.models.inference import InferenceTable
 
         tables = [t for t in tables if t is not None]
@@ -1015,21 +1078,36 @@ class _Run:
             return tables[0]
         from turbotab.core.methods.imputation import pool_rows
         from turbotab.core.methods.missing import mi_concerns, multiple_imputation_info
+        from turbotab.core.models.inference import pooled_firth
 
         imputations = missing.imputations
         y = self.y3 if spec is self.spec3 else self.y
         pooled = pool_rows([t.rows for t in tables])
         info = dict(tables[0].info)
+        # A column that separates the outcome in some copy: Wald intervals from Firth's standard
+        # errors, each separated coefficient's withheld (as the fit's pooled table).
+        firth = pooled_firth(tables, pooled, answer=spec.missing or {},
+                             sources={c: raw for c, (raw, _) in (sources or {}).items()})
+        each = firth.caption if firth is not None else info.get("caption", "")
+        # Each pooled row's interval is on t (``imputation.pool_scalar``), as the fit's caption
+        # says; said here where a copy is Firth's, whose own caption names no reference.
+        reference = (", each interval on t with Barnard–Rubin degrees of freedom"
+                     if firth is not None else "")
         info["caption"] = (f"Multiple imputation, m = {len(tables)}: each completed copy analyzed "
-                           f"as follows, then pooled by Rubin's rules. {info.get('caption', '')}"
-                           ).strip()
+                           f"as follows, then pooled by Rubin's rules{reference}. {each}").strip()
+        if firth is not None:
+            info.update(firth.info)
         # MS2 (wave 1b): the record names the design's df as Rubin's complete-data df and the
         # largest Monte Carlo error among the pooled rows, as the fit's record does.
         from turbotab.core.stages.modeling import _design_df
 
         info["missing"] = multiple_imputation_info(imputations, spec, len(y), rows=pooled,
                                                    df_com=_design_df(tables[0]))
-        concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(y))
+        # The pooled concern replaces the Firth copies' own (``PooledFirth.replaces``), which say
+        # the table reports Firth's fit, true of a Firth copy and not of every pooled table.
+        concerns = ([c for c in tables[0].concerns if firth is None or c not in firth.replaces]
+                    + ([firth.concern] if firth is not None else [])
+                    + mi_concerns(imputations, pooled, len(y)))
         return InferenceTable(pooled, info, concerns)
 
     # ── the marginal risk difference and ratio ──
