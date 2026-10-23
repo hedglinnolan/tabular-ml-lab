@@ -1124,21 +1124,22 @@ def _blank_reason(share: float, yes_no: bool, medication: bool,
     from turbotab.core.voice import tick
 
     pct = tick(f"{share:.0%}")
+    # Every reading's share is of the rows with the outcome measured (``missing_reading``'s base),
+    # named so where they are not every row (6a-P4).
+    of = f"the rows with `{measured}` measured" if measured else "rows"
     if share >= NOT_ASKED_SHARE:
         if not (yes_no or medication):
-            return f"Blank on {pct} of rows; nothing says the blanks mean not asked."
+            return f"Blank on {pct} of {of}; nothing says the blanks mean not asked."
         # The reading's words are its claim's (``missing.blank_not_asked``), rendered in the stage
-        # so the project's claims render log holds it. Its share is of the rows with the outcome
-        # measured, as the claim's regime says, and named so where they are not every row (6a-P4).
+        # so the project's claims render log holds it.
         said = claims.card("missing.blank_not_asked",
                            {"share": share, "yes_no": yes_no, "medication": medication})
-        of = f"the rows with `{measured}` measured" if measured else "rows"
         if yes_no and medication:
             return f"A yes/no medication question blank on {pct} of {of}: {said}"
         if yes_no:
             return f"A yes/no answer blank on {pct} of {of}: {said}"
         return f"Medication use blank on {pct} of {of}: {said}"
-    return f"Blank on {pct} of rows."
+    return f"Blank on {pct} of {of}."
 
 
 def missing_reading(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]],

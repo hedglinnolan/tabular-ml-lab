@@ -179,6 +179,30 @@ def test_the_share_a_blank_answer_is_read_on_names_the_rows_with_the_outcome_mea
                                f"usually means not asked.")
 
 
+@pytest.mark.parametrize("name, values, dtype, outcome, reason", [
+    ("answered", [True, None, False, True, False, True, None, None, None, None], "boolean",
+     MEASURED_ON_SIX, "Blank on `17%` of the rows with `y` measured."),
+    ("waist", [80.0, None, 85.0, None, None, None, 90.0, 70.0, None, None], "float",
+     MEASURED_ON_SIX,
+     "Blank on `67%` of the rows with `y` measured; nothing says the blanks mean not asked."),
+    ("answered", [True, False, True, False, True, True] + [None] * 4, "boolean", None,
+     "Blank on `40%` of rows."),
+])
+def test_a_blank_not_read_as_not_asked_names_the_rows_its_share_is_of(name, values, dtype,
+                                                                       outcome, reason):
+    """M1, 6a-P4's other two readings: where `y` is not measured on every row, the share is of the
+    rows with it measured and the reason names them so. A yes/no answer blank on one of the six
+    (a sixth, though on five of ten rows in all) and a measurement of four values blank on four of
+    the six (two thirds, though on six of ten in all); with `y` on every row, a yes/no answer blank
+    on four of ten is a share of rows."""
+    entry = _blank_reading(name, values, dtype, outcome=outcome)
+    measured = values if outcome is None else [v for v, y in zip(values, outcome) if y is not None]
+    blank = sum(v is None for v in measured)
+    assert entry["n_missing"] == blank and entry["share"] == round(blank / len(measured), 4)
+    assert entry["likely_not_asked"] is False
+    assert entry["reason"] == reason
+
+
 def test_a_measurement_blank_on_most_rows_is_never_read_as_not_asked():
     """A waist measured on three of ten rows: blank on 70%, and nothing says a question was not
     asked."""
