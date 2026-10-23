@@ -13,7 +13,12 @@ is rebuilt once and kept as it stands, its stages computed, before any press of 
 truncated log byte for byte and the stages it computed), so each starts from the plan with no seal
 and no lock, revisits its one decision, presses Fit (under Estimate that press records the refit's
 own lock, which no later change could withdraw once its estimate was shown) and is read. A copy is
-removed once read, but for one that met an engine defect, which is kept for its reproduction.
+removed once read, but for one that met an engine defect, which is kept for its reproduction. A
+refit waits :data:`REFIT_WAIT` seconds from its press of Fit, for its fit to be done and then for
+every other stage of its copy to end; where that wait runs out, the sweep cancels the copy's fit
+through the server's Cancel (``POST …/fit/cancel``: every estimate stage's job stops), waits for
+its jobs to end (cancelling each job the copy still holds where it does not go idle), and removes
+the copy, so that no refit's work holds the server's workers past its own wait.
 
 **What is swept** (:func:`points_of`): each Router question the plan's log answers in the person's
 own words (``recorded_by: you``) but those the card and its table fix (``arms.FIXED``: the
@@ -74,13 +79,19 @@ its words and the option refused: by the server at the option's answer, at an an
 after it with no way forward and no other option left, or at the sweep's own scoring, or by the
 engine at a stage or at the fit; ``failed``, an HTTP 500 anywhere in the refit, an answer that
 failed, or a stage or fit error the engine did not type (the driver's typing, ``driver.failures``,
-whether the walk met it waiting or it stopped at a limit of its own with a stage of its copy in
-error that was not before the option); ``unreached``, an option that records nothing by itself
+whether the walk met it waiting, it stopped at a limit of its own with a stage of its copy in
+error that was not before the option, or the fit was done and an estimate stage was in error
+after it); ``unreached``, an option that records nothing by itself
 and that has no value of the crash sweep's (around a named plan, every such option), one whose
 fields as the crash sweep answered them the driver does not take, a path that stopped at a
 limit of the walk's or the revisit's own with no stage failed (its reason in its words: no engine
-defect), or a fit made whose record the server had not served :data:`RECORD_WAIT` seconds after
-it turned fresh (it writes a record after the fit, :func:`fit_record`); ``duplicate``.
+defect), a fit made whose record the server had not served :data:`RECORD_WAIT` seconds after
+it turned fresh (it writes a record after the fit, :func:`fit_record`), or a refit whose wait ran
+out, cancelled (its why names what it waited on and for how long, and whether its copy was
+removed; ``cancelled``); ``duplicate``. After each fitted refit, its copy idle, every estimate
+stage is read, those the fit does not wait on among them (the effects stage, say): an error
+there the engine did not type classes the refit failed, an engine defect, and a typed refusal
+there classes it refused, with its stage and code.
 
 **Materiality** (§7, :func:`materiality`): under Predict package 1's signed change of each family's
 primary score against the plan's (``assemble.signed_change`` over the two fit records, each arm's
@@ -185,6 +196,11 @@ NOT_A_POINT = ("open_seal", "lock_plan", "reseal", "revert", "confirm_role", "co
 READING_KINDS = ("confirm_reading", "set_column_unit")
 FINDING_KINDS = ("apply_repair", "dismiss_finding", "defer_finding")
 REFIT_WAIT = 3600.0
+# A refit's wait, in seconds from its press of Fit: for its fit to be done and then, where it is
+# scored, for every other stage of its copy to end (the estimate stages the fit does not wait on
+# among them, read after it). Where it runs out first, the copy's fit is cancelled, its jobs waited
+# for and the copy removed, and the refit left unreached (``Sweep._cancel``): a fit left running
+# would hold the server's workers, and every later refit would wait behind it.
 # The server writes a fit's record on its recorder's thread after the fit's key turns fresh
 # (``service._fit_event``), so a read just after the fit can come before it: it is read again
 # every RECORD_POLL seconds, for RECORD_WAIT seconds at most, before the refit is left unreached.
@@ -915,7 +931,9 @@ class Refit:
     the crash sweep (:class:`Fields`), keeps what it was answered with and where each value came
     from (``answered_with``, :class:`Fielded`), the decision the driver resolved it to (from its
     preview), and, where its answer was recorded, the participant flow of the plan it then fitted
-    (``flow``: each step's rows)."""
+    (``flow``: each step's rows). A refit whose wait ran out keeps what the sweep cancelled
+    (``cancelled``: the wait, the stages still computing then, and ``arms.Local.cancel``'s
+    account)."""
 
     point: str
     option: str | None
@@ -946,6 +964,7 @@ class Refit:
     record: dict[str, Any] | None = None  # the fit record as served (Predict: the change's arm)
     answered_with: dict[str, Any] | None = None  # an option's own fields, and their source
     flow: list[dict[str, Any]] | None = None  # the participant flow, for such an option
+    cancelled: dict[str, Any] | None = None  # where its wait ran out: what the sweep cancelled
 
     @property
     def id(self) -> str:
@@ -969,7 +988,8 @@ def said_json(said: Any) -> dict[str, Any]:
 def classed(fit: Any) -> tuple[str, dict[str, Any] | None]:
     """A press of Fit (``arms.Said``), classed (the module docstring): ``scored`` where its status
     turned fresh; ``failed`` for an HTTP 500 or a fit error the engine did not type; ``unreached``
-    where no fit was made (it is blocked, or held); else ``refused`` in words, by the engine at the
+    where no fit was made (it is blocked, or held, or not done when its wait ran out, which
+    :meth:`Sweep._fit` then cancels); else ``refused`` in words, by the engine at the
     fit (its typed code, words, stage and ways forward) or by the server at the press. With what
     the class rests on."""
     if fit.kind == "ok":
@@ -1090,6 +1110,26 @@ def read_refit(session: Any, refit: Refit, fit: Any, purpose: str) -> None:
         refit.split = split_facts(session)
     else:
         refit.estimates, refit.estimate_why = estimate_of(session)
+
+
+def ran_out(fit: Any) -> bool:
+    """Whether a press of Fit (``arms.Said``) came back because its wait ran out: its fit neither
+    done (fresh, or in error) nor blocked, nor held for a press of Fit, each of which the wait
+    returns on at once (``driver.wait_fit``)."""
+    status = fit.payload.get("fit") if "pressed" in fit.payload else None
+    return (fit.by == "driver" and fit.code == "fit_not_reached" and isinstance(status, Mapping)
+            and status.get("status") != "blocked" and status.get("held") != "fit")
+
+
+def in_flight(view: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Each stage of ``view`` queued or running, in the graph's order, with its status."""
+    return [{"stage": name, "status": (status or {}).get("status")}
+            for name, status in (view.get("stages") or {}).items()
+            if (status or {}).get("status") in arms.Local.BUSY]
+
+
+def joined(names: Iterable[Any]) -> str:
+    return ", ".join(str(n) for n in names)
 
 
 # ── materiality ──────────────────────────────────────────────────────────────
@@ -1425,20 +1465,95 @@ class Sweep:
         return out
 
     def plan_refit(self, session: Any) -> Refit:
-        """The plan's own refit, on a copy of the template: Fit pressed and read."""
+        """The plan's own refit, on a copy of the template: Fit pressed and read as every refit's
+        is (:meth:`_fit`). A plan not scored stops the sweep, in words; one that failed is first
+        reported as an engine defect with its reproduction."""
         if PLAN in self.done:
             return self.done[PLAN]  # its fit record kept with it (``Refit.record``)
         plan = Refit(PLAN, None, None)
         copy = self._copy(session)
         plan.project = copy
-        read_refit(session, plan, session.fit(REFIT_WAIT), self.question.purpose)
-        plan.digest = plan_digest(session.view())
+        self._fit(session, plan)
         if plan.kind != "scored":
-            raise arms.Stuck(f"The plan itself was not fitted: {plan.kind}: "
+            if plan.kind == "failed":
+                self._defect(session, plan, [])
+            raise arms.Stuck(f"The plan itself was not scored: {plan.kind}: "
                              f"{json.dumps(plan.refused or plan.failed or plan.why)[:600]}")
+        plan.digest = plan_digest(session.view())
         self.done[PLAN] = plan
         self._write({"refit": plan.json()})
         return plan
+
+    def _fit(self, session: Any, refit: Refit) -> None:
+        """Fit pressed on the refit's copy and read (:func:`read_refit`) within the refit's wait,
+        :data:`REFIT_WAIT` seconds from the press: for the fit to be done and, where it is scored,
+        for every other stage of the copy to end, after which its estimate stages are read
+        (:meth:`_estimate_stages`). Where the wait runs out first, the copy's fit is cancelled and
+        the refit left unreached (:meth:`_cancel`)."""
+        started = time.monotonic()
+        fit = session.fit(REFIT_WAIT)
+        read_refit(session, refit, fit, self.question.purpose)
+        if ran_out(fit):
+            self._cancel(session, refit, (fit.payload.get("fit") or {}).get("status"))
+            return
+        if refit.kind != "scored":
+            return
+        if not session.idle(wait=max(0.0, REFIT_WAIT - (time.monotonic() - started))):
+            self._cancel(session, refit, None)
+            return
+        self._estimate_stages(session, refit)
+
+    def _cancel(self, session: Any, refit: Refit, fit: str | None) -> None:
+        """A refit whose wait ran out (:meth:`_fit`), its fit's status then ``fit`` (None where the
+        fit was done and its copy's other stages were not): the copy's fit cancelled through the
+        server's Cancel and the copy waited for, each job it still holds then cancelled too
+        (``arms.Local.cancel``), and the copy removed once none of its stages is computing. The
+        refit is unreached, its why naming what it waited on and for how long, what was cancelled
+        and whether the copy was removed; what was cancelled is kept (``cancelled``). A 500 met on
+        the cancel keeps the copy, for the defect the refit is then classed by."""
+        busy = in_flight(session.view())
+        errors = len(session.errors)
+        done = session.cancel(str(refit.project))
+        refit.kind, refit.cancelled = "unreached", {"after": REFIT_WAIT, "waiting_on": busy, **done}
+        computing = (" (still computing: " + joined(f"{b['stage']} {b['status']}" for b in busy)
+                     + ")" if busy else "")
+        waited = f"{REFIT_WAIT:g} s after the sweep pressed Fit, as long as it waits for a refit"
+        why = (f"The fit was {fit} {waited}{computing}." if fit is not None else
+               f"The fit was done, but {waited}, its other stages were not{computing}.")
+        why += " The sweep cancelled the copy's fit"
+        if done["jobs"]:
+            why += (f"; its stages still computing {done['wait']:g} s later, it cancelled their "
+                    f"jobs too ({joined(j['stage'] for j in done['jobs'])})")
+        if len(session.errors) > errors:
+            why += (f"; the server failed on the cancel (HTTP {session.errors[-1].get('status')}), "
+                    f"and the copy is kept.")
+        elif not done["idle"]:
+            why += "; the copy was still computing and is kept."
+        elif session.drop(str(refit.project), self.made):
+            refit.project = None
+            why += "; its jobs ended and the copy was removed."
+        else:
+            why += "; its jobs ended, but the copy could not be removed and is kept."
+        refit.why = why
+
+    def _estimate_stages(self, session: Any, refit: Refit) -> None:
+        """A fitted refit's estimate stages read once its copy is idle (:meth:`_fit`), those the
+        fit does not wait on among them: where any is in error, the refit is classed by them as
+        the walk's stages are (``arms.met_stages`` over ``driver.failures``): failed where any is
+        an error the engine did not type, an engine defect; else refused, with the first typed
+        refusal's stage, code, words and ways forward."""
+        from research.swarm import driver
+        from turbotab.core import estimand
+
+        view = session.view()
+        names = [n for n in view.get("stages") or {} if n in estimand.ESTIMATE_STAGES]
+        failures = driver.failures(view, names)
+        if failures:
+            stages = joined(f["stage"] for f in failures)
+            self._met(refit, arms.met_stages(failures, (
+                f"The fit was done, but after it an estimate stage was in error: {stages}."
+                if len(failures) == 1 else
+                f"The fit was done, but after it estimate stages were in error: {stages}.")))
 
     def _copy(self, session: Any) -> str:
         copy = session.copy(str(self.base["project"]))
@@ -1621,7 +1736,9 @@ class Sweep:
             self._defect(session, refit, new_errors)
         else:
             materiality(refit, plan, self.question.purpose)
-            if refit.project is not None and session.drop(refit.project, self.made):
+            # A cancelled refit's copy was removed or kept by its cancel (``_cancel``), said so.
+            if refit.project is not None and refit.cancelled is None \
+                    and session.drop(refit.project, self.made):
                 refit.project = None
         refit.took = round(time.monotonic() - started, 3)
         return refit
@@ -1691,7 +1808,8 @@ class Sweep:
         (``refit.withdrawn``); every later decision's plan answer previewed (the crash sweep); the
         walk to Fit by ``policy``, a refusal's way forward taken only where the plan's log in force
         before the option or the option names it (:class:`Named`); the sweep's scoring again; Fit
-        pressed and read, but for the plan's duplicate. An option answered with fields of its own
+        pressed and read within the refit's wait (:meth:`_fit`), but for the plan's duplicate. An
+        option answered with fields of its own
         (``fielded``) records the decision its preview resolved, which names the option's ways
         forward; where the driver does not take its fields, it stops in the driver's words."""
         if self.crash:
@@ -1756,7 +1874,7 @@ class Sweep:
         if seen_plan is not None:
             refit.kind, refit.duplicate_of = "duplicate", seen_plan.id
             return
-        read_refit(session, refit, session.fit(REFIT_WAIT), self.question.purpose)
+        self._fit(session, refit)
 
     def scheme(self, split: Mapping[str, Any] | None) -> dict[str, Any] | None:
         """The sweep's scoring as the split ``split`` takes it (the folds' order random under a

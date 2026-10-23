@@ -23,11 +23,22 @@ and its whole population as one answer; each answer's rows, read from the flow t
 equal to a pandas filter of the same codes; a 500 induced on one card rule's preview, a defect; a
 resumed crash sweep on a report finished before, fitting only the new options, each fit's record
 written by the server three seconds late and each fit still read as scored; and, under Estimate,
-the adjustment set of one's own as the covariates the plan's roles name."""
+the adjustment set of one's own as the covariates the plan's roles name.
+
+A refit's wait and the estimate stages after a fitted refit (the panel audit's F1 and N2), under
+Estimate on the walking table, with stand-in stages run as jobs in the workers
+(:func:`standin_job`): under one models answer each estimate stage sleeps past the refit's wait
+on both workers, and that refit is cancelled, unreached in words that name what it waited on and
+for how long, and its copy removed, while the next refit is fitted at once and scored and the
+runner, read as the server closes, holds no job queued or running and every stand-in job
+cancelled; the effects stage's bare error under complete cases, read after the fit, a failed
+refit and an engine defect; its typed refusal under another answer, refused with its code; the
+plan and the next refit, neither in error, scored; and a second run, which presses Fit no more."""
 from __future__ import annotations
 
 import json
 import math
+import re
 
 import numpy as np
 import pandas as pd
@@ -956,3 +967,197 @@ def test_an_adjustment_set_of_ones_own_is_the_covariates_the_roles_name(tmp_path
     assert not [a for a in r["answered"][1:] if ":adjustment=" in a["answer"]], r["answered"]
     if r["kind"] == "scored":
         assert r["digest"] != report["baseline"]["digest"]
+
+
+# ── a refit's wait, and the estimate stages after a fitted refit (the panel audit's F1, N2) ──
+
+SLOW, NEXT, TYPED_UNDER = "mixed", "gee", "featurewise"  # models answers, in the options' order
+BARE_UNDER = "complete_case"  # the missing values' answer the audit met the effects stage fail on
+BARE_WORDS = "the effects stage fails here untyped, as the audit met it under complete cases"
+TYPED_WORDS = "The effects stage refuses these models here, in words."
+WAIT = 60.0  # the refit's wait, set for the test in place of the sweep's hour
+SLEEPS = 3600.0  # how long a stand-in stage sleeps: past any wait of the test's
+
+
+def standin_job(spec):
+    """A stage's job as the engine runs it in a worker (``graph.run_stage_job``), but for the
+    stand-ins: under the models answer SLOW each estimate stage sleeps past the refit's wait and
+    never reads its cancel flag (only the runner's terminate stops it); the effects stage raises a
+    bare ValueError under complete cases, and the typed refusal (``graph.StageRefusal``) under
+    TYPED_UNDER. A top-level function of this module, which the worker imports to run it."""
+    import time
+
+    from turbotab.core import estimand, graph
+    from turbotab.core.decisions import missing_strategy
+
+    state = spec["state"]
+    models = list(getattr(state, "models", None) or [])
+    if spec["stage"] in estimand.ESTIMATE_STAGES and models == [SLOW]:
+        time.sleep(SLEEPS)
+    if spec["stage"] == "effects" and missing_strategy(state) == BARE_UNDER:
+        raise ValueError(BARE_WORDS)
+    if spec["stage"] == "effects" and models == [TYPED_UNDER]:
+        raise graph.StageRefusal("induced_refusal", TYPED_WORDS, exits=[
+            {"label": "Choose the linear model",
+             "decision": {"kind": "select_models", "models": ["linear"]}}])
+    return graph.run_stage_job(spec)
+
+
+@pytest.fixture(scope="module")
+def waited(tmp_path_factory):
+    """The crash sweep of the missing values and the models on the walking table under Estimate,
+    with the refit's wait WAIT and the stand-in stages (:func:`standin_job`, in the workers), run
+    twice into one folder; the presses of Fit each run made; each job the server's runner was
+    given (its project, its stage, and whether it is a stand-in that sleeps: an estimate stage
+    under SLOW), and the state of each as the first run's server closed, read from the runner."""
+    from turbotab.core import graph
+    from turbotab.core.jobs import JobRunner
+
+    work = tmp_path_factory.mktemp("waited")
+    walking_table(work / "walking.csv")
+    question = arms.Question(target="sbp_mmhg", purpose="inference", exposure="walks_daily",
+                             meaning="systolic blood pressure (mmHg)")
+    presses = {"first": 0, "second": 0}
+    run = {"now": "first"}
+    jobs: dict[str, dict] = {}
+    left: dict[str, str] = {}
+    original_fit, original_submit = arms.Local.fit, JobRunner.submit
+    original_exit = arms.Local.__exit__
+
+    def counted(self, wait=3600.0):
+        presses[run["now"]] += 1
+        return original_fit(self, wait)
+
+    def submitted(self, fn, *args, **kw):
+        from turbotab.core import estimand
+
+        jid = original_submit(self, fn, *args, **kw)
+        spec = args[0] if args and isinstance(args[0], dict) else {}
+        models = list(getattr(spec.get("state"), "models", None) or [])
+        jobs[jid] = {"project": spec.get("project_id"), "stage": kw.get("stage"),
+                     "asleep": models == [SLOW] and kw.get("stage") in estimand.ESTIMATE_STAGES}
+        return jid
+
+    def closing(self, *exc):
+        if run["now"] == "first":
+            runner = self.client.c.app.state.service.runner
+            for jid in jobs:
+                try:
+                    left[jid] = runner.get(jid).state
+                except KeyError:  # a finished job the runner no longer remembers
+                    left[jid] = "forgotten"
+        return original_exit(self, *exc)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(W, "REFIT_WAIT", WAIT)
+    mp.setattr(graph, "run_stage_job", standin_job)
+    mp.setattr(arms.Local, "fit", counted)
+    mp.setattr(JobRunner, "submit", submitted)
+    mp.setattr(arms.Local, "__exit__", closing)
+    only = ["question:missing", "question:models"]
+    try:
+        report = W.crash("walking", work / "out", data=work / "walking.csv", question=question,
+                         only=only)
+        run["now"] = "second"
+        again = W.crash("walking", work / "out", data=work / "walking.csv", question=question,
+                        only=only)
+    finally:
+        mp.undo()
+    return {"report": report, "again": again, "out": work / "out", "presses": presses,
+            "jobs": jobs, "left": left}
+
+
+def refits_of(report, point):
+    return {r["option"]: r for r in report["refits"] if r["point"] == point}
+
+
+@pytest.mark.slow
+def test_a_refit_past_its_wait_is_cancelled_unreached_and_the_next_is_fitted_at_once(waited):
+    """The refit under SLOW, its estimate stages asleep on both workers: its fit not done when the
+    wait runs out, it is cancelled through the server's cancel, unreached with what it waited on
+    and for how long, and its copy removed; the next refit is fitted at once and scored; no job is
+    left queued or running, and each stand-in job the runner was given under SLOW was cancelled."""
+    report = waited["report"]
+    models = refits_of(report, "question:models")
+    slow, after = models[SLOW], models[NEXT]
+    assert slow["kind"] == "unreached", slow
+    assert re.fullmatch(
+        rf"The fit was (running|queued|stale) {WAIT:g} s after the sweep pressed Fit, as long as "
+        rf"it waits for a refit \(still computing: [a-z_ ,]+\)\. The sweep cancelled the copy's "
+        rf"fit(; its stages still computing [0-9.]+ s later, it cancelled their jobs too "
+        rf"\([a-z_, ]+\))?; its jobs ended and the copy was removed\.", slow["why"]), slow["why"]
+    assert {"stage": "fit", "status": "running"} in slow["cancelled"]["waiting_on"]
+    assert slow["cancelled"]["after"] == WAIT and slow["cancelled"]["idle"] is True
+    assert slow["project"] is None and slow["seconds"] >= WAIT
+    assert {u["refit"] for u in report["unreached"]} >= {slow["id"]}
+    assert after["kind"] == "scored" and after["seconds"] < WAIT, after
+    assert after["estimates"], after
+    # Every project left in the home is the template's, the plan's or a defect's.
+    home = waited["out"] / "home" / "projects"
+    kept = {report["template"]["project"], report["baseline"]["project"]} | {
+        d["project"] for d in report["defects"]}
+    assert {p.name for p in home.iterdir()} == kept
+    # From the runner itself: no job queued or running when the server closed, and every stand-in
+    # job (an estimate stage under SLOW) cancelled: it slept past the wait, so only a cancel ended
+    # it.
+    left = waited["left"]
+    assert left and not [j for j, state in left.items() if state in ("queued", "running")]
+    asleep = [j for j, job in waited["jobs"].items() if job["asleep"]]
+    assert asleep and {left[j] for j in asleep} == {"cancelled"}, [
+        (waited["jobs"][j], left[j]) for j in asleep]
+
+
+@pytest.mark.slow
+def test_an_untyped_error_in_a_stage_the_fit_does_not_wait_on_is_a_defect(waited):
+    """Under complete cases the effects stage raises a bare ValueError in its worker after the fit
+    is fresh: the refit is failed at the effects stage in its words and reported as an engine
+    defect with its reproduction, its copy kept."""
+    report = waited["report"]
+    crashed = refits_of(report, "question:missing")[BARE_UNDER]
+    assert crashed["kind"] == "failed", crashed
+    f = crashed["failed"]
+    assert (f["at"], f["stage"], f["code"]) == ("stage", "effects", "stage_failed")
+    assert f["message"] == f"ValueError: {BARE_WORDS}" and f["option"] == BARE_UNDER
+    (defect,) = [d for d in report["defects"] if d["refit"] == crashed["id"]]
+    kept = json.loads(open(defect["path"]).read())
+    effects = next(s for s in kept["stages"] if s["stage"] == "effects")
+    assert effects["kind"] == "failed" and effects["error"] == f"ValueError: {BARE_WORDS}"
+    assert "read the effects stage" in kept["reproduce"]
+    assert (waited["out"] / "home" / "projects" / crashed["project"]).is_dir()
+    assert report["passed"] is False
+
+
+@pytest.mark.slow
+def test_a_typed_refusal_in_a_stage_the_fit_does_not_wait_on_is_refused_with_its_code(waited):
+    report = waited["report"]
+    refused = refits_of(report, "question:models")[TYPED_UNDER]
+    assert refused["kind"] == "refused", refused
+    r = refused["refused"]
+    assert (r["by"], r["at"], r["stage"], r["code"], r["message"]) == (
+        "engine", "stage", "effects", "induced_refusal", TYPED_WORDS)
+    assert r["option"] == TYPED_UNDER
+    assert r["exits"] == [{"label": "Choose the linear model",
+                           "decision": {"kind": "select_models", "models": ["linear"]}}]
+    assert refused["id"] not in {d["refit"] for d in report["defects"]}
+    models = next(d for d in report["decisions"] if d["point"] == "question:models")
+    assert models["refused_codes"].get("induced_refusal") == 1
+
+
+@pytest.mark.slow
+def test_a_fitted_refit_with_no_estimate_stage_in_error_is_scored(waited):
+    """Both ways: the plan and the next refit, no stand-in under either, are scored, neither
+    refused nor failed nor cancelled, and neither is a defect."""
+    report = waited["report"]
+    plan, after = report["baseline"], refits_of(report, "question:models")[NEXT]
+    for r in (plan, after):
+        assert r["kind"] == "scored" and r["failed"] is None and r["refused"] is None, r
+        assert r["cancelled"] is None
+    assert not {d["refit"] for d in report["defects"]} & {plan["id"], after["id"]}
+
+
+@pytest.mark.slow
+def test_a_rerun_after_a_cancelled_refit_fits_nothing_the_first_run_finished(waited):
+    first, again = waited["report"], waited["again"]
+    assert waited["presses"]["first"] > 0 and waited["presses"]["second"] == 0
+    assert [(r["id"], r["kind"], r["why"]) for r in again["refits"]] == [
+        (r["id"], r["kind"], r["why"]) for r in first["refits"]]

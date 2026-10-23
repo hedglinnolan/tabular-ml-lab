@@ -1,8 +1,9 @@
 """The mechanical arms (SWARM_PLAN §6; ``research/swarm/arms.py``): the card's question, the default
 path's and the random path's answers on asks built here, the walk on a session that serves those
 asks (and what stops it, classed by what the engine said), a local session's posts keeping a
-refusal's ways forward until an answer is recorded as the driver's do, and, slow, each path through
-the driver's own commands on a small dataset that is not one of the pilot's six
+refusal's ways forward until an answer is recorded as the driver's do, a copy's fit cancelled
+through the server's Cancel and, only where the copy stays busy, each job it holds, and, slow,
+each path through the driver's own commands on a small dataset that is not one of the pilot's six
 (``clinical_readmission_predict``, 480 rows) to a record that validates.
 
 Known truth: the event level from the card's own words; each default from what the ask offers in
@@ -421,3 +422,52 @@ def test_a_copy_still_written_to_after_its_stages_go_idle_is_removed_on_a_retry_
     made = {"p2"}
     assert session.drop("p2", made) is False
     assert (tmp_path / "projects" / "p2").exists() and made == {"p2"}
+
+
+class Served:
+    """The server as a copy's cancel meets it: every post answered 200 and kept, and the project
+    read with ``stages``."""
+
+    def __init__(self, stages):
+        self.stages, self.posts = stages, []
+
+    def post(self, path, data=None, **query):
+        from research.swarm import driver
+
+        self.posts.append(path)
+        return driver.Response(200, b"{}", {})
+
+    def get(self, path, **query):
+        from research.swarm import driver
+
+        return driver.Response(200, json.dumps({"stages": self.stages}).encode("utf-8"), {})
+
+
+BUSY_STAGES = {"design": {"status": "queued", "job_id": "j3"},
+               "split": {"status": "running", "job_id": "j4"},
+               "explore": {"status": "running", "job_id": None},  # a light stage: no job to stop
+               "fit": {"status": "stale", "cancelled": True, "job_id": None},
+               "shelf": {"status": "fresh", "job_id": "j0"}}
+BUSY_JOBS = [{"stage": "design", "job": "j3", "status": 200},
+             {"stage": "split", "job": "j4", "status": 200}]
+CANCELS = ["/projects/p1/fit/cancel", "/projects/p1/jobs/j3/cancel", "/projects/p1/jobs/j4/cancel"]
+
+
+@pytest.mark.parametrize("idle, posts, jobs", [
+    ([True], CANCELS[:1], []), ([False, True], CANCELS, BUSY_JOBS),
+    ([False, False], CANCELS, BUSY_JOBS),
+], ids=["idle_after_the_fits_cancel", "idle_after_its_jobs_cancel", "never_idle"])
+def test_a_copys_fit_is_cancelled_and_where_it_stays_busy_each_job_it_holds_too(
+        tmp_path, monkeypatch, idle, posts, jobs):
+    """The fit cancelled as Cancel on the flowchart cancels it (``POST …/fit/cancel``) and the copy
+    waited for; only where it is still computing then is each job its stages hold queued or
+    running cancelled too, and the copy waited for again: both ways."""
+    session = arms.Local(tmp_path)
+    session.client = Served(BUSY_STAGES)
+    answers, waits = list(idle), []
+    monkeypatch.setattr(session, "idle",
+                        lambda pid=None, wait=0.0: (waits.append((pid, wait)), answers.pop(0))[1])
+    done = session.cancel("p1")
+    assert session.client.posts == posts
+    assert done == {"fit": 200, "jobs": jobs, "idle": idle[-1], "wait": arms.CANCEL_WAIT}
+    assert waits == [("p1", arms.CANCEL_WAIT)] * len(idle) and answers == []
