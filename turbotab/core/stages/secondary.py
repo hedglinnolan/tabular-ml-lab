@@ -17,8 +17,8 @@ imputations (the imputation model holds the secondary columns too).
 **The model** is the design's own pipeline, built again from the design spec with the secondary
 columns added (``models/pipeline.py``): every step, energy adjustment and imputation included, is the
 primary's. Only families with a coefficient table take part; where none of the chosen families has
-one the stage is refused in words, each way forward a family that has one
-(``effects.no_table_refusal``).
+one the stage is refused in words, each way forward a family that has one and whose table both
+models' rows give (``effects.no_table_refusal``).
 """
 from __future__ import annotations
 
@@ -95,8 +95,6 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     pipelines = design.objects["pipelines"]
     families = [get_family(k) for k in (state.models or []) if k in pipelines]
     families = [f for f in families if has_coefficient_table(f)]
-    if not families:
-        raise no_table_refusal(state, task, "no estimate to set beside the primary's")
     assignment = read_assignment(ctx.inputs["split"])
     rows = assignment.index.to_numpy()  # every analyzed row (ruling 3)
     extra = [c for c in further if c not in spec.inputs]
@@ -144,6 +142,11 @@ def secondary_stage(ctx: StageContext) -> Bundle:
 
     every_unit = resolve_clusters(state, frame[list(unit_columns)]) if unit_columns else None
     survey, _ = _survey(ctx, every_unit)
+    if not families:
+        # Each way forward a family whose table both models' rows give.
+        raise no_table_refusal(state, task, "no estimate to set beside the primary's",
+                               [(s, frame[list(s.inputs)], every_unit) for s in (spec, spec2)],
+                               survey)
     n_cols = len(spec2.inputs) + 1
     keys = [f.key for f in families]
     analyses = [("Primary", spec, {f.key: pipelines[f.key] for f in families}),
