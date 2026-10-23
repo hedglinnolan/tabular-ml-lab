@@ -5,7 +5,11 @@ recomputation of the Nadeau–Bengio corrected interval by numpy and scipy, pair
 material and not, and constructed so each of §7's two conditions and its half are needed; the
 Estimate shift by arithmetic; each refit's class both ways, among them what the walk meets after an
 option (a stage in error, typed or not, and an answer refused with no way forward) on a session
-built here; the decisions a plan offers the sweep and those it does not, from a decision log built
+built here; the crash sweep's previews after an option, of every later decision's plan answer (a
+question's, a finding's, a reading's, a declaration's) and of a question opened again at its
+default, which decisions they reach and that an HTTP 500 induced on one fails the refit as a
+defect, while one on a decision before the option does not; the decisions a plan offers the sweep
+and those it does not, from a decision log built
 here; what the report counts as not visited and what it says it swept; the readings graded against
 a declared truth; the run times' summary by hand. The sweep on a real engine is
 ``test_sweep_engine.py``'s."""
@@ -674,3 +678,182 @@ def test_the_sweeps_scoring_refused_after_an_option_is_a_refused_refit(tmp_path)
     refit = sweep.refit(session, POINT, OPTION, [], W.Refit(W.PLAN, None, None, kind="scored"))
     assert refit.kind == "refused" and refit.refused["at"] == "scoring"
     assert refit.refused["code"] == "scheme_refused" and refit.refused["option"] == OPTION["id"]
+
+
+# ── the crash sweep's previews of every later decision's default ─────────────
+
+EARLY = W.Point("question", "exclusions", 3, "r3", {"kind": "set_exclusions", "rules": []})
+MISSING = W.Point("question", "missing", 4, "r4", {"kind": "set_missing",
+                                                   "strategy": "complete_case"})
+MODELS = W.Point("question", "models", 6, "r6", {"kind": "select_models", "models": ["linear"]})
+REPAIR = W.Point("finding", "f1", 7, "r7", {"kind": "apply_repair", "finding_id": "f1",
+                                            "repair": "recode"})
+UNIT = W.Point("reading", "unit:age", 8, "r8", {"kind": "set_column_unit", "column": "age",
+                                                "unit": "years"})
+SELECTION = W.Point("declaration", "set_selection", 9, "r9", {"kind": "set_selection",
+                                                              "method": "none"})
+LEFT_OPEN = W.Point("declaration", "set_explain")  # a line the plan left open: no answer of its own
+PLAN_POINTS = [EARLY, MISSING, MODELS, REPAIR, UNIT, SELECTION, LEFT_OPEN]
+IMPUTE = {"kind": "set_missing", "strategy": "impute"}
+LASSO = {"kind": "set_selection", "method": "lasso"}
+
+
+class Previewed(Walked):
+    """A crash sweep's session over :data:`PLAN_POINTS`: a revisit opens its question again, an
+    answer reaches Fit, every log the same as the plan's (so each refit is the plan's duplicate and
+    no Fit is pressed); each preview kept in ``calls`` in turn with each answer, and the preview of
+    the decision ``fails`` failing as an HTTP 500 does (kept in ``errors``, as ``arms.Local``
+    keeps it)."""
+
+    def __init__(self, *, fails=None, asks=()):
+        super().__init__(list(asks))
+        self.fails, self.calls, self.reopened = fails, [], None
+
+    def _fail(self, body):
+        self.errors.append({"method": "POST", "path": "/projects/c1/preview", "status": 500,
+                            "body": json.dumps(body), "said": "Internal Server Error"})
+        return arms.Said("failed", {}, by="server", code="http_500",
+                         message="Internal Server Error", status=500)
+
+    def copy(self, pid):
+        self.calls.append(("copy", pid))  # each refit's start
+        return "c1"
+
+    def revisit(self, record, reason):
+        self.reopened = next(p.key for p in PLAN_POINTS if p.record == record)
+        return arms.Said("ok", {})
+
+    def ask(self):
+        from research.swarm.tests.test_arms import ask, opt
+
+        if self.reopened is not None:
+            return ask(self.reopened, [opt("impute", IMPUTE),
+                                       opt("complete_case", MISSING.decision)])
+        return self.asks.pop(0) if self.asks else {"question": None, "fit_reached": True}
+
+    def preview_of(self, decision):
+        self.calls.append(("preview_of", dict(decision)))
+        return self._fail(decision) if dict(decision) == self.fails else arms.Said("ok", {})
+
+    def preview(self, ids, sets, reason):
+        self.calls.append(("preview", list(ids)))
+        return self._fail(ids) if list(ids) == self.fails else arms.Said("ok", {})
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.reopened = None
+        self.calls.append(("answer", list(ids)))
+        return arms.Said("ok", {})
+
+    def decide(self, decision, reason):
+        self.calls.append(("decide", dict(decision)))
+        return arms.Said("ok", {})
+
+
+def swept_over(tmp_path, session, *, crash=True):
+    """The crash sweep's run over :data:`PLAN_POINTS`, its options listed here: impute for the
+    missing question, lasso for the selection line, none for the others."""
+    sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
+        target="y", purpose="prediction"), crash=crash, plan="default")
+    sweep.base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False},
+                  "points": [p.json() for p in PLAN_POINTS], "skipped": []}
+    sweep.done[W.PLAN] = W.Refit(W.PLAN, None, None, kind="scored",
+                                 digest=W.plan_digest(session.view()))
+    options = {MISSING.id: [{"id": "impute", "label": "impute", "decision": IMPUTE}],
+               SELECTION.id: [{"id": "set_selection:lasso", "label": "lasso",
+                               "decision": LASSO}]}
+    sweep.offered = {p.id: {"point": p.id, "why": None, "options": options.get(p.id, [])}
+                     for p in PLAN_POINTS}
+    report = sweep.run(session, lambda s: "p0")
+    return sweep, {r["id"]: r for r in report["refits"]}
+
+
+def previewed_after(calls, answer):
+    """The decisions previewed by their body after ``answer``, until the next answer or refit."""
+    i = calls.index(answer)
+    out = []
+    for call, body in calls[i + 1:]:
+        if call in ("answer", "decide", "copy"):
+            break
+        if call == "preview_of":
+            out.append(body)
+    return out
+
+
+def test_the_crash_sweep_previews_every_later_decisions_plan_answer_after_an_option(tmp_path):
+    """After a question's option, each decision after it in the plan's order with an answer of its
+    own (a question, a finding, a reading, a declaration) is previewed at the plan's answer; one
+    before it, the question itself and a line left open are not. After a declaration's option
+    (the Router does not order it among its questions), every other decision is."""
+    session = Previewed()
+    sweep, refits = swept_over(tmp_path, session)
+    assert previewed_after(session.calls, ("answer", ["impute"])) == [
+        MODELS.decision, REPAIR.decision, UNIT.decision, SELECTION.decision]
+    assert previewed_after(session.calls, ("decide", LASSO)) == [
+        EARLY.decision, MISSING.decision, MODELS.decision, REPAIR.decision, UNIT.decision]
+    assert [p["of"] for p in refits[f"{MISSING.id}=impute"]["previews"]] == [
+        f"{MISSING.id}=impute", *(f"{p.id} (the plan's answer)" for p in
+                                  (MODELS, REPAIR, UNIT, SELECTION))]
+    assert {r["kind"] for r in refits.values()} == {"duplicate"} and sweep.defects == []
+
+
+@pytest.mark.parametrize("later", [MODELS, REPAIR, UNIT, SELECTION],
+                         ids=["question", "finding", "reading", "declaration"])
+def test_a_500_on_a_later_decisions_plan_answer_previewed_after_an_option_is_a_defect(
+        tmp_path, later):
+    """The preview of the plan's answer to a decision after the changed one fails as an HTTP 500:
+    the refit of that option is failed and an engine defect, with the request that failed."""
+    session = Previewed(fails=later.decision)
+    sweep, refits = swept_over(tmp_path, session)
+    refit = refits[f"{MISSING.id}=impute"]
+    assert refit["kind"] == "failed" and refit["failed"]["code"] == "http_500"
+    assert {"of": f"{later.id} (the plan's answer)", "kind": "failed", "by": "server",
+            "code": "http_500", "message": "Internal Server Error", "status": 500} in \
+        refit["previews"]
+    defect = next(d for d in sweep.defects if d["refit"] == refit["id"])
+    kept = json.loads(Path(defect["path"]).read_text())
+    assert [json.loads(r["body"]) for r in kept["requests"]] == [later.decision]
+
+
+def test_a_500_on_an_earlier_decisions_plan_answer_fails_only_the_options_it_is_later_than(
+        tmp_path):
+    """The plan's answer to a question before the changed one is not previewed after it, so its
+    500 fails no refit of the later question; a declaration's option previews it, and fails."""
+    session = Previewed(fails=EARLY.decision)
+    sweep, refits = swept_over(tmp_path, session)
+    assert refits[f"{MISSING.id}=impute"]["kind"] == "duplicate"
+    assert refits[f"{SELECTION.id}=set_selection:lasso"]["kind"] == "failed"
+    assert [d["refit"] for d in sweep.defects] == [f"{SELECTION.id}=set_selection:lasso"]
+
+
+def test_the_sweep_around_a_named_plan_previews_no_later_default(tmp_path):
+    """Only the crash sweep previews: the sweep around a named plan meets no preview's 500."""
+    session = Previewed(fails=MODELS.decision)
+    sweep, refits = swept_over(tmp_path, session, crash=False)
+    assert not [c for c in session.calls if c[0].startswith("preview")]
+    assert refits[f"{MISSING.id}=impute"]["kind"] == "duplicate" and sweep.defects == []
+
+
+@pytest.mark.parametrize("fails", [None, ["false"]], ids=["previews", "preview_500"])
+def test_a_question_the_option_opens_again_is_previewed_at_its_default_before_it_is_answered(
+        tmp_path, fails):
+    """After the option, the walk meets the temporal question open again: the crash sweep previews
+    the default path's answer to it (``false``, ``arms.Default``) before the walk answers it, and
+    a 500 on that preview fails the refit as an engine defect; with none it is the plan's
+    duplicate."""
+    from research.swarm.tests.test_arms import ask, opt
+
+    temporal = ask("temporal", [opt("true", {"kind": "set_temporal", "temporal": True}),
+                                opt("false", {"kind": "set_temporal", "temporal": False})])
+    session = Previewed(fails=fails, asks=[temporal])
+    sweep = a_sweep(tmp_path)
+    plan = W.Refit(W.PLAN, None, None, kind="scored", digest=W.plan_digest(session.view()))
+    refit = sweep.refit(session, POINT, OPTION, [], plan)
+    walked = session.calls[session.calls.index(("decide", OPTION["decision"])) + 1:]
+    assert walked == [("preview", ["false"]), ("answer", ["false"])]
+    assert refit.previews[-1]["of"] == "question:temporal (opened again, its default)"
+    if fails is None:
+        assert refit.kind == "duplicate" and sweep.defects == []
+    else:
+        assert refit.kind == "failed" and refit.failed["code"] == "http_500"
+        assert refit.previews[-1]["code"] == "http_500"
+        assert [d["refit"] for d in sweep.defects] == [refit.id]

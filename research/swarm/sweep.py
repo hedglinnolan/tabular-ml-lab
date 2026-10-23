@@ -71,19 +71,23 @@ summary, and the graded readings: what §7's scoring and §9's theorist read.
 **The crash sweep** (``crash``; §6 step 1), which is also the sizing and the default-plan half of
 the sweep: on one dataset, every option the driver offers at every decision of the default plan,
 the declarations and the readings included, each previewed, then answered and fitted once; after
-each change every later question's default (the plan's own answer) is previewed again, and each
-question the change opens again is previewed before it is answered. An HTTP 500, or a fit that
-failed with an error the engine did not type, is an engine defect, reported with its reproduction
-(``defects/``: the decision log as it stood, the data file, the requests that failed, and the copy
-of the project kept); each refusal is kept with its reason; each fit's run time is measured and
-summed into the dataset's fit budget and the sweep's compute estimate (``crash.json``). It is
-resumable: its home with the template is kept under ``--out``, and ``progress.jsonl`` holds the
-plan and every option finished, written as it goes, so a second run takes up where the first
-stopped without refitting what it finished. It passes (:func:`passed`) when every decision of the
-plan was swept (``only``, said in the report, is none), every option of each was visited (a
-decision whose options could not be listed, or that offered none though the plan answered it, was
-not: :func:`unlisted_of`) and no engine defect was met, on the engine commit it ran on; the report
-names the table it ran on by its SHA-256, which the launcher holds to the dataset's manifest.
+each change every later decision's default is previewed again at the plan's own answer to it (a
+question's, a finding's, a declaration's or a reading's; a line the plan left open has none), the
+later decisions being those after a question in the plan's order, and every other for a finding, a
+declaration or a reading, which the Router does not order among its questions (:func:`later_of`;
+under ``only``, among the decisions swept); and each question the change opens again is previewed
+at the default path's answer before the walk answers it. An HTTP 500, or a fit that failed with an
+error the engine did not type, is an engine defect, reported with its reproduction (``defects/``:
+the decision log as it stood, the data file, the requests that failed, and the copy of the project
+kept); each refusal is kept with its reason; each fit's run time is measured and summed into the
+dataset's fit budget and the sweep's compute estimate (``crash.json``). It is resumable: its home
+with the template is kept under ``--out``, and ``progress.jsonl`` holds the plan and every option
+finished, written as it goes, so a second run takes up where the first stopped without refitting
+what it finished. It passes (:func:`passed`) when every decision of the plan was swept (``only``,
+said in the report, is none), every option of each was visited (a decision whose options could not
+be listed, or that offered none though the plan answered it, was not: :func:`unlisted_of`) and no
+engine defect was met, on the engine commit it ran on; the report names the table it ran on by its
+SHA-256, which the launcher holds to the dataset's manifest.
 """
 from __future__ import annotations
 
@@ -271,6 +275,18 @@ def points_of(view: Mapping[str, Any], ask: Mapping[str, Any], *, purpose: str,
             continue
         points.append(Point("declaration", str(kind)))
     return points, skipped
+
+
+def later_of(points: Sequence[Point], point: Point) -> list[Point]:
+    """The decisions whose default the crash sweep previews again after an option of ``point``
+    (the module docstring), in the plan's order (:func:`points_of`): for a Router question, every
+    decision after it; for a finding, a declaration or a reading, which the Router does not order
+    among its questions, every other decision. Each is previewed at the plan's own answer to it,
+    so one the plan left open (a declaration line it never answered) is listed but has none."""
+    if point.kind != "question":
+        return [p for p in points if p.id != point.id]
+    at = next(i for i, p in enumerate(points) if p.id == point.id)
+    return list(points[at + 1:])
 
 
 SCHEME_IS_THE_SWEEPS = (f"Every refit is scored with random repeated {FOLDS}-fold "
@@ -913,8 +929,8 @@ class Sweep:
                 "exits": [{k: e.get(k) for k in ("label", "decision")} for e in said.exits]}
             return
         if self.crash:
-            for p in later:
-                if p.kind == "question" and p.decision is not None:
+            for p in later:  # every later decision's default (:func:`later_of`)
+                if p.decision is not None:  # a line the plan left open has no answer to preview
                     seen = session.preview_of(self._later(p))
                     refit.previews.append({"of": f"{p.id} (the plan's answer)",
                                            **said_json(seen)})
@@ -1026,9 +1042,8 @@ class Sweep:
         started = time.monotonic()
         self.template(session, build)
         plan = self.plan_refit(session)
-        for i, point in enumerate(self.points):
-            later = self.points[i + 1:] if point.kind == "question" else \
-                [p for p in self.points if p.kind == "question"]
+        for point in self.points:
+            later = later_of(self.points, point)
             listed = self.offered.get(point.id)
             if listed is None:
                 copy = self._copy(session)
