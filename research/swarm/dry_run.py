@@ -15,9 +15,8 @@ grouping, the exposure, the adjustment set, the time-varying exposure and the fo
 the server asks from the fixture's declared truth (``truths.FIXTURE_TRUTHS``) with the journey's
 readings beside it, else the app's own guess. The analyst's choices are limited to what the
 driver offers, and it answers only the Router's questions, the readings, the role lines and the
-findings, as journeys.py does: it makes no declaration (the open declaration lines ``ask`` lists,
-the survey journey's scale among them), so each run's construction is what it was before the
-driver offered them. Each answer is tagged with a marker of the controlled vocabulary by the
+findings, as journeys.py does: it makes no declaration (the open declaration lines ``ask`` lists),
+so each run's construction is what it was before the driver offered them. Each answer is tagged with a marker of the controlled vocabulary by the
 question it answers (:data:`MARKER_OF`; record version 2's ``Tag``), and its one preview says why.
 One run explores (a preview of another roles answer, two revisits, three presses of Fit,
 the last for answers already fitted, so two fits); the others pass once. Each run's id is the one
@@ -78,7 +77,7 @@ class Spec:
     name: str
     dataset: str
     target: str
-    event: str
+    event: str | None  # the outcome's event level; None for a number
     purpose: str
     lenses: list[str]
     readings: dict[str, str]
@@ -98,40 +97,52 @@ def _truth(key: str) -> dict[str, str]:
     return dict(FIXTURE_TRUTHS[key])
 
 
-def specs() -> dict[str, Spec]:
-    """The runs. The survey run asks the card's question, age's association with having sought
-    support, with journeys.py's ``survey-inference`` journey's roles and readings: the ten items
-    the journey scores as its scale (item_01 to item_10) enter one by one as covariates beside age,
-    sex and education, and the other thirty are excluded, since the scripted analyst makes no
-    declaration, a scale among them (the card names none, so which columns enter is the analyst's
-    decision). Age's
-    form is declared a straight line (a reading journeys takes in place of the form card's
-    proposal), so the known answer is one row; its declared truth is that age has no effect, on
-    every scale (``answers.json``), so the known answer is no effect (``null``): 0 on the
-    difference scale of the marginal risk difference the estimand declares (the card's exposure,
-    its first-ranked measure), 1 on a ratio's; the run gives the linear family as its own models
-    answer, as the journey's capture answered it (without the scale, which the scripted analyst
-    does not declare, the shelf ranks the elastic net first, which reports no effect: the export refuses
-    it). The Predict fixture and the decoy have no journey:
-    their specs are the card's outcome and purpose, the clinical lens, the fixture's declared
-    truth (none for the decoy), and each finding's first repair, as journeys' clinical journey takes
-    them. The Predict fixture declares the generating model and the C-statistic of its true risk,
-    not a range a fitted model's held-out score must fall in, so its result has no known answer.
-    Both Predict runs give the split as their own answer, a fifth of the rows held out (the plan's
-    first option holds none out, so the seal's way forward would draw them and refit): the seal
-    then opens on the fit it was pressed for."""
-    from turbotab.core.reference.journeys import SURVEY_INFERENCE_ROLES, SURVEY_READINGS
+# The Estimate fixture's roles, as package 2's replay journey gives them
+# (``tests/test_replay_fixtures.py``): every column but the outcome and the id is a covariate, and
+# the adjustment answers say which stay in the model.
+ESTIMATE_ROLES = {"person_id": "identifier", "age": "covariate", "chronic_pain": "covariate",
+                  "walks_daily": "exposure", "height_cm": "covariate",
+                  "health_concern_score": "covariate"}
 
+
+def _effect() -> float:
+    """The Estimate fixture's planted effect: walking every day's difference in the mean systolic
+    pressure, in mmHg (``generators.ESTIMATE_MODEL``)."""
+    from research.swarm.generators import ESTIMATE_MODEL
+
+    return float(ESTIMATE_MODEL["effect"])
+
+
+def specs() -> dict[str, Spec]:
+    """The runs, on package 2's fixtures (``research/swarm/generators.py``) and the decoy.
+
+    The Predict run (``generators.readmission``) and the decoy have no journey: their specs are the
+    card's outcome and purpose, the clinical lens, the fixture's declared truth (none for the
+    decoy), and each finding's first repair, as journeys' clinical journey takes them. The Predict
+    fixture declares its generating model, so the true risk of every row is known, not a range a
+    fitted model's held-out score must fall in, so its result has no known answer. Both Predict
+    runs give the split as their own answer, a fifth of the rows held out (the plan's first option
+    holds none out, so the seal's way forward would draw them and refit): the seal then opens on
+    the fit it was pressed for.
+
+    The Estimate run (``generators.blood_pressure``) asks the card's question, walking every day's
+    association with systolic blood pressure, with the roles package 2's replay journey gives it
+    (:data:`ESTIMATE_ROLES`) and the fixture's declared readings, which answer each covariate's
+    causal place (chronic pain causes both, the health-concern score is caused by both, age causes
+    the outcome alone, height causes nothing) and declare age's form a straight line. The run gives
+    the linear family as its own models answer, as the journey's capture answered it. Its known
+    answer is the planted effect on the difference in the mean (:func:`_effect`), the estimand's
+    measure for a number outcome, read on the locked fit's `walks_daily` row."""
     return {s.name: s for s in (
-        Spec("clinical_explore", "clinical_readmission_predict", target="readmit_30d", event="1",
-             purpose="prediction", lenses=["clinical"], readings=_truth("clinical_risk.csv"),
+        Spec("clinical_explore", "inpatient_readmission_predict", target="readmit_30d", event="1",
+             purpose="prediction", lenses=["clinical"], readings=_truth("readmissions.csv"),
              repairs=True, answers={"split": (["0.2"], [])}, explore=True),
-        Spec("survey_single", "survey_support_estimate", target="sought_support", event="1",
-             purpose="inference", lenses=["survey"],
-             readings={**_truth("survey_instrument.csv"), **SURVEY_READINGS, "form:age": "linear"},
-             roles=dict(SURVEY_INFERENCE_ROLES), exposure="age",
+        Spec("survey_single", "walking_bp_estimate", target="sbp_mmhg", event=None,
+             purpose="inference", lenses=["clinical"], readings=_truth("walking_bp.csv"),
+             roles=dict(ESTIMATE_ROLES), exposure="walks_daily",
              answers={"models": (["linear"], [])},
-             known={"family": "linear", "feature": "age", "null": True}),
+             known={"family": "linear", "feature": "walks_daily", "measure": "mean_difference",
+                    "value": _effect()}),
         Spec("decoy_single", "outpatient_admission_predict", target="admitted_2y", event="1",
              purpose="prediction", lenses=["clinical"], readings={}, repairs=True,
              answers={"split": (["0.2"], [])}),
@@ -171,13 +182,13 @@ WHY: dict[str, dict[str, str]] = {
         "logging": "Every answer the script posts carries its reason; the split and the lock are "
                    "TurboTab's own.",
         "single_pass": "No preview, no revisit, and one fit: flagged as a single pass.",
-        "known_answer": "Fact readings answered from the declared truth; age has no effect by "
-                        "construction, so its marginal risk difference, the number the app "
-                        "reports for the estimand, is 0: its 95% interval holds 0 (in 1 run in 20 "
-                        "it would not by chance; that would be checked against an independent fit "
-                        "before calling it a defect), or the effects stage refuses it, as it does "
-                        "under multiple imputation (the app's first-ranked missing-values answer "
-                        "here): right or refused.",
+        "known_answer": f"Fact readings answered from the declared truth; walking every day "
+                        f"changes systolic blood pressure by {_effect():g} mmHg by construction, "
+                        f"so the locked fit's `walks_daily` row on the difference in the mean, "
+                        f"the number the app reports for the estimand, has a 95% interval that "
+                        f"holds {_effect():g} (in 1 run in 20 it would not by chance; that would "
+                        f"be checked against an independent fit before calling it a defect), or "
+                        f"the fit refuses it: right or refused.",
         "null_decoy": "Not a decoy.",
         "robustness": "The script's own export returns the bundle, and no person helps."},
     "decoy_single": {
@@ -398,7 +409,7 @@ class Analyst:
             return list(spec.lenses), [], "the journey's lens"
         if key == "target":
             return [spec.target], [], "the card's outcome"
-        if key == "event":
+        if key == "event" and spec.event is not None:
             return [spec.event], [], "the card's outcome level"
         if key == "purpose":
             return [spec.purpose], [], "the card's purpose"

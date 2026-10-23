@@ -1,0 +1,3046 @@
+{
+ "account": null,
+ "attempts": [
+  {
+   "at": "2026-10-23T00:09:49.526276Z",
+   "at_opening": null,
+   "change": [],
+   "change_why": "This is the run's first fit: there is no fit before it to compare with.",
+   "changed": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+   ],
+   "changed_after_seal": false,
+   "decisions": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+   ],
+   "effects": {
+    "linear": [
+     {
+      "ci_high": -1.9911793292571296,
+      "ci_low": -5.127049468880426,
+      "df": 676.779452599389,
+      "estimate": -3.5591143990687777,
+      "feature": "walks_daily",
+      "fmi": 0.13625752963009893,
+      "mc_se": 0.04800447508947382,
+      "meaning": null,
+      "p": 9.72761821278632e-06,
+      "q": null,
+      "ratio": null,
+      "ratio_high": null,
+      "ratio_low": null,
+      "se": 0.7985509151371096
+     }
+    ]
+   },
+   "families": [
+    "linear"
+   ],
+   "fit_key": "14c865a7f958dd8effa7b2f1a2e74a0407d96e758fa9935a7549622ac02f460d",
+   "folds": "211c6d5365c7e1ccde5d5ab7bc728b2883ed264b221631d867ed2161d9d54a0f",
+   "held_out": null,
+   "holdout": null,
+   "holdout_why": "No rows are held out of this fit's split, so it has no held-out score.",
+   "id": "bc44801f65df470287b0e08c8871759b",
+   "locked": true,
+   "markers": [
+    {
+     "axis": "regime",
+     "basis": "the table's rows (the ingest)",
+     "name": "rows",
+     "timing": "live",
+     "value": 1200,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the participant flow's final count",
+     "name": "rows_analyzed",
+     "timing": "live",
+     "value": 1200,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the grain and repeats answers, and the units the held-out draw groups by (the seal plan)",
+     "name": "repeated_units",
+     "timing": "live",
+     "value": {
+      "grain": null,
+      "repeat_kind": null,
+      "unit_column": null,
+      "units": null
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the rows analyzed (the participant flow)",
+     "name": "effective_size",
+     "timing": "live",
+     "value": 1200,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": null,
+     "name": "events_per_parameter",
+     "timing": "live",
+     "value": null,
+     "why": "The shelf serves no count of candidate predictor parameters."
+    },
+    {
+     "axis": "regime",
+     "basis": "the roles answer, counted by role",
+     "name": "predictors_by_role",
+     "timing": "live",
+     "value": {
+      "covariate": 4,
+      "exposure": 1,
+      "identifier": 1
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the participant flow's predictors over its rows",
+     "name": "predictors_per_row",
+     "timing": "live",
+     "value": 0.0025,
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the outcome's type, as read from its values",
+     "name": "outcome_type",
+     "timing": "live",
+     "value": "regression",
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": null,
+     "name": "event_share",
+     "timing": "live",
+     "value": null,
+     "why": "Only a yes/no outcome has an event share."
+    },
+    {
+     "axis": "regime",
+     "basis": "each column's blanks over the table's rows (the ingest); a column with none is not listed",
+     "name": "missingness",
+     "timing": "live",
+     "value": {
+      "chronic_pain": 0.36
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": null,
+     "name": "complete_case_share",
+     "timing": "live",
+     "value": null,
+     "why": "The participant flow counts the complete cases only under complete cases."
+    },
+    {
+     "axis": "regime",
+     "basis": "the design answers as recorded",
+     "name": "design",
+     "timing": "live",
+     "value": {
+      "clusters": null,
+      "design": null,
+      "grain": null,
+      "repeat_kind": null,
+      "survey": null,
+      "unit": null
+     },
+     "why": null
+    },
+    {
+     "axis": "regime",
+     "basis": "the temporal answer, the structure's time column and whether the seal plan's folds follow time (null where either stage is not computed)",
+     "name": "time_order",
+     "timing": "live",
+     "value": {
+      "temporal": null,
+      "time_column": null,
+      "time_ordered_folds": false
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "each unit read from the values with its evidence (the readings), and each recorded",
+     "name": "units",
+     "timing": "live",
+     "value": [
+      {
+       "basis": "its median, 170.1, is a human height only in cm",
+       "column": "height_cm",
+       "kind": "unit",
+       "value": "cm"
+      }
+     ],
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns the findings found values below a detection limit in; each column's share is not served",
+     "name": "detection_limit_share",
+     "timing": "live",
+     "value": {
+      "columns": [],
+      "shares": null
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns whose names read as a batch, a run or a plate, and the batch answer",
+     "name": "batch_columns",
+     "timing": "live",
+     "value": {
+      "answered": null,
+      "read": []
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the columns whose names read as a run order",
+     "name": "run_order",
+     "timing": "live",
+     "value": [],
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the repeats answer: whether a unit's rows are imputed copies",
+     "name": "imputed_copies",
+     "timing": "live",
+     "value": false,
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": "the grain, repeats and aggregation answers",
+     "name": "repeated_measurement",
+     "timing": "live",
+     "value": {
+      "aggregation": null,
+      "grain": null,
+      "repeat_kind": null
+     },
+     "why": null
+    },
+    {
+     "axis": "measurement",
+     "basis": null,
+     "name": "omics_scale",
+     "timing": "live",
+     "value": null,
+     "why": "No assay lens is chosen, so no scale is read."
+    },
+    {
+     "axis": "purpose",
+     "basis": "the purpose answer",
+     "name": "purpose",
+     "timing": "live",
+     "value": "inference",
+     "why": null
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "primary_score",
+     "timing": "live",
+     "value": null,
+     "why": "Under Estimate the result is the estimate, not a score."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "intended_use",
+     "timing": "live",
+     "value": null,
+     "why": "No intended use is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": null,
+     "name": "thresholds",
+     "timing": "live",
+     "value": null,
+     "why": "No intended use is declared."
+    },
+    {
+     "axis": "purpose",
+     "basis": "the estimand answer",
+     "name": "estimand",
+     "timing": "live",
+     "value": {
+      "contrast": null,
+      "effect": "total",
+      "exposure": "walks_daily",
+      "family": false,
+      "measure": "mean_difference"
+     },
+     "why": null
+    },
+    {
+     "axis": "purpose",
+     "basis": "the estimand's exposure family and the multiplicity answer (null: none recorded)",
+     "name": "multiplicity_family",
+     "timing": "live",
+     "value": {
+      "family": false,
+      "method": null
+     },
+     "why": null
+    }
+   ],
+   "markers_why": null,
+   "movement": [],
+   "movement_why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict.",
+   "plan_digest": "2cc29fb751cff447e9f34214a66ff84c608320e2b2e05cfd14154fe639c71d36",
+   "press": null,
+   "primary_metric": "mse",
+   "purpose": "inference",
+   "reasons": [
+    {
+     "note": "Scripted analyst, step 1: lens answered from the journey's lens.",
+     "seq": 1
+    },
+    {
+     "note": "Scripted analyst, step 2: target answered from the card's outcome.",
+     "seq": 2
+    },
+    {
+     "note": "Scripted analyst, step 3: purpose answered from the card's purpose.",
+     "seq": 3
+    },
+    {
+     "note": "Scripted analyst, step 4: roles answered from the journey's roles.",
+     "seq": 4
+    },
+    {
+     "note": "Scripted analyst, step 5: a role confirmed as the roles answer gave it",
+     "seq": 5
+    },
+    {
+     "note": "Scripted analyst, step 6: a role confirmed as the roles answer gave it",
+     "seq": 6
+    },
+    {
+     "note": "Scripted analyst, step 7: exclusions answered from the app's first-ranked option (journeys).",
+     "seq": 7
+    },
+    {
+     "note": "Scripted analyst, step 8: missing answered from the app's first-ranked option (journeys).",
+     "seq": 8
+    },
+    {
+     "note": "Scripted analyst, step 9: estimand answered from the card's exposure, its first-ranked measure.",
+     "seq": 10
+    },
+    {
+     "note": "Scripted analyst, step 10: adjustment answered from each covariate's causal place from the readings.",
+     "seq": 11
+    },
+    {
+     "note": "Scripted analyst, step 11: a reading the server asked, from the declared truth or the app's guess",
+     "seq": 12
+    },
+    {
+     "note": "Scripted analyst, step 12: form answered from the form card's proposal, unless the readings declare one.",
+     "seq": 13
+    },
+    {
+     "note": "Scripted analyst, step 13: models answered from the run's own answer.",
+     "seq": 14
+    }
+   ],
+   "reinstated": [],
+   "scores": {},
+   "seconds": 0.38647504104301333,
+   "seed": 0,
+   "seq": 1,
+   "target": "sbp_mmhg",
+   "withdrawn": [],
+   "withheld": null,
+   "workers": 2
+  }
+ ],
+ "claims": [
+  {
+   "at": "2026-10-23T00:09:42.923243Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  },
+  {
+   "at": "2026-10-23T00:09:45.759834Z",
+   "fallback": null,
+   "grade": "judgment",
+   "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
+   "id": "explore.missing_by_group",
+   "refused": null,
+   "register": "card",
+   "status": "built",
+   "version": 1
+  }
+ ],
+ "dataset": {
+  "card": {
+   "design": "analysts",
+   "documentation": [
+    "Each person's age, height, chronic pain (1 yes, 0 no) and daily walking were recorded when they enrolled; their health-concern score (a questionnaire's score) and their systolic blood pressure were measured at a later visit.",
+    "A blank chronic_pain is a question the person did not answer."
+   ],
+   "exposure": {
+    "column": "walks_daily",
+    "meaning": "walks every day (1 yes, 0 no)"
+   },
+   "id": "walking_bp_estimate",
+   "manifest": "research/datasets/walking_bp_estimate/manifest.json",
+   "outcome": {
+    "column": "sbp_mmhg",
+    "meaning": "systolic blood pressure (mmHg)"
+   },
+   "population": "A generated (synthetic) cohort of adults, one row per person.",
+   "prepared": [],
+   "purpose": "Estimate",
+   "question": "Is walking every day associated with systolic blood pressure?",
+   "source": "A generated (synthetic) table.",
+   "table": {
+    "format": "csv",
+    "path": "research/data/datasets/walking_bp_estimate/walking_bp.csv"
+   }
+  },
+  "codebook": null,
+  "control": "known_answer",
+  "declared": [],
+  "files": [
+   {
+    "bytes": 36740,
+    "license": null,
+    "name": "walking_bp.csv",
+    "release_date": null,
+    "role": "table",
+    "sha256": "cacf2daf71a6c12a556f8b8e97a396f5abaff5693ac5d9fcb2ab8e363396071f",
+    "url": null
+   }
+  ],
+  "fixture": "walking_bp.csv",
+  "id": "walking_bp_estimate",
+  "known": {
+   "family": "linear",
+   "feature": "walks_daily",
+   "measure": "mean_difference",
+   "value": -5.0
+  }
+ },
+ "decisions": [
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "lens",
+     "value": {
+      "lenses": [
+       "clinical"
+      ]
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:21.311340Z",
+   "early": null,
+   "examined": [],
+   "id": "97e0c3b70eef490eb6c1ab7fdfd082f8",
+   "kind": "set_lens",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "kind": "set_lens",
+    "lenses": [
+     "clinical"
+    ]
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 1: lens answered from the journey's lens.",
+   "seq": 1,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:20Z",
+    "command": "answer",
+    "marker": "purpose",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "target",
+     "value": {
+      "column": "sbp_mmhg"
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:23.357178Z",
+   "early": null,
+   "examined": [],
+   "id": "92d28693e60c4c7ba5800598444ab909",
+   "kind": "set_target",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "sbp_mmhg",
+    "kind": "set_target"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 2: target answered from the card's outcome.",
+   "seq": 2,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:22Z",
+    "command": "answer",
+    "marker": "outcome_type",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "purpose",
+     "value": {
+      "purpose": "inference"
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:25.409457Z",
+   "early": null,
+   "examined": [],
+   "id": "7f8b63badd0b479db058d67454b24569",
+   "kind": "set_purpose",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "kind": "set_purpose",
+    "purpose": "inference"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 3: purpose answered from the card's purpose.",
+   "seq": 3,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:24Z",
+    "command": "answer",
+    "marker": "purpose",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "role:person_id",
+     "value": "identifier"
+    },
+    {
+     "question": "role:age",
+     "value": "covariate"
+    },
+    {
+     "question": "role:chronic_pain",
+     "value": "covariate"
+    },
+    {
+     "question": "role:walks_daily",
+     "value": "exposure"
+    },
+    {
+     "question": "role:height_cm",
+     "value": "covariate"
+    },
+    {
+     "question": "role:health_concern_score",
+     "value": "covariate"
+    }
+   ],
+   "at": "2026-10-23T00:09:27.434446Z",
+   "early": null,
+   "examined": [],
+   "id": "5a8c2d5c6d344a36a62170a3060749d5",
+   "kind": "set_roles",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "kind": "set_roles",
+    "roles": {
+     "age": "covariate",
+     "chronic_pain": "covariate",
+     "health_concern_score": "covariate",
+     "height_cm": "covariate",
+     "person_id": "identifier",
+     "walks_daily": "exposure"
+    },
+    "unconfirmed": [
+     "walks_daily",
+     "height_cm"
+    ]
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 4: roles answered from the journey's roles.",
+   "seq": 4,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:26Z",
+    "command": "answer",
+    "marker": "predictors_by_role",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "role:walks_daily",
+     "value": "exposure"
+    }
+   ],
+   "at": "2026-10-23T00:09:29.451617Z",
+   "early": null,
+   "examined": [],
+   "id": "cc1fb37c703442668d577e4fef73cdd9",
+   "kind": "confirm_role",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "walks_daily",
+    "kind": "confirm_role",
+    "role": "exposure"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 5: a role confirmed as the roles answer gave it",
+   "seq": 5,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:28Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "role:height_cm",
+     "value": "covariate"
+    }
+   ],
+   "at": "2026-10-23T00:09:31.469223Z",
+   "early": null,
+   "examined": [],
+   "id": "7f70086887d24f15acd71723e2aecbd0",
+   "kind": "confirm_role",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "height_cm",
+    "kind": "confirm_role",
+    "role": "covariate"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 6: a role confirmed as the roles answer gave it",
+   "seq": 6,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:30Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "exclusions",
+     "value": {
+      "rules": []
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:33.554540Z",
+   "early": null,
+   "examined": [],
+   "id": "e03b43b53fea44a79fedcab6da656d20",
+   "kind": "set_exclusions",
+   "materiality": {
+    "attempt": null,
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "The curve refits the linear model on the table's own columns, and the plan holds the fill of missing values, which that refit does not repeat, so no specification would be fitted as the primary is."
+   },
+   "option": {
+    "kind": "set_exclusions",
+    "rules": []
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 7: exclusions answered from the app's first-ranked option (journeys).",
+   "seq": 7,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:32Z",
+    "command": "answer",
+    "marker": "rows_analyzed",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "missing",
+     "value": {
+      "acknowledged": false,
+      "below_detection": null,
+      "categorical": "impute",
+      "censored_columns": [],
+      "drop_columns": [],
+      "imputation_levels": "clustered",
+      "imputation_model": "compatible",
+      "indicators": false,
+      "m": 20,
+      "reason": null,
+      "strategy": "multiple_imputation"
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:35.653359Z",
+   "early": null,
+   "examined": [],
+   "id": "42c2e4908c6a42c395a90dee3e9d91a1",
+   "kind": "set_missing",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "acknowledged": false,
+    "below_detection": null,
+    "categorical": "impute",
+    "censored_columns": [],
+    "drop_columns": [],
+    "imputation_levels": "clustered",
+    "imputation_model": "compatible",
+    "indicators": false,
+    "kind": "set_missing",
+    "m": 20,
+    "reason": null,
+    "strategy": "multiple_imputation"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 8: missing answered from the app's first-ranked option (journeys).",
+   "seq": 8,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:34Z",
+    "command": "answer",
+    "marker": "missingness",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "split",
+     "value": {
+      "cluster": null,
+      "cut_point": null,
+      "fold_order": null,
+      "folds": 5,
+      "holdout": 0.0,
+      "n_boot": 500,
+      "nested_cv": false,
+      "repeats": 10,
+      "seed": 0,
+      "validation": "kfold"
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:35.656646Z",
+   "early": null,
+   "examined": [],
+   "id": "511891d1bb6141d88bb582cd7a261411",
+   "kind": "set_split",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "cluster": null,
+    "cut_point": null,
+    "fold_order": null,
+    "folds": 5,
+    "holdout": 0.0,
+    "kind": "set_split",
+    "n_boot": 500,
+    "nested_cv": false,
+    "repeats": 10,
+    "seed": 0,
+    "validation": "kfold"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": null,
+   "seq": 9,
+   "source": "app",
+   "tag": null
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "estimand",
+     "value": {
+      "contrast": null,
+      "effect": "total",
+      "exposure": "walks_daily",
+      "family": false,
+      "measure": "mean_difference",
+      "multiplicity": null,
+      "multiplicity_acknowledged": false
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:37.823677Z",
+   "early": null,
+   "examined": [],
+   "id": "291e787d1dae4fa9bce0b78172d8af68",
+   "kind": "set_estimand",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "contrast": null,
+    "effect": "total",
+    "exposure": "walks_daily",
+    "family": false,
+    "kind": "set_estimand",
+    "measure": "mean_difference",
+    "multiplicity": null,
+    "multiplicity_acknowledged": false
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 9: estimand answered from the card's exposure, its first-ranked measure.",
+   "seq": 10,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:36Z",
+    "command": "answer",
+    "marker": "estimand",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "adjust:age",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "walks_daily",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:height_cm",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "no",
+      "confounds_mediator": null,
+      "exposure": "walks_daily",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:chronic_pain",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "yes",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "exposure": "walks_daily",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    {
+     "question": "adjust:health_concern_score",
+     "value": {
+      "acknowledged": false,
+      "after_exposure": "yes",
+      "causes_exposure": "no",
+      "causes_outcome": "no",
+      "confounds_mediator": null,
+      "exposure": "walks_daily",
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:39.949599Z",
+   "early": null,
+   "examined": [],
+   "id": "6de6c8ac16fc4fabbe30e4bba1921c80",
+   "kind": "set_adjustment",
+   "materiality": {
+    "attempt": null,
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "The curve refits the linear model on the table's own columns, and the plan holds the fill of missing values, which that refit does not repeat, so no specification would be fitted as the primary is."
+   },
+   "option": {
+    "answers": {
+     "age": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "chronic_pain": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "yes",
+      "causes_outcome": "yes",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "health_concern_score": {
+      "acknowledged": false,
+      "after_exposure": "yes",
+      "causes_exposure": "no",
+      "causes_outcome": "no",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     },
+     "height_cm": {
+      "acknowledged": false,
+      "after_exposure": "no",
+      "causes_exposure": "no",
+      "causes_outcome": "no",
+      "confounds_mediator": null,
+      "further": false,
+      "instrument": false,
+      "interaction_attested": false,
+      "interacts": null,
+      "keep": false,
+      "proxy": false
+     }
+    },
+    "exposure": "walks_daily",
+    "kind": "set_adjustment"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 10: adjustment answered from each covariate's causal place from the readings.",
+   "seq": 11,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:39Z",
+    "command": "answer",
+    "marker": "estimand",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "code_or_count:age",
+     "value": "amount"
+    }
+   ],
+   "at": "2026-10-23T00:09:42.808250Z",
+   "early": null,
+   "examined": [],
+   "id": "8bee7c3a0c5a40548df1fa8de464beed",
+   "kind": "confirm_reading",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "column": "age",
+    "kind": "confirm_reading",
+    "reading": "code_or_count",
+    "value": "amount"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 11: a reading the server asked, from the declared truth or the app's guess",
+   "seq": 12,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:41Z",
+    "command": "answer",
+    "marker": "design",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "exposure_forms:age",
+     "value": {
+      "acknowledged": false,
+      "cuts": null,
+      "domain": "all",
+      "form": "linear",
+      "knots": null,
+      "knots_rule": null,
+      "n_effective": null,
+      "scale": "raw",
+      "unit": "unit of `age`"
+     }
+    },
+    {
+     "question": "form_domains:age",
+     "value": "all"
+    }
+   ],
+   "at": "2026-10-23T00:09:45.724753Z",
+   "early": null,
+   "examined": [],
+   "id": "e6823ac309c14f00a114c26951000b5a",
+   "kind": "set_forms",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "forms": {
+     "age": {
+      "acknowledged": false,
+      "cuts": null,
+      "domain": "all",
+      "form": "linear",
+      "knots": null,
+      "knots_rule": null,
+      "n_effective": null,
+      "scale": "raw",
+      "unit": "unit of `age`"
+     }
+    },
+    "kind": "set_forms"
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 12: form answered from the form card's proposal, unless the readings declare one.",
+   "seq": 13,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:44Z",
+    "command": "answer",
+    "marker": "predictors_per_row",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "models",
+     "value": {
+      "models": [
+       "linear"
+      ]
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:49.119084Z",
+   "early": null,
+   "examined": [],
+   "id": "5df9626eda4c43898cdf0710eec6062f",
+   "kind": "select_models",
+   "materiality": {
+    "attempt": "bc44801f65df470287b0e08c8871759b",
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "This fit is under Estimate: movement by paired folds compares the cross-validated scores of two fits under Predict."
+   },
+   "option": {
+    "kind": "select_models",
+    "models": [
+     "linear"
+    ]
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": "Scripted analyst, step 13: models answered from the run's own answer.",
+   "seq": 14,
+   "source": "analyst",
+   "tag": {
+    "at": "2026-10-23T00:09:47Z",
+    "command": "answer",
+    "marker": "events_per_parameter",
+    "rejected": null
+   }
+  },
+  {
+   "after_estimates": false,
+   "answers": [
+    {
+     "question": "plan_locked",
+     "value": {
+      "digest": "2cc29fb751cff447e9f34214a66ff84c608320e2b2e05cfd14154fe639c71d36",
+      "plan": {
+       "adjustment": {
+        "age": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "walks_daily",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "chronic_pain": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "yes",
+         "causes_outcome": "yes",
+         "confounds_mediator": null,
+         "exposure": "walks_daily",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "health_concern_score": {
+         "acknowledged": false,
+         "after_exposure": "yes",
+         "causes_exposure": "no",
+         "causes_outcome": "no",
+         "confounds_mediator": null,
+         "exposure": "walks_daily",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        },
+        "height_cm": {
+         "acknowledged": false,
+         "after_exposure": "no",
+         "causes_exposure": "no",
+         "causes_outcome": "no",
+         "confounds_mediator": null,
+         "exposure": "walks_daily",
+         "further": false,
+         "instrument": false,
+         "interaction_attested": false,
+         "interacts": null,
+         "keep": false,
+         "proxy": false
+        }
+       },
+       "estimand": {
+        "contrast": null,
+        "effect": "total",
+        "exposure": "walks_daily",
+        "family": false,
+        "measure": "mean_difference",
+        "multiplicity": null,
+        "multiplicity_acknowledged": false
+       },
+       "exclusions": [],
+       "exposure_forms": {
+        "age": {
+         "acknowledged": false,
+         "cuts": null,
+         "domain": "all",
+         "form": "linear",
+         "knots": null,
+         "knots_rule": null,
+         "n_effective": null,
+         "scale": "raw",
+         "unit": "unit of `age`"
+        }
+       },
+       "lens": [
+        "clinical"
+       ],
+       "missing": {
+        "acknowledged": false,
+        "below_detection": null,
+        "categorical": "impute",
+        "censored_columns": [],
+        "drop_columns": [],
+        "imputation_levels": "clustered",
+        "imputation_model": "compatible",
+        "indicators": false,
+        "m": 20,
+        "reason": null,
+        "strategy": "multiple_imputation"
+       },
+       "models": [
+        "linear"
+       ],
+       "purpose": "inference",
+       "role_confirmations": {
+        "height_cm": "covariate",
+        "walks_daily": "exposure"
+       },
+       "roles": {
+        "age": "covariate",
+        "chronic_pain": "covariate",
+        "health_concern_score": "covariate",
+        "height_cm": "covariate",
+        "person_id": "identifier",
+        "walks_daily": "exposure"
+       },
+       "roles_unconfirmed": [
+        "walks_daily",
+        "height_cm"
+       ],
+       "shape_confirmations": {
+        "code_or_count:age": "amount"
+       },
+       "split": {
+        "cluster": null,
+        "cut_point": null,
+        "fold_order": null,
+        "folds": 5,
+        "holdout": 0.0,
+        "n_boot": 500,
+        "nested_cv": false,
+        "repeats": 10,
+        "seed": 0,
+        "validation": "kfold"
+       },
+       "target": "sbp_mmhg"
+      },
+      "seen": "inference",
+      "seen_at": null,
+      "seen_target": null
+     }
+    }
+   ],
+   "at": "2026-10-23T00:09:50.746652Z",
+   "early": null,
+   "examined": [],
+   "id": "8b133f7370814145a2ec58142718f9ea",
+   "kind": "lock_plan",
+   "materiality": {
+    "attempt": null,
+    "departures": null,
+    "movement": null,
+    "primary": null,
+    "source": null,
+    "why": "No fit completed while this record was in force."
+   },
+   "option": {
+    "digest": "2cc29fb751cff447e9f34214a66ff84c608320e2b2e05cfd14154fe639c71d36",
+    "kind": "lock_plan",
+    "plan": {
+     "adjustment": {
+      "age": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "walks_daily",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "chronic_pain": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "yes",
+       "causes_outcome": "yes",
+       "confounds_mediator": null,
+       "exposure": "walks_daily",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "health_concern_score": {
+       "acknowledged": false,
+       "after_exposure": "yes",
+       "causes_exposure": "no",
+       "causes_outcome": "no",
+       "confounds_mediator": null,
+       "exposure": "walks_daily",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      },
+      "height_cm": {
+       "acknowledged": false,
+       "after_exposure": "no",
+       "causes_exposure": "no",
+       "causes_outcome": "no",
+       "confounds_mediator": null,
+       "exposure": "walks_daily",
+       "further": false,
+       "instrument": false,
+       "interaction_attested": false,
+       "interacts": null,
+       "keep": false,
+       "proxy": false
+      }
+     },
+     "estimand": {
+      "contrast": null,
+      "effect": "total",
+      "exposure": "walks_daily",
+      "family": false,
+      "measure": "mean_difference",
+      "multiplicity": null,
+      "multiplicity_acknowledged": false
+     },
+     "exclusions": [],
+     "exposure_forms": {
+      "age": {
+       "acknowledged": false,
+       "cuts": null,
+       "domain": "all",
+       "form": "linear",
+       "knots": null,
+       "knots_rule": null,
+       "n_effective": null,
+       "scale": "raw",
+       "unit": "unit of `age`"
+      }
+     },
+     "lens": [
+      "clinical"
+     ],
+     "missing": {
+      "acknowledged": false,
+      "below_detection": null,
+      "categorical": "impute",
+      "censored_columns": [],
+      "drop_columns": [],
+      "imputation_levels": "clustered",
+      "imputation_model": "compatible",
+      "indicators": false,
+      "m": 20,
+      "reason": null,
+      "strategy": "multiple_imputation"
+     },
+     "models": [
+      "linear"
+     ],
+     "purpose": "inference",
+     "role_confirmations": {
+      "height_cm": "covariate",
+      "walks_daily": "exposure"
+     },
+     "roles": {
+      "age": "covariate",
+      "chronic_pain": "covariate",
+      "health_concern_score": "covariate",
+      "height_cm": "covariate",
+      "person_id": "identifier",
+      "walks_daily": "exposure"
+     },
+     "roles_unconfirmed": [
+      "walks_daily",
+      "height_cm"
+     ],
+     "shape_confirmations": {
+      "code_or_count:age": "amount"
+     },
+     "split": {
+      "cluster": null,
+      "cut_point": null,
+      "fold_order": null,
+      "folds": 5,
+      "holdout": 0.0,
+      "n_boot": 500,
+      "nested_cv": false,
+      "repeats": 10,
+      "seed": 0,
+      "validation": "kfold"
+     },
+     "target": "sbp_mmhg"
+    },
+    "seen": "inference",
+    "seen_at": null,
+    "seen_target": null
+   },
+   "phase": "before",
+   "post_seal": false,
+   "reason": null,
+   "seq": 15,
+   "source": "app",
+   "tag": null
+  }
+ ],
+ "export": {
+  "checklist": {
+   "checklist": "STROBE-nut",
+   "citation": "Lachat C, Hawwash D, Ock\u00e9 MC, et al. Strengthening the Reporting of Observational Studies in Epidemiology\u2014Nutritional Epidemiology (STROBE-nut): an extension of the STROBE statement. PLoS Med 2016;13(6):e1002036. doi:10.1371/journal.pmed.1002036",
+   "counts": {
+    "answered": 8,
+    "items": 58,
+    "partly_answered": 8,
+    "unanswered": 42
+   },
+   "items": [
+    {
+     "id": "1a",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Title and Abstract",
+     "status": "unanswered",
+     "text": "Indicate the study\u2019s design with a commonly used term in the title or the abstract.",
+     "topic": "Title and Abstract",
+     "where": []
+    },
+    {
+     "id": "nut-1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Title and Abstract",
+     "status": "unanswered",
+     "text": "State the dietary/nutritional assessment method(s) used in the title, abstract, or keywords.",
+     "topic": "Title and Abstract",
+     "where": []
+    },
+    {
+     "id": "1b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Title and Abstract",
+     "status": "unanswered",
+     "text": "Provide in the abstract an informative and balanced summary of what was done and what was found.",
+     "topic": "Title and Abstract",
+     "where": []
+    },
+    {
+     "id": "2",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Introduction",
+     "status": "unanswered",
+     "text": "Explain the scientific background and rationale for the investigation being reported.",
+     "topic": "Background Rationale",
+     "where": []
+    },
+    {
+     "id": "3",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the study's objectives and hypotheses, in the author's words",
+     "owed": "the study's objectives and hypotheses, in the author's words",
+     "scope": null,
+     "section": "Introduction",
+     "status": "partly answered",
+     "text": "State specific objectives, including any prespecified hypotheses.",
+     "topic": "Objectives",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_estimand",
+       "quote": "The analysis estimates the total effect of `walks_daily` on `sbp_mmhg`, as a difference in the mean outcome per unit of `walks_daily`.",
+       "record_id": "291e787d1dae4fa9bce0b78172d8af68",
+       "record_ids": null,
+       "seq": 10,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "4",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the study design by its usual name (cohort, case-control or cross-sectional)",
+     "owed": "the study design by its usual name (cohort, case-control or cross-sectional)",
+     "scope": null,
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Present key elements of study design early in the paper.",
+     "topic": "Study Design",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "quote": "The analysis was declared for `inference`: associations are estimated with their uncertainty.",
+       "record_id": "7f8b63badd0b479db058d67454b24569",
+       "record_ids": null,
+       "seq": 3,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "5",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe the setting, locations, and relevant dates, including periods of recruitment, exposure, follow-up, and data collection.",
+     "topic": "Settings",
+     "where": []
+    },
+    {
+     "id": "nut-5",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe any characteristics of the study settings that might affect the dietary intake or nutritional status of the participants, if applicable.",
+     "topic": "Settings",
+     "where": []
+    },
+    {
+     "id": "6a",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the sources and methods of selection of participants, and of follow-up",
+     "owed": "the sources and methods of selection of participants, and of follow-up",
+     "scope": null,
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Cohort study\u2014give the eligibility criteria and the sources and methods of selection of participants. Describe methods of follow-up. Case-control study\u2014give the eligibility criteria and the sources and methods of case ascertainment and control selection. Give the rationale for the choice of cases and controls. Cross-sectional study\u2014give the eligibility criteria and the sources and methods of selection of participants.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "quote": "No rows were excluded: every row with `sbp_mmhg` measured stays in the analysis.",
+       "record_id": "e03b43b53fea44a79fedcab6da656d20",
+       "record_ids": null,
+       "seq": 7,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "nut-6",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Report particular dietary, physiological, or nutritional characteristics that were considered when selecting the target population.",
+     "topic": "Participants",
+     "where": []
+    },
+    {
+     "id": "6b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Cohort study\u2014for matched studies, give matching criteria and number of exposed and unexposed. Case-control study\u2014for matched studies, give matching criteria and the number of controls per case.",
+     "topic": "Participants",
+     "where": []
+    },
+    {
+     "id": "7",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply each variable's definition beyond its column, and any diagnostic criteria",
+     "owed": "each variable's definition beyond its column, and any diagnostic criteria",
+     "scope": null,
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Clearly define all outcomes, exposures, predictors, potential confounders, and effect modifiers. Give diagnostic criteria, if applicable.",
+     "topic": "Variables",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_target",
+       "quote": "`sbp_mmhg` was chosen as the outcome; it is measured on all `1,200` rows.",
+       "record_id": "92d28693e60c4c7ba5800598444ab909",
+       "record_ids": null,
+       "seq": 2,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_roles",
+       "quote": "Column roles were set for `6` columns: exposure `walks_daily`; covariates `age`, `chronic_pain`, `height_cm` and `health_concern_score`; identifier `person_id`.",
+       "record_id": "5a8c2d5c6d344a36a62170a3060749d5",
+       "record_ids": null,
+       "seq": 4,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_role",
+       "quote": "`walks_daily` was confirmed as an exposure on its own, after the evidence for its proposal was read.",
+       "record_id": "cc1fb37c703442668d577e4fef73cdd9",
+       "record_ids": null,
+       "seq": 5,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_role",
+       "quote": "`height_cm` was confirmed as a covariate on its own, after the evidence for its proposal was read.",
+       "record_id": "7f70086887d24f15acd71723e2aecbd0",
+       "record_ids": null,
+       "seq": 6,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_estimand",
+       "quote": "The analysis estimates the total effect of `walks_daily` on `sbp_mmhg`, as a difference in the mean outcome per unit of `walks_daily`.",
+       "record_id": "291e787d1dae4fa9bce0b78172d8af68",
+       "record_ids": null,
+       "seq": 10,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "confirm_reading",
+       "quote": "`age` was confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.",
+       "record_id": "8bee7c3a0c5a40548df1fa8de464beed",
+       "record_ids": null,
+       "seq": 12,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "quote": "For the effect of `walks_daily`, by the disjunctive cause criterion: `age` is a cause of the outcome only, adjusted for; `height_cm` is a cause of neither, left out; `chronic_pain` is a confounder, adjusted for; `health_concern_score` is a consequence of the exposure (a possible collider), left out.",
+       "record_id": "6de6c8ac16fc4fabbe30e4bba1921c80",
+       "record_ids": null,
+       "seq": 11,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "nut-7.1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Clearly define foods, food groups, nutrients, or other food components.",
+     "topic": "Variables",
+     "where": []
+    },
+    {
+     "id": "nut-7.2",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "When using dietary patterns or indices, describe the methods to obtain them and their nutritional properties.",
+     "topic": "Variables",
+     "where": []
+    },
+    {
+     "id": "8",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "For each variable of interest, give sources of data and details of methods of assessment (measurement). Describe comparability of assessment methods if there is more than one group.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe the dietary assessment method(s), e.g., portion size estimation, number of days and items recorded, how it was developed and administered, and how quality was assured. Report if and how supplement intake was assessed.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.2",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe and justify food composition data used. Explain the procedure to match food composition with consumption data. Describe the use of conversion factors, if applicable.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.3",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe the nutrient requirements, recommendations, or dietary guidelines and the evaluation approach used to compare intake with the dietary reference values, if applicable.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.4",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "When using nutritional biomarkers, additionally use the STROBE Extension for Molecular Epidemiology (STROBE-ME). Report the type of biomarkers used and their usefulness as dietary exposure markers.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.5",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe the assessment of nondietary data (e.g., nutritional status and influencing factors) and timing of the assessment of these variables in relation to dietary assessment.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "nut-8.6",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Report on the validity of the dietary or nutritional assessment methods and any internal or external validation used in the study, if applicable.",
+     "topic": "Data Sources\u2014Measurements",
+     "where": []
+    },
+    {
+     "id": "9",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply any other source of bias the author addressed, and how",
+     "owed": "any other source of bias the author addressed, and how",
+     "scope": null,
+     "section": "Methods",
+     "status": "partly answered",
+     "text": "Describe any efforts to address potential sources of bias.",
+     "topic": "Bias",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "quote": "For the effect of `walks_daily`, by the disjunctive cause criterion: `age` is a cause of the outcome only, adjusted for; `height_cm` is a cause of neither, left out; `chronic_pain` is a confounder, adjusted for; `health_concern_score` is a consequence of the exposure (a possible collider), left out.",
+       "record_id": "6de6c8ac16fc4fabbe30e4bba1921c80",
+       "record_ids": null,
+       "seq": 11,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "effects",
+       "quote": "The estimate of `walks_daily` is reported across a declared sequence of models fit on all 1,200 analyzed rows: unadjusted; Model 2, the primary, adjusted for `age` and `chronic_pain`. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(4, 1,196) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the Cinelli\u2013Hazlett robustness value (each adjusted covariate a named benchmark; its form for the 95% interval, and the benchmarks' intervals, are not reported, as they assume classical standard errors and the intervals reported are HC3) and by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      }
+     ]
+    },
+    {
+     "id": "nut-9",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Report how bias in dietary or nutritional assessment was addressed, e.g., misreporting, changes in habits as a result of being measured, or data imputation from other sources.",
+     "topic": "Bias",
+     "where": []
+    },
+    {
+     "id": "10",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Explain how the study size was arrived at.",
+     "topic": "Study Size",
+     "where": []
+    },
+    {
+     "id": "11",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Explain how quantitative variables were handled in the analyses. If applicable, describe which groupings were chosen and why.",
+     "topic": "Quantitative Variables",
+     "where": []
+    },
+    {
+     "id": "nut-11",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Explain the categorization of dietary/nutritional data (e.g., use of N-tiles and handling of nonconsumers) and the choice of reference category, if applicable.",
+     "topic": "Quantitative Variables",
+     "where": []
+    },
+    {
+     "id": "12a",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "answered",
+     "text": "Describe all statistical methods, including those used to control for confounding.",
+     "topic": "Statistical Methods",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "quote": "For the effect of `walks_daily`, by the disjunctive cause criterion: `age` is a cause of the outcome only, adjusted for; `height_cm` is a cause of neither, left out; `chronic_pain` is a confounder, adjusted for; `health_concern_score` is a consequence of the exposure (a possible collider), left out.",
+       "record_id": "6de6c8ac16fc4fabbe30e4bba1921c80",
+       "record_ids": null,
+       "seq": 11,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "select_models",
+       "quote": "One model family was chosen: linear regression.",
+       "record_id": "5df9626eda4c43898cdf0710eec6062f",
+       "record_ids": null,
+       "seq": 14,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "effects",
+       "quote": "The estimate of `walks_daily` is reported across a declared sequence of models fit on all 1,200 analyzed rows: unadjusted; Model 2, the primary, adjusted for `age` and `chronic_pain`. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(4, 1,196) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the Cinelli\u2013Hazlett robustness value (each adjusted covariate a named benchmark; its form for the 95% interval, and the benchmarks' intervals, are not reported, as they assume classical standard errors and the intervals reported are HC3) and by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      }
+     ]
+    },
+    {
+     "id": "12b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe any methods used to examine subgroups and interactions.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "12c",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "answered",
+     "text": "Explain how missing data were addressed.",
+     "topic": "Statistical Methods",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_missing",
+       "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
+       "record_id": "42c2e4908c6a42c395a90dee3e9d91a1",
+       "record_ids": null,
+       "seq": 8,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "12d",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Cohort study\u2014if applicable, explain how loss to follow-up was addressed. Case-control study\u2014if applicable, explain how matching of cases and controls was addressed. Cross-sectional study\u2014if applicable, describe analytical methods taking account of sampling strategy.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "12e",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "answered",
+     "text": "Describe any sensitivity analyses.",
+     "topic": "Statistical Methods",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "effects",
+       "quote": "The estimate of `walks_daily` is reported across a declared sequence of models fit on all 1,200 analyzed rows: unadjusted; Model 2, the primary, adjusted for `age` and `chronic_pain`. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(4, 1,196) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the Cinelli\u2013Hazlett robustness value (each adjusted covariate a named benchmark; its form for the 95% interval, and the benchmarks' intervals, are not reported, as they assume classical standard errors and the intervals reported are HC3) and by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "analysis"
+      }
+     ]
+    },
+    {
+     "id": "nut-12.1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe any statistical method used to combine dietary or nutritional data, if applicable.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "nut-12.2",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Describe and justify the method for energy adjustments, intake modeling, and use of weighting factors, if applicable.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "nut-12.3",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Methods",
+     "status": "unanswered",
+     "text": "Report any adjustments for measurement error, i.e., from a validity or calibration study.",
+     "topic": "Statistical Methods",
+     "where": []
+    },
+    {
+     "id": "13a",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the numbers before the table was assembled: potentially eligible, examined for eligibility, and completing follow-up",
+     "owed": "the numbers before the table was assembled: potentially eligible, examined for eligibility, and completing follow-up",
+     "scope": null,
+     "section": "Results",
+     "status": "partly answered",
+     "text": "Report the numbers of individuals at each stage of the study\u2014e.g., numbers potentially eligible, examined for eligibility, confirmed eligible, included in the study, completing follow-up, and analyzed.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "quote": "No rows were excluded: every row with `sbp_mmhg` measured stays in the analysis.",
+       "record_id": "e03b43b53fea44a79fedcab6da656d20",
+       "record_ids": null,
+       "seq": 7,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_missing",
+       "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
+       "record_id": "42c2e4908c6a42c395a90dee3e9d91a1",
+       "record_ids": null,
+       "seq": 8,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 1,200 rows of the table as read to 1,200 analyzed. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "13b",
+     "kind": "STROBE",
+     "note": "partly answered \u2014 the author must supply the reasons for nonparticipation before the table was assembled",
+     "owed": "the reasons for nonparticipation before the table was assembled",
+     "scope": null,
+     "section": "Results",
+     "status": "partly answered",
+     "text": "Give reasons for nonparticipation at each stage.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 1,200 rows of the table as read to 1,200 analyzed. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "13c",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Consider use of a flow diagram.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 1,200 rows of the table as read to 1,200 analyzed. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "nut-13",
+     "kind": "STROBE-nut",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Report the number of individuals excluded based on missing, incomplete, or implausible dietary/nutritional data.",
+     "topic": "Participants",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "quote": "No rows were excluded: every row with `sbp_mmhg` measured stays in the analysis.",
+       "record_id": "e03b43b53fea44a79fedcab6da656d20",
+       "record_ids": null,
+       "seq": 7,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "methods.md",
+       "kind": "set_missing",
+       "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
+       "record_id": "42c2e4908c6a42c395a90dee3e9d91a1",
+       "record_ids": null,
+       "seq": 8,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "quote": "Figure 1. Participant flow, from the 1,200 rows of the table as read to 1,200 analyzed. No row was excluded at any step.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "14a",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Give characteristics of study participants (e.g., demographic, clinical, and social) and information on exposures and potential confounders.",
+     "topic": "Descriptive Data",
+     "where": []
+    },
+    {
+     "id": "14b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Indicate the number of participants with missing data for each variable of interest.",
+     "topic": "Descriptive Data",
+     "where": []
+    },
+    {
+     "id": "14c",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Cohort study\u2014summarize follow-up time (e.g., average and total amount).",
+     "topic": "Descriptive Data",
+     "where": []
+    },
+    {
+     "id": "nut-14",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Give the distribution of participant characteristics across the exposure variables if applicable. Specify if food consumption of total population or consumers only were used to obtain results.",
+     "topic": "Descriptive Data",
+     "where": []
+    },
+    {
+     "id": "15",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Cohort study\u2014report numbers of outcome events or summary measures over time. Case-control study\u2014report numbers in each exposure category or summary measures of exposure. Cross-sectional study\u2014report numbers of outcome events or summary measures.",
+     "topic": "Outcome Data",
+     "where": []
+    },
+    {
+     "id": "16a",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Give unadjusted estimates and, if applicable, confounder-adjusted estimates and their precision (e.g., 95% confidence interval). Make clear which confounders were adjusted for and why they were included.",
+     "topic": "Main Results",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "quote": "For the effect of `walks_daily`, by the disjunctive cause criterion: `age` is a cause of the outcome only, adjusted for; `height_cm` is a cause of neither, left out; `chronic_pain` is a confounder, adjusted for; `health_concern_score` is a consequence of the exposure (a possible collider), left out.",
+       "record_id": "6de6c8ac16fc4fabbe30e4bba1921c80",
+       "record_ids": null,
+       "seq": 11,
+       "seqs": null,
+       "source": "record"
+      },
+      {
+       "file": "results/table2.md",
+       "kind": null,
+       "quote": "Table 2. The exposure's estimate across the declared models. The estimate of `walks_daily` on `sbp_mmhg` as a difference in the mean outcome, from all 1,200 analyzed rows, unadjusted and in each declared model; Model 2 is the primary. Only the exposure's rows are effect estimates; every other coefficient is listed in the appendix (adjustment terms, not effect estimates).",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "16b",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Report category boundaries when continuous variables were categorized.",
+     "topic": "Main Results",
+     "where": []
+    },
+    {
+     "id": "16c",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "If relevant, consider translating estimates of relative risk into absolute risk for a meaningful time period.",
+     "topic": "Main Results",
+     "where": []
+    },
+    {
+     "id": "nut-16",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "unanswered",
+     "text": "Specify if nutrient intakes are reported with or without inclusion of dietary supplement intake, if applicable.",
+     "topic": "Main Results",
+     "where": []
+    },
+    {
+     "id": "17",
+     "kind": "STROBE",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Report other analyses done\u2014e.g., analyses of subgroups and interactions and sensitivity analyses.",
+     "topic": "Other Analyses",
+     "where": [
+      {
+       "file": "results/table2_sensitivity.md",
+       "kind": null,
+       "quote": "Sensitivity of each estimate to unmeasured confounding. The E-value for the estimate and for the confidence limit nearer the null (VanderWeele & Ding 2017), and the Cinelli\u2013Hazlett robustness value, never read as a pass or a fail.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    },
+    {
+     "id": "nut-17",
+     "kind": "STROBE-nut",
+     "note": "answered in the bundle",
+     "owed": null,
+     "scope": null,
+     "section": "Results",
+     "status": "answered",
+     "text": "Report any sensitivity analysis (e.g., exclusion of misreporters or outliers) and data imputation, if applicable.",
+     "topic": "Other Analyses",
+     "where": [
+      {
+       "file": "methods.md",
+       "kind": "set_missing",
+       "quote": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor.",
+       "record_id": "42c2e4908c6a42c395a90dee3e9d91a1",
+       "record_ids": null,
+       "seq": 8,
+       "seqs": null,
+       "source": "record"
+      }
+     ]
+    },
+    {
+     "id": "18",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Summarize key results with reference to study objectives.",
+     "topic": "Key Results",
+     "where": []
+    },
+    {
+     "id": "19",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Discuss limitations of the study, taking into account sources of potential bias or imprecision. Discuss both direction and magnitude of any potential bias.",
+     "topic": "Limitation",
+     "where": []
+    },
+    {
+     "id": "nut-19",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Describe the main limitations of the data sources and assessment methods used and implications for the interpretation of the findings.",
+     "topic": "Limitation",
+     "where": []
+    },
+    {
+     "id": "20",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Give a cautious overall interpretation of results considering objectives, limitations, multiplicity of analyses, results from similar studies, and other relevant evidence.",
+     "topic": "Interpretation",
+     "where": []
+    },
+    {
+     "id": "nut-20",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Report the nutritional relevance of the findings, given the complexity of diet or nutrition as an exposure.",
+     "topic": "Interpretation",
+     "where": []
+    },
+    {
+     "id": "21",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Discussion",
+     "status": "unanswered",
+     "text": "Discuss the generalizability (external validity) of the study results.",
+     "topic": "Generalizability",
+     "where": []
+    },
+    {
+     "id": "22",
+     "kind": "STROBE",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Other Information",
+     "status": "unanswered",
+     "text": "Give the source of funding and the role of the funders for the present study and, if applicable, for the original study on which the present article is based.",
+     "topic": "Funding",
+     "where": []
+    },
+    {
+     "id": "nut-22.1",
+     "kind": "STROBE-nut",
+     "note": "unanswered \u2014 the author must supply this",
+     "owed": null,
+     "scope": null,
+     "section": "Other Information",
+     "status": "unanswered",
+     "text": "Describe the procedure for consent and study approval from ethics committee(s).",
+     "topic": "Ethics",
+     "where": []
+    },
+    {
+     "id": "nut-22.2",
+     "kind": "STROBE-nut",
+     "note": "partly answered \u2014 the author must supply the data collection tools and the data, or how they can be accessed",
+     "owed": "the data collection tools and the data, or how they can be accessed",
+     "scope": null,
+     "section": "Other Information",
+     "status": "partly answered",
+     "text": "Provide data collection tools and data as online material or explain how they can be accessed.",
+     "topic": "Supplementary Material",
+     "where": [
+      {
+       "file": "provenance.json",
+       "kind": null,
+       "quote": "the provenance record: the decision log, each input file's SHA-256, the engine and its stages' versions, the model matrix's hashes and every reported estimate, which `python -m turbotab.replay` checks against the input files",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "source": "file"
+      }
+     ]
+    }
+   ],
+   "note": "Each item is quoted from Table 1 of the source and listed with where this bundle answers it: a sentence of the decision record (with its decision), a paragraph the analysis wrote, or a figure or table. An item the record cannot answer is listed as \u201cunanswered \u2014 the author must supply this\u201d.",
+   "purpose": "inference",
+   "source": {
+    "doi": "10.1371/journal.pmed.1002036",
+    "license": "CC BY",
+    "pmcid": "PMC4896435",
+    "retrieved": "2026-10-05",
+    "sha256": "99eceb605590a16826657699b0456f33944f00059a1f0bdd0c1157ab976997b5",
+    "table": "Table 1",
+    "url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC4896435/fullTextXML"
+   },
+   "title": "STROBE-nut: an extension of the STROBE statement for nutritional epidemiology",
+   "unanswered": [
+    "1a",
+    "nut-1",
+    "1b",
+    "2",
+    "5",
+    "nut-5",
+    "nut-6",
+    "6b",
+    "nut-7.1",
+    "nut-7.2",
+    "8",
+    "nut-8.1",
+    "nut-8.2",
+    "nut-8.3",
+    "nut-8.4",
+    "nut-8.5",
+    "nut-8.6",
+    "nut-9",
+    "10",
+    "11",
+    "nut-11",
+    "12b",
+    "12d",
+    "nut-12.1",
+    "nut-12.2",
+    "nut-12.3",
+    "14a",
+    "14b",
+    "14c",
+    "nut-14",
+    "15",
+    "16b",
+    "16c",
+    "nut-16",
+    "18",
+    "19",
+    "nut-19",
+    "20",
+    "nut-20",
+    "21",
+    "22",
+    "nut-22.1"
+   ],
+   "waiting": []
+  },
+  "methods": "# Methods: walking_bp\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the estimates were seen is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow STROBE and STROBE-nut; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Study design (STROBE 4)\n\nThe analysis was declared for `inference`: associations are estimated with their uncertainty.\n\n## Participants (STROBE 6)\n\nNo rows were excluded: every row with `sbp_mmhg` measured stays in the analysis.\n\n## Variables (STROBE 7)\n\n`sbp_mmhg` was chosen as the outcome; it is measured on all `1,200` rows. Column roles were set for `6` columns: exposure `walks_daily`; covariates `age`, `chronic_pain`, `height_cm` and `health_concern_score`; identifier `person_id`. `walks_daily` was confirmed as an exposure on its own, after the evidence for its proposal was read. `height_cm` was confirmed as a covariate on its own, after the evidence for its proposal was read. The analysis estimates the total effect of `walks_daily` on `sbp_mmhg`, as a difference in the mean outcome per unit of `walks_daily`. `age` was confirmed to hold amounts or counts, on its own, after the evidence for its reading was read.\n\nRead from the values, no question asked: `person_id` is the unit's identifier (Named like a participant's identifier; `1,200` labels, one per row); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sbp_mmhg` is a regression outcome (Continuous, with 499 distinct values \u2014 read as a regression outcome); `height_cm` is an amount (one slope) (`356` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `health_concern_score` is an amount (one slope) (`447` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height_cm` is in cm (its median, 170.1, is a human height only in cm).\n\n## Data sources and measurement (STROBE 8)\n\nThe table was read through the `clinical` lens.\n\n## Quantitative variables (STROBE 11)\n\n`age` entered the models as a straight line.\n\n## Statistical methods (STROBE 12)\n\nMissing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor. No rows were held out: every analyzed row estimates the coefficients, and no cross-validated score is reported under inference: the declared model is reported by its estimates. For the effect of `walks_daily`, by the disjunctive cause criterion: `age` is a cause of the outcome only, adjusted for; `height_cm` is a cause of neither, left out; `chronic_pain` is a confounder, adjusted for; `health_concern_score` is a consequence of the exposure (a possible collider), left out. One model family was chosen: linear regression.\n\nThe estimate of `walks_daily` is reported across a declared sequence of models fit on all 1,200 analyzed rows: unadjusted; Model 2, the primary, adjusted for `age` and `chronic_pain`. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(4, 1,196) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the Cinelli\u2013Hazlett robustness value (each adjusted covariate a named benchmark; its form for the 95% interval, and the benchmarks' intervals, are not reported, as they assume classical standard errors and the intervals reported are HC3) and by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.\n\nMissing values were multiply imputed by chained equations with the outcome in the imputation model, compatible with the analysis model, linear in the imputed variables; m = 36 imputations, at least 20 and at least the 36% of rows with an imputed value (White, Royston & Wood 2011); the estimates were pooled by Rubin's rules; the largest Monte Carlo error, for `chronic_pain`, was 10.9% of its standard error.\n\nThe analysis plan recorded above was declared in TurboTab before any estimate was displayed (SHA-256 `2cc29fb751cf`); every later change is marked as made after the estimates were seen.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `f5ed08224adb`, with local changes). The supplementary provenance record holds the decision log (`15` records), the SHA-256 of the input file `walking_bp.csv` (SHA-256 `cacf2daf71a6`), the analysis plan (SHA-256 `2cc29fb751cf`) and the model matrix (`1,200` rows by `3` columns; SHA-256 `839f9e46f179` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "reached": true,
+  "refused": null,
+  "sha256": "99b6e63f935075994c0ebb62d1553698723407bba651fa891ffec95cd19195f1"
+ },
+ "question": {
+  "estimand": {
+   "contrast": null,
+   "effect": "total",
+   "exposure": "walks_daily",
+   "family": false,
+   "measure": "mean_difference",
+   "multiplicity": null,
+   "multiplicity_acknowledged": false
+  },
+  "intended_use": null,
+  "paper": null,
+  "purpose": "inference",
+  "stated": "Is walking every day associated with systolic blood pressure?",
+  "target": "sbp_mmhg"
+ },
+ "regime": {
+  "design": {
+   "clusters": null,
+   "design": null,
+   "grain": null,
+   "repeat_kind": null,
+   "survey": null,
+   "unit": null
+  },
+  "event": null,
+  "events": null,
+  "lenses": [
+   "clinical"
+  ],
+  "markers": [
+   {
+    "axis": "regime",
+    "basis": "the table's rows (the ingest)",
+    "name": "rows",
+    "timing": "live",
+    "value": 1200,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the participant flow's final count",
+    "name": "rows_analyzed",
+    "timing": "live",
+    "value": 1200,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the grain and repeats answers, and the units the held-out draw groups by (the seal plan)",
+    "name": "repeated_units",
+    "timing": "live",
+    "value": {
+     "grain": null,
+     "repeat_kind": null,
+     "unit_column": null,
+     "units": null
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the rows analyzed (the participant flow)",
+    "name": "effective_size",
+    "timing": "live",
+    "value": 1200,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": null,
+    "name": "events_per_parameter",
+    "timing": "live",
+    "value": null,
+    "why": "The shelf serves no count of candidate predictor parameters."
+   },
+   {
+    "axis": "regime",
+    "basis": "the roles answer, counted by role",
+    "name": "predictors_by_role",
+    "timing": "live",
+    "value": {
+     "covariate": 4,
+     "exposure": 1,
+     "identifier": 1
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the participant flow's predictors over its rows",
+    "name": "predictors_per_row",
+    "timing": "live",
+    "value": 0.0025,
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the outcome's type, as read from its values",
+    "name": "outcome_type",
+    "timing": "live",
+    "value": "regression",
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": null,
+    "name": "event_share",
+    "timing": "live",
+    "value": null,
+    "why": "Only a yes/no outcome has an event share."
+   },
+   {
+    "axis": "regime",
+    "basis": "each column's blanks over the table's rows (the ingest); a column with none is not listed",
+    "name": "missingness",
+    "timing": "live",
+    "value": {
+     "chronic_pain": 0.36
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": null,
+    "name": "complete_case_share",
+    "timing": "live",
+    "value": null,
+    "why": "The participant flow counts the complete cases only under complete cases."
+   },
+   {
+    "axis": "regime",
+    "basis": "the design answers as recorded",
+    "name": "design",
+    "timing": "live",
+    "value": {
+     "clusters": null,
+     "design": null,
+     "grain": null,
+     "repeat_kind": null,
+     "survey": null,
+     "unit": null
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the temporal answer, the structure's time column and whether the seal plan's folds follow time (null where either stage is not computed)",
+    "name": "time_order",
+    "timing": "live",
+    "value": {
+     "temporal": null,
+     "time_column": null,
+     "time_ordered_folds": false
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "each unit read from the values with its evidence (the readings), and each recorded",
+    "name": "units",
+    "timing": "live",
+    "value": [
+     {
+      "basis": "its median, 170.1, is a human height only in cm",
+      "column": "height_cm",
+      "kind": "unit",
+      "value": "cm"
+     }
+    ],
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the columns the findings found values below a detection limit in; each column's share is not served",
+    "name": "detection_limit_share",
+    "timing": "live",
+    "value": {
+     "columns": [],
+     "shares": null
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the columns whose names read as a batch, a run or a plate, and the batch answer",
+    "name": "batch_columns",
+    "timing": "live",
+    "value": {
+     "answered": null,
+     "read": []
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the columns whose names read as a run order",
+    "name": "run_order",
+    "timing": "live",
+    "value": [],
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the repeats answer: whether a unit's rows are imputed copies",
+    "name": "imputed_copies",
+    "timing": "live",
+    "value": false,
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": "the grain, repeats and aggregation answers",
+    "name": "repeated_measurement",
+    "timing": "live",
+    "value": {
+     "aggregation": null,
+     "grain": null,
+     "repeat_kind": null
+    },
+    "why": null
+   },
+   {
+    "axis": "measurement",
+    "basis": null,
+    "name": "omics_scale",
+    "timing": "live",
+    "value": null,
+    "why": "No assay lens is chosen, so no scale is read."
+   },
+   {
+    "axis": "purpose",
+    "basis": "the purpose answer",
+    "name": "purpose",
+    "timing": "live",
+    "value": "inference",
+    "why": null
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "primary_score",
+    "timing": "live",
+    "value": null,
+    "why": "Under Estimate the result is the estimate, not a score."
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "intended_use",
+    "timing": "live",
+    "value": null,
+    "why": "No intended use is declared."
+   },
+   {
+    "axis": "purpose",
+    "basis": null,
+    "name": "thresholds",
+    "timing": "live",
+    "value": null,
+    "why": "No intended use is declared."
+   },
+   {
+    "axis": "purpose",
+    "basis": "the estimand answer",
+    "name": "estimand",
+    "timing": "live",
+    "value": {
+     "contrast": null,
+     "effect": "total",
+     "exposure": "walks_daily",
+     "family": false,
+     "measure": "mean_difference"
+    },
+    "why": null
+   },
+   {
+    "axis": "purpose",
+    "basis": "the estimand's exposure family and the multiplicity answer (null: none recorded)",
+    "name": "multiplicity_family",
+    "timing": "live",
+    "value": {
+     "family": false,
+     "method": null
+    },
+    "why": null
+   },
+   {
+    "axis": "regime",
+    "basis": "the first estimate's distance from no effect in half-widths of its interval",
+    "name": "signal",
+    "timing": "post_hoc",
+    "value": 2.2699373638580105,
+    "why": null
+   },
+   {
+    "axis": "purpose",
+    "basis": "the first reported estimate",
+    "name": "result",
+    "timing": "post_hoc",
+    "value": {
+     "ci_high": -1.9911793292571296,
+     "ci_low": -5.127049468880426,
+     "estimate": -3.5591143990687777,
+     "family": "linear",
+     "feature": "walks_daily",
+     "measure": "mean_difference"
+    },
+    "why": null
+   }
+  ],
+  "missing": {
+   "chronic_pain": 432
+  },
+  "n_analyzed": 1200,
+  "n_rows": 1200,
+  "task": "regression"
+ },
+ "replay": null,
+ "replication": null,
+ "result": {
+  "attempt": "bc44801f65df470287b0e08c8871759b",
+  "conditioning": "conditional and marginal",
+  "decisions": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14
+  ],
+  "estimates": [
+   {
+    "ci_high": -1.9911793292571296,
+    "ci_low": -5.127049468880426,
+    "estimate": -3.5591143990687777,
+    "family": "linear",
+    "feature": "walks_daily",
+    "setting": null,
+    "why": null
+   }
+  ],
+  "family": null,
+  "intervals": null,
+  "intervals_why": null,
+  "lock": 15,
+  "measure": "mean_difference",
+  "metric": null,
+  "n_holdout": null,
+  "opening": null,
+  "plan_digest": "2cc29fb751cff447e9f34214a66ff84c608320e2b2e05cfd14154fe639c71d36",
+  "purpose": "inference",
+  "refused": null,
+  "refused_kind": null,
+  "scale": "difference",
+  "scores": null,
+  "served_fit": null,
+  "source": "fits"
+ },
+ "run": {
+  "analyst_model": "scripted",
+  "design": 2,
+  "effort": null,
+  "ended": "2026-10-23T00:09:53Z",
+  "engine_commit": "f5ed08224adbe40ce69a39f4985b92d69213e542",
+  "engine_modified": true,
+  "engine_version": "2.0.0.dev0",
+  "fit_budget": {
+   "fits": 4,
+   "seconds": 600.0
+  },
+  "fit_seconds": 0.38647504104301333,
+  "fits": 1,
+  "fits_unseen": 0,
+  "help": [],
+  "id": "run_02-bb676eb7dc6cdabb911d5748e8c0d1cb",
+  "persona": null,
+  "prompt_version": "dry-run-2",
+  "redacted": false,
+  "server": {
+   "mode": "local",
+   "pid": 61843,
+   "port": 59329,
+   "workers": 2
+  },
+  "spend": null,
+  "spend_why": "No transcript of the analyst agent was given.",
+  "started": "2026-10-23T00:09:16Z",
+  "vocabulary": "82014c44e597cef378fee676fe6c5b3b7d6623f48bb08a1e577dc5e37f424eeb"
+ },
+ "surfacings": {
+  "concerns": [],
+  "failed_fits": [],
+  "refusals": []
+ },
+ "version": 2,
+ "wants": []
+}

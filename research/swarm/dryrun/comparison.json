@@ -1,12 +1,12 @@
 [
  {
   "run": "clinical_explore",
-  "run_id": "run_02-74496dcdd1f77036768f30561f267ae5",
-  "dataset": "clinical_readmission_predict",
-  "record": "research/swarm/dryrun/run_02-74496dcdd1f77036768f30561f267ae5.json",
+  "run_id": "run_01-f84bb3e05a3989b9afe5ff95cede4fda",
+  "dataset": "inpatient_readmission_predict",
+  "record": "research/swarm/dryrun/run_01-f84bb3e05a3989b9afe5ff95cede4fda.json",
   "valid": true,
   "error": null,
-  "seconds": 225.6,
+  "seconds": 364.6,
   "commands": 60,
   "refused": [],
   "checks": [
@@ -80,13 +80,13 @@
  },
  {
   "run": "survey_single",
-  "run_id": "run_01-beba0938b0496f07e4425c7212700356",
-  "dataset": "survey_support_estimate",
-  "record": "research/swarm/dryrun/run_01-beba0938b0496f07e4425c7212700356.json",
+  "run_id": "run_02-bb676eb7dc6cdabb911d5748e8c0d1cb",
+  "dataset": "walking_bp_estimate",
+  "record": "research/swarm/dryrun/run_02-bb676eb7dc6cdabb911d5748e8c0d1cb.json",
   "valid": true,
   "error": null,
-  "seconds": 77.3,
-  "commands": 52,
+  "seconds": 38.3,
+  "commands": 32,
   "refused": [],
   "checks": [
    {
@@ -120,7 +120,7 @@
     ],
     "unchecked": [],
     "notes": [
-     "0 of 25 decisions made before the seal's opening or the plan's lock had an alternative examined; 1 fit read only those decisions."
+     "0 of 15 decisions made before the seal's opening or the plan's lock had an alternative examined; 1 fit read only those decisions."
     ]
    },
    {
@@ -128,7 +128,7 @@
     "expected": "pass",
     "got": "pass",
     "agrees": true,
-    "why": "Fact readings answered from the declared truth; age has no effect by construction, so its marginal risk difference, the number the app reports for the estimand, is 0: its 95% interval holds 0 (in 1 run in 20 it would not by chance; that would be checked against an independent fit before calling it a defect), or the effects stage refuses it, as it does under multiple imputation (the app's first-ranked missing-values answer here): right or refused.",
+    "why": "Fact readings answered from the declared truth; walking every day changes systolic blood pressure by -5 mmHg by construction, so the locked fit's `walks_daily` row on the difference in the mean, the number the app reports for the estimand, has a 95% interval that holds -5 (in 1 run in 20 it would not by chance; that would be checked against an independent fit before calling it a defect), or the fit refuses it: right or refused.",
     "problems": [],
     "unchecked": [],
     "notes": []
@@ -159,12 +159,12 @@
  },
  {
   "run": "decoy_single",
-  "run_id": "run_03-b2b9da17de767a10743600864cc38d12",
+  "run_id": "run_03-bd56f686e2bd089462954f32fbf13cc9",
   "dataset": "outpatient_admission_predict",
-  "record": "research/swarm/dryrun/run_03-b2b9da17de767a10743600864cc38d12.json",
+  "record": "research/swarm/dryrun/run_03-bd56f686e2bd089462954f32fbf13cc9.json",
   "valid": true,
   "error": null,
-  "seconds": 310.1,
+  "seconds": 337.4,
   "commands": 55,
   "refused": [
    "triage_open"
