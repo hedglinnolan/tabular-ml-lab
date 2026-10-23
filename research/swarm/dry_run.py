@@ -223,13 +223,17 @@ WHY: dict[str, dict[str, str]] = {
 
 
 def table_of(dataset: str, folder: Path) -> Path:
-    """The dataset's table, written into ``folder`` from what its manifest names (a repository
-    fixture copied; the decoy generated from its seed) and held to the manifest's SHA-256."""
+    """The dataset's table, written into ``folder`` from what its manifest names (the table the
+    intake built, where it is on disk; else a repository fixture copied, or the decoy generated
+    from its seed) and held to the manifest's SHA-256. A table built from source files (the
+    NHANES datasets list their NCHS files first) is never its first source file."""
     manifest = json.loads((DATASETS / dataset / "manifest.json").read_text("utf-8"))
     table = manifest["table"]
     dest = folder / Path(table["file"]).name
     folder.mkdir(parents=True, exist_ok=True)
-    if manifest.get("files"):
+    if (REPO / table["file"]).exists():
+        shutil.copyfile(REPO / table["file"], dest)
+    elif manifest.get("files"):
         shutil.copyfile(REPO / manifest["files"][0]["file"], dest)
     else:
         from research.swarm import decoys

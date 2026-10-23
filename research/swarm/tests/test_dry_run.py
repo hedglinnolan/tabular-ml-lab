@@ -45,6 +45,22 @@ def test_each_runs_table_is_rebuilt_to_its_manifests_sha256(tmp_path, run, monke
         D.table_of(dataset, tmp_path / "again")
 
 
+PILOT = ("bang2009", "sullivan2021", "nhanes_glucose_predict", "inpatient_readmission_predict",
+         "walking_bp_estimate", "plasma_panel_estimate")
+
+
+@pytest.mark.parametrize("dataset", PILOT)
+def test_each_pilot_datasets_table_is_the_one_its_manifest_names(tmp_path, dataset):
+    """A table the intake built from source files (the NHANES datasets list their NCHS files
+    first) is copied from the table the manifest names, not from its first source file: its
+    SHA-256 is the manifest's (hashlib here, the manifest's own number)."""
+    manifest = json.loads((D.DATASETS / dataset / "manifest.json").read_text("utf-8"))
+    if not (D.REPO / manifest["table"]["file"]).exists():
+        pytest.skip(f"{manifest['table']['file']} is not on disk (research/data is untracked)")
+    path = D.table_of(dataset, tmp_path / "data")
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == manifest["table"]["sha256"]
+
+
 def test_the_committed_dry_run_records_still_give_what_their_construction_implies():
     """Each run's committed record validates, and every check run on it today gives the run's
     expected result (``dry_run.EXPECTED``): a change to a check, the record or the schema that
