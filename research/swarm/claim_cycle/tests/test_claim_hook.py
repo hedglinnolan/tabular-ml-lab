@@ -268,7 +268,7 @@ def test_one_cycle_is_pinned_at_a_time_and_only_where_it_can_run(tmp_path):
     for corpus, proposals, says in (("missing", "p.jsonl", "not a folder"),
                                     ("corpus", "p.json", ".jsonl"),
                                     ("corpus", "nowhere/p.jsonl", "a folder that exists"),
-                                    ("corpus", "corpus/p.jsonl", "outside the corpus folder")):
+                                    ("corpus", "corpus/p.jsonl", "lies in the corpus folder")):
         with pytest.raises(N.PinRefused, match=says):
             N.write(corpus, proposals, pin=path, repo=tmp_path)
         assert not path.exists()
@@ -290,6 +290,18 @@ def test_the_pins_command_line_pins_and_clears(tmp_path, monkeypatch):
 def test_the_tools_and_the_hook_read_a_command_with_one_parser():
     assert T.build_parser().format_usage() == N.build_parser().format_usage()
     assert T.COMMANDS == N.COMMANDS
+
+
+def test_the_hook_reads_the_pin_the_pins_command_line_writes():
+    """The orchestrator's ``python -m research.swarm.claim_cycle.pin`` writes ``pin.PIN``; the hook,
+    run from the same checkout, reads that file (the fixture here points it elsewhere)."""
+    import importlib
+
+    fresh = importlib.reload(H)
+    try:
+        assert fresh.PIN == N.PIN == N.REPO / ".claude" / "claim_cycle.json"
+    finally:
+        importlib.reload(H)
 
 
 def test_a_tool_input_that_is_not_an_object_is_denied_for_its_roles():

@@ -15,10 +15,10 @@ other folder or file (:func:`refusal`), and every command of theirs while nothin
 
 **The pin** is ``.claude/claim_cycle.json`` at the repo root (:data:`PIN`; git keeps nothing of
 ``.claude/`` but the agents' definitions), holding the two paths resolved. :func:`write` refuses a
-second pin while one stands, a corpus folder that does not exist, and a proposals file that is not
-JSON lines (``.jsonl``) in a folder that exists. A path a command names is read from the repo root,
-where the hook runs the tools, and resolved, so ``./cycle/corpus/`` names ``cycle/corpus`` and a
-link names what it links to.
+second pin while one stands, a corpus folder that does not exist, a proposals file that is not
+JSON lines (``.jsonl``) in a folder that exists, and one in the corpus folder. A path a command
+names is read from the repo root, where the hook runs the tools, and resolved, so
+``./cycle/corpus/`` names ``cycle/corpus`` and a link names what it links to.
 
 It uses the standard library alone, as the hook does.
 """
@@ -131,7 +131,8 @@ def write(corpus: str | Path, proposals: str | Path, pin: Path | None = None,
         raise PinRefused(f"{proposals} is not a proposals file a cycle can write: one named "
                          f".jsonl, in a folder that exists.")
     if file == folder or folder in file.parents:
-        raise PinRefused("The proposals file lies outside the corpus folder.")
+        raise PinRefused(f"{proposals} lies in the corpus folder; a cycle's corpus folder holds "
+                         f"its records only, so its proposals file lies outside it.")
     pin.parent.mkdir(parents=True, exist_ok=True)
     with open(pin, "x", encoding="utf-8") as fh:
         json.dump(got, fh, indent=1, sort_keys=True)

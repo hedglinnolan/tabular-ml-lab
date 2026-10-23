@@ -72,8 +72,9 @@ def _pin() -> Any:
 
 A = _analyst_hook()
 N = _pin()
-# The pin the hook reads (``pin.PIN``: ``.claude/claim_cycle.json`` at the repo root).
-PIN = N.PIN
+# The pin the hook reads: ``pin.PIN``'s place (``.claude/claim_cycle.json``) under the hook's own
+# repo root, whichever checkout the pin module was imported from.
+PIN = REPO / N.PIN.relative_to(N.REPO)
 THEORIST = "theorist"
 EXPERIMENTALIST = "experimentalist"
 MODULE = "research.swarm.claim_cycle.tools"

@@ -390,7 +390,8 @@ def test_each_planted_record_holds_a_real_records_markers_whole(tmp_path):
         copied = {json.loads(p.read_text())["run"]["id"]: json.loads(p.read_text())
                   for p in out.glob("*.json")}
         dataset = copied[effect["template"]]["dataset"]["id"]
-        real = {i: r for i, r in copied.items() if i not in planted and r["dataset"]["id"] == dataset}
+        real = {i: r for i, r in copied.items()
+                if i not in planted and r["dataset"]["id"] == dataset}
         values = {r["regime"]["markers"][[m["name"] for m in r["regime"]["markers"]].index(
             effect["marker"])]["value"] for r in real.values()}
         assert len(values) > 1 and effect["threshold"] in values  # M varies; t is a real value

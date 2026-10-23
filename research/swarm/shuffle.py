@@ -11,9 +11,10 @@ copy is refused). Each record of a dataset takes every marker of a record of the
 mapped to, its donor (the donor dataset's records in run-id order, the i-th record taking the
 i-th, cycling): the whole regime (its readings and its markers, live and post hoc), the dataset's
 declared markers, and each fit's live markers (the donor's fit of the same index, cycling; with
-none, the donor's regime's live markers). Everything else stays the record's own, so a decision's
-materiality is read beside markers that are not its dataset's: a pattern the claim pipeline finds
-in the copy comes from its prior, or from the planted effect.
+none, the donor's regime's live markers), but the purpose and its loss (below). Everything else
+stays the record's own, so a decision's materiality is read beside markers that are not its
+dataset's: a pattern the claim pipeline finds in the copy comes from its prior, or from the
+planted effect.
 
 **The purpose and its loss stay the record's own.** The live markers of that axis (SWARM_PLAN §4:
 the purpose, the primary score, the intended use and its thresholds, the estimand, the
@@ -71,8 +72,9 @@ record's fields the theorist reads is for the claim cycle's tools to decide.
 
 **The sealed file** (``--sealed``, which must lie outside the copy and the corpus) lists the
 planted records by run id, with M, t, D, the direction, each record's side, value of M, movement
-and change and the real record whose markers it holds, the seed and the derangement, so the theorist, who reads only the copy, never sees which records
-are planted; the pipeline's routing of the planted claim is scored against it after the cycle.
+and change and the real record whose markers it holds, the seed and the derangement, so the
+theorist, who reads only the copy, never sees which records are planted; the pipeline's routing of
+the planted claim is scored against it after the cycle.
 Nothing in the corpus itself is written: a copy at, under or above the corpus is refused, as is a
 sealed file at or under the corpus or the copy.
 """
