@@ -1117,7 +1117,10 @@ def _yes_no(info: Mapping[str, Any] | None) -> bool:
     return _dtype(info) == "boolean" or 1 <= int((info or {}).get("n_unique") or 0) <= 2
 
 
-def _blank_reason(share: float, yes_no: bool, medication: bool) -> str:
+def _blank_reason(share: float, yes_no: bool, medication: bool,
+                  measured: str | None = None) -> str:
+    """``measured``: the outcome, where the rows ``share`` is of (those with it measured) are not
+    every row."""
     from turbotab.core.voice import tick
 
     pct = tick(f"{share:.0%}")
@@ -1125,14 +1128,16 @@ def _blank_reason(share: float, yes_no: bool, medication: bool) -> str:
         if not (yes_no or medication):
             return f"Blank on {pct} of rows; nothing says the blanks mean not asked."
         # The reading's words are its claim's (``missing.blank_not_asked``), rendered in the stage
-        # so the project's claims render log holds it.
+        # so the project's claims render log holds it. Its share is of the rows with the outcome
+        # measured, as the claim's regime says, and named so where they are not every row (6a-P4).
         said = claims.card("missing.blank_not_asked",
                            {"share": share, "yes_no": yes_no, "medication": medication})
+        of = f"the rows with `{measured}` measured" if measured else "rows"
         if yes_no and medication:
-            return f"A yes/no medication question blank on {pct} of rows: {said}"
+            return f"A yes/no medication question blank on {pct} of {of}: {said}"
         if yes_no:
-            return f"A yes/no answer blank on {pct} of rows: {said}"
-        return f"Medication use blank on {pct} of rows: {said}"
+            return f"A yes/no answer blank on {pct} of {of}: {said}"
+        return f"Medication use blank on {pct} of {of}: {said}"
     return f"Blank on {pct} of rows."
 
 
@@ -1159,7 +1164,8 @@ def missing_reading(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]],
         medication = bool(set(_tokens(c)) & _MEDICATION)
         out.append({"column": c, "n_missing": n, "share": round(share, 4),
                     "likely_not_asked": bool(share >= NOT_ASKED_SHARE and (yes_no or medication)),
-                    "reason": _blank_reason(share, yes_no, medication)})
+                    "reason": _blank_reason(share, yes_no, medication,
+                                            target if n_base < len(frame) else None)})
     out.sort(key=lambda e: (-e["share"], e["column"]))
     likely = [e["column"] for e in out if e["likely_not_asked"]]
     leave_out = None
