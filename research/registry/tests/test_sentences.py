@@ -28,7 +28,8 @@ or triaged, and the committed table held current.
   cards, and the table's verdicts on the sentences that state one rule twice agree; the table
   counts the labels under the floor and names a stage a read stopped waiting for.
 * The table says what is registered (the registry's claims, those that render here, the sentences
-  a record traces, the sentences queued to register under each ruling with its count) and
+  a record traces, the sentences queued to register, the rulings that queue them and the reasons
+  those give, each reason with its rulings and sentences, two rulings giving one reason) and
   registers none; it says the name keys' strings (``source`` among them) and the state that lasts
   only while a stage computes are left out, with the capture's counts where it holds them and that
   it holds none where it does not; the capture counts the name keys' sentences by key and keeps
@@ -40,6 +41,7 @@ Every expectation is built here, or read from the committed files the test holds
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from research.registry import sentences as S
@@ -572,11 +574,14 @@ def test_the_committed_tables_verdicts_on_one_rule_said_twice_agree():
 
 
 def _planted_capture(tmp_path: Path, **extra: object) -> Path:
-    """A capture built here: one sentence a registered claim renders (traced), three queued to
-    register under two rulings (two and one), one plain; three answers posted, two taken."""
+    """A capture built here: one sentence a registered claim renders (traced), four queued to
+    register by three rulings (two, one and one) that give two reasons (reason A by the first two
+    rulings, three sentences; reason B by the third, one), one plain; three answers posted, two
+    taken."""
     path = _capture(tmp_path, "3 pairs of predictors move almost together (|r| ≥ 0.9)",
-                    "Queued A, the first of two sentences.", "Queued A, the second of two.",
-                    "Queued B, the only one.", "Plain words said back to you.")
+                    "Queued A, the first of three sentences.", "Queued A, the second of three.",
+                    "Queued A by another ruling, the third.", "Queued B, the only one.",
+                    "Plain words said back to you.")
     data = json.loads(path.read_text())
     data["answers"] = [{"kind": "set_target", "status": 200},
                        {"kind": "set_purpose", "status": 409},
@@ -586,15 +591,20 @@ def _planted_capture(tmp_path: Path, **extra: object) -> Path:
     return path
 
 
-PLANTED_RULINGS = [Ruling(r"^Queued A", "register", "ruling A: a default the app sets"),
-                   Ruling(r"^Queued B", "register", "ruling B: a refusal the app makes"),
+REASON_A = "reason A: a default the app sets"
+PLANTED_RULINGS = [Ruling(r"^Queued A, the", "register", REASON_A),
+                   Ruling(r"^Queued A by another", "register", REASON_A),
+                   Ruling(r"^Queued B", "register", "reason B: a refusal the app makes"),
+                   Ruling(r"^Never queued", "register", "reason C: a ruling that queues nothing"),
                    Ruling(r"^Plain", "plain", "copy")]
 
 
-def test_the_table_says_what_is_registered_and_queues_each_sentence_under_its_ruling(tmp_path):
-    """The verifier's P1, by the honest statement: the table says how many claims the registry
-    holds, how many render a sentence here and how many sentences a record traces, and how many
-    sentences are queued to register under how many rulings, each ruling with its count, most
+def test_the_table_says_what_is_registered_and_queues_each_sentence_under_its_reason(tmp_path):
+    """The verifier's P1 and VF-1, by the honest statement: the table says how many claims the
+    registry holds, how many render a sentence here and how many sentences a record traces, and
+    how many sentences are queued to register, by how many rulings, under how many reasons (two
+    rulings give reason A, so the rulings that queue are three and the reasons two; a ruling that
+    queues nothing is not counted), each reason with its rulings and sentences, most sentences
     first; it registers none."""
     reg = claims.registry()
     out = tmp_path / "planted.md"
@@ -602,13 +612,24 @@ def test_the_table_says_what_is_registered_and_queues_each_sentence_under_its_ru
     text = out.read_text(encoding="utf-8")
     assert (f"**What is registered.** The registry holds {len(list(reg))} claims; 1 of them "
             "renders a sentence here (1 sentence), and 1 of those sentences is rendered by a claim "
-            "the record traced, so of the 5 sentences this journey showed a swarm record's "
-            "`claims` traces 1. 3 sentences are claims still to register, under the 2 rulings "
-            "below") in text
+            "the record traced, so of the 6 sentences this journey showed a swarm record's "
+            "`claims` traces 1. 4 sentences are claims still to register, queued by 3 rulings "
+            "under the 2 reasons below (a reason several rulings give is counted once), and no "
+            "record traces them.") in text
     assert "This table registers no claim" in text
+    assert ("**The sentences queued to register**, by the reason the rulings that queue them "
+            "give, with the count of those rulings, most sentences first:") in text
     rows = text.split("**The sentences queued to register**")[1].split("\n\n")[1].splitlines()
-    assert rows[2:] == ["| ruling A: a default the app sets | 2 |",
-                        "| ruling B: a refusal the app makes | 1 |"]
+    assert rows[0] == ("| reason: what the sentences state, and where the code writes it | rulings "
+                       "| sentences |")
+    assert rows[2:] == [f"| {REASON_A} | 2 | 3 |", "| reason B: a refusal the app makes | 1 | 1 |"]
+    # One ruling, one sentence: the counts are said in the singular.
+    one = [Ruling(r"^Queued B", "register", "reason B"),
+           Ruling(r"^Queued A|^Plain", "plain", "copy")]
+    assert S.table("planted", _planted_capture(tmp_path), out, rulings=one) == 0
+    assert ("1 sentence is a claim still to register, queued by 1 ruling under the 1 reason below "
+            "(a reason several rulings give is counted once), and no record traces it."
+            ) in out.read_text(encoding="utf-8")
     # Nothing queued: the table says so, and draws no table of rulings.
     none = [Ruling(r"^Queued|^Plain", "plain", "copy")]
     assert S.table("planted", _planted_capture(tmp_path), out, rulings=none) == 0
@@ -667,16 +688,36 @@ def test_a_read_that_does_not_wait_is_counted_with_whether_it_found_a_stage_comp
         assert shown.reads == {"waited": 2, "unwaited": 1, "computing": computing}, after
 
 
+def _first_ruling(row: S.Row) -> int:
+    """The position in ``triage.RULINGS`` of the first ruling whose pattern the sentence holds and
+    whose place, where it names one, is one the sentence was shown in: replayed here, apart from
+    ``rows_of``."""
+    return next(i for i, r in enumerate(RULINGS) if re.search(r.pattern, row.sentence) and (
+        not r.where or any(re.search(r.where, f"{s} {p}") for s, p in row.places)))
+
+
 def test_the_committed_table_says_what_is_queued_and_that_this_capture_counts_neither_left_out():
-    """On the journey itself: the committed table gives the count of sentences queued to register
-    and of the rulings they fall under, as the rows give them, and says this capture counts
-    neither the name keys' strings nor which reads found a stage computing."""
+    """On the journey itself: the committed table gives the count of sentences queued to register,
+    of the rulings of ``triage.py`` that queue them and of the reasons those rulings give (several
+    give one reason, so the two counts differ: VF-1), each reason with its rulings and sentences,
+    as a first-match replay of the rulings gives them, and says this capture counts neither the
+    name keys' strings nor which reads found a stage computing."""
     data = json.loads((S.HERE / "nhanes-glucose-predict.capture.json").read_text("utf-8"))
     rows = S.rows_of(data, claims.registry(), RULINGS)
     queued = [r for r in rows if r.verdict == "register"]
-    text = " ".join((S.HERE / "nhanes-glucose-predict.md").read_text("utf-8").split())
-    assert (f"{len(queued)} sentences are claims still to register, under the "
-            f"{len({r.why for r in queued})} rulings below") in text
+    first = [_first_ruling(r) for r in queued]
+    assert {RULINGS[i].verdict for i in first} == {"register"}
+    by_reason: dict[str, tuple[set[int], int]] = {}
+    for i in first:
+        held, n = by_reason.get(RULINGS[i].why, (set(), 0))
+        by_reason[RULINGS[i].why] = (held | {i}, n + 1)
+    md = (S.HERE / "nhanes-glucose-predict.md").read_text("utf-8")
+    text = " ".join(md.split())
+    assert (f"{len(queued)} sentences are claims still to register, queued by {len(set(first))} "
+            f"rulings under the {len(by_reason)} reasons below") in text
+    table = md.split("**The sentences queued to register**")[1].split("\n\n")[1].splitlines()[2:]
+    assert table == [f"| {S._cell(why)} | {len(held)} | {n} |" for why, (held, n) in
+                     sorted(by_reason.items(), key=lambda x: (-x[1][1], x[0]))]
     assert "named" not in data and "reads" not in data
     assert "which this capture does not count" in text
     assert "which of those reads found a stage computing this capture does not record" in text

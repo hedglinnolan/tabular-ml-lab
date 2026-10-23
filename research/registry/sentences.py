@@ -71,7 +71,8 @@ counts (the labels under the floor among them, whole or split off a longer strin
 strings and the reads that found a stage computing where the capture counted them, and where it
 did not, that it holds no count); what is registered (:func:`registered_words`: the registry's
 claims, those that render a sentence here, the sentences a record traces, the sentences queued to
-register and the rulings they fall under, each ruling with its count; the table registers none);
+register, the rulings that queue them and the reasons those give (several rulings can give one),
+each reason with its rulings and sentences; the table registers none);
 the claims that render a sentence and whether the record traced each, the claims the log holds
 that render none, and every sentence with where it was shown and its verdict. ``--check``
 writes nothing and exits 1 when the committed table is not what the capture, the registry and the
@@ -636,11 +637,13 @@ class Row:
     verdict: str  # "claim", "unrendered", "register", "plain", "not shown", "untriaged"
     claims: list[str]
     why: str
+    ruling: int | None = None  # the position, in the rulings, of the one that decided
 
 
 def rows_of(capture_data: dict[str, Any], reg: Any, rulings: Iterable[Any]) -> list[Row]:
     """Every sentence of the capture, once, with all its places, and its verdict: indexed to the
-    claims that render it, else the first ruling that matches it, else untriaged."""
+    claims that render it, else the first ruling that matches it (its position kept, since several
+    rulings can give one why), else untriaged."""
     said = claim_sentences(reg)
     rulings = list(rulings)
     interview = capture_data.get("interview") or {}
@@ -661,12 +664,13 @@ def rows_of(capture_data: dict[str, Any], reg: Any, rulings: Iterable[Any]) -> l
                            f"served only on the card of a question this journey does not ask "
                            f"({question})"))
             continue
-        ruling = next((r for r in rulings if re.search(r.pattern, sentence) and (
+        at = next((i for i, r in enumerate(rulings) if re.search(r.pattern, sentence) and (
             not r.where or any(re.search(r.where, f"{s} {p}") for s, p in where))), None)
-        if ruling is None:
+        if at is None:
             out.append(Row(sentence, where, "untriaged", [], ""))
         else:
-            out.append(Row(sentence, where, ruling.verdict, list(ruling.claims), ruling.why))
+            ruling = rulings[at]
+            out.append(Row(sentence, where, ruling.verdict, list(ruling.claims), ruling.why, at))
     return out
 
 
@@ -837,14 +841,16 @@ def _many(n: int, one: str, many: str) -> str:
 def registered_words(rows: list[Row], traced: set[str], held: int) -> str:
     """What is registered, in sentences: the registry's ``held`` claims, those that render a
     sentence here and the sentences a record traces (rendered by a claim the render log held),
-    of the sentences shown; the sentences queued to register and the rulings they fall under;
-    those that say a registered claim's rule outside its render. The table registers none."""
+    of the sentences shown; the sentences queued to register, the rulings that queue them and the
+    reasons those give (several rulings can give one reason, which is counted once); those that
+    say a registered claim's rule outside its render. The table registers none."""
     shown = [r for r in rows if r.verdict != "not shown"]
     rendered = [r for r in rows if r.verdict == "claim"]
     claimed = {c for r in rendered for c in r.claims}
     traces = [r for r in rendered if set(r.claims) & traced]
     queued = [r for r in rows if r.verdict == "register"]
-    rulings = {r.why for r in queued}
+    rulings = {r.ruling for r in queued}
+    reasons = {r.why for r in queued}
     unrendered = sum(1 for r in rows if r.verdict == "unrendered")
     return (f"**What is registered.** The registry holds {held} claims; {len(claimed)} of them "
             f"{'renders' if len(claimed) == 1 else 'render'} a sentence here "
@@ -853,8 +859,11 @@ def registered_words(rows: list[Row], traced: set[str], held: int) -> str:
             f"traced, so of the {len(shown)} sentences this journey showed a swarm record's "
             f"`claims` traces {len(traces)}. "
             + (f"{_many(len(queued), 'sentence is a claim', 'sentences are claims')} still to "
-               f"register, under the {_many(len(rulings), 'ruling', 'rulings')} below, and no "
-               "record traces them. " if queued else "No sentence is queued to register. ")
+               f"register, queued by {_many(len(rulings), 'ruling', 'rulings')} under the "
+               f"{_many(len(reasons), 'reason', 'reasons')} below (a reason several rulings give "
+               "is counted once), and no record traces "
+               + ("it" if len(queued) == 1 else "them") + ". " if queued
+               else "No sentence is queued to register. ")
             + f"{_many(unrendered, 'sentence says', 'sentences say')} a registered claim's rule "
               "in words not its own, outside its render, so no record traces "
             + ("it" if unrendered == 1 else "them") + " either. This table registers no claim: "
@@ -899,16 +908,17 @@ def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str
         lines.append(f"| {VERDICT_WORDS[v]} | {counts.get(v, 0)} |")
     lines.append(f"| all | {len(rows)} |")
     lines += ["", registered_words(rows, traced, len(authors))]
-    queued: dict[str, int] = {}
+    queued: dict[str, list[Row]] = {}
     for r in rows:
         if r.verdict == "register":
-            queued[r.why] = queued.get(r.why, 0) + 1
+            queued.setdefault(r.why, []).append(r)
     if queued:
-        lines += ["", "**The sentences queued to register**, by the ruling that queues them, most "
-                  "first:", "", "| ruling: what the sentences state, and where the code writes it "
-                  "| sentences |", "|---|---|"]
-        lines += [f"| {_cell(why)} | {n} |"
-                  for why, n in sorted(queued.items(), key=lambda x: (-x[1], x[0]))]
+        lines += ["", "**The sentences queued to register**, by the reason the rulings that queue "
+                  "them give, with the count of those rulings, most sentences first:", "",
+                  "| reason: what the sentences state, and where the code writes it | rulings "
+                  "| sentences |", "|---|---|---|"]
+        lines += [f"| {_cell(why)} | {len({r.ruling for r in held})} | {len(held)} |"
+                  for why, held in sorted(queued.items(), key=lambda x: (-len(x[1]), x[0]))]
     outside = [c for c in claimed if c not in traced]
     lines += ["", f"**The claims that render a sentence here**, and whether the record traced "
               f"them: {len(claimed) - len(outside)} of {len(claimed)} did"
