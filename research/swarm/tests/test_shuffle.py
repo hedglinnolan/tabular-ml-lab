@@ -3,8 +3,9 @@ constructed records on three datasets, each with markers of its own (its rows, 1
 so where each record's markers came from is known by construction. Each guard both ways: no record
 keeps its dataset's markers, the corpus is never written, the planted records are in the copy
 only and listed in the sealed file outside it, the sealed file names every marker that separates
-the planted records as M does and no other (against a brute force over the copy's files), and
-what cannot be shuffled is refused."""
+the planted records as M does and no other, a numeric one where one threshold splits them
+(against a brute force over the copy's files), and says a numeric marker no threshold splits is
+left out, and what cannot be shuffled is refused."""
 from __future__ import annotations
 
 import json
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from research.swarm import shuffle as S
+from research.swarm.claim_cycle import proposal as P
 from research.swarm.record import neutral_id, validate
 from research.swarm.tests.constructed import (estimate_record, marker, predict_record,
                                               revert_record)
@@ -541,15 +543,11 @@ def test_where_only_m_separates_the_planted_records_the_sealed_file_names_m_alon
         assert [e["marker"] for e in effect["separating"]] == ["rows_analyzed", "rows_analyzed"]
 
 
-def test_a_sibling_marker_is_named_only_in_the_draws_where_it_separates_the_planted_records(
-        tmp_path):
-    """Both ways on one corpus: each record's predictors per row set apart from its rows analyzed
-    (0.06, 0.02, 0.11 for a dataset's first, second and third records, whose rows analyzed fall),
-    so whether the other marker splits the planted records depends on M, t and the records drawn;
-    over the seeds the sealed file names it in some draws and not in others, each time as the
-    brute force finds."""
-    src = corpus(tmp_path / "corpus", per=3)
-    for path in src.glob("*.json"):
+def _siblings(folder: Path) -> Path:
+    """The records of ``folder`` (``corpus(per=3)``) with each record's predictors per row set
+    apart from its rows analyzed: 0.06, 0.02, 0.11 for a dataset's first, second and third
+    records, whose rows analyzed fall."""
+    for path in folder.glob("*.json"):
         rec = json.loads(path.read_text())
         r = (int(rec["run"]["id"][4:6]) - 1) % 3
         for markers in [rec["regime"]["markers"], *(a["markers"] for a in rec["attempts"])]:
@@ -557,6 +555,16 @@ def test_a_sibling_marker_is_named_only_in_the_draws_where_it_separates_the_plan
                 if m["name"] == "predictors_per_row":
                     m["value"] = (0.06, 0.02, 0.11)[r]
         path.write_text(json.dumps(rec), "utf-8")
+    return folder
+
+
+def test_a_sibling_marker_is_named_only_in_the_draws_where_it_separates_the_planted_records(
+        tmp_path):
+    """Both ways on one corpus: each record's predictors per row set apart from its rows analyzed
+    (:func:`_siblings`), so whether the other marker splits the planted records depends on M, t
+    and the records drawn; over the seeds the sealed file names it in some draws and not in
+    others, each time as the brute force finds."""
+    src = _siblings(corpus(tmp_path / "corpus", per=3))
     named, alone = 0, 0
     for seed in range(24):
         out = tmp_path / f"copy{seed}"
@@ -568,6 +576,50 @@ def test_a_sibling_marker_is_named_only_in_the_draws_where_it_separates_the_plan
         else:
             alone += 1
     assert named and alone, (named, alone)
+
+
+def _in(values: list, held: list) -> list:
+    """Of ``held``, the values an `in` region listing ``values`` holds, numbers by their value."""
+    return [v for v in held if any(float(v) == float(x) for x in values)]
+
+
+def test_a_numeric_marker_no_one_threshold_splits_is_left_out_and_the_sealed_file_says_so(
+        tmp_path):
+    """The verifier's VT-1, by the honest statement, both ways on the sibling corpus
+    (:func:`_siblings`): a numeric marker is named only where one threshold splits the planted
+    records' two sides, and the sealed file says so. Where its two sides hold no value in common
+    but interleave (seed 2: M the predictors per row, the material records' rows analyzed 192 and
+    the others' 183 or 201), an `in` region of the material side's values, one the validator
+    takes, holds every material record and none of the others while no threshold does, and the
+    marker is left out: a claim on such a region is not a miss for its absence. Where the two
+    sides share a value (the rows, one value across a dataset), no `in` region of one side's
+    values holds that side alone, and the marker is left out with nothing missed; where one
+    threshold splits them, the marker is named (the brute force, :func:`_check_separating`)."""
+    src = _siblings(corpus(tmp_path / "corpus", per=3))
+    interleaved, shared = [], 0
+    for seed in range(24):
+        out = tmp_path / f"copy{seed}"
+        effect = S.write(src, out, tmp_path / f"s{seed}.json", seed=seed, k=6)["planted"]["effect"]
+        assert effect["separating_why"] == S.SEPARATING_WHY
+        _check_separating(out, effect)
+        for at in ("regime", "last fit"):
+            named = {e["marker"] for e in effect["separating"] if e["at"] == at}
+            for name, sides in _planted_sides(out, effect, at).items():
+                if not _numbers(sides[True] + sides[False]) or _cut(sides) is not None:
+                    continue
+                assert name not in named, (seed, at, name)
+                region = P.Bound.model_validate({"marker": name, "op": "in",
+                                                 "threshold": sorted(set(sides[True]))})
+                held = _in(region.threshold, sides[False])
+                assert len(_in(region.threshold, sides[True])) == len(sides[True])
+                if held:
+                    shared += 1
+                else:
+                    interleaved.append((seed, at, name))
+    assert (2, "regime", "rows_analyzed") in interleaved and shared, (interleaved, shared)
+    words = " ".join(S.SEPARATING_WHY.split())
+    assert "only where one threshold splits the two sides" in words
+    assert "`is`, `in` or `between`" in words and "not scored a miss" in words
 
 
 def test_a_marker_of_words_is_named_where_the_sides_share_no_value_and_one_with_parts_never(

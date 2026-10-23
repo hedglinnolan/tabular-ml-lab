@@ -79,12 +79,15 @@ markers that separate the planted records** (:func:`separating`, the sealed file
 ``separating``): since each planted record holds a real record's markers whole, a marker that
 moves with M across the dataset's records (the rows analyzed beside the predictors per row) splits
 the planted records' two sides as M does, so a claim drawn on it names the planted effect as well
-as one drawn on M. The sealed file lists every such marker, at the regime and at the last fit (the
-fit the effect is in), M first at t: a numeric marker where one threshold splits the two sides,
+as one drawn on M. The sealed file lists such markers, at the regime and at the last fit (the fit
+the effect is in), M first at t: a numeric marker only where one threshold splits the two sides,
 with that threshold and the side the material records lie on; a marker of words or true or false
-where the two sides hold no value in common, with the values each side holds. A marker some
-planted record holds no such value of (a missing value, or one with parts, which no region
-bounds) is not one.
+where the two sides hold no value in common, with the values each side holds. A numeric marker
+whose two sides hold no value in common but interleave, which an `is`, `in` or `between` region
+separates where no threshold does, is not listed, and the sealed file says so
+(``separating_why``): a claim on such a region is not a miss for want of its marker in the list.
+A marker some planted record holds no such value of (a missing value, or one with parts, which no
+region bounds) is not one.
 Nothing in the corpus itself is written: a copy at, under or above the corpus is refused, as is a
 sealed file at or under the corpus or the copy.
 """
@@ -239,6 +242,11 @@ def _borrowed(rec: dict[str, Any], source: dict[str, Any]) -> None:
 BELOW = "material below the threshold, none at or above it"
 ABOVE = "material above the threshold, none at or below it"
 AT_VALUES = "material at the values listed, none at the others"
+SEPARATING_WHY = ("A numeric marker is listed here only where one threshold splits the two sides. "
+                  "One whose two sides hold no value in common but interleave, so that an `is`, "
+                  "`in` or `between` region can hold every record of one side and none of the "
+                  "other where no threshold can, is not listed: a claim drawn on such a region of "
+                  "it is not scored a miss for want of its marker here.")
 
 
 def _bounded(v: Any) -> bool:
@@ -289,11 +297,15 @@ def _split(name: str, at: str, material: list[Any], other: list[Any],
 
 def separating(planted: list[tuple[bool, dict[str, Any]]], marker: str, t: float
                ) -> list[dict[str, Any]]:
-    """Every live marker that separates the planted records' two sides (``planted``: each record
+    """The live markers that separate the planted records' two sides (``planted``: each record
     with whether it is on the material side), at the regime and at the last fit, the fit the
-    effect is in: one on which a region alone holds every record of one side and none of the other
-    (:func:`_split`), held with a value a region bounds by every planted record. M (``marker``, cut
-    at ``t``) first, then the rest in the vocabulary's order, the regime's before the last fit's."""
+    effect is in, as :func:`_split` reads them: a numeric one only where one threshold splits the
+    two sides, one of words or true or false where they hold no value in common, each held with a
+    value a region bounds by every planted record. A numeric marker whose two sides hold no value
+    in common but interleave, which an `is`, `in` or `between` region separates where no threshold
+    does, is not listed (:data:`SEPARATING_WHY`, the sealed file's ``separating_why``). M
+    (``marker``, cut at ``t``) first, then the rest in the vocabulary's order, the regime's before
+    the last fit's."""
     out = []
     for at in ("regime", "last fit"):
         values: dict[str, dict[bool, list[Any]]] = {}
@@ -503,6 +515,7 @@ def planted(records: list[dict[str, Any]], k: int, rng: random.Random
                                   "excludes_zero": changed["excludes_zero"]})
     effect["separating"] = separating([(r["below"], rec) for r, rec in zip(effect["records"], out)],
                                       name, t)
+    effect["separating_why"] = SEPARATING_WHY
     return out, effect
 
 
