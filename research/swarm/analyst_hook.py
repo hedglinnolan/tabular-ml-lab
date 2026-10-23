@@ -3,18 +3,26 @@ nothing else.
 
 Claude Code runs this script before each tool call, with the call as JSON on standard input
 (``tool_name``, ``tool_input``, ``cwd``, and ``agent_type`` when a subagent makes the call). For an
-``analyst`` it denies, with a plain reason the analyst reads:
+``analyst`` it approves, with Claude Code's PreToolUse allow (:func:`allow`), the harness's two
+report tools, ``SubagentHandback`` and ``StructuredOutput`` (:data:`REPORT_TOOLS`), by which an
+analyst hands its report back (the live check of 2026-10-22 found them denied here, so no
+analyst's report reached the orchestrator; a report says what the analyst did, and the run's
+record is never read from it: the driver's ``account`` is the analyst's account), and a Bash
+command it has checked whole: the driver's invocation, ``scripts/py -m research.swarm.driver``
+and one of the analyst's commands (:data:`ANALYST_COMMANDS`; ``start`` and ``stop`` are the
+orchestrator's), from the repo root, that no shell expands or runs anything in. It denies, with a
+plain reason the analyst reads, every other tool (the agent type's own ``tools: Bash`` and
+``disallowedTools`` list say the same; this is the second lock) and every other command:
 
-* every tool but Bash and the harness's two report tools, ``SubagentHandback`` and
-  ``StructuredOutput`` (:data:`REPORT_TOOLS`), by which an analyst hands its report back: the live
-  check of 2026-10-22 found them denied here, so no analyst's report reached the orchestrator.
-  (The agent type's own ``tools: Bash`` and ``disallowedTools`` list say the same for the rest;
-  this is the second lock.) A report says what the analyst did; the run's record is never read
-  from it (the driver's ``account`` is the analyst's account);
-* every Bash command that is not exactly the driver's invocation: ``python``, ``python3`` or
-  ``scripts/py``, then ``-m research.swarm.driver`` and one of the analyst's commands
-  (:data:`ANALYST_COMMANDS`; ``start`` and ``stop`` are the orchestrator's), from the repo root,
-  that no shell expands or runs anything in:
+* one that starts otherwise than ``scripts/py`` (:data:`INTERPRETER`): ``python``, ``python3``
+  and ``./scripts/py``, which it passed before 2026-10-23, and an environment setting before the
+  command, such as the prefix the root CLAUDE.md gives builders, are each refused in words that
+  name the one form, since the hook approves only what it checked, and ``python`` is whatever the
+  caller's PATH finds first;
+* one run from anywhere but the repo root, the checkout this file lies in (:data:`REPO`, read from
+  the file's own path), named by an absolute path: another checkout's root, a worktree's say,
+  holds its own ``scripts/py`` and driver, which may differ from this one's;
+* one that a shell could read as more than one program's words:
 
   - none of ``;``, ``&``, ``|``, a backtick, ``$``, ``<``, ``>``, a line break or another control
     character anywhere in it (:data:`FORBIDDEN`), quoted or not, so nothing is chained,
@@ -26,30 +34,50 @@ Claude Code runs this script before each tool call, with the call as JSON on sta
     substitution ``=(...)`` run programs);
   - inside double quotes, no backslash and no ``!``; inside single quotes, anything else.
 
-For every other agent type, and for the session itself, it says nothing: the call goes on to the
-permissions as it would without the hook. An allowed analyst command is not approved here either;
-the permissions decide it. Input that does not read as a hook call is refused (exit 2), since
-whether the caller is an analyst cannot be told.
+For every other agent type, and for the session itself, it says nothing, neither approving nor
+denying: the call goes on to the permissions as it would without the hook. Input that does not
+read as a hook call is refused (exit 2), since whether the caller is an analyst cannot be told.
 
-Wired only in ``.claude/settings.local.json`` on the owner's machine, never committed:
+**Wiring**, only in ``.claude/settings.local.json`` on the owner's machine, never committed. The
+settings hold no allow rule for the driver: this hook approves an analyst's checked calls itself.
+A prefix rule such as ``Bash(scripts/py -m research.swarm.driver:*)`` is not wanted (the audit
+of 2026-10-23): it approves those words for every caller, from whatever folder the caller is in,
+so it runs whatever ``scripts/py`` and driver that folder holds, which any agent that can write
+files can change. The hook is one PreToolUse entry for every tool (``"matcher": "*"``; a run's
+``start`` refuses without one, ``driver.hook_wired``), read from the project's own checkout, the
+folder the analysts run from, so that its root is theirs, and its answer reaches Claude Code
+unchanged:
 
     {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command",
-        "command": "python3 <repo>/research/swarm/analyst_hook.py"}]}]}}
+        "command": "python3 \\"$CLAUDE_PROJECT_DIR/research/swarm/analyst_hook.py\\""}]}]}}
+
+The owner's entry wraps that command so that it fails closed: an analyst's call is refused
+(exit 2) when the hook's file is missing, unless it is a report tool, and when the hook exits with
+a code other than 0 or 2; it refuses no other caller's call.
 
 The script uses the standard library only, so any Python 3 runs it.
 """
 from __future__ import annotations
 
 import json
+import os
+import re
 import shlex
 import string
 import sys
 from pathlib import Path
 from typing import Any
 
+# The checkout this file lies in: the one root it approves a command from.
 REPO = Path(__file__).resolve().parents[2]
 ANALYST = "analyst"
-INTERPRETERS = ("python", "python3", "scripts/py", "./scripts/py")
+# The one way a command it approves starts: the repo's own launcher, read from the repo root.
+INTERPRETER = "scripts/py"
+# The ways of starting Python it passed before 2026-10-23, each refused now in words that name the
+# one form.
+OTHER_INTERPRETERS = ("python", "python3", "./scripts/py")
+# A first word a shell reads as an environment setting for the command after it.
+SETTING = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 MODULE = "research.swarm.driver"
 # The driver's commands an analyst runs (``research.swarm.driver.ANALYST_COMMANDS``; a test holds
 # the two lists equal).
@@ -74,6 +102,36 @@ QUOTE_IT = (f"Outside quotes a word holds only {SHOWN_PLAIN}, and = inside a wor
 def deny(reason: str) -> dict[str, Any]:
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                    "permissionDecisionReason": reason}}
+
+
+def allow(reason: str) -> dict[str, Any]:
+    """Claude Code's PreToolUse approval: the call runs without the permissions' prompt."""
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow",
+                                   "permissionDecisionReason": reason}}
+
+
+def at_root(cwd: Any, root: Path) -> bool:
+    """Whether ``cwd``, the folder a call runs in, is ``root``: an absolute path that resolves to
+    it. A relative one never is, since it would be read from wherever the hook runs."""
+    if not isinstance(cwd, (str, os.PathLike)):
+        return False
+    try:
+        path = Path(cwd)
+        return path.is_absolute() and path.resolve() == root
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+def start_refusal(first: str, runs: str, form: str) -> str | None:
+    """Why a command whose first word is ``first`` is refused for how it starts, in words that
+    name ``form``, the one form (``runs`` says what runs: "The driver runs"); None where ``first``
+    is neither an environment setting nor one of :data:`OTHER_INTERPRETERS`."""
+    if SETTING.match(first):
+        return (f"The command starts with an environment setting, {first}, which the hook "
+                f"refuses: give the command alone, with nothing before it. The one form is {form}.")
+    if first in OTHER_INTERPRETERS:
+        return f"{runs} only through {INTERPRETER}, not {first}. The one form is {form}."
+    return None
 
 
 def _shown(c: str) -> str:
@@ -131,32 +189,38 @@ def bash_refusal(command: Any, cwd: Any) -> str | None:
         words = shlex.split(command)
     except ValueError:
         return f"The command does not read as one driver command (an unclosed quote?). The form is {FORM}."
-    if len(words) < 4 or words[0] not in INTERPRETERS or words[1] != "-m" or words[2] != MODULE:
+    started = start_refusal(words[0], "The driver runs", FORM) if words else None
+    if started:
+        return started
+    if len(words) < 4 or words[0] != INTERPRETER or words[1] != "-m" or words[2] != MODULE:
         return f"An analyst runs only the driver's commands: {FORM}."
     if words[3] not in ANALYST_COMMANDS:
         return (f"{words[3]!r} is not an analyst's command; the analyst's commands are "
                 f"{', '.join(ANALYST_COMMANDS)}.")
-    try:
-        here = Path(str(cwd)).resolve() if cwd else None
-    except (OSError, RuntimeError):
-        here = None
-    if here != REPO:
+    if not at_root(cwd, REPO):
         return f"The driver runs from the repo root, {REPO}, not from {cwd or 'an unknown folder'}."
     return None
 
 
 def decide(call: Any) -> dict[str, Any] | None:
-    """The hook's answer to one tool call: a denial, or None to say nothing."""
+    """The hook's answer to one tool call: for an analyst, an approval of a report tool or of a
+    driver command it checked whole (:func:`bash_refusal`), and a denial of anything else; for
+    every other caller, None, to say nothing."""
     if not isinstance(call, dict) or call.get("agent_type") != ANALYST:
         return None
     tool = call.get("tool_name")
     if tool in REPORT_TOOLS:
-        return None
+        return allow(f"An analyst hands its report back with {tool}.")
     if tool != "Bash":
         return deny(f"An analyst works only through the driver's commands, run with Bash; {tool} "
                     f"is not open to it.")
-    why = bash_refusal((call.get("tool_input") or {}).get("command"), call.get("cwd"))
-    return deny(why) if why else None
+    command = (call.get("tool_input") or {}).get("command")
+    why = bash_refusal(command, call.get("cwd"))
+    if why:
+        return deny(why)
+    return allow(f"The analyst hook checked this driver command ({shlex.split(command)[3]}) "
+                 f"whole: the one form, run from the repo root, with nothing a shell expands or "
+                 f"runs.")
 
 
 def main(stdin: Any = None, stdout: Any = None, stderr: Any = None) -> int:

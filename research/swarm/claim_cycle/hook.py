@@ -4,30 +4,50 @@ file by any other tool.
 
 Claude Code runs this script before each tool call, with the call as JSON on standard input
 (``tool_name``, ``tool_input``, ``cwd``, and ``agent_type`` when a subagent makes the call). For a
-``theorist`` or an ``experimentalist`` it denies, with a plain reason the agent reads:
+``theorist`` or an ``experimentalist`` it approves, with Claude Code's PreToolUse allow
+(``analyst_hook.allow``), the harness's report tools (``analyst_hook.REPORT_TOOLS``), by which it
+hands its report back, whether or not a cycle is pinned, and a tools command it has checked whole
+under the pin. It denies, with a plain reason the agent reads:
 
-* every tool but Bash and the harness's report tools (``analyst_hook.REPORT_TOOLS``), by which it
-  hands its report back;
-* every Bash command that is not exactly the tools' invocation: ``python``, ``python3`` or
-  ``scripts/py``, then ``-m research.swarm.claim_cycle.tools`` and one of its role's commands
-  (:data:`COMMANDS`: the experimentalist proposes nothing), from the repo root, that no shell
-  expands or runs anything in, under the analyst hook's rules (``analyst_hook.shell_refusal``:
-  none of ``; & | $ < >``, a backtick or a line break anywhere, quoted or not; outside quotes only
-  plain characters; so a proposal's JSON goes in single quotes);
+* every other tool;
+* every Bash command that is not exactly the tools' invocation: ``scripts/py``, then
+  ``-m research.swarm.claim_cycle.tools`` and one of its role's commands (:data:`COMMANDS`: the
+  experimentalist proposes nothing), from the repo root, that no shell expands or runs anything
+  in, under the analyst hook's rules (``analyst_hook.shell_refusal``: none of ``; & | $ < >``, a
+  backtick or a line break anywhere, quoted or not; outside quotes only plain characters; so a
+  proposal's JSON goes in single quotes). ``python``, ``python3`` and ``./scripts/py``, which it
+  passed before 2026-10-23, and an environment setting before the command, such as the prefix the
+  root CLAUDE.md gives builders, are each refused in words that name the one form
+  (``analyst_hook.start_refusal``). The repo root is the checkout this file lies in (:data:`REPO`,
+  read from the file's own path), named by an absolute path: another checkout's root, a worktree's
+  say, holds its own ``scripts/py`` and tools, which may differ from this one's;
 * every tools command while no cycle is pinned, and every one that names a folder or a file other
   than the pinned cycle's corpus folder and proposals file (``pin.py``: one cycle at a time, each
   with a proposals file of its own, so no agent reads both the corpus and its shuffled copy, nor
   the other cycle's proposals). The command is read with the tools' own
   parser (``pin.build_parser``), so what the hook checks is what the tools read.
 
-For every other caller it says nothing: the call goes on to the permissions. An allowed command is
-not approved here either. Input that does not read as a hook call is refused (exit 2).
+For every other caller it says nothing, neither approving nor denying: the call goes on to the
+permissions. Input that does not read as a hook call is refused (exit 2).
 
-Wired only in ``.claude/settings.local.json`` on the owner's machine, beside the analyst's hook,
-never committed:
+**Wiring**, only in ``.claude/settings.local.json`` on the owner's machine, beside the analyst's
+hook, never committed. The settings hold no allow rule for the tools: this hook approves a
+theorist's or an experimentalist's checked calls itself. A prefix rule such as
+``Bash(scripts/py -m research.swarm.claim_cycle.tools:*)`` is not wanted (the audit of
+2026-10-23): it approves those words for every caller, from whatever folder the caller is in, so
+it runs whatever ``scripts/py`` and tools that folder holds, which any agent that can write files
+can change, and it approves another caller's tools command on any folder, the pin unread. The
+hook is one PreToolUse entry for
+every tool (``"matcher": "*"``), read from the project's own checkout, the folder the claim
+cycle's agents run from and the one whose pin the orchestrator writes, and its answer reaches
+Claude Code unchanged:
 
     {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command",
-        "command": "python3 <repo>/research/swarm/claim_cycle/hook.py"}]}]}}
+        "command": "python3 \\"$CLAUDE_PROJECT_DIR/research/swarm/claim_cycle/hook.py\\""}]}]}}
+
+The owner's entry wraps that command so that it fails closed: a theorist's or an
+experimentalist's call is refused (exit 2) when the hook's file is missing, unless it is a report
+tool, and when the hook exits with a code other than 0 or 2; it refuses no other caller's call.
 
 It uses the standard library, the analyst hook and the pin, which use only the standard library, so
 any Python 3 runs it.
@@ -85,17 +105,24 @@ COMMANDS = {THEORIST: ("index", "records", "proposals", "propose"),
 REPORT_TOOLS = A.REPORT_TOOLS
 FORBIDDEN = A.FORBIDDEN
 deny = A.deny
+allow = A.allow
 
 
 def form(role: str) -> str:
-    return (f"scripts/py -m {MODULE} <command> ..., run from the repo root, where <command> is one "
-            f"of {', '.join(COMMANDS[role])}")
+    return (f"{A.INTERPRETER} -m {MODULE} <command> ..., run from the repo root, where <command> "
+            f"is one of {', '.join(COMMANDS[role])}")
+
+
+def named(role: str) -> str:
+    """``role`` with its article: "a theorist", "an experimentalist"."""
+    return f"{'an' if role[:1] in 'aeiou' else 'a'} {role}"
 
 
 def bash_refusal(command: Any, cwd: Any, role: str) -> str | None:
-    """Why ``role``'s Bash ``command`` is not the tools' invocation, or None when it is."""
+    """Why ``role``'s Bash ``command`` is not the tools' invocation under the pin, or None when it
+    is."""
     if not isinstance(command, str) or not command.strip():
-        return f"A {role} runs only the claim cycle's tools: {form(role)}."
+        return f"{named(role).capitalize()} runs only the claim cycle's tools: {form(role)}."
     why = A.shell_refusal(command)
     if why:
         return why.replace(A.FORM, form(role))
@@ -103,35 +130,40 @@ def bash_refusal(command: Any, cwd: Any, role: str) -> str | None:
         words = shlex.split(command)
     except ValueError:
         return f"The command does not read as one tools command (an unclosed quote?): {form(role)}."
-    if len(words) < 4 or words[0] not in A.INTERPRETERS or words[1] != "-m" or words[2] != MODULE:
-        return f"A {role} runs only the claim cycle's tools: {form(role)}."
+    started = A.start_refusal(words[0], "The tools run", form(role)) if words else None
+    if started:
+        return started
+    if len(words) < 4 or words[0] != A.INTERPRETER or words[1] != "-m" or words[2] != MODULE:
+        return f"{named(role).capitalize()} runs only the claim cycle's tools: {form(role)}."
     if words[3] not in COMMANDS[role]:
-        return (f"{words[3]!r} is not a command a {role} runs; its commands are "
+        return (f"{words[3]!r} is not a command {named(role)} runs; its commands are "
                 f"{', '.join(COMMANDS[role])}.")
-    try:
-        here = Path(str(cwd)).resolve() if cwd else None
-    except (OSError, RuntimeError):
-        here = None
-    if here != REPO:
+    if not A.at_root(cwd, REPO):
         return f"The tools run from the repo root, {REPO}, not from {cwd or 'an unknown folder'}."
     return N.refusal(words[3:], role, pin=PIN, repo=REPO)
 
 
 def decide(call: Any) -> dict[str, Any] | None:
-    """The hook's answer to one tool call: a denial, or None to say nothing."""
+    """The hook's answer to one tool call: for a theorist or an experimentalist, an approval of a
+    report tool or of a tools command it checked whole under the pin (:func:`bash_refusal`), and a
+    denial of anything else; for every other caller, None, to say nothing."""
     if not isinstance(call, dict) or call.get("agent_type") not in COMMANDS:
         return None
     role = call["agent_type"]
     tool = call.get("tool_name")
     if tool in REPORT_TOOLS:
-        return None
+        return allow(f"{named(role).capitalize()} hands its report back with {tool}.")
     if tool != "Bash":
-        return deny(f"A {role} works only through the claim cycle's tools, run with Bash; {tool} "
-                    f"is not open to it.")
+        return deny(f"{named(role).capitalize()} works only through the claim cycle's tools, run "
+                    f"with Bash; {tool} is not open to it.")
     given = call.get("tool_input")
     command = given.get("command") if isinstance(given, dict) else None
     why = bash_refusal(command, call.get("cwd"), role)
-    return deny(why) if why else None
+    if why:
+        return deny(why)
+    return allow(f"The claim cycle's hook checked this tools command ({shlex.split(command)[3]}) "
+                 f"whole: the one form, run from the repo root, naming only the pinned cycle's "
+                 f"corpus folder or proposals file, with nothing a shell expands or runs.")
 
 
 def main(stdin: Any = None, stdout: Any = None, stderr: Any = None) -> int:

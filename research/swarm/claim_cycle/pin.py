@@ -209,12 +209,13 @@ def refusal(words: Sequence[str], role: str, pin: Path | None = None,
             repo: Path = REPO) -> str | None:
     """Why the tools' command ``words`` (the command and its arguments) is refused to ``role``
     under the pin, or None where every path it names is the pinned one of its kind."""
+    named = f"{'an' if role[:1] in 'aeiou' else 'a'} {role}"  # "a theorist", "an experimentalist"
     try:
         pinned = read(pin)
     except PinRefused as exc:
         return str(exc)
     if pinned is None:
-        return (f"No claim cycle is pinned, so a {role} runs nothing: the orchestrator pins the "
+        return (f"No claim cycle is pinned, so {named} runs nothing: the orchestrator pins the "
                 f"cycle's corpus folder and proposals file before it starts the cycle's agents.")
     try:
         args = build_parser(add_help=False, raising=True).parse_args(list(words))
@@ -223,7 +224,7 @@ def refusal(words: Sequence[str], role: str, pin: Path | None = None,
     attr, kind = NAMED[args.command]
     given = _resolved(getattr(args, attr), repo)
     if given != Path(pinned[kind]).resolve():
-        return (f"{getattr(args, attr)} is not this cycle's {KINDS[kind]}: a {role} reads only the "
+        return (f"{getattr(args, attr)} is not this cycle's {KINDS[kind]}: {named} reads only the "
                 f"corpus folder and the proposals file its prompt names, and this cycle's "
                 f"{KINDS[kind]} is {_shown(Path(pinned[kind]), repo)}.")
     return None

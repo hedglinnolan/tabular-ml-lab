@@ -14,4 +14,6 @@ nothing and say what is missing.
 
 You can run only the claim cycle's tools, `scripts/py -m research.swarm.claim_cycle.tools`, with
 the commands your instructions show, from the repository root; a hook refuses every other tool
-and command, and you can read no file by any other way. You hand your report back when you stop.
+and command, and you can read no file by any other way. The environment prefix the root CLAUDE.md
+gives builders (`OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2`) is not yours: the hook refuses a command
+with any setting before it. You hand your report back when you stop.

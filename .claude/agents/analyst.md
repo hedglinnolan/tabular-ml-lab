@@ -21,7 +21,10 @@ Run the driver, one command per call, from the repo root:
 
     scripts/py -m research.swarm.driver <command> --run <run id> ...
 
-Give `--run` the run id your prompt names, exactly as written. The driver refuses an id that is
+Start each command with `scripts/py`, as shown, with nothing before it. The environment prefix the
+root CLAUDE.md gives builders (`OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2`) is not yours: the hook
+refuses a command with any setting before it. Give `--run` the run id your prompt names, exactly
+as written. The driver refuses an id that is
 not of the form a run's start gives, or that names no run's folder.
 Nothing else runs: no other program, no file reading or writing, no web. Write each id, option
 and setting as a plain word of letters, digits and `. _ - / : , @ % +`, with `=` only inside a
