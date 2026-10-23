@@ -485,6 +485,11 @@ class SealDraw:
     # time order and the time column reads: the folds then forward-chain by whole unit (MA-11).
     order: Any | None = None
     refusal: str | None = None  # why the seal cannot be drawn as the answers ask
+    # The refusal's code (the answer-time refusal's own for the same condition, where one exists)
+    # and what it refuses: ``"cut"`` the cut-point, ``"time"`` the draw by time, ``"grain"`` a draw
+    # before the grain answer; its ways forward follow from that (:func:`draw_exits`).
+    refusal_code: str | None = None
+    refused: Literal["cut", "time", "grain"] | None = None
     labels: Any | None = field(default=None, repr=False)  # the outcome over the universe (counts)
     read: list[str] = field(default_factory=list)  # the columns read over the universe, to say so
 
@@ -529,7 +534,8 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
 
     state, stated = with_effective_grain(state, structure)
     if getattr(state, "grain", None) is None:
-        return SealDraw(basis=None, refusal=GRAIN_FIRST)
+        return SealDraw(basis=None, refusal=GRAIN_FIRST, refusal_code="grain_first",
+                        refused="grain")
     ids = np.asarray(universe, dtype=np.int64)
     columns = set(store.columns)
     roles = getattr(state, "roles", None) or {}
@@ -581,21 +587,42 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
         # cut-point's refusals say whose rows they judged (the package 4 verifier's V6).
         n_table = getattr(store, "n_rows", None)
         recorded = target if target and (n_table is None or len(ids) < int(n_table)) else None
-        draw.chronology, draw.held, draw.refusal, draw.order = _cut(
+        draw.chronology, draw.held, refused, draw.order = _cut(
             frame, cut_point, draw.groups, fold_order=fold_order, seed=seed,
             present=cut_point.column in columns, analyzed=counted,
             outcome=(target if cut_point.column in decisions.outcome_columns(state) else None),
             recorded=recorded)
+        if refused is not None:
+            draw.refusal_code, draw.refusal, draw.refused = refused[0], refused[1], "cut"
     elif requested:
-        draw.chronology, draw.held, draw.refusal, draw.order = _chronology(
+        draw.chronology, draw.held, refused, draw.order = _chronology(
             frame, time_column, draw.groups, holdout=holdout, seed=seed, present=time_column in columns)
+        if refused is not None:
+            draw.refusal_code, draw.refusal, draw.refused = refused[0], refused[1], "time"
     return draw
 
 
+def draw_exits(draw: SealDraw, split: Any) -> list[dict[str, Any]]:
+    """The ways forward of the draw's refusal, for the split recorded (``split``, a ``SplitSpec``):
+    a cut-point refused, the usual share held out instead, the scheme kept (the answer-time
+    refusal's own way forward, :func:`_the_cut_point_reads_its_column`); a draw by time refused,
+    the temporal question answered no, so the held-out rows are drawn at random (its teaching
+    entry's consequence); the grain first, none (the grain question is the Router's own)."""
+    if draw.refused == "cut" and split is not None:
+        body = {**split.model_dump(mode="json"), "kind": "set_split", "holdout": USUAL,
+                "cut_point": None, "fold_order": None}
+        return [{"label": f"Hold out {USUAL:.0%} instead", "decision": body}]
+    if draw.refused == "time":
+        return [{"label": "Draw the held-out rows at random instead",
+                 "decision": {"kind": "set_temporal", "temporal": False, "time_column": None}}]
+    return []
+
+
 def _chronology(frame: Any, column: str | None, groups: Any | None, *, holdout: float, seed: int,
-                present: bool) -> tuple[Chronology, Any | None, str | None, Any | None]:
-    """The chronological draw, its disclosure, a refusal when the named column cannot order, and
-    each row's unit rank in time for the folds (None when time cannot order them)."""
+                present: bool) -> tuple[Chronology, Any | None, tuple[str, str] | None, Any | None]:
+    """The chronological draw, its disclosure, a refusal (its code and words) when the named column
+    cannot order, and each row's unit rank in time for the folds (None when time cannot order
+    them)."""
     if column is None:
         return (Chronology(drawn=False, time_column=None, boundary=None, n_units=None, n_undated=0,
                            sentence="Later outcomes were said to be predicted from earlier ones, but "
@@ -606,8 +633,9 @@ def _chronology(frame: Any, column: str | None, groups: Any | None, *, holdout: 
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None, n_undated=0,
                            sentence=f"`{column}` is named as time but is not in the table."),
                 None,
-                f"`{column}` was named as the time column, but the table has no column by that "
-                f"name, so the latest rows cannot be held out.", None)
+                ("unknown_column",
+                 f"`{column}` was named as the time column, but the table has no column by that "
+                 f"name, so the latest rows cannot be held out."), None)
     import pandas as pd
 
     raw = frame[column]
@@ -618,15 +646,17 @@ def _chronology(frame: Any, column: str | None, groups: Any | None, *, holdout: 
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
                            n_undated=0, sentence=f"No value of `{column}` reads as a time."),
                 None,
-                f"`{column}` was named as the time column, but none of its values reads as a date "
-                f"or a number, so the held-out rows cannot be the latest ones.", None)
+                ("time_column_unreadable",
+                 f"`{column}` was named as the time column, but none of its values reads as a date "
+                 f"or a number, so the held-out rows cannot be the latest ones."), None)
     if len(times) and unreadable > MAX_UNDATED_SHARE * len(times):
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
                            n_undated=0, sentence=f"Too many rows have no readable `{column}`."),
                 None,
-                f"`{unreadable:,}` of `{len(times):,}` rows have no readable `{column}`. Ordering "
-                f"units by their last one would place those units arbitrarily, and the seal would "
-                f"report a chronology it did not draw.", None)
+                ("time_column_undated",
+                 f"`{unreadable:,}` of `{len(times):,}` rows have no readable `{column}`. Ordering "
+                 f"units by their last one would place those units arbitrarily, and the seal would "
+                 f"report a chronology it did not draw."), None)
     mask, chronology = chronological_holdout(times, groups, holdout, seed, column, dated=dated)
     order = time_order(times, groups, seed)
     # Time orders the folds when at least two units have a readable time, held out or not.
@@ -782,11 +812,13 @@ def cut_holdout(times: Any, groups: Any | None, at: float, column: str, shown: s
 
 def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, seed: int,
          present: bool, analyzed: Any | None = None, outcome: str | None = None,
-         recorded: str | None = None) -> tuple[Chronology, Any | None, str | None, Any | None]:
+         recorded: str | None = None
+         ) -> tuple[Chronology, Any | None, tuple[str, str] | None, Any | None]:
     """The cut-point's draw, as :func:`_chronology` returns the draw by share's: its disclosure,
-    the held-out mask, a refusal when the cut-point cannot hold rows out and leave some to train
-    (or reads an outcome column: ``outcome`` names the target it is part of), and each row's unit
-    rank in time when the folds' order is time (None for random folds). ``analyzed`` is what the
+    the held-out mask, a refusal (its code and words) when the cut-point cannot hold rows out and
+    leave some to train (or reads an outcome column: ``outcome`` names the target it is part of),
+    and each row's unit rank in time when the folds' order is time (None for random folds).
+    ``analyzed`` is what the
     sentence counts (:func:`cut_holdout`), and the draw is refused where it leaves no analyzed row
     held out or none to train (:func:`_cut_leaves_the_analysis`). ``recorded`` names the outcome
     where ``frame`` holds only the rows with it recorded and the table has others, so a refusal
@@ -795,14 +827,16 @@ def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, se
     if outcome is not None:
         said = cut_on_outcome(column, outcome)
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
-                           n_undated=0, sentence=said, cut_point=shown), None, said, None)
+                           n_undated=0, sentence=said, cut_point=shown), None,
+                ("cut_point_on_outcome", said), None)
     if not present:
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
                            n_undated=0, sentence=f"`{column}` is named for the cut-point but is not "
                                                  f"in the table.", cut_point=shown),
                 None,
-                f"`{column}` was named as the cut-point's column, but the table has no column by "
-                f"that name, so no row can be held out by it.", None)
+                ("unknown_column",
+                 f"`{column}` was named as the cut-point's column, but the table has no column by "
+                 f"that name, so no row can be held out by it."), None)
     raw = frame[column]
     problem = cut_problem(raw, cut, recorded)
     times = read_times(raw)
@@ -819,8 +853,8 @@ def _cut(frame: Any, cut: Any, groups: Any | None, *, fold_order: str | None, se
                                                cut, column, shown)
     if problem is not None:
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
-                           n_undated=0, sentence=problem[1], cut_point=shown), None, problem[1],
-                None)
+                           n_undated=0, sentence=problem[1], cut_point=shown), None,
+                (problem[0], problem[1]), None)
     order = None
     if fold_order == "time":
         ranks = time_order(times, groups, seed)
@@ -2489,7 +2523,8 @@ __all__ = [
     "SEALED_SCORES", "details_by_family", "read_sealed_detail", "sealed_detail_frame",
     "SealBasis",
     "SealDraw", "SealFloor", "SealPlan", "changed_after_seal", "chronological_holdout",
-    "decide_basis", "draw_columns", "draw_record", "floor_for", "holdout_options", "holds_rows_out",
+    "decide_basis", "draw_columns", "draw_exits", "draw_record", "floor_for", "holdout_options",
+    "holds_rows_out",
     "keys_for",
     "measure", "open_seal_views", "r2_se", "time_order",
     "first_opening", "opening", "plan", "post_seal_changes", "post_seal_sentence",
