@@ -6,7 +6,13 @@ material and not, and constructed so each of §7's two conditions and its half a
 Estimate shift by arithmetic; each refit's class both ways, among them a fit whose record the
 server serves only on a later read (waited for, scored) or never (unreached after the wait, on a
 clock run by hand), and what the walk meets after an option (a stage in error, typed or not, and
-an answer refused with no way forward) on a session built here; the crash sweep's previews after
+an answer refused with no way forward) on a session built here; a refit's wait, both ways, on a
+session built here and a clock run by hand: a fit still running when the wait runs out, or one
+done whose other stages are not by then, cancelled and unreached in words that name what it
+waited on and for how long, each job the copy still holds cancelled where it does not go idle,
+and a fit blocked or held for a press never cancelled; and after a fitted refit, an estimate
+stage in error untyped (an engine defect) or typed (refused, with its code), and none in error
+(scored), the plan's own refit read the same; the crash sweep's previews after
 an option, of every later decision's plan answer (a question's, a finding's, a reading's, a
 declaration's) and of a question opened again at its default, which decisions they reach and
 that an HTTP 500 induced on one fails the refit as a defect, while one on a decision before the
@@ -748,6 +754,208 @@ def test_the_sweeps_scoring_refused_after_an_option_is_a_refused_refit(tmp_path)
     refit = sweep.refit(session, POINT, OPTION, [], W.Refit(W.PLAN, None, None, kind="scored"))
     assert refit.kind == "refused" and refit.refused["at"] == "scoring"
     assert refit.refused["code"] == "scheme_refused" and refit.refused["option"] == OPTION["id"]
+
+
+# ── a refit's wait, and its estimate stages after the fit ────────────────────
+
+RUNNING = {"pressed": {}, "fit": {"status": "running", "key": "k1", "progress": 0.4},
+           "seconds": 3600.2}
+BLOCKED = {"pressed": {}, "fit": {"status": "blocked"}, "seconds": 0.3}
+FIT_FRESH = {"fit": {"status": "fresh", "key": "k1"}}
+IN_FLIGHT = {"fit": {"status": "running", "key": "k1", "job_id": "j1"},
+             "effects": {"status": "queued", "key": "e1", "job_id": "j2"}}
+EFFECTS_CRASH = {"effects": {"status": "error", "key": "e2", "refusal": None,
+                             "error": "ValueError: no effect can be reported here"}}
+EFFECTS_TYPED = {"effects": {"status": "error", "key": "e3",
+                             "error": "ValueError: No row is left to report the effect on.",
+                             "refusal": {"stage": "effects", "code": "no_rows_left",
+                                         "message": "No row is left to report the effect on.",
+                                         "exits": [{"id": "x-2", "label": "Fill the blanks",
+                                                    "decision": {"kind": "set_missing",
+                                                                 "strategy": "impute"}}]}}}
+ENDED = "; its jobs ended and the copy was removed."
+
+
+class Pressed(Walked):
+    """A copy whose walk reaches Fit at once: its press of Fit says ``fit`` (the driver's payload,
+    the clock moved on by its ``seconds``, at most the wait), the copy's stages are ``stages``, each
+    ask of whether it went idle answers the next of ``idle``, and a cancel answers ``cancelled``;
+    each wait asked for (``waits``), each copy cancelled (``cancels``) and removed is kept. The
+    fit's record is served on the first read."""
+
+    RECORD = {"id": "f2", "fit_key": "k1", "seconds": 1.2, "primary_metric": METRIC,
+              "folds": "d", "scores": {"linear": {METRIC: {"mean": 0.5}}}}
+
+    def __init__(self, clock, fit, *, stages, idle=(True,), cancelled=None, removed=True):
+        super().__init__([{"question": None, "fit_reached": True}])
+        self.clock, self.fitted, self.removed = clock, fit, removed
+        self.stages = {**self.stages, **stages}
+        self.idles, self.waits, self.cancels = list(idle), [], []
+        self.cancelled = cancelled or {"fit": 200, "jobs": [], "idle": True, "wait": 60.0}
+
+    def fit(self, wait=0):
+        self.waits.append(("fit", wait))
+        self.clock.sleep(min(float(self.fitted.get("seconds") or 0.0), wait))
+        return arms.said_of(0, self.fitted)
+
+    def idle(self, pid=None, wait=0.0):
+        self.waits.append(("idle", wait))
+        return self.idles.pop(0)
+
+    def cancel(self, pid, wait=None):
+        self.cancels.append(pid)
+        return dict(self.cancelled)
+
+    def drop(self, pid, made):
+        self.dropped.append(pid)
+        if self.removed:
+            made.discard(pid)
+        return self.removed
+
+    def read(self, path):
+        return {"records": [self.RECORD]} if path == "fits" else None
+
+
+def pressed(tmp_path, monkeypatch, fit, **kw):
+    clock = Clock()
+    monkeypatch.setattr(W, "time", clock)
+    session = Pressed(clock, fit, **kw)
+    sweep, refit = refit_on(tmp_path, session)
+    return session, sweep, refit
+
+
+def test_a_refit_whose_fit_is_not_done_when_its_wait_runs_out_is_cancelled_and_unreached(
+        tmp_path, monkeypatch):
+    """The fit still running when the refit's wait from the press runs out: the sweep cancels the
+    copy's fit, waits for its jobs to end (the cancel's own wait), records the refit unreached
+    with what it waited on and for how long, and removes the copy; no other wait is asked."""
+    session, sweep, refit = pressed(tmp_path, monkeypatch, RUNNING, stages=IN_FLIGHT)
+    assert session.waits == [("fit", W.REFIT_WAIT)]
+    assert session.cancels == ["c1"] and session.dropped == ["c1"]
+    assert refit.kind == "unreached" and refit.project is None and sweep.defects == []
+    assert refit.why == (f"The fit was running {W.REFIT_WAIT:g} s after the sweep pressed Fit, "
+                         f"as long as it waits for a refit (still computing: fit running, "
+                         f"effects queued). The sweep cancelled the copy's fit{ENDED}")
+    assert refit.cancelled == {"after": W.REFIT_WAIT, "fit": 200, "jobs": [], "idle": True,
+                               "wait": 60.0,
+                               "waiting_on": [{"stage": "fit", "status": "running"},
+                                              {"stage": "effects", "status": "queued"}]}
+
+
+@pytest.mark.parametrize("payload", [BLOCKED, HELD], ids=["blocked", "held_for_a_press"])
+def test_a_fit_that_returns_before_the_wait_runs_out_is_not_cancelled(tmp_path, monkeypatch,
+                                                                       payload):
+    """Both ways: a fit that is blocked, or held for a press of Fit, returns at once; it is
+    unreached in the driver's words as before, and nothing is cancelled."""
+    session, sweep, refit = pressed(tmp_path, monkeypatch, payload, stages={})
+    assert session.cancels == [] and refit.cancelled is None
+    assert refit.kind == "unreached" and refit.why == arms.said_of(0, payload).message
+    assert session.dropped == ["c1"]
+
+
+def test_a_fitted_refit_whose_stages_are_not_done_in_the_rest_of_its_wait_is_cancelled(
+        tmp_path, monkeypatch):
+    """The fit fresh 1.5 s after the press, the sweep waits the rest of the refit's wait for the
+    copy's other stages; the effects stage still running then, the refit is cancelled, unreached
+    with what it waited on, and its copy removed."""
+    stages = {**FIT_FRESH, "effects": {"status": "running", "key": "e1", "job_id": "j2"}}
+    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, stages=stages, idle=[False])
+    assert session.waits == [("fit", W.REFIT_WAIT), ("idle", W.REFIT_WAIT - 1.5)]
+    assert session.cancels == ["c1"] and session.dropped == ["c1"]
+    assert refit.kind == "unreached" and refit.material is None
+    assert refit.why == (f"The fit was done, but {W.REFIT_WAIT:g} s after the sweep pressed Fit, "
+                         f"as long as it waits for a refit, its other stages were not (still "
+                         f"computing: effects running). The sweep cancelled the copy's "
+                         f"fit{ENDED}")
+    assert refit.cancelled["waiting_on"] == [{"stage": "effects", "status": "running"}]
+
+
+DESIGN_JOB = [{"stage": "design", "job": "j3", "status": 200}]
+
+
+@pytest.mark.parametrize("idle, removed, end, dropped", [
+    (True, True, f"; its stages still computing 60 s later, it cancelled their jobs too "
+                 f"(design){ENDED}", ["c1"]),
+    (True, False, "; its stages still computing 60 s later, it cancelled their jobs too "
+                  "(design); its jobs ended, but the copy could not be removed and is kept.",
+     ["c1"]),
+    (False, True, "; its stages still computing 60 s later, it cancelled their jobs too "
+                  "(design); the copy was still computing and is kept.", []),
+], ids=["went_idle", "not_removed", "still_computing"])
+def test_a_copy_that_does_not_go_idle_after_its_cancel_has_its_jobs_cancelled_and_says_so(
+        tmp_path, monkeypatch, idle, removed, end, dropped):
+    cancelled = {"fit": 200, "jobs": DESIGN_JOB, "idle": idle, "wait": 60.0}
+    session, sweep, refit = pressed(tmp_path, monkeypatch, RUNNING, stages=IN_FLIGHT,
+                                    cancelled=cancelled, removed=removed)
+    assert refit.kind == "unreached" and refit.cancelled["jobs"] == DESIGN_JOB
+    assert refit.why.endswith(f"The sweep cancelled the copy's fit{end}"), refit.why
+    assert session.dropped == dropped
+    assert (refit.project is None) is (idle and removed)
+
+
+def test_an_untyped_error_in_an_estimate_stage_after_a_fitted_refit_is_an_engine_defect(
+        tmp_path, monkeypatch):
+    """The fit fresh and the copy idle, the effects stage (one the fit does not wait on) is in
+    error the engine did not type: the refit is failed at that stage in its own words, reported
+    as a defect with its reproduction, and its copy kept."""
+    stages = {**FIT_FRESH, **EFFECTS_CRASH}
+    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, stages=stages)
+    assert session.waits == [("fit", W.REFIT_WAIT), ("idle", W.REFIT_WAIT - 1.5)]
+    assert refit.kind == "failed" and refit.failed["code"] == "stage_failed"
+    assert refit.failed["stage"] == "effects" and refit.failed["at"] == "stage"
+    assert refit.failed["message"] == "ValueError: no effect can be reported here"
+    assert refit.failed["option"] == OPTION["id"]
+    (defect,) = sweep.defects
+    kept = json.loads(Path(defect["path"]).read_text())
+    assert kept["failed"]["stage"] == "effects" and "read the effects stage" in kept["reproduce"]
+    assert session.dropped == [] and session.cancels == []
+
+
+def test_a_typed_refusal_in_an_estimate_stage_after_a_fitted_refit_is_a_refused_refit(
+        tmp_path, monkeypatch):
+    stages = {**FIT_FRESH, **EFFECTS_TYPED}
+    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, stages=stages)
+    assert refit.kind == "refused" and sweep.defects == []
+    r = refit.refused
+    assert (r["by"], r["at"], r["stage"], r["code"]) == ("engine", "stage", "effects",
+                                                         "no_rows_left")
+    assert r["message"] == "No row is left to report the effect on."
+    assert r["exits"] == [{"label": "Fill the blanks",
+                           "decision": {"kind": "set_missing", "strategy": "impute"}}]
+    (summary,) = W.decisions_of([POINT], [refit])
+    assert summary["refused_codes"] == {"no_rows_left": 1}
+    assert session.dropped == ["c1"]
+
+
+def test_a_fitted_refit_whose_estimate_stages_are_none_in_error_is_scored(tmp_path, monkeypatch):
+    """Both ways: every estimate stage fresh or blocked after the fit, the refit is scored."""
+    stages = {**FIT_FRESH, "effects": {"status": "fresh", "key": "e1"},
+              "secondary": {"status": "blocked", "key": None}}
+    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, stages=stages)
+    assert refit.kind == "scored" and refit.cancelled is None and sweep.defects == []
+    assert refit.fit_record == "f2" and session.dropped == ["c1"] and session.cancels == []
+
+
+@pytest.mark.parametrize("payload, stages, kind", [
+    (RUNNING, IN_FLIGHT, "unreached"), (FRESH, {**FIT_FRESH, **EFFECTS_CRASH}, "failed"),
+], ids=["wait_ran_out", "estimate_stage_crashed"])
+def test_the_plans_own_refit_is_read_as_every_refit_and_stops_the_sweep_unscored(
+        tmp_path, monkeypatch, payload, stages, kind):
+    """The plan's own refit is cancelled where its wait runs out, its copy removed, and read for
+    its estimate stages after its fit, an untyped error there a defect with its reproduction; a
+    plan not scored stops the sweep, in words."""
+    clock = Clock()
+    monkeypatch.setattr(W, "time", clock)
+    session = Pressed(clock, payload, stages=stages)
+    sweep = a_sweep(tmp_path)
+    with pytest.raises(arms.Stuck, match=f"The plan itself was not scored: {kind}: "):
+        sweep.plan_refit(session)
+    if kind == "unreached":
+        assert session.cancels == ["c1"] and session.dropped == ["c1"] and sweep.defects == []
+    else:
+        (defect,) = sweep.defects
+        assert defect["refit"] == W.PLAN and defect["failed"]["stage"] == "effects"
+        assert session.dropped == []
 
 
 # ── the crash sweep's previews of every later decision's default ─────────────

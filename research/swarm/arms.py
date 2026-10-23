@@ -41,7 +41,8 @@ of the driver's own: every command goes through ``driver.main`` in this process,
 arms run. ``Local`` is a project on an in-process analyst-mode server (FastAPI's ``TestClient``,
 whose unhandled exceptions are served as a 500, as a server serves them), driven by the driver's own
 functions (``the_question``, ``chosen``, ``post_decision``, ``wait_fit``): how the sweep runs, many
-projects on one server, with every HTTP 500 kept (:attr:`Local.errors`).
+projects on one server, with every HTTP 500 kept (:attr:`Local.errors`), and a copy's fit cancelled
+through the server's own Cancel where the sweep's wait for it runs out (:meth:`Local.cancel`).
 """
 from __future__ import annotations
 
@@ -65,6 +66,7 @@ DATASETS = REPO / "research" / "datasets"
 # how it was written.
 FIXED = ("target", "event", "purpose", "task", "follow_up", "orientation")
 WAIT = 240.0  # seconds a command waits for what is computing
+CANCEL_WAIT = 60.0  # seconds a cancelled copy is waited for, each time (``Local.cancel``)
 STEPS = 300  # the most answers a walk gives before it says it never reached Fit
 PROMPT_VERSION = "arms-1"
 # The tag each answer carries (record version 2's ``Tag``): the marker of the vocabulary the
@@ -490,6 +492,30 @@ class Local:
         shutil.rmtree(self.home / "driver" / pid, ignore_errors=True)  # its driver folder (``use``)
         made.discard(pid)
         return True
+
+    def cancel(self, pid: str, wait: float = CANCEL_WAIT) -> dict[str, Any]:
+        """The fit of the copy ``pid`` cancelled as Cancel on the analysis flowchart cancels it
+        (``POST …/fit/cancel``: each estimate stage's job queued or running stops), and the copy
+        waited for until none of its stages is computing, ``wait`` seconds at most; where some
+        still are, each job they hold queued or running is cancelled too (``POST …/jobs/{id}/
+        cancel``) and the copy waited for again, as long. What was done: the cancel's HTTP
+        status (``fit``), each job cancelled after it (``jobs``: its stage, its id and the
+        cancel's status), whether the copy went idle (``idle``) and the wait (``wait``)."""
+        from research.swarm import driver
+
+        r = self.client.post(f"/projects/{pid}/fit/cancel")
+        out: dict[str, Any] = {"fit": r.status, "jobs": [], "idle": self.idle(pid, wait=wait),
+                               "wait": wait}
+        if out["idle"]:
+            return out
+        run = driver.Run(self.home / "driver" / str(pid), {"project": pid})
+        for name, status in (driver.view_of(run, self.client).get("stages") or {}).items():
+            job = (status or {}).get("job_id")
+            if job and (status or {}).get("status") in self.BUSY:
+                c = self.client.post(f"/projects/{pid}/jobs/{job}/cancel")
+                out["jobs"].append({"stage": name, "job": job, "status": c.status})
+        out["idle"] = self.idle(pid, wait=wait)
+        return out
 
     def read(self, path: str) -> Any:
         r = self.client.get(f"/projects/{self.pid}/{path}")
