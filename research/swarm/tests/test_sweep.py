@@ -1804,3 +1804,128 @@ def test_the_sweep_around_a_named_plan_answers_no_field_of_its_own(tmp_path):
     assert not [c for c in session.calls if c[0] == "answer" and c[2]]
     kinds = {r["option"]: r["kind"] for r in report["refits"]}
     assert kinds["custom"] == kinds["levels"] == "unreached"
+
+
+class Resolving(Fielding):
+    """A :class:`Fielding` session whose preview and answer of an option are the driver's own: the
+    ids and fields resolved by ``driver.chosen`` over the exclusions question as the driver
+    composes it (``composed``, :func:`exclusions_composed`), and said as ``arms.Local`` says the
+    driver's commands, so a field the question does not take is the driver's refusal in the
+    composer's words. A decision resolved is then served by the server: ``at_preview`` and
+    ``at_answer`` name a server refusal (a code) at the preview or the answer, else each is ok."""
+
+    def __init__(self, composed, *, at_preview=None, at_answer=None):
+        super().__init__()
+        self.composed, self.at_preview, self.at_answer = composed, at_preview, at_answer
+
+    def question(self, run, client, wait):
+        return {"_view": {"state": {}}, "_declared": {}, "_composed": self.composed, "_ways": []}
+
+    @staticmethod
+    def served(decision, refused, posted):
+        if refused is None:
+            return 0, {posted: dict(decision)}
+        return 1, {posted: dict(decision), "refused": {
+            "by": "server", "status": 422, "code": refused, "message": "The server refuses it.",
+            "exits": []}}
+
+    def preview(self, ids, sets, reason):
+        from research.swarm import driver
+
+        self.calls.append(("preview", list(ids), list(sets)))
+
+        def call():
+            decision, _ = driver.chosen(None, None, list(ids), list(sets))
+            return self.served(decision, self.at_preview, "previewed")
+
+        return arms.Local._said(self, call)
+
+    def answer(self, ids, sets, reason, marker=None):
+        from research.swarm import driver
+
+        self.calls.append(("answer", list(ids), list(sets)))
+
+        def call():
+            decision, _ = driver.chosen(None, None, list(ids), list(sets))
+            if self.at_answer is None:
+                self.reopened = False
+            return self.served(decision, self.at_answer, "posted")
+
+        return arms.Local._said(self, call)
+
+
+def resolving_sweep(tmp_path, monkeypatch, columns, **served):
+    """The crash sweep of :func:`fielding_sweep` on a :class:`Resolving` session whose exclusions
+    question the driver composes over ``columns`` (the outcome ``y`` beside them), the table's
+    numeric predictor ``x1`` the first the roles name and no categorical one; keeping every row
+    already refitted and scored, so the decision's refused share has a denominator."""
+    from research.swarm import driver
+
+    frame, roles = built_frame(levels=False)
+    session = Resolving(exclusions_composed(columns, "y"), **served)
+    monkeypatch.setattr(driver, "the_question", session.question)
+    sweep = fielding_sweep(tmp_path, session, frame, roles)
+    sweep.done[f"{EXCLUSIONS.id}=none"] = W.Refit(EXCLUSIONS.id, "none", {}, kind="scored")
+    (built,), _ = sweep.fields.answers(EXCLUSIONS, option("custom"))
+    return session, sweep, built
+
+
+def test_fields_the_driver_does_not_take_leave_the_refit_unreached_in_the_drivers_words(
+        tmp_path, monkeypatch):
+    """The built range is on ``x1``, which the exclusions question, as the driver composes it over
+    a table whose numeric columns are others, does not offer: the driver's preview refuses it, so
+    nothing is answered and the refit is unreached in the composer's own words, never a refusal
+    of the engine's in the decision's refused share."""
+    from research.swarm import options as opts
+
+    session, sweep, built = resolving_sweep(tmp_path, monkeypatch, ["SEQN", "age_months"])
+    with pytest.raises(opts.Unanswerable) as words:  # the driver's own composer, the truth
+        opts.resolve(session.composed, built.ids, built.sets)
+    report = sweep.run(session, lambda s: "p0")
+    rid = f"{EXCLUSIONS.id}={built.option}"
+    assert [c for c in session.calls if c[1] == built.ids] == [("preview", built.ids, built.sets)]
+    refit = {r["id"]: r for r in report["refits"]}[rid]
+    assert refit["kind"] == "unreached" and refit["answered"] == []
+    assert refit["why"] == (f"{W.NOTHING}the driver does not take the fields the crash sweep "
+                            f"answered it with: not_offered: {words.value}")
+    assert refit["answered_with"] == built.json()
+    (seen,) = refit["previews"]
+    assert (seen["kind"], seen["by"], seen["code"], seen["message"]) == (
+        "refused", "driver", "not_offered", str(words.value))
+    assert {"refit": rid, "why": refit["why"]} in report["unreached"]
+    assert report["defects"] == [] and report["complete"] is True
+    (summary,) = report["decisions"]
+    assert summary["refused_share"] == 0.0 and summary["refused_codes"] == {}
+    assert summary["refused_options"] == [] and summary["classes"]["unreached"] == 2
+    assert "unreached: 2." in W.table_md(report | {"passed": W.passed(report)})
+
+
+@pytest.mark.parametrize("at_answer, kind", [(None, "duplicate"), ("rule_refused", "refused")],
+                         ids=["answer_ok", "answer_refused"])
+def test_a_server_refusal_at_a_fielded_preview_goes_on_to_the_answer_and_is_classed_by_it(
+        tmp_path, monkeypatch, at_answer, kind):
+    """The question takes the built range's fields; the server refuses its preview: the guard
+    stays silent, the answer is posted, and the refit is classed by the answer's outcome (the
+    plan's duplicate where the server records it; refused at the answer, in the decision's
+    refused share, where it refuses it)."""
+    session, sweep, built = resolving_sweep(tmp_path, monkeypatch, ["SEQN", "x1", "age_months"],
+                                            at_preview="preview_refused", at_answer=at_answer)
+    report = sweep.run(session, lambda s: "p0")
+    rid = f"{EXCLUSIONS.id}={built.option}"
+    assert [c for c in session.calls if c[1] == built.ids] == [
+        ("preview", built.ids, built.sets), ("answer", built.ids, built.sets)]
+    refit = {r["id"]: r for r in report["refits"]}[rid]
+    (seen,) = [p for p in refit["previews"] if p["of"] == rid]
+    assert (seen["kind"], seen["by"], seen["code"]) == ("refused", "server", "preview_refused")
+    assert refit["kind"] == kind and refit["why"] is None
+    assert refit["answered"][0]["answer"] == rid
+    assert refit["answered"][0]["kind"] == ("ok" if at_answer is None else "refused")
+    (summary,) = report["decisions"]
+    if at_answer is None:
+        assert summary["refused_share"] == 0.0 and summary["refused_codes"] == {}
+    else:
+        assert (refit["refused"]["at"], refit["refused"]["by"], refit["refused"]["code"]) == (
+            "answer", "server", "rule_refused")
+        assert summary["refused_share"] == 0.5 and summary["refused_codes"] == {
+            "rule_refused": 1}
+    assert {"refit": rid, "why": None} not in report["unreached"]
