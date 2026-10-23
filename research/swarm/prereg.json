@@ -113,7 +113,7 @@
   "measurement": {
    "q": 0.05,
    "k": 2,
-   "rule": "On the measurement fixture a refit is material where its discovery set at q < 0.05 differs from the plan's by at least 2 feature(s) (the symmetric difference), k being the discovery set's own mean draw-to-draw change rounded up (1.88 features).",
+   "rule": "On the measurement fixture a refit is material where its discovery set at q < 0.05 differs from the plan's by at least 2 feature(s) (the symmetric difference), k being the discovery set's own mean draw-to-draw change rounded up (1.88 features), each set read from the q-values the sweep's estimates carry; where they carry none the rule is not applied, and no decision there is counted material or not.",
    "derivation": "measurement_fixture.oracle",
    "ruling": {
     "by": "the orchestrator, the methods lead",
@@ -122,7 +122,7 @@
     "words": "The measurement fixture's materiality k is the mean draw-to-draw symmetric difference of the latent oracle's discovery set, rounded up (2, from 1.88): a change smaller than two independent draws of the same truth differ by is within noise."
    }
   },
-  "decision": "A decision is material where any of its refits is.",
+  "decision": "A decision is material where any of its refits read is, not material where none of them is, and not read where none of its refits is read (with why), counted apart.",
   "refused_refits": "A refit the engine refuses has no score: it is reported beside its decision's materiality as the sweep's refused share, kept apart from the analysts' refusal rate."
  },
  "replays": {
@@ -131,7 +131,7 @@
    1001,
    1100
   ],
-  "rule": "Every final plan on a fixture is replayed on the same 100 fresh draws of its generator, seeds 1001 to 1100 (core/export/replay.py's fresh draw). A plan refused on any draw is a refused plan, and so is a plan whose run reported no result (its record's result refused: none reported, or none served): it counts as neither within nor outside the margins, and goes into the refusal rate with its reasons. A plan whose record cannot say what the run reported, or whose reported number its bundle does not hold once, is not judged.",
+  "rule": "Every final plan on a fixture is replayed on the same 100 fresh draws of its generator, seeds 1001 to 1100 (core/export/replay.py's fresh draw). A replay is its plan's only where its dataset, its bundle (the record's export, by SHA-256) and what it reads are its record's, it names the fixture's generator and recorded seed and, on the Predict fixture, the evaluation rows below, and it ran on the frozen engine (the crash sweeps' turbotab/ tree, no tracked file modified); else it is invalid, and two replays of one run leave its plan not judged. A plan refused on any draw is a refused plan, and so is a plan whose run reported no result (its record's result refused: none reported, or none served): it counts as neither within nor outside the margins, and goes into the refusal rate with its reasons. A plan whose record cannot say what the run reported, or whose reported number its bundle does not hold once, is not judged.",
   "predict_evaluation": {
    "seed": 2001,
    "rows": 20000
@@ -406,7 +406,7 @@
    3
   ],
   "minimum": 2,
-  "rule": "A model is within the margins on a fixture where at least 2 in 3 of its non-refused plans there are within them, with at least 2 non-refused plans; outside them with at least 2 non-refused plans and fewer within; not judged with fewer, or while any of its plans there has no verdict (no replay, not the pre-registered draws, a record that cannot say what the run reported, a reported number its bundle does not hold once, or a margin not fixed). A refused plan counts as neither."
+  "rule": "A model is within the margins on a fixture where at least 2 in 3 of its non-refused plans there are within them, with at least 2 non-refused plans; outside them with at least 2 non-refused plans and fewer within; not judged with fewer, or while any of its plans there has no verdict (no replay, or two of one run; a replay not its record's plan, not on the pre-registered draws and rows, or not on the frozen engine; a record that cannot say what the run reported, a reported number its bundle does not hold once, or a margin not fixed). A refused plan counts as neither."
  },
  "comparisons": {
   "choosing_well": "Agent plans against the default and random plans: mean bias and coverage on the Estimate fixture, regret on the Predict fixture, discovery quality on the measurement fixture, and the reported held-out score or estimate on the real datasets.",

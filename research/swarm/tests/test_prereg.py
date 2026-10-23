@@ -10,10 +10,13 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
   passes and one beside it fails.
 * r0 (the orchestrator's ruling of 2026-10-23): half the default plan's mean regret on the
   pre-registered draws and rows, numpy's mean of a constructed replay's regrets; the fill refuses a
-  replay that is not the default path's export on the Predict fixture on those draws and rows, or
-  one refused on a draw, and the trio waits for it. Its reference, half the additive
-  straight-line class's regret, is statsmodels' maximum-likelihood logistic fit on the generator's
-  rows against the true risk.
+  record that is not the default path's exported plan with its final family on the frozen engine
+  (a crash sweep's commit, or git's tree of turbotab/ at its commit the crash sweeps'), and a
+  replay that is not that export on the Predict fixture on those draws and rows on the frozen
+  engine, or one refused on a draw; the trio waits for it, and for one measured on the frozen
+  engine. A crash sweep whose default plan declares another final than the ruling's family is
+  refused, naming both. Its reference, half the additive straight-line class's regret, is
+  statsmodels' maximum-likelihood logistic fit on the generator's rows against the true risk.
 * k (the orchestrator's ruling of 2026-10-23): statsmodels' t-tests and Benjamini-Hochberg on the
   true concentrations give the same discovery sets, so the same power, false-discovery proportion
   and mean draw-to-draw change, whose rounding up is k.
@@ -224,16 +227,38 @@ def test_r0_waits_for_the_crash_sweep_and_its_measure_in_the_committed_file(prer
     assert (ruling["date"], ruling["by"]) == ("2026-10-23", "the orchestrator, the methods lead")
     assert "measured" in ruling["words"] and "seeds 1001-1100" in ruling["words"]
     assert "seed 2001 x 20,000" in ruling["words"]
+    # The family the ruling's words name is the one the fill holds it to (the orchestrator's
+    # ruling of 2026-10-23 names boosted_trees).
+    assert P.RULED_FINAL == "boosted_trees"
+    assert ruling["words"].startswith(
+        f"The default path on the Predict fixture declares {P.RULED_FINAL} final, ")
 
 
-def default_record(family: str = "boosted_trees", **run) -> dict:
+def test_a_crash_sweep_whose_default_plan_declares_another_final_is_refused_naming_both(prereg):
+    """The ruling holds for the family it was made for: a default plan declaring another final is
+    refused at the crash fill and at the r0 fill, naming both, so the orchestrator rules again;
+    one declaring the ruling's family is filled."""
+    with pytest.raises(P.Refused, match="`elastic_net` final.*made for `boosted_trees`"):
+        P.fill(prereg, reports(["elastic_net", "boosted_trees"]), engine=ENGINE)
+    crashed = P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
+    assert crashed["predict_fixture"]["r0"]["final"] == "boosted_trees"
+    other = P.build(crashed["filled"] | {"default_plan": crashed["filled"]["default_plan"]
+                                          | {"families": ["elastic_net"]}})
+    data = default_record("elastic_net")
+    with pytest.raises(P.Refused, match="`elastic_net` final.*made for `boosted_trees`"):
+        P.fill_r0(other, data, default_replay(other, data))
+
+
+def default_record(family: str | None = "boosted_trees", **run) -> dict:
     """The default path's record on the Predict fixture (``arms.run_arm``' model), its final
-    family ``family``, its export's bundle the constructed one."""
+    family ``family``, its export's bundle the constructed one, made at the crash sweeps' commit
+    (:func:`crash`) with no file modified."""
     from research.swarm.tests import constructed as C
 
     data = C.predict_record()
     data["run"].update({"id": "run_default", "analyst_model": "mechanical-default",
-                        "persona": None} | run)
+                        "persona": None, "engine_commit": ENGINE["commit"],
+                        "engine_modified": False} | run)
     data["dataset"]["id"] = P.PREDICT_FIXTURE
     data["result"]["family"] = family
     return data
@@ -245,7 +270,8 @@ def regrets_of(seeds: list[int]) -> list[float]:
 
 def default_replay(prereg, data: dict, **changes) -> dict:
     """``data``'s replay as ``score_pilot.make_replay`` writes one, on the pre-registered draws
-    and evaluation rows, each draw's regret :func:`regrets_of` its seed."""
+    and evaluation rows on the crash sweeps' engine, each draw's regret :func:`regrets_of` its
+    seed."""
     first, last = prereg["replays"]["seeds"]
     seeds = list(range(first, last + 1))
     fx = prereg["predict_fixture"]
@@ -253,7 +279,7 @@ def default_replay(prereg, data: dict, **changes) -> dict:
            "recorded_seed": fx["recorded_seed"],
            "target": {"kind": "predict", "family": data["result"]["family"]},
            "evaluation": dict(prereg["replays"]["predict_evaluation"]),
-           "bundle_sha256": data["export"]["sha256"],
+           "bundle_sha256": data["export"]["sha256"], "engine": dict(ENGINE),
            "draws": [{"seed": s, "refused": None, "regret": r}
                      for s, r in zip(seeds, regrets_of(seeds))]}
     out.update(changes)
@@ -280,6 +306,8 @@ def test_r0_is_half_the_default_plans_mean_regret_on_the_preregistered_draws_and
     assert (r0["final"], r0["why"]) == ("boosted_trees", None)
     assert filled["filled"]["r0"]["run"] == "run_default"
     assert filled["filled"]["r0"]["draws"] == 100
+    assert (filled["filled"]["r0"]["engine_tree"], filled["filled"]["r0"]["replay_engine"]) == (
+        ENGINE["engine_tree"], ENGINE)
     assert P.ready(filled, ENGINE) is None
     assert P.check(filled) == []
     again = P.fill(filled, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
@@ -298,6 +326,21 @@ def _refused_draw(prereg, data):
     return replay
 
 
+def _unexported() -> dict:
+    data = default_record()
+    data["export"].update(reached=False, sha256=None, methods=None, checklist=None,
+                          refused={"code": "result_not_ready", "message": "no fit"})
+    return data
+
+
+def _result_refused() -> dict:
+    data = default_record()
+    data["result"].update(scores=None, intervals=None, intervals_why="none served",
+                          refused="The opening recorded no held-out scores.",
+                          refused_kind="not_served")
+    return data
+
+
 @pytest.mark.parametrize("record,replay,named", [
     (lambda: default_record(analyst_model="claude-haiku-5-5"), None, "default path"),
     (lambda: default_record() | {"dataset": default_record()["dataset"] | {"id": "bang2009"}},
@@ -312,6 +355,25 @@ def _refused_draw(prereg, data):
                                                                "family": "linear"}), "family"),
     (default_record, _short, "pre-registered"),
     (default_record, _refused_draw, "refused"),
+    # The record: exported, its result reported, a family declared final (each guard's words).
+    (_unexported, None, "no exported plan with its final family: no fit"),
+    (_result_refused, None, "no exported plan with its final family: The opening recorded"),
+    (lambda: default_record(None), None, "no exported plan.*no family was declared final"),
+    # The replay: the fixture's recorded seed and dataset.
+    (default_record, lambda p, d: default_replay(p, d, recorded_seed=7), "recorded seed is 7"),
+    (default_record, lambda p, d: default_replay(p, d, dataset=P.ESTIMATE_FIXTURE),
+     "dataset is 'walking_bp_estimate'"),
+    # The frozen engine: the record's commit and files, the replay's tree and files.
+    (lambda: default_record(engine_commit="some-other-commit"), None,
+     "commit some-other-commit .*not the frozen engine"),
+    (lambda: default_record(engine_modified=True), None, "tracked files modified"),
+    (lambda: default_record(engine_modified=None), None, "not known to be unmodified"),
+    (default_record, lambda p, d: default_replay(p, d, engine={**ENGINE, "engine_tree": "t1"}),
+     "engine tree t1 \\(no file modified\\); the frozen engine"),
+    (default_record, lambda p, d: default_replay(p, d, engine={**ENGINE, "engine_modified": True}),
+     "engine tree t0 \\(tracked files modified\\)"),
+    (default_record, lambda p, d: default_replay(p, d, engine=None),
+     "engine tree None \\(not known to be unmodified\\)"),
 ])
 def test_the_r0_fill_refuses_a_replay_not_the_default_plans_on_the_preregistered_draws(
         prereg, record, replay, named):
@@ -320,6 +382,49 @@ def test_the_r0_fill_refuses_a_replay_not_the_default_plans_on_the_preregistered
     given = replay(crashed, data) if replay else default_replay(crashed, data)
     with pytest.raises(P.Refused, match=named):
         P.fill_r0(crashed, data, given)
+
+
+def test_the_r0_fill_takes_a_record_whose_commit_has_the_crash_sweeps_engine_tree(prereg):
+    """The frozen engine is a tree of turbotab/, the same at every commit that leaves it
+    unchanged (launcher.py): a record made at another commit whose tree git resolves to the crash
+    sweeps' is on it, and one at a commit git does not resolve is not."""
+    import subprocess
+
+    def git(*args):
+        out = subprocess.run(["git", "-C", str(P.REPO), *args], capture_output=True, text=True)
+        return out.stdout.strip() if out.returncode == 0 else None
+
+    head, tree = git("rev-parse", "HEAD"), git("rev-parse", "HEAD:turbotab")
+    if not head or not tree:
+        pytest.skip("not run from a git checkout")
+    engine = {**ENGINE, "engine_tree": tree}
+    given = reports(["boosted_trees", "elastic_net"])
+    for r in given.values():
+        r["engine_tree"] = tree
+    crashed = P.fill(prereg, given, engine=engine)
+    data = default_record(engine_commit=head)
+    assert crashed["filled"]["reports"][P.PREDICT_FIXTURE]["commit"] == "c0" != head
+    filled = P.fill_r0(crashed, data, default_replay(crashed, data, engine=engine))
+    assert filled["filled"]["r0"]["engine_tree"] == tree
+    assert P.ready(filled, engine, margins=False) is None
+    data = default_record(engine_commit="0" * 40)
+    with pytest.raises(P.Refused, match="not the frozen engine"):
+        P.fill_r0(crashed, data, default_replay(crashed, data, engine=engine))
+
+
+def test_the_trio_is_refused_where_r0_was_measured_on_another_engine(prereg):
+    """ready() reads the engine r0 was measured on: a filled r0 whose record's tree or replay's
+    tree is not the crash sweeps', or with a file modified, holds the trio; the measured one does
+    not."""
+    filled = measured(prereg)
+    assert P.ready(filled, ENGINE, margins=False) is None
+    entry = filled["filled"]["r0"]
+    for changed in ({"engine_tree": "t1"}, {"engine_modified": True},
+                    {"replay_engine": {**ENGINE, "engine_tree": "t1"}},
+                    {"replay_engine": {**ENGINE, "engine_modified": True}}):
+        other = P.build(filled["filled"] | {"r0": entry | changed})
+        assert other["predict_fixture"]["r0"]["value"] is not None
+        assert "measure it again" in P.ready(other, ENGINE, margins=False), changed
 
 
 def test_r0_is_measured_only_after_the_crash_fill(prereg):
@@ -440,7 +545,7 @@ def reports(default: list[str]) -> dict[str, dict]:
 def test_the_crash_fill_sets_each_budget_the_cap_and_the_default_plans_final_family(prereg):
     from research.swarm import launcher
 
-    filled = P.fill(prereg, reports(["elastic_net", "boosted_trees"]), engine=ENGINE)
+    filled = P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
     crash_ = filled["filled"]
     estimate = crash_["fit_budget"][P.ESTIMATE_FIXTURE]
     assert estimate == launcher.budget_of({"fit_seconds": {"max": 20.25}}, 11)
@@ -448,7 +553,7 @@ def test_the_crash_fill_sets_each_budget_the_cap_and_the_default_plans_final_fam
     # Five named plans on the Estimate fixture at its 100 s, two on each of five others at 30 s.
     assert crash_["compute_cap"]["seconds"] == 5 * 100.0 + 5 * 2 * 30.0
     r0 = filled["predict_fixture"]["r0"]
-    assert (r0["final"], r0["value"]) == ("elastic_net", None)
+    assert (r0["final"], r0["value"]) == ("boosted_trees", None)
     assert "not been measured" in r0["why"]
     assert P.check(filled) == []
 
@@ -481,7 +586,7 @@ def test_relative_prices_are_set_for_every_model_and_kept_when_the_crash_fields_
     assert priced["filled"]["relative_price"] == {
         "prices": {"haiku": 1.0, "sonnet": 3.0, "opus": 5.0}, "source": "the list prices"}
     assert P.check(priced) == []
-    filled = P.fill(priced, reports(["elastic_net"]), engine=ENGINE)
+    filled = P.fill(priced, reports(["boosted_trees"]), engine=ENGINE)
     assert filled["filled"]["relative_price"] == priced["filled"]["relative_price"]
     for bad in ({"haiku": 1, "sonnet": 3}, {"haiku": 1, "sonnet": 0, "opus": 5},
                 {"haiku": 1, "sonnet": 3, "opus": 5, "other": 2}):

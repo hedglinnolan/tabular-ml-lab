@@ -6,16 +6,21 @@ sweeps, the referees' verdicts and the blind reader's classes of the stuck runs.
         [--referee FILE] [--classes FILE] [--budget-fresh N] --out DIR
     python -m research.swarm.score_pilot replay --record FILE --bundle ZIP --out FILE
 
+``replay`` replays the record's final plan from its own export: a bundle whose SHA-256 is not the
+record's export's is refused before any draw.
+
 **The inputs.** The records (``research/swarm/record.py``; a run whose record failed its schema
 is in the corpus's ``failed/``). One replay per final plan on a fixture (:func:`make_replay`, or
-any writer of the same shape): its run, its dataset, and each draw's seed with the plan's numbers
-on it, or the reason the draw was refused: on the Estimate fixture the reported estimate and its
-interval, on the Predict fixture the Brier regret against the true risk on the pre-registered
-evaluation rows, on the measurement fixture each feature's estimate and q-value and the scale the
-plan analyzed; or, with no draws, why at its top: ``refused`` (the run reported no result) or
-``unjudged`` (the record cannot say what the run reported, or the bundle does not hold its
-reported number once). The sweeps (``research/swarm/sweep.py``'s ``sweep.json`` and
-``crash.json``). The referees' verdicts: a list of ``{run, seq, planted, faithful}``, one per
+any writer of the same shape): its run, its dataset, the bundle's SHA-256, what it reads
+(``target``, :func:`target_of`), the generator and recorded seed it drew from, on the Predict
+fixture the evaluation rows, the engine it ran on (``launcher.engine_now``), and each draw's seed
+with the plan's numbers on it, or the reason the draw was refused: on the Estimate fixture the
+reported estimate and its interval, on the Predict fixture the Brier regret against the true risk
+on the pre-registered evaluation rows, on the measurement fixture each feature's estimate and
+q-value and the scale the plan analyzed; or, with no draws, why at its top: ``refused`` (the run
+reported no result) or ``unjudged`` (the record cannot say what the run reported, or the bundle
+does not hold its reported number once). The sweeps (``research/swarm/sweep.py``'s ``sweep.json``
+and ``crash.json``). The referees' verdicts: a list of ``{run, seq, planted, faithful}``, one per
 audited attempt (``referee.py`` draws them; the referees run in the pilot). The blind reader's
 classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
 ``analyst_failure``.
@@ -23,6 +28,11 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
 **What it applies,** each rule in prereg.json's own numbers:
 
 * the regression checks on every run (:func:`regression_checks`);
+* each replay judged only as its record's plan (:func:`paired`: its run, dataset, bundle and
+  reading the record's; a replay with no record, or one of two of a run, judges nothing), on the
+  pre-registered draws and rows on the frozen engine (:func:`provenance`: the fixture's generator
+  and recorded seed, the Predict fixture's evaluation rows, the crash sweeps' engine tree with no
+  file modified; with no crash fill the frozen engine is not known, and nothing is judged);
 * each replay against its fixture's margins (:func:`score_replay`): the pre-registered draws or
   none, a draw refused making the plan a refused plan, as a replay refused as a whole does; b0
   and the coverage band, r0, or (the measurement fixture) its numbers reported. An exported
@@ -31,8 +41,11 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
   none, unjudged where the record cannot say;
 * the unit per model and fixture (:func:`unit`);
 * materiality on every sweep with prereg.json's margins (:func:`sweep_verdicts`), beside the
-  sweep's own verdict, each disagreement listed, never silently; and the runs whose final plans
-  the sweeps go around, by when each started (:func:`named_plans`);
+  sweep's own verdict, each disagreement listed, never silently; a decision none of whose refits
+  is read counted apart, as not read, with why, and a dataset whose sweeps prereg.json's rule
+  read no refit of holding no material set (the measurement fixture's k rule reads the q-values
+  the sweep's estimates carry); and the runs whose final plans the sweeps go around, by when each
+  started (:func:`named_plans`);
 * reach (:func:`reach_of`), the decision rule (:func:`decision`; no analyst named until the
   reference is within), the persona rule (:func:`persona_rule`), early stopping
   (:func:`early_stopping`; once a model has a record under every persona, a stuck run's
@@ -62,6 +75,8 @@ from research.swarm import prereg_fill as P
 
 CLASSES = ("engine_defect", "driver_defect", "capability_gap", "analyst_failure")
 SCORED = ("within", "outside")
+FIXTURE_KEY = {"estimate": "estimate_fixture", "predict": "predict_fixture",
+               "measurement": "measurement_fixture"}
 
 
 # ── who and where ────────────────────────────────────────────────────────────
@@ -131,12 +146,73 @@ def result_refusal(kind: str | None, words: str) -> tuple[str, str]:
     return verdict, f"The record reports no result ({said}, {kind}): {words}"
 
 
+def _same(a: Any, b: Any) -> bool:
+    return json.loads(json.dumps(a)) == json.loads(json.dumps(b))
+
+
+def provenance(replay: Mapping[str, Any], prereg: Mapping[str, Any]) -> tuple[str, str] | None:
+    """Why ``replay`` (on a fixture) is not on the pre-registered draws and rows on the frozen
+    engine, as ``(verdict, why)``: ``invalid`` where it names another generator or recorded seed
+    than its fixture's, other evaluation rows than prereg.json's (the Predict fixture), or an
+    engine other than the crash sweeps' (``prereg_fill.frozen_engine``: their ``turbotab/`` tree,
+    no tracked file modified); ``unjudged`` where prereg.json holds no crash fill, so the frozen
+    engine is not known; else None."""
+    kind = fixture_of(prereg, replay.get("dataset"))
+    fx = prereg[FIXTURE_KEY[str(kind)]]
+    wanted = [("generator", "generator", fx["generator"]),
+              ("recorded_seed", "recorded seed", fx["recorded_seed"])]
+    if kind == "predict":
+        wanted.append(("evaluation", "evaluation rows", prereg["replays"]["predict_evaluation"]))
+    for key, said, want in wanted:
+        if not _same(replay.get(key), want):
+            return "invalid", (f"The replay's {said} is {replay.get(key)!r}, not the "
+                               f"pre-registered {want!r}.")
+    frozen = P.frozen_engine(prereg)
+    if frozen is None:
+        return "unjudged", ("prereg.json holds no crash fill, so the frozen engine a replay must "
+                            "run on is not known.")
+    engine = replay.get("engine") or {}
+    if engine.get("engine_tree") != frozen["engine_tree"] or engine.get("engine_modified") \
+            is not False:
+        state = ("no file modified" if engine.get("engine_modified") is False else
+                 "tracked files modified" if engine.get("engine_modified") else
+                 "not known to be unmodified")
+        return "invalid", (f"The replay ran on engine tree {engine.get('engine_tree')} ({state}); "
+                           f"the frozen engine the crash sweeps passed on is tree "
+                           f"{frozen['engine_tree']} with no file modified.")
+    return None
+
+
+def paired(replay: Mapping[str, Any], rec: Any, prereg: Mapping[str, Any]) -> str | None:
+    """Why ``replay`` is not ``rec``'s final plan replayed, or None: its run, its dataset, its
+    bundle (the record's export, by SHA-256) and what it reads (:func:`target_of` the record) must
+    each be the record's."""
+    if str(replay.get("run")) != str(rec.run.id):
+        return f"The replay's run is {replay.get('run')!r}, not its record's {rec.run.id!r}."
+    if replay.get("dataset") != rec.dataset.id:
+        return (f"The replay's dataset is {replay.get('dataset')!r}, not its record's "
+                f"{rec.dataset.id!r}.")
+    if not rec.export.sha256 or replay.get("bundle_sha256") != rec.export.sha256:
+        return (f"The replay's bundle is {replay.get('bundle_sha256')!r}, not its record's "
+                f"export {rec.export.sha256!r}.")
+    target, want = replay.get("target") or {}, target_of(rec, prereg)
+    if target.get("family") != want.get("family"):
+        return (f"The replay reads the family `{target.get('family')}`, not its record's final "
+                f"`{want.get('family')}`.")
+    if not _same(target, want):
+        return (f"The replay reads {json.dumps(target)}, not what its record reported "
+                f"({json.dumps(want)}).")
+    return None
+
+
 def score_replay(replay: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[str, Any]:
     """One final plan's replay against its fixture's margins (the module docstring): its numbers
     and its verdict, ``within``, ``outside``, ``refused`` (a draw refused, a number a draw does
     not hold, or the replay refused as a whole: its run reported no result), ``invalid`` (not the
-    pre-registered draws), ``unjudged`` (a margin prereg.json does not fix, or the replay not read
-    as a whole, with why) or ``reported`` (the measurement fixture)."""
+    pre-registered draws and rows on the frozen engine, :func:`provenance`), ``unjudged`` (a
+    margin prereg.json does not fix, no frozen engine known, or the replay not read as a whole,
+    with why) or ``reported`` (the measurement fixture). Whether it is its record's plan is
+    :func:`paired`'s, in :func:`score`."""
     kind = fixture_of(prereg, replay.get("dataset"))
     out: dict[str, Any] = {"run": replay.get("run"), "dataset": replay.get("dataset"),
                            "kind": kind, "verdict": None, "why": None}
@@ -150,6 +226,10 @@ def score_replay(replay: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[s
         return _refused(out, str(replay["refused"]))
     if replay.get("unjudged"):
         out.update(verdict="unjudged", why=str(replay["unjudged"]))
+        return out
+    off = provenance(replay, prereg)
+    if off is not None:
+        out.update(verdict=off[0], why=off[1])
         return out
     if [d.get("seed") for d in draws] != expected:
         out.update(verdict="invalid",
@@ -314,9 +394,19 @@ def _any(values: Iterable[bool | None]) -> bool | None:
     return any(known) if known else None
 
 
+def rule_of(sweep: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
+    """The name of prereg.json's materiality rule on ``sweep``, in words."""
+    if sweep.get("dataset") == prereg["datasets"]["measurement_fixture"]:
+        return (f"discovery-set rule (k = {prereg['material']['measurement']['k']} features at "
+                f"q < {prereg['material']['measurement']['q']:g})")
+    return "Predict rule" if sweep.get("purpose") == "prediction" else "Estimate rule"
+
+
 def sweep_verdicts(sweep: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[str, Any]:
     """prereg.json's materiality on each scored refit of ``sweep`` and on each decision, beside
-    the sweep's own, every disagreement listed."""
+    the sweep's own, every disagreement listed; each decision none of whose refits is read
+    counted apart, as not read, with why; and whether the rule read any refit at all
+    (``applied``), with why where it read none."""
     half = float(prereg["material"]["half"])
     measure = prereg["material"]["measurement"]
     measurement = sweep.get("dataset") == prereg["datasets"]["measurement_fixture"]
@@ -338,20 +428,36 @@ def sweep_verdicts(sweep: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[
         else:
             verdict = _any(estimate_material(c, half) for c in r.get("change") or [])
         if verdict is None and why is None:
-            why = r.get("change_why") or "The refit's change holds no number."
+            why = r.get("change_why") or " ".join(dict.fromkeys(
+                str(c["why"]) for c in r.get("change") or [] if c.get("why"))) or \
+                "The refit's change holds no number."
         refits.append({"refit": r.get("id"), "point": r.get("point"), "option": r.get("option"),
                        "sweep": r.get("material"), "prereg": verdict, "why": why})
     points = [d.get("point") for d in sweep.get("decisions") or []]
     decisions = []
     for d in sweep.get("decisions") or []:
-        mine = [x["prereg"] for x in refits if x["point"] == d.get("point")]
+        mine = [x for x in refits if x["point"] == d.get("point")]
+        verdict = _any(x["prereg"] for x in mine)
+        why = None
+        if verdict is None:
+            why = " ".join(dict.fromkeys(str(x["why"]) for x in mine if x["why"])) or \
+                "No refit of it was scored."
         decisions.append({"point": d.get("point"), "sweep": d.get("material"),
-                          "prereg": _any(mine), "refused_share": d.get("refused_share"),
+                          "prereg": verdict, "why": why,
+                          "refused_share": d.get("refused_share"),
                           "refused_codes": d.get("refused_codes") or {}})
+    applied = any(x["prereg"] is not None for x in refits)
+    not_applied = None
+    if not applied:
+        not_applied = " ".join(dict.fromkeys(str(x["why"]) for x in refits if x["why"])) or \
+            "The sweep holds no scored refit."
     return {"dataset": sweep.get("dataset"), "plan": sweep.get("plan"),
-            "purpose": sweep.get("purpose"), "points": points, "refits": refits,
-            "decisions": decisions,
+            "purpose": sweep.get("purpose"), "rule": rule_of(sweep, prereg), "points": points,
+            "refits": refits, "decisions": decisions, "applied": applied,
+            "not_applied": not_applied,
             "material": sorted(str(d["point"]) for d in decisions if d["prereg"]),
+            "not_read": [{"point": d["point"], "why": d["why"]} for d in decisions
+                         if d["prereg"] is None],
             "disagreements": [x for x in refits if x["sweep"] != x["prereg"]],
             "decision_disagreements": [d for d in decisions if d["sweep"] != d["prereg"]],
             "fit_seconds": (sweep.get("fit_seconds") or {}).get("total")}
@@ -581,14 +687,35 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
         return {"run": rec.run.id, "dataset": rec.dataset.id, "kind": kind, "verdict": verdict,
                 "why": why}
 
-    plans = []
+    def plan_of(rec: Any, given: list[Mapping[str, Any]]) -> dict[str, Any]:
+        # The record's plan as its replays judge it: one replay, its own (:func:`paired`).
+        mine = {"run": rec.run.id, "dataset": rec.dataset.id,
+                "kind": fixture_of(prereg, rec.dataset.id), "verdict": None, "why": None}
+        if len(given) > 1:
+            return mine | {"verdict": "unjudged",
+                           "why": (f"{len(given)} replays are given for this run, so which is "
+                                   f"its plan's cannot be said.")}
+        why = paired(given[0], rec, prereg)
+        if why is not None:
+            return mine | {"verdict": "invalid", "why": why}
+        return score_replay(given[0], prereg)
+
+    given_for: dict[str, list[Mapping[str, Any]]] = {}
     for rp in replays:
-        rec = by_run.get(str(rp.get("run")))
-        s = (judged_by_record(rec) if rec else None) or score_replay(rp, prereg)
-        s.update(model=model_of(rec, prereg) if rec else None,
-                 persona=rec.run.persona if rec else None)
+        given_for.setdefault(str(rp.get("run")), []).append(rp)
+    plans = []
+    for run, given in given_for.items():
+        rec = by_run.get(run)
+        if rec is None:
+            plans.append({"run": run, "dataset": given[0].get("dataset"),
+                          "kind": fixture_of(prereg, given[0].get("dataset")),
+                          "verdict": "invalid", "model": None, "persona": None,
+                          "why": "No record of this run is given, so its replay is no plan's."})
+            continue
+        s = judged_by_record(rec) or plan_of(rec, given)
+        s.update(model=model_of(rec, prereg), persona=rec.run.persona)
         plans.append(s)
-    replayed = {p["run"] for p in plans}
+    replayed = set(given_for)
     for rec in records:
         kind = fixture_of(prereg, rec.dataset.id)
         if kind and rec.export.sha256 and rec.run.id not in replayed:
@@ -598,10 +725,19 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
                 | {"model": model_of(rec, prereg), "persona": rec.run.persona})
     verdict_of = {p["run"]: p for p in plans}
     swept = [sweep_verdicts(s, prereg) for s in sweeps]
-    union: dict[str, set[str]] = {}
-    for s in swept:
-        union.setdefault(str(s["dataset"]), set()).update(s["material"])
-    reach = {r.run.id: reach_of(r, union.get(r.dataset.id, set()), prereg) for r in records}
+    # A dataset's material decisions: the union over its sweeps; none where prereg.json's rule
+    # read no refit of any of them, so no decision there is counted material or not.
+    union: dict[str, set[str] | None] = {}
+    unread: dict[str, str] = {}
+    for d in dict.fromkeys(str(s["dataset"]) for s in swept):
+        mine = [s for s in swept if str(s["dataset"]) == d]
+        if any(s["applied"] for s in mine):
+            union[d] = set().union(*(s["material"] for s in mine))
+        else:
+            union[d] = None
+            unread[d] = (f"prereg.json's {mine[0]['rule']} read no refit of its sweeps: "
+                         + " ".join(dict.fromkeys(str(s["not_applied"]) for s in mine)))
+    reach = {r.run.id: reach_of(r, union.get(r.dataset.id) or set(), prereg) for r in records}
 
     models: dict[str, dict[str, Any]] = {}
     prices = ((prereg.get("filled") or {}).get("relative_price") or {}).get("prices") or {}
@@ -649,7 +785,7 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
     est_plans = [p for p in plans if p["kind"] == "estimate" and p["verdict"] in SCORED]
     finding = []
     for s in swept:
-        u = union.get(str(s["dataset"]), set())
+        u = union.get(str(s["dataset"])) or set()
         share = (len(set(s["material"]) & u) / len(u)
                  if len(u) >= prereg["reach"]["minimum_union"] else None)
         hours = s["fit_seconds"] / 3600 if s["fit_seconds"] else None
@@ -669,7 +805,8 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
         "early_stopping": early_stopping(estimate_units, records, prereg, budget_fresh),
         "sweeps": swept,
         "named_plans": named_plans(records, prereg),
-        "material": {d: sorted(u) for d, u in union.items()},
+        "material": {d: (sorted(u) if u is not None else None) for d, u in union.items()},
+        "material_unread": unread,
         "reach": reach,
         "choosing_well": {
             kind: {g: {"plans": len(ps), "within": sum(1 for p in ps if p["verdict"] == "within"),
@@ -719,6 +856,11 @@ def _n(x: Any, digits: int = 4) -> str:
     return f"{float(x):.{digits}g}"
 
 
+def _read(x: bool | None) -> str:
+    """A materiality verdict in words: ``yes``, ``no``, or ``not read`` where none was read."""
+    return "not read" if x is None else "yes" if x else "no"
+
+
 def report_md(report: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
     """``report`` in sentences, every number interpolated from it or from prereg.json."""
     fx = prereg["estimate_fixture"]
@@ -747,11 +889,20 @@ def report_md(report: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
                      f"{_n(p.get('regret'))} | {p.get('why') or ''} |")
     lines += ["", "## Materiality: prereg.json against each sweep's own verdict", ""]
     for s in report["sweeps"]:
-        lines.append(f"- {s['dataset']} around the {s['plan']} plan: "
-                     f"{len(s['material'])} material decision(s); "
+        if s["applied"]:
+            counted = (f"{len(s['material'])} material, {len(s['not_read'])} not read"
+                       + (" (" + "; ".join(f"`{x['point']}`: {str(x['why']).rstrip('.')}"
+                                           for x in s["not_read"][:10]) + ")"
+                          if s["not_read"] else ""))
+        else:
+            counted = (f"prereg.json's {s['rule']} was applied to no refit "
+                       f"({str(s['not_applied']).rstrip('.')}), so no decision is counted "
+                       f"material or not")
+        lines.append(f"- {s['dataset']} around the {s['plan']} plan: {counted}; "
                      f"{len(s['disagreements'])} refit(s) where the two verdicts differ"
-                     + (": " + "; ".join(f"`{x['refit']}` (sweep {_n(x['sweep'])}, prereg.json "
-                                         f"{_n(x['prereg'])})" for x in s["disagreements"][:10])
+                     + (": " + "; ".join(f"`{x['refit']}` (sweep {_read(x['sweep'])}, "
+                                         f"prereg.json {_read(x['prereg'])})"
+                                         for x in s["disagreements"][:10])
                         if s["disagreements"] else "") + ".")
     persona = report["persona"]
     lines += ["", "## The personas", ""]
@@ -773,11 +924,12 @@ def report_md(report: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
     f = report["false_alarms"]
     lines += ["## Expected false alarms", "",
               f"Decoy runs: {f['decoy']['runs']}, {_n(f['decoy']['expected'])} false alarm(s) "
-              f"expected, {f['decoy']['observed']} observed. Estimate plans judged on coverage: "
-              f"{f['coverage']['plans']}; at most {_n(f['coverage']['expected_at_most'])} false "
-              f"alarm(s) expected among them, the count were every one to cover at exactly "
-              f"{fx['coverage']['level']:.0%}; {f['coverage']['outside_band']} fell outside the "
-              f"band, which for a plan covering more or less than that is no false alarm.", ""]
+              f"expected, {f['decoy']['observed']} observed. {f['coverage']['plans']} Estimate "
+              f"plan(s) were judged on coverage. If each covered at exactly "
+              f"{fx['coverage']['level']:.0%}, {_n(f['coverage']['expected_at_most'])} of them "
+              f"would be expected to fall outside the band {fx['coverage']['low']} to "
+              f"{fx['coverage']['high']} by chance (false alarms); "
+              f"{f['coverage']['outside_band']} fell outside it.", ""]
     bad = {k: v for k, v in report["regression"]["runs"].items() if v}
     lines += ["## Regression checks", "",
               f"{len(report['regression']['failed_schema'])} record(s) failed the schema; "
@@ -846,14 +998,17 @@ def target_of(rec: Any, prereg: Mapping[str, Any]) -> dict[str, Any]:
 def make_replay(bundle: Path, target: Mapping[str, Any], dataset: str, run: str,
                 prereg: Mapping[str, Any], *, generator: Any = None,
                 seeds: Sequence[int] | None = None, workers: int = 2,
-                evaluation: Any = None, keep: Path | None = None) -> dict[str, Any]:
+                evaluation: Any = None, keep: Path | None = None,
+                engine: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The final plan in ``bundle`` replayed on each pre-registered fresh draw of its fixture's
     generator (``core/export/replay.py``), read as ``target`` says (:func:`target_of`); a draw the
     replay or the scorer refuses is kept with its reason. Before any draw, a record whose result
     is refused is replayed as a whole as :func:`result_refusal` classes it (``refused`` or
     ``unjudged``, with its words), and a reported number the bundle does not hold once as
     ``unjudged``. The replay names its bundle's SHA-256, the generator and (Predict) the
-    evaluation rows it read. ``generator``, ``seeds`` and ``evaluation`` (the Predict fixture's
+    evaluation rows it read, and the engine it runs on (``engine``, else
+    ``launcher.engine_now()``: the commit, the ``turbotab/`` tree, whether a tracked file under it
+    is modified). ``generator``, ``seeds`` and ``evaluation`` (the Predict fixture's
     rows) stand in for prereg.json's in a test, and are named so; ``keep`` keeps each Predict
     draw's rebuilt home in ``keep/<seed>`` (its ``project`` in the draw), which is otherwise
     removed once scored."""
@@ -861,9 +1016,10 @@ def make_replay(bundle: Path, target: Mapping[str, Any], dataset: str, run: str,
 
     from research.swarm import generators as G
 
+    from research.swarm import launcher
+
     kind = target["kind"]
-    fx = prereg[{"estimate": "estimate_fixture", "predict": "predict_fixture",
-                 "measurement": "measurement_fixture"}[kind]]
+    fx = prereg[FIXTURE_KEY[kind]]
     first, last = prereg["replays"]["seeds"]
     seeds = list(seeds) if seeds is not None else list(range(first, last + 1))
     named = str(fx["generator"]) if generator is None else (
@@ -872,7 +1028,9 @@ def make_replay(bundle: Path, target: Mapping[str, Any], dataset: str, run: str,
     generator = generator or fx["generator"]
     out: dict[str, Any] = {"run": run, "dataset": dataset, "generator": named,
                            "recorded_seed": fx["recorded_seed"], "target": dict(target),
-                           "bundle_sha256": P._sha256(Path(bundle)), "draws": []}
+                           "bundle_sha256": P._sha256(Path(bundle)),
+                           "engine": dict(engine if engine is not None else launcher.engine_now()),
+                           "draws": []}
     if kind == "predict":
         out["evaluation"] = (dict(prereg["replays"]["predict_evaluation"]) if evaluation is None
                              else {"given": True, "rows": len(evaluation)})
@@ -983,6 +1141,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if fixture_of(prereg, rec.dataset.id) is None:
             print(json.dumps({"refused": f"{rec.dataset.id} is not a fixture."}))
             return 1
+        sha = P._sha256(args.bundle)
+        if not rec.export.sha256 or sha != rec.export.sha256:
+            print(json.dumps({"refused": (f"The bundle's SHA-256 is {sha}, not the record's "
+                                          f"export {rec.export.sha256}: it is not this run's "
+                                          f"plan.")}))
+            return 1
         out = make_replay(args.bundle, target_of(rec, prereg), rec.dataset.id, rec.run.id,
                           prereg, workers=args.workers)
         args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -1008,9 +1172,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = ["decision", "early_stopping", "examined_points", "faithfulness", "fixture_of",
-           "locate", "main", "make_replay", "model_of", "named_plans", "persona_rule",
-           "point_of", "reach_of", "regression_checks", "report_md", "robustness", "score",
-           "score_replay", "sweep_verdicts", "target_of", "unit"]
+           "locate", "main", "make_replay", "model_of", "named_plans", "paired", "persona_rule",
+           "point_of", "provenance", "reach_of", "regression_checks", "report_md", "robustness",
+           "rule_of", "score", "score_replay", "sweep_verdicts", "target_of", "unit"]
 
 
 if __name__ == "__main__":

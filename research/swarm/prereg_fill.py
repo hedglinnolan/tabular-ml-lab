@@ -29,9 +29,11 @@ rows every plan's regret is read on:
   path's exported plan on the frozen engine is replayed by ``score_pilot replay`` (its
   ``make_replay``) on the draws and rows every plan is replayed on, read by ``score_pilot``'s own
   scorer (``score_replay``), and filled after the crash fill (``r0``, :func:`fill_r0`): r0 and
-  every plan's regret come from the same draws, rows and scorer. Half the additive straight-line
-  class's population regret (``generators.readmission_regrets``) is kept beside it as a
-  reference, labeled so;
+  every plan's regret come from the same draws, rows and scorer, and ``score_pilot`` judges no
+  replay that is not on them, on that engine. The ruling names the family it was made for
+  (:data:`RULED_FINAL`); a crash sweep whose default plan declares another final is refused, so the
+  orchestrator rules again. Half the additive straight-line class's population regret
+  (``generators.readmission_regrets``) is kept beside it as a reference, labeled so;
 * **the measurement fixture's materiality k** (:func:`measurement_oracle`, the orchestrator's
   ruling of 2026-10-23, :func:`k_ruling`): the discovery set's own draw-to-draw change, rounded
   up: the mean size of the symmetric difference between the discovery sets (q < the feature-wise
@@ -54,23 +56,26 @@ dataset, each passed on one engine tree: ``launcher.crash_passed``):
 * **the sweep's compute cap**: per dataset, the plans §6 names to sweep beyond the default (whose
   fits the crash sweep already paid) times the crash sweep's own fit seconds there, summed;
 * the default plan on the Predict fixture: its final family, which the replay r0 is measured on
-  must read.
+  must read, and which must be the family r0's ruling was made for (:data:`RULED_FINAL`).
 
 **Measured after the crash fill** (:func:`fill_r0`): r0, from the default path's record on the
 Predict fixture and its replay, each checked: the record the default path's
 (``mechanical-default``) on the Predict fixture, exported, its final family the crash sweep's
-default plan's; the replay of that run's bundle (its SHA-256 the record's export's), from the
-fixture's generator at its recorded seed, on the pre-registered draws and evaluation rows, reading
-that family, refused on no draw. A crash fill clears it, since it reads the crash sweep's default
-plan.
+default plan's, made on the frozen engine (a crash sweep's commit, or a commit whose ``turbotab/``
+tree is the crash sweeps', :func:`engine_tree_of`; no tracked file modified); the replay of that
+run's bundle (its SHA-256 the record's export's), reading that family, from the fixture's
+generator at its recorded seed, on the pre-registered draws and evaluation rows, run on the frozen
+engine (``score_pilot.provenance``), refused on no draw. A crash fill clears it, since it reads the
+crash sweep's default plan.
 
 **Set before the scoring** (:func:`set_prices`): each model's list price relative to the others',
 a fact rather than a choice, which the decision rule's "the cheaper" reads. The ``filled`` section
 holds these inputs, and ``--check`` reads them as held.
 
 :func:`ready` says why the trio may not start (a pilot dataset without its fit budget, no compute
-cap, no r0 measured, reports on different engines or not the engine now, or margins that are no
-longer the generators'), or None: the launcher is to call it before the trio.
+cap, no r0 measured, r0 measured on another engine, reports on different engines or not the
+engine now, or margins that are no longer the generators'), or None: the launcher is to call it
+before the trio.
 """
 from __future__ import annotations
 
@@ -79,6 +84,7 @@ import copy
 import hashlib
 import json
 import math
+import subprocess
 import sys
 from fractions import Fraction
 from pathlib import Path
@@ -89,6 +95,7 @@ import numpy as np
 from research.swarm import generators as G
 
 HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[1]
 PREREG = HERE / "prereg.json"
 VERSION = 1
 
@@ -139,6 +146,11 @@ CONTRACT_OF = {"normalization and the log scale": "omics_normalization",
 RULED_BY = "the orchestrator, the methods lead"
 RULED_ON = "2026-10-23"
 REVIEW = "for the owner to review"
+# The family r0's ruling was made for: the default plan's final on the Predict fixture, a family
+# with no class the generator computes a regret for. A crash sweep whose default plan declares
+# another is refused (:func:`fill`, :func:`fill_r0`), since the ruling's premise is then not known
+# to hold.
+RULED_FINAL = "boosted_trees"
 
 
 def _f(x: Fraction | float) -> float:
@@ -277,7 +289,7 @@ def r0_ruling() -> dict[str, str]:
     draws' and rows'."""
     seeds = replay_seeds()
     return {"by": RULED_BY, "date": RULED_ON, "review": REVIEW,
-            "words": (f"The default path on the Predict fixture declares boosted_trees final, "
+            "words": (f"The default path on the Predict fixture declares {RULED_FINAL} final, "
                       f"which has no generator class, so r0 is measured: half the default plan's "
                       f"mean Brier regret against the generator's oracle over the pre-registered "
                       f"replay draws (seeds {seeds[0]}-{seeds[-1]}) on the pre-registered "
@@ -398,10 +410,15 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
                                      f"at least {oracle['k']} feature(s) (the symmetric "
                                      f"difference), k being the discovery set's own mean "
                                      f"draw-to-draw change rounded up "
-                                     f"({oracle['symmetric_difference']:g} features)."),
+                                     f"({oracle['symmetric_difference']:g} features), each set "
+                                     f"read from the q-values the sweep's estimates carry; where "
+                                     f"they carry none the rule is not applied, and no decision "
+                                     f"there is counted material or not."),
                             "derivation": "measurement_fixture.oracle",
                             "ruling": k_ruling(oracle)},
-            "decision": "A decision is material where any of its refits is.",
+            "decision": ("A decision is material where any of its refits read is, not "
+                         "material where none of them is, and not read where none of its refits "
+                         "is read (with why), counted apart."),
             "refused_refits": ("A refit the engine refuses has no score: it is reported beside "
                                "its decision's materiality as the sweep's refused share, kept "
                                "apart from the analysts' refusal rate.")},
@@ -409,7 +426,13 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
             "draws": REPLAY_DRAWS, "seeds": [seeds[0], seeds[-1]],
             "rule": (f"Every final plan on a fixture is replayed on the same {REPLAY_DRAWS} fresh "
                      f"draws of its generator, seeds {seeds[0]} to {seeds[-1]} "
-                     f"(core/export/replay.py's fresh draw). A plan refused on any draw is a "
+                     f"(core/export/replay.py's fresh draw). A replay is its plan's only where "
+                     f"its dataset, its bundle (the record's export, by SHA-256) and what it "
+                     f"reads are its record's, it names the fixture's generator and recorded seed "
+                     f"and, on the Predict fixture, the evaluation rows below, and it ran on the "
+                     f"frozen engine (the crash sweeps' turbotab/ tree, no tracked file "
+                     f"modified); else it is invalid, and two replays of one run leave its plan "
+                     f"not judged. A plan refused on any draw is a "
                      f"refused plan, and so is a plan whose run reported no result (its record's "
                      f"result refused: none reported, or none served): it counts as neither "
                      f"within nor outside the margins, and goes into the refusal rate with its "
@@ -463,9 +486,11 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
                      f"there are within them, with at least {UNIT_MIN} non-refused plans; outside "
                      f"them with at least {UNIT_MIN} non-refused plans and fewer within; not "
                      f"judged with fewer, or while any of its plans there has no verdict (no "
-                     f"replay, not the pre-registered draws, a record that cannot say what the "
-                     f"run reported, a reported number its bundle does not hold once, or a "
-                     f"margin not fixed). A refused plan counts as neither.")},
+                     f"replay, or two of one run; a replay not its record's plan, not on the "
+                     f"pre-registered draws and rows, or not on the frozen engine; a record "
+                     f"that cannot say what the run reported, a reported number its bundle does "
+                     f"not hold once, or a margin not fixed). A refused plan counts as "
+                     f"neither.")},
         "comparisons": {
             "choosing_well": ("Agent plans against the default and random plans: mean bias and "
                               "coverage on the Estimate fixture, regret on the Predict fixture, "
@@ -579,6 +604,56 @@ class Refused(Exception):
     """The fill does not fill: why, in words."""
 
 
+def ruled_final_why(final: str | None) -> str:
+    """Why a default plan whose final family is ``final`` is refused (:data:`RULED_FINAL`)."""
+    return (f"The crash sweep's default plan on the Predict fixture declares `{final}` final, and "
+            f"r0's ruling ({RULED_BY}, {RULED_ON}) was made for `{RULED_FINAL}`: its premise is "
+            f"not known to hold for this plan, so the orchestrator rules again before this is "
+            f"filled.")
+
+
+def frozen_engine(prereg: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The engine the crash sweeps passed on (the module docstring): their one ``turbotab/`` tree
+    and the commits they ran at, or None where none is filled in."""
+    reports = ((prereg.get("filled") or {}).get("reports") or {}).values()
+    trees = {e.get("engine_tree") for e in reports}
+    if len(trees) != 1 or None in trees:
+        return None
+    return {"engine_tree": next(iter(trees)),
+            "commits": sorted({str(e.get("commit")) for e in reports if e.get("commit")})}
+
+
+def engine_tree_of(commit: str | None) -> str | None:
+    """The tree id of ``turbotab/`` at ``commit`` in this checkout (``git rev-parse
+    <commit>:turbotab``), or None where git does not resolve it."""
+    if not commit:
+        return None
+    try:
+        out = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet",
+                              f"{commit}:turbotab"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (out.stdout.strip() or None) if out.returncode == 0 else None
+
+
+def record_engine_why(rec: Any, frozen: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    """The ``turbotab/`` tree of the engine ``rec`` was made on, and why it is not the
+    ``frozen`` one (a commit neither a crash sweep's nor one whose tree is theirs, or tracked
+    files modified, or not known to be unmodified), else None."""
+    commit = rec.run.engine_commit
+    tree = frozen["engine_tree"] if commit in frozen["commits"] else engine_tree_of(commit)
+    if tree != frozen["engine_tree"]:
+        return tree, (f"The record was made on engine commit {commit} (its turbotab/ tree "
+                      f"{tree}), and the crash sweeps passed on commit(s) "
+                      f"{', '.join(frozen['commits'])}, tree {frozen['engine_tree']}: not the "
+                      f"frozen engine.")
+    if rec.run.engine_modified is not False:
+        return tree, (f"The record was made on engine commit {commit} with tracked files "
+                      + ("modified" if rec.run.engine_modified else "not known to be unmodified")
+                      + ", so not on the frozen engine.")
+    return tree, None
+
+
 def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
          paths: Mapping[str, str] | None = None, engine: Mapping[str, Any] | None = None
          ) -> dict[str, Any]:
@@ -600,6 +675,10 @@ def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
     if len(set(trees.values())) != 1:
         raise Refused("The crash sweeps ran on different engine trees: "
                       + ", ".join(f"{d} on {t}" for d, t in trees.items()) + ".")
+    default = default_plan_of(reports[PREDICT_FIXTURE])
+    final = (default["families"] or [None])[0]
+    if final != RULED_FINAL:
+        raise Refused(ruled_final_why(final))
     entries, budget, cap = {}, {}, {}
     plans = swept_plans()
     for d in PILOT:
@@ -622,7 +701,7 @@ def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
                         "rule": ("Per dataset, the plans named to sweep beyond the default times "
                                  "the crash sweep's own fit seconds there, summed; the sweeps of "
                                  "a dataset stop once they have spent its share.")},
-        "default_plan": default_plan_of(reports[PREDICT_FIXTURE]), "r0": None}
+        "default_plan": default, "r0": None}
     return build(section)
 
 
@@ -642,9 +721,13 @@ def fill_r0(prereg: Mapping[str, Any], record: Any, replay: Mapping[str, Any], *
 
     filled = dict(prereg.get("filled") or {})
     plan = filled.get("default_plan")
-    if not plan or not filled.get("fit_budget"):
+    frozen = frozen_engine(prereg)
+    if not plan or not filled.get("fit_budget") or frozen is None:
         raise Refused("r0 is measured after the crash fill: fill the crash sweeps' fields first "
                       "(python -m research.swarm.prereg_fill crash …).")
+    final = (list(plan.get("families") or []) or [None])[0]
+    if final != RULED_FINAL:
+        raise Refused(ruled_final_why(final))
     rec = validate(dict(record)) if isinstance(record, Mapping) else record
     if rec.run.analyst_model != DEFAULT_MODEL or rec.dataset.id != PREDICT_FIXTURE:
         raise Refused(f"The record is not the default path's on the Predict fixture "
@@ -655,32 +738,25 @@ def fill_r0(prereg: Mapping[str, Any], record: Any, replay: Mapping[str, Any], *
                or "no family was declared final")
         raise Refused(f"The default path's record holds no exported plan with its final family: "
                       f"{why}.")
-    final = (list(plan.get("families") or []) or [None])[0]
     if rec.result.family != final:
         raise Refused(f"The default path's record declares `{rec.result.family}` final, and the "
                       f"crash sweep's default plan `{final}`: they are not one plan.")
-    fx = prereg["predict_fixture"]
-    wanted = (("run", "run", rec.run.id), ("dataset", "dataset", PREDICT_FIXTURE),
-              ("generator", "generator", fx["generator"]),
-              ("recorded_seed", "recorded seed", fx["recorded_seed"]),
-              ("bundle_sha256", "bundle", rec.export.sha256),
-              ("evaluation", "evaluation rows", prereg["replays"]["predict_evaluation"]))
-    for key, said, want in wanted:
-        if not _same(replay.get(key), want):
-            raise Refused(f"The replay's {said} is {replay.get(key)!r}, not the default plan's "
-                          f"{want!r}.")
-    family = (replay.get("target") or {}).get("family")
-    if family != rec.result.family:
-        raise Refused(f"The replay reads the family `{family}`, not the default plan's final "
-                      f"`{rec.result.family}`.")
+    tree, why = record_engine_why(rec, frozen)
+    if why is not None:
+        raise Refused(why)
+    why = S.paired(replay, rec, prereg)
+    if why is not None:
+        raise Refused(why)
     scored = S.score_replay(replay, prereg)
     if scored["verdict"] in ("invalid", "refused") or scored.get("regret") is None:
         reasons = scored.get("reasons") or {}
         raise Refused(f"r0 is not measured on this replay: {scored['why']}"
                       + ("" if not reasons else " " + "; ".join(
                           f"{why} ({n})" for why, n in reasons.items())))
+    engine = dict(replay.get("engine") or {})
     entry = {"run": rec.run.id, "engine_commit": rec.run.engine_commit,
-             "engine_modified": rec.run.engine_modified, "family": family,
+             "engine_modified": rec.run.engine_modified, "engine_tree": tree,
+             "replay_engine": engine, "family": rec.result.family,
              "bundle_sha256": rec.export.sha256, "draws": scored["draws"],
              "seeds": list(prereg["replays"]["seeds"]),
              "evaluation": dict(prereg["replays"]["predict_evaluation"]),
@@ -722,6 +798,14 @@ def ready(prereg: Mapping[str, Any], engine: Mapping[str, Any] | None = None, *,
     if r0.get("value") is None:
         return f"prereg.json holds no r0: {r0.get('why')}"
     trees = {e.get("engine_tree") for e in (filled.get("reports") or {}).values()}
+    measured = filled.get("r0") or {}
+    on = (measured.get("engine_tree"), (measured.get("replay_engine") or {}).get("engine_tree"))
+    if len(trees) != 1 or set(on) != trees or measured.get("engine_modified") is not False \
+            or (measured.get("replay_engine") or {}).get("engine_modified") is not False:
+        return (f"prereg.json's r0 was measured on a record made on engine tree {on[0]} and a "
+                f"replay run on {on[1]}, not both on the crash sweeps' "
+                f"{', '.join(sorted(map(str, trees)))} with no file modified: measure it again "
+                f"(python -m research.swarm.prereg_fill r0 …).")
     if engine is None:
         from research.swarm import launcher
 
@@ -813,10 +897,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["PREREG", "Refused", "binomial_band", "build", "check", "compute", "default_plan_of",
-           "fill", "fill_r0", "graded_menus", "in_band", "k_ruling", "latent_discoveries", "load",
-           "main", "measurement_oracle", "r0_of", "r0_ruling", "ready", "replay_seeds",
-           "set_prices", "swept_plans", "write"]
+__all__ = ["PREREG", "RULED_FINAL", "Refused", "binomial_band", "build", "check", "compute",
+           "default_plan_of", "engine_tree_of", "fill", "fill_r0", "frozen_engine",
+           "graded_menus", "in_band", "k_ruling", "latent_discoveries", "load", "main",
+           "measurement_oracle", "r0_of", "r0_ruling", "ready", "record_engine_why",
+           "replay_seeds", "ruled_final_why", "set_prices", "swept_plans", "write"]
 
 
 if __name__ == "__main__":
