@@ -9,7 +9,10 @@ press does, where a question is, what an answer reopened).
 
 Each :class:`Ruling` is a regular expression searched in a sentence (and, where ``where`` is given,
 in one of the places it was shown, as "<source> <path>"), its verdict and why; the first that
-matches decides, so the specific come before the general. ``"register"`` is a claim to register:
+matches decides, so the specific come before the general. Two sentences that state one rule must
+get verdicts that agree (``sentences.disagreements``: alike but for their values, or one held whole
+in the other), and the table refuses where they do not, so a catch-all cannot take a sentence that
+holds a claim's. ``"register"`` is a claim to register:
 its ``why`` says what it states and where the code writes it, so the next batch can register it
 with its tests (the render site is named so a batch knows whose file it is: ``seal.py``,
 ``teaching/content.py``, ``export/replay.py``, ``models/pipeline.py`` and ``stages/rows.py`` were
@@ -45,6 +48,7 @@ EVIDENCE = "the evidence a reading of this table rests on, as measured here"
 SOURCE = "names a field or a source, nothing it asserts"
 PROVENANCE = "says what was read or written, and where"
 OPTION = "what a repair option does on this table, or the sentence it records if chosen"
+TAUGHT_OPTION = "what an option does if chosen, as its card says, and nothing it asserts of a method"
 
 # The claims to register, by family: what each states and where it is written.
 SPLIT_LABELS = ("the split question's customary and sound labels: a ranking of the validation "
@@ -144,9 +148,103 @@ DESIGN_ROUTE = ("a family whose structure the table cannot use is fit as the pla
 SPLIT_BY_ROW = "the seal's basis where each unit appears once: a rule (seal.decide_basis)"
 CYCLE_ROLE = ("what the survey cycle does as a covariate or as a time column: teaches a method "
               "(stages/finding_words.py)")
+HOLDOUT_INTERVAL = ("the held-out score's interval, by its influence function on the held-out rows: "
+                    "teaches a method (models/baseline.py tolerance_basis, models/performance.py)")
+OUTCOME_WITHHELD = ("the outcome's distribution is withheld until eligibility is answered, and no "
+                    "eligibility rule reads the outcome, so no restriction is chosen by looking at "
+                    "it: a refusal (outcome_gate.py, teaching/content.py)")
+STATED_IN_METHODS = ("the methods' account of what the values settled holds the identifier rule "
+                     "(IDENTIFIER), the roles proposal's reasons (ROLES) and the outcome's task read "
+                     "from its values (TASK), each a claim to register (export/methods.py, "
+                     "readings.py)")
+CONSUMER = "names the parts of the analysis that read the answer: interface copy"
+DEFINITION = "a term's definition that says what a word names, and asserts nothing of a method"
+
+# The teaching entries (``GET /teaching``) of the questions the journey answered, and the repairs
+# entry its noticings draw: all written in teaching/content.py (a fix package's file when this
+# package ran), the families' options from models/<family>.py.
+T_LENS = ("what a lens does: the checks it runs and the choices it puts first, never hiding an "
+          "option: a default and a rule (teaching/content.py, lenses.py)")
+T_ELIGIBILITY = ("eligibility is applied to every row before the seal and reported in the "
+                 "participant flow with its count, and a cut chosen on the outcome is selection: "
+                 "a rule and teaching (teaching/content.py, stages/rows.py)")
+T_INTAKE = ("implausible intake and under-reporting: what they are, and that under-reporting "
+            "concentrates in people with higher BMI: teaches a method (teaching/content.py, "
+            "NUTRITION_PACK)")
+T_MISSING = ("what complete cases, a single fill, multiple imputation and missing at random "
+             "assume and cost: teaches a method (teaching/content.py)")
+MI_DEFAULT = ("multiple imputation under inference: 20 imputations with the outcome, pooled by "
+              "Rubin's rules: a default number (methods/missing.py, teaching/content.py)")
+T_MODELS = ("what a family assumes and reports, why several are fit, shrinkage and calibration: "
+            "teaches a method (teaching/content.py)")
+FAMILY_OPTIONS = ("a model family's option on the models card: its inductive bias and what it "
+                  "reports, teaching a method (teaching/content.py family_options, from "
+                  "models/<family>.py)")
+SEALED = ("the held-out scores are withheld until the seal is opened, each model scored once on "
+          "them, and the scores fixed in the record once seen; every choice is tuned on the rest: "
+          "a rule and teaching (seal.py, fit_press.py, teaching/content.py)")
+T_PURPOSE = ("what each purpose means for how models are judged and reported, and the shelf's "
+             "order it sets: teaches a method and sets a ranking (teaching/content.py, voice.py)")
+T_REPAIRS = ("a repair before the seal reads only its own row, so it leaks nothing and runs on the "
+             "table now, and what is learned from many rows waits for the training folds; a "
+             "sentinel code is a missing answer: a rule and teaching (teaching/content.py, "
+             "repairs.py)")
+T_ROLES = ("which roles enter the models: three predictor roles, every other role kept out of the "
+           "predictors while the record keeps it: a rule (teaching/content.py, stages/roles.py)")
+T_SPLIT = ("the seal's and cross-validation's methods taught: a holdout's share and its trade-off, "
+           "folds, repeats, a grouped split, optimism and a seed: teaches a method and states its "
+           "numbers (teaching/content.py)")
+T_TARGET = ("rows without the outcome leave the analysis first, so the outcome sets the participant "
+            "flow's first count: a rule (stages/rows.py, teaching/content.py)")
+T_ENERGY_OUTCOME = ("an energy-related outcome makes adjusting for reported energy need extra care: "
+                    "teaches a method (teaching/content.py)")
 
 RULINGS: tuple[Ruling, ...] = (
     # ── registered claims' rules in other words ──
+    Ruling(r"^Sound: a near-collinear pair does not harm prediction on rows like these", "unrendered",
+           "the collinear lever's soundness under Predict: the claim's rule in the lever option's "
+           "words (stages/explore.py)", ("materiality.collinear_under_prediction",)),
+    Ruling(r"^How many days each value spans is not settled: .*record it before screening by "
+           r"`[^`]+`\);.*is in grams \(its kcal per unit is its Atwater factor\)", "unrendered",
+           "the methods' account of what the values settled: the screens wait for the energy "
+           "column's days and a macronutrient's grams convert by its Atwater factor, the claims' "
+           "rules in other words; it holds the Atwater identity's ratios too (UNIT, to register) "
+           "(export/methods.py, readings.py)",
+           ("exclusions.screen_waits_for_days", "substitution.isocaloric_units")),
+    Ruling(r"^How many days each value spans is not settled: .*record it before screening by "
+           r"`[^`]+`\);", "unrendered",
+           "the methods' account of what the values settled: the screens wait for the energy "
+           "column's days, the claim's refusal in other words (export/methods.py, readings.py)",
+           ("exclusions.screen_waits_for_days",)),
+    Ruling(r"^Under prediction, a fill learned in each training fold without the outcome lets|"
+           r"^Under prediction: blanks filled in each training fold without the outcome", "unrendered",
+           "a fill learned in each training fold without the outcome scores a new row: the claim's "
+           "rule in the missing-values entry's words (teaching/content.py)",
+           ("missing.fold_fill_first_under_prediction",)),
+    Ruling(r"^The answer depends on the purpose: inference imputes with the outcome, prediction "
+           r"without it", "unrendered",
+           "the missing-values entry's one line: the two claims' rules, the fill without the "
+           "outcome under prediction and multiple imputation with it only under inference "
+           "(teaching/content.py)",
+           ("missing.fold_fill_first_under_prediction", "missing.mi_refused_unless_inference")),
+    Ruling(r"^Under inference, multiple imputation fills each blank many times from the other "
+           r"variables, the outcome included", "unrendered",
+           "multiple imputation uses the outcome, so it is offered only under inference: the "
+           "claim's rule in the missing-values entry's words (teaching/content.py)",
+           ("missing.mi_refused_unless_inference",)),
+    Ruling(r"^Rows at or after a time value you name are sealed, each unit kept whole", "unrendered",
+           "the cut-point's rule in the split entry's words (teaching/content.py); it says each "
+           "unit is kept whole unconditionally, which holds only where the seal groups a unit's "
+           "rows (seal.cut_point beside seal.cut_point_units): listed as a defect",
+           ("seal.cut_point_units",)),
+    Ruling(r"^The seal states its basis: grouped by an identifier, repeats found but not grouped, "
+           r"or undetermined, which is labeled exploratory", "unrendered",
+           "a seal that could not keep a unit's rows together is exploratory: the claim's rule in "
+           "the split entry's words (teaching/content.py)", ("seal.by_row_exploratory",)),
+    Ruling(r"^Rows at levels you name are excluded, as are blanks and refused or don't-know codes "
+           r"named", "unrendered",
+           "a refused or don't-know answer cannot confirm a row eligible: the claim's rule in the "
+           "eligibility entry's option (teaching/content.py)", ("eligibility.unconfirmed_answer",)),
     Ruling(r"^Better only when the gain's 95% interval lies above zero", "unrendered",
            "the baseline floor's rule, composed beside the fold's tolerance "
            "(models/baseline.py tolerance_basis), not the claim's words",
@@ -221,7 +319,23 @@ RULINGS: tuple[Ruling, ...] = (
            r"family declared before the seal is opened carries no such optimism", "register", BBC),
     Ruling(r"declared the final model on cross-validation|^The held-out rows score the final "
            r"model|its held-out score is the reported result", "register", FINAL),
-    Ruling(r"^At the opening \(decision #\d+\)", "plain", MEASURED),
+    Ruling(r"^At the opening \(decision #\d+\)", "register",
+           "the held-out score at the opening, said as the reported result: the final model's "
+           "rule (FINAL) beside its number (models/selection.py, voice.py)"),
+    Ruling(r"^The final model is not declared: the held-out rows are still sealed, so no held-out "
+           r"score is the result yet|^Declare the final model on cross-validation, then open them "
+           r"once", "register", FINAL),
+    Ruling(r"^The interval is the held-out R²'s \(influence function", "register", HOLDOUT_INTERVAL),
+    Ruling(r"^The outcome · opens after Who's in$", "register", OUTCOME_WITHHELD),
+    Ruling(r"^The outcome · its distribution is shown in its own view$", "plain", COPY),
+    Ruling(r"^Read from the values, no question asked: ", "register", STATED_IN_METHODS),
+    Ruling(r"proposed as \w+ at \w+ confidence, below high, for one reason \(\"(Not a nutrient or "
+           r"feature: read as a|A nutrient that carries energy;|Total energy intake: its values)",
+           "register", "the roles proposal's reason, quoted in the answer said back: a default "
+           "role and why (ROLES; stages/roles.py, voice.py)"),
+    Ruling(r"^Read as binary, \w+ becomes 1 and \w+ becomes 0\.$", "register",
+           "a two-level column's default coding, which level becomes 1: a default (BINARY; "
+           "stages/finding_words.py, repairs.py)"),
     Ruling(r"^Cross-validated (MSE|R²|AUC|log loss|RMSE|MAE) [\d.]+ \(95% interval", "register",
            CV_SCORE),
     Ruling(r"^Cross-validated R², MSE, RMSE and MAE pool every out-of-fold prediction|"
@@ -328,6 +442,94 @@ RULINGS: tuple[Ruling, ...] = (
     Ruling(r"^The analysis was declared for `prediction`: models are judged on rows they never "
            r"saw", "register", PURPOSE),
 
+    # ── the teaching entries the journey's cards drew (GET /teaching) ──
+    Ruling(r".", "plain", CONSUMER, where=r"^teaching:\w+ consumer$"),
+    Ruling(r".", "plain", LABEL, where=r"^teaching:\w+ title$"),
+    Ruling(r"^Several can apply at once|^Pick all that apply", "plain", COPY,
+           where=r"^teaching:lens "),
+    Ruling(r"^It changes what TurboTab checks and suggests, never what you can do|^A lens runs that "
+           r"field's checks|^It never hides a column, a model or an option|^Each field reads a table "
+           r"its own way|^A field's way of reading a table", "register", T_LENS),
+    Ruling(r".", "register", T_LENS, where=r"^teaching:lens options\[\]\.consequence$"),
+    Ruling(r"^A restriction comes from your research question, so the outcome's distribution is not "
+           r"shown|^Rows outside a range you set on a numeric column, never the outcome",
+           "register", OUTCOME_WITHHELD),
+    Ruling(r"^No row is excluded; the record states that no exclusion was applied", "plain", TAUGHT_OPTION),
+    Ruling(r"^Energy over estimated BMR outside the cut-offs|^A screen comparing reported energy "
+           r"with estimated basal metabolic rate", "register", SCREENS),
+    Ruling(r"^A reported day's energy intake too low or too high to be a real diet|^It is "
+           r"systematic, concentrated in people with higher BMI|^Implausible-intake screens are "
+           r"offered with the rows each removes", "register", T_INTAKE),
+    Ruling(r"^Reporting less than was eaten", "plain", DEFINITION),
+    Ruling(r"^Who the study is about, such as an age range: applied to every row before the seal|"
+           r"^A criterion such as an age range changes N|^A cut chosen by looking at the outcome is "
+           r"data-driven selection", "register", T_ELIGIBILITY),
+    Ruling(r"^Rows missing any predictor are dropped; the participant flow shows how many", "plain",
+           TAUGHT_OPTION),
+    Ruling(r"^Under inference: each blank imputed \d+ times with the outcome", "register",
+           MI_DEFAULT),
+    Ruling(r"^Analyzing only rows with every variable measured; it can bias|^Filling a missing value "
+           r"with an estimate learned from observed rows|^Filling each blank several times from its "
+           r"predicted distribution|^Missingness that the observed columns explain|^Complete cases "
+           r"keep only rows with every predictor measured", "register", T_MISSING),
+    Ruling(r"^Each family brings its own assumptions|^Shrinking coefficients toward zero|^What a "
+           r"model assumes before it sees data|^Whether predicted probabilities match observed "
+           r"frequencies|^A linear model assumes straight-line, additive effects|^An elastic net "
+           r"shrinks correlated nutrients together|^Boosted trees find curves and interactions|"
+           r"^In one comparison of [\d,]+ models", "register", T_MODELS),
+    Ruling(r".", "register", FAMILY_OPTIONS, where=r"^teaching:models options\[\]\.consequence$"),
+    Ruling(r"^The held-out scores exist but are withheld until now|^Each model is scored once on the "
+           r"held-out rows; those scores are fixed|^Held-out rows give one honest number only if|"
+           r"^Once opened, the scores stay in the record|^Sealed rows are scored once, when you open "
+           r"the seal|^The line between the held-out rows and the rest: drawn before modeling",
+           "register", SEALED),
+    Ruling(r"^The Results stay on cross-validation; the held-out rows stay unread|^No rows are "
+           r"sealed; every score comes from cross-validation on all rows", "plain", TAUGHT_OPTION),
+    Ruling(r"^A change made after the held-out scores were seen; the record and the manuscript mark|"
+           r"^A later change still refits every model, but its sentence and the manuscript mark",
+           "register", EXPORT_RULE),
+    Ruling(r"^Prediction is judged on rows the model never saw|^Linear models report coefficients "
+           r"with confidence intervals; the shelf favors|^Models are ranked by performance on rows "
+           r"they never saw|^Estimating how the outcome relates to a study factor|^Estimating the "
+           r"outcome for new people|^The exact quantity an analysis estimates|^Inference reports "
+           r"coefficients with confidence intervals|^Some advice even flips|^The two lead to "
+           r"different models", "register", T_PURPOSE),
+    Ruling(r"^A repair fixes how a value is written, row by row|^A number standing for an answer "
+           r"that is not a value|^Computed from one row's own cells, so it leaks nothing|^A sentinel "
+           r"code such as \d+ on a|^Anything learned from many rows waits for the training folds|"
+           r"^Repairs that look only at their own row run on the table now", "register", T_REPAIRS),
+    Ruling(r"^Nothing changes; the record keeps that it was seen and set aside|^The changed cells "
+           r"are written into the working table|^The finding waits inside the question it belongs "
+           r"to", "plain", TAUGHT_OPTION),
+    Ruling(r"^A column that names a row or a person rather than measuring anything|^An identifier "
+           r"names a person and cannot generalize", "register", IDENTIFIER),
+    Ruling(r"^Three roles are predictor roles|^None of them measures the participant, so each stays "
+           r"out|^Survey weights and design columns describe how people were sampled|^A column "
+           r"measured on each person that could predict the outcome|^A predictor that describes the "
+           r"person", "register", T_ROLES),
+    Ruling(r".", "register", T_ROLES, where=r"^teaching:roles options\[\]\.consequence$"),
+    Ruling(r"^A small holdout measures little, so with few rows cross-validation alone comes first",
+           "register", SEAL_PLAN),
+    Ruling(r"^(Nearly a third|One row in (five|ten)) is sealed|^A split that keeps all of one "
+           r"participant's rows|^Cross-validation drawn again on fresh folds|^Each site, study or "
+           r"period held out in turn|^How much better a model scores on the rows it learned from|"
+           r"^One of the equal parts cross-validation splits|^Rows set aside before any modeling and "
+           r"scored once|^Splitting the training rows into folds|^The number that fixes the random "
+           r"draw|^A model scored on the rows it was tuned on grades its own homework", "register",
+           T_SPLIT),
+    Ruling(r"^Rows without the outcome leave the analysis first", "register", T_TARGET),
+    Ruling(r"^When the outcome is itself energy-related", "register", T_ENERGY_OUTCOME),
+    Ruling(r"^Everything downstream is built around it|^It also decides the task, the metrics",
+           "plain", CONSUMER),
+    Ruling(r"^The column a model learns to predict or explain|^The count of rows at each step, from "
+           r"the file to the analysis", "plain", DEFINITION),
+
+    # ── the checklist and the methods' headings ──
+    Ruling(r".", "plain", LABEL, where=r"^(quest:checklist title|methods sections\[\]\.title)$"),
+    Ruling(r"(is|are) not answered yet; the methods would leave (it|them) out\.$|^The (fit|model matrix|"
+           r"participant flow) (waits for .* before it can run|is still being computed for the "
+           r"current answers)\.$", "plain", COPY),
+
     # ── plain wording ──
     Ruling(r"^Your change to .* made \d+ results? in .* out of date", "plain", STATUS),
     Ruling(r"^(Move|Confirm) `[^`]+` (to the|as a)|^Confirm these \d+ as|^Confirm each of the \d+ "
@@ -359,9 +561,6 @@ RULINGS: tuple[Ruling, ...] = (
     Ruling(r"^\(`[\d,]+` whole-number values from |^`[\d,]+` values with decimals that fill their "
            r"grid|^its median, [\d.,]+, is|^the labels spell the sexes|^`[^`]+` matches the energy "
            r"its macronutrients carry", "plain", EVIDENCE),
-    Ruling(r"^Read from the values, no question asked|^How many days each value spans is not "
-           r"settled: .*; `[^`]+` is an amount", "plain",
-           "what the values settled, each with its evidence, said in the methods"),
     Ruling(r"^`[^`]+` was confirmed as a|were each confirmed as a flag on another column|"
            r"^Confirmed together, each as the question showed it|were confirmed together as one "
            r"group|^Column roles were set for|^`[^`]+` was chosen as the outcome|^The table was "
@@ -382,8 +581,7 @@ RULINGS: tuple[Ruling, ...] = (
            r"weights or design columns\.$|Read all [\d,]+ rows|Read [\d,]+ rows and \d+ columns|"
            r"Column summaries and lens hints read|Counted across all|Ranked for [\d,]+ training rows|"
            r"no value for the outcome|one row per unit$|Rows in the table)", "plain", READING),
-    Ruling(r"^`[^`]+` and `[^`]+`: r = |^`\d+` columns hold SAS export zeros as|^Read as binary, "
-           r"\w+ becomes 1 and \w+ becomes 0\.$", "plain", READING),
+    Ruling(r"^`[^`]+` and `[^`]+`: r = |^`\d+` columns hold SAS export zeros as", "plain", READING),
     Ruling(r"^one-hot, blank as a level$", "plain", LABEL),
     Ruling(r"^The analysis was run in TurboTab|^The supplementary provenance record holds|"
            r"^Sections follow TRIPOD\+AI", "plain", PROVENANCE),

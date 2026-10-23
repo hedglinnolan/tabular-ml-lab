@@ -6,7 +6,8 @@ each held to what the code does, both ways, from known truth.
   (numpy's least squares, here); a predictor of two values is not asked, since its code's one
   indicator and its slope fit the same values; once read as an amount it is not asked again.
 * **A blank yes/no answer reads as not asked** on at least half the rows with the outcome
-  measured, and not on one row fewer; a measurement's blanks never do, however many.
+  measured, and not on one row fewer; the share is of the rows with the outcome measured, not of
+  every row, both ways; a measurement's blanks never do, however many.
 * **Under Predict a fill learned in each fold ranks above complete cases**: scikit-learn's least
   squares refuses a new row with a blank, and the same model behind a fill learned on the training
   rows scores it. Under Estimate multiple imputation leads.
@@ -101,10 +102,14 @@ def test_a_whole_number_predictor_read_as_an_amount_is_not_asked_again():
 # ── a blank yes/no answer reads as not asked ─────────────────────────────────
 
 
-def _blank_reading(name: str, values: list, dtype: str) -> dict:
-    frame = pd.DataFrame({"y": np.arange(len(values), dtype=float), name: values})
+def _blank_reading(name: str, values: list, dtype: str, outcome: list | None = None) -> dict:
+    """``name``'s reading beside an outcome ``y``, measured on every row unless ``outcome`` (one
+    value per row, None where it was not measured) says otherwise."""
+    y = np.arange(len(values), dtype=float) if outcome is None else outcome
+    frame = pd.DataFrame({"y": pd.array(y, dtype="Float64").astype(float), name: values})
     s = frame[name]
-    columns = [{"name": "y", "dtype": "float", "n_unique": len(values), "n_missing": 0},
+    columns = [{"name": "y", "dtype": "float", "n_unique": int(frame["y"].nunique()),
+                "n_missing": int(frame["y"].isna().sum())},
                {"name": name, "dtype": dtype, "n_unique": int(s.nunique()),
                 "n_missing": int(s.isna().sum())}]
     reading = proposals.missing_reading(frame, columns, {name: "covariate"}, "y")
@@ -123,6 +128,32 @@ def test_a_yes_no_answer_blank_on_one_row_fewer_than_half_does_not():
     entry = _blank_reading("answered", [True, False, True, False, True, True] + [None] * 4,
                            "boolean")
     assert entry["n_missing"] == 4
+    assert entry["likely_not_asked"] is False
+    assert "not asked" not in entry["reason"]
+
+
+# The outcome measured on six of ten rows: the share is counted among those six.
+MEASURED_ON_SIX = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, None, None, None, None]
+
+
+def test_a_yes_no_answer_blank_on_half_the_rows_with_the_outcome_measured_reads_as_not_asked():
+    """Blank on three of the six rows with the outcome measured, which is half of them, and on
+    none of the four without it: three of ten rows in all, under half, yet read as not asked,
+    since the share is of the rows with the outcome measured."""
+    values = [True, None, False, None, True, None, True, False, True, False]
+    entry = _blank_reading("answered", values, "boolean", outcome=MEASURED_ON_SIX)
+    assert sum(v is None for v in values) / len(values) == 0.3  # of every row: under half
+    assert entry["n_missing"] == 3 and entry["share"] == 0.5  # of the six measured: half
+    assert entry["likely_not_asked"] is True
+
+
+def test_a_yes_no_answer_blank_on_half_of_every_row_but_few_with_the_outcome_measured_does_not():
+    """Blank on one of the six rows with the outcome measured and on all four without it: half of
+    every row, but a sixth of the rows the share counts, so not read as not asked."""
+    values = [True, None, False, True, False, True, None, None, None, None]
+    entry = _blank_reading("answered", values, "boolean", outcome=MEASURED_ON_SIX)
+    assert sum(v is None for v in values) / len(values) == 0.5  # of every row: half
+    assert entry["n_missing"] == 1 and entry["share"] == round(1 / 6, 4)
     assert entry["likely_not_asked"] is False
     assert "not asked" not in entry["reason"]
 

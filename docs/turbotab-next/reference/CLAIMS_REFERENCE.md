@@ -478,7 +478,7 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `missing.blank_not_asked`
 
-*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `7df073736f11`
+*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `a9dbc2a6ae6b`
 
 - **Card:** blank usually means not asked.
 - **Methods:** none
@@ -487,8 +487,8 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 - **Decision:** decision `set_missing.not_asked`; verdict *noted*; goal prediction, inference
 - **Parts:**
   - threshold: *judgment*, graded by not graded (reason: Half the rows with the outcome measured is our call, not a published threshold: a skip pattern blanks a question for everyone it does not route to it, which for NHANES's medication questions is most adults (meds_chol blank on 79%, meds_hbp on 71%), while blanks at random rarely reach half (the WP7 fixture's quarter, methods.missing.blanks_mean_not_asked).)
-  - scope: *judgment*, graded by not graded (reason: Only a yes/no answer or a medication question is read so: a measurement's blanks say nothing of a question not asked, so a measurement blank on most rows is never read as not asked (the second silent test), and the reason says nothing says so.)
-- **Tests:** fires `turbotab/core/tests/test_journey_claims.py::test_a_yes_no_answer_blank_on_half_the_rows_reads_as_not_asked` (construction); silent `turbotab/core/tests/test_journey_claims.py::test_a_yes_no_answer_blank_on_one_row_fewer_than_half_does_not` (construction); silent `turbotab/core/tests/test_journey_claims.py::test_a_measurement_blank_on_most_rows_is_never_read_as_not_asked` (construction)
+  - scope: *judgment*, graded by not graded (reason: Only a yes/no answer or a medication question is read so: a measurement's blanks say nothing of a question not asked, so a measurement blank on most rows is never read as not asked (the second silent test), and the reason says nothing says so. The share counts the rows with the outcome measured, not every row: blank on half of them reads as not asked though on under half of every row (the second fires test), and blank on half of every row but few of the measured ones does not (the third silent test).)
+- **Tests:** fires `turbotab/core/tests/test_journey_claims.py::test_a_yes_no_answer_blank_on_half_the_rows_reads_as_not_asked` (construction); silent `turbotab/core/tests/test_journey_claims.py::test_a_yes_no_answer_blank_on_one_row_fewer_than_half_does_not` (construction); silent `turbotab/core/tests/test_journey_claims.py::test_a_measurement_blank_on_most_rows_is_never_read_as_not_asked` (construction); fires `turbotab/core/tests/test_journey_claims.py::test_a_yes_no_answer_blank_on_half_the_rows_with_the_outcome_measured_reads_as_not_asked` (construction); silent `turbotab/core/tests/test_journey_claims.py::test_a_yes_no_answer_blank_on_half_of_every_row_but_few_with_the_outcome_measured_does_not` (construction)
 - **Enforced by:** `turbotab.core.stages.proposals:missing_reading`, `turbotab.core.stages.proposals:_blank_reason`
 - **Author:** swarm package 6a builder
 

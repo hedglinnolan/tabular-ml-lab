@@ -1,4 +1,4 @@
-"""Every sentence a journey shows, indexed to the claim that rendered it, or triaged (R1_PLAN.md
+"""The sentences a journey shows, indexed to the claim that rendered it, or triaged (R1_PLAN.md
 R1-B; CLAIMS_REGISTRY.md §7; SWARM_PLAN §10 package 6a).
 
     python -m research.registry.sentences capture [--journey nhanes-glucose-predict] [--out FILE]
@@ -6,21 +6,32 @@ R1-B; CLAIMS_REGISTRY.md §7; SWARM_PLAN §10 package 6a).
 
 **The capture** drives a journey through the real server (a local-mode server with two workers over
 a fresh home, ``server_drive.local_server``, as ``turbotab/core/reference/journeys.py`` drives the
-review packets' journeys, and with its answer sources), and after every answer it posts reads what
-the person is shown, from three sources:
+review packets' journeys, and with its answer sources), and after every answer it posts and every
+press of Fit, and at the end, reads what the person is shown (:func:`read_shown`):
 
-* **the quest log** (``GET /quest``, ``GET /triage``, ``GET /record``): each line, its reason and
-  what it would change, the sweeps, the triage's noticings and the For the record lines;
-* **the stage artifacts** (``GET /stages/{stage}``, each fresh artifact once per key, and
-  ``GET /results`` and ``GET /fits`` once Fit is pressed): every card's words;
-* **the methods** (``GET /methods/sections``, and the export bundle's ``methods.md``);
+* **the quest log** (``GET /quest``, ``GET /triage``, ``GET /record``, and of ``GET /checklist``
+  what the Write-up card draws, its title and what it waits for): each line, its reason and what
+  it would change, the sweeps, the triage's noticings and the For the record lines;
+* **the stage artifacts** (``GET /stages/{stage}``, each fresh artifact once for each content it
+  serves, so one that changes under its key, the fit once the held-out rows open, is read again;
+  and ``GET /results`` and ``GET /fits`` once Fit is pressed): every card's words;
+* **the methods** (``GET /methods``, the line drawn under each answered line, and
+  ``GET /methods/sections``, the manuscript beside the log, after every answer; and the export
+  bundle's ``methods.md``);
 
 and the refusals the answers met (each ``POST /decisions`` refused, its message and its ways
-forward), which a card shows where the answer was given. A **sentence** is a string served there of
-at least :data:`MIN_WORDS` words that is not a name (:func:`sentences_in`). The capture keeps each
-distinct string once, with every place it was served (the source and the JSON path, its list
-indices dropped), and the project's claims render log (``claims_rendered.jsonl``: what a swarm
-record's ``claims`` reads), and writes them to ``research/registry/journeys/<journey>.capture.json``.
+forward), which a card shows where the answer was given. At the end it reads **the teaching
+entries** (``GET /teaching``, :func:`read_teaching`) of the questions the journey answered, the
+roles card's under the project's goal, and the repairs entry where a noticing's card was drawn:
+each entry as the card draws it and the swarm driver's ``ask`` serves it, its concept drawer left
+out and counted (:data:`TEACHING_LEFT_OUT`). It reads nothing else: no preview of an answer before
+it is given (a journey previews none) and none of the data views (the table's pages, the column
+summaries, the histograms). A **sentence** is a string served there of at least :data:`MIN_WORDS`
+words that is not a name (:func:`sentences_in`). The capture keeps each distinct string once, with
+every place it was served (the source and the JSON path, its list indices dropped), the teaching
+entries read and the drawer sentences left out, and the project's claims render log
+(``claims_rendered.jsonl``: what a swarm record's ``claims`` reads), and writes them to
+``research/registry/journeys/<journey>.capture.json``.
 
 **The table** reads a capture and splits each string into its sentences (:func:`sentences_of`), and
 each sentence, once, with every place it was shown, is:
@@ -28,6 +39,8 @@ each sentence, once, with every place it was shown, is:
 * **indexed** to the claim whose card or methods sentence, or one clause of it, as the registry
   renders it now (``claims.card``, ``claims.methods`` with no context), lies in it, where one does
   (:func:`index`); the table says whether the capture's render log holds that claim (**traced**);
+  a claim rendered outside the log (a static fill made at import, a read the log does not wrap, a
+  teaching entry) is not;
 * else **not shown** where every place it was served is the card of a Router question the
   journey's interview did not ask (not applicable, or set for you: :data:`QUESTION_OF`);
 * else **triaged** by CLAIMS_REGISTRY §7's rule, through the rulings in
@@ -35,13 +48,15 @@ each sentence, once, with every place it was shown, is:
   on, sets a default, a ranking or a refusal, or teaches a method; a registered claim's rule said
   in other words (the claim named); everything else plain wording (a label, a restated answer, a
   reading of the data, a count, interface copy). A sentence no ruling covers is **untriaged**,
-  and ``table`` exits 1 naming it, as it does for a ruling that names a claim no one registers.
+  and ``table`` exits 1 naming it, as it does for a ruling that names a claim no one registers and
+  for two sentences stating one rule whose verdicts disagree (:func:`disagreements`).
 
-It writes ``research/registry/journeys/<journey>.md``: the counts, the claims that render a sentence
-and whether the record traced each, and every sentence with where it was shown and its verdict.
-``--check`` writes nothing and exits 1 when the committed table is not what the capture, the
-registry and the rulings give now, so the next batch that registers a claim or changes a ruling
-sees the table it leaves stale. A new journey is a :class:`Spec` in :data:`SPECS`.
+It writes ``research/registry/journeys/<journey>.md``: what the capture read and left out, with the
+counts, the claims that render a sentence and whether the record traced each, the claims the log
+holds that render none, and every sentence with where it was shown and its verdict. ``--check``
+writes nothing and exits 1 when the committed table is not what the capture, the registry and the
+rulings give now, so the next batch that registers a claim or changes a ruling sees the table it
+leaves stale. A new journey is a :class:`Spec` in :data:`SPECS`.
 
 Run the capture with ``OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2``: it fits the journey's families once
 (the NHANES glucose journey, linear and ridge, in about two minutes).
@@ -157,15 +172,18 @@ class Shown:
     """What a capture saw: each distinct string, and every place it was served."""
 
     strings: dict[str, set[tuple[str, str]]] = field(default_factory=dict)
-    artifacts: set[tuple[str, str]] = field(default_factory=set)  # (stage, key) read
-    snapshots: set[str] = field(default_factory=set)  # digests of quest-log reads kept
+    snapshots: set[str] = field(default_factory=set)  # digests of the reads kept, by source
+    reached: set[str] = field(default_factory=set)  # the questions answered on their card
+    findings: bool = False  # whether a noticing's card was drawn (the repairs entry words it)
 
     def add(self, node: Any, source: str) -> None:
         for text, path in sentences_in(node):
             self.strings.setdefault(text, set()).add((source, path))
 
     def once(self, node: Any, source: str) -> None:
-        """Add ``node`` unless the same content was read from ``source`` already."""
+        """Add ``node`` unless the same content was read from ``source`` already: a read whose
+        content changed under the same key (a stage artifact once the held-out rows open) is read
+        again."""
         digest = hashlib.sha256((source + json.dumps(node, sort_keys=True, default=str))
                                 .encode()).hexdigest()
         if digest not in self.snapshots:
@@ -180,25 +198,43 @@ def _json(r: Any) -> Any:
         return None
 
 
+# The project's reads the quest shell draws from, after every answer: the quest log, the triage,
+# For the record, the methods line under each answered line (``GET /methods``, by its record's id:
+# QuestScreen's ``answers``), the manuscript beside the log (``GET /methods/sections``), and the
+# Write-up card's checklist, of which the card draws the title and what it waits for
+# (``StageCard.Checklist``; :data:`DRAWN`).
+READS = (("quest", "quest"), ("triage", "quest:triage"), ("record", "quest:record"),
+         ("checklist", "quest:checklist"), ("methods", "methods:lines"),
+         ("methods/sections", "methods"))
+DRAWN = {"quest:checklist": ("title", "waiting")}  # a read of which the shell draws these keys
+
+
 def read_shown(client: Any, pid: str, shown: Shown, *, final: bool = False) -> None:
-    """What the person is shown now: the quest log, the triage and For the record; each fresh stage
-    artifact not read at its key yet; once Fit is pressed, the results and the fits; at the end
-    (``final``), the methods."""
+    """What the person is shown now: the quest log, the triage, For the record, the checklist and
+    the methods (:data:`READS`); each fresh stage artifact, once for each content it has served; once Fit is
+    pressed (or at the end, ``final``), the results and the fits. It notes the questions answered
+    (each card the person answered on) and whether a noticing's card is drawn, for the teaching
+    read at the end (:func:`read_teaching`); a question the Router opens for a moment while a stage
+    computes, and then sets for you or finds not applicable, is not one."""
     base = f"/api/projects/{pid}"
-    for route, source in (("quest", "quest"), ("triage", "quest:triage"),
-                          ("record", "quest:record")):
+    for route, source in READS:
         found = _json(client.get(f"{base}/{route}"))
+        if isinstance(found, dict) and source in DRAWN:
+            found = {k: found.get(k) for k in DRAWN[source]}
         if found is not None:
             shown.once(found, source)
     view = _json(client.get(base)) or {}
+    shown.reached.update(str(s.get("key")) for s in view.get("interview") or []
+                         if s.get("status") == "answered")
     for stage, status in sorted((view.get("stages") or {}).items()):
-        key = (status or {}).get("key")
-        if (status or {}).get("status") != "fresh" or not key or (stage, key) in shown.artifacts:
+        if (status or {}).get("status") != "fresh":
             continue
         served = _json(client.get(f"{base}/stages/{stage}"))
         if served is not None:
-            shown.artifacts.add((stage, key))
-            shown.add(served.get("artifact"), f"artifact:{stage}")
+            artifact = served.get("artifact")
+            shown.once(artifact, f"artifact:{stage}")
+            if stage == "findings" and (artifact or {}).get("findings"):
+                shown.findings = True
     if ((view.get("state") or {}).get("fit_pressed") or final
             or any((s or {}).get("status") == "fresh" for st, s in (view.get("stages") or {}).items()
                    if st == "fit")):
@@ -206,15 +242,42 @@ def read_shown(client: Any, pid: str, shown: Shown, *, final: bool = False) -> N
             found = _json(client.get(f"{base}/{route}"))
             if found is not None:
                 shown.once(found, f"artifact:{route}")
-    if final:
-        found = _json(client.get(f"{base}/methods/sections"))
-        if found is not None:
-            shown.once(found, "methods")
+
+
+# A question card's teaching entry, as the card draws it and the swarm driver's ``ask`` serves it
+# (``research/swarm/driver.py``): its title, question, one line, why, who reads the answer, its
+# terms and its options (its evidence badge names a status and a source, no sentence). The concept
+# drawer is left out: the quest shell's card offers it by a press that opens nothing (AskFor's
+# plain wiring, its ``onOpenDrawer`` a no-op), and the driver serves none of it.
+TEACHING_LEFT_OUT = ("drawer",)
+
+
+def read_teaching(client: Any, shown: Shown, purpose: str | None) -> dict[str, int]:
+    """Each reached question's teaching entry (``GET /teaching``), and the repairs entry where a
+    noticing's card was drawn, as the card reads it: the roles card under the project's goal, every
+    other card with none (``AskFor``); the sentences of what is left out
+    (:data:`TEACHING_LEFT_OUT`), counted by entry."""
+    plain = _json(client.get("/api/teaching")) or []
+    goal = ((_json(client.get("/api/teaching", params={"purpose": purpose})) or []) if purpose
+            else plain)
+    keys = sorted(shown.reached | ({"repairs"} if shown.findings else set()))
+    left_out: dict[str, int] = {}
+    for key in keys:
+        entry = next((e for e in (goal if key == "roles" else plain) if e.get("key") == key), None)
+        if entry is None:
+            continue
+        shown.once({k: v for k, v in entry.items() if k not in TEACHING_LEFT_OUT},
+                   f"teaching:{key}")
+        n = sum(len(sentences_of(t)) for t, _ in sentences_in(
+            {k: entry.get(k) for k in TEACHING_LEFT_OUT}))
+        if n:
+            left_out[key] = n
+    return left_out
 
 
 class Watching:
     """The reference journey's recording client (``journeys.Recording``), reading what is shown
-    after each answer it posts, and keeping each refusal's words."""
+    after each answer it posts and each press of Fit, and keeping each refusal's words."""
 
     def __init__(self, recording: Any, shown: Shown, pid: Callable[[], str]):
         self.r, self.shown, self.pid = recording, shown, pid
@@ -237,6 +300,8 @@ class Watching:
                                    f"refusal:{kind}")
             elif r.status_code == 200:
                 read_shown(self.r, self.pid(), self.shown)
+        elif url.endswith("/fit") and r.status_code == 200:
+            read_shown(self.r, self.pid(), self.shown)
         return r
 
 
@@ -259,6 +324,7 @@ def capture(spec: Spec, out: Path | None = None) -> dict[str, Any]:
     started = time.monotonic()
     log_lines: list[dict[str, Any]] = []
     interview: dict[str, str] = {}
+    teaching_left_out: dict[str, int] = {}
     export_status: int | None = None
     with tempfile.TemporaryDirectory(prefix=f"tt-sentences-{spec.name}-") as folder:
         home = Path(folder) / "home"
@@ -288,6 +354,8 @@ def capture(spec: Spec, out: Path | None = None) -> dict[str, Any]:
                 view = _json(client.get(f"/api/projects/{run.pid}")) or {}
                 interview = {str(s.get("key")): str(s.get("status"))
                              for s in view.get("interview") or []}
+                teaching_left_out = read_teaching(client, shown,
+                                                  (view.get("state") or {}).get("purpose"))
                 log = home / "projects" / run.pid / "claims_rendered.jsonl"
                 if log.is_file():
                     log_lines = [json.loads(x) for x in log.read_text("utf-8").splitlines()
@@ -311,6 +379,9 @@ def capture(spec: Spec, out: Path | None = None) -> dict[str, Any]:
         "answers": run.log,
         "notes": run.notes + notes,
         "interview": interview,
+        "teaching": {"read": sorted(shown.reached | ({"repairs"} if shown.findings else set())),
+                     "left_out": {"fields": list(TEACHING_LEFT_OUT),
+                                  "sentences": teaching_left_out}},
         "rendered": [{"id": i, "register": reg, "renders": renders[(i, reg)]}
                      for i, reg in rendered],
         "strings": [{"text": text, "shown": sorted([s, p] for s, p in places)}
@@ -453,6 +524,56 @@ def rows_of(capture_data: dict[str, Any], reg: Any, rulings: Iterable[Any]) -> l
     return out
 
 
+# A sentence's values: a `ticked` name or value, and a number.
+_TICKED = re.compile(r"`[^`]*`")
+_NUMBER = re.compile(r"\d(?:[\d,.]*\d)?")
+CLAIMED = ("claim", "unrendered", "register")  # the verdicts that say a claim states a sentence
+HELD_WORDS = 6  # a sentence held inside another is compared only from this many words up
+
+
+def normal(sentence: str) -> str:
+    """``sentence`` with each value one mark (a ticked span ```·```, a number ``0``) and its
+    closing period dropped: two sentences that state one rule on two columns, or with two counts,
+    read alike."""
+    return _NUMBER.sub("0", _TICKED.sub("`·`", sentence.strip().rstrip(".")))
+
+
+def disagreements(rows: Iterable[Row]) -> list[str]:
+    """Each place two triaged sentences that state one rule get verdicts that disagree:
+
+    * two sentences alike but for their values (:func:`normal`) with another verdict, or another
+      registered claim named;
+    * a sentence holding another whole (of at least :data:`HELD_WORDS` words, values aside) that a
+      claim states (:data:`CLAIMED`), while it is plain wording itself;
+    * a sentence holding another whole that a registered claim's rule says in other words
+      (``unrendered``), while it neither names that claim nor is rendered by a claim.
+
+    A sentence not shown, or untriaged, is compared with none. Each is said in a sentence."""
+    kept = [r for r in rows if r.verdict not in ("not shown", "untriaged")]
+    out: list[str] = []
+    seen: dict[str, Row] = {}
+    for r in kept:
+        first = seen.setdefault(normal(r.sentence), r)
+        if first is not r and (first.verdict, first.claims) != (r.verdict, r.claims):
+            out.append(f"alike but for their values, “{first.sentence}” is {first.verdict} "
+                       f"{first.claims} and “{r.sentence}” is {r.verdict} {r.claims}")
+    held = [(normal(r.sentence), r) for r in kept if r.verdict in CLAIMED]
+    held = [(n, r) for n, r in held if len(_WORD.findall(n)) >= HELD_WORDS]
+    for a in kept:
+        whole = normal(a.sentence)
+        for n, b in held:
+            if b is a or n == whole or n not in whole:
+                continue
+            if a.verdict == "plain":
+                out.append(f"“{a.sentence}” is plain wording, and it holds “{b.sentence}”, which "
+                           f"is {b.verdict} {b.claims}")
+            elif (b.verdict == "unrendered" and a.verdict != "claim"
+                  and not set(b.claims) <= set(a.claims)):
+                out.append(f"“{a.sentence}” is {a.verdict} {a.claims}, and it holds "
+                           f"“{b.sentence}”, which says {b.claims}' rule unrendered")
+    return out
+
+
 def _cell(text: str) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
@@ -475,6 +596,44 @@ VERDICT_WORDS = {
 }
 
 
+SOURCES = (
+    "the quest log, the triage, For the record and the Write-up card's checklist (its title and "
+    "what it waits for)",
+    "the methods line under each answered line and the manuscript beside the log",
+    "each fresh stage artifact, once for each content it served, and the results and the fits "
+    "once Fit was pressed",
+    "the refusals the answers met",
+    "the bundle's methods",
+)
+
+
+def held_words(capture_data: dict[str, Any]) -> str:
+    """What the capture read and what it left out by design, with the counts, in sentences."""
+    teaching = capture_data.get("teaching") or {}
+    read = list(teaching.get("read") or [])
+    left = (teaching.get("left_out") or {}).get("sentences") or {}
+    questions = [k for k in read if k != "repairs"]
+    parts = list(SOURCES)
+    if read:
+        parts.append(
+            f"the teaching entries of the {len(questions)} questions the journey answered "
+            f"({', '.join(f'`{k}`' for k in questions)})"
+            + (" and of the repairs its noticings drew" if "repairs" in read else "")
+            + ": the title, question, one line, why, who reads the answer and terms, as each card "
+              "draws them and the swarm driver's `ask` serves them, and the options as the entry "
+              "words them (a card that composes its options from a stage's artifact shows those)")
+    out = ("Each sentence the journey showed, read after every answer and every press of Fit, and "
+           "at the end: " + "; ".join(parts[:-1]) + "; and " + parts[-1] + ".")
+    out += (" **Left out by design:** "
+            + (f"those entries' concept drawers, {sum(left.values())} sentences (the quest "
+               "shell's card offers a drawer by a press that opens nothing, and the swarm "
+               "driver serves none of it); " if left else "")
+            + "a preview of an answer before it is given (this journey previews none); and the "
+              "data views (the table's pages, the column summaries, the histograms), which the "
+              "capture does not read.")
+    return out
+
+
 def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str:
     """The committed table: the journey, the counts, and every sentence with its verdict."""
     traced = {r["id"] for r in capture_data.get("rendered") or []}
@@ -494,13 +653,16 @@ def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str
         "",
         f"**The journey.** {j['words']}",
         "",
-        "**How to read it.** Each sentence the journey showed from the quest log, the stage "
-        "artifacts, the methods and the refusals its answers met, once, with where it was shown "
-        "(the source and the served path). Its verdict: the claim whose words render it; or, by "
-        "CLAIMS_REGISTRY §7's rule, a claim to register (it states a number the app relies on, "
-        "sets a default, a ranking or a refusal, or teaches a method) or plain wording; or a "
-        "registered claim's rule said in other words. **Traced** marks a claim the project's "
-        "claims render log held during the capture: what a swarm record's `claims` lists.",
+        "**What it holds.** " + held_words(capture_data),
+        "",
+        "**How to read it.** Each sentence once, with where it was shown (the source and the "
+        "served path). Its verdict: the claim whose words render it; or, by CLAIMS_REGISTRY §7's "
+        "rule, a claim to register (it states a number the app relies on, sets a default, a "
+        "ranking or a refusal, or teaches a method) or plain wording; or a registered claim's "
+        "rule said in other words. **Traced** marks a claim the project's claims render log held "
+        "during the capture: what a swarm record's `claims` lists. A claim rendered outside that "
+        "log is not traced: a static fill made at import (a module's constant), a read the log "
+        "does not wrap, or a teaching entry, which is served to every project alike.",
         "",
         "| | sentences |",
         "|---|---|",
@@ -514,6 +676,11 @@ def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str
         n = sum(1 for r in rows if r.verdict == "claim" and cid in r.claims)
         lines.append(f"| `{cid}` | {n} | {'yes' if cid in traced else 'no'} | "
                      f"{_cell(authors.get(cid, ''))} |")
+    unshown = sorted(traced - set(claimed))
+    if unshown:
+        lines += ["", "**The claims the log holds that render no sentence here** (a swarm "
+                  "record's `claims` lists them, though no sentence shown holds their words): "
+                  + ", ".join(f"`{c}`" for c in unshown) + "."]
     lines += ["", "## Every sentence", "", "| # | sentence | shown | verdict | why |",
               "|---|---|---|---|---|"]
     for i, r in enumerate(rows, 1):
@@ -529,8 +696,9 @@ def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str
 
 def table(journey: str, capture_path: Path | None = None, out: Path | None = None,
           check: bool = False, *, reg: Any = None, rulings: Iterable[Any] | None = None) -> int:
-    """Write (or with ``check``, compare) the journey's table; 1 when a sentence is untriaged, a
-    ruling names a claim that is not registered, or the committed table is stale. ``reg`` and
+    """Write (or with ``check``, compare) the journey's table; 1 when a sentence is untriaged, two
+    sentences that state one rule get verdicts that disagree (:func:`disagreements`), a ruling
+    names a claim that is not registered, or the committed table is stale. ``reg`` and
     ``rulings`` default to the claims registry and ``triage.RULINGS``."""
     if rulings is None:
         from research.registry.triage import RULINGS as rulings
@@ -549,7 +717,10 @@ def table(journey: str, capture_path: Path | None = None, out: Path | None = Non
     unknown = sorted({c for r in rulings for c in r.claims if c not in reg})
     for c in unknown:
         print(f"a ruling names {c}, which no claim registers", file=sys.stderr)
-    failed = int(bool(untriaged or unknown))
+    disagree = disagreements(rows)
+    for d in disagree:
+        print(f"verdicts disagree: {d}", file=sys.stderr)
+    failed = int(bool(untriaged or unknown or disagree))
     text = render_table(data, rows, reg)
     if check:
         if not out.is_file() or out.read_text(encoding="utf-8") != text:

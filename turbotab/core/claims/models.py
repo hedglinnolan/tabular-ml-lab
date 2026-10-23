@@ -1217,7 +1217,10 @@ BLANK_NOT_ASKED = register(Claim(
             reason="Only a yes/no answer or a medication question is read so: a measurement's "
                    "blanks say nothing of a question not asked, so a measurement blank on most "
                    "rows is never read as not asked (the second silent test), and the reason says "
-                   "nothing says so.")),
+                   "nothing says so. The share counts the rows with the outcome measured, not "
+                   "every row: blank on half of them reads as not asked though on under half of "
+                   "every row (the second fires test), and blank on half of every row but few of "
+                   "the measured ones does not (the third silent test).")),
     ),
     tests=(
         Fires(f"{P6A_TESTS}::test_a_yes_no_answer_blank_on_half_the_rows_reads_as_not_asked",
@@ -1226,6 +1229,10 @@ BLANK_NOT_ASKED = register(Claim(
                truth="construction"),
         Silent(f"{P6A_TESTS}::test_a_measurement_blank_on_most_rows_is_never_read_as_not_asked",
                truth="construction"),
+        Fires(f"{P6A_TESTS}::test_a_yes_no_answer_blank_on_half_the_rows_with_the_outcome_measured_"
+              "reads_as_not_asked", truth="construction"),
+        Silent(f"{P6A_TESTS}::test_a_yes_no_answer_blank_on_half_of_every_row_but_few_with_the_"
+               "outcome_measured_does_not", truth="construction"),
     ),
     enforced_by=("turbotab.core.stages.proposals:missing_reading",
                  "turbotab.core.stages.proposals:_blank_reason"),
