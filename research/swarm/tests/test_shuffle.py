@@ -2,7 +2,10 @@
 constructed records on three datasets, each with markers of its own (its rows, 101, 202 or 303),
 so where each record's markers came from is known by construction. Each guard both ways: no record
 keeps its dataset's markers, the corpus is never written, the planted records are in the copy
-only and listed in the sealed file outside it, and what cannot be shuffled is refused."""
+only and listed in the sealed file outside it, the sealed file names every marker that separates
+the planted records as M does and no other, a numeric one where one threshold splits them
+(against a brute force over the copy's files), and says a numeric marker no threshold splits is
+left out, and what cannot be shuffled is refused."""
 from __future__ import annotations
 
 import json
@@ -12,7 +15,8 @@ from pathlib import Path
 import pytest
 
 from research.swarm import shuffle as S
-from research.swarm.record import validate
+from research.swarm.claim_cycle import proposal as P
+from research.swarm.record import neutral_id, validate
 from research.swarm.tests.constructed import (estimate_record, marker, predict_record,
                                               revert_record)
 
@@ -416,6 +420,239 @@ def test_each_planted_record_holds_a_real_records_markers_whole(tmp_path):
     assert markers == {"rows_analyzed", "predictors_per_row"}  # never `rows`, constant per dataset
 
 
+def _planted_sides(out: Path, effect: dict, at: str) -> dict[str, dict[bool, list]]:
+    """Each live marker's values across the planted records in the copy at ``out``, by side
+    (material below M's threshold, True; none at or above it, False), read from the records' own
+    files at the regime or at the last fit, and only where every planted record holds a number,
+    a word or true or false for it (a region bounds nothing else)."""
+    by: dict[str, dict[bool, list]] = {}
+    held: dict[str, int] = {}
+    for entry in effect["records"]:
+        rec = json.loads((out / f"{entry['run']}.json").read_text())
+        markers = rec["regime"]["markers"] if at == "regime" else rec["attempts"][-1]["markers"]
+        for m in markers or []:
+            v = m.get("value")
+            if m.get("timing") == "live" and (isinstance(v, (str, bool, int, float))):
+                by.setdefault(m["name"], {True: [], False: []})[entry["below"]].append(v)
+                held[m["name"]] = held.get(m["name"], 0) + 1
+    return {n: s for n, s in by.items() if held[n] == len(effect["records"])}
+
+
+def _numbers(values: list) -> bool:
+    return all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values)
+
+
+def _cut(sides: dict[bool, list]) -> tuple[str, float] | None:
+    """By brute force over every candidate value: a threshold that splits the sides of a numeric
+    marker, with the side the material records lie on, or None."""
+    material, other = sides[True], sides[False]
+    if not _numbers(material + other):
+        return None
+    for c in sorted(set(material + other)):
+        if all(b < c for b in material) and all(a >= c for a in other):
+            return "below", c
+        if all(b > c for b in material) and all(a <= c for a in other):
+            return "above", c
+    return None
+
+
+def _separates(sides: dict[bool, list]) -> bool:
+    """By brute force: a numeric marker separates the planted records where some threshold among
+    its values splits them (:func:`_cut`), as M's threshold cuts the effect; a marker of words or
+    true or false where no value is held on both sides."""
+    material, other = sides[True], sides[False]
+    if _numbers(material + other):
+        return _cut(sides) is not None
+    return not any(json.dumps(a) == json.dumps(b) for a in material for b in other)
+
+
+def _check_separating(out: Path, effect: dict) -> dict[str, set[str]]:
+    """The sealed file's ``separating`` against the brute force, at the regime and at the last
+    fit: the markers it names are those that separate the planted records' two sides, each with
+    the values on each side, and with a threshold where one splits them on the side it says."""
+    found = {}
+    for at in ("regime", "last fit"):
+        sides = _planted_sides(out, effect, at)
+        named = {e["marker"]: e for e in effect["separating"] if e["at"] == at}
+        assert set(named) == {n for n, s in sides.items() if _separates(s)}, at
+        for name, e in named.items():
+            s = sides[name]
+            assert sorted(map(json.dumps, set(s[True]))) == sorted(map(json.dumps, e["material"]))
+            assert sorted(map(json.dumps, set(s[False]))) == sorted(
+                map(json.dumps, e["not_material"]))
+            cut = _cut(s)
+            if cut is None:  # words or true or false: no value on both sides
+                assert e["threshold"] is None and not _numbers(s[True] + s[False])
+                continue
+            t = e["threshold"]
+            if cut[0] == "below":
+                assert all(b < t for b in s[True]) and all(a >= t for a in s[False])
+                assert e["direction"] == "material below the threshold, none at or above it"
+            else:
+                assert all(b > t for b in s[True]) and all(a <= t for a in s[False])
+                assert e["direction"] == "material above the threshold, none at or below it"
+        found[at] = set(named)
+    return found
+
+
+def test_the_sealed_file_names_every_marker_that_separates_the_planted_records(tmp_path):
+    """The verifier's V6D-6. Each planted record holds a real record's markers whole, and on this
+    corpus a record's predictors per row is its predictors over its rows analyzed, so by
+    construction the two move together across a dataset's records: whichever is M, the other
+    splits the planted records' two sides just as M does (the other way round), and the rows, one
+    value across a dataset, split nothing. The sealed file names both, at the regime and at the
+    last fit, M first at its threshold t, and each as the brute force over the copy's files finds
+    it."""
+    src = corpus(tmp_path / "corpus", per=3)
+    for seed in range(10):
+        out = tmp_path / f"copy{seed}"
+        effect = S.write(src, out, tmp_path / f"s{seed}.json", seed=seed, k=6)["planted"]["effect"]
+        found = _check_separating(out, effect)
+        assert found == {"regime": {"rows_analyzed", "predictors_per_row"},
+                         "last fit": {"rows_analyzed", "predictors_per_row"}}, seed
+        first = effect["separating"][0]
+        assert (first["marker"], first["at"], first["threshold"], first["direction"]) == (
+            effect["marker"], "regime", effect["threshold"], effect["direction"])
+        other = next(e for e in effect["separating"] if e["at"] == "regime"
+                     and e["marker"] != effect["marker"])
+        assert other["direction"] == "material above the threshold, none at or below it"
+
+
+def _without(folder: Path, name: str) -> Path:
+    """Every record of ``folder`` with the marker ``name`` taken out, at the regime and each fit."""
+    for path in folder.glob("*.json"):
+        rec = json.loads(path.read_text())
+        rec["regime"]["markers"] = [m for m in rec["regime"]["markers"] if m["name"] != name]
+        for a in rec["attempts"]:
+            a["markers"] = [m for m in a["markers"] or [] if m["name"] != name]
+        path.write_text(json.dumps(rec), "utf-8")
+    return folder
+
+
+def test_where_only_m_separates_the_planted_records_the_sealed_file_names_m_alone(tmp_path):
+    """The guard's silent case: with the predictors per row taken out, the rows analyzed is the
+    one marker that varies across a dataset's records, so it is M, and nothing else separates the
+    planted records: the rows, one value across the dataset, are never named."""
+    src = _without(corpus(tmp_path / "corpus", per=3), "predictors_per_row")
+    for seed in range(6):
+        out = tmp_path / f"copy{seed}"
+        effect = S.write(src, out, tmp_path / f"s{seed}.json", seed=seed, k=6)["planted"]["effect"]
+        assert effect["marker"] == "rows_analyzed"
+        assert _check_separating(out, effect) == {"regime": {"rows_analyzed"},
+                                                  "last fit": {"rows_analyzed"}}
+        assert [e["marker"] for e in effect["separating"]] == ["rows_analyzed", "rows_analyzed"]
+
+
+def _siblings(folder: Path) -> Path:
+    """The records of ``folder`` (``corpus(per=3)``) with each record's predictors per row set
+    apart from its rows analyzed: 0.06, 0.02, 0.11 for a dataset's first, second and third
+    records, whose rows analyzed fall."""
+    for path in folder.glob("*.json"):
+        rec = json.loads(path.read_text())
+        r = (int(rec["run"]["id"][4:6]) - 1) % 3
+        for markers in [rec["regime"]["markers"], *(a["markers"] for a in rec["attempts"])]:
+            for m in markers:
+                if m["name"] == "predictors_per_row":
+                    m["value"] = (0.06, 0.02, 0.11)[r]
+        path.write_text(json.dumps(rec), "utf-8")
+    return folder
+
+
+def test_a_sibling_marker_is_named_only_in_the_draws_where_it_separates_the_planted_records(
+        tmp_path):
+    """Both ways on one corpus: each record's predictors per row set apart from its rows analyzed
+    (:func:`_siblings`), so whether the other marker splits the planted records depends on M, t
+    and the records drawn; over the seeds the sealed file names it in some draws and not in
+    others, each time as the brute force finds."""
+    src = _siblings(corpus(tmp_path / "corpus", per=3))
+    named, alone = 0, 0
+    for seed in range(24):
+        out = tmp_path / f"copy{seed}"
+        effect = S.write(src, out, tmp_path / f"s{seed}.json", seed=seed, k=6)["planted"]["effect"]
+        found = _check_separating(out, effect)["regime"]
+        assert effect["marker"] in found
+        if len(found) == 2:
+            named += 1
+        else:
+            alone += 1
+    assert named and alone, (named, alone)
+
+
+def _in(values: list, held: list) -> list:
+    """Of ``held``, the values an `in` region listing ``values`` holds, numbers by their value."""
+    return [v for v in held if any(float(v) == float(x) for x in values)]
+
+
+def test_a_numeric_marker_no_one_threshold_splits_is_left_out_and_the_sealed_file_says_so(
+        tmp_path):
+    """The verifier's VT-1, by the honest statement, both ways on the sibling corpus
+    (:func:`_siblings`): a numeric marker is named only where one threshold splits the planted
+    records' two sides, and the sealed file says so. Where its two sides hold no value in common
+    but interleave (seed 2: M the predictors per row, the material records' rows analyzed 192 and
+    the others' 183 or 201), an `in` region of the material side's values, one the validator
+    takes, holds every material record and none of the others while no threshold does, and the
+    marker is left out: a claim on such a region is not a miss for its absence. Where the two
+    sides share a value (the rows, one value across a dataset), no `in` region of one side's
+    values holds that side alone, and the marker is left out with nothing missed; where one
+    threshold splits them, the marker is named (the brute force, :func:`_check_separating`)."""
+    src = _siblings(corpus(tmp_path / "corpus", per=3))
+    interleaved, shared = [], 0
+    for seed in range(24):
+        out = tmp_path / f"copy{seed}"
+        effect = S.write(src, out, tmp_path / f"s{seed}.json", seed=seed, k=6)["planted"]["effect"]
+        assert effect["separating_why"] == S.SEPARATING_WHY
+        _check_separating(out, effect)
+        for at in ("regime", "last fit"):
+            named = {e["marker"] for e in effect["separating"] if e["at"] == at}
+            for name, sides in _planted_sides(out, effect, at).items():
+                if not _numbers(sides[True] + sides[False]) or _cut(sides) is not None:
+                    continue
+                assert name not in named, (seed, at, name)
+                region = P.Bound.model_validate({"marker": name, "op": "in",
+                                                 "threshold": sorted(set(sides[True]))})
+                held = _in(region.threshold, sides[False])
+                assert len(_in(region.threshold, sides[True])) == len(sides[True])
+                if held:
+                    shared += 1
+                else:
+                    interleaved.append((seed, at, name))
+    assert (2, "regime", "rows_analyzed") in interleaved and shared, (interleaved, shared)
+    words = " ".join(S.SEPARATING_WHY.split())
+    assert "only where one threshold splits the two sides" in words
+    assert "`is`, `in` or `between`" in words and "not scored a miss" in words
+
+
+def test_a_marker_of_words_is_named_where_the_sides_share_no_value_and_one_with_parts_never(
+        tmp_path):
+    """Both ways for a marker no threshold cuts: each record's outcome type a word (binary for a
+    dataset's first record, continuous for the others) is named, with each side's words and no
+    threshold, in the draws where the planted records' two sides hold no word in common, and not
+    where they do; a design held as a value with parts (one per record) is never named, since a
+    region bounds only a number, a word or true or false."""
+    src = corpus(tmp_path / "corpus", per=3)
+    for path in src.glob("*.json"):
+        rec = json.loads(path.read_text())
+        r = (int(rec["run"]["id"][4:6]) - 1) % 3
+        added = [marker("outcome_type", ("binary", "continuous", "continuous")[r]),
+                 marker("design", {"survey": None, "grain": f"g{r}"})]
+        rec["regime"]["markers"] += added
+        for a in rec["attempts"]:
+            a["markers"] = [*a["markers"], *json.loads(json.dumps(added))]
+        path.write_text(json.dumps(rec), "utf-8")
+    words = {True: 0, False: 0}
+    for seed in range(24):
+        out = tmp_path / f"copy{seed}"
+        effect = S.write(src, out, tmp_path / f"s{seed}.json", seed=seed, k=6)["planted"]["effect"]
+        found = _check_separating(out, effect)["regime"]
+        assert "design" not in found
+        words["outcome_type" in found] += 1
+        for e in effect["separating"]:
+            if e["marker"] == "outcome_type":
+                assert e["threshold"] is None and e["direction"] == S.AT_VALUES
+                assert not set(e["material"]) & set(e["not_material"])
+    assert words[True] and words[False], words
+
+
 def test_a_template_whose_dataset_holds_no_marker_that_varies_is_refused(tmp_path):
     """The guard both ways: where every record of each dataset holds the same markers, no value of
     a marker lies on either side of a threshold among them, and the planted effect is refused; the
@@ -448,10 +685,10 @@ def test_a_planted_record_is_its_templates_clone_and_the_sealed_file_says_so(tmp
     src = corpus(tmp_path / "corpus", per=3)
     body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=5, k=6)
     effect = body["planted"]["effect"]
-    views = {v["run"]["id"]: v for v in W.read(tmp_path / "copy")}
-    template = views[effect["template"]]
+    views = {v["run"]["id"]: v for v in W.read(tmp_path / "copy")}  # by the ids they serve
+    template = views[neutral_id(effect["template"])]
     for run_id in body["planted"]["records"]:
-        v = views[run_id]
+        v = views[neutral_id(run_id)]
         assert [(d["seq"], d["kind"], d["source"], d["phase"]) for d in v["decisions"]] == [
             (d["seq"], d["kind"], d["source"], d["phase"]) for d in template["decisions"]]
         assert v["attempts"][0]["movement"] == template["attempts"][0]["movement"]

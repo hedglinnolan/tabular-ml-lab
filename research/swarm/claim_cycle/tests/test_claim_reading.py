@@ -259,7 +259,8 @@ def test_asking_for_a_field_the_view_does_not_know_is_refused():
 
 # A served field: what plants a value there, and the value's text, which the view must carry.
 SERVED: dict[str, tuple[Callable[[dict], Any], str]] = {
-    "run.id": (lambda r: r["run"].update(id="run_07-sentinel"), "run_07-sentinel"),
+    # The run's id, served as the neutral token a blind reader is shown (record.neutral_id).
+    "run.id": (lambda r: r["run"].update(id="run_07-sentinel"), R.neutral_id("run_07-sentinel")),
     "question.purpose": (lambda r: None, '"prediction"'),
     "regime.markers": (lambda r: r["regime"]["markers"][0].update(value=4815162342),
                        "4815162342"),
@@ -346,7 +347,8 @@ def test_datasets_are_labeled_in_order_of_first_appearance_and_never_named(tmp_p
         recs.append(rec)
     got = W.views(list(reversed(recs)))
     assert [(v["run"]["id"], v["dataset"]["id"]) for v in got] == [
-        ("run_01-ab", "dataset_1"), ("run_02-ab", "dataset_2"), ("run_03-ab", "dataset_1")]
+        (R.neutral_id("run_01-ab"), "dataset_1"), (R.neutral_id("run_02-ab"), "dataset_2"),
+        (R.neutral_id("run_03-ab"), "dataset_1")]
     assert "_study" not in json.dumps(got)
 
 
@@ -362,12 +364,15 @@ def test_the_tools_filter_by_run_and_dataset(tmp_path):
     a["run"]["id"], b["run"]["id"] = "run_01-aa", "run_02-bb"
     b["dataset"]["id"] = "other"
     folder = written(tmp_path / "corpus", a, b)
-    code, said = printed(["records", str(folder), "--run", "run_02-bb"])
-    assert code == 0 and [r["run"]["id"] for r in json.loads(said)["records"]] == ["run_02-bb"]
+    # A run is filtered by the id its view serves, the neutral token (record.neutral_id).
+    code, said = printed(["records", str(folder), "--run", R.neutral_id("run_02-bb")])
+    assert code == 0 and [r["run"]["id"] for r in json.loads(said)["records"]] == [
+        R.neutral_id("run_02-bb")]
     code, said = printed(["records", str(folder), "--dataset", "dataset_1"])
-    assert [r["run"]["id"] for r in json.loads(said)["records"]] == ["run_01-aa"]
+    assert [r["run"]["id"] for r in json.loads(said)["records"]] == [R.neutral_id("run_01-aa")]
     code, said = printed(["index", str(folder)])
-    assert json.loads(said)["records"][1] == {"run": "run_02-bb", "dataset": "dataset_2",
+    assert json.loads(said)["records"][1] == {"run": R.neutral_id("run_02-bb"),
+                                              "dataset": "dataset_2",
                                               "purpose": "prediction", "decisions": 5,
                                               "attempts": 2}
 
@@ -442,7 +447,7 @@ def test_the_shuffled_copy_reads_whole_and_its_planted_records_read_as_any_other
     copy, _, body = shuffled
     got = W.read(copy)
     assert len(got) == body["records"] + 2
-    assert set(body["planted"]["records"]) <= {v["run"]["id"] for v in got}
+    assert {R.neutral_id(r) for r in body["planted"]["records"]} <= {v["run"]["id"] for v in got}
 
 
 def test_the_sealed_file_is_never_read(shuffled, tmp_path):

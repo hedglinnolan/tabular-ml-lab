@@ -274,6 +274,71 @@ def test_one_cycle_is_pinned_at_a_time_and_only_where_it_can_run(tmp_path):
         assert not path.exists()
 
 
+def test_a_proposals_file_is_pinned_for_one_cycle_only(tmp_path):
+    """The verifier's V6D-8, both ways: a proposals file pinned for one corpus folder can be pinned
+    again for it (a re-pin of the same cycle, after its proposals were written), and is refused for
+    the other cycle's folder, whose agents would read the first cycle's proposals and the run ids
+    and marker numbers they cite; that cycle's own new file is pinned."""
+    for name in ("real", "copy"):
+        (tmp_path / name).mkdir()
+    path, file = tmp_path / "cycle-pin.json", tmp_path / "p.jsonl"
+    N.write("real", "p.jsonl", pin=path, repo=tmp_path)
+    file.write_text(json.dumps(GOOD) + "\n", "utf-8")  # the real cycle's theorist proposed
+    assert N.clear(path)
+    assert N.write("real", "./p.jsonl", pin=path, repo=tmp_path)["proposals"] == str(file.resolve())
+    assert N.clear(path)
+    with pytest.raises(N.PinRefused, match="pinned before for the corpus folder real"):
+        N.write("copy", "p.jsonl", pin=path, repo=tmp_path)
+    assert not path.exists()
+    # The same, before any proposal was written: the file is the real cycle's.
+    N.write("real", "q.jsonl", pin=path, repo=tmp_path)
+    assert N.clear(path)
+    with pytest.raises(N.PinRefused, match="pinned before"):
+        N.write("copy", "q.jsonl", pin=path, repo=tmp_path)
+    got = N.write("copy", "copy-proposals.jsonl", pin=path, repo=tmp_path)
+    assert got["corpus"] == str((tmp_path / "copy").resolve())
+
+
+def test_a_proposals_file_holding_lines_no_recorded_pin_named_is_refused(tmp_path):
+    """Both ways: a file that already holds proposals, which no pin recorded beside this one named
+    (written elsewhere, or by another cycle before the record), is refused; an empty one is a new
+    cycle's file and is pinned."""
+    (tmp_path / "corpus").mkdir()
+    path = tmp_path / "cycle-pin.json"
+    (tmp_path / "held.jsonl").write_text(json.dumps(GOOD) + "\n", "utf-8")
+    with pytest.raises(N.PinRefused, match="holds lines"):
+        N.write("corpus", "held.jsonl", pin=path, repo=tmp_path)
+    assert not path.exists()
+    (tmp_path / "empty.jsonl").write_text("", "utf-8")
+    assert N.write("corpus", "empty.jsonl", pin=path, repo=tmp_path)
+
+
+def test_a_record_of_pins_that_does_not_read_refuses_every_pin(tmp_path):
+    (tmp_path / "corpus").mkdir()
+    path = tmp_path / "cycle-pin.json"
+    N.ledger_of(path).write_text("not json", "utf-8")
+    with pytest.raises(N.PinRefused, match="does not read as one"):
+        N.write("corpus", "p.jsonl", pin=path, repo=tmp_path)
+    assert not path.exists()
+
+
+def test_the_pins_command_line_refuses_the_other_cycles_proposals_file(tmp_path, monkeypatch):
+    """The verifier's probe through the orchestrator's command line: pin the real cycle, propose,
+    clear, then pin the copy with the same proposals file: refused, so its theorist is never served
+    the real cycle's proposals; the copy's own file is pinned."""
+    for name in ("real", "copy"):
+        (tmp_path / name).mkdir()
+    monkeypatch.setattr(N, "PIN", tmp_path / ".claude" / "claim_cycle.json")
+    monkeypatch.chdir(tmp_path)
+    said: list[str] = []
+    assert N.main(["--corpus", "real", "--proposals", "cycle.jsonl"], out=said.append) == 0
+    (tmp_path / "cycle.jsonl").write_text(json.dumps(GOOD) + "\n", "utf-8")
+    assert N.main(["--clear"], out=said.append) == 0
+    assert N.main(["--corpus", "copy", "--proposals", "cycle.jsonl"], out=said.append) == 1
+    assert "pinned before" in json.loads(said[-1])["refused"] and N.read() is None
+    assert N.main(["--corpus", "copy", "--proposals", "copy.jsonl"], out=said.append) == 0
+
+
 def test_the_pins_command_line_pins_and_clears(tmp_path, monkeypatch):
     (tmp_path / "corpus").mkdir()
     monkeypatch.setattr(N, "PIN", tmp_path / ".claude" / "claim_cycle.json")

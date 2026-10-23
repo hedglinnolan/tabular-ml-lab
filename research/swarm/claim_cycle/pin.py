@@ -20,6 +20,15 @@ JSON lines (``.jsonl``) in a folder that exists, and one in the corpus folder. A
 names is read from the repo root, where the hook runs the tools, and resolved, so
 ``./cycle/corpus/`` names ``cycle/corpus`` and a link names what it links to.
 
+**A proposals file is one cycle's.** One cycle's proposals cite the run ids its corpus holds,
+which the copy keeps, and that corpus's marker numbers, which the copy permutes, so a theorist of
+the other cycle served them could match the two and find the derangement. So each pin's proposals
+file is recorded with its corpus folder beside the pin (:func:`ledger_of`,
+``.claude/claim_cycle.pinned.json``, kept when the pin is cleared): a re-pin of the same cycle
+names its file again, and :func:`write` refuses a proposals file recorded for another corpus
+folder, and one that already holds lines no recorded pin named (written outside a pin, or before
+the record).
+
 It uses the standard library alone, as the hook does.
 """
 from __future__ import annotations
@@ -116,9 +125,41 @@ def read(pin: Path | None = None) -> dict[str, str] | None:
     return data
 
 
+def ledger_of(pin: Path) -> Path:
+    """Where each proposals file pinned at ``pin`` is recorded with its corpus folder: beside it,
+    ``<pin's name>.pinned.json``."""
+    return Path(pin).with_name(f"{Path(pin).stem}.pinned.json")
+
+
+def _recorded(ledger: Path) -> dict[str, str]:
+    """The record at ``ledger``: each proposals file pinned, resolved, with the corpus folder it
+    was pinned with; empty where none was; refused where it does not read as one."""
+    if not ledger.exists():
+        return {}
+    try:
+        data = json.loads(ledger.read_text("utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        data = None
+    if not (isinstance(data, dict) and all(isinstance(k, str) and isinstance(v, str) and v
+                                           for k, v in data.items())):
+        raise PinRefused(f"The record of the cycles pinned before ({ledger}) does not read as one "
+                         f"(each proposals file with its corpus folder), so no cycle is pinned "
+                         f"until the orchestrator mends it.")
+    return data
+
+
+def _holds_lines(file: Path) -> bool:
+    """Whether ``file`` holds anything but blank space (one that cannot be read is taken to)."""
+    try:
+        return file.is_file() and bool(file.read_text("utf-8", errors="replace").strip())
+    except OSError:
+        return True
+
+
 def write(corpus: str | Path, proposals: str | Path, pin: Path | None = None,
           repo: Path = REPO) -> dict[str, str]:
-    """Pin one cycle's corpus folder and proposals file (the module docstring)."""
+    """Pin one cycle's corpus folder and proposals file (the module docstring), and record the
+    file with its folder (:func:`ledger_of`)."""
     pin = Path(pin or PIN)
     if pin.exists():
         raise PinRefused(f"A cycle is pinned already ({pin}); one cycle runs at a time, so clear "
@@ -133,10 +174,25 @@ def write(corpus: str | Path, proposals: str | Path, pin: Path | None = None,
     if file == folder or folder in file.parents:
         raise PinRefused(f"{proposals} lies in the corpus folder; a cycle's corpus folder holds "
                          f"its records only, so its proposals file lies outside it.")
+    ledger = ledger_of(pin)
+    recorded = _recorded(ledger)
+    before = recorded.get(str(file))
+    if before is not None and before != str(folder):
+        raise PinRefused(f"{proposals} was pinned before for the corpus folder "
+                         f"{_shown(Path(before), repo)}; a proposals file is one cycle's, since "
+                         f"its proposals cite that corpus's runs and numbers, so this cycle "
+                         f"writes its own.")
+    if before is None and _holds_lines(file):
+        raise PinRefused(f"{proposals} holds lines, and no pin recorded in {ledger.name} named "
+                         f"it; a cycle's proposals file is a new one, or the one its own cycle "
+                         f"was pinned with before, so one cycle's proposals never reach the "
+                         f"other's agents.")
     pin.parent.mkdir(parents=True, exist_ok=True)
     with open(pin, "x", encoding="utf-8") as fh:
         json.dump(got, fh, indent=1, sort_keys=True)
         fh.write("\n")
+    ledger.write_text(json.dumps({**recorded, str(file): str(folder)}, indent=1, sort_keys=True)
+                      + "\n", "utf-8")
     return got
 
 

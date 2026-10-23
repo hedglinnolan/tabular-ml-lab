@@ -1,7 +1,8 @@
 """The glucose project's benchmark (SWARM_PLAN §5, dataset 3; §10 package 5): Bang et al. 2009's
 points score, adapted to the later cycle's questions, on a run's own held-out participants, and the
-AUC of the outcome thresholded at 126 mg/dL ranked by it
-(``notes/replication/glucose_benchmarks.md``).
+AUC of the outcome thresholded at Bang's cut for diabetes (:data:`THRESHOLD`) ranked by it
+(``notes/replication/glucose_benchmarks.md``). The command line's help says the same, the cut's
+number filled in from :data:`THRESHOLD` (:data:`HELP`).
 
     scripts/py -m research.swarm.benchmark <export.zip> [--record <record.json>] [--out <file>]
 
@@ -25,21 +26,23 @@ is not read: the engine applies one under Estimate only, and the record is a pre
 **The score** (:data:`ITEMS`), each item's rule written beside the passages it rests on, every one
 found on its NCHS page as the dataset's manifest holds it (refused otherwise): Table 2's points
 (``intake.BANG_TABLE2``) for age, male sex, family history (MCQ300C, the close relatives' item,
-which Bang's own validation cycle used), a history of hypertension (told, taking prescribed
-medicine, or the mean of the oscillometric readings at 140/90 or more), the body-size category
-(BMI or waist, the paper's cut-offs) and physical activity. PAQ520, the paper's item, was
-discontinued after 2005–2006, so activity is adapted: active is a yes to vigorous or to moderate
-recreational activity in a typical week (PAQ650, PAQ665), and the score is refused should the later
-cycle's file document PAQ520. A categorical answer missing or unknown is the condition absent, as
-the paper defines it; so is a blank measurement, a choice the paper leaves open (the notes' §6.2 and
-§6.5): with both BMI and waist blank, not overweight or obese, and a blood pressure measure with
-no reading, not high.
+which Bang's own validation cycle used; the rule names that cycle as the notes' Table 3 row prints
+it, :func:`reported_auc`, the reading the output's ``reported`` gives), a history of hypertension
+(told, taking prescribed medicine, or the mean of the oscillometric readings at 140/90 or more),
+the body-size category (BMI or waist, the paper's cut-offs) and physical activity. PAQ520, the
+paper's item, was discontinued after 2005–2006, so activity is adapted: active is a yes to
+vigorous or to moderate recreational activity in a typical week (PAQ650, PAQ665), and the score is
+refused should the later cycle's file document PAQ520. A categorical answer missing or unknown is
+the condition absent, as the paper defines it; so is a blank measurement, a choice the paper
+leaves open (the notes' §6.2 and §6.5): with both BMI and waist blank, not overweight or obese,
+and a blood pressure measure with no reading, not high.
 
-**The AUC** of LBXGLU at or above 126 mg/dL, ranked by the score, ties counting one half: per
-participant (primary, as published AUCs are), with DeLong's interval (``models.performance``); and
-weighted by the test cycle's fasting weights, with the delete-one-PSU jackknife's interval (JKn
-within strata over the whole cycle's design, the estimate re-weighted in each replicate). Beside
-them, Bang's reported AUC on its own later cycle, read from ``notes/replication/bang2009.md``.
+**The AUC** of LBXGLU at or above :data:`THRESHOLD` (mg/dL), ranked by the score, ties counting one
+half: per participant (primary, as published AUCs are), with DeLong's interval
+(``models.performance``); and weighted by the test cycle's fasting weights, with the
+delete-one-PSU jackknife's interval (JKn within strata over the whole cycle's design, the estimate
+re-weighted in each replicate). Beside them, Bang's reported AUC on its own later cycle, read from
+``notes/replication/bang2009.md``.
 """
 from __future__ import annotations
 
@@ -62,6 +65,12 @@ if str(REPO) not in sys.path:
 from research.swarm import intake as I  # noqa: E402
 
 THRESHOLD = I.BANG_FPG  # mg/dL: the outcome thresholded as Bang's undiagnosed diabetes is
+# The command line's description: the module docstring's first paragraph, the cut's number the one
+# the AUC uses.
+HELP = ("The glucose project's benchmark (SWARM_PLAN §5, dataset 3; §10 package 5): Bang et al. "
+        "2009's points score, adapted to the later cycle's questions, on a run's own held-out "
+        f"participants, and the AUC of the outcome thresholded at {THRESHOLD:g} mg/dL ranked by it "
+        "(``notes/replication/glucose_benchmarks.md``).")
 NOTES = REPO / I.BANG_NOTES
 # Table 3's validation row as the notes print it: the cycle, its N and its AUC.
 REPORTED = re.compile(r"\| Validation (\d{4}–\d{4}) \(N = ([\d,]+), \*\*AUC (\d\.\d+)\*\*\) \|")
@@ -71,6 +80,11 @@ WAIST_CUTS = {"male": (37.0, 40.0, 50.0), "female": (31.5, 35.0, 49.0)}
 CM_PER_INCH = 2.54
 HYPERTENSIVE = (140.0, 90.0)  # systolic, diastolic, mmHg: "≥ 140" or "≥ 90"
 AGE_BANDS = (40, 50, 60)  # each band's lowest age in years; under the first is the reference
+# The NCHS codebooks' answer codes the items compare with: Yes (MCQ300C, BPQ020, BPQ050A, PAQ650,
+# PAQ665) and Male (RIAGENDR); and the oscillometric readings averaged (BPXOSY<n>, BPXODI<n>).
+YES = 1
+MALE = 1
+READINGS = (1, 2, 3)
 POINTS = {factor: points for factor, _, _, _, points in I.BANG_TABLE2}
 
 
@@ -90,25 +104,28 @@ def _url(name: str, cycle: str = I.GLUCOSE_TEST) -> str:
 
 
 PAQ_C = I.page_url(2003, "PAQ_C")  # Bang's own activity item, on its last development cycle's page
+# Where a rule names Bang's validation cycle: filled in from the notes' Table 3 row (:func:`items`).
+VALIDATION_CYCLE = "<the validation cycle>"
 ITEMS: list[dict[str, Any]] = [
     {"item": "age",
      "rule": (f"RIDAGEYR: {AGE_BANDS[0]} to {AGE_BANDS[1] - 1}, {AGE_BANDS[1]} to "
               f"{AGE_BANDS[2] - 1}, or {AGE_BANDS[2]} or older, against under {AGE_BANDS[0]}"),
      "passages": [(_url("DEMO"), "RIDAGEYR - Age in years at screening")]},
-    {"item": "male", "rule": "RIAGENDR is 1 (Male)",
+    {"item": "male", "rule": f"RIAGENDR is {MALE} (Male)",
      "passages": [(_url("DEMO"), "RIAGENDR - Gender")]},
     {"item": "family history of diabetes",
-     "rule": ("MCQ300C is 1 (Yes): a close relative, a parent or a sibling, told they had "
+     "rule": (f"MCQ300C is {YES} (Yes): a close relative, a parent or a sibling, told they had "
               "diabetes; the paper's development cycles asked of any blood relative (MCQ250A), its "
-              "validation cycle 2005–2006 this item"),
+              f"validation cycle {VALIDATION_CYCLE} this item"),
      "passages": [(_url("MCQ"), "Including living and deceased, were any of {SP's/your} close "
                    "biological that is, blood relatives including father, mother, sisters or "
                    "brothers, ever told by a health professional that they had diabetes?")]},
     {"item": "history of hypertension",
-     "rule": ("BPQ020 is 1 (told of high blood pressure), BPQ050A is 1 (now taking the prescribed "
-              "medicine), or the mean of the available oscillometric readings is "
-              f"{HYPERTENSIVE[0]:g} mmHg or more systolic (BPXOSY1 to BPXOSY3) or "
-              f"{HYPERTENSIVE[1]:g} or more diastolic (BPXODI1 to BPXODI3); a measure with no "
+     "rule": (f"BPQ020 is {YES} (told of high blood pressure), BPQ050A is {YES} (now taking the "
+              "prescribed medicine), or the mean of the available oscillometric readings is "
+              f"{HYPERTENSIVE[0]:g} mmHg or more systolic (BPXOSY{READINGS[0]} to "
+              f"BPXOSY{READINGS[-1]}) or {HYPERTENSIVE[1]:g} or more diastolic "
+              f"(BPXODI{READINGS[0]} to BPXODI{READINGS[-1]}); a measure with no "
               "reading, systolic or diastolic, is not high, so no reading at all scores no point "
               "by measurement (the paper does not state its rule for the readings: "
               f"{I.BANG_NOTES} §6.2)"),
@@ -126,7 +143,7 @@ ITEMS: list[dict[str, Any]] = [
      "passages": [(_url("BMX"), "BMXBMI - Body Mass Index (kg/m**2)"),
                   (_url("BMX"), "BMXWAIST - Waist Circumference (cm)")]},
     {"item": "physically active",
-     "rule": ("PAQ650 or PAQ665 is 1 (Yes): vigorous or moderate recreational activity in a "
+     "rule": (f"PAQ650 or PAQ665 is {YES} (Yes): vigorous or moderate recreational activity in a "
               "typical week. Adapted: the paper's item, PAQ520 (more active than others of the "
               "same age), is not in the later cycle's file"),
      "passages": [(PAQ_C, "Compared with most {men/boys/women/girls} {your/SP's} age, would you "
@@ -141,7 +158,7 @@ ITEMS: list[dict[str, Any]] = [
                    "volleyball for at least 10 minutes continuously?")]},
 ]
 COLUMNS = ("RIDAGEYR", "RIAGENDR", "MCQ300C", "BPQ020", "BPQ050A",
-           *(f"BPXO{m}{i}" for m in ("SY", "DI") for i in range(1, 4)), "BMXBMI", "BMXWAIST",
+           *(f"BPXO{m}{i}" for m in ("SY", "DI") for i in READINGS), "BMXBMI", "BMXWAIST",
            "PAQ650", "PAQ665")
 
 
@@ -158,10 +175,10 @@ def item_problems(pages: Mapping[str, str]) -> list[str]:
 
 
 def _yes(values: Any) -> np.ndarray:
-    """1 where the answer is code 1 (Yes), else 0: refused, don't know and blank are the condition
-    absent (the paper: "If information was missing or unknown in categorical variables, we
-    defined the condition as absent")."""
-    return (pd.to_numeric(pd.Series(values), errors="coerce") == 1).to_numpy()
+    """True where the answer is the code for Yes (:data:`YES`), else False: refused, don't know and
+    blank are the condition absent (the paper: "If information was missing or unknown in
+    categorical variables, we defined the condition as absent")."""
+    return (pd.to_numeric(pd.Series(values), errors="coerce") == YES).to_numpy()
 
 
 def _level(values: Any, cuts: Sequence[float]) -> np.ndarray:
@@ -179,9 +196,9 @@ def score(frame: pd.DataFrame) -> np.ndarray:
     band = np.select([age >= AGE_BANDS[2], age >= AGE_BANDS[1], age >= AGE_BANDS[0]],
                      [POINTS["age 60 or older"], POINTS["age 50-59"],
                       POINTS["age 40-49, against under 40"]], 0)
-    male = pd.to_numeric(frame["RIAGENDR"], errors="coerce").to_numpy() == 1
-    sys_ = frame[[f"BPXOSY{i}" for i in range(1, 4)]].apply(pd.to_numeric, errors="coerce")
-    dia = frame[[f"BPXODI{i}" for i in range(1, 4)]].apply(pd.to_numeric, errors="coerce")
+    male = pd.to_numeric(frame["RIAGENDR"], errors="coerce").to_numpy() == MALE
+    sys_ = frame[[f"BPXOSY{i}" for i in READINGS]].apply(pd.to_numeric, errors="coerce")
+    dia = frame[[f"BPXODI{i}" for i in READINGS]].apply(pd.to_numeric, errors="coerce")
     high = ((sys_.mean(axis=1) >= HYPERTENSIVE[0])
             | (dia.mean(axis=1) >= HYPERTENSIVE[1])).to_numpy()
     hypertension = _yes(frame["BPQ020"]) | _yes(frame["BPQ050A"]) | high
@@ -286,6 +303,14 @@ def reported_auc(text: str | None = None) -> dict[str, Any]:
     return {"auc": float(auc), "cycle": cycle, "n": int(n.replace(",", "")),
             "what": f"Bang et al. 2009's score on its own later cycle, NHANES {cycle}",
             "source": f"{I.BANG_NOTES} §5.3 (the paper's Table 3)"}
+
+
+def items(reported: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The score's items as the output prints them (:data:`ITEMS`): each rule, the family
+    history's naming Bang's validation cycle as ``reported`` (:func:`reported_auc`, the output's
+    own ``reported``) reads it from the notes, and the passages each rests on."""
+    return [{"item": i["item"], "rule": i["rule"].replace(VALIDATION_CYCLE, reported["cycle"]),
+             "passages": [{"source": u, "quote": q} for u, q in i["passages"]]} for i in ITEMS]
 
 
 def _state_at_opening(log: bytes) -> tuple[Any, Any]:
@@ -425,6 +450,7 @@ def benchmark(bundle: Path, record: Path | None = None) -> dict[str, Any]:
     points = score(table)
     out = aucs(positive[rows], points[rows], np.nan_to_num(w[rows]), table["SDMVSTRA"].to_numpy()[
         rows], table["SDMVPSU"].to_numpy()[rows], domain[rows])
+    reported = reported_auc()
     return {
         "benchmark": ("Bang et al. 2009's points score, adapted to the later cycle's questions, "
                       "on the record's own held-out participants"),
@@ -438,16 +464,13 @@ def benchmark(bundle: Path, record: Path | None = None) -> dict[str, Any]:
         "auc": {**out, "weight": weight},
         "score": {"points": {k: v for k, v in POINTS.items()},
                   "range": [int(points[who.held_out].min()), int(points[who.held_out].max())],
-                  "items": [{"item": i["item"], "rule": i["rule"],
-                             "passages": [{"source": u, "quote": q} for u, q in i["passages"]]}
-                            for i in ITEMS]},
-        "reported": reported_auc(),
+                  "items": items(reported)},
+        "reported": reported,
     }
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m research.swarm.benchmark",
-                                     description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="python -m research.swarm.benchmark", description=HELP)
     parser.add_argument("bundle", type=Path, help="the run's export.zip")
     parser.add_argument("--record", type=Path, help="the run's corpus record, whose export's "
                                                     "SHA-256 the bundle must have")

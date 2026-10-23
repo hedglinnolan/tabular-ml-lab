@@ -31,14 +31,22 @@ roles card's under the project's goal, and the repairs entry where a noticing's 
 each entry as the card draws it and the swarm driver's ``ask`` serves it, its concept drawer left
 out and counted (:data:`TEACHING_LEFT_OUT`). It reads nothing else: no preview of an answer before
 it is given (a journey previews none) and none of the data views (the table's pages, the column
-summaries, the histograms). A **sentence** is a string served there that is not a name, of at
-least :data:`MIN_WORDS` words, or of fewer that ends a sentence or states a number
-(:func:`is_sentence`); a shorter string that does neither is a **label** (:func:`is_label`),
-counted and not kept as a sentence. The capture keeps each distinct string once, with every place
-it was served (the source and the JSON path, its list indices dropped), the teaching entries read
-and the drawer sentences left out, the labels, the stages a read stopped waiting for, and the
-project's claims render log (``claims_rendered.jsonl``: what a swarm record's ``claims`` reads),
-and writes them to ``research/registry/journeys/<journey>.capture.json``.
+summaries, the histograms). A **sentence** is a string served there as the value of a key that is
+not a name key (:data:`NAME_KEYS`: a string under one is not read, whatever it holds, and under
+``source`` that is where a thing comes from, citations among them; the capture counts, by key,
+those that read as sentences, ``named``), of at least :data:`MIN_WORDS` words, or of fewer that
+ends a sentence or states a number (:func:`is_sentence`); a shorter string that does neither is a
+**label** (:func:`is_label`), counted and not kept as a sentence. **A state that lasts only while a
+stage computes** is read only where a read that does not wait falls in it, since every read before
+an answer or a press of Fit, and the last, waits it out: the one just after the upload, and one
+just after each answer and each press of Fit taken. The capture counts the reads that waited and
+those that did not, and of the latter those that found a stage computing (``reads``); it does not
+mark the sentences such a read alone served. The capture keeps each distinct string once, with
+every place it was served (the source and the JSON path, its list indices dropped), the teaching
+entries read and the drawer sentences left out, the labels, the name keys' counts and the reads',
+the stages a read stopped waiting for, and the project's claims render log
+(``claims_rendered.jsonl``: what a swarm record's ``claims`` reads), and writes them to
+``research/registry/journeys/<journey>.capture.json``.
 
 **The table** reads a capture and splits each string into its sentences (:func:`sentences_of`), and
 each sentence, once, with every place it was shown, is:
@@ -59,8 +67,14 @@ each sentence, once, with every place it was shown, is:
   for two sentences stating one rule whose verdicts disagree (:func:`disagreements`).
 
 It writes ``research/registry/journeys/<journey>.md``: what the capture read and left out, with the
-counts (the labels under the floor among them, whole or split off a longer string), the claims that render a sentence and whether the record traced each, the claims the log
-holds that render none, and every sentence with where it was shown and its verdict. ``--check``
+counts (the labels under the floor among them, whole or split off a longer string; the name keys'
+strings and the reads that found a stage computing where the capture counted them, and where it
+did not, that it holds no count); what is registered (:func:`registered_words`: the registry's
+claims, those that render a sentence here, the sentences a record traces, the sentences queued to
+register, the rulings that queue them and the reasons those give (several rulings can give one),
+each reason with its rulings and sentences; the table registers none);
+the claims that render a sentence and whether the record traced each, the claims the log holds
+that render none, and every sentence with where it was shown and its verdict. ``--check``
 writes nothing and exits 1 when the committed table is not what the capture, the registry and the
 rulings give now, so the next batch that registers a claim or changes a ruling sees the table it
 leaves stale. A new journey is a :class:`Spec` in :data:`SPECS`.
@@ -196,6 +210,21 @@ def strings_in(node: Any, path: str = "") -> Iterator[tuple[str, str]]:
         yield node.strip(), _INDEX.sub("[]", path)
 
 
+def named_in(node: Any) -> Iterator[tuple[str, str]]:
+    """Each (key, string) :func:`strings_in` skips: a string served directly under a key of
+    :data:`NAME_KEYS`, whatever it holds (under ``source``, where a thing comes from, citations
+    among them)."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if str(k) in NAME_KEYS and isinstance(v, str):
+                yield str(k), v.strip()
+            elif isinstance(v, (dict, list)):
+                yield from named_in(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from named_in(v)
+
+
 def sentences_in(node: Any, path: str = "") -> Iterator[tuple[str, str]]:
     """Each (string, path) of :func:`strings_in` that :func:`is_sentence`."""
     return ((t, p) for t, p in strings_in(node, path) if is_sentence(t))
@@ -204,8 +233,11 @@ def sentences_in(node: Any, path: str = "") -> Iterator[tuple[str, str]]:
 @dataclass
 class Shown:
     """What a capture saw: each distinct string, and every place it was served; the labels under
-    the floor (:func:`is_label`), counted, not kept as sentences; and the stages a read stopped
-    waiting for (:func:`settled`), with the number of reads each was still computing at."""
+    the floor (:func:`is_label`), counted, not kept as sentences; the strings under a name key
+    that read as sentences (:func:`named_in`), by key, counted and not kept; the stages a read
+    stopped waiting for (:func:`settled`), with the number of reads each was still computing at;
+    and the reads, those that waited until no stage was computing and those that did not, with
+    how many of the latter found a stage computing (:func:`read_shown`)."""
 
     strings: dict[str, set[tuple[str, str]]] = field(default_factory=dict)
     snapshots: set[str] = field(default_factory=set)  # digests of the reads kept, by source
@@ -213,6 +245,8 @@ class Shown:
     findings: bool = False  # whether a noticing's card was drawn (the repairs entry words it)
     labels: set[str] = field(default_factory=set)
     unsettled: dict[str, int] = field(default_factory=dict)
+    named: dict[str, set[str]] = field(default_factory=dict)
+    reads: dict[str, int] = field(default_factory=dict)
 
     def add(self, node: Any, source: str) -> None:
         for text, path in strings_in(node):
@@ -220,6 +254,9 @@ class Shown:
                 self.strings.setdefault(text, set()).add((source, path))
             elif is_label(text):
                 self.labels.add(text)
+        for key, text in named_in(node):
+            if is_sentence(text):
+                self.named.setdefault(key, set()).add(text)
 
     def once(self, node: Any, source: str) -> None:
         """Add ``node`` unless the same content was read from ``source`` already: a read whose
@@ -293,9 +330,12 @@ def read_shown(client: Any, pid: str, shown: Shown, *, final: bool = False,
     stage it stopped waiting for. It notes the questions answered (each card the person answered
     on) and whether a noticing's card is drawn, for the teaching read at the end
     (:func:`read_teaching`); a question the Router opens for a moment while a stage computes, and
-    then sets for you or finds not applicable, is not one."""
+    then sets for you or finds not applicable, is not one. It counts itself in ``shown.reads``: as
+    one that waited, or as one that did not, and then also as one that found a stage computing
+    where the project's view, read in the same pass, shows one."""
     base = f"/api/projects/{pid}"
-    if settle or final:
+    waits = settle or final
+    if waits:
         for stage in settled(client, pid):
             shown.unsettled[stage] = shown.unsettled.get(stage, 0) + 1
     for route, source in READS:
@@ -305,6 +345,11 @@ def read_shown(client: Any, pid: str, shown: Shown, *, final: bool = False,
         if found is not None:
             shown.once(found, source)
     view = _json(client.get(base)) or {}
+    kind = "waited" if waits else "unwaited"
+    shown.reads[kind] = shown.reads.get(kind, 0) + 1
+    if not waits:
+        busy = any((s or {}).get("status") in BUSY for s in (view.get("stages") or {}).values())
+        shown.reads["computing"] = shown.reads.get("computing", 0) + int(busy)
     shown.reached.update(str(s.get("key")) for s in view.get("interview") or []
                          if s.get("status") == "answered")
     for step in view.get("interview") or []:
@@ -470,6 +515,8 @@ def capture(spec: Spec, out: Path | None = None) -> dict[str, Any]:
                      "left_out": {"fields": list(TEACHING_LEFT_OUT),
                                   "sentences": teaching_left_out}},
         "labels": sorted(shown.labels),
+        "named": {k: len(v) for k, v in sorted(shown.named.items())},
+        "reads": dict(sorted(shown.reads.items())),
         "unsettled": dict(sorted(shown.unsettled.items())),
         "rendered": [{"id": i, "register": reg, "renders": renders[(i, reg)]}
                      for i, reg in rendered],
@@ -590,11 +637,13 @@ class Row:
     verdict: str  # "claim", "unrendered", "register", "plain", "not shown", "untriaged"
     claims: list[str]
     why: str
+    ruling: int | None = None  # the position, in the rulings, of the one that decided
 
 
 def rows_of(capture_data: dict[str, Any], reg: Any, rulings: Iterable[Any]) -> list[Row]:
     """Every sentence of the capture, once, with all its places, and its verdict: indexed to the
-    claims that render it, else the first ruling that matches it, else untriaged."""
+    claims that render it, else the first ruling that matches it (its position kept, since several
+    rulings can give one why), else untriaged."""
     said = claim_sentences(reg)
     rulings = list(rulings)
     interview = capture_data.get("interview") or {}
@@ -615,12 +664,13 @@ def rows_of(capture_data: dict[str, Any], reg: Any, rulings: Iterable[Any]) -> l
                            f"served only on the card of a question this journey does not ask "
                            f"({question})"))
             continue
-        ruling = next((r for r in rulings if re.search(r.pattern, sentence) and (
+        at = next((i for i, r in enumerate(rulings) if re.search(r.pattern, sentence) and (
             not r.where or any(re.search(r.where, f"{s} {p}") for s, p in where))), None)
-        if ruling is None:
+        if at is None:
             out.append(Row(sentence, where, "untriaged", [], ""))
         else:
-            out.append(Row(sentence, where, ruling.verdict, list(ruling.claims), ruling.why))
+            ruling = rulings[at]
+            out.append(Row(sentence, where, ruling.verdict, list(ruling.claims), ruling.why, at))
     return out
 
 
@@ -741,8 +791,12 @@ def held_words(capture_data: dict[str, Any]) -> str:
            f"given in, again after each one taken, and at the end once no stage was computing: "
            + "; ".join(parts[:-1]) + "; and " + parts[-1] + ". A sentence is a string, or a piece "
            f"of one split at a sentence's end, of at least {MIN_WORDS} words, or of fewer that "
-           "ends a sentence or states a number; it is not a name.")
+           "ends a sentence or states a number, served as the value of a key that is not a name "
+           "key (below).")
     labels = floor_labels(capture_data)
+    named = capture_data.get("named")
+    reads = capture_data.get("reads")
+    taken = sum(1 for a in capture_data.get("answers") or [] if a.get("status") == 200)
     out += (" **Left out by design:** "
             + (f"those entries' concept drawers, {sum(left.values())} sentences (the quest "
                "shell's card offers a drawer by a press that opens nothing, and the swarm "
@@ -750,12 +804,27 @@ def held_words(capture_data: dict[str, Any]) -> str:
             + (f"{len(labels)} strings of fewer than {MIN_WORDS} words that neither end a sentence "
                "nor state a number (labels and headings), whole or split off a longer string; "
                if labels else "")
-            + "a preview of an answer before it is given (this journey previews none); a state "
-              "that lasts only while a stage computes (a question waiting on it, a gate that reads "
-              "its answer as not yet given), read only where the read just after an answer falls "
-              "in it, since the read before the next one waits it out; and the data views (the "
-              "table's pages, the column summaries, the histograms), which the capture does not "
-              "read.")
+            + f"the strings served as the value of a name key, one that names a thing or carries "
+              f"a machine value (the {len(NAME_KEYS)} keys of `sentences.NAME_KEYS`, such as an "
+              "id, a path, a code or a column's name, and `source`, whose values say where a thing "
+              "comes from, citations among them, some quoting a passage), whatever they hold, "
+            + (f"{sum(named.values())} strings among them that read as sentences, "
+               f"{named.get('source', 0)} under `source`; " if named is not None
+               else "which this capture does not count; ")
+            + "a preview of an answer before it is given (this journey previews none); and the "
+              "data views (the table's pages, the column summaries, the histograms), which the "
+              "capture does not read. **Read only where a read falls in it:** a state that lasts "
+              "only while a stage computes (a question waiting on it, a gate that reads its answer "
+              "as not yet given). Every read before an answer or a press of Fit, and the last, "
+              "waits until no stage is computing; the reads that do not wait are the one just "
+              f"after the upload and one just after each answer taken ({taken} here) and each "
+              "press of Fit taken, and "
+            + (f"{reads.get('computing', 0)} of those {reads.get('unwaited', 0)} reads found a "
+               "stage computing (the project's view, read in the same pass, showed one)"
+               if reads is not None
+               else "which of those reads found a stage computing this capture does not record")
+            + ". The capture neither counts nor marks the sentences only such a state serves, so "
+              "a run that reads at other moments can find ones it lacks.")
     unsettled = capture_data.get("unsettled") or {}
     if unsettled:
         out += (f" **Not read:** what a stage still computing after {SETTLE_SECONDS:g} s served "
@@ -763,6 +832,43 @@ def held_words(capture_data: dict[str, Any]) -> str:
                 + ", ".join(f"`{st}` ({n} {'read' if n == 1 else 'reads'})"
                             for st, n in sorted(unsettled.items())) + ".")
     return out
+
+
+def _many(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def registered_words(rows: list[Row], traced: set[str], held: int) -> str:
+    """What is registered, in sentences: the registry's ``held`` claims, those that render a
+    sentence here and the sentences a record traces (rendered by a claim the render log held),
+    of the sentences shown; the sentences queued to register, the rulings that queue them and the
+    reasons those give (several rulings can give one reason, which is counted once); those that
+    say a registered claim's rule outside its render. The table registers none."""
+    shown = [r for r in rows if r.verdict != "not shown"]
+    rendered = [r for r in rows if r.verdict == "claim"]
+    claimed = {c for r in rendered for c in r.claims}
+    traces = [r for r in rendered if set(r.claims) & traced]
+    queued = [r for r in rows if r.verdict == "register"]
+    rulings = {r.ruling for r in queued}
+    reasons = {r.why for r in queued}
+    unrendered = sum(1 for r in rows if r.verdict == "unrendered")
+    return (f"**What is registered.** The registry holds {held} claims; {len(claimed)} of them "
+            f"{'renders' if len(claimed) == 1 else 'render'} a sentence here "
+            f"({_many(len(rendered), 'sentence', 'sentences')}), and {len(traces)} of those "
+            f"sentences {'is' if len(traces) == 1 else 'are'} rendered by a claim the record "
+            f"traced, so of the {len(shown)} sentences this journey showed a swarm record's "
+            f"`claims` traces {len(traces)}. "
+            + (f"{_many(len(queued), 'sentence is a claim', 'sentences are claims')} still to "
+               f"register, queued by {_many(len(rulings), 'ruling', 'rulings')} under the "
+               f"{_many(len(reasons), 'reason', 'reasons')} below (a reason several rulings give "
+               "is counted once), and no record traces "
+               + ("it" if len(queued) == 1 else "them") + ". " if queued
+               else "No sentence is queued to register. ")
+            + f"{_many(unrendered, 'sentence says', 'sentences say')} a registered claim's rule "
+              "in words not its own, outside its render, so no record traces "
+            + ("it" if unrendered == 1 else "them") + " either. This table registers no claim: "
+              "a ruling queues a sentence, and a later batch registers its claim with its parts "
+              "and tests.")
 
 
 def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str:
@@ -801,6 +907,18 @@ def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str
     for v in ("claim", "unrendered", "register", "plain", "not shown", "untriaged"):
         lines.append(f"| {VERDICT_WORDS[v]} | {counts.get(v, 0)} |")
     lines.append(f"| all | {len(rows)} |")
+    lines += ["", registered_words(rows, traced, len(authors))]
+    queued: dict[str, list[Row]] = {}
+    for r in rows:
+        if r.verdict == "register":
+            queued.setdefault(r.why, []).append(r)
+    if queued:
+        lines += ["", "**The sentences queued to register**, by the reason the rulings that queue "
+                  "them give, with the count of those rulings, most sentences first:", "",
+                  "| reason: what the sentences state, and where the code writes it | rulings "
+                  "| sentences |", "|---|---|---|"]
+        lines += [f"| {_cell(why)} | {len({r.ruling for r in held})} | {len(held)} |"
+                  for why, held in sorted(queued.items(), key=lambda x: (-len(x[1]), x[0]))]
     outside = [c for c in claimed if c not in traced]
     lines += ["", f"**The claims that render a sentence here**, and whether the record traced "
               f"them: {len(claimed) - len(outside)} of {len(claimed)} did"
