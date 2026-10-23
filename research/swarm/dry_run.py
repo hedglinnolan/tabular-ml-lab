@@ -1,5 +1,5 @@
 """The driver's dry run (DRIVER_PLAN D6, the scripted analyst): a scripted run on each of the pilot's
-fixtures, through the driver's own commands, to its record and the six mechanical checks.
+fixtures, through the driver's own commands, to its record and the mechanical checks.
 
     python -m research.swarm.dry_run [--runs DIR] [--out research/swarm/dryrun] [name ...]
 
@@ -13,9 +13,12 @@ spec gives one (the card's outcome, purpose and exposure, the journey's roles); 
 own first-ranked option as the driver offers it; else the acceptance drivers' answer for the
 grouping, the exposure, the adjustment set, the time-varying exposure and the forms; every reading
 the server asks from the fixture's declared truth (``truths.FIXTURE_TRUTHS``) with the journey's
-readings beside it, else the app's own guess. The analyst's choices are limited to what the
-driver offers, and it answers only the Router's questions, the readings, the role lines and the
-findings, as journeys.py does: it makes no declaration (the open declaration lines ``ask`` lists),
+readings beside it, else the app's own guess. Where an answer is refused, a reading it asks for is
+answered as every reading is, and a way forward is taken only where the run's spec names it
+(``Spec.exits``, by the decision it records); a refusal offering none of those stops the run, which
+says so, since any other way forward would record an answer the plan never chose. The analyst's
+choices are limited to what the driver offers, and it answers only the Router's questions, the
+readings, the role lines and the findings, as journeys.py does: it makes no declaration (the open declaration lines ``ask`` lists),
 so each run's construction is what it was before the driver offered them. Each answer is tagged with a marker of the controlled vocabulary by the
 question it answers (:data:`MARKER_OF`; record version 2's ``Tag``), and its one preview says why.
 One run explores (a preview of another roles answer, two revisits, three presses of Fit,
@@ -89,6 +92,10 @@ class Spec:
     answers: dict[str, tuple[list[str], list[str]]] = field(default_factory=dict)
     explore: bool = False
     known: dict[str, Any] | None = None  # the checks' known answer, from the declared truth
+    # The ways forward the plan takes where a refusal offers one, each named by the decision it
+    # records (its id is that decision's digest, ``options.exit_id``); a refusal offering none of
+    # them stops the run (``Analyst.until``).
+    exits: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _truth(key: str) -> dict[str, str]:
@@ -150,19 +157,24 @@ def specs() -> dict[str, Spec]:
 
 
 RUNS = ("clinical_explore", "survey_single", "decoy_single")
-CHECKS = ("seal_integrity", "logging", "single_pass", "known_answer", "null_decoy", "robustness")
+CHECKS = ("seal_integrity", "logging", "single_pass", "known_answer", "null_decoy", "robustness",
+          "held_out")
 
 # Each check's expected result per run, from the construction above and the dataset's declared
 # truth, written before any run (``single_pass`` "fail" is the check flagging a single pass).
 EXPECTED: dict[str, dict[str, str]] = {
     "clinical_explore": {"seal_integrity": "pass", "logging": "pass", "single_pass": "pass",
                          "known_answer": "not_checked", "null_decoy": "not_checked",
-                         "robustness": "pass"},
+                         "robustness": "pass", "held_out": "not_checked"},
     "survey_single": {"seal_integrity": "pass", "logging": "pass", "single_pass": "fail",
-                      "known_answer": "pass", "null_decoy": "not_checked", "robustness": "pass"},
+                      "known_answer": "pass", "null_decoy": "not_checked", "robustness": "pass",
+                      "held_out": "not_checked"},
     "decoy_single": {"seal_integrity": "pass", "logging": "pass", "single_pass": "fail",
-                     "known_answer": "not_checked", "null_decoy": "pass", "robustness": "pass"},
+                     "known_answer": "not_checked", "null_decoy": "pass", "robustness": "pass",
+                     "held_out": "not_checked"},
 }
+# No card of the dry run's datasets fixes its held-out rows (only the glucose card does).
+NO_HELD_OUT = "The card fixes no held-out rows, so the split is the run's own."
 WHY: dict[str, dict[str, str]] = {
     "clinical_explore": {
         "seal_integrity": "One opening, no re-seal; the driver refuses any change after it, so "
@@ -175,7 +187,8 @@ WHY: dict[str, dict[str, str]] = {
         "known_answer": "A known-answer control whose fact readings are answered from its declared "
                         "truth (no problem), with no known answer for the held-out score.",
         "null_decoy": "Not a decoy.",
-        "robustness": "The script's own export returns the bundle, and no person helps."},
+        "robustness": "The script's own export returns the bundle, and no person helps.",
+        "held_out": NO_HELD_OUT},
     "survey_single": {
         "seal_integrity": "Under Estimate no seal; the result is the fit the lock was recorded on, "
                           "and no record after the lock is made.",
@@ -190,7 +203,8 @@ WHY: dict[str, dict[str, str]] = {
                         f"be checked against an independent fit before calling it a defect), or "
                         f"the fit refuses it: right or refused.",
         "null_decoy": "Not a decoy.",
-        "robustness": "The script's own export returns the bundle, and no person helps."},
+        "robustness": "The script's own export returns the bundle, and no person helps.",
+        "held_out": NO_HELD_OUT},
     "decoy_single": {
         "seal_integrity": "One opening, no re-seal, no change after it.",
         "logging": "Every answer the script posts carries its reason.",
@@ -200,7 +214,8 @@ WHY: dict[str, dict[str, str]] = {
                       "lies above 0.5 in about 1 run in 40 by chance only: none expected; a model "
                       "that gives everyone the same score has an AUC of 0.5, no skill itself, and "
                       "its interval refused.",
-        "robustness": "The script's own export returns the bundle, and no person helps."},
+        "robustness": "The script's own export returns the bundle, and no person helps.",
+        "held_out": NO_HELD_OUT},
 }
 
 
@@ -231,7 +246,12 @@ def table_of(dataset: str, folder: Path) -> Path:
 
 
 class Refused(RuntimeError):
-    pass
+    """An answer the driver, the server or the engine refused: the command's JSON (``payload``),
+    and the words the run stops with."""
+
+    def __init__(self, payload: dict[str, Any], said: str | None = None):
+        super().__init__(said or json.dumps(payload)[:1500])
+        self.payload = payload
 
 
 @dataclass
@@ -276,7 +296,7 @@ class Analyst:
                 "--marker", marker]
         code, out = self.cmd("answer", *args)
         if code != 0:
-            raise Refused(json.dumps(out)[:1500])
+            raise Refused(out)
         return out
 
     # what journeys answers from the readings
@@ -514,17 +534,35 @@ class Analyst:
                 self.answer(ids, sets, f"{key} answered from {source}.",
                             MARKER_OF.get(key, DEFAULT_MARKER))
             except Refused as exc:
-                out = json.loads(str(exc)) if str(exc).startswith("{") else {}
-                ways = [w for w in (out.get("refused") or {}).get("exits") or []
-                        if w.get("decision") and w.get("id")]
+                refusal = exc.payload.get("refused") or {}
+                ways = [w for w in refusal.get("exits") or [] if w.get("decision") and w.get("id")]
                 if not ways:
                     raise
-                # a refusal that asks for no reading: its first way forward (journeys.post_answer)
+                # A refusal that asks for a reading is settled from the declared truth; any other
+                # way forward is taken only where the plan names it (``Spec.exits``).
                 q2 = self.ask()
-                if not self.settle(q2):
-                    self.answer([ways[0]["id"]], [], f"the refusal's first way forward, "
-                                                     f"{ways[0].get('label')}")
+                if self.settle(q2):
+                    continue
+                way = self.planned(ways)
+                if way is None:
+                    raise Refused(exc.payload, f"The {key} answer was refused "
+                                               f"({refusal.get('code')}: "
+                                               f"{str(refusal.get('message'))[:600]}), and the "
+                                               f"plan names none of its ways forward: "
+                                               f"{'; '.join(str(w.get('label')) for w in ways)}. "
+                                               f"The run stops here.") from None
+                self.answer([way["id"]], [], f"the plan's way forward after the {key} answer "
+                                             f"was refused ({refusal.get('code')}), "
+                                             f"{way.get('label')}")
         raise RuntimeError("the Router never stopped")
+
+    def planned(self, ways: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """The first way forward of the plan's (``Spec.exits``, in its order) that ``ways`` offers,
+        matched by the digest of the decision it records; None where it names none of them."""
+        from research.swarm.options import exit_id
+
+        offered = {str(w["id"]): w for w in ways}
+        return next((offered[exit_id(d)] for d in self.spec.exits if exit_id(d) in offered), None)
 
     def press(self, why: str) -> dict[str, Any]:
         code, out = self.cmd("fit", "--wait", "240")
@@ -635,11 +673,12 @@ def drive(a: Analyst) -> None:
 
 
 def dataset_meta(spec: Spec) -> dict[str, Any]:
-    answers = json.loads((DATASETS / spec.dataset / "answers.json").read_text("utf-8"))
-    card = json.loads((DATASETS / spec.dataset / "card.json").read_text("utf-8"))
-    control = {"known_answer": "known_answer", "decoy": "null_decoy"}.get(answers.get("kind"))
-    return {"id": spec.dataset, "control": control, "fixture": answers.get("fixture_key"),
-            "known": spec.known, "codebook": None, "card": card}
+    """The assembler's ``--dataset`` for the run: the intake's own (``intake.dataset_meta``: the
+    dataset's control, fixture, card and declared measurement markers, so the record's
+    ``dataset.declared`` holds them) with the run's known answer."""
+    from research.swarm.intake import dataset_meta as of_the_intake
+
+    return {**of_the_intake(spec.dataset), "known": spec.known}
 
 
 def one(spec: Spec, runs: Path, out: Path) -> dict[str, Any]:

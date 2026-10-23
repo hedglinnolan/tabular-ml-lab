@@ -96,3 +96,89 @@ def test_no_run_is_started_with_a_label_of_its_own():
         label = row["run_id"].rsplit("-", 1)[0]
         assert driver.RUN_ID.fullmatch(row["run_id"]) and label.startswith("run_"), row["run_id"]
         assert label[4:].isdigit()
+
+
+# ── the dataset the record names (the final fix round's B4) ──────────────────
+
+
+@pytest.mark.parametrize("dataset,markers", [("nhanes_glucose_predict", True),
+                                             ("inpatient_readmission_predict", False)])
+def test_the_dry_runs_dataset_holds_the_markers_its_intake_declares(dataset, markers):
+    """``dataset_meta`` gives the assembler the dataset's declared measurement markers as its
+    intake wrote them (``research/datasets/<id>/declared.json``, read here with json), so a
+    record's ``dataset.declared`` holds them; a dataset whose intake declares none holds none."""
+    from research.swarm.record import Dataset
+
+    folder = D.DATASETS / dataset
+    declared = json.loads((folder / "declared.json").read_text("utf-8")) if markers else []
+    assert bool(declared) == markers and (folder / "declared.json").exists() == markers
+    spec = D.Spec(name="probe", dataset=dataset, target="y", event=None, purpose="prediction",
+                  lenses=["clinical"], readings={}, known={"metric": "auc", "low": 0, "high": 1})
+    meta = D.dataset_meta(spec)
+    assert meta["declared"] == declared
+    assert meta["card"] == json.loads((folder / "card.json").read_text("utf-8"))
+    assert (meta["id"], meta["known"]) == (dataset, spec.known)
+    held = Dataset.model_validate({**meta, "files": []})
+    assert [m.name for m in held.declared] == [m["name"] for m in declared]
+
+
+# ── the scripted analyst on a refusal (the final fix round's B7) ─────────────
+# A refusal's way forward records an answer the run's plan may never have chosen: on the glucose
+# table the survey answer's first way forward recorded the unweighted estimate in place of the
+# plan's population answer. The scripted analyst stops on a refusal and says why, unless its plan
+# names a way forward the refusal offers, by the decision it records; then it takes that one,
+# whatever its place among them. The driver here is constructed: the survey question, whose
+# first-ranked answer is refused with two ways forward.
+
+SURVEY_WAYS = [
+    {"label": "Estimate for these participants instead",
+     "decision": {"kind": "set_survey", "weights": None, "strata": None, "psu": None}},
+    {"label": "Weight by the fasting subsample",
+     "decision": {"kind": "set_survey", "weights": "WTSAF2YR", "strata": "SDMVSTRA",
+                  "psu": "SDMVPSU"}}]
+
+
+def _refused_once(exits):
+    from research.swarm import options as opts
+
+    spec = D.Spec(name="probe", dataset="nhanes_glucose_predict", target="LBXGLU", event=None,
+                  purpose="prediction", lenses=["clinical"], readings={}, exits=exits)
+    a = D.Analyst(spec, Path("unused"))
+    ways = opts.exits(SURVEY_WAYS)
+    answered: list[list[str]] = []
+
+    def cmd(name, *args):
+        if name == "ask":
+            if any(row[0] in {w["id"] for w in ways} for row in answered):
+                return 0, {"question": None, "fit_reached": True}
+            return 0, {"question": {"key": "survey", "status": "open"},
+                       "options": [{"id": "design", "decision": {"kind": "set_survey",
+                                                                 "weights": "WTMEC2YR"}}]}
+        assert name == "answer", name
+        answered.append(list(args))
+        if args[0] == "design":
+            return 1, {"refused": {"by": "server", "code": "weights_blank",
+                                   "message": "The weight is blank on 4,082 rows. " * 60,
+                                   "exits": ways}}
+        return 0, {"recorded": {"kind": "set_survey"}}
+
+    a.cmd = cmd
+    return a, ways, answered
+
+
+def test_the_scripted_analyst_stops_on_a_refusal_whose_ways_its_plan_names_none_of():
+    a, ways, answered = _refused_once([])
+    with pytest.raises(D.Refused) as caught:
+        a.until(lambda q: False)
+    said = str(caught.value)
+    assert [row[0] for row in answered] == ["design"]  # no way forward was taken
+    assert "weights_blank" in said and "the plan names none" in said
+    assert all(w["label"] in said for w in ways)
+
+
+def test_the_scripted_analyst_takes_the_way_forward_its_plan_names_and_says_so():
+    a, ways, answered = _refused_once([SURVEY_WAYS[1]["decision"]])
+    a.until(lambda q: False)
+    assert [row[0] for row in answered] == ["design", ways[1]["id"]]  # the second, not the first
+    reason = answered[-1][answered[-1].index("--reason") + 1]
+    assert "the plan's way forward" in reason and ways[1]["label"] in reason
