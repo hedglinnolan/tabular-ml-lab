@@ -612,7 +612,7 @@ class FailedFit(_Strict):
     """A fit that failed while the driver watched (a command whose current fit, or a stage the
     open question waits on, ended in error), classed by the stage's status alone: ``refused``
     where it served a typed refusal (``refusal``: its code, words and ways forward, as the engine
-    wrote them), else ``failed`` (an error the engine did not write as a refusal: a crash)."""
+    wrote them), else ``failed`` (an error the engine did not type as a refusal)."""
 
     at: datetime | None
     command: str

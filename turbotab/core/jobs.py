@@ -77,24 +77,43 @@ class JobView(BaseModel):
     message: str | None = None
     error: str | None = None
     # A refusal in words (its ``code``, ``message`` and ``exits``) beside ``error`` where the job
-    # refused rather than crashed (:func:`failure_of`); None otherwise.
+    # refused in words (:func:`failure_of`); None for an error the engine did not type as a refusal.
     refusal: dict[str, Any] | None = None
+
+
+# The code of a reading the work waits on (``readings.Unsettled``): the answer-time ask's own
+# (``decisions``' ``reading_unsettled`` refusal of an answer the same reading holds up).
+UNSETTLED = "reading_unsettled"
 
 
 def failure_of(exc: BaseException) -> tuple[str, dict[str, Any] | None]:
     """A failure as a job or a stage reports it: its error text, ``<type>: <words>`` (a refusal
     in words as the type it says it is shown as, its ``shown_as``: a ``ValueError``), and, where
-    the failure is a refusal in words (it has ``as_refusal()``, ``graph.StageRefusal``), its
-    code, words and ways forward; None for a crash."""
+    the failure is a refusal in words, its code, words and ways forward: one that has
+    ``as_refusal()`` (``graph.StageRefusal``), or a reading the work waits on
+    (``readings.Unsettled``: it asks, never guesses), typed with the ask's code
+    (:data:`UNSETTLED`) and its own ways forward. None for an error the engine did not type as a
+    refusal."""
     shown = getattr(type(exc), "shown_as", None) or type(exc).__name__
-    as_refusal = getattr(exc, "as_refusal", None)
-    refusal = None
-    if callable(as_refusal):
-        try:
-            refusal = dict(as_refusal())
-        except Exception:  # noqa: BLE001 - a refusal that cannot say itself is a crash
-            refusal = None
+    try:
+        refusal = _refusal_of(exc)
+    except Exception:  # noqa: BLE001 - a refusal that cannot say itself is no refusal
+        refusal = None
     return f"{shown}: {exc}", refusal
+
+
+def _refusal_of(exc: BaseException) -> dict[str, Any] | None:
+    as_refusal = getattr(exc, "as_refusal", None)
+    if callable(as_refusal):
+        return dict(as_refusal())
+    from turbotab.core.readings import Unsettled
+
+    if isinstance(exc, Unsettled):
+        from turbotab.core.graph import StageRefusal
+
+        # Its ways forward as a stage's refusal carries them: each decision read by the model.
+        return StageRefusal(UNSETTLED, str(exc), exits=exc.exits).as_refusal()
+    return None
 
 
 class Cancelled(BaseException):

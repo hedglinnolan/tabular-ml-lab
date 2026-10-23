@@ -417,9 +417,16 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     unread = [c for c in inputs if is_categorical(frame[c]) and c not in left | amounts | {fe}
               and confirmation(state, "code_or_count", c) == "amount"]
     if unread:
-        raise ValueError(f"`{unread[0]}` is recorded as amounts, but some of its values are not "
-                         f"numbers yet (values below a detection limit, or commas that read two "
-                         f"ways); answer how they read before the fit.")
+        from turbotab.core.graph import StageRefusal
+
+        # Typed as the fit's ask is (``readings.predictors_or_ask``), with its ways forward for
+        # what the values hold: the detection-limit answers, the two readings of the commas, and
+        # codes instead.
+        raise StageRefusal(
+            "reading_unsettled",
+            f"`{unread[0]}` is recorded as amounts, but some of its values are not numbers yet "
+            f"(values below a detection limit, or commas that read two ways); answer how they "
+            f"read before the fit.", exits=_unread_exits(unread[0], frame[unread[0]]))
     categorical = [c for c in inputs if (is_categorical(frame[c]) or c in declared)
                    and c not in scored]
     numeric = [c for c in inputs if c not in categorical]
@@ -485,6 +492,25 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     )
 
 
+def _unread_exits(column: str, values: pd.Series) -> list[dict[str, Any]]:
+    """The ways forward of a column recorded as amounts whose values are not numbers yet, as the
+    fit's ask gives them for what its values hold (``readings.predictors_or_ask``): the
+    detection-limit answers where some lie below a limit (``readings.detection_exits``), the two
+    readings of commas that read two ways (``readings.comma_exits``), else codes instead; each
+    read by the registry's one value test (``readings.by_values``)."""
+    from turbotab.core.readings import by_values, code_or_count_exits, comma_exits, detection_exits
+
+    counts = values.dropna().astype(str).value_counts()
+    verdict = by_values("code_or_count", pd.Series(list(counts.index), dtype=object),
+                        counts=counts.to_numpy(dtype=float))
+    facts = verdict.detail if isinstance(verdict.detail, dict) else {}
+    if facts.get("text_numbers") and facts.get("below"):
+        return detection_exits(column, facts)
+    if facts.get("text_numbers") and facts.get("ambiguous_comma"):
+        return comma_exits(column)
+    return [code_or_count_exits(column)[1]]
+
+
 def explore_answers(state: Any) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """The ``levers`` and ``selection`` answers the pipeline runs in each training fold, as the
     design spec holds them (None under inference or unanswered)."""
@@ -535,8 +561,11 @@ def make_plans(families: Sequence[Any], task: str, y: Any, *, units: Any = None,
     if loss not in get_args(Loss):
         if not strict:
             return {}
-        raise ValueError(f"{tuned[0].label} is tuned on a strictly proper per-row loss, which "
-                         f"this outcome has none of, so it cannot be fit here.")
+        from turbotab.core.graph import StageRefusal
+
+        raise StageRefusal("no_per_row_loss",
+                           f"{tuned[0].label} is tuned on a strictly proper per-row loss, which "
+                           f"this outcome has none of, so it cannot be fit here.")
     if units is not None and len(pd.unique(np.asarray(units, dtype=object))) == len(units):
         units = None  # one row per unit: the fit stage reads no units either
     n_plan, plan_rows, unit = plan_size(task, y, units, folds=folds, order=order)
@@ -1122,10 +1151,20 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
             cannot = [families_by_key[k].label for k in family_keys
                       if not families_by_key[k].handles_missing]
             if cannot:
-                raise ValueError(
+                from turbotab.core.graph import StageRefusal
+                from turbotab.core.methods.missing import methods_for
+
+                # The ways forward: the missing-values answers the purpose accepts as they stand
+                # (``methods.missing.methods_for``, soundest first), never one its leash refuses.
+                raise StageRefusal(
+                    "no_missing_strategy",
                     f"{n_bad:,} {rows_word} have a missing predictor value and no missing-values "
                     f"strategy was chosen; {', '.join(cannot)} cannot use them. Choose complete "
-                    f"cases or imputation first.")
+                    f"cases or imputation first.",
+                    exits=[{"label": m["label"], "decision": {"kind": "set_missing",
+                                                              **m["decision"]}}
+                           for m in methods_for(spec.purpose)
+                           if m["rung"] in ("recommended", "available")])
     return out
 
 
