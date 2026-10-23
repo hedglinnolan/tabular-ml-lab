@@ -430,8 +430,11 @@ def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: 
     train_last = float(dated_units.loc[ranked[:-n_hold]].max())
     boundary = _show_time(boundary_value, dated)
     tied = train_last >= boundary_value
+    # Its verb agrees in number with the tied units held out: one of two tied is (RF-P1).
+    held_tied = int((dated_units.loc[list(held)] == boundary_value).sum())
     tie = (f" `{int((dated_units == boundary_value).sum()):,}` {word} share that last `{column}`; "
-           f"which of them are held out was drawn at random." if tied else "")
+           f"which of them {'is' if held_tied == 1 else 'are'} held out was drawn at random."
+           if tied else "")
     # A count of one takes a singular noun and verb (the integration fix list's item 9).
     undated = (f" `{n_undated:,}` {plural(n_undated, word[:-1])} with no readable `{column}` "
                f"{'trains and is' if n_undated == 1 else 'train and are'} never held out."

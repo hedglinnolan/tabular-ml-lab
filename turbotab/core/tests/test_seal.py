@@ -259,6 +259,28 @@ def test_the_chronological_draws_lead_agrees_in_number_with_the_count_held_out(g
         lead.format(word=word) + f" every training {word}'s last `year` comes earlier.")
 
 
+@pytest.mark.parametrize("groups", [None, "units"])
+@pytest.mark.parametrize("tied, holdout, verb", [(2, 0.1, "is"), (3, 0.2, "are")])
+def test_the_tie_clause_agrees_in_number_with_the_tied_ones_held_out(groups, tied, holdout, verb):
+    """RF-P1: ten rows (or units) by construction, the latest ``tied`` of them sharing the last
+    `visit`; the latest 10% (one) or 20% (two) are held out, so one of two tied is held out in
+    the singular and two of three in the plural, each count read off the mask."""
+    times = np.arange(1.0, 11.0)
+    times[-tied:] = times[-1]
+    keys = None
+    if groups == "units":  # each time a unit of two rows at that time
+        times = np.repeat(times, 2)
+        keys = np.repeat([f"u{i}" for i in range(10)], 2)
+    mask, chronology = seal.chronological_holdout(times, keys, holdout, 0, "visit", dated=False)
+    word = "units" if groups else "rows"
+    held = set(keys[mask]) if groups else set(np.flatnonzero(mask))
+    at_last = {f"u{i}" for i in range(10 - tied, 10)} if groups else set(range(10 - tied, 10))
+    assert len(held & at_last) == round(10 * holdout) == tied - 1  # some of the tied train
+    assert chronology.sentence.endswith(
+        f" `{tied}` {word} share that last `visit`; which of them {verb} held out was drawn at "
+        f"random.")
+
+
 def test_temporal_without_a_time_column_draws_at_random_and_says_so(clinical):
     split = drawn(clinical, clinical_state(temporal=TemporalSpec(temporal=True),
                                            repeat_kind=RepeatSpec(repeat_kind="time_points")))
