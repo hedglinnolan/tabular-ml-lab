@@ -340,6 +340,14 @@ AS_SENT = [
      "allow"),
     ("a builder's driver fit in the background", "builder", "Bash",
      {"command": f"{DRIVER} fit --run RUN", "run_in_background": True}, None),
+    ("an analyst's driver fit out of the sandbox", "analyst", "Bash",
+     {"command": f"{DRIVER} fit --run RUN", "dangerouslyDisableSandbox": True}, "deny"),
+    ("an analyst's driver fit in the sandbox", "analyst", "Bash",
+     {"command": f"{DRIVER} fit --run RUN", "dangerouslyDisableSandbox": False}, "allow"),
+    ("a builder's driver fit out of the sandbox", "builder", "Bash",
+     {"command": f"{DRIVER} fit --run RUN", "dangerouslyDisableSandbox": True}, None),
+    ("an analyst's Bash input as a string", "analyst", "Bash", f"{DRIVER} ask --run RUN", "deny"),
+    ("an analyst's Bash input as a list", "analyst", "Bash", [f"{DRIVER} ask --run RUN"], "deny"),
     ("a builder's git status", "builder", "Bash", {"command": "git status --short"}, None),
     ("a builder's driver start", "builder", "Bash",
      {"command": f"{DRIVER} start --data x.csv --budget-fits 1 --budget-seconds 1"}, None),
@@ -470,6 +478,56 @@ def test_a_background_call_of_any_other_caller_hears_nothing():
     given = {"command": f"{DRIVER} ask --run r1", "run_in_background": True}
     for agent in (None, "builder", "theorist"):
         assert hook.decide(call(tool_input=given, agent=agent)) is None
+
+
+@pytest.mark.parametrize("unsandboxed", [True, 1, "true"])
+def test_a_driver_command_let_out_of_the_sandbox_is_denied_to_an_analyst(unsandboxed):
+    """Fires where it should: an approved command with a truthy ``dangerouslyDisableSandbox``
+    would run outside the sandbox, so it is denied, in words that say so and name the field to
+    leave out."""
+    for command in (f"{DRIVER} ask --run r1", f"{DRIVER} fit --run r1"):
+        given = {"command": command, **BASH_FIELDS, "dangerouslyDisableSandbox": unsandboxed}
+        says = hook.decide(call(tool_input=given))
+        assert denied(says), command
+        reason = says["hookSpecificOutput"]["permissionDecisionReason"]
+        assert reason.startswith("An analyst never runs a driver command outside the sandbox")
+        assert "dangerouslyDisableSandbox" in reason
+
+
+@pytest.mark.parametrize("given", [{"dangerouslyDisableSandbox": False},
+                                   {"dangerouslyDisableSandbox": None},
+                                   {"dangerouslyDisableSandbox": False,
+                                    "run_in_background": False}],
+                         ids=["false", "null", "both false"])
+def test_a_driver_command_left_in_the_sandbox_is_approved_as_before(given):
+    """Silent where it should be: each allowed command, with ``dangerouslyDisableSandbox`` false or
+    null (absent is the foreground test's), is approved."""
+    for command in ALLOWED:
+        assert allowed(hook.decide(call(tool_input={"command": command, **BASH_FIELDS, **given})))
+
+
+def test_an_unsandboxed_call_of_any_other_caller_hears_nothing():
+    given = {"command": f"{DRIVER} ask --run r1", "dangerouslyDisableSandbox": True}
+    for agent in (None, "builder", "theorist"):
+        assert hook.decide(call(tool_input=given, agent=agent)) is None
+
+
+@pytest.mark.parametrize("given", ["cat x", f"{DRIVER} ask --run r1", [f"{DRIVER} ask --run r1"],
+                                   7, 3.5, True, "", [], 0],
+                         ids=["a string", "the driver's words", "a list", "a number",
+                              "a float", "true", "empty string", "empty list", "zero"])
+def test_a_tool_input_that_is_not_an_object_is_denied_in_words(given):
+    """Fires where it should: a Bash call whose input is not an object holds no command the hook
+    can check, so it is denied in words (it raised before, and the hook's script exited 1), as the
+    claim cycle's hook denies it; in the script too, with exit 0 and nothing on standard error."""
+    says = hook.decide(call(tool_input=given))
+    assert denied(says), given
+    assert "An analyst runs only the driver's commands" in (
+        says["hookSpecificOutput"]["permissionDecisionReason"])
+    rc, answer = run_script(call(tool_input=given))
+    assert rc == 0 and denied(answer), given
+    # Silent the other way: the same command in an object is approved as before.
+    assert allowed(hook.decide(call(tool_input={"command": f"{DRIVER} ask --run r1"})))
 
 
 # The ASCII control characters, as an independent library classes them: Unicode's Cc below 128.

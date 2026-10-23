@@ -233,6 +233,8 @@ def every_refusal(role: str, tmp_path: Path, monkeypatch) -> dict[str, tuple[str
                                                  cwd="/tmp"))
     says["the background"] = said(call(role, command=f"{TOOLS} index cycle/a",
                                        run_in_background=True))
+    says["out of the sandbox"] = said(call(role, command=f"{TOOLS} index cycle/a",
+                                           dangerouslyDisableSandbox=True))
     if role == "experimentalist":
         says["a proposal"] = said(call(role, command=PROPOSE))
     monkeypatch.setattr(H, "PIN", tmp_path / "none.json")
@@ -292,6 +294,37 @@ def test_a_background_call_of_any_other_caller_hears_nothing():
     for agent in (None, "analyst", "builder"):
         assert H.decide(call(agent, command=f"{TOOLS} index cycle/a",
                              run_in_background=True)) is None
+
+
+@pytest.mark.parametrize("agent", list(ALLOWED))
+@pytest.mark.parametrize("unsandboxed", [True, 1, "true"])
+def test_a_tools_command_let_out_of_the_sandbox_is_denied(agent, unsandboxed):
+    """Fires where it should: a command the hook approves, with a truthy
+    ``dangerouslyDisableSandbox``, is denied in words that say a tools command never runs outside
+    the sandbox, naming the role and the field to leave out."""
+    for command in ALLOWED[agent]:
+        says = denied(H.decide(call(agent, command=command, description="d",
+                                    dangerouslyDisableSandbox=unsandboxed)))
+        assert says.startswith(f"{named_as(agent).capitalize()} never runs a tools command "
+                               f"outside the sandbox"), says
+        assert "dangerouslyDisableSandbox" in says
+
+
+@pytest.mark.parametrize("agent", list(ALLOWED))
+@pytest.mark.parametrize("given", [{"dangerouslyDisableSandbox": False},
+                                   {"dangerouslyDisableSandbox": None},
+                                   {"dangerouslyDisableSandbox": False,
+                                    "run_in_background": False}],
+                         ids=["false", "null", "both false"])
+def test_a_tools_command_left_in_the_sandbox_is_approved_as_before(agent, given):
+    for command in ALLOWED[agent]:
+        assert allowed(H.decide(call(agent, command=command, description="d", **given))), command
+
+
+def test_an_unsandboxed_call_of_any_other_caller_hears_nothing():
+    for agent in (None, "analyst", "builder"):
+        assert H.decide(call(agent, command=f"{TOOLS} index cycle/a",
+                             dangerouslyDisableSandbox=True)) is None
 
 
 @pytest.mark.parametrize("agent", [None, "analyst", "builder", "verifier", "general-purpose",
@@ -409,6 +442,14 @@ AS_SENT = [
      {**TOOLS_INDEX, "description": "d", "run_in_background": False}, "root", "allow"),
     ("an experimentalist's index in the background", "experimentalist", "Bash",
      {**TOOLS_INDEX, "run_in_background": True}, "root", "deny"),
+    ("a theorist's index out of the sandbox", "theorist", "Bash",
+     {**TOOLS_INDEX, "dangerouslyDisableSandbox": True}, "root", "deny"),
+    ("a theorist's index in the sandbox", "theorist", "Bash",
+     {**TOOLS_INDEX, "dangerouslyDisableSandbox": False}, "root", "allow"),
+    ("an experimentalist's index out of the sandbox", "experimentalist", "Bash",
+     {**TOOLS_INDEX, "dangerouslyDisableSandbox": True}, "root", "deny"),
+    ("a builder's index out of the sandbox", "builder", "Bash",
+     {**TOOLS_INDEX, "dangerouslyDisableSandbox": True}, "root", None),
     ("an experimentalist's index", "experimentalist", "Bash", TOOLS_INDEX, "root", "allow"),
     ("an experimentalist's structured report", "experimentalist", "StructuredOutput", {"x": 1},
      "root", "allow"),

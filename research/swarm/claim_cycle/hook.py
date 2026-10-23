@@ -24,7 +24,9 @@ under the pin. It denies, with a plain reason the agent reads:
   another checkout's root, a worktree's say, holds its own ``scripts/py`` and tools, which may
   differ from this one's;
 * every Bash call with a truthy ``run_in_background`` (``analyst_hook.background_refusal``): an
-  agent of the claim cycle runs one tools command at a time, in the foreground;
+  agent of the claim cycle runs one tools command at a time, in the foreground; and every one with
+  a truthy ``dangerouslyDisableSandbox`` (``analyst_hook.sandbox_refusal``): a tools command it
+  approves runs under whatever sandbox the session has, never outside it;
 * every tools command while no cycle is pinned, and every one that names a folder or a file other
   than the pinned cycle's corpus folder and proposals file (``pin.py``: one cycle at a time, each
   with a proposals file of its own, so no agent reads both the corpus and its shuffled copy, nor
@@ -153,8 +155,9 @@ def bash_refusal(command: Any, cwd: Any, role: str) -> str | None:
 def decide(call: Any) -> dict[str, Any] | None:
     """The hook's answer to one tool call: for a theorist or an experimentalist, an approval of a
     report tool or of a tools command it checked whole under the pin (:func:`bash_refusal`) and
-    runs in the foreground (``analyst_hook.background_refusal``), and a denial of anything else;
-    for every other caller, None, to say nothing."""
+    runs in the foreground and the sandbox (``analyst_hook.background_refusal``,
+    ``analyst_hook.sandbox_refusal``), and a denial of anything else; for every other caller,
+    None, to say nothing."""
     if not isinstance(call, dict) or call.get("agent_type") not in COMMANDS:
         return None
     role = call["agent_type"]
@@ -167,7 +170,8 @@ def decide(call: Any) -> dict[str, Any] | None:
     given = call.get("tool_input")
     command = given.get("command") if isinstance(given, dict) else None
     why = (bash_refusal(command, call.get("cwd"), role)
-           or A.background_refusal(given, named(role), COMMAND_NAME))
+           or A.background_refusal(given, named(role), COMMAND_NAME)
+           or A.sandbox_refusal(given, named(role), COMMAND_NAME))
     if why:
         return deny(why)
     return allow(f"The claim cycle's hook checked this tools command ({shlex.split(command)[3]}) "

@@ -37,12 +37,16 @@ plain reason the analyst reads, every other tool (the agent type's own ``tools: 
 
 * one run in the background, a Bash call with a truthy ``run_in_background``, whatever its
   command: an analyst runs one driver command at a time, in the foreground, so that it reads what
-  each prints before it runs the next.
+  each prints before it runs the next;
+* one let out of the sandbox, a Bash call with a truthy ``dangerouslyDisableSandbox``, whatever
+  its command: a command the hook approves runs under whatever sandbox the session has, never
+  outside it;
+* a Bash call whose input is not an object, which holds no command to check.
 
-Its refusals of the shell's rules (:func:`shell_refusal`) and of the background
-(:func:`background_refusal`) name the agent and its command, here an analyst and a driver command
-(:data:`SUBJECT`, :data:`COMMAND_NAME`), so that the claim cycle's hook, which shares them, names
-its own.
+Its refusals of the shell's rules (:func:`shell_refusal`), of the background
+(:func:`background_refusal`) and of leaving the sandbox (:func:`sandbox_refusal`) name the agent
+and its command, here an analyst and a driver command (:data:`SUBJECT`, :data:`COMMAND_NAME`), so
+that the claim cycle's hook, which shares them, names its own.
 
 For every other agent type, and for the session itself, it says nothing, neither approving nor
 denying: the call goes on to the permissions as it would without the hook. Input that does not
@@ -211,6 +215,16 @@ def background_refusal(given: Any, subject: str, name: str) -> str | None:
     return None
 
 
+def sandbox_refusal(given: Any, subject: str, name: str) -> str | None:
+    """Why a Bash call whose input is ``given`` is refused for asking to leave the sandbox: a
+    truthy ``dangerouslyDisableSandbox``, in words that name ``subject`` and its command's
+    ``name``, as :func:`background_refusal`'s do; None for a call that does not ask."""
+    if isinstance(given, dict) and given.get("dangerouslyDisableSandbox"):
+        return (f"{subject.capitalize()} never runs a {name} outside the sandbox: run it again "
+                f"without dangerouslyDisableSandbox.")
+    return None
+
+
 def bash_refusal(command: Any, cwd: Any) -> str | None:
     """Why an analyst's Bash ``command`` is not the driver's invocation, or None when it is."""
     if not isinstance(command, str) or not command.strip():
@@ -237,9 +251,10 @@ def bash_refusal(command: Any, cwd: Any) -> str | None:
 
 def decide(call: Any) -> dict[str, Any] | None:
     """The hook's answer to one tool call: for an analyst, an approval of a report tool or of a
-    driver command it checked whole (:func:`bash_refusal`) and runs in the foreground
-    (:func:`background_refusal`), and a denial of anything else; for every other caller, None, to
-    say nothing."""
+    driver command it checked whole (:func:`bash_refusal`) and runs in the foreground and the
+    sandbox (:func:`background_refusal`, :func:`sandbox_refusal`), and a denial of anything else,
+    a call whose input is not an object among them; for every other caller, None, to say
+    nothing."""
     if not isinstance(call, dict) or call.get("agent_type") != ANALYST:
         return None
     tool = call.get("tool_name")
@@ -248,10 +263,11 @@ def decide(call: Any) -> dict[str, Any] | None:
     if tool != "Bash":
         return deny(f"An analyst works only through the driver's commands, run with Bash; {tool} "
                     f"is not open to it.")
-    given = call.get("tool_input") or {}
-    command = given.get("command")
+    given = call.get("tool_input")
+    command = given.get("command") if isinstance(given, dict) else None
     why = (bash_refusal(command, call.get("cwd"))
-           or background_refusal(given, SUBJECT, COMMAND_NAME))
+           or background_refusal(given, SUBJECT, COMMAND_NAME)
+           or sandbox_refusal(given, SUBJECT, COMMAND_NAME))
     if why:
         return deny(why)
     return allow(f"The analyst hook checked this driver command ({shlex.split(command)[3]}) "
