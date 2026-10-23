@@ -22,6 +22,9 @@ score on a record's own held-out participants, and its AUC.
 * **Bang's reported AUC** is read from the notes' Table 3 row, and refused unless the row is there
   once; every passage the score's items quote is on its page; the activity item's adaptation is
   refused should the later cycle's file document PAQ520.
+* **The numbers the researcher reads** follow the values the code uses: the help's threshold is
+  the AUC's (the module read again under another), and the family-history rule's validation cycle
+  is the notes' row's, the output's ``reported`` (the notes pointed at another cycle).
 """
 from __future__ import annotations
 
@@ -546,3 +549,60 @@ def test_the_benchmark_refuses_a_bundle_made_from_another_table(tmp_path, capsys
         B.benchmark(path)
     assert B.main([str(path)]) == 2
     assert "does not match the record" in json.loads(capsys.readouterr().out)["refused"]
+
+
+# ── the numbers the researcher reads, filled in from the values the code uses ─
+
+
+def _help(module, capsys) -> str:
+    """The command line's help, as ``--help`` prints it, its line breaks undone."""
+    with pytest.raises(SystemExit):
+        module.main(["--help"])
+    return " ".join(capsys.readouterr().out.split())
+
+
+def test_the_help_states_the_threshold_the_auc_uses(capsys):
+    """The verifier's P5-V5: the help's threshold is the one the AUC thresholds the outcome at
+    (``THRESHOLD``, Bang's 126 mg/dL, ``intake.BANG_FPG``); with the module read again under
+    another threshold, the help prints that one and not 126."""
+    assert B.THRESHOLD == I.BANG_FPG == 126
+    assert "the AUC of the outcome thresholded at 126 mg/dL ranked by it" in _help(B, capsys)
+    moved = _benchmark_with({"THRESHOLD = I.BANG_FPG": "THRESHOLD = 110"})
+    text = _help(moved, capsys)
+    assert "thresholded at 110 mg/dL" in text and "126" not in text
+
+
+VALIDATION_ROW = "| Validation 2005–2006 (N = 1,640, **AUC 0.83**) |"
+
+
+def test_the_family_history_rule_names_the_validation_cycle_the_notes_print():
+    """The verifier's P5-V5: the family-history rule names Bang's validation cycle as the notes'
+    Table 3 row prints it, the same reading the output's ``reported`` gives, so the two never
+    disagree: the notes' own row gives 2005–2006, and a row naming another cycle gives that one."""
+    family = next(i for i in B.items(B.reported_auc()) if i["item"] == "family history of diabetes")
+    assert "its validation cycle 2005–2006 this item" in family["rule"]
+    other = B.reported_auc(f"x\n{VALIDATION_ROW.replace('2005–2006', '2007–2008')}\n")
+    assert other["cycle"] == "2007–2008"
+    family = next(i for i in B.items(other) if i["item"] == "family history of diabetes")
+    assert "its validation cycle 2007–2008 this item" in family["rule"]
+    assert "2005" not in family["rule"]
+    assert [i["item"] for i in B.items(other)] == [i["item"] for i in B.ITEMS]
+
+
+def test_the_outputs_family_history_rule_follows_the_notes_validation_cycle(tmp_path, monkeypatch):
+    """End to end, the notes pointed at another validation cycle: the output's family-history rule
+    and its ``reported`` both name it."""
+    t = glucose_table()
+    want = by_pandas(t)
+    sha = I.load(I.GLUCOSE_ID)["manifest"]["table"]["sha256"]
+    path = bundle(tmp_path, log(len(want)), sha)
+    notes = (REPO / I.BANG_NOTES).read_text(encoding="utf-8")
+    assert notes.count(VALIDATION_ROW) == 1
+    moved = tmp_path / "bang2009.md"
+    moved.write_text(notes.replace(VALIDATION_ROW, VALIDATION_ROW.replace("2005–2006",
+                                                                          "2007–2008")), "utf-8")
+    monkeypatch.setattr(B, "NOTES", moved)
+    out = B.benchmark(path)
+    rule = {i["item"]: i["rule"] for i in out["score"]["items"]}["family history of diabetes"]
+    assert out["reported"]["cycle"] == "2007–2008"
+    assert "its validation cycle 2007–2008 this item" in rule and "2005" not in rule

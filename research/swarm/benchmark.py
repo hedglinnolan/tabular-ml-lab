@@ -1,7 +1,8 @@
 """The glucose project's benchmark (SWARM_PLAN §5, dataset 3; §10 package 5): Bang et al. 2009's
 points score, adapted to the later cycle's questions, on a run's own held-out participants, and the
-AUC of the outcome thresholded at 126 mg/dL ranked by it
-(``notes/replication/glucose_benchmarks.md``).
+AUC of the outcome thresholded at Bang's cut for diabetes (:data:`THRESHOLD`) ranked by it
+(``notes/replication/glucose_benchmarks.md``). The command line's help says the same, the cut's
+number filled in from :data:`THRESHOLD` (:data:`HELP`).
 
     scripts/py -m research.swarm.benchmark <export.zip> [--record <record.json>] [--out <file>]
 
@@ -25,21 +26,23 @@ is not read: the engine applies one under Estimate only, and the record is a pre
 **The score** (:data:`ITEMS`), each item's rule written beside the passages it rests on, every one
 found on its NCHS page as the dataset's manifest holds it (refused otherwise): Table 2's points
 (``intake.BANG_TABLE2``) for age, male sex, family history (MCQ300C, the close relatives' item,
-which Bang's own validation cycle used), a history of hypertension (told, taking prescribed
-medicine, or the mean of the oscillometric readings at 140/90 or more), the body-size category
-(BMI or waist, the paper's cut-offs) and physical activity. PAQ520, the paper's item, was
-discontinued after 2005–2006, so activity is adapted: active is a yes to vigorous or to moderate
-recreational activity in a typical week (PAQ650, PAQ665), and the score is refused should the later
-cycle's file document PAQ520. A categorical answer missing or unknown is the condition absent, as
+which Bang's own validation cycle used; the rule names that cycle as the notes' Table 3 row prints
+it, :func:`reported_auc`, the reading the output's ``reported`` gives), a history of hypertension
+(told, taking prescribed medicine, or the mean of the oscillometric readings at 140/90 or more),
+the body-size category (BMI or waist, the paper's cut-offs) and physical activity. PAQ520, the
+paper's item, was discontinued after 2005–2006, so activity is adapted: active is a yes to
+vigorous or to moderate recreational activity in a typical week (PAQ650, PAQ665), and the score is
+refused should the later cycle's file document PAQ520. A categorical answer missing or unknown is the condition absent, as
 the paper defines it; so is a blank measurement, a choice the paper leaves open (the notes' §6.2 and
 §6.5): with both BMI and waist blank, not overweight or obese, and a blood pressure measure with
 no reading, not high.
 
-**The AUC** of LBXGLU at or above 126 mg/dL, ranked by the score, ties counting one half: per
-participant (primary, as published AUCs are), with DeLong's interval (``models.performance``); and
-weighted by the test cycle's fasting weights, with the delete-one-PSU jackknife's interval (JKn
-within strata over the whole cycle's design, the estimate re-weighted in each replicate). Beside
-them, Bang's reported AUC on its own later cycle, read from ``notes/replication/bang2009.md``.
+**The AUC** of LBXGLU at or above :data:`THRESHOLD` (mg/dL), ranked by the score, ties counting one
+half: per participant (primary, as published AUCs are), with DeLong's interval
+(``models.performance``); and weighted by the test cycle's fasting weights, with the
+delete-one-PSU jackknife's interval (JKn within strata over the whole cycle's design, the estimate
+re-weighted in each replicate). Beside them, Bang's reported AUC on its own later cycle, read from
+``notes/replication/bang2009.md``.
 """
 from __future__ import annotations
 
@@ -62,6 +65,12 @@ if str(REPO) not in sys.path:
 from research.swarm import intake as I  # noqa: E402
 
 THRESHOLD = I.BANG_FPG  # mg/dL: the outcome thresholded as Bang's undiagnosed diabetes is
+# The command line's description: the module docstring's first paragraph, the cut's number the one
+# the AUC uses.
+HELP = ("The glucose project's benchmark (SWARM_PLAN §5, dataset 3; §10 package 5): Bang et al. "
+        "2009's points score, adapted to the later cycle's questions, on a run's own held-out "
+        f"participants, and the AUC of the outcome thresholded at {THRESHOLD:g} mg/dL ranked by it "
+        "(``notes/replication/glucose_benchmarks.md``).")
 NOTES = REPO / I.BANG_NOTES
 # Table 3's validation row as the notes print it: the cycle, its N and its AUC.
 REPORTED = re.compile(r"\| Validation (\d{4}–\d{4}) \(N = ([\d,]+), \*\*AUC (\d\.\d+)\*\*\) \|")
@@ -90,6 +99,8 @@ def _url(name: str, cycle: str = I.GLUCOSE_TEST) -> str:
 
 
 PAQ_C = I.page_url(2003, "PAQ_C")  # Bang's own activity item, on its last development cycle's page
+# Where a rule names Bang's validation cycle: filled in from the notes' Table 3 row (:func:`items`).
+VALIDATION_CYCLE = "<the validation cycle>"
 ITEMS: list[dict[str, Any]] = [
     {"item": "age",
      "rule": (f"RIDAGEYR: {AGE_BANDS[0]} to {AGE_BANDS[1] - 1}, {AGE_BANDS[1]} to "
@@ -100,7 +111,7 @@ ITEMS: list[dict[str, Any]] = [
     {"item": "family history of diabetes",
      "rule": ("MCQ300C is 1 (Yes): a close relative, a parent or a sibling, told they had "
               "diabetes; the paper's development cycles asked of any blood relative (MCQ250A), its "
-              "validation cycle 2005–2006 this item"),
+              f"validation cycle {VALIDATION_CYCLE} this item"),
      "passages": [(_url("MCQ"), "Including living and deceased, were any of {SP's/your} close "
                    "biological that is, blood relatives including father, mother, sisters or "
                    "brothers, ever told by a health professional that they had diabetes?")]},
@@ -288,6 +299,14 @@ def reported_auc(text: str | None = None) -> dict[str, Any]:
             "source": f"{I.BANG_NOTES} §5.3 (the paper's Table 3)"}
 
 
+def items(reported: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The score's items as the output prints them (:data:`ITEMS`): each rule, the family
+    history's naming Bang's validation cycle as ``reported`` (:func:`reported_auc`, the output's
+    own ``reported``) reads it from the notes, and the passages each rests on."""
+    return [{"item": i["item"], "rule": i["rule"].replace(VALIDATION_CYCLE, reported["cycle"]),
+             "passages": [{"source": u, "quote": q} for u, q in i["passages"]]} for i in ITEMS]
+
+
 def _state_at_opening(log: bytes) -> tuple[Any, Any]:
     from turbotab.core.decisions import fold
     from turbotab.core.export import replay
@@ -425,6 +444,7 @@ def benchmark(bundle: Path, record: Path | None = None) -> dict[str, Any]:
     points = score(table)
     out = aucs(positive[rows], points[rows], np.nan_to_num(w[rows]), table["SDMVSTRA"].to_numpy()[
         rows], table["SDMVPSU"].to_numpy()[rows], domain[rows])
+    reported = reported_auc()
     return {
         "benchmark": ("Bang et al. 2009's points score, adapted to the later cycle's questions, "
                       "on the record's own held-out participants"),
@@ -438,16 +458,13 @@ def benchmark(bundle: Path, record: Path | None = None) -> dict[str, Any]:
         "auc": {**out, "weight": weight},
         "score": {"points": {k: v for k, v in POINTS.items()},
                   "range": [int(points[who.held_out].min()), int(points[who.held_out].max())],
-                  "items": [{"item": i["item"], "rule": i["rule"],
-                             "passages": [{"source": u, "quote": q} for u, q in i["passages"]]}
-                            for i in ITEMS]},
-        "reported": reported_auc(),
+                  "items": items(reported)},
+        "reported": reported,
     }
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m research.swarm.benchmark",
-                                     description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="python -m research.swarm.benchmark", description=HELP)
     parser.add_argument("bundle", type=Path, help="the run's export.zip")
     parser.add_argument("--record", type=Path, help="the run's corpus record, whose export's "
                                                     "SHA-256 the bundle must have")
