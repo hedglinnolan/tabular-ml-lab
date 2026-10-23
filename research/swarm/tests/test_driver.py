@@ -539,6 +539,31 @@ def test_an_analysts_command_reads_no_answer_truth_decoy_or_record(tmp_path, mon
                    "turbotab.core.reference.journeys": "imported"}
 
 
+def test_an_analysts_command_reads_no_glucose_benchmark_even_with_the_intake_loaded():
+    """The final fix round's B5: the glucose benchmark (Bang's reported AUC and the comparator's
+    held-out score) is refused by name, its source file and its module, not only through its
+    import of the intake: here the intake is loaded before the command, so importing the benchmark
+    loads nothing refused but itself. A module the analyst's commands do read (the live markers',
+    not loaded before) still imports."""
+    probe = ("import research.swarm.intake\n"
+             "from research.swarm import driver\n"
+             "with driver.analyst_sealed():\n"
+             "    for what, read in (('file', lambda: open(driver.REPO / 'research' / 'swarm' / "
+             "'benchmark.py', 'rb').close()),\n"
+             "                       ('module', lambda: __import__('research.swarm.benchmark')),\n"
+             "                       ('markers', lambda: __import__('research.swarm.markers'))):\n"
+             "        try:\n"
+             "            read()\n"
+             "            print(what, 'read')\n"
+             "        except driver.DriverError as exc:\n"
+             "            print(what, exc.code)\n")
+    out = subprocess.run([sys.executable, "-c", probe], cwd=REPO, capture_output=True, text=True,
+                         timeout=120, env={**os.environ, "OMP_NUM_THREADS": "2"})
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert dict(line.split() for line in out.stdout.splitlines()) == {
+        "file": "not_for_the_analyst", "module": "not_for_the_analyst", "markers": "read"}
+
+
 def test_through_the_driver_an_analysts_command_is_refused_what_a_run_is_judged_against(
         tmp_path, monkeypatch):
     """DRV-INT round 1 (P3): through ``driver.main``, an analyst's command (here ``results``,
@@ -1140,8 +1165,9 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
     """A run budgeted two fits, on the fixture with its own range of ages kept:
 
     * the exclusions question offers keeping every row in the teaching entry's words and the card's
-      own range on a numeric column; a range with no bound, or a bound that is not a number, is
-      refused, and one on age records the rule the app's card records;
+      own ranges on a numeric column, of plausible values and of who the study is about; a range
+      with no bound, or a bound that is not a number, is refused, and one on age records the rule
+      the app's card records;
     * within the budget a revisit and a new model make the second fit, and ``results`` serves its
       cross-validated scores, the same as its record in ``GET /fits``;
     * past it a third model is refused before anything is recorded, and ``/fits`` does not grow;
@@ -1153,11 +1179,14 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
     * a press for the first fit, the triage and the seal still pass.
     """
     def exclusions_card(q: dict[str, Any]) -> None:
-        # keeping every row, a range of one's own, and levels of one's own (the level rule)
-        assert [o["id"] for o in q["options"]] == ["none", "custom", "levels"]
+        # keeping every row, a range of one's own, of plausible values or of who the study is
+        # about (V1), and levels of one's own (the level rule)
+        assert [o["id"] for o in q["options"]] == ["none", "custom", "eligibility", "levels"]
         _, taught = http(meta["port"], "/teaching?purpose=prediction")
         entry = {o["value"]: o for o in next(e for e in taught if e["key"] == "exclusions")["options"]}
-        none, custom, levels = q["options"]
+        none, custom, eligibility, levels = q["options"]
+        assert (eligibility["label"], eligibility["consequence"], eligibility["decision"]) == (
+            entry["eligibility"]["label"], entry["eligibility"]["consequence"], None)
         assert (levels["label"], levels["consequence"], levels["decision"]) == (
             entry["levels"]["label"], entry["levels"]["consequence"], None)
         assert (none["label"], none["consequence"]) == (entry["none"]["label"],

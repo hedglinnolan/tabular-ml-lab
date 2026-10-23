@@ -905,6 +905,13 @@ SURVEY = {
     "evidence": ev("SETTLED", NUT01),
 }
 
+# The reason a range that says who the study is about records for the rows it leaves (an
+# ``ExclusionRule``'s ``reason``: the participant flow's line and the "Excluded:" box of the figure
+# the export draws from it), beside a range of plausible values' own (the final fix round's V1).
+# The app's exclusions card records it (ChoiceQuestions.tsx's ``ELIGIBILITY_REASON``) and the swarm
+# driver reads it here (research/swarm/options.py): a teaching option carries no reason of its own.
+ELIGIBILITY_RANGE_REASON = "outside the study population (your own range)"
+
 EXCLUSIONS = {
     "key": "exclusions",
     "title": "Who the study is about",
@@ -935,7 +942,12 @@ EXCLUSIONS = {
                "Energy over estimated BMR outside the cut-offs for a stated PAL and recall days "
                "is excluded."),
         option("custom", "Your own range",
-               "Rows outside a range you set on a numeric column, never the outcome, are excluded."),
+               "Rows outside a plausible range you set on a numeric column, never the outcome, "
+               "are excluded."),
+        # The final fix round's V1: a range of who the study is about, such as an age range,
+        # records the study population's reason (ELIGIBILITY_RANGE_REASON), not implausible values.
+        option("eligibility", "Your own eligibility range",
+               "Rows outside a range you set, such as an age range, leave the study population."),
         # SWARM_PLAN §5, §8: the categorical eligibility rule (decisions.LevelRule); a refused or
         # don't-know code cannot confirm a row (claim eligibility.unconfirmed_answer).
         option("levels", "By level",

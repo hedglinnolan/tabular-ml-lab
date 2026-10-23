@@ -5,7 +5,7 @@ own API, one small command at a time, each printing JSON.
                                          --budget-fits N --budget-seconds S [--scripted]
                                          [--model M] [--persona P] [--effort E] [--prompt-version V]
     python -m research.swarm.driver ask      --run <id>
-    python -m research.swarm.driver preview  --run <id> <option> [--set name=value ...] --reason <why>
+    python -m research.swarm.driver preview  --run <id> <option> [<option> ...] [--set ...] --reason <why>
     python -m research.swarm.driver answer   --run <id> <option> [<option> ...] [--set ...] --reason <why>
                                              --marker <marker> [--rejected <option>]
     python -m research.swarm.driver revisit  --run <id> <decision id> --reason <why>
@@ -87,7 +87,8 @@ run's record reads them from ``commands.jsonl``, so their source is the driver.
 runs (:data:`ANALYST_COMMANDS`), opening anything a run
 is judged against (a dataset's declared answers and its manifest under ``research/datasets/``, the
 corpus records and their materiality under ``research/corpus/``, the fixtures' declared truths, the
-decoy's generator) or importing a module that holds or builds them (:data:`UNREAD_MODULES`), by
+decoy's generator, the glucose benchmark) or importing a module that holds or builds them
+(:data:`UNREAD_MODULES`), by
 an import statement or by ``importlib``, is refused, so nothing it prints can come from them. The
 driver itself imports none of those modules, so none is loaded before a command runs.
 
@@ -169,16 +170,18 @@ class DriverError(Exception):
 # ── what an analyst's command never reads (the module docstring) ─────────────
 
 # The modules that hold or build what a run is judged against: the fixtures' declared truths, the
-# intake (each dataset's answers), the decoy's generator, and the record with its materiality,
-# its checks and its referee.
+# intake (each dataset's answers), the decoy's generator, the record with its materiality, its
+# checks and its referee, and the glucose project's benchmark (Bang et al. 2009's reported AUC and
+# the comparator's score on the held-out participants).
 UNREAD_MODULES = ("turbotab.core.tests.truths", "research.swarm.intake", "research.swarm.decoys",
                   "research.swarm.record", "research.swarm.assemble", "research.swarm.checks",
-                  "research.swarm.referee")
+                  "research.swarm.referee", "research.swarm.benchmark")
 # The dry run's folder holds corpus-shaped records with known answers for three pilot datasets.
 UNREAD_FOLDERS = (REPO / "research" / "datasets", REPO / "research" / "corpus",
                   REPO / "research" / "swarm" / "dryrun")
 UNREAD_FILES = (REPO / "turbotab" / "core" / "tests" / "truths.py",
-                REPO / "research" / "swarm" / "decoys.py", REPO / "research" / "swarm" / "intake.py")
+                REPO / "research" / "swarm" / "decoys.py", REPO / "research" / "swarm" / "intake.py",
+                REPO / "research" / "swarm" / "benchmark.py")
 _SEALED = {"on": False, "in_hook": False}
 
 
@@ -1003,7 +1006,7 @@ def cmd_preview(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | No
     run = Run.load(args.run)
     client = run.client()
     reason_of(args.reason)  # SWARM_PLAN §2: a preview says why, as an answer does
-    decision, _ = chosen(run, client, [args.option], args.set or [])
+    decision, _ = chosen(run, client, list(args.option), args.set or [])
     guard_kind(decision, allowed=("open_seal",))  # what opening would show, without opening
     r = client.post(f"/projects/{run.project}/preview", decision)
     if r.status != 200:
@@ -1783,7 +1786,7 @@ def build_parser() -> argparse.ArgumentParser:
     with_run("stop", "stop the run's server")
     with_run("ask", "the open question", wait=True)
     p = with_run("preview", "what recording an option would do, with why; nothing is recorded")
-    p.add_argument("option")
+    p.add_argument("option", nargs="+")
     p.add_argument("--set", action="append", metavar="NAME=VALUE")
     p.add_argument("--reason", required=True)
     p = with_run("answer", "record an option, with why and the marker it answers to")

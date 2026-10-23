@@ -42,6 +42,11 @@ check never passes what it could not check.
   none). A result none was reported or served for shows none; one the record cannot know, an
   estimate with no interval, or a score above no skill with none, is not checked.
 * :func:`robustness`: the analyst's own export returned the bundle, and no person helped.
+* :func:`held_out`: where the dataset's card fixes the held-out rows by a cut-point (the glucose
+  card's ``held_out``, its benchmark's participants), the split the result's fit read (else the
+  one in force at the log's end) holds out by that cut-point; one that holds out other rows is
+  flagged, since the run is not compared with the benchmark. A card that fixes none, or a run with
+  no split among those records, is not checked.
 """
 from __future__ import annotations
 
@@ -278,6 +283,15 @@ def _withdrawn(decisions: Sequence[Any]) -> set[int]:
     return {by_id[i] for i in out if i in by_id} | {d.seq for d in decisions if d.kind == "revert"}
 
 
+def _judged(rec: Record) -> set[int]:
+    """The seqs of the records a check judges the run's answers by: those the result's fit read,
+    or, where the result names none (no result, or one the record cannot know), those in force at
+    the log's end."""
+    if rec.result.decisions is not None:
+        return set(rec.result.decisions)
+    return {d.seq for d in rec.decisions} - _withdrawn(rec.decisions)
+
+
 def known_answer(rec: Record, truths: Mapping[str, Mapping[str, str]] | None = None) -> Outcome:
     """Right or refused (SWARM_PLAN §5). ``truths``: each fixture's declared readings, by file
     name; ``truths.FIXTURE_TRUTHS`` by default."""
@@ -289,10 +303,7 @@ def known_answer(rec: Record, truths: Mapping[str, Mapping[str, str]] | None = N
     unchecked: list[str] = []
     fixture = rec.dataset.fixture or (rec.dataset.files[0].name if rec.dataset.files else None)
     truth = truths.get(fixture or "")
-    # The answers judged: those of the records the result's fit read, or, where the result names
-    # none (no result, or one the record cannot know), the answers in force at the log's end.
-    scope = (set(rec.result.decisions) if rec.result.decisions is not None
-             else {d.seq for d in rec.decisions} - _withdrawn(rec.decisions))
+    scope = _judged(rec)
     answered: dict[str, tuple[Any, int]] = {}
     for d in rec.decisions:
         if d.seq in scope:
@@ -459,8 +470,62 @@ def robustness(rec: Record) -> Outcome:
     return _outcome("robustness", rec, problems, [])
 
 
+# ── 7. the card's held-out rows ──────────────────────────────────────────────
+
+
+def _same_value(a: Any, b: Any) -> bool:
+    """Whether two cut-point values name one value: as numbers where both read as numbers (a
+    numeral written as text reads as that number, ``decisions.CutPoint``), else as written."""
+    try:
+        return float(a) == float(b)
+    except (TypeError, ValueError):
+        return str(a) == str(b)
+
+
+def _cut_words(column: Any, at: Any) -> str:
+    """A cut-point as a sentence says it: a whole number as one (``2017``, not ``2017.0``)."""
+    shown = str(at)
+    if isinstance(at, (int, float)) and not isinstance(at, bool):
+        shown = str(int(at)) if float(at).is_integer() else repr(float(at))
+    return f"every row at or after {shown} on `{column}`"
+
+
+def _held_words(split: Mapping[str, Any]) -> str:
+    cut = split.get("cut_point")
+    if cut:
+        return _cut_words(cut.get("column"), cut.get("at"))
+    share = float(split.get("holdout") or 0.0)
+    return f"a share of {share:g} of the rows" if share > 0 else "no rows"
+
+
+def held_out(rec: Record) -> Outcome:
+    """Where the dataset's card fixes the held-out rows by a cut-point (its ``held_out``: a column
+    and the value at or after which every row is held out; SWARM_PLAN §10, the watch note on
+    package 5), flagged when the split the result's fit read, or, where the result names none,
+    the one in force at the log's end, holds out other rows: such a run is not compared with the
+    card's benchmark. A card that fixes none, or a run with no split among those records, is not
+    checked."""
+    held = ((rec.dataset.card or {}).get("held_out") or {})
+    if not held.get("column") or held.get("at") is None:
+        return _outcome("held_out", rec, [], ["The card fixes no held-out rows."])
+    scope = _judged(rec)
+    splits = [d for d in rec.decisions if d.seq in scope and d.kind == "set_split"]
+    if not splits:
+        return _outcome("held_out", rec, [], ["No split is among the records judged, so the "
+                                              "held-out rows are not known."])
+    split = max(splits, key=lambda d: d.seq)
+    cut = split.option.get("cut_point") or {}
+    card = _cut_words(held["column"], held["at"])
+    if cut.get("column") == held["column"] and _same_value(cut.get("at"), held["at"]):
+        return _outcome("held_out", rec, [], [], [f"Record #{split.seq} holds out {card}, as the "
+                                                  f"card does."])
+    return _outcome("held_out", rec, [f"Record #{split.seq} holds out {_held_words(split.option)}; "
+                                      f"the card holds out {card}, so the run is not compared "
+                                      f"with the card's benchmark."], [])
+
+
 CHECKS: tuple[Callable[[Record], Outcome], ...] = (
-    seal_integrity, logging_complete, single_pass, known_answer, null_decoy, robustness)
+    seal_integrity, logging_complete, single_pass, known_answer, null_decoy, robustness, held_out)
 
 
 def run_checks(records: Iterable[Record | Mapping[str, Any]]) -> list[Outcome]:

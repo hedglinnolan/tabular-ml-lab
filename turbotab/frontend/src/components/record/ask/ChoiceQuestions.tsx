@@ -5,7 +5,7 @@
  * recorded sentence). The pack's usual choice is tagged and ordered first, never pre-selected;
  * an option that does not apply stays on the shelf and says why.
  */
-import { createContext, useContext, useRef, useState, type FormEvent } from "react";
+import { createContext, useContext, useRef, useState, type FormEvent, type RefObject } from "react";
 import type {
   EnergyMethod,
   EnergyReading,
@@ -80,6 +80,116 @@ export function levelRule(
   };
 }
 
+/** Why a range that says who the study is about leaves its rows, as the participant flow and its
+ *  figure print it ("Excluded: …"): not the plausible range's "implausible values". The teaching
+ *  content holds the same words (core/teaching/content.py `ELIGIBILITY_RANGE_REASON`), and the
+ *  swarm driver records them from there. */
+export const ELIGIBILITY_REASON = "outside the study population (your own range)";
+
+/** Why a range of plausible values of one's own leaves its rows, as the flow prints it. */
+const PLAUSIBLE_REASON = "implausible values (your own range)";
+
+/** A range of one's own as a card's fields hold it, typed. */
+interface RangeFields {
+  column: string;
+  setColumn: (v: string) => void;
+  low: string;
+  setLow: (v: string) => void;
+  high: string;
+  setHigh: (v: string) => void;
+}
+
+function useRangeFields(initialColumn: string): RangeFields {
+  const [column, setColumn] = useState<string>(initialColumn);
+  const [low, setLow] = useState("");
+  const [high, setHigh] = useState("");
+  return { column, setColumn, low, setLow, high, setHigh };
+}
+
+/**
+ * The range rule a card's fields make (decisions.py ExclusionRule) for `reason`: the rows outside
+ * low–high on the column excluded, either bound open. Null without a column or a bound, or with a
+ * bound that is not a number. A row with no value cannot be confirmed eligible and leaves (the
+ * server's default).
+ */
+function rangeRule(f: RangeFields, reason: string): ExclusionRule | null {
+  const lo = f.low.trim() === "" ? null : Number(f.low);
+  const hi = f.high.trim() === "" ? null : Number(f.high);
+  const valid =
+    f.column !== "" &&
+    (lo !== null || hi !== null) &&
+    (lo === null || Number.isFinite(lo)) &&
+    (hi === null || Number.isFinite(hi));
+  return valid
+    ? { kind: "range", column: f.column, low: lo, high: hi, by: null, reason, missing: "exclude" }
+    : null;
+}
+
+function RangeForm({
+  f,
+  lowRef,
+  columns,
+  rule,
+  pending,
+  onSubmit,
+}: {
+  f: RangeFields;
+  /** The lower bound's input, focused when the option is chosen before it is set. */
+  lowRef: RefObject<HTMLInputElement | null>;
+  columns: string[];
+  rule: ExclusionRule | null;
+  pending: boolean;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className={c.range}
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className={c.field}>
+        <span>column</span>
+        <select value={f.column} onChange={(e) => f.setColumn(e.target.value)}>
+          {columns.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className={c.field}>
+        <span>keep from</span>
+        <input
+          ref={lowRef}
+          inputMode="decimal"
+          value={f.low}
+          onChange={(e) => f.setLow(e.target.value)}
+          placeholder="no lower bound"
+          aria-label="Lowest value kept"
+        />
+      </label>
+      <label className={c.field}>
+        <span>to</span>
+        <input
+          inputMode="decimal"
+          value={f.high}
+          onChange={(e) => f.setHigh(e.target.value)}
+          placeholder="no upper bound"
+          aria-label="Highest value kept"
+        />
+      </label>
+      <button type="submit" className={c.small} disabled={!rule || pending}>
+        Exclude the rest
+      </button>
+    </form>
+  );
+}
+
+const rangeShown = (rule: ExclusionRule) =>
+  `${rule.column} outside ${rule.low ?? "−∞"}–${rule.high ?? "∞"}`;
+
 export function ExclusionsAsk({
   proposals,
   current,
@@ -95,28 +205,13 @@ export function ExclusionsAsk({
 }) {
   const offered = proposals?.exclusions ?? [];
   const energy = proposals?.energy?.energy_column ?? null;
-  const [column, setColumn] = useState<string>(energy ?? numericColumns[0] ?? "");
-  const [low, setLow] = useState("");
-  const [high, setHigh] = useState("");
-  const lowRef = useRef<HTMLInputElement>(null);
-  const lo = low.trim() === "" ? null : Number(low);
-  const hi = high.trim() === "" ? null : Number(high);
-  const valid =
-    column !== "" &&
-    (lo !== null || hi !== null) &&
-    (lo === null || Number.isFinite(lo)) &&
-    (hi === null || Number.isFinite(hi));
-  const customRule: ExclusionRule | null = valid
-    ? {
-        kind: "range",
-        column,
-        low: lo,
-        high: hi,
-        by: null,
-        reason: "implausible values (your own range)",
-        missing: "exclude", // a row with no value cannot be confirmed eligible (the server's default)
-      }
-    : null;
+  // Two ranges of one's own, each with its reason: plausible values, and who the study is about.
+  const plausible = useRangeFields(energy ?? numericColumns[0] ?? "");
+  const eligible = useRangeFields(numericColumns[0] ?? "");
+  const plausibleLow = useRef<HTMLInputElement>(null);
+  const eligibleLow = useRef<HTMLInputElement>(null);
+  const customRule = rangeRule(plausible, PLAUSIBLE_REASON);
+  const eligibilityRule = rangeRule(eligible, ELIGIBILITY_REASON);
 
   const [levelColumn, setLevelColumn] = useState("");
   const shownLevelColumn = levelColumn || levelColumns[0] || "";
@@ -126,13 +221,22 @@ export function ExclusionsAsk({
   const levelsRef = useRef<HTMLInputElement>(null);
   const byLevel = levelRule(shownLevelColumn, excluded, refusedCodes, unknownCodes);
 
-  const matches = (rules: EligibilityRule[]) =>
-    current !== null && current.length === rules.length && same(current, rules);
+  // The option an answer on record reads back as. Each option records one rule, so an answer of
+  // several (the swarm driver's age range beside its level rules) is marked on none: no option's
+  // line says what it holds. A range reads back as one of one's own only by that option's reason.
   let recordedKey: string | null = null;
-  if (current !== null) {
-    if (current.length === 0) recordedKey = "none";
-    else if (current.length === 1 && current[0]!.kind === "levels") recordedKey = "levels";
-    else recordedKey = offered.find((o) => matches([o.rule]))?.key ?? "custom";
+  if (current?.length === 0) recordedKey = "none";
+  else if (current?.length === 1) {
+    const rule = current[0]!;
+    recordedKey =
+      offered.find((o) => same([rule], [o.rule]))?.key ??
+      (rule.kind === "levels"
+        ? "levels"
+        : rule.kind === "range" && rule.reason === ELIGIBILITY_REASON
+          ? "eligibility"
+          : rule.kind === "range" && rule.reason === PLAUSIBLE_REASON
+            ? "custom"
+            : null);
   }
 
   const items: OptionItem[] = [
@@ -161,52 +265,42 @@ export function ExclusionsAsk({
       label: taught(p.entry, "custom")?.label ?? "Your own range",
       line:
         taught(p.entry, "custom")?.consequence ??
-        "Rows outside a range you set on any numeric column are excluded.",
+        "Rows outside a plausible range you set on a numeric column, never the outcome, are excluded.",
       decision: customRule ? { kind: "set_exclusions", rules: [customRule] } : null,
-      previewLabel: customRule ? `${column} outside ${lo ?? "−∞"}–${hi ?? "∞"}` : undefined,
+      previewLabel: customRule ? rangeShown(customRule) : undefined,
       extra: (
-        <form
-          className={c.range}
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault();
+        <RangeForm
+          f={plausible}
+          lowRef={plausibleLow}
+          columns={numericColumns}
+          rule={customRule}
+          pending={p.pending}
+          onSubmit={() => {
             if (customRule) p.record({ kind: "set_exclusions", rules: [customRule] }, "custom");
           }}
-        >
-          <label className={c.field}>
-            <span>column</span>
-            <select value={column} onChange={(e) => setColumn(e.target.value)}>
-              {numericColumns.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={c.field}>
-            <span>keep from</span>
-            <input
-              ref={lowRef}
-              inputMode="decimal"
-              value={low}
-              onChange={(e) => setLow(e.target.value)}
-              placeholder="no lower bound"
-              aria-label="Lowest value kept"
-            />
-          </label>
-          <label className={c.field}>
-            <span>to</span>
-            <input
-              inputMode="decimal"
-              value={high}
-              onChange={(e) => setHigh(e.target.value)}
-              placeholder="no upper bound"
-              aria-label="Highest value kept"
-            />
-          </label>
-          <button type="submit" className={c.small} disabled={!customRule || p.pending}>
-            Exclude the rest
-          </button>
-        </form>
+        />
+      ),
+    },
+    {
+      key: "eligibility",
+      label: taught(p.entry, "eligibility")?.label ?? "Your own eligibility range",
+      line:
+        taught(p.entry, "eligibility")?.consequence ??
+        "Rows outside a range you set, such as an age range, leave the study population.",
+      decision: eligibilityRule ? { kind: "set_exclusions", rules: [eligibilityRule] } : null,
+      previewLabel: eligibilityRule ? rangeShown(eligibilityRule) : undefined,
+      extra: (
+        <RangeForm
+          f={eligible}
+          lowRef={eligibleLow}
+          columns={numericColumns}
+          rule={eligibilityRule}
+          pending={p.pending}
+          onSubmit={() => {
+            if (eligibilityRule)
+              p.record({ kind: "set_exclusions", rules: [eligibilityRule] }, "eligibility");
+          }}
+        />
       ),
     },
     {
@@ -289,7 +383,8 @@ export function ExclusionsAsk({
         onRecord={(o) => {
           if (o.decision) p.record(o.decision, o.key);
           else if (o.key === "levels") levelsRef.current?.focus();
-          else lowRef.current?.focus();
+          else if (o.key === "eligibility") eligibleLow.current?.focus();
+          else plausibleLow.current?.focus();
         }}
         recordedKey={recordedKey}
         pending={p.pending}

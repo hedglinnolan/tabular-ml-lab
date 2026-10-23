@@ -783,6 +783,92 @@ def test_robustness_fires_on_a_run_that_never_exported_or_was_helped():
         "A person helped 1 time: restarted the server"]
 
 
+# ── 7. the card's held-out rows (the final fix round's B6) ───────────────────
+# The glucose card fixes its test by a cut-point (research/datasets/nhanes_glucose_predict/
+# card.json, ``held_out``: every row at or after 2017 on ``cycle_begin_year``, the benchmark's
+# held-out participants), so a run whose split holds out other rows is flagged. The card is read
+# from its file; the expected sentences are written here from its two values.
+
+def glucose_card() -> dict:
+    from research.swarm.driver import REPO
+
+    return json.loads((REPO / "research" / "datasets" / "nhanes_glucose_predict"
+                       / "card.json").read_text("utf-8"))
+
+
+def split_option(cut_point=None, holdout=0.0) -> dict:
+    return {"holdout": holdout, "seed": 0, "folds": 5, "validation": "kfold", "repeats": 10,
+            "n_boot": 500, "cluster": None, "nested_cv": False, "cut_point": cut_point,
+            "fold_order": "random" if cut_point is not None else None}
+
+
+def held_out_record(card=None, cut_point=None, holdout=0.0, read=True) -> dict:
+    """:func:`predict_record` on the glucose card, its split recorded as record #6 (read by the
+    result's fit where ``read``)."""
+    data = predict_record()
+    data["dataset"]["card"] = glucose_card() if card is None else card
+    option = split_option(cut_point, holdout)
+    data["decisions"].append(decision(6, "set_split", option, [("split", option)], minute=2))
+    if read:
+        data["result"]["decisions"] = [1, 3, 4, 6]
+    return data
+
+
+CARD_CUT = "every row at or after 2017 on `cycle_begin_year`"
+
+
+@pytest.mark.parametrize("at", [2017.0, 2017, "2017"])
+def test_held_out_is_silent_on_the_cards_own_cut_point(at):
+    """A numeral written as text reads as that number (``decisions.CutPoint``)."""
+    card = glucose_card()
+    assert card["held_out"]["column"] == "cycle_begin_year" and card["held_out"]["at"] == 2017
+    got = outcome(C.held_out, held_out_record(cut_point={"column": "cycle_begin_year", "at": at}))
+    assert (got.outcome, got.problems) == ("pass", [])
+    assert got.notes == [f"Record #6 holds out {CARD_CUT}, as the card does."]
+
+
+@pytest.mark.parametrize("cut_point,holdout,said", [
+    (None, 0.2, "a share of 0.2 of the rows"),
+    (None, 0.0, "no rows"),
+    ({"column": "cycle_begin_year", "at": 2015}, 0.0,
+     "every row at or after 2015 on `cycle_begin_year`"),
+    ({"column": "SDDSRVYR", "at": 2017}, 0.0, "every row at or after 2017 on `SDDSRVYR`"),
+])
+def test_held_out_fires_on_a_split_that_is_not_the_cards(cut_point, holdout, said):
+    got = outcome(C.held_out, held_out_record(cut_point=cut_point, holdout=holdout))
+    assert got.outcome == "fail"
+    assert got.problems == [f"Record #6 holds out {said}; the card holds out {CARD_CUT}, so the "
+                            f"run is not compared with the card's benchmark."]
+
+
+def test_held_out_judges_the_split_the_results_fit_read_else_the_one_in_force_at_the_end():
+    """A split the result's fit did not read is not judged; with no result named, the one in
+    force at the log's end is (a revert of the card's cut-point leaves the earlier split)."""
+    cut = {"column": "cycle_begin_year", "at": 2017}
+    data = held_out_record(cut_point=cut)
+    later = split_option(None, 0.2)
+    data["decisions"].append(decision(7, "set_split", later, [("split", later)], minute=9))
+    assert outcome(C.held_out, data).outcome == "pass"  # the fit read #6, not #7
+    data["result"] = {"purpose": "prediction", "attempt": None, "plan_digest": None,
+                      "decisions": None, "refused": "The held-out rows were never opened.",
+                      "refused_kind": "not_reported"}
+    assert outcome(C.held_out, data).problems[0].startswith("Record #7 holds out a share of 0.2")
+    data["decisions"].append(decision(8, "revert", {"decision_id": "r7"},
+                                      [("revert:r7", {"decision_id": "r7"})], minute=10))
+    assert outcome(C.held_out, data).outcome == "pass"
+
+
+def test_held_out_is_not_judged_where_the_card_fixes_none_or_no_split_is_in_force():
+    got = outcome(C.held_out, predict_record())
+    assert (got.outcome, got.unchecked) == ("not_checked", ["The card fixes no held-out rows."])
+    card = {k: v for k, v in glucose_card().items() if k != "held_out"}
+    assert outcome(C.held_out, held_out_record(card=card)).outcome == "not_checked"
+    got = outcome(C.held_out, held_out_record(read=False))
+    assert got.outcome == "not_checked"
+    assert got.unchecked == ["No split is among the records judged, so the held-out rows are not "
+                             "known."]
+
+
 # ── the script over a corpus ─────────────────────────────────────────────────
 
 
@@ -795,5 +881,5 @@ def test_the_script_runs_every_check_over_the_corpus_and_its_failed_runs(tmp_pat
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert [(o["run"], o["check"]) for o in lines] == (
         [("run-1", c) for c in ("seal_integrity", "logging", "single_pass", "known_answer",
-                                "null_decoy", "robustness")] + [("run-2", "logging")])
+                                "null_decoy", "robustness", "held_out")] + [("run-2", "logging")])
     assert lines[-1]["outcome"] == "fail"

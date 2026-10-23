@@ -17,22 +17,34 @@ decision's canonical JSON (:func:`exit_id`), the same for the same decision.
 **Words.** Every label, consequence and note is the server's, as served. Where the server serves
 no label (a column, a level), the option has none; the driver adds no words to a question. The
 strings it writes into a decision are the app's own: the reasons its exclusions card records for
-a range and for levels of one's own (:data:`CUSTOM_RANGE`, :data:`CUSTOM_LEVELS`).
+a range of plausible values and for levels of one's own (:data:`CUSTOM_RANGE`,
+:data:`CUSTOM_LEVELS`), and for a range of who the study is about the reason the teaching content
+states (``content.ELIGIBILITY_RANGE_REASON``, :func:`eligibility_range`), which the card records
+too.
 
 **Fields.** A question answered with one value per column (the roles, the adjustment answers, the
 forms) or with a setting beside its option (the split's validation, the estimand's measure, the
-exclusions' range of one's own: a numeric column, and ``low``, ``high`` or both, as numbers; its
-levels of one's own: ``level_column``, any column but the outcome, and the levels it excludes and
-the codes that record a refused or a don't-know answer, ``exclude``, ``refused`` and
-``dont_know``, each a list by commas) lists ``fields``; ``answer <option> --set <name>=<value>``
-sets one, from the field's served ``choices``, as a number (``"type": "number"``) or as a list
-(``"type": "list"``: ``--set exclude=1,3``, each level kept as written, for the server to read in
-its one spelling). Each field's ``initial`` is what the card itself shows chosen (a proposal, the
-first-ranked measure), so an option's ``decision`` is exactly what pressing it records; a field
-the card leaves unchosen starts empty.
+exclusions' ranges of one's own, ``custom`` and ``eligibility``: a numeric column, and ``low``,
+``high`` or both, as numbers; its levels of one's own: ``level_column``, any column but the
+outcome, and the levels it excludes and the codes that record a refused or a don't-know answer,
+``exclude``, ``refused`` and ``dont_know``, each a list by commas; and for each, ``missing``, what
+the rule does with a row it cannot confirm, one of the handlings the engine's rule models take)
+lists ``fields``;
+``answer <option> --set <name>=<value>`` sets one, from the field's served ``choices``, as a
+number (``"type": "number"``) or as a list (``"type": "list"``: ``--set exclude=1,3``, each level
+kept as written, for the server to read in its one spelling). Each field's ``initial`` is what the
+card itself shows chosen (a proposal, the first-ranked measure, the card's own handling of a row a
+rule cannot confirm), so an option's ``decision`` is exactly what pressing it records; a field the
+card leaves unchosen starts empty.
 
 **Several at once.** The lens and the models take more than one option (``multi``): ``answer a b``
-records them together.
+records them together. So do the exclusions, a rule for each option named, in the order named
+(``answer custom levels levels``: a range of one's own and two level rules), each offered screen
+adding its own rule; keeping every row is answered alone. A setting goes to the one option named
+that takes it; where more than one does, its place among the options named is written before it
+(``--set 2.level_column=DIQ010 --set 3.level_column=DIQ050``), so each rule has its own column,
+levels and handling of a row it cannot confirm. A way forward is answered alone, never beside
+the question's own options.
 """
 from __future__ import annotations
 
@@ -304,11 +316,24 @@ def _survey(ctx: Context) -> Composed:
                      if card.get(k)}}
 
 
-# The range of one's own as the app's card records it (``ExclusionsAsk``'s ``customRule``,
-# turbotab/frontend/src/components/record/ask/ChoiceQuestions.tsx): by no level, the card's reason,
-# and a row whose value is not recorded left out as not confirmed eligible (the server's default).
+# The range of plausible values of one's own as the app's card records it (``ExclusionsAsk``'s
+# ``customRule``, turbotab/frontend/src/components/record/ask/ChoiceQuestions.tsx): by no level,
+# the card's reason, and a row whose value is not recorded left out as not confirmed eligible (the
+# server's default).
 CUSTOM_RANGE = {"kind": "range", "column": None, "low": None, "high": None, "by": None,
                 "reason": "implausible values (your own range)", "missing": "exclude"}
+
+
+def eligibility_range() -> dict[str, Any]:
+    """The range of who the study is about as the card records it (``ExclusionsAsk``'s
+    ``eligibilityRule``, the same file): the range above with the reason the teaching content
+    gives it, read here when the option is composed, never typed in this module (the final fix
+    round's V1)."""
+    from turbotab.core.teaching import content
+
+    return {**CUSTOM_RANGE, "reason": content.ELIGIBILITY_RANGE_REASON}
+
+
 # The levels of one's own as the card records them (``ExclusionsAsk``'s ``levelRule``, the same
 # file; ``decisions.LevelRule``, SWARM_PLAN §5): a column, the levels it excludes and the codes
 # that record a refused or a don't-know answer, each a list as typed, the card's reason, and a
@@ -318,6 +343,19 @@ CUSTOM_LEVELS = {"kind": "levels", "column": None, "exclude": [], "refused": [],
 LEVEL_LISTS = ("exclude", "refused", "dont_know")
 NUMERIC = ("numeric", "integer")
 ROW_ID = "__row_id"
+
+
+def handlings() -> tuple[str, ...]:
+    """What a rule of one's own may do with a row it cannot confirm (a blank; for a level rule also
+    a refused or a don't-know answer), read off the engine's rule models (``decisions``'
+    ``ExclusionRule`` and ``LevelRule``, their ``missing``): the handlings either model takes,
+    each once, in the models' order."""
+    from typing import get_args
+
+    from turbotab.core.decisions import ExclusionRule, LevelRule
+
+    return tuple(dict.fromkeys(v for model in (ExclusionRule, LevelRule)
+                               for v in get_args(model.model_fields["missing"].annotation)))
 
 
 def _columns(ctx: Context) -> list[Mapping[str, Any]]:
@@ -342,19 +380,22 @@ def _level_columns(ctx: Context) -> list[str]:
 
 def _exclusions(ctx: Context) -> Composed:
     """The card's options (``ExclusionsAsk``): keeping every row (``none``), each screen offered
-    on this table with the rule it records, a range of one's own on a numeric column (``custom``),
-    and levels of one's own (``levels``): the rows at the levels of one column it names are
-    excluded, a code that records a refused or a don't-know answer named on its own, each in the
-    teaching entry's words; the two labels the server gives each, where it gives them (keeping
-    every row's under ``keep_every_row``). The levels' fields are ``level_column`` and the lists
-    ``exclude``, ``refused`` and ``dont_know``, each comma-separated, as the card's fields take
-    them."""
+    on this table with the rule it records, a range of one's own on a numeric column, of
+    plausible values (``custom``) or of who the study is about (``eligibility``), each with its
+    own reason, and levels of one's own (``levels``): the rows at the levels of one column it
+    names are excluded, a code that records a refused or a don't-know answer named on its own,
+    each in the teaching entry's words; the two labels the server gives each, where it gives them
+    (keeping every row's under ``keep_every_row``). The ranges' fields are ``column``, ``low``
+    and ``high``; the levels' are ``level_column`` and the lists ``exclude``, ``refused`` and
+    ``dont_know``, each comma-separated, as the card's fields take them; every rule of one's own
+    takes ``missing``, from the engine's handlings (:func:`handlings`), starting at the card's
+    own. Several options are one answer, a rule each (``multi``, the module docstring)."""
     proposals = _art(ctx.served, "proposals")
     offered = [e for e in proposals.get("exclusions") or [] if isinstance(e, Mapping) and e.get("key")]
     labeled = {str(o.get("key")): o for o in _labeled((proposals.get("labels") or {}).get("exclusions"))}
     taught = {str(o.get("value")): o for o in _taught(ctx.entry)}
     none, custom = taught.get("none") or {}, taught.get("custom") or {}
-    levels = taught.get("levels") or {}
+    eligibility, levels = taught.get("eligibility") or {}, taught.get("levels") or {}
     options = [_option("none", {"kind": "set_exclusions", "rules": []}, label=none.get("label"),
                        consequence=none.get("consequence"),
                        labels=_two_labels(labeled.get("keep_every_row") or {}))]
@@ -369,22 +410,30 @@ def _exclusions(ctx: Context) -> Composed:
                            consequence=custom.get("consequence"),
                            _base={"kind": "set_exclusions", "rules": [dict(CUSTOM_RANGE)]},
                            _range=True))
+    options.append(_option("eligibility", None, label=eligibility.get("label"),
+                           consequence=eligibility.get("consequence"),
+                           _base={"kind": "set_exclusions", "rules": [eligibility_range()]},
+                           _range=True))
     options.append(_option("levels", None, label=levels.get("label"),
                            consequence=levels.get("consequence"),
                            _base={"kind": "set_exclusions",
                                   "rules": [json.loads(json.dumps(CUSTOM_LEVELS))]},
                            _levels=True))
     columns = _numeric_columns(ctx)
+    ranges = ["custom", "eligibility"]
     fields = [{"name": "column", "choices": [{"value": c} for c in columns], "initial": None,
-               "applies_to": ["custom"], "_apply": ("range", "column")},
-              *({"name": bound, "type": "number", "initial": None, "applies_to": ["custom"],
+               "applies_to": ranges, "_apply": ("range", "column")},
+              *({"name": bound, "type": "number", "initial": None, "applies_to": ranges,
                  "_apply": ("range", bound)} for bound in ("low", "high")),
               {"name": "level_column", "choices": [{"value": c} for c in _level_columns(ctx)],
                "initial": None, "applies_to": ["levels"], "_apply": ("levels", "column")},
               *({"name": name, "type": "list", "initial": None, "applies_to": ["levels"],
-                 "_apply": ("levels", name)} for name in LEVEL_LISTS)]
+                 "_apply": ("levels", name)} for name in LEVEL_LISTS),
+              {"name": "missing", "choices": [{"value": v} for v in handlings()],
+               "initial": CUSTOM_LEVELS["missing"], "applies_to": [*ranges, "levels"],
+               "_apply": ("rule", "missing")}]
     tension = ((proposals.get("labels") or {}).get("exclusions") or {}).get("tension")
-    return {"options": options, "fields": fields,
+    return {"options": options, "fields": fields, "multi": "rules",
             "data": {"tension": tension, "n_base": proposals.get("n_base") if offered else None}}
 
 
@@ -777,7 +826,9 @@ def _set_value(field: Mapping[str, Any], raw: str) -> Any:
     return raw
 
 
-def _apply(decision: dict[str, Any], field: Mapping[str, Any], value: Any) -> None:
+def _apply(decision: dict[str, Any], field: Mapping[str, Any], value: Any, place: int = 0) -> None:
+    """``value`` set into ``decision`` as ``field`` says; a rule's own field into the rule at
+    ``place`` among the options named (0 for the first)."""
     how = field["_apply"]
     if how[0] in ("set", "number"):
         decision[how[1]] = value
@@ -792,8 +843,8 @@ def _apply(decision: dict[str, Any], field: Mapping[str, Any], value: Any) -> No
         decision.pop("cluster", None)
         if scheme.get("cluster"):
             decision["cluster"] = scheme["cluster"]
-    elif how[0] in ("range", "levels"):
-        decision["rules"][0][how[1]] = value
+    elif how[0] in ("range", "levels", "rule"):
+        decision["rules"][place][how[1]] = value
     elif how[0] == "form":
         _, column, proposal, knots = how
         if value == proposal.get("form"):
@@ -805,32 +856,72 @@ def _apply(decision: dict[str, Any], field: Mapping[str, Any], value: Any) -> No
         decision.setdefault("forms", {})[column] = spec
 
 
-def _levels_set(oid: str, rule: Mapping[str, Any]) -> None:
-    """Levels of one's own record only as the card records them: a column, a level excluded, and
-    each level named once (the card's ``levelRule`` is null otherwise), a level read in the one
-    spelling the server compares levels by (``decisions.LevelRule``, whose refusal is said)."""
+def _range_set(named: str, at: str, rule: Mapping[str, Any]) -> None:
+    """A range of one's own records only as the card records it: a column and a bound (the card's
+    ``customRule`` is null otherwise). ``named`` names the option, ``at`` its place before a
+    field's name (``"2."``; empty where one option is named)."""
     if rule["column"] is None:
-        raise Unanswerable(f"Option {oid} excludes rows at levels of one column: set level_column, "
-                           f"and exclude, its levels by commas.")
+        raise Unanswerable(f"{named} keeps the rows inside a range on one numeric column: set "
+                           f"{at}column, and {at}low, {at}high or both.")
+    if rule["low"] is None and rule["high"] is None:
+        raise Unanswerable(f"{named} takes {at}low, {at}high or both, as numbers: neither is set.")
+
+
+def _levels_set(named: str, at: str, rule: Mapping[str, Any]) -> None:
+    """Levels of one's own record only as the card records them: a column and a level excluded
+    (the card's ``levelRule`` is null otherwise); ``named`` and ``at`` as :func:`_range_set`'s."""
+    if rule["column"] is None:
+        raise Unanswerable(f"{named} excludes rows at levels of one column: set {at}level_column, "
+                           f"and {at}exclude, its levels by commas.")
     if not rule["exclude"]:
-        raise Unanswerable(f"Option {oid} takes exclude, the levels to exclude by commas, such "
+        raise Unanswerable(f"{named} takes {at}exclude, the levels to exclude by commas, such "
                            f"as 1 or 1,3: none is set.")
+
+
+def _engine_takes(named: str, rule: Mapping[str, Any]) -> None:
+    """A rule of one's own as the engine's own rule models read it (``decisions.RULE_ADAPTER``):
+    each level named once, in the one spelling the server compares levels by, and a handling of a
+    row it cannot confirm that its model takes; the model's refusal is said."""
     from pydantic import ValidationError
 
-    from turbotab.core.decisions import LevelRule
+    from turbotab.core.decisions import RULE_ADAPTER
 
     try:
-        LevelRule.model_validate(rule)
+        RULE_ADAPTER.validate_python(rule)
     except ValidationError as exc:
         why = "; ".join(str(e.get("msg", "")).removeprefix("Value error, ") for e in exc.errors())
-        raise Unanswerable(f"Option {oid} cannot record this rule: {why}.") from None
+        raise Unanswerable(f"{named} cannot record this rule: {why}.") from None
+
+
+def _place(name: str, applies: list[str], ids: list[str], place: int | None) -> int:
+    """The option named that a setting of ``name`` goes to (0 for the first): the place written
+    before it (``--set 2.name=...``), else the one option named that takes it."""
+    if place is None:
+        takers = [i for i, oid in enumerate(ids) if oid in applies]
+        if len(ids) == 1 or not takers:
+            place = 0
+        elif len(takers) == 1:
+            return takers[0]
+        else:
+            raise Unanswerable(f"{len(takers)} of the options named take {name}: write its place "
+                               f"among them before it, "
+                               f"{' or '.join(f'{i + 1}.{name}' for i in takers)} (--set "
+                               f"{takers[-1] + 1}.{name}=... sets option {takers[-1] + 1}'s).")
+    if not 0 <= place < len(ids):
+        raise Unanswerable(f"--set {place + 1}.{name} names option {place + 1}, and {len(ids)} "
+                           f"{'is' if len(ids) == 1 else 'are'} named.")
+    if ids[place] not in applies:
+        raise Unanswerable(f"The field {name} does not apply to option {ids[place]}.")
+    return place
 
 
 def resolve(composed: Composed, ids: list[str], sets: list[str],
             ways: Iterable[Mapping[str, Any]] = ()) -> dict[str, Any]:
     """The decision ``ids`` and ``sets`` name among what the open question offers (``composed``)
     and the ways forward on hand (``ways``: the ask card's, the quest lines', the last refusal's).
-    Raises :class:`Unanswerable` for an id or a field not offered."""
+    Several ids, where the question takes them (``multi``), record what each records, in their
+    order; a setting goes to the option named that its place names, else to the one that takes it
+    (the module docstring). Raises :class:`Unanswerable` for an id or a field not offered."""
     if not ids:
         raise Unanswerable("Name an option by its id, as ask lists it.")
     options = {str(o["id"]): o for o in composed.get("options") or [] if o.get("id") is not None}
@@ -843,37 +934,59 @@ def resolve(composed: Composed, ids: list[str], sets: list[str],
                            f"question's options and its ways forward.")
     chosen = [options[i] for i in ids]
     multi = composed.get("multi")
-    if len(chosen) > 1 and not (multi and all(i in {str(o["id"]) for o in composed["options"]}
-                                              for i in ids)):
+    if len(chosen) > 1 and not multi:
         raise Unanswerable("This question takes one option at a time.")
-    if any(not isinstance(o.get("decision"), Mapping) for o in chosen) and not sets:
-        raise Unanswerable(f"Option {ids[0]} records nothing by itself: "
+    own_ids = {str(o["id"]) for o in composed.get("options") or [] if o.get("id") is not None}
+    ways_named = list(dict.fromkeys(i for i in ids if i not in own_ids))
+    if len(chosen) > 1 and ways_named:
+        raise Unanswerable(
+            f"Option {ways_named[0]} is a way forward: it is answered alone, and only this "
+            f"question's own options are named together." if len(ways_named) == 1 else
+            f"Options {', '.join(ways_named[:-1])} and {ways_named[-1]} are ways forward: each is "
+            f"answered alone, and only this question's own options are named together.")
+    blank = next((i for i, o in zip(ids, chosen) if not isinstance(o.get("decision"), Mapping)),
+                 None)
+    if blank is not None and not sets:
+        raise Unanswerable(f"Option {blank} records nothing by itself: "
                            f"{'set its fields with --set' if composed.get('fields') else 'it says what to do'}.")
-    decision = json.loads(json.dumps(chosen[0].get("decision") or chosen[0].get("_base") or {}))
+
+    def own(option: Mapping[str, Any]) -> dict[str, Any]:
+        return json.loads(json.dumps(option.get("decision") or option.get("_base") or {}))
+
+    decision = own(chosen[0])
+    offsets = [0]  # where each option's own items start in ``decision[multi]``
     if multi and len(chosen) > 1:
-        decision[multi] = [v for o in chosen for v in (o["decision"] or {}).get(multi) or []]
+        alone = next((i for i, o in zip(ids, chosen) if not own(o).get(multi)), None)
+        if alone is not None:
+            raise Unanswerable(f"Option {alone} records no {multi}: it is answered alone.")
+        items = [own(o)[multi] for o in chosen]
+        offsets = [sum(len(x) for x in items[:i]) for i in range(len(items))]
+        decision[multi] = [v for x in items for v in x]
     fields = {str(f["name"]): f for f in composed.get("fields") or []}
     for item in sets:
         name, eq, raw = item.partition("=")
         if not eq:
             raise Unanswerable(f"--set takes name=value, not {item!r}.")
-        field = fields.get(name.strip())
+        name, place = name.strip(), None
+        field = fields.get(name)
+        if field is None:  # a setting by its option's place: ``2.level_column``
+            head, dot, rest = name.partition(".")
+            if dot and head.isdigit() and (fields.get(rest) or {}).get("applies_to"):
+                field, place, name = fields[rest], int(head) - 1, rest
         if field is None:
-            raise Unanswerable(f"No field {name.strip()!r} is offered now; ask lists the fields.")
+            raise Unanswerable(f"No field {name!r} is offered now; ask lists the fields.")
         applies = field.get("applies_to")
-        if applies and ids[0] not in applies:
-            raise Unanswerable(f"The field {name.strip()} does not apply to option {ids[0]}.")
-        _apply(decision, field, _set_value(field, raw.strip()))
-    if chosen[0].get("_range"):
-        rule = decision["rules"][0]
-        if rule["column"] is None:
-            raise Unanswerable(f"Option {ids[0]} keeps the rows inside a range on one numeric "
-                               f"column: set column, and low, high or both.")
-        if rule["low"] is None and rule["high"] is None:
-            raise Unanswerable(f"Option {ids[0]} takes low, high or both, as numbers: neither is "
-                               f"set.")
-    if chosen[0].get("_levels"):
-        _levels_set(ids[0], decision["rules"][0])
+        if applies:
+            place = _place(name, applies, ids, place)
+        _apply(decision, field, _set_value(field, raw.strip()), offsets[place or 0])
+    for place, (oid, option) in enumerate(zip(ids, chosen)):
+        if not (option.get("_range") or option.get("_levels")):
+            continue
+        named, at = (f"Option {oid}", "") if len(ids) == 1 else (f"Option {place + 1} ({oid})",
+                                                                 f"{place + 1}.")
+        rule = decision["rules"][offsets[place]]
+        (_range_set if option.get("_range") else _levels_set)(named, at, rule)
+        _engine_takes(named, rule)
     if not decision.get("kind"):
         raise Unanswerable(f"Option {ids[0]} records nothing as it stands.")
     return decision
