@@ -212,7 +212,7 @@ RULINGS: tuple[Ruling, ...] = (
            "(export/methods.py, readings.py)",
            ("exclusions.screen_waits_for_days", "substitution.isocaloric_units")),
     Ruling(r"^How many days each value spans is not settled: .*record it before screening by "
-           r"`[^`]+`\);", "unrendered",
+           r"`[^`]+`\)(;|\.$)", "unrendered",
            "the methods' account of what the values settled: the screens wait for the energy "
            "column's days, the claim's refusal in other words (export/methods.py, readings.py)",
            ("exclusions.screen_waits_for_days",)),
