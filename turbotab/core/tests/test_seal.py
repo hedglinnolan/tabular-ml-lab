@@ -276,6 +276,22 @@ def test_the_precision_of_a_held_out_r2_shrinks_with_n():
     assert width(400) == pytest.approx(1.96 * 2 * np.sqrt(0.2) * 0.8 / np.sqrt(400), abs=0.006)
 
 
+@pytest.mark.parametrize("task, one, two", [
+    ("regression", None, None),
+    ("binary", [1], [1, 1]),
+    ("ordinal", [1], [1, 1]),
+    ("time_to_event", [1, 0], [1, 1]),
+    ("multiclass", [1], [1, 1]),
+])
+def test_what_a_held_out_score_can_tell_counts_its_rows_in_number(task, one, two):
+    """The c-seal repair's M1: in every task's branch, one held-out row takes the singular noun and
+    two the plural (the counts by construction: one row, then two, with these class counts)."""
+    assert seal.measure(task, 1, one)[0].startswith(("About `1` held-out row,",
+                                                     "About `1` held-out row:"))
+    assert seal.measure(task, 2, two)[0].startswith(("About `2` held-out rows,",
+                                                     "About `2` held-out rows:"))
+
+
 # ── grouped inner cross-validation ───────────────────────────────────────────
 
 

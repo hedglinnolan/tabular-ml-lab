@@ -968,10 +968,11 @@ def _auc_halfwidth(n1: float, n0: float, auc: float = 0.75) -> float:
 
 
 def measure(task: str | None, n: int, counts: Sequence[int] | None = None) -> tuple[str, bool]:
-    """What a held-out score on ``n`` rows (with these class counts) can tell, and if below floor."""
-    from turbotab.core.voice import tick
+    """What a held-out score on ``n`` rows (with these class counts) can tell, and if below floor.
+    One held-out row takes the singular noun (the c-seal repair's M1)."""
+    from turbotab.core.voice import plural, tick
 
-    rows = tick(f"{n:,}")
+    rows = f"{tick(f'{n:,}')} {plural(n, 'held-out row')}"
     if n <= 0:
         return ("Every row trains and is scored by cross-validation; no untouched final score.",
                 False)
@@ -981,25 +982,25 @@ def measure(task: str | None, n: int, counts: Sequence[int] | None = None) -> tu
         width = _auc_halfwidth(events, others)
         below = events < FLOOR or others < FLOOR
         what = f"AUC known to about ±{width:.2f}" if width < 0.5 else "too few to measure an AUC"
-        return (f"About {rows} held-out rows, {tick(f'{events:,}')} in the rarer class: {what}.",
+        return (f"About {rows}, {tick(f'{events:,}')} in the rarer class: {what}.",
                 below)
     if task == "ordinal":  # no closed form for C's precision is claimed; the floor still applies
         rarest = min((int(c) for c in counts or []), default=0)
-        return (f"About {rows} held-out rows, {tick(f'{rarest:,}')} in the rarest level.",
+        return (f"About {rows}, {tick(f'{rarest:,}')} in the rarest level.",
                 rarest < FLOOR)
     if task == "time_to_event":  # counts: [events, the rest] (:func:`outcome_counts`)
         events = int(counts[0]) if counts else 0
-        return (f"About {rows} held-out rows, {tick(f'{events:,}')} with the event: a C-index "
+        return (f"About {rows}, {tick(f'{events:,}')} with the event: a C-index "
                 f"rests on its events.", events < FLOOR)
     if task == "multiclass":
         rarest = min((int(c) for c in counts or []), default=0)
         width = Z95 * math.sqrt(0.25 / rarest) if rarest else math.inf
         what = f"macro-F1 known to about ±{width:.2f}" if width < 0.5 else "too few to measure"
-        return (f"About {rows} held-out rows, {tick(f'{rarest:,}')} in the rarest class: {what}.",
+        return (f"About {rows}, {tick(f'{rarest:,}')} in the rarest class: {what}.",
                 rarest < FLOOR)
     width = Z95 * r2_se(n)
     what = f"R² known to about ±{width:.2f}" if width < 0.5 else "too few to measure an R²"
-    return f"About {rows} held-out rows: {what}.", n < FLOOR
+    return f"About {rows}: {what}.", n < FLOOR
 
 
 def r2_se(n: int, r2: float = PLAN_R2) -> float:

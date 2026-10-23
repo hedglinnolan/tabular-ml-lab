@@ -649,10 +649,14 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if info["n_holdout"] and cut_earlier:
         # A unit with rows on both sides of the cut-point is held out whole, so some held-out rows
         # come before it: counted, never said to be at or after it (the verifier's P2). The seal
-        # counts the rows analyzed, as ``n_holdout`` does (``seal.cut_holdout``).
-        caption = (f"{held_rows} held out: every unit seen at or after `{chron.cut_point}` on "
-                   f"`{chron.time_column}`, whole ({fmt_count(cut_earlier)} "
-                   f"{plural(cut_earlier, 'row')} before it). {measures}")
+        # counts the rows analyzed, as ``n_holdout`` does (``seal.cut_holdout``). The draw reads
+        # only the rows with the outcome recorded, so a unit with none at or after the cut-point
+        # trains, and the caption says so (the c-seal repair's M2), in twenty words up to the
+        # measure, so ``CAPTION_WORDS`` keeps the count of earlier rows where the time column's
+        # name and the cut-point are one word each.
+        caption = (f"{held_rows} held out: units with the outcome recorded at or after "
+                   f"`{chron.cut_point}` on `{chron.time_column}`, whole "
+                   f"({fmt_count(cut_earlier)} {plural(cut_earlier, 'row')} before it). {measures}")
     elif info["n_holdout"]:
         how = (f"at or after `{chron.cut_point}` on `{chron.time_column}`"
                if chron is not None and chron.cut_point is not None
