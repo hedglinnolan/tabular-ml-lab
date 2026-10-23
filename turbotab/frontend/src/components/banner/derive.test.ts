@@ -20,6 +20,7 @@ const status = (stage: string, key: string, s: StageStatus["status"] = "fresh"):
   updated_at: "2026-10-01T12:00:00Z",
   cancelled: false,
   held: null,
+  refusal: null,
 });
 
 function result<A>(stage: string, key: string, artifact: A, fresh = true): StageResult<A> {

@@ -154,6 +154,7 @@ export class MockServer {
       updated_at: null,
       cancelled: false,
       held: null,
+      refusal: null,
     });
     const p: MockProject = {
       summary: {
@@ -359,6 +360,7 @@ export class MockServer {
         progress: null,
         cancelled: false,
         held: null,
+        refusal: null,
       };
       if (missing.length) {
         next = { ...base, status: "blocked", fresh: false, missing };
@@ -426,6 +428,7 @@ export class MockServer {
         progress: 0,
         message: null,
         error: null,
+        refusal: null,
       },
     };
     p.jobs.set(job.view.job_id, job);

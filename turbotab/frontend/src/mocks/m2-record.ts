@@ -790,6 +790,7 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
     updated_at: new Date().toISOString(),
     cancelled: false,
     held: null,
+    refusal: null,
   });
 
   return {

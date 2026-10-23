@@ -58,6 +58,7 @@ function fitStatus(status: StageStatus["status"], progress: number | null): Stag
     updated_at: null,
     cancelled: false,
     held: status === "idle" ? "fit" : null,
+    refusal: null,
   };
 }
 

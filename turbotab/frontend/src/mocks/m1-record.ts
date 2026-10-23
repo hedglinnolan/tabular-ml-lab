@@ -216,6 +216,7 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
     updated_at: null,
     cancelled: false,
     held: null,
+    refusal: null,
   });
 
   function ensure(pid: string): M1Project | null {
@@ -375,6 +376,7 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
           progress: null,
           cancelled: false,
           held: null,
+          refusal: null,
         };
         let next: Omit<StageStatus, "stage" | "updated_at">;
         if (missing.length) next = { ...base, status: "blocked", fresh: false, missing };
@@ -452,6 +454,7 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
         progress: 0,
         message: null,
         error: null,
+        refusal: null,
       },
     };
     m.jobs.set(job.view.job_id, job);

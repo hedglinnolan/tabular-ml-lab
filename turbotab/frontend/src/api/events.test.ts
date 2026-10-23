@@ -19,6 +19,7 @@ function status(stage: string, patch: Partial<StageStatus> = {}): StageStatus {
     updated_at: "2026-09-27T10:00:00.000Z",
     cancelled: false,
     held: null,
+    refusal: null,
     ...patch,
   };
 }
@@ -302,6 +303,7 @@ describe("a job event", () => {
     progress: 0.4,
     message: null,
     error: null,
+    refusal: null,
     ...patch,
   });
 

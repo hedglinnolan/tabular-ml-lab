@@ -42,6 +42,7 @@ const stage = (name: string, patch: Partial<StageStatus>): StageStatus => ({
   updated_at: "2026-10-10T10:00:00.000Z",
   cancelled: false,
   held: null,
+  refusal: null,
   ...patch,
 });
 
