@@ -379,6 +379,44 @@ def restated_counts(kind: str) -> None:
     _COUNTED.add(kind)
 
 
+# The large-table ruling of 2026-10-23: the split's sentence (and a changed scheme's) says how many
+# times the comparisons' folds are drawn, which the training units decide (``models.folds``), as
+# the rows stood when it was recorded (:func:`_comparison_repeats`). A later answer (an exclusion,
+# the missing values, a role) can move the training units across the threshold, and the sentence
+# as said then names repeats the fit does not run. The methods text restates that clause alone,
+# from the context's ``counts[kind]``: ``comparison_repeats``, the repeats the fit ran, or that the
+# split drawn on the answers as they stand gives; None while neither is drawn, when the count is
+# said where ``n_analyzed``, the rows analyzed now, are fewer than the threshold (at most they
+# train), and the rule otherwise, by unit where ``grouped``. Without such facts the sentence stays
+# as said.
+_REPEATED: set[str] = set()
+
+
+def restated_repeats(kind: str) -> None:
+    """Declare that ``kind``'s sentence says the comparisons' repeats, restated as the rows stand."""
+    _REPEATED.add(kind)
+
+
+def _repeats_now(decision: Any, sentence: str, facts: Mapping[str, Any] | None) -> str:
+    """``sentence`` with its comparisons' repeats as ``facts`` give them (above)."""
+    found = _COMPARED_SAID.search(sentence) if facts else None
+    if found is None:
+        return sentence
+    from turbotab.core.models.folds import LARGE_UNITS, comparison_repeats
+
+    run, analyzed = facts.get("comparison_repeats"), facts.get("n_analyzed")
+    own = int(decision.repeats) if getattr(decision, "validation", None) == "repeated_kfold" else 1
+    if run is not None:
+        said = f"{tick(int(run))} times"
+    elif analyzed is not None and int(analyzed) < LARGE_UNITS:
+        said = f"{tick(max(own, comparison_repeats(int(analyzed))))} times"
+    elif "grouped" in facts:
+        said = _repeats_rule(own, bool(facts["grouped"]))
+    else:
+        return sentence
+    return sentence[:found.start("said")] + said + sentence[found.end("said"):]
+
+
 # W1-R round 2 (the walkthrough's findings 2 and 3c): the roles answer and each confirmation of a
 # role are recorded in Your data, often before the goal is answered, and the roles answer says
 # which of its columns still wait for their own confirmation. Each is re-authored on the state it
@@ -404,7 +442,7 @@ def _with_goal(then: Any, now: Any) -> Any:
 
 def restates(kind: str) -> bool:
     return (kind in _RESTATED_WHOLE or kind in _STANDING or kind in _COUNTED
-            or kind in _BY_GOAL)
+            or kind in _BY_GOAL or kind in _REPEATED)
 
 
 def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, *,
@@ -437,6 +475,8 @@ def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, 
         if before == after:
             return sentence
         return disclose(after, post_seal=post_seal, after_estimates=after_estimates) or sentence
+    if kind in _REPEATED:
+        return _repeats_now(decision, sentence, (_get(ctx, "counts") or {}).get(kind))
     if kind in _COUNTED:
         facts = (_get(ctx, "counts") or {}).get(kind)
         if not facts:
@@ -580,6 +620,9 @@ def _set_validation(d: Any, state: Any, ctx: Any) -> str:
     said = _set_split(drawn, state, ctx)
     body = said[0].lower() + said[1:] if said[:1].isupper() and not said[1:2].isupper() else said
     return f"The validation scheme was changed, the held-out rows kept as drawn: {body}"
+
+
+restated_repeats("set_validation")
 
 
 # revert — says what the slot holds again, when the log is at hand.
@@ -1518,6 +1561,62 @@ def _units_within_levels(ctx: Any, column: str | None, cluster: str) -> bool:
         return False
 
 
+# MS6: the comparisons' clause of the split's sentence, in one place, so the methods text can find
+# its repeats and restate them as the rows stand (:func:`restated_repeats`).
+_COMPARED = ("models were compared with each other and with the no-predictor baseline on "
+             "{folds}-fold cross-validation repeated {said}, by the corrected repeated k-fold t "
+             "(Nadeau & Bengio 2003; Bouckaert & Frank 2004)")
+_COMPARED_SAID = re.compile(re.escape(_COMPARED).replace(re.escape("{folds}"), "`[^`]+`")
+                            .replace(re.escape("{said}"), "(?P<said>.+?)"))
+
+
+def _repeats_rule(own: int, grouped: bool) -> str:
+    """The comparisons' repeats as their rule, from its claim's values (``models.comparisons``),
+    where the training units are not known: ``own``, the split's own, where they are more."""
+    from turbotab.core.models.folds import COMPARISON_REPEATS, LARGE_REPEATS, LARGE_UNITS
+
+    fewer, more = max(own, COMPARISON_REPEATS), max(own, LARGE_REPEATS)
+    if fewer == more:
+        return f"{tick(fewer)} times"
+    return (f"{tick(fewer)} times ({tick(more)} where {tick(f'{LARGE_UNITS:,}')} or more "
+            f"{'units' if grouped else 'rows'} train)")
+
+
+def _comparison_repeats(d: Any, ctx: Any, plan: Any, group: Any, own: int) -> str:
+    """How many times the comparisons' folds are drawn, said when the split is answered, before any
+    row is drawn: at least the repeats the training units take (``models.folds.comparison_repeats``,
+    the claim ``models.comparisons``), and ``own``, the split's own. The count, where the units are
+    known now: nothing held out and the seal plan counting them (every analyzed row, or the units it
+    keeps whole where it read no row the analysis leaves out); a share of rows held out, folds drawn
+    by row, and so many rows analyzed that the most the share can hold out leaves the threshold's
+    rows to train; or at most the rows entering the split, fewer than the threshold. Otherwise the
+    held-out draw decides how many train, and the rule is said (:func:`_repeats_rule`). The methods
+    text restates the count as the rows stand (:func:`restated_repeats`)."""
+    from turbotab.core.models.folds import LARGE_UNITS, comparison_repeats
+
+    planned = _attr(plan, "n_analyzed") if plan else None
+    measured = _attr(plan, "n_measured") if plan else None
+    basis = _attr(plan, "basis") if plan else None
+    analyzed = planned if planned is not None else _get(ctx, "n_cohort")
+    units = None
+    if planned is not None and basis is not None and getattr(d, "cut_point", None) is None:
+        if not d.holdout and not group:  # the folds are drawn by row, and every analyzed row trains
+            units = int(planned)
+        elif not d.holdout and measured == planned and _attr(basis, "n_units"):
+            units = int(_attr(basis, "n_units"))
+        elif d.holdout and not group and measured is not None:
+            # The share is drawn over the rows with the outcome recorded, and holds out at most
+            # ⌈share × those⌉ of them (scikit-learn's split; the seal's draw by time holds out the
+            # nearest whole number), so at least the rest of the analyzed rows train.
+            least = int(planned) - math.ceil(float(d.holdout) * int(measured))
+            units = least if least >= LARGE_UNITS else None
+    if units is None and analyzed is not None and int(analyzed) < LARGE_UNITS:
+        units = int(analyzed)  # at most these train, so fewer units, whatever is held out
+    if units is not None:
+        return f"{tick(max(own, comparison_repeats(units)))} times"
+    return _repeats_rule(own, bool(group))
+
+
 @register_sentence("set_split")
 def _set_split(d: Any, state: Any, ctx: Any) -> str:
     task = getattr(state, "task", None) or _get(ctx, "detected_task")  # answered, else detected
@@ -1577,16 +1676,14 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
                 f"bootstrap ({tick(d.n_boot)} resamples, the whole pipeline refit on each) and "
                 f"subtracted, except for a family that nearly memorizes its rows (boosted trees), "
                 f"whose cross-validated score stands because the bootstrap overstates it")
-    # MS6 (MODELING_SEQUENCE ruling 4): under prediction the comparisons run on repeated k-fold,
-    # at least 10 × K, whatever validation gives the score (models/folds.py).
+    # MS6 (MODELING_SEQUENCE ruling 4): under prediction the comparisons run on repeated k-fold
+    # whatever validation gives the score, at least the repeats the training units take
+    # (models/folds.py), said as the fit will run them (:func:`_comparison_repeats`).
     if getattr(state, "purpose", None) != "inference" and not time_ordered:
-        from turbotab.core.models.folds import COMPARISON_REPEATS
-
-        r = max(int(d.repeats) if validation == "repeated_kfold" else 1, COMPARISON_REPEATS)
+        said = _comparison_repeats(d, ctx, plan, group,
+                                   int(d.repeats) if validation == "repeated_kfold" else 1)
         compared = f"performance was estimated on the rest by {folds}"
-        boot += (f"; models were compared with each other and with the no-predictor baseline on "
-                 f"{tick(d.folds)}-fold cross-validation repeated {tick(r)} times, by the corrected "
-                 f"repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004)")
+        boot += "; " + _COMPARED.format(folds=tick(d.folds), said=said)
         if getattr(d, "nested_cv", False):
             from turbotab.core.models.validation import NESTED_REPS
 
@@ -1690,6 +1787,9 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     if basis is not None and _attr(basis, "exploratory"):
         text += f"; the held-out score is exploratory, as the split's basis is {_attr(basis, 'label')}"
     return text
+
+
+restated_repeats("set_split")
 
 
 # set_energy_adjustment

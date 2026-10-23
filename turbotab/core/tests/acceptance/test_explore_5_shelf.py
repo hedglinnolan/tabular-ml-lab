@@ -186,17 +186,19 @@ def test_5_the_regression_with_splines_benchmark_and_the_baseline_are_always_fit
     run.close()
 
 
-@pytest.mark.parametrize("n,says", [
-    (8000, "better than the no-predictor baseline by too little to matter."),
-    (4000, "not shown better than the no-predictor baseline.")])
-def test_5_a_benchmark_better_by_too_little_to_matter_is_never_called_not_shown_better(tmp_path,
-                                                                                       n, says):
+@pytest.mark.parametrize("n,paired,says", [
+    (8000, 25, "better than the no-predictor baseline by too little to matter."),
+    (4000, 50, "not shown better than the no-predictor baseline.")])
+def test_5_a_benchmark_better_by_too_little_to_matter_is_never_called_not_shown_better(
+        tmp_path, n, paired, says):
     """Claims backtest A-029. A weak predictor, y = 0.09·x + ε with x and ε standard normal,
     explains 0.09²/(0.09² + 1) = 0.008 of the outcome's variance (simulation truth): the benchmark
     truly beats the no-predictor baseline, by less than the floor of 0.01 in R². On 8,000 rows the
     gain's 95% interval lies above zero, and the benchmark's sentence says it is better than the
     baseline by too little to matter, never that it is not shown better; on 4,000 rows the interval
-    reaches below zero, and the sentence says it is not shown better."""
+    reaches below zero, and the sentence says it is not shown better. The comparison substrate is
+    5 × 5 folds on the 8,000 training rows and 10 × 5 on the 4,000 (the large-table ruling of
+    2026-10-23: 5 repeats from 5,000 training units)."""
     rng = np.random.default_rng(2 if n == 8000 else 1)
     x = rng.normal(size=n)
     frame = pd.DataFrame({"p1": x, "pid": np.arange(n), "y": 0.09 * x + rng.normal(size=n)})
@@ -207,7 +209,8 @@ def test_5_a_benchmark_better_by_too_little_to_matter_is_never_called_not_shown_
     vb = bench["versus_baseline"]
     assert vb["metric"] == "r2" and vb["verdict"] == "no_better" and 0 < vb["gain"] < 0.01
     assert (vb["ci_low"] > 0) == (n == 8000)
-    assert bench["sentence"].endswith(f"on the families' 50 paired folds, {says}"), bench["sentence"]
+    assert bench["sentence"].endswith(f"on the families' {paired} paired folds, {says}"), \
+        bench["sentence"]
     run.close()
 
 

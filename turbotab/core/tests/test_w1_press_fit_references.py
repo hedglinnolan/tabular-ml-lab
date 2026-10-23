@@ -21,8 +21,9 @@ the engine:
   scikit-learn's ``KFold`` at the split's seed over the training rows and the score by numpy, with
   scikit-learn's out-of-fold least squares on the same folds against the linear family's
   cross-validated MSE (so the folds are the engine's), and the gain over the baseline on the
-  comparison substrate (ten draws of the five folds; each draw's pooled out-of-fold R² against the
-  training-fold mean, averaged) against numpy;
+  comparison substrate (five draws of the five folds, since 5,000 or more rows train: the
+  large-table ruling of 2026-10-23; each draw's pooled out-of-fold R² against the training-fold
+  mean, averaged) against numpy;
 * the no-predictor baseline on the held-out rows (W1 part 2 ruling 2, ``HoldoutDetail.baseline``)
   by numpy: the held-out y around the training rows' mean, its MSE, RMSE and MAE, and its R²
   against that mean, 0 by construction; and the held-out verdict's gain, the held-out R² above;
@@ -269,18 +270,20 @@ def test_a_light_nhanes_predict_walk_presses_fit_and_its_held_out_numbers_match_
     assert linear["baseline"]["value"] == pytest.approx(
         float(np.mean((y_train - mean_oof) ** 2)), rel=TOL, abs=TOL)
     # The gain over it (models/baseline.py), on R², on the comparison substrate: the split's
-    # folds and nine more draws of them at seeds 1 to 9 (the seed + r of models/folds.py), the
+    # folds and four more draws of them at seeds 1 to 4 (the seed + r of models/folds.py), the
     # linear family's pooled out-of-fold R² against the training-fold mean in each, averaged (the
-    # baseline's own pooled R² is 0 by construction).
+    # baseline's own pooled R² is 0 by construction). Five draws, not ten, since 5,000 or more
+    # rows train (the large-table ruling of 2026-10-23).
     comparison = fit["artifact"]["comparison"]
-    assert (comparison["folds"], comparison["repeats"], comparison["shared"]) == (5, 10, 1)
+    assert len(y_train) >= 5_000
+    assert (comparison["folds"], comparison["repeats"], comparison["shared"]) == (5, 5, 1)
     r2s, mses = [], []
     for seed in range(comparison["repeats"]):
         mean_r, ols_r = (mean_oof, ols_oof) if seed == 0 else out_of_fold(seed)
         r2s.append(1 - np.sum((y_train - ols_r) ** 2) / np.sum((y_train - mean_r) ** 2))
         mses.append(np.mean((y_train - ols_r) ** 2))
     versus = linear["versus_baseline"]
-    assert versus["metric"] == "r2" and versus["df"] == 5 * 10 - 1
+    assert versus["metric"] == "r2" and versus["df"] == 5 * 5 - 1
     assert versus["gain"] == pytest.approx(float(np.mean(r2s)), rel=TOL, abs=TOL)
     assert linear["compared_on"]["estimate"] == pytest.approx(float(np.mean(mses)), rel=TOL, abs=TOL)
 

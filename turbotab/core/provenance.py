@@ -32,7 +32,9 @@ decisions out, but only those superseded before anything was seen:
   sentence that contradicts the analysis. A sentence that counts rows (the exclusions', the
   complete cases') is restated with the counts the participant flow has now, given in the context
   (``counts``; EXPORT), so the adjustment set answered after the missing-values question never
-  leaves its count stale. The Record keeps each sentence as said.
+  leaves its count stale; the split's (and a changed scheme's) comparisons' repeats likewise, with
+  those the fit runs as the rows stand (``voice.restated_repeats``). The Record keeps each sentence
+  as said.
 """
 from __future__ import annotations
 

@@ -72,7 +72,9 @@ bootstraps." The default is ``decisions.OPTIMISM_BOOT`` = 500; fewer are allowed
 runs.
 
 **Comparisons** (MODELING_SEQUENCE ruling 4, MS6). Families are compared on the repeated k-fold
-substrate (``folds.comparison_folds``), pair by pair, by Nadeau & Bengio's corrected resampled t as
+substrate (``folds.comparison_folds``: at least ``COMPARISON_REPEATS`` repeats of the K folds, and
+``LARGE_REPEATS`` from ``LARGE_UNITS`` training units, the claim ``models.comparisons``'s), pair by
+pair, by Nadeau & Bengio's corrected resampled t as
 Bouckaert & Frank (PAKDD 2004) apply it to r repeats of K folds (:func:`corrected_t`): over the rK
 paired differences ``d`` of the primary, ``t = mean(d) / √((1/(rK) + n₂/n₁)·s²_d)`` on ``rK − 1``
 degrees of freedom, ``n₂/n₁`` the rows scored over the rows fit. With K families there are
@@ -377,44 +379,57 @@ def validation_plan(purpose: str | None, n_units: int, *, time_ordered: bool = F
                     unit: str = "rows") -> ValidationPlan:
     """The validation options for this purpose and size, in order (module docstring)."""
     from turbotab.core.decisions import OPTIMISM_BOOT, REPEATS
-    from turbotab.core.models.folds import COMPARISON_REPEATS
+    from turbotab.core.models.folds import COMPARISON_REPEATS, LARGE_UNITS, comparison_repeats
 
     r = int(repeats or REPEATS)
     b = int(n_boot or OPTIMISM_BOOT)
     n = f"{int(n_units):,} {unit}"
     # Under prediction the comparisons run on repeated k-fold whatever leads (MS6): its refits are
-    # counted in every option's cost; the first run of folds is the headline's own.
+    # counted in every option's cost; the first run of folds is the headline's own. The plan is
+    # offered before any holdout is chosen, so the count is for every unit training, and where a
+    # holdout could leave fewer than LARGE_UNITS to train, its larger count is said beside it.
     compare = purpose != "inference" and not time_ordered
-    sub = max(r, COMPARISON_REPEATS)
+
+    def substrate(own: int) -> tuple[int, str]:
+        """The substrate's repeats over the split's ``own`` when every unit trains, and what it
+        would be were fewer than LARGE_UNITS to train, when that differs."""
+        every, fewer = max(own, comparison_repeats(int(n_units))), max(own, COMPARISON_REPEATS)
+        return every, ("" if fewer == every else
+                       f" ({fewer * folds}, {fewer} × {folds}, if fewer than {LARGE_UNITS:,} "
+                       f"{unit} train)")
+
+    sub, sub_if = substrate(1)
+    sub_r, sub_r_if = substrate(r)
     by: dict[str, ValidationOption] = {
         "bootstrap": ValidationOption(
             validation="bootstrap", label="Bootstrap optimism correction",
             measures=f"Every row trains and scores; {b} whole-pipeline refits on resamples "
                      f"estimate the optimism.",
             cost=(f"about {b} refits of each family, besides {sub * folds} for the comparisons' "
-                  f"{sub} × {folds}-fold repeats" if compare else
+                  f"{sub} × {folds}-fold repeats{sub_if}" if compare else
                   f"about {b} refits of each family, besides one {folds}-fold run"),
             caution=BOOTSTRAP_CAUTION),
         "repeated_kfold": ValidationOption(
             validation="repeated_kfold", label=f"Repeated cross-validation ({r} × {folds})",
             measures=f"The folds are drawn {r} times, so the score no longer rests on one "
                      f"partition.",
-            cost=f"{(sub if compare else r) * folds} refits of each family"),
+            cost=(f"{sub_r * folds} refits of each family{sub_r_if}" if compare else
+                  f"{r * folds} refits of each family")),
         "kfold": ValidationOption(
             validation="kfold",
             label="Time-ordered cross-validation" if time_ordered else "Cross-validation, once",
             measures=("Each fold scored by models fit on earlier units." if time_ordered else
                       "One partition into folds: cheap, and noisier at small sizes."),
             cost=(f"{sub * folds} refits of each family: the score's {folds}-fold run is the "
-                  f"first of the comparisons' {sub} × {folds}-fold repeats"
+                  f"first of the comparisons' {sub} × {folds}-fold repeats{sub_if}"
                   if compare else f"{folds} refits of each family")),
         "internal_external": ValidationOption(
             validation="internal_external", label="Internal–external, by cluster",
             measures="Each site, study or period scored by models fit on the others, with the "
                      "spread.",
             cost=("one refit of each family per cluster" +
-                  (f", besides {sub * folds} for the comparisons' {sub} × {folds}-fold repeats"
-                   if compare else "")),
+                  (f", besides {sub * folds} for the comparisons' {sub} × {folds}-fold "
+                   f"repeats{sub_if}" if compare else "")),
             needs_cluster=True),
     }
     holdout_note = None
@@ -879,13 +894,19 @@ _SCOPE = ("Each score reads the out-of-fold or out-of-resample predictions of mo
 
 
 def _register_contracts() -> None:
+    from turbotab.core import claims
     from turbotab.core.contracts import (CONTRACTS as REGISTRY, ContractOption, MethodContract,
                                         Relation, register_contract)
+    from turbotab.core.models.folds import COMPARISON_REPEATS, LARGE_REPEATS, LARGE_UNITS
 
     if VALIDATION_CONTRACTS[0] in REGISTRY:
         return
     prediction = ("prediction",)
     here = "turbotab.core.models.validation"
+    # The substrate's repeats at least, from their claim (models.comparisons): below the training
+    # units' threshold, and from it.
+    least = (f"at least {COMPARISON_REPEATS} × K folds, {LARGE_REPEATS} × K from "
+             f"{LARGE_UNITS:,} training units")
 
     def stated(key: str, label: str, customary: str, prediction_says: str, inference_says: str,
                rungs: tuple[str, str]) -> tuple[ContractOption, ...]:
@@ -925,23 +946,23 @@ def _register_contracts() -> None:
     contract(
         "comparison_substrate", "Repeated k-fold comparison substrate", run_order=2.0,
         needs=("training rows", "the unit when rows repeat"),
-        question="(stated: whatever validation leads, at least 10 × K folds)",
+        question=f"(stated: whatever validation leads, {least})",
         options=stated(
-            "repeated_kfold", "At least 10 × K folds, whole units together",
+            "repeated_kfold", f"At least {COMPARISON_REPEATS} × K folds ({LARGE_REPEATS} × K from "
+                              f"{LARGE_UNITS:,} training units), whole units together",
             "A single k-fold run or one split is the field's habit",
-            "Stated: whatever validation leads, at least 10 × K folds",
+            f"Stated: whatever validation leads, {least}",
             "Not a comparison", ("recommended", "not_offered")),
-        storyboard=("draw the folds 10 times, whole units together",
+        storyboard=(f"draw the folds {COMPARISON_REPEATS} times ({LARGE_REPEATS} from "
+                    f"{LARGE_UNITS:,} training units), whole units together",
                     "fit every family and the baseline on each fold",
                     "pair their fold scores", "the corrected repeated k-fold t"),
         sentence="models were compared with each other and with the no-predictor baseline on "
                  "{folds}-fold cross-validation repeated {repeats} times, by the corrected repeated "
                  "k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004)",
         relations=(
-            Relation("implies", "corrected_repeated_t",
-                     "paired comparisons and the baseline verdict on at least 10 × K folds, with "
-                     "rK − 1 degrees of freedom", purposes=prediction,
-                     condition="any family under prediction",
+            Relation("implies", "corrected_repeated_t", claims.methods("models.comparisons"),
+                     purposes=prediction, condition="any family under prediction",
                      enforced_by=f"{here}:corrected_t", id="families_compared_on_substrate"),
             Relation("implies", "grouped_resampling",
                      "grouped folds in every repeat, a grouped holdout, a bootstrap by unit, BBC-CV "
@@ -1359,7 +1380,8 @@ def compared_within_unit(basis: Mapping[str, Any] | None, *,
                          spanning: Sequence[int] | None = None,
                          units: int | None = None) -> WithinUnit | None:
     """What the comparison substrate's draws did to a unit's rows, or None. Under prediction the
-    families and the baseline are compared on repeated k-fold of at least 10 × K
+    families and the baseline are compared on repeated k-fold of at least ``COMPARISON_REPEATS``
+    × K, ``LARGE_REPEATS`` × K from ``LARGE_UNITS`` training units
     (``models.folds.comparison_folds``), drawn by row where the seal could not keep a unit's rows
     together, whatever folds give the headline: internal–external validation's levels, or k-fold
     whose draw is the substrate's first. ``spanning`` counts, for each of its draws, the units

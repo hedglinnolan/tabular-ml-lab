@@ -470,6 +470,36 @@ def tuning_plans(ctx: StageContext, task: str, families: Sequence[Any], *, store
                       selection=selection, strict=strict)
 
 
+def _training_units(store: Any, grouped_by: str | None, train_ids: Any) -> int:
+    """The training units the comparison substrate's repeats are counted by, as the fit stage
+    counts them (``folds.comparison_folds``): the distinct units of the split's grouping over the
+    training rows, a missing label a unit of its own row; the rows where nothing groups them."""
+    from turbotab.core.models.folds import unit_labels
+
+    n = len(train_ids)
+    if not grouped_by or grouped_by not in store.columns:
+        return n
+    values = store.materialize([grouped_by], np.asarray(train_ids))[grouped_by]
+    return len(pd.unique(unit_labels(values.to_numpy(dtype=object), n)))
+
+
+def substrate_repeats(split: Any, store: Any) -> int | None:
+    """How many times the fit draws the comparisons' folds on this drawn split under prediction
+    (``folds.comparison_folds``): the repeats its training units take, counted as the fit stage
+    counts them (:func:`_training_units`), or the split's own draws of the folds where they are
+    more; None where the folds are time-ordered, run once. The methods text restates the split's
+    sentence with it (``voice.restated_repeats``)."""
+    from turbotab.core.models.folds import comparison_repeats
+
+    data = (split.data or {}) if isinstance(split, Bundle) else {}
+    assignment = read_assignment(split)
+    if data.get("fold_scheme") == "time_ordered" and "order" in assignment.columns:
+        return None
+    train_ids = assignment.index[assignment["train"].to_numpy()]
+    units = _training_units(store, data.get("grouped_by"), train_ids)
+    return max(1 + len(repeat_columns(assignment)), comparison_repeats(units))
+
+
 def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[Any]) -> dict[str, Any]:
     """Each family's measured fit time on these training rows (``models.cost``); {} without them.
 
@@ -483,21 +513,27 @@ def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[
     split = ctx.inputs.get("split")
     data = (split.data or {}) if isinstance(split, Bundle) else {}
     # Every fold of every repeat, and each bootstrap refit, is about one fit of the whole table.
-    # MS6: under prediction the comparisons' repeated k-fold (≥ 10 × K) is counted too, before the
-    # fit runs, with the split's own repeats as its first ones.
-    from turbotab.core.models.folds import COMPARISON_REPEATS
+    # MS6: under prediction the comparisons' repeated k-fold is counted too, before the fit runs,
+    # with the split's own repeats as its first ones: at least the repeats these training units
+    # take (``folds.comparison_repeats``), counted as the fit stage counts them
+    # (:func:`_training_units`).
+    from turbotab.core.models.folds import comparison_repeats
 
     k = int(getattr(ctx.state.split, "folds", None) or data.get("folds") or 5)
     repeats = int(data.get("repeats") or 1)
-    if ctx.state.purpose != "inference" and data.get("fold_scheme") != "time_ordered":
+    compared = ctx.state.purpose != "inference" and data.get("fold_scheme") != "time_ordered"
+    if compared:
         own = int(data.get("folds") or k) * repeats if data.get("validation") == "internal_external" else 0
-        folds = k * max(repeats, COMPARISON_REPEATS) + own + int(data.get("n_boot") or 0)
+        folds = own + int(data.get("n_boot") or 0)  # the substrate's are counted on the store
     else:
         folds = int(data.get("folds") or 5) * repeats + int(data.get("n_boot") or 0)
     scheme = str((split.data or {}).get("fold_scheme") or "random") if isinstance(split, Bundle) else "random"
     ctx.progress(0.5, "Timing one fit of each family on a sample of the training rows")
     try:
         with open_store(ctx) as store:
+            if compared:
+                units = _training_units(store, data.get("grouped_by"), train_ids)
+                folds += k * max(repeats, comparison_repeats(units))
             # MS6: the grouping the question named is validated internal–externally beside the
             # headline under prediction, one refit per level (the fit stage's ``sites``).
             from turbotab.core.estimand import cluster_answer
@@ -1863,8 +1899,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
     MS6 (MODELING_SEQUENCE ruling 4): the primary is strictly proper (``metrics.PRIMARY``), with AUC
     or C the customary headline beside it; under prediction every family and the baseline are also
-    fit on the comparison substrate, repeated k-fold of at least 10 × K whose first repeats are the
-    split's own (``folds.comparison_folds``), and the comparisons, the baseline verdict and BBC-CV
+    fit on the comparison substrate, repeated k-fold of at least 10 × K (5 × K from 5,000 training
+    units, ``folds.comparison_repeats``) whose first repeats are the split's own
+    (``folds.comparison_folds``), and the comparisons, the baseline verdict and BBC-CV
     (by whole unit) read it; the result is declared (``selection.declared_result``); calibration is
     by level, or at a horizon, or said to be not assessed; and the nested cross-validation interval
     runs when the split asks for it, and is offered where predictors outnumber rows.
@@ -2090,8 +2127,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
     horizon, horizon_note = (follow_up_horizon(state, y) if task == "time_to_event" else (None, None))
     primary = primary_metric(task, y if task == "time_to_event" else None)
     # MS6: under prediction the families and the baseline are compared, and the choice among them
-    # corrected, on repeated k-fold (≥ 10 × K) whatever validation supplies the headline; the
-    # split's own folds come first, so the headline's run is a subset of it (models/folds.py).
+    # corrected, on repeated k-fold (≥ 10 × K, 5 × K from 5,000 training units) whatever
+    # validation supplies the headline; the split's own folds come first, so the headline's run is
+    # a subset of it (models/folds.py).
     seed = int(split_data.get("seed") or 0)
     k_folds = int(getattr(state.split, "folds", None) or split_data.get("folds") or 5)
     strata = (None if task == "regression" else
@@ -3803,4 +3841,4 @@ def _in_outcome_unit(label: str | None, unit: str | None) -> str | None:
 
 __all__ = ["DROPPED_ENERGY", "WITHHELD_GAP", "design_as_served", "design_stage", "fit_stage",
            "pinned_to_full_fit", "read_assignment", "row_ids_of", "shelf_stage",
-           "substitution_pairs", "substitution_stage"]
+           "substitution_pairs", "substitution_stage", "substrate_repeats"]

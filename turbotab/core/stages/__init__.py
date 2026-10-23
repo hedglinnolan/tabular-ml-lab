@@ -516,7 +516,10 @@ def build_graph() -> Graph:
             # shelf 17 (RT-1b, RT-8's core): a tuned family's estimate is timed at its plan's center
             # and counts the fits its plan makes in every outer fit (RECIPES §4.4); the plan reads
             # the selection step (out of bag or inner folds), so the shelf reads it too.
-            Stage("shelf", 17, ("working", "cohort", "target_info", "split"),
+            # shelf 18 (the large-table ruling of 2026-10-23): the measured estimate counts the
+            # comparisons' repeats the training units take, 5 × K from 5,000 of them, as the fit
+            # runs them, so an estimate cached before it is computed again.
+            Stage("shelf", 18, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms", "levers", "selection",
@@ -684,7 +687,10 @@ def build_graph() -> Graph:
             # link say what the drawn folds, the comparisons', the nested cross-validation's and
             # the named grouping's levels did to a unit's rows, so a fit cached before it is
             # computed again.
-            Stage("fit", 30, ("working", "design", "split", "target_info", "cohort"),
+            # fit 31 (the large-table ruling of 2026-10-23, option 3): under prediction the
+            # comparison substrate runs at least 5 repeats of K folds from 5,000 training units, not
+            # 10, so a fit cached before it is computed again rather than served with 10.
+            Stage("fit", 31, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -741,7 +747,10 @@ def build_graph() -> Graph:
             # seal_plan 7 (BLUEPRINT §14.3): as split 7.
             # seal_plan 8 (WP17): every option of the split question labeled customary and sound,
             # with a tension line; the grouping names internal–external validation's cluster.
-            Stage("seal_plan", 8, ("working", "cohort", "target_info", "structure"),
+            # seal_plan 9 (the large-table ruling of 2026-10-23): the split question's costs count
+            # the comparisons' 5 × K refits from 5,000 units, and the 10 × K should a holdout leave
+            # fewer to train, so a plan cached before it is computed again.
+            Stage("seal_plan", 9, ("working", "cohort", "target_info", "structure"),
                   (*ROLE_READS, "task", "event", "purpose", *SEAL_READS, "clusters"),
                   seal_plan_stage,
                   requires=("target",),

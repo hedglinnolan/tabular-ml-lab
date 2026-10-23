@@ -406,8 +406,8 @@
       "tag": "citation"
     },
     {
-      "text": "paired comparisons and the baseline verdict on at least 10 × K folds, with rK − 1 degrees of freedom",
-      "tag": "threshold-pending-claim"
+      "text": "paired comparisons and the baseline verdict on at least {repeats} × K folds, at least {large_repeats} × K where the training units number {large_units:,} or more, with rK − 1 degrees of freedom",
+      "tag": "mathematical constant"
     },
     {
       "text": "performance with intervals in each named sociodemographic subgroup (TRIPOD+AI 23a), the fairness approach recorded (item 14)",
