@@ -201,8 +201,6 @@ WITHHELD: dict[str, tuple[Callable[[dict], Any], str]] = {
     "export": (lambda r: r["export"].update(methods="sentinel methods"), "sentinel methods"),
     "wants": (_want, "sentinel want"),
     "account": (_account, "sentinel account"),
-    "replay": (lambda r: r.update(replay={"scorer": "sentinel-scorer", "generator": "g",
-                                          "draws": 1, "why": "w"}), "sentinel-scorer"),
     "replication": (lambda r: r.update(replication={"paper": "sentinel paper", "stated": [],
                                                     "unstated": []}), "sentinel paper"),
 }

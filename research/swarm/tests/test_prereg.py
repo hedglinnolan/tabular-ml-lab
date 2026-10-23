@@ -24,7 +24,8 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
 * The committed prereg.json is what the generators give, and a changed margin is named.
 * The crash sweep's fields: the fit budget the launcher's own rule gives, the compute cap summed by
   hand from §6's named plans, the Predict fixture's default plan; the trio refused without them,
-  on a report that did not pass, and across two engine trees.
+  on a report that did not pass, across two engine trees, and on a report whose table is not the
+  one its dataset's manifest names (another table's SHA-256, or none).
 """
 from __future__ import annotations
 
@@ -522,11 +523,22 @@ def test_every_seed_a_replay_reads_is_apart_from_the_tuning_and_the_committed_ta
 # ── the crash sweep's fields ─────────────────────────────────────────────────
 
 
+def table_of(dataset: str) -> dict:
+    """The table ``dataset``'s manifest names, as a crash sweep's report names the table it ran on
+    (``sweep.crash``'s ``data``): its file and SHA-256, read from the manifest itself."""
+    from research.swarm import launcher
+
+    table = json.loads((launcher.DATASETS / dataset / "manifest.json").read_text("utf-8"))["table"]
+    return {"path": table["file"], "sha256": table["sha256"]}
+
+
 def crash(dataset: str, **changes) -> dict:
+    """A crash sweep's report on ``dataset`` that passed, in ``sweep.crash``'s shape: every decision
+    of the default plan swept (``only`` None) on the table its manifest names."""
     out = {"dataset": dataset, "complete": True, "unvisited": [], "defects": [], "passed": True,
            "engine_tree": "t0", "engine_modified": False, "commit": "c0",
            "fit_seconds": {"fits": 6, "total": 30.0, "median": 4.0, "p90": 7.0, "max": 7.5},
-           "points": [], "not_swept": []}
+           "points": [], "not_swept": [], "only": None, "data": table_of(dataset)}
     out.update(changes)
     return out
 
@@ -579,6 +591,23 @@ def test_the_fill_refuses_a_missing_report_one_that_did_not_pass_and_two_engine_
     given["bang2009"]["engine_tree"] = "t9"
     with pytest.raises(P.Refused):
         P.fill(prereg, given, engine={**ENGINE, "engine_tree": "t9"})
+
+
+def test_the_fill_refuses_a_report_whose_table_is_not_the_manifests(prereg):
+    """The reports on the tables the manifests name fill the crash fields; one that ran on another
+    table (here sullivan2021's, its manifest's SHA-256), or names no table's SHA-256, does not."""
+    assert P.check(P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)) == []
+    other = table_of("sullivan2021")
+    assert other["sha256"] != table_of("bang2009")["sha256"]  # the construction: another table
+    for data in (other, {"path": other["path"], "sha256": None}, None):
+        given = reports(["boosted_trees", "elastic_net"])
+        given["bang2009"]["data"] = data
+        with pytest.raises(P.Refused, match="bang2009: .*not the manifest's"):
+            P.fill(prereg, given, engine=ENGINE)
+    given = reports(["boosted_trees", "elastic_net"])
+    del given["bang2009"]["data"]
+    with pytest.raises(P.Refused, match="bang2009: .*not the manifest's"):
+        P.fill(prereg, given, engine=ENGINE)
 
 
 def test_relative_prices_are_set_for_every_model_and_kept_when_the_crash_fields_are_filled(prereg):

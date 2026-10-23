@@ -119,7 +119,7 @@ WITHHELD: dict[str, str] = {
            "attempts.reasons", "wants", "account"),
     **_all(FINGERPRINT_WHY, "run.server", "decisions.id", "attempts.id", "attempts.fit_key",
            "attempts.plan_digest", "export", "surfacings.failed_fits.key"),
-    **_all(CONTROL_WHY, "dataset.control", "dataset.fixture", "dataset.known", "replay"),
+    **_all(CONTROL_WHY, "dataset.control", "dataset.fixture", "dataset.known"),
     **_all(IDENTITY_WHY, "dataset.files", "dataset.codebook", "dataset.card", "question.target",
            "question.estimand", "question.intended_use", "question.stated", "question.paper",
            "regime.event", "regime.lenses", "decisions.option", "decisions.answers",

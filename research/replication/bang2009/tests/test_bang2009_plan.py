@@ -111,10 +111,13 @@ INSTEAD = {"label": "Estimate for these participants instead",
            "decision": {"kind": "set_survey", "estimand": "sample"}}
 
 
-def replicator(tmp_path):
+def replicator(tmp_path, exits: list[dict] | None = None):
+    """The run's analyst; ``exits``: the ways forward its plan names (``Spec.exits``), none as
+    run.py's own spec names."""
     a = run.Replicator(run.D.Spec(name="t", dataset="bang2009", target=PREREG["outcome"]["column"],
                                   event=str(PREREG["outcome"]["event"]), purpose="inference",
-                                  lenses=["clinical"], readings={}), tmp_path)
+                                  lenses=["clinical"], readings={}, exits=list(exits or [])),
+                       tmp_path)
     a.settings, a.kept = run.settings("estimate", "default"), {}
     return a
 
@@ -151,22 +154,35 @@ def test_a_refused_answer_stops_the_run_and_its_way_forward_is_never_posted(monk
     from research.swarm import options as opts
 
     exit_id = opts.exits([INSTEAD])[0]["id"]
-    # The premise: on this refusal the dry run's analyst posts its first way forward.
-    unguarded = replicator(tmp_path)
-    unguarded.answer = lambda ids, sets, why, marker=run.D.DEFAULT_MARKER: \
-        run.D.Analyst.answer(unguarded, ids, sets, why, marker)
-    posted, plan = scripted(unguarded, monkeypatch, refuse=True)
-    unguarded.until(lambda q: bool(posted))
-    assert posted == [[plan], [exit_id]]
+    # The premise: on this refusal the dry run's analyst posts its way forward where the plan names
+    # it (``Spec.exits``), and stops there itself where the plan names none.
+    def unguarded(exits):
+        u = replicator(tmp_path, exits)
+        u.answer = lambda ids, sets, why, marker=run.D.DEFAULT_MARKER: \
+            run.D.Analyst.answer(u, ids, sets, why, marker)
+        return u
 
-    # The run's analyst stops at the refusal instead, and posts nothing after it.
-    a = replicator(tmp_path)
-    posted, plan = scripted(a, monkeypatch, refuse=True)
-    with pytest.raises(RuntimeError, match="an answer was refused") as stopped:
-        a.until(lambda q: bool(posted))
-    assert not isinstance(stopped.value, run.D.Refused)  # the dry run catches only a Refused
+    u = unguarded([INSTEAD["decision"]])
+    posted, plan = scripted(u, monkeypatch, refuse=True)
+    u.until(lambda q: bool(posted))
+    assert posted == [[plan], [exit_id]]
+    u = unguarded(None)
+    posted, plan = scripted(u, monkeypatch, refuse=True)
+    with pytest.raises(run.D.Refused, match="names none of its ways forward"):
+        u.until(lambda q: bool(posted))
     assert posted == [[plan]]
-    assert exit_id not in {i for ids in posted for i in ids}
+
+    # The run's analyst stops at the refusal with its own stop, before the dry run's reads it, and
+    # posts nothing after it: with run.py's spec, naming no way forward, and even with one naming
+    # this one.
+    for exits in (None, [INSTEAD["decision"]]):
+        a = replicator(tmp_path, exits)
+        posted, plan = scripted(a, monkeypatch, refuse=True)
+        with pytest.raises(RuntimeError, match="an answer was refused") as stopped:
+            a.until(lambda q: bool(posted))
+        assert not isinstance(stopped.value, run.D.Refused)  # the dry run catches only a Refused
+        assert posted == [[plan]]
+        assert exit_id not in {i for ids in posted for i in ids}
 
     a = replicator(tmp_path)
     posted, plan = scripted(a, monkeypatch, refuse=True)
