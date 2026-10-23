@@ -22,8 +22,10 @@ Estimate the exposure the estimand names), each finding it acted on,
 and each declaration line (``quest.DECLARATIONS``, ``research/swarm/declarations.py``) the plan
 answered or left open or set for it; the options are the driver's own (``options.compose`` for the
 question the revisit opens again, a finding's acts as its line offers them,
-``declarations.compose`` for a line), never a hand list, and an option that records nothing by
-itself (a field of one's own, its ``needs``) is listed, not answered. **Readings with one true
+``declarations.compose`` for a line), never a hand list; an option that records nothing by
+itself (a field of one's own, its ``needs``) is listed, answered by the crash sweep with values
+the card states or the sweep builds where it has them (below), and left unreached around a named
+plan. **Readings with one true
 answer** (a column's code or amount, its units: each ``confirm_reading`` but a role's, and each
 ``set_column_unit``, in force) are graded against the dataset's declared readings, not swept
 (:func:`graded`). Under Predict the validation scheme is the sweep's own (below), so its line is
@@ -73,9 +75,11 @@ after it with no way forward and no other option left, or at the sweep's own sco
 engine at a stage or at the fit; ``failed``, an HTTP 500 anywhere in the refit, an answer that
 failed, or a stage or fit error the engine did not type (the driver's typing, ``driver.failures``,
 whether the walk met it waiting or it stopped at a limit of its own with a stage of its copy in
-error that was not before the option); ``unreached``, an option that records nothing by itself,
-or a path that stopped at a limit of the walk's or the revisit's own with no stage failed (its
-reason in its words: no engine defect); ``duplicate``.
+error that was not before the option); ``unreached``, an option that records nothing by itself
+and that has no value of the crash sweep's (around a named plan, every such option), one whose
+fields as the crash sweep answered them the driver does not take, or a path that stopped at a
+limit of the walk's or the revisit's own with no stage failed (its reason in its words: no engine
+defect); ``duplicate``.
 
 **Materiality** (§7, :func:`materiality`): under Predict package 1's signed change of each family's
 primary score against the plan's (``assemble.signed_change`` over the two fit records, each arm's
@@ -90,7 +94,8 @@ Which decisions are material for the pilot's scoring is ``prereg.json``'s to fix
 
 **The table** (``sweep.json``, and ``sweep.md`` to read): the plan, its scoring, each refit (its
 decision, option, class, digest, seconds, scores or estimates, and change), each decision's
-summary, and the graded readings: what §7's scoring and §9's theorist read.
+summary, each option left unreached with why, and the graded readings: what §7's scoring and §9's
+theorist read.
 
 **The compute cap.** The sweeps of a dataset around named plans stop before a fit once its
 compute cap is spent: ``prereg.json``'s ``filled.compute_cap.by_dataset`` (the crash fill's, in
@@ -113,11 +118,35 @@ kept); each refusal is kept with its reason; each fit's run time is measured and
 dataset's fit budget and the sweep's compute estimate (``crash.json``). It is resumable: its home
 with the template is kept under ``--out``, and ``progress.jsonl`` holds the plan and every option
 finished, written as it goes, so a second run takes up where the first stopped without refitting
-what it finished. It passes (:func:`passed`) when every decision of the plan was swept (``only``,
-said in the report, is none), every option of each was visited (a decision whose options could not
-be listed, or that offered none though the plan answered it, was not: :func:`unlisted_of`) and no
-engine defect was met, on the engine commit it ran on; the report names the table it ran on by its
-SHA-256, which the launcher holds to the dataset's manifest.
+what it finished; on a report finished before it answered fields of its own (below), it fits
+only the refits that answer them, which supersede each such option's unreached line. It passes
+(:func:`passed`) when every decision of the plan was swept (``only``, said in the report, is
+none), every option of each was visited (a decision whose options could not be listed, or that
+offered none though the plan answered it, was not: :func:`unlisted_of`) and no engine defect was
+met, on the engine commit it ran on; the report names the table it ran on by its SHA-256, which
+the launcher holds to the dataset's manifest, and counts the options it left unreached, each with
+why (``unreached``; the summary line of ``crash.md`` beside complete and passed).
+
+**Options that take fields of their own** (:class:`Fields`, the crash sweep only): each is
+answered with values the dataset's card states where it states them, else with one value built
+from the table or the plan, each value's source in its refit (``answered_with``: ``card`` or
+``built``, in words) and the report (``fielded``), and each answer previewed, answered (the
+driver's ``answer``, its ids and ``--set`` fields, ``options.resolve``) and fitted once as every
+other option, a refit of its own (``<option>@<source>:<what>``), the participant flow it fitted
+kept (``flow``). From the card (:func:`card_rules`, its eligibility sentences as the intake writes
+them): each range rule as the eligibility range, alone; each level rule as the levels of one's
+own, with its refused and don't-know codes, alone under each handling of a row it cannot confirm
+that its sentence names (it leaves out such a row unless it keeps them all: both); its whole
+population, two rules or more, as one answer of them all in its order, once under each such
+handling; and its held-out rows (``held_out``) as the cut-point of one's own, the folds' order
+the sweep's scoring's (:data:`FOLD_ORDER`). Built, where the card states none: a range of
+plausible values on the first numeric predictor the roles name, from its 1st to its 99th
+percentile (:data:`RANGE_PERCENTILES`); an eligibility range on the table's age column from the
+engine's adult age (``plausibility.ADULT_AGE``) in the column's unit; a level rule excluding the
+rarest level of the first categorical predictor; and an adjustment set of one's own, each
+covariate the roles name among the columns the plan's adjustment answers, answered as a
+confounder of the declared exposure (:data:`CONFOUNDER`). No built value is ever the outcome or
+the declared exposure. An option with nothing to answer it from stays unreached, with why.
 """
 from __future__ import annotations
 
@@ -142,6 +171,7 @@ REPO = Path(__file__).resolve().parents[2]
 FOLDS, REPEATS = 5, 5  # §7: random repeated 5-fold cross-validation, 5 repeats
 SCORING = {"kind": "set_validation", "validation": "repeated_kfold", "folds": FOLDS,
            "repeats": REPEATS}
+FOLD_ORDER = "random"  # the scoring's folds' order where a cut-point seal leaves it free
 HALF = 0.5  # §7: material at least half the plan's own interval half-width
 SCHEME = "set_validation"  # the sweep's own scoring under Predict (the module docstring)
 # Records that answer no question an option of the plan's changes: the seal and the lock (cut away
@@ -353,6 +383,472 @@ def readings_truth(dataset: str | None) -> dict[str, str]:
     return {}
 
 
+# ── the options that take fields of their own (the crash sweep) ─────────────
+
+# A card's eligibility rule as the intake writes it (``intake.age_line``, ``intake.level_line``):
+# "a range rule on <column> from <low>", or "a level rule on <column> excluding level <level>
+# (<its meaning>)" naming "<code> as its refused code" and "<code> as its don't-know code" where
+# it has them, and saying what a level rule does with a row it cannot confirm in the words of
+# :data:`HANDLING_WORDS`.
+RULE_ON = (" range rule on ", " level rule on ")
+CARD_RANGE = re.compile(r"\ba range rule on (?P<column>[^\s,;]+) from (?P<low>-?\d+(?:\.\d+)?)\b")
+CARD_LEVELS = re.compile(r"\ba level rule on (?P<column>[^\s,;]+) excluding level "
+                         r"(?P<exclude>[^\s,;()]+) \(")
+CARD_REFUSED = re.compile(r"\b(?P<code>[^\s,;]+) as its refused code\b")
+CARD_DONT_KNOW = re.compile(r"\b(?P<code>[^\s,;]+) as its don['’]t-know code\b")
+HANDLING_WORDS = {"exclude": "leaves out a row it cannot confirm",
+                  "keep": "unless it keeps them all"}
+RANGE_PERCENTILES = (1, 99)  # a range of one's own built from the table: these percentiles
+# A covariate adjusted for, by the adjustment card's three questions (``options.ADJUSTMENT_ASKED``):
+# it causes the exposure, it causes the outcome, and it is not after the exposure; and one left
+# out, a cause of neither and not after it (``estimand.derive``: the criterion leaves it out).
+CONFOUNDER = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+NEITHER = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+NOTHING = "It records nothing by itself: "  # an option that takes fields, left unreached
+
+
+@dataclass(frozen=True)
+class CardRule:
+    """One eligibility rule a card states (:func:`card_rules`): its place among the card's
+    eligibility sentences (from 1), a range (its low as the card writes it) or a level rule (the
+    levels it excludes and its refused and don't-know codes, each as written), the handlings of a
+    row it cannot confirm that its sentence names (:data:`HANDLING_WORDS`), and the sentence."""
+
+    place: int
+    kind: str  # "range" or "levels"
+    column: str
+    low: str | None = None
+    exclude: tuple[str, ...] = ()
+    refused: tuple[str, ...] = ()
+    dont_know: tuple[str, ...] = ()
+    handlings: tuple[str, ...] = ()
+    words: str = ""
+
+
+def card_rules(card: Mapping[str, Any] | None) -> tuple[list[CardRule], list[dict[str, Any]]]:
+    """The eligibility rules ``card`` states, in its order, read from its sentences as the intake
+    writes them (the comment above :data:`RULE_ON`); and each sentence that names a rule
+    (:data:`RULE_ON`) but does not read as one, with its place: said, never dropped. A sentence
+    that names no rule is the card's prose, not a rule."""
+    from research.swarm import options as opts
+
+    rules: list[CardRule] = []
+    unread: list[dict[str, Any]] = []
+    for place, words in enumerate((card or {}).get("eligibility") or [], 1):
+        words = str(words)
+        if not any(on in f" {words}" for on in RULE_ON):
+            continue
+        found = CARD_RANGE.search(words)
+        if found:
+            rules.append(CardRule(place, "range", found["column"], low=found["low"], words=words))
+            continue
+        found = CARD_LEVELS.search(words)
+        if not found:
+            unread.append({"place": place, "words": words})
+            continue
+        named = tuple(h for h in opts.handlings() if HANDLING_WORDS.get(h, "\0") in words)
+        rules.append(CardRule(
+            place, "levels", found["column"], exclude=(found["exclude"],),
+            refused=tuple(m["code"] for m in CARD_REFUSED.finditer(words)),
+            dont_know=tuple(m["code"] for m in CARD_DONT_KNOW.finditer(words)),
+            handlings=named, words=words))
+    return rules, unread
+
+
+@dataclass
+class Fielded:
+    """An option that takes fields of its own, answered: the refit's option (``<option>@<source>:
+    <what>``), the options named and their ``--set`` fields as the driver's ``answer`` takes them
+    (``options.resolve``), where the values came from (``card`` or ``built``) and in words."""
+
+    option: str
+    ids: list[str]
+    sets: list[str]
+    source: str
+    words: str
+
+    def json(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+
+def rule_answer(rules: Sequence[tuple[CardRule, str | None]]) -> tuple[list[str], list[str]]:
+    """The options named and the fields set for ``rules``, each with its handling of a row it
+    cannot confirm (None: none set, the option's own initial handling), one rule an option in
+    their order: a range as the eligibility range (the cards' rules are who the study is about), a
+    level rule as the levels of one's own; each field by its option's place where several are
+    named."""
+    ids: list[str] = []
+    sets: list[str] = []
+    for i, (rule, handling) in enumerate(rules, 1):
+        at = f"{i}." if len(rules) > 1 else ""
+        if rule.kind == "range":
+            ids.append("eligibility")
+            sets += [f"{at}column={rule.column}", f"{at}low={rule.low}"]
+        else:
+            ids.append("levels")
+            sets += [f"{at}level_column={rule.column}", f"{at}exclude={','.join(rule.exclude)}",
+                     *(f"{at}{name}={','.join(codes)}" for name, codes in (
+                         ("refused", rule.refused), ("dont_know", rule.dont_know)) if codes)]
+        if handling is not None:
+            sets.append(f"{at}missing={handling}")
+    return ids, sets
+
+
+def spelled(value: Any) -> str:
+    """A level as the driver writes it for the server (``2.0`` as ``2``; the server compares
+    levels in one spelling, ``stages.rows._level_key``)."""
+    import numpy as np
+
+    if isinstance(value, (bool, np.bool_)):
+        return str(bool(value))
+    if isinstance(value, (float, np.floating)) and math.isfinite(value) \
+            and float(value).is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def ordinal(n: int) -> str:
+    """``1st``, ``2nd``, ``3rd``, ``4th``, ``11th``, ``99th``."""
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def table_frame(path: str | Path | None) -> Any:
+    """The table at ``path`` as pandas reads its file (a Parquet or a delimited text file), or
+    None where there is none or it cannot be read."""
+    import pandas as pd
+
+    if path is None:
+        return None
+    try:
+        if Path(path).suffix.lower() in (".parquet", ".pq"):
+            return pd.read_parquet(path)
+        return pd.read_csv(path)
+    except (OSError, ValueError, ImportError):
+        return None
+
+
+@dataclass
+class Fields:
+    """What the crash sweep answers an option that takes fields of its own from (the module
+    docstring): the dataset's card (its eligibility rules, its held-out cut-point), the table as
+    its file holds it (``frame``), and the plan's own answers, read from the template: its roles,
+    the columns its readings or the engine read as codes (``codes``), each column's unit
+    (``units``) and the profile's reading of each column (``profile``: its ``dtype`` and
+    ``n_unique``; else read off the table)."""
+
+    question: arms.Question
+    card: Mapping[str, Any] | None = None
+    frame: Any = None
+    roles: dict[str, str] = field(default_factory=dict)
+    codes: set[str] = field(default_factory=set)
+    profile: dict[str, dict[str, Any]] = field(default_factory=dict)
+    units: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def of_template(cls, session: Any, question: arms.Question, dataset: str | None,
+                    data: str | None, project: str) -> "Fields":
+        """The fields' sources for the plan on ``session``'s template ``project``."""
+        session.use(project)
+        view = session.view()
+        state = view.get("state") or {}
+        codes = {str(c) for c in state.get("categorical") or []}
+        units: dict[str, str] = {}
+        for r in live(view):  # in the log's order: a later reading of a column is the one in force
+            body = r.decision.model_dump(mode="json")
+            column = str(body.get("column"))
+            if r.decision.kind == "confirm_reading" and body.get("reading") == "code_or_count":
+                (codes.add if body.get("value") == "code" else codes.discard)(column)
+            elif r.decision.kind == "set_column_unit" and body.get("unit"):
+                units[column] = str(body["unit"])
+        served = (session.read("stages/profile") or {}).get("artifact") or {}
+        profile = {str(c["name"]): dict(c) for c in served.get("columns") or []
+                   if isinstance(c, Mapping) and c.get("name")}
+        card = None
+        if dataset and (arms.DATASETS / dataset / "card.json").exists():
+            card = arms.card_of(dataset)
+        return cls(question, card=card, frame=table_frame(data),
+                   roles={str(k): str(v) for k, v in (state.get("roles") or {}).items()},
+                   codes=codes, profile=profile, units=units)
+
+    # the table, as the plan reads it
+
+    def _columns(self) -> list[str]:
+        if self.frame is not None:
+            return [str(c) for c in self.frame.columns]
+        return list(self.profile)
+
+    def _dtype(self, column: str) -> tuple[str | None, int | None]:
+        import pandas as pd
+
+        served = self.profile.get(column) or {}
+        dtype, n_unique = served.get("dtype"), served.get("n_unique")
+        if self.frame is not None and column in self.frame.columns:
+            s = self.frame[column]
+            if dtype is None:
+                dtype = ("boolean" if pd.api.types.is_bool_dtype(s) else
+                         "integer" if pd.api.types.is_integer_dtype(s) else
+                         "numeric" if pd.api.types.is_numeric_dtype(s) else "text")
+            if n_unique is None:
+                n_unique = int(s.nunique(dropna=True))
+        return dtype, n_unique
+
+    def predictors(self) -> list[str]:
+        """The columns the plan's roles name predictors (``decisions.PREDICTOR_ROLES``), in the
+        table's order, never the outcome or the declared exposure (under Estimate, the question
+        the card fixes)."""
+        from turbotab.core.decisions import PREDICTOR_ROLES
+
+        mine = {self.question.target, self.question.exposure}
+        return [c for c in self._columns() if self.roles.get(c) in PREDICTOR_ROLES
+                and c not in mine]
+
+    def categorical(self, column: str) -> bool:
+        """Whether the plan reads ``column``'s values as levels: a code by its reading, or a
+        column the engine reads as levels (``pipeline.takes_level``: text, categorical or
+        boolean, or two values at most)."""
+        from turbotab.core.models.pipeline import takes_level
+
+        dtype, n_unique = self._dtype(column)
+        return column in self.codes or takes_level(dtype, n_unique)
+
+    def numeric(self, column: str) -> bool:
+        from research.swarm.options import NUMERIC
+
+        return self._dtype(column)[0] in NUMERIC and not self.categorical(column)
+
+    def _no_table(self) -> str:
+        return " (the crash sweep read no table)" if self.frame is None else ""
+
+    # the values built from the table
+
+    def built_range(self) -> Fielded | None:
+        """A range of plausible values of one's own: the first numeric predictor's 1st and 99th
+        percentiles (:data:`RANGE_PERCENTILES`; numpy's, by linear interpolation) over its
+        recorded values."""
+        import numpy as np
+        import pandas as pd
+
+        if self.frame is None:
+            return None
+        for c in self.predictors():
+            if not self.numeric(c):
+                continue
+            values = pd.to_numeric(self.frame[c], errors="coerce").dropna().to_numpy(float)
+            if not values.size:
+                continue
+            low, high = (float(v) for v in np.percentile(values, RANGE_PERCENTILES))
+            first, last = (ordinal(p) for p in RANGE_PERCENTILES)
+            return Fielded(f"custom@built:{c}", ["custom"],
+                           [f"column={c}", f"low={low!r}", f"high={high!r}"], "built",
+                           f"built from the table: `{c}`, the first numeric predictor the roles "
+                           f"name, from its {first} percentile, {low:g}, to its {last}, "
+                           f"{high:g}, over its {values.size:,} recorded values")
+        return None
+
+    def built_floor(self) -> Fielded | None:
+        """A range of who the study is about of one's own: the table's age column (the engine's
+        reading of its name, ``plausibility.age_reading``, in the unit the plan records for it,
+        else the one its name spells) from the engine's adult age (``plausibility.ADULT_AGE``,
+        in years), in that unit."""
+        from types import SimpleNamespace
+
+        from turbotab.core.detectors import plausibility as P
+
+        if self.frame is None:
+            return None
+        reading = P.age_reading(self.frame, {c: SimpleNamespace(unit=u)
+                                             for c, u in self.units.items()})
+        if reading is None or reading["unit"] not in P.MONTHS_PER:
+            return None
+        c, unit = reading["column"], reading["unit"]
+        floor = P.ADULT_AGE * P.MONTHS_PER["years"] / P.MONTHS_PER[unit]
+        return Fielded(f"eligibility@built:{c}", ["eligibility"], [f"column={c}", f"low={floor!r}"],
+                       "built", f"built from the table: `{c}`, the table's age column read in "
+                                f"{unit}, from the engine's adult age, {P.ADULT_AGE:g} years"
+                                + (f" ({floor:g} {unit})" if unit != "years" else ""))
+
+    def built_level(self) -> Fielded | None:
+        """Levels of one's own: the rarest level of the first categorical predictor with two
+        levels or more (a tie to the level first in its spelling's order), its blanks left out as
+        the option's own handling does."""
+        if self.frame is None:
+            return None
+        for c in self.predictors():
+            if not self.categorical(c):
+                continue
+            counts: dict[str, int] = {}
+            for v in self.frame[c].dropna():
+                counts[spelled(v)] = counts.get(spelled(v), 0) + 1
+            counts = {k: n for k, n in counts.items() if "," not in k}  # a list is by commas
+            if len(counts) < 2:
+                continue
+            rarest, n = min(counts.items(), key=lambda kv: (kv[1], kv[0]))
+            return Fielded(f"levels@built:{c}", ["levels"], [f"level_column={c}",
+                                                            f"exclude={rarest}"], "built",
+                           f"built from the table: `{c}`, the first categorical predictor the "
+                           f"roles name, its rarest level `{rarest}` ({n:,} of its "
+                           f"{sum(counts.values()):,} recorded values) excluded")
+        return None
+
+    def built_adjustment(self, point: Point) -> Fielded | None:
+        """An adjustment set of one's own: the covariates the plan's roles name among the columns
+        its adjustment answers, each answered as a confounder of the declared exposure
+        (:data:`CONFOUNDER`), and every other column it answers as a cause of neither
+        (:data:`NEITHER`), so that the set is those covariates and the question asks no more
+        (``estimand.adjustment_answer`` waits for every covariate's answers); in the plan's
+        order."""
+        from research.swarm import options as opts
+
+        answered = list(((point.decision or {}).get("answers") or {}).keys())
+        covariates = [c for c in answered if self.roles.get(c) == "covariate"]
+        if not covariates:
+            return None
+        said = {name: ",".join(answers[k] for k in opts.ADJUSTMENT_ASKED)
+                for name, answers in (("in", CONFOUNDER), ("out", NEITHER))}
+        others = [c for c in answered if c not in covariates]
+        exposure = (point.decision or {}).get("exposure") or self.question.exposure
+        return Fielded("answers@built:covariates", ["answers"],
+                       [f"{c}={said['in' if c in covariates else 'out']}" for c in answered],
+                       "built", f"built from the roles: {', '.join(f'`{c}`' for c in covariates)}, "
+                                f"the covariates the roles name, each answered as a confounder "
+                                f"of `{exposure}` (it causes it, it causes the outcome, and it "
+                                f"is not after it)"
+                                + (f"; {', '.join(f'`{c}`' for c in others)} a cause of neither"
+                                   if others else ""))
+
+    # the values the card states
+
+    def card_cut(self) -> Fielded | None:
+        """A cut-point of one's own: the card's held-out rows (``held_out``: every row at or after
+        its value of its column), the folds' order random, the sweep's own scoring's (the module
+        docstring)."""
+        held = (self.card or {}).get("held_out") or {}
+        column, at = held.get("column"), held.get("at")
+        if not column or at is None or isinstance(at, bool):
+            return None
+        written = str(at) if not isinstance(at, float) else repr(at)
+        return Fielded(f"cut@card:{column}", ["cut"], [f"cut_column={column}", f"cut_at={written}",
+                                                       f"fold_order={FOLD_ORDER}"], "card",
+                       f"the card's held-out rows: every row at or after {written} on `{column}`; "
+                       f"the folds' order {FOLD_ORDER}, the sweep's own scoring's")
+
+    def card_answers(self, kind: str) -> list[Fielded]:
+        """The card's rules of ``kind``, each answered alone: a range at the option's own handling
+        of a row it cannot confirm, a level rule once under each handling its sentence names (else
+        the option's own)."""
+        rules, _ = card_rules(self.card)
+        out = []
+        for rule in rules:
+            if rule.kind != kind:
+                continue
+            for handling in rule.handlings or (None,):
+                ids, sets = rule_answer([(rule, handling)])
+                tag = f"card:{rule.place}:{rule.column}" + (f":{handling}" if handling else "")
+                out.append(Fielded(f"{ids[0]}@{tag}", ids, sets, "card",
+                                   f"the card's eligibility rule {rule.place}: “{rule.words}”"
+                                   + (f" A row it cannot confirm: {handling}." if handling
+                                      else "")))
+        return out
+
+    def population(self, point: Point, offered: Sequence[str]) -> list[Fielded]:
+        """The card's whole population as one answer of its rules in its order (the exclusions
+        question, where the card states two rules or more and the options they answer are
+        offered), once under each handling of a row it cannot confirm that every level rule's
+        sentence names, each range at the option's own."""
+        rules, _ = card_rules(self.card)
+        if (point.kind, point.key) != ("question", "exclusions") or len(rules) < 2:
+            return []
+        levels = [r for r in rules if r.kind == "levels"]
+        handlings = [h for h in (levels[0].handlings if levels else (None,))
+                     if all(h in r.handlings for r in levels)] or [None]
+        out = []
+        for handling in handlings:
+            ids, sets = rule_answer([(r, handling if r.kind == "levels" else None) for r in rules])
+            if not set(ids) <= set(offered):
+                return []
+            out.append(Fielded(f"population@card" + (f":{handling}" if handling else ""), ids, sets,
+                               "card", f"the card's whole population, its {len(rules)} rules "
+                                       f"(its eligibility sentences "
+                                       f"{', '.join(str(r.place) for r in rules)}) as one answer"
+                               + (f", each level rule's row it cannot confirm: {handling}"
+                                  if handling else "")))
+        return out
+
+    def answers(self, point: Point, option: Mapping[str, Any]) -> tuple[list[Fielded], str | None]:
+        """``option`` of ``point``, which takes fields of its own, answered: with the values the
+        card states where it states them, else with one built from the table or the plan (the
+        module docstring); none, with why, where nothing is stated or can be built."""
+        oid = str(option.get("id"))
+        where = (point.kind, point.key, oid)
+        none = self._no_table()
+        if where == ("question", "exclusions", "custom"):
+            got = self.built_range()
+            return ([got], None) if got else ([], f"{NOTHING}it takes a range's column and "
+                                                  f"bounds, and the roles name no numeric "
+                                                  f"predictor to build one on{none}.")
+        if where == ("question", "exclusions", "eligibility"):
+            stated = self.card_answers("range")
+            got = stated or [g for g in [self.built_floor()] if g]
+            return (got, None) if got else ([], f"{NOTHING}it takes a range's column and bounds; "
+                                                f"the card states no range rule, and the table "
+                                                f"has no age column to build an adult floor "
+                                                f"on{none}.")
+        if where == ("question", "exclusions", "levels"):
+            stated = self.card_answers("levels")
+            got = stated or [g for g in [self.built_level()] if g]
+            return (got, None) if got else ([], f"{NOTHING}it takes a column and the levels it "
+                                                f"excludes; the card states no level rule, and "
+                                                f"the roles name no categorical predictor to "
+                                                f"build one on{none}.")
+        if where == ("question", "adjustment", "answers"):
+            got = self.built_adjustment(point)
+            return ([got], None) if got else ([], f"{NOTHING}it takes each covariate's answers, "
+                                                  f"and the roles name no covariate among the "
+                                                  f"columns the plan's adjustment answers.")
+        if where == ("question", "split", "cut"):
+            got = self.card_cut()
+            return ([got], None) if got else ([], f"{NOTHING}it takes a cut-point's column and "
+                                                  f"value; the card states no held-out "
+                                                  f"cut-point, and the crash sweep builds none "
+                                                  f"from the table.")
+        return [], (f"{NOTHING}it takes {needs_of(option)}, and the crash sweep builds no value "
+                    f"for it.")
+
+    def card_json(self) -> dict[str, Any]:
+        """The card's eligibility rules the sweep read (each by its place, kind and column) and the
+        sentences naming a rule it could not read, for the report."""
+        rules, unread = card_rules(self.card)
+        return {"read": [{"place": r.place, "kind": r.kind, "column": r.column} for r in rules],
+                "not_read": unread}
+
+
+def takes_fields(option: Mapping[str, Any]) -> bool:
+    """Whether ``option`` records nothing by itself: it takes a field of its own (its ``needs``,
+    or no decision)."""
+    return bool(option.get("needs")) or not isinstance(option.get("decision"), Mapping)
+
+
+def needs_of(option: Mapping[str, Any]) -> str:
+    return ", ".join(option.get("needs") or []) or "a field of its own"
+
+
+def flow_of(session: Any) -> list[dict[str, Any]] | None:
+    """The participant flow the session's project serves while it is fresh at its current key:
+    each step's key, rows left and rows it dropped; else None."""
+    from research.swarm import driver
+
+    try:
+        key = ((session.view().get("stages") or {}).get("cohort") or {}).get("key")
+        served = session.read("stages/cohort") or {}
+    except driver.DriverError:
+        return None
+    if not (served.get("fresh") and key and served.get("key") == key):
+        return None
+    return [{k: s.get(k) for k in ("key", "n", "dropped")}
+            for s in (served.get("artifact") or {}).get("steps") or [] if isinstance(s, Mapping)]
+
+
 def graded(view: Mapping[str, Any], truth: Mapping[str, str]) -> list[dict[str, Any]]:
     """Each reading with one true answer the plan records (a ``confirm_reading`` but a role's, a
     column's unit), against the dataset's declared one: right, wrong, or not declared (None)."""
@@ -385,7 +881,11 @@ class Refit:
     material; the previews and answers made on the way, the plan's answers the revisit withdrew
     first (``withdrawn``, in the order withdrawn) and answered again after the option in the
     plan's order, and each refusal's way forward the revisit and the walk took with what named it
-    (``ways``); the copy it ran on, while kept."""
+    (``ways``); the copy it ran on, while kept. An option that takes fields of its own, answered by
+    the crash sweep (:class:`Fields`), keeps what it was answered with and where each value came
+    from (``answered_with``, :class:`Fielded`), the decision the driver resolved it to (from its
+    preview), and, where its answer was recorded, the participant flow of the plan it then fitted
+    (``flow``: each step's rows)."""
 
     point: str
     option: str | None
@@ -414,6 +914,8 @@ class Refit:
     withdrawn: list[dict[str, Any]] = field(default_factory=list)  # answered again after the option
     ways: list[dict[str, Any]] = field(default_factory=list)  # refusals' ways forward taken
     record: dict[str, Any] | None = None  # the fit record as served (Predict: the change's arm)
+    answered_with: dict[str, Any] | None = None  # an option's own fields, and their source
+    flow: list[dict[str, Any]] | None = None  # the participant flow, for such an option
 
     @property
     def id(self) -> str:
@@ -632,8 +1134,9 @@ def decisions_of(points: Sequence[Point], refits: Sequence[Refit]) -> list[dict[
     """Each decision's summary: its options, how its refits were classed, its refused share with
     the refusals' codes beside its materiality (§7, "Refused refits"). The share is of the options
     refitted, each refusal of the engine's among them wherever on the refit's path it came: a
-    duplicate is the plan it duplicates, and an option that records nothing by itself, or whose
-    path stopped at a limit of the walk's own (``unreached``), was not refitted."""
+    duplicate is the plan it duplicates, and an option left unreached (one that records nothing by
+    itself with nothing to answer its fields, or whose path stopped at a limit of the walk's own)
+    was not refitted."""
     out = []
     for p in points:
         mine = [r for r in refits if r.point == p.id]
@@ -800,6 +1303,10 @@ class Sweep:
         self.offered: dict[str, dict[str, Any]] = {}
         self.made: set[str] = set()
         self.log = log or (lambda text: None)
+        # The crash sweep's sources for an option's fields of its own (:class:`Fields`), read from
+        # the template once one is met; and each decision's refits this run plans, by id.
+        self.fields: Fields | None = None
+        self.planned: dict[str, list[str]] = {}
         self._read_progress()
 
     # progress
@@ -863,7 +1370,7 @@ class Sweep:
         split = (session.view().get("state") or {}).get("split") or {}
         body = dict(SCORING)
         if split.get("cut_point"):
-            body["fold_order"] = "random"
+            body["fold_order"] = FOLD_ORDER
         said = session.decide(body, f"The sweep's scoring: random repeated {FOLDS}-fold "
                                     f"cross-validation, {REPEATS} repeats.")
         if not said.ok:
@@ -1021,10 +1528,14 @@ class Sweep:
     # one option
 
     def refit(self, session: Any, point: Point, option: Mapping[str, Any],
-              later: Sequence[Point], plan: Refit) -> Refit:
+              later: Sequence[Point], plan: Refit, fielded: Fielded | None = None) -> Refit:
         """One option refitted on a copy of the template, classed, read, and the copy removed but
-        for an engine defect's (the module docstring)."""
-        refit = Refit(point.id, str(option.get("id")), dict(option.get("decision") or {}))
+        for an engine defect's (the module docstring); an option that takes fields of its own
+        answered as ``fielded`` says (:class:`Fields`), its participant flow kept."""
+        if fielded is None:
+            refit = Refit(point.id, str(option.get("id")), dict(option.get("decision") or {}))
+        else:
+            refit = Refit(point.id, fielded.option, None, answered_with=fielded.json())
         started = time.monotonic()
         errors = len(session.errors)
         before: set[tuple[str, Any]] | None = None
@@ -1039,9 +1550,15 @@ class Sweep:
                 refit.answered += [{"answer": f"withdrawn first: the plan's {w['what']} (record "
                                               f"{w['seq']}), as the engine asks",
                                     **w["reverted"]} for w in withdrawn]
-                if refit.option not in {str(o.get("id")) for o in options}:
-                    raise arms.Stuck(f"The revisit offers no option {refit.option} now.")
-            self._refit(session, point, option, refit, later, plan, policy)
+                wanted = fielded.ids if fielded is not None else [refit.option]
+                gone = [i for i in dict.fromkeys(wanted)
+                        if i not in {str(o.get("id")) for o in options}]
+                if gone:
+                    raise arms.Stuck(f"The revisit offers no option {', '.join(gone)} now.")
+            self._refit(session, point, option, refit, later, plan, policy, fielded)
+            if fielded is not None and any(a.get("answer") == refit.id and a.get("kind") == "ok"
+                                           for a in refit.answered):
+                refit.flow = flow_of(session)  # the flow of what was fitted, the option in it
         except arms.Met as met:
             if refit.kind not in ("failed", "refused"):
                 self._met(refit, met)
@@ -1110,31 +1627,45 @@ class Sweep:
                                              f"{', '.join(anew)}."))
 
     def _post(self, session: Any, point: Point, option: Mapping[str, Any], reason: str,
-              preview: bool = False) -> Any:
+              preview: bool = False, fielded: Fielded | None = None) -> Any:
         """The option previewed or answered as the driver does: a question's, a finding's or a
-        reading's by its id; a declaration's by the decision its line composed, which is what the
-        driver's ``answer`` posts for it (``declarations.resolve`` with no field set)."""
+        reading's by its id (an option that takes fields of its own by the ids and fields it was
+        answered with, ``fielded``); a declaration's by the decision its line composed, which is
+        what the driver's ``answer`` posts for it (``declarations.resolve`` with no field set)."""
         if point.kind == "declaration":
             decision = dict(option["decision"])
             return session.preview_of(decision) if preview else session.decide(decision, reason)
-        ids = [str(option["id"])]
+        ids, sets = ([str(option["id"])], []) if fielded is None else (fielded.ids, fielded.sets)
         if preview:
-            return session.preview(ids, [], reason)
-        return session.answer(ids, [], reason, arms.MARKER_OF.get(point.key, arms.DEFAULT_MARKER))
+            return session.preview(ids, sets, reason)
+        return session.answer(ids, sets, reason,
+                              arms.MARKER_OF.get(point.key, arms.DEFAULT_MARKER))
 
     def _refit(self, session: Any, point: Point, option: Mapping[str, Any], refit: Refit,
-               later: Sequence[Point], plan: Refit, policy: Named) -> None:
+               later: Sequence[Point], plan: Refit, policy: Named,
+               fielded: Fielded | None = None) -> None:
         """The option previewed (the crash sweep) and answered on the copy; each of the plan's
         answers the revisit withdrew answered again as the plan had it, in its log's order
         (``refit.withdrawn``); every later decision's plan answer previewed (the crash sweep); the
         walk to Fit by ``policy``, a refusal's way forward taken only where the plan's log in force
         before the option or the option names it (:class:`Named`); the sweep's scoring again; Fit
-        pressed and read, but for the plan's duplicate."""
+        pressed and read, but for the plan's duplicate. An option answered with fields of its own
+        (``fielded``) records the decision its preview resolved, which names the option's ways
+        forward; where the driver does not take its fields, it stops in the driver's words."""
         if self.crash:
             seen = self._post(session, point, option, f"The crash sweep previews {refit.id}.",
-                              preview=True)
+                              preview=True, fielded=fielded)
             refit.previews.append({"of": refit.id, **said_json(seen)})
-        said = self._post(session, point, option, f"The sweep's refit: {refit.id}.")
+            if fielded is not None:
+                if seen.kind == "refused" and seen.by == "driver":
+                    raise arms.Stuck(f"{NOTHING}the driver does not take the fields the crash "
+                                     f"sweep answered it with: {seen.code}: {seen.message}")
+                decision = (seen.payload or {}).get("previewed")
+                if isinstance(decision, Mapping):
+                    refit.decision = dict(decision)
+                    policy.names["the option"] = [dict(decision)]
+        said = self._post(session, point, option, f"The sweep's refit: {refit.id}.",
+                          fielded=fielded)
         refit.answered.append({"answer": refit.id, **said_json(said)})
         if said.kind == "failed":
             refit.kind, refit.failed = "failed", said_json(said)
@@ -1193,7 +1724,7 @@ class Sweep:
             return None
         body = dict(SCORING)
         if (split or {}).get("cut_point"):
-            body["fold_order"] = "random"
+            body["fold_order"] = FOLD_ORDER
         return body
 
     def _rescore(self, session: Any, refit: Refit) -> None:
@@ -1286,22 +1817,72 @@ class Sweep:
                 listed = self._list(session, point)
                 self.offered[point.id] = listed
                 self._write({"offered": listed})
-            for option in listed["options"]:
-                rid = f"{point.id}={option.get('id')}"
-                if rid in self.done:
-                    continue
-                if option.get("needs") or not isinstance(option.get("decision"), Mapping):
-                    needs = ", ".join(option.get("needs") or []) or "a field of its own"
-                    r = Refit(point.id, str(option.get("id")), None, kind="unreached",
-                              why=f"It records nothing by itself: it takes {needs}.")
+            planned = self._planned(session, point, listed)
+            self.planned[point.id] = [p["id"] for p in planned]
+            for p in planned:
+                rid, kept = p["id"], self.done.get(p["id"])
+                if p.get("why") is not None:  # unreached: recorded again only where its why moved
+                    if kept is not None and (kept.kind != "unreached" or kept.why == p["why"]):
+                        continue
+                    r = Refit(point.id, p["option"], None, kind="unreached", why=p["why"])
                 else:
+                    if kept is not None:
+                        continue
                     if self._capped():
                         break
                     self.log(rid)
-                    r = self.refit(session, point, option, later, plan)
+                    fielded = {"fielded": p["fielded"]} if p.get("fielded") else {}
+                    r = self.refit(session, point, p["offered"], later, plan, **fielded)
                 self.done[rid] = r
                 self._write({"refit": r.json()})
         return self.report(plan, time.monotonic() - started)
+
+    def _planned(self, session: Any, point: Point, listed: Mapping[str, Any]
+                 ) -> list[dict[str, Any]]:
+        """``point``'s refits, in the order of its options: each option that records something by
+        itself, refitted as listed; each that takes fields of its own, under the crash sweep,
+        answered with each value :class:`Fields` gives it (each its own refit, named by its
+        source), else unreached with why, as every such option is around a named plan; and the
+        card's whole population after them (:meth:`Fields.population`). Each with its id
+        (``point=option``), the option as offered and, for an option's fields, what answers it."""
+        out: list[dict[str, Any]] = []
+        fields = None
+        for option in listed.get("options") or []:
+            oid = str(option.get("id"))
+            bare = {"id": f"{point.id}={oid}", "option": oid, "offered": option}
+            if not takes_fields(option):
+                out.append(bare)
+                continue
+            if not self.crash:
+                out.append(bare | {"why": f"{NOTHING}it takes {needs_of(option)}."})
+                continue
+            fields = fields or self._fields(session)
+            answers, why = fields.answers(point, option)
+            out += [{"id": f"{point.id}={a.option}", "option": a.option, "offered": option,
+                     "fielded": a} for a in answers] or [bare | {"why": why}]
+        if self.crash and any(takes_fields(o) for o in listed.get("options") or []):
+            fields = fields or self._fields(session)
+            offered = [str(o.get("id")) for o in listed.get("options") or []]
+            out += [{"id": f"{point.id}={a.option}", "option": a.option,
+                     "offered": {"id": a.option, "decision": None}, "fielded": a}
+                    for a in fields.population(point, offered)]
+        return out
+
+    def _fields(self, session: Any) -> Fields:
+        """The crash sweep's sources for an option's fields of its own (:class:`Fields`), read once
+        from the template, the dataset's card and the table."""
+        if self.fields is None:
+            self.fields = Fields.of_template(session, self.question, self.dataset, self.data,
+                                             str((self.base or {}).get("project")))
+        return self.fields
+
+    def _reported(self, rid: str, refit: Refit) -> bool:
+        """Whether a refit of the progress file is one of this run's: of a decision this run did
+        not plan, each; of one it planned, those it planned and its revisit's own. An option
+        unreached before the crash sweep answered fields of its own is now the refits that answer
+        it, which supersede it."""
+        ids = self.planned.get(refit.point)
+        return ids is None or rid in ids or refit.option == REVISIT
 
     def _list(self, session: Any, point: Point) -> dict[str, Any]:
         """``point``'s options listed on a copy of the template (:meth:`_listed`), with the plan's
@@ -1375,11 +1956,16 @@ class Sweep:
         return True
 
     def report(self, plan: Refit, seconds: float) -> dict[str, Any]:
-        refits = [r for k, r in self.done.items() if k != PLAN]
+        """The sweep's table (the module docstring): beside what it swept and how each refit was
+        classed, each option left unreached with why (``unreached``), each answered with fields of
+        its own and where their values came from (``fielded``), and the card's rules read
+        (``card_rules``, where the crash sweep read the card)."""
+        refits = [r for k, r in self.done.items() if k != PLAN and self._reported(k, r)]
         timed = [timed_of(r) for r in [plan, *refits] if timed_of(r) is not None]
-        unvisited = [f"{p.id}={o.get('id')}" for p in self.points
-                     for o in (self.offered.get(p.id) or {}).get("options") or []
-                     if f"{p.id}={o.get('id')}" not in self.done]
+        unvisited = [rid for p in self.points if p.id in self.offered
+                     for rid in self.planned.get(p.id) or [
+                         f"{p.id}={o.get('id')}" for o in self.offered[p.id].get("options") or []]
+                     if rid not in self.done]
         unlisted = unlisted_of(self.points, self.offered)
         unvisited += [u["point"] for u in unlisted]
         return {
@@ -1395,6 +1981,10 @@ class Sweep:
             "decisions": decisions_of(self.points, refits),
             "fit_seconds": seconds_of(timed),
             "complete": not unvisited, "unvisited": unvisited, "unlisted": unlisted,
+            "unreached": [{"refit": r.id, "why": r.why} for r in refits if r.kind == "unreached"],
+            "fielded": [{"refit": r.id, "kind": r.kind, **r.answered_with} for r in refits
+                        if r.answered_with],
+            "card_rules": self.fields.card_json() if self.fields is not None else None,
             "defects": list(self.defects),
             "cap": None if self.cap is None else {
                 "seconds": self.cap, "spent": round(self.spent(), 3),
@@ -1453,6 +2043,7 @@ def table_md(report: Mapping[str, Any]) -> str:
              f"{', modified' if report.get('engine_modified') else ''}); "
              f"{len(report.get('refits') or [])} options; complete: {report.get('complete')}"
              + (f"; passed: {report['passed']}" if "passed" in report else "")
+             + (f"; unreached: {len(report['unreached'] or [])}" if "unreached" in report else "")
              + (f"; swept only {', '.join(report['only'])}" if report.get("only") is not None
                 else "") + ".", "",
              "| Decision | Options | Scored | Refused | Failed | Unreached | Duplicate | Refused "
@@ -1477,6 +2068,17 @@ def table_md(report: Mapping[str, Any]) -> str:
     if report.get("unlisted"):
         lines += ["", "## Decisions whose options were not listed", ""]
         lines += [f"- `{u['point']}`: {str(u['why'])[:300]}" for u in report["unlisted"]]
+    if report.get("fielded"):
+        lines += ["", "## Options answered with values the crash sweep supplied", ""]
+        lines += [f"- `{f['refit']}` ({f['kind']}), {f['source']}: {f['words']}"
+                  for f in report["fielded"]]
+    if report.get("unreached"):
+        lines += ["", "## Options not reached", ""]
+        lines += [f"- `{u['refit']}`: {str(u['why'])[:400]}" for u in report["unreached"]]
+    unread = (report.get("card_rules") or {}).get("not_read") or []
+    if unread:
+        lines += ["", "## The card's sentences naming a rule the crash sweep could not read", ""]
+        lines += [f"- {u['place']}: {u['words']}" for u in unread]
     if report.get("defects"):
         lines += ["", "## Engine defects", ""]
         lines += [f"- `{d['refit']}`: {json.dumps(d.get('failed'))[:300]} ({d.get('path')})"
@@ -1599,7 +2201,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = crash(args.dataset, args.out, log=log)
         sys.stdout.write(json.dumps({k: report[k] for k in ("dataset", "passed", "complete",
                                                             "fit_seconds")}
-                                    | {"defects": len(report["defects"])}) + "\n")
+                                    | {"unreached": len(report["unreached"]),
+                                       "defects": len(report["defects"])}) + "\n")
         return 0 if report["passed"] else 1
     try:
         cap = compute_cap(args.dataset)

@@ -14,7 +14,11 @@ log built here and folded; a refusal's way forward after an option, in its answe
 asks after it, taken only where the plan or the option names it; the decisions a plan offers the
 sweep and those it does not, from a decision log built here; what the report counts as not visited
 and what it says it swept; the readings graded against a declared truth; the run times' summary by
-hand. The sweep on a real engine is ``test_sweep_engine.py``'s."""
+hand; and the options that take fields of their own: the card's rules read back from the intake's
+own sentences and from the pilot cards, each answer resolved by the driver's composer, each value
+built from a table here checked against the table, every builder both ways, and the crash sweep's
+answer of one, named by its source and superseding the unreached line of a report finished before.
+The sweep on a real engine is ``test_sweep_engine.py``'s."""
 from __future__ import annotations
 
 import json
@@ -1344,3 +1348,363 @@ def test_the_cap_is_prereg_jsons_and_a_dataset_without_one_is_refused_in_words()
         with pytest.raises(arms.Stuck, match="prereg.json holds no compute cap for the sweeps "
                                              "of other"):
             W.compute_cap("other", given)
+
+
+# ── the options that take fields of their own (the crash sweep) ──────────────
+# The card's rules, read back from the sentences the intake writes for them (``intake.age_line``,
+# ``intake.level_line``) and from the pilot cards themselves; each answered through the driver's
+# own composer (``options.compose`` and ``resolve``, over a question built here) and checked
+# against the rule the card states. Each value built from a table here is checked against the
+# table: a range's bounds by the percentile's own definition, worked by hand; the rarest level by
+# counting; the adult floor from the CDC growth charts' last age; the adjustment set from the
+# roles. Each builder both ways: where nothing can be built, the option stays unreached, with why.
+
+def intake_sentences():
+    """The intake's own sentences for an age range, a level rule naming a refused and a
+    don't-know code, and a level rule naming neither."""
+    from types import SimpleNamespace
+
+    from research.swarm import intake
+
+    coded = {"1": "Yes", "2": "No", "3": "Borderline", "7": "Refused", "9": "Don't know"}
+    told = intake.level_line("Not told", "DIQ010", "1", coded,
+                             intake.blanks_line("DIQ010", 1, 50, "with an outcome"))
+    plain = intake.level_line("Not pregnant", "RIDEXPRG", "1",
+                              {"1": "Yes", "2": "No", "3": "Cannot tell"},
+                              intake.blanks_line("RIDEXPRG", 20, 50, "with an outcome"))
+    age = intake.age_line("Aged 20 or older", "RIDAGEYR", 20, {
+        "1999-2000": {"RIDAGEYR": SimpleNamespace(codes={"85": ">= 85 years of age"})}})
+    return age, told, plain
+
+
+PROSE = "The table keeps every participant: the population is the analyst's, each as a rule."
+
+
+def test_a_cards_rules_are_read_back_from_the_sentences_the_intake_writes():
+    age, told, plain = intake_sentences()
+    rules, unread = W.card_rules({"eligibility": [PROSE, age, told, plain]})
+    assert unread == []
+    assert [(r.place, r.kind, r.column) for r in rules] == [
+        (2, "range", "RIDAGEYR"), (3, "levels", "DIQ010"), (4, "levels", "RIDEXPRG")]
+    assert rules[0].low == "20" and rules[0].handlings == ()  # the age sentence names none
+    assert (rules[1].exclude, rules[1].refused, rules[1].dont_know) == (("1",), ("7",), ("9",))
+    assert (rules[2].exclude, rules[2].refused, rules[2].dont_know) == (("1",), (), ())
+    # "leaves out a row it cannot confirm ... unless it keeps them all": both handlings named.
+    assert rules[1].handlings == rules[2].handlings == ("exclude", "keep")
+    assert [r.words for r in rules] == [age, told, plain]
+
+
+def test_a_sentence_naming_a_rule_the_sweep_cannot_read_is_said_and_prose_is_not_a_rule():
+    vague = "Pregnant women excluded: a level rule on RIDEXPRG, its levels the analyst's."
+    rules, unread = W.card_rules({"eligibility": [PROSE, vague]})
+    assert rules == [] and unread == [{"place": 2, "words": vague}]
+    assert W.card_rules({}) == ([], []) and W.card_rules(None) == ([], [])
+
+
+@pytest.mark.parametrize("dataset", ["bang2009", "nhanes_glucose_predict"])
+def test_a_pilot_cards_rules_are_every_rule_it_states_in_its_order(dataset):
+    card = arms.card_of(dataset)
+    rules, unread = W.card_rules(card)
+    stated = [i for i, s in enumerate(card["eligibility"], 1) if " rule on " in s]
+    assert unread == [] and [r.place for r in rules] == stated and len(stated) == 5
+    for r in rules:
+        said = card["eligibility"][r.place - 1]
+        if r.kind == "range":
+            assert f"a range rule on {r.column} from {r.low}." in said
+            continue
+        (level,) = r.exclude
+        assert f"a level rule on {r.column} excluding level {level} (" in said
+        assert (f"naming {r.refused[0]} as its refused code and {r.dont_know[0]} as its "
+                f"don't-know code" if r.refused else
+                "which has no refused or don't-know code") in said
+    assert [r.kind for r in rules].count("range") == 1
+
+
+def exclusions_composed(columns, target, dtype="integer"):
+    """The exclusions question as the driver composes it (``options.compose``) over a table of
+    ``columns``, every one numeric, no screen offered."""
+    from research.swarm import options as opts
+
+    entry = {"options": [{"value": v, "label": v}
+                         for v in ("none", "custom", "eligibility", "levels")]}
+    served = {"proposals": {}, "oriented": {"columns": [{"name": c, "dtype": dtype}
+                                                        for c in [*columns, target]]}}
+    return opts.compose("exclusions", {"key": "exclusions", "status": "open"},
+                        {"state": {"target": target}}, served.get, entry)
+
+
+EXCLUSIONS = W.Point("question", "exclusions", 8, "r8", {"kind": "set_exclusions", "rules": []})
+BANG_COLUMNS = ["SEQN", "RIDAGEYR", "RIAGENDR", "RIDEXPRG", "DIQ010", "DIQ050", "DIQ070"]
+
+
+def option(oid):
+    return {"id": oid, "label": oid, "decision": None, "needs": None}
+
+
+def test_the_cards_rules_answer_its_range_and_each_level_rule_under_each_handling_it_names():
+    """Bang's card: its age range answers the eligibility range (who the study is about), each
+    level rule the level rule under each handling of a row it cannot confirm the card names, and
+    its whole population one answer of its rules in its order, once under each handling; each
+    answer, resolved by the driver's own composer, is the card's rule."""
+    from research.swarm import options as opts
+
+    card = arms.card_of("bang2009")
+    rules, _ = W.card_rules(card)
+    fields = W.Fields(arms.Question.of_card(card), card=card)
+    composed = exclusions_composed(BANG_COLUMNS, "diabetes_fpg")
+    (age,), why = fields.answers(EXCLUSIONS, option("eligibility"))
+    assert why is None and age.source == "card" and age.ids == ["eligibility"]
+    (r,) = opts.resolve(composed, age.ids, age.sets)["rules"]
+    (range_rule,) = [x for x in rules if x.kind == "range"]
+    assert (r["kind"], r["column"], r["low"], r["high"]) == (
+        "range", range_rule.column, float(range_rule.low), None)
+    assert r["missing"] == opts.CUSTOM_RANGE["missing"]  # the age sentence names no handling
+    assert age.option == f"eligibility@card:{range_rule.place}:{range_rule.column}"
+    levels, why = fields.answers(EXCLUSIONS, option("levels"))
+    level_rules = [x for x in rules if x.kind == "levels"]
+    assert why is None and [(a.source, a.ids) for a in levels] == [("card", ["levels"])] * 8
+    got = [opts.resolve(composed, a.ids, a.sets)["rules"][0] for a in levels]
+    assert [(g["column"], g["exclude"], g["refused"], g["dont_know"], g["missing"])
+            for g in got] == [(x.column, list(x.exclude), list(x.refused), list(x.dont_know), h)
+                              for x in level_rules for h in ("exclude", "keep")]
+    assert levels[0].option == (f"levels@card:{level_rules[0].place}:{level_rules[0].column}"
+                                f":exclude")
+    # The whole population: one answer of every rule, in the card's order, under each handling.
+    whole = fields.population(EXCLUSIONS, ["none", "custom", "eligibility", "levels"])
+    assert [a.option for a in whole] == ["population@card:exclude", "population@card:keep"]
+    for a, handling in zip(whole, ("exclude", "keep")):
+        assert a.source == "card"
+        assert a.ids == ["eligibility" if x.kind == "range" else "levels" for x in rules]
+        resolved = opts.resolve(composed, a.ids, a.sets)["rules"]
+        assert [x["column"] for x in resolved] == [x.column for x in rules]
+        assert [x["missing"] for x in resolved] == [
+            opts.CUSTOM_RANGE["missing"] if x.kind == "range" else handling for x in rules]
+    # Where the levels are not offered, no population is answered.
+    assert fields.population(EXCLUSIONS, ["none", "eligibility"]) == []
+
+
+def type7(values, p):
+    """The ``p``-th percentile of ``values`` by its definition (Hyndman and Fan's type 7, the
+    linear interpolation between order statistics), worked by hand."""
+    v = sorted(float(x) for x in values)
+    h = (len(v) - 1) * p / 100
+    lo = math.floor(h)
+    return v[lo] + (h - lo) * (v[min(lo + 1, len(v) - 1)] - v[lo])
+
+
+def built_frame(*, age=True, levels=True):
+    """200 rows: an identifier first, a numeric predictor with five blanks, a text predictor
+    whose levels are a (120 rows), c and b (40 each), a 1/2 code, an age in months, an outcome."""
+    import pandas as pd
+
+    rng = np.random.default_rng(7)
+    n = 200
+    frame = pd.DataFrame({"SEQN": np.arange(1, n + 1), "x1": rng.normal(50, 10, n).round(2)})
+    frame.loc[:4, "x1"] = np.nan
+    if levels:
+        frame["grp"] = ["a"] * 120 + ["c"] * 40 + ["b"] * 40
+        frame["sex"] = rng.integers(1, 3, n)
+    if age:
+        frame["age_months"] = rng.integers(24, 960, n)
+    frame["y"] = rng.integers(0, 2, n)
+    roles = {"SEQN": "identifier", **{c: "exposure" for c in frame.columns
+                                      if c not in ("SEQN", "y")}}
+    return frame, roles
+
+
+def test_a_built_range_is_a_numeric_predictors_first_and_ninety_ninth_percentiles():
+    from research.swarm import options as opts
+
+    frame, roles = built_frame()
+    fields = W.Fields(arms.Question(target="y", purpose="prediction"), frame=frame, roles=roles)
+    (a,), why = fields.answers(EXCLUSIONS, option("custom"))
+    x1 = frame["x1"].dropna()
+    low, high = type7(x1, 1), type7(x1, 99)
+    assert why is None and a.source == "built" and a.option == "custom@built:x1"
+    (r,) = opts.resolve(exclusions_composed(["SEQN", "x1", "sex", "age_months"], "y"),
+                        a.ids, a.sets)["rules"]
+    assert r["column"] == "x1" and (r["low"], r["high"]) == pytest.approx((low, high), abs=1e-12)
+    assert f"{low:g}" in a.words and f"{high:g}" in a.words and "built" in a.words
+
+
+def test_a_built_eligibility_range_is_the_age_columns_adult_floor_in_its_unit():
+    frame, roles = built_frame()
+    fields = W.Fields(arms.Question(target="y", purpose="prediction"), frame=frame, roles=roles)
+    (a,), why = fields.answers(EXCLUSIONS, option("eligibility"))
+    # The CDC 2000 growth charts end at 20 years: an adult is 20 or older, 240 months.
+    assert why is None and a.source == "built" and a.option == "eligibility@built:age_months"
+    assert a.sets == ["column=age_months", f"low={20 * 12:.1f}"]
+    years = W.Fields(arms.Question(target="y", purpose="prediction"),
+                     frame=frame.rename(columns={"age_months": "age"}),
+                     roles={**roles, "age": "exposure"})
+    (b,), _ = years.answers(EXCLUSIONS, option("eligibility"))
+    assert b.sets == ["column=age", f"low={20:.1f}"]  # a bare ``age`` is read in years
+
+
+def test_a_built_level_rule_excludes_the_first_categorical_predictors_rarest_level():
+    frame, roles = built_frame()
+    fields = W.Fields(arms.Question(target="y", purpose="prediction"), frame=frame, roles=roles)
+    (a,), why = fields.answers(EXCLUSIONS, option("levels"))
+    counts = frame["grp"].value_counts()
+    rarest = sorted(k for k, v in counts.items() if v == counts.min())[0]  # b and c tie: b
+    assert why is None and a.source == "built" and a.option == "levels@built:grp"
+    assert a.sets == ["level_column=grp", f"exclude={rarest}"] and rarest == "b"
+
+
+@pytest.mark.parametrize("oid, words", [
+    ("eligibility", "no age column"), ("levels", "no categorical predictor"),
+    ("custom", "no numeric predictor")])
+def test_an_option_with_nothing_to_build_from_stays_unreached_with_why(oid, words):
+    frame, roles = built_frame(age=False, levels=False)
+    if oid == "custom":
+        roles = {"SEQN": "identifier"}  # the roles name no predictor
+    fields = W.Fields(arms.Question(target="y", purpose="prediction"), frame=frame, roles=roles)
+    answers, why = fields.answers(EXCLUSIONS, option(oid))
+    assert answers == [] and "records nothing by itself" in why and words in why
+    # Without the table, nothing is built either, and the why says no table was read.
+    answers, why = W.Fields(arms.Question(target="y", purpose="prediction")).answers(
+        EXCLUSIONS, option(oid))
+    assert answers == [] and "read no table" in why
+
+
+def test_under_estimate_the_declared_exposure_is_never_a_built_value():
+    frame, roles = built_frame()
+    q = arms.Question(target="y", purpose="inference", exposure="x1")
+    (a,), _ = W.Fields(q, frame=frame, roles=roles).answers(EXCLUSIONS, option("custom"))
+    assert a.option == "custom@built:age_months"  # x1 the exposure; grp and sex read as levels
+
+
+ADJUSTMENT = W.Point("question", "adjustment", 11, "r11", {
+    "kind": "set_adjustment", "exposure": "walks", "answers": {
+        c: {"causes_exposure": "unknown", "causes_outcome": "unknown", "after_exposure": "unknown"}
+        for c in ("age", "pain", "height")}})
+
+
+def test_an_adjustment_set_of_ones_own_is_the_covariates_the_roles_name_each_a_confounder():
+    from research.swarm import options as opts
+
+    q = arms.Question(target="sbp", purpose="inference", exposure="walks")
+    roles = {"id": "identifier", "age": "covariate", "pain": "exposure", "walks": "exposure",
+             "height": "covariate"}
+    (a,), why = W.Fields(q, roles=roles).answers(ADJUSTMENT, option("answers"))
+    assert why is None and a.source == "built" and a.option == "answers@built:covariates"
+    groups = [{"key": "g", "label": "g", "columns": ["age", "pain", "height"]}]
+    composed = opts.compose("adjustment", {"key": "adjustment", "status": "open"}, {"state": {}},
+                            {"proposals": {"adjustment": {"exposure": "walks",
+                                                          "groups": groups}}}.get, None)
+    # A confounder is adjusted for; a cause of neither, not after the exposure, is left out (the
+    # modified disjunctive cause criterion, VanderWeele 2019): the set is the two covariates.
+    confounder = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+    neither = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+    resolved = opts.resolve(composed, a.ids, a.sets)
+    assert resolved == {"kind": "set_adjustment", "exposure": "walks",
+                        "answers": {"age": confounder, "pain": neither, "height": confounder}}
+    assert list(resolved["answers"]) == ["age", "pain", "height"]  # the plan's order
+    from turbotab.core.estimand import derive
+
+    assert [c for c, x in resolved["answers"].items() if derive(x).adjusted] == ["age", "height"]
+    answers, why = W.Fields(q, roles={**roles, "age": "exposure", "height": "exposure"}).answers(
+        ADJUSTMENT, option("answers"))
+    assert answers == [] and "records nothing by itself" in why and "no covariate" in why
+
+
+def test_a_cut_point_of_ones_own_is_the_cards_held_out_rows_and_else_unreached():
+    card = arms.card_of("nhanes_glucose_predict")
+    held = card["held_out"]
+    split = W.Point("question", "split", 10, "r10", {"kind": "set_split", "holdout": 0.2})
+    (a,), why = W.Fields(arms.Question.of_card(card), card=card).answers(split, option("cut"))
+    assert why is None and a.source == "card" and a.option == f"cut@card:{held['column']}"
+    assert a.sets == [f"cut_column={held['column']}", f"cut_at={held['at']}", "fold_order=random"]
+    bang = arms.card_of("bang2009")
+    answers, why = W.Fields(arms.Question.of_card(bang), card=bang).answers(split, option("cut"))
+    assert answers == [] and "records nothing by itself" in why and "held-out" in why
+
+
+class Fielding(Walked):
+    """A crash sweep's session over the exclusions question: its revisit opens the question again
+    with keeping every row, a range of one's own and levels of one's own; each preview and answer
+    kept in ``calls`` with its fields; every refit the plan's duplicate (no Fit pressed)."""
+
+    def __init__(self):
+        super().__init__([])
+        self.calls, self.reopened = [], False
+
+    def revisit(self, record, reason):
+        self.reopened = True
+        return arms.Said("ok", {})
+
+    def ask(self):
+        from research.swarm.tests.test_arms import ask, opt
+
+        if self.reopened:
+            return ask("exclusions", [opt("none", {"kind": "set_exclusions", "rules": []}),
+                                      opt("custom", None), opt("levels", None)])
+        return {"question": None, "fit_reached": True}
+
+    def preview(self, ids, sets, reason):
+        self.calls.append(("preview", list(ids), list(sets)))
+        return arms.Said("ok", {"previewed": {"kind": "set_exclusions", "rules": [{"x": 1}]}})
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.reopened = False
+        self.calls.append(("answer", list(ids), list(sets)))
+        return arms.Said("ok", {})
+
+
+def fielding_sweep(tmp_path, session, frame, roles):
+    sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
+        target="y", purpose="prediction"), crash=True, plan="default")
+    sweep.base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False},
+                  "points": [EXCLUSIONS.json()], "skipped": []}
+    sweep.done[W.PLAN] = W.Refit(W.PLAN, None, None, kind="scored",
+                                 digest=W.plan_digest(session.view()))
+    sweep.offered = {EXCLUSIONS.id: {"point": EXCLUSIONS.id, "why": None, "options": [
+        {"id": "none", "label": "none", "decision": {"kind": "set_exclusions", "rules": []},
+         "needs": None}, option("custom"), option("levels")]}}
+    sweep.fields = W.Fields(sweep.question, frame=frame, roles=roles)
+    return sweep
+
+
+def test_the_crash_sweep_previews_and_answers_a_built_value_and_names_its_source(tmp_path):
+    frame, roles = built_frame(levels=False)
+    session = Fielding()
+    sweep = fielding_sweep(tmp_path, session, frame, roles)
+    # A finished report of the crash sweep before it answered fields: each such option unreached.
+    old = "It records nothing by itself: it takes a field of its own."
+    for oid in ("custom", "levels"):
+        sweep.done[f"{EXCLUSIONS.id}={oid}"] = W.Refit(EXCLUSIONS.id, oid, None, kind="unreached",
+                                                       why=old)
+    sweep.done[f"{EXCLUSIONS.id}=none"] = W.Refit(EXCLUSIONS.id, "none", {}, kind="duplicate")
+    report = sweep.run(session, lambda s: "p0")
+    (built,), _ = sweep.fields.answers(EXCLUSIONS, option("custom"))
+    rid = f"{EXCLUSIONS.id}={built.option}"
+    assert [c for c in session.calls if c[0] in ("preview", "answer")][:2] == [
+        ("preview", ["custom"], built.sets), ("answer", ["custom"], built.sets)]
+    refits = {r["id"]: r for r in report["refits"]}
+    assert set(refits) == {f"{EXCLUSIONS.id}=none", rid, f"{EXCLUSIONS.id}=levels"}
+    assert refits[rid]["answered_with"] == built.json() and refits[rid]["kind"] == "duplicate"
+    assert refits[rid]["decision"] == {"kind": "set_exclusions", "rules": [{"x": 1}]}
+    levels = refits[f"{EXCLUSIONS.id}=levels"]
+    assert levels["kind"] == "unreached" and "no categorical predictor" in levels["why"]
+    assert report["unreached"] == [{"refit": levels["id"], "why": levels["why"]}]
+    assert report["complete"] is True and report["unvisited"] == []
+    md = W.table_md(report | {"passed": True})
+    assert "complete: True; passed: True; unreached: 1." in md
+    assert f"- `{rid}` (duplicate), built: {built.words}" in md
+    # The resumed run answered only the built value; another run answers nothing more.
+    answered = [c for c in session.calls if c[0] == "answer"]
+    assert len(answered) == 1
+    again = sweep.run(session, lambda s: "p0")
+    assert [c for c in session.calls if c[0] == "answer"] == answered
+    assert again["refits"] == report["refits"]
+
+
+def test_the_sweep_around_a_named_plan_answers_no_field_of_its_own(tmp_path):
+    frame, roles = built_frame()
+    session = Fielding()
+    sweep = fielding_sweep(tmp_path, session, frame, roles)
+    sweep.crash = False
+    report = sweep.run(session, lambda s: "p0")
+    assert not [c for c in session.calls if c[0] == "answer" and c[2]]
+    kinds = {r["option"]: r["kind"] for r in report["refits"]}
+    assert kinds["custom"] == kinds["levels"] == "unreached"
