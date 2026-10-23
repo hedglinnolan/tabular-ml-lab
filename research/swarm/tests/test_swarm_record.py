@@ -395,20 +395,22 @@ def test_the_account_is_the_drivers_marked_after_the_results_or_not():
             R.validate(broken)
 
 
-def test_a_replay_holds_its_numbers_over_its_draws_or_why():
-    ok = {"scorer": "replay-1", "generator": "estimate_fixture", "draws": 3, "seeds": [1, 2, 3],
-          "mean_bias": 0.01, "bias_sd": 0.05, "bias_se": 0.03, "coverage": 0.95}
-    assert R.Replay.model_validate(ok).draws == 3
-    R.Replay.model_validate({"scorer": "replay-1", "generator": "g", "draws": 1,
-                             "why": "every draw was refused", "refused": 1})
-    for bad, match in (({**ok, "seeds": [1, 2]}, "one seed per draw"),
-                       ({**ok, "why": "and a why"}, "not both"),
-                       ({"scorer": "s", "generator": "g", "draws": 2}, "not both"),
-                       ({**ok, "refused": 4}, "at most every draw"),
-                       ({**ok, "coverage": 1.2}, "less than or equal"),
-                       ({**ok, "draws": 0, "seeds": []}, "greater than or equal")):
-        with pytest.raises(ValidationError, match=match):
-            R.Replay.model_validate(bad)
+def test_a_record_holds_no_replay_and_one_written_with_it_null_reads_as_without_it():
+    """The replays are score_pilot's own files, not the record's (the module docstring): a record
+    that carries one fails its schema, both ways; the dry run's records, written with
+    ``replay: null`` before the field was dropped, read as records without it."""
+    from pathlib import Path
+
+    rec = predict_record()
+    assert "replay" not in R.Record.model_fields
+    with pytest.raises(ValidationError, match="replay"):
+        R.validate({**rec, "replay": {"scorer": "s", "generator": "g", "draws": 1,
+                                      "why": "every draw was refused"}})
+    assert R.validate({**rec, "replay": None}).model_dump() == R.validate(rec).model_dump()
+    for path in sorted((Path(R.__file__).parent / "dryrun").glob("run_0*.json")):
+        written = json.loads(path.read_text("utf-8"))
+        assert written["replay"] is None, path.name  # the construction: written before
+        assert "replay" not in R.validate(written).model_dump(), path.name
 
 
 def test_a_failed_fit_is_refused_exactly_where_the_engine_served_a_refusal():

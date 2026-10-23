@@ -44,12 +44,17 @@ Version 2 (SWARM_PLAN §4, the build's package 1) adds the fields marked new. It
 * ``account`` (new): the analyst's end-of-run account, as the driver's ``account`` recorded it,
   never the agent's final message, marked whether it was written after the results were read and
   after the seal; context for hypotheses, never evidence;
-* ``replay`` (new, fixtures only): the final plan on fresh draws of the fixture's generator
-  (SWARM_PLAN §7), filled by the replay scorer; its schema only here;
 * ``export``: the bundle's SHA-256, its methods text and its checklist, and whether the analyst's
   own export reached it;
 * ``replication``: for a replication (design 1), the paper's decisions against ours, filled by its
   grader; null otherwise.
+
+**The replays are not the record's.** A final plan replayed on fresh draws of its fixture's
+generator (SWARM_PLAN §7) is made after the record, from it and its bundle, by
+``score_pilot.py replay``, which writes it to a file of its own and scores it from there; no field
+of the record holds it, so a record that carries one fails its schema. A record written before the
+field was dropped (the dry run's) holds ``replay: null``, which records nothing, and is read as one
+without it.
 
 **Who fills what.** The analyst fills G, Q, D and O through its answers; the engine fills the
 regime R and the materiality M; **no field holds a validity V**. Every model here forbids fields it
@@ -680,45 +685,6 @@ class Account(_Strict):
     source: Literal["driver"] = "driver"
 
 
-class Replay(_Strict):
-    """The final plan replayed on fresh draws of its fixture's generator (SWARM_PLAN §7), filled by
-    the replay scorer (the build's package 2); fixtures only. The decision-quality numbers are
-    the scorer's, each None where the fixture grades none: the mean bias with its SD and standard
-    error over the draws and the interval's coverage (the Estimate fixture), the regret against
-    the oracle (the Predict fixture), the false-discovery proportion, the power and the
-    effect-size bias on the log2 scale (the measurement fixture). ``refused``: the draws the plan
-    was refused on. With no number, ``why``."""
-
-    scorer: str = Field(min_length=1)
-    generator: str = Field(min_length=1)
-    draws: int = Field(ge=1)
-    seeds: list[int] | None = None
-    plan_digest: str | None = None
-    mean_bias: float | None = None
-    bias_sd: float | None = None
-    bias_se: float | None = None
-    coverage: float | None = Field(default=None, ge=0, le=1)
-    regret: float | None = None
-    fdp: float | None = Field(default=None, ge=0, le=1)
-    power: float | None = Field(default=None, ge=0, le=1)
-    effect_bias_log2: float | None = None
-    refused: int = Field(default=0, ge=0)
-    why: str | None = None
-
-    @model_validator(mode="after")
-    def _numbers_or_why(self) -> "Replay":
-        if self.seeds is not None and len(self.seeds) != self.draws:
-            raise ValueError("a replay lists one seed per draw")
-        if self.refused > self.draws:
-            raise ValueError("a replay refuses at most every draw")
-        numbers = [self.mean_bias, self.coverage, self.regret, self.fdp, self.power,
-                   self.effect_bias_log2]
-        if any(n is not None for n in numbers) == (self.why is not None):
-            raise ValueError("a replay holds its numbers or why it has none, not both and not "
-                             "neither")
-        return self
-
-
 class Replication(_Strict):
     paper: str
     stated: list[dict[str, Any]]
@@ -742,7 +708,16 @@ class Record(_Strict):
     replication: Replication | None = None
     wants: list[Want] = []
     account: Account | None = None
-    replay: Replay | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_replay(cls, data: Any) -> Any:
+        """A record written before ``replay`` was dropped holds it null, which records nothing:
+        read as one without it (the module docstring). One that holds a replay keeps it, and
+        fails."""
+        if isinstance(data, dict) and "replay" in data and data["replay"] is None:
+            return {k: v for k, v in data.items() if k != "replay"}
+        return data
 
     @model_validator(mode="after")
     def _references_hold(self) -> "Record":
@@ -879,6 +854,6 @@ def redacted(record: Record | Any) -> dict[str, Any]:
 __all__ = ["Account", "Answer", "Attempt", "Claim", "Dataset", "DatasetFile", "DeclaredMarker",
            "Decision", "Estimate", "Examined", "Export", "FailedFit", "Marker", "Materiality",
            "NULL_OF", "ORDER_FROM", "Persona", "Question", "REDACTED", "REDACTED_SPEND", "Reason",
-           "Record", "RefusedKind", "Refusal", "Regime", "Replay", "Replication", "Result", "Run",
+           "Record", "RefusedKind", "Refusal", "Regime", "Replication", "Result", "Run",
            "STAMP", "Scale", "Shift", "SignedChange", "Spend", "Surfacings", "Tag", "VERSION",
            "Want", "neutral_id", "order_only", "redacted", "validate"]
