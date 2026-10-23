@@ -13,7 +13,17 @@ recomputed by numpy and scipy from the two fit records' served fold scores; a se
 an interruption that refits nothing the first finished; and a stage error induced in the engine
 under one option (the cohort failed with an error it did not type; the draw refused in words),
 classed failed and reported as a defect with the stage's own words, and refused with the stage,
-its code, words and way forward, while every other option is neither."""
+its code, words and way forward, while every other option is neither.
+
+The options that take fields of their own, on tables written here: a value built from the table
+(a range from a predictor's 1st to its 99th percentile, numpy's; an adult floor of 20 years, the
+CDC 2000 growth charts' last age; the rarest level by construction) labeled built; the bang2009
+card's rules, read from the card and checked against its sentences, each alone under each handling
+and its whole population as one answer; each answer's rows, read from the flow the refit served,
+equal to a pandas filter of the same codes; a 500 induced on one card rule's preview, a defect; a
+resumed crash sweep on a report finished before, fitting only the new options, each fit's record
+written by the server three seconds late and each fit still read as scored; and, under Estimate,
+the adjustment set of one's own as the covariates the plan's roles name."""
 from __future__ import annotations
 
 import json
@@ -207,6 +217,9 @@ def test_every_option_offered_is_listed_and_visited(swept):
     assert report["complete"] is True and report["unvisited"] == []
     cut = next(r for r in report["refits"] if r["id"] == "question:split=cut")
     assert cut["kind"] == "unreached" and "records nothing by itself" in cut["why"]
+    # No card states its held-out rows, and no cut-point is built: unreached, with why, counted.
+    assert "the card states no held-out cut-point" in cut["why"]
+    assert {"refit": cut["id"], "why": cut["why"]} in report["unreached"]
 
 
 @pytest.mark.slow
@@ -562,3 +575,384 @@ def test_an_induced_500_on_the_readings_other_answer_still_fails_the_crash_sweep
     kept = json.loads(open(report["defects"][0]["path"]).read())
     assert json.loads(kept["requests"][0]["body"])["value"] == "amount"
     assert refits["code"]["kind"] == "duplicate"
+
+
+# ── the options that take fields of their own ────────────────────────────────
+# Each answered by the crash sweep with a value it built from the table or read from the card,
+# previewed, answered and fitted on the engine; the rows each kept read from the participant flow
+# the refit served and checked against a pandas filter of the same codes over the table written
+# here, never against the engine; the card's codes checked against the card's own sentence.
+
+def level(value):
+    """A level in the one spelling the flow compares (``2``, ``2.0`` and ``"2"`` are one)."""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def passes(frame, rule):
+    """The rows ``rule`` keeps, by pandas over the table's codes as the rule models document them
+    (``decisions.ExclusionRule``, ``LevelRule``): a range keeps a value from its low to its high; a
+    level rule every level but those it excludes; a blank (for a level rule also a refused or a
+    don't-know code) stays only where the rule keeps what it cannot confirm."""
+    column = frame[rule["column"]]
+    blank = column.isna()
+    if rule["kind"] == "range":
+        values = pd.to_numeric(column, errors="coerce")
+        inside = ~blank
+        if rule.get("low") is not None:
+            inside &= (values >= rule["low"]).fillna(False)
+        if rule.get("high") is not None:
+            inside &= (values <= rule["high"]).fillna(False)
+        return inside | blank if rule["missing"] == "keep" else inside
+    spelled = column.map(lambda v: None if pd.isna(v) else level(v))
+    named = lambda levels: spelled.isin([str(v) for v in levels])  # noqa: E731
+    if rule["missing"] == "keep":
+        return ~named(rule["exclude"])
+    return ~named(rule["exclude"]) & ~blank & ~named(rule["refused"]) & ~named(rule["dont_know"])
+
+
+def flow_by_pandas(frame, outcome, rules):
+    """The rows with the outcome recorded, then those left after each rule in its order."""
+    kept = frame[outcome].notna()
+    out = [int(kept.sum())]
+    for rule in rules:
+        kept &= passes(frame, rule)
+        out.append(int(kept.sum()))
+    return out
+
+
+def flow_served(refit):
+    """The same counts from the participant flow the refit served (``Refit.flow``)."""
+    steps = {s["key"]: s["n"] for s in refit["flow"]}
+    rules = refit["decision"]["rules"]
+    return [steps["outcome_measured"], *(steps[f"exclusion:{i}"] for i in range(len(rules)))]
+
+
+def fielded_table(path):
+    """240 rows: ``x1`` numeric with six blanks, ``x2`` numeric, ``grp`` a text predictor whose
+    levels are a (120 rows), b (96) and c (24, the rarest), ``age`` in whole years from 12 to 85,
+    and a yes/no outcome from a logistic model in x1 and x2."""
+    rng = np.random.default_rng(4)
+    n = 240
+    frame = pd.DataFrame({"x1": rng.normal(size=n).round(3), "x2": rng.normal(size=n).round(3)})
+    frame["grp"] = rng.permutation(["a"] * 120 + ["b"] * 96 + ["c"] * 24)
+    frame["age"] = rng.integers(12, 86, n)
+    p = 1 / (1 + np.exp(-(0.8 * frame.x1 - 0.5 * frame.x2)))
+    frame["y"] = (rng.random(n) < p).astype(int)
+    frame.loc[rng.choice(n, 6, replace=False), "x1"] = np.nan
+    frame.to_csv(path, index=False)
+    return frame
+
+
+EXCLUSIONS = "question:exclusions"
+BEFORE = "It records nothing by itself: it takes a field of its own."  # the sweep's words before
+LATE = 3.0  # seconds the server's recorder waits before it writes a fit's record, here
+
+
+def late_records(mp, seconds):
+    """Each fit's record written ``seconds`` after its key turns fresh: the server writes it on
+    its recorder's thread (``service._fit_event``), here that much later than it would."""
+    import time
+
+    from turbotab.server.service import ProjectService
+
+    original = ProjectService._record_fit
+
+    def late(self, pid, key, at, spent):
+        time.sleep(seconds)
+        return original(self, pid, key, at, spent)
+
+    mp.setattr(ProjectService, "_record_fit", late)
+
+
+@pytest.fixture(scope="module")
+def fielded(tmp_path_factory):
+    """The crash sweep of the exclusions on the constructed table, twice into one folder: first as
+    it ran before it answered a field of its own (each such option unreached in its words of
+    then), a finished report; then as it runs now, the presses of Fit each run made counted, and
+    each fit's record written :data:`LATE` seconds after the fit turned fresh."""
+    work = tmp_path_factory.mktemp("fielded")
+    frame = fielded_table(work / "fielded.csv")
+    out = work / "out"
+    presses = {"before": 0, "now": 0}
+    run = {"now": "before"}
+    original_fit = arms.Local.fit
+
+    def counted(self, wait=3600.0):
+        presses[run["now"]] += 1
+        return original_fit(self, wait)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(arms.Local, "fit", counted)
+    mp.setattr(W.Fields, "answers", lambda self, point, option: ([], BEFORE))
+    mp.setattr(W.Fields, "population", lambda self, point, offered: [])
+    try:
+        before = W.crash("fielded", out, data=work / "fielded.csv", question=QUESTION,
+                         only=[EXCLUSIONS])
+        first = [json.loads(x) for x in (out / "progress.jsonl").read_text().splitlines()]
+        mp.undo()
+        mp.setattr(arms.Local, "fit", counted)
+        late_records(mp, LATE)
+        run["now"] = "now"
+        report = W.crash("fielded", out, data=work / "fielded.csv", question=QUESTION,
+                         only=[EXCLUSIONS])
+    finally:
+        mp.undo()
+    return {"before": before, "first": first, "report": report, "out": out, "frame": frame,
+            "presses": presses}
+
+
+def built(report):
+    return {r["option"].split("@")[0]: r for r in report["refits"]
+            if (r.get("answered_with") or {}).get("source") == "built"}
+
+
+@pytest.mark.slow
+def test_a_value_built_from_the_table_is_labeled_built_and_keeps_the_rows_pandas_keeps(fielded):
+    frame, refits = fielded["frame"], built(fielded["report"])
+    assert set(refits) == {"custom", "eligibility", "levels"}
+    low, high = np.percentile(frame["x1"].dropna(), [1, 99])
+    expected = {  # by construction: x1 the first numeric predictor, c the rarest level of grp,
+        # and an adult 20 or older (the CDC 2000 growth charts end at 20 years)
+        "custom": {"kind": "range", "column": "x1", "low": low, "high": high},
+        "eligibility": {"kind": "range", "column": "age", "low": 20.0, "high": None},
+        "levels": {"kind": "levels", "column": "grp", "exclude": ["c"], "refused": [],
+                   "dont_know": []}}
+    for oid, r in refits.items():
+        # Each fit's record came LATE seconds after its key turned fresh: a fit is still scored.
+        assert r["kind"] in ("scored", "refused"), (oid, r.get("why") or r.get("refused")
+                                                    or r.get("failed"))
+        assert (r["fit_record"] is not None) == (r["kind"] == "scored"), oid
+        (rule,) = r["decision"]["rules"]
+        for k, v in expected[oid].items():
+            assert rule[k] == (pytest.approx(v, abs=1e-12) if isinstance(v, float) else v), oid
+        assert r["answered_with"]["source"] == "built" and "built" in r["answered_with"]["words"]
+        assert r["flow"] is not None, oid
+        assert flow_served(r) == flow_by_pandas(frame, "y", [rule]), oid
+        assert r["previews"][0]["of"] == r["id"] and r["previews"][0]["kind"] == "ok"
+    assert any(r["kind"] == "scored" for r in refits.values())
+    assert fielded["report"]["defects"] == [] and fielded["report"]["unreached"] == []
+
+
+@pytest.mark.slow
+def test_a_resumed_crash_sweep_on_a_finished_report_fits_only_the_new_options(fielded):
+    before, report = fielded["before"], fielded["report"]
+    assert {u["refit"] for u in before["unreached"]} == {
+        f"{EXCLUSIONS}={o}" for o in ("custom", "eligibility", "levels")}
+    assert all(u["why"] == BEFORE for u in before["unreached"]) and before["complete"] is True
+    assert f"; unreached: 3; swept only {EXCLUSIONS}." in W.table_md(before)
+    # The second run fitted each new option and nothing the first had finished.
+    new = [r for r in report["refits"] if r.get("answered_with")]
+    assert len(new) == 3
+    assert fielded["presses"]["now"] == sum(1 for r in new if r["seconds"] is not None) >= 1
+    first = {e["refit"]["id"] for e in fielded["first"] if "refit" in e}
+    entries = [json.loads(x) for x in (fielded["out"] / "progress.jsonl").read_text().splitlines()]
+    later = [e["refit"]["id"] for e in entries[len(fielded["first"]):] if "refit" in e]
+    assert sorted(later) == sorted(r["id"] for r in new) and not set(later) & first
+    # The options unreached before are now the refits that answered them, and none is unreached.
+    ids = {r["id"] for r in report["refits"]}
+    assert not ids & {u["refit"] for u in before["unreached"]}
+    assert report["unreached"] == [] and report["complete"] is True
+    md = (fielded["out"] / "crash.md").read_text()
+    assert f"; unreached: 0; swept only {EXCLUSIONS}." in md
+
+
+def bang_table(path):
+    """900 people aged 12 to 85, coded as NHANES codes them, with the skip patterns behind the
+    blanks: RIDEXPRG asked of women aged 20 to 44 only, so blank for every man; DIQ070 asked only
+    of a person told of diabetes or borderline (DIQ010 1 or 3); DIQ050 blank on about one row in
+    twelve; ``diabetes_fpg`` (the card's outcome) from a logistic model in age and BMI, blank on
+    about a third of the rows."""
+    rng = np.random.default_rng(2009)
+    n = 900
+    age = rng.integers(12, 86, n)
+    male = rng.random(n) < 0.49
+    diq010 = rng.choice([1, 2, 3, 7, 9], n, p=[0.10, 0.76, 0.06, 0.04, 0.04]).astype(float)
+    diq010[rng.random(n) < 0.03] = np.nan
+    told = np.isin(diq010, [1, 3])
+    asked = ~male & (age >= 20) & (age <= 44)
+    frame = pd.DataFrame({
+        "SEQN": np.arange(1, n + 1), "RIDAGEYR": age, "RIAGENDR": np.where(male, 1, 2),
+        "RIDEXPRG": np.where(asked, rng.choice([1, 2, 3], n, p=[0.12, 0.80, 0.08]), np.nan),
+        "DIQ010": diq010,
+        "DIQ050": rng.choice([1, 2, 7, 9], n, p=[0.05, 0.89, 0.03, 0.03]).astype(float),
+        "DIQ070": np.where(told, rng.choice([1, 2, 7, 9], n, p=[0.5, 0.4, 0.05, 0.05]), np.nan),
+        "BMXBMI": np.round(rng.normal(28, 5, n), 1)})
+    frame.loc[rng.random(n) < 0.08, "DIQ050"] = np.nan
+    p = 1 / (1 + np.exp(-(-1.2 + 0.04 * (age - 50) + 0.12 * (frame["BMXBMI"] - 28))))
+    frame["diabetes_fpg"] = (rng.random(n) < p).astype(float)
+    frame.loc[rng.random(n) < 0.33, "diabetes_fpg"] = np.nan
+    for c in ("RIDEXPRG", "DIQ010", "DIQ050", "DIQ070", "diabetes_fpg"):
+        frame[c] = frame[c].astype("Int64")
+    frame.to_csv(path, index=False)
+    return pd.read_csv(path)
+
+
+@pytest.fixture(scope="module")
+def bang(tmp_path_factory):
+    """The crash sweep of the exclusions on a table coded as Bang's is, under the bang2009 card
+    (its question and its eligibility rules, read from the card), with the server's preview of one
+    card rule under one handling failing as a defect would: the card's second level rule, keeping
+    what it cannot confirm."""
+    from turbotab.server.service import ProjectService
+
+    work = tmp_path_factory.mktemp("bang")
+    frame = bang_table(work / "bang.csv")
+    rules, _ = W.card_rules(arms.card_of("bang2009"))
+    fails = [r for r in rules if r.kind == "levels"][1]
+    original = ProjectService._preview
+
+    def failing(self, pid, decision):
+        body = decision.model_dump() if hasattr(decision, "model_dump") else dict(decision)
+        posted = body.get("rules") or []
+        if body.get("kind") == "set_exclusions" and len(posted) == 1 \
+                and posted[0].get("column") == fails.column and posted[0].get("missing") == "keep":
+            raise RuntimeError("the preview fails here, as a defect would")
+        return original(self, pid, decision)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(ProjectService, "_preview", failing)
+    try:
+        report = W.crash("bang2009", work / "out", data=work / "bang.csv", only=[EXCLUSIONS])
+    finally:
+        mp.undo()
+    return {"report": report, "frame": frame, "rules": rules, "fails": fails,
+            "card": arms.card_of("bang2009")}
+
+
+def stated(card, rule):
+    """Whether the card's own sentence for ``rule``'s column states the rule's codes, in the words
+    the intake writes them (``intake.age_line``, ``intake.level_line``)."""
+    said = next(s for s in card["eligibility"] if f"rule on {rule['column']} " in s)
+    if rule["kind"] == "range":
+        return f"a range rule on {rule['column']} from {rule['low']:g}." in said
+    named = (f"naming {rule['refused'][0]} as its refused code and {rule['dont_know'][0]} as its "
+             f"don't-know code" if rule["refused"] else "which has no refused or don't-know code")
+    return f"a level rule on {rule['column']} excluding level {rule['exclude'][0]} (" in said \
+        and named in said and len(rule["exclude"]) == 1
+
+
+def card_refits(report):
+    return [r for r in report["refits"] if (r.get("answered_with") or {}).get("source") == "card"]
+
+
+@pytest.mark.slow
+def test_each_card_rule_is_answered_and_fitted_and_keeps_the_rows_pandas_keeps(bang):
+    """Each of the card's rules alone, the age range once and each level rule under each handling,
+    is previewed, answered and fitted: refused only in the engine's words, and the rows it keeps,
+    read from the flow, those a pandas filter of the card's codes keeps."""
+    report, frame, card = bang["report"], bang["frame"], bang["card"]
+    alone = [r for r in card_refits(report) if not r["option"].startswith("population@")]
+    failed = [r for r in alone if r["kind"] == "failed"]
+    assert len(alone) == 1 + 2 * 4 and len(failed) == 1
+    for r in alone:
+        if r["kind"] == "failed":
+            continue
+        assert r["kind"] in ("scored", "refused"), (r["id"], r.get("refused"))
+        (rule,) = r["decision"]["rules"]
+        assert stated(card, rule), r["id"]
+        assert r["flow"] is not None, r["id"]
+        assert flow_served(r) == flow_by_pandas(frame, "diabetes_fpg", [rule]), r["id"]
+    assert sum(r["kind"] == "scored" for r in alone) >= 4
+    assert {r["decision"]["rules"][0]["missing"] for r in alone if r["decision"]
+            and r["decision"]["rules"][0]["kind"] == "levels"} == {"exclude", "keep"}
+
+
+@pytest.mark.slow
+def test_the_cards_whole_population_is_one_answer_of_its_rules_in_its_order(bang):
+    report, frame, card, rules = bang["report"], bang["frame"], bang["card"], bang["rules"]
+    whole = {r["option"]: r for r in card_refits(report) if r["option"].startswith("population@")}
+    assert sorted(whole) == ["population@card:exclude", "population@card:keep"]
+    for handling in ("exclude", "keep"):
+        r = whole[f"population@card:{handling}"]
+        assert r["kind"] in ("scored", "refused"), (r["id"], r.get("refused"))
+        assert r["answered_with"]["ids"] == [
+            "eligibility" if x.kind == "range" else "levels" for x in rules]
+        posted = r["decision"]["rules"]
+        assert [x["column"] for x in posted] == [x.column for x in rules]
+        assert all(stated(card, x) for x in posted)
+        assert {x["missing"] for x in posted if x["kind"] == "levels"} == {handling}
+        if r["flow"] is not None:
+            assert flow_served(r) == flow_by_pandas(frame, "diabetes_fpg", posted)
+        else:  # the answer refused in the engine's words (the rules leave too few rows)
+            assert r["kind"] == "refused" and r["refused"]["at"] == "answer", r["refused"]
+            assert r["refused"]["code"] and r["refused"]["message"], r["refused"]
+    assert whole["population@card:keep"]["flow"] is not None
+
+
+@pytest.mark.slow
+def test_an_induced_500_on_a_card_rule_is_a_failed_refit_and_an_engine_defect(bang):
+    report, fails = bang["report"], bang["fails"]
+    rid = f"{EXCLUSIONS}=levels@card:{fails.place}:{fails.column}:keep"
+    refits = {r["id"]: r for r in report["refits"]}
+    assert refits[rid]["kind"] == "failed" and refits[rid]["failed"]["code"] == "http_500"
+    assert [d["refit"] for d in report["defects"]] == [rid] and report["passed"] is False
+    assert [r["id"] for r in report["refits"] if r["kind"] == "failed"] == [rid]
+    kept = json.loads(open(report["defects"][0]["path"]).read())
+    (rule,) = json.loads(kept["requests"][0]["body"])["rules"]
+    assert (rule["column"], rule["missing"]) == (fails.column, "keep")
+
+
+@pytest.mark.slow
+def test_on_bangs_table_the_range_of_ones_own_is_built_and_said_so(bang):
+    report, frame = bang["report"], bang["frame"]
+    (r,) = [r for r in report["refits"] if r["option"].startswith("custom@")]
+    assert r["answered_with"]["source"] == "built" and r["option"] == "custom@built:RIDAGEYR"
+    (rule,) = r["decision"]["rules"]
+    low, high = np.percentile(frame["RIDAGEYR"].dropna(), [1, 99])
+    assert (rule["low"], rule["high"]) == pytest.approx((low, high), abs=1e-12)
+    assert r["kind"] in ("scored", "refused") and r["flow"] is not None
+    assert flow_served(r) == flow_by_pandas(frame, "diabetes_fpg", [rule])
+    md = W.table_md(report)
+    assert "## Options answered with values the crash sweep supplied" in md
+    assert f"; unreached: {len(report['unreached'])}; swept only {EXCLUSIONS}." in md
+
+
+def walking_table(path):
+    """300 people: age and height recorded at enrollment, chronic pain (1 yes, 0 no; blank on 12)
+    and daily walking (1 yes, 0 no), a health-concern score and systolic blood pressure measured
+    later, from a linear model in walking, age and height."""
+    rng = np.random.default_rng(5)
+    n = 300
+    age = rng.integers(25, 80, n)
+    height = rng.normal(170, 9, n).round(1)
+    pain = (rng.random(n) < 0.3).astype(float)
+    walks = (rng.random(n) < 1 / (1 + np.exp(-(1.0 - 0.03 * (age - 50) - 1.2 * pain)))).astype(int)
+    frame = pd.DataFrame({"person_id": np.arange(1, n + 1), "age": age, "chronic_pain": pain,
+                          "walks_daily": walks, "height_cm": height})
+    frame["health_concern_score"] = (2 + 1.5 * pain + rng.normal(0, 1, n)).round(2)
+    frame["sbp_mmhg"] = (110 + 0.5 * (age - 50) - 4 * walks - 0.1 * (height - 170)
+                         + rng.normal(0, 8, n)).round(1)
+    frame.loc[rng.choice(n, 12, replace=False), "chronic_pain"] = np.nan
+    frame.to_csv(path, index=False)
+    return frame
+
+
+@pytest.mark.slow
+def test_an_adjustment_set_of_ones_own_is_the_covariates_the_roles_name(tmp_path):
+    """Under Estimate the adjustment's set of one's own is answered with the covariates the plan's
+    roles name, each a confounder of the declared exposure, previewed, answered and fitted."""
+    walking_table(tmp_path / "walking.csv")
+    question = arms.Question(target="sbp_mmhg", purpose="inference", exposure="walks_daily",
+                             meaning="systolic blood pressure (mmHg)")
+    report = W.crash("walking", tmp_path / "out", data=tmp_path / "walking.csv",
+                     question=question, only=["question:adjustment"])
+    with W.arms.Local(tmp_path / "out" / "home") as session:
+        session.use(report["template"]["project"])
+        roles = session.view()["state"]["roles"]
+    plan = next(p for p in report["points"] if p["id"] == "question:adjustment")
+    covariates = [c for c in plan["decision"]["answers"] if roles.get(c) == "covariate"]
+    assert covariates  # the roles name some
+    (r,) = [r for r in report["refits"] if r["option"] == "answers@built:covariates"]
+    confounder = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+    neither = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+    assert r["kind"] in ("scored", "refused"), (r.get("refused") or r.get("failed"))
+    assert r["decision"]["exposure"] == "walks_daily"
+    assert {c: {k: a[k] for k in confounder} for c, a in r["decision"]["answers"].items()} == {
+        c: confounder if c in covariates else neither for c in plan["decision"]["answers"]}
+    assert r["answered_with"]["source"] == "built" and report["defects"] == []
+    # The set answered is the one fitted: the walk after it answered the adjustment no more.
+    assert not [a for a in r["answered"][1:] if ":adjustment=" in a["answer"]], r["answered"]
+    if r["kind"] == "scored":
+        assert r["digest"] != report["baseline"]["digest"]
