@@ -371,7 +371,7 @@ def _prediction(ctx: StageContext, task: str, fit: Any, comparison: Mapping[str,
         out.design_based = _design_based(state, task, metric, X, y, frame, survey,
                                          {**{k: pipelines[k] for k in families if k in pipelines},
                                           **({BENCHMARK: bench} if bench is not None else {})},
-                                         labels, fit_rows, check, classes)
+                                         labels, fit_rows, check, classes, ctx)
         out.sentences.append(out.design_based.sentence)
 
     # ── the levers set by hand after an outcome view ──
@@ -529,11 +529,13 @@ def _iecv(task: str, X: pd.DataFrame, y: np.ndarray, cluster: np.ndarray, column
 def _design_based(state: Any, task: str, metric: str, X: pd.DataFrame, y: np.ndarray,
                   frame: pd.DataFrame, survey: Any, pipelines: Mapping[str, Any],
                   labels: Mapping[str, str], fit_rows: Any, check: Any,
-                  classes: Sequence[Any]) -> DesignBased:
+                  classes: Sequence[Any], ctx: StageContext) -> DesignBased:
     """Design-based cross-validation (``models.design_cv``) of each family, the benchmark and the
     baseline, weighted by the survey answer's analysis weight on the training rows; a weight
     ``methods.survey.analysis_weights`` refuses on them (a four-year weight blank on a 1999–2002
-    row they hold) refuses the scores in its words (``methods.survey.refuse_weights``)."""
+    row they hold) refuses the scores (``methods.survey.refuse_weights``, its words counting the
+    blank on every row of the stage's table with the target recorded, as the survey question
+    does, read through ``ctx``)."""
     from sklearn.base import clone
 
     from turbotab.core.methods.survey import analysis_weights, refuse_weights
@@ -543,7 +545,9 @@ def _design_based(state: Any, task: str, metric: str, X: pd.DataFrame, y: np.nda
     from turbotab.core.stages.modeling import baseline_model
 
     pooled = analysis_weights(frame, survey.weight, survey.cycle, survey.four_year_weight)
-    refuse_weights(pooled)
+    if pooled.refusal is not None:
+        with open_store(ctx) as store:
+            refuse_weights(pooled, state, store)
     weights = pooled.weights
     strata = frame[survey.strata].to_numpy() if survey.strata else None
     psu = frame[survey.psu].to_numpy() if survey.psu else None

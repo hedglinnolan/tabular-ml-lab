@@ -110,19 +110,36 @@ def analysis_weights(frame: pd.DataFrame, weight: str, cycle: str | None = None,
 NAME_THE_FOUR_YEAR = "Name the four-year weight (the survey question)"
 
 
-def refuse_weights(pooled: PooledWeight) -> None:
-    """Raise the stage refusal of a weight :func:`analysis_weights` refuses (``pooled.refusal``),
-    in its words, with the ways on usual intake's survey plan gives: name the four-year weight on
-    the survey question, or estimate for these participants; nothing when it is not refused. The
-    design-based cross-validation and ``stages.modeling.fit_designs`` (a tuned family's plan and
-    fits, and every stage that reads it) are refused so, never weighted by the 2-year weight ÷ k
-    a refused weight holds, nor left unweighted."""
+def refuse_weights(pooled: PooledWeight, state: Any, store: Any) -> None:
+    """Raise the stage refusal of a weight :func:`analysis_weights` refuses on a stage's rows
+    (``pooled.refusal``), with the ways on usual intake's survey plan gives: name the four-year
+    weight on the survey question, or estimate for these participants; nothing when it is not
+    refused. The design-based cross-validation and ``stages.modeling.fit_designs`` (a tuned
+    family's plan and fits, and every stage that reads it) are refused so, never weighted by the
+    2-year weight ÷ k a refused weight holds, nor left unweighted.
+
+    Its words count the blank four-year weight over every row of ``store`` (the working table)
+    with the target recorded, as the survey question's record-time check and :func:`for_fit`
+    count it, so one blank gives one count wherever it is refused, whichever of those rows a
+    stage weighs (a holdout's training rows, say). Where that count finds none (a stage row
+    without the target recorded holds every blank), the words are the stage rows' own."""
     if pooled.refusal is None:
         return
     from turbotab.core.graph import StageRefusal
     from turbotab.core.models.survey import SAMPLE_EXIT
 
-    raise StageRefusal("four_year_weight", pooled.refusal, exits=[
+    words = pooled.refusal
+    spec = getattr(state, "survey", None)
+    present = set(getattr(store, "columns", ()) or ())
+    if spec is not None and spec.weight in present:
+        target = getattr(state, "target", None)
+        outcome = target if target and target in present else None
+        wanted = [c for c in (spec.weight, spec.cycle, spec.four_year_weight, outcome)
+                  if c and c in present]
+        frame = store.materialize(list(dict.fromkeys(wanted)), None)
+        whole = analysis_weights(frame, spec.weight, spec.cycle, spec.four_year_weight, outcome)
+        words = whole.refusal or words
+    raise StageRefusal("four_year_weight", words, exits=[
         {"label": NAME_THE_FOUR_YEAR, "decision": None},
         {"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}}])
 

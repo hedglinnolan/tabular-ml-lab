@@ -975,8 +975,11 @@ def _recorded_then_target(frame: pd.DataFrame, target: str, **fields):
     return state
 
 
-WEIGHT_REFUSED = ("`WTSAF4YR` is missing on {n} of the 1999–2002 rows, so their four-year weight "
-                  "cannot be used (NHANES Analytic Guidelines 2011–2016 §3.1.4).")
+# A stage counts a blank four-year weight as the survey question does, on every row with the
+# target recorded, so one blank is one count wherever it is refused.
+WEIGHT_REFUSED = ("`WTSAF4YR` is missing on {n} of the 1999–2002 rows with `{target}` recorded, "
+                  "so their four-year weight cannot be used (NHANES Analytic Guidelines "
+                  "2011–2016 §3.1.4).")
 
 
 def _ways_on(refusal) -> list:
@@ -1001,7 +1004,7 @@ def test_3_under_prediction_the_tuned_fits_weights_are_refused_where_the_targets
     with pytest.raises(StageRefusal) as refused:
         fit_designs(state, _Store(frame), frame.index[frame["x"].notna()].to_numpy())
     assert refused.value.code == "four_year_weight"
-    assert refused.value.message == WEIGHT_REFUSED.format(n=2)
+    assert refused.value.message == WEIGHT_REFUSED.format(n=2, target="x")
     assert _ways_on(refused.value) == [("Name the four-year weight (the survey question)", None),
                                        (SAMPLE_EXIT, ("set_survey", "sample"))]
 
@@ -1063,38 +1066,15 @@ def _run_to(frame: pd.DataFrame, folder: Path, state, stage: str):
         run.close()
 
 
-def test_3_under_prediction_the_design_based_scores_are_refused_where_the_targets_rows_lack_the_four_year_weight(tmp_path):
-    """B1 through the stages, under Predict with a family that is not tuned, so the design-based
-    cross-validation is what reads the weights. With ``x`` the target, ``WTSAF4YR`` is blank on
-    the 1999–2002 rows outside the fasting subsample, which ``x``'s rows include: the fit stands
-    and the evaluation is refused with the weight's refusal, never weighted by the 2-year weight ÷
-    3 there. With glucose kept, each fold's weighted baseline loss is Table F's 6-year weight's,
-    by hand (each fold's Σwℓ/Σw of the training rows' mean)."""
+def _baseline_folds_are_table_fs(rows: pd.DataFrame, block: dict) -> None:
+    """Each fold's weighted baseline loss of the design-based cross-validation over ``rows`` (the
+    training rows, with glucose the target, split seed 2, five folds) is Table F's 6-year
+    weight's, by hand: each fold's Σwℓ/Σw of the squared error from the other folds' mean."""
     from turbotab.core.models import design_cv as D
-    from turbotab.core.models.survey import SAMPLE_EXIT
     from turbotab.core.tests.acceptance import explore_references as er
 
-    frame = _fasting_survey_table()
-    blank = int((frame["SDDSRVYR"].isin([1, 2]) & frame["WTSAF4YR"].isna()).sum())
-    assert blank == 2 * 2 * 4 * 2  # two cycles × two strata × four PSUs × two rows outside
-    (tmp_path / "x").mkdir()
-    out, refused, stage = _run_to(frame, tmp_path / "x", _graph_state(frame, "x", ["linear"]),
-                                  "evaluation")
-    assert stage == "evaluation" and refused.code == "four_year_weight"
-    assert refused.message == WEIGHT_REFUSED.format(n=blank)
-    assert _ways_on(refused) == [("Name the four-year weight (the survey question)", None),
-                                 (SAMPLE_EXIT, ("set_survey", "sample"))]
-
-    (tmp_path / "glucose").mkdir()
-    out, refused, _ = _run_to(frame, tmp_path / "glucose",
-                              _graph_state(frame, "glucose", ["linear"]), "evaluation")
-    assert refused is None
-    ids = out["fit"].objects["comparison"]["train_ids"]
-    rows = frame.loc[ids]
-    assert rows["glucose"].notna().all() and len(rows) == int(frame["glucose"].notna().sum())
     w, y = _six_year(rows), rows["glucose"].to_numpy()
     assert np.isfinite(w).all() and (w > 0).all()
-    block = out["evaluation"].data["design_based"]
     assert block["note"] is None or "no positive weight" not in block["note"]
     baseline = next(f for f in block["families"] if f["family"] == "baseline")
     for r in range(D.REPEATS):
@@ -1105,6 +1085,36 @@ def test_3_under_prediction_the_design_based_scores_are_refused_where_the_target
             loss[fold == f] = (y[fold == f] - y[fold != f].mean()) ** 2
         got = np.asarray(baseline["fold_scores"][r * k:(r + 1) * k])
         assert np.max(np.abs(got - er.weighted_fold_means(loss, w, fold))) < 1e-10
+
+
+def test_3_under_prediction_the_design_based_scores_are_refused_where_the_targets_rows_lack_the_four_year_weight(tmp_path):
+    """B1 through the stages, under Predict with a family that is not tuned, so the design-based
+    cross-validation is what reads the weights. With ``x`` the target, ``WTSAF4YR`` is blank on
+    the 1999–2002 rows outside the fasting subsample, which ``x``'s rows include: the fit stands
+    and the evaluation is refused with the weight's refusal, never weighted by the 2-year weight ÷
+    3 there. With glucose kept, each fold's weighted baseline loss is Table F's 6-year weight's,
+    by hand (each fold's Σwℓ/Σw of the training rows' mean)."""
+    from turbotab.core.models.survey import SAMPLE_EXIT
+
+    frame = _fasting_survey_table()
+    blank = int((frame["SDDSRVYR"].isin([1, 2]) & frame["WTSAF4YR"].isna()).sum())
+    assert blank == 2 * 2 * 4 * 2  # two cycles × two strata × four PSUs × two rows outside
+    (tmp_path / "x").mkdir()
+    out, refused, stage = _run_to(frame, tmp_path / "x", _graph_state(frame, "x", ["linear"]),
+                                  "evaluation")
+    assert stage == "evaluation" and refused.code == "four_year_weight"
+    assert refused.message == WEIGHT_REFUSED.format(n=blank, target="x")
+    assert _ways_on(refused) == [("Name the four-year weight (the survey question)", None),
+                                 (SAMPLE_EXIT, ("set_survey", "sample"))]
+
+    (tmp_path / "glucose").mkdir()
+    out, refused, _ = _run_to(frame, tmp_path / "glucose",
+                              _graph_state(frame, "glucose", ["linear"]), "evaluation")
+    assert refused is None
+    ids = out["fit"].objects["comparison"]["train_ids"]
+    rows = frame.loc[ids]
+    assert rows["glucose"].notna().all() and len(rows) == int(frame["glucose"].notna().sum())
+    _baseline_folds_are_table_fs(rows, out["evaluation"].data["design_based"])
 
 
 def test_3_under_prediction_the_tuned_plan_is_refused_where_the_targets_rows_lack_the_four_year_weight(tmp_path):
@@ -1119,7 +1129,7 @@ def test_3_under_prediction_the_tuned_plan_is_refused_where_the_targets_rows_lac
     out, refused, stage = _run_to(frame, tmp_path / "x", _graph_state(frame, "x", ["ridge"]),
                                   "design")
     assert stage == "design" and refused.code == "four_year_weight"
-    assert refused.message == WEIGHT_REFUSED.format(n=blank)
+    assert refused.message == WEIGHT_REFUSED.format(n=blank, target="x")
     assert _ways_on(refused) == [("Name the four-year weight (the survey question)", None),
                                  (SAMPLE_EXIT, ("set_survey", "sample"))]
 
@@ -1128,6 +1138,105 @@ def test_3_under_prediction_the_tuned_plan_is_refused_where_the_targets_rows_lac
                               _graph_state(frame, "glucose", ["ridge"]), "design")
     assert refused is None
     assert out["design"].objects["spec"]["plans"]["ridge"]["weighted"] is True
+
+
+def _asked_again(frame: pd.DataFrame, state):
+    """The survey question's population answer validated again on ``state`` (its target now): its
+    record-time refusal, or None."""
+    from turbotab.core import decisions as d
+
+    try:
+        d.validate(POPULATION, {"state": state, "columns": list(frame.columns),
+                                "store": lambda: _Store(frame), "target": state.target})
+    except d.Refusal as refusal:
+        return refusal
+    return None
+
+
+def test_3_the_stage_counts_a_blank_four_year_weight_as_the_survey_question_does():
+    """M-a at the weights a fit reads: the rows a stage weighs (a holdout's training rows, say)
+    hold one of the two 1999–2002 rows whose ``WTSAF4YR`` is blank, with ``x`` the target,
+    recorded on every row. The stage is refused, and its words count the blank four-year weight
+    on every row with ``x`` recorded (two), as the survey question asked again under ``x`` counts
+    it, never the stage's own rows (one) under words that do not say which rows they are."""
+    from turbotab.core.graph import StageRefusal
+    from turbotab.core.stages.modeling import fit_designs
+
+    frame = _fasting_cycles()
+    blank = frame["SDDSRVYR"].isin([1, 2]) & frame["WTSAF4YR"].isna()
+    rows = frame.index[frame.index != frame.index[blank][-1]].to_numpy()
+    n = int((blank & frame["x"].notna()).sum())
+    assert (int(blank.loc[rows].sum()), n) == (1, 2)
+    state = _recorded_then_target(frame, "x")
+    with pytest.raises(StageRefusal) as refused:
+        fit_designs(state, _Store(frame), rows)
+    assert refused.value.code == "four_year_weight"
+    assert refused.value.message == WEIGHT_REFUSED.format(n=n, target="x")
+    asked = _asked_again(frame, state)
+    assert asked is not None and asked.message == refused.value.message
+
+
+@pytest.mark.parametrize("models, stage", [(["linear"], "evaluation"), (["ridge"], "design")])
+def test_3_under_a_holdout_a_refused_weight_is_counted_on_the_rows_with_the_target_recorded(
+        tmp_path, models, stage):
+    """M-a through the stages, a quarter of the rows held out: the training rows a stage weighs
+    (the design-based cross-validation's, linear; the tuned plan's, ridge) hold some of the 32
+    1999–2002 rows whose ``WTSAF4YR`` is blank, and ``x``, the target, is unrecorded on 4 of those
+    32. The stage is refused in words that count the blank four-year weight on every row with
+    ``x`` recorded (28, by numpy), the count the survey question asked again under ``x`` gives,
+    with both ways on; neither the training rows' count nor every row's. With glucose kept,
+    nothing is refused, and the weights are Table F's 6-year weights: the training rows' in the
+    design-based folds (linear), the fit's designs' (ridge)."""
+    from turbotab.core import decisions as d
+    from turbotab.core.graph import StageRefusal
+    from turbotab.core.models.survey import SAMPLE_EXIT
+    from turbotab.core.stages.modeling import read_assignment
+    from turbotab.core.tests.graph_runner import GraphRun
+
+    frame = _fasting_survey_table()
+    blank = frame["SDDSRVYR"].isin([1, 2]) & frame["WTSAF4YR"].isna()
+    frame.loc[frame.index[blank][::8], "x"] = np.nan
+    recorded = blank & frame["x"].notna()
+    n = int(recorded.sum())
+    assert (int(blank.sum()), n) == (32, 28)
+
+    def held(target):
+        return _graph_state(frame, target, models).model_copy(
+            update={"split": d.SplitSpec(holdout=0.25, seed=2, folds=5)})
+
+    frame.to_csv(tmp_path / "t.csv", index=False)
+    run = GraphRun(tmp_path / "t.csv", tmp_path / "p")
+    try:
+        state = held("x")
+        assignment = read_assignment(run.run(state, upto=["split"])["split"])
+        train = assignment.index[assignment["train"]]
+        assert 0 < int(recorded.loc[train].sum()) < n
+        ran: list[str] = []
+        with pytest.raises(StageRefusal) as refused:
+            run.run(state, upto=[stage], before=ran.append)
+        assert ran[-1] == stage and refused.value.code == "four_year_weight"
+        assert refused.value.message == WEIGHT_REFUSED.format(n=n, target="x")
+        assert _ways_on(refused.value) == [
+            ("Name the four-year weight (the survey question)", None),
+            (SAMPLE_EXIT, ("set_survey", "sample"))]
+        asked = _asked_again(frame, state)
+        assert asked is not None and asked.message == refused.value.message
+
+        kept = held("glucose")
+        assert _asked_again(frame, kept) is None
+        if stage == "evaluation":
+            out = run.run(kept, upto=["evaluation"])
+            rows = frame.loc[out["fit"].objects["comparison"]["train_ids"]]
+            assert len(rows) < int(frame["glucose"].notna().sum())
+            _baseline_folds_are_table_fs(rows, out["evaluation"].data["design_based"])
+        else:
+            out = run.run(kept, upto=["fit"])
+            assert out["design"].objects["spec"]["plans"]["ridge"]["weighted"] is True
+            designs = out["fit"].objects["fit_designs"]
+            rows = frame.loc[designs.index]
+            np.testing.assert_allclose(designs["weight"].to_numpy(), _six_year(rows), rtol=1e-12)
+    finally:
+        run.close()
 
 
 def test_the_names_that_read_as_a_survey_design():
