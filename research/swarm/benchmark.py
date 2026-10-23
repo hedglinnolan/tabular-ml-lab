@@ -70,7 +70,7 @@ BMI_CUTS = (25.0, 30.0, 40.0)  # overweight, obese, extremely obese
 WAIST_CUTS = {"male": (37.0, 40.0, 50.0), "female": (31.5, 35.0, 49.0)}
 CM_PER_INCH = 2.54
 HYPERTENSIVE = (140.0, 90.0)  # systolic, diastolic, mmHg: "≥ 140" or "≥ 90"
-AGE_BANDS = (40, 50, 60)  # under 40 (the reference), 40–49, 50–59, 60 or older
+AGE_BANDS = (40, 50, 60)  # each band's lowest age in years; under the first is the reference
 POINTS = {factor: points for factor, _, _, _, points in I.BANG_TABLE2}
 
 
@@ -91,7 +91,9 @@ def _url(name: str, cycle: str = I.GLUCOSE_TEST) -> str:
 
 PAQ_C = I.page_url(2003, "PAQ_C")  # Bang's own activity item, on its last development cycle's page
 ITEMS: list[dict[str, Any]] = [
-    {"item": "age", "rule": "RIDAGEYR: 40 to 49, 50 to 59, or 60 or older, against under 40",
+    {"item": "age",
+     "rule": (f"RIDAGEYR: {AGE_BANDS[0]} to {AGE_BANDS[1] - 1}, {AGE_BANDS[1]} to "
+              f"{AGE_BANDS[2] - 1}, or {AGE_BANDS[2]} or older, against under {AGE_BANDS[0]}"),
      "passages": [(_url("DEMO"), "RIDAGEYR - Age in years at screening")]},
     {"item": "male", "rule": "RIAGENDR is 1 (Male)",
      "passages": [(_url("DEMO"), "RIAGENDR - Gender")]},

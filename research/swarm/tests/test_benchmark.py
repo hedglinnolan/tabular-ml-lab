@@ -5,7 +5,7 @@ score on a record's own held-out participants, and its AUC.
   bands, male sex, family history, hypertension by each of its three routes, body size by BMI or
   by waist in inches at the paper's cut-offs for each sex, activity by either recreational item;
   refused, don't-know and blank answers are the condition absent, and so are blank measurements,
-  as the printed rules say.
+  as the printed rules say; each number a rule prints follows the constant the score uses.
 * **The AUC** per participant against scikit-learn's ``roc_auc_score``, ties included; weighted
   against a direct sum over every case–control pair and against scikit-learn's weighted AUC;
   DeLong's standard error against its placement values computed pair by pair; the jackknife's
@@ -101,6 +101,41 @@ def test_the_score_is_table_2s_points_item_by_item():
     choices = notes.split("## 6. Choices the paper leaves open")[1].split("\n## ")[0]
     assert "5. **Missing obesity inputs** (both BMI and waist missing)" in choices
     assert "2. **BP readings.** The mean of the available" in choices
+    # Each number a rule prints is filled in from the constant the score uses: Table 2's age bands
+    # (40–49, 50–59, 60 or older, against under 40) as printed today, and with the module read
+    # again under other band edges, a pressure cut and an inch, the rules print those and the
+    # score bands age at the new edges.
+    assert rule["age"] == "RIDAGEYR: 40 to 49, 50 to 59, or 60 or older, against under 40"
+    moved = _benchmark_with({"AGE_BANDS = (40, 50, 60)": "AGE_BANDS = (35, 45, 65)",
+                             "HYPERTENSIVE = (140.0, 90.0)": "HYPERTENSIVE = (150.0, 95.0)",
+                             "CM_PER_INCH = 2.54": "CM_PER_INCH = 2.5"})
+    moved_rule = {i["item"]: i["rule"] for i in moved.ITEMS}
+    assert moved_rule["age"] == "RIDAGEYR: 35 to 44, 45 to 64, or 65 or older, against under 35"
+    assert ("150 mmHg or more systolic" in moved_rule["history of hypertension"]
+            and "95 or more diastolic" in moved_rule["history of hypertension"])
+    assert "cm divided by 2.5)" in moved_rule["body size"]
+    ages = [34.0, 35.0, 44.0, 45.0, 64.0, 65.0]
+    np.testing.assert_array_equal(
+        moved.score(pd.DataFrame([{**BASE, "RIDAGEYR": a} for a in ages])), [0, 1, 1, 2, 2, 3])
+
+
+def _benchmark_with(changes: dict[str, str]):
+    """``benchmark.py`` executed again as a new module with each line in ``changes`` (found once)
+    replaced: a rule built from a constant follows it, a rule typed beside it does not."""
+    import types
+    path = Path(B.__file__)
+    source = path.read_text(encoding="utf-8")
+    for old, new in changes.items():
+        assert source.count(old) == 1, old
+        source = source.replace(old, new)
+    module = types.ModuleType("research.swarm.benchmark_moved")
+    module.__file__ = str(path)
+    sys.modules[module.__name__] = module  # its dataclass reads its module's namespace
+    try:
+        exec(compile(source, str(path), "exec"), module.__dict__)
+    finally:
+        del sys.modules[module.__name__]
+    return module
 
 
 # ── the AUC ──────────────────────────────────────────────────────────────────
