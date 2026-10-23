@@ -125,36 +125,43 @@ def _quantile(values: np.ndarray, p: Sequence[float]) -> np.ndarray:
 # ``Hmisc::rcspline.eval`` stops below this many values: the fewest a spline's knots can be placed on.
 SPLINE_MIN_VALUES = 6
 SPLINE_TOO_FEW = "spline_too_few_values"  # its fit-time refusal's code (SWARM_PLAN §8)
-# Its ways forward, in words: the rows it is fit on are the caller's (a model's own complete cases,
-# a fold), so no one answer is named.
-SPLINE_TOO_FEW_EXITS = (
-    {"label": "Enter the column as a straight line, which places no knots", "decision": None},
-    {"label": "Keep more rows: under inference, multiple imputation keeps the rows complete cases "
-              "drop", "decision": None},
-    {"label": "Leave the column out", "decision": None},
-)
+# Its last way forward, in words: the rows it is fit on are the caller's (a model's own complete
+# cases, a fold), so no one answer is named.
+MORE_ROWS = ("Keep more rows: under inference, multiple imputation keeps the rows complete cases "
+             "drop")
 
 
-def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIED
-              ) -> tuple[np.ndarray, list[str]]:
+def _too_few(n: int, column: str | None) -> Any:
+    """The refusal of a spline on ``n`` < :data:`SPLINE_MIN_VALUES` values of ``column`` (named
+    where the caller knows it): its ways forward enter the column as a straight line, where it has
+    a value to be fit on, or keep more rows."""
+    from turbotab.core.graph import StageRefusal
+
+    named = f"`{column}`" if column else "the column"
+    of = f"A spline of `{column}`" if column else "A spline"
+    exits = ([{"label": f"Enter {named} as a straight line, which places no knots",
+               "decision": None}] if n else [])
+    exits.append({"label": MORE_ROWS, "decision": None})
+    return StageRefusal(SPLINE_TOO_FEW, f"{of} needs at least {SPLINE_MIN_VALUES} recorded values "
+                                        f"to place its knots; there are {n}.", exits=exits)
+
+
+def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIED,
+              column: str | None = None) -> tuple[np.ndarray, list[str]]:
     """Knot locations as ``Hmisc::rcspline.eval`` places them when only their number is given.
 
     Returns the knots and plain notes on any departure from the nominal percentiles. Raises
     ``ValueError`` where ``rcspline.eval`` stops: fewer than :data:`SPLINE_MIN_VALUES` values (a
     fit-time refusal, ``graph.StageRefusal``, coded :data:`SPLINE_TOO_FEW`, so the record classes
-    it as refused, not a crash: Model 3 fit on the complete cases of its added columns may hold
-    none), or fewer than 3 distinct knots.
+    it as refused, not a crash; it names ``column``, the spline's, where given), or fewer than 3
+    distinct knots.
     """
     xx = np.asarray(x, dtype=float)
     xx = xx[np.isfinite(xx)]
     n = len(xx)
     nk = int(n_knots)
     if n < SPLINE_MIN_VALUES:
-        from turbotab.core.graph import StageRefusal
-
-        raise StageRefusal(SPLINE_TOO_FEW, f"A spline needs at least {SPLINE_MIN_VALUES} recorded "
-                                           f"values to place its knots; there are {n}.",
-                           exits=SPLINE_TOO_FEW_EXITS)
+        raise _too_few(n, column)
     if nk < 3:
         raise ValueError("A restricted cubic spline needs at least 3 knots.")
     notes: list[str] = []
@@ -421,17 +428,19 @@ def _field(spec: Any, name: str, default: Any = None) -> Any:
     return getattr(spec, name, default)
 
 
-def place(spec: Any, values: Any, y: Any = None, task: str | None = None) -> dict[str, Any]:
+def place(spec: Any, values: Any, y: Any = None, task: str | None = None, *,
+          column: str | None = None) -> dict[str, Any]:
     """What a form learns from ``values`` (its recorded values on the fitting rows): a spline's
     knots, a mass at zero's knots among consumers, quintiles' cut points, declared categories'
     cut points, the minimum-p cut point (which reads ``y``); and, for a declared exposure's spline,
-    the companion quintiles' cut points (``companion``)."""
+    the companion quintiles' cut points (``companion``). ``column``, where given, is named by a
+    spline's refusal of too few values."""
     form, k = _form_of(spec)
     x = np.asarray(values, dtype=float)
     x = x[np.isfinite(x)]
     out: dict[str, Any] = {"form": form, "n_observed": int(len(x))}
     if form == "spline":
-        knots, notes = rcs_knots(x, k or DEFAULT_KNOTS)
+        knots, notes = rcs_knots(x, k or DEFAULT_KNOTS, column=column)
         out.update(knots=[float(v) for v in knots], notes=list(notes))
         if _field(spec, "companion"):
             out["companion_cuts"] = [float(v) for v in quantile_cuts(x)]
@@ -533,8 +542,8 @@ class ExposureForms(TransformerMixin, BaseEstimator):
                 continue
             if form == "optimal":
                 yy = np.asarray(y)
-            self._adopt(column, place(spec, values, yy, _task_of(yy) if yy is not None else None),
-                        values, strict=True)
+            self._adopt(column, place(spec, values, yy, _task_of(yy) if yy is not None else None,
+                                      column=column), values, strict=True)
         return self
 
     def _adopt(self, column: str, params: Mapping[str, Any], values: np.ndarray, *,

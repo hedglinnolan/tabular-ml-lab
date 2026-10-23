@@ -35,6 +35,9 @@ from turbotab.core.models.pipeline import build_pipeline, design_spec
 from turbotab.core.stages.modeling import _inference_table, pooled_table
 
 LINEAR = get_family("linear")
+# The claim's card (``inference.pooled_separation``), which the concern gives as its reason.
+CARD = ("a Wald interval on a separated coefficient's Firth estimate is not certified, and the "
+        "profile penalized-likelihood interval advised in its place is not one Rubin's rules pool")
 
 
 def _separated_rows(n: int = 150, seed: int = 3, separate: bool = True) -> tuple[pd.DataFrame, np.ndarray]:
@@ -52,13 +55,14 @@ def _separated_rows(n: int = 150, seed: int = 3, separate: bool = True) -> tuple
     return frame, y
 
 
-def _pooled(frame: pd.DataFrame, y: np.ndarray) -> dict[str, Any]:
+def _pooled(frame: pd.DataFrame, y: np.ndarray,
+            roles: dict[str, str] | None = None) -> dict[str, Any]:
     """The engine's imputations of ``z`` under inference and the pooled logistic table, as the
     fit stage pools it, with every call of ``firth_profile`` counted."""
-    st = ProjectState(target="y", task="binary", purpose="inference",
-                      roles={"x": "exposure", "z": "covariate"},
+    roles = roles or {"x": "exposure", "z": "covariate"}
+    st = ProjectState(target="y", task="binary", purpose="inference", roles=roles,
                       missing=MissingSpec(strategy="multiple_imputation", m=20))
-    spec = design_spec(st, frame, ["x", "z"])
+    spec = design_spec(st, frame, list(roles))
     imputations = impute_for_inference(spec, frame, y, "binary", seed=1)
     pipe = build_pipeline(spec, LINEAR, "binary", "inference", len(frame), 2)
     collected: dict[str, Any] = {}
@@ -115,15 +119,24 @@ def _firth_by_scipy(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarra
     return found.x, np.linalg.inv(X.T @ (X * (mu * (1 - mu))[:, None]))
 
 
-def _rubin_by_hand(frames: list[pd.DataFrame], y: np.ndarray, j: int) -> dict[str, float]:
-    """Coefficient ``j`` of [intercept, x, z] over the completed copies, each fit by
-    :func:`_firth_by_scipy`, pooled by Rubin's rules written out (ν = (m − 1)/λ²)."""
+def _x_and_z(X_k: pd.DataFrame) -> np.ndarray:
+    return np.column_stack([np.ones(len(X_k)), X_k["x"].to_numpy(float), X_k["z"].to_numpy(float)])
+
+
+def _rubin_by_hand(frames: list[pd.DataFrame], y: np.ndarray, j: int,
+                   design: Any = _x_and_z) -> dict[str, float]:
+    """Coefficient ``j`` of ``design(copy)`` ([intercept, x, z] unless given) over the completed
+    copies, each fit by :func:`_firth_by_scipy`, pooled by Rubin's rules written out."""
     q, u = [], []
     for X_k in frames:
-        X = np.column_stack([np.ones(len(X_k)), X_k["x"].to_numpy(float), X_k["z"].to_numpy(float)])
-        beta, cov = _firth_by_scipy(X, y)
+        beta, cov = _firth_by_scipy(design(X_k), y)
         q.append(beta[j])
         u.append(cov[j, j])
+    return _rubin(q, u)
+
+
+def _rubin(q: list[float], u: list[float]) -> dict[str, float]:
+    """Rubin's rules written out (Rubin 1987: ν = (m − 1)/λ², the complete-data df infinite)."""
     m = len(q)
     qbar, ubar, b = float(np.mean(q)), float(np.mean(u)), float(np.var(q, ddof=1))
     t = ubar + (1 + 1 / m) * b
@@ -189,14 +202,11 @@ def test_a_coefficient_separated_in_the_copies_keeps_its_pooled_estimate_and_wit
     info = separated["table"].info
     assert info["separated"] == ["x"] and info["covariance"] == "model"
     [said] = [c for c in separated["table"].concerns if "not reported" in c]
-    assert said.startswith(f"`x` separates the outcome in {m} of the {m} imputed copies, so its "
-                           f"pooled interval and p-value are not reported, only its estimate: a "
-                           f"Wald interval on a separated coefficient's Firth estimate is not "
-                           f"certified")
-    assert "(Heinze & Schemper 2002)" in said
-    assert said.endswith("To report it, read the column another way or combine its sparse "
-                         "levels, or analyze complete cases, where one table is fit and none is "
-                         "pooled.")
+    assert said == (f"`x` separates the outcome in every one of the {m} imputed copies, so its "
+                    f"pooled interval and p-value are not reported, only its estimate: {CARD} "
+                    f"(Heinze & Schemper 2002). To report it, read `x` another way or combine its "
+                    f"sparse levels, or analyze complete cases, where one table is fit and none "
+                    f"is pooled.")
     first, cases = info["exits"]
     assert first == {"label": "Read `x` another way, or combine its sparse levels",
                      "decision": None}
@@ -210,7 +220,9 @@ def test_a_coefficient_separated_in_the_copies_keeps_its_pooled_estimate_and_wit
 def test_a_coefficient_no_copy_separates_keeps_rubins_wald_interval_on_t(separated):
     """z separates in no copy: its pooled interval and p-value are reported, and are Rubin's Wald
     interval on t from each copy's Firth estimate and standard error, computed by scipy and
-    numpy (the intercept likewise)."""
+    numpy. The intercept likewise: only x's log-odds is infinite (the rows with x = 0 hold both
+    outcomes at every z), so no copy finds the intercept infinite, and its interval stands."""
+    assert all(t.infinite == ["x"] for t in separated["tables"])
     for j, name in ((2, "z"), (0, "(intercept)")):
         truth = _rubin_by_hand(separated["imputations"].frames, separated["y"], j)
         row = separated["rows"][name]
@@ -267,23 +279,249 @@ def _table(estimator: str, separated: list[str], est: float) -> I.InferenceTable
 
 def test_copies_of_both_kinds_say_how_many_are_maximum_likelihood_and_withhold_the_separated():
     """Two copies, x separated in one: its interval is withheld (the construction's one copy of
-    two), z's kept, and the caption is the Firth copy's with the count of each kind; without a
-    missing-values answer (the data's own copies) complete cases are not offered."""
+    two), z's kept, and the caption says the maximum-likelihood estimate does not exist in the
+    Firth copy alone, which is fit by Firth's penalized likelihood, and the other is a
+    maximum-likelihood fit; without a missing-values answer (the data's own copies) complete
+    cases are not offered."""
     tables = [_table("logistic regression (maximum likelihood)", [], 2.0), _table(I.FIRTH, ["x"], 4.0)]
     rows = pool_rows([t.rows for t in tables])
     found = I.pooled_firth(tables, rows)
     by = {r["feature"]: r for r in rows}
     assert (by["x"]["ci_low"], by["x"]["p"]) == (None, None) and by["x"]["estimate"] == 3.0
     assert by["z"]["ci_low"] is not None and by["z"]["p"] is not None
-    assert found.caption == (f"{I.POOLED_FIRTH_CAPTION} In 1 of the 2 copies a column separates "
-                             f"the outcome and the copy is fit so; the other 1 is a "
-                             f"maximum-likelihood fit, its standard errors from the logistic "
-                             f"model's information.")
-    assert found.concern.startswith("`x` separates the outcome in 1 of the 2 imputed copies")
-    assert found.concern.endswith("To report it, read the column another way or combine its "
-                                  "sparse levels.")
+    assert found.caption == (
+        "In 1 of the 2 copies a column separates the outcome, so the maximum-likelihood estimate "
+        "does not exist in it and it is fit by Firth's penalized likelihood, its standard errors "
+        "from the information at the penalized estimate; the other 1 is a maximum-likelihood fit, "
+        "its standard errors from the logistic model's information. Rubin's rules pool each "
+        "copy's estimates and standard errors into Wald intervals and p-values; no profile "
+        "interval is computed.")
+    assert "because the maximum-likelihood estimate does not exist" not in found.caption
+    assert found.concern.startswith("`x` separates the outcome in 1 of the 2 imputed copies, so ")
+    assert found.concern.endswith("To report it, read `x` another way or combine its sparse "
+                                  "levels.")
     assert [e["label"] for e in found.info["exits"]] == [
         "Read `x` another way, or combine its sparse levels"]
+
+
+def test_the_copies_a_coefficient_separates_in_are_counted_as_they_are():
+    """Three copies: where every named coefficient separates in the same number of copies the
+    concern says that number once ("every one of" when it is all of them); where the numbers
+    differ it gives each one's; and with several Firth copies the caption says "each is"."""
+    ml = "logistic regression (maximum likelihood)"
+    cases = [
+        ([_table(I.FIRTH, ["x", "z"], 4.0)] * 3,
+         "`x` and `z` separate the outcome in every one of the 3 imputed copies, so their "),
+        ([_table(ml, [], 2.0)] + [_table(I.FIRTH, ["x", "z"], 4.0)] * 2,
+         "`x` and `z` separate the outcome in 2 of the 3 imputed copies, so their "),
+        ([_table(I.FIRTH, ["x"], 4.0)] + [_table(I.FIRTH, ["x", "z"], 4.0)] * 2,
+         "`x` and `z` separate the outcome in some of the 3 imputed copies (`x` in 3, `z` in 2), "
+         "so their "),
+    ]
+    for tables, start in cases:
+        found = I.pooled_firth(tables, pool_rows([t.rows for t in tables]))
+        assert found.concern.startswith(start), found.concern
+        assert found.concern.endswith("To report them, read `x` and `z` another way or combine "
+                                      "their sparse levels.")
+    tables = cases[1][0]
+    assert I.pooled_firth(tables, pool_rows([t.rows for t in tables])).caption.startswith(
+        "In 2 of the 3 copies a column separates the outcome, so the maximum-likelihood estimate "
+        "does not exist in them and each is fit by Firth's penalized likelihood, its standard "
+        "errors from the information at the penalized estimate; the other 1 is a "
+        "maximum-likelihood fit, its standard errors")
+
+
+# ── the intercept: infinite beside a separated categorical column ────────────
+
+
+def _reference_level_all_events(n: int = 240, seed: int = 5) -> tuple[pd.DataFrame, np.ndarray]:
+    """``g`` with levels a, b and c, a the reference; every row at ``a`` has the event, so in
+    every completed copy the intercept's maximum-likelihood log-odds is +∞ and ``g_b``'s and
+    ``g_c``'s −∞: the direction (1, −1, −1, 0) on [intercept, g_b, g_c, z] sends the ``a`` rows'
+    log-odds to +∞ and leaves every other row's as it is. ``z`` is blank on about 30% of rows,
+    and no direction moves it (the b and c rows hold both outcomes at every z)."""
+    rng = np.random.default_rng(seed)
+    z = rng.normal(size=n)
+    g = rng.choice(["a", "b", "c"], n, p=[0.15, 0.45, 0.40])
+    y = (rng.random(n) < 1 / (1 + np.exp(-(-0.3 + 0.6 * z)))).astype(float)
+    y = np.where(g == "a", 1.0, y)
+    frame = pd.DataFrame({"g": g, "z": np.where(rng.random(n) < 0.3, np.nan, z)})
+    return frame, y
+
+
+def _g_and_z(X_k: pd.DataFrame) -> np.ndarray:
+    return np.column_stack([np.ones(len(X_k)), (X_k["g"] == "b").to_numpy(float),
+                            (X_k["g"] == "c").to_numpy(float), X_k["z"].to_numpy(float)])
+
+
+@pytest.fixture(scope="module")
+def categorical() -> dict[str, Any]:
+    frame, y = _reference_level_all_events()
+    out = _pooled(frame, y, roles={"g": "exposure", "z": "covariate"})
+    out["y"] = y
+    return out
+
+
+def test_an_intercept_infinite_in_the_copies_keeps_its_estimate_and_withholds_its_interval(
+        categorical):
+    """The intercept's log-odds is infinite in every copy with `g_b`'s and `g_c`'s, by
+    construction: its pooled estimate and standard error stand (Firth's, pooled, recomputed by
+    scipy and numpy), its interval and p-value are withheld as theirs are, and the concern says
+    so; the copies' own concern still names the columns alone. `z`, which no direction moves,
+    keeps Rubin's Wald interval on t."""
+    m = categorical["imputations"].m
+    frames, y, rows = categorical["imputations"].frames, categorical["y"], categorical["rows"]
+    assert all(t.info["separated"] == ["g_b", "g_c"] for t in categorical["tables"])
+    for j, name in enumerate(("(intercept)", "g_b", "g_c")):
+        truth = _rubin_by_hand(frames, y, j, _g_and_z)
+        row = rows[name]
+        assert row["estimate"] == pytest.approx(truth["estimate"], abs=1e-6), name
+        assert row["se"] == pytest.approx(truth["se"], rel=1e-5), name
+        assert (row["ci_low"], row["ci_high"], row["p"]) == (None, None, None), name
+    truth = _rubin_by_hand(frames, y, 3, _g_and_z)
+    z = rows["z"]
+    assert z["ci_low"] == pytest.approx(truth["ci_low"], rel=1e-5, abs=1e-6)
+    assert z["ci_high"] == pytest.approx(truth["ci_high"], rel=1e-5, abs=1e-6)
+    assert z["p"] == pytest.approx(truth["p"], rel=1e-4, abs=1e-8)
+    [said] = [c for c in categorical["table"].concerns if "not reported" in c]
+    assert said == (
+        f"`g_b` and `g_c` separate the outcome in every one of the {m} imputed copies, so their "
+        f"pooled interval and p-value are not reported, only their estimate: {CARD} (Heinze & "
+        f"Schemper 2002). The interval and p-value of the intercept are withheld too: its "
+        f"maximum-likelihood value is infinite in every one of the {m} imputed copies. To report "
+        f"them, read `g` another way or combine its sparse levels, or analyze complete cases, "
+        f"where one table is fit and none is pooled.")
+
+
+def test_the_way_forward_names_the_column_a_separated_indicator_comes_from(categorical):
+    """`g_b` and `g_c` are indicators of `g`, with no levels of their own: the way forward names
+    `g`, the column the researcher can read another way or whose sparse levels combine."""
+    first, cases = categorical["table"].info["exits"]
+    assert first == {"label": "Read `g` another way, or combine its sparse levels",
+                     "decision": None}
+    assert cases["decision"]["strategy"] == "complete_case"
+
+
+# ── the all-components relative effects ──────────────────────────────────────
+
+SOURCES = {"protein_g": 4.0, "carb_g": 4.0, "fat_g": 9.0, "alc_g": 7.0}  # kcal per gram
+
+
+def _energy_frame(separate: bool, n: int = 600, seed: int = 91) -> pd.DataFrame:
+    """Four energy sources in grams, total energy `kcal` (their kcal and some of other sources),
+    a yes/no outcome `y`, and `age` blank on about a quarter of the rows. About 12% of the rows
+    drink; with ``separate`` every drinker has the event."""
+    rng = np.random.default_rng(seed)
+    age = rng.normal(50, 12, n)
+    size = 2100 + 450 * rng.normal(size=n) - 9 * (age - 50)
+    kp = size * np.clip(rng.normal(0.16, 0.03, n), 0.05, 0.4)
+    kf = size * np.clip(rng.normal(0.34, 0.05, n), 0.1, 0.6)
+    kc = size * np.clip(rng.normal(0.40, 0.05, n), 0.1, 0.7)
+    ka = np.where(rng.random(n) < 0.12, size * rng.uniform(0.02, 0.08, n), 0.0)
+    other = size * rng.uniform(0.02, 0.1, n)
+    eta = 0.002 * kp + 0.001 * kc + 0.03 * (age - 50)
+    y = (rng.random(n) < 1 / (1 + np.exp(-(eta - eta.mean())))).astype(int)
+    if separate:
+        y = np.where(ka > 0, 1, y)
+    frame = pd.DataFrame({"protein_g": kp / 4, "carb_g": kc / 4, "fat_g": kf / 9, "alc_g": ka / 7,
+                          "kcal": kp + kf + kc + ka + other, "age": age, "y": y})
+    frame.loc[rng.random(n) < 0.25, "age"] = np.nan
+    return frame
+
+
+def _energy_fit(folder: Any, separate: bool) -> dict[str, Any]:
+    """The design and fit stages under the all-components model and multiple imputation."""
+    from turbotab.core.decisions import EnergyAdjustment, SplitSpec
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    frame = _energy_frame(separate)
+    roles = {"protein_g": "exposure", "carb_g": "exposure", "fat_g": "exposure",
+             "alc_g": "exposure", "kcal": "energy", "age": "covariate"}
+    paths = mf.ingest_frame(frame, folder)
+    st = mf.state(roles=roles, target="y", task="binary", models=["linear"], purpose="inference",
+                  energy_adjustment=EnergyAdjustment(method="all_components", energy_column="kcal",
+                                                     nutrients=list(SOURCES)),
+                  missing=MissingSpec(strategy="multiple_imputation"),
+                  split=SplitSpec(holdout=0.0, seed=0, folds=5), column_units=mf.grams(*SOURCES))
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0)
+    info = mf.target_info("binary", "y")
+    design = design_stage(mf.context(st, {"split": split, "target_info": info}, paths))
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": info}, paths))
+    [model] = [mm for mm in fit.data["models"] if mm["family"] == "linear"]
+    imputations = fit.objects["imputations"]
+    return {"model": model, "rows": {r["feature"]: r for r in model["coefficients"]},
+            "fits": imputations["fits"]["linear"], "frames": imputations["frames"],
+            "y": frame["y"].to_numpy(float)}
+
+
+@pytest.fixture(scope="module")
+def drinkers_all_events(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    return _energy_fit(tmp_path_factory.mktemp("drinkers"), separate=True)
+
+
+def test_a_relative_effect_resting_on_a_separated_source_keeps_its_estimate_and_withholds_its_interval(
+        drinkers_all_events):
+    """Every drinker has the event, so `kcal_from_alc_g`'s log-odds is +∞ in every copy, along
+    its own direction alone (the non-drinkers hold both outcomes at every value of the rest).
+    Each relative effect θ_j = β_j − Σ_k w_k β_k (Tomova et al. 2022) reads β_alc with weight 1
+    (j = alc) or −w_alc (the drinkers' kcal's share of the other sources', above zero), so each
+    is infinite along it too: every relative row keeps its pooled estimate and standard error and
+    has its interval, p-value and odds-ratio interval withheld, and the concern says so, naming
+    `alc_g` as the column to read another way. The other coefficients' intervals stand."""
+    rows, model = drinkers_all_events["rows"], drinkers_all_events["model"]
+    m = len(drinkers_all_events["frames"])
+    relative = [f"{n}_relative" for n in SOURCES]
+    for name in [*relative, "kcal_from_alc_g"]:
+        row = rows[name]
+        assert row["estimate"] is not None and row["se"] is not None, name
+        assert (row["ci_low"], row["ci_high"], row["p"]) == (None, None, None), name
+        assert (row["ratio_low"], row["ratio_high"]) == (None, None), name
+    for name in ("kcal_from_protein_g", "kcal_from_carb_g", "kcal_from_fat_g", "kcal_from_other",
+                 "age"):
+        assert rows[name]["ci_low"] is not None and rows[name]["p"] is not None, name
+    [said] = [c for c in model["concerns"] if "not reported" in c]
+    assert said.startswith(f"`kcal_from_alc_g` separates the outcome in every one of the {m} "
+                           f"imputed copies, so its pooled interval and p-value are not reported")
+    assert (f"The intervals and p-values of `protein_g_relative`, `carb_g_relative`, "
+            f"`fat_g_relative` and `alc_g_relative` are withheld too: their maximum-likelihood "
+            f"values are infinite in every one of the {m} imputed copies. To report it, read "
+            f"`alc_g` another way or combine its sparse levels") in said
+
+
+def test_relative_effects_no_copy_separates_keep_rubins_wald_interval_on_t(tmp_path):
+    """No source separates the outcome: every relative row keeps its pooled interval, and each is
+    Rubin's Wald interval on t from each copy's θ_j = β_j − Σ_k w_k β_k, per gram (× its kcal per
+    gram), with variance c'Vc, from statsmodels' logistic fit on the copy's model matrix and
+    pooled by Rubin's rules written out."""
+    import statsmodels.api as sm
+
+    from turbotab.core.models.linear import model_matrix
+
+    found = _energy_fit(tmp_path, separate=False)
+    assert not [c for c in found["model"]["concerns"] if "not reported" in c]
+    per: dict[str, tuple[list[float], list[float]]] = {n: ([], []) for n in SOURCES}
+    for fitted, X_k in zip(found["fits"], found["frames"]):
+        M = model_matrix(fitted, X_k).astype(float)
+        logit = sm.Logit(found["y"], sm.add_constant(M, has_constant="add")).fit(disp=0,
+                                                                                 maxiter=200)
+        names = list(logit.params.index)
+        kcal = [c for c in M.columns if str(c).startswith("kcal_from_")]
+        for n, factor in SOURCES.items():
+            j = f"kcal_from_{n}"
+            others = [k for k in kcal if k != j]
+            total = float(M[others].mean().sum())
+            c = np.zeros(len(names))
+            c[names.index(j)] = factor
+            for k in others:
+                c[names.index(k)] = -factor * float(M[k].mean()) / total
+            per[n][0].append(float(c @ logit.params.to_numpy()))
+            per[n][1].append(float(c @ logit.cov_params().to_numpy() @ c))
+    for n in SOURCES:
+        truth, row = _rubin(*per[n]), found["rows"][f"{n}_relative"]
+        for key in ("estimate", "se", "ci_low", "ci_high"):
+            assert row[key] == pytest.approx(truth[key], rel=1e-5, abs=1e-9), (n, key)
+        assert row["p"] == pytest.approx(truth["p"], rel=1e-4, abs=1e-10), n
 
 
 # ── the effects stage's pooled tables ────────────────────────────────────────
@@ -293,7 +531,8 @@ def test_the_effects_pooled_tables_withhold_a_separated_term_and_say_wald_from_f
     """Through the design and effects stages: every smoker has the event, so `smoking` separates
     the outcome in every copy; under multiple imputation Model 2's pooled appendix term for it
     keeps its estimate and has no interval or p-value, the model says why, its caption says the
-    intervals are Wald ones from Firth's standard errors, and the exposure's interval stands."""
+    intervals are Wald ones on t from Firth's standard errors, and the exposure's interval
+    stands."""
     from turbotab.core.tests.acceptance import estimand_fixtures as ef
 
     frame = ef.cohort(400, seed=12)
@@ -317,6 +556,47 @@ def test_the_effects_pooled_tables_withhold_a_separated_term_and_say_wald_from_f
             "exist: each estimate with its standard error from the information at the penalized "
             "estimate, which Rubin's rules pool into Wald intervals and p-values; no profile "
             "interval is computed.") in two["inference"]["caption"]
-    assert two["inference"]["caption"].startswith("Multiple imputation, m = ")
+    m = two["inference"]["missing"]["m"]
+    assert two["inference"]["caption"].startswith(
+        f"Multiple imputation, m = {m}: each completed copy analyzed as follows, then pooled by "
+        f"Rubin's rules, each interval on t with Barnard–Rubin degrees of freedom. ")
     assert any(c.startswith("`smoking` separates the outcome in ") and "not reported" in c
                for c in two["concerns"])
+
+
+def test_the_effects_relative_effect_resting_on_a_separated_source_is_withheld(tmp_path):
+    """Through the design and effects stages under the all-components model: every drinker has
+    the event, so in every copy `kcal_from_alc_g` is infinite, and with it each relative effect
+    (as the fit's table, above). Model 2's `protein_g_relative`, the exposure's substitution, keeps
+    its estimate and has no interval or p-value, as do the other sources' relative rows in the
+    appendix, and the model says why; `kcal_from_protein_g`'s interval stands."""
+    from turbotab.core import decisions as d
+    from turbotab.core.tests import modeling_fixtures as mf
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = _energy_frame(separate=True).assign(pid=lambda f: np.arange(len(f)))
+    open_timing = {"causes_exposure": "unknown", "causes_outcome": "unknown",
+                   "after_exposure": "no"}
+    roles = {"pid": "identifier", "protein_g": "exposure", "carb_g": "covariate",
+             "fat_g": "covariate", "alc_g": "covariate", "kcal": "energy", "age": "covariate"}
+    answers = {"age": ef.CONFOUNDER, "carb_g": open_timing, "fat_g": open_timing,
+               "alc_g": open_timing}
+    st = ef.state(target="y", task="binary", event="1", exposure="protein_g",
+                  measure="odds_ratio", roles=roles, answers=answers, lens=["dietary"],
+                  missing={"strategy": "multiple_imputation"}, column_units=mf.grams(*SOURCES),
+                  energy_adjustment=d.EnergyAdjustment(method="all_components",
+                                                       energy_column="kcal",
+                                                       nutrients=list(SOURCES)))
+    run = ef.run(frame, tmp_path, st, fit=False)
+    two = ef.sequence(run["effects"])["model_2"]
+    shown = {r["feature"]: r for r in two["effects"]}
+    assert set(shown) == {"kcal_from_protein_g", "protein_g_relative"}
+    assert shown["kcal_from_protein_g"]["ci_low"] is not None
+    assert shown["protein_g_relative"]["estimate"] is not None
+    assert (shown["protein_g_relative"]["ci_low"], shown["protein_g_relative"]["p"]) == (None, None)
+    [appendix] = [a for a in run["effects"]["families"][0]["appendix"] if a["key"] == "model_2"]
+    terms = {t["feature"]: t for t in appendix["terms"]}
+    for name in ("carb_g_relative", "fat_g_relative", "alc_g_relative", "kcal_from_alc_g"):
+        assert terms[name]["estimate"] is not None, name
+        assert (terms[name]["ci_low"], terms[name]["p"]) == (None, None), name
+    assert any("are withheld too" in c and "`protein_g_relative`" in c for c in two["concerns"])

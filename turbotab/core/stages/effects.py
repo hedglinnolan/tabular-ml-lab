@@ -261,6 +261,9 @@ EFFECTS_READS = ("adjustment", "estimand", "multiplicity", "model_sequence", "di
 LABELS = {"crude": "Unadjusted", "model_1": "Model 1", "model_2": "Model 2 (primary)",
           "model_3": "Model 3"}
 STRAIGHT_LINE = "the straight-line estimate beside the curve"
+# The fit-time refusal (SWARM_PLAN §8) of Model 3 under complete cases with no row recording every
+# column it adds (``_Run._no_rows_three``).
+NO_ROWS_THREE = "model_3_no_complete_rows"
 
 
 # ── what a family declares, as this stage reads it (MODEL_FAMILY_CONTRACT §1; MC-2b-3) ────────
@@ -694,6 +697,7 @@ class _Run:
         energy_named = bool(allowed_one & set(est.energy_terms_columns(self.state)))
         per_copy: dict[str, list[Any]] = {}
         failures: dict[str, str] = {}
+        lineage: dict[str, Any] = {}  # each model's first copy's matrix columns by their sources
         adjusted_for: dict[str, list[str]] = {}
         features: list[str] = []
         first: dict[str, Any] = {}
@@ -751,13 +755,14 @@ class _Run:
             if k == 0:
                 features = feats
                 first = {"fitted": fitted, "matrix": M, "sources": sources, "classes": classes}
+                lineage.update(dict.fromkeys(subsets, sources))
                 adjusted_for = {"crude": [], "model_2": self._raw(M.columns, feats, sources)}
                 if "model_1" in subsets:
                     adjusted_for["model_1"] = self._raw(subsets["model_1"], feats, sources)
         comparison = None
         if self.spec3 is not None and supported:
             comparison = self._model_three(family, build_pipeline, per_copy, failures, predictors,
-                                           design)
+                                           design, lineage)
             adjusted_for["model_3"] = [*adjusted_for.get("model_2", []),
                                        *[c for c in self.further
                                          if c not in adjusted_for.get("model_2", [])]]
@@ -773,7 +778,8 @@ class _Run:
             missing = self.missing3 if name == "model_3" else self.missing
             spec = self.spec3 if name == "model_3" else self.spec
             n_model = len(self.frame3) if name == "model_3" else len(self.frame)
-            table = self._pool(tables, missing, spec) if name not in failures else None
+            table = (self._pool(tables, missing, spec, lineage.get(name))
+                     if name not in failures else None)
             if table is None:
                 # Model 3's own imputation refused, or asked what only the user can settle (a
                 # column's time-invariance under clustered imputation, MI repair): its exits stand
@@ -831,7 +837,8 @@ class _Run:
                                               reading=f"Not assessed: {exc}")]
             straight = None
             if curve is not None and "straight" not in failures:
-                straight = self._pool(per_copy.get("straight") or [], self.missing, self.spec)
+                straight = self._pool(per_copy.get("straight") or [], self.missing, self.spec,
+                                      lineage.get("straight"))
             try:
                 out.sensitivity = self.sensitivity(family, first, features, primary, out.marginal,
                                                    curve, straight)
@@ -842,11 +849,16 @@ class _Run:
         return out.model_dump(mode="json")
 
     def _model_three(self, family: Any, build_pipeline: Any, per_copy: dict[str, list[Any]],
-                     failures: dict[str, str], predictors: Sequence[str], design: Any) -> Any:
+                     failures: dict[str, str], predictors: Sequence[str], design: Any,
+                     lineage: dict[str, Any] | None = None) -> Any:
         """Model 3 in each of its copies (its own rows; under multiple imputation, copies imputed
         with its added columns), and, when its rows are fewer than the primary's, the primary's
         adjustment refit on those rows (returned). Each copy is fit as the fit stage fits one
-        (``copy_pipeline``), on the knots its own imputation placed."""
+        (``copy_pipeline``), on the knots its own imputation placed. ``lineage`` receives its
+        first copy's matrix columns by their sources (:func:`matrix_sources`).
+
+        Under complete cases with no analyzed row recording every added column, Model 3 has no
+        row to be fit on: refused before any fit (:meth:`_no_rows_three`)."""
         from turbotab.core import estimand as est
         from turbotab.core.methods.missing import copy_pipeline
         from turbotab.core.models.linear import model_matrix
@@ -858,6 +870,8 @@ class _Run:
             per_copy.setdefault("model_3", []).append(None)
             failures.setdefault("model_3", self.missing3.refusal)
             return None
+        if self.rows3 is not None and len(self.frame3) == 0:
+            raise self._no_rows_three()
         pipeline3 = build_pipeline(self.spec3, family, self.task, "inference", len(self.frame3),
                                    len(self.spec3.inputs) + 1)
         units3 = (pd.Series(self.clusters3.codes, index=self.frame3.index)
@@ -883,8 +897,10 @@ class _Run:
                 lambda: self._with_relative(family, fitted3, M3, self.y3,
                                             matrix_table(family, M3, self.y3, **kw3), kw3),
                 "model_3", failures, pooled=imputed3 is not None))
+            sources3 = matrix_sources(fitted3, self.spec3.inputs) if k == 0 else {}
+            if k == 0 and lineage is not None:
+                lineage["model_3"] = sources3
             if self.rows3 is not None and k == 0:
-                sources3 = matrix_sources(fitted3, self.spec3.inputs)
                 added = set(self.extra)
                 own = [c for c in M3.columns
                        if not (sources3.get(str(c), ({str(c)}, set()))[0] & added)]
@@ -893,6 +909,31 @@ class _Run:
                 if comparison is not None:
                     comparison = self._multiplicity(family, comparison)
         return comparison
+
+    def _no_rows_three(self) -> Any:
+        """The refusal of Model 3 under complete cases when no analyzed row records every column
+        it adds (coded :data:`NO_ROWS_THREE`): its ways forward leave out the added columns no row
+        records (all of them where each is recorded on some row), or, where each is recorded on
+        some row, impute them (multiple imputation starts from a column's recorded values, so it
+        is not offered for a column that has none)."""
+        from turbotab.core.graph import StageRefusal
+        from turbotab.core.methods.missing import MI_LABEL
+        from turbotab.core.voice import listing
+
+        added = list(self.extra)
+        one = len(added) == 1
+        never = [c for c in added if not self.frame[c].notna().any()]
+        message = (f"Model 3 adds {listing(added)}, and under complete cases it is fit on the rows "
+                   f"that record {'it' if one else 'them all'}: none of the "
+                   f"{len(self.frame):,} analyzed rows does, so Model 3 cannot be fit.")
+        exits: list[dict[str, Any]] = [
+            {"label": f"Leave {listing(never or added)} out of Model 3", "decision": None}]
+        if not never:
+            answer = {k: v for k, v in dict(self.spec.missing or {}).items() if k != "kind"}
+            exits.append({"label": MI_LABEL, "decision": {
+                "kind": "set_missing", **answer, "strategy": "multiple_imputation",
+                "indicators": False, "categorical": "impute"}})
+        return StageRefusal(NO_ROWS_THREE, message, exits=exits)
 
     def _multiplicity(self, family: Any, table: Any) -> Any:
         if tests_only(family) and not table.info.get("refused"):
@@ -954,12 +995,16 @@ class _Run:
                 or not one_regression_on_matrix(family) or self.task == "multiclass"):
             return table
         from turbotab.core.methods.energy import relative_effect_rows
+        from turbotab.core.stages.modeling import relative_refit
 
         step = getattr(fitted, "named_steps", {}).get("energy")
         factors = dict(getattr(getattr(step, "pooled_", step), "factors_", {}) or {})
+        # A relative effect its refit finds infinite is named in this table's ``infinite``, so
+        # its pooled interval is withheld as the fit's is (``modeling.relative_refit``).
         found = relative_effect_rows(
             matrix, list(adj.nutrients), factors,
-            table=lambda m: matrix_table(family, m, y, **kw).rows, coefficients=table.rows)
+            table=relative_refit(matrix, lambda m: matrix_table(family, m, y, **kw),
+                                 table.infinite), coefficients=table.rows)
         table.rows = [*table.rows, *found]
         return table
 
@@ -1012,7 +1057,11 @@ class _Run:
                      f"rows is shown beside it.")
         return note
 
-    def _pool(self, tables: Sequence[Any], missing: Any, spec: Any) -> Any:
+    def _pool(self, tables: Sequence[Any], missing: Any, spec: Any,
+              sources: Mapping[str, Any] | None = None) -> Any:
+        """The model's copies pooled by Rubin's rules (or its one table). ``sources``: the first
+        copy's model-matrix columns by their raw columns (:func:`matrix_sources`), which a
+        separated column's way forward names."""
         from turbotab.core.models.inference import InferenceTable
 
         tables = [t for t in tables if t is not None]
@@ -1032,10 +1081,15 @@ class _Run:
         info = dict(tables[0].info)
         # A column that separates the outcome in some copy: Wald intervals from Firth's standard
         # errors, each separated coefficient's withheld (as the fit's pooled table).
-        firth = pooled_firth(tables, pooled, answer=spec.missing or {})
+        firth = pooled_firth(tables, pooled, answer=spec.missing or {},
+                             sources={c: raw for c, (raw, _) in (sources or {}).items()})
         each = firth.caption if firth is not None else info.get("caption", "")
+        # Each pooled row's interval is on t (``imputation.pool_scalar``), as the fit's caption
+        # says; said here where a copy is Firth's, whose own caption names no reference.
+        reference = (", each interval on t with Barnard–Rubin degrees of freedom"
+                     if firth is not None else "")
         info["caption"] = (f"Multiple imputation, m = {len(tables)}: each completed copy analyzed "
-                           f"as follows, then pooled by Rubin's rules. {each}").strip()
+                           f"as follows, then pooled by Rubin's rules{reference}. {each}").strip()
         if firth is not None:
             info.update(firth.info)
         # MS2 (wave 1b): the record names the design's df as Rubin's complete-data df and the

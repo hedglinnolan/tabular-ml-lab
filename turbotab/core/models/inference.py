@@ -591,6 +591,12 @@ class InferenceTable:
     # intervals are not Wald: Firth's profile ones). Joint tests read it (WP12a: a spline's
     # nonlinearity, ``turbotab/core/methods/exposure_form.py``); it is never serialized.
     cov: Any = None
+    # The rows whose maximum-likelihood value the linear program finds infinite on this table's
+    # matrix (``separated_columns``): the separated columns, the intercept where it is among them,
+    # and an all-components relative effect whose refit finds it so
+    # (``stages.modeling.relative_refit``). Rubin's rules withhold their pooled intervals
+    # (:func:`pooled_firth`); never serialized.
+    infinite: list[str] = field(default_factory=list)
 
 
 def _clean(value: Any) -> float | None:
@@ -887,9 +893,12 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     import statsmodels.api as sm
 
     X = exog.to_numpy(dtype=float)
-    separated = _named(names, separated_columns(X, y))
+    found = separated_columns(X, y)
+    separated = _named(names, found)
     if separated:
-        return _firth_table(names, X, y, clusters, separated)
+        table = _firth_table(names, X, y, clusters, separated)
+        table.infinite = [names[j] for j in found]  # the intercept too, where it is infinite
+        return table
     fit = sm.Logit(y, exog).fit(disp=0, maxiter=200)
     est = np.asarray(fit.params, dtype=float)
     estimator = "logistic regression (maximum likelihood)"
@@ -970,65 +979,116 @@ class PooledFirth:
     concern: str
 
 
+def _in_copies(counts: Mapping[str, int], names: Sequence[str], m: int) -> str:
+    """In how many of the ``m`` copies each of ``names`` is counted: once when they agree."""
+    each = {counts[n] for n in names}
+    if each == {m}:
+        return f"in every one of the {m:,} imputed copies"
+    if len(each) == 1:
+        return f"in {each.pop():,} of the {m:,} imputed copies"
+    return (f"in some of the {m:,} imputed copies ("
+            + ", ".join(f"{_term(n)} in {counts[n]:,}" for n in names) + ")")
+
+
+def _term(name: str) -> str:
+    return "the intercept" if name == "(intercept)" else f"`{name}`"
+
+
 def pooled_firth(tables: Sequence[InferenceTable], rows: list[dict[str, Any]], *,
-                 answer: Mapping[str, Any] | None = None) -> PooledFirth | None:
+                 answer: Mapping[str, Any] | None = None,
+                 sources: Mapping[str, Sequence[str] | set[str]] | None = None
+                 ) -> PooledFirth | None:
     """Rubin's rules over completed copies some of whose logistic tables are Firth's (a column
     separates the outcome there), or None when none is.
 
     The pooled rows (``rows``, ``imputation.pool_rows``: changed in place) are Wald intervals and
-    p-values on t from each copy's estimate and standard error. A coefficient that separates the
-    outcome in any copy (``separated_columns`` on that copy, the copy's ``info["separated"]``)
-    keeps its pooled estimate and standard error, and its interval, p-value and ratio interval
-    are withheld (claim ``inference.pooled_separation``), with the ways forward: read the column
-    another way or combine its sparse levels, or complete cases (one table, nothing pooled) where
-    ``answer``, the missing-values answer the copies were drawn by, is given. The caption is the
-    first Firth copy's (:data:`POOLED_FIRTH_CAPTION`), and says how many copies are maximum
-    likelihood where not every one is Firth's."""
+    p-values on t from each copy's estimate and standard error. A row whose maximum-likelihood
+    value is infinite in any copy (``separated_columns`` on that copy: the copy's
+    ``info["separated"]``, and its ``infinite``, which adds the intercept and the all-components
+    relative effects that rest on a separated column) keeps its pooled estimate and standard
+    error, and its interval, p-value and ratio interval are withheld (claim
+    ``inference.pooled_separation``), with the ways forward: read the separated columns' source
+    columns (``sources``: each model-matrix column's raw columns, as
+    ``stages.effects.matrix_sources`` reads them; the column itself without) another way or
+    combine their sparse levels, or complete cases (one table, nothing pooled) where ``answer``,
+    the missing-values answer the copies were drawn by, is given. The caption is the first Firth
+    copy's (:data:`POOLED_FIRTH_CAPTION`), or, where not every copy is Firth's, says how many of
+    each kind there are and that only the Firth copies have no maximum-likelihood estimate."""
     from turbotab.core import claims
 
     firth = [t for t in tables if t.info.get("estimator") == FIRTH]
-    if not firth:
-        return None
     m = len(tables)
-    counts: dict[str, int] = {}
+    counts: dict[str, int] = {}  # the separated columns the copies' own concerns name
+    held: dict[str, int] = {}  # every row withheld: those, the intercept, the relative effects
     for t in tables:
         for name in dict.fromkeys(str(n) for n in t.info.get("separated") or []):
             counts[name] = counts.get(name, 0) + 1
-    names = list(counts)
+        for name in dict.fromkeys(str(n) for n in [*(t.info.get("separated") or []),
+                                                   *t.infinite]):
+            held[name] = held.get(name, 0) + 1
+    if not held:
+        return None
     for row in rows:
-        if str(row["feature"]) in counts:
+        if str(row["feature"]) in held:
             row.update(ci_low=None, ci_high=None, p=None)
             if "ratio" in row:
                 row.update(ratio_low=None, ratio_high=None)
-    caption = firth[0].info.get("caption", "")
-    if len(firth) < m:
-        rest = m - len(firth)
+    order = [str(r["feature"]) for r in rows if str(r["feature"]) in held]
+    names = [n for n in order if n in counts] or list(counts)
+    others = [n for n in order if n not in counts]
+    caption = (firth or tables)[0].info.get("caption", "")
+    if firth and len(firth) < m:
+        k, rest = len(firth), m - len(firth)
         fits = ("is a maximum-likelihood fit, its standard errors" if rest == 1 else
                 "are maximum-likelihood fits, their standard errors")
-        caption += (f" In {len(firth):,} of the {m:,} copies a column separates the outcome and the "
-                    f"copy is fit so; the other {rest:,} {fits} from the logistic model's "
-                    f"information.")
-    one = len(names) == 1
+        mixed = (f"In {k:,} of the {m:,} copies a column separates the outcome, so the "
+                 f"maximum-likelihood estimate does not exist in {'it' if k == 1 else 'them'} and "
+                 f"{'it' if k == 1 else 'each'} is fit by Firth's penalized likelihood, its "
+                 f"standard errors from the information at the penalized estimate; the other "
+                 f"{rest:,} {fits} from the logistic model's information. Rubin's rules pool each "
+                 f"copy's estimates and standard errors into Wald intervals and p-values; no "
+                 f"profile interval is computed.")
+        caption = (caption.replace(POOLED_FIRTH_CAPTION, mixed) if POOLED_FIRTH_CAPTION in caption
+                   else f"{caption} {mixed}")
+    subject = names or others
+    one = len(subject) == 1
     its, it = ("its", "it") if one else ("their", "them")
-    where = (f"in {counts[names[0]]:,} of the {m:,} imputed copies" if one else
-             f"in some of the {m:,} imputed copies ("
-             + ", ".join(f"`{n}` in {counts[n]:,}" for n in names) + ")")
-    because = claims.card("inference.pooled_separation", {"copies": m, "separated": names})
-    ways = f"read the column another way or combine {its} sparse levels"
+    because = claims.card("inference.pooled_separation", {"copies": m, "separated": subject})
+    if names:
+        concern = (f"{_and(names)} {'separates' if one else 'separate'} the outcome "
+                   f"{_in_copies(counts, names, m)}, so {its} pooled interval and p-value are not "
+                   f"reported, only {its} estimate: {because} (Heinze & Schemper 2002).")
+    if others:
+        single = len(others) == 1
+        listed = [_term(n) for n in others]
+        words = listed[0] if single else f"{', '.join(listed[:-1])} and {listed[-1]}"
+        what = "interval and p-value" if single else "intervals and p-values"
+        value = ("its maximum-likelihood value is" if single else
+                 "their maximum-likelihood values are")
+        where = _in_copies(held, others, m)
+        concern = (f"{concern} The {what} of {words} are withheld too: {value} infinite "
+                   f"{where}." if names else
+                   f"The {what} of {words} are not reported, only "
+                   f"{its} estimate{'' if single else 's'}: {value} infinite {where}, and "
+                   f"{because} (Heinze & Schemper 2002).")
+    columns: list[str] = []
+    for n in names or [o for o in others if o != "(intercept)"] or others:
+        columns.extend(c for c in sorted(str(c) for c in (sources or {}).get(n) or [n])
+                       if c not in columns)
+    whose = "its" if len(columns) == 1 else "their"
+    ways = f"read {_and(columns)} another way or combine {whose} sparse levels"
     if answer is not None:
         ways += ", or analyze complete cases, where one table is fit and none is pooled"
-    concern = (f"{_and(names)} {'separates' if one else 'separate'} the outcome {where}, so {its} "
-               f"pooled interval and p-value are not reported, only {its} estimate: {because} "
-               f"(Heinze & Schemper 2002). To report {it}, {ways}.")
+    concern += f" To report {it}, {ways}."
     exits: list[dict[str, Any]] = [
-        {"label": f"Read {_and(names)} another way, or combine {its} sparse levels",
+        {"label": f"Read {_and(columns)} another way, or combine {whose} sparse levels",
          "decision": None}]
     if answer is not None:
         exits.append({"label": "Complete cases, with their assumption stated",
                       "decision": {**dict(answer), "kind": "set_missing",
                                    "strategy": "complete_case"}})
     return PooledFirth(caption=caption, concern=concern,
-                       info={"separated": names, "covariance": "model", "exits": exits})
+                       info={"separated": list(counts), "covariance": "model", "exits": exits})
 
 
 def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: list[Any],

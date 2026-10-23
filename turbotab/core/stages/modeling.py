@@ -1658,14 +1658,15 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
     does not depend on the imputed values. ``rows`` = None in the result marks such a refusal.
     Each copy's table and energy rows are made for Rubin's rules (``inference.for_pooling``: a
     Firth copy computes no profile), and where a column separates the outcome in some copy the
-    pooled table says its intervals are Wald ones from Firth's standard errors and withholds each
-    separated coefficient's (``inference.pooled_firth``).
+    pooled table says its intervals are Wald ones from Firth's standard errors and withholds the
+    interval of each row infinite in a copy: a separated column, the intercept beside it, a relative
+    effect resting on it (``inference.pooled_firth``; :func:`relative_refit`).
     ``collect``, when given, receives each copy's fit (``fits``) and table (``tables``).
     ``models``: the chosen families, which a block's exit keeps (``_inference_table``)."""
     from turbotab.core.methods.exposure_form import exposure_tests
     from turbotab.core.methods.imputation import pool_rows, pooled_cov
     from turbotab.core.methods.missing import copy_template, mi_concerns, multiple_imputation_info
-    from turbotab.core.models.inference import InferenceTable, for_pooling, pooled_firth
+    from turbotab.core.models.inference import FIRTH, InferenceTable, for_pooling, pooled_firth
 
     m = int(imputations.m)
     plan = dict(getattr(imputations, "plan", None) or {})
@@ -1686,7 +1687,8 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
                 table.info["missing"] = multiple_imputation_info(imputations, spec, len(y_k))
                 return table, None, [], []
             row_sets.append(_energy_rows(table.rows, design, spec, family, fitted, X_k, y_k, task,
-                                         clusters, outcome, survey) if energy_rows else table.rows)
+                                         clusters, outcome, survey, infinite=table.infinite)
+                            if energy_rows else table.rows)
         found, worries = exposure_tests(family, fitted, X_k, y_k, task=task, clusters=clusters,
                                         table=table, outcome=outcome, survey=survey)
         if k == 0:
@@ -1697,8 +1699,16 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
     pooled = pool_rows(row_sets)
     info = dict(tables[0].info)
     copies = getattr(imputations, "method", "") == "supplied"
-    # The data's own copies have no complete cases to offer (each copy is the data).
-    firth = pooled_firth(tables, pooled, answer=None if copies else (spec.missing or {}))
+    # The data's own copies have no complete cases to offer (each copy is the data). The ways
+    # forward name the columns a separated model-matrix column comes from (a level's indicator,
+    # its categorical column).
+    sources = None
+    if any(t.info.get("estimator") == FIRTH or t.infinite for t in tables):
+        from turbotab.core.stages.effects import matrix_sources
+
+        sources = {c: raw for c, (raw, _) in matrix_sources(fits[0], spec.inputs).items()}
+    firth = pooled_firth(tables, pooled, answer=None if copies else (spec.missing or {}),
+                         sources=sources)
     how = (f"The data's {m} imputed copies, each analyzed as follows with its own outcome" if copies
            else f"Multiple imputation, m = {m}: each completed table analyzed as follows")
     each = firth.caption if firth is not None else tables[0].info.get("caption", "")
@@ -2681,7 +2691,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
 def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, family: Any,
                  final: Any, X: Any, y: Any, task: str, clusters: Any,
-                 outcome: Any = None, survey: Any = None) -> list[dict[str, Any]]:
+                 outcome: Any = None, survey: Any = None,
+                 infinite: list[str] | None = None) -> list[dict[str, Any]]:
     """The coefficient rows with what each means (the design's ``terms``), and under the
     all-components model each nutrient's average relative effect beside them (audit ME-14):
     with the family's own intervals under inference, as a point estimate otherwise.
@@ -2689,7 +2700,9 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
     ``final``, ``X`` and ``y`` are the fit and rows the coefficient table was estimated from
     (every analyzed row under inference, WP8), so the relative effects share its rows, clusters
     and scale (odds or relative-risk ratios, named by ``outcome``), and under a survey design its
-    weights and Taylor-linearized intervals (WP10)."""
+    weights and Taylor-linearized intervals (WP10). ``infinite`` (a completed copy's table's, under
+    multiple imputation) receives each relative effect its refit finds infinite
+    (:func:`relative_refit`)."""
     terms = ((design.data or {}).get("terms") or {}) if isinstance(design, Bundle) else {}
     rows = [{**row, "meaning": terms[row["feature"]]} if row.get("feature") in terms else row
             for row in coefficients]
@@ -2710,8 +2723,10 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
         extra = {name: value for name, value in (("outcome", outcome), ("survey", survey))
                  if value is not None and _accepts(refit, name)}
 
-        def table(m: Any) -> Any:
-            return refit(m, y, task=task, classes=classes, clusters=clusters, **extra).rows
+        def refit_table(m: Any) -> Any:
+            return refit(m, y, task=task, classes=classes, clusters=clusters, **extra)
+
+        table = relative_refit(matrix, refit_table, infinite)
     weights = None
     if survey is not None:
         # MS4: under the surveyed population the shares are the population's (survey-weighted).
@@ -2733,6 +2748,36 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
         logging.getLogger(__name__).exception("the average relative effects failed")
         extra = []
     return rows + extra
+
+
+def relative_refit(matrix: Any, refit: Any, infinite: list[str] | None = None) -> Any:
+    """The table ``methods.energy.relative_effect_rows`` refits each nutrient's moved matrix with:
+    ``refit(moved)``'s rows. With ``infinite`` (a completed copy's table's ``infinite``), each
+    nutrient whose relative effect the refit finds infinite (its ``infinite``, the linear
+    program's finding on the moved matrix) is added to it as ``{nutrient}_relative``, its row's
+    name, so the pooled table withholds that row's interval (``inference.pooled_firth``).
+
+    The relative effect of nutrient j is the coefficient of its own column ``kcal_from_j`` in the
+    moved matrix, which leaves that column as it is and moves every other energy column
+    (``x_k + w_k x_j``): so the column a refit is read for is the energy column it left unchanged.
+    Where another is unchanged too (an energy column of zeros), it is counted as well, which can
+    only withhold more."""
+    if infinite is None:
+        return lambda moved: refit(moved).rows
+    kcal = [str(c) for c in matrix.columns if str(c).startswith("kcal_from_")]
+
+    def table(moved: Any) -> Any:
+        found = refit(moved)
+        for c in kcal:
+            if c in getattr(found, "infinite", ()) and np.array_equal(
+                    moved[c].to_numpy(dtype=float), matrix[c].to_numpy(dtype=float),
+                    equal_nan=True):
+                name = f"{c.removeprefix('kcal_from_')}_relative"
+                if name not in infinite:
+                    infinite.append(name)
+        return found.rows
+
+    return table
 
 
 def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, clusters: Any,
