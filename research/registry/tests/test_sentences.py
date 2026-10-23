@@ -27,6 +27,13 @@ or triaged, and the committed table held current.
   teaching of each answered question, the state between two answers, the evaluation and the ask
   cards, and the table's verdicts on the sentences that state one rule twice agree; the table
   counts the labels under the floor and names a stage a read stopped waiting for.
+* The table says what is registered (the registry's claims, those that render here, the sentences
+  a record traces, the sentences queued to register under each ruling with its count) and
+  registers none; it says the name keys' strings (``source`` among them) and the state that lasts
+  only while a stage computes are left out, with the capture's counts where it holds them and that
+  it holds none where it does not; the capture counts the name keys' sentences by key and keeps
+  none, and counts the reads that waited, those that did not and those that found a stage
+  computing.
 
 Every expectation is built here, or read from the committed files the test holds current.
 """
@@ -559,3 +566,119 @@ def test_the_committed_tables_verdicts_on_one_rule_said_twice_agree():
              if "proposed below high confidence and recorded with the other roles" in r.sentence}
     assert waits == quest == {"register"}
     assert {r.verdict for r in roles if "own confirmation" not in r.sentence} == {"plain"}
+
+
+# ── what the table says is captured and registered (the 6a verifier's P1–P3) ──
+
+
+def _planted_capture(tmp_path: Path, **extra: object) -> Path:
+    """A capture built here: one sentence a registered claim renders (traced), three queued to
+    register under two rulings (two and one), one plain; three answers posted, two taken."""
+    path = _capture(tmp_path, "3 pairs of predictors move almost together (|r| ≥ 0.9)",
+                    "Queued A, the first of two sentences.", "Queued A, the second of two.",
+                    "Queued B, the only one.", "Plain words said back to you.")
+    data = json.loads(path.read_text())
+    data["answers"] = [{"kind": "set_target", "status": 200},
+                       {"kind": "set_purpose", "status": 409},
+                       {"kind": "set_purpose", "status": 200}]
+    data.update(extra)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+PLANTED_RULINGS = [Ruling(r"^Queued A", "register", "ruling A: a default the app sets"),
+                   Ruling(r"^Queued B", "register", "ruling B: a refusal the app makes"),
+                   Ruling(r"^Plain", "plain", "copy")]
+
+
+def test_the_table_says_what_is_registered_and_queues_each_sentence_under_its_ruling(tmp_path):
+    """The verifier's P1, by the honest statement: the table says how many claims the registry
+    holds, how many render a sentence here and how many sentences a record traces, and how many
+    sentences are queued to register under how many rulings, each ruling with its count, most
+    first; it registers none."""
+    reg = claims.registry()
+    out = tmp_path / "planted.md"
+    assert S.table("planted", _planted_capture(tmp_path), out, rulings=PLANTED_RULINGS) == 0
+    text = out.read_text(encoding="utf-8")
+    assert (f"**What is registered.** The registry holds {len(list(reg))} claims; 1 of them "
+            "renders a sentence here (1 sentence), and 1 of those sentences is rendered by a claim "
+            "the record traced, so of the 5 sentences this journey showed a swarm record's "
+            "`claims` traces 1. 3 sentences are claims still to register, under the 2 rulings "
+            "below") in text
+    assert "This table registers no claim" in text
+    rows = text.split("**The sentences queued to register**")[1].split("\n\n")[1].splitlines()
+    assert rows[2:] == ["| ruling A: a default the app sets | 2 |",
+                        "| ruling B: a refusal the app makes | 1 |"]
+    # Nothing queued: the table says so, and draws no table of rulings.
+    none = [Ruling(r"^Queued|^Plain", "plain", "copy")]
+    assert S.table("planted", _planted_capture(tmp_path), out, rulings=none) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "No sentence is queued to register." in text
+    assert "**The sentences queued to register**" not in text
+
+
+def test_the_table_says_what_the_capture_leaves_under_name_keys_and_while_a_stage_computes(
+        tmp_path):
+    """The verifier's P2 and P3, by the honest statement, both ways: the strings under the name
+    keys (``source`` among them) and the state that lasts only while a stage computes are said to
+    be left out, with the capture's counts where it holds them, and where it does not (a capture
+    made before it counted them), the table says it holds none."""
+    out = tmp_path / "planted.md"
+    assert S.table("planted", _planted_capture(tmp_path), out, rulings=PLANTED_RULINGS) == 0
+    text = " ".join(out.read_text(encoding="utf-8").split())
+    assert f"the {len(S.NAME_KEYS)} keys of `sentences.NAME_KEYS`" in text and "`source`" in text
+    assert "which this capture does not count" in text
+    assert "after each answer taken (2 here)" in text
+    assert "which of those reads found a stage computing this capture does not record" in text
+    counted = _planted_capture(tmp_path, named={"source": 3, "id": 1},
+                               reads={"waited": 4, "unwaited": 5, "computing": 2})
+    assert S.table("planted", counted, out, rulings=PLANTED_RULINGS) == 0
+    text = " ".join(out.read_text(encoding="utf-8").split())
+    assert "4 strings among them that read as sentences, 3 under `source`" in text
+    assert "2 of those 5 reads found a stage computing" in text
+    assert "does not count" not in text and "does not record" not in text
+
+
+def test_the_capture_counts_the_sentences_under_name_keys_by_key_and_keeps_none():
+    """Both ways: a citation served under ``source``, words a person reads, is counted under its
+    key and kept out of the sentences; a name under ``id`` that reads as no sentence is not
+    counted; the words under a word key are kept as before."""
+    shown = S.Shown()
+    cite = "Sterne et al. 2009, BMJ 338:b2393: complete cases are customary"
+    shown.add({"customary": {"text": "Complete cases are the customary answer.", "source": cite},
+               "evidence": {"source": "Sperrin et al. 2020, J Clin Epidemiol 125:183"},
+               "id": "missing.complete_cases"}, "artifact:proposals")
+    assert shown.named == {"source": {cite, "Sperrin et al. 2020, J Clin Epidemiol 125:183"}}
+    assert set(shown.strings) == {"Complete cases are the customary answer."}
+
+
+def test_a_read_that_does_not_wait_is_counted_with_whether_it_found_a_stage_computing(monkeypatch):
+    """Both ways: the read after an answer does not wait, and it is counted, and counted again as
+    one that found a stage computing where the project shows one then; the reads before an answer
+    and at the end wait, and are counted as such."""
+    monkeypatch.setattr(S, "POLL_SECONDS", 0.0, raising=False)
+    for after, computing in (("running", 1), ("fresh", 0)):
+        server = _Journey([([_stages(findings="idle")], {}),
+                           ([_stages(findings=after), _stages(findings="fresh")], {})])
+        shown = S.Shown()
+        S.Watching(server, shown, lambda: "p1").post(f"{BASE}/decisions",
+                                                     json={"kind": "set_target"})
+        S.read_shown(server, "p1", shown, final=True)
+        assert shown.reads == {"waited": 2, "unwaited": 1, "computing": computing}, after
+
+
+def test_the_committed_table_says_what_is_queued_and_that_this_capture_counts_neither_left_out():
+    """On the journey itself: the committed table gives the count of sentences queued to register
+    and of the rulings they fall under, as the rows give them, and says this capture counts
+    neither the name keys' strings nor which reads found a stage computing."""
+    data = json.loads((S.HERE / "nhanes-glucose-predict.capture.json").read_text("utf-8"))
+    rows = S.rows_of(data, claims.registry(), RULINGS)
+    queued = [r for r in rows if r.verdict == "register"]
+    text = " ".join((S.HERE / "nhanes-glucose-predict.md").read_text("utf-8").split())
+    assert (f"{len(queued)} sentences are claims still to register, under the "
+            f"{len({r.why for r in queued})} rulings below") in text
+    assert "named" not in data and "reads" not in data
+    assert "which this capture does not count" in text
+    assert "which of those reads found a stage computing this capture does not record" in text
+    taken = sum(1 for a in data["answers"] if a.get("status") == 200)
+    assert f"after each answer taken ({taken} here)" in text
