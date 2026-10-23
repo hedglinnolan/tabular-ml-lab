@@ -309,6 +309,37 @@ def test_with_nothing_held_out_the_split_sentence_keeps_10_repeats_below_5000_un
     assert _fit_repeats(state, table, run) == 10
 
 
+def _drawn_on_units_of_two(units: int, folder) -> tuple[int | None, int, str]:
+    """``units`` units of two rows each (`pid`), nothing held out: the repeats the drawn split
+    gives (``substrate_repeats``), those the fit runs, and the split's sentence as the methods text
+    restates it with the drawn split's count."""
+    state, table, run = _project(units, 2, SplitSpec(holdout=0.0, seed=5, folds=5), folder)
+    assert run["split"].data.get("grouped_by") == "pid"
+    with table.store() as store:
+        drawn = substrate_repeats(run["split"], store)
+    said = _said(state, {"seal_plan": run["plan"]})
+    now = voice.restate(SetSplit(**state.split.model_dump()), said, state, state,
+                        {"counts": {"set_split": {"comparison_repeats": drawn}}})
+    return drawn, _fit_repeats(state, table, run), now
+
+
+def test_from_5000_units_of_two_rows_the_drawn_split_takes_5_repeats_by_unit(tmp_path):
+    """5,000 units of two rows (10,000 rows), nothing held out: the drawn split counts 5,000
+    training units, so 5 repeats, the fit's own count, and the methods text says 5."""
+    drawn, ran, now = _drawn_on_units_of_two(5_000, tmp_path)
+    assert drawn == ran == 5
+    assert f"{COMPARED}`5` times, by the corrected repeated k-fold t" in now, now
+
+
+def test_below_5000_units_of_two_rows_the_drawn_split_keeps_10_repeats_by_unit(tmp_path):
+    """4,999 units of two rows (9,998 rows, more than 5,000), nothing held out: the drawn split
+    counts the 4,999 training units, not the rows (which would give 5), so 10 repeats, the fit's
+    own count, and the methods text says 10."""
+    drawn, ran, now = _drawn_on_units_of_two(4_999, tmp_path)
+    assert drawn == ran == 10
+    assert f"{COMPARED}`10` times, by the corrected repeated k-fold t" in now, now
+
+
 def test_where_a_holdout_decides_how_many_train_the_split_sentence_states_the_rule(tmp_path):
     """A 20% holdout drawn over 10,000 rows with the outcome recorded, of which 6,500 are analyzed
     (x2 blank on 3,500, complete cases): it holds out at most 2,000, which could leave 4,500 to

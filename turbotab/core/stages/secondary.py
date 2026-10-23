@@ -16,7 +16,9 @@ imputations (the imputation model holds the secondary columns too).
 
 **The model** is the design's own pipeline, built again from the design spec with the secondary
 columns added (``models/pipeline.py``): every step, energy adjustment and imputation included, is the
-primary's. Only families with a coefficient table take part.
+primary's. Only families with a coefficient table take part; where none of the chosen families has
+one the stage is refused in words, each way forward a family that has one
+(``effects.no_table_refusal``).
 """
 from __future__ import annotations
 
@@ -62,10 +64,10 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.estimand import (current_estimand, exposure_key, exposures_of,
                                         primary_features, secondary_columns)
     from turbotab.core.models import get_family
-    from turbotab.core.models.base import reports_coefficients
     from turbotab.core.models.inference import Outcome, cluster_columns
     from turbotab.core.models.pipeline import DesignSpec, build_pipeline, design_spec, modeling_frame
     from turbotab.core.stages.data import open_store
+    from turbotab.core.stages.effects import has_coefficient_table, no_table_refusal
     from turbotab.core.stages.modeling import (_missing_for_table, _survey, _task, coded_outcome,
                                                fit_designs, outcome_levels, read_assignment)
     from turbotab.core.stages.sensitivity import fit_on_rows
@@ -92,10 +94,9 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     spec = DesignSpec.from_dict(design.objects["spec"])
     pipelines = design.objects["pipelines"]
     families = [get_family(k) for k in (state.models or []) if k in pipelines]
-    families = [f for f in families if reports_coefficients(f) and f.inference is not None]
+    families = [f for f in families if has_coefficient_table(f)]
     if not families:
-        raise ValueError("None of the chosen model families has a coefficient table, so there is "
-                         "no estimate to set beside the primary's; choose the linear model.")
+        raise no_table_refusal(state, task, "no estimate to set beside the primary's")
     assignment = read_assignment(ctx.inputs["split"])
     rows = assignment.index.to_numpy()  # every analyzed row (ruling 3)
     extra = [c for c in further if c not in spec.inputs]

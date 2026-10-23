@@ -4,17 +4,23 @@
   the impute step's line states how many imputations the coefficient table draws, White, Royston
   & Wood's (2011) rule over the design's rows ("the number of imputations should be at least equal
   to the percentage of incomplete cases", as White, Pandis & Pham put it, and at least 20 here),
-  not the answer's m.
+  not the answer's m; and only on the line of a family whose table is pooled over the copies. A
+  family with no inference table is fit on the step's fill, and the feature-wise table pools no
+  copies, so the fit holds it: their lines say so, with no count (the verifier's P1: elastic net
+  alone drew no copy while its line said 38).
 * **A spline on too few values** (``exposure_form.rcs_knots``): ``Hmisc::rcspline.eval`` stops
   below six values; the engine's stop is a fit-time refusal with its code and ways forward, so the
-  record classes it as refused, not a crash (``jobs.failure_of``), with the words a person reads
-  unchanged; its last way forward, more rows that record the column, holds wherever it fires, the
-  imputation's knots too. Model 3 under any answer but multiple imputation (complete cases, a
-  single fill), fit on the rows its added column is recorded on, holds none when that column is
-  never recorded.
+  record classes it as refused, not a crash (``jobs.failure_of``). It says what it counted: one
+  value from each row it is fit on, where every row records the column (its way forward then
+  more rows to fit on), the rows of those that record it where some do not, and the values above
+  zero for the mass-at-zero spline; where the caller does not give the rows (the imputation's
+  knots, placed once on the observed values) its words are as before, and its last way forward,
+  more rows that record the column, holds there too. Model 3 under any answer but multiple
+  imputation (complete cases, a single fill), fit on the rows its added column is recorded on,
+  holds none when that column is never recorded.
 
 Expected values come from the construction: the count of incomplete rows each table is drawn
-with, and Hmisc's six values.
+with, Hmisc's six values, and the knots Hmisc places on six distinct values (the interior four).
 """
 from __future__ import annotations
 
@@ -40,12 +46,26 @@ def more_rows(named: str = "the column") -> str:
     return f"Keep more rows that record {named}: the knots are placed on its recorded values"
 
 
+def fit_on_more(named: str) -> str:
+    """The way forward where every row the spline is fit on records its column."""
+    return (f"Fit the model on more rows: each row it is fit on records {named}, and the knots "
+            f"need 6 values")
+
+
+def above_zero(named: str = "the column") -> str:
+    """The mass-at-zero spline's way forward: its knots are placed on its values above zero."""
+    return (f"Keep more rows that record a value of {named} above zero: the knots are placed on "
+            f"its values above zero")
+
+
 # ── N1: the impute step says the number of imputations the table draws ──────
 
 
-def _impute_line(n_incomplete: int, m: int = 20, n: int = 100) -> tuple[str, object, pd.DataFrame]:
+def _impute_line(n_incomplete: int, m: int = 20, n: int = 100,
+                 family: object = LINEAR) -> tuple[str, object, pd.DataFrame]:
     """The impute step's line for ``n`` rows of which the first ``n_incomplete`` have `z` blank,
-    under multiple imputation with the answer's ``m``; the spec and the rows."""
+    under multiple imputation with the answer's ``m``, as ``family``'s steps describe it; the spec
+    and the rows."""
     rng = np.random.default_rng(2)
     frame = pd.DataFrame({"x": rng.normal(size=n), "z": rng.normal(size=n)})
     frame.loc[frame.index[:n_incomplete], "z"] = np.nan
@@ -53,7 +73,7 @@ def _impute_line(n_incomplete: int, m: int = 20, n: int = 100) -> tuple[str, obj
                       roles={"x": "exposure", "z": "covariate"},
                       missing=MissingSpec(strategy="multiple_imputation", m=m))
     spec = design_spec(st, frame, ["x", "z"])
-    [step] = [s for s in describe_steps(spec, LINEAR, "regression", "inference")
+    [step] = [s for s in describe_steps(spec, family, "regression", "inference")
               if s["key"] == "impute"]
     return step["detail"], spec, frame
 
@@ -85,6 +105,90 @@ def test_the_impute_step_says_nothing_is_imputed_where_no_value_is_missing():
     assert line.endswith(" It serves the cross-validated scores; no predictor value is missing "
                          "among the analyzed rows, so the coefficients are not imputed.")
     assert "multiple imputations" not in line
+
+
+# ── the count only on the line of a family whose table pools the copies ──────
+#
+# The coefficient table draws the copies and pools them (``stages.modeling._missing_for_table``):
+# a family with no inference table (elastic net, ridge, the trees) is fit on the fill this step
+# makes, and the feature-wise table pools no copies, so the fit holds it. Neither line states a
+# number of imputations. The labels are the families' own, read off their declarations.
+
+
+@pytest.mark.parametrize("key,label", [
+    ("elastic_net", "Elastic net"), ("ridge", "Ridge"), ("boosted_trees", "Boosted trees"),
+    ("random_forest", "Random forest"), ("xgboost", "XGBoost")])
+def test_a_family_with_no_table_to_pool_states_no_count_and_says_its_fit_uses_the_fill(key,
+                                                                                      label):
+    """38 of 100 rows incomplete: the linear model's line says the 38 its table pools; a family
+    with no inference table states no count, and says that the fill is what its fit uses."""
+    line, _, _ = _impute_line(38, family=get_family(key))
+    assert line.endswith(f" {label} has no coefficient table to pool over multiple imputations: "
+                         f"this fill serves its fit and its cross-validated scores.")
+    assert "38" not in line and "pooled" not in line
+
+
+def test_the_feature_wise_line_states_no_count_and_says_the_fit_holds_its_table():
+    """The feature-wise tests pool no imputations, so the fit holds their table under this
+    answer: the line says so, with no count and no cross-validated score (it has none)."""
+    line, _, _ = _impute_line(38, family=get_family("featurewise"))
+    assert line.endswith(" Feature-wise regression pools no multiple imputations, so under this "
+                         "answer the fit holds its table.")
+    assert "38" not in line and "cross-validated" not in line
+
+
+@pytest.mark.parametrize("key", ["linear", "mixed", "gee"])
+def test_a_family_whose_table_pools_the_copies_states_the_count(key):
+    line, _, _ = _impute_line(38, family=get_family(key))
+    assert line.endswith(" It serves the cross-validated scores; the coefficients are pooled over "
+                         "38 multiple imputations with the outcome.")
+
+
+def _fit_under_mi(tmp_path: Path, models: list[str]) -> tuple[dict, object]:
+    """``ef.cohort(300)`` with `activity` (a precision covariate) blank on 112 rows, under
+    multiple imputation (m 20): the design's impute line of each chosen family, and the fit."""
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(300, seed=5)
+    frame.loc[frame.index[:112], "activity"] = np.nan
+    st = ef.state(target="glucose", task="regression", measure="mean_difference", models=models,
+                  missing={"strategy": "multiple_imputation", "m": 20})
+    paths = mf.ingest_frame(frame, tmp_path)
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed)
+    info = mf.target_info(st.task, st.target)
+    design = design_stage(mf.context(st, {"split": split, "target_info": info}, paths))
+    lines = {m["family"]: next(s["detail"] for s in m["steps"] if s["key"] == "impute")
+             for m in design.data["models"]}
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": info},
+                               paths))
+    return lines, fit
+
+
+def test_the_design_states_no_count_where_the_fit_draws_no_copies(tmp_path):
+    """Elastic net alone (the verifier's probe): the fit draws no imputed copy, and the design's
+    line states no number of imputations, where it said the coefficients are pooled over 38."""
+    lines, fit = _fit_under_mi(tmp_path, ["elastic_net"])
+    assert (fit.objects or {}).get("imputations") is None
+    assert lines["elastic_net"].endswith(" Elastic net has no coefficient table to pool over "
+                                         "multiple imputations: this fill serves its fit and its "
+                                         "cross-validated scores.")
+    assert "38" not in lines["elastic_net"]
+
+
+def test_beside_the_linear_model_its_line_states_the_38_copies_the_fit_draws(tmp_path):
+    """With the linear model chosen too, 112 of 300 rows incomplete: White's rule asks for
+    ⌈100 × 112 / 300⌉ = 38 imputations, which the linear table draws and pools and its line
+    states; elastic net's line still states none."""
+    lines, fit = _fit_under_mi(tmp_path, ["elastic_net", "linear"])
+    drawn = (fit.objects or {}).get("imputations")
+    assert drawn is not None and len(drawn["frames"]) == 38
+    linear = next(m for m in fit.data["models"] if m["family"] == "linear")
+    assert linear["inference"]["missing"]["m"] == 38
+    assert lines["linear"].endswith(" the coefficients are pooled over 38 multiple imputations "
+                                    "with the outcome.")
+    assert "38" not in lines["elastic_net"] and "pooled" not in lines["elastic_net"]
 
 
 # ── N2: a spline on too few values is a typed refusal ────────────────────────
@@ -128,6 +232,73 @@ def test_a_spline_on_six_values_places_its_knots():
     """Six values are Hmisc's fewest: the interior four are the knots, and nothing refuses."""
     knots, _ = ef_methods.rcs_knots(np.arange(6.0), 4)
     assert list(knots) == [1.0, 2.0, 3.0, 4.0]
+
+
+# ── what the refusal counted, and the ways forward that fit it (P2, P3) ──────
+
+
+def _form_fit(values: list[float], form: str = "spline") -> object:
+    """The form step fit on rows holding ``values`` of `fiber` (NaN: a blank), as a model's
+    pipeline fits it on the rows it is fit on."""
+    step = ef_methods.ExposureForms({"fiber": {"form": form, "knots": 4}})
+    return step.fit(pd.DataFrame({"fiber": np.asarray(values, dtype=float)}))
+
+
+def test_a_spline_fit_on_five_rows_that_all_record_it_asks_for_more_rows_to_fit_on():
+    """Five rows, each recording `fiber`: five values, one from each row; more rows that record
+    `fiber` is no way forward (every row does), more rows to fit on is."""
+    with pytest.raises(StageRefusal) as refused:
+        _form_fit([1.0, 2.0, 3.0, 4.0, 5.0])
+    assert str(refused.value) == ("A spline of `fiber` needs at least 6 recorded values to place "
+                                  "its knots; there are 5, one from each row it is fit on.")
+    assert [e["label"] for e in refused.value.exits] == [
+        "Enter `fiber` as a straight line, which places no knots", fit_on_more("`fiber`")]
+
+
+def test_a_spline_fit_on_rows_that_leave_it_blank_asks_for_more_rows_that_record_it():
+    """300 rows of which five record `fiber`: the refusal says five of the 300, and more rows that
+    record it is the way forward that fits."""
+    with pytest.raises(StageRefusal) as refused:
+        _form_fit([1.0, 2.0, 3.0, 4.0, 5.0] + [np.nan] * 295)
+    assert str(refused.value) == ("A spline of `fiber` needs at least 6 recorded values to place "
+                                  "its knots; 5 of the 300 rows it is fit on record it.")
+    assert [e["label"] for e in refused.value.exits] == [
+        "Enter `fiber` as a straight line, which places no knots", more_rows("`fiber`")]
+
+
+def test_a_spline_fit_on_six_rows_places_its_knots():
+    step = _form_fit([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    assert list(step.knots_["fiber"]) == [2.0, 3.0, 4.0, 5.0]
+
+
+def test_the_mass_at_zero_spline_counts_its_values_above_zero():
+    """300 zeros and 1, 2, 3 (the verifier's P3 probe): 303 values recorded, three above zero, on
+    which the knots are placed; the refusal says so, and asks for rows above zero, with the
+    column named, and in the same words without it (the imputation's knots, placed once)."""
+    values = np.concatenate([np.zeros(300), [1.0, 2.0, 3.0]])
+    with pytest.raises(StageRefusal) as refused:
+        ef_methods.place({"form": "zero_spline", "knots": 4}, values, column="alc")
+    assert refused.value.code == "spline_too_few_values"
+    assert str(refused.value) == ("A spline of `alc` among its values above zero needs at least 6 "
+                                  "of them to place its knots; there are 3.")
+    assert [e["label"] for e in refused.value.exits] == [
+        "Enter `alc` as a straight line, which places no knots", above_zero("`alc`")]
+    with pytest.raises(StageRefusal) as refused:
+        ef_methods.place({"form": "zero_spline", "knots": 4}, values)
+    assert str(refused.value) == ("A spline among the column's values above zero needs at least 6 "
+                                  "of them to place its knots; there are 3.")
+    assert [e["label"] for e in refused.value.exits] == [
+        "Enter the column as a straight line, which places no knots", above_zero()]
+    with pytest.raises(StageRefusal) as refused:
+        _form_fit(list(values), form="zero_spline")
+    assert str(refused.value).startswith("A spline of `fiber` among its values above zero")
+    assert [e["label"] for e in refused.value.exits][-1] == above_zero("`fiber`")
+
+
+def test_the_mass_at_zero_spline_on_six_values_above_zero_places_its_knots():
+    values = np.concatenate([np.zeros(300), np.arange(1.0, 7.0)])
+    placed = ef_methods.place({"form": "zero_spline", "knots": 4}, values, column="alc")
+    assert placed["knots"] == [2.0, 3.0, 4.0, 5.0] and placed["zeros"] == 300
 
 
 def _model_three_run(tmp_path: Path, recorded: int, *, form: str = "spline",
@@ -188,14 +359,25 @@ def test_model_three_whose_added_columns_no_row_records_together_offers_multiple
 
 def test_model_three_on_five_rows_names_the_spline_column_it_cannot_place_knots_for(tmp_path):
     """With `bmi` on five rows Model 3 has rows, but its spline of `fiber` has five values: the
-    spline's refusal names `fiber` and its straight line."""
+    spline's refusal names `fiber` and its straight line, and says what it counted, one value from
+    each of the rows it is fit on; since every one of them records `fiber`, its other way forward
+    is more rows to fit on, not more rows that record `fiber` (the verifier's P2)."""
     with pytest.raises(StageRefusal) as refused:
         _model_three_run(tmp_path, recorded=5)
     assert refused.value.code == "spline_too_few_values"
     assert str(refused.value) == ("A spline of `fiber` needs at least 6 recorded values to place "
-                                  "its knots; there are 5.")
+                                  "its knots; there are 5, one from each row it is fit on.")
     assert [e["label"] for e in refused.value.exits] == [
-        "Enter `fiber` as a straight line, which places no knots", more_rows("`fiber`")]
+        "Enter `fiber` as a straight line, which places no knots", fit_on_more("`fiber`")]
+
+
+def test_model_three_on_six_rows_places_its_knots_and_is_fit(tmp_path):
+    """Six rows recording `bmi`: six values of `fiber`, Hmisc's fewest, so the spline's knots are
+    placed and Model 3 is fit on those six rows."""
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    three = ef.sequence(_model_three_run(tmp_path, recorded=6)["effects"])["model_3"]
+    assert three["n_rows"] == 6 and three["effects"]
 
 
 def test_model_three_under_a_single_fill_with_no_row_recording_its_added_column_names_no_answer(

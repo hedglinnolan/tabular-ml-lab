@@ -266,6 +266,36 @@ STRAIGHT_LINE = "the straight-line estimate beside the curve"
 # The fit-time refusal (SWARM_PLAN §8) of Model 3 under complete cases with no row recording every
 # column it adds (``_Run._no_rows_three``).
 NO_ROWS_THREE = "model_3_no_complete_rows"
+# The fit-time refusal of the declared models, and of the secondary model beside the primary
+# (``stages.secondary``), when no chosen family has a coefficient table (:func:`no_table_refusal`).
+NO_COEFFICIENT_TABLE = "no_coefficient_table"
+
+
+def has_coefficient_table(family: Any) -> bool:
+    """Whether the declared models (and the secondary model) are refit for ``family``: it reports
+    coefficients and has an inference table."""
+    from turbotab.core.models.base import reports_coefficients
+
+    return reports_coefficients(family) and family.inference is not None
+
+
+def no_table_refusal(state: Any, task: str, nothing: str) -> Any:
+    """The refusal (coded :data:`NO_COEFFICIENT_TABLE`) of a stage that refits only families with
+    a coefficient table when none of the chosen ones has one; ``nothing`` says what there is then
+    none of. Its ways forward add, to the chosen families, each family the engine registers for
+    ``task`` that has one (:func:`has_coefficient_table`) and serves inference, in the shelf's
+    order, the linear model first."""
+    from turbotab.core.graph import StageRefusal
+    from turbotab.core.models.base import families
+
+    chosen = list(state.models or [])
+    exits = [{"label": f"Add {f.label}, which has a coefficient table",
+              "decision": {"kind": "select_models", "models": [*chosen, f.key]}}
+             for f in families(task)
+             if has_coefficient_table(f) and "inference" in f.purposes and f.key not in chosen]
+    return StageRefusal(NO_COEFFICIENT_TABLE,
+                        f"None of the chosen model families has a coefficient table, so there is "
+                        f"{nothing}; choose the linear model.", exits=exits)
 
 
 # ── what a family declares, as this stage reads it (MODEL_FAMILY_CONTRACT §1; MC-2b-3) ────────
@@ -476,7 +506,6 @@ def supplied_copies_reason(implicate: str) -> str:
 def effects_stage(ctx: StageContext) -> Bundle:
     from turbotab.core import estimand as est
     from turbotab.core.models import get_family
-    from turbotab.core.models.base import reports_coefficients
     from turbotab.core.models.effects import APPENDIX_TITLE
     from turbotab.core.models.inference import Outcome, cluster_columns, resolve_clusters
     from turbotab.core.models.pipeline import DesignSpec, build_pipeline, design_spec, modeling_frame
@@ -506,10 +535,9 @@ def effects_stage(ctx: StageContext) -> Bundle:
     spec = DesignSpec.from_dict(design.objects["spec"])
     pipelines = design.objects["pipelines"]
     families = [get_family(k) for k in (state.models or []) if k in pipelines]
-    families = [f for f in families if reports_coefficients(f) and f.inference is not None]
+    families = [f for f in families if has_coefficient_table(f)]
     if not families:
-        raise ValueError("None of the chosen model families has a coefficient table, so there is "
-                         "no effect to report; choose the linear model.")
+        raise no_table_refusal(state, task, "no effect to report")
     further = est.secondary_columns(state)
     declared = est.current_model_sequence(state)
     model_one = list(declared.model_1) if declared is not None else None
