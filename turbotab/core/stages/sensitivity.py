@@ -259,12 +259,14 @@ def _no_spare_rows(family: Any, rows: list[dict[str, Any]] | None, n_rows: int, 
     """Under prediction, a family whose coefficient table refuses rows that do not exceed its
     coefficients (``family.inference``: an unpenalized fit) reports its fit's own coefficients;
     on such rows they are refused as its table is (``inference._no_spare_rows``), so none is shown
-    or taken into ``changes``. They are counted from the rows it reports: the intercept, a
-    proportional-odds model's cut-points, and for several classes each level's own, said for each
-    of its levels as the fit shows them (one block for every level, none against a reference);
-    the estimator is the model step's own label. None where the rows exceed them, or where the
-    family has no table: a penalized fit's coefficients (elastic net's, ridge's) exist on any rows,
-    and Huber's, which has no table either, are left as they are."""
+    or taken into ``changes``. They are counted from the blocks it reports, the intercept and a
+    proportional-odds model's cut-points among them: where it shows one block for each level (a
+    softmax, none against a reference) the count is a block's, said for each of its levels; where
+    it shows one, the count is said for no level, so a multiclass analysis whose rows hold two
+    levels (a binary fit) is worded as the binary fit it shows. The estimator is the model step's
+    own label. None where the rows exceed them, or where the family has no table: a penalized
+    fit's coefficients (elastic net's, ridge's) exist on any rows, and Huber's, which has no table
+    either, are left as they are."""
     from turbotab.core.models.inference import _no_spare_rows as refusal
 
     if not rows or family.inference is None:
@@ -272,10 +274,10 @@ def _no_spare_rows(family: Any, rows: list[dict[str, Any]] | None, n_rows: int, 
     features = [str(r["feature"]) for r in rows]
     intercepts = sum(f.startswith("(intercept)") for f in features)
     cuts = sum(f.startswith("(cut-point") for f in features)
-    levels = max(intercepts, 1)
-    return refusal("multiclass" if levels > 1 else task, n_rows, len(rows) // levels,
-                   estimator=family.describe(task, purpose)[0], intercept=intercepts > 0,
-                   cut_points=cuts, levels=levels if levels > 1 else 0)
+    blocks = max(intercepts, 1)
+    shown = "multiclass" if blocks > 1 else "binary" if task == "multiclass" else task
+    return refusal(shown, n_rows, len(rows) // blocks, estimator=family.describe(task, purpose)[0],
+                   intercept=intercepts > 0, cut_points=cuts, levels=blocks)
 
 
 def exposure_features(fitted: Any, inputs: Sequence[str], roles: Mapping[str, str]) -> list[str]:

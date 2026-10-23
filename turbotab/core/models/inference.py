@@ -35,7 +35,7 @@ measure their uncertainty (:func:`_no_spare_rows`). The mixed model's and the GE
 them in the same words (``repeated``). The proportional-odds model's table is refused at the same
 count, its cut-points among its coefficients, in its own words (``ordinal``): its cut-points are
 shared by every row, so its likelihood there can have a unique maximum, and the words say only
-that TurboTab reports the table where the rows outnumber its coefficients.
+that the rows are no more than its coefficients.
 
 And on the outcome's own scale (AUDIT_REPORT §5 WP8: ME-07): every table says what one unit of an
 input does, in words that name the outcome (:class:`Outcome`). A least-squares row is a difference
@@ -863,32 +863,38 @@ MULTINOMIAL = "multinomial logistic regression (maximum likelihood)"
 
 def _no_spare_rows(task: str, n_rows: int, n_coefficients: int, clusters: Clusters = INDEPENDENT,
                    *, estimator: str | None = None, intercept: bool = True,
-                   cut_points: int = 0, levels: int = 0) -> InferenceTable | None:
+                   cut_points: int = 0, levels: int | None = None) -> InferenceTable | None:
     """The table refused, its estimates and intervals both, where its rows do not exceed its
     coefficients (the intercept among them, or a proportional-odds model's ``cut_points``, or
     neither where ``intercept`` is False; for several classes, those of each level against the
-    reference, or of each of ``levels`` where a fit reports one block for every level, as a
-    prediction model's softmax does); None where they do. On n ≤ p rows least squares cannot do
-    both: with its rank below p many coefficient vectors fit the rows equally well, and with a
-    square matrix of full rank one fits them exactly, leaving no residual degree of freedom to
-    measure its uncertainty; a logistic or multinomial likelihood there has no unique maximum (a
-    rank below p, or a square matrix that separates the outcome), and REML has no residual degree
-    of freedom to estimate a variance from. A proportional-odds likelihood can have one there (its
-    cut-points are shared by every row, not free per row), so its table, refused at the same
-    count, says only TurboTab's rule. ``estimator`` is the table's own (the linear family's for
-    ``task`` where None). The ways forward: fewer columns, or more rows."""
+    reference); None where they do. A fit's own coefficients (a prediction model's) pass
+    ``levels``, the blocks it shows, one for every level as a softmax has them: the count is said
+    for each of them where there are several and for none where there is one, whatever ``task``.
+    On n ≤ p rows least squares cannot do both: with its rank below p many coefficient vectors
+    fit the rows equally well, and with a square matrix of full rank one fits them exactly,
+    leaving no residual degree of freedom to measure its uncertainty; a logistic or multinomial
+    likelihood there has no unique maximum (a rank below p, or a square matrix that separates the
+    outcome), and REML has no residual degree of freedom to estimate a variance from. A
+    proportional-odds likelihood can have one there (its cut-points are shared by every row, not
+    free per row), so its words, refused at the same count, say only that the rows are no more
+    than its coefficients. ``estimator`` is the table's own (the linear family's for ``task``
+    where None). The ways forward: fewer columns, or more rows."""
     if n_rows > n_coefficients:
         return None
-    per = (f" for each of its {levels:,} levels" if levels else
-           " for each level against the reference" if task == "multiclass" else "")
+    if levels is not None:
+        per = f" for each of its {levels:,} levels" if levels > 1 else ""
+    else:
+        per = " for each level against the reference" if task == "multiclass" else ""
     among = (f", its {cut_points:,} cut-point{'s' if cut_points != 1 else ''} among them," if
              cut_points else ", the intercept among them," if intercept else "")
-    why = ("TurboTab reports a proportional-odds table only where the rows outnumber its "
-           "coefficients" if cut_points else
-           "with no more rows than coefficients, the rows cannot both determine the estimates and "
-           "measure their uncertainty")
-    reason = (f"The model has {n_coefficients:,} coefficients{per}{among} and is fit on "
-              f"{n_rows:,} rows: {why}, so no estimate or interval is reported.")
+    has = f"The model has {n_coefficients:,} coefficients{per}{among} and is fit on {n_rows:,} rows"
+    if cut_points:
+        reason = (f"{has}, no more than its coefficients, so no estimate or interval is reported "
+                  f"here.")
+    else:
+        reason = (f"{has}: with no more rows than coefficients, the rows cannot both determine "
+                  f"the estimates and measure their uncertainty, so no estimate or interval is "
+                  f"reported.")
     exits = [{"label": "Leave columns out of the model, so it has fewer coefficients than rows",
               "decision": None},
              {"label": f"Fit the model on more than {n_coefficients:,} rows", "decision": None}]

@@ -24,9 +24,12 @@ and, under prediction, the sensitivity analyses' own coefficients of a family wi
 
 The words made true (the fin-freeze verifier's F1-F3): a proportional-odds likelihood on n ≤ p
 rows can have a unique maximum (its cut-points are shared by every row, not free per row), so its
-table is refused at the same count in words that say TurboTab's rule, tested on rows where
-statsmodels' ``OrderedModel`` finds one; under prediction a multiclass fit's count is said for
-each of its levels, as it shows one block for every level and none against a reference; and the
+table is refused at the same count in words that say only that its rows are no more than its
+coefficients, tested on rows where statsmodels' ``OrderedModel`` finds one (and, under prediction,
+on a sensitivity analysis's own proportional-odds fit, which the fit stage reports on such rows,
+so no rule across TurboTab is claimed); under prediction a multiclass fit's count is said for
+each of the blocks it shows, one for every level and none against a reference, and for none
+where its rows hold two levels and it shows one block (a binary fit); and the
 scales stage checks the uncorrected table before the correction runs, so on fewer rows than
 coefficients the score is not corrected in the table's words, not the correction's.
 
@@ -372,12 +375,13 @@ ORDINAL = "proportional-odds (cumulative logit) model, maximum likelihood"
 
 
 def ordinal_words(p: int, cuts: int, n: int) -> str:
-    """The proportional-odds table's own words (the fin-freeze verifier's F1): its likelihood on
-    n ≤ p rows can have a unique maximum, so they say TurboTab's rule, not that the rows cannot
-    determine the estimates."""
+    """The proportional-odds table's own words (the fin-freeze verifier's F1, and its P1): its
+    likelihood on n ≤ p rows can have a unique maximum, and the fit stage under prediction reports
+    such a fit, so they say neither that the rows cannot determine the estimates nor a rule across
+    TurboTab, only that the rows are no more than the coefficients."""
     return (f"The model has {p:,} coefficients, its {cuts:,} cut-points among them, and is fit on "
-            f"{n:,} rows: TurboTab reports a proportional-odds table only where the rows outnumber "
-            f"its coefficients, so no estimate or interval is reported.")
+            f"{n:,} rows, no more than its coefficients, so no estimate or interval is reported "
+            f"here.")
 
 
 def _finite(n: int) -> tuple[pd.DataFrame, np.ndarray]:
@@ -544,11 +548,16 @@ def test_a_scale_on_one_row_more_than_coefficients_is_corrected_beside_statsmode
 # ── the sensitivity analyses under prediction ────────────────────────────────
 
 
-def _predicting(tmp_path: Path, keep: int, classes: bool = False) -> dict:
+LEVELS = np.array(["low", "mid", "high"])
+IN_TURN = LEVELS[np.arange(300) % 3]  # two of each level among the first six rows
+
+
+def _predicting(tmp_path: Path, keep: int, grade: np.ndarray | None = None,
+                ordinal: bool = False) -> dict:
     """:func:`_sensitivity` under prediction: the linear family's own (least-squares) coefficients
-    on each analysis's training rows (every row: nothing is held out). With ``classes`` the
-    outcome is `grade`, three levels in turn down the rows (two of each among the first six), and
-    the coefficients are the multinomial fit's, one block for each level."""
+    on each analysis's training rows (every row: nothing is held out). With ``grade`` the outcome
+    is that 3-level column: the linear family's multinomial fit (one block for each level its
+    rows hold), or with ``ordinal`` the proportional-odds model's (5 slopes and the cut-points)."""
     from turbotab.core.datastore import DataStore
     from turbotab.core.stages.modeling import design_stage
     from turbotab.core.stages.sensitivity import sensitivity_stage
@@ -556,15 +565,18 @@ def _predicting(tmp_path: Path, keep: int, classes: bool = False) -> dict:
 
     frame = _cohort(300).assign(visit=np.arange(300.0))
     target, task, measure = "glucose", "regression", "mean_difference"
-    if classes:
-        frame = frame.drop(columns=["glucose", "dm"]).assign(
-            grade=np.array(["low", "mid", "high"])[np.arange(300) % 3])
+    extra: dict = {}
+    if grade is not None:
+        frame = frame.drop(columns=["glucose", "dm"]).assign(grade=grade)
         target, task, measure = "grade", "multiclass", "relative_risk_ratio"
+        if ordinal:
+            task, measure = "ordinal", "cumulative_odds_ratio"
+            extra = {"models": ["proportional_odds"], "outcome_order": list(LEVELS)}
     rule = d.ExclusionRule(column="visit", low=0, high=keep - 1, reason=f"the first {keep}")
     st = ef.state(target=target, task=task, measure=measure,
                   answers={k: v for k, v in ef.ANSWERS.items() if k != "bmi"},
                   roles={k: v for k, v in ef.ROLES.items() if k != "bmi"},
-                  sensitivity=[d.SensitivityAnalysis(label="few", rules=[rule])])
+                  sensitivity=[d.SensitivityAnalysis(label="few", rules=[rule])], **extra)
     st = st.model_copy(update={"purpose": "prediction"})
     paths = mf.ingest_frame(frame, tmp_path)
     split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed)
@@ -611,7 +623,7 @@ def test_under_prediction_a_multiclass_analysis_counts_its_coefficients_per_leve
     intercept and the 5 inputs, one block for each level, none against a reference), and an
     analysis on 6 rows is refused in words that count them so, where the base said "for each
     level against the reference" (the fin-freeze verifier's F2). On 7 rows all 18 are reported."""
-    out = _predicting(tmp_path, keep, classes=True)
+    out = _predicting(tmp_path, keep, IN_TURN)
     [linear] = out["families"]
     fits = {f["label"]: f for f in linear["fits"]}
     per_level = 1 + len(PRIMARY) + 1  # the intercept, `fiber` and the 4 (`sex` one indicator)
@@ -628,3 +640,46 @@ def test_under_prediction_a_multiclass_analysis_counts_its_coefficients_per_leve
         assert [e["label"] for e in few["inference"]["exits"]] == ways(per_level)
         return
     assert few["inference"] is None and len(few["coefficients"]) == 3 * per_level
+
+
+def test_under_prediction_a_multiclass_analysis_on_two_levels_counts_the_one_block_it_shows(
+        tmp_path):
+    """The analysis's 6 rows alternate `low` and `mid` (the outcome's third level, `high`, is on
+    later rows), so its fit is binary and shows one block of 6 coefficients, one intercept among
+    them. The base said "for each level against the reference" (the task stayed multiclass; the
+    fin-freeze verifier's P2); the count is said for no level now, as the one block shows it."""
+    grade = np.where(np.arange(300) < 6, LEVELS[np.arange(300) % 2], IN_TURN)
+    assert set(grade[:6]) == {"low", "mid"} and set(grade) == set(LEVELS)
+    out = _predicting(tmp_path, 6, grade)
+    [linear] = out["families"]
+    few = {f["label"]: f for f in linear["fits"]}["few"]
+    per_level = 1 + len(PRIMARY) + 1  # the intercept, `fiber` and the 4 (`sex` one indicator)
+    reason = words(per_level, 6)
+    assert few["n_rows"] == 6 and few["coefficients"] == []
+    assert few["inference"]["refused"] == reason and "reference" not in reason
+    assert few["concerns"] == [reason]
+
+
+@pytest.mark.parametrize("keep", [7, 8])
+def test_under_prediction_a_proportional_odds_analysis_on_its_coefficients_rows_is_refused(
+        tmp_path, keep):
+    """The proportional-odds model's own coefficients under prediction: 5 slopes and the 2
+    cut-points of 3 levels (all three among the first 7 rows), 7 coefficients. On 7 rows they are
+    refused in the proportional-odds words, which claim no rule across TurboTab (the fit stage
+    reports such a fit under prediction: the fin-freeze verifier's P1); on 8 all 7 are reported."""
+    assert set(IN_TURN[:7]) == set(LEVELS)
+    out = _predicting(tmp_path, keep, IN_TURN, ordinal=True)
+    [family] = out["families"]
+    fits = {f["label"]: f for f in family["fits"]}
+    slopes = 1 + len(PRIMARY)  # `fiber` and the 4 (`sex` one indicator)
+    shown = [str(r["feature"]) for r in fits["Primary"]["coefficients"]]
+    assert len(shown) == slopes + 2 and sum(f.startswith("(cut-point") for f in shown) == 2
+    few = fits["few"]
+    assert few["n_rows"] == keep
+    if keep == 7:
+        reason = ordinal_words(slopes + 2, 2, 7)
+        assert few["coefficients"] == [] and few["inference"]["refused"] == reason
+        assert few["concerns"] == [reason]
+        assert [e["label"] for e in few["inference"]["exits"]] == ways(slopes + 2)
+        return
+    assert few["inference"] is None and len(few["coefficients"]) == slopes + 2
