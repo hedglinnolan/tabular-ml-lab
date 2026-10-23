@@ -8,11 +8,13 @@ option (a stage in error, typed or not, and an answer refused with no way forwar
 built here; the crash sweep's previews after an option, of every later decision's plan answer (a
 question's, a finding's, a reading's, a declaration's) and of a question opened again at its
 default, which decisions they reach and that an HTTP 500 induced on one fails the refit as a
-defect, while one on a decision before the option does not; the decisions a plan offers the sweep
-and those it does not, from a decision log built
-here; what the report counts as not visited and what it says it swept; the readings graded against
-a declared truth; the run times' summary by hand. The sweep on a real engine is
-``test_sweep_engine.py``'s."""
+defect, while one on a decision before the option does not; a revisit the engine refuses until
+the answers that read the column are withdrawn, those answers given again in the plan's order on a
+log built here and folded; a refusal's way forward after an option, in its answer or served on the
+asks after it, taken only where the plan or the option names it; the decisions a plan offers the
+sweep and those it does not, from a decision log built here; what the report counts as not visited
+and what it says it swept; the readings graded against a declared truth; the run times' summary by
+hand. The sweep on a real engine is ``test_sweep_engine.py``'s."""
 from __future__ import annotations
 
 import json
@@ -1023,6 +1025,81 @@ def test_a_500_on_the_way_the_engine_names_is_an_engine_defect(tmp_path):
     assert W.passed(report) is False
 
 
+LINEAR = {"kind": "select_models", "models": ["linear"]}
+
+
+class Logged(Walked):
+    """A copy of a plan whose log answers the models slot twice, neither answer reverted: record
+    12 (linear) before record 13 reads `stage` as a code, and record 14 (the two families) after
+    it, so the latest, 14, is the one in force (``decisions.fold``). The engine's guard as
+    ``decisions._answers_keep_settled_readings`` holds it: reverting the reading is refused while
+    any models answer is in force. Each post is a record of the log, so what the refit leaves in
+    force is the fold of what it posted; while the reading is reverted, the ask asks it."""
+
+    def __init__(self):
+        super().__init__([])
+        self.log = [(12, LINEAR), (13, STAGE_CODE), (14, TWO_MODELS)]
+
+    def view(self):
+        return {**view_at(self.log), "stages": self.stages, "state": {}}
+
+    def _post(self, decision):
+        self.log.append((max(seq for seq, _ in self.log) + 1, dict(decision)))
+        return arms.Said("ok", {})
+
+    def revisit(self, record, reason):
+        if record == "r13" and any(r.decision.kind == "select_models"
+                                   for r in W.live(self.view())):
+            return arms.Said("refused", {}, by="server", code="role_unconfirmed",
+                             message=READS_STAGE,
+                             exits=[{"label": "Keep the answers as they are", "decision": None}])
+        return self._post({"kind": "revert", "decision_id": record})
+
+    def ask(self):
+        from research.swarm.tests.test_arms import opt
+
+        if any(r.decision.kind == "confirm_reading" for r in W.live(self.view())):
+            return {"question": None, "fit_reached": True}
+        return {"question": {"key": "models", "status": "open"},
+                "readings": {"exits": [opt("x-code", STAGE_CODE), opt("x-count", STAGE_COUNT)]}}
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.answered.append(list(ids))
+        return self._post({"x-code": STAGE_CODE, "x-count": STAGE_COUNT}[ids[0]])
+
+    def decide(self, decision, reason):
+        self.answered.append(dict(decision))
+        return self._post(decision)
+
+    def fit(self, wait=0):
+        return arms.Said("refused", {"fit": {}}, by="driver", code="not_here",
+                         message="No fit is made here.")
+
+
+def view_at(log):
+    at = datetime(2026, 10, 23, tzinfo=timezone.utc).isoformat()
+    return {"decisions": [{"id": f"r{seq}", "seq": seq, "at": at, "recorded_by": "you",
+                           "decision": d} for seq, d in log]}
+
+
+def test_the_answers_withdrawn_first_are_answered_again_in_the_plans_order(tmp_path):
+    """P3-F1: both models answers are withdrawn before the reading can be revisited, the latest
+    first; answered again in the plan's order, the plan's latest is the one in force again, so
+    the refit is the plan with the option and nothing else (its digest that plan's, built here)."""
+    from turbotab.core import decisions as D
+
+    session = Logged()
+    sweep = a_sweep(tmp_path)
+    plan = W.Refit(W.PLAN, None, None, kind="scored", digest=W.plan_digest(session.view()))
+    refit = sweep.refit(session, STAGE, {"id": "x-count", "decision": STAGE_COUNT}, [], plan)
+    assert [w["seq"] for w in refit.withdrawn] == [14, 12]  # in the order withdrawn
+    assert session.answered == [["x-count"], LINEAR, TWO_MODELS]  # again in the plan's order
+    state = D.fold(W.records_of(session.view()))
+    assert state.models == TWO_MODELS["models"]
+    with_option = view_at([(12, LINEAR), (13, STAGE_COUNT), (14, TWO_MODELS)])
+    assert refit.digest == W.plan_digest(with_option) != plan.digest
+
+
 # ── a refusal's way forward after an option: only one the plan or the option names ─────────
 
 PLAN_MISSING = {"kind": "set_missing", "strategy": "complete_case"}
@@ -1079,6 +1156,84 @@ def test_after_an_option_the_walk_takes_no_way_forward_the_plan_and_the_option_n
     assert ["x-1"] not in session.answered and refit.ways == []
     assert session.answered[1:] == [["a"], ["b"]]  # the question's next option, as with none
     assert refit.kind == "duplicate"
+
+
+STAGE_AMOUNT = {**STAGE_CODE, "value": "amount"}
+
+
+class ServedAfter(Walked):
+    """The walk after an option meets a question whose first option, ``a``, is refused with no
+    way forward in its answer until the reading ``way`` is recorded, on a plan whose log holds
+    ``plan``. The refusal's way is served on the asks after it as the driver serves a last
+    refusal's (``last_refusal_exits``) until an answer is recorded, which clears it as the
+    driver's ``answer`` does; or, with ``card``, the ask card asks the reading itself
+    (``readings.exits``) until it is recorded."""
+
+    def __init__(self, way, *, card=False, plan=PLAN_MISSING):
+        from research.swarm.tests.test_arms import ask, opt
+
+        super().__init__([])
+        self.q = ask("grain_like", [opt("a", {"kind": "set_grain_like", "v": "a"}),
+                                    opt("b", {"kind": "set_grain_like", "v": "b"})])
+        self.way = {"id": "x-1", "label": "way 1", "decision": way}
+        self.card, self.plan = card, plan
+        self.kept, self.refused, self.read, self.done = [], False, False, False
+
+    def view(self):
+        return {**view_of([("you", self.plan)]), "stages": self.stages, "state": {}}
+
+    def ask(self):
+        if self.done:
+            return {"question": None, "fit_reached": True}
+        q = dict(self.q)
+        if self.kept:
+            q["last_refusal_exits"] = list(self.kept)
+        if self.card and self.refused and not self.read:
+            q["readings"] = {"exits": [dict(self.way)]}
+        return q
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.answered.append(list(ids))
+        if list(ids) == ["a"] and not self.read:
+            self.refused = True
+            self.kept = [] if self.card else [dict(self.way)]
+            return arms.Said("refused", {}, by="server", code="reading_first",
+                             message="Read `stage` first.", exits=[])
+        self.kept = []  # an answer recorded: no last refusal's way is kept
+        if list(ids) == ["x-1"]:
+            self.read = True
+        else:
+            self.done = True
+        return arms.Said("ok", {})
+
+
+def test_after_an_option_a_refusals_way_served_later_is_not_taken_where_none_names_it(
+        tmp_path):
+    """P3-F3: the way forward a refusal leaves for the asks after it (a reading neither the plan
+    nor the option records) is not taken; the walk goes on as with no way forward."""
+    session = ServedAfter(STAGE_AMOUNT)
+    refit = walked_refit(tmp_path, session)
+    assert ["x-1"] not in session.answered and refit.ways == []
+    assert session.answered[1:] == [["a"], ["b"]]  # the question's next option, as with none
+    assert refit.kind == "duplicate"
+
+
+def test_after_an_option_a_refusals_way_served_later_is_taken_where_the_plan_names_it(
+        tmp_path):
+    session = ServedAfter(STAGE_AMOUNT, plan=STAGE_AMOUNT)
+    refit = walked_refit(tmp_path, session)
+    assert session.answered[1:3] == [["a"], ["x-1"]]
+    assert refit.ways == [{"id": "x-1", "label": "way 1", "decision": STAGE_AMOUNT,
+                           "named_by": "the plan"}]
+
+
+def test_after_an_option_a_reading_the_ask_card_asks_itself_is_answered_as_the_default_path_does(
+        tmp_path):
+    """The reading the card asks is no refusal's way: the default path's policy answers it,
+    named or not, and it is not recorded as a way forward taken."""
+    session = ServedAfter(STAGE_AMOUNT, card=True)
+    refit = walked_refit(tmp_path, session)
+    assert ["x-1"] in session.answered and refit.ways == []
 
 
 def test_a_named_way_needs_every_field_the_way_records():

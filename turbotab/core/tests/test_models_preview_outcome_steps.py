@@ -90,8 +90,10 @@ def test_the_caption_names_the_screen_by_the_design_step_lists_label(previews):
 
 
 def test_with_a_selection_too_the_caption_names_both_within_its_word_budget(project):
-    """The selection and the screen both left out: each named in the one clause, the budget's
-    first cut (at a semicolon, a colon or a comma) never reached."""
+    """The selection and the screen both left out: each named in the one clause, the selection as
+    the selection (by its method's name alone, the elastic net would read as the family left
+    out of its own caption), the budget's first cut (at a semicolon, a colon or a comma) never
+    reached."""
     from turbotab.core.consequences import CAPTION_WORDS
     from turbotab.core.models import get_family
     from turbotab.core.models.variable_selection import NAMES
@@ -102,8 +104,9 @@ def test_with_a_selection_too_the_caption_names_both_within_its_word_budget(proj
     assert "refused" not in served, served
     (view,) = served["views"]
     label, _ = get_family("screened_elastic_net").describe_step("screen")
-    clause = f"without {NAMES['elastic_net']} and “{label}”, which read {READS}"
+    clause = f"without the selection and “{label}”, which read {READS}"
     assert clause in view["caption"] and len(view["caption"].split()) <= CAPTION_WORDS, view
+    assert NAMES["elastic_net"] not in view["caption"], view
 
 
 def test_a_family_with_no_such_step_previews_as_it_does_alone(previews):

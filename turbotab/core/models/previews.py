@@ -544,8 +544,9 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         method = (getattr(spec, "selection", None) or {}).get("method")
         labels = _step_labels(spec, family, state, unread)
         # The selection alone is named as it picks among the columns shown; with any other step
-        # left out, each is named in one clause the word budget keeps whole: the selection by its
-        # method, every other step by its label.
+        # left out, each is named in one clause the word budget keeps whole: the selection as the
+        # selection (its method's name alone, as "the elastic net", would read as a family left
+        # out), every other step by its label.
         alone = not labels
         phrases = [f"{NAMES.get(method, 'a selection')} picking among them in each training fold"
                    if name == "select" else STEP_PHRASES.get(name, name.replace("_", " "))
@@ -560,7 +561,7 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
             how = ", ".join(phrases) if phrases else "taken as they are, unscaled"
             caption = f"{lead}, {how}{tail}."
         else:
-            names = [NAMES.get(method, "a selection") if name == "select" else f"“{labels[name]}”"
+            names = ["the selection" if name == "select" else f"“{labels[name]}”"
                      for name in extra if name in unread]
             left = (f"without {' and '.join(names)}, which {'reads' if len(names) == 1 else 'read'}"
                     f" {READS_ITS_OUTCOME}")

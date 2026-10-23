@@ -34,21 +34,26 @@ answer reads a column the revisit would leave on a reading nobody settled (``rol
 whose words name that answer: the models answer, the exclusion rules or the combining answer,
 :data:`READERS`), the sweep takes the way those words name (the orchestrator's ruling of
 2026-10-23): it withdraws that answer first (reverts its record in force), revisits the decision,
-answers the option, and answers the withdrawn answer again as the plan had it, then previews and
-fits as for any option; each answer withdrawn and answered again is recorded (``withdrawn``, in
-the listing and the refit). Where that way is itself refused (the withdrawing revert, the revisit
-after it, or the answer again), the refusal is recorded with the engine's reason and the option
-counts visited and refused; at the listing, the decision's revisit itself does
-(:data:`REVISIT`), never unlisted.
+answers the option, and answers each answer withdrawn again as the plan had it, in the order of
+the plan's log (so where the log answers one decision twice, the plan's latest answer is again the
+one in force), then previews and fits as for any option; each answer withdrawn and answered again
+is recorded (``withdrawn``, in the order withdrawn, in the listing and the refit). Where that way
+is itself refused (the withdrawing revert, the revisit after it, or the answer again), the refusal
+is recorded with the engine's reason and the option counts visited and refused; at the listing,
+the decision's revisit itself does (:data:`REVISIT`), never unlisted.
 
 **Each refit** answers the option on its copy (a question, a finding or a reading by its id after
 the revisit, ``driver.chosen``; a declaration's option as its line composed it, which is what the
 driver's ``answer`` posts for it); any question the change opens again is answered by the default
 path's policy, but a refusal the walk meets after the option takes a way forward only where the
 plan's log in force before the option, or the option itself, names it (each field of the way's
-decision the same, :class:`Named`), recorded with who named it (``ways``); where none is named,
-the walk goes on as the default path does with no way forward (another option of the question,
-else a stop classed refused); the option's own refusal takes none. Refits are deduplicated by the
+decision the same, :class:`Named`), recorded with who named it (``ways``): a way the refusal lists
+in its answer, or one the driver serves on the asks after it (the last refusal's, which the
+default path would settle as a reading or a role); where none is named, the walk goes on as the
+default path does with no way forward (another option of the question, else a stop classed
+refused); the option's own refusal takes none. A reading or a role the ask card asks itself is no
+refusal's way, and the default path's policy answers it. The revisit's own walk, to the question
+it opens again, takes a refusal's way under the same rule. Refits are deduplicated by the
 plan's digest (``plan_lock.digest`` of the log as served, folded: the digest every fit record
 carries), so an option that leaves a plan already fitted is not fitted again (``duplicate_of``);
 then Fit is pressed and the refit read: under Predict each family's cross-validated scores from
@@ -378,8 +383,9 @@ class Refit:
     (``seconds``, the press to the fit's end; ``fit_seconds``, the server's own; ``took``, the
     whole refit), what it scored or estimated, its change against the plan and whether §7 reads it
     material; the previews and answers made on the way, the plan's answers the revisit withdrew
-    first and answered again after the option (``withdrawn``), and each refusal's way forward the
-    walk took after it with what named it (``ways``); the copy it ran on, while kept."""
+    first (``withdrawn``, in the order withdrawn) and answered again after the option in the
+    plan's order, and each refusal's way forward the revisit and the walk took with what named it
+    (``ways``); the copy it ran on, while kept."""
 
     point: str
     option: str | None
@@ -716,27 +722,53 @@ def names_way(decision: Mapping[str, Any], way: Mapping[str, Any]) -> bool:
 
 @dataclass
 class Named(arms.Default):
-    """The default path's answers for the walk after an option (the module docstring), but a
-    refusal's way forward taken only where the plan or the option names it (:func:`names_way`):
-    a way whose decision is one the plan's log holds in force before the option, or the option's
-    own (``names``, by who names it); none other, so a refusal the plan never met is not answered
-    by a way it never chose. Each way taken is kept in ``taken``, with who named it."""
+    """The default path's answers for the sweep's walks (the module docstring), but a refusal's
+    way forward taken only where the plan or the option names it (:func:`names_way`): a way whose
+    decision is one the plan's log holds in force before the option, or the option's own
+    (``names``, by who names it); none other, so a refusal the plan never met is not answered by a
+    way it never chose. That holds for the ways a refusal lists in its answer (:meth:`way`) and for
+    those the driver serves on the asks after it (``last_refusal_exits``), which the default path
+    settles as a reading or a role (:meth:`settle`); a reading or a role the ask card asks itself
+    is no refusal's way and is settled as the default path settles it. Each way taken is kept in
+    ``taken``, with who named it."""
 
     names: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     taken: list[dict[str, Any]] = field(default_factory=list)
 
+    def named_by(self, e: Mapping[str, Any]) -> str | None:
+        """Who names the way forward ``e`` (the plan or the option), or None."""
+        decision = e.get("decision")
+        if not (e.get("id") and isinstance(decision, Mapping)):
+            return None
+        return next((who for who, decisions in self.names.items()
+                     if any(names_way(d, decision) for d in decisions)), None)
+
+    def _take(self, e: Mapping[str, Any], by: str) -> str:
+        self.taken.append({"id": str(e["id"]), "label": e.get("label"),
+                           "decision": dict(e["decision"]), "named_by": by})
+        return str(e["id"])
+
     def way(self, exits: Sequence[Mapping[str, Any]]) -> str | None:
         for e in exits:
-            decision = e.get("decision")
-            if not (e.get("id") and isinstance(decision, Mapping)):
-                continue
-            by = next((who for who, decisions in self.names.items()
-                       if any(names_way(d, decision) for d in decisions)), None)
+            by = self.named_by(e)
             if by is not None:
-                self.taken.append({"id": str(e["id"]), "label": e.get("label"),
-                                   "decision": dict(decision), "named_by": by})
-                return str(e["id"])
+                return self._take(e, by)
         return None
+
+    def settle(self, q: Mapping[str, Any]) -> tuple[str, str] | None:
+        """The default path's settling of ``q`` with the last refusal's ways forward that neither
+        the plan nor the option names left out."""
+        kept = [e for e in q.get("last_refusal_exits") or [] if self.named_by(e) is not None]
+        return super().settle({**q, "last_refusal_exits": kept})
+
+    def settled(self, q: Mapping[str, Any], way: str) -> None:
+        """``way``, which :meth:`settle` gave on ``q`` and the walk answered, kept in ``taken``
+        where it is a way the last refusal left (``last_refusal_exits``) that the plan or the
+        option names; a reading or a role the ask card asks itself is not kept."""
+        e = next((e for e in q.get("last_refusal_exits") or [] if str(e.get("id")) == way), None)
+        by = None if e is None else self.named_by(e)
+        if by is not None:
+            self._take(e, by)
 
 
 class Sweep:
@@ -871,11 +903,21 @@ class Sweep:
         """The options the driver offers for ``point`` on the session's project, the plan's own
         among them, once they are on offer: after the revisit, for a question, a finding or a
         reading."""
-        return self._listed(session, point)[0]
+        return self._listed(session, point, self._named(session))[0]
 
-    def _listed(self, session: Any, point: Point
+    def _named(self, session: Any, option: Mapping[str, Any] | None = None) -> Named:
+        """The sweep's policy on the session's project as it stands (the plan's log, before the
+        revisit and the option): a refusal's way forward taken only where that log or ``option``
+        names it (:class:`Named`)."""
+        names = {"the plan": [r.decision.model_dump(mode="json") for r in live(session.view())]}
+        if option is not None:
+            names["the option"] = [dict(option.get("decision") or {})]
+        return Named(self.question, proposed=dict(self.policy.proposed), names=names)
+
+    def _listed(self, session: Any, point: Point, policy: Named
                 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """:meth:`options`, and the plan's answers the revisit withdrew first (:meth:`_revisit`)."""
+        """:meth:`options`, and the plan's answers the revisit withdrew first (:meth:`_revisit`);
+        a reading or a role asked on the way settled by ``policy``."""
         if point.kind == "declaration":
             from research.swarm import declarations as decl, driver
 
@@ -883,7 +925,7 @@ class Sweep:
                                     driver.served(session.run, session.client))
             return list(composed.get("options") or []), []
         withdrawn = self._revisit(session, point)
-        q = self._reopened(session, point)
+        q = self._reopened(session, point, policy)
         if point.kind == "question":
             return list(q.get("options") or []), withdrawn
         if point.kind == "finding":
@@ -948,9 +990,10 @@ class Sweep:
             said = session.revisit(str(point.record), f"The sweep revisits {point.id}.")
         return withdrawn
 
-    def _reopened(self, session: Any, point: Point) -> dict[str, Any]:
+    def _reopened(self, session: Any, point: Point, policy: Named) -> dict[str, Any]:
         """The ask once the revisited question is open again (a reading or a role the server asks
-        on the way settled by the default policy), or the ask for a finding or a reading."""
+        on the way settled by ``policy``, :class:`Named`), or the ask for a finding or a
+        reading."""
         if point.kind != "question":
             return session.ask()
         for _ in range(arms.STEPS):
@@ -958,9 +1001,10 @@ class Sweep:
             question = q.get("question") or {}
             if question.get("key") == point.key and question.get("status") == "open":
                 return q
-            settled = self.policy.settle(q)
+            settled = policy.settle(q)
             if settled is not None:
-                session.answer([settled[0]], [], f"{self.policy.name}: {settled[1]}.")
+                session.answer([settled[0]], [], f"{policy.name}: {settled[1]}.")
+                policy.settled(q, settled[0])
                 continue
             if question.get("status") == "waiting":
                 if q.get("failed"):
@@ -984,19 +1028,20 @@ class Sweep:
         started = time.monotonic()
         errors = len(session.errors)
         before: set[tuple[str, Any]] | None = None
+        policy: Named | None = None
         try:
             refit.project = self._copy(session)
             before = self._errored(session)
-            named = [r.decision.model_dump(mode="json") for r in live(session.view())]
+            policy = self._named(session, option)
             if point.kind != "declaration":
-                options, withdrawn = self._listed(session, point)
+                options, withdrawn = self._listed(session, point, policy)
                 refit.withdrawn = withdrawn
                 refit.answered += [{"answer": f"withdrawn first: the plan's {w['what']} (record "
                                               f"{w['seq']}), as the engine asks",
                                     **w["reverted"]} for w in withdrawn]
                 if refit.option not in {str(o.get("id")) for o in options}:
                     raise arms.Stuck(f"The revisit offers no option {refit.option} now.")
-            self._refit(session, point, option, refit, later, plan, named)
+            self._refit(session, point, option, refit, later, plan, policy)
         except arms.Met as met:
             if refit.kind not in ("failed", "refused"):
                 self._met(refit, met)
@@ -1005,6 +1050,8 @@ class Sweep:
                 refit.kind, refit.why = "unreached", str(exc)
                 if before is not None:
                     self._failed_anew(session, refit, before)
+        if policy is not None:
+            refit.ways = list(policy.taken)  # the revisit's and the walk's, with who named each
         new_errors = list(session.errors[errors:])
         if new_errors and refit.kind != "failed":
             refit.kind = "failed"
@@ -1076,13 +1123,13 @@ class Sweep:
         return session.answer(ids, [], reason, arms.MARKER_OF.get(point.key, arms.DEFAULT_MARKER))
 
     def _refit(self, session: Any, point: Point, option: Mapping[str, Any], refit: Refit,
-               later: Sequence[Point], plan: Refit, named: Sequence[Mapping[str, Any]]) -> None:
+               later: Sequence[Point], plan: Refit, policy: Named) -> None:
         """The option previewed (the crash sweep) and answered on the copy; each of the plan's
-        answers the revisit withdrew answered again as the plan had it (``refit.withdrawn``);
-        every later decision's plan answer previewed (the crash sweep); the walk to Fit, a
-        refusal's way forward taken only where the plan's log (``named``, its decisions in force
-        before the option) or the option names it (:class:`Named`); the sweep's scoring again;
-        Fit pressed and read, but for the plan's duplicate."""
+        answers the revisit withdrew answered again as the plan had it, in its log's order
+        (``refit.withdrawn``); every later decision's plan answer previewed (the crash sweep); the
+        walk to Fit by ``policy``, a refusal's way forward taken only where the plan's log in force
+        before the option or the option names it (:class:`Named`); the sweep's scoring again; Fit
+        pressed and read, but for the plan's duplicate."""
         if self.crash:
             seen = self._post(session, point, option, f"The crash sweep previews {refit.id}.",
                               preview=True)
@@ -1098,7 +1145,9 @@ class Sweep:
                 "at": "answer", "option": refit.option,
                 "exits": [{k: e.get(k) for k in ("label", "decision")} for e in said.exits]}
             return
-        for w in refit.withdrawn:  # the plan's answers withdrawn first, as the plan had them
+        # The plan's answers withdrawn first, as the plan had them and in its log's order, so that
+        # of two answers to one decision the plan's latest is again the one in force.
+        for w in sorted(refit.withdrawn, key=lambda w: int(w["seq"])):
             again = session.decide(w["decision"], f"The sweep answers the plan's {w['what']} "
                                                   f"again after {refit.id}, as the plan had it.")
             refit.answered.append({"answer": f"the plan's {w['what']} again (record {w['seq']})",
@@ -1121,13 +1170,9 @@ class Sweep:
         steps: list[arms.Step] = []
         before = (lambda key, q: self._preview_reopened(session, refit, key, q)) if self.crash \
             else None
-        policy = Named(self.question, proposed=dict(self.policy.proposed),
-                       names={"the plan": list(named),
-                              "the option": [dict(option.get("decision") or {})]})
         try:
             arms.walk(session, policy, steps=steps, before=before)
         finally:
-            refit.ways = list(policy.taken)
             refit.answered += [{"answer": f"{s.at}:{s.key}={','.join(s.chosen)}", "kind": s.said,
                                 "code": s.code} for s in steps]
         if point.id != f"declaration:{SCHEME}":
@@ -1260,17 +1305,21 @@ class Sweep:
 
     def _list(self, session: Any, point: Point) -> dict[str, Any]:
         """``point``'s options listed on a copy of the template (:meth:`_listed`), with the plan's
-        answers its revisit withdrew first. A 500 met on the way, or a stage failed untyped, is an
-        engine defect (its revisit refitted failed, the copy kept); the way the engine names for
-        the revisit, refused (:meth:`_revisit`), is the decision visited and refused (its revisit
-        refitted refused, never unlisted); any other stop lists it with why it could not be."""
+        answers its revisit withdrew first and each refusal's way forward taken on the way, with
+        who named it (``ways``, :class:`Named`). A 500 met on the way, or a stage failed untyped,
+        is an engine defect (its revisit refitted failed, the copy kept); the way the engine names
+        for the revisit, refused (:meth:`_revisit`), is the decision visited and refused (its
+        revisit refitted refused, never unlisted); any other stop lists it with why it could not
+        be."""
         copy = self._copy(session)
         errors = len(session.errors)
         met: arms.Met | None = None
         withdrawn: list[dict[str, Any]] = []
         refused: dict[str, Any] | None = None
+        policy: Named | None = None
         try:
-            options, withdrawn = self._listed(session, point)
+            policy = self._named(session)
+            options, withdrawn = self._listed(session, point, policy)
             why = None
         except arms.Stuck as exc:
             options, why = [], str(exc)
@@ -1299,6 +1348,7 @@ class Sweep:
         return {"point": point.id, "why": why, "refused": refused,
                 "withdrawn": [{k: w.get(k) for k in ("what", "column", "seq", "record")}
                               for w in withdrawn],
+                "ways": list(policy.taken) if policy is not None else [],
                 "options": [{"id": o.get("id"), "label": o.get("label"),
                              "decision": o.get("decision"), "needs": o.get("needs")}
                             for o in options]}

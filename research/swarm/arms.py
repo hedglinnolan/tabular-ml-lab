@@ -523,13 +523,17 @@ class Local:
         return self._said(call)
 
     def post(self, decision: Mapping[str, Any], reason: str) -> tuple[int, dict[str, Any]]:
-        """``decision`` posted with its reason as the driver's ``answer`` posts it, the server's
-        refusal said as the driver says it."""
+        """``decision`` posted with its reason as the driver's ``answer`` (a revert: its
+        ``revisit``) posts it, the server's refusal said as the driver says it: its ways forward
+        kept for the next ask (``last_refusal_exits``) until an answer is recorded, which clears
+        them, as the driver's do."""
         from research.swarm import driver
 
+        command = "revisit" if decision.get("kind") == "revert" else "answer"
         r = driver.post_decision(self.run, self.client, dict(decision), reason)
         if r.status != 200:
-            return 1, {"posted": dict(decision)} | driver.refused(r, self.run, "answer")
+            return 1, {"posted": dict(decision)} | driver.refused(r, self.run, command)
+        self.run.keep_exits([], None, command)
         return 0, driver.recorded(r.json(), str(decision["kind"]))
 
     def decide(self, decision: Mapping[str, Any], reason: str) -> Said:
@@ -685,6 +689,10 @@ class Default:
 
     def settle(self, q: Mapping[str, Any]) -> tuple[str, str] | None:
         return self.reading(q) or self.role(q) or self.finding(q)
+
+    def settled(self, q: Mapping[str, Any], way: str) -> None:
+        """Told that the walk answered ``way``, which :meth:`settle` gave on ``q``: nothing to
+        keep here (the sweep's policy keeps the refusals' ways it takes, ``sweep.Named``)."""
 
     def answer(self, key: str, q: Mapping[str, Any], read: Callable[[str], Any]
                ) -> tuple[list[str], list[str], str]:
@@ -946,6 +954,7 @@ def walk(session: Any, policy: Default, *, stop: Callable[[dict[str, Any]], bool
         if settled is not None:
             way, why = settled
             said = session.answer([way], [], f"{policy.name}: {why}.")
+            policy.settled(q, way)
             steps.append(Step("way", None, [], [way], [], why, said.kind, said.code,
                               (said.payload.get("recorded") if said.ok else None)))
             if said.kind == "failed":

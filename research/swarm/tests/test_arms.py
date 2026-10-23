@@ -1,7 +1,8 @@
 """The mechanical arms (SWARM_PLAN §6; ``research/swarm/arms.py``): the card's question, the default
 path's and the random path's answers on asks built here, the walk on a session that serves those
-asks (and what stops it, classed by what the engine said), and, slow, each path through the
-driver's own commands on a small dataset that is not one of the pilot's six
+asks (and what stops it, classed by what the engine said), a local session's posts keeping a
+refusal's ways forward until an answer is recorded as the driver's do, and, slow, each path through
+the driver's own commands on a small dataset that is not one of the pilot's six
 (``clinical_readmission_predict``, 480 rows) to a record that validates.
 
 Known truth: the event level from the card's own words; each default from what the ask offers in
@@ -227,6 +228,33 @@ def test_a_refused_answer_takes_its_way_forward_and_a_failed_one_stops_the_walk(
                        fail={"impute"})
     with pytest.raises(arms.Stuck, match="failed"):
         arms.walk(failing, arms.Default(Q))
+
+
+def test_a_local_post_keeps_a_refusals_ways_until_an_answer_is_recorded_as_the_driver_does(
+        tmp_path, monkeypatch):
+    """The driver's ``answer`` and ``revisit`` keep a refusal's ways forward for the next ask
+    (``last_refusal_exits``) and clear them once an answer is recorded; a :class:`arms.Local`
+    session's posts do the same, so a way the walk took once is not served again as the last
+    refusal's."""
+    from research.swarm import driver
+
+    served = []
+    exits = [{"label": "Fill the blanks", "decision": {"kind": "set_missing",
+                                                       "strategy": "impute"}}]
+    refusal = driver.Response(409, json.dumps({"error": {"code": "not_here", "message": "No.",
+                                                         "exits": exits}}).encode(), {})
+    monkeypatch.setattr(driver, "post_decision", lambda run, client, decision, note: served.pop(0))
+    monkeypatch.setattr(driver, "recorded", lambda view, kind: {"recorded": {"kind": kind}})
+    local = arms.Local(tmp_path / "home")
+    local.use("p1")
+    local.client = None  # no server: each post is served above
+    for kind in ("set_missing", "revert"):
+        served[:] = [refusal, driver.Response(200, b"{}", {})]
+        assert local.decide({"kind": kind}, "a test").kind == "refused"
+        kept = local.run.kept_exits()
+        assert [e["decision"] for e in kept] == [exits[0]["decision"]] and kept[0]["id"]
+        assert local.decide({"kind": kind}, "a test").ok
+        assert local.run.kept_exits() == []
 
 
 # ── each path through the driver, to its record ──────────────────────────────
