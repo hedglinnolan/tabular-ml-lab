@@ -25,8 +25,11 @@ planted record from a real one in form:
 * **the template** is a Predict record whose last fit's whole change from the fit before is one
   decision of the analyst's, D (so D's materiality is that fit's movement, as the assembler reads
   it), and whose two fits scored the same folds with a signed change computed for a family (its
-  share of rows a fold scores is the one the planted change uses); M is one of its regime's
-  numeric live markers above zero, t its value there;
+  share of rows a fold scores is the one the planted change uses); D is of a kind the theorist can
+  propose about (``claim_cycle.proposal.proposable``: not one that records the protocol, which
+  the validator refuses, and not ``set_selection``, which the theorist's prompt sets aside), so
+  the planted effect's claim can be proposed; M is one of its regime's numeric live markers above
+  zero, t its value there;
 * **the run** takes a run id as ``start`` draws one, a label and 32 hex digits: the label of a real
   record of the copy, as runs started together share one (``driver.new_run_id``), with every time
   the template holds moved by one offset to start beside that record's start; **the dataset** is
@@ -178,6 +181,8 @@ def _computed(change: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 def _plantable(rec: dict[str, Any]) -> tuple[dict[str, Any], list[str]] | None:
     """The decision D and the families a planted effect can be written in, where ``rec`` can be a
     template (the module docstring); else None."""
+    from research.swarm.claim_cycle.proposal import proposable
+
     attempts = rec.get("attempts") or []
     if rec["question"].get("purpose") != "prediction" or len(attempts) < 2:
         return None
@@ -187,6 +192,8 @@ def _plantable(rec: dict[str, Any]) -> tuple[dict[str, Any], list[str]] | None:
              if s.get("by") is None]
     decision = next((d for d in rec["decisions"] if len(seqs) == 1 and d["seq"] == seqs[0]), None)
     if decision is None or decision["source"] != "analyst" or loose or not _numeric_markers(rec):
+        return None
+    if not proposable(decision["kind"]):
         return None
     if fit.get("folds") is None or fit.get("folds") != before.get("folds"):
         return None
@@ -277,8 +284,9 @@ def planted(records: list[dict[str, Any]], k: int, rng: random.Random
     templates = [(r, got) for r in records if (got := _plantable(r)) is not None]
     if not templates:
         raise ShuffleRefused("No record of the copy is a Predict run whose last fit's whole change "
-                             "is one decision of the analyst's, paired with a signed change over "
-                             "the same folds, beside a numeric live marker, to plant an effect in.")
+                             "is one decision of the analyst's, of a kind the theorist can propose "
+                             "about, paired with a signed change over the same folds, beside a "
+                             "numeric live marker, to plant an effect in.")
     template, (decision, families) = rng.choice(templates)
     marker = rng.choice(_numeric_markers(template))
     family = rng.choice(families)

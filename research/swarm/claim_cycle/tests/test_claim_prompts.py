@@ -46,6 +46,55 @@ def test_the_theorists_example_proposal_is_one_the_validator_takes():
     data = json.loads(shlex.split(propose)[-1])
     got = P.validate(data)
     assert (got.status, got.grade) == ("proposed", "unsupported")
+    # Its refits are not counted, as these tools read no sweeps table: null, never a zero.
+    assert data["refits"] is None and got.refits.why == P.NOT_COUNTED
+
+
+def test_the_theorist_writes_refits_not_counted_and_never_a_zero_for_one():
+    text = " ".join(body("theorist").split())
+    assert "`refits`: write `null`." in text
+    assert "never write `0` for a count you do not have" in text
+
+
+def test_the_survey_counts_records_so_an_effect_on_one_dataset_reaches_it(tmp_path):
+    """The theorist's survey and stopping rule count records, not datasets: the shuffled copy's
+    planted records all sit on their template's one dataset (``shuffle.planted``), each with its
+    decision's materiality measured, so that decision's kind meets the rule on them alone, and it
+    is one the theorist may propose about."""
+    from research.swarm import shuffle as S
+    from research.swarm.claim_cycle import view as W
+    from research.swarm.tests import test_shuffle as TS
+
+    text = " ".join(body("theorist").split())
+    assert "with a measured materiality in at least two records, on one dataset or several" in text
+    assert "every decision kind with a measured materiality in at least two records" in text
+    assert "at least two datasets" not in text
+    written = S.write(TS.corpus(tmp_path / "corpus"), tmp_path / "copy", tmp_path / "s.json",
+                      seed=5, k=6)
+    effect, planted = written["planted"]["effect"], set(written["planted"]["records"])
+    measured = [v for v in W.read(tmp_path / "copy") if v["run"]["id"] in planted
+                and any(d["kind"] == effect["decision"] and d["materiality"]["source"] == "fits"
+                        for d in v["decisions"])]
+    assert len(measured) == 6 and len({v["dataset"]["id"] for v in measured}) == 1
+    assert P.proposable(effect["decision"])
+
+
+def test_the_experimentalist_ranks_only_by_what_its_tools_serve():
+    """The view's refusals and failed fits name a command, a code and a stage, never the decision
+    they met, so the pull ranks by the proposal's size, said to stand in for the sweeps' measured
+    materiality (SWARM_PLAN §9) until the sweeps are read."""
+    from research.swarm.claim_cycle import view as W
+    from research.swarm.claim_cycle.tests.test_claim_reading import _failed_fit, _refusal, planted
+
+    rec = planted(_failed_fit)
+    _refusal(rec)
+    shown = W.views([rec])[0]["surfacings"]
+    keys = {k for entry in shown["refusals"] + shown["failed_fits"] for k in entry}
+    assert keys and not keys & {"decision", "decisions", "seq"}
+    text = " ".join(body("experimentalist").split())
+    assert "stands in for the sweeps' measured materiality until the sweeps are read" in text
+    assert "not the decision it met, so they do not rank a proposal" in text
+    assert "a decision where a run met a refusal" not in text
 
 
 @pytest.mark.parametrize("role, names", [

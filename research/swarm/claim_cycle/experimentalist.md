@@ -53,8 +53,11 @@ holds the lower and not the upper; `is` is one value; `in` is any of a list.
 ## How you work
 
 1. **Read the proposals,** then `index` the corpus.
-2. **Pull.** Rank the proposals: first those about a decision where a run met a refusal or a
-   failed fit (`surfacings`), since a person may get stuck there; then by `size`, largest first.
+2. **Pull.** Rank the proposals by `size`, largest first. SWARM_PLAN §9 ranks a claim by the
+   sweeps' measured materiality; these tools read no sweeps table, so a proposal's own `size`
+   stands in for the sweeps' measured materiality until the sweeps are read. A record's
+   `surfacings` give each refusal's `code` and `stage` and each failed fit's, not the decision it
+   met, so they do not rank a proposal.
 3. **Find the held-out datasets** of each proposal: the datasets in its region that are not in
    its `evidence`. Read each candidate dataset's markers and check every bound of the region
    against them; a marker with no value does not meet a bound.

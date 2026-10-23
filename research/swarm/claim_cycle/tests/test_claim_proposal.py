@@ -15,20 +15,28 @@ from scipy.linalg import hadamard
 
 from research.swarm import vocabulary as V
 from research.swarm.claim_cycle import proposal as P
-from research.swarm.claim_cycle.tests.constructed import GOOD, proposal, selection
+from research.swarm.claim_cycle.tests.constructed import (COUNTED, GOOD, counted, proposal,
+                                                          selection, sweeps_of)
 
 
-def refused(data) -> str:
+def refused(data, sweeps=None) -> str:
     with pytest.raises(P.ProposalRefused) as exc:
-        P.validate(data)
+        P.validate(data, sweeps=sweeps)
     return str(exc.value)
+
+
+def check(data):
+    """``data`` validated beside a sweeps table that counts its refits as it states them, so a
+    count's own guards are reached."""
+    return P.validate(data, sweeps=sweeps_of(data))
 
 
 def test_a_constructed_proposal_enters_as_proposed_and_unsupported():
     got = P.validate(proposal())
     assert (got.status, got.grade) == ("proposed", "unsupported")
     assert got.decision == "set_missing" and [b.marker for b in got.region] == ["complete_case_share"]
-    assert got.refits.share == 0.2 and got.scope is None
+    assert got.refits.refits is None and got.refits.why == P.NOT_COUNTED and got.scope is None
+    assert check(counted()).refits.share == 0.2
 
 
 def region(*bounds):
@@ -36,7 +44,13 @@ def region(*bounds):
 
 
 def refits(**over):
-    return {**GOOD["refits"], **over}
+    return {**COUNTED, **over}
+
+
+def without(field):
+    out = proposal()
+    del out[field]
+    return out
 
 
 # Each guard's firing side: the proposal, and words its refusal says.
@@ -82,29 +96,43 @@ REFUSED = {
     "a direction that is neither": (proposal(direction="bigger"), "direction"),
     "a negative size": (proposal(size=-0.01), "size"),
     "an infinite size": (proposal(size=math.inf), "size"),
-    "more refused than refitted": (proposal(refits=refits(refused=11, share=1.1,
-                                                          codes={"stepwise_needs_rows": 11})),
+    "no refits at all": (without("refits"), "refits"),
+    "not counted, with a refused count": (proposal(refits={"refits": None, "refused": 0}),
+                                          "not counted"),
+    "not counted, with a share": (proposal(refits={"refits": None, "share": 0.0}), "not counted"),
+    "not counted, with codes": (proposal(refits={"refits": None, "codes": {"x": 1}}),
+                                "not counted"),
+    "not counted, with where refusals sit": (proposal(refits={"refits": None,
+                                                              "one_region": False}),
+                                             "not counted"),
+    "a count with no refused count": (counted(refits={"refits": 10}), "how many were refused"),
+    "more refused than refitted": (counted(refits=refits(refused=11, share=1.1,
+                                                         codes={"stepwise_needs_rows": 11})),
                                    "more refits refused than"),
-    "a share that is not the count's": (proposal(refits=refits(share=0.3)),
+    "a share that is not the count's": (counted(refits=refits(share=0.3)),
                                         "2 of 10 refits refused is a share of 0.2"),
-    "no share beside refusals": (proposal(refits=refits(share=None)),
+    "no share beside refusals": (counted(refits=refits(share=None)),
                                  "2 of 10 refits refused is a share of 0.2"),
-    "a share with no refit": (proposal(refits={"refits": 0, "refused": 0, "share": 0.0}),
+    "a share with no refit": (counted(refits={"refits": 0, "refused": 0, "share": 0.0}),
                               "no refit"),
-    "codes that do not count the refusals": (proposal(refits=refits(codes={"x": 1})),
+    "codes that do not count the refusals": (counted(refits=refits(codes={"x": 1})),
                                              "count 1 refusal"),
-    "refusals with no say where they sit": (proposal(refits=refits(one_region=None,
-                                                                   region=None)),
+    "refusals with no say where they sit": (counted(refits=refits(one_region=None,
+                                                                  region=None)),
                                             "whether they sit in one marker region"),
     "a region for refusals there are none of": (
-        proposal(refits={"refits": 10, "refused": 0, "share": 0.0, "one_region": False}),
+        counted(refits={"refits": 10, "refused": 0, "share": 0.0, "one_region": False}),
         "no refit was refused"),
-    "one region named nowhere": (proposal(refits=refits(region=None)), "name that region"),
-    "a region beside refusals that sit apart": (proposal(refits=refits(one_region=False)),
+    "one region named nowhere": (counted(refits=refits(region=None)), "name that region"),
+    "a region beside refusals that sit apart": (counted(refits=refits(one_region=False)),
                                                 "do not sit in one region"),
     "a refusal region on a post hoc marker": (
-        proposal(refits=refits(region=region(("result", "above", 0.5)))),
+        counted(refits=refits(region=region(("result", "above", 0.5)))),
         "known only after a run"),
+    # A refusal that is the engine's gap is not part of any claim (SWARM_PLAN §9), whatever its
+    # decision: a selection that keeps no predictor can stop a refit of `set_missing` too.
+    "a gap's code under another decision": (counted(refits=refits(codes={"nothing_kept": 2})),
+                                            "the engine's gap"),
     "a status other than proposed": (proposal(status="promoted"),
                                      "enters as proposed and unsupported"),
     "a grade other than unsupported": (proposal(grade="replicated"),
@@ -115,7 +143,7 @@ REFUSED = {
     "a selection claim over a selection that kept nothing": (
         selection(refits=refits(refused=3, share=0.3,
                                 codes={"stepwise_needs_rows": 2, "nothing_kept": 1})),
-        "the engine's gap"),
+        "scope the claim to the datasets where every swept selection kept a predictor"),
     "a selection claim with evidence outside its scope": (
         selection(evidence={"datasets": ["dataset_1", "dataset_3"]}), "dataset_3"),
     "a scope on another decision": (proposal(scope={"datasets": ["dataset_1"]}),
@@ -129,7 +157,7 @@ REFUSED = {
 
 @pytest.mark.parametrize("data, says", list(REFUSED.values()), ids=list(REFUSED))
 def test_each_guard_refuses_where_it_should(data, says):
-    assert says in refused(data)
+    assert says in refused(data, sweeps=sweeps_of(data))
 
 
 # Each guard's silent side: a proposal that comes close and is still taken.
@@ -143,23 +171,67 @@ TAKEN = {
     "a whole number": proposal(region=region(("rows", "at_least", 1000))),
     "a share at 0": proposal(region=region(("complete_case_share", "above", 0))),
     "a share at 1": proposal(region=region(("event_share", "at_most", 1))),
-    "no refit and no share": proposal(refits={"refits": 0, "refused": 0, "share": None}),
-    "refits none refused": proposal(refits={"refits": 10, "refused": 0, "share": 0.0}),
-    "refusals that sit apart": proposal(refits=refits(one_region=False, region=None)),
+    "refits not counted": proposal(),
+    "refits not counted, as an object": proposal(refits={"refits": None}),
+    "no refit and no share, counted": counted(refits={"refits": 0, "refused": 0, "share": None}),
+    "refits none refused": counted(refits={"refits": 10, "refused": 0, "share": 0.0}),
+    "refusals that sit apart": counted(refits=refits(one_region=False, region=None)),
+    "the method's own limit under another decision": counted(),
     "an inference on its measure": proposal(loss={"purpose": "inference",
                                                   "measure": "odds_ratio"}),
     "not material, of size 0": proposal(direction="not_material", size=0),
-    "a selection claim, its refusals the method's own limit": selection(),
+    "a selection claim, not counted": selection(),
+    "a selection claim, its refusals the method's own limit": selection(refits=refits()),
     "a selection claim with nothing refused": selection(refits={"refits": 4, "refused": 0,
                                                                 "share": 0.0}),
-    "a gap's code under another decision": proposal(refits=refits(codes={"nothing_kept": 2})),
 }
 
 
 @pytest.mark.parametrize("data", list(TAKEN.values()), ids=list(TAKEN))
 def test_each_guard_stays_silent_where_it_should(data):
-    got = P.validate(data)
+    got = check(data)
     assert (got.status, got.grade) == ("proposed", "unsupported")
+
+
+# ── the refits: not counted, or counted as the sweeps count them ─────────────
+
+
+def test_refits_not_counted_are_taken_and_labeled_apart_from_a_counted_zero():
+    """The theorist's tools read no sweeps table, so a proposal from them leaves its refits not
+    counted (null), and the validator labels it so, in its own words whatever the proposal brought;
+    a zero is a count, taken only where the sweeps count zero, and carries no such label."""
+    absent = P.validate(proposal())
+    assert absent.refits.refits is None and absent.refits.share is None
+    assert absent.refits.why == P.NOT_COUNTED
+    brought = P.validate(proposal(refits={"refits": None, "why": "Counted by me: none."}))
+    assert brought.refits.why == P.NOT_COUNTED
+    zero = counted(refits={"refits": 0, "refused": 0, "share": None})
+    got = P.validate(zero, sweeps={"p1": {"refits": 0, "refused": 0, "codes": {}}})
+    assert got.refits.refits == 0 and got.refits.why is None
+    assert absent.model_dump()["refits"]["refits"] is None != got.model_dump()["refits"]["refits"]
+
+
+@pytest.mark.parametrize("refits", [
+    {"refits": 0, "refused": 0, "share": None},
+    COUNTED,
+], ids=["zero", "ten"])
+def test_a_count_is_refused_where_no_sweeps_table_checks_it(refits):
+    data = counted(refits=refits)
+    another = {"p2": {"refits": 0, "refused": 0, "codes": {}}}
+    for sweeps, says in ((None, "no sweeps table is read here"), ({}, "holds no count for p1"),
+                         (another, "holds no count for p1")):
+        said = refused(data, sweeps=sweeps)
+        assert says in said and "leave the refits not counted" in said
+
+
+def test_a_count_is_refused_where_the_sweeps_count_otherwise():
+    data = counted()  # ten refits, two refused, both for backward elimination short of rows
+    for theirs in ({"refits": 12, "refused": 2, "codes": {"stepwise_needs_rows": 2}},
+                   {"refits": 10, "refused": 3, "codes": {"stepwise_needs_rows": 3}},
+                   {"refits": 10, "refused": 2, "codes": {"other_code": 2}}):
+        assert "the sweeps count" in refused(data, sweeps={"p1": theirs})
+    assert P.validate(data, sweeps={"p1": {"refits": 10, "refused": 2,
+                                           "codes": {"stepwise_needs_rows": 2}}})
 
 
 def test_every_live_marker_defines_a_region_and_no_other_does():
@@ -169,19 +241,23 @@ def test_every_live_marker_defines_a_region_and_no_other_does():
         assert name in refused(proposal(region=region((name, "is", "x"))))
 
 
-def test_a_selection_claim_says_its_scope_in_words_from_its_datasets():
-    got = P.validate(selection(scope={"datasets": ["dataset_2", "dataset_1", "dataset_4"]},
-                               evidence={"datasets": ["dataset_1", "dataset_4"]}))
+def test_a_selection_claim_says_its_scope_is_its_authors_and_not_checked():
+    """The validator reads no sweep, so the scope's words say whose it is and that the sweeps did
+    not check it: a scope naming a dataset no sweep was read for is taken, and says so."""
+    got = P.validate(selection(scope={"datasets": ["dataset_2", "dataset_1", "dataset_9"]},
+                               evidence={"datasets": ["dataset_1", "dataset_2"]}))
     says = got.scope.says
-    assert says.startswith("Scoped to the 3 datasets where every swept selection kept a predictor "
-                           "(dataset_1, dataset_2, dataset_4)")
+    assert says.startswith("Scoped by its author to the 3 datasets dataset_1, dataset_2, "
+                           "dataset_9, which it states are those where every swept selection "
+                           "kept a predictor; that is not checked against the sweeps.")
     assert "intercept alone" in says
     one = P.validate(selection(scope={"datasets": ["dataset_1"]},
                                evidence={"datasets": ["dataset_1"]})).scope.says
-    assert one.startswith("Scoped to the 1 dataset where")
+    assert one.startswith("Scoped by its author to the 1 dataset dataset_1, which it states is "
+                          "the one where")
     # A scope's words are the validator's, whatever the proposal brought.
     brought = selection(scope={"datasets": ["dataset_1", "dataset_2"], "says": "Everywhere."})
-    assert P.validate(brought).scope.says.startswith("Scoped to the 2 datasets")
+    assert P.validate(brought).scope.says.startswith("Scoped by its author to the 2 datasets")
 
 
 def _orthogonal(n: int = 64) -> tuple[pd.DataFrame, pd.Series]:
@@ -211,9 +287,10 @@ def test_the_engines_gap_is_the_code_the_engine_refuses_an_empty_selection_with(
     with pytest.raises(StageRefusal) as limit:
         _selector("stepwise", list(X.columns)).fit(few, y6)
     assert limit.value.code == "stepwise_needs_rows" and limit.value.code not in P.ENGINE_GAPS
-    assert P.validate(selection(refits=refits(codes={limit.value.code: 2})))
-    gapped = selection(refits=refits(codes={gap.value.code: 2}))
-    assert "the engine's gap" in refused(gapped)
+    for claim in (selection, counted):  # under variable selection, and under another decision
+        assert check(claim(refits=refits(codes={limit.value.code: 2})))
+        gapped = claim(refits=refits(codes={gap.value.code: 2}))
+        assert "the engine's gap" in refused(gapped, sweeps=sweeps_of(gapped))
 
 
 def test_the_refusal_says_where_it_fires_in_plain_words():
@@ -231,19 +308,30 @@ def test_proposals_are_appended_once_each_and_read_back_validated(tmp_path):
     P.append(path, selection(id="p2"))
     got = P.read_proposals(path)
     assert [p.id for p in got] == ["p1", "p2"]
-    assert got[1].scope.says.startswith("Scoped to the 2 datasets")
+    assert got[1].scope.says.startswith("Scoped by its author to the 2 datasets")
+    assert got[0].refits.refits is None and got[0].refits.why == P.NOT_COUNTED
     with pytest.raises(P.ProposalRefused, match="p1 is proposed already"):
         P.append(path, proposal(id="p1"))
     assert [p.id for p in P.read_proposals(path)] == ["p1", "p2"]
+
+
+def test_a_counted_proposal_is_appended_and_read_back_only_beside_the_sweeps_count(tmp_path):
+    path = tmp_path / "proposals.jsonl"
+    p3 = counted(id="p3")
+    P.append(path, p3, sweeps=sweeps_of(p3))
+    assert [p.refits.refits for p in P.read_proposals(path, sweeps=sweeps_of(p3))] == [10]
+    with pytest.raises(P.ProposalRefused, match="no sweeps table is read here"):
+        P.read_proposals(path)
 
 
 def test_a_refused_proposal_is_not_appended(tmp_path):
     path = tmp_path / "proposals.jsonl"
     P.append(path, proposal(id="p1"))
     before = path.read_bytes()
-    with pytest.raises(P.ProposalRefused):
-        P.append(path, proposal(id="p2", region=[]))
-    assert path.read_bytes() == before
+    for bad in (proposal(id="p2", region=[]), counted(id="p3")):  # a count no sweep checks
+        with pytest.raises(P.ProposalRefused):
+            P.append(path, bad)
+        assert path.read_bytes() == before
 
 
 def test_a_file_that_is_not_a_proposals_file_is_neither_read_nor_appended_to(tmp_path):

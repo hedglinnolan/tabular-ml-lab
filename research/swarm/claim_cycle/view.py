@@ -5,11 +5,16 @@ The theorist proposes from the corpus, and in the shuffled control from a copy o
 are permuted across datasets with records carrying a planted effect appended (``shuffle.py``). A
 proposal from the copy should come only from the theorist's prior or from the planted effect, so
 the view holds only what a structured proposal is built from (``proposal.py``: the decision, its
-materiality as the engine measured it, the markers, the loss, the refusals), as numbers and as the
-engine's and the vocabulary's own names, and nothing that would tell the copy from the corpus or a
-planted record from a real one. Every field of the record is either served (:data:`FIELDS`) or
-withheld with why (:data:`WITHHELD`); a field the record gains later is served by no one until it
-is classed. Withheld, by kind:
+materiality as the engine measured it, the live markers, the loss, the refusals), as numbers and as
+the engine's and the vocabulary's own names. It holds none of the analyst's words, none of the
+names the question and the decisions give the dataset's columns, nothing that says a dataset is a
+control, and nothing a planted record keeps whole from its template. It does not hide by itself
+that a record is in a copy: where the copy permutes a live marker that restates the record's own
+question or fits, the two can disagree in the view (the purpose axis's markers beside
+``question.purpose``, the fits' ``primary_metric`` and the form of a decision's materiality), and
+the view serves both as the record holds them. Every field of the record is either served
+(:data:`FIELDS`) or withheld with why (:data:`WITHHELD`); a field the record gains later is served
+by no one until it is classed. Withheld, by kind:
 
 * what the blind view takes out (``record.redacted``: the analyst's model, persona, effort, prompt
   version and spend), and every time, since the gaps between an agent's commands can tell its
@@ -29,7 +34,11 @@ is classed. Withheld, by kind:
 * the engine's words beside a number (whys, a refusal's message, a fit's folds), which can count
   the dataset's own rows; the codes and the numbers are kept;
 * the result and each fit's scores: post hoc, keyed by nothing; and the regime's readings the
-  markers restate.
+  markers restate;
+* the post hoc markers, the signal and the result (``vocabulary.POST_HOC``): they restate the
+  run's result and its fit's scores, the held-out score among them, and key nothing; a shuffled
+  copy permutes them with the regime, so there they are another dataset's, beside fits they do not
+  describe. The view's markers, the regime's and each fit's, are the live ones only.
 
 **The sealed file** is never read: a path that is the sealed file, or a folder that holds it, is
 refused, and so is a folder holding any other file that is not a record (a failed run's, under
@@ -42,6 +51,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
 from research.swarm import record as R
+from research.swarm import vocabulary as V
 
 # The view's fields, each a section and a key of the record, served as named here: the dataset's
 # id as its label, fits named by their seq, and each nested entry with its numbers and names only
@@ -80,6 +90,11 @@ RESULT_WHY = ("It is the run's result or a fit's scores, post hoc and keyed by n
               "§1); a decision's materiality and each fit's signed change carry what a proposal "
               "rests on.")
 RESTATED_WHY = "The regime's markers hold this reading; the view reads it there."
+POST_HOC_WHY = ("It is a post hoc marker: it restates the run's result and its fit's scores, the "
+                "held-out score among them, known only after the run and keyed by nothing "
+                "(SWARM_PLAN §1); a shuffled copy permutes it with the regime, so there it is "
+                "another dataset's, beside fits it does not describe. The view serves the live "
+                "markers only.")
 DECLARED_WHY = ("A declared marker is quoted from the dataset's documentation, not read live: a "
                 "region is drawn on live markers, and the quote names the dataset.")
 OTHER_WHY = "It is the run's own bookkeeping, which no proposal is built from."
@@ -115,6 +130,7 @@ WITHHELD: dict[str, str] = {
            "attempts.at_opening", "attempts.effects"),
     **_all(RESTATED_WHY, "regime.n_rows", "regime.n_analyzed", "regime.task", "regime.events",
            "regime.missing", "regime.design"),
+    **_all(POST_HOC_WHY, *(f"regime.markers.{name}" for name in V.POST_HOC)),
     **_all(DECLARED_WHY, "dataset.declared"),
     **_all(OTHER_WHY, "version", "run.design", "run.engine_commit", "run.engine_modified",
            "run.engine_version", "run.vocabulary", "run.redacted", "run.fits", "run.fit_seconds",
@@ -192,6 +208,11 @@ def _marker(m: dict[str, Any]) -> dict[str, Any]:
     return {k: m.get(k) for k in ("name", "axis", "timing", "value")}
 
 
+def _live(markers: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The live markers of ``markers``, each with its name, axis, timing and value."""
+    return [_marker(m) for m in markers if m.get("timing") == "live"]
+
+
 MOVED = ("value", "band", "calibrated", "crosses", "changes_question", "not_measurable",
          "instrument")
 CHANGED = ("family", "metric", "paired", "difference", "better", "se", "df", "ci_low", "ci_high",
@@ -231,14 +252,13 @@ def view(rec: Any, label: str) -> dict[str, Any]:
         "run": {"id": data["run"]["id"]},
         "dataset": {"id": label},
         "question": {"purpose": data["question"]["purpose"]},
-        "regime": {"markers": [_marker(m) for m in data["regime"]["markers"]]},
+        "regime": {"markers": _live(data["regime"]["markers"])},
         "decisions": [{"seq": d["seq"], "kind": d["kind"], "source": d["source"],
                        "phase": d["phase"], "materiality": _materiality(d["materiality"], seq)}
                       for d in data["decisions"]],
         "attempts": [{"seq": a["seq"], "decisions": a["decisions"], "changed": a["changed"],
                       "families": a["families"], "primary_metric": a["primary_metric"],
-                      "markers": None if a["markers"] is None else [_marker(m)
-                                                                    for m in a["markers"]],
+                      "markers": None if a["markers"] is None else _live(a["markers"]),
                       "movement": [_moved(e, seq) for e in a["movement"]],
                       "change": [{**{k: c.get(k) for k in CHANGED}, "against": seq(c["against"])}
                                  for c in a["change"]]}
@@ -301,5 +321,6 @@ def index(vs: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
              "attempts": len(v["attempts"])} for v in vs]
 
 
-__all__ = ["FIELDS", "ReadRefused", "SEALED_KEYS", "SEALED_REFUSAL", "WITHHELD", "check_fields",
-           "index", "is_sealed", "labels", "project", "read", "read_records", "view", "views"]
+__all__ = ["FIELDS", "POST_HOC_WHY", "ReadRefused", "SEALED_KEYS", "SEALED_REFUSAL", "WITHHELD",
+           "check_fields", "index", "is_sealed", "labels", "project", "read", "read_records",
+           "view", "views"]

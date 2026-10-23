@@ -45,7 +45,7 @@ and "the model of the clinic", never "the clinic's model".
 - `propose --out <file> '<proposal>'`: checks one proposal and adds it to the proposals file, or
   prints why it is refused; a refused proposal is not added, so fix it and propose it again.
 
-      scripts/py -m research.swarm.claim_cycle.tools propose --out cycle/proposals.jsonl '{"id": "p1", "author": "theorist A", "decision": "set_missing", "region": [{"marker": "complete_case_share", "op": "below", "threshold": 0.8}], "direction": "material", "size": 0.02, "loss": {"purpose": "prediction", "metric": "log_loss"}, "refits": {"refits": 0, "refused": 0, "share": null}, "evidence": {"datasets": ["dataset_1", "dataset_3"], "runs": ["run_01-a1", "run_04-b2"]}, "basis": "Filling the blanks moved log loss materially in the three records whose complete-case share was below 0.8, and by little in the two above it."}'
+      scripts/py -m research.swarm.claim_cycle.tools propose --out cycle/proposals.jsonl '{"id": "p1", "author": "theorist A", "decision": "set_missing", "region": [{"marker": "complete_case_share", "op": "below", "threshold": 0.8}], "direction": "material", "size": 0.02, "loss": {"purpose": "prediction", "metric": "log_loss"}, "refits": null, "evidence": {"datasets": ["dataset_1", "dataset_3"], "runs": ["run_01-a1", "run_04-b2"]}, "basis": "Filling the blanks moved log loss materially in the three records whose complete-case share was below 0.8, and by little in the two above it."}'
 
 ## What a record shows you
 
@@ -53,8 +53,8 @@ The fields `records` serves, and nothing else:
 
 - `run.id`; `dataset.id`, a label in the order the datasets first appear; `question.purpose`,
   `prediction` or `inference`.
-- `regime.markers`: each marker the engine read at the end of the run, with its `name`, `axis`,
-  `timing` (`live`, or `post_hoc`) and `value` (null where the engine served none).
+- `regime.markers`: each live marker the engine read at the end of the run, with its `name`,
+  `axis`, `timing` (`live`) and `value` (null where the engine served none).
 - `decisions`: each decision's `seq`, its `kind`, its `source` (`analyst`, or `app` for one the
   app recorded itself), its `phase` (`before`, `after_estimates` or `after_seal`), and its
   `materiality`, how far the engine measured it to move the result:
@@ -79,8 +79,8 @@ The fields `records` serves, and nothing else:
 Under Predict, a change is **material** where its interval excludes zero and the size of its
 difference is at least half of `half_width`; under Estimate, where it shifts the estimate by at
 least half the estimate's interval half-width (SWARM_PLAN §7). These numbers are the engine's at
-the analysts' own fits. Two markers, the signal and the result, are known only after a run: they
-describe evidence and key nothing, so no region names them.
+the analysts' own fits. The two markers known only after a run, the signal and the result, are not
+served: they restate the run's result, key nothing, and no region names them.
 
 ## The markers
 
@@ -115,23 +115,24 @@ One JSON object, as in the `propose` example:
 - `loss`: `{"purpose": "prediction", "metric": ...}` with the fits' `primary_metric`, or
   `{"purpose": "inference", "measure": ...}` with the effect measure the regime's `estimand`
   marker names.
-- `refits`: the decision's refits in the region in the sweeps' tables, which these tools do not
-  read: write `{"refits": 0, "refused": 0, "share": null}`. (Where refits are counted, `share` is
-  `refused` over `refits`, `codes` counts each refusal's code, and `one_region` says whether the
-  refusals sit in one marker region, with that `region`.)
+- `refits`: write `null`. A proposal's refits are the decision's refits in its region in the
+  sweeps' tables, which these tools do not read, so they are not counted, and the check writes
+  that beside the proposal. A count is refused, since nothing here can check it; never write `0`
+  for a count you do not have.
 - `evidence`: the dataset labels and run ids the proposal rests on.
 - `basis`: in plain words, what in the records it rests on, quoting the view's numbers.
 
-A claim about variable selection, `set_selection`, is scoped to the datasets where every swept
-selection kept a predictor, since until the engine fits the intercept alone a selection that keeps
-none is refused with `nothing_kept`. Only the sweeps' tables show where that holds, and these
-tools do not read them, so propose nothing about `set_selection`.
+A claim about variable selection, `set_selection`, must be scoped to the datasets where every
+swept selection kept a predictor, since until the engine fits the intercept alone a selection that
+keeps none is refused with `nothing_kept`. Only the sweeps' tables show where that holds, and
+these tools do not read them, so propose nothing about `set_selection`.
 
 ## How you work
 
 1. **Survey.** Run `index`, then read the decisions' kinds and materiality across the corpus
    (`records --fields decisions.kind,decisions.materiality`).
-2. **Pick a decision kind** with a measured materiality in at least two datasets.
+2. **Pick a decision kind** with a measured materiality in at least two records, on one dataset
+   or several.
 3. **Look for a separation.** Read those records' markers and signed changes. Where the decision
    was material in some records and not in others, find the live marker whose values put all of
    one kind on one side of a threshold and the rest on the other. One marker is better than two;
@@ -146,7 +147,7 @@ tools do not read them, so propose nothing about `set_selection`.
 
 ## When you stop
 
-Stop when every decision kind with a measured materiality in at least two datasets has been
+Stop when every decision kind with a measured materiality in at least two records has been
 examined once, and each separation you found is proposed or set aside. Then reply in a few lines:
 how many proposals you made and their ids, and the decision kinds you examined and proposed
 nothing for.

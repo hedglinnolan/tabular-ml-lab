@@ -16,21 +16,30 @@ the result by a material amount, or does not. Its fields:
   or ``not_material``; ``size``: how far, in the loss's units, at least 0;
 * ``loss``: the purpose, with the primary score under Predict (a metric the engine scores) or the
   estimand's measure under Estimate (one the engine estimates);
-* ``refits``: the decision's refits in the region, as the sweeps count them: how many, how many the
-  engine refused, **the share refused** (stated, and refused unless it is the counts' own, to three
-  decimals, and then kept as the counts give it; none where there was no refit), each refusal's
-  code with its count, and **whether the refusals sit in one marker region** (``one_region``, and
-  that ``region``, drawn as a claim's is), said exactly where some refit was refused;
+* ``refits``: the decision's refits in the region, **not counted** or **counted as the sweeps count
+  them**. SWARM_PLAN §9 asks a proposal for the share of its decision's refits refused in its
+  region, and only the sweeps' tables hold those refits, which the claim cycle's tools do not
+  read: a proposal from them leaves its refits not counted (``null``), and the validator labels it
+  so in its own words (:data:`NOT_COUNTED`), never with a zero. A count is taken only where the
+  sweeps' own count for the proposal is given (:func:`validate`'s ``sweeps``) and it states that
+  count; else it is refused as a count no one checked. A counted proposal states how many refits,
+  how many the engine refused, **the share refused** (refused unless it is the counts' own, to
+  three decimals, and then kept as the counts give it; none where there was no refit), each
+  refusal's code with its count, and **whether the refusals sit in one marker region**
+  (``one_region``, and that ``region``, drawn as a claim's is), said exactly where some refit was
+  refused. A refusal that is the engine's gap (:data:`ENGINE_GAPS`, the code the engine refuses an
+  empty selection with) is not part of any claim (SWARM_PLAN §9), so a count holding one is
+  refused under every decision; a refusal that is the method's own limit (backward elimination
+  where the columns outnumber the fold's rows) is part of the claim, and counts;
 * ``evidence``: the datasets the proposal rests on, by the labels the reading tools give them
   (``view.py``), and its runs;
 * ``scope``: **a claim about variable selection** (``set_selection``) only. Until the engine fits
   the intercept alone where a selection keeps no predictor (SWARM_PLAN §8), such a claim is scoped
   to the datasets where every swept selection kept a predictor, and says so (SWARM_PLAN §9): it is
-  refused without a scope, where a refit of it was refused for the engine's gap
-  (:data:`ENGINE_GAPS`, the code the engine refuses an empty selection with), and where its
-  evidence names a dataset outside its scope. A refusal that is the method's own limit (backward
-  elimination where the columns outnumber the fold's rows) is part of the claim, and counts. The
-  scope's words (``says``) are the validator's, never the proposal's;
+  refused without a scope and where its evidence names a dataset outside it. The validator reads
+  no sweep, so it cannot check that the scope's datasets are those, and its words (``says``) say
+  the scope is its author's and not checked against the sweeps. The words are the validator's,
+  never the proposal's;
 * ``basis``: in the theorist's words, what in the corpus the proposal rests on;
 * ``status`` and ``grade``: **proposed and unsupported**, the only ones a proposal enters with
   (CLAIMS_REGISTRY §8): only the mechanical tests, the two-referee gate and the basis audit move it.
@@ -51,7 +60,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (BaseModel, ConfigDict, Field, ValidationError, ValidationInfo,
+                      field_validator, model_validator)
 
 from research.swarm import vocabulary as V
 
@@ -72,6 +82,12 @@ SELECTION = "set_selection"
 ENGINE_GAPS = {"nothing_kept": "the intercept-only fit where a selection keeps no predictor "
                                "(SWARM_PLAN §8, after the pilot)"}
 SHARE_DIGITS = 3  # a stated share is the counts' own to this many decimals
+# What the validator writes beside refits not counted: what the proposal lacks, and why.
+NOT_COUNTED = ("Not counted: the proposal states no count of its decision's refits in its region, "
+               "so no share of them refused, which SWARM_PLAN §9 asks of a proposal; the claim "
+               "cycle's tools read no sweeps table to count them.")
+# The counts a sweeps table gives for a proposal, and a count states.
+COUNTS = ("refits", "refused", "codes")
 
 
 class ProposalRefused(ValueError):
@@ -201,20 +217,35 @@ def _share_of(refused: int, refits: int) -> float:
 
 
 class Refits(_Strict):
-    """The decision's refits in the proposal's region, as the sweeps count them (SWARM_PLAN §7:
-    each refit scored, refused with the engine's reason, or failed): how many, how many refused,
-    the share refused, each refusal's code and count, and where the refusals sit."""
+    """The decision's refits in the proposal's region (the module docstring): not counted
+    (``refits`` null; every other count null, and ``why`` the validator's :data:`NOT_COUNTED`), or
+    counted as the sweeps count them (SWARM_PLAN §6: each refit scored, refused with the engine's
+    reason, or failed): how many, how many refused, the share refused, each refusal's code and
+    count, and where the refusals sit (``why`` null)."""
 
-    refits: int = Field(ge=0)
-    refused: int = Field(ge=0)
-    share: float | None
+    refits: int | None = Field(default=None, ge=0)
+    refused: int | None = Field(default=None, ge=0)
+    share: float | None = None
     codes: dict[str, int] = {}
     one_region: bool | None = None
     region: list[Bound] | None = None
+    why: str | None = None
 
     @model_validator(mode="after")
     def _counted(self) -> "Refits":
         n, k = self.refits, self.refused
+        if n is None:
+            stated = [f for f in ("refused", "share", "one_region", "region")
+                      if getattr(self, f) is not None] + (["codes"] if self.codes else [])
+            if stated:
+                raise ValueError(f"Its refits are not counted (refits null), so it states no "
+                                 f"{', '.join(stated)}: each is read from a count.")
+            self.why = NOT_COUNTED
+            return self
+        self.why = None
+        if k is None:
+            raise ValueError(f"It counts {n} refit{'' if n == 1 else 's'}: say how many were "
+                             f"refused (refused).")
         if k > n:
             raise ValueError(f"It counts more refits refused than refitted ({k} of {n}).")
         if n == 0:
@@ -253,22 +284,31 @@ class Refits(_Strict):
         return self
 
 
+def _counts(c: dict[str, Any]) -> str:
+    n, k = c.get("refits"), c.get("refused")
+    codes = ", ".join(f"{code} {m}" for code, m in sorted((c.get("codes") or {}).items()))
+    return (f"{n} refit{'' if n == 1 else 's'}, {k} refused"
+            + (f" ({codes})" if codes else ""))
+
+
 class Scope(_Strict):
-    """A claim about variable selection's scope (SWARM_PLAN §9): the datasets where every swept
-    selection kept a predictor, and the validator's words for it."""
+    """A claim about variable selection's scope (SWARM_PLAN §9): the datasets its author states are
+    those where every swept selection kept a predictor, and the validator's words for it."""
 
     datasets: list[str] = Field(min_length=1)
     says: str | None = None
 
 
 def scope_words(datasets: list[str]) -> str:
-    """What a selection claim's scope says, from its datasets."""
+    """What a selection claim's scope says, from its datasets: its author's, not checked."""
     named = sorted(set(datasets))
     n = len(named)
-    return (f"Scoped to the {n} dataset{'' if n == 1 else 's'} where every swept selection kept a "
-            f"predictor ({', '.join(named)}): until the engine fits the intercept alone where a "
-            f"selection keeps none (SWARM_PLAN §8), the claim says nothing of a dataset where one "
-            f"kept none.")
+    those = ("the 1 dataset {}, which it states is the one" if n == 1 else
+             f"the {n} datasets {{}}, which it states are those").format(", ".join(named))
+    return (f"Scoped by its author to {those} where every swept selection kept a predictor; that "
+            f"is not checked against the sweeps. Until the engine fits the intercept alone where "
+            f"a selection keeps none (SWARM_PLAN §8), the claim says nothing of a dataset where "
+            f"one kept none.")
 
 
 class Evidence(_Strict):
@@ -305,8 +345,13 @@ class Proposal(_Strict):
             raise ValueError(ENTRY)
         return data
 
+    @field_validator("refits", mode="before")
+    @classmethod
+    def _null_is_not_counted(cls, value: Any) -> Any:
+        return {} if value is None else value
+
     @model_validator(mode="after")
-    def _a_surfacing_claim(self) -> "Proposal":
+    def _a_surfacing_claim(self, info: ValidationInfo) -> "Proposal":
         if not self.region:
             raise ValueError("The region names no live marker, so it is not a surfacing claim: a "
                              "claim keys the app on live markers read before the decision "
@@ -318,6 +363,18 @@ class Proposal(_Strict):
         if self.decision in PROTOCOL:
             raise ValueError(f"`{self.decision}` records the protocol, not a modeling choice a "
                              f"sweep changes.")
+        self._checked_against((info.context or {}).get("sweeps"))
+        gaps = {c: k for c, k in self.refits.codes.items() if c in ENGINE_GAPS}
+        if gaps:
+            code, k = sorted(gaps.items())[0]
+            gap = (f"{k} of its refits {'was' if k == 1 else 'were'} refused with `{code}`, the "
+                   f"engine's gap ({ENGINE_GAPS[code]}), not the method's own limit, so not part "
+                   f"of a claim (SWARM_PLAN §9)")
+            if self.decision == SELECTION:
+                raise ValueError(f"{gap}: scope the claim to the datasets where every swept "
+                                 f"selection kept a predictor, whose refits hold no such refusal.")
+            raise ValueError(f"{gap}: a claim about `{self.decision}` counts no refit refused "
+                             f"for the engine's gap.")
         if self.decision != SELECTION:
             if self.scope is not None:
                 raise ValueError(f"Only a claim about variable selection (`{SELECTION}`) is scoped "
@@ -329,13 +386,6 @@ class Proposal(_Strict):
                              f"every swept selection kept a predictor, until the engine fits the "
                              f"intercept alone where a selection keeps none (SWARM_PLAN §8, §9): "
                              f"name them in scope.datasets.")
-        gaps = {c: k for c, k in self.refits.codes.items() if c in ENGINE_GAPS}
-        if gaps:
-            code, k = sorted(gaps.items())[0]
-            raise ValueError(f"{k} of its refits {'was' if k == 1 else 'were'} refused with "
-                             f"`{code}`, the engine's gap ({ENGINE_GAPS[code]}), not the method's "
-                             f"own limit: scope the claim to the datasets where every swept "
-                             f"selection kept a predictor, whose refits hold no such refusal.")
         outside = sorted(set(self.evidence.datasets) - set(self.scope.datasets))
         if outside:
             raise ValueError(f"Its evidence names {', '.join(outside)}, outside its scope: a claim "
@@ -343,6 +393,26 @@ class Proposal(_Strict):
                              f"swept selection kept a predictor.")
         self.scope.says = scope_words(self.scope.datasets)
         return self
+
+    def _checked_against(self, sweeps: Any) -> None:
+        """A count is the sweeps' own for this proposal, or refused (the module docstring)."""
+        n = self.refits.refits
+        if n is None:
+            return
+        counts = f"It counts {n} refit{'' if n == 1 else 's'}"
+        if not isinstance(sweeps, dict):
+            raise ValueError(f"{counts}, but no sweeps table is read here, so nothing checks the "
+                             f"count: leave the refits not counted (refits null).")
+        theirs = sweeps.get(self.id)
+        if not isinstance(theirs, dict):
+            raise ValueError(f"{counts}, but the sweeps table read here holds no count for "
+                             f"{self.id}, so nothing checks it: leave the refits not counted "
+                             f"(refits null).")
+        stated = {"refits": n, "refused": self.refits.refused, "codes": dict(self.refits.codes)}
+        given = {k: (dict(theirs.get(k) or {}) if k == "codes" else theirs.get(k))
+                 for k in COUNTS}
+        if stated != given:
+            raise ValueError(f"It counts {_counts(stated)}; the sweeps count {_counts(given)}.")
 
 
 def _words(exc: ValidationError) -> str:
@@ -354,14 +424,28 @@ def _words(exc: ValidationError) -> str:
     return "The proposal is refused: " + "; ".join(parts)
 
 
-def validate(data: Any) -> Proposal:
-    """``data`` as a :class:`Proposal`, or :class:`ProposalRefused` saying what fails."""
+Sweeps = dict[str, dict[str, Any]]
+
+
+def validate(data: Any, sweeps: Sweeps | None = None) -> Proposal:
+    """``data`` as a :class:`Proposal`, or :class:`ProposalRefused` saying what fails. ``sweeps``,
+    where a sweeps table has been read, gives for each proposal id its decision's refits in its
+    region as the sweeps count them (:data:`COUNTS`: ``refits``, ``refused`` and ``codes``); a
+    proposal that counts its refits is taken only where it states that count. The claim cycle's
+    tools read no sweeps table, so they give none."""
     if not isinstance(data, dict):
         raise ProposalRefused("The proposal is refused: a proposal is one JSON object.")
     try:
-        return Proposal.model_validate(data)
+        return Proposal.model_validate(data, context={"sweeps": sweeps})
     except ValidationError as exc:
         raise ProposalRefused(_words(exc)) from None
+
+
+def proposable(kind: str) -> bool:
+    """Whether a theorist may propose about the decision ``kind``: one the validator takes (a kind
+    the engine records, not one that records the protocol), and not variable selection, which the
+    theorist's prompt sets aside, since its scope is the sweeps' to show and the tools read none."""
+    return kind in decision_kinds() and kind not in PROTOCOL and kind != SELECTION
 
 
 # ── the proposals file ───────────────────────────────────────────────────────
@@ -378,9 +462,10 @@ def _not_sealed(path: Path, text: str) -> None:
         raise ProposalRefused(SEALED_REFUSAL)
 
 
-def read_proposals(path: str | Path) -> list[Proposal]:
-    """Every proposal of the proposals file at ``path``, each through the validator, in its order;
-    a file that is not one is refused, and its contents are not repeated."""
+def read_proposals(path: str | Path, sweeps: Sweeps | None = None) -> list[Proposal]:
+    """Every proposal of the proposals file at ``path``, each through the validator (beside
+    ``sweeps``, :func:`validate`'s), in its order; a file that is not one is refused, and its
+    contents are not repeated."""
     path = Path(path)
     if not path.is_file():
         raise ProposalRefused(f"{path.name} is not a proposals file: there is no file there.")
@@ -396,7 +481,7 @@ def read_proposals(path: str | Path) -> list[Proposal]:
             raise ProposalRefused(f"Line {i} of {path.name} is not a proposal: it is not one JSON "
                                   f"object, so {path.name} is not a proposals file.") from None
         try:
-            got = validate(data)
+            got = validate(data, sweeps)
         except ProposalRefused as exc:
             raise ProposalRefused(f"Line {i} of {path.name}: {exc}") from None
         if got.id in {p.id for p in out}:
@@ -405,16 +490,17 @@ def read_proposals(path: str | Path) -> list[Proposal]:
     return out
 
 
-def append(path: str | Path, data: Any) -> Proposal:
-    """``data`` validated and appended to the proposals file at ``path`` (created if its folder
-    exists), once under its id; refused, and nothing written, otherwise."""
+def append(path: str | Path, data: Any, sweeps: Sweeps | None = None) -> Proposal:
+    """``data`` validated (beside ``sweeps``, :func:`validate`'s) and appended to the proposals
+    file at ``path`` (created if its folder exists), once under its id; refused, and nothing
+    written, otherwise."""
     path = Path(path)
-    existing = read_proposals(path) if path.exists() else []
+    existing = read_proposals(path, sweeps) if path.exists() else []
     if path.suffix != ".jsonl":
         raise ProposalRefused(f"A proposals file is JSON lines, named .jsonl, not {path.name}.")
     if not path.parent.is_dir():
         raise ProposalRefused(f"The proposals file's folder, {path.parent}, does not exist.")
-    got = validate(data)
+    got = validate(data, sweeps)
     if got.id in {p.id for p in existing}:
         raise ProposalRefused(f"{got.id} is proposed already in {path.name}; a proposal is "
                               f"appended once, under an id of its own.")
@@ -423,7 +509,7 @@ def append(path: str | Path, data: Any) -> Proposal:
     return got
 
 
-__all__ = ["Bound", "DIRECTIONS", "ENGINE_GAPS", "ENTRY", "Evidence", "GRADE", "Loss", "NUMERIC",
-           "OPS", "PROTOCOL", "Proposal", "ProposalRefused", "Refits", "SELECTION", "STATUS",
-           "Scope", "append", "decision_kinds", "measures", "metrics", "read_proposals",
-           "scope_words", "validate"]
+__all__ = ["Bound", "COUNTS", "DIRECTIONS", "ENGINE_GAPS", "ENTRY", "Evidence", "GRADE", "Loss",
+           "NOT_COUNTED", "NUMERIC", "OPS", "PROTOCOL", "Proposal", "ProposalRefused", "Refits",
+           "SELECTION", "STATUS", "Scope", "Sweeps", "append", "decision_kinds", "measures",
+           "metrics", "proposable", "read_proposals", "scope_words", "validate"]

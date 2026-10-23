@@ -15,12 +15,13 @@ from typing import Any, Callable
 
 import pytest
 
+from research.swarm import markers as M
 from research.swarm import record as R
 from research.swarm import shuffle as S
 from research.swarm.claim_cycle import proposal as P
 from research.swarm.claim_cycle import tools as T
 from research.swarm.claim_cycle import view as W
-from research.swarm.claim_cycle.tests.constructed import proposal
+from research.swarm.claim_cycle.tests.constructed import counted, proposal
 from research.swarm.tests import test_shuffle as TS
 from research.swarm.tests.constructed import marker, predict_record
 
@@ -89,6 +90,15 @@ def _failed_fit(rec):
                                                      "exits": []}}]
 
 
+def _post_hoc(rec):
+    """The two post hoc markers, the signal and the result, with values of their own."""
+    rec["regime"]["markers"] = [m for m in rec["regime"]["markers"] if m["timing"] != "post_hoc"]
+    rec["regime"]["markers"] += [
+        marker("signal", {"family": "sentinel_family", "metric": "auc", "estimate": 0.5,
+                          "ci_low": 0.4, "ci_high": 0.6}),
+        marker("result", {"family": "linear", "metric": "auc", "held_out": 0.8765432123})]
+
+
 def _account(rec):
     rec["account"] = {"at": LATER, "text": "sentinel account", "after_results": True,
                       "after_seal": True}
@@ -139,8 +149,10 @@ WITHHELD: dict[str, tuple[Callable[[dict], Any], str]] = {
     "regime.markers.basis": (lambda r: [m.update(basis="sentinel-basis") for m in
                                         r["regime"]["markers"] if m["value"] is not None],
                              "sentinel-basis"),
-    "regime.markers.why": (lambda r: r["regime"]["markers"][2].update(why="sentinel marker why"),
-                           "sentinel marker why"),
+    "regime.markers.why": (lambda r: r["regime"]["markers"].append(
+        marker("omics_scale", why="sentinel marker why")), "sentinel marker why"),
+    "regime.markers.signal": (_post_hoc, "sentinel_family"),
+    "regime.markers.result": (_post_hoc, "0.8765432123"),
     "decisions.id": (lambda r: [d.update(id=f"sentinel-id-{d['seq']}") for d in r["decisions"]],
                      "sentinel-id"),
     "decisions.at": (lambda r: each(r, "decisions", at=LATER), "2031"),
@@ -360,6 +372,60 @@ def test_the_tools_filter_by_run_and_dataset(tmp_path):
                                               "attempts": 2}
 
 
+def _fitting(run_id: str, dataset: str, names: dict[str, str], cv: float, held_out: float) -> dict:
+    """The constructed Predict record on ``dataset``, its families and metric renamed by
+    ``names``; the reported family's cross-validated score at the result's fit is ``cv`` and its
+    held-out score ``held_out``, and its post hoc markers are read from its own result and fits
+    as the driver reads them (``markers.post_hoc``)."""
+    text = json.dumps(predict_record())
+    for old, new in names.items():
+        text = text.replace(f'"{old}"', f'"{new}"')
+    rec = json.loads(text)
+    rec["run"]["id"], rec["dataset"]["id"] = run_id, dataset
+    family, metric = rec["result"]["family"], rec["result"]["metric"]
+    rec["attempts"][1]["scores"][family][metric]["estimate"] = cv
+    rec["result"]["scores"][family][metric] = held_out
+    rec["regime"]["markers"] = [marker("rows", 480), marker("rows_analyzed", 480),
+                                *M.post_hoc(rec["result"], rec["attempts"])]
+    R.validate(rec)
+    return rec
+
+
+def test_no_marker_known_only_after_a_run_reaches_the_view_of_the_copy_or_the_corpus(tmp_path):
+    """The verifier's P6D-4. The copy takes each record's donor's whole regime, post hoc markers
+    and all (``shuffle.py``), so a record fitting `linear` and `elastic_net` on AUC holds a signal
+    naming another dataset's `random_forest` on the Brier score, with that run's scores. The view
+    serves live markers only: the donor's families, metric and scores never reach a record's view,
+    nor a record's own held-out score, in the copy or in the corpus."""
+    renamed = {"linear": "random_forest", "elastic_net": "gradient_boosting", "auc": "brier"}
+    one = _fitting("run_01-aa", "d1", {}, cv=0.7411111, held_out=0.7122222)
+    two = _fitting("run_02-bb", "d2", renamed, cv=0.2433333, held_out=0.2144444)
+    src = written(tmp_path / "corpus", one, two)
+    S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=1, k=0)
+    copied = {r["dataset"]["id"]: r for r in (json.loads(p.read_text())
+                                               for p in (tmp_path / "copy").glob("*.json"))}
+    # The construction: in the copy, d1's record holds d2's post hoc markers beside its own fits.
+    held = {m["name"]: m["value"] for m in copied["d1"]["regime"]["markers"]
+            if m["timing"] == "post_hoc"}
+    assert held["signal"]["family"] == "random_forest" and held["result"]["held_out"] == 0.2144444
+    assert copied["d1"]["attempts"][1]["families"] == ["linear", "elastic_net"]
+    # Each dataset's own words and numbers, which no other dataset's view may hold.
+    own = {"dataset_1": ('"linear"', '"elastic_net"', '"auc"', "0.7411111", "0.7122222"),
+           "dataset_2": ('"random_forest"', '"gradient_boosting"', '"brier"', "0.2433333",
+                         "0.2144444")}
+    for folder in (tmp_path / "copy", src):
+        for v in W.read(folder):
+            assert v["regime"]["markers"] and all(m["timing"] == "live"
+                                                  for m in v["regime"]["markers"])
+            said = json.dumps(v)
+            assert "0.7122222" not in said and "0.2144444" not in said  # the held-out scores
+            other = "dataset_2" if v["dataset"]["id"] == "dataset_1" else "dataset_1"
+            assert not [w for w in own[other] if w in said], (folder.name, v["run"]["id"])
+            assert own[v["dataset"]["id"]][0] in said  # its own fits are served
+    code, said = printed(["records", str(tmp_path / "copy"), "--fields", "regime.markers.signal"])
+    assert code == 1 and W.POST_HOC_WHY in json.loads(said)["refused"]
+
+
 # ── the sealed file ──────────────────────────────────────────────────────────
 
 
@@ -436,8 +502,12 @@ def test_propose_validates_and_appends_and_proposals_reads_them_back(tmp_path):
     assert code == 0 and json.loads(said)["proposed"]["status"] == "proposed"
     code, said = printed(["propose", "--out", str(out), json.dumps(proposal(id="p2", region=[]))])
     assert code == 1 and "not a surfacing claim" in json.loads(said)["refused"]
+    # A count the tools cannot check (they read no sweeps table) is refused, and not appended.
+    code, said = printed(["propose", "--out", str(out), json.dumps(counted(id="p3"))])
+    assert code == 1 and "no sweeps table is read here" in json.loads(said)["refused"]
     code, said = printed(["proposals", str(out)])
     assert code == 0 and [p["id"] for p in json.loads(said)["proposals"]] == ["p1"]
+    assert json.loads(said)["proposals"][0]["refits"]["why"] == P.NOT_COUNTED
     assert [p.id for p in P.read_proposals(out)] == ["p1"]
 
 

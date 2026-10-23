@@ -240,6 +240,34 @@ def signed_times(rec):
                                                           if k != "dataset"}))]
 
 
+def _template_deciding(kind: str) -> dict:
+    """The constructed Predict record (fit2's whole change is the analyst's record #4), with
+    record #4 of decision kind ``kind``."""
+    rec = predict_record()
+    planted_scores(rec)
+    rec["decisions"][3]["kind"] = kind
+    return rec
+
+
+def test_the_planted_decision_is_one_a_theorist_can_propose_about():
+    """The planted effect's claim must be one the theorist can propose (SWARM_PLAN §9: "the planted
+    effect's claim proposed and routed"): a template's decision is one the validator takes and the
+    theorist's prompt does not set aside (`set_selection`), and every other kind the engine
+    records, one of the protocol's among them, is no template's."""
+    from research.swarm.claim_cycle import proposal as P
+    from research.swarm.claim_cycle.tests.constructed import proposal
+
+    kinds = sorted(P.decision_kinds())
+    plantable = {k for k in kinds if S._plantable(_template_deciding(k)) is not None}
+    assert "select_models" in plantable and not {"revert", "open_seal", P.SELECTION} & plantable
+    assert plantable == set(kinds) - set(P.PROTOCOL) - {P.SELECTION}
+    for kind in plantable:
+        assert P.validate(proposal(decision=kind)).decision == kind
+    for kind in set(kinds) - plantable - {P.SELECTION}:
+        with pytest.raises(P.ProposalRefused, match="records the protocol"):
+            P.validate(proposal(decision=kind))
+
+
 def test_a_corpus_with_no_record_to_plant_in_is_refused(tmp_path):
     src = corpus(tmp_path / "corpus")
     for path in src.glob("*.json"):
