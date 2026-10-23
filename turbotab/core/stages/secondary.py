@@ -16,7 +16,9 @@ imputations (the imputation model holds the secondary columns too).
 
 **The model** is the design's own pipeline, built again from the design spec with the secondary
 columns added (``models/pipeline.py``): every step, energy adjustment and imputation included, is the
-primary's. Only families with a coefficient table take part.
+primary's. Only families with a coefficient table take part; where none of the chosen families has
+one the stage is refused in words, each way forward a family that has one and whose table both
+models' rows give (``effects.no_table_refusal``).
 """
 from __future__ import annotations
 
@@ -62,10 +64,10 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.estimand import (current_estimand, exposure_key, exposures_of,
                                         primary_features, secondary_columns)
     from turbotab.core.models import get_family
-    from turbotab.core.models.base import reports_coefficients
     from turbotab.core.models.inference import Outcome, cluster_columns
     from turbotab.core.models.pipeline import DesignSpec, build_pipeline, design_spec, modeling_frame
     from turbotab.core.stages.data import open_store
+    from turbotab.core.stages.effects import has_coefficient_table, no_table_refusal
     from turbotab.core.stages.modeling import (_missing_for_table, _survey, _task, coded_outcome,
                                                fit_designs, outcome_levels, read_assignment)
     from turbotab.core.stages.sensitivity import fit_on_rows
@@ -92,10 +94,7 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     spec = DesignSpec.from_dict(design.objects["spec"])
     pipelines = design.objects["pipelines"]
     families = [get_family(k) for k in (state.models or []) if k in pipelines]
-    families = [f for f in families if reports_coefficients(f) and f.inference is not None]
-    if not families:
-        raise ValueError("None of the chosen model families has a coefficient table, so there is "
-                         "no estimate to set beside the primary's; choose the linear model.")
+    families = [f for f in families if has_coefficient_table(f)]
     assignment = read_assignment(ctx.inputs["split"])
     rows = assignment.index.to_numpy()  # every analyzed row (ruling 3)
     extra = [c for c in further if c not in spec.inputs]
@@ -143,6 +142,11 @@ def secondary_stage(ctx: StageContext) -> Bundle:
 
     every_unit = resolve_clusters(state, frame[list(unit_columns)]) if unit_columns else None
     survey, _ = _survey(ctx, every_unit)
+    if not families:
+        # Each way forward a family whose table both models' rows give.
+        raise no_table_refusal(state, task, "no estimate to set beside the primary's",
+                               [(s, frame[list(s.inputs)], every_unit) for s in (spec, spec2)],
+                               survey)
     n_cols = len(spec2.inputs) + 1
     keys = [f.key for f in families]
     analyses = [("Primary", spec, {f.key: pipelines[f.key] for f in families}),

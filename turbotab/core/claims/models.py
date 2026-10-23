@@ -937,6 +937,8 @@ COMPARISONS = register(Claim(
               truth="construction"),
         Fires(f"{REPEATS_TESTS}::test_while_no_split_is_drawn_on_the_answers_as_they_stand_the_"
               "rule_is_said", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_from_5000_units_of_two_rows_the_drawn_split_takes_5_repeats_"
+              "by_unit", truth="construction"),
         Fires(f"{REPEATS_METHODS_TESTS}::test_an_exclusion_after_the_split_moves_the_repeats_the_"
               "methods_text_says", truth="construction"),
         Fires(f"{REPEATS_METHODS_TESTS}::test_an_exclusion_withdrawn_after_the_split_moves_the_"
@@ -947,6 +949,8 @@ COMPARISONS = register(Claim(
                "below_5000_units", truth="construction"),
         Silent(f"{REPEATS_TESTS}::test_with_no_later_answer_the_methods_text_keeps_the_split_"
                "sentence_as_said", truth="construction"),
+        Silent(f"{REPEATS_TESTS}::test_below_5000_units_of_two_rows_the_drawn_split_keeps_10_"
+               "repeats_by_unit", truth="construction"),
     ),
     enforced_by=("turbotab.core.models.folds:comparison_repeats",
                  "turbotab.core.models.folds:comparison_folds",

@@ -127,46 +127,87 @@ SPLINE_MIN_VALUES = 6
 SPLINE_TOO_FEW = "spline_too_few_values"  # its fit-time refusal's code (SWARM_PLAN §8)
 
 
-def more_rows(column: str | None = None) -> str:
-    """The refusal's last way forward, in words that hold wherever it fires: the values a spline's
-    knots are placed on are the recorded ones among the caller's rows (a model's own complete
-    cases, a fold's, every analyzed row's observed values under multiple imputation), so it names
-    no answer, only rows that record ``column``."""
+def more_rows(column: str | None = None, *, above_zero: bool = False) -> str:
+    """The refusal's last way forward where more rows that record ``column`` would give its knots
+    more values: some rows the spline is fit on leave the column blank, or the caller does not say
+    how many rows the values come from (every analyzed row's observed values, on which multiple
+    imputation places the knots once). It names no answer, only rows that record ``column``;
+    ``above_zero``, the mass-at-zero spline's, rows that record a value above zero, the values its
+    knots are placed on."""
     named = f"`{column}`" if column else "the column"
+    if above_zero:
+        return (f"Keep more rows that record a value of {named} above zero: the knots are placed "
+                f"on its values above zero")
     return f"Keep more rows that record {named}: the knots are placed on its recorded values"
 
 
-def _too_few(n: int, column: str | None) -> Any:
+def fit_on_more() -> str:
+    """The refusal's last way forward where every row the spline is fit on gives it a value (Model
+    3 fit on the few rows that record the column it adds, say): more rows to fit on, where more
+    rows that record it would add none. It does not say that each row records the column: a
+    single fill runs before the form step, so a value may be a blank filled."""
+    return (f"Fit the model on more rows: the knots need {SPLINE_MIN_VALUES} values, one from "
+            f"each row")
+
+
+def _too_few(n: int, column: str | None, *, rows: int | None = None,
+             above_zero: bool = False) -> Any:
     """The refusal of a spline on ``n`` < :data:`SPLINE_MIN_VALUES` values of ``column`` (named
-    where the caller knows it): its ways forward enter the column as a straight line, where it has
-    a value to be fit on, or keep more rows that record it (:func:`more_rows`)."""
+    where the caller knows it), saying what was counted: of the ``rows`` it is fit on (where the
+    caller gives them) one value from each, where every row has one, or those that record it, or,
+    ``above_zero`` (the mass-at-zero spline), its values above zero. Where every row has a value
+    the words do not call them recorded, as a single fill before the form step gives a blank row
+    its value. Its ways forward enter the column as a straight line, where it has a value to be
+    fit on, and either fit the model on more rows, where every row has a value
+    (:func:`fit_on_more`), or keep more rows that record it (:func:`more_rows`)."""
     from turbotab.core.graph import StageRefusal
 
     named = f"`{column}`" if column else "the column"
-    of = f"A spline of `{column}`" if column else "A spline"
+    if above_zero:
+        of = (f"A spline of `{column}` among its values above zero" if column
+              else "A spline among the column's values above zero")
+        message = (f"{of} needs at least {SPLINE_MIN_VALUES} of them to place its knots; there "
+                   f"are {n}.")
+        last = more_rows(column, above_zero=True)
+    else:
+        of = f"A spline of `{column}`" if column else "A spline"
+        head = f"{of} needs at least {SPLINE_MIN_VALUES} recorded values to place its knots"
+        if rows and n == rows:
+            # Every row gives a value, which a fill before this step may have given: not "recorded".
+            each = "is 1, from the one row" if n == 1 else f"are {n}, one from each row"
+            message = (f"{of} needs at least {SPLINE_MIN_VALUES} values to place its knots; there "
+                       f"{each} it is fit on.")
+            last = fit_on_more()
+        elif rows:
+            message = (f"{head}; {n:,} of the {rows:,} rows it is fit on "
+                       f"{'records' if n == 1 else 'record'} it.")
+            last = more_rows(column)
+        else:
+            message, last = f"{head}; there are {n}.", more_rows(column)
     exits = ([{"label": f"Enter {named} as a straight line, which places no knots",
                "decision": None}] if n else [])
-    exits.append({"label": more_rows(column), "decision": None})
-    return StageRefusal(SPLINE_TOO_FEW, f"{of} needs at least {SPLINE_MIN_VALUES} recorded values "
-                                        f"to place its knots; there are {n}.", exits=exits)
+    exits.append({"label": last, "decision": None})
+    return StageRefusal(SPLINE_TOO_FEW, message, exits=exits)
 
 
 def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIED,
-              column: str | None = None) -> tuple[np.ndarray, list[str]]:
+              column: str | None = None, rows: int | None = None,
+              above_zero: bool = False) -> tuple[np.ndarray, list[str]]:
     """Knot locations as ``Hmisc::rcspline.eval`` places them when only their number is given.
 
     Returns the knots and plain notes on any departure from the nominal percentiles. Raises
     ``ValueError`` where ``rcspline.eval`` stops: fewer than :data:`SPLINE_MIN_VALUES` values (a
     fit-time refusal, ``graph.StageRefusal``, coded :data:`SPLINE_TOO_FEW`, so the record classes
-    it as refused, not a crash; it names ``column``, the spline's, where given), or fewer than 3
-    distinct knots.
+    it as refused, not a crash; it names ``column``, the spline's, where given, and says what it
+    counted: of the ``rows`` the values come from, where given, one from each or those that
+    record it, or the values above zero where ``above_zero``), or fewer than 3 distinct knots.
     """
     xx = np.asarray(x, dtype=float)
     xx = xx[np.isfinite(xx)]
     n = len(xx)
     nk = int(n_knots)
     if n < SPLINE_MIN_VALUES:
-        raise _too_few(n, column)
+        raise _too_few(n, column, rows=rows, above_zero=above_zero)
     if nk < 3:
         raise ValueError("A restricted cubic spline needs at least 3 knots.")
     notes: list[str] = []
@@ -434,24 +475,26 @@ def _field(spec: Any, name: str, default: Any = None) -> Any:
 
 
 def place(spec: Any, values: Any, y: Any = None, task: str | None = None, *,
-          column: str | None = None) -> dict[str, Any]:
+          column: str | None = None, rows: int | None = None) -> dict[str, Any]:
     """What a form learns from ``values`` (its recorded values on the fitting rows): a spline's
     knots, a mass at zero's knots among consumers, quintiles' cut points, declared categories'
     cut points, the minimum-p cut point (which reads ``y``); and, for a declared exposure's spline,
     the companion quintiles' cut points (``companion``). ``column``, where given, is named by a
-    spline's refusal of too few values."""
+    spline's refusal of too few values, and ``rows``, where given (the form step's fit, whose
+    ``values`` hold a blank for each row that has one, or a fill's value where a fill ran first),
+    are the rows that refusal counts the values among."""
     form, k = _form_of(spec)
     x = np.asarray(values, dtype=float)
     x = x[np.isfinite(x)]
     out: dict[str, Any] = {"form": form, "n_observed": int(len(x))}
     if form == "spline":
-        knots, notes = rcs_knots(x, k or DEFAULT_KNOTS, column=column)
+        knots, notes = rcs_knots(x, k or DEFAULT_KNOTS, column=column, rows=rows)
         out.update(knots=[float(v) for v in knots], notes=list(notes))
         if _field(spec, "companion"):
             out["companion_cuts"] = [float(v) for v in quantile_cuts(x)]
     elif form == "zero_spline":
         consumers = x[x > 0]
-        knots, notes = rcs_knots(consumers, k or DEFAULT_KNOTS)
+        knots, notes = rcs_knots(consumers, k or DEFAULT_KNOTS, column=column, above_zero=True)
         out.update(knots=[float(v) for v in knots], notes=list(notes),
                    zeros=int((x == 0).sum()))
     elif form == "quintiles":
@@ -548,7 +591,7 @@ class ExposureForms(TransformerMixin, BaseEstimator):
             if form == "optimal":
                 yy = np.asarray(y)
             self._adopt(column, place(spec, values, yy, _task_of(yy) if yy is not None else None,
-                                      column=column), values, strict=True)
+                                      column=column, rows=len(values)), values, strict=True)
         return self
 
     def _adopt(self, column: str, params: Mapping[str, Any], values: np.ndarray, *,

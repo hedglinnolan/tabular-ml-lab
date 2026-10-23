@@ -336,7 +336,8 @@ class DesignSpec:
     # unanswered, the strictest case (every concern is said).
     purpose: str | None = None
     # Under multiple imputation, how many imputations the coefficient table draws on the design's
-    # rows (:func:`imputation_count`), which the impute step's line states; None otherwise.
+    # rows (:func:`imputation_count`), which the impute step's line states for a family whose table
+    # pools them (:func:`impute_detail`); None otherwise.
     imputations: int | None = None
 
     def multiple_imputation(self) -> bool:
@@ -1014,7 +1015,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             out.append({"key": "normalize", "label": label, "detail": detail})
         elif name == "impute":
             out.append({"key": "impute", "label": "Fill missing values",
-                        "detail": impute_detail(spec, step)})
+                        "detail": impute_detail(spec, step, family)})
         elif name == "detect":
             out.append({"key": "detect", "label": "Fill values below detection",
                         "detail": detect_detail(spec)})
@@ -1063,9 +1064,14 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
     return out
 
 
-def impute_detail(spec: DesignSpec, step: Any = None) -> str:
+def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None) -> str:
     """The impute step's line: what fills which blanks, learned where, and under multiple
-    imputation what the step is for."""
+    imputation what the step is for. A number of imputations is stated only on the line of a
+    family whose table is pooled over the copies (every family where ``family`` is None), as
+    ``stages.modeling._missing_for_table`` reads the chosen families before drawing any: a family
+    with no inference table is said to be fit on this fill, and one whose table pools no copies
+    (``pools_imputations`` False: the feature-wise tests) to have its table not fit, the fit's
+    refusal saying why and what to choose instead (``omics.unpooled_refusal``)."""
     marked = "; each filled number also gets a missing indicator" if spec.indicators else ""
     fill = getattr(spec, "energy_fill", None) or {}
     nutrients = list(fill.get("nutrients") or [])
@@ -1087,6 +1093,14 @@ def impute_detail(spec: DesignSpec, step: Any = None) -> str:
         if m == 0:
             text += (" It serves the cross-validated scores; no predictor value is missing among "
                      "the analyzed rows, so the coefficients are not imputed.")
+        elif family is not None and getattr(family, "inference", None) is None:
+            # No table draws copies for it: its fit, as its scores, is on this fill.
+            text += (f" {family.label} has no coefficient table to pool over multiple "
+                     f"imputations: this fill serves its fit and its cross-validated scores.")
+        elif family is not None and not getattr(family, "pools_imputations", True):
+            # Its table pools no copies, so the fit refuses it (``omics.unpooled_refusal``).
+            text += (f" {family.label} pools no multiple imputations, so under this answer its "
+                     f"table is not fit; the fit says why and what to choose instead.")
         elif m is not None:
             text += (f" It serves the cross-validated scores; the coefficients are pooled over {m} "
                      f"multiple imputations with the outcome.")

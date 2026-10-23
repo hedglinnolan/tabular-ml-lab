@@ -266,6 +266,77 @@ STRAIGHT_LINE = "the straight-line estimate beside the curve"
 # The fit-time refusal (SWARM_PLAN §8) of Model 3 under complete cases with no row recording every
 # column it adds (``_Run._no_rows_three``).
 NO_ROWS_THREE = "model_3_no_complete_rows"
+# The fit-time refusal of the declared models, and of the secondary model beside the primary
+# (``stages.secondary``), when no chosen family has a coefficient table (:func:`no_table_refusal`).
+NO_COEFFICIENT_TABLE = "no_coefficient_table"
+
+
+def has_coefficient_table(family: Any) -> bool:
+    """Whether the declared models (and the secondary model) are refit for ``family``: it reports
+    coefficients and has an inference table."""
+    from turbotab.core.models.base import reports_coefficients
+
+    return reports_coefficients(family) and family.inference is not None
+
+
+def draws_copies(state: Any, spec: Any, X: pd.DataFrame) -> bool:
+    """Whether the table on the rows ``X`` under ``spec`` is pooled over imputed copies: the
+    answer is multiple imputation and an input that is not a level of its own has a blank, as
+    ``stages.modeling._missing_for_table`` reads them before drawing any."""
+    answer = spec.missing or (state.missing.model_dump(mode="json") if state.missing else None)
+    if not answer or answer.get("strategy") != "multiple_imputation":
+        return False
+    levels = set(spec.levels)
+    return any(c not in levels and c in X.columns and X[c].isna().any() for c in spec.inputs)
+
+
+def table_given(state: Any, family: Any, task: str,
+                fits: Sequence[tuple[Any, pd.DataFrame, Any]], survey: Any = None) -> bool:
+    """Whether ``family``'s table can be given on each of ``fits`` (a table the stage fits: its
+    design spec, its rows' inputs, and the clusters ``inference.resolve_clusters`` reads from its
+    rows, None where no column may name a unit), as far as the rows and the answers decide it: a
+    family with no design-based estimator is blocked under the surveyed population (``survey``,
+    the stage's ``FitSurvey``, holds the design; ``survey.no_design_estimator``); a table that
+    pools no imputed copies (``pools_imputations`` False: the feature-wise tests) is refused where
+    the copies are drawn (:func:`draws_copies`; ``omics.unpooled_refusal``); and a family that
+    models the unit itself (its estimator is handed the rows' ``units``, as the fit stage reads
+    it: a random intercept, a working correlation) has its table refused unless an identifier
+    repeats over two units or more (``repeated._no_units``)."""
+    from turbotab.core.models.survey import has_design_estimator
+
+    if survey is not None and survey.design is not None and not has_design_estimator(family, task):
+        return False
+    for spec, X, clusters in fits:
+        if not getattr(family, "pools_imputations", True) and draws_copies(state, spec, X):
+            return False
+        estimator = family.build(task, "inference", len(X), X.shape[1])
+        if "units" in estimator.get_params(deep=False) and not (
+                clusters is not None and clusters.clustered and clusters.n_clusters >= 2):
+            return False
+    return True
+
+
+def no_table_refusal(state: Any, task: str, nothing: str,
+                     fits: Sequence[tuple[Any, pd.DataFrame, Any]], survey: Any = None) -> Any:
+    """The refusal (coded :data:`NO_COEFFICIENT_TABLE`) of a stage that refits only families with
+    a coefficient table when none of the chosen ones has one; ``nothing`` says what there is then
+    none of, and ``fits`` holds each table the stage fits and ``survey`` the survey answer as the
+    stage applies it (:func:`table_given`). Its ways forward
+    add, to the chosen families, each family the engine registers for ``task`` that has one
+    (:func:`has_coefficient_table`), serves inference and whose table every one of ``fits`` can
+    give, in the shelf's order, the linear model first."""
+    from turbotab.core.graph import StageRefusal
+    from turbotab.core.models.base import families
+
+    chosen = list(state.models or [])
+    exits = [{"label": f"Add {f.label}, which has a coefficient table",
+              "decision": {"kind": "select_models", "models": [*chosen, f.key]}}
+             for f in families(task)
+             if has_coefficient_table(f) and "inference" in f.purposes and f.key not in chosen
+             and table_given(state, f, task, fits, survey)]
+    return StageRefusal(NO_COEFFICIENT_TABLE,
+                        f"None of the chosen model families has a coefficient table, so there is "
+                        f"{nothing}; choose the linear model.", exits=exits)
 
 
 # ── what a family declares, as this stage reads it (MODEL_FAMILY_CONTRACT §1; MC-2b-3) ────────
@@ -476,7 +547,6 @@ def supplied_copies_reason(implicate: str) -> str:
 def effects_stage(ctx: StageContext) -> Bundle:
     from turbotab.core import estimand as est
     from turbotab.core.models import get_family
-    from turbotab.core.models.base import reports_coefficients
     from turbotab.core.models.effects import APPENDIX_TITLE
     from turbotab.core.models.inference import Outcome, cluster_columns, resolve_clusters
     from turbotab.core.models.pipeline import DesignSpec, build_pipeline, design_spec, modeling_frame
@@ -506,10 +576,7 @@ def effects_stage(ctx: StageContext) -> Bundle:
     spec = DesignSpec.from_dict(design.objects["spec"])
     pipelines = design.objects["pipelines"]
     families = [get_family(k) for k in (state.models or []) if k in pipelines]
-    families = [f for f in families if reports_coefficients(f) and f.inference is not None]
-    if not families:
-        raise ValueError("None of the chosen model families has a coefficient table, so there is "
-                         "no effect to report; choose the linear model.")
+    families = [f for f in families if has_coefficient_table(f)]
     further = est.secondary_columns(state)
     declared = est.current_model_sequence(state)
     model_one = list(declared.model_1) if declared is not None else None
@@ -569,6 +636,12 @@ def effects_stage(ctx: StageContext) -> Bundle:
     clusters3 = (resolve_clusters(state, frame3[list(unit_columns)])
                  if unit_columns and rows3 is not None else clusters)
     survey, _ = _survey(ctx, clusters)
+    if not families:
+        # Each way forward a family whose table every declared model's rows give, Model 3's too.
+        tables = [(spec, frame[list(spec.inputs)], clusters)]
+        if spec3 is not None:
+            tables.append((spec3, frame3[list(spec3.inputs)], clusters3))
+        raise no_table_refusal(state, task, "no effect to report", tables, survey)
     keys = [f.key for f in families]
     # The primary's missing values exactly as the fit handles them (the same rows, columns and
     # seed, and since wave 1b's MS2 the same imputation model: the survey design under the
