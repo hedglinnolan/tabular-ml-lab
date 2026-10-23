@@ -15,12 +15,16 @@ under the pin. It denies, with a plain reason the agent reads:
   experimentalist proposes nothing), from the repo root, that no shell expands or runs anything
   in, under the analyst hook's rules (``analyst_hook.shell_refusal``: none of ``; & | $ < >``, a
   backtick or a line break anywhere, quoted or not; outside quotes only plain characters; so a
-  proposal's JSON goes in single quotes). ``python``, ``python3`` and ``./scripts/py``, which it
-  passed before 2026-10-23, and an environment setting before the command, such as the prefix the
-  root CLAUDE.md gives builders, are each refused in words that name the one form
-  (``analyst_hook.start_refusal``). The repo root is the checkout this file lies in (:data:`REPO`,
-  read from the file's own path), named by an absolute path: another checkout's root, a worktree's
-  say, holds its own ``scripts/py`` and tools, which may differ from this one's;
+  proposal's JSON goes in single quotes), whose refusals name the theorist or the experimentalist
+  and a tools command (:data:`COMMAND_NAME`), never an analyst or the driver. ``python``,
+  ``python3`` and ``./scripts/py``, which it passed before 2026-10-23, and an environment setting
+  before the command, such as the prefix the root CLAUDE.md gives builders, are each refused in
+  words that name the one form (``analyst_hook.start_refusal``). The repo root is the checkout
+  this file lies in (:data:`REPO`, read from the file's own path), named by an absolute path:
+  another checkout's root, a worktree's say, holds its own ``scripts/py`` and tools, which may
+  differ from this one's;
+* every Bash call with a truthy ``run_in_background`` (``analyst_hook.background_refusal``): an
+  agent of the claim cycle runs one tools command at a time, in the foreground;
 * every tools command while no cycle is pinned, and every one that names a folder or a file other
   than the pinned cycle's corpus folder and proposals file (``pin.py``: one cycle at a time, each
   with a proposals file of its own, so no agent reads both the corpus and its shuffled copy, nor
@@ -99,6 +103,8 @@ PIN = REPO / N.PIN.relative_to(N.REPO)
 THEORIST = "theorist"
 EXPERIMENTALIST = "experimentalist"
 MODULE = "research.swarm.claim_cycle.tools"
+# What the refusals the analyst hook shares with this one call the command.
+COMMAND_NAME = "tools command"
 # Each role's commands (``tools.COMMANDS``; a test holds the two lists equal).
 COMMANDS = {THEORIST: ("index", "records", "proposals", "propose"),
             EXPERIMENTALIST: ("index", "records", "proposals")}
@@ -123,9 +129,10 @@ def bash_refusal(command: Any, cwd: Any, role: str) -> str | None:
     is."""
     if not isinstance(command, str) or not command.strip():
         return f"{named(role).capitalize()} runs only the claim cycle's tools: {form(role)}."
-    why = A.shell_refusal(command)
+    why = A.shell_refusal(command, subject=named(role), name=COMMAND_NAME, form=form(role),
+                          quoted=None)
     if why:
-        return why.replace(A.FORM, form(role))
+        return why
     try:
         words = shlex.split(command)
     except ValueError:
@@ -145,8 +152,9 @@ def bash_refusal(command: Any, cwd: Any, role: str) -> str | None:
 
 def decide(call: Any) -> dict[str, Any] | None:
     """The hook's answer to one tool call: for a theorist or an experimentalist, an approval of a
-    report tool or of a tools command it checked whole under the pin (:func:`bash_refusal`), and a
-    denial of anything else; for every other caller, None, to say nothing."""
+    report tool or of a tools command it checked whole under the pin (:func:`bash_refusal`) and
+    runs in the foreground (``analyst_hook.background_refusal``), and a denial of anything else;
+    for every other caller, None, to say nothing."""
     if not isinstance(call, dict) or call.get("agent_type") not in COMMANDS:
         return None
     role = call["agent_type"]
@@ -158,7 +166,8 @@ def decide(call: Any) -> dict[str, Any] | None:
                     f"with Bash; {tool} is not open to it.")
     given = call.get("tool_input")
     command = given.get("command") if isinstance(given, dict) else None
-    why = bash_refusal(command, call.get("cwd"), role)
+    why = (bash_refusal(command, call.get("cwd"), role)
+           or A.background_refusal(given, named(role), COMMAND_NAME))
     if why:
         return deny(why)
     return allow(f"The claim cycle's hook checked this tools command ({shlex.split(command)[3]}) "

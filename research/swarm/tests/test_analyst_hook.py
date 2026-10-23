@@ -21,6 +21,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -332,6 +333,13 @@ AS_SENT = [
     ("an analyst's chained call", "analyst", "Bash", {"command": f"{DRIVER} ask --run RUN; ls"},
      "deny"),
     ("an analyst's Read", "analyst", "Read", {"file_path": f"{REPO}/x"}, "deny"),
+    ("an analyst's driver fit in the background", "analyst", "Bash",
+     {"command": f"{DRIVER} fit --run RUN", "description": "d", "run_in_background": True}, "deny"),
+    ("an analyst's driver fit in the foreground", "analyst", "Bash",
+     {"command": f"{DRIVER} fit --run RUN", "description": "d", "run_in_background": False},
+     "allow"),
+    ("a builder's driver fit in the background", "builder", "Bash",
+     {"command": f"{DRIVER} fit --run RUN", "run_in_background": True}, None),
     ("a builder's git status", "builder", "Bash", {"command": "git status --short"}, None),
     ("a builder's driver start", "builder", "Bash",
      {"command": f"{DRIVER} start --data x.csv --budget-fits 1 --budget-seconds 1"}, None),
@@ -394,6 +402,96 @@ def test_the_analyst_is_told_the_builders_prefix_is_not_its_own():
     text = " ".join(AGENT.read_text(encoding="utf-8").split())
     assert (f"The environment prefix the root CLAUDE.md gives builders (`{claude_md_prefix()}`) is "
             f"not yours: the hook refuses a command with any setting before it.") in text
+
+
+# The form an analyst's refusals name, as they read before the claim cycle's hook passed its own
+# words (the re-audit of 2026-10-23), written out here.
+TODAYS_FORM = ("scripts/py -m research.swarm.driver <command> --run <id> ..., run from the repo "
+               "root, where <command> is one of ask, preview, answer, revisit, fit, results, seal, "
+               "export, want, account")
+TODAYS_REFUSALS = {
+    f"{DRIVER} ask --run r1 | head -5":
+        f"The command holds '|', which an analyst's command never holds, in a reason either: one "
+        f"driver command at a time, nothing chained, substituted or redirected. The form is "
+        f"{TODAYS_FORM}.",
+    f"{DRIVER} ask --run r1\x0bx":
+        f"The command holds the character U+000B, a control character. The form is {TODAYS_FORM}.",
+    f"{DRIVER} answer --run r1 a --reason \"a\\\"b\"":
+        "The command holds a backslash inside double quotes, which a shell still reads there; "
+        "leave it out, or put the words in single quotes.",
+    f"{DRIVER} ask --run *":
+        "The command holds '*' outside quotes, which a shell can expand or run. Outside quotes a "
+        "word holds only letters, digits and . _ - / : , @ % +, and = inside a word; put anything "
+        "else, such as a reason, in double or single quotes.",
+    f"{DRIVER} answer --run r1 impute --reason 'because":
+        f"The command does not read as one driver command (an unclosed quote?). The form is "
+        f"{TODAYS_FORM}.",
+}
+
+
+@pytest.mark.parametrize("command", list(TODAYS_REFUSALS))
+def test_the_analysts_shell_refusals_read_as_they_did(command):
+    """Each refusal of the shell's rules, one per kind, word for word as it read before the claim
+    cycle's hook passed its own subject and command's name into them."""
+    says = hook.decide(call(command))
+    assert denied(says)
+    assert says["hookSpecificOutput"]["permissionDecisionReason"] == TODAYS_REFUSALS[command]
+
+
+# A Bash call's input as Claude Code sends it, beside the command (its Bash tool's own fields).
+BASH_FIELDS = {"description": "Ask the open question", "timeout": 120000}
+
+
+@pytest.mark.parametrize("background", [True, 1, "true"])
+def test_a_driver_command_run_in_the_background_is_denied_to_an_analyst(background):
+    """Fires where it should: an approved command with a truthy ``run_in_background`` would run
+    while the analyst goes on, so it is denied, in words that say one command at a time, in the
+    foreground, and name the field to leave out."""
+    for command in (f"{DRIVER} ask --run r1", f"{DRIVER} fit --run r1"):
+        given = {"command": command, **BASH_FIELDS, "run_in_background": background}
+        says = hook.decide(call(tool_input=given))
+        assert denied(says), command
+        reason = says["hookSpecificOutput"]["permissionDecisionReason"]
+        assert reason.startswith("An analyst runs one driver command at a time, in the foreground")
+        assert "run_in_background" in reason
+
+
+@pytest.mark.parametrize("given", [{}, {"run_in_background": False},
+                                   {"run_in_background": None}],
+                         ids=["absent", "false", "null"])
+def test_a_driver_command_run_in_the_foreground_is_approved_as_before(given):
+    """Silent where it should be: each allowed command, with ``run_in_background`` absent, false or
+    null and the Bash tool's other fields beside it, is approved."""
+    for command in ALLOWED:
+        assert allowed(hook.decide(call(tool_input={"command": command, **BASH_FIELDS, **given})))
+
+
+def test_a_background_call_of_any_other_caller_hears_nothing():
+    given = {"command": f"{DRIVER} ask --run r1", "run_in_background": True}
+    for agent in (None, "builder", "theorist"):
+        assert hook.decide(call(tool_input=given, agent=agent)) is None
+
+
+# The ASCII control characters, as an independent library classes them: Unicode's Cc below 128.
+ASCII_CONTROLS = [chr(i) for i in range(128) if unicodedata.category(chr(i)) == "Cc"]
+
+
+def test_the_analyst_is_told_which_control_characters_are_refused():
+    """``analyst.md`` says what the hook does: a tab is approved, between words or in quotes, and
+    every other ASCII control character is refused anywhere, even in quotes. A control character
+    beyond ASCII (U+0085, of Unicode's Cc) is not one of those, and in quotes it is approved, so
+    the words say ASCII."""
+    assert len(ASCII_CONTROLS) == 33  # the construction: 0 to 31, and 127
+    text = " ".join(AGENT.read_text(encoding="utf-8").split())
+    assert ("`$` `<` `>`, a line break or an ASCII control character other than a tab, anywhere, "
+            "even in quotes;") in text
+    for c in ASCII_CONTROLS:
+        for command in (f'{DRIVER} account --run r1 "a{c}b"', f"{DRIVER} account --run r1 'a{c}b'",
+                        f"{DRIVER} ask{c}--run r1"):
+            expect = allowed if c == "\t" else denied
+            assert expect(hook.decide(call(command))), (repr(c), command)
+    assert unicodedata.category("\x85") == "Cc"
+    assert allowed(hook.decide(call(f'{DRIVER} account --run r1 "a\x85b"')))
 
 
 # ── what a shell makes of a command the hook lets through ────────────────────

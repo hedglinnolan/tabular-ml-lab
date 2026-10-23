@@ -30,8 +30,9 @@ Nothing else runs: no other program, no file reading or writing, no web. Write e
 and setting as a plain word of letters, digits and `. _ - / : , @ % +`, with `=` only inside a
 word (`--set low=18`). Put each reason, want and account in double quotes, and any other word
 that holds another character in double or single quotes. A command is refused if it holds `;`
-`&` `|` `` ` `` `$` `<` `>`, a line break or another control character anywhere, even in quotes;
-any other character outside quotes; or a backslash or `!` inside double quotes. So write each
+`&` `|` `` ` `` `$` `<` `>`, a line break or an ASCII control character other than a tab,
+anywhere, even in quotes; any other character outside quotes; or a backslash or `!` inside double
+quotes. So write each
 reason, want and account in plain words without those characters, on one line: write "below"
 for `<`, "above" for `>`, "dollars" for `$`, and end a sentence with a period, not `!`. Each
 command prints one JSON object. Its words are the app's; read them, and say only what they show.

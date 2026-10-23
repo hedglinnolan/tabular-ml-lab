@@ -196,6 +196,104 @@ def test_each_refusal_names_its_role_with_the_right_article(tmp_path, monkeypatc
     assert not any("a experimentalist" in t.lower() for t in says["experimentalist"])
 
 
+# A command for each refusal the hook can give, the shell's rules' (``analyst_hook.shell_refusal``)
+# first. Only the driver's holds the word "driver", and its refusal echoes none of its words.
+EVERY_REFUSAL = {
+    **{f"holds {c!r}": f"{TOOLS} index cycle/a{c}x" for c in (";", "&", "|", "`", "$", "<", ">",
+                                                               "\n", "\r")},
+    "a control character": f"{TOOLS} index cycle/a\x0bx",
+    "a backslash in double quotes": f'{TOOLS} index "cycle\\a"',
+    "history in double quotes": f'{TOOLS} index "cycle!a"',
+    "a glob outside quotes": f"{TOOLS} index cycle/*",
+    "a tilde outside quotes": f"{TOOLS} index ~",
+    "an unclosed quote": f"{TOOLS} index 'cycle/a",
+    "empty": "   ",
+    "python": OTHER_FORMS["python"],
+    "./scripts/py": OTHER_FORMS["./scripts/py"],
+    "an environment setting": f"OMP_NUM_THREADS=2 {TOOLS} index cycle/a",
+    "another program": "cat /tmp/sealed/s.json",
+    "another module": "scripts/py -m research.swarm.shuffle cycle/a --out x --sealed y",
+    "the analysts' module": "scripts/py -m research.swarm.driver ask --run run_01-ab",
+    "a command the tools lack": f"{TOOLS} sealed cycle/a",
+    "another folder": f"{TOOLS} index cycle/b",
+}
+
+
+def every_refusal(role: str, tmp_path: Path, monkeypatch) -> dict[str, tuple[str, str]]:
+    """The hook's decision and its words for ``role``, by what should draw a refusal: every
+    command of :data:`EVERY_REFUSAL`, another tool, a folder other than the root, the background,
+    and no cycle pinned."""
+    def said(call_: dict) -> tuple[str, str]:
+        out = H.decide(call_)["hookSpecificOutput"]
+        return out["permissionDecision"], out["permissionDecisionReason"]
+
+    says = {name: said(call(role, command=command)) for name, command in EVERY_REFUSAL.items()}
+    says["another tool"] = said(call(role, "Read", file_path="/tmp/s.json"))
+    says["another folder to run in"] = said(call(role, command=f"{TOOLS} index cycle/a",
+                                                 cwd="/tmp"))
+    says["the background"] = said(call(role, command=f"{TOOLS} index cycle/a",
+                                       run_in_background=True))
+    if role == "experimentalist":
+        says["a proposal"] = said(call(role, command=PROPOSE))
+    monkeypatch.setattr(H, "PIN", tmp_path / "none.json")
+    says["no cycle pinned"] = said(call(role, command=f"{TOOLS} index cycle/a"))
+    return says
+
+
+@pytest.mark.parametrize("role", list(ALLOWED))
+def test_no_refusal_speaks_of_an_analyst_or_the_driver(role, tmp_path, monkeypatch):
+    """The re-audit of 2026-10-23: the shell's rules are the analyst hook's, and their refusals
+    spoke of an analyst's command and one driver command at a time. Each refusal names this hook's
+    own agent and its own command, and none says "analyst" or "driver" (the repo root, which a
+    refusal may name, is taken out first: its folder's name is not the hook's to choose)."""
+    both = every_refusal(role, tmp_path, monkeypatch)
+    for name, (_, text) in both.items():
+        words = text.replace(str(REPO), "<root>").lower()
+        assert "analyst" not in words and "driver" not in words, (name, text)
+    assert [name for name, (decision, _) in both.items() if decision != "deny"] == []
+    says = {name: text for name, (_, text) in both.items()}
+    whose = f"which {named_as(role)}'s command never holds"
+    for c in (";", "&", "|", "`", "$", "<", ">", "\n", "\r"):
+        text = says[f"holds {c!r}"]
+        assert whose in text and "one tools command at a time" in text, text
+    assert "does not read as one tools command (an unclosed quote?)" in says["an unclosed quote"]
+    assert f"{TOOLS} <command> ..." in says["an unclosed quote"]
+    assert "such as a reason" not in says["a glob outside quotes"]
+
+
+def named_as(role: str) -> str:
+    return {"theorist": "a theorist", "experimentalist": "an experimentalist"}[role]
+
+
+@pytest.mark.parametrize("agent", list(ALLOWED))
+@pytest.mark.parametrize("background", [True, 1, "true"])
+def test_a_tools_command_run_in_the_background_is_denied(agent, background):
+    """Fires where it should: a command the hook approves, with a truthy ``run_in_background``, is
+    denied in words that say one tools command at a time, in the foreground, naming the role and
+    the field to leave out."""
+    for command in ALLOWED[agent]:
+        says = denied(H.decide(call(agent, command=command, description="d",
+                                    run_in_background=background)))
+        assert says.startswith(f"{named_as(agent).capitalize()} runs one tools command at a time, "
+                               f"in the foreground"), says
+        assert "run_in_background" in says
+
+
+@pytest.mark.parametrize("agent", list(ALLOWED))
+@pytest.mark.parametrize("given", [{}, {"run_in_background": False}, {"run_in_background": None}],
+                         ids=["absent", "false", "null"])
+def test_a_tools_command_run_in_the_foreground_is_approved_as_before(agent, given):
+    for command in ALLOWED[agent]:
+        assert allowed(H.decide(call(agent, command=command, description="d", timeout=120000,
+                                     **given))), command
+
+
+def test_a_background_call_of_any_other_caller_hears_nothing():
+    for agent in (None, "analyst", "builder"):
+        assert H.decide(call(agent, command=f"{TOOLS} index cycle/a",
+                             run_in_background=True)) is None
+
+
 @pytest.mark.parametrize("agent", [None, "analyst", "builder", "verifier", "general-purpose",
                                    "theorists", "Theorist", "experimentalist-2"])
 def test_it_says_nothing_for_any_other_caller(agent):
@@ -305,6 +403,12 @@ AS_SENT = [
     ("a theorist's prefixed index", "theorist", "Bash",
      {"command": f"OMP_NUM_THREADS=2 {TOOLS} index cycle/corpus"}, "root", "deny"),
     ("a theorist's index from /tmp", "theorist", "Bash", TOOLS_INDEX, "/tmp", "deny"),
+    ("a theorist's index in the background", "theorist", "Bash",
+     {**TOOLS_INDEX, "description": "d", "run_in_background": True}, "root", "deny"),
+    ("a theorist's index in the foreground", "theorist", "Bash",
+     {**TOOLS_INDEX, "description": "d", "run_in_background": False}, "root", "allow"),
+    ("an experimentalist's index in the background", "experimentalist", "Bash",
+     {**TOOLS_INDEX, "run_in_background": True}, "root", "deny"),
     ("an experimentalist's index", "experimentalist", "Bash", TOOLS_INDEX, "root", "allow"),
     ("an experimentalist's structured report", "experimentalist", "StructuredOutput", {"x": 1},
      "root", "allow"),
