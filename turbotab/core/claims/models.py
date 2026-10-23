@@ -154,6 +154,27 @@ def drawn_by_row(ctx: Any) -> bool:
     return _field(ctx, "state") in ("abandoned", "undetermined")
 
 
+def whole_numbers_asked(ctx: Any) -> bool:
+    """Some predictor's numbers (whole, or written as text) are asked whether they are codes or
+    amounts: the caller names them (``asked``)."""
+    return bool(_field(ctx, "asked"))
+
+
+def blank_on_a_yes_no_or_medication_question(ctx: Any) -> bool:
+    """A yes/no column, or one named for a medication, blank on at least the claim's share of the
+    rows with the outcome measured (``share``, ``yes_no``, ``medication``)."""
+    share = _field(ctx, "share")
+    return (bool(_field(ctx, "yes_no") or _field(ctx, "medication"))
+            and isinstance(share, (int, float)) and not isinstance(share, bool)
+            and share >= NOT_ASKED.value)
+
+
+def energy_days_unsettled(ctx: Any) -> bool:
+    """The energy column's unit is settled and how many days each value spans is not
+    (``days_unsettled``, ``unit_settled``)."""
+    return bool(_field(ctx, "days_unsettled")) and bool(_field(ctx, "unit_settled"))
+
+
 # ── tuning (A-001) ───────────────────────────────────────────────────────────────────────────
 
 SMALL_SAMPLE_STANDARD = register(Claim(
@@ -1110,6 +1131,259 @@ SEAL_CUT_POINT_ANALYZED = register(Claim(
     author=P4_AUTHOR,
     origin="engine",
 ))
+
+# ── SWARM_PLAN §10 package 6a: the NHANES glucose journey's claims (R1_PLAN.md R1-B) ────────
+#
+# The walkthrough's journey (NHANES fasting glucose under Predict) captured by
+# research/registry/sentences.py, each sentence it shows indexed to its claim or triaged
+# (research/registry/journeys/). These are the refusals and defaults it shows that render where the
+# project's claims render log reads them: in a stage's artifact or a refusal of an answer. Each
+# renders its words as the code wrote them before, through claims.card, inside the stage or the
+# answer that shows it, so a swarm record's ``claims`` lists it. The author grades no part above
+# judgment (CLAIMS_REGISTRY.md §2.4): a grader other than the author raises a part with its
+# evidence.
+
+P6A_AUTHOR = "swarm package 6a builder"
+P6A_TESTS = "turbotab/core/tests/test_journey_claims.py"
+
+WHOLE_NUMBERS_WAIT = register(Claim(
+    id="readings.whole_numbers_wait",
+    kind="rule",
+    card="which may be codes for categories (one indicator per level) or amounts (one slope); the "
+         "fit waits for the answer for each.",
+    goal=("prediction", "inference"),
+    regime=Regime("a predictor whose values do not settle whether they are codes or amounts (whole "
+                  "numbers with three values or more, numbers written as text, or decimals the "
+                  "values do not read as an amount: readings.code_question), whose reading nobody "
+                  "has answered, at the fit",
+                  requires=(f"{HERE}:whole_numbers_asked",)),
+    decision="code_or_count",
+    options=("code", "amount"),
+    verdict="refused",
+    parts=(
+        Part("both_codings", grade="judgment", basis=Basis(
+            reason="Whole numbers fit both readings, and the two give different models: five "
+                   "values as four indicators or as one slope fit different values to the same "
+                   "rows (the fires test, by numpy's least squares), so the values cannot settle "
+                   "which the column is, and a fit on a guess would enter it one way unasked "
+                   "(BLUEPRINT §14.3; readings.code_or_count_reading is never settled by the "
+                   "values).")),
+        Part("two_values", grade="judgment", basis=Basis(
+            reason="Under the fit a column of exactly two values is not asked: its code's one "
+                   "indicator is the amount shifted to start at zero and scaled, so beside an "
+                   "intercept both span the same columns and fit the same values (the silent "
+                   "test, by numpy's least squares; readings.code_question). Combining a unit's "
+                   "rows still asks it, since a mean and a most frequent value differ.")),
+        Part("waits", grade="judgment", basis=Basis(
+            reason="The fit is refused until each column is answered (readings.predictors_or_ask "
+                   "raises Unsettled with its ways forward), and an answer recorded is not asked "
+                   "again.")),
+    ),
+    tests=(
+        Fires(f"{P6A_TESTS}::test_a_whole_number_predictor_of_five_values_waits_for_its_reading_"
+              "since_the_two_codings_fit_apart", truth="independent:numpy"),
+        Silent(f"{P6A_TESTS}::test_a_two_valued_predictor_is_not_asked_since_either_coding_fits_"
+               "alike", truth="independent:numpy"),
+        Silent(f"{P6A_TESTS}::test_a_whole_number_predictor_read_as_an_amount_is_not_asked_again",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.readings:predictors_or_ask", "turbotab.core.readings:code_question"),
+    author=P6A_AUTHOR,
+    origin="engine",
+))
+
+NOT_ASKED = Param(0.5, unit="share of the rows with the outcome measured",
+                  constant="turbotab.core.stages.proposals:NOT_ASKED_SHARE")
+
+BLANK_NOT_ASKED = register(Claim(
+    id="missing.blank_not_asked",
+    kind="rule",
+    card="blank usually means not asked.",
+    goal=("prediction", "inference"),
+    regime=Regime("a yes/no column, or one named for a medication, blank on at least that share of "
+                  "the rows with the outcome measured",
+                  requires=(f"{HERE}:blank_on_a_yes_no_or_medication_question",)),
+    decision="set_missing.not_asked",
+    verdict="noted",
+    params={"not_asked_share": NOT_ASKED},
+    parts=(
+        Part("threshold", grade="judgment", basis=Basis(
+            reason="Half the rows with the outcome measured is our call, not a published "
+                   "threshold: a skip pattern blanks a question for everyone it does not route "
+                   "to it, which for NHANES's medication questions is most adults (meds_chol "
+                   "blank on 79%, meds_hbp on 71%), while blanks at random rarely reach half (the "
+                   "WP7 fixture's quarter, methods.missing.blanks_mean_not_asked).")),
+        Part("scope", grade="judgment", basis=Basis(
+            reason="Only a yes/no answer or a medication question is read so: a measurement's "
+                   "blanks say nothing of a question not asked, so a measurement blank on most "
+                   "rows is never read as not asked (the second silent test), and the reason says "
+                   "nothing says so. The share counts the rows with the outcome measured, not "
+                   "every row: blank on half of them reads as not asked though on under half of "
+                   "every row (the second fires test), and blank on half of every row but few of "
+                   "the measured ones does not (the third silent test).")),
+    ),
+    tests=(
+        Fires(f"{P6A_TESTS}::test_a_yes_no_answer_blank_on_half_the_rows_reads_as_not_asked",
+              truth="construction"),
+        Silent(f"{P6A_TESTS}::test_a_yes_no_answer_blank_on_one_row_fewer_than_half_does_not",
+               truth="construction"),
+        Silent(f"{P6A_TESTS}::test_a_measurement_blank_on_most_rows_is_never_read_as_not_asked",
+               truth="construction"),
+        Fires(f"{P6A_TESTS}::test_a_yes_no_answer_blank_on_half_the_rows_with_the_outcome_measured_"
+              "reads_as_not_asked", truth="construction"),
+        Silent(f"{P6A_TESTS}::test_a_yes_no_answer_blank_on_half_of_every_row_but_few_with_the_"
+               "outcome_measured_does_not", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.stages.proposals:missing_reading",
+                 "turbotab.core.stages.proposals:_blank_reason"),
+    author=P6A_AUTHOR,
+    origin="engine",
+))
+
+FOLD_FILL_FIRST = register(Claim(
+    id="missing.fold_fill_first_under_prediction",
+    kind="rule",
+    card="Complete cases are the field's habit, but a new row with a blank cannot be scored; a "
+         "fill learned in each training fold without the outcome can (Sisk et al. 2023, Stat "
+         "Methods Med Res 32:1461).",
+    goal=("prediction",),
+    regime=Regime("Predict: the missing-values question's options, where a fill in each training "
+                  "fold leads and complete cases, the field's first choice, do not",
+                  requires=(f"{HERE}:under_prediction",)),
+    decision="set_missing",
+    options=("impute", "missing_category", "indicators", "complete_case", "multiple_imputation"),
+    verdict="rank_lower",
+    parts=(
+        Part("unscorable", grade="judgment", basis=Basis(
+            reason="A model fit on complete cases learns no rule for a blank, so a new row with "
+                   "one cannot be scored: scikit-learn's least squares refuses it, while the same "
+                   "model behind a fill learned on the training rows scores it (the fires test).")),
+        Part("without_outcome", grade="judgment", basis=Basis(
+            cites=("sisk2023missing",),
+            reason="Sisk et al. 2023 recommend, for a model to be used on new rows, a fill that "
+                   "leaves the outcome out, learned on the development rows and applied as it "
+                   "was learned: the fills in each training fold (impute, missing_category and "
+                   "indicators in methods/missing.py), which never read the outcome.")),
+        Part("ranking", grade="judgment", basis=Basis(
+            reason="Under Predict a fill in each training fold ranks first, complete cases after "
+                   "it, and multiple imputation, which uses the outcome, last "
+                   "(custom_sound.missing, methods.missing.METHODS' order); under Estimate "
+                   "multiple imputation leads and the tension gives its own reason (the silent "
+                   "test).")),
+    ),
+    tests=(
+        Fires(f"{P6A_TESTS}::test_under_prediction_a_fill_learned_in_each_fold_ranks_above_complete_"
+              "cases_and_scores_a_new_row_with_a_blank", truth="independent:scikit-learn"),
+        Silent(f"{P6A_TESTS}::test_under_estimation_multiple_imputation_leads_and_the_tension_names_"
+               "its_own_reason", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.custom_sound:missing", "turbotab.core.methods.missing:methods_for"),
+    author=P6A_AUTHOR,
+    origin="engine",
+))
+
+EVERY_ROW_FIRST = register(Claim(
+    id="exclusions.every_row_first_under_prediction",
+    kind="rule",
+    card="Screens are the field's habit; under prediction the people they remove will still be "
+         "scored, so keeping every row comes first.",
+    goal=("prediction",),
+    regime=Regime("Predict: the eligibility question's intake screens offered on this table, "
+                  "beside keeping every row",
+                  requires=(f"{HERE}:under_prediction",)),
+    decision="set_exclusions",
+    options=("keep_every_row", "goldberg_schofield", "willett_2013_by_sex", "nhs_hpfs_by_sex",
+             "sex_neutral_500_5000", "sex_neutral_500_3500"),
+    verdict="recommended",
+    parts=(
+        Part("ranking", grade="judgment", basis=Basis(
+            reason="A prediction model is used on everyone it meets, misreporters included, so a "
+                   "screen changes who it is developed on and not who it scores: under Predict "
+                   "keeping every row ranks first and every screen after it "
+                   "(custom_sound.EXCLUSION_ROWS); Banna et al. 2017 (Front Nutr 4:45) ask that "
+                   "the every-row analysis be reported beside any screen.")),
+        Part("scope", grade="judgment", basis=Basis(
+            reason="Under Estimate a screen's people are not scored, so a screen ranks first and "
+                   "the every-row analysis is reported beside it (the silent test).")),
+    ),
+    tests=(
+        Fires(f"{P6A_TESTS}::test_under_prediction_keeping_every_row_ranks_first_among_the_screens",
+              truth="construction"),
+        Silent(f"{P6A_TESTS}::test_under_estimation_a_screen_ranks_first_and_every_row_is_"
+               "reported_beside_it", truth="construction"),
+    ),
+    enforced_by=("turbotab.core.custom_sound:exclusions",),
+    author=P6A_AUTHOR,
+    origin="engine",
+))
+
+SCREEN_WAITS_FOR_DAYS = register(Claim(
+    id="exclusions.screen_waits_for_days",
+    kind="rule",
+    card="so whether each value is one day's intake or a total over several is not settled, and "
+         "the screen's bounds are read in a day's.",
+    goal=("prediction", "inference"),
+    regime=Regime("an intake screen on a total-energy column whose unit is settled and whose days "
+                  "are not",
+                  requires=(f"{HERE}:energy_days_unsettled",)),
+    decision="set_exclusions.energy_days",
+    verdict="refused",
+    parts=(
+        Part("per_day", grade="judgment", basis=Basis(
+            reason="The screens' bounds are kcal a day (NUTRITION_PACK §02), and a value that is "
+                   "a total over two days is twice its day's intake: a two-day total of 6,000 "
+                   "kcal is outside 500–5,000 read as one day and inside it read as two (the fires "
+                   "test's arithmetic), so who a screen removes turns on the days.")),
+        Part("refused", grade="judgment", basis=Basis(
+            reason="While the days are unsettled the screen is refused, never drawn on a guess "
+                   "(proposals.unit_refusal), and once they are recorded it is offered (the "
+                   "silent test).")),
+    ),
+    tests=(
+        Fires(f"{P6A_TESTS}::test_a_screen_waits_while_the_energy_columns_days_are_unsettled",
+              truth="construction"),
+        Silent(f"{P6A_TESTS}::test_a_screen_is_offered_once_the_days_are_recorded",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.stages.proposals:unit_refusal",),
+    author=P6A_AUTHOR,
+    origin="engine",
+))
+
+COLLINEAR_PAIR = register(Claim(
+    id="explore.collinear_pair",
+    kind="parameter",
+    card="move almost together (|r| ≥ {collinear:g})",
+    goal=("prediction", "inference"),
+    regime=Regime("First look's scan of two to five hundred numeric predictors on the rows it "
+                  "reads: the training rows under Predict, every analyzed row under Estimate"),
+    decision="explore.collinear_scan",
+    verdict="noted",
+    params={"collinear": Param(0.9, unit="|r|, Pearson's, between two numeric predictors",
+                               constant="turbotab.core.stages.explore:COLLINEAR")},
+    parts=(
+        Part("value", grade="judgment", basis=Basis(
+            reason="A convention, not a cited rule (stages/explore.py): a pair this close is "
+                   "named in First look so that its importance is read together "
+                   "(materiality.collinear_under_prediction), whatever the threshold; a pair at "
+                   "the threshold is named (at or above).")),
+        Part("both_signs", grade="judgment", basis=Basis(
+            reason="|r| is read, so a pair that moves almost together in opposite directions is "
+                   "named too (the fires test builds one of each sign).")),
+    ),
+    tests=(
+        Fires(f"{P6A_TESTS}::test_a_pair_correlated_just_above_nine_tenths_either_way_is_named",
+              truth="independent:numpy"),
+        Silent(f"{P6A_TESTS}::test_a_pair_correlated_just_under_nine_tenths_is_not",
+               truth="independent:numpy"),
+    ),
+    enforced_by=("turbotab.core.stages.explore:_collinear",),
+    author=P6A_AUTHOR,
+    origin="engine",
+))
+
+P6A_CLAIMS = (WHOLE_NUMBERS_WAIT, BLANK_NOT_ASKED, FOLD_FILL_FIRST, EVERY_ROW_FIRST,
+              SCREEN_WAITS_FOR_DAYS, COLLINEAR_PAIR)
 
 CLAIMS = (SMALL_SAMPLE_STANDARD, SMALL_SAMPLE_STANDARD_ESTIMATE, SMALL_SAMPLE_STANDARD_CLASSES,
           SMALL_SAMPLE_NO_SEARCH, BOOSTED_TREES_SMALL_ROWS, FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR,

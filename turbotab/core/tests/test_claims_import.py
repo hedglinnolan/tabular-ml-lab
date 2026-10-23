@@ -123,17 +123,22 @@ RF1_IDS = set().union(*BACKTEST_RF1.values())
 P4_IDS = {"eligibility.unconfirmed_answer", "eligibility.no_such_level",
           "eligibility.level_spelling", "seal.cut_point", "seal.cut_point_units",
           "seal.cut_point_undated", "seal.cut_point_analyzed"}
+# SWARM_PLAN §10 package 6a: the NHANES glucose journey's refusals and defaults (R1_PLAN.md R1-B).
+P6A_IDS = {"readings.whole_numbers_wait", "missing.blank_not_asked",
+           "missing.fold_fill_first_under_prediction",
+           "exclusions.every_row_first_under_prediction", "exclusions.screen_waits_for_days",
+           "explore.collinear_pair"}
 
 
 def test_the_default_registry_holds_r0bs_claims():
     """R0a shipped the registry with no real claim in it; R0b registers its three areas' claims,
-    found by the package scan, and R1-F's first batch and SWARM_PLAN's package 4 add their own to
-    the same modules, and no other."""
+    found by the package scan, and R1-F's first batch and SWARM_PLAN's packages 4 and 6a add their
+    own to the same modules, and no other."""
     assert isinstance(claims.registry(), Registry)
     assert claims.scan("turbotab.core.claims") == [
         "turbotab.core.claims.data", "turbotab.core.claims.inference",
         "turbotab.core.claims.models"]
-    assert {c.id for c in claims.registry()} == R0B_IDS | RF1_IDS | P4_IDS
+    assert {c.id for c in claims.registry()} == R0B_IDS | RF1_IDS | P4_IDS | P6A_IDS
 
 
 # The S1 findings of the claims backtest (README.md's table, FIXES.md), each with the claims R0b
@@ -163,7 +168,7 @@ def test_r0bs_claims_are_audit_where_they_state_a_backtest_finding_and_engine_ot
     assert len(BACKTEST_RF1) == 15 and len(RF1_IDS) == 17 and not RF1_IDS & R0B_IDS
     origin = {c.id: c.origin for c in claims.registry()}
     assert {i for i, o in origin.items() if o == "audit"} == audit | RF1_IDS
-    assert {i for i, o in origin.items() if o == "engine"} == (R0B_IDS - audit) | P4_IDS
+    assert {i for i, o in origin.items() if o == "engine"} == (R0B_IDS - audit) | P4_IDS | P6A_IDS
     assert "swarm" not in origin.values()
 
 

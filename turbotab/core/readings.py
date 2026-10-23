@@ -2270,9 +2270,10 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
             text = [c for c in names if (facts.get(c) or {}).get("text_numbers")]
             what = ("numbers written as text" if len(text) == len(names) else
                     "whole numbers" if not text else "whole numbers or numbers written as text")
+            # The rule's words are its claim's (``readings.whole_numbers_wait``), rendered here so
+            # the project's claims render log holds the refusal the person reads.
             message = (f"{listing(names)} {'holds' if len(names) == 1 else 'hold'} {what}, "
-                       f"which may be codes for categories (one indicator per level) or amounts "
-                       f"(one slope); the fit waits for the answer for each.")
+                       + claims.card("readings.whole_numbers_wait", {"asked": names}))
         raise Unsettled(f"{message} {ask_text(needed, state)}", labeled(needed, state),
                         ask_exits(needed, state))
     # The energy models that convert each source to kcal (the partition, the all-components model)

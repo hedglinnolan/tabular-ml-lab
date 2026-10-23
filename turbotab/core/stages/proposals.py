@@ -40,6 +40,7 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
+from turbotab.core import claims
 from turbotab.core.decisions import ExclusionRule, RangeByLevel
 from turbotab.core.graph import StageContext
 
@@ -58,7 +59,9 @@ KCAL_PER_KJ = 4.184
 MOST_ROWS = 0.5
 MAX_STRATA_LEVELS = 10
 USUAL_METHOD = "residual"
-NOT_ASKED_SHARE = 0.5  # a yes/no or medication column blank on at least this share
+# A yes/no or medication column blank on at least this share reads as not asked: its claim's
+# parameter (``turbotab/core/claims/models.py``, package 6a).
+NOT_ASKED_SHARE = claims.value("missing.blank_not_asked", "not_asked_share")
 MAX_MISSING_COLUMNS = 200  # predictors with blanks the reading lists, most blank first
 PREDICTOR_ROLES = ("exposure", "covariate", "energy")
 _MEDICATION = {
@@ -679,9 +682,12 @@ def unit_refusal(energy: str, reading: Mapping[str, Any] | None) -> str | None:
                 f"apart, and the screen's bounds are read in it.")
     if reading.get("days_unsettled") and reading.get("basis") in SETTLED_UNIT_BASES:
         evidence = (reading.get("days_reading") or {}).get("evidence") or "nothing settles it"
-        return (f"Refused until {tick(energy)}'s days are recorded: {evidence}, so whether each "
-                f"value is one day's intake or a total over several is not settled, and the "
-                f"screen's bounds are read in a day's.")
+        # The refusal's words are its claim's (``exclusions.screen_waits_for_days``), rendered
+        # where the screen is offered, so the project's claims render log holds it.
+        return (f"Refused until {tick(energy)}'s days are recorded: {evidence}, "
+                + claims.card("exclusions.screen_waits_for_days", {
+                    "days_unsettled": bool(reading.get("days_unsettled")),
+                    "unit_settled": reading.get("basis") in SETTLED_UNIT_BASES}))
     if reading.get("basis") == "name":
         return (f"Refused until {tick(energy)}'s unit and days are recorded: only its name says "
                 f"{word}, and the screen's bounds are read in a day's {word}.")
@@ -1116,13 +1122,17 @@ def _blank_reason(share: float, yes_no: bool, medication: bool) -> str:
 
     pct = tick(f"{share:.0%}")
     if share >= NOT_ASKED_SHARE:
+        if not (yes_no or medication):
+            return f"Blank on {pct} of rows; nothing says the blanks mean not asked."
+        # The reading's words are its claim's (``missing.blank_not_asked``), rendered in the stage
+        # so the project's claims render log holds it.
+        said = claims.card("missing.blank_not_asked",
+                           {"share": share, "yes_no": yes_no, "medication": medication})
         if yes_no and medication:
-            return f"A yes/no medication question blank on {pct} of rows: blank usually means not asked."
+            return f"A yes/no medication question blank on {pct} of rows: {said}"
         if yes_no:
-            return f"A yes/no answer blank on {pct} of rows: blank usually means not asked."
-        if medication:
-            return f"Medication use blank on {pct} of rows: blank usually means not asked."
-        return f"Blank on {pct} of rows; nothing says the blanks mean not asked."
+            return f"A yes/no answer blank on {pct} of rows: {said}"
+        return f"Medication use blank on {pct} of rows: {said}"
     return f"Blank on {pct} of rows."
 
 

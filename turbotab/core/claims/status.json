@@ -101,6 +101,21 @@
       "status": "built"
     },
     {
+      "hash": "6d0564adaa1b73391d24b4119518abc5cd9117c0b0ff669becfaf02c7daa8316",
+      "id": "exclusions.every_row_first_under_prediction",
+      "status": "built"
+    },
+    {
+      "hash": "4aa06298a8a4f8725d1397a0bf00728096e6edb0e9cc4ed4d1ab540a3fdf8188",
+      "id": "exclusions.screen_waits_for_days",
+      "status": "built"
+    },
+    {
+      "hash": "21761830edce6550b7ef4a5d006abea4d39fcc3bea9b1cf8d73cfae86f47bb87",
+      "id": "explore.collinear_pair",
+      "status": "built"
+    },
+    {
       "hash": "217c0f2063f65adf3562f28d5d25dd827b154cdf638c546a8f39c048a469eaf8",
       "id": "explore.missing_by_group",
       "status": "built"
@@ -136,8 +151,18 @@
       "status": "built"
     },
     {
+      "hash": "a9dbc2a6ae6b92280bc9e912a2683639f799ea03582bc9de17a68187a6158e20",
+      "id": "missing.blank_not_asked",
+      "status": "built"
+    },
+    {
       "hash": "ef8a5b438c1bbdd1b8ebf3e428247cdffc6cead83efca0c9163df0ba8806eaaf",
       "id": "missing.ffq_blank_handling",
+      "status": "built"
+    },
+    {
+      "hash": "3ea5ad94159ba794396035edd676e271ba10ecfa3320e5a359ad2e203dd7133c",
+      "id": "missing.fold_fill_first_under_prediction",
       "status": "built"
     },
     {
@@ -153,6 +178,11 @@
     {
       "hash": "f757d93e9fbc97f8360b174c983fcc11b139f1e038778ce460ade505eee0c60c",
       "id": "ordinal.cluster_robust_intervals",
+      "status": "built"
+    },
+    {
+      "hash": "31728e21aad6126e535e50ed0c5c43eaa48cc6be4dc4e2e7caa04e024036b41b",
+      "id": "readings.whole_numbers_wait",
       "status": "built"
     },
     {
