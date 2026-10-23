@@ -27,14 +27,19 @@ hashed here with hashlib.
 * A spline whose k the server set by Harrell's rule, on a fresh draw (:func:`replay.rule_verdict`,
   k by the rule as RMS states it): under prediction another size at the record's k is replayed
   with that size, another k (or no size read) refused; under inference any other size refused.
-  The later records that write what the rows are read under (:func:`replay.later_records`: an
-  exclusion, and a revert of one recorded before the spline, but not the models answer nor a
-  withdrawn record) are named only where their own step changed the rule's size
-  (:func:`replay.later_changes`, each size pandas' on the rows named): an exclusion of the rows
-  under 50 is, a reading confirmed in a table with no blank cell is not; where the sizes are not
-  the engine's (over every row, or every row not held out) or a later record rewrites the table
-  read (the grain, a reading of a column the flow reads), each is named as one that can change
-  them. A refilled record (:func:`replay.refilled_line`) holds the decision and the
+  The later records that write what the rows are read under (:func:`replay.later_records`, read
+  on the state folded up to the record before each: an exclusion, a revert of one recorded before
+  the spline, the outcome's task or event answered, but not the models answer, a withdrawn
+  record nor a task answered for another column) are named only where their own step changed
+  the rule's size (:func:`replay.later_changes`, each size pandas' on the rows named): an
+  exclusion of the rows under 50 is, a reading confirmed in a table with no blank cell is not;
+  where the sizes are not the engine's (over every row, or every row not held out) or a later
+  record rewrites the table read (the grain, a reading of a column the flow reads) or writes the
+  task or the outcome, each is named as one that can change them. Where a later record changed
+  the outcome, its scale, task or event from the record to the log's end
+  (:func:`replay.input_changes`), another size is refused under either purpose, the record and
+  the change named; a task answered as the detected one, or changed and changed back, changes
+  none. A refilled record (:func:`replay.refilled_line`) holds the decision and the
   sentence the log's own appender writes for the spline declared on the new size, every other
   field as recorded; one whose sentence the log would not author now is refused.
 
@@ -476,12 +481,13 @@ def harrell(n: float) -> int:
 
 
 def rule_read(said: float | None, read: float | None, *, knots: int | None = None,
-              later: tuple = ()) -> "replay.RuleRead":
+              later: tuple = (), inputs: tuple = ()) -> "replay.RuleRead":
     """The age spline of record 4 as :func:`replay.rule_forms` reads it: the record's k (the
     rule's on ``said``, else the one given) and size, and the rule's k and size on this draw."""
     return replay.RuleRead(column="age", seq=4, kind="set_exposure_form",
                            knots=knots if knots is not None else harrell(said), said=said,
-                           k=harrell(read) if read is not None else None, read=read, later=later)
+                           k=harrell(read) if read is not None else None, read=read, later=later,
+                           inputs=inputs)
 
 
 def test_under_prediction_a_new_size_with_the_records_k_is_replayed_and_another_k_refused():
@@ -553,6 +559,38 @@ def test_a_refusal_names_each_later_record_that_changed_the_size_the_rule_reads(
             "(confirm_readings), which can change them. Under prediction") in three
     _, none = replay.rule_verdict(rule_read(117.0, 95.0), "prediction")
     assert "on the rows as the log ends. Under prediction" in none and "after" not in none
+
+
+def test_a_size_read_under_what_a_later_record_changed_is_refused_naming_it():
+    """AR-V1: the record's size and sentence are read under the outcome, its scale, task and event
+    at its record, so where a later record changed one of them (``inputs``, from
+    :func:`replay.input_changes`) another size is refused under prediction even at the record's
+    k, as under inference, naming the record and what it changed; with nothing changed, the same
+    sizes are refilled (above)."""
+    assert harrell(400) == harrell(117)
+    task = rule_read(117.0, 400.0, later=((15, "set_task"),),
+                     inputs=("the task from binary to regression",))
+    for purpose in ("prediction", "inference"):
+        verdict, said = replay.rule_verdict(task, purpose)
+        assert verdict == "refused"
+        assert said == (
+            "Record 4 (set_exposure_form) gives `age` a spline whose k is Harrell's rule on the "
+            "analyzed rows: k = 5 on an effective sample size of 117 on the recorded draw, and on "
+            "this draw the rule reads 400 (k = 5) on the rows as the log ends, after record 15 "
+            "(set_task), which changed what the size is read under: the task from binary to "
+            "regression. The record's size and sentence are read under the outcome, its scale, "
+            "task and event as they stood when it was recorded, so a size read under later ones "
+            "is not replayed in it, and the rebuild is refused.")
+    two = rule_read(117.0, 400.0, later=((15, "set_outcome_scale"), (16, "set_event")),
+                    inputs=("the outcome from `y` to `ln_y`", "the outcome's scale from none to log"))
+    assert ("on the rows as the log ends, after records 15 (set_outcome_scale) and 16 "
+            "(set_event), which changed what the size is read under: the outcome from `y` to "
+            "`ln_y` and the outcome's scale from none to log. The record's size"
+            ) in replay.rule_verdict(two, "prediction")[1]
+    # The same sizes with nothing changed: refilled, as above; the same size, kept.
+    assert replay.rule_verdict(rule_read(117.0, 114.0), "prediction")[0] == "refilled"
+    assert replay.rule_verdict(rule_read(117.0, 117.0, inputs=task.inputs), "prediction") == (
+        "kept", None)
 
 
 # A yes/no outcome beside ``age`` and ``bmi``, no cell blank, for the rule's size step by step
@@ -696,6 +734,81 @@ def test_the_later_records_are_those_that_write_what_the_rows_are_read_under(tmp
     records = [r for r, _ in lines]
     assert replay.later_records(records, 4, reads) == ((8, "revert"), (9, "set_exclusions"))
     assert replay.later_records(records, 9, reads) == ()
+
+
+def _after_the_spline(tmp_path: Path, name: str, *later: dict) -> list:
+    """The records of :data:`SPLINE_THEN` (the spline at record 4, `y`'s readings at 5) and then
+    ``later``, written by the log's own appender."""
+    return [r for r, _ in replay.log_lines(_log(tmp_path, [*SPLINE_THEN, *later], name))]
+
+
+TASK = {"kind": "set_task", "column": "y", "task": "regression"}
+
+
+def test_a_task_or_an_event_answered_after_the_spline_is_a_later_record(tmp_path):
+    """AR-V2: what a later record writes is read on the state folded up to the record before it,
+    so a task or an event answered for the outcome after the spline is a later record, as an
+    exclusion is; a task answered for another column writes nothing while `y` is the outcome
+    (``SetTask`` stands only while its column is the target), and is not."""
+    reads, _ = _slots()
+    records = _after_the_spline(tmp_path, "a.jsonl", TASK,
+                                {"kind": "set_event", "column": "y", "level": "1"},
+                                {"kind": "set_task", "column": "bmi", "task": "regression"})
+    assert replay.later_records(records, 4, reads) == (
+        (5, "confirm_readings"), (6, "set_task"), (7, "set_event"))
+
+
+def test_a_later_record_that_changed_what_the_size_is_read_under_is_named_with_the_change(
+        tmp_path):
+    """AR-V1: the outcome, its scale, its task (answered, else the one detected, here binary for
+    `y`) and its event as the log ends against those at the spline's record (4): each later record
+    whose step changed one is named, with the change from the record to the log's end; none where
+    they are the same at both, a task answered as the detected one and a task changed and changed
+    back among them."""
+    reads, _ = _slots()
+    detected = ("y", "binary")
+
+    def changes(name: str, *later: dict):
+        return replay.input_changes(_after_the_spline(tmp_path, name, *later), 4, reads, detected)
+
+    assert changes("task.jsonl", TASK) == (((6, "set_task"),), ("the task from binary to regression",))
+    assert changes("event.jsonl", {"kind": "set_event", "column": "y", "level": "1"}) == (
+        ((6, "set_event"),), ("the event from none to `1`",))
+    assert changes("scale.jsonl", {"kind": "set_outcome_scale", "column": "y", "scale": "log"}) == (
+        ((6, "set_outcome_scale"),),
+        ("the outcome from `y` to `ln_y`", "the outcome's scale from none to log"))
+    assert changes("twice.jsonl", TASK, {"kind": "set_task", "column": "y", "task": "multiclass"}
+                   ) == (((6, "set_task"), (7, "set_task")), ("the task from binary to multiclass",))
+    # The same at both ends: nothing is named.
+    assert changes("plain.jsonl", FIFTY_AND_OVER) == ((), ())
+    assert changes("detected.jsonl", {**TASK, "task": "binary"}) == ((), ())
+    assert changes("back.jsonl", TASK, {**TASK, "task": "binary"}) == ((), ())
+    assert changes("other.jsonl", {"kind": "set_task", "column": "bmi", "task": "regression"}
+                   ) == ((), ())
+
+
+def test_a_later_record_that_writes_the_task_or_the_outcome_leaves_the_sizes_untraced(
+        ages, tmp_path):
+    """The guard: the sizes step by step read a state with no answered task by the task as the
+    log ends, so where a later record writes the task or the outcome (here the detected task
+    answered, and the outcome moved to `bmi` and back, the outcome and its task the same at both
+    ends), each later record is named as one that can change them, not traced. With neither, the
+    exclusion alone is named, traced (above)."""
+    frame, store = ages
+    reads, table = _slots()
+    kept = events_or_not(frame[frame["age"] >= FIFTY])
+    answered = _after_the_spline(tmp_path, "answered.jsonl", {**TASK, "task": "binary"},
+                                 FIFTY_AND_OVER)
+    assert replay.later_changes(answered, 4, reads, store, "binary", kept, table=table) == (
+        ((5, "confirm_readings"), (6, "set_task"), (7, "set_exclusions")), False)
+    moved = _after_the_spline(tmp_path, "moved.jsonl", {"kind": "set_target", "column": "bmi"},
+                              FIFTY_AND_OVER, {"kind": "set_target", "column": "y"})
+    assert replay.later_changes(moved, 4, reads, store, "binary", kept, table=table) == (
+        ((5, "confirm_readings"), (6, "set_target"), (7, "set_exclusions"), (8, "set_target")),
+        False)
+    plain = _after_the_spline(tmp_path, "plain.jsonl", FIFTY_AND_OVER)
+    assert replay.later_changes(plain, 4, reads, store, "binary", kept, table=table) == (
+        ((6, "set_exclusions"),), True)
 
 
 def _spline_log(tmp_path: Path, spline: dict, name: str = "decisions.jsonl") -> list:

@@ -32,7 +32,8 @@ Status rules (per stage, for its current key):
   automatically; :meth:`Engine.ensure` retries it. A stage that refuses in
   words (:class:`StageRefusal`: a code and its ways forward, as an answer-time
   refusal carries them) is served with its ``refusal`` beside the message, and a
-  stage waiting on it with the same; a crash has none (SWARM_PLAN §8).
+  stage waiting on it with the same; an error the engine did not type as a refusal has none
+  (SWARM_PLAN §8).
 * ``stale`` — none of the above, but an older artifact exists.
 * ``idle`` — never computed.
 
@@ -228,8 +229,8 @@ class StageRefusal(ValueError):
     """A stage that refuses in words (a fit-time refusal, SWARM_PLAN §8): a ``code``, the
     ``message`` and its ways forward (``exits``, each ``{label, decision|None}``, the decision
     stored as its JSON form once the decision model reads it), as an answer-time refusal
-    (``decisions.Refusal``) carries them, so the stage's status serves them apart from a crash
-    (:class:`StageStatus`' ``refusal``).
+    (``decisions.Refusal``) carries them, so the stage's status serves them apart from an error
+    the engine did not type as a refusal (:class:`StageStatus`' ``refusal``).
 
     A ``ValueError``, so every caller that handles a stage's ``ValueError`` (a refit that records
     why it was not fit) handles it as before; and its error text is the one a ``ValueError`` with
@@ -338,7 +339,8 @@ class StageStatus(BaseModel):
     # measured (RECIPES_AND_TUNING §4.4). None when nothing holds it.
     held: str | None = None
     # A refusal in words for the current key (:class:`StageRefusal`), its own or the one of the
-    # stage it waits on that failed so; None for a crash and for every other status.
+    # stage it waits on that failed so; None for an error the engine did not type as a refusal
+    # and for every other status.
     refusal: Refused | None = None
 
 

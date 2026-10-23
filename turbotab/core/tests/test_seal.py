@@ -236,6 +236,29 @@ def test_the_undated_rows_or_units_of_a_chronological_draw_are_counted_in_number
     assert chronology.sentence.endswith(words) and chronology.n_undated == undated
 
 
+@pytest.mark.parametrize("groups", [None, "units"])
+@pytest.mark.parametrize("holdout, lead", [
+    (0.1, "The latest `1` {word} by its last `year` is held out, from `10` on;"),
+    (0.3, "The latest `3` {word}s by their last `year` are held out, from `8` on;"),
+])
+def test_the_chronological_draws_lead_agrees_in_number_with_the_count_held_out(groups, holdout,
+                                                                              lead):
+    """The integration fix list's C1: ten rows (or units) by construction, the latest 10% of them
+    one, held out in the singular (noun, pronoun and verb), and the latest 30% three, in the
+    plural, as the undated clause above counts its own."""
+    times = np.arange(1.0, 11.0)
+    keys = None
+    if groups == "units":  # each time a unit of two rows, a hair apart
+        times = np.repeat(times, 2) - np.tile([0.5, 0.0], len(times))
+        keys = np.repeat([f"u{i}" for i in range(len(times) // 2)], 2)
+    mask, chronology = seal.chronological_holdout(times, keys, holdout, 0, "year", dated=False)
+    word = "unit" if groups else "row"
+    held = round(10 * holdout)
+    assert chronology.n_units == held and int(mask.sum()) == held * (2 if groups else 1)
+    assert chronology.sentence.startswith(
+        lead.format(word=word) + f" every training {word}'s last `year` comes earlier.")
+
+
 def test_temporal_without_a_time_column_draws_at_random_and_says_so(clinical):
     split = drawn(clinical, clinical_state(temporal=TemporalSpec(temporal=True),
                                            repeat_kind=RepeatSpec(repeat_kind="time_points")))

@@ -440,8 +440,11 @@ def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: 
     before = (f" Whole units are held out, earlier rows included: `{n_earlier / n_held_rows:.0%}` "
               f"of the held-out rows (`{n_earlier:,}` of `{n_held_rows:,}`) were observed before the "
               f"latest training row." if groups is not None and n_earlier and n_held_rows else "")
-    sentence = (f"The latest `{n_hold:,}` {word} by their last `{column}` are held out, from "
-                f"`{boundary}` on; every training {word[:-1]}'s last `{column}` comes "
+    # So does the count held out: its noun, pronoun and verb (the integration fix list's C1).
+    one = n_hold == 1
+    sentence = (f"The latest `{n_hold:,}` {plural(n_hold, word[:-1])} by "
+                f"{'its' if one else 'their'} last `{column}` {'is' if one else 'are'} held out, "
+                f"from `{boundary}` on; every training {word[:-1]}'s last `{column}` comes "
                 f"{'no later' if tied else 'earlier'}.{tie}{undated}{before}")
     return mask, Chronology(drawn=True, time_column=column, boundary=boundary, n_units=n_hold,
                             n_undated=n_undated, sentence=sentence, n_held_rows=n_held_rows,

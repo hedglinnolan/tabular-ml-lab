@@ -22,7 +22,11 @@ lines, hashlib, statsmodels.
   so is the recorded table itself when an exclusion recorded after the spline gives the rule
   another k. A later exclusion that changes the size (on the rows aged 60 and over, refused; 50
   and over, rebuilt stating its size) is named as the record that changed it; readings confirmed
-  after the spline, which change no row of these blank-free draws (pandas), are not.
+  after the spline, which change no row of these blank-free draws (pandas), are not. A task
+  answered as regression after the spline (the verifier's probe) refuses the rebuild on the
+  recorded table and on the next draw, its size the rows' count where the record's is the events
+  or non-events, the task answer named with what it changed; the same journey with no task
+  answered is rebuilt stating the next draw's size.
 * The findings rule: the sex repair is kept as its own bytes where its finding fires on the new
   draw, and left out, named, where the new draw's sex has a third level and the finding cannot
   fire; a missing-value code only the new draw holds raises a finding no record answers, and the
@@ -630,6 +634,100 @@ def test_a_later_exclusion_that_changes_the_rules_size_is_named_where_the_record
         f"rows as the log ends{_changed((exclusion, 'set_exclusions'))}. Under prediction the "
         f"record's k is replayed as recorded, and it is the rule's on this draw too, so the "
         f"record is replayed stating this draw's size, {kept}, in place of {recorded}."]
+
+
+def spline_before_the_split(task: str | None):
+    """The verifier's probe (AR-V1): before the split question, ``age`` read as an amount, the
+    outcome's task, the working table and the cohort computed again, a spline of ``age`` with no k
+    given, and then, where ``task`` is given, the outcome's task answered as ``task``."""
+    def go(run, view) -> None:
+        from turbotab.core.reference import journeys as J
+
+        J.post_answer(run, {"kind": "confirm_reading", "reading": "code_or_count",
+                            "column": "age", "value": "amount"})
+        for stage in ("target_info", "working", "cohort"):
+            J._artifact(run, stage)
+        J.post_answer(run, {"kind": "set_exposure_form", "column": "age", "form": "spline"})
+        if task is not None:
+            J.post_answer(run, {"kind": "set_task", "column": G.READMISSION_OUTCOME,
+                                "task": task})
+    return go
+
+
+def test_a_task_answered_after_the_spline_refuses_the_rebuild_and_a_plain_spline_is_refilled(
+        tmp_path):
+    """AR-V1, on the verifier's probe: the spline is declared on the yes/no outcome (pandas: two
+    values, 0 and 1), k = 5 on 117 events or non-events, whichever is fewer, and then the task is
+    answered as regression, whose size is the number of analyzed rows (400 on every draw here,
+    none blank). On a draw whose bytes are the recorded table's, and on the next draw (110 events
+    or non-events), the rule reads 400 as the log ends: the rebuild is refused, the task answer
+    named with what it changed, never replayed as 400 in the words of a yes/no outcome. The same
+    journey with no task answered is rebuilt on the next draw, its record stating that draw's
+    110."""
+    from turbotab.core.export import replay
+    from turbotab.core.reference import journeys as J
+    from turbotab.core.tests.truths import FIXTURE_TRUTHS
+
+    frame = small_readmission(PREDICT_SEED)
+    assert sorted(frame[G.READMISSION_OUTCOME].unique().tolist()) == [0, 1]
+    assert not frame.isna().any().any()
+    bundles = {}
+    for name, task in (("task", "regression"), ("plain", None)):
+        folder = tmp_path / name
+        folder.mkdir()
+        path = folder / G.READMISSION_FILE
+        frame.to_csv(path, index=False)
+        spec = J.Journey(f"probe-{name}", "clinical", "prediction", "?", str(path), "test",
+                         lambda path=path: path,
+                         lambda path=path: J.truth(dict(FIXTURE_TRUTHS[G.READMISSION_FILE]),
+                                                   fixture=path.name),
+                         target=G.READMISSION_OUTCOME, lenses=("clinical",), event="1",
+                         answers={"split": {"kind": "set_split", "holdout": 0.2, "seed": 0,
+                                            "folds": 5},
+                                  "models": {"kind": "select_models", "models": ["linear"]}},
+                         before={"target": J.apply_first_repair("."),
+                                 "split": spline_before_the_split(task)})
+        capture = J.run_journey(spec, bundles=folder, out_dir=folder / "captures")
+        assert capture["export"]["status"] == 200, capture["notes"]
+        bundles[name] = folder / f"probe-{name}.zip"
+    seq, kind, form = _age_spline(bundles["task"])
+    recorded = events_or_not(frame)
+    assert form["n_effective"] == float(recorded) and _age_spline(bundles["plain"]) == (
+        seq, kind, form)
+    [answered] = [s for s, k in _kinds(bundles["task"]) if k == "set_task"]
+    assert answered > seq and "set_task" not in [k for _, k in _kinds(bundles["plain"])]
+    nearer = small_readmission(PREDICT_SEED + 1)
+    near = events_or_not(nearer)
+    assert not nearer.isna().any().any() and near != recorded and harrell_k(near) == harrell_k(recorded) == harrell_k(ROWS)
+    for generator in (lambda seed: small_readmission(PREDICT_SEED), small_readmission):
+        report = replay.run(bundles["task"], workers=2, cut=True, fresh=replay.FreshDraw(
+            generator, PREDICT_SEED, PREDICT_SEED + 1))
+        assert len(generator(PREDICT_SEED + 1)) == ROWS
+        assert report.refused == (
+            f"Record {seq} ({kind}) gives `age` a spline whose k is Harrell's rule on the analyzed "
+            f"rows: k = {harrell_k(recorded)} on an effective sample size of {recorded} on the "
+            f"recorded draw, and on this draw the rule reads {ROWS} (k = {harrell_k(ROWS)}) on "
+            f"the rows as the log ends, after record {answered} (set_task), which changed what "
+            f"the size is read under: the task from binary to regression. The record's size and "
+            f"sentence are read under the outcome, its scale, task and event as they stood when "
+            f"it was recorded, so a size read under later ones is not replayed in it, and the "
+            f"rebuild is refused."), (report.refused, report.messages)
+        assert report.project is None and report.finished is None
+    plain = replay.run(bundles["plain"], workers=2, cut=True, keep=True, home=str(tmp_path / "b"),
+                       fresh=replay.FreshDraw(small_readmission, PREDICT_SEED, PREDICT_SEED + 1))
+    assert plain.refused is None and plain.finished is True, (plain.refused, plain.messages)
+    files = _rebuilt(plain)
+    record = _age_record(files["decisions.jsonl"])
+    assert _form(record) == {**form, "n_effective": float(near)}
+    assert _effective_words(near) in record["sentence"]
+    assert _effective_words(near) in files["methods.md"].decode()
+    assert [m for m in plain.messages if "Harrell" in m] == [
+        f"Record {seq} ({kind}) gives `age` a spline whose k is Harrell's rule on the analyzed "
+        f"rows: k = {harrell_k(recorded)} on an effective sample size of {recorded} on the "
+        f"recorded draw, and on this draw the rule reads {near} (k = {harrell_k(near)}) on the "
+        f"rows as the log ends. Under prediction the record's k is replayed as recorded, and it "
+        f"is the rule's on this draw too, so the record is replayed stating this draw's size, "
+        f"{near}, in place of {recorded}."]
 
 
 def test_the_pilot_predict_fixture_is_rebuilt_on_two_fresh_draws_stating_each_draws_size(
