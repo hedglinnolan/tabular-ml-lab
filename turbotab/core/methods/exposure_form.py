@@ -141,22 +141,24 @@ def more_rows(column: str | None = None, *, above_zero: bool = False) -> str:
     return f"Keep more rows that record {named}: the knots are placed on its recorded values"
 
 
-def fit_on_more(column: str | None = None) -> str:
-    """The refusal's last way forward where every row the spline is fit on records ``column``
-    (Model 3 fit on the few rows that record the column it adds, say): more rows to fit on, where
-    more rows that record it would add none, as every row does."""
-    named = f"`{column}`" if column else "the column"
-    return (f"Fit the model on more rows: each row it is fit on records {named}, and the knots "
-            f"need {SPLINE_MIN_VALUES} values")
+def fit_on_more() -> str:
+    """The refusal's last way forward where every row the spline is fit on gives it a value (Model
+    3 fit on the few rows that record the column it adds, say): more rows to fit on, where more
+    rows that record it would add none. It does not say that each row records the column: a
+    single fill runs before the form step, so a value may be a blank filled."""
+    return (f"Fit the model on more rows: the knots need {SPLINE_MIN_VALUES} values, one from "
+            f"each row")
 
 
 def _too_few(n: int, column: str | None, *, rows: int | None = None,
              above_zero: bool = False) -> Any:
     """The refusal of a spline on ``n`` < :data:`SPLINE_MIN_VALUES` values of ``column`` (named
     where the caller knows it), saying what was counted: of the ``rows`` it is fit on (where the
-    caller gives them) those that record it, or, ``above_zero`` (the mass-at-zero spline), its
-    values above zero. Its ways forward enter the column as a straight line, where it has a value
-    to be fit on, and either fit the model on more rows, where every row records it
+    caller gives them) one value from each, where every row has one, or those that record it, or,
+    ``above_zero`` (the mass-at-zero spline), its values above zero. Where every row has a value
+    the words do not call them recorded, as a single fill before the form step gives a blank row
+    its value. Its ways forward enter the column as a straight line, where it has a value to be
+    fit on, and either fit the model on more rows, where every row has a value
     (:func:`fit_on_more`), or keep more rows that record it (:func:`more_rows`)."""
     from turbotab.core.graph import StageRefusal
 
@@ -168,12 +170,14 @@ def _too_few(n: int, column: str | None, *, rows: int | None = None,
                    f"are {n}.")
         last = more_rows(column, above_zero=True)
     else:
-        head = (f"{f'A spline of `{column}`' if column else 'A spline'} needs at least "
-                f"{SPLINE_MIN_VALUES} recorded values to place its knots")
+        of = f"A spline of `{column}`" if column else "A spline"
+        head = f"{of} needs at least {SPLINE_MIN_VALUES} recorded values to place its knots"
         if rows and n == rows:
-            message = (f"{head}; there {'is' if n == 1 else 'are'} {n}, one from each row it is "
-                       f"fit on.")
-            last = fit_on_more(column)
+            # Every row gives a value, which a fill before this step may have given: not "recorded".
+            each = "is 1, from the one row" if n == 1 else f"are {n}, one from each row"
+            message = (f"{of} needs at least {SPLINE_MIN_VALUES} values to place its knots; there "
+                       f"{each} it is fit on.")
+            last = fit_on_more()
         elif rows:
             message = (f"{head}; {n:,} of the {rows:,} rows it is fit on "
                        f"{'records' if n == 1 else 'record'} it.")
@@ -195,8 +199,8 @@ def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIE
     ``ValueError`` where ``rcspline.eval`` stops: fewer than :data:`SPLINE_MIN_VALUES` values (a
     fit-time refusal, ``graph.StageRefusal``, coded :data:`SPLINE_TOO_FEW`, so the record classes
     it as refused, not a crash; it names ``column``, the spline's, where given, and says what it
-    counted: of the ``rows`` the values come from, where given, those that record it, or the
-    values above zero where ``above_zero``), or fewer than 3 distinct knots.
+    counted: of the ``rows`` the values come from, where given, one from each or those that
+    record it, or the values above zero where ``above_zero``), or fewer than 3 distinct knots.
     """
     xx = np.asarray(x, dtype=float)
     xx = xx[np.isfinite(xx)]
@@ -477,8 +481,8 @@ def place(spec: Any, values: Any, y: Any = None, task: str | None = None, *,
     cut points, the minimum-p cut point (which reads ``y``); and, for a declared exposure's spline,
     the companion quintiles' cut points (``companion``). ``column``, where given, is named by a
     spline's refusal of too few values, and ``rows``, where given (the form step's fit, whose
-    ``values`` hold a blank for each row that has one), are the rows that refusal counts the
-    recorded values among."""
+    ``values`` hold a blank for each row that has one, or a fill's value where a fill ran first),
+    are the rows that refusal counts the values among."""
     form, k = _form_of(spec)
     x = np.asarray(values, dtype=float)
     x = x[np.isfinite(x)]

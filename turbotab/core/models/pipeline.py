@@ -1070,7 +1070,8 @@ def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None) -> str
     family whose table is pooled over the copies (every family where ``family`` is None), as
     ``stages.modeling._missing_for_table`` reads the chosen families before drawing any: a family
     with no inference table is said to be fit on this fill, and one whose table pools no copies
-    (``pools_imputations`` False: the feature-wise tests) to be held by the fit."""
+    (``pools_imputations`` False: the feature-wise tests) to have its table not fit, the fit's
+    refusal saying why and what to choose instead (``omics.unpooled_refusal``)."""
     marked = "; each filled number also gets a missing indicator" if spec.indicators else ""
     fill = getattr(spec, "energy_fill", None) or {}
     nutrients = list(fill.get("nutrients") or [])
@@ -1097,9 +1098,9 @@ def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None) -> str
             text += (f" {family.label} has no coefficient table to pool over multiple "
                      f"imputations: this fill serves its fit and its cross-validated scores.")
         elif family is not None and not getattr(family, "pools_imputations", True):
-            # Its table pools no copies, so the fit holds it (``omics.unpooled_refusal``).
-            text += (f" {family.label} pools no multiple imputations, so under this answer the "
-                     f"fit holds its table.")
+            # Its table pools no copies, so the fit refuses it (``omics.unpooled_refusal``).
+            text += (f" {family.label} pools no multiple imputations, so under this answer its "
+                     f"table is not fit; the fit says why and what to choose instead.")
         elif m is not None:
             text += (f" It serves the cross-validated scores; the coefficients are pooled over {m} "
                      f"multiple imputations with the outcome.")
