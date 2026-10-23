@@ -11,9 +11,9 @@
   "purpose": "prediction"
  },
  "captured": {
-  "commit": "136f5c87e4",
+  "commit": "22f2dbd2a9",
   "date": "2026-10-22",
-  "seconds": 104,
+  "seconds": 80,
   "workers": 2,
   "export": 200
  },
@@ -335,7 +335,7 @@
  ],
  "strings": [
   {
-   "text": "# Methods: _tt_tmp_nhanes\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `dietary` and `clinical` lenses.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `glucose` measured stays in the analysis.\n\n## Outcome (TRIPOD+AI 8)\n\n`glucose` was chosen as the outcome; it is measured on all `21,849` rows.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `28` columns: energy `kcal`; predictors `cycle_begin_year`, `age`, `gender` and 17 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more. The 7 columns `bp_sys`, `bp_di` and 5 more, proposed as characteristics at medium confidence, below high, for one reason (\"A person's characteristic.\"), were confirmed together as one group, after the evidence for their proposal was read. The 2 columns `hdl` and `triglycerides`, proposed as characteristics at low confidence, below high, for one reason (\"Not a nutrient or feature: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read. `cycle_begin_year` was confirmed as a characteristic, on its own, after the evidence for its reading was read. `imputed_weight`, `imputed_height`, `imputed_bmi`, `imputed_waist`, `imputed_bp_sys` and `imputed_bp_di` were each confirmed as a flag on another column, on its own, after the evidence for its reading was read. Confirmed together, each as the question showed it: `triglycerides` was confirmed to hold amounts or counts; `hdl` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories.\n\nRead from the values, no question asked: `SEQN` is the unit's identifier (`SEQN` is the NHANES respondent number; `21,849` whole numbers, each on one row, within a span of `92,991`: a measurement spread over so narrow a span would repeat about `2,567` times); `age` is a characteristic (A person's characteristic); `gender` is a characteristic (A person's characteristic); `bmi` is a characteristic (A person's characteristic); `kcal` is total energy (Total energy intake: its values follow the macronutrients' energy (r = 0.98)); `protein` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.79)); `sugar` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.67)); `carb` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.88)); `fat_total` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.88)); `fat_sat` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.82)); `fat_mon` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.84)); `fat_poly` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.72)); `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `kcal` is in kcal (`kcal` matches the energy its macronutrients carry: kcal, over the same days as they span. How many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too); record it before screening by `kcal`); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `kcal` is an amount (one slope) (`4,276` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm).\n\n## Missing data (TRIPOD+AI 11)\n\nBlanks in categorical and yes/no predictors were kept as a level of their own, `Missing`; then the other predictors' missing values were imputed in each training fold without the outcome: the median for numbers, an energy-bearing nutrient from its line on total energy (`kcal`), the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `glucose` recorded (seed `0`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction. The model was declared for estimating each person's outcome: no decision threshold was set; no subgroup was named for performance; no fairness method beyond that report was applied (TRIPOD+AI 14). No predictor selection was applied: every candidate predictor entered the models. Two model families were chosen: linear regression and ridge regression.\n\nCross-validated R², MSE, RMSE and MAE pool every out-of-fold prediction; R² is measured against the mean of the rows each fold's model was fit on, as the held-out R² is against the training rows' mean. The fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith ridge regression declared the final model on cross-validation beforehand, the `4,370` held-out rows were opened once and scored: held-out MSE `1,131`; its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Other decisions\n\nThe open noticings were triaged in Results: 4 left as a limitation; 1 noted in the supplement as changing no number here.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `136f5c87e453`, with local changes). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "# Methods: _tt_tmp_nhanes\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `dietary` and `clinical` lenses.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `glucose` measured stays in the analysis.\n\n## Outcome (TRIPOD+AI 8)\n\n`glucose` was chosen as the outcome; it is measured on all `21,849` rows.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `28` columns: energy `kcal`; predictors `cycle_begin_year`, `age`, `gender` and 17 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more. The 7 columns `bp_sys`, `bp_di` and 5 more, proposed as characteristics at medium confidence, below high, for one reason (\"A person's characteristic.\"), were confirmed together as one group, after the evidence for their proposal was read. The 2 columns `hdl` and `triglycerides`, proposed as characteristics at low confidence, below high, for one reason (\"Not a nutrient or feature: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read. `cycle_begin_year` was confirmed as a characteristic, on its own, after the evidence for its reading was read. `imputed_weight`, `imputed_height`, `imputed_bmi`, `imputed_waist`, `imputed_bp_sys` and `imputed_bp_di` were each confirmed as a flag on another column, on its own, after the evidence for its reading was read. Confirmed together, each as the question showed it: `triglycerides` was confirmed to hold amounts or counts; `hdl` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories.\n\nRead from the values, no question asked: `SEQN` is the unit's identifier (`SEQN` is the NHANES respondent number; `21,849` whole numbers, each on one row, within a span of `92,991`: a measurement spread over so narrow a span would repeat about `2,567` times); `age` is a characteristic (A person's characteristic); `gender` is a characteristic (A person's characteristic); `bmi` is a characteristic (A person's characteristic); `kcal` is total energy (Total energy intake: its values follow the macronutrients' energy (r = 0.98)); `protein` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.79)); `sugar` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.67)); `carb` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.88)); `fat_total` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.88)); `fat_sat` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.82)); `fat_mon` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.84)); `fat_poly` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.72)); `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `kcal` is in kcal (`kcal` matches the energy its macronutrients carry: kcal, over the same days as they span. How many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too); record it before screening by `kcal`); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `kcal` is an amount (one slope) (`4,276` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm).\n\n## Missing data (TRIPOD+AI 11)\n\nBlanks in categorical and yes/no predictors were kept as a level of their own, `Missing`; then the other predictors' missing values were imputed in each training fold without the outcome: the median for numbers, an energy-bearing nutrient from its line on total energy (`kcal`), the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `glucose` recorded (seed `0`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction. The model was declared for estimating each person's outcome: no decision threshold was set; no subgroup was named for performance; no fairness method beyond that report was applied (TRIPOD+AI 14). No predictor selection was applied: every candidate predictor entered the models. Two model families were chosen: linear regression and ridge regression.\n\nCross-validated R², MSE, RMSE and MAE pool every out-of-fold prediction; R² is measured against the mean of the rows each fold's model was fit on, as the held-out R² is against the training rows' mean. The fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith ridge regression declared the final model on cross-validation beforehand, the `4,370` held-out rows were opened once and scored: held-out MSE `1,131`; its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Other decisions\n\nThe open noticings were triaged in Results: 4 left as a limitation; 1 noted in the supplement as changing no number here.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `22f2dbd2a9e5`). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods:bundle",
@@ -3405,7 +3405,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `136f5c87e453`, with local changes). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `22f2dbd2a9e5`). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4047,7 +4047,7 @@
    ]
   },
   {
-   "text": "Your change to Your question made 1 result in Who's in out of date.",
+   "text": "Your change to Your question made 1 result in Your data out of date.",
    "shown": [
     [
      "quest",
@@ -4056,7 +4056,7 @@
    ]
   },
   {
-   "text": "Your change to Your question made 1 result in Your data out of date.",
+   "text": "Your change to Your question made 2 results in Who's in out of date.",
    "shown": [
     [
      "quest",
@@ -5553,16 +5553,7 @@
    ]
   },
   {
-   "text": "about 15 minutes, most of it tuning",
-   "shown": [
-    [
-     "artifact:shelf",
-     "families[].estimate"
-    ]
-   ]
-  },
-  {
-   "text": "about 16 minutes, most of it tuning",
+   "text": "about 18 minutes, most of it tuning",
    "shown": [
     [
      "artifact:shelf",
@@ -5580,7 +5571,7 @@
    ]
   },
   {
-   "text": "about 2 minutes, most of it tuning",
+   "text": "about 3 hours, most of it tuning",
    "shown": [
     [
      "artifact:shelf",
@@ -5589,16 +5580,7 @@
    ]
   },
   {
-   "text": "about 26 minutes, most of it tuning",
-   "shown": [
-    [
-     "artifact:shelf",
-     "families[].estimate"
-    ]
-   ]
-  },
-  {
-   "text": "about 4 hours, most of it tuning",
+   "text": "about 30 seconds, most of it tuning",
    "shown": [
     [
      "artifact:shelf",
@@ -5626,6 +5608,24 @@
   },
   {
    "text": "about 55 seconds, most of it tuning",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
+   "text": "about 60 seconds, most of it tuning",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
+   "text": "about 8 minutes, most of it tuning",
    "shown": [
     [
      "artifact:shelf",
