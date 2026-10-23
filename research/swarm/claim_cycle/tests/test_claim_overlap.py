@@ -63,8 +63,8 @@ def test_the_share_is_the_real_corpus_distinct_proposals_the_shuffled_copy_also_
 # copy keeps each record's own (``shuffle.restates``; ``test_shuffle`` pins that it does).
 PURPOSE_AXIS = [m.name for m in V.MARKERS if m.axis == "purpose" and m.timing == "live"]
 BOUND = (" This share counts every match, so it is an upper bound on the prior-driven share (the "
-         "share of those proposals matched because of the theorist's prior), not that share itself: "
-         "the copy keeps each record's own live markers of the purpose and its loss ("
+         "share of those proposals matched because of the theorist's prior), not that share "
+         "itself: the copy keeps each record's own live markers of the purpose and its loss ("
          + ", ".join(f"`{n}`" for n in PURPOSE_AXIS) + "), as it keeps its question and its "
          "decisions' materiality, so a proposal whose region names one of them rests there on "
          "the same evidence in both corpora, and its match may come from the data. A low share "

@@ -77,9 +77,9 @@ def bound(kept: Sequence[str]) -> str:
     if not kept:
         return ""
     return (" This share counts every match, so it is an upper bound on the prior-driven share "
-            "(the share of those proposals matched because of the theorist's prior), not that share "
-            "itself: the copy keeps each record's own live markers of the purpose and its loss ("
-            + ", ".join(f"`{n}`" for n in kept) + "), as it keeps its question and its "
+            "(the share of those proposals matched because of the theorist's prior), not that "
+            "share itself: the copy keeps each record's own live markers of the purpose and its "
+            "loss (" + ", ".join(f"`{n}`" for n in kept) + "), as it keeps its question and its "
             "decisions' materiality, so a proposal whose region names one of them rests there on "
             "the same evidence in both corpora, and its match may come from the data. A low share "
             "bounds the prior-driven share; a high one does not say the proposals came from the "

@@ -32,10 +32,10 @@ it, :func:`reported_auc`, the reading the output's ``reported`` gives), a histor
 the body-size category (BMI or waist, the paper's cut-offs) and physical activity. PAQ520, the
 paper's item, was discontinued after 2005–2006, so activity is adapted: active is a yes to
 vigorous or to moderate recreational activity in a typical week (PAQ650, PAQ665), and the score is
-refused should the later cycle's file document PAQ520. A categorical answer missing or unknown is the condition absent, as
-the paper defines it; so is a blank measurement, a choice the paper leaves open (the notes' §6.2 and
-§6.5): with both BMI and waist blank, not overweight or obese, and a blood pressure measure with
-no reading, not high.
+refused should the later cycle's file document PAQ520. A categorical answer missing or unknown is
+the condition absent, as the paper defines it; so is a blank measurement, a choice the paper
+leaves open (the notes' §6.2 and §6.5): with both BMI and waist blank, not overweight or obese,
+and a blood pressure measure with no reading, not high.
 
 **The AUC** of LBXGLU at or above :data:`THRESHOLD` (mg/dL), ranked by the score, ties counting one
 half: per participant (primary, as published AUCs are), with DeLong's interval
