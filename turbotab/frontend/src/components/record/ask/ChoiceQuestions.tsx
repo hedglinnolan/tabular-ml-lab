@@ -86,6 +86,9 @@ export function levelRule(
  *  swarm driver records them from there. */
 export const ELIGIBILITY_REASON = "outside the study population (your own range)";
 
+/** Why a range of plausible values of one's own leaves its rows, as the flow prints it. */
+const PLAUSIBLE_REASON = "implausible values (your own range)";
+
 /** A range of one's own as a card's fields hold it, typed. */
 interface RangeFields {
   column: string;
@@ -207,7 +210,7 @@ export function ExclusionsAsk({
   const eligible = useRangeFields(numericColumns[0] ?? "");
   const plausibleLow = useRef<HTMLInputElement>(null);
   const eligibleLow = useRef<HTMLInputElement>(null);
-  const customRule = rangeRule(plausible, "implausible values (your own range)");
+  const customRule = rangeRule(plausible, PLAUSIBLE_REASON);
   const eligibilityRule = rangeRule(eligible, ELIGIBILITY_REASON);
 
   const [levelColumn, setLevelColumn] = useState("");
@@ -218,19 +221,22 @@ export function ExclusionsAsk({
   const levelsRef = useRef<HTMLInputElement>(null);
   const byLevel = levelRule(shownLevelColumn, excluded, refusedCodes, unknownCodes);
 
-  const matches = (rules: EligibilityRule[]) =>
-    current !== null && current.length === rules.length && same(current, rules);
+  // The option an answer on record reads back as. Each option records one rule, so an answer of
+  // several (the swarm driver's age range beside its level rules) is marked on none: no option's
+  // line says what it holds. A range reads back as one of one's own only by that option's reason.
   let recordedKey: string | null = null;
-  if (current !== null) {
-    if (current.length === 0) recordedKey = "none";
-    else if (current.length === 1 && current[0]!.kind === "levels") recordedKey = "levels";
-    else if (
-      current.length === 1 &&
-      current[0]!.kind === "range" &&
-      current[0]!.reason === ELIGIBILITY_REASON
-    )
-      recordedKey = "eligibility";
-    else recordedKey = offered.find((o) => matches([o.rule]))?.key ?? "custom";
+  if (current?.length === 0) recordedKey = "none";
+  else if (current?.length === 1) {
+    const rule = current[0]!;
+    recordedKey =
+      offered.find((o) => same([rule], [o.rule]))?.key ??
+      (rule.kind === "levels"
+        ? "levels"
+        : rule.kind === "range" && rule.reason === ELIGIBILITY_REASON
+          ? "eligibility"
+          : rule.kind === "range" && rule.reason === PLAUSIBLE_REASON
+            ? "custom"
+            : null);
   }
 
   const items: OptionItem[] = [

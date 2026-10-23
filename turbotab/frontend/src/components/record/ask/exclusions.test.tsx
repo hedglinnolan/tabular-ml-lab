@@ -87,3 +87,46 @@ describe("a range of one's own", () => {
     expect(screen.getByTestId(`option-${other}`).getAttribute("aria-selected")).toBe("false");
   });
 });
+
+/** The options an answer on record is marked on (aria-selected), by key. */
+function recordedOptions(): string[] {
+  return within(screen.getByTestId("options-exclusions"))
+    .getAllByRole("option")
+    .filter((o) => o.getAttribute("aria-selected") === "true")
+    .map((o) => o.getAttribute("data-key") ?? "");
+}
+
+// The cards' population as the swarm driver records it, one answer of several rules: the age
+// range from 20 with the study population's reason, and a level rule (R1 of the final fix round's
+// second narrow round). Each option records one rule, so no option's line says what is on record.
+const LEVELS: EligibilityRule = {
+  kind: "levels",
+  column: "DIQ010",
+  exclude: ["1"],
+  refused: ["7"],
+  dont_know: ["9"],
+  reason: "not in the study population (your own levels)",
+  missing: "exclude",
+};
+
+describe("an answer on record that no one option records", () => {
+  it("marks no option when the answer holds several rules", () => {
+    renderCard([range("RIDAGEYR", 20, POPULATION), LEVELS]);
+    expect(recordedOptions()).toEqual([]);
+  });
+
+  it("never reads a range back as the plausible range without its reason", () => {
+    renderCard([range("RIDAGEYR", 20, "outside the cohort's own window")]);
+    expect(recordedOptions()).toEqual([]);
+  });
+
+  it.each([
+    ["the plausible range alone", [range("BMXBMI", 12, PLAUSIBLE)], "custom"],
+    ["the eligibility range alone", [range("RIDAGEYR", 20, POPULATION)], "eligibility"],
+    ["the level rule alone", [LEVELS], "levels"],
+    ["no rule", [], "none"],
+  ])("still marks %s on its own option", (_, current: EligibilityRule[], key) => {
+    renderCard(current);
+    expect(recordedOptions()).toEqual([key]);
+  });
+});
