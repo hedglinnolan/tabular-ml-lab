@@ -122,6 +122,115 @@ def test_every_record_takes_another_datasets_markers_whole(tmp_path):
     assert {p.name: p.read_bytes() for p in src.rglob("*.json")} == before  # never written
 
 
+# ── the purpose and its loss: the record's own ──────────────────────────────
+
+DRY_RUN = Path(__file__).resolve().parents[1] / "dryrun"
+
+
+def purposed(folder: Path) -> Path:
+    """Each record of ``folder`` given the live markers of the purpose and its loss as the driver
+    reads them (``markers.py``): its purpose; under Predict its primary score, the metric its newest
+    fit names, and no estimand; under Estimate an estimand on a measure of its own and no primary
+    score. At each fit, the same, the primary score the metric of that fit."""
+    from research.swarm.markers import marker as read
+
+    for i, path in enumerate(sorted(folder.glob("*.json"))):
+        rec = json.loads(path.read_text())
+        purpose = rec["question"]["purpose"]
+
+        def axis(metric):
+            if purpose == "prediction":
+                return [read("purpose", purpose, "constructed"),
+                        read("primary_score", {"metric": metric}, "constructed"),
+                        read("estimand", why="No estimand is declared.")]
+            return [read("purpose", purpose, "constructed"),
+                    read("primary_score", why="Under Estimate the result is the estimate."),
+                    read("estimand", {"exposure": f"x{i}", "measure": "odds_ratio"}, "constructed")]
+
+        named = [a["primary_metric"] for a in rec["attempts"] if a["primary_metric"]]
+        rec["regime"]["markers"] = [*rec["regime"]["markers"],
+                                    *axis(named[-1] if named else "auc")]
+        for a in rec["attempts"]:
+            a["markers"] = [*(a["markers"] or []), *axis(a["primary_metric"] or "auc")]
+        validate(rec)
+        path.write_text(json.dumps(rec), "utf-8")
+    return folder
+
+
+AXIS = ("purpose", "primary_score", "estimand")
+
+
+def disagreements(v: dict) -> list[tuple[str, str]]:
+    """Where a view's live markers of the purpose and its loss contradict its own question or
+    fits: a purpose not its question's; a primary score under Estimate, or one naming a metric no
+    fit of its scored; an estimand under Predict."""
+    purpose = v["question"]["purpose"]
+    metrics = {a["primary_metric"] for a in v["attempts"] if a["primary_metric"]}
+    out = []
+    places = [("regime", v["regime"]["markers"])] + [(f"fit {a['seq']}", a["markers"] or [])
+                                                     for a in v["attempts"]]
+    for where, markers in places:
+        held = {m["name"]: m["value"] for m in markers}
+        if held.get("purpose") is not None and held["purpose"] != purpose:
+            out.append((where, "purpose"))
+        score = held.get("primary_score")
+        if score is not None and (purpose != "prediction" or score.get("metric") not in metrics):
+            out.append((where, "primary_score"))
+        if held.get("estimand") is not None and purpose != "inference":
+            out.append((where, "estimand"))
+    return out
+
+
+def test_no_view_of_the_copy_holds_a_purpose_its_own_question_and_fits_contradict(tmp_path):
+    """The verifier's V6D-1: the copy permutes the markers across datasets, and the purpose and its
+    loss restate a record's own question and fits, which the copy keeps its own. On the dry run's
+    three records (two Predict, one Estimate) and on the constructed corpus, under every seed's
+    derangement, no record's view holds a purpose, a primary score or an estimand its own question
+    or fits contradict. The construction: in the corpus itself none does, and the copy permutes
+    the datasets."""
+    from research.swarm.claim_cycle import view as W
+
+    dry = tmp_path / "dry"
+    dry.mkdir()
+    for path in sorted(DRY_RUN.glob("run_0*.json")):
+        (dry / path.name).write_bytes(path.read_bytes())
+    built = purposed(corpus(tmp_path / "built"))
+    for src in (dry, built):
+        purposes = {v["question"]["purpose"] for v in W.read(src)}
+        assert purposes == {"prediction", "inference"}  # a corpus of both purposes
+        assert not [d for v in W.read(src) for d in disagreements(v)]
+        mappings = set()
+        for seed in range(8):
+            out = tmp_path / f"{src.name}-{seed}"
+            body = S.write(src, out, tmp_path / f"{src.name}-{seed}.json", seed=seed, k=0)
+            mappings.add(json.dumps(body["derangement"], sort_keys=True))
+            found = [(v["run"]["id"], d) for v in W.read(out) for d in disagreements(v)]
+            assert found == [], (src.name, seed)
+        assert len(mappings) == 2  # both of the three datasets' derangements were drawn
+
+
+def test_the_copy_keeps_a_records_own_purpose_markers_and_takes_the_rest_from_its_donor(tmp_path):
+    """The rule itself, by construction: in the copy each record's live markers of the purpose and
+    its loss, at the regime and at each fit, are its own in the corpus, and every other marker is
+    its donor's; and a regime marker the copy permutes still moves (each record's rows are its
+    donor's)."""
+    src = purposed(corpus(tmp_path / "corpus"))
+    body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=3, k=0)
+    mine, copied = by_dataset(src), by_dataset(tmp_path / "copy")
+    own = lambda ms: [m for m in ms or [] if m["name"] in AXIS]  # noqa: E731
+    rest = lambda ms: [m for m in ms or [] if m["name"] not in AXIS]  # noqa: E731
+    for dataset, rec in copied.items():
+        donor = mine[body["derangement"][dataset]]
+        assert own(rec["regime"]["markers"]) == own(mine[dataset]["regime"]["markers"])
+        assert rest(rec["regime"]["markers"]) == rest(donor["regime"]["markers"])
+        assert rec["regime"]["n_rows"] == ROWS[body["derangement"][dataset]] != ROWS[dataset]
+        fits = donor["attempts"]
+        for j, a in enumerate(rec["attempts"]):
+            assert own(a["markers"]) == own(mine[dataset]["attempts"][j]["markers"])
+            assert rest(a["markers"]) == rest(fits[j % len(fits)]["markers"])
+        validate(rec)
+
+
 def test_the_same_seed_gives_the_same_copy_and_another_seed_may_not(tmp_path):
     src = corpus(tmp_path / "corpus")
     a = S.write(src, tmp_path / "a", tmp_path / "sa.json", seed=11, k=0)["derangement"]

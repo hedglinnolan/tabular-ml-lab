@@ -7,14 +7,17 @@ proposal from the copy should come only from the theorist's prior or from the pl
 the view holds only what a structured proposal is built from (``proposal.py``: the decision, its
 materiality as the engine measured it, the live markers, the loss, the refusals), as numbers and as
 the engine's and the vocabulary's own names. It holds none of the analyst's words, none of the
-names the question and the decisions give the dataset's columns, nothing that says a dataset is a
-control, and nothing a planted record keeps whole from its template. It does not hide by itself
-that a record is in a copy: where the copy permutes a live marker that restates the record's own
-question or fits, the two can disagree in the view (the purpose axis's markers beside
-``question.purpose``, the fits' ``primary_metric`` and the form of a decision's materiality), and
-the view serves both as the record holds them. Every field of the record is either served
-(:data:`FIELDS`) or withheld with why (:data:`WITHHELD`); a field the record gains later is served
-by no one until it is classed. Withheld, by kind:
+names the question and the decisions give the dataset's columns but those a live marker reads
+(``missingness`` keys its shares by column, and ``estimand`` names its exposure), nothing that says
+a dataset is a control, and none of the ids and keys a planted record keeps whole from its
+template. The copy keeps each record's own live markers of the purpose and its loss, which restate
+its question and fits (``shuffle.restates``), so in the view they agree with ``question.purpose``
+and the fits' ``primary_metric``. The view does not hide by itself that a record is in a copy:
+where the copy permutes a regime marker that its fits restate (another dataset's ``outcome_type``
+or ``event_share`` beside a fit's metric of another task), the two can disagree, and the view
+serves both as the record holds them. Every field of the record is either served (:data:`FIELDS`)
+or withheld with why (:data:`WITHHELD`); a field the record gains later is served by no one until
+it is classed. Withheld, by kind:
 
 * what the blind view takes out (``record.redacted``: the analyst's model, persona, effort, prompt
   version and spend), and every time, since the gaps between an agent's commands can tell its

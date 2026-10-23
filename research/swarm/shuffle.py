@@ -15,6 +15,14 @@ none, the donor's regime's live markers). Everything else stays the record's own
 materiality is read beside markers that are not its dataset's: a pattern the claim pipeline finds
 in the copy comes from its prior, or from the planted effect.
 
+**The purpose and its loss stay the record's own.** The live markers of that axis (SWARM_PLAN §4:
+the purpose, the primary score, the intended use and its thresholds, the estimand, the
+multiplicity family; :func:`restates`) restate the record's own question and fits, which the copy
+keeps its own, so they are kept as the question is: at the regime and at each fit, the record's
+own (where its own fit held no markers, that fit holds none of the axis). A record of the copy
+never shows a purpose, a primary score or an estimand its question and fits contradict, and a
+claim keyed on the purpose is no more permuted than the question it restates.
+
 **The planted effect.** ``--planted K`` records are appended to the copy, each a clone of one
 record of the copy (the template, drawn from the seed) carrying one true effect written in by
 construction: where the live marker M is below a threshold t (half the clones), the decision D
@@ -108,8 +116,29 @@ def _live(regime: dict[str, Any]) -> list[dict[str, Any]]:
     return [m for m in regime.get("markers") or [] if m.get("timing") == "live"]
 
 
+ORDER = {name: i for i, name in enumerate(V.NAMES)}
+
+
+def restates(m: dict[str, Any]) -> bool:
+    """Whether the marker ``m`` is a live marker of the purpose and its loss, which restates its
+    record's own question and fits (the module docstring)."""
+    fixed = V.BY_NAME.get(str(m.get("name")))
+    return fixed is not None and fixed.axis == "purpose" and fixed.timing == "live"
+
+
+def with_own(markers: list[dict[str, Any]] | None, own: list[dict[str, Any]] | None
+             ) -> list[dict[str, Any]] | None:
+    """``markers``, another record's, with the purpose and its loss ``own``'s, the record's own,
+    in the vocabulary's order (None where ``markers`` is None)."""
+    if markers is None:
+        return None
+    kept = [m for m in markers if not restates(m)] + [m for m in own or () if restates(m)]
+    return copy.deepcopy(sorted(kept, key=lambda m: ORDER.get(m.get("name"), len(ORDER))))
+
+
 def shuffled(records: list[dict[str, Any]], mapping: dict[str, str]) -> list[dict[str, Any]]:
-    """Each record with every marker of its donor (the module docstring)."""
+    """Each record with every marker of its donor but the purpose and its loss, its own (the
+    module docstring)."""
     by: dict[str, list[dict[str, Any]]] = {}
     for rec in records:
         by.setdefault(rec["dataset"]["id"], []).append(rec)
@@ -120,12 +149,14 @@ def shuffled(records: list[dict[str, Any]], mapping: dict[str, str]) -> list[dic
             donor = donors[i % len(donors)]
             new = copy.deepcopy(rec)
             new["regime"] = copy.deepcopy(donor["regime"])
+            new["regime"]["markers"] = with_own(donor["regime"]["markers"],
+                                                rec["regime"]["markers"])
             new["dataset"]["declared"] = copy.deepcopy(donor["dataset"].get("declared") or [])
             fits = donor.get("attempts") or []
             for j, attempt in enumerate(new.get("attempts") or []):
                 source = fits[j % len(fits)] if fits else None
                 markers = (source or {}).get("markers") if source else _live(donor["regime"])
-                attempt["markers"] = copy.deepcopy(markers)
+                attempt["markers"] = with_own(markers, rec["attempts"][j].get("markers"))
                 attempt["markers_why"] = (None if markers is not None else
                                           (source or {}).get("markers_why")
                                           or "The donor's fit held no live markers.")

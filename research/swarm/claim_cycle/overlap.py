@@ -1,6 +1,7 @@
 """The prior-driven share (SWARM_PLAN §9, the plumbing test's pre-stated outputs): how much of what
-the theorist proposed from the corpus it also proposed from the shuffled copy, whose markers carry
-no dataset's own.
+the theorist proposed from the corpus it also proposed from the shuffled copy, whose regime and
+measurement markers are another dataset's (the purpose and its loss stay each record's own, as its
+question does: ``shuffle.py``).
 
     python -m research.swarm.claim_cycle.overlap --real <proposals.jsonl> --shuffled <proposals.jsonl>
 
