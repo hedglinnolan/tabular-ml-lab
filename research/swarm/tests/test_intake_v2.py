@@ -6,7 +6,10 @@ table rebuilt from the NCHS files, and eligibility by code.
   ``html.unescape``); a passage changed by a word, or credited to another page, is refused, and so
   is a page the dataset did not download; ``--check`` finds a passage tampered with after the
   write. Each marker is the record's (``record.DeclaredMarker``), through the assembler's
-  ``dataset_of``. What a value says a page does not name, the page's text does not hold.
+  ``dataset_of``. What a value says a page does not name, the page's text does not hold. The
+  glucose card's documentation quotes every change a cycle's glucose page states (read a second
+  way), and is refused once GLU_H's page holds an equation; the glucose and Sullivan instrument
+  and assay markers quote GLU_H's 2013–2014 change.
 * **The glucose table** against pandas' own SAS reader: one row per participant of each cycle's
   demographics file, the cycle column from the file each row came from, every kept variable equal
   to its file's, a file a cycle lacks blank there; today's export's 21 predictors and its outcome
@@ -173,6 +176,8 @@ def test_markers_that_are_not_the_records_are_refused():
 
 NOT_NAMED = [  # (dataset, page stem, what a marker's value says the page does not name)
     ("nhanes_glucose_predict", "GLU_G", ("Cobas", "C501", "C311", "Hitachi")),
+    ("nhanes_glucose_predict", "GLU_H", ("Cobas", "C501", "C311", "Hitachi", "analyzer")),
+    ("sullivan2021", "GLU_H", ("Cobas", "C501", "C311", "Hitachi", "analyzer")),
     ("nhanes_glucose_predict", "BPX_G", ("Omron", "oscillometric", "sphygmomanometer")),
     ("nhanes_glucose_predict", "BPX_H", ("Omron", "oscillometric", "sphygmomanometer")),
     ("nhanes_glucose_predict", "BPX_I", ("Omron", "oscillometric", "sphygmomanometer")),
@@ -204,6 +209,64 @@ def test_the_pre_pandemic_page_names_an_analyzer_only_for_2015_to_2018():
     naming = [s for s in re.split(r"(?<=\.) ", text) if re.search(r"C311|C501|Cobas", s)]
     assert len(naming) == 2 and not any(re.search(r"2019|2020", s) for s in naming), naming
     assert "same instrument used in 2017-2018" in naming[0] and "2015-2016" in naming[0]
+
+
+# A change a glucose page states: "There were [...] changes ..." (not "There were no changes"), or
+# "... changed from ...", each a sentence of the page's text read a second way.
+STATED = re.compile(r"There were (?!no\b)[^.]*\bchanges\b[^.]*\.|[A-Z][^.]*\bchanged from\b[^.]*\.")
+
+
+def test_the_glucose_documentation_names_every_cycles_stated_change():
+    """Each cycle's glucose page, read a second way: every change it states is quoted in the
+    card's documentation. GLU_G states none (“There were no changes”); GLU_H states 2013–2014's
+    method, equipment and site; GLU_I its equipment in 2015; P_GLU lists the equipment changes,
+    2013–2014 not among them."""
+    pages = need_pages(I.GLUCOSE_ID)
+    text = "\n".join(I.load(I.GLUCOSE_ID)["card"]["documentation"])
+    stated = {}
+    for cycle in I.GLUCOSE_CYCLES:
+        url = I.glucose_url("GLU", cycle)
+        stated[url.rsplit("/", 1)[1]] = STATED.findall(text_of(pages[url]))
+    assert {k for k, v in stated.items() if v} == {"GLU_H.htm", "GLU_I.htm", "P_GLU.htm"}
+    assert "2013-2014" in stated["GLU_H.htm"][0] and "2013-2014" not in stated["P_GLU.htm"][0]
+    for page, sentences in stated.items():
+        for sentence in sentences:
+            assert sentence in text, (page, sentence)
+    assert "neither “equation” nor “regression” is on it" in text
+
+
+def test_the_glucose_documentation_is_refused_where_glu_h_gives_an_equation():
+    """The card says GLU_H's page gives no equation across 2013–2014's change: refused once the
+    page holds the word, silent on the page as downloaded (the documentation is the card's)."""
+    need_glucose()
+    pages = I.manifest_pages(I.load(I.GLUCOSE_ID)["manifest"])
+    h = I.glucose_url("GLU", "2013-2014")
+    assert I.glucose_documentation(pages) == I.load(I.GLUCOSE_ID)["card"]["documentation"]
+    for word in ("equation", "Regression"):
+        with pytest.raises(I.QuoteRefused, match="GLU_H's page"):
+            I.glucose_documentation({**pages, h: f"{pages[h]} A {word} bridges the cycles."})
+
+
+@pytest.mark.parametrize("id_", ["nhanes_glucose_predict", "sullivan2021"])
+def test_the_glucose_markers_carry_the_2013_2014_change_glu_hs_page_states(id_):
+    """The instrument and assay_platform markers quote GLU_H's change, the one change its page
+    states (read a second way), and the instrument marker the later page's list of equipment
+    changes, which leaves 2013-2014 out."""
+    pages = need_pages(id_)
+    h = next(url for url in pages if url.endswith("/GLU_H.htm"))
+    stated = STATED.findall(text_of(pages[h]))
+    assert len(stated) == 1 and "2013-2014" in stated[0]
+    markers = {m["name"]: m for m in I.load(id_)["declared"]}
+    for name in ("instrument", "assay_platform"):
+        passages = list(zip(markers[name]["source"].split("\n"), markers[name]["quote"].split("\n"),
+                            strict=True))
+        assert any(url == h and stated[0] in quote for url, quote in passages), name
+        assert "2013–2014" in markers[name]["value"] and "GLU_H" in markers[name]["value"]
+    instrument = markers["instrument"]
+    listed = [q for q in instrument["quote"].split("\n")
+              if q.startswith("There were equipment changes during")]
+    assert len(listed) == 1 and "2013-2014" not in listed[0] and "leaves 2013–2014 out" in \
+        instrument["value"]
 
 
 # ── the glucose table, against pandas' own SAS reader ────────────────────────
@@ -304,9 +367,11 @@ def test_the_glucose_card_fixes_the_test_cycle_by_its_cut_point():
     assert f"({n:,} of them with a fasting glucose)" in held["meaning"]
     assert "2017–March 2020" in held["meaning"] and "research/swarm/benchmark.py" in held["meaning"]
     assert card["outcome"]["column"] == "LBXGLU" and card["purpose"] == "Predict"
-    assert ("without diagnosed diabetes and not taking a glucose-lowering medication"
-            in card["population"])
+    assert ("without diagnosed diabetes and not taking a glucose-lowering medication, pregnant "
+            "women excluded, matching Bang et al. 2009" in card["population"])
     assert "analyst's eligibility decisions" in card["population"]
+    pregnant = next(s for s in card["eligibility"] if "a level rule on RIDEXPRG " in s)
+    assert pregnant.startswith("Not pregnant, as in Bang et al. 2009: a level rule")
 
 
 def test_the_glucose_cards_documentation_quotes_only_what_its_pages_hold():

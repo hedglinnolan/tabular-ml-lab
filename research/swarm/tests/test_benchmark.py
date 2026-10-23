@@ -4,7 +4,8 @@ score on a record's own held-out participants, and its AUC.
 * **The score** by hand against Table 2's points on constructed rows, one item at a time: the age
   bands, male sex, family history, hypertension by each of its three routes, body size by BMI or
   by waist in inches at the paper's cut-offs for each sex, activity by either recreational item;
-  refused, don't-know and blank answers are the condition absent.
+  refused, don't-know and blank answers are the condition absent, and so are blank measurements,
+  as the printed rules say.
 * **The AUC** per participant against scikit-learn's ``roc_auc_score``, ties included; weighted
   against a direct sum over every case–control pair and against scikit-learn's weighted AUC;
   DeLong's standard error against its placement values computed pair by pair; the jackknife's
@@ -13,10 +14,14 @@ score on a record's own held-out participants, and its AUC.
 * **The participants are the record's**: on constructed decision logs, the held-out rows are the
   rows the record's own rules keep, as pandas computes them from the rules; refused without an
   opening, with another cut-point or none, with a held-out count not the opening's, with a repair
-  on a column the flow reads (and silent with one on a column it does not read); end to end on the
-  glucose table, refused for another table and for a bundle that is not the corpus record's.
+  or a reading of text as numbers on a column the flow reads, a repair without its settings, or a
+  landmark (each silent in its other case: a column the flow does not read, the settings given, a
+  follow-up without a landmark); a consumers-only domain changes nothing under prediction; end to
+  end on the glucose table, refused for another table, for a bundle that is not the corpus
+  record's, for a held-out participant without a fasting weight or not of the test cycle.
 * **Bang's reported AUC** is read from the notes' Table 3 row, and refused unless the row is there
-  once; every passage the score's items quote is on its page.
+  once; every passage the score's items quote is on its page; the activity item's adaptation is
+  refused should the later cycle's file document PAQ520.
 """
 from __future__ import annotations
 
@@ -66,6 +71,16 @@ ROWS = [
     ({"PAQ650": 9.0, "PAQ665": np.nan}, 0),
     ({"RIDAGEYR": 65.0, "RIAGENDR": 1.0, "MCQ300C": 1.0, "BPQ020": 1.0, "BMXBMI": 41.0}, 9),
     ({"RIDAGEYR": 45.0, "PAQ665": 1.0}, 0),
+    # A blank measurement scores no point: no reading at all is not high, and a blank half leaves
+    # the other to decide; with BMI blank, the waist decides (and the reverse).
+    ({**{f"BPXO{m}{i}": np.nan for m in ("SY", "DI") for i in range(1, 4)}}, 0),
+    ({**{f"BPXO{m}{i}": np.nan for m in ("SY", "DI") for i in range(1, 4)}, "BPQ020": 1.0}, 1),
+    ({**{f"BPXOSY{i}": np.nan for i in range(1, 4)}, "BPXODI1": 95.0, "BPXODI2": np.nan,
+      "BPXODI3": np.nan}, 1),  # no systolic reading; the one diastolic, 95, is high
+    ({**{f"BPXODI{i}": np.nan for i in range(1, 4)}, "BPXOSY1": 145.0, "BPXOSY2": np.nan,
+      "BPXOSY3": np.nan}, 1),  # no diastolic reading; the one systolic, 145, is high
+    ({**{f"BPXOSY{i}": np.nan for i in range(1, 4)}}, 0),  # no systolic; diastolic 70 is not
+    ({"BMXBMI": np.nan, "BMXWAIST": 35 * 2.54}, 2), ({"BMXBMI": 31.0, "BMXWAIST": np.nan}, 2),
 ]
 
 
@@ -74,6 +89,18 @@ def test_the_score_is_table_2s_points_item_by_item():
     np.testing.assert_array_equal(B.score(frame), [points for _, points in ROWS])
     assert B.POINTS == {f: p for f, _, _, _, p in I.BANG_TABLE2}
     assert sorted(set(B.POINTS.values())) == [-1, 1, 2, 3]
+    # The printed rules say how a blank measurement is scored, as the rows above score it, and
+    # cite the notes' open choices where the paper leaves it unsaid.
+    rule = {i["item"]: i["rule"] for i in B.ITEMS}
+    assert ("with both blank, not overweight or obese (no points)" in rule["body size"]
+            and "§6.5" in rule["body size"])
+    assert ("a measure with no reading, systolic or diastolic, is not high, so no reading at all "
+            "scores no point" in rule["history of hypertension"]
+            and "§6.2" in rule["history of hypertension"])
+    notes = (REPO / I.BANG_NOTES).read_text(encoding="utf-8")
+    choices = notes.split("## 6. Choices the paper leaves open")[1].split("\n## ")[0]
+    assert "5. **Missing obesity inputs** (both BMI and waist missing)" in choices
+    assert "2. **BP readings.** The mean of the available" in choices
 
 
 # ── the AUC ──────────────────────────────────────────────────────────────────
@@ -190,6 +217,27 @@ def test_every_passage_the_scores_items_quote_is_on_its_page_and_a_changed_one_i
     assert "PAQ520" not in I.glucose_books("PAQ")[I.GLUCOSE_TEST]
 
 
+def test_the_activity_item_is_adapted_only_while_the_later_cycles_file_lacks_paq520(monkeypatch):
+    """Constructed pages holding every passage the items quote, and a later cycle's activity
+    codebook without PAQ520 and then with it: silent, then the adaptation is refused."""
+    pages: dict[str, str] = {}
+    for item in B.ITEMS:
+        for url, quote in item["passages"]:
+            pages[url] = " ".join(f"{pages.get(url, '')} {quote}".split())
+    book = {"PAQ650": None, "PAQ665": None}
+    asked: list[str] = []
+
+    def books(name, folder=None):
+        asked.append(name)
+        return {I.GLUCOSE_TEST: book}
+
+    monkeypatch.setattr(I, "glucose_books", books)
+    assert B.item_problems(pages) == [] and asked == ["PAQ"]
+    book["PAQ520"] = None
+    assert B.item_problems(pages) == [
+        "PAQ520 is in the later cycle's activity file: the adaptation is not needed"]
+
+
 # ── the participants: the record's own ───────────────────────────────────────
 
 
@@ -214,12 +262,12 @@ def rules():
                         missing="keep", reason="pills")]
 
 
-def by_pandas(t: pd.DataFrame) -> np.ndarray:
+def by_pandas(t: pd.DataFrame, at: float = 2017) -> np.ndarray:
     """The held-out rows the rules above keep, computed here from their words: a glucose; age 20
     or more; DIQ010 answered 2 or 3 (1 excluded; 7, 9 and blank unconfirmed); DIQ050 and DIQ070
-    not 1 (their blanks, 7 and 9 kept); at or after 2017."""
+    not 1 (their blanks, 7 and 9 kept); at or after the cut-point (2017)."""
     keep = (t["LBXGLU"].notna() & (t["RIDAGEYR"] >= 20) & t["DIQ010"].isin([2.0, 3.0])
-            & (t["DIQ050"] != 1) & (t["DIQ070"] != 1) & (t[I.GLUCOSE_CYCLE] >= 2017))
+            & (t["DIQ050"] != 1) & (t["DIQ070"] != 1) & (t[I.GLUCOSE_CYCLE] >= at))
     return np.flatnonzero(keep.to_numpy())
 
 
@@ -296,6 +344,70 @@ def test_a_repair_on_a_column_the_flow_reads_is_refused_and_one_elsewhere_is_not
         B.participants(t, log(n, extra=[joined]), CARD)
 
 
+def test_a_repair_recorded_without_its_settings_is_refused_and_one_with_them_is_not():
+    """The engine reads an applied repair's settings from the finding's offer when the log holds
+    none (``repairs._params``); the bundle carries no findings, so the columns it rewrites are
+    unknown. The same repair with its settings, on a column the flow does not read, stands."""
+    from turbotab.core import decisions as D
+    t = small_table()
+    n = len(by_pandas(t))
+    bare = D.ApplyRepair(finding_id="sentinel_missing__BMXWT", option="set_missing", params={})
+    with pytest.raises(B.BenchmarkRefused, match="the repair of sentinel_missing__BMXWT is "
+                                                 "recorded without its settings"):
+        B.participants(t, log(n, extra=[bare]), CARD)
+    full = D.ApplyRepair(finding_id="sentinel_missing__BMXWT", option="set_missing",
+                         params={"values": {"BMXWT": [7]}})
+    assert B.participants(t, log(n, extra=[full]), CARD).held_out.tolist() == by_pandas(t).tolist()
+
+
+def test_a_reading_of_text_as_numbers_on_a_column_the_flow_reads_is_refused_and_elsewhere_not():
+    """A text column read as numbers (``text_numbers``) is a repair whose values the working table
+    rewrites, read by its settings like any other: refused on DIQ010, which a rule reads; silent
+    on BMXWT, which nothing in the flow reads."""
+    from turbotab.core import decisions as D
+    t = small_table()
+    n = len(by_pandas(t))
+
+    def read(column):
+        return D.ApplyRepair(finding_id=f"text_numbers__{column}", option="read_numbers",
+                             params={"columns": {column: {"decimal": ".", "thousands": False}}})
+
+    with pytest.raises(B.BenchmarkRefused, match="a repair rewrites DIQ010, which the flow reads"):
+        B.participants(t, log(n, extra=[read("DIQ010")]), CARD)
+    assert len(B.participants(t, log(n, extra=[read("BMXWT")]), CARD).held_out) == n
+
+
+def test_a_landmark_is_refused_and_a_follow_up_without_one_is_not():
+    """A landmark drops the rows whose follow-up ended by it, a step of the engine's flow the
+    benchmark does not take: refused. The same follow-up without a landmark changes no row."""
+    from turbotab.core import decisions as D
+    t = small_table()
+    n = len(by_pandas(t))
+    task = D.SetTask(column="LBXGLU", task="time_to_event")
+    marked = D.SetFollowUp(column="LBXGLU", time_column="RIDAGEYR", landmark=1.0)
+    with pytest.raises(B.BenchmarkRefused, match="counts its follow-up from a landmark"):
+        B.participants(t, log(n, extra=[task, marked]), CARD)
+    plain = D.SetFollowUp(column="LBXGLU", time_column="RIDAGEYR", horizon=100.0)
+    got = B.participants(t, log(n, extra=[task, plain]), CARD)
+    assert got.held_out.tolist() == by_pandas(t).tolist()
+
+
+def test_under_prediction_no_consumers_only_domain_restricts_the_rows():
+    """Why the benchmark reads no domain: the engine's consumers-only domain restricts the rows
+    under Estimate only (``methods.exposure_form.domain_columns``), and the benchmark's record is
+    a prediction. A form recorded with that domain leaves the participants as they were."""
+    from turbotab.core import decisions as D
+    from turbotab.core.stages import rows as RW
+    t = small_table()
+    n = len(by_pandas(t))
+    form = D.SetExposureForm(column="BMXWT", form="linear", domain="consumers")
+    lines = log(n, extra=[form])
+    from turbotab.core.export import replay
+    state = D.fold([r for r, _ in replay.log_lines(lines)])
+    assert state.form_domains == {"BMXWT": "consumers"} and RW.domain_of(state) == []
+    assert B.participants(t, lines, CARD).held_out.tolist() == by_pandas(t).tolist()
+
+
 # ── end to end on the glucose table ──────────────────────────────────────────
 
 
@@ -368,6 +480,28 @@ def test_a_held_out_participant_without_a_fasting_weight_is_refused(tmp_path, mo
     monkeypatch.setattr(I, "load", load)
     with pytest.raises(B.BenchmarkRefused, match="has no fasting weight \\(WTSAFPRP\\)"):
         B.benchmark(bundle(tmp_path, log(len(want)), I.sha256(path)))
+
+
+def test_a_held_out_participant_not_of_the_test_cycle_is_refused(tmp_path, monkeypatch):
+    """A card whose cut-point (2015) lets 2015–2016's rows into the held-out set, and a record
+    that holds out by it: refused, since the score is the test cycle's. The real card's cut-point
+    (2017) passes (the end-to-end test)."""
+    t = glucose_table()
+    want = by_pandas(t, at=2015)
+    assert (t[I.GLUCOSE_CYCLE].iloc[want] == 2015).any()
+    real = I.load
+
+    def load(id_):
+        files = real(id_)
+        if id_ == I.GLUCOSE_ID:
+            files["card"] = {**files["card"], "held_out": {**files["card"]["held_out"],
+                                                           "at": 2015}}
+        return files
+
+    monkeypatch.setattr(I, "load", load)
+    sha = real(I.GLUCOSE_ID)["manifest"]["table"]["sha256"]
+    with pytest.raises(B.BenchmarkRefused, match="A held-out participant is not of the test cycle"):
+        B.benchmark(bundle(tmp_path, log(len(want), cut_at=2015), sha))
 
 
 def test_the_benchmark_refuses_a_bundle_made_from_another_table(tmp_path, capsys):

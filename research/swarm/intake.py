@@ -1293,6 +1293,19 @@ GLU_MINNESOTA = ("Blood specimens were processed, stored and shipped to Fairview
 GLU_MISSOURI = ("In the 2011-2012 cycle, the University of Minnesota performed this testing. The "
                 "University of Missouri-Columbia began testing plasma glucose in the 2013-2014 "
                 "cycle.")
+# GLU_H's page states 2013–2014's change (the passage before GLU_MISSOURI on it) and names no
+# analyzer; no equation or regression is on that page (:func:`glucose_documentation` checks it).
+GLU_H_CHANGES = ("There were changes to the lab method, lab equipment, and lab site for this "
+                 "component in the NHANES 2013-2014 cycle.")
+# The equipment changes the later pages list (P_GLU's and GLU_J's), 2013–2014 not among them.
+GLU_LISTED_CHANGES = ("There were equipment changes during the 2015-2016, 2007-2008, and "
+                      "2005-2006 survey cycles.")
+GLU_I_CHANGES = ("There were no changes to the lab site or lab method for this component in the "
+                 "NHANES 2015-2016 cycle. There were changes to the lab equipment.")
+GLU_BRIDGE = ("Glucose regression equations to compare 2015-16 and 2013-14 data: A method "
+              "validation (bridging) study was performed to compare results from an instrument "
+              "change in 2015-2016 cycle with earlier data.")
+GLU_ACROSS = "examine trends of plasma glucose data across 2015-2016 and 2007-2014 cycles"
 GLU_ANALYZERS = ("The Cobas C311 analyzer was used for most of 2015-2016 and the Cobas C501 "
                  "analyzer was used in 2013-2014.")
 GLU_CHANGE = ("In 2015, the laboratory instrumentation changed from the Roche C501 to the Roche "
@@ -1334,17 +1347,23 @@ def sullivan_markers(pages: dict[str, str]) -> list[dict[str, Any]]:
             "Fasting glucose (LBXGLU): the Roche Cobas C501 in 2013–2014, and the Roche Cobas C311 "
             "for most of 2015–2016 and in 2017–2018; GLU_I calls the years before 2015 measured "
             "on the C501, and the 2011–2012 page (GLU_G) names its laboratory, not an analyzer. "
-            "The 24-hour recalls: USDA's Automated Multiple Pass Method, the dietary data "
-            "collection instrument each recall file's page names."), [
+            "GLU_H's page says the equipment changed in 2013–2014, with the method and the "
+            "laboratory, and names no analyzer; GLU_J's list of equipment changes leaves "
+            "2013–2014 out. The 24-hour recalls: USDA's Automated Multiple Pass Method, the "
+            "dietary data collection instrument each recall file's page names."), [
             (i, GLU_ANALYZERS), (i, GLU_CHANGE), (i, GLU_BEFORE_2015),
             (j, "There were no changes to the lab equipment since 2015-2016. The Cobas C311 "
                 "analyzer was used in 2017-2018 and 2015-2016."),
+            (h, GLU_H_CHANGES), (j, GLU_LISTED_CHANGES),
             (recalls, DR_AMPM)], pages),
         declared("assay_platform", (
             "Fasting glucose (LBXGLU): an enzymatic hexokinase method, the same passage on each "
             "cycle's page; measured at the University of Minnesota's Fairview laboratory in "
-            "2011–2012 and at the University of Missouri-Columbia from 2013–2014."), [
-            ([g, h, i, j], GLU_HEXOKINASE), (g, GLU_MINNESOTA), (h, GLU_MISSOURI)], pages),
+            "2011–2012 and at the University of Missouri-Columbia from 2013–2014. GLU_H's page "
+            "says the method changed in 2013–2014, with the equipment and the laboratory, though "
+            "its description of the method is the passage the other cycles' pages give."), [
+            ([g, h, i, j], GLU_HEXOKINASE), (g, GLU_MINNESOTA), (h, GLU_MISSOURI),
+            (h, GLU_H_CHANGES)], pages),
         declared("preprocessing", (
             "Fasting glucose as released: NCHS put the 2015–2016 values measured on the Cobas C501 "
             "on the C311's scale by its forward regression equation, and offers that equation, or "
@@ -1384,9 +1403,10 @@ def sullivan_markers(pages: dict[str, str]) -> list[dict[str, Any]]:
 # participant of each cycle's demographics file, joined by SEQN to each file below, with a cycle
 # column the cut-point seal reads; the outcome is LBXGLU as NCHS released it. The population is the
 # analyst's eligibility decisions (adults 20 and over without diagnosed diabetes and not taking a
-# glucose-lowering medication, matching Bang: Nolan, 2026-10-19), so its columns are kept and no
-# row is dropped. Each predictor is known before the fasting draw's result; the same draw's
-# glycemic measures (HbA1c, insulin, an oral glucose tolerance test) are left out by design.
+# glucose-lowering medication, pregnant women excluded, matching Bang: Nolan, 2026-10-19), so its
+# columns are kept and no row is dropped. Each predictor is known before the fasting draw's
+# result; the same draw's glycemic measures (HbA1c, insulin, an oral glucose tolerance test) are
+# left out by design.
 
 GLUCOSE_ID = "nhanes_glucose_predict"
 # Each cycle: the year its files are published under, and its files' names from their stems.
@@ -1561,9 +1581,9 @@ def glucose_population(table: Any) -> str:
             f"{glucose_span(first)} to {glucose_span(test)}, one row each: every participant of "
             "each cycle's demographics file, of every age, with or without a fasting glucose. The "
             f"question is about U.S. adults aged {GLUCOSE_MIN_AGE} or older without diagnosed "
-            "diabetes and not taking a glucose-lowering medication, the population of Bang et al. "
-            "2009 (which also excluded pregnant women): the table keeps everyone, and this "
-            "population is the analyst's eligibility decisions, made in the app.")
+            "diabetes and not taking a glucose-lowering medication, pregnant women excluded, "
+            "matching Bang et al. 2009: the table keeps everyone, and this population is the "
+            "analyst's eligibility decisions, made in the app.")
 
 
 def glucose_eligibility(table: Any, folder: Path = NHANES) -> list[str]:
@@ -1592,7 +1612,7 @@ def glucose_eligibility(table: Any, folder: Path = NHANES) -> list[str]:
         level("Without diagnosed diabetes", "DIQ010", diq),
         level("Not taking insulin now", "DIQ050", diq),
         level("Not taking diabetic pills to lower blood sugar", "DIQ070", diq),
-        level("Pregnant women, whom Bang et al. 2009 also excluded", "RIDEXPRG", demo),
+        level("Not pregnant, as in Bang et al. 2009", "RIDEXPRG", demo),
         f"The fasting subsample's weight is {weights}; {int(zero.sum()):,} rows with a fasting "
         f"glucose have a weight of 0. P_GLU's page: “{P_GLU_UNFASTED}”",
     ]
@@ -1617,18 +1637,31 @@ P_TRIGLY_FASTING = ("Triglycerides were measured in a fasting subsample of parti
 
 def glucose_documentation(pages: dict[str, str]) -> list[str]:
     """What the NCHS pages state that the table cannot show, each passage quoted and found on
-    its page (``pages``: URL → text), else refused."""
-    i, p = glucose_url("GLU", "2015-2016"), glucose_url("GLU", GLUCOSE_TEST)
+    its page (``pages``: URL → text), else refused; and refused where GLU_H's page holds an
+    equation or a regression, which the card says it does not."""
+    h, i = glucose_url("GLU", "2013-2014"), glucose_url("GLU", "2015-2016")
+    p = glucose_url("GLU", GLUCOSE_TEST)
     bpxo, trigly = glucose_url("BPXO", GLUCOSE_TEST), glucose_url("TRIGLY", GLUCOSE_TEST)
-    for url, quote in ((i, GLU_CHANGE), (i, GLU_FORWARD), (p, P_GLU_NONE), (bpxo, P_BPXO_ENDED),
-                       (trigly, P_TRIGLY_FASTING)):
+    changed_h, changed_i = f"{GLU_H_CHANGES} {GLU_MISSOURI}", f"{GLU_I_CHANGES} {GLU_CHANGE}"
+    for url, quote in ((h, changed_h), (p, GLU_LISTED_CHANGES), (i, changed_i), (i, GLU_BRIDGE),
+                       (i, GLU_FORWARD), (i, GLU_ACROSS), (p, P_GLU_NONE),
+                       (bpxo, P_BPXO_ENDED), (trigly, P_TRIGLY_FASTING)):
         if url not in pages or not quoted(quote, pages[url]):
             raise QuoteRefused(f"the card's passage “{quote}” is not on {url}")
+    named = sorted({w.group(0).lower() for w in re.finditer(r"equation|regression", pages[h],
+                                                            flags=re.IGNORECASE)})
+    if named:
+        raise QuoteRefused(f"GLU_H's page ({h}) holds “{'” and “'.join(named)}”: the card's "
+                           "“no equation across that change” may not stand")
     first, *_, before, test = GLUCOSE_CYCLES
     return [
-        f"The fasting glucose analyzer changed in 2015. GLU_I's page ({i}): “{GLU_CHANGE}” "
-        f"and “{GLU_FORWARD}”. P_GLU's page ({p}): “{P_GLU_NONE}” The table "
-        "applies no equation.",
+        "The fasting glucose's method, equipment and laboratory changed in 2013–2014. "
+        f"GLU_H's page ({h}): “{changed_h}” That page gives no equation across the change "
+        "(neither “equation” nor “regression” is on it), and P_GLU's list of equipment changes "
+        f"leaves 2013–2014 out ({p}): “{GLU_LISTED_CHANGES}”",
+        f"The fasting glucose analyzer changed in 2015. GLU_I's page ({i}): “{changed_i}” Its "
+        f"equations are for that change: “{GLU_BRIDGE}” “{GLU_FORWARD}”; it offers them to "
+        f"“{GLU_ACROSS}”. P_GLU's page ({p}): “{P_GLU_NONE}” The table applies no equation.",
         "Blood pressure was measured another way in the test cycle: BPXSY1 to BPXDI3 "
         f"(auscultatory) in {glucose_span(first)} to {glucose_span(before)}, BPXOSY1 to BPXODI3 "
         f"(oscillometric) in {glucose_span(test)}. P_BPXO's page ({bpxo}): "
@@ -1685,17 +1718,23 @@ def glucose_markers(pages: dict[str, str]) -> list[dict[str, Any]]:
             "Fasting glucose (LBXGLU): the Roche Cobas C501 in 2013–2014, and the Roche Cobas C311 "
             "for most of 2015–2016 and in 2017–2018; GLU_I calls the years before 2015 measured "
             "on the C501, and no page names the analyzer of 2011–2012 (GLU_G names its laboratory) "
-            "or of 2019–March 2020. Blood pressure: in 2017–March 2020 three readings on an Omron "
+            "or of 2019–March 2020. GLU_H's page says the equipment changed in 2013–2014, with the "
+            "method and the laboratory, and names no analyzer; P_GLU's list of equipment changes "
+            "leaves 2013–2014 out. Blood pressure: in 2017–March 2020 three readings on an Omron "
             "HEM–907XL, an oscillometric device (P_BPXO), auscultatory measurement having ended "
             "after 2017–2018; the pages of 2011–2016 (BPX_G, BPX_H, BPX_I) name no device."), [
             (i, GLU_ANALYZERS), (i, GLU_CHANGE), (i, GLU_BEFORE_2015), (p, P_GLU_C311),
+            (h, GLU_H_CHANGES), (p, GLU_LISTED_CHANGES),
             (bpxo, "Blood Pressure - Oscillometric Measurement (P_BPXO)"), (bpxo, P_BPXO_OMRON),
             (bpxo, P_BPXO_ENDED)], pages),
         declared("assay_platform", (
             "Fasting glucose (LBXGLU): an enzymatic hexokinase method, the same passage on each "
             "cycle's page; measured at the University of Minnesota's Fairview laboratory in "
-            "2011–2012 and at the University of Missouri-Columbia from 2013–2014."), [
+            "2011–2012 and at the University of Missouri-Columbia from 2013–2014. GLU_H's page "
+            "says the method changed in 2013–2014, with the equipment and the laboratory, though "
+            "its description of the method is the passage the other cycles' pages give."), [
             ([g, h, i, p], GLU_HEXOKINASE), (g, GLU_MINNESOTA), (h, GLU_MISSOURI),
+            (h, GLU_H_CHANGES),
             (p, "Plasma specimens are processed, stored, and shipped to the University of "
                 "Missouri-Columbia, Columbia, MO for analysis.")], pages),
         declared("preprocessing", (

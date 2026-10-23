@@ -16,10 +16,11 @@ The script applies no filter of its own. The held-out participants are those at 
 record's own cut-point, which must be the card's (``card.json``'s ``held_out``), and their number
 must be the opening's own count of held-out rows. Refused, each with its reason: a bundle with no
 opening; another table; another outcome or purpose; a cut-point not the card's, or none; a held-out
-count not the opening's; a joined file, a landmark, a consumers-only domain, or a repair or a
-reading of text as numbers on a column the flow reads (the working table's values would not be
-the table's); a held-out participant without a fasting weight, or a design the jackknife cannot
-read.
+count not the opening's; a joined file, a landmark, a repair recorded without its settings, or a
+repair (a reading of text as numbers among them) on a column the flow reads (the engine's flow
+would not be the benchmark's over the table as uploaded); a held-out participant not of the test
+cycle, or without a fasting weight; or a design the jackknife cannot read. A consumers-only domain
+is not read: the engine applies one under Estimate only, and the record is a prediction.
 
 **The score** (:data:`ITEMS`), each item's rule written beside the passages it rests on, every one
 found on its NCHS page as the dataset's manifest holds it (refused otherwise): Table 2's points
@@ -28,8 +29,11 @@ which Bang's own validation cycle used), a history of hypertension (told, taking
 medicine, or the mean of the oscillometric readings at 140/90 or more), the body-size category
 (BMI or waist, the paper's cut-offs) and physical activity. PAQ520, the paper's item, was
 discontinued after 2005–2006, so activity is adapted: active is a yes to vigorous or to moderate
-recreational activity in a typical week (PAQ650, PAQ665). A categorical answer missing or unknown is
-the condition absent, as the paper defines it.
+recreational activity in a typical week (PAQ650, PAQ665), and the score is refused should the later
+cycle's file document PAQ520. A categorical answer missing or unknown is the condition absent, as
+the paper defines it; so is a blank measurement, a choice the paper leaves open (the notes' §6.2 and
+§6.5): with both BMI and waist blank, not overweight or obese, and a blood pressure measure with
+no reading, not high.
 
 **The AUC** of LBXGLU at or above 126 mg/dL, ranked by the score, ties counting one half: per
 participant (primary, as published AUCs are), with DeLong's interval (``models.performance``); and
@@ -100,8 +104,12 @@ ITEMS: list[dict[str, Any]] = [
                    "brothers, ever told by a health professional that they had diabetes?")]},
     {"item": "history of hypertension",
      "rule": ("BPQ020 is 1 (told of high blood pressure), BPQ050A is 1 (now taking the prescribed "
-              "medicine), or the mean of the available oscillometric readings is 140 mmHg or more "
-              "systolic (BPXOSY1 to BPXOSY3) or 90 or more diastolic (BPXODI1 to BPXODI3)"),
+              "medicine), or the mean of the available oscillometric readings is "
+              f"{HYPERTENSIVE[0]:g} mmHg or more systolic (BPXOSY1 to BPXOSY3) or "
+              f"{HYPERTENSIVE[1]:g} or more diastolic (BPXODI1 to BPXODI3); a measure with no "
+              "reading, systolic or diastolic, is not high, so no reading at all scores no point "
+              "by measurement (the paper does not state its rule for the readings: "
+              f"{I.BANG_NOTES} §6.2)"),
      "passages": [(_url("BPQ"), "{Have you/Has SP} ever been told by a doctor or other health "
                    "professional that {you/s/he} had hypertension, also called high blood "
                    "pressure?"),
@@ -109,7 +117,10 @@ ITEMS: list[dict[str, Any]] = [
                   (_url("BPXO"), I.P_BPXO_OMRON)]},
     {"item": "body size",
      "rule": ("the higher of BMXBMI's and BMXWAIST's category (waist in inches, cm divided by "
-              "2.54): overweight, obese or extremely obese at the paper's cut-offs, by sex"),
+              f"{CM_PER_INCH:g}): overweight, obese or extremely obese at the paper's cut-offs, "
+              "by sex; a blank measure has no category, so with one blank the other decides, and "
+              "with both blank, not overweight or obese (no points), a choice the paper leaves "
+              f"open ({I.BANG_NOTES} §6.5)"),
      "passages": [(_url("BMX"), "BMXBMI - Body Mass Index (kg/m**2)"),
                   (_url("BMX"), "BMXWAIST - Waist Circumference (cm)")]},
     {"item": "physically active",
@@ -287,14 +298,22 @@ def _state_at_opening(log: bytes) -> tuple[Any, Any]:
 
 
 def _needs_the_working_table(state: Any, reads: set[str]) -> str | None:
-    """Why the working table's values could differ from the table's on a column the flow reads,
-    or None."""
+    """Why the engine's flow could keep other rows than the benchmark's over the table as
+    uploaded, or None: a joined file; a landmark (a step of the engine's flow the benchmark does
+    not take); a repair recorded without its settings (the engine reads them from the finding's
+    offer, ``repairs._params``, which the bundle does not carry); or a repair whose settings
+    rewrite a column the flow reads, a reading of text as numbers among them (its settings name
+    the column it reads).
+
+    A consumers-only domain is not read: the engine restricts the rows by one under Estimate only
+    (``methods.exposure_form.domain_columns``), and :func:`participants` has already refused any
+    record that is not a prediction."""
     from turbotab.core import repairs
     from turbotab.core.stages import rows as RW
     if getattr(state, "joins", None):
         return "the record joins another file to the table"
-    if RW.landmark_of(state) or RW.domain_of(state):
-        return "the record restricts the rows by a landmark or a consumers-only domain"
+    if RW.landmark_of(state):
+        return "the record counts its follow-up from a landmark, a step the benchmark does not take"
     touched: set[str] = set()
     for fid, d in (getattr(state, "findings", None) or {}).items():
         if d.action != "applied":
@@ -302,7 +321,6 @@ def _needs_the_working_table(state: Any, reads: set[str]) -> str | None:
         if not d.params:
             return f"the repair of {fid} is recorded without its settings"
         touched |= repairs.option_columns(fid, str(d.option), d.params, ("values", "columns"))
-    touched |= set(getattr(state, "numbers_read", None) or {})
     hit = sorted(touched & reads)
     return f"a repair rewrites {', '.join(hit)}, which the flow reads" if hit else None
 
