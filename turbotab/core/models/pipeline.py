@@ -335,6 +335,9 @@ class DesignSpec:
     # and nothing is substituted. The steps take the purpose as an argument of their own. None:
     # unanswered, the strictest case (every concern is said).
     purpose: str | None = None
+    # Under multiple imputation, how many imputations the coefficient table draws on the design's
+    # rows (:func:`imputation_count`), which the impute step's line states; None otherwise.
+    imputations: int | None = None
 
     def multiple_imputation(self) -> bool:
         return bool(self.missing) and self.missing.get("strategy") == "multiple_imputation"
@@ -489,7 +492,38 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         levers=_explore_answer(state, "levers"),
         selection=_explore_answer(state, "selection"),
         purpose=getattr(state, "purpose", None),
+        imputations=imputation_count(state, frame[inputs], levels, censored, spec_missing),
     )
+
+
+def imputation_count(state: Any, X: pd.DataFrame, levels: Sequence[str],
+                     censored: Mapping[str, Any] | None,
+                     answer: Mapping[str, Any] | None) -> int | None:
+    """Under multiple imputation, the number of imputations the coefficient table draws on ``X``
+    (the design's rows, under inference every analyzed row, as the table's): 0 when no input that
+    is not a level of its own has a blank (``stages.modeling._missing_for_table`` then imputes
+    nothing), else ``imputation.m_rule`` over the rows with a blank the imputation fills (as
+    ``missing.imputation_plan`` counts them: a below-detection column filled by half its minimum
+    has none). None when not imputing, and where the count is the fit's to make: a blank column
+    confirmed as one value per unit, which a clustered imputation first carries to its unit's
+    blank rows (unless the answer imputes at one level), so fewer rows may stay incomplete."""
+    from turbotab.core.methods.imputation import M_DEFAULT, m_rule
+    from turbotab.core.readings import confirmation
+
+    if not answer or answer.get("strategy") != "multiple_imputation":
+        return None
+    level = set(levels)
+    gaps = [c for c in X.columns if c not in level and X[c].isna().any()]
+    if not gaps:
+        return 0
+    if answer.get("imputation_levels") != "single_level" and any(
+            str(confirmation(state, "time_invariant", c)) == "yes" for c in gaps):
+        return None
+    halved = (set((censored or {}).get("columns") or [])
+              if (censored or {}).get("method") == "half_minimum" else set())
+    imputed = [c for c in gaps if not (c in halved and X[c].notna().any())]
+    blank = X[imputed].isna().any(axis=1) if imputed else pd.Series(False, index=X.index)
+    return m_rule(int(blank.sum()), len(X), int(answer.get("m") or M_DEFAULT))
 
 
 def _unread_exits(column: str, values: pd.Series) -> list[dict[str, Any]]:
@@ -1048,9 +1082,21 @@ def impute_detail(spec: DesignSpec, step: Any = None) -> str:
     text = (f"Median for numbers{by_energy}, most frequent value for categories{pairs}, learned "
             f"within each training fold without the outcome{marked}.")
     if spec.multiple_imputation():
-        m = int((spec.missing or {}).get("m") or 20)
-        text += (f" It serves the cross-validated scores; the coefficients are pooled over {m} "
-                 f"multiple imputations with the outcome.")
+        # The number the coefficient table draws (:func:`imputation_count`), never the answer's.
+        m = getattr(spec, "imputations", None)
+        if m == 0:
+            text += (" It serves the cross-validated scores; no predictor value is missing among "
+                     "the analyzed rows, so the coefficients are not imputed.")
+        elif m is not None:
+            text += (f" It serves the cross-validated scores; the coefficients are pooled over {m} "
+                     f"multiple imputations with the outcome.")
+        else:  # the count is the fit's to make (or a spec made before the count was kept)
+            from turbotab.core.methods.imputation import M_DEFAULT, m_rule
+
+            least = m_rule(0, 1, int((spec.missing or {}).get("m") or M_DEFAULT))
+            text += (f" It serves the cross-validated scores; the coefficients are pooled over at "
+                     f"least {least} multiple imputations with the outcome, more when more rows "
+                     f"are incomplete.")
     return text
 
 

@@ -124,6 +124,15 @@ def _quantile(values: np.ndarray, p: Sequence[float]) -> np.ndarray:
 
 # ``Hmisc::rcspline.eval`` stops below this many values: the fewest a spline's knots can be placed on.
 SPLINE_MIN_VALUES = 6
+SPLINE_TOO_FEW = "spline_too_few_values"  # its fit-time refusal's code (SWARM_PLAN §8)
+# Its ways forward, in words: the rows it is fit on are the caller's (a model's own complete cases,
+# a fold), so no one answer is named.
+SPLINE_TOO_FEW_EXITS = (
+    {"label": "Enter the column as a straight line, which places no knots", "decision": None},
+    {"label": "Keep more rows: under inference, multiple imputation keeps the rows complete cases "
+              "drop", "decision": None},
+    {"label": "Leave the column out", "decision": None},
+)
 
 
 def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIED
@@ -131,16 +140,21 @@ def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIE
     """Knot locations as ``Hmisc::rcspline.eval`` places them when only their number is given.
 
     Returns the knots and plain notes on any departure from the nominal percentiles. Raises
-    ``ValueError`` where ``rcspline.eval`` stops: fewer than 6 values, or fewer than 3 distinct
-    knots.
+    ``ValueError`` where ``rcspline.eval`` stops: fewer than :data:`SPLINE_MIN_VALUES` values (a
+    fit-time refusal, ``graph.StageRefusal``, coded :data:`SPLINE_TOO_FEW`, so the record classes
+    it as refused, not a crash: Model 3 fit on the complete cases of its added columns may hold
+    none), or fewer than 3 distinct knots.
     """
     xx = np.asarray(x, dtype=float)
     xx = xx[np.isfinite(xx)]
     n = len(xx)
     nk = int(n_knots)
     if n < SPLINE_MIN_VALUES:
-        raise ValueError(f"A spline needs at least {SPLINE_MIN_VALUES} recorded values to place "
-                         f"its knots; there are {n}.")
+        from turbotab.core.graph import StageRefusal
+
+        raise StageRefusal(SPLINE_TOO_FEW, f"A spline needs at least {SPLINE_MIN_VALUES} recorded "
+                                           f"values to place its knots; there are {n}.",
+                           exits=SPLINE_TOO_FEW_EXITS)
     if nk < 3:
         raise ValueError("A restricted cubic spline needs at least 3 knots.")
     notes: list[str] = []
