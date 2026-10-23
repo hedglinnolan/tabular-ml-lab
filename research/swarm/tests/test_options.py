@@ -372,6 +372,7 @@ def test_an_id_not_offered_is_refused_and_a_way_forward_is_taken_by_its_id():
     assert opts.resolve(q, ["impute"], [], ways)["kind"] == "set_missing"
 
 
+
 # The exclusions card as the app shows it (ExclusionsAsk): keeping every row, each screen offered
 # on this table, and a range of one's own on a numeric column, in the teaching entry's words.
 EXCLUSIONS_ENTRY = {"key": "exclusions", "question": "Is your study restricted to part of this data?",
@@ -632,6 +633,37 @@ def test_several_rules_left_unset_or_set_out_of_place_are_refused(ids, sets, wor
     with pytest.raises(opts.Unanswerable) as caught:
         opts.resolve(exclusions(), ids, sets)
     assert all(w in str(caught.value) for w in words), str(caught.value)
+
+
+def test_a_way_forward_beside_other_options_is_refused_for_why_it_is_refused():
+    """A question that takes several options refuses a way forward named beside them, naming
+    the way and saying that it is answered alone and that only the question's own options are
+    named together (the driver fix package verifier's P1); a question that takes one option keeps saying
+    so. Silent: the way alone, and the question's own options together, are answered."""
+    keep = {"kind": "set_exclusions", "rules": []}
+    ways = opts.exits([{"label": "Keep every row instead", "decision": keep}])
+    way = ways[0]["id"]
+    q = exclusions()
+    for ids in ([way, "levels"], ["levels", way]):
+        with pytest.raises(opts.Unanswerable) as caught:
+            opts.resolve(q, ids, ["level_column=sex", "exclude=2"], ways)
+        assert str(caught.value) == (f"Option {way} is a way forward: it is answered alone, and "
+                                     f"only this question's own options are named together.")
+    other = opts.exits([{"label": "Wait", "decision": {"kind": "set_lens", "lenses": []}}])
+    with pytest.raises(opts.Unanswerable) as caught:
+        opts.resolve(q, [way, other[0]["id"], "levels"], ["level_column=sex", "exclude=2"],
+                     [*ways, *other])
+    assert str(caught.value).startswith(f"Options {way} and {other[0]['id']} are ways forward: "
+                                        f"each is answered alone"), str(caught.value)
+    assert opts.resolve(q, [way], [], ways) == keep
+    assert opts.resolve(q, ["sex_neutral_500_3500", "levels"], ["level_column=sex", "exclude=2"],
+                        ways)["rules"] == [SCREEN, OWN_LEVELS]
+    one = compose("missing", {"proposals": {"labels": {"missing": LABELED(
+        "missing", ["impute", "complete_case"])}}})
+    for ids in (["impute", way], ["impute", "complete_case"]):
+        with pytest.raises(opts.Unanswerable) as caught:
+            opts.resolve(one, ids, [], ways)
+        assert str(caught.value) == "This question takes one option at a time."
 
 
 def test_the_estimand_offers_each_exposure_with_the_cards_measures_as_a_field():

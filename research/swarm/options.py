@@ -39,7 +39,8 @@ records them together. So do the exclusions, a rule for each option named, in th
 adding its own rule; keeping every row is answered alone. A setting goes to the one option named
 that takes it; where more than one does, its place among the options named is written before it
 (``--set 2.level_column=DIQ010 --set 3.level_column=DIQ050``), so each rule has its own column,
-levels and handling of a row it cannot confirm.
+levels and handling of a row it cannot confirm. A way forward is answered alone, never beside
+the question's own options.
 """
 from __future__ import annotations
 
@@ -910,9 +911,16 @@ def resolve(composed: Composed, ids: list[str], sets: list[str],
                            f"question's options and its ways forward.")
     chosen = [options[i] for i in ids]
     multi = composed.get("multi")
-    if len(chosen) > 1 and not (multi and all(i in {str(o["id"]) for o in composed["options"]}
-                                              for i in ids)):
+    if len(chosen) > 1 and not multi:
         raise Unanswerable("This question takes one option at a time.")
+    own_ids = {str(o["id"]) for o in composed.get("options") or [] if o.get("id") is not None}
+    ways_named = list(dict.fromkeys(i for i in ids if i not in own_ids))
+    if len(chosen) > 1 and ways_named:
+        raise Unanswerable(
+            f"Option {ways_named[0]} is a way forward: it is answered alone, and only this "
+            f"question's own options are named together." if len(ways_named) == 1 else
+            f"Options {', '.join(ways_named[:-1])} and {ways_named[-1]} are ways forward: each is "
+            f"answered alone, and only this question's own options are named together.")
     blank = next((i for i, o in zip(ids, chosen) if not isinstance(o.get("decision"), Mapping)),
                  None)
     if blank is not None and not sets:
