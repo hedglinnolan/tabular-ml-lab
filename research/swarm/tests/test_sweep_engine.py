@@ -455,3 +455,110 @@ def test_no_other_option_is_failed_or_refused_at_a_stage(induced):
     assert others["question:split=cut"]["kind"] == "unreached"  # it takes a field of one's own
     assert [d["refit"] for d in report["defects"]] == [f"question:missing={CRASHES_UNDER}"]
     assert report["only"] == ["question:missing", "question:split"]
+
+
+# ── a reading the models answer reads (the verifier's V2-1) ──────────────────
+
+READING = "reading:code_or_count:stage"
+
+
+def coded_table(path):
+    """The verifier's case: 240 rows, three numeric predictors, ``weight_kg`` with twelve values
+    of 999, ``stage`` an integer from 1 to 4 (the default path reads it as a code), and a yes/no
+    outcome from a logistic model in two of the predictors."""
+    rng = np.random.default_rng(3)
+    n = 240
+    frame = pd.DataFrame({f"x{i}": rng.normal(size=n).round(3) for i in (1, 2, 3)})
+    weight = rng.normal(75, 12, n).round(1)
+    weight[rng.choice(n, 12, replace=False)] = 999
+    frame["weight_kg"] = weight
+    frame["stage"] = rng.integers(1, 5, n)
+    p = 1 / (1 + np.exp(-(0.8 * frame.x1 - 0.5 * frame.x2)))
+    frame["y"] = (rng.random(n) < p).astype(int)
+    frame.to_csv(path, index=False)
+    return path
+
+
+@pytest.fixture(scope="module")
+def coded(tmp_path_factory):
+    """The crash sweep of the stage reading on the coded table, as the engine is, and again with
+    the server's preview of the reading's other answer (an amount) failing as a defect would."""
+    from turbotab.server.service import ProjectService
+
+    work = tmp_path_factory.mktemp("coded")
+    data = coded_table(work / "coded.csv")
+    clean = W.crash("coded", work / "clean", data=data, question=QUESTION, only=[READING])
+    original = ProjectService._preview
+
+    def failing(self, pid, decision):
+        body = decision.model_dump() if hasattr(decision, "model_dump") else dict(decision)
+        if body.get("kind") == "confirm_reading" and body.get("column") == "stage" \
+                and body.get("value") == "amount":
+            raise RuntimeError("the preview fails here, as a defect would")
+        return original(self, pid, decision)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(ProjectService, "_preview", failing)
+    try:
+        induced = W.crash("coded", work / "induced", data=data, question=QUESTION,
+                          only=[READING])
+    finally:
+        mp.undo()
+    with W.arms.Local(work / "clean" / "home") as session:
+        session.use(clean["template"]["project"])
+        log = session.view()["decisions"]
+    return {"clean": clean, "induced": induced, "log": log}
+
+
+def by_value(report):
+    """Each refit of the stage reading, by the answer it gives."""
+    return {r["decision"]["value"]: r for r in report["refits"]
+            if r["point"] == READING and r["decision"]}
+
+
+@pytest.mark.slow
+def test_a_reading_the_models_answer_reads_is_swept_and_the_crash_sweep_passes(coded):
+    """The models answer withdrawn first, as the engine's refusal asks, each of the reading's
+    two answers (its ways: a code, an amount) answered and the models answer given again as the
+    plan had it; the reading visited, every option, and no defect: the sweep passes but for the one
+    decision it was told to sweep."""
+    from turbotab.core.readings import VALUES
+
+    report = coded["clean"]
+    models = [r for r in coded["log"] if r["decision"]["kind"] == "select_models"]
+    reading = [r for r in coded["log"] if r["decision"]["kind"] == "confirm_reading"
+               and r["decision"].get("column") == "stage"]
+    assert len(models) == 1 and len(reading) == 1 and reading[0]["seq"] < models[0]["seq"]
+    assert reading[0]["decision"]["value"] == "code"  # the default path's reading
+    (offered,) = report["offered"]
+    assert sorted(o["decision"]["value"] for o in offered["options"]) == sorted(VALUES[
+        "code_or_count"])  # every answer the reading has (``readings.VALUES``)
+    assert offered["withdrawn"] == [{"what": "models answer", "column": "stage",
+                                     "seq": models[0]["seq"], "record": models[0]["id"]}]
+    assert report["unlisted"] == [] and report["complete"] is True and report["defects"] == []
+    assert report["only"] == [READING] and W.passed(report) is False  # some decisions only
+    assert W.passed(report | {"only": None}) is True
+    refits = by_value(report)
+    for value, r in refits.items():
+        assert [w["decision"] for w in r["withdrawn"]] == [models[0]["decision"]], value
+        again = next(a for a in r["answered"] if a["answer"].startswith("the plan's models"))
+        assert again["kind"] == "ok", (value, again)
+    # The plan's own reading, answered again with the models answer after it: the plan itself.
+    assert refits["code"]["kind"] == "duplicate" and refits["code"]["duplicate_of"] == "plan"
+    # The other: fitted, or refused by the engine in words (a solver can tip it), never failed.
+    assert refits["amount"]["kind"] in ("scored", "refused"), refits["amount"]
+    if refits["amount"]["kind"] == "refused":
+        assert refits["amount"]["refused"]["code"] and refits["amount"]["refused"]["message"]
+
+
+@pytest.mark.slow
+def test_an_induced_500_on_the_readings_other_answer_still_fails_the_crash_sweep(coded):
+    report = coded["induced"]
+    refits = by_value(report)
+    amount = refits["amount"]
+    assert amount["kind"] == "failed" and amount["failed"]["code"] == "http_500"
+    assert [d["refit"] for d in report["defects"]] == [amount["id"]]
+    assert report["complete"] is True and W.passed(report | {"only": None}) is False
+    kept = json.loads(open(report["defects"][0]["path"]).read())
+    assert json.loads(kept["requests"][0]["body"])["value"] == "amount"
+    assert refits["code"]["kind"] == "duplicate"

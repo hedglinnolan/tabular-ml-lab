@@ -3,7 +3,7 @@ the loss's units" and "Refused refits", §8 "The sweep's refits under the full p
 
     python -m research.swarm.sweep crash --dataset <id> --out <dir>
     python -m research.swarm.sweep plan  --dataset <id> --bundle <export.zip> --name <plan> --out <dir>
-                                         [--data <file>]
+                                         [--data <file>] [--sweeps <dir>]
 
 **Around a named plan.** The default plan (the default path's, ``research/swarm/arms.py``, walked
 here), or a named final plan (an export bundle's decision log rebuilt with ``core/export/replay.py``
@@ -29,14 +29,33 @@ answer** (a column's code or amount, its units: each ``confirm_reading`` but a r
 (:func:`graded`). Under Predict the validation scheme is the sweep's own (below), so its line is
 not swept; the crash sweep answers and fits its options all the same.
 
+**The revisit** reverts the decision's record. Where the engine refuses that because a recorded
+answer reads a column the revisit would leave on a reading nobody settled (``role_unconfirmed``,
+whose words name that answer: the models answer, the exclusion rules or the combining answer,
+:data:`READERS`), the sweep takes the way those words name (the orchestrator's ruling of
+2026-10-23): it withdraws that answer first (reverts its record in force), revisits the decision,
+answers the option, and answers the withdrawn answer again as the plan had it, then previews and
+fits as for any option; each answer withdrawn and answered again is recorded (``withdrawn``, in
+the listing and the refit). Where that way is itself refused (the withdrawing revert, the revisit
+after it, or the answer again), the refusal is recorded with the engine's reason and the option
+counts visited and refused; at the listing, the decision's revisit itself does
+(:data:`REVISIT`), never unlisted.
+
 **Each refit** answers the option on its copy (a question, a finding or a reading by its id after
 the revisit, ``driver.chosen``; a declaration's option as its line composed it, which is what the
 driver's ``answer`` posts for it); any question the change opens again is answered by the default
-path's policy; refits are deduplicated by the plan's digest (``plan_lock.digest`` of the log as
-served, folded: the digest every fit record carries), so an option that leaves a plan already
-fitted is not fitted again (``duplicate_of``); then Fit is pressed and the refit read: under
-Predict each family's cross-validated scores from its fit record, under Estimate the estimate the
-app reports (``assemble.result_of`` over the log, the fit records and ``GET …/results``). **Scored**
+path's policy, but a refusal the walk meets after the option takes a way forward only where the
+plan's log in force before the option, or the option itself, names it (each field of the way's
+decision the same, :class:`Named`), recorded with who named it (``ways``); where none is named,
+the walk goes on as the default path does with no way forward (another option of the question,
+else a stop classed refused); the option's own refusal takes none. Refits are deduplicated by the
+plan's digest (``plan_lock.digest`` of the log as served, folded: the digest every fit record
+carries), so an option that leaves a plan already fitted is not fitted again (``duplicate_of``);
+then Fit is pressed and the refit read: under Predict each family's cross-validated scores from
+its fit record, under Estimate the estimate the app reports (``assemble.result_of`` over the log,
+the fit records and ``GET …/results``), each beside the q-value its locked fit's exposure row
+serves, where it serves one (the feature-wise family's: the measurement fixture's discovery set
+is read from it, ``prereg.json``; :func:`with_q`). **Scored**
 under Predict with random repeated 5-fold cross-validation, 5 repeats, within the training rows,
 whatever folds the plan chose: the template records that scheme (``set_validation``) before it is
 copied, answered random where a cut-point seal holds the rows out (it leaves the folds' order
@@ -68,6 +87,12 @@ Which decisions are material for the pilot's scoring is ``prereg.json``'s to fix
 decision, option, class, digest, seconds, scores or estimates, and change), each decision's
 summary, and the graded readings: what §7's scoring and §9's theorist read.
 
+**The compute cap.** The sweeps of a dataset around named plans stop before a fit once its
+compute cap is spent: ``prereg.json``'s ``filled.compute_cap.by_dataset`` (the crash fill's, in
+fit seconds; the command refuses to sweep without it, :func:`compute_cap`), counting the fit
+seconds the dataset's earlier sweeps in the same folder spent (:func:`spent_by`). The report says
+so (``stopped``, with the cap and what was spent), and the options left are not visited.
+
 **The crash sweep** (``crash``; §6 step 1), which is also the sizing and the default-plan half of
 the sweep: on one dataset, every option the driver offers at every decision of the default plan,
 the declarations and the readings included, each previewed, then answered and fitted once; after
@@ -96,6 +121,7 @@ import dataclasses
 import hashlib
 import json
 import math
+import re
 import statistics
 import subprocess
 import sys
@@ -122,6 +148,18 @@ READING_KINDS = ("confirm_reading", "set_column_unit")
 FINDING_KINDS = ("apply_repair", "dismiss_finding", "defer_finding")
 REFIT_WAIT = 3600.0
 PLAN = "plan"  # the refit of the plan itself, every other refit's comparison
+REVISIT = "(the revisit)"  # a decision's revisit itself, refitted as an option where it failed
+# A revisit the engine refuses because a recorded answer reads a column the revisit would leave on
+# a reading nobody settled (``decisions._answers_keep_settled_readings``): its code, the words that
+# name that answer ("The recorded <answer> reads `<column>`. Change the <answer> first, …"), and
+# the kinds of record each answer it names is. The sweep takes the way those words name (the
+# module docstring): that answer withdrawn first, and answered again as the plan had it.
+READER_REFUSAL = "role_unconfirmed"
+READER_WORDS = re.compile(r"The recorded (?P<what>.+?) reads `(?P<column>[^`]+)`")
+READERS = {"models answer": ("select_models",),
+           "exclusion rules": ("set_exclusions", "set_sensitivity"),
+           "combining answer": ("set_aggregation",)}
+WITHDRAWN_AT_MOST = 4  # the most answers one revisit withdraws before the sweep says it stopped
 
 
 def now() -> str:
@@ -339,7 +377,9 @@ class Refit:
     plan's digest it fitted (or the refit it duplicates), the fit's key and record, its seconds
     (``seconds``, the press to the fit's end; ``fit_seconds``, the server's own; ``took``, the
     whole refit), what it scored or estimated, its change against the plan and whether §7 reads it
-    material; the previews and answers made on the way; the copy it ran on, while kept."""
+    material; the previews and answers made on the way, the plan's answers the revisit withdrew
+    first and answered again after the option (``withdrawn``), and each refusal's way forward the
+    walk took after it with what named it (``ways``); the copy it ran on, while kept."""
 
     point: str
     option: str | None
@@ -365,6 +405,8 @@ class Refit:
     material: bool | None = None
     previews: list[dict[str, Any]] = field(default_factory=list)
     answered: list[dict[str, Any]] = field(default_factory=list)
+    withdrawn: list[dict[str, Any]] = field(default_factory=list)  # answered again after the option
+    ways: list[dict[str, Any]] = field(default_factory=list)  # refusals' ways forward taken
     record: dict[str, Any] | None = None  # the fit record as served (Predict: the change's arm)
 
     @property
@@ -438,7 +480,8 @@ def split_facts_when_fresh(session: Any, wait: float = 120.0) -> dict[str, Any] 
 def estimate_of(session: Any) -> tuple[list[dict[str, Any]] | None, str | None]:
     """The estimate the app reports for the plan's estimand, as the record reads it
     (``assemble.result_of`` under Estimate, over the log, the fit records and the results), or why
-    there is none."""
+    there is none; each estimate read from the locked fit's exposure rows beside its q-value where
+    the row serves one (:func:`with_q`)."""
     from research.swarm import assemble as A
 
     view = session.view()
@@ -448,7 +491,27 @@ def estimate_of(session: Any) -> tuple[list[dict[str, Any]] | None, str | None]:
     got = A.result_of("inference", view.get("decisions") or [], fits, results)
     if got.get("refused"):
         return None, str(got["refused"])
-    return list(got.get("estimates") or []), None
+    return with_q(got, fits), None
+
+
+def with_q(got: Mapping[str, Any], fits: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """``got``'s estimates (``assemble.result_of``), each read from the locked fit's exposure rows
+    (``source`` ``fits``) given that row's q-value (``q``, the feature-wise family's
+    Benjamini–Hochberg q, as ``GET …/fits`` serves it) where the row serves one, so a discovery set
+    can be read from the refit (the measurement fixture's materiality, ``prereg.json``); a row that
+    serves none, and an estimate read from the results, are as ``got`` holds them."""
+    rows = [dict(e) for e in got.get("estimates") or []]
+    if got.get("source") != "fits":
+        return rows
+    locked = next((f for f in fits if f.get("id") == got.get("attempt")), None) or {}
+    q = {(str(family), str(row.get("feature"))): row["q"]
+         for family, served in (locked.get("effects") or {}).items() for row in served or ()
+         if isinstance(row, Mapping) and "q" in row}
+    for e in rows:
+        key = (str(e.get("family")), str(e.get("feature")))
+        if key in q:
+            e["q"] = q[key]
+    return rows
 
 
 def read_refit(session: Any, refit: Refit, fit: Any, purpose: str) -> None:
@@ -592,7 +655,9 @@ def unlisted_of(points: Sequence[Point], offered: Mapping[str, Mapping[str, Any]
     """Each decision whose options were not listed, so none of them was visited: not yet listed;
     listed with why they could not be (a revisit refused, a question that did not open again); or
     listed with none, where the plan records an answer to it (a decision the plan answered has at
-    least that answer to offer)."""
+    least that answer to offer). A decision whose revisit took the way the engine names and was
+    refused on it (``refused``, :meth:`Sweep._revisit`) was visited: its revisit is a refit,
+    refused, with the engine's reason."""
     out = []
     for p in points:
         listed = offered.get(p.id)
@@ -600,6 +665,8 @@ def unlisted_of(points: Sequence[Point], offered: Mapping[str, Mapping[str, Any]
             out.append({"point": p.id, "why": "Its options were not listed."})
         elif listed.get("why"):
             out.append({"point": p.id, "why": str(listed["why"])})
+        elif listed.get("refused"):
+            continue
         elif not listed.get("options") and p.decision is not None:
             out.append({"point": p.id, "why": "No option was offered for a decision the plan "
                                               "answered."})
@@ -641,16 +708,53 @@ def seconds_of(timed: Sequence[float]) -> dict[str, Any]:
 # ── the sweep ────────────────────────────────────────────────────────────────
 
 
+def names_way(decision: Mapping[str, Any], way: Mapping[str, Any]) -> bool:
+    """Whether ``decision`` names the way forward whose decision is ``way``: every field the way
+    records, its kind among them, is the decision's own."""
+    return bool(way) and all(decision.get(k) == v for k, v in way.items())
+
+
+@dataclass
+class Named(arms.Default):
+    """The default path's answers for the walk after an option (the module docstring), but a
+    refusal's way forward taken only where the plan or the option names it (:func:`names_way`):
+    a way whose decision is one the plan's log holds in force before the option, or the option's
+    own (``names``, by who names it); none other, so a refusal the plan never met is not answered
+    by a way it never chose. Each way taken is kept in ``taken``, with who named it."""
+
+    names: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    taken: list[dict[str, Any]] = field(default_factory=list)
+
+    def way(self, exits: Sequence[Mapping[str, Any]]) -> str | None:
+        for e in exits:
+            decision = e.get("decision")
+            if not (e.get("id") and isinstance(decision, Mapping)):
+                continue
+            by = next((who for who, decisions in self.names.items()
+                       if any(names_way(d, decision) for d in decisions)), None)
+            if by is not None:
+                self.taken.append({"id": str(e["id"]), "label": e.get("label"),
+                                   "decision": dict(decision), "named_by": by})
+                return str(e["id"])
+        return None
+
+
 class Sweep:
     """One sweep around one plan in ``out`` (the module docstring), resumable from its
     ``progress.jsonl``. ``crash``: the crash sweep's mode (previews, readings, the scheme).
     ``only``: the decisions swept, by point id (every one where None), said in the report.
-    ``data``: the table the plan was made from, named in each defect's reproduction."""
+    ``data``: the table the plan was made from, named in each defect's reproduction. ``cap``: the
+    dataset's compute cap in fit seconds (prereg.json's, for the sweeps around named plans), with
+    ``spent`` the fit seconds the dataset's earlier sweeps spent; the sweep stops before a fit once
+    they are spent, and says so (``stopped``)."""
 
     def __init__(self, out: Path, *, dataset: str | None, question: arms.Question,
                  crash: bool, plan: str, only: Iterable[str] | None = None,
-                 log: Callable[[str], None] | None = None, data: Path | None = None):
+                 log: Callable[[str], None] | None = None, data: Path | None = None,
+                 cap: float | None = None, spent: float = 0.0):
         self.out = Path(out).absolute()
+        self.cap, self.spent_before = (None if cap is None else float(cap)), float(spent)
+        self.stopped: dict[str, Any] | None = None
         self.dataset, self.question, self.crash, self.plan = dataset, question, crash, plan
         self.data = None if data is None else str(Path(data).absolute())  # the table, for a defect
         self.only = set(only) if only is not None else None
@@ -711,7 +815,8 @@ class Sweep:
             view = session.view()
             self.base = {"project": pid, "digest": plan_digest(view), "seq": last_seq(view),
                          "scoring": scoring, "points": [p.json() for p in points],
-                         "skipped": skipped}
+                         "skipped": skipped, "dataset": self.dataset, "plan": self.plan,
+                         "crash": self.crash}
             self._write({"template": self.base})
         self.points = [Point.of(p) for p in self.base["points"]]
         self.skipped = list(self.base["skipped"])
@@ -766,28 +871,82 @@ class Sweep:
         """The options the driver offers for ``point`` on the session's project, the plan's own
         among them, once they are on offer: after the revisit, for a question, a finding or a
         reading."""
+        return self._listed(session, point)[0]
+
+    def _listed(self, session: Any, point: Point
+                ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """:meth:`options`, and the plan's answers the revisit withdrew first (:meth:`_revisit`)."""
         if point.kind == "declaration":
             from research.swarm import declarations as decl, driver
 
             composed = decl.compose(point.key, session.view(),
                                     driver.served(session.run, session.client))
-            return list(composed.get("options") or [])
-        said = session.revisit(str(point.record), f"The sweep revisits {point.id}.")
-        if not said.ok:
-            raise arms.Stuck(f"Revisiting {point.id} was {said.kind}: {said.code}: "
-                             f"{said.message}")
+            return list(composed.get("options") or []), []
+        withdrawn = self._revisit(session, point)
         q = self._reopened(session, point)
         if point.kind == "question":
-            return list(q.get("options") or [])
+            return list(q.get("options") or []), withdrawn
         if point.kind == "finding":
             line = next((ln for ln in q.get("also_open") or [] if ln.get("source") == "finding"
                          and str(ln.get("key")) == point.key), {})
-            return list(line.get("options") or [])
+            return list(line.get("options") or []), withdrawn
         reading, column = point.key.split(":", 1)
         if reading == "unit":
             return [w for w in arms.ways_of(q) if w.get("id") and (w.get("decision") or {}).get(
-                "kind") == "set_column_unit" and (w.get("decision") or {}).get("column") == column]
-        return list(arms.reading_ways(q).get((reading, column)) or [])
+                "kind") == "set_column_unit" and (w.get("decision") or {}).get(
+                "column") == column], withdrawn
+        return list(arms.reading_ways(q).get((reading, column)) or []), withdrawn
+
+    def _revisit(self, session: Any, point: Point) -> list[dict[str, Any]]:
+        """``point``'s record reverted (the revisit), each answer the engine names as reading a
+        column the revisit would leave on a reading nobody settled withdrawn first (:data:`READERS`,
+        the module docstring); the answers withdrawn, in the order withdrawn, each with its record,
+        its decision as the plan had it and what its revert said. A revisit refused otherwise, or
+        naming an answer the log does not hold in force, stops in its words (:class:`arms.Stuck`);
+        once an answer is withdrawn, a refusal on the way stops classed (:class:`arms.Met`, at
+        ``revisit``), as does a revert of the answer named that is refused or fails."""
+        withdrawn: list[dict[str, Any]] = []
+
+        def stop(words: str, said: Any) -> Exception:
+            if not withdrawn:
+                return arms.Stuck(words)
+            return arms.Met(words, "failed" if said.kind == "failed" else "refused",
+                            said_json(said) | {"at": "revisit",
+                                               "exits": arms.exit_fields(said.exits),
+                                               "withdrawn": [dict(w) for w in withdrawn]})
+
+        said = session.revisit(str(point.record), f"The sweep revisits {point.id}.")
+        while not said.ok:
+            words = f"Revisiting {point.id} was {said.kind}: {said.code}: {said.message}"
+            named = READER_WORDS.search(str(said.message or "")) \
+                if said.kind == "refused" and said.code == READER_REFUSAL else None
+            kinds = READERS.get(named.group("what")) if named else None
+            if kinds is None:
+                raise stop(words, said)
+            what = named.group("what")
+            reader = next((r for r in reversed(live(session.view())) if r.decision.kind in kinds
+                           and r.id != point.record), None)
+            if reader is None:
+                raise stop(f"{words} The log holds no record of the {what} in force.", said)
+            if len(withdrawn) >= WITHDRAWN_AT_MOST:
+                raise stop(f"{words} The sweep withdrew {len(withdrawn)} answers first already.",
+                           said)
+            took = session.revisit(reader.id, f"The sweep withdraws the plan's {what} first, as "
+                                              f"the engine asks, to revisit {point.id}.")
+            withdrawn.append({"what": what, "column": named.group("column"), "seq": reader.seq,
+                              "record": reader.id,
+                              "decision": reader.decision.model_dump(mode="json"),
+                              "reverted": said_json(took)})
+            if not took.ok:
+                raise arms.Met(f"Revisiting {point.id} asks the plan's {what} (record "
+                               f"{reader.seq}) withdrawn first, and its revert was {took.kind}: "
+                               f"{took.code}: {took.message}",
+                               "failed" if took.kind == "failed" else "refused",
+                               said_json(took) | {"at": "revisit",
+                                                  "exits": arms.exit_fields(took.exits),
+                                                  "withdrawn": [dict(w) for w in withdrawn]})
+            said = session.revisit(str(point.record), f"The sweep revisits {point.id}.")
+        return withdrawn
 
     def _reopened(self, session: Any, point: Point) -> dict[str, Any]:
         """The ask once the revisited question is open again (a reading or a role the server asks
@@ -828,11 +987,16 @@ class Sweep:
         try:
             refit.project = self._copy(session)
             before = self._errored(session)
+            named = [r.decision.model_dump(mode="json") for r in live(session.view())]
             if point.kind != "declaration":
-                offered = {str(o.get("id")) for o in self.options(session, point)}
-                if refit.option not in offered:
+                options, withdrawn = self._listed(session, point)
+                refit.withdrawn = withdrawn
+                refit.answered += [{"answer": f"withdrawn first: the plan's {w['what']} (record "
+                                              f"{w['seq']}), as the engine asks",
+                                    **w["reverted"]} for w in withdrawn]
+                if refit.option not in {str(o.get("id")) for o in options}:
                     raise arms.Stuck(f"The revisit offers no option {refit.option} now.")
-            self._refit(session, point, option, refit, later, plan)
+            self._refit(session, point, option, refit, later, plan, named)
         except arms.Met as met:
             if refit.kind not in ("failed", "refused"):
                 self._met(refit, met)
@@ -912,7 +1076,13 @@ class Sweep:
         return session.answer(ids, [], reason, arms.MARKER_OF.get(point.key, arms.DEFAULT_MARKER))
 
     def _refit(self, session: Any, point: Point, option: Mapping[str, Any], refit: Refit,
-               later: Sequence[Point], plan: Refit) -> None:
+               later: Sequence[Point], plan: Refit, named: Sequence[Mapping[str, Any]]) -> None:
+        """The option previewed (the crash sweep) and answered on the copy; each of the plan's
+        answers the revisit withdrew answered again as the plan had it (``refit.withdrawn``);
+        every later decision's plan answer previewed (the crash sweep); the walk to Fit, a
+        refusal's way forward taken only where the plan's log (``named``, its decisions in force
+        before the option) or the option names it (:class:`Named`); the sweep's scoring again;
+        Fit pressed and read, but for the plan's duplicate."""
         if self.crash:
             seen = self._post(session, point, option, f"The crash sweep previews {refit.id}.",
                               preview=True)
@@ -928,6 +1098,20 @@ class Sweep:
                 "at": "answer", "option": refit.option,
                 "exits": [{k: e.get(k) for k in ("label", "decision")} for e in said.exits]}
             return
+        for w in refit.withdrawn:  # the plan's answers withdrawn first, as the plan had them
+            again = session.decide(w["decision"], f"The sweep answers the plan's {w['what']} "
+                                                  f"again after {refit.id}, as the plan had it.")
+            refit.answered.append({"answer": f"the plan's {w['what']} again (record {w['seq']})",
+                                   **said_json(again)})
+            if not again.ok:
+                detail = said_json(again) | {"at": "answer_again", "decision": w["decision"]}
+                if again.kind == "failed":
+                    refit.kind, refit.failed = "failed", detail
+                else:
+                    refit.kind = "refused"
+                    refit.refused = detail | {"option": refit.option,
+                                              "exits": arms.exit_fields(again.exits)}
+                return
         if self.crash:
             for p in later:  # every later decision's default (:func:`later_of`)
                 if p.decision is not None:  # a line the plan left open has no answer to preview
@@ -937,9 +1121,15 @@ class Sweep:
         steps: list[arms.Step] = []
         before = (lambda key, q: self._preview_reopened(session, refit, key, q)) if self.crash \
             else None
-        arms.walk(session, self.policy, steps=steps, before=before)
-        refit.answered += [{"answer": f"{s.at}:{s.key}={','.join(s.chosen)}", "kind": s.said,
-                            "code": s.code} for s in steps]
+        policy = Named(self.question, proposed=dict(self.policy.proposed),
+                       names={"the plan": list(named),
+                              "the option": [dict(option.get("decision") or {})]})
+        try:
+            arms.walk(session, policy, steps=steps, before=before)
+        finally:
+            refit.ways = list(policy.taken)
+            refit.answered += [{"answer": f"{s.at}:{s.key}={','.join(s.chosen)}", "kind": s.said,
+                                "code": s.code} for s in steps]
         if point.id != f"declaration:{SCHEME}":
             self._rescore(session, refit)
         refit.digest = plan_digest(session.view())
@@ -1043,34 +1233,12 @@ class Sweep:
         self.template(session, build)
         plan = self.plan_refit(session)
         for point in self.points:
+            if self.stopped is not None:
+                break
             later = later_of(self.points, point)
             listed = self.offered.get(point.id)
             if listed is None:
-                copy = self._copy(session)
-                errors = len(session.errors)
-                met: arms.Met | None = None
-                try:
-                    options = self.options(session, point)
-                    why = None
-                except arms.Stuck as exc:
-                    options, why = [], str(exc)
-                    met = exc if isinstance(exc, arms.Met) and exc.kind == "failed" else None
-                failed = list(session.errors[errors:])
-                if failed or met is not None:
-                    # A 500, or a stage failed untyped, met on the revisit itself: an engine
-                    # defect, kept with it.
-                    revisit = Refit(point.id, "(the revisit)", None, kind="failed",
-                                    failed={"kind": "failed", "by": "server", "code": "http_500",
-                                            "message": failed[-1].get("said")} if failed
-                                    else dict(met.detail), project=copy)
-                    self._defect(session, revisit, failed)
-                    self.done[revisit.id] = revisit
-                    self._write({"refit": revisit.json()})
-                else:
-                    session.drop(copy, self.made)
-                listed = {"point": point.id, "why": why, "options": [
-                    {"id": o.get("id"), "label": o.get("label"), "decision": o.get("decision"),
-                     "needs": o.get("needs")} for o in options]}
+                listed = self._list(session, point)
                 self.offered[point.id] = listed
                 self._write({"offered": listed})
             for option in listed["options"]:
@@ -1082,11 +1250,79 @@ class Sweep:
                     r = Refit(point.id, str(option.get("id")), None, kind="unreached",
                               why=f"It records nothing by itself: it takes {needs}.")
                 else:
+                    if self._capped():
+                        break
                     self.log(rid)
                     r = self.refit(session, point, option, later, plan)
                 self.done[rid] = r
                 self._write({"refit": r.json()})
         return self.report(plan, time.monotonic() - started)
+
+    def _list(self, session: Any, point: Point) -> dict[str, Any]:
+        """``point``'s options listed on a copy of the template (:meth:`_listed`), with the plan's
+        answers its revisit withdrew first. A 500 met on the way, or a stage failed untyped, is an
+        engine defect (its revisit refitted failed, the copy kept); the way the engine names for
+        the revisit, refused (:meth:`_revisit`), is the decision visited and refused (its revisit
+        refitted refused, never unlisted); any other stop lists it with why it could not be."""
+        copy = self._copy(session)
+        errors = len(session.errors)
+        met: arms.Met | None = None
+        withdrawn: list[dict[str, Any]] = []
+        refused: dict[str, Any] | None = None
+        try:
+            options, withdrawn = self._listed(session, point)
+            why = None
+        except arms.Stuck as exc:
+            options, why = [], str(exc)
+            met = exc if isinstance(exc, arms.Met) else None
+        failed = list(session.errors[errors:])
+        if failed or (met is not None and met.kind == "failed"):
+            # A 500, or a stage failed untyped, met on the revisit itself: an engine defect, kept
+            # with it.
+            revisit = Refit(point.id, REVISIT, None, kind="failed",
+                            failed={"kind": "failed", "by": "server", "code": "http_500",
+                                    "message": failed[-1].get("said")} if failed
+                            else dict(met.detail), project=copy)
+            self._defect(session, revisit, failed)
+            self.done[revisit.id] = revisit
+            self._write({"refit": revisit.json()})
+        elif met is not None and met.detail.get("at") == "revisit":
+            withdrawn = list(met.detail.get("withdrawn") or [])
+            refused = dict(met.detail) | {"option": REVISIT}
+            revisit = Refit(point.id, REVISIT, None, kind="refused", why=str(met), refused=refused)
+            self.done[revisit.id] = revisit
+            self._write({"refit": revisit.json()})
+            why = None
+            session.drop(copy, self.made)
+        else:
+            session.drop(copy, self.made)
+        return {"point": point.id, "why": why, "refused": refused,
+                "withdrawn": [{k: w.get(k) for k in ("what", "column", "seq", "record")}
+                              for w in withdrawn],
+                "options": [{"id": o.get("id"), "label": o.get("label"),
+                             "decision": o.get("decision"), "needs": o.get("needs")}
+                            for o in options]}
+
+    def spent(self) -> float:
+        """The fit seconds this dataset's sweeps have spent: the earlier sweeps' (``spent_before``)
+        and every fit of this one's (:func:`timed_of`)."""
+        return self.spent_before + sum(t for t in (timed_of(r) for r in self.done.values())
+                                       if t is not None)
+
+    def _capped(self) -> bool:
+        """Whether the dataset's compute cap (``cap``, prereg.json's) is spent, so the sweep stops
+        before its next fit, said in ``stopped``."""
+        if self.cap is None or self.stopped is not None:
+            return self.stopped is not None
+        spent = self.spent()
+        if spent < self.cap:
+            return False
+        self.stopped = {"cap": self.cap, "spent": round(spent, 3),
+                        "spent_before": round(self.spent_before, 3),
+                        "why": (f"The sweeps of {self.dataset} stopped at its compute cap: "
+                                f"{spent:,.0f} of {self.cap:,.0f} fit seconds spent "
+                                f"(prereg.json's compute_cap), before the next fit.")}
+        return True
 
     def report(self, plan: Refit, seconds: float) -> dict[str, Any]:
         refits = [r for k, r in self.done.items() if k != PLAN]
@@ -1110,6 +1346,10 @@ class Sweep:
             "fit_seconds": seconds_of(timed),
             "complete": not unvisited, "unvisited": unvisited, "unlisted": unlisted,
             "defects": list(self.defects),
+            "cap": None if self.cap is None else {
+                "seconds": self.cap, "spent": round(self.spent(), 3),
+                "spent_before": round(self.spent_before, 3)},
+            "stopped": self.stopped,
         }
 
 
@@ -1173,6 +1413,17 @@ def table_md(report: Mapping[str, Any]) -> str:
         lines.append(f"| {d['point']} | {d['options']} | {c['scored']} | {c['refused']} | "
                      f"{c['failed']} | {c['unreached']} | {c['duplicate']} | {share} | "
                      f"{d['material']} |")
+    if report.get("stopped"):
+        lines += ["", "## Stopped at the compute cap", "", str(report["stopped"]["why"])]
+    withdrawn = [o for o in report.get("offered") or [] if o.get("withdrawn")]
+    if withdrawn:
+        lines += ["", "## Answers withdrawn first to revisit a decision, as the engine asks", ""]
+        lines += [f"- `{o['point']}`: " + ", ".join(f"the {w['what']} (record {w['seq']}), which "
+                                                    f"reads `{w['column']}`"
+                                                    for w in o["withdrawn"])
+                  + ("; refused on the way" if o.get("refused") else
+                     "; answered again after each option, as the plan had them")
+                  for o in withdrawn]
     if report.get("unlisted"):
         lines += ["", "## Decisions whose options were not listed", ""]
         lines += [f"- `{u['point']}`: {str(u['why'])[:300]}" for u in report["unlisted"]]
@@ -1207,15 +1458,63 @@ def crash(dataset: str, out: Path, *, only: Iterable[str] | None = None,
     return report
 
 
+def compute_cap(dataset: str, prereg: Mapping[str, Any] | None = None) -> float:
+    """The compute cap of ``dataset``'s sweeps around named plans, in fit seconds: prereg.json's
+    ``filled.compute_cap.by_dataset[dataset].seconds`` (``prereg_fill``'s crash fill; ``prereg``
+    in place of the file's, a test's); refused in words (:class:`arms.Stuck`) where it holds
+    none."""
+    if prereg is None:
+        from research.swarm import prereg_fill
+
+        prereg = prereg_fill.load()
+    by = (((prereg.get("filled") or {}).get("compute_cap") or {}).get("by_dataset") or {})
+    seconds = (by.get(dataset) or {}).get("seconds")
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) \
+            or not math.isfinite(float(seconds)):
+        raise arms.Stuck(f"prereg.json holds no compute cap for the sweeps of {dataset}: fill it "
+                         f"from the crash sweeps (python -m research.swarm.prereg_fill crash …).")
+    return float(seconds)
+
+
+def spent_by(folder: Path, dataset: str, *, but: Path | None = None) -> float:
+    """The fit seconds ``dataset``'s sweeps around named plans in ``folder`` spent, each in a
+    folder of its own there (its ``progress.jsonl``: :func:`timed_of` of each refit, its plan's
+    own among them), but the sweep in ``but``; a crash sweep's are the default plan's, paid
+    before the cap, and are not counted."""
+    total = 0.0
+    for progress in sorted(Path(folder).glob("*/progress.jsonl")):
+        if but is not None and progress.parent.resolve() == Path(but).resolve():
+            continue
+        base: dict[str, Any] = {}
+        refits: dict[str, Refit] = {}
+        for line in progress.read_text("utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue  # a line an interruption cut
+            if "template" in entry:
+                base = entry["template"]
+            elif "refit" in entry:
+                refit = Refit.of(entry["refit"])
+                refits[refit.id] = refit
+        if base.get("dataset") != dataset or base.get("crash", True):
+            continue
+        total += sum(t for t in (timed_of(r) for r in refits.values()) if t is not None)
+    return total
+
+
 def sweep_plan(dataset: str, bundle: Path, name: str, out: Path, *, data: Path | None = None,
                only: Iterable[str] | None = None, question: arms.Question | None = None,
-               log: Callable[[str], None] | None = None) -> dict[str, Any]:
+               log: Callable[[str], None] | None = None, cap: float | None = None,
+               spent: float = 0.0) -> dict[str, Any]:
     """The sweep around the named plan in ``bundle`` (the module docstring), into ``out``:
-    ``sweep.json`` and ``sweep.md`` (``question`` in place of the dataset card's, a test's)."""
+    ``sweep.json`` and ``sweep.md`` (``question`` in place of the dataset card's, a test's).
+    ``cap``: the dataset's compute cap in fit seconds, ``spent`` its earlier sweeps' fit seconds
+    (the command reads both: :func:`compute_cap`, :func:`spent_by`); None, no cap (a test's)."""
     out = Path(out).absolute()
     question = question or arms.Question.of_card(arms.card_of(dataset))
     sweep = Sweep(out, dataset=dataset, question=question, crash=False, plan=name, only=only,
-                  log=log, data=data)
+                  log=log, data=data, cap=cap, spent=spent)
     pid = sweep.base["project"] if sweep.base else replayed(Path(bundle), data, out)
     with arms.Local(out / "home") as session:
         report = sweep.run(session, lambda s: pid)
@@ -1238,6 +1537,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--name", required=True)
     p.add_argument("--data", type=Path)
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--sweeps", type=Path, help="the folder of the dataset's sweeps around named "
+                                               "plans, each in its own (default: --out's)")
     args = parser.parse_args(argv)
 
     def log(text: str) -> None:
@@ -1250,8 +1551,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                                                             "fit_seconds")}
                                     | {"defects": len(report["defects"])}) + "\n")
         return 0 if report["passed"] else 1
-    report = sweep_plan(args.dataset, args.bundle, args.name, args.out, data=args.data, log=log)
-    sys.stdout.write(json.dumps({k: report[k] for k in ("dataset", "plan", "complete")}) + "\n")
+    try:
+        cap = compute_cap(args.dataset)
+    except arms.Stuck as exc:
+        sys.stdout.write(json.dumps({"refused": str(exc)}) + "\n")
+        return 1
+    out = Path(args.out).absolute()
+    spent = spent_by(args.sweeps or out.parent, args.dataset, but=out)
+    report = sweep_plan(args.dataset, args.bundle, args.name, out, data=args.data, log=log,
+                        cap=cap, spent=spent)
+    sys.stdout.write(json.dumps({k: report[k] for k in ("dataset", "plan", "complete",
+                                                        "stopped")}) + "\n")
     return 0 if report["complete"] else 1
 
 
