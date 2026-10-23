@@ -82,7 +82,10 @@ def test_the_survey_counts_records_so_an_effect_on_one_dataset_reaches_it(tmp_pa
 def test_the_experimentalist_ranks_only_by_what_its_tools_serve():
     """The view's refusals and failed fits name a command, a code and a stage, never the decision
     they met, so the pull ranks by the proposal's size, said to stand in for the sweeps' measured
-    materiality (SWARM_PLAN §9) until the sweeps are read."""
+    materiality (SWARM_PLAN §9) until the sweeps are read. A size is in its own loss's units, and
+    for `material` it is the smallest difference while for `not_material` the largest (the
+    theorist's prompt), so sizes compare only within one loss and one direction: the rank is
+    within each, and groups keep the proposals file's order."""
     from research.swarm.claim_cycle import view as W
     from research.swarm.claim_cycle.tests.test_claim_reading import _failed_fit, _refusal, planted
 
@@ -93,6 +96,21 @@ def test_the_experimentalist_ranks_only_by_what_its_tools_serve():
     assert keys and not keys & {"decision", "decisions", "seq"}
     text = " ".join(body("experimentalist").split())
     assert "stands in for the sweeps' measured materiality until the sweeps are read" in text
+    assert ("Group the proposals by their `loss` (its `purpose` with its `metric` or its "
+            "`measure`) and their `direction`, and within each group rank them by `size`, "
+            "largest first.") in text
+    assert "sizes on different losses or directions do not compare" in text
+    assert ("groups are not ranked against one another, and they keep the order in which the "
+            "proposals file first names them") in text
+    assert "Rank the proposals by `size`, largest first." not in text
+    theorist = " ".join(body("theorist").split())
+    assert ("for `material` the smallest size of difference among the records you rest it on, "
+            "for `not_material` the largest") in theorist
+    # The reply says which group a rank is in: its loss and its direction.
+    reply = json.loads(body("experimentalist").split("```json", 1)[1].split("```", 1)[0])
+    (plan,) = reply["plans"]
+    assert {"loss", "predicts", "rank"} <= set(plan)
+    assert P.Loss.model_validate(plan["loss"]) and plan["predicts"] in P.DIRECTIONS
     assert "not the decision it met, so they do not rank a proposal" in text
     assert "a decision where a run met a refusal" not in text
 

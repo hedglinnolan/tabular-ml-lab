@@ -96,6 +96,10 @@ REFUSED = {
     "a direction that is neither": (proposal(direction="bigger"), "direction"),
     "a negative size": (proposal(size=-0.01), "size"),
     "an infinite size": (proposal(size=math.inf), "size"),
+    # The experimentalist ranks by size, so a size is a number, never true or a word for one.
+    "true for a size": (proposal(size=True), "`size` takes a number, not True"),
+    "a word for a size": (proposal(size="0.5"), "`size` takes a number, not '0.5'"),
+    "no size": (proposal(size=None), "`size` takes a number, not None"),
     "no refits at all": (without("refits"), "refits"),
     "not counted, with a refused count": (proposal(refits={"refits": None, "refused": 0}),
                                           "not counted"),
@@ -180,6 +184,7 @@ TAKEN = {
     "an inference on its measure": proposal(loss={"purpose": "inference",
                                                   "measure": "odds_ratio"}),
     "not material, of size 0": proposal(direction="not_material", size=0),
+    "a whole-number size": proposal(size=1),
     "a selection claim, not counted": selection(),
     "a selection claim, its refusals the method's own limit": selection(refits=refits()),
     "a selection claim with nothing refused": selection(refits={"refits": 4, "refused": 0,

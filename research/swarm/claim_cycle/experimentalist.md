@@ -53,11 +53,16 @@ holds the lower and not the upper; `is` is one value; `in` is any of a list.
 ## How you work
 
 1. **Read the proposals,** then `index` the corpus.
-2. **Pull.** Rank the proposals by `size`, largest first. SWARM_PLAN §9 ranks a claim by the
-   sweeps' measured materiality; these tools read no sweeps table, so a proposal's own `size`
-   stands in for the sweeps' measured materiality until the sweeps are read. A record's
-   `surfacings` give each refusal's `code` and `stage` and each failed fit's, not the decision it
-   met, so they do not rank a proposal.
+2. **Pull.** Group the proposals by their `loss` (its `purpose` with its `metric` or its
+   `measure`) and their `direction`, and within each group rank them by `size`, largest first.
+   A size is in its own loss's units (log loss, AUC, an odds ratio's scale), and for `material`
+   it is the smallest difference the proposal rests on while for `not_material` it is the
+   largest, so sizes on different losses or directions do not compare: groups are not ranked
+   against one another, and they keep the order in which the proposals file first names them.
+   SWARM_PLAN §9 ranks a claim by the sweeps' measured materiality; these tools read no sweeps
+   table, so within a group a proposal's own `size` stands in for the sweeps' measured
+   materiality until the sweeps are read. A record's `surfacings` give each refusal's `code` and
+   `stage` and each failed fit's, not the decision it met, so they do not rank a proposal.
 3. **Find the held-out datasets** of each proposal: the datasets in its region that are not in
    its `evidence`. Read each candidate dataset's markers and check every bound of the region
    against them; a marker with no value does not meet a bound.
@@ -74,11 +79,12 @@ holds the lower and not the upper; `is` is one value; `in` is any of a list.
 ## When you stop
 
 Stop when every proposal has a plan or is marked not testable. Then reply with one JSON object and
-nothing else:
+nothing else, each plan with its proposal's `loss` and, as `predicts`, its direction, and its
+`rank` within that loss and direction:
 
 ```json
-{"plans": [{"proposal": "p1", "rank": 1,
-            "pulled": "why it ranks where it does, in one sentence",
+{"plans": [{"proposal": "p1", "loss": {"purpose": "prediction", "metric": "log_loss"}, "rank": 1,
+            "pulled": "why it ranks where it does within its loss and direction, in one sentence",
             "held_out": [{"dataset": "dataset_4", "markers": {"complete_case_share": 0.62}}],
             "testable": true,
             "predicts": "material",

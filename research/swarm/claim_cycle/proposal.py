@@ -13,7 +13,8 @@ the result by a material amount, or does not. Its fields:
   keys nothing and a declared one is the documentation's, not read live: **a proposal with no live
   marker is refused as not a surfacing claim**. A share's threshold lies within 0 and 1;
 * ``direction``: ``material`` (in the region the decision moves the result by a material amount)
-  or ``not_material``; ``size``: how far, in the loss's units, at least 0;
+  or ``not_material``; ``size``: how far, in the loss's units, a number at least 0 (true and a word
+  for a number are refused, never read as one: the experimentalist ranks by it);
 * ``loss``: the purpose, with the primary score under Predict (a metric the engine scores) or the
   estimand's measure under Estimate (one the engine estimates);
 * ``refits``: the decision's refits in the region, **not counted** or **counted as the sweeps count
@@ -344,6 +345,13 @@ class Proposal(_Strict):
                                        or data.get("grade", GRADE) != GRADE):
             raise ValueError(ENTRY)
         return data
+
+    @field_validator("size", mode="before")
+    @classmethod
+    def _a_number(cls, value: Any) -> Any:
+        if not _number(value):
+            raise ValueError(f"`size` takes a number, not {value!r}.")
+        return value
 
     @field_validator("refits", mode="before")
     @classmethod
