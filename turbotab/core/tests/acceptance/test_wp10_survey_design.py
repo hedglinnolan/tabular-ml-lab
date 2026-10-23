@@ -762,6 +762,120 @@ def test_partial_designs_are_attested_and_a_persons_rows_stay_one_unit():
     assert fitted.refusal is not None and "more than one PSU" in fitted.refusal
 
 
+# ── a subsample's four-year weight, blank outside it ─────────────────────────
+
+FASTING = {"weight": "WTSAF2YR", "four_year": "WTSAF4YR", "cycle": "SDDSRVYR",
+           "strata": "SDMVSTRA", "psu": "SDMVPSU"}
+
+
+def _fasting_cycles() -> pd.DataFrame:
+    """Three cycles (``SDDSRVYR`` 1, 2, 3) of four rows each, as NHANES's fasting files hold them:
+    the subsample's weights (``WTSAF2YR``, and ``WTSAF4YR`` on the 1999–2002 rows) blank on the
+    row of each cycle outside it, which has no glucose either; ``WTSAF4YR`` blank in 2003–2004,
+    which has none."""
+    frame = pd.DataFrame({
+        "SDDSRVYR": [1] * 4 + [2] * 4 + [3] * 4,
+        "SDMVSTRA": [1, 1, 2, 2] * 3, "SDMVPSU": [1, 2, 1, 2] * 3,
+        "WTSAF2YR": [1000, 2000, 3000, None, 1500, 2500, 3500, None, 1200, 2200, 3200, None],
+        "WTSAF4YR": [600, 1100, 1700, None, 800, 1300, 1900, None, None, None, None, None],
+        "glucose": [90, 101, 130, None, 95, 99, 140, None, 88, 92, 127, None],
+        "x": np.arange(12.0)}, dtype=float)
+    frame.index = pd.Index(np.arange(len(frame)), name="row_id")
+    return frame
+
+
+def _six_year(frame: pd.DataFrame) -> np.ndarray:
+    """Table F's 6-year weight for 1999–2004: "If sddsrvyr in (1,2) then MEC6YR = 2/3 * WTMEC4YR;
+    … If sddsrvyr=3 then MEC6YR = 1/3 * WTMEC2YR", here of the fasting weights (blank where
+    they are)."""
+    early = frame["SDDSRVYR"].isin([1, 2]).to_numpy()
+    return np.where(early, 2 / 3 * frame["WTSAF4YR"].to_numpy(float),
+                    1 / 3 * frame["WTSAF2YR"].to_numpy(float))
+
+
+def _fasting_state(frame: pd.DataFrame, target: str):
+    from turbotab.core import decisions as d
+
+    roles = {"SDDSRVYR": "time", **{c: "design" for c in FASTING.values() if c != "SDDSRVYR"}}
+    spec = d.SurveySpec(estimand="population", weight=FASTING["weight"], strata=FASTING["strata"],
+                        psu=FASTING["psu"], cycle=FASTING["cycle"],
+                        four_year_weight=FASTING["four_year"])
+    return d.ProjectState(lens=["clinical"], target=target, purpose="inference", roles=roles,
+                          survey=spec)
+
+
+def test_3_a_blank_four_year_weight_counts_only_on_the_rows_with_the_outcome_recorded():
+    """A2: the four-year weight blank on the rows outside the fasting subsample, which have no
+    glucose and are never analyzed, is not counted; the weight is Table F's (built here from its
+    formula), blank on those rows, as the design takes a row outside the analysis. Blank on one
+    row with glucose recorded, it is refused, that row counted; with no outcome named, every row
+    counts, as before."""
+    from turbotab.core.methods.survey import analysis_weights, for_fit
+
+    frame = _fasting_cycles()
+    args = (frame, FASTING["weight"], FASTING["cycle"], FASTING["four_year"])
+    outside = frame["glucose"].isna() & frame["SDDSRVYR"].isin([1, 2])
+    assert int(outside.sum()) == 2 and frame.loc[outside, "WTSAF4YR"].isna().all()
+    pooled = analysis_weights(*args, outcome="glucose")
+    assert pooled.refusal is None
+    np.testing.assert_allclose(pooled.weights, _six_year(frame), rtol=1e-12, equal_nan=True)
+    assert np.isnan(pooled.weights[frame["glucose"].isna().to_numpy()]).all()
+    every = analysis_weights(*args).refusal
+    assert every is not None and every.startswith("`WTSAF4YR` is missing on 2 of the 1999–2002 "
+                                                  "rows, so their four-year weight")
+    # Through the fit: the design weighs the table, every row kept in it (a domain).
+    fitted = for_fit(_fasting_state(frame, "glucose"), _Store(frame))
+    assert fitted.refusal is None and fitted.design.n_rows == len(frame)
+    np.testing.assert_allclose(fitted.design.weight, _six_year(frame), rtol=1e-12, equal_nan=True)
+
+    blank = frame.copy()
+    blank.loc[1, "WTSAF4YR"] = np.nan  # 2001: glucose recorded, its four-year weight blank
+    refused = analysis_weights(blank, *args[1:], outcome="glucose").refusal
+    assert refused == ("`WTSAF4YR` is missing on 1 of the 1999–2002 rows with `glucose` "
+                       "recorded, so their four-year weight cannot be used (NHANES Analytic "
+                       "Guidelines 2011–2016 §3.1.4).")
+    fitted = for_fit(_fasting_state(blank, "glucose"), _Store(blank))
+    assert fitted.design is None and fitted.refusal == refused
+
+
+BANG = Path(__file__).resolve().parents[4] / "research" / "datasets" / "bang2009" / "card.json"
+
+
+def test_3_the_bang2009_table_takes_its_four_year_fasting_weight_on_its_analyzed_rows():
+    """A2 on the pilot's bang2009 table (NHANES 1999–2004): ``WTSAF4YR`` is blank on every
+    1999–2002 row outside the fasting subsample (pandas' count, the refusal the base gave), none of
+    which has ``diabetes_fpg``; the population answer's design weighs the table by Table F's
+    6-year weight. Blank on one row with ``diabetes_fpg`` recorded, it is refused."""
+    import json
+
+    from turbotab.core.methods.survey import analysis_weights, for_fit
+
+    table = Path(__file__).resolve().parents[4] / json.loads(BANG.read_text())["table"]["path"]
+    if not table.exists():
+        pytest.skip("the bang2009 table is not on disk (research/data/ is not tracked)")
+    frame = pd.read_parquet(table)
+    frame.index = pd.Index(np.arange(len(frame)), name="row_id")
+    early = frame["SDDSRVYR"].isin([1, 2])
+    recorded = frame["diabetes_fpg"].notna()
+    blank = int((early & frame["WTSAF4YR"].isna()).sum())
+    assert blank > 0 and not (early & frame["WTSAF4YR"].isna() & recorded).any()
+    every = analysis_weights(frame, FASTING["weight"], FASTING["cycle"], FASTING["four_year"])
+    assert every.refusal.startswith(f"`WTSAF4YR` is missing on {blank:,} of the 1999–2002 rows,")
+
+    fitted = for_fit(_fasting_state(frame, "diabetes_fpg"), _Store(frame))
+    assert fitted.refusal is None
+    np.testing.assert_allclose(fitted.design.weight, _six_year(frame), rtol=1e-12, equal_nan=True)
+    assert np.isfinite(fitted.design.weight[recorded.to_numpy()]).all()
+    assert "2 × `WTSAF4YR` ÷ 3" in fitted.design.weight_note
+
+    gap = frame.copy()
+    first = int(np.flatnonzero((early & recorded).to_numpy())[0])
+    gap.loc[first, "WTSAF4YR"] = np.nan
+    fitted = for_fit(_fasting_state(gap, "diabetes_fpg"), _Store(gap))
+    assert fitted.design is None and fitted.refusal.startswith(
+        "`WTSAF4YR` is missing on 1 of the 1999–2002 rows with `diabetes_fpg` recorded,")
+
+
 def test_the_names_that_read_as_a_survey_design():
     """What the survey question fires on (the name reading behind the Router's gate): NHANES's own
     weights, with or without other NHANES names; generic sampling-weight names; never a body weight,
