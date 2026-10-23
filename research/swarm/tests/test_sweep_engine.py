@@ -21,8 +21,9 @@ CDC 2000 growth charts' last age; the rarest level by construction) labeled buil
 card's rules, read from the card and checked against its sentences, each alone under each handling
 and its whole population as one answer; each answer's rows, read from the flow the refit served,
 equal to a pandas filter of the same codes; a 500 induced on one card rule's preview, a defect; a
-resumed crash sweep on a report finished before, fitting only the new options; and, under
-Estimate, the adjustment set of one's own as the covariates the plan's roles name."""
+resumed crash sweep on a report finished before, fitting only the new options, each fit's record
+written by the server three seconds late and each fit still read as scored; and, under Estimate,
+the adjustment set of one's own as the covariates the plan's roles name."""
 from __future__ import annotations
 
 import json
@@ -646,13 +647,31 @@ def fielded_table(path):
 
 EXCLUSIONS = "question:exclusions"
 BEFORE = "It records nothing by itself: it takes a field of its own."  # the sweep's words before
+LATE = 3.0  # seconds the server's recorder waits before it writes a fit's record, here
+
+
+def late_records(mp, seconds):
+    """Each fit's record written ``seconds`` after its key turns fresh: the server writes it on
+    its recorder's thread (``service._fit_event``), here that much later than it would."""
+    import time
+
+    from turbotab.server.service import ProjectService
+
+    original = ProjectService._record_fit
+
+    def late(self, pid, key, at, spent):
+        time.sleep(seconds)
+        return original(self, pid, key, at, spent)
+
+    mp.setattr(ProjectService, "_record_fit", late)
 
 
 @pytest.fixture(scope="module")
 def fielded(tmp_path_factory):
     """The crash sweep of the exclusions on the constructed table, twice into one folder: first as
     it ran before it answered a field of its own (each such option unreached in its words of
-    then), a finished report; then as it runs now, the presses of Fit each run made counted."""
+    then), a finished report; then as it runs now, the presses of Fit each run made counted, and
+    each fit's record written :data:`LATE` seconds after the fit turned fresh."""
     work = tmp_path_factory.mktemp("fielded")
     frame = fielded_table(work / "fielded.csv")
     out = work / "out"
@@ -674,6 +693,7 @@ def fielded(tmp_path_factory):
         first = [json.loads(x) for x in (out / "progress.jsonl").read_text().splitlines()]
         mp.undo()
         mp.setattr(arms.Local, "fit", counted)
+        late_records(mp, LATE)
         run["now"] = "now"
         report = W.crash("fielded", out, data=work / "fielded.csv", question=QUESTION,
                          only=[EXCLUSIONS])
@@ -700,7 +720,10 @@ def test_a_value_built_from_the_table_is_labeled_built_and_keeps_the_rows_pandas
         "levels": {"kind": "levels", "column": "grp", "exclude": ["c"], "refused": [],
                    "dont_know": []}}
     for oid, r in refits.items():
-        assert r["kind"] in ("scored", "refused"), (oid, r.get("refused") or r.get("failed"))
+        # Each fit's record came LATE seconds after its key turned fresh: a fit is still scored.
+        assert r["kind"] in ("scored", "refused"), (oid, r.get("why") or r.get("refused")
+                                                    or r.get("failed"))
+        assert (r["fit_record"] is not None) == (r["kind"] == "scored"), oid
         (rule,) = r["decision"]["rules"]
         for k, v in expected[oid].items():
             assert rule[k] == (pytest.approx(v, abs=1e-12) if isinstance(v, float) else v), oid

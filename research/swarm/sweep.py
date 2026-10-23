@@ -77,9 +77,10 @@ failed, or a stage or fit error the engine did not type (the driver's typing, ``
 whether the walk met it waiting or it stopped at a limit of its own with a stage of its copy in
 error that was not before the option); ``unreached``, an option that records nothing by itself
 and that has no value of the crash sweep's (around a named plan, every such option), one whose
-fields as the crash sweep answered them the driver does not take, or a path that stopped at a
+fields as the crash sweep answered them the driver does not take, a path that stopped at a
 limit of the walk's or the revisit's own with no stage failed (its reason in its words: no engine
-defect); ``duplicate``.
+defect), or a fit made whose record the server had not served :data:`RECORD_WAIT` seconds after
+it turned fresh (it writes a record after the fit, :func:`fit_record`); ``duplicate``.
 
 **Materiality** (§7, :func:`materiality`): under Predict package 1's signed change of each family's
 primary score against the plan's (``assemble.signed_change`` over the two fit records, each arm's
@@ -145,8 +146,10 @@ percentile (:data:`RANGE_PERCENTILES`); an eligibility range on the table's age 
 engine's adult age (``plausibility.ADULT_AGE``) in the column's unit; a level rule excluding the
 rarest level of the first categorical predictor; and an adjustment set of one's own, each
 covariate the roles name among the columns the plan's adjustment answers, answered as a
-confounder of the declared exposure (:data:`CONFOUNDER`). No built value is ever the outcome or
-the declared exposure. An option with nothing to answer it from stays unreached, with why.
+confounder of the declared exposure (:data:`CONFOUNDER`). No built value is ever on the outcome
+or the declared exposure (:meth:`Fields.fixed`; the plan's adjustment answers neither,
+``estimand.asked_covariates``). An option with nothing to answer it from stays unreached, with
+why.
 """
 from __future__ import annotations
 
@@ -182,6 +185,10 @@ NOT_A_POINT = ("open_seal", "lock_plan", "reseal", "revert", "confirm_role", "co
 READING_KINDS = ("confirm_reading", "set_column_unit")
 FINDING_KINDS = ("apply_repair", "dismiss_finding", "defer_finding")
 REFIT_WAIT = 3600.0
+# The server writes a fit's record on its recorder's thread after the fit's key turns fresh
+# (``service._fit_event``), so a read just after the fit can come before it: it is read again
+# every RECORD_POLL seconds, for RECORD_WAIT seconds at most, before the refit is left unreached.
+RECORD_WAIT, RECORD_POLL = 120.0, 0.5
 PLAN = "plan"  # the refit of the plan itself, every other refit's comparison
 REVISIT = "(the revisit)"  # a decision's revisit itself, refitted as an option where it failed
 # A revisit the engine refuses because a recorded answer reads a column the revisit would leave on
@@ -593,15 +600,22 @@ class Fields:
                 n_unique = int(s.nunique(dropna=True))
         return dtype, n_unique
 
+    def fixed(self) -> dict[str, str]:
+        """The columns no value is built on, each with what it is: the outcome and, under
+        Estimate, the declared exposure (the question the card fixes)."""
+        out = {self.question.target: "the outcome"}
+        if self.question.exposure:
+            out.setdefault(self.question.exposure, "the declared exposure")
+        return out
+
     def predictors(self) -> list[str]:
         """The columns the plan's roles name predictors (``decisions.PREDICTOR_ROLES``), in the
-        table's order, never the outcome or the declared exposure (under Estimate, the question
-        the card fixes)."""
+        table's order, never the outcome or the declared exposure (:meth:`fixed`)."""
         from turbotab.core.decisions import PREDICTOR_ROLES
 
-        mine = {self.question.target, self.question.exposure}
+        fixed = self.fixed()
         return [c for c in self._columns() if self.roles.get(c) in PREDICTOR_ROLES
-                and c not in mine]
+                and c not in fixed]
 
     def categorical(self, column: str) -> bool:
         """Whether the plan reads ``column``'s values as levels: a code by its reading, or a
@@ -649,16 +663,19 @@ class Fields:
     def built_floor(self) -> Fielded | None:
         """A range of who the study is about of one's own: the table's age column (the engine's
         reading of its name, ``plausibility.age_reading``, in the unit the plan records for it,
-        else the one its name spells) from the engine's adult age (``plausibility.ADULT_AGE``,
-        in years), in that unit."""
+        else the one its name spells), among its columns but the outcome and the declared
+        exposure (:meth:`fixed`), from the engine's adult age (``plausibility.ADULT_AGE``, in
+        years), in that unit."""
         from types import SimpleNamespace
 
         from turbotab.core.detectors import plausibility as P
 
         if self.frame is None:
             return None
-        reading = P.age_reading(self.frame, {c: SimpleNamespace(unit=u)
-                                             for c, u in self.units.items()})
+        fixed = self.fixed()
+        others = self.frame[[c for c in self.frame.columns if str(c) not in fixed]]
+        reading = P.age_reading(others, {c: SimpleNamespace(unit=u)
+                                         for c, u in self.units.items()})
         if reading is None or reading["unit"] not in P.MONTHS_PER:
             return None
         c, unit = reading["column"], reading["unit"]
@@ -667,6 +684,19 @@ class Fields:
                        "built", f"built from the table: `{c}`, the table's age column read in "
                                 f"{unit}, from the engine's adult age, {P.ADULT_AGE:g} years"
                                 + (f" ({floor:g} {unit})" if unit != "years" else ""))
+
+    def fixed_ages(self) -> str:
+        """The outcome and the declared exposure that the engine reads as an age column
+        (``plausibility.age_reading``), each by its name and what it is, for the words of an
+        eligibility range left unreached: `` but `age`, the declared exposure, on which no value
+        is built``; else nothing."""
+        from turbotab.core.detectors import plausibility as P
+
+        if self.frame is None:
+            return ""
+        ages = [f"`{c}`, {what}" for c, what in self.fixed().items()
+                if c in self.frame.columns and P.age_reading(self.frame[[c]]) is not None]
+        return f" but {' and '.join(ages)}, on which no value is built" if ages else ""
 
     def built_level(self) -> Fielded | None:
         """Levels of one's own: the rarest level of the first categorical predictor with two
@@ -793,7 +823,7 @@ class Fields:
             return (got, None) if got else ([], f"{NOTHING}it takes a range's column and bounds; "
                                                 f"the card states no range rule, and the table "
                                                 f"has no age column to build an adult floor "
-                                                f"on{none}.")
+                                                f"on{self.fixed_ages()}{none}.")
         if where == ("question", "exclusions", "levels"):
             stated = self.card_answers("levels")
             got = stated or [g for g in [self.built_level()] if g]
@@ -954,10 +984,20 @@ def classed(fit: Any) -> tuple[str, dict[str, Any] | None]:
 
 
 def fit_record(session: Any, key: str | None) -> dict[str, Any] | None:
-    """The latest fit record ``GET …/fits`` serves for the fit ``key``."""
-    fits = session.read("fits") or {}
-    found = [r for r in fits.get("records") or [] if key and r.get("fit_key") == key]
-    return found[-1] if found else None
+    """The latest fit record ``GET …/fits`` serves for the fit ``key``, read again every
+    :data:`RECORD_POLL` seconds until it is served, for :data:`RECORD_WAIT` seconds at most (the
+    server writes it after the fit turns fresh); None where none is served by then."""
+    if not key:
+        return None
+    end = time.monotonic() + RECORD_WAIT
+    while True:
+        fits = session.read("fits") or {}
+        found = [r for r in fits.get("records") or [] if r.get("fit_key") == key]
+        if found:
+            return found[-1]
+        if time.monotonic() >= end:
+            return None
+        time.sleep(RECORD_POLL)
 
 
 def split_facts(session: Any) -> dict[str, Any] | None:
@@ -1038,7 +1078,9 @@ def read_refit(session: Any, refit: Refit, fit: Any, purpose: str) -> None:
         return
     record = fit_record(session, refit.fit_key)
     if record is None:
-        refit.kind, refit.why = "unreached", "No fit record holds the fit's key."
+        refit.kind = "unreached"
+        refit.why = (f"No fit record holds the fit's key: none was served in the {RECORD_WAIT:g} s "
+                     f"the sweep waited after the fit turned fresh.")
         return
     refit.fit_record, refit.fit_seconds = record.get("id"), record.get("seconds")
     if purpose == "prediction":

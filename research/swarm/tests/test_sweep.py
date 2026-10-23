@@ -3,12 +3,14 @@ from construction: two fit records built here with numpy, their 5 × 5 fold scor
 refit's materiality is checked against package 1's signed change (``signed.change``) and against a
 recomputation of the Nadeau–Bengio corrected interval by numpy and scipy, paired and unpaired,
 material and not, and constructed so each of §7's two conditions and its half are needed; the
-Estimate shift by arithmetic; each refit's class both ways, among them what the walk meets after an
-option (a stage in error, typed or not, and an answer refused with no way forward) on a session
-built here; the crash sweep's previews after an option, of every later decision's plan answer (a
-question's, a finding's, a reading's, a declaration's) and of a question opened again at its
-default, which decisions they reach and that an HTTP 500 induced on one fails the refit as a
-defect, while one on a decision before the option does not; a revisit the engine refuses until
+Estimate shift by arithmetic; each refit's class both ways, among them a fit whose record the
+server serves only on a later read (waited for, scored) or never (unreached after the wait, on a
+clock run by hand), and what the walk meets after an option (a stage in error, typed or not, and
+an answer refused with no way forward) on a session built here; the crash sweep's previews after
+an option, of every later decision's plan answer (a question's, a finding's, a reading's, a
+declaration's) and of a question opened again at its default, which decisions they reach and
+that an HTTP 500 induced on one fails the refit as a defect, while one on a decision before the
+option does not; a revisit the engine refuses until
 the answers that read the column are withdrawn, those answers given again in the plan's order on a
 log built here and folded; a refusal's way forward after an option, in its answer or served on the
 asks after it, taken only where the plan or the option names it; the decisions a plan offers the
@@ -16,8 +18,9 @@ sweep and those it does not, from a decision log built here; what the report cou
 and what it says it swept; the readings graded against a declared truth; the run times' summary by
 hand; and the options that take fields of their own: the card's rules read back from the intake's
 own sentences and from the pilot cards, each answer resolved by the driver's composer, each value
-built from a table here checked against the table, every builder both ways, and the crash sweep's
-answer of one, named by its source and superseding the unreached line of a report finished before.
+built from a table here checked against the table, every builder both ways, none on the outcome
+or the declared exposure, and the crash sweep's answer of one, named by its source and superseding
+the unreached line of a report finished before.
 The sweep on a real engine is ``test_sweep_engine.py``'s."""
 from __future__ import annotations
 
@@ -208,6 +211,67 @@ def test_each_press_of_fit_is_classed_by_what_the_engine_typed(code, payload, ki
                                     "decision": {"kind": "set_selection", "method": "none"}}]
     if kind == "failed":
         assert detail["kind"] == "failed"
+
+
+class Clock:
+    """The sweep's clock, by hand: ``sleep`` moves it on and nothing else does."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+class Recorded:
+    """A session over a fit made at ``k1`` whose record ``GET …/fits`` serves from its ``late``-th
+    read on (never, where ``late`` is None), another fit's record before it; no split served."""
+
+    RECORD = {"id": "f2", "fit_key": "k1", "seconds": 1.2, "primary_metric": METRIC, "folds": "d",
+              "scores": {"linear": {METRIC: {"mean": 0.5}}}}
+
+    def __init__(self, late):
+        self.late, self.reads = late, 0
+
+    def read(self, path):
+        if path != "fits":
+            return None
+        self.reads += 1
+        other = {"id": "f1", "fit_key": "k0", "seconds": 0.9}
+        come = self.late is not None and self.reads >= self.late
+        return {"records": [other, self.RECORD] if come else [other]}
+
+    def view(self):
+        return {"stages": {}}
+
+
+def test_a_fit_record_the_server_writes_after_the_fit_turns_fresh_is_waited_for(monkeypatch):
+    """The server writes a fit's record on its recorder's thread after the fit's key turns fresh
+    (``service._fit_event``), so the sweep's first read can come before it: the record served on
+    the fourth read is the refit's, scored, read as soon as it is served."""
+    clock = Clock()
+    monkeypatch.setattr(W, "time", clock)
+    session, refit = Recorded(late=4), W.Refit("question:missing", "impute", None)
+    W.read_refit(session, refit, arms.said_of(0, FRESH), "prediction")
+    assert refit.kind == "scored" and refit.why is None
+    assert (refit.fit_key, refit.fit_record, refit.fit_seconds) == ("k1", "f2", 1.2)
+    assert refit.scores == {"metric": METRIC, "folds": "d",
+                            "families": {"linear": {METRIC: {"mean": 0.5}}}}
+    assert session.reads == 4 and 0 < clock.now < W.RECORD_WAIT
+
+
+def test_a_fit_record_that_never_comes_leaves_the_refit_unreached_after_the_wait(monkeypatch):
+    clock = Clock()
+    monkeypatch.setattr(W, "time", clock)
+    session, refit = Recorded(late=None), W.Refit("question:missing", "impute", None)
+    W.read_refit(session, refit, arms.said_of(0, FRESH), "prediction")
+    assert refit.kind == "unreached" and refit.fit_record is None and refit.scores is None
+    assert W.RECORD_WAIT <= clock.now < W.RECORD_WAIT + 1 and session.reads > 2
+    assert refit.why == (f"No fit record holds the fit's key: none was served in the "
+                         f"{W.RECORD_WAIT:g} s the sweep waited after the fit turned fresh.")
 
 
 def test_an_ask_whose_fit_line_says_not_pressed_is_no_fit_at_all():
@@ -1572,6 +1636,38 @@ def test_under_estimate_the_declared_exposure_is_never_a_built_value():
     q = arms.Question(target="y", purpose="inference", exposure="x1")
     (a,), _ = W.Fields(q, frame=frame, roles=roles).answers(EXCLUSIONS, option("custom"))
     assert a.option == "custom@built:age_months"  # x1 the exposure; grp and sex read as levels
+    q = arms.Question(target="y", purpose="inference", exposure="grp")
+    (a,), _ = W.Fields(q, frame=frame, roles=roles).answers(EXCLUSIONS, option("levels"))
+    assert a.option == "levels@built:sex"  # grp the exposure: sex, a 1/2 code, the next
+
+
+@pytest.mark.parametrize("question, what", [
+    (arms.Question(target="y", purpose="inference", exposure="age_months"),
+     "the declared exposure"),
+    (arms.Question(target="age_months", purpose="prediction"), "the outcome")],
+    ids=["exposure", "outcome"])
+def test_a_built_eligibility_range_is_never_on_the_outcome_or_the_declared_exposure(question,
+                                                                                    what):
+    """The table's one age column is the declared exposure, or the outcome: no adult floor is built
+    on it, and the option stays unreached, saying why; an age column among the covariates is built
+    on, the next age column where the first is the exposure."""
+    frame, roles = built_frame()
+    answers, why = W.Fields(question, frame=frame, roles=roles).answers(EXCLUSIONS,
+                                                                        option("eligibility"))
+    assert answers == [] and "records nothing by itself" in why
+    assert f"no age column to build an adult floor on but `age_months`, {what}," in why
+    # Silent where the age column is a covariate.
+    covariate = W.Fields(arms.Question(target="y", purpose="inference", exposure="x1"),
+                         frame=frame, roles={**roles, "age_months": "covariate"})
+    (a,), why = covariate.answers(EXCLUSIONS, option("eligibility"))
+    assert why is None and a.option == "eligibility@built:age_months"
+    # Two age columns, the first read (its name spells its unit) the exposure: the second's floor.
+    both = W.Fields(arms.Question(target="y", purpose="inference", exposure="age_months"),
+                    frame=frame.assign(age=frame["age_months"] // 12),
+                    roles={**roles, "age": "covariate"})
+    (a,), why = both.answers(EXCLUSIONS, option("eligibility"))
+    assert why is None and a.option == "eligibility@built:age"
+    assert a.sets == ["column=age", f"low={20:.1f}"]  # a bare ``age`` is read in years
 
 
 ADJUSTMENT = W.Point("question", "adjustment", 11, "r11", {
