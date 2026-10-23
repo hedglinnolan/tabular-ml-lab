@@ -1,10 +1,16 @@
-"""The pilot's launcher (PILOT_READINESS §5; SWARM_PLAN §2 and §6): one analyst run started on one
-dataset, its fit budget set from the dataset's crash sweep, its known answer written where no
-analyst's command reads it.
+"""The pilot's launcher (PILOT_READINESS §5; SWARM_PLAN §2, §6 and §7): one analyst run started on
+one dataset, its fit budget the pre-registration's, its known answer written where no analyst's
+command reads it.
 
-    python -m research.swarm.launcher --dataset <id> --crash <crash.json> --budget-fits N
+    python -m research.swarm.launcher --dataset <id> --crash <crash.json>
                                       --model M --persona P [--effort E] --prompt-version V
-                                      [--runs DIR] [--launches DIR] [--scripted]
+                                      [--prereg FILE] [--runs DIR] [--launches DIR] [--scripted]
+
+**The pre-registration must be ready** (``research/swarm/prereg_fill.py``): before each launch the
+launcher reads ``prereg.json`` (``prereg_fill.load``) and asks ``prereg_fill.ready`` whether the
+trio may start (every pilot dataset's fit budget and the sweeps' compute cap filled from the crash
+sweeps, r0 measured, all on the engine now, the margins still the generators'); where it says why
+not, the dataset is not launched, in its words.
 
 **The crash sweep must have passed** (``research/swarm/sweep.py``, :func:`crash_passed`): its report
 is the dataset's, on the table the dataset's manifest names (its SHA-256), it swept every decision
@@ -13,10 +19,12 @@ the engine the launch runs: the same tree of ``turbotab/`` (``git rev-parse HEAD
 frozen engine: the same for every commit that leaves it unchanged), with no tracked file under it
 modified, then or now. Otherwise the dataset is not launched, and the launcher says why.
 
-**The fit budget** (:func:`budget_of`): ``--budget-fits`` fits, the count the orchestrator sets for
-the pilot, and as many seconds as that many fits take at the slowest fit the crash sweep measured
-on the dataset (its ``fit_seconds``' ``max``), rounded up to a whole second: a run's seconds never
-refuse it a fit its count allows, however slow the fits it chooses.
+**The fit budget** (:func:`prereg_budget`) is ``prereg.json``'s for the dataset
+(``filled.fit_budget``, which ``prereg_fill``'s crash fill sets with :func:`budget_of`: as many
+fits as the dataset's crash sweep made, and as many seconds as that many fits take at the slowest
+fit it measured, its ``fit_seconds``' ``max``, rounded up to a whole second, so a run's seconds
+never refuse it a fit its count allows, however slow the fits it chooses); a dataset it holds none
+for (the decoy, which only the mechanical arms run) is not launched.
 
 **The run's name is the driver's own**: ``start`` names each run ``run_NN`` and a secret part
 (``driver.new_run_id``) and takes no label from its caller, so no label tells an analyst its
@@ -51,7 +59,6 @@ RUNS = REPO / "research" / "runs"
 # The words an answers file states a planted effect's measure in, and the engine's name for that
 # measure (``estimand.MEASURE_OF_TASK``' difference in means of a numeric outcome).
 MEASURE_OF_WORDS = {"a difference in means": "mean_difference"}
-CONTROLS = {"known_answer": "known_answer", "decoy": "null_decoy"}
 
 
 class Refused(Exception):
@@ -171,14 +178,13 @@ def known_answer(dataset: str) -> tuple[dict[str, Any] | None, str]:
 
 
 def dataset_meta(dataset: str) -> dict[str, Any]:
-    """The record's ``dataset`` (``assemble.dataset_of``): its id, its control kind and fixture,
-    its known answer, and the card the analyst is given."""
-    answers = _json(DATASETS / dataset / "answers.json")
-    card = _json(DATASETS / dataset / "card.json")
+    """The record's ``dataset`` (``assemble.dataset_of``): what the intake holds of the dataset
+    (``intake.dataset_meta``: its id, its control kind and fixture, the card the analyst is given
+    and its declared measurement markers), and its known answer."""
+    from research.swarm.intake import dataset_meta as intake_meta
+
     known, source = known_answer(dataset)
-    return {"id": dataset, "control": CONTROLS.get(str(answers.get("kind"))),
-            "fixture": answers.get("fixture_key"), "known": known, "known_source": source,
-            "codebook": None, "card": card}
+    return intake_meta(dataset) | {"known": known, "known_source": source}
 
 
 def record_meta(launch: Mapping[str, Any]) -> dict[str, Any]:
@@ -196,18 +202,44 @@ def launch_of(run_id: str, launches: Path = LAUNCHES) -> dict[str, Any]:
 # ── one launch ───────────────────────────────────────────────────────────────
 
 
-def launch(dataset: str, crash: Path, *, budget_fits: int, model: str, persona: str | None,
+def prereg_budget(prereg: Mapping[str, Any], dataset: str) -> dict[str, Any]:
+    """The fit budget prereg.json holds for ``dataset`` (``filled.fit_budget``, the crash fill's:
+    :func:`budget_of` over the dataset's crash sweep, as many fits as it made), as the launch
+    file keeps it; refused where it holds none, or one that is not a budget."""
+    budget = ((prereg.get("filled") or {}).get("fit_budget") or {}).get(dataset)
+    fits = (budget or {}).get("fits") if isinstance(budget, Mapping) else None
+    seconds = (budget or {}).get("seconds") if isinstance(budget, Mapping) else None
+    if budget is None:
+        raise Refused(f"prereg.json holds no fit budget for {dataset}: fill it from the crash "
+                      f"sweeps (python -m research.swarm.prereg_fill crash …).")
+    if isinstance(fits, bool) or not isinstance(fits, int) or fits < 1 \
+            or isinstance(seconds, bool) or not isinstance(seconds, (int, float)) \
+            or not math.isfinite(float(seconds)) or float(seconds) <= 0:
+        raise Refused(f"prereg.json's fit budget for {dataset} is not a count of fits and a "
+                      f"number of seconds: {json.dumps(budget)[:300]}")
+    return {"fits": int(fits), "seconds": float(seconds),
+            "slowest_fit": budget.get("slowest_fit")}
+
+
+def launch(dataset: str, crash: Path, *, model: str, persona: str | None,
            prompt_version: str, effort: str | None = None, runs: Path = RUNS,
            launches: Path = LAUNCHES, scripted: bool = False, data: Path | None = None,
-           start: Any = None) -> dict[str, Any]:
+           start: Any = None, prereg: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """One run of ``dataset`` started (the module docstring); its launch file's contents.
-    ``start(argv)`` runs the driver's command line (``arms.Driven.command``, by default) and
-    ``data`` stands for the table its manifest builds (a test's)."""
+    ``start(argv)`` runs the driver's command line (``arms.Driven.command``, by default),
+    ``data`` stands for the table its manifest builds and ``prereg`` for prereg.json (a
+    test's)."""
+    from research.swarm import prereg_fill
+
+    prereg = prereg_fill.load() if prereg is None else prereg
+    why = prereg_fill.ready(prereg)
+    if why is not None:
+        raise Refused(f"{dataset} is not launched: {why}")
     report = _json(crash)
     why = crash_passed(report, dataset)
     if why is not None:
         raise Refused(f"{dataset} is not launched: {why}")
-    budget = budget_of(report, budget_fits)
+    budget = prereg_budget(prereg, dataset)
     meta = dataset_meta(dataset)
     if data is None:
         from research.swarm.dry_run import table_of
@@ -248,21 +280,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                                      description=__doc__.split("\n\n")[0])
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--crash", type=Path, required=True, help="the dataset's crash.json")
-    parser.add_argument("--budget-fits", type=int, required=True)
     parser.add_argument("--model", required=True)
     from research.swarm.driver import PERSONAS
 
     parser.add_argument("--persona", choices=PERSONAS)
     parser.add_argument("--effort")
     parser.add_argument("--prompt-version", required=True)
+    parser.add_argument("--prereg", type=Path, help="prereg.json (default: prereg_fill's own)")
     parser.add_argument("--runs", type=Path, default=RUNS)
     parser.add_argument("--launches", type=Path, default=LAUNCHES)
     parser.add_argument("--scripted", action="store_true")
     args = parser.parse_args(argv)
     try:
-        out = launch(args.dataset, args.crash, budget_fits=args.budget_fits, model=args.model,
-                     persona=args.persona, prompt_version=args.prompt_version, effort=args.effort,
-                     runs=args.runs, launches=args.launches, scripted=args.scripted)
+        prereg = None
+        if args.prereg is not None:
+            from research.swarm import prereg_fill
+
+            prereg = prereg_fill.load(args.prereg)
+        out = launch(args.dataset, args.crash, model=args.model, persona=args.persona,
+                     prompt_version=args.prompt_version, effort=args.effort, runs=args.runs,
+                     launches=args.launches, scripted=args.scripted, prereg=prereg)
     except Refused as exc:
         sys.stdout.write(json.dumps({"refused": str(exc)}) + "\n")
         return 1

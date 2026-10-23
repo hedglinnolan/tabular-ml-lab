@@ -1,8 +1,11 @@
 """The pilot's launcher (PILOT_READINESS §5; ``research/swarm/launcher.py``): the known answers read
-from each dataset's own answers file and checked against the generator that planted them, the crash
-sweep's report gating a launch both ways, the fit budget from its measured fits by hand, and the
-start command line the launcher hands the driver: no label of its own, the run named by the
-driver, the known answer written where no analyst's command reads it."""
+from each dataset's own answers file and checked against the generator that planted them, the
+declared measurement markers as the intake wrote them, the crash sweep's report gating a launch
+both ways, the fit budget from its measured fits by hand, the pre-registration gating a launch
+both ways (``prereg_fill.ready`` asked before each, here a stand-in, and package 6b's own where it
+is on the tree) with the fit budget prereg.json holds, and the start command line the launcher
+hands the driver: no label of its own, the run named by the driver, the known answer written where
+no analyst's command reads it."""
 from __future__ import annotations
 
 import json
@@ -134,15 +137,75 @@ def test_the_budget_is_its_fits_at_the_slowest_fit_measured_rounded_up():
         L.budget_of(report(), 0)
 
 
+# ── the declared measurement markers ─────────────────────────────────────────
+
+
+@pytest.mark.parametrize("dataset", ["bang2009", "walking_bp_estimate"])
+def test_the_records_dataset_holds_the_declared_markers_the_intake_wrote(dataset):
+    """Both ways: a dataset the intake declared markers for (``declared.json``) carries them, as
+    written; one it wrote none for carries none."""
+    from research.swarm.arms import record_meta as arm_meta
+
+    path = L.DATASETS / dataset / "declared.json"
+    written = json.loads(path.read_text()) if path.exists() else []
+    assert (len(written) > 0) is (dataset == "bang2009")  # the construction
+    meta = L.dataset_meta(dataset)
+    assert meta["declared"] == written
+    assert L.record_meta({"dataset": meta, "analyst_model": "m", "prompt_version": "p"})[
+        "dataset"]["declared"] == written
+    assert arm_meta(dataset, "mechanical-default")["dataset"]["declared"] == written
+
+
 # ── the start the launcher hands the driver ──────────────────────────────────
 
+PILOT = "walking_bp_estimate"
+PILOT_TABLE = json.loads((L.DATASETS / PILOT / "manifest.json").read_text())["table"]["sha256"]
+BUDGET = {"fits": 10, "seconds": 72.0, "slowest_fit": 7.2}
 
-def test_a_launch_starts_the_run_the_driver_names_and_keeps_its_answer_apart(tmp_path,
-                                                                             monkeypatch):
+
+class Prereg:
+    """prereg_fill as the launcher calls it, here: ``load`` gives ``prereg``, ``ready`` says
+    ``why`` (None: the trio may start); each call kept."""
+
+    def __init__(self, prereg, why=None):
+        self.prereg, self.why, self.calls = prereg, why, []
+
+    def load(self, path=None):
+        self.calls.append(("load", path))
+        return self.prereg
+
+    def ready(self, prereg, engine=None, *, margins=True):
+        self.calls.append(("ready", prereg))
+        return self.why
+
+
+@pytest.fixture
+def prereg(monkeypatch):
+    """Installs a :class:`Prereg` as ``research.swarm.prereg_fill`` (the module and the package's
+    attribute, where the launcher imports it from); returns a maker."""
+    import sys
+
+    import research.swarm as package
+
+    def install(filled=None, why=None):
+        fake = Prereg({"filled": {"fit_budget": filled if filled is not None
+                                  else {PILOT: dict(BUDGET)}}}, why)
+        monkeypatch.setitem(sys.modules, "research.swarm.prereg_fill", fake)
+        monkeypatch.setattr(package, "prereg_fill", fake, raising=False)
+        return fake
+
+    return install
+
+
+def started(tmp_path, monkeypatch, *, dataset=PILOT, table=PILOT_TABLE, passed=True):
+    """A launch of ``dataset`` with a crash report on its manifest's table, the start command
+    lines it handed the driver, and its result (or the refusal)."""
     crash = tmp_path / "crash.json"
-    crash.write_text(json.dumps(report()))
+    crash.write_text(json.dumps(report(dataset=dataset, data={"path": "t.csv", "sha256": table},
+                                       **({} if passed else {"passed": False,
+                                                             "defects": [{"refit": "x"}]}))))
     monkeypatch.setattr(L, "engine_now", lambda: dict(ENGINE))
-    data = tmp_path / "outpatient_visits.csv"
+    data = tmp_path / "walking_bp.csv"
     data.write_text("x,y\n1,0\n")
     runs, launches = tmp_path / "runs", tmp_path / "launches"
     given: list[list[str]] = []
@@ -152,37 +215,84 @@ def test_a_launch_starts_the_run_the_driver_names_and_keeps_its_answer_apart(tmp
         driver.build_parser().parse_args(argv)  # a start command line the driver reads
         return 0, {"started": {"run": driver.new_run_id(runs)}}
 
-    out = L.launch("outpatient_admission_predict", crash, budget_fits=10,
-                   model="claude-haiku-5-5", persona="skeptical", prompt_version="pilot-1",
-                   effort="high", runs=runs, launches=launches, data=data, start=start)
+    try:
+        out = L.launch(dataset, crash, model="claude-haiku-5-5", persona="skeptical",
+                       prompt_version="pilot-1", effort="high", runs=runs, launches=launches,
+                       data=data, start=start)
+    except L.Refused as exc:
+        return given, exc
+    return given, out | {"runs": runs, "launches": launches, "data": data}
+
+
+def test_a_launch_starts_the_run_the_driver_names_with_prereg_jsons_budget(tmp_path,
+                                                                           monkeypatch, prereg):
+    fake = prereg()
+    given, out = started(tmp_path, monkeypatch)
+    assert fake.calls == [("load", None), ("ready", fake.prereg)]  # asked before the start
     (argv,) = given
-    assert argv == ["start", "--data", str(data), "--budget-fits", "10", "--budget-seconds",
-                    "72", "--model", "claude-haiku-5-5", "--prompt-version", "pilot-1",
-                    "--persona", "skeptical", "--effort", "high"]
+    assert argv == ["start", "--data", str(out["data"]), "--budget-fits", "10",
+                    "--budget-seconds", "72", "--model", "claude-haiku-5-5", "--prompt-version",
+                    "pilot-1", "--persona", "skeptical", "--effort", "high"]
     label, secret = out["run"].rsplit("-", 1)
     assert driver.RUN_ID.fullmatch(out["run"]) and label == "run_01" and len(secret) == 32
-    assert all(word not in out["run"] for word in ("decoy", "null", "outpatient"))
-    kept = json.loads((launches / f"{out['run']}.json").read_text())
-    assert kept["dataset"]["known"] == {"null": True}
-    assert kept["dataset"]["control"] == "null_decoy"
-    assert kept["budget"] == {"fits": 10, "seconds": 72.0, "slowest_fit": 7.2}
-    assert not (runs / out["run"]).exists()  # nothing written into the run's own folder
+    assert all(word not in out["run"] for word in ("walking", "known", "estimate"))
+    kept = json.loads((out["launches"] / f"{out['run']}.json").read_text())
+    known, _ = L.known_answer(PILOT)
+    assert kept["dataset"]["known"] == known and kept["dataset"]["control"] == "known_answer"
+    assert kept["budget"] == BUDGET  # prereg.json's, as it holds it
+    assert not (out["runs"] / out["run"]).exists()  # nothing written into the run's own folder
     meta = L.record_meta(kept)
-    assert meta["dataset"]["known"] == {"null": True} and "known_source" not in meta["dataset"]
+    assert meta["dataset"]["known"] == known and "known_source" not in meta["dataset"]
     assert meta["persona"] == "skeptical" and meta["design"] == 2
     # Under the corpus, where no analyst's command opens a file (the driver's seal).
     assert driver.unread(L.LAUNCHES / "run_01-x.json")
 
 
-def test_a_dataset_whose_crash_sweep_did_not_pass_is_not_started(tmp_path, monkeypatch):
-    crash = tmp_path / "crash.json"
-    crash.write_text(json.dumps(report(passed=False, defects=[{"refit": "x"}])))
+def test_prereg_json_not_ready_refuses_the_launch_in_its_words(tmp_path, monkeypatch, prereg):
+    why = "prereg.json holds no r0: the default plan's replay is not measured."
+    fake = prereg(why=why)
+    given, refused = started(tmp_path, monkeypatch)
+    assert isinstance(refused, L.Refused) and str(refused) == f"{PILOT} is not launched: {why}"
+    assert given == [] and fake.calls[-1][0] == "ready"
+
+
+def test_a_dataset_prereg_json_holds_no_fit_budget_for_is_not_launched(tmp_path, monkeypatch,
+                                                                       prereg):
+    """The decoy, which only the mechanical arms run: no budget is pre-registered for it."""
+    prereg()
+    given, refused = started(tmp_path, monkeypatch, dataset="outpatient_admission_predict",
+                             table=TABLE)
+    assert isinstance(refused, L.Refused) and given == []
+    assert "prereg.json holds no fit budget for outpatient_admission_predict" in str(refused)
+
+
+@pytest.mark.parametrize("budget", [{"fits": 0, "seconds": 72.0}, {"fits": 10, "seconds": None},
+                                    {"fits": True, "seconds": 72.0},
+                                    {"fits": 10, "seconds": float("nan")}],
+                         ids=["no_fit", "no_seconds", "a_flag", "not_a_number"])
+def test_a_pre_registered_budget_that_is_no_budget_is_refused(budget):
+    with pytest.raises(L.Refused, match="not a count of fits and a number of seconds"):
+        L.prereg_budget({"filled": {"fit_budget": {PILOT: budget}}}, PILOT)
+    assert L.prereg_budget({"filled": {"fit_budget": {PILOT: BUDGET}}}, PILOT) == BUDGET
+
+
+def test_a_dataset_whose_crash_sweep_did_not_pass_is_not_started(tmp_path, monkeypatch, prereg):
+    prereg()
+    given, refused = started(tmp_path, monkeypatch, passed=False)
+    assert isinstance(refused, L.Refused) and "is not launched" in str(refused)
+    assert "engine defect" in str(refused) and given == []
+
+
+def test_the_committed_pre_registration_gates_the_launch_in_prereg_fills_words(tmp_path,
+                                                                                monkeypatch):
+    """With package 6b's own prereg_fill and prereg.json, where they are on this tree: the
+    launcher refuses in the words ``ready`` gives for the file as committed."""
+    P = pytest.importorskip("research.swarm.prereg_fill")
     monkeypatch.setattr(L, "engine_now", lambda: dict(ENGINE))
-
-    def start(argv):  # pragma: no cover - must not be reached
-        raise AssertionError("started")
-
-    with pytest.raises(L.Refused, match="is not launched"):
-        L.launch("outpatient_admission_predict", crash, budget_fits=10, model="m",
-                 persona=None, prompt_version="p", runs=tmp_path, launches=tmp_path,
-                 data=tmp_path / "x.csv", start=start)
+    why = P.ready(P.load(), dict(ENGINE))
+    given, out = started(tmp_path, monkeypatch)
+    if why is None:  # pragma: no cover - a pre-registration filled and ready on this engine
+        assert isinstance(out, dict) and given
+    else:
+        assert isinstance(out, L.Refused) and str(out) == f"{PILOT} is not launched: {why}"
+        assert given == []
