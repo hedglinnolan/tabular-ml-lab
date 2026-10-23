@@ -876,6 +876,78 @@ def test_3_the_bang2009_table_takes_its_four_year_fasting_weight_on_its_analyzed
         "`WTSAF4YR` is missing on 1 of the 1999–2002 rows with `diabetes_fpg` recorded,")
 
 
+POPULATION = {"kind": "set_survey", "estimand": "population", "weight": FASTING["weight"],
+              "strata": FASTING["strata"], "psu": FASTING["psu"], "cycle": FASTING["cycle"],
+              "four_year_weight": FASTING["four_year"]}
+
+
+def _recording(frame: pd.DataFrame, target: str | None, purpose: str):
+    """The fasting weights' population answer validated as the server validates it, before it is
+    recorded and before its preview (``server.service.DecisionContext``: the state before it, with
+    its target and goal, the columns and the table's store): the refusal, or None."""
+    from turbotab.core import decisions as d
+
+    state = _fasting_state(frame, target).model_copy(update={"survey": None, "purpose": purpose})
+    ctx = {"state": state, "columns": list(frame.columns), "store": lambda: _Store(frame)}
+    try:
+        recorded = d.validate(POPULATION, ctx)
+    except d.Refusal as refusal:
+        return refusal
+    assert (recorded.cycle, recorded.four_year_weight) == (FASTING["cycle"], FASTING["four_year"])
+    return None
+
+
+def test_3_recording_the_answer_counts_a_blank_four_year_weight_on_the_rows_with_the_outcome():
+    """A2 where the answer is recorded or previewed, under either goal: the four-year weight blank
+    only on the rows outside the fasting subsample, which have no glucose, is not counted with
+    glucose the target. With a target recorded on those rows (``x``, on every row), they are read
+    and it is refused, as with no target (every row counted); blank on one row with glucose
+    recorded, it is refused, that row counted, with "these participants" as the way on."""
+    frame = _fasting_cycles()
+    outside = frame["SDDSRVYR"].isin([1, 2]) & frame["glucose"].isna()
+    assert int(outside.sum()) == 2 and frame.loc[outside, "WTSAF4YR"].isna().all()
+    blank = frame.copy()
+    blank.loc[1, "WTSAF4YR"] = np.nan  # 2001: glucose recorded, its four-year weight blank
+    for purpose in ("prediction", "inference"):
+        assert _recording(frame, "glucose", purpose) is None
+        read = _recording(frame, "x", purpose)
+        assert read.code == "four_year_weight" and read.message.startswith(
+            "`WTSAF4YR` is missing on 2 of the 1999–2002 rows with `x` recorded, so their")
+        every = _recording(frame, None, purpose)
+        assert every.code == "four_year_weight" and every.message.startswith(
+            "`WTSAF4YR` is missing on 2 of the 1999–2002 rows, so their")
+        refused = _recording(blank, "glucose", purpose)
+        assert refused.code == "four_year_weight" and refused.message.startswith(
+            "`WTSAF4YR` is missing on 1 of the 1999–2002 rows with `glucose` recorded, so their")
+        way_on = refused.exits[-1]["decision"]
+        assert (way_on["kind"], way_on["estimand"]) == ("set_survey", "sample")
+
+
+def test_3_bang2009s_population_answer_is_recorded_with_its_four_year_fasting_weight():
+    """A2 on the pilot's bang2009 table, where its analysts answer (purpose Predict, and under
+    inference): the population answer naming ``WTSAF4YR`` is recorded with ``diabetes_fpg`` the
+    target, its blanks all outside the fasting subsample; blank on one 1999–2002 row with
+    ``diabetes_fpg`` recorded, it is refused."""
+    import json
+
+    table = Path(__file__).resolve().parents[4] / json.loads(BANG.read_text())["table"]["path"]
+    if not table.exists():
+        pytest.skip("the bang2009 table is not on disk (research/data/ is not tracked)")
+    frame = pd.read_parquet(table)
+    frame.index = pd.Index(np.arange(len(frame)), name="row_id")
+    early = frame["SDDSRVYR"].isin([1, 2])
+    recorded = frame["diabetes_fpg"].notna()
+    assert (early & frame["WTSAF4YR"].isna()).any()
+    assert not (early & frame["WTSAF4YR"].isna() & recorded).any()
+    gap = frame.copy()
+    gap.loc[int(np.flatnonzero((early & recorded).to_numpy())[0]), "WTSAF4YR"] = np.nan
+    for purpose in ("prediction", "inference"):
+        assert _recording(frame, "diabetes_fpg", purpose) is None
+        refused = _recording(gap, "diabetes_fpg", purpose)
+        assert refused.code == "four_year_weight" and refused.message.startswith(
+            "`WTSAF4YR` is missing on 1 of the 1999–2002 rows with `diabetes_fpg` recorded,")
+
+
 def test_the_names_that_read_as_a_survey_design():
     """What the survey question fires on (the name reading behind the Router's gate): NHANES's own
     weights, with or without other NHANES names; generic sampling-weight names; never a body weight,
