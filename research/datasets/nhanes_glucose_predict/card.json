@@ -2,20 +2,42 @@
  "id": "nhanes_glucose_predict",
  "design": "analysts",
  "purpose": "Predict",
- "question": "How well do the table's measures predict fasting glucose?",
- "population": "NHANES participants aged 18 or older, one row each, every one with a fasting glucose, from the 9 survey cycles 2001–2002 to 2017–2018. NHANES top-codes age: 85 stands for 85 or older in the cycles 2001–2002 to 2005–2006 and 80 stands for 80 or older in the cycles 2007–2008 to 2017–2018.",
+ "question": "How well can fasting plasma glucose be predicted in U.S. adults without diagnosed diabetes from what is known about them before the fasting blood draw's result?",
+ "population": "NHANES participants of the 4 survey cycles 2011–2012 to 2017–March 2020, one row each: every participant of each cycle's demographics file, of every age, with or without a fasting glucose. The question is about U.S. adults aged 20 or older without diagnosed diabetes and not taking a glucose-lowering medication, the population of Bang et al. 2009 (which also excluded pregnant women): the table keeps everyone, and this population is the analyst's eligibility decisions, made in the app.",
+ "eligibility": [
+  "Aged 20 or older: a range rule on RIDAGEYR from 20. Its one code, 80, stands for “80 years of age and over”.",
+  "Without diagnosed diabetes: a level rule on DIQ010 excluding level 1 (Yes), naming 7 as its refused code and 9 as its don't-know code; its other levels are 2 (No) and 3 (Borderline). DIQ010 is recorded in every one of the 13,921 rows with a fasting glucose. A level rule leaves out a row it cannot confirm (a blank, a refused or a don't-know answer) unless it keeps them all.",
+  "Not taking insulin now: a level rule on DIQ050 excluding level 1 (Yes), naming 7 as its refused code and 9 as its don't-know code; its other levels are 2 (No). DIQ050 is blank in 4,082 of the 13,921 rows with a fasting glucose, all of them in 2017–March 2020. A level rule leaves out a row it cannot confirm (a blank, a refused or a don't-know answer) unless it keeps them all.",
+  "Not taking diabetic pills to lower blood sugar: a level rule on DIQ070 excluding level 1 (Yes), naming 7 as its refused code and 9 as its don't-know code; its other levels are 2 (No). DIQ070 is blank in 11,003 of the 13,921 rows with a fasting glucose, 3,526 of them in 2017–March 2020. A level rule leaves out a row it cannot confirm (a blank, a refused or a don't-know answer) unless it keeps them all.",
+  "Pregnant women, whom Bang et al. 2009 also excluded: a level rule on RIDEXPRG excluding level 1 (Yes, positive lab pregnancy test or self-reported pregnant at exam), which has no refused or don't-know code; its other levels are 2 (The participant was not pregnant at exam) and 3 (Cannot ascertain if the participant is pregnant at exam). RIDEXPRG is blank in 11,472 of the 13,921 rows with a fasting glucose, 3,932 of them in 2017–March 2020. A level rule leaves out a row it cannot confirm (a blank, a refused or a don't-know answer) unless it keeps them all.",
+  "The fasting subsample's weight is WTSAF2YR in 2011–2012, 2013–2014 and 2015–2016 and WTSAFPRP in 2017–March 2020; 933 rows with a fasting glucose have a weight of 0. P_GLU's page: “participants whom provided blood specimen but did not meet the 8 to less than 24 hour fasting criteria (n=268) have the sample weight value assigned as “0” (WTSAFPRP=0) as well.”"
+ ],
  "outcome": {
-  "column": "glucose",
-  "meaning": "fasting plasma glucose (mg/dL)"
+  "column": "LBXGLU",
+  "meaning": "fasting plasma glucose (mg/dL), measured in the morning fasting subsample; blank for everyone outside it"
+ },
+ "held_out": {
+  "column": "cycle_begin_year",
+  "at": 2017,
+  "meaning": "The test is 2017–March 2020, the pre-pandemic file, held out by a cut-point at 2017 on cycle_begin_year: the seal holds out every row at or after it (4,744 of them with a fasting glucose), and the rows of 2011–2012, 2013–2014 and 2015–2016 train. A run that holds out other rows is not compared with the benchmark, Bang et al. 2009's score on the same held-out participants (research/swarm/benchmark.py refuses it)."
  },
  "table": {
-  "path": "research/data/datasets/nhanes_glucose_predict/_tt_tmp_nhanes.csv",
-  "format": "csv"
+  "path": "research/data/datasets/nhanes_glucose_predict/nhanes_glucose.parquet",
+  "format": "parquet"
  },
- "source": "An NHANES export tracked in this repository (turbotab/core/tests/fixtures/nhanes.csv.gz), the table of the app's NHANES glucose journeys. How it was exported from the NHANES files is not recorded with it.",
+ "source": "NHANES public-use files from the CDC (wwwn.cdc.gov).",
+ "documentation": [
+  "The fasting glucose analyzer changed in 2015. GLU_I's page (https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2015/DataFiles/GLU_I.htm): “In 2015, the laboratory instrumentation changed from the Roche C501 to the Roche C311 instrument.” and “Forward: Y (C311) = 1.023 (95%CI: 1.014 – 1.032) * X (C501) - 0.5108 (95%CI: -1.441 – 0.4197)”. P_GLU's page (https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_GLU.htm): “If 2017-March 2020 pre-pandemic data are compared or combined with the 2015-2016 data, no adjustments are needed for equipment changes.” The table applies no equation.",
+  "Blood pressure was measured another way in the test cycle: BPXSY1 to BPXDI3 (auscultatory) in 2011–2012 to 2015–2016, BPXOSY1 to BPXODI3 (oscillometric) in 2017–March 2020. P_BPXO's page (https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_BPXO.htm): “Auscultatory BP measurement in NHANES ended after the 2017-2018 survey cycle.”",
+  "Triglycerides (LBXTR) come from the fasting subsample, as the fasting glucose does. P_TRIGLY's page (https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_TRIGLY.htm): “Triglycerides were measured in a fasting subsample of participants 12 years and older.”"
+ ],
  "prepared": [
-  "Before the export reached this repository, by a method it does not record, values were imputed in 6 measures, each flagged in its own column: weight on the 235 rows where imputed_weight is true, height on the 248 rows where imputed_height is true, bmi on the 306 rows where imputed_bmi is true, waist on the 658 rows where imputed_waist is true, bp_sys on the 1,876 rows where imputed_bp_sys is true and bp_di on the 1,876 rows where imputed_bp_di is true; none of these measures has a blank.",
-  "Before the export reached this repository, by rules it does not record, its rows were limited: every row has a glucose value and an age of 18 or more. No column has a blank but meds_hbp (15,552 rows) and meds_chol (17,204 rows)."
+  "Read each cycle's NHANES files, 2011–2012, 2013–2014, 2015–2016 and 2017–March 2020 (the pre-pandemic P_ files for 2017–March 2020), with TurboTab's own SAS transport reader, which reads SAS missing values as blank and a SAS zero as 0.",
+  "Stacked each file's cycles one under the other, and added cycle_begin_year: the year the row's cycle begins (2011, 2013, 2015 and 2017), the cycle of the demographics file the row came from.",
+  "Kept only these variables: DEMO_G/DEMO_H/DEMO_I/P_DEMO (demographics and the survey design): SDDSRVYR, RIDAGEYR, RIAGENDR, RIDRETH3, DMDEDUC2, INDFMPIR, RIDEXPRG, SDMVSTRA, SDMVPSU; GLU_G/GLU_H/GLU_I/P_GLU (fasting plasma glucose and the fasting subsample's weights): LBXGLU, WTSAF2YR, WTSAFPRP; DIQ_G/DIQ_H/DIQ_I/P_DIQ (diabetes questions): DIQ010, DIQ160, DIQ050, DIQ070; BPQ_G/BPQ_H/BPQ_I/P_BPQ (blood pressure and cholesterol questions): BPQ020, BPQ040A, BPQ050A, BPQ080, BPQ090D, BPQ100D; BPX_G/BPX_H/BPX_I (blood pressure readings, auscultatory): BPXSY1, BPXDI1, BPXSY2, BPXDI2, BPXSY3, BPXDI3; P_BPXO (blood pressure readings, oscillometric): BPXOSY1, BPXODI1, BPXOSY2, BPXODI2, BPXOSY3, BPXODI3; BMX_G/BMX_H/BMX_I/P_BMX (body measures): BMXWT, BMXHT, BMXBMI, BMXWAIST; DR1TOT_G/DR1TOT_H/DR1TOT_I/P_DR1TOT (the first 24-hour dietary recall's total nutrient intakes): DR1DRSTZ, DR1TKCAL, DR1TPROT, DR1TCARB, DR1TSUGR, DR1TTFAT, DR1TSFAT, DR1TMFAT, DR1TPFAT; HDL_G/HDL_H/HDL_I/P_HDL (HDL cholesterol): LBDHDD; TRIGLY_G/TRIGLY_H/TRIGLY_I/P_TRIGLY (triglycerides, measured in the fasting subsample): LBXTR; MCQ_G/MCQ_H/MCQ_I/P_MCQ (medical conditions and family history): MCQ300C, MCQ160C, MCQ160E, MCQ160F; PAQ_G/PAQ_H/PAQ_I/P_PAQ (physical activity): PAQ605, PAQ620, PAQ635, PAQ650, PAQ665, PAD680; SMQ_G/SMQ_H/SMQ_I/P_SMQ (smoking): SMQ020, SMQ040; FASTQX_G/FASTQX_H/FASTQX_I/P_FASTQX (fasting hours before the blood draw): PHAFSTHR, PHAFSTMN.",
+  "Blank where a cycle does not carry the variable: WTSAFPRP in 2011–2012, 2013–2014 and 2015–2016 (GLU_G/GLU_H/GLU_I does not carry it); WTSAF2YR in 2017–March 2020 (P_GLU does not carry it); every BPX variable in 2017–March 2020, which has no BPX file; every BPXO variable in 2011–2012, 2013–2014 and 2015–2016, which have no BPXO file.",
+  "Joined every file to the demographics file (DEMO) by the participant's SEQN: one row per participant of DEMO, blank in a file's variables where the participant has no record in it (every record of every file has its participant in DEMO).",
+  "Nothing else: no row is dropped, and no value is recoded, adjusted or imputed; LBXGLU is the fasting glucose as NCHS released it."
  ],
  "manifest": "research/datasets/nhanes_glucose_predict/manifest.json"
 }

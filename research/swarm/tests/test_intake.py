@@ -14,10 +14,10 @@
   and stays silent on names (DBQ700, item_05, log10, item_one), words that hold a number word
   (someone, often, weight) and the paper's DOI.
 * The table builders' refusals (a repeated or stray SEQN, a column clash, a variable no cycle
-  carries, the NHANES export's changed bytes or repeated participant, a join other than a left
-  join by SEQN) each fire on a frame built to trip them and stay silent on a clean one.
-* The NHANES card reads each cycle's age top code and the values the export flags as imputed
-  from the frame; the survey card states the instrument's whole reverse-coding key.
+  carries, a join other than a left join by SEQN) each fire on a frame built to trip them and
+  stay silent on a clean one.
+* The survey card states the instrument's whole reverse-coding key. (The glucose table rebuilt
+  from the NCHS files, the declared markers and eligibility by code are ``test_intake_v2.py``'s.)
 * The fixtures' truths are the generators': the clinical model's log-odds are the ones
   make_fixtures.py computes, its C-statistic agrees with a Mann-Whitney count, and the survey's
   outcome does not move when its ages are changed.
@@ -51,9 +51,8 @@ IDS = list(I.INTAKES)
 # (intake.SHARED_NUMBERS says which), by the form the card writes them in: pinned here, so a new
 # one needs this test changed. A whole 0 or 1 (a binary column's coding) matches every answer
 # within 0.5 of it, and every one up to 50, or from 50 to 150, divided by 100.
-PINNED_SHARED = {"bang2009": {"0", "1", "one"},
+PINNED_SHARED = {"bang2009": {"0", "1", "one", "2", "3", "7", "9"},
                  "sullivan2021": {"0", "zero", "1", "one", "two", "five", "10", "20", "24"},
-                 "nhanes_glucose_predict": {"one"},
                  "clinical_readmission_predict": {"0", "1", "one"},
                  "inpatient_readmission_predict": {"0", "1", "one"},
                  "walking_bp_estimate": {"0", "1", "one"},
@@ -204,7 +203,7 @@ def test_the_sullivan_files_hash_as_the_replications_own_download_did():
 
 
 def test_every_downloaded_file_is_from_the_cdc_with_its_codebook_dates():
-    for id_ in ("bang2009", "sullivan2021"):
+    for id_ in ("bang2009", "sullivan2021", "nhanes_glucose_predict"):
         manifest = committed(id_)["manifest"]
         assert manifest["license"] == "public domain"
         for e in manifest["files"]:
@@ -365,8 +364,10 @@ def test_the_number_scan_fires_on_an_answer_number_at_the_cards_own_places(id_, 
 
 
 def test_the_number_scan_stays_silent_on_names_and_the_doi_whose_digits_an_answer_holds():
-    """Answers built to hold every digit run the names and the DOI carry: none of it is read."""
+    """Answers built to hold every digit run the names and the DOI carry: none of it is read. (The
+    card's eligibility is left out: its codes, 2 among them, are numbers the scan reads.)"""
     card = copy.deepcopy(committed("bang2009")["card"])
+    card.pop("eligibility")
     doi = card["replication"]["paper"]["doi"]
     digits = [float(d) for d in re.findall(r"\d+", doi)] + [700.0, 5.0, 2.0, 10.0]
     answers = {"truths": [{"name": "x", "source": "y", "value": digits}]}
@@ -740,50 +741,6 @@ def test_bang_table_refuses_a_glucose_record_whose_participant_demo_lacks(monkey
         I.bang_table()
 
 
-def nhanes_bytes() -> bytes:
-    import gzip
-    return gzip.decompress(I.NHANES_GZ.read_bytes())
-
-
-def test_the_nhanes_export_is_read_only_as_the_bytes_stage_harness_pins():
-    from turbotab.core.tests.stage_harness import NHANES_SHA256
-    data = nhanes_bytes()
-    assert hashlib.sha256(data).hexdigest() == NHANES_SHA256
-    assert len(I.nhanes_export(data, NHANES_SHA256)) == data.count(b"\n") - 1  # one per line
-    flipped = bytearray(data)
-    flipped[len(data) // 2] ^= 1  # one bit of one byte
-    with pytest.raises(SystemExit, match="not the bytes stage_harness pins"):
-        I.nhanes_export(bytes(flipped), NHANES_SHA256)
-
-
-@pytest.mark.parametrize("csv, refused", [
-    (b"SEQN,glucose\n1,90\n2,100\n", False),
-    (b"SEQN,glucose\n1,90\n1,100\n", True),  # a participant twice
-    (b"SEQN,glucose\n1,90\n2,\n", True),  # a row without a glucose
-])
-def test_the_nhanes_export_is_refused_unless_one_row_per_participant_each_with_a_glucose(
-        csv, refused):
-    pinned = hashlib.sha256(csv).hexdigest()
-    if refused:
-        with pytest.raises(SystemExit, match="one row per participant, each with a glucose"):
-            I.nhanes_export(csv, pinned)
-    else:
-        assert I.nhanes_export(csv, pinned)["SEQN"].tolist() == [1, 2]
-
-
-def test_the_nhanes_intake_writes_nothing_from_an_export_with_a_changed_byte(monkeypatch, tmp_path):
-    import gzip
-    data = bytearray(nhanes_bytes())
-    data[-2] ^= 1
-    gz = tmp_path / "nhanes.csv.gz"
-    gz.write_bytes(gzip.compress(bytes(data)))
-    monkeypatch.setattr(I, "NHANES_GZ", gz)
-    monkeypatch.setattr(I, "TABLES", tmp_path / "tables")
-    with pytest.raises(SystemExit, match="not the bytes stage_harness pins"):
-        I.intake_nhanes_glucose_predict(None)
-    assert not (tmp_path / "tables").exists()
-
-
 def test_the_sullivan_table_is_refused_on_any_join_but_a_left_join_by_seqn(tmp_path):
     BASE.to_parquet(tmp_path / "DEMO.parquet", index=False)
     LAB.to_parquet(tmp_path / "LAB.parquet", index=False)
@@ -797,53 +754,7 @@ def test_the_sullivan_table_is_refused_on_any_join_but_a_left_join_by_seqn(tmp_p
             I.sullivan_table(None, bad)
 
 
-# ── the NHANES and survey cards' sentences, from the frame ───────────────────
-
-
-def ages(by_cycle: dict[int, list[float]]) -> pd.DataFrame:
-    rows = [(y, a) for y, values in by_cycle.items() for a in values]
-    return pd.DataFrame({"cycle_begin_year": [y for y, _ in rows], "age": [a for _, a in rows]})
-
-
-def test_the_nhanes_population_reads_each_cycles_top_code_from_the_frame():
-    """NHANES's demographics codebooks: "Individuals 85 and over are topcoded at 85 years of age"
-    in DEMO_D (2005–2006), "80 and over ... at 80" in DEMO_E (2007–2008)."""
-    text = I.nhanes_population(ages({2005: [18, 85], 2007: [19, 80], 2009: [30, 80]}))
-    assert "aged 18 or older" in text and "the 3 survey cycles 2005–2006 to 2009–2010" in text
-    assert ("85 stands for 85 or older in 2005–2006 and 80 stands for 80 or older in the cycles "
-            "2007–2008 to 2009–2010") in text
-    for wrong in ({2005: [18, 84], 2007: [19, 80]}, {2005: [18, 85], 2007: [19, 85]}):
-        with pytest.raises(SystemExit, match="not the top code"):
-            I.nhanes_population(ages(wrong))
-
-
-def test_the_nhanes_prepared_steps_count_the_flagged_values_and_the_blanks():
-    frame = pd.DataFrame({"age": [18.0, 40.0, 70.0], "glucose": [90.0, 100.0, 130.0],
-                          "weight": [70.0, 80.0, 90.0], "bp_sys": [120.0, np.nan, 110.0],
-                          "meds": [1.0, np.nan, np.nan],
-                          "imputed_weight": [True, False, True],
-                          "imputed_bp_sys": [False, False, True]})
-    imputed, rows = I.nhanes_prepared(frame)
-    assert ("weight on the 2 rows where imputed_weight is true and bp_sys on the 1 row where "
-            "imputed_bp_sys is true; blanks remain in bp_sys (1 row)") in imputed
-    assert "an age of 18 or more" in rows
-    assert "No column has a blank but bp_sys (1 row) and meds (2 rows)." in rows
-    assert I.nhanes_prepared(frame.drop(columns=["imputed_weight", "imputed_bp_sys"])) == [rows]
-    with pytest.raises(SystemExit, match="flags no column"):
-        I.nhanes_prepared(frame.assign(imputed_height=False))
-
-
-def test_the_nhanes_card_states_the_exports_top_codes_and_flagged_values():
-    card = committed("nhanes_glucose_predict")["card"]
-    frame = pd.read_csv(I.NHANES_GZ)
-    assert "aged 18 or older" in card["population"] and " to 85" not in card["population"]
-    assert ("85 stands for 85 or older in the cycles 2001–2002 to 2005–2006 and 80 stands for 80 "
-            "or older in the cycles 2007–2008 to 2017–2018") in card["population"]
-    imputed = card["prepared"][0]
-    for c in [c for c in frame.columns if c.startswith("imputed_")]:
-        assert f"on the {int(frame[c].sum()):,} rows where {c} is true" in imputed
-    assert "none of these measures has a blank" in imputed
-    assert card["prepared"] == I.nhanes_prepared(frame)
+# ── the survey card's sentences ──────────────────────────────────────────────
 
 
 def test_the_survey_card_states_the_instruments_whole_key():

@@ -1,7 +1,8 @@
 """The swarm's dataset intake (DRIVER_PLAN D4, SWARM_PLAN §5), generalized from the Sullivan
 replication's (``research/replication/sullivan2021/engine/intake.py``).
 
-Per dataset it writes three files under ``research/datasets/<id>/`` (committed):
+Per dataset it writes three files under ``research/datasets/<id>/`` (committed), and a fourth for
+the pilot's NHANES datasets:
 
 * ``manifest.json``: where every file came from. For a download, each file's URL, the dates its
   codebook page states ("First Published", "Last Revised"), the download date, the server's
@@ -18,22 +19,34 @@ Per dataset it writes three files under ``research/datasets/<id>/`` (committed):
 * ``answers.json``: what the checks compare a run against (:data:`ANSWER_KINDS`): a paper's
   numbers, a fixture's declared truth, a decoy's "no finding is real", or that nothing is known.
   No analyst reads it.
+* ``declared.json`` (version 2, the pilot's NHANES datasets, :data:`DECLARING`): the declared
+  measurement markers (SWARM_PLAN §5), in the record's shape (``record.DeclaredMarker``, the
+  assembler's ``dataset.declared``, :func:`dataset_meta`): each marker's value with every passage
+  it rests on, quoted verbatim from the NCHS pages the manifest downloads and found on its page
+  when written, or not_stated with the pages read. No analyst reads it.
+
+A population is the analyst's eligibility decisions, never a filter of the intake's: the table
+keeps every participant, and the card's ``eligibility`` states each rule in the engine's terms
+(a range rule, or a level rule with its refused and don't-know codes), its codes read from the
+codebooks. A card may fix the test rows by a cut-point (``held_out``): the glucose project's is
+the 2017–March 2020 cycle, which its benchmark (``research/swarm/benchmark.py``) requires.
 
 Data files are ignored by git (``research/data/``): NHANES files in
 ``research/data/nhanes/<cycle>/``, the analytic tables in ``research/data/datasets/<id>/``.
 
 Downloads come from wwwn.cdc.gov only (:data:`HOSTS`; any other host is refused), with a plain
-user agent and nothing that identifies anyone: a URL with a query string is refused. A file already on disk is not fetched again; its
-entry is recomputed from its bytes, and keeps its download date only while those bytes are the
-ones the manifest recorded. A download that is not what its name says is refused and nothing is
-written: a transport file must begin with the SAS XPORT header, and a codebook page must be one
-(NHANES's old URLs answer 200 with an HTML "Page Not Found").
+user agent and nothing that identifies anyone: a URL with a query string is refused. A file
+already on disk is not fetched again; its entry is recomputed from its bytes, and keeps its
+download date only while those bytes are the ones a manifest recorded (its own, or another
+dataset's for a file the two share: :func:`on_record`). A download that is not what its name says
+is refused and nothing is written: a transport file must begin with the SAS XPORT header, and a
+codebook page must be one (NHANES's old URLs answer 200 with an HTML "Page Not Found").
 
     scripts/py -m research.swarm.intake [<id> ...]          every dataset when none is named
     scripts/py -m research.swarm.intake --check [<id> ...]
 
-``--check`` fetches nothing and fails when a file on disk no longer matches its manifest, or a card
-or an answers file does not validate.
+``--check`` fetches nothing and fails when a file on disk no longer matches its manifest, a card
+or an answers file does not validate, or a declared marker's passage is not on its page.
 """
 from __future__ import annotations
 
@@ -46,6 +59,7 @@ import sys
 import time
 import urllib.request
 from decimal import Decimal
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -184,6 +198,20 @@ def download(spec: dict[str, Any], old: dict | None = None, *, folder: Path = NH
     return out
 
 
+def on_record(old: dict | None) -> dict[str, Any]:
+    """``old``'s file entries, and every other committed manifest's entry for a file ``old``
+    lacks: the datasets share NHANES's folders, so a file on disk keeps the download date any
+    manifest recorded for its bytes (:func:`obtain` keeps it only while the bytes are those)."""
+    files = {e["file"]: e for e in (old or {}).get("files", [])}
+    for id_ in INTAKES:
+        for e in (load(id_).get("manifest") or {}).get("files", []):
+            mine = files.get(e["file"])
+            if e.get("url") and (mine is None or (not mine.get("downloaded") and e.get("downloaded")
+                                                  and mine.get("sha256") == e.get("sha256"))):
+                files[e["file"]] = e
+    return {"files": list(files.values())}
+
+
 def table_entry(path: Path, frame: Any) -> dict[str, Any]:
     return {"file": rel(path), "format": path.suffix.lstrip("."), "rows": int(len(frame)),
             "columns": int(frame.shape[1]), "bytes": path.stat().st_size, "sha256": sha256(path)}
@@ -206,6 +234,153 @@ def read_xpt(path: Path) -> Any:
     return read_frame(path)
 
 
+def codebook(path: Path) -> dict[str, Any]:
+    """A codebook page's variables (``turbotab.core.codebook.Entry``: label, codes, range) as
+    TurboTab's own reader parses the page, keyed by the name in capitals: a page may write the
+    file's MCQ300C as MCQ300c."""
+    from turbotab.core.codebook import parse_nhanes
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    return {e.variable.upper(): e for e in parse_nhanes(text, Path(path).name).entries}
+
+
+# ── the declared measurement markers (SWARM_PLAN §5; intake version 2) ───────
+#
+# Each pilot dataset's markers are read from the NCHS documentation pages its manifest downloads
+# (the papers' own pages cannot be fetched: the intake downloads from wwwn.cdc.gov alone, so a
+# paper's methods are quoted nowhere here). A declared marker holds its value, the passages it
+# rests on, each verbatim, and the page each is on; a marker no page read states is not_stated,
+# with the pages read as its source. Every passage is looked for in its own page's text as the
+# file on disk holds it (:func:`page_text`), when the markers are written and again by --check; a
+# passage not found there is refused. The shape is the record's (``record.DeclaredMarker``), the
+# assembler's ``dataset.declared``: several passages are joined by :data:`PASSAGES`, the i-th
+# passage on the page of the i-th source, and ``checked`` is left to the referee.
+
+PASSAGES = "\n"  # no page's text holds a line break (:func:`page_text` makes every run one space)
+
+
+class QuoteRefused(ValueError):
+    """A marker's passage that is not, word for word, on the page it names."""
+
+
+class _PageText(HTMLParser):
+    """The text of a page's elements outside its scripts and styles, a space at every tag."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.hidden = 0
+
+    def handle_starttag(self, tag: str, attrs: Any) -> None:
+        if tag in ("script", "style"):
+            self.hidden += 1
+        self.parts.append(" ")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("script", "style") and self.hidden:
+            self.hidden -= 1
+        self.parts.append(" ")
+
+    def handle_data(self, data: str) -> None:
+        if not self.hidden:
+            self.parts.append(data)
+
+
+def page_text(data: bytes | str) -> str:
+    """A page's text as a reader sees it: its elements' text outside scripts and styles, character
+    references read (``&amp;`` is "&", ``&ndash;`` is "–"), a space at every tag and every run of
+    whitespace one space."""
+    parser = _PageText()
+    parser.feed(data.decode("utf-8", errors="replace") if isinstance(data, bytes) else data)
+    parser.close()
+    return " ".join("".join(parser.parts).split())
+
+
+def quoted(quote: str, text: str) -> bool:
+    """Whether ``quote``, its whitespace read as :func:`page_text` reads it, is in ``text``."""
+    return " ".join(quote.split()) in text
+
+
+def page_url(year: int, stem: str) -> str:
+    """The codebook page of a cycle's file, as :data:`NHANES_URL` names it."""
+    return NHANES_URL.format(year=year, file=stem, ext="htm")
+
+
+def manifest_pages(manifest: dict[str, Any]) -> dict[str, str]:
+    """Each codebook page the manifest downloaded, by its URL, as its text (:func:`page_text`);
+    a page missing on disk is left out, so a passage on it is refused."""
+    out = {}
+    for e in manifest.get("files", []):
+        path = REPO / e["file"]
+        if e.get("url") and e["file"].endswith(".htm") and path.is_file():
+            out[e["url"]] = page_text(path.read_bytes())
+    return out
+
+
+def declared(name: str, value: str, passages: list[tuple[str | list[str], str]],
+             pages: dict[str, str]) -> dict[str, Any]:
+    """A declared marker in the record's shape, its passages ``(source, quote)`` each found
+    verbatim on its source's page in ``pages`` (URL → text), else refused. A source given as a
+    list of pages stands for the same quote on each, and is written as one passage per page."""
+    from research.swarm.vocabulary import DECLARED
+    if name not in DECLARED:
+        raise QuoteRefused(f"{name!r} is not a declared marker: {', '.join(DECLARED)}")
+    pairs = [(url, quote) for sources, quote in passages
+             for url in ([sources] if isinstance(sources, str) else sources)]
+    if not (value.strip() and pairs):
+        raise QuoteRefused(f"{name}: a declared marker holds its value and a passage")
+    for url, quote in pairs:
+        if url not in pages:
+            raise QuoteRefused(f"{name}: {url} is not a page this dataset downloaded")
+        if PASSAGES in quote or not quoted(quote, pages[url]):
+            raise QuoteRefused(f"{name}: the passage “{quote}” is not on {url}")
+    return {"name": name, "status": "declared", "value": value,
+            "quote": PASSAGES.join(" ".join(q.split()) for _, q in pairs),
+            "source": PASSAGES.join(url for url, _ in pairs)}
+
+
+def not_stated(name: str, read: list[str], pages: dict[str, str]) -> dict[str, Any]:
+    """A marker no page read states, in the record's shape, its source the pages read."""
+    from research.swarm.vocabulary import DECLARED
+    if name not in DECLARED:
+        raise QuoteRefused(f"{name!r} is not a declared marker: {', '.join(DECLARED)}")
+    missing = [url for url in read if url not in pages]
+    if not read or missing:
+        raise QuoteRefused(f"{name}: {', '.join(missing) or 'no page'} is not a page this "
+                           "dataset downloaded")
+    return {"name": name, "status": "not_stated", "source": PASSAGES.join(read)}
+
+
+def marker_problems(markers: Any, manifest: dict[str, Any]) -> list[str]:
+    """Why a dataset's committed markers may not stand: each must be the record's
+    ``DeclaredMarker``, listed once, and every passage found on its source's page as the
+    manifest's file on disk holds it."""
+    from pydantic import ValidationError
+
+    from research.swarm.record import Dataset
+    if not isinstance(markers, list):
+        return ["the declared markers are not a list"]
+    try:
+        Dataset.model_validate({"id": manifest.get("dataset") or "dataset", "files": [],
+                                "declared": markers})
+    except ValidationError as exc:
+        return [f"the declared markers are not the record's: {e['msg']}" for e in exc.errors()]
+    pages = manifest_pages(manifest)
+    out = []
+    for m in markers:
+        sources = (m.get("source") or "").split(PASSAGES)
+        if m["status"] == "not_stated":
+            out += [f"{m['name']}: {url} is not a page on disk" for url in sources
+                    if url not in pages]
+            continue
+        quotes = m["quote"].split(PASSAGES)
+        if len(quotes) != len(sources):
+            out.append(f"{m['name']}: {len(quotes)} passages for {len(sources)} sources")
+            continue
+        out += [f"{m['name']}: the passage “{q}” is not on {url}"
+                for url, q in zip(sources, quotes) if url not in pages or not quoted(q, pages[url])]
+    return out
+
+
 # ── cards and answers: the schema ────────────────────────────────────────────
 
 PURPOSES = {"Predict": "prediction", "Estimate": "inference"}  # the card's word → the engine's
@@ -216,7 +391,12 @@ CARD_FIELDS = {
     "purpose": "Predict or Estimate",
     "question": "the question the run answers, in plain words, ending with a question mark",
     "population": "who the rows are, and who the question is about",
+    "eligibility": ("optional: the population as the analyst's eligibility decisions, each rule "
+                    "in the engine's terms (a range on a column, or a level rule naming the "
+                    "level it excludes and the refused and don't-know codes), in order"),
     "outcome": "{column, meaning}: the column the question is about",
+    "held_out": ("optional: {column, at, meaning}: the test rows the card fixes, every row at or "
+                 "after a cut-point on a column"),
     "exposure": "{column, meaning}: under Estimate only, the column whose effect is estimated",
     "replication": "for a replication only: {paper: {citation, doi, pmid}, stated_question}",
     "table": "{path, format}: the analytic table the run uploads, relative to the repository",
@@ -307,9 +487,15 @@ def validate_card(card: Any, id_: str | None = None) -> list[str]:
             or Path(table["path"]).suffix != f".{table['format']}":
         errors.append(f"table path {table['path']!r} is not a {table['format']} file under "
                       f"research/data/, relative to the repository")
-    for k in ("prepared", "documentation"):
+    for k in ("prepared", "documentation", "eligibility"):
         if k in card and not (isinstance(card[k], list) and all(_text(s) for s in card[k])):
             errors.append(f"{k} is not a list of sentences")
+    held = card.get("held_out")
+    if "held_out" in card and not (
+            isinstance(held, dict) and set(held) == {"column", "at", "meaning"}
+            and _text(held["column"]) and _text(held["meaning"])
+            and isinstance(held["at"], (int, float)) and not isinstance(held["at"], bool)):
+        errors.append("held_out is not {column, at: a number, meaning}")
     if "manifest" in card and card["manifest"] != f"research/datasets/{card.get('id')}/manifest.json":
         errors.append(f"manifest {card['manifest']!r} is not research/datasets/<id>/manifest.json")
     return errors
@@ -431,15 +617,24 @@ def shared_numbers(card: dict[str, Any], answers: dict[str, Any]) -> set[str]:
 # one up to 50, or from 50 to 150, divided by 100, so a binary column's coding meets most answers.
 SHARED_NUMBERS: dict[str, dict[str, str]] = {
     "bang2009": {
-        "1": "the outcome column's coding (diabetes_fpg is 1 at or above the cut); a factor's "
-             "points in the paper's score are also 1, its odds ratios, confidence bounds, "
-             "likelihood ratios and AUC from 0.5 to 1.5 round to 1, and so, divided by 100, do "
-             "Table 3's percentages from 55 to 100 and Table 2's age bands' 50, 59 and 60",
-        "one": "the prepared steps' 'one under the other' and 'one row per participant'; it meets "
-               "the answers as 1 does",
+        "1": "the outcome column's coding (diabetes_fpg is 1 at or above the cut) and the code 1 "
+             "(Yes) each eligibility rule excludes; a factor's points in the paper's score are "
+             "also 1, its odds ratios, confidence bounds, likelihood ratios and AUC from 0.5 to "
+             "1.5 round to 1, and so, divided by 100, do Table 3's percentages from 55 to 100 and "
+             "Table 2's age bands' 50, 59 and 60",
+        "one": "the prepared steps' 'one under the other' and 'one row per participant', and the "
+               "age's 'one code'; it meets the answers as 1 does",
         "0": "the outcome column's coding (diabetes_fpg is 0 below the cut); the paper's P "
              "values, negative likelihood ratios and the bounds up to 0.5 round to 0, as do its P "
-             "values below 0.005 times 100 and every number up to 50 divided by 100"},
+             "values below 0.005 times 100 and every number up to 50 divided by 100",
+        "2": "the code 2 of the eligibility's coded columns (No, and RIDEXPRG's not pregnant); "
+             "the paper's odds ratio of 2.0, its points of 2 and its bounds and likelihood ratios "
+             "from 1.5 to 2.5 round to 2, and so does Table 1's 210 divided by 100",
+        "3": "DIQ010's code 3 (Borderline) and RIDEXPRG's (cannot ascertain); the paper's points "
+             "of 3, its odds ratio of 3.1 and its bounds from 2.5 to 3.5 round to 3",
+        "7": "the refused code 7 of DIQ010, DIQ050 and DIQ070; Table 2's odds ratio of 7.3 and "
+             "Table 3's PPV of 7 round to 7, and its LR- of 0.07 times 100 is 7",
+        "9": "the don't-know code 9 of DIQ010, DIQ050 and DIQ070; the score's range ends at 9"},
     "sullivan2021": {
         "20": "the paper's stated inclusion, aged 20 or older (its flow's 'Age < 20' step); the "
               "flow also excludes 20 people for reporting only water, and Table 4's insulin SE of "
@@ -465,9 +660,6 @@ SHARED_NUMBERS: dict[str, dict[str, str]] = {
              "divided by 100",
         "zero": "pa_rec_min's step, where a kind of activity counts zero minutes; it meets the "
                 "answers as 0 does"},
-    "nhanes_glucose_predict": {
-        "one": "the population's 'one row each' and 'every one with a fasting glucose'; the "
-               "readings' day count of kcal is also 1"},
     "clinical_readmission_predict": {
         "1": "the outcome's coding (readmit_30d is 1 yes); the generating model's intercept, "
              "coefficients and centers of 0.5 to 1.5 in size, and its C-statistic, round to 1, "
@@ -547,6 +739,89 @@ def spans(cycles: list[str]) -> str:
     return f"{cycles[0].split('-')[0]}–{cycles[-1].split('-')[1]}"
 
 
+# ── eligibility by code (SWARM_PLAN §5: the categorical eligibility rule) ─────
+#
+# A replication's population, and the glucose project's, is the analyst's eligibility decisions,
+# each recorded in the app as a rule (package 4), never a filter of the intake's: the table keeps
+# every participant. A card states each rule in the engine's terms, read from the codebooks the
+# intake downloads: a range rule on a number (``decisions.ExclusionRule``), or a level rule on a
+# coded column (``decisions.LevelRule``) with the level it excludes and the codes that record a
+# refused and a don't-know answer, which the rule names on their own. A level rule leaves out a
+# row it cannot confirm (a blank, a refused or a don't-know answer) unless it keeps them all
+# (``missing="keep"``, ``stages.rows.rule_keep``), so the card counts each column's blanks.
+
+
+def answer_codes(books: dict[str, dict[str, Any]], variable: str) -> dict[str, str]:
+    """``variable``'s codes and their descriptions as every cycle's codebook (``books``: cycle →
+    :func:`codebook`) gives them, refused where one documents none or gives others."""
+    seen = {}
+    for cycle, book in books.items():
+        entry = book.get(variable.upper())
+        if entry is None or not entry.codes:
+            raise SystemExit(f"{variable}: the {cycle} codebook documents no codes for it")
+        seen[cycle] = dict(entry.codes)
+    first, *rest = seen.items()
+    differ = [c for c, codes in rest if codes != first[1]]
+    if differ:
+        raise SystemExit(f"{variable}: the codebooks of {', '.join(differ)} give other codes than "
+                         f"{first[0]}'s")
+    return first[1]
+
+
+def unconfirmed(codes: dict[str, str]) -> tuple[str | None, str | None]:
+    """The code whose description is a refused answer, and the one that is a don't-know answer,
+    each None where the codebook has none; refused where it has two."""
+    def one(words: tuple[str, ...]) -> str | None:
+        found = [c for c, d in codes.items()
+                 if d.strip().lower().replace("’", "'") in words]
+        if len(found) > 1:
+            raise SystemExit(f"two codes are {words[0]}: {found}")
+        return found[0] if found else None
+    return one(("refused",)), one(("don't know", "dont know"))
+
+
+def blanks_line(variable: str, blank: int, among: int, where: str,
+                within: tuple[int, str] | None = None) -> str:
+    """How often ``variable`` is blank among ``among`` rows ``where``, and, with ``within``
+    (a count and the cycle it is of), how many of those blanks lie in that cycle."""
+    if not blank:
+        return f"{variable} is recorded in every one of the {among:,} rows {where}."
+    of = ""
+    if within is not None:
+        n, cycle = within
+        of = (f", all of them in {cycle}" if n == blank else
+              f", none of them in {cycle}" if not n else f", {n:,} of them in {cycle}")
+    return f"{variable} is blank in {blank:,} of the {among:,} rows {where}{of}."
+
+
+def level_line(what: str, variable: str, exclude: str, codes: dict[str, str],
+               blanks: str) -> str:
+    """The card's sentence for a level rule on ``variable`` that excludes ``exclude``: its
+    refused and don't-know codes, its other levels, and its blanks (:func:`blanks_line`)."""
+    if exclude not in codes:
+        raise SystemExit(f"{variable}: its codebook has no level {exclude}")
+    refused, dont_know = unconfirmed(codes)
+    named = [f"{c} as its {word} code" for c, word in ((refused, "refused"),
+                                                         (dont_know, "don't-know")) if c]
+    others = [f"{c} ({d})" for c, d in codes.items() if c not in (exclude, refused, dont_know)]
+    return (f"{what}: a level rule on {variable} excluding level {exclude} ({codes[exclude]})"
+            + (f", naming {listed(named)}" if named else ", which has no refused or don't-know "
+               "code") + (f"; its other levels are {listed(others)}" if others else "")
+            + f". {blanks} A level rule leaves out a row it cannot confirm (a blank, a refused or "
+            "a don't-know answer) unless it keeps them all.")
+
+
+def age_line(what: str, variable: str, low: int, books: dict[str, dict[str, Any]]) -> str:
+    """The card's sentence for a range rule from ``low`` on the age column, with its top code
+    as every cycle's codebook documents it (refused where they differ)."""
+    codes = answer_codes(books, variable)
+    if len(codes) != 1:
+        raise SystemExit(f"{variable}: its codebook documents {len(codes)} codes, not a top code")
+    (top, said), = codes.items()
+    return (f"{what}: a range rule on {variable} from {low}. Its one code, {top}, stands for "
+            f"“{said}”.")
+
+
 # ── Bang 2009: NHANES 1999–2004, the files its development analysis reads ─────
 
 BANG_NOTES = "docs/turbotab-next/notes/replication/bang2009.md"
@@ -623,21 +898,34 @@ def bang_spec() -> dict[str, Any]:
         for cycle, (year, _) in BANG_CYCLES.items()}}
 
 
-def bang_stack(name: str, folder: Path = NHANES) -> tuple[Any, dict[str, list[str]]]:
-    """One file's cycles stacked, its kept variables only, and the cycles lacking each."""
+def stack(name: str, stems: dict[str, str], variables: list[str], folder: Path = NHANES,
+          cycle_column: tuple[str, dict[str, int]] | None = None
+          ) -> tuple[Any, dict[str, list[str]]]:
+    """One file's cycles (``stems``: cycle → the file's stem in it) stacked one under the other,
+    its kept ``variables`` only, and the cycles whose file lacks each; refused where no cycle's
+    file carries a variable, or one lacks SEQN. ``cycle_column`` (a name, and each cycle's value)
+    adds a column saying which cycle's file each row came from."""
     import pandas as pd
-    variables = BANG_FILES[name]["vars"]
     parts, absent = [], {}
-    for cycle, stem in bang_stems(name).items():
+    for cycle, stem in stems.items():
         frame = read_xpt(Path(folder) / cycle / f"{stem}.xpt")
         for v in variables:
             if v not in frame.columns:
                 absent.setdefault(v, []).append(cycle)
-        parts.append(frame[[v for v in variables if v in frame.columns]])
-    never = [v for v, cycles in absent.items() if len(cycles) == len(BANG_CYCLES)]
+        part = frame[[v for v in variables if v in frame.columns]]
+        if cycle_column is not None:
+            part = part.assign(**{cycle_column[0]: cycle_column[1][cycle]})
+        parts.append(part)
+    never = [v for v, cycles in absent.items() if len(cycles) == len(stems)]
     if never or "SEQN" in absent:
         raise SystemExit(f"{name}: no cycle carries {never or ['SEQN']}")
-    return pd.concat(parts, ignore_index=True).reindex(columns=variables), absent
+    columns = [*variables, *([cycle_column[0]] if cycle_column is not None else [])]
+    return pd.concat(parts, ignore_index=True).reindex(columns=columns), absent
+
+
+def bang_stack(name: str, folder: Path = NHANES) -> tuple[Any, dict[str, list[str]]]:
+    """One file's cycles stacked, its kept variables only, and the cycles lacking each."""
+    return stack(name, bang_stems(name), BANG_FILES[name]["vars"], folder)
 
 
 def bang_table(folder: Path = NHANES) -> tuple[Any, dict[str, dict[str, list[str]]]]:
@@ -684,7 +972,53 @@ def bang_prepared(absent: dict[str, dict[str, list[str]]]) -> list[str]:
     return out
 
 
-def bang_card(prepared: list[str]) -> dict[str, Any]:
+# The paper's rule for a categorical answer that is missing or unknown, as the notes' §2.3 quote it
+# (checked there when the card is written).
+BANG_MISSING_RULE = ("If information was missing or unknown in categorical variables, we defined "
+                     "the condition as absent.")
+
+
+def bang_books(name: str, folder: Path = NHANES) -> dict[str, dict[str, Any]]:
+    """Each cycle's codebook of one of :data:`BANG_FILES`."""
+    return {c: codebook(Path(folder) / c / f"{s}.htm") for c, s in bang_stems(name).items()}
+
+
+def bang_eligibility(table: Any, folder: Path = NHANES) -> list[str]:
+    """The paper's population as the analyst's eligibility decisions (SWARM_PLAN §5): each rule
+    in the engine's terms, its codes from the cycles' codebooks, its blanks counted among the
+    rows with a fasting glucose; and what the paper leaves open, from the replication notes."""
+    demo, diq = bang_books("DEMO", folder), bang_books("DIQ", folder)
+    measured = table["LBXGLU"].notna()
+    among, where = int(measured.sum()), "with a fasting glucose"
+
+    def level(what: str, variable: str, books: dict[str, dict[str, Any]]) -> str:
+        blank = int(table.loc[measured, variable].isna().sum())
+        return level_line(what, variable, "1", answer_codes(books, variable),
+                          blanks_line(variable, blank, among, where))
+
+    if BANG_MISSING_RULE not in (REPO / BANG_NOTES).read_text(encoding="utf-8"):
+        raise SystemExit(f"{BANG_NOTES} no longer quotes the paper's rule for a missing answer")
+    codes = answer_codes(diq, "DIQ010")
+    borderline = [c for c, d in codes.items() if d.strip().lower() == "borderline"]
+    if len(borderline) != 1:
+        raise SystemExit("DIQ010: its codebook has no one Borderline level")
+    return [
+        "The table keeps every participant: the paper's population is the analyst's eligibility "
+        "decisions, each recorded in the app as a rule.",
+        age_line(f"Aged {BANG_MIN_AGE} or older", "RIDAGEYR", BANG_MIN_AGE, demo),
+        level("Pregnant women excluded", "RIDEXPRG", demo),
+        level("Without known diabetes, the paper's first condition (a doctor said you have "
+              "diabetes)", "DIQ010", diq),
+        level("Not taking insulin now, its second", "DIQ050", diq),
+        level("Not taking diabetic pills to lower blood sugar, its third", "DIQ070", diq),
+        f"The paper does not say whether DIQ010's level {borderline[0]} "
+        f"({codes[borderline[0]]}) is known diabetes (among the choices the replication notes "
+        "list as left open). Of a categorical answer that is missing or unknown it says, as the "
+        f"notes quote it: “{BANG_MISSING_RULE}”",
+    ]
+
+
+def bang_card(prepared: list[str], eligibility: list[str]) -> dict[str, Any]:
     span = spans(list(BANG_CYCLES))
     return {
         "id": "bang2009", "design": "replication", "purpose": "Predict",
@@ -694,7 +1028,9 @@ def bang_card(prepared: list[str]) -> dict[str, Any]:
                        "fasting plasma glucose result, pregnant women excluded. People with known "
                        "diabetes are not in the model: known diabetes is a yes to DIQ010 (a "
                        "doctor said you have diabetes), taking insulin now (DIQ050) or taking "
-                       "diabetic pills (DIQ070)."),
+                       "diabetic pills (DIQ070). The table keeps everyone: these exclusions are "
+                       "the analyst's eligibility decisions, made in the app."),
+        "eligibility": eligibility,
         "outcome": {"column": BANG_OUTCOME, "meaning": (
             f"fasting plasma glucose of {BANG_FPG} mg/dL or more (1) or below (0), blank without "
             f"a glucose result; the paper's undiagnosed diabetes is {BANG_OUTCOME} = 1 in a "
@@ -740,14 +1076,70 @@ def bang_answers() -> dict[str, Any]:
     }
 
 
+def bang_markers(pages: dict[str, str]) -> list[dict[str, Any]]:
+    """The declared measurement markers of Bang 2009's table, from its NCHS pages (the paper's
+    own text cannot be fetched here): the fasting glucose's assay, laboratory and units, the blood
+    pressure's instrument, and how the self-reported items were asked."""
+    def url(name: str, cycle: str) -> str:
+        return page_url(BANG_CYCLES[cycle][0], bang_stems(name)[cycle])
+
+    c1, c2, c3 = BANG_CYCLES
+    lab = [url("LAB10AM", c) for c in BANG_CYCLES]
+    return [
+        declared("instrument", (
+            "Blood pressure: a mercury sphygmomanometer in 1999–2000 and 2001–2002 (BPX, BPX_B); "
+            "the 2003–2004 page (BPX_C) names no device. Fasting glucose: the three pages name "
+            "the laboratory and the method, not an analyzer."), [
+            ([url("BPX", c1), url("BPX", c2)], "Three and sometimes 4 BP determinations (systolic "
+             "and diastolic) are taken in the mobile examination center (MEC) and during home "
+             "examinations on all eligible individuals using a mercury sphygmomanometer.")], pages),
+        declared("assay_platform", (
+            "Fasting glucose (LBXGLU): the hexokinase method, at the Diabetes Diagnostic "
+            "Laboratory of the University of Missouri-Columbia, in each cycle."), [
+            (lab, "The enzyme hexokinase (HK) catalyzes the reaction between glucose and adenosine "
+             "triphosphate (ATP) to form glucose-6-phosphate (G-6-P) and adenosine diphosphate "
+             "(ADP)."),
+            (lab[0], "The Diabetes Diagnostic Laboratory at the University of Missouri, Columbia "
+             "measure plasma glucose, serum C-peptide and insulin on participants aged 12 years "
+             "and older."),
+            (lab[1], "Plasma glucose, serum C-peptide and insulin were measured by the Diabetes "
+             "Diagnostic Laboratory at the University of Missouri-Columbia on participants aged "
+             "12 years and older in the morning examination session only."),
+            (lab[2], "Plasma glucose and serum c-peptide were measured by the Diabetes Diagnostic "
+             "Laboratory at the University of Missouri-Columbia on participants aged 12 years and "
+             "older in the morning examination session only.")], pages),
+        declared("preprocessing", (
+            "Fasting glucose: the 2003–2004 file has no top coding or derived variables; the "
+            "1999–2000 and 2001–2002 pages state no processing of the glucose values."), [
+            (lab[2], "There was no top coding or derived variables in this file.")], pages),
+        declared("declared_units", "Fasting glucose (LBXGLU) in mg/dL, as each cycle's codebook "
+                 "labels it.", [(lab, "LBXGLU - Glucose, plasma (mg/dL)")], pages),
+        declared("recall_method", (
+            "The self-reported items: the diabetes questions administered in the home by a "
+            "trained household interviewer (DIQ_B: a home interview, in person); the medical "
+            "conditions, family history among them, asked in the household interview in "
+            "2001–2002 and 2003–2004 (the 1999–2000 page says nothing of it); the physical "
+            "activity questions asked of those 16 or older in the household interview."), [
+            ([url("DIQ", c1), url("DIQ", c3)], "The DIQ section is administered in the home by a "
+             "trained household interviewer."),
+            (url("DIQ", c2), "Interview Setting and Mode of Administration Home Interview; "
+             "In-person."),
+            (url("MCQ", c2), "Interview Setting and Mode of Administration Home Interview "
+             "In-person"),
+            (url("MCQ", c3), "The questions were asked in the household interview."),
+            ([url("PAQ", c) for c in BANG_CYCLES], "For respondents 2–11 and 16 or more years of "
+             "age, the questions were asked in the household interview.")], pages),
+    ]
+
+
 def intake_bang2009(old: dict | None) -> tuple[dict, dict, dict]:
-    files = download(bang_spec(), old)
+    files = download(bang_spec(), on_record(old))
     table, absent = bang_table()
     entry = write_table(table, BANG_TABLE)
     manifest = {"about": ("The NHANES files Bang et al. 2009's development analysis reads "
                           "(NHANES 1999–2004), as downloaded, and the table built from them."),
                 "dataset": "bang2009", **NHANES_LICENSE, "files": files, "table": entry}
-    return manifest, bang_card(bang_prepared(absent)), bang_answers()
+    return manifest, bang_card(bang_prepared(absent), bang_eligibility(table)), bang_answers()
 
 
 # ── Sullivan 2021: the replication's table, as its prep builds it ────────────
@@ -880,7 +1272,7 @@ def sullivan_answers(plan: dict[str, Any]) -> dict[str, Any]:
 
 
 def intake_sullivan2021(old: dict | None) -> tuple[dict, dict, dict]:
-    files = download(json.loads((SULLIVAN / "files.json").read_text()), old)
+    files = download(json.loads((SULLIVAN / "files.json").read_text()), on_record(old))
     prep, plan = sullivan_prep(), sullivan_plan()
     if prep.main() != 0:
         raise SystemExit("the Sullivan prep failed")
@@ -892,10 +1284,473 @@ def intake_sullivan2021(old: dict | None) -> tuple[dict, dict, dict]:
         sullivan_answers(plan)
 
 
-# ── the fixtures: the NHANES export, and two with declared truths ────────────
+# The fasting glucose pages' passages both NHANES tables of 2011 and later quote: the method, the
+# laboratories, the analyzers and their bridging equation, and the units.
+GLU_HEXOKINASE = ("In this enzymatic method glucose is converted to glucose-6-phosphate (G-6-P) by "
+                  "hexokinase in the presence of ATP, a phosphate donor.")
+GLU_MINNESOTA = ("Blood specimens were processed, stored and shipped to Fairview Medical Center "
+                 "Laboratory at the University of Minnesota, Minneapolis Minnesota for analysis.")
+GLU_MISSOURI = ("In the 2011-2012 cycle, the University of Minnesota performed this testing. The "
+                "University of Missouri-Columbia began testing plasma glucose in the 2013-2014 "
+                "cycle.")
+GLU_ANALYZERS = ("The Cobas C311 analyzer was used for most of 2015-2016 and the Cobas C501 "
+                 "analyzer was used in 2013-2014.")
+GLU_CHANGE = ("In 2015, the laboratory instrumentation changed from the Roche C501 to the Roche "
+              "C311 instrument.")
+GLU_BEFORE_2015 = ("The backwards equation can be used to ensure comparability between the "
+                   "2015-2016 cycle and previous years that were measured using the Cobas C501 "
+                   "machine values (pre-2015).")
+GLU_FORWARD = ("Forward: Y (C311) = 1.023 (95%CI: 1.014 – 1.032) * X (C501) - 0.5108 (95%CI: "
+               "-1.441 – 0.4197)")
+GLU_FORWARD_USE = ("The forward equation may be used if the interest is ensuring comparability "
+                   "with data collected using the Cobas C311 machine (2015 and later) when "
+                   "comparing or combining the 2015-2016 values with other years of data.")
+GLU_ADJUSTED = ("Results in this 2015-2016 dataset from specimens analyzed using the Cobas C501 "
+                "were adjusted using the above forward regression equation.")
+GLU_UNITS = "LBXGLU - Fasting Glucose (mg/dL)"
+DR_DAYS = ("The first dietary recall interview is collected in-person in the Mobile Examination "
+           "Center (MEC) and the second interview is collected by telephone 3 to 10 days later.")
+DR_AMPM = ("What We Eat in America data were collected using USDA's dietary data collection "
+           "instrument, the Automated Multiple Pass Method (AMPM)")
 
-NHANES_GZ = REPO / "turbotab" / "core" / "tests" / "fixtures" / "nhanes.csv.gz"
-NHANES_KEY = "_tt_tmp_nhanes.csv"  # the export's name, which truths.FIXTURE_TRUTHS keys on
+
+def sullivan_markers(pages: dict[str, str]) -> list[dict[str, Any]]:
+    """The declared measurement markers of Sullivan 2021's table, from the NCHS pages of its
+    files.json (the paper's own text cannot be fetched here): the outcome's (fasting glucose)
+    analyzers, method, adjustment and units, and how the exposure (DBQ700, the diet's rating)
+    and the 24-hour recalls were taken."""
+    spec = json.loads((SULLIVAN / "files.json").read_text())
+    cycles = spec["cycles"]
+
+    def url(prefix: str, cycle: str) -> str:
+        stem = next(f for f in cycles[cycle]["files"] if f.split("_")[0] == prefix)
+        return page_url(cycles[cycle]["year"], stem)
+
+    g, h, i, j = (url("GLU", c) for c in cycles)
+    recalls = [url(day, c) for day in ("DR1TOT", "DR2TOT") for c in cycles]
+    dbq = [url("DBQ", c) for c in cycles]
+    return [
+        declared("instrument", (
+            "Fasting glucose (LBXGLU): the Roche Cobas C501 in 2013–2014, and the Roche Cobas C311 "
+            "for most of 2015–2016 and in 2017–2018; GLU_I calls the years before 2015 measured "
+            "on the C501, and the 2011–2012 page (GLU_G) names its laboratory, not an analyzer. "
+            "The 24-hour recalls: USDA's Automated Multiple Pass Method, the dietary data "
+            "collection instrument each recall file's page names."), [
+            (i, GLU_ANALYZERS), (i, GLU_CHANGE), (i, GLU_BEFORE_2015),
+            (j, "There were no changes to the lab equipment since 2015-2016. The Cobas C311 "
+                "analyzer was used in 2017-2018 and 2015-2016."),
+            (recalls, DR_AMPM)], pages),
+        declared("assay_platform", (
+            "Fasting glucose (LBXGLU): an enzymatic hexokinase method, the same passage on each "
+            "cycle's page; measured at the University of Minnesota's Fairview laboratory in "
+            "2011–2012 and at the University of Missouri-Columbia from 2013–2014."), [
+            ([g, h, i, j], GLU_HEXOKINASE), (g, GLU_MINNESOTA), (h, GLU_MISSOURI)], pages),
+        declared("preprocessing", (
+            "Fasting glucose as released: NCHS put the 2015–2016 values measured on the Cobas C501 "
+            "on the C311's scale by its forward regression equation, and offers that equation, or "
+            "its backward one, for combining 2015 and later values with the earlier years "
+            "measured on the C501; 2015–2016 and 2017–2018 need no adjustment between them."), [
+            (i, GLU_ADJUSTED), (i, GLU_FORWARD), (i, GLU_FORWARD_USE), (i, GLU_BEFORE_2015),
+            (j, "If 2017-2018 data are compared or combined with the 2015-2016 data, no "
+                "adjustments are needed for equipment changes. As mentioned in the 2015-2016 "
+                "documentation, most of the 2015-2016 samples were measured using the Cobas C311, "
+                "which is the same instrument used in 2017-2018. Some of the samples were "
+                "collected using the Cobas C501. Results for these specimens have already been "
+                "adjusted using the forward regression equation for comparability.")], pages),
+        declared("declared_units", "Fasting glucose (LBXGLU) in mg/dL, as each cycle's codebook "
+                 "labels it.", [([g, h, i, j], GLU_UNITS)], pages),
+        declared("recall_method", (
+            "The exposure (DBQ700, how healthy the participant rates their overall diet): asked "
+            "in the home, as the diet behavior page says of its other questions. The two 24-hour "
+            "dietary recalls: the first in person in the mobile examination center, the second by "
+            "telephone 3 to 10 days later."), [
+            (dbq, "In general, how healthy is {your/his/her} overall diet?"),
+            (dbq[0], "The same questions were asked of participants 1-11 years and of participants "
+                     "16 years and older, in the home, by trained interviewers using the Computer "
+                     "Assisted Personal Interviewing (CAPI) system. All other questions in this "
+                     "section were asked in the home, as well."),
+            (dbq[1:], "The same questions were asked of participants 1-11 years and of "
+                      "participants 16 years and older, in the home, by trained interviewers "
+                      "using the Computer Assisted Personal Interview (CAPI) system. All other "
+                      "questions in this section were asked in the home, as well."),
+            (recalls, DR_DAYS)], pages),
+    ]
+
+
+# ── Nolan's NHANES fasting glucose, rebuilt from the NCHS files (SWARM_PLAN §5, dataset 3) ──
+#
+# Developed on 2011–2012, 2013–2014 and 2015–2016 and tested on 2017–March 2020, the
+# pre-pandemic P_ files whose sampling design matches (2021–2023 changed it). The table holds every
+# participant of each cycle's demographics file, joined by SEQN to each file below, with a cycle
+# column the cut-point seal reads; the outcome is LBXGLU as NCHS released it. The population is the
+# analyst's eligibility decisions (adults 20 and over without diagnosed diabetes and not taking a
+# glucose-lowering medication, matching Bang: Nolan, 2026-10-19), so its columns are kept and no
+# row is dropped. Each predictor is known before the fasting draw's result; the same draw's
+# glycemic measures (HbA1c, insulin, an oral glucose tolerance test) are left out by design.
+
+GLUCOSE_ID = "nhanes_glucose_predict"
+# Each cycle: the year its files are published under, and its files' names from their stems.
+GLUCOSE_CYCLES: dict[str, tuple[int, str]] = {
+    "2011-2012": (2011, "{}_G"), "2013-2014": (2013, "{}_H"), "2015-2016": (2015, "{}_I"),
+    "2017-2020": (2017, "P_{}")}
+GLUCOSE_SPANS = {"2017-2020": "2017–March 2020"}  # the pre-pandemic file's own name for its span
+GLUCOSE_TEST = "2017-2020"  # the cycle held out, by a cut-point on GLUCOSE_CYCLE
+GLUCOSE_CYCLE = "cycle_begin_year"  # each row's cycle: the year its files are published under
+GLUCOSE_OUTCOME = "LBXGLU"
+GLUCOSE_MIN_AGE = BANG_MIN_AGE  # the population matches Bang's
+GLUCOSE_TABLE = TABLES / GLUCOSE_ID / "nhanes_glucose.parquet"
+# Each cycle's fasting subsample weight, as its glucose file carries it (checked in the tests).
+GLUCOSE_WEIGHTS = {"2011-2012": "WTSAF2YR", "2013-2014": "WTSAF2YR", "2015-2016": "WTSAF2YR",
+                   "2017-2020": "WTSAFPRP"}
+# Each file: what it holds, the cycles that have it (every cycle unless named) and the variables
+# kept, each checked in each cycle's file (a variable no cycle's file carries stops the intake).
+GLUCOSE_FILES: dict[str, dict[str, Any]] = {
+    "DEMO": {"about": "demographics and the survey design",
+             "vars": ["SEQN", "SDDSRVYR", "RIDAGEYR", "RIAGENDR", "RIDRETH3", "DMDEDUC2",
+                      "INDFMPIR", "RIDEXPRG", "SDMVSTRA", "SDMVPSU"]},
+    "GLU": {"about": "fasting plasma glucose and the fasting subsample's weights",
+            "vars": ["SEQN", "LBXGLU", "WTSAF2YR", "WTSAFPRP"]},
+    "DIQ": {"about": "diabetes questions",
+            "vars": ["SEQN", "DIQ010", "DIQ160", "DIQ050", "DIQ070"]},
+    "BPQ": {"about": "blood pressure and cholesterol questions",
+            "vars": ["SEQN", "BPQ020", "BPQ040A", "BPQ050A", "BPQ080", "BPQ090D", "BPQ100D"]},
+    "BPX": {"about": "blood pressure readings, auscultatory",
+            "cycles": ["2011-2012", "2013-2014", "2015-2016"],
+            "vars": ["SEQN", *(f"BPX{m}{i}" for i in range(1, 4) for m in ("SY", "DI"))]},
+    "BPXO": {"about": "blood pressure readings, oscillometric", "cycles": ["2017-2020"],
+             "vars": ["SEQN", *(f"BPXO{m}{i}" for i in range(1, 4) for m in ("SY", "DI"))]},
+    "BMX": {"about": "body measures", "vars": ["SEQN", "BMXWT", "BMXHT", "BMXBMI", "BMXWAIST"]},
+    "DR1TOT": {"about": "the first 24-hour dietary recall's total nutrient intakes",
+               "vars": ["SEQN", "DR1DRSTZ", "DR1TKCAL", "DR1TPROT", "DR1TCARB", "DR1TSUGR",
+                        "DR1TTFAT", "DR1TSFAT", "DR1TMFAT", "DR1TPFAT"]},
+    "HDL": {"about": "HDL cholesterol", "vars": ["SEQN", "LBDHDD"]},
+    "TRIGLY": {"about": "triglycerides, measured in the fasting subsample",
+               "vars": ["SEQN", "LBXTR"]},
+    "MCQ": {"about": "medical conditions and family history",
+            "vars": ["SEQN", "MCQ300C", "MCQ160C", "MCQ160E", "MCQ160F"]},
+    "PAQ": {"about": "physical activity",
+            "vars": ["SEQN", "PAQ605", "PAQ620", "PAQ635", "PAQ650", "PAQ665", "PAD680"]},
+    "SMQ": {"about": "smoking", "vars": ["SEQN", "SMQ020", "SMQ040"]},
+    "FASTQX": {"about": "fasting hours before the blood draw",
+               "vars": ["SEQN", "PHAFSTHR", "PHAFSTMN"]},
+}
+# The table of the app's NHANES glucose journeys (turbotab/core/tests/fixtures/nhanes.csv.gz): its
+# outcome and each of its 21 predictors, by the variable it is, the development cycles' and the
+# test cycle's where they differ (blood pressure was measured another way in 2017–March 2020).
+# Checked against the export on the cycles both hold (research/swarm/tests/test_intake_v2.py).
+GLUCOSE_TODAY: dict[str, tuple[str, ...]] = {
+    "glucose": ("LBXGLU",), "cycle_begin_year": (GLUCOSE_CYCLE,), "age": ("RIDAGEYR",),
+    "gender": ("RIAGENDR",), "bp_sys": ("BPXSY1", "BPXOSY1"), "bp_di": ("BPXDI1", "BPXODI1"),
+    "weight": ("BMXWT",), "height": ("BMXHT",), "bmi": ("BMXBMI",), "waist": ("BMXWAIST",),
+    "kcal": ("DR1TKCAL",), "protein": ("DR1TPROT",), "sugar": ("DR1TSUGR",),
+    "carb": ("DR1TCARB",), "fat_total": ("DR1TTFAT",), "fat_sat": ("DR1TSFAT",),
+    "fat_mon": ("DR1TMFAT",), "fat_poly": ("DR1TPFAT",), "hdl": ("LBDHDD",),
+    "triglycerides": ("LBXTR",), "meds_hbp": ("BPQ050A",), "meds_chol": ("BPQ100D",)}
+# The passages of P_GLU's and P_BPXO's pages the glucose markers and card quote.
+P_GLU_C311 = ("most of the 2015-2016 samples were measured using the Cobas C311, which is the same "
+              "instrument used in 2017-2018.")
+P_GLU_NONE = ("If 2017-March 2020 pre-pandemic data are compared or combined with the 2015-2016 "
+              "data, no adjustments are needed for equipment changes.")
+P_GLU_FILL = ("For analytes with analytic results below the lower limit of detection (ex., "
+              "LBDGLULC=1), an imputed fill value was placed in the analyte results field.")
+P_GLU_UNFASTED = ("participants whom provided blood specimen but did not meet the 8 to less than "
+                  "24 hour fasting criteria (n=268) have the sample weight value assigned as “0” "
+                  "(WTSAFPRP=0) as well.")
+P_BPXO_OMRON = ("three consecutive BP measurements were taken 60 seconds apart using a digital "
+                "upper-arm electronic measurement device, Omron HEM–907XL.")
+P_BPXO_ENDED = "Auscultatory BP measurement in NHANES ended after the 2017-2018 survey cycle."
+
+
+def glucose_span(cycle: str) -> str:
+    """A cycle as its files name it: 2011–2012, …, 2017–March 2020."""
+    return GLUCOSE_SPANS.get(cycle) or cycle.replace("-", "–")
+
+
+def glucose_stems(name: str) -> dict[str, str]:
+    """The file's stem in each cycle that has it."""
+    spec = GLUCOSE_FILES[name]
+    return {c: GLUCOSE_CYCLES[c][1].format(name) for c in spec.get("cycles") or GLUCOSE_CYCLES}
+
+
+def glucose_url(name: str, cycle: str) -> str:
+    return page_url(GLUCOSE_CYCLES[cycle][0], glucose_stems(name)[cycle])
+
+
+def glucose_spec() -> dict[str, Any]:
+    """The download spec (``files.json``'s shape) of every file :data:`GLUCOSE_FILES` names."""
+    return {"url": NHANES_URL, "cycles": {
+        cycle: {"year": year, "files": [glucose_stems(n)[cycle] for n in GLUCOSE_FILES
+                                        if cycle in glucose_stems(n)]}
+        for cycle, (year, _) in GLUCOSE_CYCLES.items()}}
+
+
+def glucose_books(name: str, folder: Path = NHANES) -> dict[str, dict[str, Any]]:
+    """Each cycle's codebook of one of :data:`GLUCOSE_FILES`."""
+    return {c: codebook(Path(folder) / c / f"{s}.htm") for c, s in glucose_stems(name).items()}
+
+
+def glucose_table(folder: Path = NHANES) -> tuple[Any, dict[str, dict[str, list[str]]]]:
+    """Every file's cycles stacked and joined to DEMO by SEQN, with the cycle column: one row per
+    participant of each cycle's demographics file. The cycles each variable is blank in, because
+    its cycle's file lacks it or the cycle has no such file, are returned beside it."""
+    years = {c: y for c, (y, _) in GLUCOSE_CYCLES.items()}
+    stacked, absent = {}, {}
+    for name in GLUCOSE_FILES:
+        stems = glucose_stems(name)
+        stacked[name], gaps = stack(name, stems, GLUCOSE_FILES[name]["vars"], folder,
+                                    (GLUCOSE_CYCLE, years) if name == "DEMO" else None)
+        for c in GLUCOSE_CYCLES:
+            if c not in stems:
+                for v in GLUCOSE_FILES[name]["vars"][1:]:
+                    gaps.setdefault(v, []).append(c)
+        if gaps:
+            absent[name] = {v: [c for c in GLUCOSE_CYCLES if c in cs] for v, cs in gaps.items()}
+    table = merge_on_seqn(stacked["DEMO"], {k: v for k, v in stacked.items() if k != "DEMO"})
+    return table, absent
+
+
+def glucose_prepared(absent: dict[str, dict[str, list[str]]]) -> list[str]:
+    kept = "; ".join(f"{'/'.join(glucose_stems(n).values())} ({GLUCOSE_FILES[n]['about']}): "
+                     + ", ".join(v for v in GLUCOSE_FILES[n]["vars"] if v != "SEQN")
+                     for n in GLUCOSE_FILES)
+    years = listed([str(y) for y, _ in GLUCOSE_CYCLES.values()])
+    out = [
+        "Read each cycle's NHANES files, "
+        + listed([glucose_span(c) for c in GLUCOSE_CYCLES])
+        + f" (the pre-pandemic P_ files for {glucose_span(GLUCOSE_TEST)}), with TurboTab's own "
+        "SAS transport reader, which reads SAS missing values as blank and a SAS zero as 0.",
+        f"Stacked each file's cycles one under the other, and added {GLUCOSE_CYCLE}: the year "
+        f"the row's cycle begins ({years}), the cycle of the demographics file the row came "
+        "from.",
+        f"Kept only these variables: {kept}.",
+    ]
+    gaps = []
+    for n, g in absent.items():
+        stems = glucose_stems(n)
+        missing = [c for c in GLUCOSE_CYCLES if c not in stems]
+        if missing:
+            gaps.append(f"every {n} variable in {listed([glucose_span(c) for c in missing])}, "
+                        f"which {'has' if len(missing) == 1 else 'have'} no {n} file")
+        for v, cycles in g.items():
+            within = [c for c in cycles if c in stems]
+            if within:
+                gaps.append(f"{v} in {listed([glucose_span(c) for c in within])} "
+                            f"({'/'.join(stems[c] for c in within)} does not carry it)")
+    if gaps:
+        out.append("Blank where a cycle does not carry the variable: " + "; ".join(gaps) + ".")
+    out += [
+        "Joined every file to the demographics file (DEMO) by the participant's SEQN: one row "
+        "per participant of DEMO, blank in a file's variables where the participant has no record "
+        "in it (every record of every file has its participant in DEMO).",
+        f"Nothing else: no row is dropped, and no value is recoded, adjusted or imputed; "
+        f"{GLUCOSE_OUTCOME} is the fasting glucose as NCHS released it.",
+    ]
+    return out
+
+
+def glucose_population(table: Any) -> str:
+    """Who the rows are, the oldest age of each cycle read from the table: refused where it is
+    not the top code the cycle's demographics codebook states (:func:`nhanes_age_top_code`)."""
+    oldest = table.groupby(GLUCOSE_CYCLE)["RIDAGEYR"].max()
+    for cycle, (year, _) in GLUCOSE_CYCLES.items():
+        if oldest.get(year) != nhanes_age_top_code(year):
+            raise SystemExit(f"the oldest age in {glucose_span(cycle)} is {oldest.get(year)}, not "
+                             f"the top code {nhanes_age_top_code(year)} its codebook states")
+    first, *_, test = GLUCOSE_CYCLES
+    return (f"NHANES participants of the {len(GLUCOSE_CYCLES)} survey cycles "
+            f"{glucose_span(first)} to {glucose_span(test)}, one row each: every participant of "
+            "each cycle's demographics file, of every age, with or without a fasting glucose. The "
+            f"question is about U.S. adults aged {GLUCOSE_MIN_AGE} or older without diagnosed "
+            "diabetes and not taking a glucose-lowering medication, the population of Bang et al. "
+            "2009 (which also excluded pregnant women): the table keeps everyone, and this "
+            "population is the analyst's eligibility decisions, made in the app.")
+
+
+def glucose_eligibility(table: Any, folder: Path = NHANES) -> list[str]:
+    """The population as the analyst's eligibility decisions (SWARM_PLAN §5): each rule in the
+    engine's terms, its codes from every cycle's codebook, its blanks counted among the rows with
+    a fasting glucose, those of the test cycle named."""
+    import numpy as np
+    demo, diq = glucose_books("DEMO", folder), glucose_books("DIQ", folder)
+    measured = table[GLUCOSE_OUTCOME].notna()
+    test = table[GLUCOSE_CYCLE] == GLUCOSE_CYCLES[GLUCOSE_TEST][0]
+    among = int(measured.sum())
+
+    def level(what: str, variable: str, books: dict[str, dict[str, Any]]) -> str:
+        blank = table[variable].isna() & measured
+        return level_line(what, variable, "1", answer_codes(books, variable), blanks_line(
+            variable, int(blank.sum()), among, "with a fasting glucose",
+            (int((blank & test).sum()), glucose_span(GLUCOSE_TEST))))
+
+    by_weight: dict[str, list[str]] = {}
+    for cycle, weight in GLUCOSE_WEIGHTS.items():
+        by_weight.setdefault(weight, []).append(glucose_span(cycle))
+    zero = measured & np.logical_or.reduce([table[w] == 0 for w in by_weight])
+    weights = listed([f"{w} in {listed(cycles)}" for w, cycles in by_weight.items()])
+    return [
+        age_line(f"Aged {GLUCOSE_MIN_AGE} or older", "RIDAGEYR", GLUCOSE_MIN_AGE, demo),
+        level("Without diagnosed diabetes", "DIQ010", diq),
+        level("Not taking insulin now", "DIQ050", diq),
+        level("Not taking diabetic pills to lower blood sugar", "DIQ070", diq),
+        level("Pregnant women, whom Bang et al. 2009 also excluded", "RIDEXPRG", demo),
+        f"The fasting subsample's weight is {weights}; {int(zero.sum()):,} rows with a fasting "
+        f"glucose have a weight of 0. P_GLU's page: “{P_GLU_UNFASTED}”",
+    ]
+
+
+def glucose_held_out(table: Any) -> dict[str, Any]:
+    """The test the card fixes: the test cycle, held out by a cut-point on the cycle column."""
+    at = GLUCOSE_CYCLES[GLUCOSE_TEST][0]
+    n = int(((table[GLUCOSE_CYCLE] >= at) & table[GLUCOSE_OUTCOME].notna()).sum())
+    earlier = [glucose_span(c) for c in GLUCOSE_CYCLES if c != GLUCOSE_TEST]
+    return {"column": GLUCOSE_CYCLE, "at": at, "meaning": (
+        f"The test is {glucose_span(GLUCOSE_TEST)}, the pre-pandemic file, held out by a "
+        f"cut-point at {at} on {GLUCOSE_CYCLE}: the seal holds out every row at or after it "
+        f"({n:,} of them with a fasting glucose), and the rows of {listed(earlier)} train. A run "
+        "that holds out other rows is not compared with the benchmark, Bang et al. 2009's score "
+        "on the same held-out participants (research/swarm/benchmark.py refuses it).")}
+
+
+P_TRIGLY_FASTING = ("Triglycerides were measured in a fasting subsample of participants 12 years "
+                    "and older.")
+
+
+def glucose_documentation(pages: dict[str, str]) -> list[str]:
+    """What the NCHS pages state that the table cannot show, each passage quoted and found on
+    its page (``pages``: URL → text), else refused."""
+    i, p = glucose_url("GLU", "2015-2016"), glucose_url("GLU", GLUCOSE_TEST)
+    bpxo, trigly = glucose_url("BPXO", GLUCOSE_TEST), glucose_url("TRIGLY", GLUCOSE_TEST)
+    for url, quote in ((i, GLU_CHANGE), (i, GLU_FORWARD), (p, P_GLU_NONE), (bpxo, P_BPXO_ENDED),
+                       (trigly, P_TRIGLY_FASTING)):
+        if url not in pages or not quoted(quote, pages[url]):
+            raise QuoteRefused(f"the card's passage “{quote}” is not on {url}")
+    first, *_, before, test = GLUCOSE_CYCLES
+    return [
+        f"The fasting glucose analyzer changed in 2015. GLU_I's page ({i}): “{GLU_CHANGE}” "
+        f"and “{GLU_FORWARD}”. P_GLU's page ({p}): “{P_GLU_NONE}” The table "
+        "applies no equation.",
+        "Blood pressure was measured another way in the test cycle: BPXSY1 to BPXDI3 "
+        f"(auscultatory) in {glucose_span(first)} to {glucose_span(before)}, BPXOSY1 to BPXODI3 "
+        f"(oscillometric) in {glucose_span(test)}. P_BPXO's page ({bpxo}): "
+        f"“{P_BPXO_ENDED}”",
+        f"Triglycerides (LBXTR) come from the fasting subsample, as the fasting glucose does. "
+        f"P_TRIGLY's page ({trigly}): “{P_TRIGLY_FASTING}”",
+    ]
+
+
+def glucose_card(table: Any, prepared: list[str], pages: dict[str, str]) -> dict[str, Any]:
+    return {
+        "id": GLUCOSE_ID, "design": "analysts", "purpose": "Predict",
+        "question": ("How well can fasting plasma glucose be predicted in U.S. adults without "
+                     "diagnosed diabetes from what is known about them before the fasting blood "
+                     "draw's result?"),
+        "population": glucose_population(table),
+        "eligibility": glucose_eligibility(table),
+        "outcome": {"column": GLUCOSE_OUTCOME, "meaning": (
+            "fasting plasma glucose (mg/dL), measured in the morning fasting subsample; blank for "
+            "everyone outside it")},
+        "held_out": glucose_held_out(table),
+        "table": {"path": rel(GLUCOSE_TABLE), "format": "parquet"},
+        "source": "NHANES public-use files from the CDC (wwwn.cdc.gov).",
+        "documentation": glucose_documentation(pages),
+        "prepared": prepared,
+        "manifest": f"research/datasets/{GLUCOSE_ID}/manifest.json",
+    }
+
+
+def glucose_variables(folder: Path = NHANES) -> list[dict[str, Any]]:
+    """Each variable the table keeps: its file in each cycle that carries it, and its SAS label
+    as the codebook of the first such cycle gives it."""
+    out = []
+    for name in GLUCOSE_FILES:
+        books = glucose_books(name, folder)
+        stems = glucose_stems(name)
+        for v in GLUCOSE_FILES[name]["vars"][1:]:
+            have = {c: stems[c] for c, book in books.items() if v in book}
+            label = next((books[c][v].label for c in have), None)
+            out.append({"variable": v, "files": have, "label": label})
+    return out
+
+
+def glucose_markers(pages: dict[str, str]) -> list[dict[str, Any]]:
+    """The declared measurement markers of the glucose table, from its NCHS pages: the outcome's
+    analyzers, method, laboratories, adjustment and units, the blood pressure's instrument, and
+    how the dietary and diabetes questions were taken."""
+    g, h, i, p = (glucose_url("GLU", c) for c in GLUCOSE_CYCLES)
+    bpxo = glucose_url("BPXO", GLUCOSE_TEST)
+    recalls = [glucose_url("DR1TOT", c) for c in GLUCOSE_CYCLES]
+    diq = [glucose_url("DIQ", c) for c in GLUCOSE_CYCLES]
+    return [
+        declared("instrument", (
+            "Fasting glucose (LBXGLU): the Roche Cobas C501 in 2013–2014, and the Roche Cobas C311 "
+            "for most of 2015–2016 and in 2017–2018; GLU_I calls the years before 2015 measured "
+            "on the C501, and no page names the analyzer of 2011–2012 (GLU_G names its laboratory) "
+            "or of 2019–March 2020. Blood pressure: in 2017–March 2020 three readings on an Omron "
+            "HEM–907XL, an oscillometric device (P_BPXO), auscultatory measurement having ended "
+            "after 2017–2018; the pages of 2011–2016 (BPX_G, BPX_H, BPX_I) name no device."), [
+            (i, GLU_ANALYZERS), (i, GLU_CHANGE), (i, GLU_BEFORE_2015), (p, P_GLU_C311),
+            (bpxo, "Blood Pressure - Oscillometric Measurement (P_BPXO)"), (bpxo, P_BPXO_OMRON),
+            (bpxo, P_BPXO_ENDED)], pages),
+        declared("assay_platform", (
+            "Fasting glucose (LBXGLU): an enzymatic hexokinase method, the same passage on each "
+            "cycle's page; measured at the University of Minnesota's Fairview laboratory in "
+            "2011–2012 and at the University of Missouri-Columbia from 2013–2014."), [
+            ([g, h, i, p], GLU_HEXOKINASE), (g, GLU_MINNESOTA), (h, GLU_MISSOURI),
+            (p, "Plasma specimens are processed, stored, and shipped to the University of "
+                "Missouri-Columbia, Columbia, MO for analysis.")], pages),
+        declared("preprocessing", (
+            "Fasting glucose as released: NCHS put the 2015–2016 values measured on the Cobas C501 "
+            "on the C311's scale by its forward regression equation, and offers that equation, or "
+            "its backward one, for combining 2015 and later values with the earlier years "
+            "measured on the C501; 2015–2016 and 2017–March 2020 need no adjustment between them. "
+            "A result below the detection limit holds a fill value, and a participant who gave "
+            "blood without fasting 8 to under 24 hours keeps the glucose with a fasting weight of "
+            "0."), [
+            (i, GLU_ADJUSTED), (i, GLU_FORWARD), (i, GLU_FORWARD_USE), (i, GLU_BEFORE_2015),
+            (p, P_GLU_NONE), (p, P_GLU_FILL), (p, P_GLU_UNFASTED),
+            (p, "Glucose measurements for these 268 participants are included in the dataset.")],
+            pages),
+        declared("declared_units", "Fasting glucose (LBXGLU) in mg/dL, as each cycle's codebook "
+                 "labels it.", [([g, h, i, p], GLU_UNITS)], pages),
+        declared("recall_method", (
+            "The dietary predictors (DR1TOT): the first of two 24-hour dietary recalls, taken in "
+            "person in the mobile examination center by USDA's Automated Multiple Pass Method. "
+            "The diabetes questions (DIQ): asked in the home by trained interviewers using "
+            "CAPI."), [
+            (recalls, DR_DAYS), (recalls, DR_AMPM),
+            (diq[0], "These questions were asked, in the home, by trained interviewers using the "
+                     "Computer-Assisted Personal Interviewing (CAPI) system."),
+            (diq[1:], "These questions were asked, in the home, by trained interviewers using the "
+                      "Computer-Assisted Personal Interview (CAPI) system.")], pages),
+    ]
+
+
+def intake_nhanes_glucose_predict(old: dict | None) -> tuple[dict, dict, dict]:
+    files = download(glucose_spec(), on_record(old))
+    table, absent = glucose_table()
+    entry = write_table(table, GLUCOSE_TABLE)
+    manifest = {"about": ("The NHANES files of Nolan's fasting glucose project, 2011–2012 to "
+                          "2017–March 2020, as downloaded, and the table built from them."),
+                "dataset": GLUCOSE_ID, **NHANES_LICENSE, "files": files, "table": entry,
+                "cycle_column": {"column": GLUCOSE_CYCLE, "values": {
+                    c: y for c, (y, _) in GLUCOSE_CYCLES.items()}},
+                "variables": glucose_variables(),
+                "today": {"table": "turbotab/core/tests/fixtures/nhanes.csv.gz",
+                          "columns": {k: list(v) for k, v in GLUCOSE_TODAY.items()}}}
+    answers = {
+        "id": GLUCOSE_ID, "kind": "no_known_answer",
+        "about": ("Real data: nobody knows how well these measures predict fasting glucose, so a "
+                  "run is checked by the protocol checks alone. Its benchmark, Bang et al. "
+                  "2009's points score on the run's own held-out participants, is computed from "
+                  "the run's record by research/swarm/benchmark.py."),
+        "truths": [],
+    }
+    return manifest, glucose_card(table, glucose_prepared(absent), manifest_pages(manifest)), \
+        answers
+
+
+# ── the fixtures: two with declared truths ───────────────────────────────────
+
 SAMPLE = REPO / "turbotab" / "sample_data"
 # clinical_risk.csv's outcome, as make_fixtures.py::clinical_risk draws it: readmit_30d is 1 with
 # probability expit(intercept + Σ coef × (f(column) − center)), f the identity or the log.
@@ -966,113 +1821,6 @@ def row_count(n: int) -> str:
 def listed(words: list[str]) -> str:
     """``a``, ``a and b``, ``a, b and c``."""
     return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} and {words[-1]}"
-
-
-def nhanes_export(data: bytes, pinned: str) -> Any:
-    """The export's frame from its decompressed bytes, refused unless they hash to ``pinned``
-    (stage_harness's NHANES_SHA256) and hold one row per participant, each with a glucose."""
-    import io
-
-    import pandas as pd
-    if hashlib.sha256(data).hexdigest() != pinned:
-        raise SystemExit("the decompressed export is not the bytes stage_harness pins")
-    frame = pd.read_csv(io.BytesIO(data))
-    if not (frame["SEQN"].is_unique and frame["glucose"].notna().all()):
-        raise SystemExit("the export is not one row per participant, each with a glucose")
-    return frame
-
-
-def nhanes_population(frame: Any) -> str:
-    """Who the export's rows are, its ages read from the frame: refused where a cycle's oldest age
-    is not the top code its codebook states (:func:`nhanes_age_top_code`), since the sentence
-    reads the oldest age as that code."""
-    years = sorted(int(y) for y in frame["cycle_begin_year"].unique())
-    oldest = frame.groupby("cycle_begin_year")["age"].max()
-    runs: list[tuple[int, list[int]]] = []
-    for y in years:
-        top = nhanes_age_top_code(y)
-        if oldest[y] != top:
-            raise SystemExit(f"the export's oldest age in {cycle_span(y)} is {oldest[y]:g}, not "
-                             f"the top code {top} its demographics codebook states")
-        if runs and runs[-1][0] == top:
-            runs[-1][1].append(y)
-        else:
-            runs.append((top, [y]))
-    coded = listed([f"{top} stands for {top} or older in "
-                    + (cycle_span(ys[0]) if len(ys) == 1 else
-                       f"the cycles {cycle_span(ys[0])} to {cycle_span(ys[-1])}")
-                    for top, ys in runs])
-    return (f"NHANES participants aged {frame['age'].min():g} or older, one row each, every one "
-            f"with a fasting glucose, from the {len(years)} survey cycles "
-            f"{cycle_span(years[0])} to {cycle_span(years[-1])}. NHANES top-codes age: {coded}.")
-
-
-def nhanes_prepared(frame: Any) -> list[str]:
-    """What the export shows of the steps taken before it reached this repository: the values it
-    flags as imputed (its ``imputed_<measure>`` columns), and the rows it holds."""
-    flags = [c for c in frame.columns if c.startswith("imputed_")]
-    measures = [c.removeprefix("imputed_") for c in flags]
-    if any(m not in frame.columns for m in measures):
-        raise SystemExit(f"an imputed_ column flags no column of the export: {flags}")
-    out = []
-    if flags:
-        counts = listed([f"{m} on the {row_count(int(frame[c].sum()))} where {c} is true"
-                         for m, c in zip(measures, flags)])
-        blank = {m: int(frame[m].isna().sum()) for m in measures}
-        left = ("none of these measures has a blank" if not any(blank.values()) else
-                "blanks remain in "
-                + listed([f"{m} ({row_count(n)})" for m, n in blank.items() if n]))
-        out.append(f"Before the export reached this repository, by a method it does not record, "
-                   f"values were imputed in {len(measures)} measures, each flagged in its own "
-                   f"column: {counts}; {left}.")
-    blanks = frame.isna().sum()
-    blanks = blanks[blanks > 0]
-    left = ("No column has a blank" if blanks.empty else "No column has a blank but "
-            + listed([f"{c} ({row_count(int(n))})" for c, n in blanks.items()]))
-    out.append(f"Before the export reached this repository, by rules it does not record, its rows "
-               f"were limited: every row has a glucose value and an age of "
-               f"{frame['age'].min():g} or more. {left}.")
-    return out
-
-
-def intake_nhanes_glucose_predict(old: dict | None) -> tuple[dict, dict, dict]:
-    import gzip
-
-    from turbotab.core.tests.stage_harness import NHANES_SHA256
-    id_ = "nhanes_glucose_predict"
-    table = TABLES / id_ / NHANES_KEY
-    data = gzip.decompress(NHANES_GZ.read_bytes())
-    frame = nhanes_export(data, NHANES_SHA256)
-    card = {
-        "id": id_, "design": "analysts", "purpose": "Predict",
-        "question": "How well do the table's measures predict fasting glucose?",
-        "population": nhanes_population(frame),
-        "outcome": {"column": "glucose", "meaning": "fasting plasma glucose (mg/dL)"},
-        "table": {"path": rel(table), "format": "csv"},
-        "source": ("An NHANES export tracked in this repository "
-                   "(turbotab/core/tests/fixtures/nhanes.csv.gz), the table of the app's NHANES "
-                   "glucose journeys. How it was exported from the NHANES files is not recorded "
-                   "with it."),
-        "prepared": nhanes_prepared(frame),
-        "manifest": f"research/datasets/{id_}/manifest.json",
-    }
-    copy_table(NHANES_GZ, table, data)
-    manifest = {"about": "The NHANES export, decompressed from the repository's tracked copy.",
-                "dataset": id_, **NHANES_LICENSE,
-                "files": [{"file": rel(NHANES_GZ), "origin": "this repository",
-                           "bytes": NHANES_GZ.stat().st_size, "sha256": sha256(NHANES_GZ),
-                           "decompressed_sha256": NHANES_SHA256}],
-                "table": table_entry(table, frame)}
-    answers = {
-        "id": id_, "kind": "no_known_answer",
-        "about": ("Real data: nobody knows how well these measures can predict fasting glucose, "
-                  "so a run is checked by the protocol checks alone. Its readings are declared."),
-        "fixture_key": NHANES_KEY,
-        "truths": [{"name": "the readings a user who knows the export gives",
-                    "source": "turbotab/core/tests/truths.py FIXTURE_TRUTHS",
-                    "value": readings(NHANES_KEY)}],
-    }
-    return manifest, card, answers
 
 
 def intake_clinical_readmission_predict(old: dict | None) -> tuple[dict, dict, dict]:
@@ -1395,13 +2143,34 @@ INTAKES: dict[str, Callable[[dict | None], tuple[dict, dict, dict]]] = {
 }
 
 
+# The pilot datasets read from NCHS pages, and how each one's declared measurement markers are
+# read from the pages its manifest downloaded (``declared.json`` beside its card).
+DECLARING: dict[str, Callable[[dict[str, str]], list[dict[str, Any]]]] = {
+    "bang2009": bang_markers,
+    "sullivan2021": sullivan_markers,
+    "nhanes_glucose_predict": glucose_markers,
+}
+
+
 def paths(id_: str) -> dict[str, Path]:
     folder = DATASETS / id_
-    return {k: folder / f"{k}.json" for k in ("manifest", "card", "answers")}
+    return {k: folder / f"{k}.json" for k in ("manifest", "card", "answers", "declared")}
 
 
 def load(id_: str) -> dict[str, Any]:
     return {k: json.loads(p.read_text()) for k, p in paths(id_).items() if p.is_file()}
+
+
+def dataset_meta(id_: str) -> dict[str, Any]:
+    """What the assembler's ``--dataset`` holds of a dataset (``assemble.dataset_of``): its id,
+    whether it is a control, its fixture, its card and its declared measurement markers (the
+    record's ``dataset.declared``); its known answer, a run's own, is the caller's to add."""
+    files = load(id_)
+    answers = files.get("answers") or {}
+    control = {"known_answer": "known_answer", "decoy": "null_decoy"}.get(answers.get("kind"))
+    return {"id": id_, "control": control, "fixture": answers.get("fixture_key"),
+            "codebook": None, "card": files.get("card"),
+            "declared": list(files.get("declared") or [])}
 
 
 def problems(id_: str, card: dict, answers: dict) -> list[str]:
@@ -1425,23 +2194,32 @@ def run(id_: str) -> None:
     old = load(id_).get("manifest")
     manifest, card, answers = INTAKES[id_](old)
     bad = problems(id_, card, answers)
+    written = {"manifest": manifest, "card": card, "answers": answers}
+    if id_ in DECLARING:
+        written["declared"] = DECLARING[id_](manifest_pages(manifest))
+        bad += marker_problems(written["declared"], manifest)
     if bad:
         raise SystemExit(f"{id_}: " + "; ".join(bad))
-    for name, value in (("manifest", manifest), ("card", card), ("answers", answers)):
+    for name, value in written.items():
         write_json(paths(id_)[name], value)
-    print(f"{id_}: wrote {', '.join(str(rel(p)) for p in paths(id_).values())}")
+    print(f"{id_}: wrote {', '.join(str(rel(paths(id_)[k])) for k in written)}")
 
 
 def check(id_: str) -> list[str]:
-    """What is wrong with a dataset's committed files, or its data on disk."""
+    """What is wrong with a dataset's committed files, or its data on disk: the schemas, the
+    numbers the card shares with its answers, every file against its manifest, and every declared
+    marker's passage against its page on disk."""
     files = load(id_)
-    missing = [k for k in ("manifest", "card", "answers") if k not in files]
+    needed = ("manifest", "card", "answers", *(("declared",) if id_ in DECLARING else ()))
+    missing = [k for k in needed if k not in files]
     if missing:
         return [f"no {k}.json" for k in missing]
     out = problems(id_, files["card"], files["answers"])
     out += [f"changed or missing: {f}" for f in changed(files["manifest"])]
     if files["card"]["table"]["path"] != files["manifest"]["table"]["file"]:
         out.append("the card's table is not the manifest's")
+    if id_ in DECLARING:
+        out += [f"declared: {e}" for e in marker_problems(files["declared"], files["manifest"])]
     return out
 
 
@@ -1458,7 +2236,8 @@ def main(argv: list[str] | None = None) -> int:
         bad = {i: check(i) for i in ids}
         for i, found in bad.items():
             print(f"{i}: " + ("; ".join(found) if found else "every file matches; card and "
-                              "answers validate"))
+                              "answers validate" + ("; every declared passage is on its page"
+                                                    if i in DECLARING else "")))
         return 1 if any(bad.values()) else 0
     for i in ids:
         run(i)
