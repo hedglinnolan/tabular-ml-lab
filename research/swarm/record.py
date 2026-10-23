@@ -69,6 +69,7 @@ measure of whys alone, fails its schema.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -820,6 +821,33 @@ def order_only(data: Any) -> Any:
     return _ordered(data, place)
 
 
+def neutral_id(run_id: str) -> str:
+    """A run's id as a blind reader is shown it: ``redacted-`` and 32 hex digits of the id's
+    SHA-256, the same for the same run and naming neither its label nor its secret."""
+    return f"{REDACTED}-{hashlib.sha256(run_id.encode('utf-8')).hexdigest()[:32]}"
+
+
+def _named_by(run_id: str) -> list[str]:
+    """What names the run in a record's words: its id, and its label where the id is the driver's
+    (``driver.new_run_id``: the label, a hyphen and a 32-hex-digit secret), longest first."""
+    label, _, secret = run_id.rpartition("-")
+    return [run_id, label] if label and re.fullmatch(r"[0-9a-f]{32}", secret) else [run_id]
+
+
+def _renamed(obj: Any, names: list[str], token: str) -> Any:
+    """``obj`` with each of ``names`` that stands as a word of its own in its strings replaced by
+    ``token``."""
+    if isinstance(obj, dict):
+        return {k: _renamed(v, names, token) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_renamed(v, names, token) for v in obj]
+    if isinstance(obj, str):
+        for name in names:
+            obj = re.sub(rf"(?<![A-Za-z0-9_-]){re.escape(name)}(?![A-Za-z0-9_])", token, obj)
+        return obj
+    return obj
+
+
 def redacted(record: Record | Any) -> dict[str, Any]:
     """The view of ``record`` a blind reader is shown (SWARM_PLAN §7: the stuck runs' classing,
     the referee): the analyst's model and persona, its effort, its prompt version (which can name
@@ -827,14 +855,22 @@ def redacted(record: Record | Any) -> dict[str, Any]:
     and every time it holds, the run's start and end and each ``at`` (of its decisions, previews,
     fits, claims, refusals, failed fits, tags, wants and account) included, turned into its order
     only (:func:`order_only`), since with an agent analyst the gaps between its commands are its
-    model's response time. It validates as a record, and the checks read it as they read the
-    record. What the analyst wrote (its reasons, wants and account) is kept as written but for a
-    time in it: a reader is told the model was redacted, not that no word of the analyst's can
+    model's response time. The run's start order is taken out too, since a reader who knows the
+    schedule could name a run's model from it: its id, whose label counts the runs started before
+    it, is a neutral token wherever it stands (:func:`neutral_id`; its label alone too), and its
+    server's PID and port, which grow with the start order, are dropped (its mode and workers
+    kept). It validates as a record, and the checks read it as they read the record. What the
+    analyst wrote (its reasons, wants and account) is kept as written but for a time or its run's
+    name in it: a reader is told the model was redacted, not that no word of the analyst's can
     reveal it."""
     rec = record if isinstance(record, Record) else validate(record)
     data = rec.model_dump(mode="json", by_alias=True)
+    data = _renamed(data, _named_by(rec.run.id), neutral_id(rec.run.id))
+    server = data["run"].get("server")
     data["run"].update(analyst_model=REDACTED, persona=None, effort=None, prompt_version=REDACTED,
-                       spend=None, spend_why=REDACTED_SPEND, redacted=True)
+                       spend=None, spend_why=REDACTED_SPEND, redacted=True,
+                       server=None if server is None else {
+                           k: v for k, v in server.items() if k not in ("pid", "port")})
     data = order_only(data)
     validate(data)
     return data
@@ -845,4 +881,4 @@ __all__ = ["Account", "Answer", "Attempt", "Claim", "Dataset", "DatasetFile", "D
            "NULL_OF", "ORDER_FROM", "Persona", "Question", "REDACTED", "REDACTED_SPEND", "Reason",
            "Record", "RefusedKind", "Refusal", "Regime", "Replay", "Replication", "Result", "Run",
            "STAMP", "Scale", "Shift", "SignedChange", "Spend", "Surfacings", "Tag", "VERSION",
-           "Want", "order_only", "redacted", "validate"]
+           "Want", "neutral_id", "order_only", "redacted", "validate"]
