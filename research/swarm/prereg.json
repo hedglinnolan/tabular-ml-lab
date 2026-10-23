@@ -1,0 +1,567 @@
+{
+ "about": "SWARM_PLAN §7's pre-registration, written by `python -m research.swarm.prereg_fill` from research/swarm/generators.py and, in its filled section, from package 3's crash sweep reports and the inputs its commands record; applied by research/swarm/score_pilot.py. Never edited by hand: `--check` fails where it is not what the generators give.",
+ "version": 1,
+ "plan": "docs/turbotab-next/plans/SWARM_PLAN.md, version 5.1, §6 and §7",
+ "generators_sha256": "44961b14aece823eeefc559d54a78445340275f555cae2cfb8304770dba15b25",
+ "datasets": {
+  "pilot": [
+   "bang2009",
+   "sullivan2021",
+   "nhanes_glucose_predict",
+   "inpatient_readmission_predict",
+   "walking_bp_estimate",
+   "plasma_panel_estimate"
+  ],
+  "estimate_fixture": "walking_bp_estimate",
+  "predict_fixture": "inpatient_readmission_predict",
+  "measurement_fixture": "plasma_panel_estimate",
+  "decoy": "outpatient_admission_predict"
+ },
+ "models": {
+  "keys": [
+   "haiku",
+   "sonnet",
+   "opus"
+  ],
+  "match": "a record's model is the key its run.analyst_model names, in lower case",
+  "mechanical": "mechanical-",
+  "personas": [
+   "conventional",
+   "skeptical",
+   "explorer"
+  ],
+  "schedule": [
+   {
+    "model": "haiku",
+    "personas": [
+     "conventional",
+     "skeptical",
+     "explorer"
+    ],
+    "datasets": [
+     "bang2009",
+     "sullivan2021",
+     "nhanes_glucose_predict",
+     "inpatient_readmission_predict",
+     "walking_bp_estimate",
+     "plasma_panel_estimate"
+    ],
+    "runs": 1
+   },
+   {
+    "model": "sonnet",
+    "personas": [
+     "conventional",
+     "skeptical",
+     "explorer"
+    ],
+    "datasets": [
+     "bang2009",
+     "sullivan2021",
+     "nhanes_glucose_predict",
+     "inpatient_readmission_predict",
+     "walking_bp_estimate",
+     "plasma_panel_estimate"
+    ],
+    "runs": 1
+   },
+   {
+    "model": "haiku",
+    "personas": [
+     "conventional",
+     "skeptical",
+     "explorer"
+    ],
+    "datasets": [
+     "walking_bp_estimate"
+    ],
+    "runs": 2,
+    "replicates": true
+   },
+   {
+    "model": "opus",
+    "personas": [
+     "conventional"
+    ],
+    "datasets": [
+     "walking_bp_estimate"
+    ],
+    "runs": 3,
+    "reference": true
+   }
+  ],
+  "runs": 45
+ },
+ "regression_checks": {
+  "checks": [
+   "schema",
+   "seal_integrity",
+   "reasons"
+  ],
+  "rule": "On every run: its record validates (research/swarm/record.py), the seal check does not fail (research/swarm/checks.py), and every decision the analyst recorded and every option it previewed carries a reason. They hold by construction, so a run that fails one is a defect, reported by name."
+ },
+ "material": {
+  "half": 0.5,
+  "predict": {
+   "folds": 5,
+   "repeats": 5,
+   "rule": "A refit is material where some family's signed change in the primary score has a corrected repeated k-fold interval excluding zero and is at least 0.5 of the plan's own interval half-width; paired over the same folds, else unpaired with each arm's Nadeau-Bengio inflation, under the same size rule."
+  },
+  "estimate": {
+   "rule": "A refit is material where some estimate shifts from the plan's by at least 0.5 of the plan's interval half-width."
+  },
+  "measurement": {
+   "q": 0.05,
+   "k": 2,
+   "rule": "On the measurement fixture a refit is material where its discovery set at q < 0.05 differs from the plan's by at least 2 feature(s) (the symmetric difference), k being the discovery set's own mean draw-to-draw change rounded up (1.88 features), each set read from the q-values the sweep's estimates carry; where they carry none the rule is not applied, and no decision there is counted material or not.",
+   "derivation": "measurement_fixture.oracle",
+   "ruling": {
+    "by": "the orchestrator, the methods lead",
+    "date": "2026-10-23",
+    "review": "for the owner to review",
+    "words": "The measurement fixture's materiality k is the mean draw-to-draw symmetric difference of the latent oracle's discovery set, rounded up (2, from 1.88): a change smaller than two independent draws of the same truth differ by is within noise."
+   }
+  },
+  "decision": "A decision is material where any of its refits read is, not material where none of them is, and not read where none of its refits is read (with why), counted apart.",
+  "refused_refits": "A refit the engine refuses has no score: it is reported beside its decision's materiality as the sweep's refused share, kept apart from the analysts' refusal rate."
+ },
+ "replays": {
+  "draws": 100,
+  "seeds": [
+   1001,
+   1100
+  ],
+  "rule": "Every final plan on a fixture is replayed on the same 100 fresh draws of its generator, seeds 1001 to 1100 (core/export/replay.py's fresh draw). A replay is its plan's only where its dataset, its bundle (the record's export, by SHA-256) and what it reads are its record's, it names the fixture's generator and recorded seed and, on the Predict fixture, the evaluation rows below, and it ran on the frozen engine (the crash sweeps' turbotab/ tree, no tracked file modified); else it is invalid, and two replays of one run leave its plan not judged. A plan refused on any draw is a refused plan, and so is a plan whose run reported no result (its record's result refused: none reported, or none served): it counts as neither within nor outside the margins, and goes into the refusal rate with its reasons. A plan whose record cannot say what the run reported, or whose reported number its bundle does not hold once, is not judged.",
+  "predict_evaluation": {
+   "seed": 2001,
+   "rows": 20000
+  }
+ },
+ "estimate_fixture": {
+  "dataset": "walking_bp_estimate",
+  "generator": "research.swarm.generators:blood_pressure",
+  "recorded_seed": 20261023,
+  "effect": -5.0,
+  "coefficients": {
+   "oracle": -5.000000000001392,
+   "collider_kept": -7.237569060774501,
+   "confounder_dropped": -7.353362049312083,
+   "complete_cases": -3.7548174037139663
+  },
+  "bias": {
+   "oracle": -1.3917755836700962e-12,
+   "collider_kept": -2.2375690607745007,
+   "confounder_dropped": -2.353362049312083,
+   "complete_cases": 1.2451825962860337
+  },
+  "wrong_paths": [
+   "collider_kept",
+   "confounder_dropped",
+   "complete_cases"
+  ],
+  "smallest_planted_bias": 1.2451825962860337,
+  "b0": 0.6225912981430168,
+  "se_condition": {
+   "ratio": 4.0,
+   "draws": 100,
+   "seeds": [
+    1,
+    100
+   ],
+   "imputations": 20,
+   "oracle_mean_bias": 0.05977636463953129,
+   "oracle_sd": 0.7541993321121564,
+   "oracle_se": 0.07541993321121564,
+   "b0_over_oracle_se": 8.254996678390478,
+   "holds": true,
+   "oracle_within_b0": true,
+   "wrong_paths_beyond_b0": {
+    "collider_kept": true,
+    "confounder_dropped": true,
+    "complete_cases": true
+   },
+   "oracle_coverage": 0.95,
+   "oracle_covered_in_band": true
+  },
+  "coverage": {
+   "draws": 100,
+   "level": 0.95,
+   "tail": 0.025,
+   "low": 90,
+   "high": 99,
+   "miss_rate": 0.017392939287818727
+  },
+  "rule": "A plan is within the margins where its mean bias over the draws is less than b0 = 0.6226 in size and the count of its 95% intervals holding the planted effect (-5) lies in the band 90 to 99 of 100."
+ },
+ "predict_fixture": {
+  "dataset": "inpatient_readmission_predict",
+  "generator": "research.swarm.generators:readmission",
+  "recorded_seed": 20261022,
+  "regrets": {
+   "classes": {
+    "linear": 0.018836723665748026,
+    "spline": 0.003314605930783614,
+    "interaction": 1.724097806807192e-05
+   },
+   "rows": [
+    300000,
+    200000
+   ],
+   "seeds": [
+    1,
+    2
+   ]
+  },
+  "r0": {
+   "final": null,
+   "value": null,
+   "default_regret": null,
+   "why": "No crash sweep of the Predict fixture has been filled in, so the default plan is not known; r0 is measured after it (python -m research.swarm.prereg_fill r0 …).",
+   "reference": {
+    "class": "linear",
+    "value": 0.009418361832874013,
+    "label": "A reference only, not r0: half the population regret of the generator's additive straight-line class (generators.readmission_regrets), whatever the default plan's final family."
+   },
+   "ruling": {
+    "by": "the orchestrator, the methods lead",
+    "date": "2026-10-23",
+    "review": "for the owner to review",
+    "words": "The default path on the Predict fixture declares boosted_trees final, which has no generator class, so r0 is measured: half the default plan's mean Brier regret against the generator's oracle over the pre-registered replay draws (seeds 1001-1100) on the pre-registered evaluation rows (seed 2001 x 20,000), computed by score_pilot's own replay producer after the crash fill and before the trio, so r0 and every plan's regret come from the same draws, rows and scorer. The linear class's value stays in prereg.json as a reference, labeled so."
+   }
+  },
+  "rule": "A plan is within the margin where its mean Brier regret against the true risk over the draws (its predictions on the evaluation rows) is less than r0, half the default plan's mean regret on the same draws and rows."
+ },
+ "measurement_fixture": {
+  "dataset": "plasma_panel_estimate",
+  "generator": "research.swarm.generators:metabolite_panel",
+  "recorded_seed": 20261024,
+  "q": 0.05,
+  "associated": [
+   "mz_0012",
+   "mz_0032",
+   "mz_0033",
+   "mz_0035",
+   "mz_0044",
+   "mz_0048",
+   "mz_0062",
+   "mz_0068",
+   "mz_0075",
+   "mz_0116",
+   "mz_0122",
+   "mz_0136",
+   "mz_0139",
+   "mz_0141",
+   "mz_0144"
+  ],
+  "graded_menus": [
+   {
+    "decision": "normalization and the log scale",
+    "records": "apply_repair on the omics_scale finding",
+    "options": [
+     {
+      "option": "pqn_log2",
+      "rung": "recommended",
+      "graded": "choice"
+     },
+     {
+      "option": "qc_pqn_log2",
+      "rung": "available",
+      "graded": "choice"
+     },
+     {
+      "option": "log2",
+      "rung": "rank_lower",
+      "graded": "choice"
+     },
+     {
+      "option": "declared_normalized",
+      "rung": "available",
+      "graded": "choice"
+     }
+    ],
+    "contract": "omics_normalization",
+    "purpose": "inference"
+   },
+   {
+    "decision": "batch handling",
+    "records": "set_batch",
+    "options": [
+     {
+      "option": "covariate",
+      "rung": "recommended",
+      "graded": "choice"
+     },
+     {
+      "option": "reference_combat",
+      "rung": "rank_lower",
+      "graded": "choice"
+     },
+     {
+      "option": "outcome_combat",
+      "rung": "refused",
+      "graded": "refusal"
+     },
+     {
+      "option": "none",
+      "rung": "rank_lower",
+      "graded": "choice"
+     },
+     {
+      "option": "not_a_batch",
+      "rung": null,
+      "graded": "choice"
+     }
+    ],
+    "contract": "batch",
+    "purpose": "inference"
+   },
+   {
+    "decision": "drift and batch correction from the pooled QCs",
+    "records": "apply_repair on pack::metabolomics::pooled_qc",
+    "options": [
+     {
+      "option": "qc_rlsc_lc",
+      "rung": "recommended",
+      "graded": "choice"
+     },
+     {
+      "option": "qc_rlsc_lc_dratio",
+      "rung": null,
+      "graded": "choice"
+     },
+     {
+      "option": "qc_rlsc_gc",
+      "rung": "recommended",
+      "graded": "choice"
+     },
+     {
+      "option": "qc_rlsc_gc_dratio",
+      "rung": null,
+      "graded": "choice"
+     },
+     {
+      "option": "exclude_rows",
+      "rung": "available",
+      "graded": "choice"
+     }
+    ],
+    "contract": "qc_rlsc",
+    "purpose": "inference"
+   },
+   {
+    "decision": "detection-limit handling",
+    "records": "set_missing below_detection",
+    "options": [
+     {
+      "option": "half_minimum",
+      "rung": "available",
+      "graded": "choice"
+     },
+     {
+      "option": "censoring_aware",
+      "rung": "recommended",
+      "graded": "choice"
+     },
+     {
+      "option": "as_missing",
+      "rung": "refused",
+      "graded": "refusal"
+     },
+     {
+      "option": "qrilc",
+      "rung": "refused",
+      "graded": "refusal"
+     }
+    ],
+    "contract": "detection_limit",
+    "purpose": "inference"
+   }
+  ],
+  "oracle": {
+   "analysis": "each feature's Student t-test of the participants' true log2 concentration between cases and controls, Benjamini-Hochberg",
+   "q": 0.05,
+   "draws": 100,
+   "seeds": [
+    1,
+    100
+   ],
+   "associated": 15,
+   "power": 0.9806666666666668,
+   "fdp": 0.04448984593837534,
+   "discoveries": 15.44,
+   "pairs": 50,
+   "symmetric_difference": 1.88,
+   "k": 2
+  },
+  "reported": [
+   "the false-discovery proportion against the nominal rate",
+   "power against the oracle analysis's",
+   "the discovered associated features' effect error on the log2 scale"
+  ],
+  "rule": "Reported only: the measurement fixture decides nothing in the pilot."
+ },
+ "unit": {
+  "share": [
+   2,
+   3
+  ],
+  "minimum": 2,
+  "rule": "A model is within the margins on a fixture where at least 2 in 3 of its non-refused plans there are within them, with at least 2 non-refused plans; outside them with at least 2 non-refused plans and fewer within; not judged with fewer, or while any of its plans there has no verdict (no replay, or two of one run; a replay not its record's plan, not on the pre-registered draws and rows, or not on the frozen engine; a record that cannot say what the run reported, a reported number its bundle does not hold once, or a margin not fixed). A refused plan counts as neither."
+ },
+ "comparisons": {
+  "choosing_well": "Agent plans against the default and random plans: mean bias and coverage on the Estimate fixture, regret on the Predict fixture, discovery quality on the measurement fixture, and the reported held-out score or estimate on the real datasets.",
+  "finding_what_matters": "Each agent run's reach per million fresh tokens, against each sweep's reach per fit-hour."
+ },
+ "reach": {
+  "minimum_union": 3,
+  "rule": "A run's reach is the share of its dataset's material decisions (the union over every sweep of the dataset) that it examined: an option other than its own previewed with a reason or fitted. Reported only where the union holds at least 3."
+ },
+ "statistics": {
+  "refusals": "Each model's refused plans as a share of its plans, and the refusals the driver met per run, apart from the sweep's own refused share.",
+  "cost_per_useful_result": "Each model's fresh tokens over its useful results: runs that reached the export with no help and, on the Estimate or Predict fixture, a plan within the margins.",
+  "cost": {
+   "measure": "fresh tokens per useful result (record run.spend.fresh), at the model's relative price",
+   "relative_price": "filled.relative_price",
+   "why": "A record's fresh tokens join input, cache creation and output, so no price is computed from it; each model's fresh token is weighted by its list price relative to the others' once `prereg_fill prices` sets them, and until then no model is named the cheaper."
+  }
+ },
+ "decision_rule": {
+  "candidates": [
+   "haiku",
+   "sonnet"
+  ],
+  "reference": "opus",
+  "reference_rule": "The reference checks the fixture itself, so no production analyst is named until it is within the margins on the Estimate fixture: outside them, the fixture is re-examined, not the models; not judged there, or with no run, the check has not run.",
+  "faithful": [
+   4,
+   5
+  ],
+  "exported": [
+   9,
+   10
+  ],
+  "rule": "A model is acceptable where it is within the margins on the Estimate fixture, the referees find its reasons faithful at least 4 times in 5, and at least 9 of its runs in 10 reach the export with no help, a stuck run counted against it only where a blind reader classed it an analyst failure. Of acceptable models the cheaper, by fresh tokens per useful result at its relative price, is the production analyst; with none acceptable the plan returns to Nolan."
+ },
+ "persona_rule": {
+  "rule": "A persona is kept where the mean reach of its Haiku runs on the Estimate fixture differs from the conventional persona's by more than the larger of the two personas' ranges over those runs (the first and its replicates); deferred where either has fewer than two runs with a reach.",
+  "model": "haiku",
+  "dataset": "walking_bp_estimate"
+ },
+ "expected_false_alarms": {
+  "decoy": {
+   "per_run": 0.025,
+   "level": 0.95,
+   "why": "A decoy run fails where its held-out score's 95% interval lies above the score of no skill (checks.null_decoy): one tail of the interval."
+  },
+  "coverage_band": {
+   "per_plan": 0.017392939287818727,
+   "draws": 100,
+   "coverage": 0.95,
+   "among": "a plan whose intervals cover the planted effect at exactly 95%, for which a count outside the band is a false alarm at this rate. A plan covering more or less than that is not falsely alarmed when its count falls outside the band, so among the plans judged on coverage at most their number times this rate are expected; a count outside the band is reported as that, never as a false alarm."
+  },
+  "rule": "A miss on a control is settled by fresh seeds, never by editing an expectation."
+ },
+ "early_stopping": {
+  "rule": "A model outside the margins on the Estimate fixture once it has a record there under every persona it runs (a run that ended, one stuck before its export included) stops; a spend projected past the budget (each model's remaining scheduled runs at its mean fresh tokens per run so far) stops the waves."
+ },
+ "sweeps": {
+  "plans": {
+   "bang2009": [
+    {
+     "model": "haiku",
+     "persona": "conventional",
+     "run": "first started"
+    },
+    {
+     "model": "sonnet",
+     "persona": "conventional",
+     "run": "first started"
+    }
+   ],
+   "sullivan2021": [
+    {
+     "model": "haiku",
+     "persona": "conventional",
+     "run": "first started"
+    },
+    {
+     "model": "sonnet",
+     "persona": "conventional",
+     "run": "first started"
+    }
+   ],
+   "nhanes_glucose_predict": [
+    {
+     "model": "haiku",
+     "persona": "conventional",
+     "run": "first started"
+    },
+    {
+     "model": "sonnet",
+     "persona": "conventional",
+     "run": "first started"
+    }
+   ],
+   "inpatient_readmission_predict": [
+    {
+     "model": "haiku",
+     "persona": "conventional",
+     "run": "first started"
+    },
+    {
+     "model": "sonnet",
+     "persona": "conventional",
+     "run": "first started"
+    }
+   ],
+   "walking_bp_estimate": [
+    {
+     "model": "haiku",
+     "persona": "conventional",
+     "run": "first started"
+    },
+    {
+     "model": "sonnet",
+     "persona": "conventional",
+     "run": "first started"
+    },
+    {
+     "model": "opus",
+     "persona": "conventional",
+     "run": "first started"
+    },
+    {
+     "model": "haiku",
+     "persona": "explorer",
+     "run": "first started"
+    },
+    {
+     "model": "sonnet",
+     "persona": "explorer",
+     "run": "first started"
+    }
+   ],
+   "plasma_panel_estimate": [
+    {
+     "model": "haiku",
+     "persona": "conventional",
+     "run": "first started"
+    },
+    {
+     "model": "sonnet",
+     "persona": "conventional",
+     "run": "first started"
+    }
+   ]
+  },
+  "rule": "Beyond the default plan (whose fits the crash sweep paid), each dataset's sweeps are around the plans named here, chosen by when their runs started, never by their results."
+ },
+ "filled": {
+  "reports": {},
+  "fit_budget": null,
+  "compute_cap": null,
+  "default_plan": null,
+  "r0": null,
+  "relative_price": null
+ }
+}
