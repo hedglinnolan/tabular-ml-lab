@@ -15,8 +15,9 @@ Claude Code runs this script before each tool call, with the call as JSON on sta
   none of ``; & | $ < >``, a backtick or a line break anywhere, quoted or not; outside quotes only
   plain characters; so a proposal's JSON goes in single quotes);
 * every tools command while no cycle is pinned, and every one that names a folder or a file other
-  than the pinned cycle's corpus folder and proposals file (``pin.py``: one cycle at a time, so no
-  agent reads both the corpus and its shuffled copy). The command is read with the tools' own
+  than the pinned cycle's corpus folder and proposals file (``pin.py``: one cycle at a time, each
+  with a proposals file of its own, so no agent reads both the corpus and its shuffled copy, nor
+  the other cycle's proposals). The command is read with the tools' own
   parser (``pin.build_parser``), so what the hook checks is what the tools read.
 
 For every other caller it says nothing: the call goes on to the permissions. An allowed command is

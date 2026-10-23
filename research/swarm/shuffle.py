@@ -74,7 +74,17 @@ record's fields the theorist reads is for the claim cycle's tools to decide.
 planted records by run id, with M, t, D, the direction, each record's side, value of M, movement
 and change and the real record whose markers it holds, the seed and the derangement, so the
 theorist, who reads only the copy, never sees which records are planted; the pipeline's routing of
-the planted claim is scored against it after the cycle.
+the planted claim is scored against it after the cycle. **The effect is identified only up to the
+markers that separate the planted records** (:func:`separating`, the sealed file's
+``separating``): since each planted record holds a real record's markers whole, a marker that
+moves with M across the dataset's records (the rows analyzed beside the predictors per row) splits
+the planted records' two sides as M does, so a claim drawn on it names the planted effect as well
+as one drawn on M. The sealed file lists every such marker, at the regime and at the last fit (the
+fit the effect is in), M first at t: a numeric marker where one threshold splits the two sides,
+with that threshold and the side the material records lie on; a marker of words or true or false
+where the two sides hold no value in common, with the values each side holds. A marker some
+planted record holds no such value of (a missing value, or one with parts, which no region
+bounds) is not one.
 Nothing in the corpus itself is written: a copy at, under or above the corpus is refused, as is a
 sealed file at or under the corpus or the copy.
 """
@@ -226,6 +236,84 @@ def _borrowed(rec: dict[str, Any], source: dict[str, Any]) -> None:
                                   or "The record its markers are taken from held none at this fit.")
 
 
+BELOW = "material below the threshold, none at or above it"
+ABOVE = "material above the threshold, none at or below it"
+AT_VALUES = "material at the values listed, none at the others"
+
+
+def _bounded(v: Any) -> bool:
+    """Whether a region can bound the value ``v``: a number, a word or true or false
+    (``proposal.Bound``); a marker's missing value, or one with parts, it cannot."""
+    return isinstance(v, (str, bool)) or _number(v)
+
+
+def _keyed(v: Any) -> str:
+    """``v`` as two values compare: a number by its value, the rest by its JSON (true is not 1)."""
+    return json.dumps(float(v) if _number(v) else v)
+
+
+def _distinct(values: list[Any]) -> list[Any]:
+    """``values`` once each (:func:`_keyed`), numbers first in their order, then the rest."""
+    seen: dict[str, Any] = {}
+    for v in values:
+        seen.setdefault(_keyed(v), v)
+    return sorted(seen.values(), key=lambda v: (not _number(v), v if _number(v) else _keyed(v)))
+
+
+def _split(name: str, at: str, material: list[Any], other: list[Any],
+           fixed: tuple[float, str] | None) -> dict[str, Any] | None:
+    """How the live marker ``name`` separates the planted records' two sides, where it does, else
+    None: numbers by one threshold, all of one side below it and all of the other at or above it
+    (or the material side above it and the other at or below it), as the effect itself is cut
+    (``fixed``: M's own threshold and direction, where it is M at the regime); words or true or
+    false where the two sides hold no value in common. Each with the values each side holds."""
+    if not material or not other or not all(_bounded(v) for v in material + other):
+        return None
+    mine, theirs = _distinct(material), _distinct(other)
+    if all(_number(v) for v in mine + theirs):
+        if fixed is not None:
+            threshold, direction = fixed
+        elif max(mine) < min(theirs):
+            threshold, direction = min(theirs), BELOW
+        elif min(mine) > max(theirs):
+            threshold, direction = max(theirs), ABOVE
+        else:
+            return None
+    elif {_keyed(v) for v in mine} & {_keyed(v) for v in theirs}:
+        return None
+    else:
+        threshold, direction = None, AT_VALUES
+    return {"marker": name, "at": at, "material": mine, "not_material": theirs,
+            "threshold": threshold, "direction": direction}
+
+
+def separating(planted: list[tuple[bool, dict[str, Any]]], marker: str, t: float
+               ) -> list[dict[str, Any]]:
+    """Every live marker that separates the planted records' two sides (``planted``: each record
+    with whether it is on the material side), at the regime and at the last fit, the fit the
+    effect is in: one on which a region alone holds every record of one side and none of the other
+    (:func:`_split`), held with a value a region bounds by every planted record. M (``marker``, cut
+    at ``t``) first, then the rest in the vocabulary's order, the regime's before the last fit's."""
+    out = []
+    for at in ("regime", "last fit"):
+        values: dict[str, dict[bool, list[Any]]] = {}
+        held: dict[str, int] = {}
+        for material, rec in planted:
+            markers = (rec["regime"]["markers"] if at == "regime"
+                       else (rec.get("attempts") or [{}])[-1].get("markers"))
+            for m in [m for m in markers or [] if m.get("timing") == "live"]:
+                values.setdefault(m["name"], {True: [], False: []})[material].append(m.get("value"))
+                held[m["name"]] = held.get(m["name"], 0) + 1
+        names = sorted((n for n in values if held[n] == len(planted)),
+                       key=lambda n: (n != marker, ORDER.get(n, len(ORDER))))
+        for name in names:
+            fixed = (t, BELOW) if (name, at) == (marker, "regime") else None
+            got = _split(name, at, values[name][True], values[name][False], fixed)
+            if got is not None:
+                out.append(got)
+    return out
+
+
 def _computed(change: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {c["family"]: c for c in change or () if c.get("difference") is not None
             and c.get("paired") and c.get("test_share")}
@@ -368,8 +456,8 @@ def planted(records: list[dict[str, Any]], k: int, rng: random.Random
     stamped = [r for r in records if r["run"]["id"].startswith(LABEL_STEM)] or records
     effect = {"decision": decision["kind"], "decision_id": decision["id"],
               "marker": name, "threshold": t, "family": family, "metric": metric,
-              "direction": "material below the threshold, none at or above it",
-              "template": template["run"]["id"], "kept": list(KEPT), "records": []}
+              "direction": BELOW, "template": template["run"]["id"], "kept": list(KEPT),
+              "records": []}
     out = []
     for n in range(k):
         inside = n % 2 == 0
@@ -413,6 +501,8 @@ def planted(records: list[dict[str, Any]], k: int, rng: random.Random
                                   "movement": fm["movement"]["value"],
                                   "difference": changed["difference"],
                                   "excludes_zero": changed["excludes_zero"]})
+    effect["separating"] = separating([(r["below"], rec) for r, rec in zip(effect["records"], out)],
+                                      name, t)
     return out, effect
 
 
