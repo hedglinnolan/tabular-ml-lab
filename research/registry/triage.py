@@ -153,6 +153,11 @@ HOLDOUT_INTERVAL = ("the held-out score's interval, by its influence function on
 OUTCOME_WITHHELD = ("the outcome's distribution is withheld until eligibility is answered, and no "
                     "eligibility rule reads the outcome, so no restriction is chosen by looking at "
                     "it: a refusal (outcome_gate.py, teaching/content.py)")
+ROLE_WAITS_SAID_BACK = ("the roles answer's record sentence, as the methods say it back, holds "
+                        "BLUEPRINT §14 rule 2's refusal (ROLE_WAITS): a role proposed below high "
+                        "confidence waits for its own confirmation before any default reads it, "
+                        "a claim to register (voice.py's set_roles sentence, read by "
+                        "export/methods.py)")
 STATED_IN_METHODS = ("the methods' account of what the values settled holds the identifier rule "
                      "(IDENTIFIER), the roles proposal's reasons (ROLES) and the outcome's task read "
                      "from its values (TASK), each a claim to register (export/methods.py, "
@@ -374,6 +379,9 @@ RULINGS: tuple[Ruling, ...] = (
            r"were proposed below high confidence for one reason and recorded with the other roles|"
            r"^As a flag on another column it enters no model, but the fit waits for it",
            "register", ROLE_WAITS),
+    Ruling(r"^Column roles were set for .*proposed below high confidence and waits? for (its|"
+           r"their) own confirmation before any default reads (it|them)", "register",
+           ROLE_WAITS_SAID_BACK),
     Ruling(r"^(A causal estimator|A modifier such as|A trial or a matched case-control|An in-fold "
            r"rule|Another form changes|Another reading changes|Another scheme|Who counts as one "
            r"person)", "register", WOULD_CHANGE),

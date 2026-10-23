@@ -6,17 +6,22 @@ R1-B; CLAIMS_REGISTRY.md §7; SWARM_PLAN §10 package 6a).
 
 **The capture** drives a journey through the real server (a local-mode server with two workers over
 a fresh home, ``server_drive.local_server``, as ``turbotab/core/reference/journeys.py`` drives the
-review packets' journeys, and with its answer sources), and after every answer it posts and every
-press of Fit, and at the end, reads what the person is shown (:func:`read_shown`):
+review packets' journeys, and with its answer sources), and reads what the person is shown
+(:func:`read_shown`) before every answer it posts and every press of Fit, once no stage is computing
+(:func:`settled`, waiting at most :data:`SETTLE_SECONDS`), so in the state the answer is given in;
+again after each one taken; and at the end, once no stage is computing:
 
 * **the quest log** (``GET /quest``, ``GET /triage``, ``GET /record``, and of ``GET /checklist``
   what the Write-up card draws, its title and what it waits for): each line, its reason and what
   it would change, the sweeps, the triage's noticings and the For the record lines;
+* **the ask card** of each open question (``GET /projects/{pid}``'s ``interview[].ask``), the
+  fields the quest shell's card draws and its text, which the swarm driver's ``ask`` serves
+  (:func:`ask_drawn`);
 * **the stage artifacts** (``GET /stages/{stage}``, each fresh artifact once for each content it
   serves, so one that changes under its key, the fit once the held-out rows open, is read again;
   and ``GET /results`` and ``GET /fits`` once Fit is pressed): every card's words;
 * **the methods** (``GET /methods``, the line drawn under each answered line, and
-  ``GET /methods/sections``, the manuscript beside the log, after every answer; and the export
+  ``GET /methods/sections``, the manuscript beside the log, at every read; and the export
   bundle's ``methods.md``);
 
 and the refusals the answers met (each ``POST /decisions`` refused, its message and its ways
@@ -26,12 +31,14 @@ roles card's under the project's goal, and the repairs entry where a noticing's 
 each entry as the card draws it and the swarm driver's ``ask`` serves it, its concept drawer left
 out and counted (:data:`TEACHING_LEFT_OUT`). It reads nothing else: no preview of an answer before
 it is given (a journey previews none) and none of the data views (the table's pages, the column
-summaries, the histograms). A **sentence** is a string served there of at least :data:`MIN_WORDS`
-words that is not a name (:func:`sentences_in`). The capture keeps each distinct string once, with
-every place it was served (the source and the JSON path, its list indices dropped), the teaching
-entries read and the drawer sentences left out, and the project's claims render log
-(``claims_rendered.jsonl``: what a swarm record's ``claims`` reads), and writes them to
-``research/registry/journeys/<journey>.capture.json``.
+summaries, the histograms). A **sentence** is a string served there that is not a name, of at
+least :data:`MIN_WORDS` words, or of fewer that ends a sentence or states a number
+(:func:`is_sentence`); a shorter string that does neither is a **label** (:func:`is_label`),
+counted and not kept as a sentence. The capture keeps each distinct string once, with every place
+it was served (the source and the JSON path, its list indices dropped), the teaching entries read
+and the drawer sentences left out, the labels, the stages a read stopped waiting for, and the
+project's claims render log (``claims_rendered.jsonl``: what a swarm record's ``claims`` reads),
+and writes them to ``research/registry/journeys/<journey>.capture.json``.
 
 **The table** reads a capture and splits each string into its sentences (:func:`sentences_of`), and
 each sentence, once, with every place it was shown, is:
@@ -52,14 +59,14 @@ each sentence, once, with every place it was shown, is:
   for two sentences stating one rule whose verdicts disagree (:func:`disagreements`).
 
 It writes ``research/registry/journeys/<journey>.md``: what the capture read and left out, with the
-counts, the claims that render a sentence and whether the record traced each, the claims the log
+counts (the labels under the floor among them, whole or split off a longer string), the claims that render a sentence and whether the record traced each, the claims the log
 holds that render none, and every sentence with where it was shown and its verdict. ``--check``
 writes nothing and exits 1 when the committed table is not what the capture, the registry and the
 rulings give now, so the next batch that registers a claim or changes a ruling sees the table it
 leaves stale. A new journey is a :class:`Spec` in :data:`SPECS`.
 
 Run the capture with ``OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2``: it fits the journey's families once
-(the NHANES glucose journey, linear and ridge, in about two minutes).
+(the NHANES glucose journey, linear and ridge, in a few minutes, with the reads that wait).
 """
 from __future__ import annotations
 
@@ -78,7 +85,12 @@ from typing import Any, Callable, Iterable, Iterator
 
 REPO = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent / "journeys"
-MIN_WORDS = 4  # fewer words is a label or a name, never a sentence (CLAIMS_REGISTRY.md §1)
+# Fewer words is a label or a name (CLAIMS_REGISTRY.md §1), unless the string ends a sentence or
+# states a number ("5-fold cross-validation.", the reason a default is set for you).
+MIN_WORDS = 4
+SETTLE_SECONDS = 300.0  # the longest one read waits for the stages computing to finish
+POLL_SECONDS = 0.5
+BUSY = ("queued", "running")  # a stage computing (``graph.StatusName``; a held stage is idle)
 
 # ── the journeys ─────────────────────────────────────────────────────────────
 
@@ -141,44 +153,73 @@ NAME_KEYS = frozenset({
 _INDEX = re.compile(r"\[\d+\]")
 _WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 _NAMEISH = re.compile(r"^[\w./:\-]+$")  # one token: an identifier, a path, a key
+_DIGIT = re.compile(r"\d")
+
+
+def _words(text: str) -> int:
+    return len(_WORD.findall(text))
+
+
+def _wording(t: str) -> bool:
+    """Whether ``t`` (stripped) holds words at all: not one token (an identifier or a path), not
+    JSON, not an ISO time, and at least one word of letters."""
+    return bool(t) and not _NAMEISH.match(t) and t[0] not in "{[" \
+        and not re.match(r"^\d{4}-\d{2}-\d{2}T", t) and _words(t) >= 1
 
 
 def is_sentence(text: str) -> bool:
-    """A string a person reads as words: at least :data:`MIN_WORDS` words of letters, not one
-    token (an identifier or a path), not JSON, not an ISO time."""
+    """A string a person reads as words (:func:`_wording`) of at least :data:`MIN_WORDS` words, or
+    of fewer that ends a sentence (".", "!" or "?") or states a number (a digit)."""
     t = text.strip()
-    if not t or _NAMEISH.match(t) or t[0] in "{[" or re.match(r"^\d{4}-\d{2}-\d{2}T", t):
-        return False
-    return len(_WORD.findall(t)) >= MIN_WORDS
+    return _wording(t) and (_words(t) >= MIN_WORDS or t[-1] in ".!?" or bool(_DIGIT.search(t)))
 
 
-def sentences_in(node: Any, path: str = "") -> Iterator[tuple[str, str]]:
-    """Each (string, path) in ``node`` that :func:`is_sentence`, under a key that is not a name
-    (:data:`NAME_KEYS`); a path reads ``a.b[].c``, its indices dropped."""
+def is_label(text: str) -> bool:
+    """A string under the floor: words (:func:`_wording`), fewer than :data:`MIN_WORDS` of them,
+    that neither end a sentence nor state a number ("Keep every row", "an amount")."""
+    t = text.strip()
+    return _wording(t) and not is_sentence(t)
+
+
+def strings_in(node: Any, path: str = "") -> Iterator[tuple[str, str]]:
+    """Each (string, path) in ``node`` under a key that is not a name (:data:`NAME_KEYS`); a path
+    reads ``a.b[].c``, its indices dropped."""
     if isinstance(node, dict):
         for k, v in node.items():
             if str(k) in NAME_KEYS and not isinstance(v, (dict, list)):
                 continue
-            yield from sentences_in(v, f"{path}.{k}" if path else str(k))
+            yield from strings_in(v, f"{path}.{k}" if path else str(k))
     elif isinstance(node, list):
         for v in node:
-            yield from sentences_in(v, f"{path}[]")
-    elif isinstance(node, str) and is_sentence(node):
+            yield from strings_in(v, f"{path}[]")
+    elif isinstance(node, str):
         yield node.strip(), _INDEX.sub("[]", path)
+
+
+def sentences_in(node: Any, path: str = "") -> Iterator[tuple[str, str]]:
+    """Each (string, path) of :func:`strings_in` that :func:`is_sentence`."""
+    return ((t, p) for t, p in strings_in(node, path) if is_sentence(t))
 
 
 @dataclass
 class Shown:
-    """What a capture saw: each distinct string, and every place it was served."""
+    """What a capture saw: each distinct string, and every place it was served; the labels under
+    the floor (:func:`is_label`), counted, not kept as sentences; and the stages a read stopped
+    waiting for (:func:`settled`), with the number of reads each was still computing at."""
 
     strings: dict[str, set[tuple[str, str]]] = field(default_factory=dict)
     snapshots: set[str] = field(default_factory=set)  # digests of the reads kept, by source
     reached: set[str] = field(default_factory=set)  # the questions answered on their card
     findings: bool = False  # whether a noticing's card was drawn (the repairs entry words it)
+    labels: set[str] = field(default_factory=set)
+    unsettled: dict[str, int] = field(default_factory=dict)
 
     def add(self, node: Any, source: str) -> None:
-        for text, path in sentences_in(node):
-            self.strings.setdefault(text, set()).add((source, path))
+        for text, path in strings_in(node):
+            if is_sentence(text):
+                self.strings.setdefault(text, set()).add((source, path))
+            elif is_label(text):
+                self.labels.add(text)
 
     def once(self, node: Any, source: str) -> None:
         """Add ``node`` unless the same content was read from ``source`` already: a read whose
@@ -209,14 +250,54 @@ READS = (("quest", "quest"), ("triage", "quest:triage"), ("record", "quest:recor
 DRAWN = {"quest:checklist": ("title", "waiting")}  # a read of which the shell draws these keys
 
 
-def read_shown(client: Any, pid: str, shown: Shown, *, final: bool = False) -> None:
+def ask_drawn(card: dict[str, Any]) -> dict[str, Any]:
+    """An open step's ask card (``GET /projects/{pid}``'s ``interview[].ask``), the fields the
+    quest shell's card draws (``AskFor``'s ledger card, ``record/ask/AskCard.tsx``): who reads the
+    answer, each line's guessed answer and its evidence, the ways forward's labels, and each reading
+    the values settled with its evidence and the labels of the changes it offers; and its text, the
+    same words the card draws in pieces (its heading, then each line), which the swarm driver's
+    ``ask`` serves with the rest as ``readings``. A reading's value and a line's guess are values
+    the card does not draw."""
+    return {
+        "text": card.get("text"), "consumer": card.get("consumer"),
+        "groups": [{k: g.get(k) for k in ("guess_words", "evidence")}
+                   for g in card.get("groups") or [] if isinstance(g, dict)],
+        "exits": [{"label": e.get("label")} for e in card.get("exits") or [] if isinstance(e, dict)],
+        "read_from_data": [{"words": s.get("words"), "evidence": s.get("evidence"),
+                            "change": [{"label": c.get("label")} for c in s.get("change") or []
+                                       if isinstance(c, dict)]}
+                           for s in card.get("read_from_data") or [] if isinstance(s, dict)],
+    }
+
+
+def settled(client: Any, pid: str) -> list[str]:
+    """Wait until no stage of the project is computing (:data:`BUSY`), at most
+    :data:`SETTLE_SECONDS`; the stages still computing when it stopped waiting, none once settled."""
+    end = time.monotonic() + SETTLE_SECONDS
+    while True:
+        view = _json(client.get(f"/api/projects/{pid}")) or {}
+        busy = sorted(st for st, s in (view.get("stages") or {}).items()
+                      if (s or {}).get("status") in BUSY)
+        if not busy or time.monotonic() >= end:
+            return busy
+        time.sleep(POLL_SECONDS)
+
+
+def read_shown(client: Any, pid: str, shown: Shown, *, final: bool = False,
+               settle: bool = False) -> None:
     """What the person is shown now: the quest log, the triage, For the record, the checklist and
-    the methods (:data:`READS`); each fresh stage artifact, once for each content it has served; once Fit is
-    pressed (or at the end, ``final``), the results and the fits. It notes the questions answered
-    (each card the person answered on) and whether a noticing's card is drawn, for the teaching
-    read at the end (:func:`read_teaching`); a question the Router opens for a moment while a stage
-    computes, and then sets for you or finds not applicable, is not one."""
+    the methods (:data:`READS`); the ask card of each open question (:func:`ask_drawn`); each fresh
+    stage artifact, once for each content it has served; once Fit is pressed (or at the end,
+    ``final``), the results and the fits. With ``settle``, and at the end, it first waits until no
+    stage is computing (:func:`settled`), so it reads the state an answer is given in, and notes a
+    stage it stopped waiting for. It notes the questions answered (each card the person answered
+    on) and whether a noticing's card is drawn, for the teaching read at the end
+    (:func:`read_teaching`); a question the Router opens for a moment while a stage computes, and
+    then sets for you or finds not applicable, is not one."""
     base = f"/api/projects/{pid}"
+    if settle or final:
+        for stage in settled(client, pid):
+            shown.unsettled[stage] = shown.unsettled.get(stage, 0) + 1
     for route, source in READS:
         found = _json(client.get(f"{base}/{route}"))
         if isinstance(found, dict) and source in DRAWN:
@@ -226,6 +307,9 @@ def read_shown(client: Any, pid: str, shown: Shown, *, final: bool = False) -> N
     view = _json(client.get(base)) or {}
     shown.reached.update(str(s.get("key")) for s in view.get("interview") or []
                          if s.get("status") == "answered")
+    for step in view.get("interview") or []:
+        if step.get("status") == "open" and isinstance(step.get("ask"), dict):
+            shown.once(ask_drawn(step["ask"]), f"ask:{step.get('key')}")
     for stage, status in sorted((view.get("stages") or {}).items()):
         if (status or {}).get("status") != "fresh":
             continue
@@ -277,7 +361,8 @@ def read_teaching(client: Any, shown: Shown, purpose: str | None) -> dict[str, i
 
 class Watching:
     """The reference journey's recording client (``journeys.Recording``), reading what is shown
-    after each answer it posts and each press of Fit, and keeping each refusal's words."""
+    before each answer it posts and each press of Fit, once no stage is computing (the state the
+    person answers in), and again after each that is taken, and keeping each refusal's words."""
 
     def __init__(self, recording: Any, shown: Shown, pid: Callable[[], str]):
         self.r, self.shown, self.pid = recording, shown, pid
@@ -290,6 +375,8 @@ class Watching:
         return self.r.get(url, **kw)
 
     def post(self, url: str, json: Any = None, **kw: Any) -> Any:  # noqa: A002
+        if url.endswith(("/decisions", "/fit")):
+            read_shown(self.r, self.pid(), self.shown, settle=True)
         r = self.r.post(url, json=json, **kw)
         if url.endswith("/decisions"):
             if r.status_code == 409:
@@ -382,6 +469,8 @@ def capture(spec: Spec, out: Path | None = None) -> dict[str, Any]:
         "teaching": {"read": sorted(shown.reached | ({"repairs"} if shown.findings else set())),
                      "left_out": {"fields": list(TEACHING_LEFT_OUT),
                                   "sentences": teaching_left_out}},
+        "labels": sorted(shown.labels),
+        "unsettled": dict(sorted(shown.unsettled.items())),
         "rendered": [{"id": i, "register": reg, "renders": renders[(i, reg)]}
                      for i, reg in rendered],
         "strings": [{"text": text, "shown": sorted([s, p] for s, p in places)}
@@ -405,15 +494,22 @@ _SPLIT = re.compile(r"(?<=[.!?])(?<!\bal\.)(?<!e\.g\.)(?<!i\.e\.)(?<!\bvs\.)(?<!
 _MARKS = "#*_-> "  # Markdown's heading, list, emphasis and quote marks at a line's start
 
 
-def sentences_of(text: str) -> list[str]:
-    """The sentences of a string, each of at least :data:`MIN_WORDS` words (:func:`is_sentence`),
-    in order, a Markdown line's leading marks dropped."""
-    out = []
+def _parts(text: str) -> Iterator[str]:
     for part in _SPLIT.split(text):
         part = part.strip().lstrip(_MARKS).strip()
-        if part and is_sentence(part):
-            out.append(part)
-    return out
+        if part:
+            yield part
+
+
+def sentences_of(text: str) -> list[str]:
+    """The sentences of a string (:func:`is_sentence`), in order, a Markdown line's leading marks
+    dropped."""
+    return [p for p in _parts(text) if is_sentence(p)]
+
+
+def labels_of(text: str) -> list[str]:
+    """The pieces of a string under the floor (:func:`is_label`), in order: a heading, a label."""
+    return [p for p in _parts(text) if is_label(p)]
 
 
 @dataclass(frozen=True)
@@ -429,7 +525,8 @@ class Said:
 def claim_sentences(reg: Any) -> list[Said]:
     """Each built claim's card and methods sentence, as ``claims.card`` and ``claims.methods``
     render them with no context, and each of their clauses (split at "; ") of at least
-    :data:`MIN_WORDS` words, longest first. A claim the frozen status file does not list as built
+    :data:`MIN_WORDS` words (a shorter clause, though it ends a sentence or states a number, would
+    index any sentence that happens to hold it), longest first. A claim the frozen status file does not list as built
     renders nowhere, so it indexes nothing."""
     from turbotab.core.claims import ClaimError, fill
 
@@ -445,15 +542,18 @@ def claim_sentences(reg: Any) -> list[Said]:
             if not template:
                 continue
             text = fill(template, c.params)
-            pieces = {text, *(p.strip() for p in text.split("; ") if is_sentence(p))}
+            pieces = {text, *(p.strip() for p in text.split("; ")
+                              if is_sentence(p) and _words(p) >= MIN_WORDS)}
             out.extend(Said(p, c.id, register) for p in pieces)
     return sorted(out, key=lambda s: (-len(s.text), s.claim, s.register, s.text))
 
 
 def index(sentence: str, said: Iterable[Said]) -> list[str]:
     """The claims whose sentence, or a clause of it, lies in ``sentence``, or that hold it whole
-    (a claim's sentence of several sentences), in id order."""
-    return sorted({s.claim for s in said if s.text in sentence or sentence in s.text})
+    (a claim's sentence of several sentences) where it has at least :data:`MIN_WORDS` words, in id
+    order."""
+    whole = _words(sentence) >= MIN_WORDS
+    return sorted({s.claim for s in said if s.text in sentence or (whole and sentence in s.text)})
 
 
 # Artifact paths a card shows only where its Router question is asked: a sentence served there
@@ -599,12 +699,25 @@ VERDICT_WORDS = {
 SOURCES = (
     "the quest log, the triage, For the record and the Write-up card's checklist (its title and "
     "what it waits for)",
+    "the ask card of each open question, as the quest shell's card draws it (who reads the answer, "
+    "each line's guessed answer and its evidence, the ways forward, and what the values settled, "
+    "with its evidence and the changes it offers) and with its text, which the swarm driver's "
+    "`ask` serves with the rest",
     "the methods line under each answered line and the manuscript beside the log",
     "each fresh stage artifact, once for each content it served, and the results and the fits "
     "once Fit was pressed",
     "the refusals the answers met",
     "the bundle's methods",
 )
+
+
+def floor_labels(capture_data: dict[str, Any]) -> set[str]:
+    """The labels under the floor (:func:`is_label`): the strings the capture read and left out,
+    and the pieces of the sentences' strings that split off as labels (a heading, a label)."""
+    out = set(capture_data.get("labels") or [])
+    for entry in capture_data["strings"]:
+        out.update(labels_of(entry["text"]))
+    return out
 
 
 def held_words(capture_data: dict[str, Any]) -> str:
@@ -622,15 +735,29 @@ def held_words(capture_data: dict[str, Any]) -> str:
             + ": the title, question, one line, why, who reads the answer and terms, as each card "
               "draws them and the swarm driver's `ask` serves them, and the options as the entry "
               "words them (a card that composes its options from a stage's artifact shows those)")
-    out = ("Each sentence the journey showed, read after every answer and every press of Fit, and "
-           "at the end: " + "; ".join(parts[:-1]) + "; and " + parts[-1] + ".")
+    out = (f"The sentences the capture read, before every answer and every press of Fit once no "
+           f"stage was computing (waiting at most {SETTLE_SECONDS:g} s), so in the state each was "
+           f"given in, again after each one taken, and at the end once no stage was computing: "
+           + "; ".join(parts[:-1]) + "; and " + parts[-1] + ". A sentence is a string, or a piece "
+           f"of one split at a sentence's end, of at least {MIN_WORDS} words, or of fewer that "
+           "ends a sentence or states a number; it is not a name.")
+    labels = floor_labels(capture_data)
     out += (" **Left out by design:** "
             + (f"those entries' concept drawers, {sum(left.values())} sentences (the quest "
                "shell's card offers a drawer by a press that opens nothing, and the swarm "
                "driver serves none of it); " if left else "")
+            + (f"{len(labels)} strings of fewer than {MIN_WORDS} words that neither end a sentence "
+               "nor state a number (labels and headings), whole or split off a longer string; "
+               if labels else "")
             + "a preview of an answer before it is given (this journey previews none); and the "
               "data views (the table's pages, the column summaries, the histograms), which the "
               "capture does not read.")
+    unsettled = capture_data.get("unsettled") or {}
+    if unsettled:
+        out += (f" **Not read:** what a stage still computing after {SETTLE_SECONDS:g} s served "
+                "when a read stopped waiting for it: "
+                + ", ".join(f"`{st}` ({n} {'read' if n == 1 else 'reads'})"
+                            for st, n in sorted(unsettled.items())) + ".")
     return out
 
 
@@ -670,8 +797,11 @@ def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str
     for v in ("claim", "unrendered", "register", "plain", "not shown", "untriaged"):
         lines.append(f"| {VERDICT_WORDS[v]} | {counts.get(v, 0)} |")
     lines.append(f"| all | {len(rows)} |")
-    lines += ["", "**The claims that render a sentence here**, and whether the record traced "
-              "them:", "", "| claim | sentences | traced | registered by |", "|---|---|---|---|"]
+    outside = [c for c in claimed if c not in traced]
+    lines += ["", f"**The claims that render a sentence here**, and whether the record traced "
+              f"them: {len(claimed) - len(outside)} of {len(claimed)} did"
+              + (f"; the other {len(outside)} rendered outside the log" if outside else "") + ".",
+              "", "| claim | sentences | traced | registered by |", "|---|---|---|---|"]
     for cid in claimed:
         n = sum(1 for r in rows if r.verdict == "claim" and cid in r.claims)
         lines.append(f"| `{cid}` | {n} | {'yes' if cid in traced else 'no'} | "
@@ -681,7 +811,8 @@ def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str
         lines += ["", "**The claims the log holds that render no sentence here** (a swarm "
                   "record's `claims` lists them, though no sentence shown holds their words): "
                   + ", ".join(f"`{c}`" for c in unshown) + "."]
-    lines += ["", "## Every sentence", "", "| # | sentence | shown | verdict | why |",
+    lines += ["", "## Every sentence the capture read", "",
+              "| # | sentence | shown | verdict | why |",
               "|---|---|---|---|---|"]
     for i, r in enumerate(rows, 1):
         verdict = VERDICT_WORDS[r.verdict]

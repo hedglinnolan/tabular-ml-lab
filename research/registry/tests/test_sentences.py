@@ -43,6 +43,40 @@ def test_a_string_is_a_sentence_only_with_four_words_and_not_as_a_name():
     assert not S.is_sentence('{"kind": "set_split", "holdout": 0.2}')
 
 
+def test_a_short_string_is_a_sentence_where_it_ends_one_or_states_a_number_and_else_a_label():
+    """The repair round's P2: the validation line's set-for-you reason, two words and a period,
+    sets a default; a short string that ends a sentence or states a number is kept, and one that
+    does neither is a label the capture counts, not a sentence."""
+    assert S.is_sentence("5-fold cross-validation.")
+    assert S.is_sentence("about 30 seconds")
+    assert S.is_sentence("Hold out 20%")
+    assert not S.is_sentence("an amount") and S.is_label("an amount")
+    assert not S.is_sentence("Keep every row") and S.is_label("Keep every row")
+    for name in ("0.985", "kcal:1", "e.g.", "imputed_bp_sys", "—"):
+        assert not S.is_sentence(name) and not S.is_label(name)
+    shown = S.Shown()
+    shown.add({"set_for_you": [{"label": "Keep every row", "reason": "5-fold cross-validation."}],
+               "column": "a column name here"}, "quest")
+    assert shown.strings == {"5-fold cross-validation.": {("quest", "set_for_you[].reason")}}
+    assert shown.labels == {"Keep every row"}
+    assert S.sentences_of("Not here. 5-fold cross-validation. Keep every row") == [
+        "Not here.", "5-fold cross-validation."]
+    assert S.labels_of("Not here. 5-fold cross-validation. Keep every row") == ["Keep every row"]
+
+
+def test_a_claims_short_clause_indexes_nothing_and_a_short_sentence_is_not_indexed_to_a_claim_holding_it():
+    """A short sentence kept by the floor's exceptions is indexed only where a claim's sentence or
+    clause lies in it, never because a claim's longer sentence holds it."""
+    said = [S.Said("Use 5-fold cross-validation. Repeat it ten times here.", "a.cv", "card")]
+    assert S.index("5-fold cross-validation.", said) == []
+    assert S.index("Repeat it ten times here.", said) == ["a.cv"]
+    reg = claims.registry()
+    whole = {claims.fill(getattr(c, r), c.params) for c in reg for r in ("card", "methods")
+             if getattr(c, r)}
+    clauses = {s.text for s in S.claim_sentences(reg)} - whole  # a claim's sentence of any length
+    assert clauses and all(len(S._WORD.findall(t)) >= S.MIN_WORDS for t in clauses)
+
+
 def test_the_capture_keeps_words_under_word_keys_and_skips_names_with_every_place():
     node = {"id": "a long identifier with spaces in it", "stages": [
         {"lines": [{"reason": "This line says why it waits.", "column": "a column name here"}]},
@@ -145,6 +179,125 @@ def test_every_read_takes_the_methods_lines_and_the_manuscript_not_only_the_last
         ("methods:lines", "lines[].sentence")}
     assert ("methods", "sections[].entries[].text") in shown.strings[
         "Glucose was the outcome, read as a regression."]
+
+
+class _Journey(_Server):
+    """A project whose stages move as a journey's do: ``timeline`` lists, for each answer posted
+    and then the journey's end, the views the project serves in turn (each read of the project
+    takes the next, the last repeats) and the artifacts it serves meanwhile; ``posted`` counts the
+    answers."""
+
+    def __init__(self, timeline: list[tuple[list[dict], dict]]):
+        super().__init__({})
+        self.timeline, self.posted, self.reads = timeline, 0, 0
+
+    def _now(self) -> tuple[list[dict], dict]:
+        return self.timeline[min(self.posted, len(self.timeline) - 1)]
+
+    def get(self, url: str, params: dict | None = None) -> _Served:
+        self.asked.append(url)
+        views, artifacts = self._now()
+        if url == BASE:
+            view = views[min(self.reads, len(views) - 1)]
+            self.reads += 1
+            return _Served(view)
+        stage = url.rsplit("/", 1)[-1]
+        if url.startswith(f"{BASE}/stages/") and stage in artifacts:
+            return _Served({"artifact": artifacts[stage]})
+        return _Served(None, 404)
+
+    def post(self, url: str, json: object = None) -> _Served:
+        self.posted, self.reads = self.posted + 1, 0
+        return _Served({}, 200)
+
+
+def _stages(**statuses: str) -> dict:
+    return {"stages": {s: {"status": v, "key": "k"} for s, v in statuses.items()},
+            "state": {"fit_pressed": False}, "interview": []}
+
+
+NOTICING = "`fat_total` correlates 0.88 with `kcal`: nutrient effects are tangled with energy."
+EVALUATION = "No flexible family was fitted, so there is nothing for it to cost or gain against."
+
+
+def test_a_stage_fresh_between_two_answers_and_one_still_running_at_the_end_are_both_read(monkeypatch):
+    """The repair round's P1: a noticing a stage serves after one answer and drops with the next
+    is read before the next is posted, once its stage has finished computing; a stage still
+    computing when the journey ends is read once it finishes, before the final read."""
+    monkeypatch.setattr(S, "POLL_SECONDS", 0.0, raising=False)
+    noticing = {"findings": [{"summary": NOTICING}]}
+    server = _Journey([
+        ([_stages(findings="idle")], {}),  # before the first answer
+        ([_stages(findings="running"), _stages(findings="running"), _stages(findings="fresh")],
+         {"findings": noticing}),  # after it: the stage computes, then serves the noticing
+        ([_stages(findings="fresh", evaluation="running"), _stages(findings="fresh",
+          evaluation="running"), _stages(findings="fresh", evaluation="fresh")],
+         {"findings": {"findings": []}, "evaluation": {"interpretable": {"text": EVALUATION}}}),
+    ])
+    shown = S.Shown()
+    watching = S.Watching(server, shown, lambda: "p1")
+    watching.post(f"{BASE}/decisions", json={"kind": "set_target", "column": "glucose"})
+    watching.post(f"{BASE}/decisions", json={"kind": "set_purpose", "purpose": "prediction"})
+    S.read_shown(server, "p1", shown, final=True)
+    assert ("artifact:findings", "findings[].summary") in shown.strings[NOTICING]
+    assert ("artifact:evaluation", "interpretable.text") in shown.strings[EVALUATION]
+    assert shown.unsettled == {}
+
+
+def test_a_read_waits_at_most_its_bound_and_names_the_stage_still_computing(monkeypatch):
+    """The wait is bounded: a stage that never finishes is named, and the read goes on; one that
+    finishes within the bound names nothing."""
+    monkeypatch.setattr(S, "POLL_SECONDS", 0.0, raising=False)
+    monkeypatch.setattr(S, "SETTLE_SECONDS", 0.05, raising=False)
+    server = _Journey([([_stages(evaluation="running")], {})])
+    shown = S.Shown()
+    S.read_shown(server, "p1", shown, final=True)
+    assert shown.unsettled == {"evaluation": 1}
+    done = _Journey([([_stages(evaluation="queued"), _stages(evaluation="fresh")],
+                      {"evaluation": {"interpretable": {"text": EVALUATION}}})])
+    shown = S.Shown()
+    S.read_shown(done, "p1", shown, final=True)
+    assert shown.unsettled == {} and EVALUATION in shown.strings
+
+
+ASK = {
+    "question": "models", "consumer": "the fit",
+    "text": "Tell me about this column: `age`: an amount? (`68` whole-number values from 18 to 85).",
+    "groups": [{"kind": "code_or_count", "columns": ["age"], "guess": "amount",
+                "guess_words": "kcal, one day's intake",
+                "evidence": "`68` whole-number values from 18 to 85"}],
+    "exits": [{"label": "`age` is a count or an amount (a slope)",
+               "decision": {"kind": "confirm_reading", "reading": "code_or_count"}}],
+    "read_from_data": [{"kind": "sex_coding", "column": "gender",
+                        "value": "female=female, male=male, as the labels say",
+                        "words": "is coded as its labels spell it",
+                        "evidence": "the labels spell the sexes: `female` and `male`",
+                        "change": [{"label": "Read `gender` the other way round",
+                                    "decision": {"kind": "confirm_reading"}}]}],
+}
+
+
+def test_an_open_steps_ask_card_is_read_with_the_fields_the_card_draws_and_an_answered_ones_is_not():
+    """The repair round's P2: the ask card AskFor draws on the open step (``GET /projects/{pid}``'s
+    ``interview[].ask``), which the swarm driver's ``ask`` serves as ``readings``."""
+    view = {"stages": {}, "state": {"fit_pressed": False}, "interview": [
+        {"key": "models", "status": "open", "ask": ASK},
+        {"key": "exclusions", "status": "answered",
+         "ask": {**ASK, "text": "An answered step's card, which no one is shown now."}}]}
+    shown = S.Shown()
+    S.read_shown(_Server({BASE: view}), "p1", shown)
+    got = {t: places for t, places in shown.strings.items()}
+    assert got[ASK["text"]] == {("ask:models", "text")}
+    assert got["`68` whole-number values from 18 to 85"] == {("ask:models", "groups[].evidence")}
+    assert got["kcal, one day's intake"] == {("ask:models", "groups[].guess_words")}
+    assert got["`age` is a count or an amount (a slope)"] == {("ask:models", "exits[].label")}
+    assert got["is coded as its labels spell it"] == {("ask:models", "read_from_data[].words")}
+    assert ("ask:models", "read_from_data[].evidence") in got[
+        "the labels spell the sexes: `female` and `male`"]
+    assert got["Read `gender` the other way round"] == {
+        ("ask:models", "read_from_data[].change[].label")}
+    assert "female=female, male=male, as the labels say" not in got  # a value the card does not draw
+    assert "An answered step's card, which no one is shown now." not in got
 
 
 def _entry(key: str, why: str, drawer: str | None = None) -> dict:
@@ -267,6 +420,26 @@ def test_an_unindexed_sentence_is_triaged_by_the_first_ruling_else_the_table_ref
     assert "| `explore.collinear_pair` | 1 | yes |" in out.read_text(encoding="utf-8")
 
 
+def test_the_table_counts_what_the_floor_left_out_and_names_a_stage_still_computing(tmp_path):
+    """What the capture holds is said with its counts (the repair round's note): the labels under
+    the floor, whole strings and pieces of longer ones, and a stage a read stopped waiting for."""
+    path = _capture(tmp_path, "This one is a sentence. Keep every row")
+    data = json.loads(path.read_text())
+    data["labels"] = ["Keep every row", "an amount"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    rulings = [Ruling(r"^This one", "plain", "copy")]
+    out = tmp_path / "planted.md"
+    assert S.table("planted", path, out, rulings=rulings) == 0
+    text = out.read_text(encoding="utf-8")
+    assert f"2 strings of fewer than {S.MIN_WORDS} words" in text
+    assert "still computing" not in text
+    data["unsettled"] = {"evaluation": 1}
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert S.table("planted", path, out, rulings=rulings) == 0
+    text = out.read_text(encoding="utf-8")
+    assert f"still computing after {S.SETTLE_SECONDS:g} s" in text and "`evaluation`" in text
+
+
 def test_a_ruling_that_names_an_unregistered_claim_refuses_the_table(tmp_path):
     path = _capture(tmp_path, "A sentence a ruling covers here.")
     rulings = [Ruling(r"^A sentence", "unrendered", "said elsewhere", ("no.such_claim",))]
@@ -349,3 +522,14 @@ def test_the_committed_tables_verdicts_on_one_rule_said_twice_agree():
     assert verdict("Sound: a near-collinear pair does not harm prediction") == (
         "unrendered", ["materiality.collinear_under_prediction"])
     assert verdict("At the opening (decision #")[0] == "register"
+    # The repair round's P3: the methods' account of the roles that wait states BLUEPRINT §14
+    # rule 2's refusal, as the quest's words for it do; the account without that clause is the
+    # answer said back.
+    roles = [r for r in rows if r.sentence.startswith("Column roles were set for")]
+    wait = "for their own confirmation before any default reads them"
+    waits = {r.verdict for r in roles if wait in r.sentence or wait.replace(
+        "their", "its").replace("them", "it") in r.sentence}
+    quest = {r.verdict for r in rows
+             if "proposed below high confidence and recorded with the other roles" in r.sentence}
+    assert waits == quest == {"register"}
+    assert {r.verdict for r in roles if "own confirmation" not in r.sentence} == {"plain"}
