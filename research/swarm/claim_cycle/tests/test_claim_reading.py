@@ -432,7 +432,7 @@ def test_no_marker_known_only_after_a_run_reaches_the_view_of_the_copy_or_the_co
 @pytest.fixture
 def shuffled(tmp_path) -> tuple[Path, Path, dict]:
     """A shuffled copy of a constructed corpus with two planted records, and its sealed file."""
-    src = TS.corpus(tmp_path / "corpus")
+    src = TS.corpus(tmp_path / "corpus", per=3)
     sealed = tmp_path / "sealed" / "s.json"
     body = S.write(src, tmp_path / "copy", sealed, seed=5, k=2)
     return tmp_path / "copy", sealed, body

@@ -10,14 +10,17 @@ the engine's and the vocabulary's own names. It holds none of the analyst's word
 names the question and the decisions give the dataset's columns but those a live marker reads
 (``missingness`` keys its shares by column, and ``estimand`` names its exposure), nothing that says
 a dataset is a control, and none of the ids and keys a planted record keeps whole from its
-template. The copy keeps each record's own live markers of the purpose and its loss, which restate
-its question and fits (``shuffle.restates``), so in the view they agree with ``question.purpose``
-and the fits' ``primary_metric``. The view does not hide by itself that a record is in a copy:
-where the copy permutes a regime marker that its fits restate (another dataset's ``outcome_type``
-or ``event_share`` beside a fit's metric of another task), the two can disagree, and the view
-serves both as the record holds them. Every field of the record is either served (:data:`FIELDS`)
-or withheld with why (:data:`WITHHELD`); a field the record gains later is served by no one until
-it is classed. Withheld, by kind:
+template. A planted record's decisions and its earlier fits are its template's, and the view
+serves them as it serves the template's, so a reader who compares records finds the planted
+records beside their template (``shuffle.py`` accepts the clones and says so); each planted
+record's markers are a real record's of its dataset. The copy keeps each record's own live markers
+of the purpose and its loss, which restate its question and fits (``shuffle.restates``), so in the
+view they agree with ``question.purpose`` and the fits' ``primary_metric``. The view does not hide
+by itself that a record is in a copy: where the copy permutes a regime marker that its fits
+restate (another dataset's ``outcome_type`` or ``event_share`` beside a fit's metric of another
+task), the two can disagree, and the view serves both as the record holds them. Every field of
+the record is either served (:data:`FIELDS`) or withheld with why (:data:`WITHHELD`); a field the
+record gains later is served by no one until it is classed. Withheld, by kind:
 
 * what the blind view takes out (``record.redacted``: the analyst's model, persona, effort, prompt
   version and spend), and every time, since the gaps between an agent's commands can tell its
@@ -26,9 +29,9 @@ it is classed. Withheld, by kind:
 * the analyst's own words and tags (reasons, previews' reasons, tags, wants, the account): they
   are written about the dataset the run read, which the copy keeps beside another dataset's
   markers;
-* what a planted record keeps whole from its template (``shuffle.KEPT``: its fit keys, plan
-  digests, fit and decision ids, its server, its export), so fits and decisions are named by their
-  seq;
+* the ids and keys a planted record keeps whole from its template (``shuffle.KEPT``: its fit
+  keys, plan digests, fit and decision ids, its server, its export), so fits and decisions are
+  named by their seq;
 * whether a dataset is a control and its known answer or truth, which a claim is graded against
   (the referee is never shown them either);
 * what names the dataset, its columns or its question (its id, files, codebook and card; the

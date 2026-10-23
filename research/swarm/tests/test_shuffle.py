@@ -248,13 +248,13 @@ def test_one_dataset_cannot_be_shuffled(tmp_path):
 
 
 def test_the_planted_records_are_in_the_copy_only_and_listed_in_the_sealed_file(tmp_path):
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     sealed = tmp_path / "sealed" / "s.json"
     body = S.write(src, tmp_path / "copy", sealed, seed=5, k=6)
     planted = body["planted"]["records"]
     assert len(planted) == 6 and json.loads(sealed.read_text())["planted"]["records"] == planted
     copy = {p.stem for p in (tmp_path / "copy").glob("*.json")}
-    assert set(planted) <= copy and len(copy) == 3 + 6
+    assert set(planted) <= copy and len(copy) == 9 + 6
     assert not set(planted) & {p.stem for p in src.rglob("*.json")}
     effect = body["planted"]["effect"]
     for run_id in planted:
@@ -267,7 +267,7 @@ def test_the_planted_effect_is_one_true_effect_by_construction(tmp_path):
     """Below the threshold the decision moved the score materially (a better score, its paired
     interval excluding zero), above it by little (an interval holding zero): the planted records
     split exactly so, and the sealed file says each one's side."""
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=8, k=6)
     effect = body["planted"]["effect"]
     below, above = [], []
@@ -302,16 +302,19 @@ def test_no_planted_record_differs_in_form_from_a_real_one_beyond_the_planted_ef
     """The verifier's P6: a planted record's ids are drawn as a real record's are, its dataset is
     one of the copy's, each value keeps its type, each change is against the fit before with
     ``better`` by the metric's direction, and its movement, materiality and signed change are what
-    the engine and the assembler compute from its own fold scores."""
+    the engine and the assembler compute from its own fold scores. Its regime, and each fit's live
+    markers, are a real record's of its dataset in the copy (the verifier's V6D-2), so their form
+    is that record's, and the rest is its template's."""
     from turbotab.core import runs
     from turbotab.core.models.metrics import higher_is_better
 
     from research.swarm import signed
     from research.swarm.driver import RUN_ID
 
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=8, k=6)
     effect = body["planted"]["effect"]
+    sources = {r["run"]: r["markers_from"] for r in effect["records"]}
     copy = {json.loads(p.read_text())["run"]["id"]: json.loads(p.read_text())
             for p in (tmp_path / "copy").glob("*.json")}
     real = {i: r for i, r in copy.items() if i not in body["planted"]["records"]}
@@ -323,7 +326,9 @@ def test_no_planted_record_differs_in_form_from_a_real_one_beyond_the_planted_ef
         validate(rec)
         assert RUN_ID.fullmatch(run_id) and run_id.rsplit("-", 1)[0] in labels
         assert rec["dataset"] == template["dataset"] and rec["dataset"]["id"] in datasets
-        assert _form(rec) == _form(template)  # every key, and each value's type, the template's
+        mine = {k: v for k, v in rec.items() if k != "regime"}
+        assert _form(mine) == _form({k: v for k, v in template.items() if k != "regime"})
+        assert _form(rec["regime"]) == _form(real[sources[run_id]]["regime"])
         for m in rec["regime"]["markers"]:
             if m["name"] == effect["marker"]:
                 assert type(m["value"]) is type(effect["threshold"])
@@ -357,6 +362,99 @@ def test_no_planted_record_differs_in_form_from_a_real_one_beyond_the_planted_ef
         assert {k: planted_change[k] for k in recomputed} == pytest.approx(recomputed)
         score = last["scores"][family][metric]
         assert score["estimate"] == pytest.approx(sum(score["folds"]) / len(score["folds"]))
+
+
+def _markers_whole(regime: dict) -> str:
+    return json.dumps(regime, sort_keys=True)
+
+
+def test_each_planted_record_holds_a_real_records_markers_whole(tmp_path):
+    """The verifier's V6D-2. A planted record's regime, readings and markers, is that of a real
+    record of its dataset in the copy, the one the sealed file names (``markers_from``), on the side
+    of the threshold the sealed file says; M is a marker whose value varies across the dataset's
+    real records, never one constant across them (`rows`), and t is one of their values, so no
+    planted record holds a value, or a pair of values (more rows analyzed than rows; predictors per
+    row not its predictors over its rows analyzed), no real record of its dataset holds. Both ways:
+    in the view, each planted record's markers are a real record's of its dataset, and each real
+    record's are its own."""
+    from research.swarm.claim_cycle import view as W
+
+    src = corpus(tmp_path / "corpus", per=3)
+    markers = set()
+    for seed in range(40):
+        out, sealed = tmp_path / f"copy{seed}", tmp_path / f"s{seed}.json"
+        body = S.write(src, out, sealed, seed=seed, k=6)
+        effect = body["planted"]["effect"]
+        markers.add(effect["marker"])
+        planted = set(body["planted"]["records"])
+        copied = {json.loads(p.read_text())["run"]["id"]: json.loads(p.read_text())
+                  for p in out.glob("*.json")}
+        dataset = copied[effect["template"]]["dataset"]["id"]
+        real = {i: r for i, r in copied.items() if i not in planted and r["dataset"]["id"] == dataset}
+        values = {r["regime"]["markers"][[m["name"] for m in r["regime"]["markers"]].index(
+            effect["marker"])]["value"] for r in real.values()}
+        assert len(values) > 1 and effect["threshold"] in values  # M varies; t is a real value
+        for entry in effect["records"]:
+            rec, source = copied[entry["run"]], real[entry["markers_from"]]
+            assert rec["regime"] == source["regime"]
+            assert [a["markers"] for a in rec["attempts"]] == [
+                source["attempts"][j % len(source["attempts"])]["markers"]
+                for j in range(len(rec["attempts"]))]
+            held = {m["name"]: m["value"] for m in rec["regime"]["markers"]}
+            assert (held[effect["marker"]] < effect["threshold"]) == entry["below"]
+            assert held[effect["marker"]] == entry["value"]
+            assert held["rows_analyzed"] <= held["rows"]
+            assert held["predictors_per_row"] == PREDICTORS / held["rows_analyzed"]
+        views = W.read(out)
+        whole = {}
+        for v in views:
+            if v["run"]["id"] not in planted:
+                whole.setdefault(v["dataset"]["id"], set()).add(_markers_whole(v["regime"]))
+        for v in views:
+            assert _markers_whole(v["regime"]) in whole[v["dataset"]["id"]], (seed, v["run"]["id"])
+    assert markers == {"rows_analyzed", "predictors_per_row"}  # never `rows`, constant per dataset
+
+
+def test_a_template_whose_dataset_holds_no_marker_that_varies_is_refused(tmp_path):
+    """The guard both ways: where every record of each dataset holds the same markers, no value of
+    a marker lies on either side of a threshold among them, and the planted effect is refused; the
+    same corpus with its rows analyzed varying is planted in."""
+    flat = corpus(tmp_path / "flat", per=3)
+    for path in flat.glob("*.json"):
+        rec = json.loads(path.read_text())
+        rows = rec["regime"]["n_rows"]
+        rec["regime"]["n_analyzed"] = rows - 1
+        rec["regime"]["markers"] = [marker("rows", rows), marker("rows_analyzed", rows - 1),
+                                    marker("predictors_per_row", PREDICTORS / (rows - 1))]
+        for a in rec["attempts"]:
+            a["markers"] = json.loads(json.dumps(rec["regime"]["markers"]))
+        path.write_text(json.dumps(rec), "utf-8")
+    with pytest.raises(S.ShuffleRefused, match="varies across the records of its dataset"):
+        S.write(flat, tmp_path / "copy", tmp_path / "s.json", seed=1, k=2)
+    S.write(corpus(tmp_path / "varied", per=3), tmp_path / "copy2", tmp_path / "s2.json",
+            seed=1, k=2)
+    # One record a dataset, as each dataset of the default corpus holds: nothing varies there.
+    with pytest.raises(S.ShuffleRefused, match="varies across the records of its dataset"):
+        S.write(corpus(tmp_path / "one"), tmp_path / "copy3", tmp_path / "s3.json", seed=1, k=2)
+
+
+def test_a_planted_record_is_its_templates_clone_and_the_sealed_file_says_so(tmp_path):
+    """The planted records' decisions, and their fits but the last one's scores, movement and
+    change, are their template's (the verifier's V6D-2 (c), accepted): a reader of the view who
+    compares records finds them with their template, and the sealed file's ``kept`` says so."""
+    from research.swarm.claim_cycle import view as W
+
+    src = corpus(tmp_path / "corpus", per=3)
+    body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=5, k=6)
+    effect = body["planted"]["effect"]
+    views = {v["run"]["id"]: v for v in W.read(tmp_path / "copy")}
+    template = views[effect["template"]]
+    for run_id in body["planted"]["records"]:
+        v = views[run_id]
+        assert [(d["seq"], d["kind"], d["source"], d["phase"]) for d in v["decisions"]] == [
+            (d["seq"], d["kind"], d["source"], d["phase"]) for d in template["decisions"]]
+        assert v["attempts"][0]["movement"] == template["attempts"][0]["movement"]
+    assert any("decisions" in k and "earlier fits" in k for k in effect["kept"])
 
 
 def signed_times(rec):
@@ -452,17 +550,17 @@ def test_a_copy_or_a_sealed_file_at_or_under_the_corpus_or_a_sealed_file_in_the_
 ])
 def test_a_copy_and_a_sealed_file_apart_from_the_corpus_and_each_other_are_written(
         tmp_path, out, sealed):
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     S.write(src, tmp_path / out, tmp_path / sealed, seed=1, k=2)
-    assert len(list((tmp_path / out).glob("*.json"))) == 3 + 2 and (tmp_path / sealed).is_file()
+    assert len(list((tmp_path / out).glob("*.json"))) == 9 + 2 and (tmp_path / sealed).is_file()
 
 
 def test_the_command_line_writes_the_copy_and_says_where(tmp_path, capsys):
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     assert S.main([str(src), "--out", str(tmp_path / "copy"), "--sealed",
                    str(tmp_path / "s.json"), "--seed", "2", "--planted", "4"]) == 0
     said = json.loads(capsys.readouterr().out)
-    assert said == {"copy": str(tmp_path / "copy"), "records": 3, "planted": 4,
+    assert said == {"copy": str(tmp_path / "copy"), "records": 9, "planted": 4,
                     "sealed": str(tmp_path / "s.json")}
     assert S.main([str(src), "--out", str(tmp_path / "copy"), "--sealed",
                    str(tmp_path / "t.json")]) == 1  # the copy is written once

@@ -77,7 +77,7 @@ def test_the_survey_counts_records_so_an_effect_on_one_dataset_reaches_it(tmp_pa
     assert "with a measured materiality in at least two records, on one dataset or several" in text
     assert "every decision kind with a measured materiality in at least two records" in text
     assert "at least two datasets" not in text
-    written = S.write(TS.corpus(tmp_path / "corpus"), tmp_path / "copy", tmp_path / "s.json",
+    written = S.write(TS.corpus(tmp_path / "corpus", per=3), tmp_path / "copy", tmp_path / "s.json",
                       seed=5, k=6)
     effect, planted = written["planted"]["effect"], set(written["planted"]["records"])
     measured = [v for v in W.read(tmp_path / "copy") if v["run"]["id"] in planted
