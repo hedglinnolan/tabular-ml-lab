@@ -1,0 +1,2085 @@
+{
+  "about": "Bang 2009 reference fits in R, independent of TurboTab: reference.R reads the NHANES transport files, derives the predictors and applies prereg.json's rules",
+  "r": "R version 4.6.1 (2026-06-24)",
+  "survey": "4.5",
+  "pROC": "1.19.1",
+  "haven": "2.5.5",
+  "rows_read": 31126,
+  "counts": {
+    "about": "aged 20 or older, not pregnant, a positive fasting weight and a glucose result; known diabetes is a yes to DIQ010, DIQ050 or DIQ070; the rest by glucose",
+    "known_diabetes": 458,
+    "normal": 3384,
+    "impaired": 1643,
+    "undiagnosed": 209,
+    "eligible": 5236,
+    "complete_cases": 5169
+  },
+  "fits": {
+    "estimate:default": {
+      "name": "estimate:default",
+      "n_analyzed": 5169,
+      "seqn_sha256": "32ee104d5c64d36fab6bd19b679deec73ff545c9cfc3228c7b3b23fddda03e45",
+      "n_estimate": 5169,
+      "df": 44,
+      "estimator": "survey::svyglm, quasibinomial, Taylor linearization (domain of the design)",
+      "auc_apparent": 0.797387531691594,
+      "auc_apparent_weighted": 0.827101949705558,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -7.0480070752192,
+          "se": 0.718864654508931,
+          "ci_low": -8.49678359033022,
+          "ci_high": -5.59923056010818,
+          "se_subset": 0.718864654508931
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.0879511555132,
+          "se": 0.361220060454993,
+          "ci_low": 0.359959958433586,
+          "ci_high": 1.8159423525928,
+          "se_subset": 0.361220060454993
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.6969863726063,
+          "se": 0.427239129621858,
+          "ci_low": 0.835942484232832,
+          "ci_high": 2.55803026097977,
+          "se_subset": 0.427239129621858
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.20199927973461,
+          "se": 0.404100129118044,
+          "ci_low": 1.38758898268156,
+          "ci_high": 3.01640957678765,
+          "se_subset": 0.404100129118044
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.96243625845116,
+          "se": 0.172016503658299,
+          "ci_low": 0.615759774709038,
+          "ci_high": 1.30911274219328,
+          "se_subset": 0.172016503658299
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.634282401958932,
+          "se": 0.151003685657369,
+          "ci_low": 0.329954470263573,
+          "ci_high": 0.938610333654292,
+          "se_subset": 0.151003685657369
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.564116718009567,
+          "se": 0.216338180449062,
+          "ci_low": 0.128115764018363,
+          "ci_high": 1.00011767200077,
+          "se_subset": 0.216338180449062
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.59649639347658,
+          "se": 0.456139449841415,
+          "ci_low": -0.322792263158425,
+          "ci_high": 1.51578505011159,
+          "se_subset": 0.456139449841415
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.43340771292965,
+          "se": 0.392495664733963,
+          "ci_low": 0.642384677115068,
+          "ci_high": 2.22443074874423,
+          "se_subset": 0.392495664733963
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 2.31344993451834,
+          "se": 0.385774250050487,
+          "ci_low": 1.53597301991122,
+          "ci_high": 3.09092684912545,
+          "se_subset": 0.385774250050487
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.318226386433778,
+          "se": 0.180879396828473,
+          "ci_low": -0.682764857686828,
+          "ci_high": 0.0463120848192716,
+          "se_subset": 0.180879396828473
+        }
+      ],
+      "converged": true
+    },
+    "estimate:fasting_any_glucose": {
+      "name": "estimate:fasting_any_glucose",
+      "n_analyzed": 5510,
+      "seqn_sha256": "520f55c286475e5e19ba6a430e2cc9dd233be42aefdd2d66f10b4dfba30cc016",
+      "n_estimate": 5169,
+      "df": 44,
+      "estimator": "survey::svyglm, quasibinomial, Taylor linearization (domain of the design)",
+      "auc_apparent": 0.797387531691594,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -7.0480070752192,
+          "se": 0.718864654508931,
+          "ci_low": -8.49678359033022,
+          "ci_high": -5.59923056010818,
+          "se_subset": 0.718864654508931
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.0879511555132,
+          "se": 0.361220060454993,
+          "ci_low": 0.359959958433586,
+          "ci_high": 1.8159423525928,
+          "se_subset": 0.361220060454993
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.6969863726063,
+          "se": 0.427239129621858,
+          "ci_low": 0.835942484232832,
+          "ci_high": 2.55803026097977,
+          "se_subset": 0.427239129621858
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.20199927973461,
+          "se": 0.404100129118044,
+          "ci_low": 1.38758898268156,
+          "ci_high": 3.01640957678765,
+          "se_subset": 0.404100129118044
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.96243625845116,
+          "se": 0.172016503658299,
+          "ci_low": 0.615759774709038,
+          "ci_high": 1.30911274219328,
+          "se_subset": 0.172016503658299
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.634282401958932,
+          "se": 0.151003685657369,
+          "ci_low": 0.329954470263573,
+          "ci_high": 0.938610333654292,
+          "se_subset": 0.151003685657369
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.564116718009567,
+          "se": 0.216338180449062,
+          "ci_low": 0.128115764018363,
+          "ci_high": 1.00011767200077,
+          "se_subset": 0.216338180449062
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.59649639347658,
+          "se": 0.456139449841415,
+          "ci_low": -0.322792263158425,
+          "ci_high": 1.51578505011159,
+          "se_subset": 0.456139449841415
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.43340771292965,
+          "se": 0.392495664733963,
+          "ci_low": 0.642384677115068,
+          "ci_high": 2.22443074874423,
+          "se_subset": 0.392495664733963
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 2.31344993451834,
+          "se": 0.385774250050487,
+          "ci_low": 1.53597301991122,
+          "ci_high": 3.09092684912545,
+          "se_subset": 0.385774250050487
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.318226386433778,
+          "se": 0.180879396828473,
+          "ci_low": -0.682764857686828,
+          "ci_high": 0.0463120848192716,
+          "se_subset": 0.180879396828473
+        }
+      ],
+      "converged": true
+    },
+    "estimate:bp_first_reading": {
+      "name": "estimate:bp_first_reading",
+      "n_analyzed": 5169,
+      "seqn_sha256": "32ee104d5c64d36fab6bd19b679deec73ff545c9cfc3228c7b3b23fddda03e45",
+      "n_estimate": 5169,
+      "df": 44,
+      "estimator": "survey::svyglm, quasibinomial, Taylor linearization (domain of the design)",
+      "auc_apparent": 0.797858729191644,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -7.03383259624195,
+          "se": 0.719273782532836,
+          "ci_low": -8.48343365470614,
+          "ci_high": -5.58423153777776,
+          "se_subset": 0.719273782532836
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.08595803482978,
+          "se": 0.358648071672343,
+          "ci_low": 0.36315034054456,
+          "ci_high": 1.808765729115,
+          "se_subset": 0.358648071672343
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.70827410900611,
+          "se": 0.425855534464525,
+          "ci_low": 0.850018673448883,
+          "ci_high": 2.56652954456333,
+          "se_subset": 0.425855534464525
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.22027399042519,
+          "se": 0.401832200759098,
+          "ci_low": 1.41043440264793,
+          "ci_high": 3.03011357820245,
+          "se_subset": 0.401832200759098
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.959137605492903,
+          "se": 0.172010676856459,
+          "ci_low": 0.612472864898272,
+          "ci_high": 1.30580234608753,
+          "se_subset": 0.172010676856459
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.634684554416081,
+          "se": 0.149697787205683,
+          "ci_low": 0.332988488115764,
+          "ci_high": 0.936380620716397,
+          "se_subset": 0.149697787205683
+        },
+        {
+          "term": "htn_first",
+          "column": "htn_first",
+          "level": "1",
+          "log_or": 0.514720740112144,
+          "se": 0.22269885279313,
+          "ci_low": 0.0659006933270442,
+          "ci_high": 0.963540786897243,
+          "se_subset": 0.22269885279313
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.587191637354328,
+          "se": 0.457824825798559,
+          "ci_low": -0.335493671335452,
+          "ci_high": 1.50987694604411,
+          "se_subset": 0.457824825798559
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.43499981395854,
+          "se": 0.394464203851565,
+          "ci_low": 0.640009448237317,
+          "ci_high": 2.22999017967975,
+          "se_subset": 0.394464203851565
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 2.32470762872463,
+          "se": 0.387577575020746,
+          "ci_low": 1.54359635144628,
+          "ci_high": 3.10581890600299,
+          "se_subset": 0.387577575020746
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.325292899119287,
+          "se": 0.181139801426083,
+          "ci_low": -0.690356181354597,
+          "ci_high": 0.0397703831160223,
+          "se_subset": 0.181139801426083
+        }
+      ],
+      "converged": true
+    },
+    "estimate:borderline_known": {
+      "name": "estimate:borderline_known",
+      "n_analyzed": 5099,
+      "seqn_sha256": "0fcaa56fa961cb1c3121d0a230eee84a1a1879971e8b440ab66207aa757d6f27",
+      "n_estimate": 5099,
+      "df": 44,
+      "estimator": "survey::svyglm, quasibinomial, Taylor linearization (domain of the design)",
+      "auc_apparent": 0.793704961237107,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -7.13045113080429,
+          "se": 0.76809277534072,
+          "ci_low": -8.67844040439049,
+          "ci_high": -5.58246185721808,
+          "se_subset": 0.76809277534072
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.26198806494293,
+          "se": 0.397941745478512,
+          "ci_low": 0.459989174587988,
+          "ci_high": 2.06398695529788,
+          "se_subset": 0.397941745478512
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.72029925125091,
+          "se": 0.485055495985728,
+          "ci_low": 0.742734132835534,
+          "ci_high": 2.69786436966628,
+          "se_subset": 0.485055495985728
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.27296665600837,
+          "se": 0.477055878738213,
+          "ci_low": 1.3115237068016,
+          "ci_high": 3.23440960521514,
+          "se_subset": 0.477055878738213
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.918901568172115,
+          "se": 0.167400459695947,
+          "ci_low": 0.581528109753923,
+          "ci_high": 1.25627502659031,
+          "se_subset": 0.167400459695947
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.559977985144118,
+          "se": 0.162926152015089,
+          "ci_low": 0.231621901344012,
+          "ci_high": 0.888334068944224,
+          "se_subset": 0.162926152015089
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.553326569792958,
+          "se": 0.237496133332933,
+          "ci_low": 0.0746845636179925,
+          "ci_high": 1.03196857596792,
+          "se_subset": 0.237496133332933
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.553633801480518,
+          "se": 0.488627155956928,
+          "ci_low": -0.43112952462775,
+          "ci_high": 1.53839712758879,
+          "se_subset": 0.488627155956928
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.36594135693319,
+          "se": 0.422894103343797,
+          "ci_low": 0.513654293630629,
+          "ci_high": 2.21822842023575,
+          "se_subset": 0.422894103343797
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 2.38551239360312,
+          "se": 0.417884868664969,
+          "ci_low": 1.54332077944506,
+          "ci_high": 3.22770400776119,
+          "se_subset": 0.417884868664969
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.282921572482346,
+          "se": 0.203226632802539,
+          "ci_low": -0.692497938495973,
+          "ci_high": 0.126654793531281,
+          "se_subset": 0.203226632802539
+        }
+      ],
+      "converged": true
+    },
+    "estimate:medicine_told": {
+      "name": "estimate:medicine_told",
+      "n_analyzed": 5169,
+      "seqn_sha256": "32ee104d5c64d36fab6bd19b679deec73ff545c9cfc3228c7b3b23fddda03e45",
+      "n_estimate": 5169,
+      "df": 44,
+      "estimator": "survey::svyglm, quasibinomial, Taylor linearization (domain of the design)",
+      "auc_apparent": 0.797387531691594,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -7.0480070752192,
+          "se": 0.718864654508931,
+          "ci_low": -8.49678359033022,
+          "ci_high": -5.59923056010818,
+          "se_subset": 0.718864654508931
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.0879511555132,
+          "se": 0.361220060454993,
+          "ci_low": 0.359959958433586,
+          "ci_high": 1.8159423525928,
+          "se_subset": 0.361220060454993
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.6969863726063,
+          "se": 0.427239129621858,
+          "ci_low": 0.835942484232832,
+          "ci_high": 2.55803026097977,
+          "se_subset": 0.427239129621858
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.20199927973461,
+          "se": 0.404100129118044,
+          "ci_low": 1.38758898268156,
+          "ci_high": 3.01640957678765,
+          "se_subset": 0.404100129118044
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.96243625845116,
+          "se": 0.172016503658299,
+          "ci_low": 0.615759774709038,
+          "ci_high": 1.30911274219328,
+          "se_subset": 0.172016503658299
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.634282401958932,
+          "se": 0.151003685657369,
+          "ci_low": 0.329954470263573,
+          "ci_high": 0.938610333654292,
+          "se_subset": 0.151003685657369
+        },
+        {
+          "term": "htn_told_rx",
+          "column": "htn_told_rx",
+          "level": "1",
+          "log_or": 0.564116718009567,
+          "se": 0.216338180449062,
+          "ci_low": 0.128115764018363,
+          "ci_high": 1.00011767200077,
+          "se_subset": 0.216338180449062
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.59649639347658,
+          "se": 0.456139449841415,
+          "ci_low": -0.322792263158425,
+          "ci_high": 1.51578505011159,
+          "se_subset": 0.456139449841415
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.43340771292965,
+          "se": 0.392495664733963,
+          "ci_low": 0.642384677115068,
+          "ci_high": 2.22443074874423,
+          "se_subset": 0.392495664733963
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 2.31344993451834,
+          "se": 0.385774250050487,
+          "ci_low": 1.53597301991122,
+          "ci_high": 3.09092684912545,
+          "se_subset": 0.385774250050487
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.318226386433778,
+          "se": 0.180879396828473,
+          "ci_low": -0.682764857686828,
+          "ci_high": 0.0463120848192716,
+          "se_subset": 0.180879396828473
+        }
+      ],
+      "converged": true
+    },
+    "estimate:obesity_absent": {
+      "name": "estimate:obesity_absent",
+      "n_analyzed": 5236,
+      "seqn_sha256": "6ff45217782f919c372010964b9149f555e9e5779a798905470328594c8f8107",
+      "n_estimate": 5236,
+      "df": 44,
+      "estimator": "survey::svyglm, quasibinomial, Taylor linearization (domain of the design)",
+      "auc_apparent": 0.794269318883769,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.67277285254336,
+          "se": 0.611802606470367,
+          "ci_low": -7.90577998758392,
+          "ci_high": -5.43976571750281,
+          "se_subset": 0.611802606470367
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 0.953167985925612,
+          "se": 0.334140724783025,
+          "ci_low": 0.279751603896765,
+          "ci_high": 1.62658436795446,
+          "se_subset": 0.334140724783025
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.56934535955713,
+          "se": 0.407138578741163,
+          "ci_low": 0.748811469657072,
+          "ci_high": 2.38987924945719,
+          "se_subset": 0.407138578741163
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.08710622296332,
+          "se": 0.376614370635353,
+          "ci_low": 1.32808983231528,
+          "ci_high": 2.84612261361136,
+          "se_subset": 0.376614370635353
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.954993800879924,
+          "se": 0.177928793001093,
+          "ci_low": 0.596401880905604,
+          "ci_high": 1.31358572085424,
+          "se_subset": 0.177928793001093
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.680716487950007,
+          "se": 0.149998368673854,
+          "ci_low": 0.37841463950526,
+          "ci_high": 0.983018336394755,
+          "se_subset": 0.149998368673854
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.627811845961178,
+          "se": 0.220654856696904,
+          "ci_low": 0.183111202630701,
+          "ci_high": 1.07251248929165,
+          "se_subset": 0.220654856696904
+        },
+        {
+          "term": "factor(obesity_absent)1",
+          "column": "obesity_absent",
+          "level": "1",
+          "log_or": 0.285773487104803,
+          "se": 0.383884088549193,
+          "ci_low": -0.48789405730214,
+          "ci_high": 1.05944103151175,
+          "se_subset": 0.383884088549193
+        },
+        {
+          "term": "factor(obesity_absent)2",
+          "column": "obesity_absent",
+          "level": "2",
+          "log_or": 1.1140921506165,
+          "se": 0.323987117115765,
+          "ci_low": 0.461139020243874,
+          "ci_high": 1.76704528098913,
+          "se_subset": 0.323987117115765
+        },
+        {
+          "term": "factor(obesity_absent)3",
+          "column": "obesity_absent",
+          "level": "3",
+          "log_or": 1.97062815309134,
+          "se": 0.306589600540982,
+          "ci_low": 1.35273741349938,
+          "ci_high": 2.5885188926833,
+          "se_subset": 0.306589600540982
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.347375662971965,
+          "se": 0.182987932524519,
+          "ci_low": -0.716163608696384,
+          "ci_high": 0.021412282752454,
+          "se_subset": 0.182987932524519
+        }
+      ],
+      "converged": true
+    },
+    "estimate:family_parent_or_sibling": {
+      "name": "estimate:family_parent_or_sibling",
+      "n_analyzed": 5169,
+      "seqn_sha256": "32ee104d5c64d36fab6bd19b679deec73ff545c9cfc3228c7b3b23fddda03e45",
+      "n_estimate": 5169,
+      "df": 44,
+      "estimator": "survey::svyglm, quasibinomial, Taylor linearization (domain of the design)",
+      "auc_apparent": 0.804788624437413,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.96090689392568,
+          "se": 0.704372346750232,
+          "ci_low": -8.38047608190096,
+          "ci_high": -5.5413377059504,
+          "se_subset": 0.704372346750232
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.06558459171666,
+          "se": 0.364843274074092,
+          "ci_low": 0.330291287393833,
+          "ci_high": 1.80087789603948,
+          "se_subset": 0.364843274074092
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.65403688156843,
+          "se": 0.423241675007978,
+          "ci_low": 0.801049333604083,
+          "ci_high": 2.50702442953277,
+          "se_subset": 0.423241675007978
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.11722047213463,
+          "se": 0.399893847398735,
+          "ci_low": 1.31128737886766,
+          "ci_high": 2.9231535654016,
+          "se_subset": 0.399893847398735
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.962554809906628,
+          "se": 0.170333441554907,
+          "ci_low": 0.619270314953458,
+          "ci_high": 1.3058393048598,
+          "se_subset": 0.170333441554907
+        },
+        {
+          "term": "famhx_close",
+          "column": "famhx_close",
+          "level": "1",
+          "log_or": 0.791010607774609,
+          "se": 0.162127431660826,
+          "ci_low": 0.464264239077532,
+          "ci_high": 1.11775697647169,
+          "se_subset": 0.162127431660826
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.564198830146795,
+          "se": 0.214661932797595,
+          "ci_low": 0.131576131319094,
+          "ci_high": 0.996821528974495,
+          "se_subset": 0.214661932797595
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.592527434590512,
+          "se": 0.460040306721393,
+          "ci_low": -0.334622882512947,
+          "ci_high": 1.51967775169397,
+          "se_subset": 0.460040306721393
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.42999428500589,
+          "se": 0.39746786149531,
+          "ci_low": 0.628950445064741,
+          "ci_high": 2.23103812494705,
+          "se_subset": 0.39746786149531
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 2.32553170703806,
+          "se": 0.400027190304952,
+          "ci_low": 1.51932987880162,
+          "ci_high": 3.13173353527451,
+          "se_subset": 0.400027190304952
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.32824803637796,
+          "se": 0.180876618340345,
+          "ci_low": -0.692780907956132,
+          "ci_high": 0.0362848352002123,
+          "se_subset": 0.180876618340345
+        }
+      ],
+      "converged": true
+    },
+    "estimate:unweighted": {
+      "name": "estimate:unweighted",
+      "n_analyzed": 5169,
+      "seqn_sha256": "32ee104d5c64d36fab6bd19b679deec73ff545c9cfc3228c7b3b23fddda03e45",
+      "n_estimate": 5169,
+      "estimator": "glm, binomial, model-based standard errors",
+      "auc_apparent": 0.797864133959632,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.64919890631519,
+          "se": 0.415353673732316,
+          "ci_low": -7.46327714767693,
+          "ci_high": -5.83512066495346,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.11744598873403,
+          "se": 0.348422453253767,
+          "ci_low": 0.434550528951552,
+          "ci_high": 1.8003414485165,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.78066298036406,
+          "se": 0.331940467698663,
+          "ci_low": 1.1300716186633,
+          "ci_high": 2.43125434206482,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.14346749092037,
+          "se": 0.310554999097275,
+          "ci_low": 1.53479087747084,
+          "ci_high": 2.7521441043699,
+          "se_subset": null
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.647083657106592,
+          "se": 0.15061221286547,
+          "ci_low": 0.351889144258391,
+          "ci_high": 0.942278169954793,
+          "se_subset": null
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.722420047746311,
+          "se": 0.151696694416624,
+          "ci_low": 0.425099990115949,
+          "ci_high": 1.01974010537667,
+          "se_subset": null
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.526188672082168,
+          "se": 0.168681910466081,
+          "ci_low": 0.195578202725239,
+          "ci_high": 0.856799141439097,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.535754785084679,
+          "se": 0.331985553005923,
+          "ci_low": -0.114924942194542,
+          "ci_high": 1.1864345123639,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.25287899861243,
+          "se": 0.299587254184654,
+          "ci_low": 0.665698770183261,
+          "ci_high": 1.8400592270416,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 1.94049356876794,
+          "se": 0.359799411638782,
+          "ci_low": 1.23529968029723,
+          "ci_high": 2.64568745723865,
+          "se_subset": null
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.246592151189471,
+          "se": 0.157406392166113,
+          "ci_low": -0.55510301077144,
+          "ci_high": 0.0619187083924976,
+          "se_subset": null
+        }
+      ],
+      "converged": true
+    },
+    "estimate:unknown_excluded": {
+      "name": "estimate:unknown_excluded",
+      "n_analyzed": 4660,
+      "seqn_sha256": "8d44d9fa97de6b098dbf08ea00b38a3af3ed518b2c2c4158c70ef05195d77ee4",
+      "n_estimate": 4660,
+      "df": 44,
+      "estimator": "survey::svyglm, quasibinomial, Taylor linearization (domain of the design)",
+      "auc_apparent": 0.79870521650603,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.95597387075382,
+          "se": 0.739620668496623,
+          "ci_low": -8.44658138343033,
+          "ci_high": -5.46536635807731,
+          "se_subset": 0.739620668496623
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.14283352804399,
+          "se": 0.372595102999682,
+          "ci_low": 0.391917439061899,
+          "ci_high": 1.89374961702608,
+          "se_subset": 0.372595102999682
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.6322687559471,
+          "se": 0.446798619031627,
+          "ci_low": 0.731805306844506,
+          "ci_high": 2.53273220504969,
+          "se_subset": 0.446798619031627
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.20832251524598,
+          "se": 0.416856549133192,
+          "ci_low": 1.36820334292843,
+          "ci_high": 3.04844168756354,
+          "se_subset": 0.416856549133192
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 1.01820614807255,
+          "se": 0.188798637876931,
+          "ci_low": 0.637707495196233,
+          "ci_high": 1.39870480094887,
+          "se_subset": 0.188798637876931
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.566541664109269,
+          "se": 0.159042425058203,
+          "ci_low": 0.246012717686065,
+          "ci_high": 0.887070610532473,
+          "se_subset": 0.159042425058203
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.640731882879463,
+          "se": 0.229723064798019,
+          "ci_low": 0.177755466983691,
+          "ci_high": 1.10370829877523,
+          "se_subset": 0.229723064798019
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.547255172377034,
+          "se": 0.476895841440386,
+          "ci_low": -0.413865242848994,
+          "ci_high": 1.50837558760306,
+          "se_subset": 0.476895841440386
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.33012486696546,
+          "se": 0.400238560212376,
+          "ci_low": 0.523497050671375,
+          "ci_high": 2.13675268325954,
+          "se_subset": 0.400238560212376
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 2.27986702890177,
+          "se": 0.388154910546527,
+          "ci_low": 1.49759220832518,
+          "ci_high": 3.06214184947836,
+          "se_subset": 0.388154910546527
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.375554640437681,
+          "se": 0.202134417610401,
+          "ci_low": -0.782929791368758,
+          "ci_high": 0.0318205104933962,
+          "se_subset": 0.202134417610401
+        }
+      ],
+      "converged": true
+    },
+    "predict:default": {
+      "name": "predict:default",
+      "n_analyzed": 5169,
+      "seqn_sha256": "32ee104d5c64d36fab6bd19b679deec73ff545c9cfc3228c7b3b23fddda03e45",
+      "n_estimate": 5169,
+      "estimator": "glm, binomial, model-based standard errors",
+      "auc_apparent": 0.797864133959632,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.64919890631519,
+          "se": 0.415353673732316,
+          "ci_low": -7.46327714767693,
+          "ci_high": -5.83512066495346,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.11744598873403,
+          "se": 0.348422453253767,
+          "ci_low": 0.434550528951552,
+          "ci_high": 1.8003414485165,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.78066298036406,
+          "se": 0.331940467698663,
+          "ci_low": 1.1300716186633,
+          "ci_high": 2.43125434206482,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.14346749092037,
+          "se": 0.310554999097275,
+          "ci_low": 1.53479087747084,
+          "ci_high": 2.7521441043699,
+          "se_subset": null
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.647083657106592,
+          "se": 0.15061221286547,
+          "ci_low": 0.351889144258391,
+          "ci_high": 0.942278169954793,
+          "se_subset": null
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.722420047746311,
+          "se": 0.151696694416624,
+          "ci_low": 0.425099990115949,
+          "ci_high": 1.01974010537667,
+          "se_subset": null
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.526188672082168,
+          "se": 0.168681910466081,
+          "ci_low": 0.195578202725239,
+          "ci_high": 0.856799141439097,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.535754785084679,
+          "se": 0.331985553005923,
+          "ci_low": -0.114924942194542,
+          "ci_high": 1.1864345123639,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.25287899861243,
+          "se": 0.299587254184654,
+          "ci_low": 0.665698770183261,
+          "ci_high": 1.8400592270416,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 1.94049356876794,
+          "se": 0.359799411638782,
+          "ci_low": 1.23529968029723,
+          "ci_high": 2.64568745723865,
+          "se_subset": null
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.246592151189471,
+          "se": 0.157406392166113,
+          "ci_low": -0.55510301077144,
+          "ci_high": 0.0619187083924976,
+          "se_subset": null
+        }
+      ],
+      "converged": true
+    },
+    "predict:fasting_any_glucose": {
+      "name": "predict:fasting_any_glucose",
+      "n_analyzed": 5510,
+      "seqn_sha256": "520f55c286475e5e19ba6a430e2cc9dd233be42aefdd2d66f10b4dfba30cc016",
+      "n_estimate": 5510,
+      "estimator": "glm, binomial, model-based standard errors",
+      "auc_apparent": 0.797833755156539,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.39930092308044,
+          "se": 0.380881903230153,
+          "ci_low": -7.14581573577461,
+          "ci_high": -5.65278611038627,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.25321039363491,
+          "se": 0.341673549477087,
+          "ci_low": 0.583542542189854,
+          "ci_high": 1.92287824507996,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.81448525422706,
+          "se": 0.330340506181668,
+          "ci_low": 1.16702975947626,
+          "ci_high": 2.46194074897786,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.27959122104925,
+          "se": 0.307338393090065,
+          "ci_low": 1.67721903952631,
+          "ci_high": 2.88196340257219,
+          "se_subset": null
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.624102812421177,
+          "se": 0.143199933747556,
+          "ci_low": 0.343436099687446,
+          "ci_high": 0.904769525154908,
+          "se_subset": null
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.673838065810983,
+          "se": 0.143321101405984,
+          "ci_low": 0.392933868830643,
+          "ci_high": 0.954742262791324,
+          "se_subset": null
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.55559097298155,
+          "se": 0.161323379481456,
+          "ci_low": 0.239402959333609,
+          "ci_high": 0.871778986629491,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.158002571168344,
+          "se": 0.292843168322463,
+          "ci_low": -0.415959491862283,
+          "ci_high": 0.731964634198972,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 0.972329719450906,
+          "se": 0.25374571812852,
+          "ci_low": 0.474997250687755,
+          "ci_high": 1.46966218821406,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 1.60029386387995,
+          "se": 0.318523982296379,
+          "ci_low": 0.975998330366771,
+          "ci_high": 2.22458939739313,
+          "se_subset": null
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.259442319533714,
+          "se": 0.149411537579925,
+          "ci_low": -0.55228355206512,
+          "ci_high": 0.033398912997692,
+          "se_subset": null
+        }
+      ],
+      "converged": true
+    },
+    "predict:bp_first_reading": {
+      "name": "predict:bp_first_reading",
+      "n_analyzed": 5169,
+      "seqn_sha256": "32ee104d5c64d36fab6bd19b679deec73ff545c9cfc3228c7b3b23fddda03e45",
+      "n_estimate": 5169,
+      "estimator": "glm, binomial, model-based standard errors",
+      "auc_apparent": 0.797591438847507,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.6568971367542,
+          "se": 0.415874087151016,
+          "ci_low": -7.47199536967366,
+          "ci_high": -5.84179890383474,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.10878624598389,
+          "se": 0.348728758141439,
+          "ci_low": 0.425290439653292,
+          "ci_high": 1.79228205231449,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.77977488512681,
+          "se": 0.332103759582976,
+          "ci_low": 1.12886347721383,
+          "ci_high": 2.4306862930398,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.14410352788901,
+          "se": 0.310865605580351,
+          "ci_low": 1.53481813691929,
+          "ci_high": 2.75338891885873,
+          "se_subset": null
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.647782343101549,
+          "se": 0.150636213691937,
+          "ci_low": 0.352540789497872,
+          "ci_high": 0.943023896705226,
+          "se_subset": null
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.728275488032106,
+          "se": 0.151737407848477,
+          "ci_low": 0.430875633541626,
+          "ci_high": 1.02567534252259,
+          "se_subset": null
+        },
+        {
+          "term": "htn_first",
+          "column": "htn_first",
+          "level": "1",
+          "log_or": 0.522658058310183,
+          "se": 0.170697868244999,
+          "ci_low": 0.188096384312221,
+          "ci_high": 0.857219732308145,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.527607058678783,
+          "se": 0.331995600988398,
+          "ci_low": -0.123092362284208,
+          "ci_high": 1.17830647964177,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.25255034108035,
+          "se": 0.299635916312417,
+          "ci_low": 0.665274736633355,
+          "ci_high": 1.83982594552734,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 1.94912500333903,
+          "se": 0.359568712458806,
+          "ci_low": 1.24438327695233,
+          "ci_high": 2.65386672972572,
+          "se_subset": null
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.250018717505852,
+          "se": 0.157346017771595,
+          "ci_low": -0.558411245448978,
+          "ci_high": 0.058373810437273,
+          "se_subset": null
+        }
+      ],
+      "converged": true
+    },
+    "predict:borderline_known": {
+      "name": "predict:borderline_known",
+      "n_analyzed": 5099,
+      "seqn_sha256": "0fcaa56fa961cb1c3121d0a230eee84a1a1879971e8b440ab66207aa757d6f27",
+      "n_estimate": 5099,
+      "estimator": "glm, binomial, model-based standard errors",
+      "auc_apparent": 0.793684299937786,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.74607126994187,
+          "se": 0.447805319684268,
+          "ci_low": -7.62375356860848,
+          "ci_high": -5.86838897127526,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.25065626435253,
+          "se": 0.370284932115885,
+          "ci_low": 0.524911133387533,
+          "ci_high": 1.97640139531752,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.75796997798553,
+          "se": 0.36109238239366,
+          "ci_low": 1.0502419134022,
+          "ci_high": 2.46569804256887,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.1795007982008,
+          "se": 0.336290953091194,
+          "ci_low": 1.52038264181541,
+          "ci_high": 2.83861895458619,
+          "se_subset": null
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.610406090309491,
+          "se": 0.160516714591028,
+          "ci_low": 0.295799110794382,
+          "ci_high": 0.9250130698246,
+          "se_subset": null
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.615482477518462,
+          "se": 0.16083406377971,
+          "ci_low": 0.300253505023013,
+          "ci_high": 0.930711450013911,
+          "se_subset": null
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.488521680581163,
+          "se": 0.179733196806187,
+          "ci_low": 0.136251088014788,
+          "ci_high": 0.840792273147539,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.554056673862608,
+          "se": 0.359356564003215,
+          "ci_low": -0.150269249191757,
+          "ci_high": 1.25838259691697,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.28482754277026,
+          "se": 0.324390093865859,
+          "ci_low": 0.649034641851609,
+          "ci_high": 1.92062044368891,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 2.03492216985594,
+          "se": 0.385790687823912,
+          "ci_low": 1.27878631615014,
+          "ci_high": 2.79105802356175,
+          "se_subset": null
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.229493844466936,
+          "se": 0.168362511596288,
+          "ci_low": -0.559478303542367,
+          "ci_high": 0.100490614608495,
+          "se_subset": null
+        }
+      ],
+      "converged": true
+    },
+    "predict:medicine_told": {
+      "name": "predict:medicine_told",
+      "n_analyzed": 5169,
+      "seqn_sha256": "32ee104d5c64d36fab6bd19b679deec73ff545c9cfc3228c7b3b23fddda03e45",
+      "n_estimate": 5169,
+      "estimator": "glm, binomial, model-based standard errors",
+      "auc_apparent": 0.797864133959632,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.64919890631519,
+          "se": 0.415353673732316,
+          "ci_low": -7.46327714767693,
+          "ci_high": -5.83512066495346,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.11744598873403,
+          "se": 0.348422453253767,
+          "ci_low": 0.434550528951552,
+          "ci_high": 1.8003414485165,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.78066298036406,
+          "se": 0.331940467698663,
+          "ci_low": 1.1300716186633,
+          "ci_high": 2.43125434206482,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.14346749092037,
+          "se": 0.310554999097275,
+          "ci_low": 1.53479087747084,
+          "ci_high": 2.7521441043699,
+          "se_subset": null
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.647083657106592,
+          "se": 0.15061221286547,
+          "ci_low": 0.351889144258391,
+          "ci_high": 0.942278169954793,
+          "se_subset": null
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.722420047746311,
+          "se": 0.151696694416624,
+          "ci_low": 0.425099990115949,
+          "ci_high": 1.01974010537667,
+          "se_subset": null
+        },
+        {
+          "term": "htn_told_rx",
+          "column": "htn_told_rx",
+          "level": "1",
+          "log_or": 0.526188672082168,
+          "se": 0.168681910466081,
+          "ci_low": 0.195578202725239,
+          "ci_high": 0.856799141439097,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.535754785084679,
+          "se": 0.331985553005923,
+          "ci_low": -0.114924942194542,
+          "ci_high": 1.1864345123639,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.25287899861243,
+          "se": 0.299587254184654,
+          "ci_low": 0.665698770183261,
+          "ci_high": 1.8400592270416,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 1.94049356876794,
+          "se": 0.359799411638782,
+          "ci_low": 1.23529968029723,
+          "ci_high": 2.64568745723865,
+          "se_subset": null
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.246592151189471,
+          "se": 0.157406392166113,
+          "ci_low": -0.55510301077144,
+          "ci_high": 0.0619187083924976,
+          "se_subset": null
+        }
+      ],
+      "converged": true
+    },
+    "predict:obesity_absent": {
+      "name": "predict:obesity_absent",
+      "n_analyzed": 5236,
+      "seqn_sha256": "6ff45217782f919c372010964b9149f555e9e5779a798905470328594c8f8107",
+      "n_estimate": 5236,
+      "estimator": "glm, binomial, model-based standard errors",
+      "auc_apparent": 0.794531063358343,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.42132109545676,
+          "se": 0.385885699724497,
+          "ci_low": -7.17764316906581,
+          "ci_high": -5.6649990218477,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.04688361020973,
+          "se": 0.340319346734424,
+          "ci_low": 0.379869947368059,
+          "ci_high": 1.7138972730514,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.71771019860693,
+          "se": 0.323476237470271,
+          "ci_low": 1.08370842331068,
+          "ci_high": 2.35171197390319,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.09770872612791,
+          "se": 0.300863711409761,
+          "ci_low": 1.50802668750972,
+          "ci_high": 2.68739076474609,
+          "se_subset": null
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.633169471948346,
+          "se": 0.149083795547904,
+          "ci_low": 0.340970601995922,
+          "ci_high": 0.925368341900771,
+          "se_subset": null
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.742045516006319,
+          "se": 0.150353070967369,
+          "ci_low": 0.44735891194528,
+          "ci_high": 1.03673212006736,
+          "se_subset": null
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.542237595940517,
+          "se": 0.167315769641776,
+          "ci_low": 0.214304713397037,
+          "ci_high": 0.870170478483998,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity_absent)1",
+          "column": "obesity_absent",
+          "level": "1",
+          "log_or": 0.351352970770084,
+          "se": 0.303140074980899,
+          "ci_low": -0.242790658463249,
+          "ci_high": 0.945496600003417,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity_absent)2",
+          "column": "obesity_absent",
+          "level": "2",
+          "log_or": 1.06375293944032,
+          "se": 0.266736717382303,
+          "ci_low": 0.540958580016566,
+          "ci_high": 1.58654729886407,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity_absent)3",
+          "column": "obesity_absent",
+          "level": "3",
+          "log_or": 1.74523172714392,
+          "se": 0.332611045436401,
+          "ci_low": 1.09332605722836,
+          "ci_high": 2.39713739705949,
+          "se_subset": null
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.261016154353256,
+          "se": 0.155926317008813,
+          "ci_low": -0.566626119932504,
+          "ci_high": 0.0445938112259918,
+          "se_subset": null
+        }
+      ],
+      "converged": true
+    },
+    "predict:family_parent_or_sibling": {
+      "name": "predict:family_parent_or_sibling",
+      "n_analyzed": 5169,
+      "seqn_sha256": "32ee104d5c64d36fab6bd19b679deec73ff545c9cfc3228c7b3b23fddda03e45",
+      "n_estimate": 5169,
+      "estimator": "glm, binomial, model-based standard errors",
+      "auc_apparent": 0.806119180047562,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.54203132960889,
+          "se": 0.410641063847992,
+          "ci_low": -7.34687302532417,
+          "ci_high": -5.73718963389361,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.04389765032441,
+          "se": 0.349244014277309,
+          "ci_low": 0.359391960524687,
+          "ci_high": 1.72840334012412,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.70523826399933,
+          "se": 0.332322483229382,
+          "ci_low": 1.05389816561682,
+          "ci_high": 2.35657836238183,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.02844202009329,
+          "se": 0.309821076869671,
+          "ci_low": 1.42120386777732,
+          "ci_high": 2.63568017240926,
+          "se_subset": null
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.63354158104378,
+          "se": 0.15093748430758,
+          "ci_low": 0.337709547883844,
+          "ci_high": 0.929373614203716,
+          "se_subset": null
+        },
+        {
+          "term": "famhx_close",
+          "column": "famhx_close",
+          "level": "1",
+          "log_or": 0.930532546089814,
+          "se": 0.147779195611453,
+          "ci_low": 0.640890645027066,
+          "ci_high": 1.22017444715256,
+          "se_subset": null
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.509881409048943,
+          "se": 0.168761972443763,
+          "ci_low": 0.179114021099226,
+          "ci_high": 0.840648796998661,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.523188545831139,
+          "se": 0.332473166770089,
+          "ci_low": -0.128446886864213,
+          "ci_high": 1.17482397852649,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.2426902362201,
+          "se": 0.299922162603671,
+          "ci_low": 0.654853599351543,
+          "ci_high": 1.83052687308866,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 1.94166868330641,
+          "se": 0.360215929215128,
+          "ci_low": 1.23565843538713,
+          "ci_high": 2.64767893122569,
+          "se_subset": null
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.247158654263403,
+          "se": 0.157730425085259,
+          "ci_low": -0.556304606696704,
+          "ci_high": 0.0619872981698972,
+          "se_subset": null
+        }
+      ],
+      "converged": true
+    },
+    "predict:unknown_excluded": {
+      "name": "predict:unknown_excluded",
+      "n_analyzed": 4660,
+      "seqn_sha256": "8d44d9fa97de6b098dbf08ea00b38a3af3ed518b2c2c4158c70ef05195d77ee4",
+      "n_estimate": 4660,
+      "estimator": "glm, binomial, model-based standard errors",
+      "auc_apparent": 0.800571476102388,
+      "terms": [
+        {
+          "term": "(Intercept)",
+          "column": "(intercept)",
+          "level": null,
+          "log_or": -6.66804792553106,
+          "se": 0.439809428719536,
+          "ci_low": -7.53005856588249,
+          "ci_high": -5.80603728517964,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)1",
+          "column": "age_band",
+          "level": "1",
+          "log_or": 1.1682518320581,
+          "se": 0.358256449266978,
+          "ci_low": 0.466082094265626,
+          "ci_high": 1.87042156985058,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)2",
+          "column": "age_band",
+          "level": "2",
+          "log_or": 1.69439681513907,
+          "se": 0.34744172317491,
+          "ci_low": 1.01342355098971,
+          "ci_high": 2.37537007928842,
+          "se_subset": null
+        },
+        {
+          "term": "factor(age_band)3",
+          "column": "age_band",
+          "level": "3",
+          "log_or": 2.12648619665901,
+          "se": 0.323680574039647,
+          "ci_low": 1.49208392904605,
+          "ci_high": 2.76088846427197,
+          "se_subset": null
+        },
+        {
+          "term": "male",
+          "column": "male",
+          "level": "1",
+          "log_or": 0.662059494743964,
+          "se": 0.156352414469877,
+          "ci_low": 0.355614393487126,
+          "ci_high": 0.968504596000801,
+          "se_subset": null
+        },
+        {
+          "term": "famhx",
+          "column": "famhx",
+          "level": "1",
+          "log_or": 0.673632549632413,
+          "se": 0.157496173792728,
+          "ci_low": 0.364945721295804,
+          "ci_high": 0.982319377969022,
+          "se_subset": null
+        },
+        {
+          "term": "htn",
+          "column": "htn",
+          "level": "1",
+          "log_or": 0.576795073989223,
+          "se": 0.177422784372206,
+          "ci_low": 0.229052806582883,
+          "ci_high": 0.924537341395562,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)1",
+          "column": "obesity",
+          "level": "1",
+          "log_or": 0.531744490464539,
+          "se": 0.36029680548157,
+          "ci_low": -0.174424272024171,
+          "ci_high": 1.23791325295325,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)2",
+          "column": "obesity",
+          "level": "2",
+          "log_or": 1.32607503672786,
+          "se": 0.323855652478317,
+          "ci_low": 0.69132962168064,
+          "ci_high": 1.96082045177508,
+          "se_subset": null
+        },
+        {
+          "term": "factor(obesity)3",
+          "column": "obesity",
+          "level": "3",
+          "log_or": 2.0086220433119,
+          "se": 0.383361362194426,
+          "ci_low": 1.25724758034661,
+          "ci_high": 2.75999650627719,
+          "se_subset": null
+        },
+        {
+          "term": "active",
+          "column": "active",
+          "level": "1",
+          "log_or": -0.268691203883816,
+          "se": 0.164162687010409,
+          "ci_low": -0.59044415802954,
+          "ci_high": 0.0530617502619076,
+          "se_subset": null
+        }
+      ],
+      "converged": true
+    }
+  }
+}

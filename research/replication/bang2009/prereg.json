@@ -1,0 +1,135 @@
+{
+ "about": "The pre-registration of the Bang 2009 replication sweep (SWARM_PLAN version 5.1 §1, run design 1; §10 row 6c), in SU-A's shape (research/replication/sullivan2021). Written on 2026-10-23 before any model was fitted to these data, by the engine or the reference, and committed before the first fit. run.py, reference.R and results.py read every choice below from this file; none is written into their code.",
+ "seen_before_writing": [
+  "docs/turbotab-next/notes/replication/bang2009.md in full (the paper's methods, Table 2, the open choices of §6), the intake's card, answers and manifest, and the NHANES codebook pages of DIQ, BPQ, MCQ, PAQ and DEMO (codes and skip patterns).",
+  "Counts with no outcome in them, among the 6,569 participants aged 20 or older with a fasting glucose: the levels of DIQ010, DIQ050, DIQ070, RIDEXPRG, BPQ020, BPQ040A, BPQ050A, MCQ250A and PAQ520; that DIQ050 is blank in 592 of them, all in 1999-2000; that WTSAF2YR is zero in 557 and its smallest positive value is 2,631; that BMI and waist are both missing in 103; that 266 have no blood pressure reading and 581 a later reading but no first.",
+  "The driver's questions on the intake's table walked from the lens to the roles without an answer past them, and the derived table's questions walked to Fit under both lanes without pressing it, to learn the options the driver and the server offer. The walks showed the eligibility's counts (5,236 rows eligible with the outcome recorded, 5,169 complete cases), the 87 PSUs in 43 strata, and the engine's refusal of the six-year fasting weight on the intake's whole table (WTSAF4YR blank on the 1999-2002 rows outside the fasting subsample), which the prep answers by keeping the subsample's records. No model was fitted and no odds ratio or AUC was seen.",
+  "A simulation, not these data: 20 draws of 5,000 rows shaped like Table 2's model (ten binary predictors, about 4% events), where scikit-learn's LogisticRegression (C = inf, newton-cholesky, its default tolerance 1e-4, the engine's prediction fit) differed from statsmodels' maximum likelihood by up to 9.5e-4 in a log odds ratio."
+ ],
+ "paper": {
+  "notes": "docs/turbotab-next/notes/replication/bang2009.md",
+  "table2": "§5.2: each factor's odds ratio and 95% CI, printed to one decimal; read from the notes' table by results.py, never retyped",
+  "auc": "§5.2's heading: the final model's AUC in development, printed to two decimals",
+  "counts": "§5.1: the development sample by glucose group, unweighted"
+ },
+ "data": {
+  "intake": "research/datasets/bang2009 (card, manifest, answers); its table held to the manifest's SHA-256",
+  "derived": "research/data/derived/bang2009/derived.parquet, written by prep.py: the fasting subsample's records (WTSAF2YR recorded), with the intake's identifier, design, eligibility and outcome columns, and each predictor option as its own column"
+ },
+ "outcome": {
+  "column": "diabetes_fpg",
+  "event": "1",
+  "stated": "undiagnosed diabetes: fasting plasma glucose of 126 mg/dL or more in a participant without known diabetes, against normal and impaired fasting glucose together (bang2009.md §2.2)"
+ },
+ "model": {
+  "stated": "multiple logistic regression with the six predictors of Table 2, the published final specification fitted directly (the backward elimination's path is not reproducible, §6 choice 9)",
+  "family": "linear",
+  "predictors": {
+   "age": {"column": "age_band", "levels": {"0": "under 40 (the reference)", "1": "40-49", "2": "50-59", "3": "60 or older"}},
+   "sex": {"column": "male", "levels": {"0": "female (the reference)", "1": "male"}},
+   "family_history": {"column": "famhx", "levels": {"0": "no (the reference)", "1": "yes"}},
+   "hypertension": {"column": "htn", "levels": {"0": "no (the reference)", "1": "yes"}},
+   "obesity": {"column": "obesity", "levels": {"0": "not overweight or obese (the reference)", "1": "overweight", "2": "obese", "3": "extremely obese"}},
+   "activity": {"column": "active", "levels": {"0": "not active (the reference)", "1": "physically active"}}
+  },
+  "factors": {
+   "age 40-49, against under 40": ["age_band", "1"],
+   "age 50-59": ["age_band", "2"],
+   "age 60 or older": ["age_band", "3"],
+   "male": ["male", "1"],
+   "family history of diabetes": ["famhx", "1"],
+   "history of hypertension": ["htn", "1"],
+   "overweight, against not overweight or obese": ["obesity", "1"],
+   "obese": ["obesity", "2"],
+   "extremely obese": ["obesity", "3"],
+   "physically active": ["active", "1"]
+  },
+  "factor_order": ["age 40-49, against under 40", "age 50-59", "age 60 or older", "male", "family history of diabetes", "history of hypertension", "overweight, against not overweight or obese", "obese", "extremely obese", "physically active"]
+ },
+ "eligibility": {
+  "stated": "aged 20 or older with a fasting plasma glucose result, pregnant women excluded, known diabetes excluded: a yes to DIQ010, insulin now (DIQ050) or diabetic pills (DIQ070) (bang2009.md §2.1, §2.2)",
+  "rules": {
+   "age": {"kind": "range", "column": "RIDAGEYR", "low": 20, "reason": "younger than 20 (the paper includes adults aged 20 or older)"},
+   "pregnant": {"kind": "levels", "column": "RIDEXPRG", "exclude": ["1"], "refused": [], "dont_know": [], "missing": "keep", "reason": "pregnant at the exam (RIDEXPRG 1); men and women not tested have no value and stay"},
+   "told_diabetes": {"kind": "levels", "column": "DIQ010", "exclude": ["1"], "refused": ["7"], "dont_know": ["9"], "missing": "keep", "reason": "known diabetes: a doctor said so (DIQ010 1)"},
+   "insulin": {"kind": "levels", "column": "DIQ050", "exclude": ["1"], "refused": ["7"], "dont_know": ["9"], "missing": "keep", "reason": "known diabetes: taking insulin now (DIQ050 1)"},
+   "pills": {"kind": "levels", "column": "DIQ070", "exclude": ["1"], "refused": ["7"], "dont_know": ["9"], "missing": "keep", "reason": "known diabetes: taking diabetic pills (DIQ070 1)"},
+   "fasting": {"kind": "range", "column": "WTSAF2YR", "low": 1, "reason": "outside the fasting subsample (no positive fasting weight; the smallest positive weight is 2,631)"}
+  },
+  "why_missing_keep": "The paper: 'If information was missing or unknown in categorical variables, we defined the condition as absent' (bang2009.md §2.3), so a refused, unknown or blank answer to a known-diabetes question is not known diabetes, and the row stays. DIQ070 is asked only of those answering DIQ010 1 (its codebook's counts: 489 answers, DIQ010's 489 yeses in 1999-2000), so its blanks are its skip pattern. Choice 10 below measures the engine's default, which excludes such rows."
+ },
+ "survey": {
+  "stated": "SAS 9.1 survey procedures with strata, cluster and weight (bang2009.md §2.1); the weight variable is not named (§2.6)",
+  "population": {"estimand": "population", "weight": "WTSAF2YR", "four_year_weight": "WTSAF4YR", "cycle": "SDDSRVYR", "strata": "SDMVSTRA", "psu": "SDMVPSU", "about": "the NCHS six-year fasting weight, 2/3 x WTSAF4YR on the 1999-2002 rows and 1/3 x WTSAF2YR on the 2003-2004 rows (§2.6), with Taylor linearization over the masked strata and PSUs, the analysis rows a domain of the whole design"},
+  "sample": {"estimand": "sample", "about": "unweighted: the estimates describe these participants"}
+ },
+ "missing": {"strategy": "complete_case", "stated": "Due to small proportions of missing data, we used all non-missing observations available (bang2009.md §2.3): a row whose predictor is blank is left out. Only obesity can be blank (choice 5)."},
+ "lanes": {
+  "estimate": {"purpose": "inference", "exposure": "family_history", "why_exposure": "Under inference the engine asks for one exposure; every other predictor is answered as a confounder (it could cause the exposure and the outcome, and the exposure does not change it), so all six stay in the one logistic model whatever the exposure, and the exposure is any of them. Family history is a yes/no column with no form to choose.", "reports": "the design-based coefficient table on every analyzed row: each factor's odds ratio and 95% CI (Taylor linearization, t on PSUs minus strata). The primary lane: Table 2's odds ratios came from survey procedures.", "auc": "none is reported under inference: results.py computes the apparent AUC from the engine's own coefficients on the engine's analyzed rows (every row with a positive weight in the weighted fits), unweighted, and the reference computes it from its own fit"},
+  "predict": {"purpose": "prediction", "holdout": 0, "validation": "the engine's first-offered scheme with no holdout, as the walk found it: Harrell's optimism bootstrap (500 resamples) beside 5-fold cross-validation", "reports": "the unweighted fit's coefficients on every analyzed row (no holdout is drawn, so the final fit is on every row), and the apparent, optimism-corrected and cross-validated AUC. The card's own purpose; under prediction the engine fits no survey weight (the population answer weights the scores alone), so its odds ratios are unweighted."}
+ },
+ "decisions": [
+  {"id": "fasting", "notes": "§6 choice 1", "what": "the fasting restriction", "default": "weight",
+   "options": {"weight": {"about": "keep rows with a positive fasting weight (fasted 8-24 h, per NCHS)", "apply": {}},
+               "any_glucose": {"about": "keep any row with a glucose result", "apply": {"drop_rules": ["fasting"]}}},
+   "expected": "under the weighted fit no change in any odds ratio: a zero-weight row is outside the design's domain either way, so only the analyzed count moves"},
+  {"id": "bp_reading", "notes": "§6 choice 2", "what": "the blood pressure readings hypertension reads", "default": "mean",
+   "options": {"mean": {"about": "the mean of the recorded readings (BPXSY1-4, BPXDI1-4)", "apply": {}},
+               "first": {"about": "the first recorded reading", "apply": {"predictors": {"hypertension": "htn_first"}}}}},
+  {"id": "borderline", "notes": "§6 choice 3", "what": "DIQ010 3, borderline diabetes", "default": "not_known",
+   "options": {"not_known": {"about": "not known diabetes (only 1 is)", "apply": {}},
+               "known": {"about": "known diabetes, excluded with 1", "apply": {"rules": {"told_diabetes": {"exclude": ["1", "3"]}}}}}},
+  {"id": "hypertension_medicine", "notes": "§6 choice 4", "what": "the prescribed medication for hypertension", "default": "taking",
+   "options": {"taking": {"about": "BPQ050A 1, now taking it", "apply": {}},
+               "told": {"about": "BPQ040A 1, told to take it", "apply": {"predictors": {"hypertension": "htn_told_rx"}}}}},
+  {"id": "obesity_missing", "notes": "§6 choice 5", "what": "obesity when BMI and waist are both missing", "default": "complete_case",
+   "options": {"complete_case": {"about": "the row is left out ('all non-missing observations')", "apply": {}},
+               "absent": {"about": "not overweight or obese (the categorical rule's 'absent')", "apply": {"predictors": {"obesity": "obesity_absent"}}}},
+   "why_default": "Obesity is made from two measurements, and the paper's sentence on measurements uses the non-missing observations; the notes suggest no default."},
+  {"id": "family_history", "notes": "§6 choice 6", "what": "family history in development", "default": "any_relative",
+   "options": {"any_relative": {"about": "MCQ250A 1, any blood relative, grandparents included (the notes' inference from Table 1)", "apply": {}},
+               "parent_or_sibling": {"about": "a parent or a sibling among MCQ260AA, AB, AG, AH, the relatives 2005-2006's MCQ300C asks about", "apply": {"predictors": {"family_history": "famhx_close"}}}}},
+  {"id": "weights", "notes": "§6 choice 7", "what": "the weights", "default": "fasting_six_year",
+   "options": {"fasting_six_year": {"about": "the six-year fasting weight under the survey design (the survey's population answer)", "apply": {}},
+               "unweighted": {"about": "no weight (the sample answer), as Table 3 appears to be", "apply": {"survey": "sample"}}},
+   "lanes": ["estimate"], "subset_or_domain": "a subset of the rows or a domain of the whole design changes standard errors only (§6 choice 7); the engine estimates a domain, and the reference reports the subset's standard errors beside the domain's"},
+  {"id": "unknown_known_diabetes", "notes": "the eligibility the paper's missing-value rule decides (§2.3), added to §6's list", "what": "a refused, unknown or blank answer to DIQ010 or DIQ050", "default": "absent",
+   "options": {"absent": {"about": "not known diabetes, the row stays (the paper's categorical rule)", "apply": {}},
+               "excluded": {"about": "not confirmed eligible, the row is left out (STROBE's 'confirmed eligible', the engine's default for a level rule and the only one the driver offers); DIQ070 keeps its blanks, its skip pattern", "apply": {"rules": {"told_diabetes": {"missing": "exclude"}, "insulin": {"missing": "exclude"}}}}}}
+ ],
+ "fixed": [
+  {"id": "glucose_calibration", "notes": "§6 choice 8", "what": "glucose calibration", "answer": "none: raw LBXGLU, as the outcome column holds it; 1999-2004 needs no crossover"},
+  {"id": "backward_elimination", "notes": "§6 choice 9", "what": "the backward-elimination path", "answer": "not rerun: the published final specification is fitted"},
+  {"id": "missing_glucose", "notes": "§6 choice 5's second half", "what": "missing glucose among people not known to have diabetes", "answer": "left out: the paper includes only those with a glucose result, and a row without the outcome is not analyzed"}
+ ],
+ "sweep": {
+  "design": "one at a time around the defaults: each variant changes one decision to one other option, every other decision at its default",
+  "variants": {
+   "default": {},
+   "fasting_any_glucose": {"fasting": "any_glucose"},
+   "bp_first_reading": {"bp_reading": "first"},
+   "borderline_known": {"borderline": "known"},
+   "medicine_told": {"hypertension_medicine": "told"},
+   "obesity_absent": {"obesity_missing": "absent"},
+   "family_parent_or_sibling": {"family_history": "parent_or_sibling"},
+   "unweighted": {"weights": "unweighted"},
+   "unknown_excluded": {"unknown_known_diabetes": "excluded"}
+  },
+  "lanes": {"estimate": "every variant", "predict": "every variant but unweighted, which is the predict lane's own fit"}
+ },
+ "agreement": {
+  "about": "the engine against the independent reference (R 4's glm and the survey package's svyglm, its own eligibility and weights coded from the paper and the NCHS tutorial, on the derived table), each fit with the same rows",
+  "rows": "the same participants (SEQN) analyzed, exactly",
+  "estimate_lane": {"log_odds_ratio_abs": 1e-6, "standard_error_rel": 1e-4, "why": "both are the (weighted) maximum likelihood solved to convergence, and the same Taylor linearization"},
+  "predict_lane": {"log_odds_ratio_abs": 5e-3, "auc_abs": 1e-3, "why": "the engine's prediction fit stops at scikit-learn's default tolerance; the simulation above found it up to 9.5e-4 from the maximum likelihood, and 5e-3 allows five times that; coefficients that close can reorder two cells of the predictors whose linear predictors lie as close, so its apparent AUC is held to 1e-3"},
+  "auc_abs": 1e-4
+ },
+ "comparison": {
+  "printed": "an odds ratio or CI bound matches the paper's where it rounds to the printed value at one decimal, halves away from zero; the AUC at two decimals",
+  "primary": "the estimate lane's default fit (weighted) against Table 2; the unweighted fits beside it",
+  "auc": "the paper's development AUC against the default model's apparent AUC (its own rows, unweighted, as §5.3 suggests the published performance is): the estimate lane's computed from its coefficients, the predict lane's as the engine reports it; the engine's optimism-corrected and cross-validated AUC beside them",
+  "moves": "each variant's change in each log odds ratio from the default's, in the same lane",
+  "material": "a change of at least half the default's 95% CI half-width on the log scale (SWARM_PLAN §7, under Estimate), per odds ratio"
+ },
+ "counts_check": "the development sample by glucose group (normal under 100 mg/dL, impaired 100-125, undiagnosed diabetes 126 or more) and known diabetes, counted by results.py from the intake's table under the default eligibility, beside §5.1's"
+}
