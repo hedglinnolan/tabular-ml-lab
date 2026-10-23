@@ -17,15 +17,19 @@ decision's canonical JSON (:func:`exit_id`), the same for the same decision.
 **Words.** Every label, consequence and note is the server's, as served. Where the server serves
 no label (a column, a level), the option has none; the driver adds no words to a question. The
 strings it writes into a decision are the app's own: the reasons its exclusions card records for
-a range and for levels of one's own (:data:`CUSTOM_RANGE`, :data:`CUSTOM_LEVELS`).
+a range of plausible values and for levels of one's own (:data:`CUSTOM_RANGE`,
+:data:`CUSTOM_LEVELS`), and for a range of who the study is about the reason the teaching content
+states (``content.ELIGIBILITY_RANGE_REASON``, :func:`eligibility_range`), which the card records
+too.
 
 **Fields.** A question answered with one value per column (the roles, the adjustment answers, the
 forms) or with a setting beside its option (the split's validation, the estimand's measure, the
-exclusions' range of one's own: a numeric column, and ``low``, ``high`` or both, as numbers; its
-levels of one's own: ``level_column``, any column but the outcome, and the levels it excludes and
-the codes that record a refused or a don't-know answer, ``exclude``, ``refused`` and
-``dont_know``, each a list by commas; and for either, ``missing``, what the rule does with a row
-it cannot confirm, one of the handlings the engine's rule models take) lists ``fields``;
+exclusions' ranges of one's own, ``custom`` and ``eligibility``: a numeric column, and ``low``,
+``high`` or both, as numbers; its levels of one's own: ``level_column``, any column but the
+outcome, and the levels it excludes and the codes that record a refused or a don't-know answer,
+``exclude``, ``refused`` and ``dont_know``, each a list by commas; and for each, ``missing``, what
+the rule does with a row it cannot confirm, one of the handlings the engine's rule models take)
+lists ``fields``;
 ``answer <option> --set <name>=<value>`` sets one, from the field's served ``choices``, as a
 number (``"type": "number"``) or as a list (``"type": "list"``: ``--set exclude=1,3``, each level
 kept as written, for the server to read in its one spelling). Each field's ``initial`` is what the
@@ -312,11 +316,24 @@ def _survey(ctx: Context) -> Composed:
                      if card.get(k)}}
 
 
-# The range of one's own as the app's card records it (``ExclusionsAsk``'s ``customRule``,
-# turbotab/frontend/src/components/record/ask/ChoiceQuestions.tsx): by no level, the card's reason,
-# and a row whose value is not recorded left out as not confirmed eligible (the server's default).
+# The range of plausible values of one's own as the app's card records it (``ExclusionsAsk``'s
+# ``customRule``, turbotab/frontend/src/components/record/ask/ChoiceQuestions.tsx): by no level,
+# the card's reason, and a row whose value is not recorded left out as not confirmed eligible (the
+# server's default).
 CUSTOM_RANGE = {"kind": "range", "column": None, "low": None, "high": None, "by": None,
                 "reason": "implausible values (your own range)", "missing": "exclude"}
+
+
+def eligibility_range() -> dict[str, Any]:
+    """The range of who the study is about as the card records it (``ExclusionsAsk``'s
+    ``eligibilityRule``, the same file): the range above with the reason the teaching content
+    gives it, read here when the option is composed, never typed in this module (the final fix
+    round's V1)."""
+    from turbotab.core.teaching import content
+
+    return {**CUSTOM_RANGE, "reason": content.ELIGIBILITY_RANGE_REASON}
+
+
 # The levels of one's own as the card records them (``ExclusionsAsk``'s ``levelRule``, the same
 # file; ``decisions.LevelRule``, SWARM_PLAN §5): a column, the levels it excludes and the codes
 # that record a refused or a don't-know answer, each a list as typed, the card's reason, and a
@@ -363,21 +380,22 @@ def _level_columns(ctx: Context) -> list[str]:
 
 def _exclusions(ctx: Context) -> Composed:
     """The card's options (``ExclusionsAsk``): keeping every row (``none``), each screen offered
-    on this table with the rule it records, a range of one's own on a numeric column (``custom``),
-    and levels of one's own (``levels``): the rows at the levels of one column it names are
-    excluded, a code that records a refused or a don't-know answer named on its own, each in the
-    teaching entry's words; the two labels the server gives each, where it gives them (keeping
-    every row's under ``keep_every_row``). The levels' fields are ``level_column`` and the lists
-    ``exclude``, ``refused`` and ``dont_know``, each comma-separated, as the card's fields take
-    them; either rule of one's own takes ``missing``, from the engine's handlings
-    (:func:`handlings`), starting at the card's own. Several options are one answer, a rule each
-    (``multi``, the module docstring)."""
+    on this table with the rule it records, a range of one's own on a numeric column, of
+    plausible values (``custom``) or of who the study is about (``eligibility``), each with its
+    own reason, and levels of one's own (``levels``): the rows at the levels of one column it
+    names are excluded, a code that records a refused or a don't-know answer named on its own,
+    each in the teaching entry's words; the two labels the server gives each, where it gives them
+    (keeping every row's under ``keep_every_row``). The ranges' fields are ``column``, ``low``
+    and ``high``; the levels' are ``level_column`` and the lists ``exclude``, ``refused`` and
+    ``dont_know``, each comma-separated, as the card's fields take them; every rule of one's own
+    takes ``missing``, from the engine's handlings (:func:`handlings`), starting at the card's
+    own. Several options are one answer, a rule each (``multi``, the module docstring)."""
     proposals = _art(ctx.served, "proposals")
     offered = [e for e in proposals.get("exclusions") or [] if isinstance(e, Mapping) and e.get("key")]
     labeled = {str(o.get("key")): o for o in _labeled((proposals.get("labels") or {}).get("exclusions"))}
     taught = {str(o.get("value")): o for o in _taught(ctx.entry)}
     none, custom = taught.get("none") or {}, taught.get("custom") or {}
-    levels = taught.get("levels") or {}
+    eligibility, levels = taught.get("eligibility") or {}, taught.get("levels") or {}
     options = [_option("none", {"kind": "set_exclusions", "rules": []}, label=none.get("label"),
                        consequence=none.get("consequence"),
                        labels=_two_labels(labeled.get("keep_every_row") or {}))]
@@ -392,22 +410,27 @@ def _exclusions(ctx: Context) -> Composed:
                            consequence=custom.get("consequence"),
                            _base={"kind": "set_exclusions", "rules": [dict(CUSTOM_RANGE)]},
                            _range=True))
+    options.append(_option("eligibility", None, label=eligibility.get("label"),
+                           consequence=eligibility.get("consequence"),
+                           _base={"kind": "set_exclusions", "rules": [eligibility_range()]},
+                           _range=True))
     options.append(_option("levels", None, label=levels.get("label"),
                            consequence=levels.get("consequence"),
                            _base={"kind": "set_exclusions",
                                   "rules": [json.loads(json.dumps(CUSTOM_LEVELS))]},
                            _levels=True))
     columns = _numeric_columns(ctx)
+    ranges = ["custom", "eligibility"]
     fields = [{"name": "column", "choices": [{"value": c} for c in columns], "initial": None,
-               "applies_to": ["custom"], "_apply": ("range", "column")},
-              *({"name": bound, "type": "number", "initial": None, "applies_to": ["custom"],
+               "applies_to": ranges, "_apply": ("range", "column")},
+              *({"name": bound, "type": "number", "initial": None, "applies_to": ranges,
                  "_apply": ("range", bound)} for bound in ("low", "high")),
               {"name": "level_column", "choices": [{"value": c} for c in _level_columns(ctx)],
                "initial": None, "applies_to": ["levels"], "_apply": ("levels", "column")},
               *({"name": name, "type": "list", "initial": None, "applies_to": ["levels"],
                  "_apply": ("levels", name)} for name in LEVEL_LISTS),
               {"name": "missing", "choices": [{"value": v} for v in handlings()],
-               "initial": CUSTOM_LEVELS["missing"], "applies_to": ["custom", "levels"],
+               "initial": CUSTOM_LEVELS["missing"], "applies_to": [*ranges, "levels"],
                "_apply": ("rule", "missing")}]
     tension = ((proposals.get("labels") or {}).get("exclusions") or {}).get("tension")
     return {"options": options, "fields": fields, "multi": "rules",

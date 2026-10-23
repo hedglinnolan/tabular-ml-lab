@@ -13,7 +13,10 @@
  * block: the exclusions card's rule by level ("By level", in exclusions.html and in the coach and
  * ask blocks that hold that card) and the seal card's cut-point ("cut", in split.html), whose line
  * says the rows are sealed row by row on that card's one-row-per-unit basis (the package 4
- * verifier's V7: a unit is said to be kept whole only under a grouped basis).
+ * verifier's V7: a unit is said to be kept whole only under a grouped basis). The final fix
+ * round's V1 added one more option to the exclusions card, after the range of one's own and
+ * changing nothing else in any block: a range of who the study is about ("Your own eligibility
+ * range", in exclusions.html and in the coach and ask blocks that hold that card).
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

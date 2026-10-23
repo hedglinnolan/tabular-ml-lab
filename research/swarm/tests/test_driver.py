@@ -1165,8 +1165,9 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
     """A run budgeted two fits, on the fixture with its own range of ages kept:
 
     * the exclusions question offers keeping every row in the teaching entry's words and the card's
-      own range on a numeric column; a range with no bound, or a bound that is not a number, is
-      refused, and one on age records the rule the app's card records;
+      own ranges on a numeric column, of plausible values and of who the study is about; a range
+      with no bound, or a bound that is not a number, is refused, and one on age records the rule
+      the app's card records;
     * within the budget a revisit and a new model make the second fit, and ``results`` serves its
       cross-validated scores, the same as its record in ``GET /fits``;
     * past it a third model is refused before anything is recorded, and ``/fits`` does not grow;
@@ -1178,11 +1179,14 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
     * a press for the first fit, the triage and the seal still pass.
     """
     def exclusions_card(q: dict[str, Any]) -> None:
-        # keeping every row, a range of one's own, and levels of one's own (the level rule)
-        assert [o["id"] for o in q["options"]] == ["none", "custom", "levels"]
+        # keeping every row, a range of one's own, of plausible values or of who the study is
+        # about (V1), and levels of one's own (the level rule)
+        assert [o["id"] for o in q["options"]] == ["none", "custom", "eligibility", "levels"]
         _, taught = http(meta["port"], "/teaching?purpose=prediction")
         entry = {o["value"]: o for o in next(e for e in taught if e["key"] == "exclusions")["options"]}
-        none, custom, levels = q["options"]
+        none, custom, eligibility, levels = q["options"]
+        assert (eligibility["label"], eligibility["consequence"], eligibility["decision"]) == (
+            entry["eligibility"]["label"], entry["eligibility"]["consequence"], None)
         assert (levels["label"], levels["consequence"], levels["decision"]) == (
             entry["levels"]["label"], entry["levels"]["consequence"], None)
         assert (none["label"], none["consequence"]) == (entry["none"]["label"],
