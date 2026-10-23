@@ -31,7 +31,8 @@ Under inference the linear family's coefficient table is made here, in four part
 
 A table whose rows do not exceed its coefficients (the intercept among them) is refused before
 any of these, its estimates with its intervals: those rows cannot both determine the estimates and
-measure their uncertainty (:func:`_no_spare_rows`).
+measure their uncertainty (:func:`_no_spare_rows`). The mixed model's, the GEE's and the
+proportional-odds model's tables refuse them in the same words (``repeated``, ``ordinal``).
 
 And on the outcome's own scale (AUDIT_REPORT §5 WP8: ME-07): every table says what one unit of an
 input does, in words that name the outcome (:class:`Outcome`). A least-squares row is a difference
@@ -857,27 +858,33 @@ ESTIMATORS = {"regression": "ordinary least squares",
 MULTINOMIAL = "multinomial logistic regression (maximum likelihood)"
 
 
-def _no_spare_rows(task: str, n_rows: int, n_coefficients: int,
-                   clusters: Clusters) -> InferenceTable | None:
+def _no_spare_rows(task: str, n_rows: int, n_coefficients: int, clusters: Clusters = INDEPENDENT,
+                   *, estimator: str | None = None, intercept: bool = True,
+                   cut_points: int = 0) -> InferenceTable | None:
     """The table refused, its estimates and intervals both, where its rows do not exceed its
-    coefficients (the intercept among them; for several classes, those of each level against the
+    coefficients (the intercept among them, or a proportional-odds model's ``cut_points``, or
+    neither where ``intercept`` is False; for several classes, those of each level against the
     reference); None where they do. On n ≤ p rows least squares cannot do both: with its rank
     below p many coefficient vectors fit the rows equally well, and with a square matrix of full
     rank one fits them exactly, leaving no residual degree of freedom to measure its uncertainty;
-    a logistic or multinomial likelihood there has no unique maximum (a rank below p, or a square
-    matrix that separates the outcome). The ways forward: fewer columns, or more rows."""
+    a logistic, multinomial or proportional-odds likelihood there has no unique maximum (a rank
+    below p, or a square matrix that separates the outcome), and REML has no residual degree of
+    freedom to estimate a variance from. ``estimator`` is the table's own (the linear family's for
+    ``task`` where None). The ways forward: fewer columns, or more rows."""
     if n_rows > n_coefficients:
         return None
-    per = "" if task in ESTIMATORS else " for each level against the reference"
-    reason = (f"The model has {n_coefficients:,} coefficients{per}, the intercept among them, and "
-              f"is fit on {n_rows:,} rows: with no more rows than coefficients, the rows cannot "
-              f"both determine the estimates and measure their uncertainty, so no estimate or "
-              f"interval is reported.")
+    per = " for each level against the reference" if task == "multiclass" else ""
+    among = (f", its {cut_points:,} cut-point{'s' if cut_points != 1 else ''} among them," if
+             cut_points else ", the intercept among them," if intercept else "")
+    reason = (f"The model has {n_coefficients:,} coefficients{per}{among} and is fit on "
+              f"{n_rows:,} rows: with no more rows than coefficients, the rows cannot both "
+              f"determine the estimates and measure their uncertainty, so no estimate or interval "
+              f"is reported.")
     exits = [{"label": "Leave columns out of the model, so it has fewer coefficients than rows",
               "decision": None},
              {"label": f"Fit the model on more than {n_coefficients:,} rows", "decision": None}]
-    info = _info(ESTIMATORS.get(task, MULTINOMIAL), "none", f"No coefficients: {reason}",
-                 clusters, refused=reason, exits=exits)
+    info = _info(estimator or ESTIMATORS.get(task, MULTINOMIAL), "none",
+                 f"No coefficients: {reason}", clusters, refused=reason, exits=exits)
     return InferenceTable([], info, [reason])
 
 

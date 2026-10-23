@@ -336,8 +336,9 @@ class DesignSpec:
     # unanswered, the strictest case (every concern is said).
     purpose: str | None = None
     # Under multiple imputation, how many imputations the coefficient table draws on the design's
-    # rows (:func:`imputation_count`), which the impute step's line states for a family whose table
-    # pools them (:func:`impute_detail`); None otherwise.
+    # rows (:func:`imputation_count`), which the impute step's line states, under inference only
+    # (where the fit draws the copies), for a family whose table pools them (:func:`impute_detail`);
+    # None otherwise.
     imputations: int | None = None
 
     def multiple_imputation(self) -> bool:

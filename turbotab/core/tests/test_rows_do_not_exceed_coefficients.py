@@ -15,6 +15,13 @@ fewer columns, or more rows), wherever the linear family's table is built: the f
 models' (``effects``), the secondary model's and the sensitivity analyses'. One row more than
 coefficients and the table is fit, its estimates statsmodels' own.
 
+The same rule in the other tables (the repair round): the mixed model's (which raised a bare
+``ValueError``), the GEE's (whose refusal below the unit floor kept the fit's estimates) and the
+proportional-odds model's (unrefused), each counting its own coefficients (a proportional-odds
+model's cut-points in place of the intercept); the scales stage's uncorrected table (refused, it
+crashed the stage with a ``StopIteration``; the score is now not corrected, in the table's words);
+and, under prediction, the sensitivity analyses' own coefficients of a family with such a table.
+
 Expected values come from construction (the counts of rows and of columns written out here) and
 from statsmodels (the estimates).
 """
@@ -262,3 +269,264 @@ def test_a_sensitivity_analysis_on_no_more_rows_than_coefficients_is_refused(tmp
     assert few["inference"]["refused"] is None
     fiber = next(r for r in few["coefficients"] if r["feature"] == "fiber")
     assert fiber["estimate"] == pytest.approx(_ols(frame.iloc[:keep], PRIMARY)["fiber"], rel=1e-8)
+
+
+# ── the same rule in the other families' tables (repair round 1) ─────────────
+
+
+def _units(n: int, G: int) -> I.Clusters:
+    return I.Clusters(column="u", codes=np.arange(n) % G, n_clusters=G)
+
+
+FEW = 5  # the matrix's columns for the families below; with the intercept, 6 coefficients
+MIXED = "random-intercept linear mixed model (REML)"
+GEE = "GEE, exchangeable working correlation"
+
+
+def _few(n: int, seed: int = 0) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    return pd.DataFrame(rng.normal(size=(n, FEW)), columns=[f"x{j}" for j in range(FEW)])
+
+
+def test_a_mixed_table_on_as_many_rows_as_coefficients_is_refused_where_it_raised():
+    """6 coefficients on 6 rows in 3 units: the base raised a bare ``ValueError`` ("6 rows for 6
+    coefficients: the model cannot be fit."), a crash in every stage that builds the table. It is
+    refused in the table's words, and through the family it is put on no scale and says only the
+    rows it was handed (no "Estimated from" sentence beside no estimate)."""
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.models import get_family
+    from turbotab.core.models.repeated import RandomInterceptRegressor, mixed_table
+
+    y = np.random.default_rng(1).normal(size=6)
+    _check_refused(mixed_table(_few(6), y, _units(6, 3)), FEW + 1, 6, MIXED)
+    # A pipeline of the model step alone: the matrix the table reads is X itself.
+    only = Pipeline([("model", RandomInterceptRegressor())])
+    table = get_family("mixed").inference(only, _few(6), y, task="regression",
+                                          clusters=_units(6, 3), rows="all")
+    _check_refused(table, FEW + 1, 6, MIXED)
+    assert (table.info["n_rows"], table.info["rows"]) == (6, "all")
+
+
+def test_a_mixed_table_on_more_rows_than_coefficients_is_fit_as_least_squares_by_construction():
+    """8 rows in 2 units of 4, every column centered within its unit: the columns' span is then
+    invariant under the random-intercept covariance, so its generalized least squares estimate is
+    the ordinary one whatever the variance components (statsmodels' OLS, to 1e-9)."""
+    from turbotab.core.models.repeated import mixed_table
+
+    rng = np.random.default_rng(4)
+    codes = np.repeat([0, 1], 4)
+    M = _few(8, seed=4)
+    M = M - M.groupby(codes).transform("mean")
+    y = 1 + M.to_numpy() @ np.array([0.5, -0.2, 0.3, 0.1, 0.0]) + np.array([1.0, -1.0])[codes] \
+        + rng.normal(size=8)
+    table = mixed_table(M, y, I.Clusters(column="u", codes=codes, n_clusters=2))
+    assert table.info["refused"] is None and len(table.rows) == FEW + 1
+    np.testing.assert_allclose([r["estimate"] for r in table.rows],
+                               sm.OLS(y, sm.add_constant(M)).fit().params.to_numpy(), rtol=1e-9,
+                               atol=1e-12)
+
+
+@pytest.mark.parametrize("task", ["regression", "binary"])
+def test_a_gee_table_on_as_many_rows_as_coefficients_withholds_its_estimates(task):
+    """6 coefficients on 6 rows in 3 units: the base's table was refused for the unit floor but
+    kept the fit's estimates (0.300, 2.262, … for the identity link). Refused here before the
+    floor, with no estimate."""
+    from turbotab.core.models.repeated import gee_table
+
+    binary = task == "binary"
+    y = np.array([0, 1, 1, 0, 1, 0]) if binary else np.random.default_rng(1).normal(size=6)
+    link = " (logit link)" if binary else " (identity link)"
+    table = gee_table(_few(6), y, _units(6, 3), task, [0, 1] if binary else None)
+    _check_refused(table, FEW + 1, 6, GEE + link)
+
+
+def test_a_gee_table_on_more_rows_than_coefficients_is_fit_as_statsmodels_fits_it():
+    """24 rows in 8 units (the floor), 6 coefficients: fit, its estimates statsmodels' ``GEE``
+    with an exchangeable working correlation (to 1e-9)."""
+    from turbotab.core.models.repeated import gee_table
+
+    rng = np.random.default_rng(6)
+    codes = np.repeat(np.arange(8), 3)
+    M = _few(24, seed=6)
+    y = M.to_numpy() @ np.array([0.5, -0.2, 0.3, 0.1, 0.0]) + rng.normal(size=8)[codes] \
+        + rng.normal(size=24)
+    table = gee_table(M, y, I.Clusters(column="u", codes=codes, n_clusters=8), "regression")
+    reference = sm.GEE(y, sm.add_constant(M).to_numpy(float), groups=codes,
+                       family=sm.families.Gaussian(),
+                       cov_struct=sm.cov_struct.Exchangeable()).fit(maxiter=200, ctol=1e-10)
+    assert table.info["refused"] is None
+    np.testing.assert_allclose([r["estimate"] for r in table.rows], reference.params, rtol=1e-9,
+                               atol=1e-12)
+
+
+ORDINAL = "proportional-odds (cumulative logit) model, maximum likelihood"
+
+
+def ordinal_words(p: int, cuts: int, n: int) -> str:
+    return (f"The model has {p:,} coefficients, its {cuts:,} cut-points among them, and is fit on "
+            f"{n:,} rows: with no more rows than coefficients, the rows cannot both determine the "
+            f"estimates and measure their uncertainty, so no estimate or interval is reported.")
+
+
+@pytest.mark.parametrize("n", [6, FEW + 2], ids=["fewer rows", "as many rows"])
+def test_a_proportional_odds_table_on_no_more_rows_than_coefficients_is_refused(n):
+    """Three levels: 5 slopes and 2 cut-points, 7 coefficients. On 6 or 7 rows the base reported
+    estimates of 38.6, 6.3, −39.6 … (a likelihood with no maximum), unrefused; refused here, the
+    cut-points named as the coefficients that are not an input's."""
+    from turbotab.core.models import get_family
+    from turbotab.core.models.ordinal import ordinal_table
+
+    y = np.array([0, 1, 2] * 3)[:n]
+    table = ordinal_table(_few(n), y, ["a", "b", "c"], I.INDEPENDENT)
+    reason = ordinal_words(FEW + 2, 2, n)
+    assert table.rows == [] and table.info["refused"] == reason
+    assert table.info["estimator"] == ORDINAL
+    assert table.info["caption"] == f"No coefficients: {reason}"
+    assert [e["label"] for e in table.info["exits"]] == ways(FEW + 2)
+    through = get_family("proportional_odds").inference_matrix(
+        _few(n), y, task="ordinal", classes=["a", "b", "c"], clusters=I.INDEPENDENT, rows="all")
+    assert through.info["caption"] == f"No coefficients: {reason}"
+    assert (through.info["n_rows"], through.info["rows"]) == (n, "all")
+
+
+def test_a_proportional_odds_table_on_more_rows_than_coefficients_is_fit_as_statsmodels_fits_it():
+    """600 rows: fit, its slopes and cut-points statsmodels' ``OrderedModel`` (logit, Newton). The
+    engine stops at a Newton decrement of 1e-10, which leaves each estimate within about 1e-7 of
+    the maximum, so they agree to 1e-6 (``test_wp12a_ordinal``'s tolerance), not 1e-9."""
+    import warnings
+
+    from statsmodels.miscmodels.ordinal_model import OrderedModel
+
+    from turbotab.core.models.ordinal import ordinal_table
+
+    rng = np.random.default_rng(4)
+    X = _few(600, seed=8)
+    y = np.digitize(X.to_numpy() @ np.array([0.5, -0.3, 0.2, 0.0, 0.1]) + rng.logistic(size=600),
+                    [-0.5, 0.7])
+    table = ordinal_table(X, y, ["a", "b", "c"], I.INDEPENDENT)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        reference = OrderedModel(y, X, distr="logit").fit(method="newton", maxiter=200,
+                                                          disp=False)
+    params = reference.params.to_numpy()
+    cuts = reference.model.transform_threshold_params(params)[1:-1]
+    assert table.info["refused"] is None
+    np.testing.assert_allclose([r["estimate"] for r in table.rows],
+                               np.concatenate([params[:FEW], cuts]), atol=1e-6)
+
+
+# ── the scales stage's uncorrected table (P1) ────────────────────────────────
+
+
+def _scale(tmp_path: Path, n: int, noise: int = 8) -> dict:
+    """``linear_scale_table``'s first ``n`` rows, its 8 items scored as `sat_score` (internal
+    consistency, regression calibration), beside `age`, `bmi` and ``noise`` columns of noise: the
+    outcome model has the intercept, the score, the two and the noise, 12 coefficients."""
+    from turbotab.core.stages.modeling import design_stage
+    from turbotab.core.stages.scales import scales_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+    from turbotab.core.tests.acceptance.scales_fixtures import SAT, SAT_REVERSE, linear_scale_table
+
+    frame = linear_scale_table(n=300).iloc[:n].drop(columns=["sat_ref"]).copy()
+    rng = np.random.default_rng(3)
+    for j in range(noise):
+        frame[f"z{j}"] = rng.normal(size=n)
+    roles = {"age": "covariate", "bmi": "covariate", **{c: "covariate" for c in SAT},
+             **{f"z{j}": "covariate" for j in range(noise)}}
+    st = mf.state(purpose="inference", target="sbp", task="regression", models=["linear"],
+                  roles=roles, role_confirmations=dict(roles), lens=["clinical"],
+                  split=d.SplitSpec(holdout=0.0, seed=7, folds=5), shape_confirmations={},
+                  scales=[d.ScaleSpec(name="sat_score", items=SAT, reverse=SAT_REVERSE, low=1,
+                                      high=5, kind="reflective",
+                                      correction="regression_calibration", n_boot=50)])
+    paths = mf.ingest_frame(frame, tmp_path)
+    split = mf.split_bundle(np.arange(n), holdout=0.0, seed=7)
+    ti = mf.target_info("regression", "sbp")
+    design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+    out = scales_stage(mf.context(st, {"design": design, "split": split, "target_info": ti},
+                                  paths)).data
+    [scale] = out["scales"]
+    return {"frame": frame, "scale": scale}
+
+
+def test_a_scale_whose_uncorrected_table_has_as_many_rows_as_coefficients_is_not_corrected(
+        tmp_path):
+    """12 coefficients on 12 rows: the base's stage raised a bare ``StopIteration`` reading the
+    refused table's row for the score (and before this package reported a correction on no
+    residual degree of freedom). The score is not corrected, the table's reason its words."""
+    scale = _scale(tmp_path, 12)["scale"]
+    assert scale["correction"] is None
+    assert scale["not_corrected"] == words(12, 12)
+
+
+def test_a_scale_on_one_row_more_than_coefficients_is_corrected_beside_statsmodels_table(
+        tmp_path):
+    """13 rows: corrected, its uncorrected estimate statsmodels' OLS of `sbp` on the score (the
+    keyed items' sum, by pandas), `age`, `bmi` and the noise."""
+    from turbotab.core.tests.acceptance.scales_fixtures import SAT, SAT_REVERSE, keyed
+
+    got = _scale(tmp_path, 13)
+    frame, scale = got["frame"], got["scale"]
+    assert scale["not_corrected"] is None and scale["correction"] is not None
+    score = keyed(frame, SAT, SAT_REVERSE, 1, 5).sum(axis=1).rename("sat_score")
+    X = sm.add_constant(pd.concat([score, frame[["age", "bmi", *[f"z{j}" for j in range(8)]]]],
+                                  axis=1))
+    reference = sm.OLS(frame["sbp"].to_numpy(dtype=float), X).fit().params["sat_score"]
+    assert scale["correction"]["naive"] == pytest.approx(reference, rel=1e-9)
+
+
+# ── the sensitivity analyses under prediction ────────────────────────────────
+
+
+def _predicting(tmp_path: Path, keep: int) -> dict:
+    """:func:`_sensitivity` under prediction: the linear family's own (least-squares) coefficients
+    on each analysis's training rows (every row: nothing is held out)."""
+    from turbotab.core.datastore import DataStore
+    from turbotab.core.stages.modeling import design_stage
+    from turbotab.core.stages.sensitivity import sensitivity_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    frame = _cohort(300).assign(visit=np.arange(300.0))
+    rule = d.ExclusionRule(column="visit", low=0, high=keep - 1, reason=f"the first {keep}")
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  answers={k: v for k, v in ef.ANSWERS.items() if k != "bmi"},
+                  roles={k: v for k, v in ef.ROLES.items() if k != "bmi"},
+                  sensitivity=[d.SensitivityAnalysis(label="few", rules=[rule])])
+    st = st.model_copy(update={"purpose": "prediction"})
+    paths = mf.ingest_frame(frame, tmp_path)
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed)
+    inputs = {"split": split, "target_info": mf.target_info(st.task, st.target)}
+    design = design_stage(mf.context(st, inputs, paths))
+    with DataStore(paths["data"], 1 << 30) as store:
+        ingest = store.info().to_dict()
+    return sensitivity_stage(mf.context(st, {**inputs, "design": design, "ingest": ingest},
+                                        paths)).data
+
+
+@pytest.mark.parametrize("keep", [6, 7])
+def test_under_prediction_an_analysis_on_no_more_rows_than_coefficients_reports_none(tmp_path,
+                                                                                    keep):
+    """The primary's 6 least-squares coefficients refit on an analysis's rows under prediction: on
+    6 rows the base reported them (`fiber` −0.608) and took them into the range of `fiber`'s
+    estimates; refused here with the table's reason, so the range is the primary's alone. On 7
+    they are reported, `fiber`'s statsmodels' OLS on those rows."""
+    frame = _cohort(300)
+    out = _predicting(tmp_path, keep)
+    [linear] = out["families"]
+    fits = {f["label"]: f for f in linear["fits"]}
+    primary = next(r for r in fits["Primary"]["coefficients"] if r["feature"] == "fiber")
+    assert primary["estimate"] == pytest.approx(_ols(frame, PRIMARY)["fiber"], rel=1e-9)
+    few = fits["few"]
+    assert few["n_rows"] == keep
+    [change] = out["changes"]["linear"]
+    if keep == 6:
+        assert few["coefficients"] == [] and few["inference"]["refused"] == words(6, 6)
+        assert few["concerns"] == [words(6, 6)]
+        assert [e["label"] for e in few["inference"]["exits"]] == ways(6)
+        assert change["lowest"] == change["highest"] == change["primary"] == primary["estimate"]
+        return
+    assert few["inference"] is None
+    fiber = next(r for r in few["coefficients"] if r["feature"] == "fiber")
+    assert fiber["estimate"] == pytest.approx(_ols(frame.iloc[:keep], PRIMARY)["fiber"], rel=1e-9)
+    assert {change["lowest"], change["highest"]} == {primary["estimate"], fiber["estimate"]}

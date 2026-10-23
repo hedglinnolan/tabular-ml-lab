@@ -465,13 +465,19 @@ def _singular(matrix: pd.DataFrame) -> str | None:
 
 def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
     """The random-intercept model's coefficient table on the matrix the model saw, by the
-    clusters :func:`~turbotab.core.models.inference.resolve_clusters` read from the rows."""
-    from turbotab.core.models.inference import FEW_CLUSTERS, InferenceTable, _info, _refused, _t_rows
+    clusters :func:`~turbotab.core.models.inference.resolve_clusters` read from the rows; on no
+    more rows than its coefficients, refused with no estimate, before any other refusal that
+    would keep one (``inference._no_spare_rows``)."""
+    from turbotab.core.models.inference import (FEW_CLUSTERS, InferenceTable, _info,
+                                                _no_spare_rows, _refused, _t_rows)
 
     exog, names = _design(matrix)
     X = exog.to_numpy(dtype=float)
     y = np.asarray(y, dtype=float)
     estimator = "random-intercept linear mixed model (REML)"
+    spare = _no_spare_rows("regression", len(X), X.shape[1], clusters, estimator=estimator)
+    if spare is not None:
+        return spare
     ols = np.linalg.lstsq(X, y, rcond=None)[0]
     if not clusters.clustered or clusters.n_clusters < 2:
         return _no_units(names, ols, estimator, clusters, "a random intercept")
@@ -507,9 +513,11 @@ def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
 def gee_table(matrix: pd.DataFrame, y: Any, clusters: Any, task: str,
               classes: Sequence[Any] | None = None) -> Any:
     """The GEE's coefficient table: statsmodels' estimates, CR2 (BRL) intervals with Bell–McCaffrey
-    degrees of freedom on its whitened working model, refused below the unit floor."""
-    from turbotab.core.models.inference import (_and, _clustered, _named, _refused, floor_refusal,
-                                                separated_columns)
+    degrees of freedom on its whitened working model, refused below the unit floor; on no more rows
+    than its coefficients, refused with no estimate, before any other refusal that would keep one
+    (``inference._no_spare_rows``)."""
+    from turbotab.core.models.inference import (_and, _clustered, _named, _no_spare_rows, _refused,
+                                                floor_refusal, separated_columns)
 
     exog, names = _design(matrix)
     X = exog.to_numpy(dtype=float)
@@ -521,6 +529,9 @@ def gee_table(matrix: pd.DataFrame, y: Any, clusters: Any, task: str,
         y = np.asarray(y, dtype=float)
     estimator = ("GEE, exchangeable working correlation" +
                  (" (logit link)" if task == "binary" else " (identity link)"))
+    spare = _no_spare_rows(task, len(X), X.shape[1], clusters, estimator=estimator)
+    if spare is not None:
+        return spare
     start = np.linalg.lstsq(X, y, rcond=None)[0]
     if not clusters.clustered or clusters.n_clusters < 2:
         return _no_units(names, start, estimator, clusters, "an exchangeable working correlation")
@@ -617,6 +628,9 @@ class Mixed(FamilyBase):
         from turbotab.core.models.linear import model_matrix
 
         table = mixed_table(model_matrix(pipeline, X), y, clusters)
+        if not table.rows:  # refused with no estimate (``mixed_table``): on no scale, its rows said
+            table.info.update(n_rows=int(len(X)), rows=rows)
+            return table
         return _on_rows(_on_scale(table, task, None, outcome), len(X), rows)
 
     def assess(self, s: Situation) -> Assessment:
@@ -712,6 +726,9 @@ class GEE(FamilyBase):
 
         classes = list(getattr(pipeline[-1], "classes_", [])) or None
         table = gee_table(model_matrix(pipeline, X), y, clusters, task, classes)
+        if not table.rows:  # refused with no estimate (``gee_table``): on no scale, its rows said
+            table.info.update(n_rows=int(len(X)), rows=rows)
+            return table
         return _on_rows(_on_scale(table, task, classes, outcome), len(X), rows)
 
     def assess(self, s: Situation) -> Assessment:

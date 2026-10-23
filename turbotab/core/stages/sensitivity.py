@@ -19,6 +19,9 @@ leaves out are still in the population the model will be used on.
 
 **The model** is the design's own pipeline, refit per analysis (every step, energy adjustment and
 imputation included, is fit on that analysis's rows), so the analyses differ only by their rows.
+An analysis on no more rows than its model's coefficients reports none, and adds none to the
+range of an exposure's estimates: under inference its table refuses them, and under prediction the
+stage does so for a family whose table would (an unpenalized fit; :func:`_no_spare_rows`).
 Families without a coefficient table are left out of this answer; where none of the chosen ones
 has one the stage is refused in words, under either goal, each way forward a family whose
 coefficients the analyses' rows give (``effects.no_table_refusal``).
@@ -236,6 +239,10 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
         concerns.extend(table.concerns)
     else:
         rows = family.coefficients(fitted, X, y, task=task, purpose=state.purpose)
+        spare = _no_spare_rows(family, rows, len(X), task, state.purpose)
+        if spare is not None:
+            rows, info = spare.rows, spare.info
+            concerns.extend(spare.concerns)
         if (rows is not None and survey is not None and survey.design is not None
                 and state.purpose == "inference"):
             # MS4: no design-based estimator under the population answer: blocked and recorded.
@@ -245,6 +252,29 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
             rows, info = table.rows, table.info
             concerns.extend(table.concerns)
     return fitted, (rows, info), concerns
+
+
+def _no_spare_rows(family: Any, rows: list[dict[str, Any]] | None, n_rows: int, task: str,
+                   purpose: str | None) -> Any:
+    """Under prediction, a family whose coefficient table refuses rows that do not exceed its
+    coefficients (``family.inference``: an unpenalized fit) reports its fit's own coefficients;
+    on such rows they are refused as its table is (``inference._no_spare_rows``), so none is shown
+    or taken into ``changes``. They are counted from the rows it reports: the intercept, a
+    proportional-odds model's cut-points, and for several classes each level's own; the estimator
+    is the model step's own label. None where the rows exceed them, or where the family has no
+    table: a penalized fit's coefficients (elastic net's, ridge's) exist on any rows, and Huber's,
+    which has no table either, are left as they are."""
+    from turbotab.core.models.inference import _no_spare_rows as refusal
+
+    if not rows or family.inference is None:
+        return None
+    features = [str(r["feature"]) for r in rows]
+    intercepts = sum(f.startswith("(intercept)") for f in features)
+    cuts = sum(f.startswith("(cut-point") for f in features)
+    levels = max(intercepts, 1)
+    return refusal("multiclass" if levels > 1 else task, n_rows, len(rows) // levels,
+                   estimator=family.describe(task, purpose)[0], intercept=intercepts > 0,
+                   cut_points=cuts)
 
 
 def exposure_features(fitted: Any, inputs: Sequence[str], roles: Mapping[str, str]) -> list[str]:

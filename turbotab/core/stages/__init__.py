@@ -701,8 +701,9 @@ def build_graph() -> Graph:
             # 10, so a fit cached before it is computed again rather than served with 10.
             # fit 32 (the freeze's last engine fixes, 2026-10-23): a coefficient table on no more
             # rows than its coefficients is refused, its estimates with its intervals
-            # (``inference._no_spare_rows``), so a fit cached before it is computed again rather
-            # than served with estimates those rows cannot determine.
+            # (``inference._no_spare_rows``; the linear, mixed, GEE and proportional-odds tables),
+            # so a fit cached before it is computed again rather than served with estimates those
+            # rows cannot determine.
             Stage("fit", 32, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
@@ -794,9 +795,11 @@ def build_graph() -> Graph:
             # the held table's missing-values exits.
             # sensitivity 16, calibration 14, secondary 7, effects 7, scales 5, modification 2 (the
             # freeze's last engine fixes, 2026-10-23): as fit 32, a table on no more rows than its
-            # coefficients is refused; with no chosen family that has one, sensitivity is refused
-            # typed under either goal, and its, effects' and secondary's ways forward leave out a
-            # table that rests on cluster-robust intervals below the unit floor.
+            # coefficients is refused (a score whose uncorrected table is refused is not corrected,
+            # and under prediction an analysis's own coefficients on such rows are refused); with
+            # no chosen family that has one, sensitivity is refused typed under either goal, and
+            # its, effects' and secondary's ways forward leave out a table that rests on
+            # cluster-robust intervals below the unit floor.
             Stage("sensitivity", 16, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),

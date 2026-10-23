@@ -354,10 +354,13 @@ def _cr1_concerns(clusters: Any, model: str, covariance: str) -> list[str]:
 
 def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, clusters: Any) -> Any:
     """The proportional-odds inference table on the model matrix: coefficients (log cumulative
-    odds ratios), then the cut-points; intervals as the module docstring says."""
+    odds ratios), then the cut-points; intervals as the module docstring says. On no more rows
+    than its coefficients, the cut-points among them, refused with no estimate
+    (``inference._no_spare_rows``)."""
     from turbotab.core.models.inference import (
         InferenceTable,
         _info,
+        _no_spare_rows,
         _refused,
         _t_rows,
         _z_rows,
@@ -370,6 +373,13 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
     if clusters.clustered and len(clusters.codes) != len(X):
         raise ValueError(f"The clusters cover {len(clusters.codes):,} rows but the model matrix has "
                          f"{len(X):,}.")
+    estimator = "proportional-odds (cumulative logit) model, maximum likelihood"
+    K = len(np.unique(codes))  # the levels the fit sees, as its ``classes_`` will be
+    if K >= 2:  # one level: the fit says why it cannot be fit
+        spare = _no_spare_rows("ordinal", len(X), X.shape[1] + K - 1, clusters,
+                               estimator=estimator, intercept=False, cut_points=K - 1)
+        if spare is not None:
+            return spare
     model = ProportionalOddsRegression().fit(X, codes)
     K = len(model.classes_)
     names_levels = list(levels) if levels is not None and len(levels) == K else \
@@ -377,7 +387,6 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
     features = [str(c) for c in matrix.columns]
     names = features + cut_names(names_levels)
     est = np.concatenate([model.coef_, model.thresholds_])
-    estimator = "proportional-odds (cumulative logit) model, maximum likelihood"
     scale = (f"Coefficients are log cumulative odds ratios: exp(β) multiplies the odds of a higher "
              f"level, per unit, at every cut-point.")
     concerns: list[str] = []
@@ -621,9 +630,11 @@ class ProportionalOdds(FamilyBase):
         from turbotab.core.models.inference import _on_rows
 
         if survey is None:
-            table = on_cumulative_scale(ordinal_table(matrix, y, classes, clusters), outcome,
-                                        classes)
-            return _on_rows(table, len(matrix), rows)
+            table = ordinal_table(matrix, y, classes, clusters)
+            if not table.rows:  # refused with no estimate: on no scale, its rows said
+                table.info.update(n_rows=int(len(matrix)), rows=rows)
+                return table
+            return _on_rows(on_cumulative_scale(table, outcome, classes), len(matrix), rows)
         table = survey_ordinal_table(matrix, y, classes, survey)
         if table.rows:
             table = on_cumulative_scale(table, outcome, classes)
