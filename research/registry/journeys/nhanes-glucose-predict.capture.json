@@ -11,9 +11,9 @@
   "purpose": "prediction"
  },
  "captured": {
-  "commit": "dd573836e8",
+  "commit": "b8dd1dec40",
   "date": "2026-10-22",
-  "seconds": 84,
+  "seconds": 97,
   "workers": 2,
   "export": 200
  },
@@ -327,16 +327,150 @@
    }
   }
  },
+ "labels": [
+  "Acceptable internal validation",
+  "Act on it",
+  "Adjust for energy",
+  "All-components model",
+  "Analytical methods",
+  "Apply the repair",
+  "Ask me later",
+  "Boosted trees",
+  "Bootstrap optimism correction",
+  "By level",
+  "Common practice",
+  "Complete cases",
+  "Confirm it",
+  "Cox model",
+  "Cross-validation only",
+  "Cross-validation, once",
+  "Customary: MetaboAnalyst's default",
+  "Dietary intake",
+  "Dismiss it",
+  "Elastic net",
+  "Energy partition model",
+  "Exclude those rows",
+  "Feature-wise regression",
+  "Feature-wise tests",
+  "Fill missing values",
+  "First look",
+  "For the record",
+  "GEE (exchangeable)",
+  "Genomics or transcriptomics",
+  "Goldberg cut-off",
+  "Goldberg screen",
+  "Keep every row",
+  "Keep it sealed",
+  "Linear model",
+  "Mark as identifier",
+  "Mark column unusable",
+  "Mark design columns",
+  "Metabolomics or proteomics",
+  "Missing data",
+  "Missing predictor values",
+  "Mixed model",
+  "Model families",
+  "Multiple imputation",
+  "No energy adjustment",
+  "Nutrient density alone",
+  "One-hot encode",
+  "Open the seal",
+  "Opening the seal",
+  "Ordinary least squares",
+  "Other decisions",
+  "Other things noticed",
+  "Prediction or inference",
+  "Proportional-odds model",
+  "Random forest",
+  "Random-intercept mixed model",
+  "Read as zero",
+  "Repeated cross-validation",
+  "Restricted cubic spline",
+  "Ridge regression",
+  "Robust linear regression",
+  "Screened elastic net",
+  "Set to missing",
+  "Standard (multivariate) model",
+  "Straight line",
+  "Survey design",
+  "TRIPOD+AI",
+  "The outcome",
+  "Total energy",
+  "Who's in",
+  "Your data",
+  "Your own range",
+  "Your question",
+  "`glucose` recorded",
+  "a characteristic",
+  "a nutrient",
+  "an amount",
+  "clinical prediction",
+  "codes for categories",
+  "complete cases",
+  "eligibility criterion",
+  "grouped split",
+  "implausible intake",
+  "inductive bias",
+  "internal–external validation",
+  "is a characteristic",
+  "is a covariate",
+  "is a nutrient",
+  "is in cm",
+  "is in kcal",
+  "is total energy",
+  "joining another file",
+  "lowest MSE",
+  "machine learning",
+  "missing at random",
+  "multiple imputation",
+  "nutritional epidemiology",
+  "opening the seal",
+  "participant flow",
+  "repeated cross-validation",
+  "sentinel code",
+  "the adjustment-set question",
+  "the causal question",
+  "the column roles",
+  "the data dictionary",
+  "the effect-modifier question",
+  "the eligibility question",
+  "the energy-adjustment question",
+  "the event question",
+  "the explanations",
+  "the fit",
+  "the follow-up question",
+  "the functional-form question",
+  "the grouping question",
+  "the intended-use question",
+  "the lens question",
+  "the misreporting literature",
+  "the missing-values question",
+  "the outcome question",
+  "the outcome's average",
+  "the predictor-selection question",
+  "the purpose question",
+  "the screens",
+  "the shrinkage question",
+  "the study-design question",
+  "the substitution question",
+  "the survey question",
+  "the task question",
+  "the temporal question",
+  "the unit-of-analysis question",
+  "the validation scheme",
+  "total energy"
+ ],
+ "unsettled": {},
  "rendered": [
   {
    "id": "exclusions.every_row_first_under_prediction",
    "register": "card",
-   "renders": 13
+   "renders": 14
   },
   {
    "id": "exclusions.screen_waits_for_days",
    "register": "card",
-   "renders": 26
+   "renders": 28
   },
   {
    "id": "explore.collinear_pair",
@@ -351,12 +485,12 @@
   {
    "id": "missing.blank_not_asked",
    "register": "card",
-   "renders": 26
+   "renders": 28
   },
   {
    "id": "missing.fold_fill_first_under_prediction",
    "register": "card",
-   "renders": 13
+   "renders": 14
   },
   {
    "id": "readings.whole_numbers_wait",
@@ -366,7 +500,7 @@
  ],
  "strings": [
   {
-   "text": "# Methods: _tt_tmp_nhanes\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `dietary` and `clinical` lenses.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `glucose` measured stays in the analysis.\n\n## Outcome (TRIPOD+AI 8)\n\n`glucose` was chosen as the outcome; it is measured on all `21,849` rows.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `28` columns: energy `kcal`; predictors `cycle_begin_year`, `age`, `gender` and 17 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more. The 7 columns `bp_sys`, `bp_di` and 5 more, proposed as characteristics at medium confidence, below high, for one reason (\"A person's characteristic.\"), were confirmed together as one group, after the evidence for their proposal was read. The 2 columns `hdl` and `triglycerides`, proposed as characteristics at low confidence, below high, for one reason (\"Not a nutrient or feature: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read. `cycle_begin_year` was confirmed as a characteristic, on its own, after the evidence for its reading was read. `imputed_weight`, `imputed_height`, `imputed_bmi`, `imputed_waist`, `imputed_bp_sys` and `imputed_bp_di` were each confirmed as a flag on another column, on its own, after the evidence for its reading was read. Confirmed together, each as the question showed it: `triglycerides` was confirmed to hold amounts or counts; `hdl` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories.\n\nRead from the values, no question asked: `SEQN` is the unit's identifier (`SEQN` is the NHANES respondent number; `21,849` whole numbers, each on one row, within a span of `92,991`: a measurement spread over so narrow a span would repeat about `2,567` times); `age` is a characteristic (A person's characteristic); `gender` is a characteristic (A person's characteristic); `bmi` is a characteristic (A person's characteristic); `kcal` is total energy (Total energy intake: its values follow the macronutrients' energy (r = 0.98)); `protein` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.79)); `sugar` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.67)); `carb` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.88)); `fat_total` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.88)); `fat_sat` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.82)); `fat_mon` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.84)); `fat_poly` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.72)); `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `kcal` is in kcal (`kcal` matches the energy its macronutrients carry: kcal, over the same days as they span. How many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too); record it before screening by `kcal`); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `kcal` is an amount (one slope) (`4,276` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm).\n\n## Missing data (TRIPOD+AI 11)\n\nBlanks in categorical and yes/no predictors were kept as a level of their own, `Missing`; then the other predictors' missing values were imputed in each training fold without the outcome: the median for numbers, an energy-bearing nutrient from its line on total energy (`kcal`), the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `glucose` recorded (seed `0`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction. The model was declared for estimating each person's outcome: no decision threshold was set; no subgroup was named for performance; no fairness method beyond that report was applied (TRIPOD+AI 14). No predictor selection was applied: every candidate predictor entered the models. Two model families were chosen: linear regression and ridge regression.\n\nCross-validated R², MSE, RMSE and MAE pool every out-of-fold prediction; R² is measured against the mean of the rows each fold's model was fit on, as the held-out R² is against the training rows' mean. The fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith ridge regression declared the final model on cross-validation beforehand, the `4,370` held-out rows were opened once and scored: held-out MSE `1,131`; its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Other decisions\n\nThe open noticings were triaged in Results: 4 left as a limitation; 1 noted in the supplement as changing no number here.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "# Methods: _tt_tmp_nhanes\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, a sentence that counts rows counts them as they stand, and confirmations alike but for their column are said once, together. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `dietary` and `clinical` lenses.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `glucose` measured stays in the analysis.\n\n## Outcome (TRIPOD+AI 8)\n\n`glucose` was chosen as the outcome; it is measured on all `21,849` rows.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `28` columns: energy `kcal`; predictors `cycle_begin_year`, `age`, `gender` and 17 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more. The 7 columns `bp_sys`, `bp_di` and 5 more, proposed as characteristics at medium confidence, below high, for one reason (\"A person's characteristic.\"), were confirmed together as one group, after the evidence for their proposal was read. The 2 columns `hdl` and `triglycerides`, proposed as characteristics at low confidence, below high, for one reason (\"Not a nutrient or feature: read as a predictor until you say otherwise.\"), were confirmed together as one group, after the evidence for their proposal was read. `cycle_begin_year` was confirmed as a characteristic, on its own, after the evidence for its reading was read. `imputed_weight`, `imputed_height`, `imputed_bmi`, `imputed_waist`, `imputed_bp_sys` and `imputed_bp_di` were each confirmed as a flag on another column, on its own, after the evidence for its reading was read. Confirmed together, each as the question showed it: `triglycerides` was confirmed to hold amounts or counts; `hdl` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories.\n\nRead from the values, no question asked: `SEQN` is the unit's identifier (`SEQN` is the NHANES respondent number; `21,849` whole numbers, each on one row, within a span of `92,991`: a measurement spread over so narrow a span would repeat about `2,567` times); `age` is a characteristic (A person's characteristic); `gender` is a characteristic (A person's characteristic); `bmi` is a characteristic (A person's characteristic); `kcal` is total energy (Total energy intake: its values follow the macronutrients' energy (r = 0.98)); `protein` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.79)); `sugar` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.67)); `carb` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.88)); `fat_total` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.88)); `fat_sat` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.82)); `fat_mon` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.84)); `fat_poly` is a nutrient (A nutrient that carries energy; it rises with total energy (r = 0.72)); `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `kcal` is in kcal (`kcal` matches the energy its macronutrients carry: kcal, over the same days as they span. How many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too); record it before screening by `kcal`); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `kcal` is an amount (one slope) (`4,276` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm).\n\n## Missing data (TRIPOD+AI 11)\n\nBlanks in categorical and yes/no predictors were kept as a level of their own, `Missing`; then the other predictors' missing values were imputed in each training fold without the outcome: the median for numbers, an energy-bearing nutrient from its line on total energy (`kcal`), the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `glucose` recorded (seed `0`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction. The model was declared for estimating each person's outcome: no decision threshold was set; no subgroup was named for performance; no fairness method beyond that report was applied (TRIPOD+AI 14). No predictor selection was applied: every candidate predictor entered the models. Two model families were chosen: linear regression and ridge regression.\n\nCross-validated R², MSE, RMSE and MAE pool every out-of-fold prediction; R² is measured against the mean of the rows each fold's model was fit on, as the held-out R² is against the training rows' mean. The fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith ridge regression declared the final model on cross-validation beforehand, the `4,370` held-out rows were opened once and scored: held-out MSE `1,131`; its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Other decisions\n\nThe open noticings were triaged in Results: 4 left as a limitation; 1 noted in the supplement as changing no number here.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods:bundle",
@@ -402,11 +536,29 @@
    ]
   },
   {
+   "text": "2 families were compared",
+   "shown": [
+    [
+     "artifact:fit",
+     "chain[].because"
+    ]
+   ]
+  },
+  {
    "text": "3 pairs of predictors move almost together (|r| ≥ 0.9)",
    "shown": [
     [
      "artifact:explore",
      "findings[].summary"
+    ]
+   ]
+  },
+  {
+   "text": "5-fold cross-validation.",
+   "shown": [
+    [
+     "quest",
+     "stages[].lines[].reason"
     ]
    ]
   },
@@ -425,6 +577,24 @@
     [
      "artifact:seal_plan",
      "validation.options[].cost"
+    ]
+   ]
+  },
+  {
+   "text": "500–3,500 kcal a day",
+   "shown": [
+    [
+     "teaching:exclusions",
+     "options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "500–5,000 kcal a day",
+   "shown": [
+    [
+     "teaching:exclusions",
+     "options[].label"
     ]
    ]
   },
@@ -596,6 +766,10 @@
     [
      "artifact:roles",
      "columns[].reason"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].evidence"
     ]
    ]
   },
@@ -605,6 +779,10 @@
     [
      "artifact:roles",
      "columns[].reason"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].evidence"
     ]
    ]
   },
@@ -614,6 +792,10 @@
     [
      "artifact:roles",
      "columns[].reason"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].evidence"
     ]
    ]
   },
@@ -623,6 +805,10 @@
     [
      "artifact:roles",
      "columns[].reason"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].evidence"
     ]
    ]
   },
@@ -632,6 +818,10 @@
     [
      "artifact:roles",
      "columns[].reason"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].evidence"
     ]
    ]
   },
@@ -641,12 +831,20 @@
     [
      "artifact:roles",
      "columns[].reason"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].evidence"
     ]
    ]
   },
   {
    "text": "A nutrient that carries energy; it rises with total energy (r = 0.67).",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -657,6 +855,10 @@
    "text": "A nutrient that carries energy; it rises with total energy (r = 0.72).",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -665,6 +867,10 @@
   {
    "text": "A nutrient that carries energy; it rises with total energy (r = 0.79).",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -675,6 +881,10 @@
    "text": "A nutrient that carries energy; it rises with total energy (r = 0.82).",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -684,6 +894,10 @@
    "text": "A nutrient that carries energy; it rises with total energy (r = 0.84).",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -692,6 +906,10 @@
   {
    "text": "A nutrient that carries energy; it rises with total energy (r = 0.88).",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -722,6 +940,23 @@
     [
      "artifact:roles",
      "columns[].reason"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].evidence"
+    ]
+   ]
+  },
+  {
+   "text": "A person's characteristic.",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].evidence"
     ]
    ]
   },
@@ -1031,6 +1266,24 @@
    ]
   },
   {
+   "text": "Adjusting for total energy decides what a nutrient's coefficient means.",
+   "shown": [
+    [
+     "artifact:findings",
+     "findings[].title"
+    ]
+   ]
+  },
+  {
+   "text": "Adjusting for total energy makes a nutrient's coefficient a substitution: more of it in place of other energy at the same total. Leaving energy out, or partitioning it, asks about adding energy instead. The two answer different questions (Tomova et al. 2022), so which to ask is the study's choice and the method follows from it. For prediction, models that keep total energy predict alike.",
+   "shown": [
+    [
+     "artifact:findings",
+     "findings[].why_it_matters"
+    ]
+   ]
+  },
+  {
    "text": "An identifier names a person and cannot generalize. Survey weights and design columns describe how people were sampled, and a flag such as `imputed_weight` marks which values were imputed. None of them measures the participant, so each stays out of the predictors while the record keeps it.",
    "shown": [
     [
@@ -1203,6 +1456,10 @@
   {
    "text": "Better only when the gain's 95% interval lies above zero and the gain is at least 0.01 (a convention): a gain above 0.016. The interval is corrected for the 50 folds sharing training rows (Nadeau & Bengio 2003).",
    "shown": [
+    [
+     "artifact:evaluation",
+     "benchmark.versus_baseline.tolerance_basis"
+    ],
     [
      "artifact:fit",
      "models[].versus_baseline.tolerance_basis"
@@ -1604,8 +1861,30 @@
    ]
   },
   {
+   "text": "Confirm all 2",
+   "shown": [
+    [
+     "quest",
+     "stages[].sweep.action"
+    ]
+   ]
+  },
+  {
+   "text": "Confirm all 3",
+   "shown": [
+    [
+     "quest",
+     "stages[].sweep.action"
+    ]
+   ]
+  },
+  {
    "text": "Confirm each of the 4 as shown",
    "shown": [
+    [
+     "ask:models",
+     "exits[].label"
+    ],
     [
      "refusal:select_models",
      "exits[].label"
@@ -1651,6 +1930,10 @@
      "reason"
     ],
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].reason"
     ],
@@ -1671,6 +1954,15 @@
   },
   {
    "text": "Counted across all `21,849` rows with `glucose` measured.",
+   "shown": [
+    [
+     "artifact:proposals",
+     "basis"
+    ]
+   ]
+  },
+  {
+   "text": "Counted across all `21,849` rows; no outcome is chosen yet.",
    "shown": [
     [
      "artifact:proposals",
@@ -2363,6 +2655,45 @@
    ]
   },
   {
+   "text": "Hold out 10%",
+   "shown": [
+    [
+     "artifact:seal_plan",
+     "options[].label"
+    ],
+    [
+     "teaching:split",
+     "options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "Hold out 20%",
+   "shown": [
+    [
+     "artifact:seal_plan",
+     "options[].label"
+    ],
+    [
+     "teaching:split",
+     "options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "Hold out 30%",
+   "shown": [
+    [
+     "artifact:seal_plan",
+     "options[].label"
+    ],
+    [
+     "teaching:split",
+     "options[].label"
+    ]
+   ]
+  },
+  {
    "text": "Hold out a share of rows",
    "shown": [
     [
@@ -2628,6 +2959,15 @@
    ]
   },
   {
+   "text": "It is decided at the energy-adjustment question in Models, still to come.",
+   "shown": [
+    [
+     "quest:triage",
+     "items[].reason"
+    ]
+   ]
+  },
+  {
    "text": "It is decided at the missing-values question in Who's in, still to come.",
    "shown": [
     [
@@ -2874,6 +3214,10 @@
    "text": "Move `SEQN` to the characteristics",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -2883,6 +3227,10 @@
    "text": "Move `age` to the nutrients",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -2891,6 +3239,10 @@
   {
    "text": "Move `bmi` to the nutrients",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -2919,6 +3271,10 @@
    "text": "Move `carb` to the characteristics",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -2937,6 +3293,10 @@
    "text": "Move `fat_mon` to the characteristics",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -2945,6 +3305,10 @@
   {
    "text": "Move `fat_poly` to the characteristics",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -2955,6 +3319,10 @@
    "text": "Move `fat_sat` to the characteristics",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -2964,6 +3332,10 @@
    "text": "Move `fat_total` to the characteristics",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -2972,6 +3344,10 @@
   {
    "text": "Move `gender` to the nutrients",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -3054,6 +3430,14 @@
    "text": "Move `kcal` to the characteristics",
    "shown": [
     [
+     "ask:exclusions",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -3081,6 +3465,10 @@
    "text": "Move `protein` to the characteristics",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -3089,6 +3477,10 @@
   {
    "text": "Move `sugar` to the characteristics",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -3339,6 +3731,15 @@
    ]
   },
   {
+   "text": "No flexible family was fitted, so there is nothing for the interpretable model to cost or gain against.",
+   "shown": [
+    [
+     "artifact:evaluation",
+     "interpretable.text"
+    ]
+   ]
+  },
+  {
    "text": "No identifier repeats in these rows, so there is no unit for a random intercept; it is the linear model's fit.",
    "shown": [
     [
@@ -3403,6 +3804,26 @@
   {
    "text": "No score or estimate is shown until Fit is pressed, so none is seen before the models' settings are confirmed.",
    "shown": [
+    [
+     "artifact:evaluation",
+     "withheld"
+    ],
+    [
+     "artifact:fit",
+     "models[].concerns[]"
+    ],
+    [
+     "artifact:fit",
+     "withheld"
+    ],
+    [
+     "artifact:fits",
+     "records[].withheld"
+    ],
+    [
+     "artifact:results",
+     "withheld"
+    ],
     [
      "artifact:usual_intake",
      "withheld"
@@ -3782,6 +4203,15 @@
    ]
   },
   {
+   "text": "Read all 21,849 rows and 29 columns under the dietary and clinical lenses, before a target was chosen.",
+   "shown": [
+    [
+     "artifact:findings",
+     "basis"
+    ]
+   ]
+  },
+  {
    "text": "Read all 21,849 rows and 29 columns under the dietary and clinical lenses, with 'glucose' as the target.",
    "shown": [
     [
@@ -3871,6 +4301,24 @@
    ]
   },
   {
+   "text": "Read from the values, no question asked: `SEQN` is the unit's identifier (`SEQN` is the NHANES respondent number; `21,849` whole numbers, each on one row, within a span of `92,991`: a measurement spread over so narrow a span would repeat about `2,567` times); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `gender` is a covariate (A person's characteristic, usually adjusted for rather than studied); `bmi` is a covariate (A person's characteristic, usually adjusted for rather than studied); `kcal` is total energy intake (Total energy intake: its values follow the macronutrients' energy (r = 0.98)); `protein` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.79)); `sugar` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.67)); `carb` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.88)); `fat_total` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.88)); `fat_sat` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.82)); `fat_mon` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.84)); `fat_poly` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.72)); `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `kcal` is in kcal (`kcal` matches the energy its macronutrients carry: kcal, over the same days as they span. How many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too); record it before screening by `kcal`).",
+   "shown": [
+    [
+     "methods",
+     "sections[].entries[].text"
+    ]
+   ]
+  },
+  {
+   "text": "Read from the values, no question asked: `SEQN` is the unit's identifier (`SEQN` is the NHANES respondent number; `21,849` whole numbers, each on one row, within a span of `92,991`: a measurement spread over so narrow a span would repeat about `2,567` times); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `gender` is a covariate (A person's characteristic, usually adjusted for rather than studied); `bmi` is a covariate (A person's characteristic, usually adjusted for rather than studied); `kcal` is total energy intake (Total energy intake: its values follow the macronutrients' energy (r = 0.98)); `protein` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.79)); `sugar` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.67)); `carb` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.88)); `fat_total` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.88)); `fat_sat` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.82)); `fat_mon` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.84)); `fat_poly` is what you study (A nutrient that carries energy: what you study; it rises with total energy (r = 0.72)); `kcal` is in kcal (`kcal` matches the energy its macronutrients carry: kcal, over the same days as they span. How many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too); record it before screening by `kcal`).",
+   "shown": [
+    [
+     "methods",
+     "sections[].entries[].text"
+    ]
+   ]
+  },
+  {
    "text": "Reads what the values are, counts or normalized, and plans for few samples.",
    "shown": [
     [
@@ -3916,11 +4364,47 @@
    ]
   },
   {
+   "text": "Regression with splines (benchmark)",
+   "shown": [
+    [
+     "artifact:evaluation",
+     "benchmark.label"
+    ]
+   ]
+  },
+  {
+   "text": "Regression with splines (benchmark) against Linear model: MSE differs by 11.323 (95% interval of the difference 5.611 to 17.035; corrected repeated k-fold t 3.98 on 49 df, 10 × 5 folds): Regression with splines (benchmark) is ahead on these rows.",
+   "shown": [
+    [
+     "artifact:evaluation",
+     "benchmark.differences[].sentence"
+    ]
+   ]
+  },
+  {
+   "text": "Regression with splines (benchmark) against Ridge: MSE differs by 11.437 (95% interval of the difference 5.618 to 17.256; corrected repeated k-fold t 3.95 on 49 df, 10 × 5 folds): Regression with splines (benchmark) is ahead on these rows.",
+   "shown": [
+    [
+     "artifact:evaluation",
+     "benchmark.differences[].sentence"
+    ]
+   ]
+  },
+  {
    "text": "Repairs before the outcome",
    "shown": [
     [
      "teaching:repairs",
      "title"
+    ]
+   ]
+  },
+  {
+   "text": "Repeated cross-validation (10 × 5)",
+   "shown": [
+    [
+     "artifact:seal_plan",
+     "validation.options[].label"
     ]
    ]
   },
@@ -4059,6 +4543,24 @@
    ]
   },
   {
+   "text": "STROBE 7",
+   "shown": [
+    [
+     "methods",
+     "sections[].item"
+    ]
+   ]
+  },
+  {
+   "text": "STROBE 8",
+   "shown": [
+    [
+     "methods",
+     "sections[].item"
+    ]
+   ]
+  },
+  {
    "text": "STROBE-nut: an extension of the STROBE statement for nutritional epidemiology",
    "shown": [
     [
@@ -4140,6 +4642,24 @@
    ]
   },
   {
+   "text": "Sex-neutral 500–3,500",
+   "shown": [
+    [
+     "artifact:proposals",
+     "labels.exclusions.options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "Sex-neutral 500–5,000",
+   "shown": [
+    [
+     "artifact:proposals",
+     "labels.exclusions.options[].label"
+    ]
+   ]
+  },
+  {
    "text": "Sex-neutral: 500–3,500 kcal a day",
    "shown": [
     [
@@ -4163,6 +4683,15 @@
     [
      "teaching:repairs",
      "question"
+    ]
+   ]
+  },
+  {
+   "text": "Shrink the regression's coefficients by 0.985 (model updating)",
+   "shown": [
+    [
+     "artifact:evaluation",
+     "shrinkage.label"
     ]
    ]
   },
@@ -4403,11 +4932,65 @@
    ]
   },
   {
+   "text": "TRIPOD+AI 11",
+   "shown": [
+    [
+     "methods",
+     "sections[].item"
+    ]
+   ]
+  },
+  {
+   "text": "TRIPOD+AI 12",
+   "shown": [
+    [
+     "methods",
+     "sections[].item"
+    ]
+   ]
+  },
+  {
    "text": "TRIPOD+AI 23a: performance with intervals in key subgroups",
    "shown": [
     [
      "artifact:explore",
      "findings[].lever.options[].sound"
+    ]
+   ]
+  },
+  {
+   "text": "TRIPOD+AI 5",
+   "shown": [
+    [
+     "methods",
+     "sections[].item"
+    ]
+   ]
+  },
+  {
+   "text": "TRIPOD+AI 6",
+   "shown": [
+    [
+     "methods",
+     "sections[].item"
+    ]
+   ]
+  },
+  {
+   "text": "TRIPOD+AI 8",
+   "shown": [
+    [
+     "methods",
+     "sections[].item"
+    ]
+   ]
+  },
+  {
+   "text": "TRIPOD+AI 9",
+   "shown": [
+    [
+     "methods",
+     "sections[].item"
     ]
    ]
   },
@@ -4426,6 +5009,24 @@
     [
      "teaching:target",
      "consumer"
+    ]
+   ]
+  },
+  {
+   "text": "Tell me about these columns: `triglycerides`: an amount? (`653` whole-number values from 10 to 4233); `hdl`: an amount? (`143` whole-number values from 6 to 226); `age`: an amount? (`68` whole-number values from 18 to 85); `cycle_begin_year`: codes for categories? (`9` whole-number values from 2001 to 2017, few of them).",
+   "shown": [
+    [
+     "ask:models",
+     "text"
+    ]
+   ]
+  },
+  {
+   "text": "Tell me about this column: `kcal`: kcal, one day's intake? (`kcal` matches the energy its macronutrients carry: kcal, over the same days as they span. How many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too); record it before screening by `kcal`.)",
+   "shown": [
+    [
+     "ask:exclusions",
+     "text"
     ]
    ]
   },
@@ -4523,7 +5124,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`0` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `44136fa355b3`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`0` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `44136fa355b3`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4532,7 +5133,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`10` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `f6b1230e2824`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`10` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `f6b1230e2824`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4541,7 +5142,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`11` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `345c3b99a16b`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`11` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `345c3b99a16b`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4550,7 +5151,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`12` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6328f2f2c463`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`12` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6328f2f2c463`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4559,7 +5160,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`13` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6f6b920fded2`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`13` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6f6b920fded2`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4568,7 +5169,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`14` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `24f4fe6dabc4`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`14` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `24f4fe6dabc4`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4577,7 +5178,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`15` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `d84614165ff7`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`15` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `d84614165ff7`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4586,7 +5187,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`16` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `5a6765706712`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`16` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `5a6765706712`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4595,7 +5196,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`17` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `e4cc8aae8757`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`17` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `e4cc8aae8757`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4604,7 +5205,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`18` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6f5beea2a5a6`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`18` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6f5beea2a5a6`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4613,7 +5214,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`19` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `ffde987c1b43`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`19` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `ffde987c1b43`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4622,7 +5223,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`1` record), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `9c3cbc07b7b2`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`1` record), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `9c3cbc07b7b2`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4631,7 +5232,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`20` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6070bbf02397`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`20` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6070bbf02397`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4640,7 +5241,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`20` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`20` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4649,7 +5250,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`21` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`21` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4658,7 +5259,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`22` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`22` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4667,7 +5268,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`23` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`23` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4676,7 +5277,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`24` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `6070bbf02397`) and the model matrix (`17,479` rows by `30` columns; SHA-256 `4bf6ec370568` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4685,7 +5286,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`2` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `ebecebb2e3a0`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`2` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `ebecebb2e3a0`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4694,7 +5295,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`3` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `2319a140bac1`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`3` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `2319a140bac1`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4703,7 +5304,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`4` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6a682bac0689`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`4` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6a682bac0689`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4712,7 +5313,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`5` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6d51c6b6693e`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`5` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6d51c6b6693e`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4721,7 +5322,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`6` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6016b72ed51e`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`6` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `6016b72ed51e`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4730,7 +5331,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`7` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `d33b44086572`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`7` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `d33b44086572`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4739,7 +5340,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`8` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `fe41c1d6e661`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`8` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `fe41c1d6e661`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4748,7 +5349,7 @@
    ]
   },
   {
-   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `dd573836e853`). The supplementary provenance record holds the decision log (`9` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `1581886564ff`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
+   "text": "The analysis was run in TurboTab 2.0.0.dev0 (source revision `b8dd1dec40f9`). The supplementary provenance record holds the decision log (`9` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`) and the analysis plan (SHA-256 `1581886564ff`). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.",
    "shown": [
     [
      "methods",
@@ -4852,6 +5453,15 @@
     [
      "quest:record",
      "stages[].lines[].text"
+    ]
+   ]
+  },
+  {
+   "text": "The estimates are withheld: No score or estimate is shown until Fit is pressed, so none is seen before the models' settings are confirmed.",
+   "shown": [
+    [
+     "quest:checklist",
+     "waiting[]"
     ]
    ]
   },
@@ -5067,6 +5677,15 @@
    ]
   },
   {
+   "text": "The lens question, the question of which way round the table is, the outcome question, the event question, the task question, the follow-up question, the purpose question, the column roles, the grouping question, the survey question, the eligibility question, the missing-values question, the held-out rows question, the question on what you study and its effect, the adjustment-set question, the question on what you study over time, the energy-adjustment question, the functional-form question, the effect-modifier question, the causal question and the model families question are not answered yet; the methods would leave them out.",
+   "shown": [
+    [
+     "quest:checklist",
+     "waiting[]"
+    ]
+   ]
+  },
+  {
    "text": "The lens question, the question of which way round the table is, the outcome question, the event question, the task question, the follow-up question, the purpose question, the question of whether people repeat, the question of what repeats, the unit-of-analysis question, the question of how rows are combined, the temporal question, the column roles, the grouping question, the survey question, the eligibility question, the missing-values question, the held-out rows question, the question on what you study and its effect, the adjustment-set question, the question on what you study over time, the energy-adjustment question, the functional-form question, the effect-modifier question, the causal question and the model families question are not answered yet; the methods would leave them out.",
    "shown": [
     [
@@ -5254,6 +5873,15 @@
    ]
   },
   {
+   "text": "The outcome question, the event question, the task question, the follow-up question, the purpose question, the column roles, the grouping question, the survey question, the eligibility question, the missing-values question, the held-out rows question, the question on what you study and its effect, the adjustment-set question, the question on what you study over time, the energy-adjustment question, the functional-form question, the effect-modifier question, the causal question and the model families question are not answered yet; the methods would leave them out.",
+   "shown": [
+    [
+     "quest:checklist",
+     "waiting[]"
+    ]
+   ]
+  },
+  {
    "text": "The outcome question, the event question, the task question, the follow-up question, the purpose question, the question of whether people repeat, the question of what repeats, the unit-of-analysis question, the question of how rows are combined, the temporal question, the column roles, the grouping question, the survey question, the eligibility question, the missing-values question, the held-out rows question, the question on what you study and its effect, the adjustment-set question, the question on what you study over time, the energy-adjustment question, the functional-form question, the effect-modifier question, the causal question and the model families question are not answered yet; the methods would leave them out.",
    "shown": [
     [
@@ -5371,11 +5999,33 @@
    ]
   },
   {
+   "text": "The purpose question, the column roles, the grouping question, the survey question, the eligibility question, the missing-values question, the held-out rows question, the question on what you study and its effect, the adjustment-set question, the question on what you study over time, the energy-adjustment question, the functional-form question, the effect-modifier question, the causal question and the model families question are not answered yet; the methods would leave them out.",
+   "shown": [
+    [
+     "quest:checklist",
+     "waiting[]"
+    ]
+   ]
+  },
+  {
    "text": "The recommended default (Harrell, Lee & Mark 1996)",
    "shown": [
     [
      "artifact:seal_plan",
      "labels.options[].customary.text"
+    ]
+   ]
+  },
+  {
+   "text": "The regression-with-splines benchmark (every continuous predictor a restricted cubic spline, knots by Harrell's rule, on the same in-fold preprocessing) scored cross-validated MSE 1040.653 on the families' 50 paired folds, better than the no-predictor baseline.",
+   "shown": [
+    [
+     "artifact:evaluation",
+     "benchmark.sentence"
+    ],
+    [
+     "artifact:evaluation",
+     "sentences[]"
     ]
    ]
   },
@@ -5746,6 +6396,14 @@
      "columns[].reason"
     ],
     [
+     "ask:exclusions",
+     "read_from_data[].evidence"
+    ],
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -6039,6 +6697,19 @@
    ]
   },
   {
+   "text": "Willett 2013, by sex",
+   "shown": [
+    [
+     "artifact:proposals",
+     "labels.exclusions.options[].label"
+    ],
+    [
+     "teaching:exclusions",
+     "options[].label"
+    ]
+   ]
+  },
+  {
    "text": "Willett 2013, by sex: women 500–3,500 and men 800–4,000 kcal a day",
    "shown": [
     [
@@ -6124,6 +6795,15 @@
    ]
   },
   {
+   "text": "Yes (NUTRITION_PACK §04).",
+   "shown": [
+    [
+     "artifact:proposals",
+     "labels.energy_adjustment.options[].customary.text"
+    ]
+   ]
+  },
+  {
    "text": "Yes (NUTRITION_PACK §04; Tomova et al. 2022).",
    "shown": [
     [
@@ -6160,24 +6840,6 @@
    ]
   },
   {
-   "text": "Your change to Your data made 1 result in First look out of date.",
-   "shown": [
-    [
-     "quest",
-     "stages[].reopened[].sentence"
-    ]
-   ]
-  },
-  {
-   "text": "Your change to Your data made 1 result in Models out of date.",
-   "shown": [
-    [
-     "quest",
-     "stages[].reopened[].sentence"
-    ]
-   ]
-  },
-  {
    "text": "Your change to Your data made 1 result in Who's in out of date.",
    "shown": [
     [
@@ -6197,15 +6859,6 @@
   },
   {
    "text": "Your change to Your data made 2 results in First look out of date.",
-   "shown": [
-    [
-     "quest",
-     "stages[].reopened[].sentence"
-    ]
-   ]
-  },
-  {
-   "text": "Your change to Your data made 2 results in Models out of date.",
    "shown": [
     [
      "quest",
@@ -6241,7 +6894,7 @@
    ]
   },
   {
-   "text": "Your change to Your question made 1 result in Who's in out of date.",
+   "text": "Your change to Your question made 1 result in Your data out of date.",
    "shown": [
     [
      "quest",
@@ -6250,7 +6903,7 @@
    ]
   },
   {
-   "text": "Your change to Your question made 1 result in Your data out of date.",
+   "text": "Your change to Your question made 2 results in Who's in out of date.",
    "shown": [
     [
      "quest",
@@ -6262,6 +6915,10 @@
    "text": "`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -6270,6 +6927,10 @@
   {
    "text": "`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -6280,6 +6941,10 @@
    "text": "`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -6288,6 +6953,10 @@
   {
    "text": "`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -6327,6 +6996,15 @@
     [
      "artifact:findings",
      "findings[].repairs[].sentence"
+    ]
+   ]
+  },
+  {
+   "text": "`143` whole-number values from 6 to 226",
+   "shown": [
+    [
+     "ask:models",
+     "groups[].evidence"
     ]
    ]
   },
@@ -6387,6 +7065,10 @@
    "text": "`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -6395,6 +7077,10 @@
   {
    "text": "`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -6414,6 +7100,10 @@
    "text": "`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -6422,6 +7112,10 @@
   {
    "text": "`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -6432,6 +7126,10 @@
    "text": "`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -6440,6 +7138,10 @@
   {
    "text": "`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -6450,6 +7152,10 @@
    "text": "`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -6459,6 +7165,10 @@
    "text": "`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -6467,6 +7177,10 @@
   {
    "text": "`4,276` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -6483,8 +7197,30 @@
    ]
   },
   {
+   "text": "`653` whole-number values from 10 to 4233",
+   "shown": [
+    [
+     "ask:models",
+     "groups[].evidence"
+    ]
+   ]
+  },
+  {
+   "text": "`68` whole-number values from 18 to 85",
+   "shown": [
+    [
+     "ask:models",
+     "groups[].evidence"
+    ]
+   ]
+  },
+  {
    "text": "`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].evidence"
+    ],
     [
      "quest",
      "stages[].lines[].items[].evidence"
@@ -6501,11 +7237,29 @@
    ]
   },
   {
+   "text": "`9` whole-number values from 2001 to 2017, few of them",
+   "shown": [
+    [
+     "ask:models",
+     "groups[].evidence"
+    ]
+   ]
+  },
+  {
    "text": "`SEQN` has `21,849` different values across `21,849` rows, one per row. A value that appears once cannot tell a model anything about a row it has not seen.",
    "shown": [
     [
      "artifact:findings",
      "findings[].detail"
+    ]
+   ]
+  },
+  {
+   "text": "`SEQN` is a covariate",
+   "shown": [
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
     ]
    ]
   },
@@ -6522,6 +7276,10 @@
    "text": "`SEQN` is left out of the models",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -6533,6 +7291,10 @@
     [
      "artifact:roles",
      "columns[].reason"
+    ],
+    [
+     "ask:models",
+     "read_from_data[].evidence"
     ],
     [
      "quest",
@@ -6583,6 +7345,10 @@
      "findings[].lever.options[].label"
     ],
     [
+     "ask:models",
+     "exits[].label"
+    ],
+    [
      "refusal:select_models",
      "exits[].label"
     ]
@@ -6596,6 +7362,10 @@
      "findings[].lever.options[].label"
     ],
     [
+     "ask:models",
+     "exits[].label"
+    ],
+    [
      "refusal:select_models",
      "exits[].label"
     ]
@@ -6603,6 +7373,19 @@
   },
   {
    "text": "`age` is left out of the models",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`age` is what you study",
    "shown": [
     [
      "quest",
@@ -6623,6 +7406,10 @@
    "text": "`bmi` holds codes for categories (one indicator per level)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -6630,6 +7417,19 @@
   },
   {
    "text": "`bmi` is left out of the models",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`bmi` is what you study",
    "shown": [
     [
      "quest",
@@ -6657,6 +7457,10 @@
   {
    "text": "`bp_di` holds codes for categories (one indicator per level)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -6703,6 +7507,10 @@
    "text": "`bp_sys` holds codes for categories (one indicator per level)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -6719,6 +7527,19 @@
   },
   {
    "text": "`carb` holds codes for categories (one indicator per level)",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`carb` is a covariate",
    "shown": [
     [
      "quest",
@@ -6757,6 +7578,10 @@
    "text": "`carb` is left out of the models",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -6766,6 +7591,10 @@
    "text": "`cycle_begin_year` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
    "shown": [
     [
+     "ask:models",
+     "exits[].label"
+    ],
+    [
      "refusal:select_models",
      "exits[].label"
     ]
@@ -6774,6 +7603,10 @@
   {
    "text": "`cycle_begin_year` is a count or an amount (a slope; a unit's rows averaged)",
    "shown": [
+    [
+     "ask:models",
+     "exits[].label"
+    ],
     [
      "refusal:select_models",
      "exits[].label"
@@ -6850,6 +7683,19 @@
    "text": "`fat_mon` holds codes for categories (one indicator per level)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`fat_mon` is a covariate",
+   "shown": [
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -6859,6 +7705,10 @@
    "text": "`fat_mon` is left out of the models",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -6866,6 +7716,19 @@
   },
   {
    "text": "`fat_poly` holds codes for categories (one indicator per level)",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`fat_poly` is a covariate",
    "shown": [
     [
      "quest",
@@ -6877,6 +7740,10 @@
    "text": "`fat_poly` is left out of the models",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -6884,6 +7751,19 @@
   },
   {
    "text": "`fat_sat` holds codes for categories (one indicator per level)",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`fat_sat` is a covariate",
    "shown": [
     [
      "quest",
@@ -6894,6 +7774,10 @@
   {
    "text": "`fat_sat` is left out of the models",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -6910,7 +7794,37 @@
    ]
   },
   {
+   "text": "`fat_total` correlates 0.88 with `kcal` across all `21,849` rows: nutrient effects are tangled with total energy.",
+   "shown": [
+    [
+     "artifact:findings",
+     "findings[].summary"
+    ],
+    [
+     "quest",
+     "stages[].lines[].name"
+    ],
+    [
+     "quest:triage",
+     "items[].summary"
+    ]
+   ]
+  },
+  {
    "text": "`fat_total` holds codes for categories (one indicator per level)",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`fat_total` is a covariate",
    "shown": [
     [
      "quest",
@@ -6949,8 +7863,21 @@
    "text": "`fat_total` is left out of the models",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`female` counts as 1",
+   "shown": [
+    [
+     "artifact:findings",
+     "findings[].repairs[].label"
     ]
    ]
   },
@@ -6994,6 +7921,10 @@
    "text": "`gender` is left out of the models",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -7013,6 +7944,15 @@
     [
      "quest:triage",
      "items[].summary"
+    ]
+   ]
+  },
+  {
+   "text": "`gender` is what you study",
+   "shown": [
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
     ]
    ]
   },
@@ -7038,8 +7978,39 @@
    "text": "`gender`: male female, female male",
    "shown": [
     [
+     "ask:exclusions",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`glucose` is a binary outcome",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`glucose` is a multiclass outcome",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`glucose` is a ordinal outcome",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
     ]
    ]
   },
@@ -7060,6 +8031,10 @@
    "text": "`hdl` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
    "shown": [
     [
+     "ask:models",
+     "exits[].label"
+    ],
+    [
      "refusal:select_models",
      "exits[].label"
     ]
@@ -7068,6 +8043,10 @@
   {
    "text": "`hdl` is a count or an amount (a slope; a unit's rows averaged)",
    "shown": [
+    [
+     "ask:models",
+     "exits[].label"
+    ],
     [
      "refusal:select_models",
      "exits[].label"
@@ -7087,6 +8066,10 @@
    "text": "`height` holds codes for categories (one indicator per level)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -7096,6 +8079,10 @@
    "text": "`height` is in in",
    "shown": [
     [
+     "ask:exclusions",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -7104,6 +8091,10 @@
   {
    "text": "`height` is in m",
    "shown": [
+    [
+     "ask:exclusions",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -7490,6 +8481,19 @@
    "text": "`kcal` holds codes for categories (one indicator per level)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`kcal` is a covariate",
+   "shown": [
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -7499,6 +8503,10 @@
    "text": "`kcal` is a total over 2 days, in kcal",
    "shown": [
     [
+     "ask:exclusions",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -7507,6 +8515,10 @@
   {
    "text": "`kcal` is in kJ, one day's intake",
    "shown": [
+    [
+     "ask:exclusions",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -7523,11 +8535,37 @@
    ]
   },
   {
+   "text": "`kcal` is kcal, one day's intake",
+   "shown": [
+    [
+     "ask:exclusions",
+     "exits[].label"
+    ]
+   ]
+  },
+  {
    "text": "`kcal` is left out of the models",
    "shown": [
     [
+     "ask:exclusions",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`kcal` is total energy. `protein`, `sugar`, `carb`, `fat_total`, `fat_sat` and 2 more carry energy, and each correlates 0.67 to 0.88 with `kcal`.",
+   "shown": [
+    [
+     "artifact:findings",
+     "findings[].detail"
     ]
    ]
   },
@@ -7546,6 +8584,14 @@
     [
      "artifact:proposals",
      "energy_unit.sentence"
+    ],
+    [
+     "ask:exclusions",
+     "groups[].evidence"
+    ],
+    [
+     "ask:exclusions",
+     "read_from_data[].evidence"
     ],
     [
      "quest",
@@ -7568,6 +8614,15 @@
     [
      "artifact:proposals",
      "energy.applicability.standard.reason"
+    ]
+   ]
+  },
+  {
+   "text": "`male` counts as 1",
+   "shown": [
+    [
+     "artifact:findings",
+     "findings[].repairs[].label"
     ]
    ]
   },
@@ -7690,6 +8745,19 @@
    "text": "`protein` holds codes for categories (one indicator per level)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`protein` is a covariate",
+   "shown": [
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -7726,6 +8794,10 @@
    "text": "`protein` is left out of the models",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -7733,6 +8805,19 @@
   },
   {
    "text": "`sugar` holds codes for categories (one indicator per level)",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].options[].label"
+    ]
+   ]
+  },
+  {
+   "text": "`sugar` is a covariate",
    "shown": [
     [
      "quest",
@@ -7743,6 +8828,10 @@
   {
    "text": "`sugar` is left out of the models",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -7771,6 +8860,10 @@
    "text": "`triglycerides` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
    "shown": [
     [
+     "ask:models",
+     "exits[].label"
+    ],
+    [
      "refusal:select_models",
      "exits[].label"
     ]
@@ -7779,6 +8872,10 @@
   {
    "text": "`triglycerides` is a count or an amount (a slope; a unit's rows averaged)",
    "shown": [
+    [
+     "ask:models",
+     "exits[].label"
+    ],
     [
      "refusal:select_models",
      "exits[].label"
@@ -7798,6 +8895,10 @@
    "text": "`waist` holds codes for categories (one indicator per level)",
    "shown": [
     [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].options[].label"
     ]
@@ -7815,6 +8916,10 @@
   {
    "text": "`weight` holds codes for categories (one indicator per level)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].change[].label"
+    ],
     [
      "quest",
      "stages[].lines[].items[].options[].label"
@@ -7840,7 +8945,7 @@
    ]
   },
   {
-   "text": "about 12 minutes, most of it tuning",
+   "text": "about 10 seconds",
    "shown": [
     [
      "artifact:shelf",
@@ -7849,7 +8954,16 @@
    ]
   },
   {
-   "text": "about 19 minutes, most of it tuning",
+   "text": "about 11 minutes, most of it tuning",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
+   "text": "about 18 minutes, most of it tuning",
    "shown": [
     [
      "artifact:shelf",
@@ -7867,6 +8981,15 @@
    ]
   },
   {
+   "text": "about 2 seconds",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
    "text": "about 3 hours, most of it tuning",
    "shown": [
     [
@@ -7876,7 +8999,34 @@
    ]
   },
   {
+   "text": "about 3 seconds",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
+   "text": "about 30 seconds, most of it tuning",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
    "text": "about 35 seconds, most of it tuning",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
+   "text": "about 50 seconds, most of it tuning",
    "shown": [
     [
      "artifact:shelf",
@@ -7903,7 +9053,34 @@
    ]
   },
   {
-   "text": "about 9 minutes, most of it tuning",
+   "text": "about 7 minutes, most of it tuning",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
+   "text": "about 7 seconds",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
+   "text": "about 8 minutes, most of it tuning",
+   "shown": [
+    [
+     "artifact:shelf",
+     "families[].estimate"
+    ]
+   ]
+  },
+  {
+   "text": "about 8 seconds",
    "shown": [
     [
      "artifact:shelf",
@@ -8051,8 +9228,21 @@
    ]
   },
   {
+   "text": "is a regression outcome",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].words"
+    ]
+   ]
+  },
+  {
    "text": "is an amount (one slope)",
    "shown": [
+    [
+     "ask:models",
+     "read_from_data[].words"
+    ],
     [
      "quest",
      "stages[].lines[].items[].words"
@@ -8062,6 +9252,10 @@
   {
    "text": "is coded female female, male male",
    "shown": [
+    [
+     "ask:exclusions",
+     "read_from_data[].words"
+    ],
     [
      "quest",
      "stages[].lines[].items[].words"
@@ -8079,6 +9273,28 @@
   },
   {
    "text": "is the unit's identifier",
+   "shown": [
+    [
+     "ask:models",
+     "read_from_data[].words"
+    ],
+    [
+     "quest",
+     "stages[].lines[].items[].words"
+    ]
+   ]
+  },
+  {
+   "text": "is total energy intake",
+   "shown": [
+    [
+     "quest",
+     "stages[].lines[].items[].words"
+    ]
+   ]
+  },
+  {
+   "text": "is what you study",
    "shown": [
     [
      "quest",
@@ -8099,6 +9315,10 @@
    "text": "its median, 167.2, is a human height only in cm",
    "shown": [
     [
+     "ask:exclusions",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -8110,6 +9330,15 @@
     [
      "artifact:forms",
      "rule"
+    ]
+   ]
+  },
+  {
+   "text": "kcal, one day's intake",
+   "shown": [
+    [
+     "ask:exclusions",
+     "groups[].guess_words"
     ]
    ]
   },
@@ -8294,6 +9523,10 @@
    "text": "the labels spell the sexes (`female` female)",
    "shown": [
     [
+     "ask:exclusions",
+     "read_from_data[].evidence"
+    ],
+    [
      "quest",
      "stages[].lines[].items[].evidence"
     ]
@@ -8318,6 +9551,15 @@
     [
      "quest",
      "stages[].lines[].waiting_for[].name"
+    ]
+   ]
+  },
+  {
+   "text": "the out-of-fold calibration slope (cross-validation)",
+   "shown": [
+    [
+     "artifact:evaluation",
+     "shrinkage.how"
     ]
    ]
   },

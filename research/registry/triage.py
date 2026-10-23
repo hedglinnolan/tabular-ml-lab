@@ -162,6 +162,27 @@ STATED_IN_METHODS = ("the methods' account of what the values settled holds the 
                      "(IDENTIFIER), the roles proposal's reasons (ROLES) and the outcome's task read "
                      "from its values (TASK), each a claim to register (export/methods.py, "
                      "readings.py)")
+VALIDATION_SET = ("the validation scheme set for you, said by its value (5-fold cross-validation, the "
+                  "split's folds or the scheme's defaults): a default (quest.validation_stated, "
+                  "decisions.SetValidation)")
+SHARES = ("the holdout shares offered, named by their numbers: numbers the seal plan ranks (SEAL_PLAN; "
+          "seal.py), which the split entry states in words (T_SPLIT)")
+ENERGY_NOTICING = ("the energy-adjustment noticing: adjusting for total energy makes a nutrient's "
+                   "coefficient a substitution, leaving it out asks about added energy, the two "
+                   "answer different questions (Tomova et al. 2022), and under prediction models "
+                   "that keep total energy predict alike: teaches a method and sets a default "
+                   "(methods/dietary_caveats.py ENERGY_TITLE, ENERGY_WHY)")
+TANGLED = ("the energy noticing calls a nutrient's correlation with total energy tangling only at r "
+           "of at least 0.3 (stages/finding_words.py TANGLED_R): a threshold, one of the r ≥ 0.3 "
+           "copies CLAIMS_REGISTRY §3 holds for a ruling")
+INTERPRETABLE = ("the interpretable model's cost or gain is weighed only against a fitted flexible "
+                 "family, and none is stated without one: a refusal (stages/evaluation.py)")
+BENCHMARK = ("the regression-with-splines benchmark: every continuous predictor a restricted cubic "
+             "spline with knots by Harrell's rule, on the families' in-fold preprocessing and paired "
+             "folds, and its verdict against the no-predictor baseline by baseline.min_gain's rule: "
+             "teaches a method (stages/evaluation.py)")
+SHRINKAGE = ("the shrinkage offered after the fit, its factor the out-of-fold calibration slope by "
+             "model updating: teaches a method (models/decision_curve.slope_of, stages/evaluation.py)")
 CONSUMER = "names the parts of the analysis that read the answer: interface copy"
 DEFINITION = "a term's definition that says what a word names, and asserts nothing of a method"
 
@@ -259,6 +280,11 @@ RULINGS: tuple[Ruling, ...] = (
            r"whether two families differ is read from their paired interval", "unrendered",
            "the pairwise interval's method and verdict, which the claim's teaching states "
            "(models/validation.py, models/baseline.py)", ("validation.paired_interval",)),
+    Ruling(r"differs by [−\d.,-]+ \(95% interval of the difference .*corrected repeated k-fold t .*: "
+           r".* is (ahead|behind) on these rows\.$", "unrendered",
+           "the pairwise interval's method and its verdict, which the claim's teaching states "
+           "(models/validation.py family_differences, stages/evaluation.py)",
+           ("validation.paired_interval",)),
     Ruling(r"by the corrected repeated k-fold t \(Nadeau & Bengio 2003; Bouckaert & Frank "
            r"2004\)", "unrendered",
            "the split's methods sentence names the comparison the claim teaches "
@@ -277,7 +303,7 @@ RULINGS: tuple[Ruling, ...] = (
            "(methods/missing.py)", ("missing.fold_fill_first_under_prediction",)),
     Ruling(r"^How many days each value spans is not settled: its median, [\d,.]+, is an adult's "
            r"day's intake \(a child's total over two days sits there too\); record it before "
-           r"screening by `[^`]+`\.$|^Which rows are implausible depends on it, so none is counted "
+           r"screening by `[^`]+`\.\)?$|^Which rows are implausible depends on it, so none is counted "
            r"as a misreport until it is recorded, and the intake screens wait for it", "unrendered",
            "the screens wait for the energy column's days: the claim's refusal in the reading's "
            "words (stages/proposals.py, stages/finding_words.py)",
@@ -302,6 +328,22 @@ RULINGS: tuple[Ruling, ...] = (
     Ruling(r"by analogy with the 100-event rule|at or above the floor of \d+ rows|"
            r"held-out rows: R² known to about ±|^Widths are approximate 95% intervals",
            "register", SEAL_PLAN),
+    Ruling(r"^Hold out \d+%$", "register", SHARES),
+    Ruling(r"^Repeated cross-validation \(\d+ × \d+\)$", "register", SUBSTRATE),
+    Ruling(r"^\d+-fold cross-validation(, repeated \d+ times)?\.$", "register", VALIDATION_SET,
+           where=r"^quest stages\[\]\.lines\[\]\.reason$"),
+    Ruling(r"^Sex-neutral [\d,]+–[\d,]+$", "register", SCREENS),
+    Ruling(r"^Adjusting for total energy (decides what a nutrient's coefficient means|makes a "
+           r"nutrient's coefficient a substitution)|^Leaving energy out, or partitioning it, asks "
+           r"about adding energy|^The two answer different questions \(Tomova et al\. 2022\)|^For "
+           r"prediction, models that keep total energy predict alike", "register", ENERGY_NOTICING),
+    Ruling(r"correlates [\d.]+ with `[^`]+` across all `[\d,]+` rows: nutrient effects are tangled "
+           r"with total energy\.$", "register", TANGLED),
+    Ruling(r"^No flexible family was fitted, so there is nothing for the interpretable model",
+           "register", INTERPRETABLE),
+    Ruling(r"^The regression-with-splines benchmark \(every continuous predictor a restricted cubic "
+           r"spline", "register", BENCHMARK),
+    Ruling(r"^the out-of-fold calibration slope", "register", SHRINKAGE),
     Ruling(r"^With [\d,]+ rows, one cross-validation run is precise", "register",
            VALIDATION_SIZE),
     Ruling(r"^Held out by row: every `[^`]+` appears once", "register", SPLIT_BY_ROW),
@@ -346,8 +388,8 @@ RULINGS: tuple[Ruling, ...] = (
     Ruling(r"^Cross-validated R², MSE, RMSE and MAE pool every out-of-fold prediction|"
            r"^Each standard error counts which rows were scored", "register", CV_SCORE),
     Ruling(r"^The fold values show the spread", "plain", COPY),
-    Ruling(r"^Under prediction nothing locks|^Pressing Fit opens Results|^No score or estimate is "
-           r"shown until Fit is pressed|^Nothing is locked and no estimate is shown|"
+    Ruling(r"^Under prediction nothing locks|^Pressing Fit opens Results|^(The estimates are "
+           r"withheld: )?No score or estimate is shown until Fit is pressed|^Nothing is locked and no estimate is shown|"
            r"^The held-out rows are sealed: no held-out score is served", "register", LOCK),
     Ruling(r"^Fit was pressed, so the scores are shown", "plain", COPY),
     Ruling(r"^The held-out rows open once, after every open noticing|^Act on each where it is "
@@ -369,8 +411,8 @@ RULINGS: tuple[Ruling, ...] = (
            r"`[^`]+` was imputed|^As a flag it stays in the record|^As a predictor, a flag lets a "
            r"model learn", "register", FLAGS),
     Ruling(r"^Named like a flag on `[^`]+`, but `[^`]+` has no blanks|^Named like a time, but no "
-           r"unit repeats here|^Not a nutrient or feature: read as a|^A person's characteristic, "
-           r"usually adjusted for|^A nutrient that carries energy|^Total energy intake: its values "
+           r"unit repeats here|^Not a nutrient or feature: read as a|^A person's characteristic"
+           r"(, usually adjusted for|\.$)|^A nutrient that carries energy|^Total energy intake: its values "
            r"follow", "register", ROLES),
     Ruling(r"^`[^`]+` is the NHANES respondent number|^`[^`]+` is unique on every row: it names a "
            r"participant and is not a predictor|^A value that appears once cannot tell a model|"
@@ -552,7 +594,9 @@ RULINGS: tuple[Ruling, ...] = (
            r"rules repeated inside each fold)|^what your data settled|^The \d+ choices set for you|"
            r"^The choice set for you", "plain", LABEL),
     Ruling(r"^(proposed as a|is a flag on another column|is an amount \(one slope\)|is coded |"
-           r"is in grams|is the unit's identifier)", "plain", READING),
+           r"is in grams|is the unit's identifier|is a (regression|binary|multiclass|ordinal) "
+           r"outcome$|is total energy intake$|is what you study$)", "plain", READING),
+    Ruling(r".", "plain", READING, where=r"^ask:\w+ groups\[\]\.guess_words$"),
     Ruling(r"^\d+ columns (confirmed|proposed) as characteristics at \w+ confidence", "plain",
            ANSWER),
     Ruling(r"^Confirm (all \d+|both) in one press|^Confirm it after reading why it was proposed|"
@@ -566,8 +610,8 @@ RULINGS: tuple[Ruling, ...] = (
            r"rows; opening it is recorded", "plain",
            "names a view; that opening it is recorded is the seal's rule, said by the view's "
            "own claim when it is registered"),
-    Ruling(r"^\(`[\d,]+` whole-number values from |^`[\d,]+` values with decimals that fill their "
-           r"grid|^its median, [\d.,]+, is|^the labels spell the sexes|^`[^`]+` matches the energy "
+    Ruling(r"^\(?`[\d,]+` whole-number values from |^`[\d,]+` values with decimals that fill their "
+           r"grid|^its median, [\d.,]+, is|^the labels spell the sexes|^\(?`[^`]+` matches the energy "
            r"its macronutrients carry", "plain", EVIDENCE),
     Ruling(r"^`[^`]+` was confirmed as a|were each confirmed as a flag on another column|"
            r"^Confirmed together, each as the question showed it|were confirmed together as one "
@@ -589,12 +633,19 @@ RULINGS: tuple[Ruling, ...] = (
            r"weights or design columns\.$|Read all [\d,]+ rows|Read [\d,]+ rows and \d+ columns|"
            r"Column summaries and lens hints read|Counted across all|Ranked for [\d,]+ training rows|"
            r"no value for the outcome|one row per unit$|Rows in the table)", "plain", READING),
-    Ruling(r"^`[^`]+` and `[^`]+`: r = |^`\d+` columns hold SAS export zeros as", "plain", READING),
-    Ruling(r"^one-hot, blank as a level$", "plain", LABEL),
+    Ruling(r"^`[^`]+` and `[^`]+`: r = |^`\d+` columns hold SAS export zeros as|carry energy, and "
+           r"each correlates [\d.]+ to [\d.]+ with `[^`]+`\.$", "plain", READING),
+    Ruling(r"^one-hot, blank as a level$|^Confirm all \d+$", "plain", LABEL),
+    Ruling(r"^(TRIPOD\+AI|STROBE) \d+[a-z]?$|^[A-Z][a-z]+( [a-z]+)* \((TRIPOD\+AI|STROBE) [^)]+\)$",
+           "plain", "a label: a manuscript section's heading or the guideline item it reports"),
+    Ruling(r"^\d+ families were compared$", "plain", ANSWER),
+    Ruling(r"^Shrink the regression's coefficients by [\d.]+ \(model updating\)$", "plain",
+           "names the shrinkage offered by its factor, measured on these rows by the method its "
+           "`how` states (SHRINKAGE)"),
     Ruling(r"^The analysis was run in TurboTab|^The supplementary provenance record holds|"
            r"^Sections follow TRIPOD\+AI", "plain", PROVENANCE),
     Ruling(r"^(Methods: |Missing data \(TRIPOD|Analytical methods \(TRIPOD)", "plain", LABEL),
-    Ruling(r"^about [\d,]+ (seconds|minutes?|hours?), most of it tuning", "plain",
+    Ruling(r"^about [\d,]+ (seconds?|minutes?|hours?)(, most of it tuning)?$", "plain",
            "an estimate of the fit's time on these rows"),
     Ruling(r"^(Could bias the score|How well it measures)$", "plain", LABEL),
     Ruling(r"^female=(fe)?male", "plain", "a coding's value as the line records it"),

@@ -729,7 +729,8 @@ def held_words(capture_data: dict[str, Any]) -> str:
     parts = list(SOURCES)
     if read:
         parts.append(
-            f"the teaching entries of the {len(questions)} questions the journey answered "
+            f"at the end, the teaching entries of the {len(questions)} questions the journey "
+            f"answered "
             f"({', '.join(f'`{k}`' for k in questions)})"
             + (" and of the repairs its noticings drew" if "repairs" in read else "")
             + ": the title, question, one line, why, who reads the answer and terms, as each card "
@@ -749,9 +750,12 @@ def held_words(capture_data: dict[str, Any]) -> str:
             + (f"{len(labels)} strings of fewer than {MIN_WORDS} words that neither end a sentence "
                "nor state a number (labels and headings), whole or split off a longer string; "
                if labels else "")
-            + "a preview of an answer before it is given (this journey previews none); and the "
-              "data views (the table's pages, the column summaries, the histograms), which the "
-              "capture does not read.")
+            + "a preview of an answer before it is given (this journey previews none); a state "
+              "that lasts only while a stage computes (a question waiting on it, a gate that reads "
+              "its answer as not yet given), read only where the read just after an answer falls "
+              "in it, since the read before the next one waits it out; and the data views (the "
+              "table's pages, the column summaries, the histograms), which the capture does not "
+              "read.")
     unsettled = capture_data.get("unsettled") or {}
     if unsettled:
         out += (f" **Not read:** what a stage still computing after {SETTLE_SECONDS:g} s served "
@@ -800,7 +804,8 @@ def render_table(capture_data: dict[str, Any], rows: list[Row], reg: Any) -> str
     outside = [c for c in claimed if c not in traced]
     lines += ["", f"**The claims that render a sentence here**, and whether the record traced "
               f"them: {len(claimed) - len(outside)} of {len(claimed)} did"
-              + (f"; the other {len(outside)} rendered outside the log" if outside else "") + ".",
+              + (f"; the other {len(outside)} rendered outside the log ("
+                 + ", ".join(f"`{c}`" for c in outside) + ")" if outside else "") + ".",
               "", "| claim | sentences | traced | registered by |", "|---|---|---|---|"]
     for cid in claimed:
         n = sum(1 for r in rows if r.verdict == "claim" and cid in r.claims)

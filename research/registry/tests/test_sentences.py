@@ -2,16 +2,20 @@
 reads as a sentence, how a string splits, how a sentence is indexed to the claim that rendered it
 or triaged, and the committed table held current.
 
-* A sentence is a string of at least four words that is not a name; the capture skips the values
+* A sentence is a string of at least four words that is not a name, or of fewer that ends a
+  sentence or states a number; a shorter string is a label, counted; the capture skips the values
   of keys that name things, and keeps every place a string was served, its list indices dropped.
 * A string splits at a sentence's end, never after "et al.", and a Markdown line's marks drop.
 * A sentence that holds a claim's words, or one clause of them, is indexed to it; one that does
   not is triaged by the first ruling that matches it, else untriaged, and the table exits 1.
 * A sentence served only on the card of a question the journey does not ask is not shown; one
   served anywhere else is.
-* A read takes the quest log, the methods lines and the manuscript after every answer, and each
-  stage artifact once for each content it serves, so an artifact that changes under its key (the
-  fit, once the held-out rows open) is read again, and one that does not is not.
+* A read takes the quest log, the open questions' ask cards (the fields the card draws), the
+  methods lines and the manuscript, and each stage artifact once for each content it serves, so an
+  artifact that changes under its key (the fit, once the held-out rows open) is read again, and one
+  that does not is not. It reads before each answer once no stage is computing, and after it, and
+  at the end once no stage is computing, waiting at most its bound and naming a stage it stopped
+  waiting for.
 * The teaching entries read are those of the questions answered, the roles card under the goal,
   and the repairs entry only where a noticing's card is drawn; the drawer is counted, not kept.
 * Two sentences that state one rule get verdicts that agree: alike but for their values, or one
@@ -19,9 +23,10 @@ or triaged, and the committed table held current.
   claim's rule in other words is named by the sentence that holds it.
 * The committed table is what the committed capture, the registry and the rulings give now, and
   the capture's render log traced the journey's claims this package registered: what a swarm
-  record's ``claims`` lists; the capture holds the held-out results, the methods lines and the
-  teaching of each answered question, and the table's verdicts on the sentences that state one
-  rule twice agree.
+  record's ``claims`` lists; the capture holds the held-out results, the methods lines, the
+  teaching of each answered question, the state between two answers, the evaluation and the ask
+  cards, and the table's verdicts on the sentences that state one rule twice agree; the table
+  counts the labels under the floor and names a stage a read stopped waiting for.
 
 Every expectation is built here, or read from the committed files the test holds current.
 """
@@ -497,6 +502,27 @@ def test_the_committed_capture_holds_the_held_out_results_the_methods_lines_and_
     assert {s for s, _ in places if s.startswith("teaching:")} == {
         f"teaching:{k}" for k in data["teaching"]["read"]}
     assert sum(data["teaching"]["left_out"]["sentences"].values()) > 0
+
+
+def test_the_committed_capture_holds_the_settled_state_the_evaluation_and_the_ask_cards():
+    """What the first repair's capture left out (the second repair round's P1 and P2): the
+    energy-adjustment noticing served between the outcome and the purpose answers, the evaluation
+    stage that finishes after the opening, the open questions' ask cards, and the validation
+    line's two-word reason; and no read stopped waiting for a stage."""
+    data = json.loads((S.HERE / "nhanes-glucose-predict.capture.json").read_text("utf-8"))
+    where = {}
+    for e in data["strings"]:
+        for x in S.sentences_of(e["text"]):
+            where.setdefault(x, set()).update((s, p) for s, p in e["shown"])
+    assert ("artifact:findings", "findings[].title") in where[
+        "Adjusting for total energy decides what a nutrient's coefficient means."]
+    assert ("artifact:evaluation", "interpretable.text") in where[
+        "No flexible family was fitted, so there is nothing for the interpretable model to cost or "
+        "gain against."]
+    assert ("ask:models", "groups[].evidence") in where["`143` whole-number values from 6 to 226"]
+    assert ("ask:exclusions", "exits[].label") in where["`kcal` is kcal, one day's intake"]
+    assert ("quest", "stages[].lines[].reason") in where["5-fold cross-validation."]
+    assert data["labels"] and data["unsettled"] == {}
 
 
 def test_the_committed_tables_verdicts_on_one_rule_said_twice_agree():
