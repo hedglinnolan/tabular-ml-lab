@@ -24,7 +24,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
-from turbotab.core.graph import Bundle, StageContext
+from turbotab.core.graph import Bundle, StageContext, StageRefusal
 from turbotab.core.stages.data import LENSES, open_store
 
 PREDICTOR_ROLES = ("exposure", "covariate", "energy")
@@ -1731,12 +1731,13 @@ def cohort_stage(ctx: StageContext) -> Bundle:
         steps, kept, preds = compute_cohort(store, ctx.state, ingest, measured=measured)
         # Too few rows to analyze is said here, with what removed them, before any stage is
         # handed an empty frame (``turbotab.core.row_floor``; recorded answers are refused first,
-        # but a table that changed under them can still leave too few).
+        # but a table that changed under them can still leave too few): a refusal in words, with
+        # the answer-time refusal's code and ways forward (SWARM_PLAN §8).
         from turbotab.core.row_floor import cohort_refusal
 
         refused = cohort_refusal(store, ctx.state, ingest, steps, kept)
         if refused:
-            raise ValueError(refused)
+            raise StageRefusal("too_few_rows", refused, exits=_cohort_exits(ctx.state, steps))
         cc = next((st for st in steps if st["key"] == "complete_cases"), None)
         if missing_strategy(ctx.state) == "complete_case" and cc is not None and cc["dropped"]:
             ctx.progress(0.7, "Comparing the rows complete cases drop with the rows they keep")
@@ -1750,6 +1751,24 @@ def cohort_stage(ctx: StageContext) -> Bundle:
 
 
 # ── split ─────────────────────────────────────────────────────────────────────
+
+
+def _cohort_exits(state: Any, steps: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """The cohort's refusal's ways forward, as the answer-time refusal of the same rows builds them
+    (``row_floor._exits``): a fill where complete cases remove the rows, and each exclusion rule
+    that removes them dropped. Built with no answer-time context, so each is a decision the model
+    reads, checked as any answer is when it is taken; keeping the answers as they are, which at
+    the fit leaves the refusal standing, is not one. A way forward that cannot be built leaves
+    none, never a crash in the refusal's place."""
+    from turbotab.core.decisions import SetExclusions
+    from turbotab.core.row_floor import KEEP, _causes, _exits
+
+    try:
+        ways = _exits(SetExclusions(rules=list(getattr(state, "exclusions", None) or [])),
+                      _causes(steps), None, state, None)
+    except Exception:  # noqa: BLE001 - the refusal stands without its ways forward
+        return []
+    return [w for w in ways if w != KEEP]
 
 
 def _feasible_stratify(labels: Any, test_fraction: float) -> bool:
@@ -2102,7 +2121,7 @@ def split_stage(ctx: StageContext) -> Bundle:
     task = ctx.inputs["target_info"].get("task")
     spec = ctx.state.split
     ctx.progress(0.1, "Reading the identifier and the outcome")
-    from turbotab.core.seal import seal_inputs  # the basis and the chronological draw (M2 §3)
+    from turbotab.core.seal import draw_exits, seal_inputs  # the basis and the draw by time
 
     structure = ctx.inputs.get("structure")  # the grain stated from a unique identifier
     with open_store(ctx) as store:
@@ -2111,13 +2130,22 @@ def split_stage(ctx: StageContext) -> Bundle:
                            cut_point=getattr(spec, "cut_point", None),
                            fold_order=getattr(spec, "fold_order", None), analyzed=rows)
     if seal.refusal:
-        raise ValueError(seal.refusal)
+        # A refusal in words, with its code and ways forward (SWARM_PLAN §8): the cut-point's draw
+        # refusals ("No analyzed row would be held out", "... would train before ...", the undated
+        # share), the draw by time's, and the grain first, never a crash.
+        raise StageRefusal(seal.refusal_code or "seal_refused", seal.refusal,
+                           exits=draw_exits(seal, spec))
     validation = getattr(spec, "validation", "kfold")
     clusters = None
     if validation == "internal_external":
         with open_store(ctx) as store:
             if spec.cluster not in store.columns:
-                raise ValueError(f"The table has no column `{spec.cluster}` to fold by.")
+                # The answer-time refusal's code and way forward (``decisions``'
+                # ``_cluster_is_a_column_with_levels``), for a table that no longer holds it.
+                raise StageRefusal(
+                    "unknown_column", f"The table has no column `{spec.cluster}` to fold by.",
+                    exits=[{"label": "Choose the column that names each site, study or period",
+                            "decision": None}])
             clusters = store.materialize([spec.cluster], universe)[spec.cluster].to_numpy(dtype=object)
     ctx.progress(0.4, "Drawing the held-out rows and the folds")
     frame, info = draw_split(
