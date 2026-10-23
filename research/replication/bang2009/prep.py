@@ -97,9 +97,12 @@ def _is(series: pd.Series, code: float) -> pd.Series:
     return pd.to_numeric(series, errors="coerce").eq(code).fillna(False).astype(bool)
 
 
-def codes(values: Any) -> pd.Series:
-    """Integer codes as a nullable integer column."""
-    return pd.Series(values).astype("Int64")
+def codes(values: pd.Series) -> pd.Series:
+    """Integer codes as a nullable integer column, on ``values``' own index (a bare array would
+    take a fresh index, and the table's rows would no longer line up)."""
+    if not isinstance(values, pd.Series):
+        raise TypeError("codes takes a Series, so each code stays on its row")
+    return values.astype("Int64")
 
 
 def age_band(age: pd.Series) -> pd.Series:
@@ -165,9 +168,9 @@ def family_history(frame: pd.DataFrame, close: bool = False) -> pd.Series:
     sibling among the relatives named (:data:`CLOSE_RELATIVES`); else 0."""
     if not close:
         return codes(_is(frame["MCQ250A"], YES).astype(int))
-    hit = np.zeros(len(frame), dtype=bool)
+    hit = pd.Series(False, index=frame.index)
     for column, code in CLOSE_RELATIVES.items():
-        hit |= _is(frame[column], code).to_numpy()
+        hit |= _is(frame[column], code)
     return codes(hit.astype(int))
 
 

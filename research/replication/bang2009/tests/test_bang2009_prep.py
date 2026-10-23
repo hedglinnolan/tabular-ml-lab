@@ -112,6 +112,22 @@ def test_the_subsample_is_refused_without_the_four_year_weight_or_a_stratum_s_ps
         prep.subsample(lost)
 
 
+def test_every_predictor_follows_its_row_when_the_index_has_gaps():
+    # The subsample leaves the intake's index with gaps; each predictor must stay on its own row
+    # (the parent-or-sibling column once went blank there, by index alignment).
+    f = frame(MCQ250A=[1, 1, 2], MCQ260AA=[1, NA, NA], MCQ260AB=[NA] * 3,
+              MCQ260AG=[NA, 7, NA], MCQ260AH=[NA] * 3, BMXBMI=[22.0] * 3, BMXWAIST=[80.0] * 3,
+              PAQ520=[1, 2, 1])
+    for c in prep.KEPT:
+        f[c] = [1.0, 2.0, 3.0]
+    f.index = [10, 4000, 9999]
+    out = prep.derive(f)
+    assert out["famhx_close"].tolist() == [1, 1, 0]
+    assert out["famhx"].tolist() == [1, 1, 0]
+    assert out["active"].tolist() == [1, 0, 1]
+    assert not out[prep.PREDICTORS].drop(columns=["obesity"]).isna().any().any()
+
+
 def test_derive_keeps_every_row_and_the_codes_of_sex_and_activity():
     n = 6
     f = frame(RIAGENDR=[1, 2, 1, 2, 1, 2], PAQ520=[1, 2, 3, 7, 9, NA],
