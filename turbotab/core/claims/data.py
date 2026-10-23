@@ -1283,6 +1283,10 @@ register(Claim(
 register(Claim(
     id="eligibility.level_spelling",
     kind="rule",
+    methods="A level of an eligibility rule that reads as a whole number named that number however "
+            "it was written, as a number or as text, with or without a decimal point or a leading "
+            "zero; a level that reads as no number named only itself, as written, case and "
+            "spacing included.",
     regime=Regime("a categorical eligibility rule, its levels compared with its column's values",
                   requires=(f"{HERE}:a_level_rule",)),
     decision="set_exclusions.level_spelling",
