@@ -472,12 +472,21 @@ class Local:
 
     def drop(self, pid: str, made: set[str]) -> bool:
         """The copy ``pid`` removed, once none of its stages is computing; only a copy this session
-        made (``made``), never a project it did not. Whether it was removed."""
+        made (``made``), never a project it did not. Whether it was removed. A late write can land
+        between the idle check and the removal ("Directory not empty"): it waits for idle and tries
+        again, and where the copy still cannot be removed it is kept and the answer is False."""
         import shutil
 
         if pid not in made or not self.idle(pid, wait=120.0):
             return False
-        shutil.rmtree(self.home / "projects" / pid)
+        for attempt in range(3):
+            try:
+                shutil.rmtree(self.home / "projects" / pid)
+                break
+            except OSError:
+                if attempt == 2 or not self.idle(pid, wait=120.0):
+                    return False
+                time.sleep(1.0)
         shutil.rmtree(self.home / "driver" / pid, ignore_errors=True)  # its driver folder (``use``)
         made.discard(pid)
         return True

@@ -384,3 +384,40 @@ def test_an_answer_that_failed_stops_the_walk_failed():
     with pytest.raises(arms.Met) as got:
         arms.walk(failing, arms.Default(Q))
     assert got.value.kind == "failed" and got.value.detail["code"] == "http_500"
+
+
+def test_a_copy_still_written_to_after_its_stages_go_idle_is_removed_on_a_retry_or_kept(
+        tmp_path, monkeypatch):
+    """A late write can land in a copy between the idle check and its removal ("Directory not
+    empty", as the readmission crash sweep met on 2026-10-23): drop waits for idle again and
+    retries, and where the copy still cannot be removed it is kept and drop says so, so the sweep
+    goes on rather than stopping on its own housekeeping."""
+    import shutil
+
+    session = arms.Local(tmp_path)
+    (tmp_path / "projects" / "p1").mkdir(parents=True)
+    monkeypatch.setattr(session, "idle", lambda pid=None, wait=0.0: True)
+    real, calls = shutil.rmtree, []
+
+    def flaky(path, *a, **k):
+        calls.append(path)
+        if len(calls) == 1:
+            raise OSError(66, "Directory not empty", str(path))
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(shutil, "rmtree", flaky)
+    made = {"p1"}
+    assert session.drop("p1", made) is True
+    assert not (tmp_path / "projects" / "p1").exists() and made == set()
+
+    (tmp_path / "projects" / "p2").mkdir(parents=True)
+
+    def stuck(path, *a, **k):
+        if "projects" in str(path) and not k.get("ignore_errors"):
+            raise OSError(66, "Directory not empty", str(path))
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(shutil, "rmtree", stuck)
+    made = {"p2"}
+    assert session.drop("p2", made) is False
+    assert (tmp_path / "projects" / "p2").exists() and made == {"p2"}
