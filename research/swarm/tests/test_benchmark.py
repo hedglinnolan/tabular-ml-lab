@@ -23,8 +23,10 @@ score on a record's own held-out participants, and its AUC.
   once; every passage the score's items quote is on its page; the activity item's adaptation is
   refused should the later cycle's file document PAQ520.
 * **The numbers the researcher reads** follow the values the code uses: the help's threshold is
-  the AUC's (the module read again under another), and the family-history rule's validation cycle
-  is the notes' row's, the output's ``reported`` (the notes pointed at another cycle).
+  the AUC's (the module read again under another), the family-history rule's validation cycle
+  is the notes' row's, the output's ``reported`` (the notes pointed at another cycle), and the
+  answer codes and readings the rules name are those the score compares with (the module read
+  again under other codes and two readings, the rules and the score follow).
 """
 from __future__ import annotations
 
@@ -120,6 +122,49 @@ def test_the_score_is_table_2s_points_item_by_item():
     ages = [34.0, 35.0, 44.0, 45.0, 64.0, 65.0]
     np.testing.assert_array_equal(
         moved.score(pd.DataFrame([{**BASE, "RIDAGEYR": a} for a in ages])), [0, 1, 1, 2, 2, 3])
+
+
+def test_the_rules_print_the_answer_codes_and_the_readings_the_score_compares_with():
+    """The verifier's VF-2: each answer code a rule prints (Yes and Male, code 1 in the NCHS
+    codebooks, as the rows above score them) and the oscillometric readings it names are filled in
+    from the constants the score uses (``YES``, ``MALE``, ``READINGS``); with the module read again
+    under other codes and two readings, the rules print those, and the score counts the new codes
+    and reads only the two readings."""
+    rule = {i["item"]: i["rule"] for i in B.ITEMS}
+    assert rule["male"] == "RIAGENDR is 1 (Male)"
+    assert rule["family history of diabetes"].startswith("MCQ300C is 1 (Yes): a close relative")
+    assert rule["history of hypertension"].startswith(
+        "BPQ020 is 1 (told of high blood pressure), BPQ050A is 1 (now taking the prescribed ")
+    assert ("systolic (BPXOSY1 to BPXOSY3)" in rule["history of hypertension"]
+            and "diastolic (BPXODI1 to BPXODI3)" in rule["history of hypertension"])
+    assert rule["physically active"].startswith("PAQ650 or PAQ665 is 1 (Yes): vigorous")
+    moved = _benchmark_with({"YES = 1": "YES = 3", "MALE = 1": "MALE = 2",
+                             "READINGS = (1, 2, 3)": "READINGS = (1, 2)"})
+    moved_rule = {i["item"]: i["rule"] for i in moved.ITEMS}
+    assert moved_rule["male"] == "RIAGENDR is 2 (Male)"
+    assert moved_rule["family history of diabetes"].startswith("MCQ300C is 3 (Yes): ")
+    assert moved_rule["history of hypertension"].startswith(
+        "BPQ020 is 3 (told of high blood pressure), BPQ050A is 3 (now taking")
+    assert ("systolic (BPXOSY1 to BPXOSY2)" in moved_rule["history of hypertension"]
+            and "diastolic (BPXODI1 to BPXODI2)" in moved_rule["history of hypertension"])
+    assert moved_rule["physically active"].startswith("PAQ650 or PAQ665 is 3 (Yes): ")
+    assert "BPXOSY3" not in moved.COLUMNS and "BPXODI2" in moved.COLUMNS
+    # Each row's points by hand under the moved codes: code 2 is male and code 3 yes, code 1 is
+    # neither, and only the first two readings are averaged. Each row is BASE with RIAGENDR 1, a
+    # woman under the moved code, who scores 0 but for the change.
+    woman = {**BASE, "RIAGENDR": 1.0}
+    rows = [({}, 0), ({"RIAGENDR": 2.0}, 1),
+            ({"MCQ300C": 3.0}, 1), ({"MCQ300C": 1.0}, 0),
+            ({"BPQ020": 3.0}, 1), ({"BPQ020": 1.0}, 0), ({"BPQ050A": 3.0}, 1),
+            ({"PAQ650": 3.0}, -1), ({"PAQ665": 3.0}, -1), ({"PAQ665": 1.0}, 0),
+            ({"BPXOSY3": 300.0}, 0),  # mean of 110 and 110: the third reading is not read
+            ({"BPXOSY1": 300.0}, 1)]  # mean of 300 and 110, 205: high
+    frame = pd.DataFrame([{**woman, **change} for change, _ in rows])
+    np.testing.assert_array_equal(moved.score(frame), [points for _, points in rows])
+    # The module as it is scores the same rows by code 1 and three readings: RIAGENDR 1 is a man
+    # (1 point), codes 2 and 3 are not Yes, and a reading of 300 makes the mean of the three
+    # 173.3, high.
+    np.testing.assert_array_equal(B.score(frame), [1, 0, 1, 2, 1, 2, 1, 1, 1, 0, 2, 2])
 
 
 def _benchmark_with(changes: dict[str, str]):
