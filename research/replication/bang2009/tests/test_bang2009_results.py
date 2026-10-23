@@ -1,12 +1,15 @@
 """The Bang 2009 results: the paper's numbers as the notes print them, the paper's rounding, the
-agreement guard both ways, the AUC against scikit-learn, and the notes' block rendered from the
+agreement guard both ways, the AUC against scikit-learn, the counts by glucose group from rows
+built by hand and from the manifest's table alone, and the notes' block rendered from the
 committed ``results.json`` alone (``results.py``)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from research.replication.bang2009 import results as R
@@ -128,3 +131,54 @@ def test_the_predict_lane_s_distance_from_the_reference_is_the_solver_s(committe
         assert r["agreement"]["rows_same"]
         assert r["solver"]["default"]["max_abs_from_engine"] <= 1e-9
         assert r["solver"]["tight"]["max_abs_from_reference"] <= 1e-6
+
+
+# ── the counts by glucose group, from the manifest's table alone ───────────
+
+NA = np.nan
+# Rows built by hand, each with the group §5.1's rule gives it: (age, pregnant, fasting weight,
+# glucose, DIQ010, DIQ050, DIQ070) -> group, or None where the row is not counted.
+ROWS = [
+    ((45, NA, 5000.0, 90.0, 2, 2, 2), "normal"),
+    ((45, 2, 5000.0, 99.0, 2, NA, NA), "normal"),  # not pregnant; a blank insulin answer
+    ((45, NA, 5000.0, 100.0, 2, 2, 2), "impaired"),
+    ((45, NA, 5000.0, 125.0, 2, 2, 2), "impaired"),
+    ((20, NA, 1.0, 126.0, 2, 2, 2), "undiagnosed"),  # the youngest age, the smallest weight kept
+    ((70, NA, 5000.0, 180.0, 9, 2, 2), "undiagnosed"),  # don't know is not a yes
+    ((45, NA, 5000.0, 200.0, 1, 2, 2), "known_diabetes"),
+    ((45, NA, 5000.0, 95.0, 2, 1, 2), "known_diabetes"),
+    ((45, NA, 5000.0, 140.0, 2, 2, 1), "known_diabetes"),
+    ((19, NA, 5000.0, 90.0, 2, 2, 2), None),  # younger than 20
+    ((30, 1, 5000.0, 90.0, 2, 2, 2), None),  # pregnant
+    ((45, NA, 0.0, 90.0, 2, 2, 2), None),  # zero fasting weight
+    ((45, NA, NA, 90.0, 2, 2, 2), None),  # no fasting weight
+    ((45, NA, 5000.0, NA, 2, 2, 2), None),  # no glucose result
+]
+
+
+def counts_table() -> pd.DataFrame:
+    rules = R.PREREG["eligibility"]["rules"]
+    columns = [rules["age"]["column"], rules["pregnant"]["column"], rules["fasting"]["column"],
+               "LBXGLU", "DIQ010", "DIQ050", "DIQ070"]
+    return pd.DataFrame([r for r, _ in ROWS], columns=columns)
+
+
+def test_the_counts_are_read_only_from_the_manifest_s_table(monkeypatch, tmp_path):
+    path = tmp_path / "research" / "data" / "bang2009.parquet"
+    path.parent.mkdir(parents=True)
+    counts_table().to_parquet(path, index=False)
+    manifest = tmp_path / "research" / "datasets" / "bang2009" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"table": {
+        "file": "research/data/bang2009.parquet",
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}}), "utf-8")
+    monkeypatch.setattr(R, "REPO", tmp_path)
+    groups = [g for _, g in ROWS]
+    want = {g: groups.count(g) for g in ("known_diabetes", "normal", "impaired", "undiagnosed")}
+    want["eligible"] = want["normal"] + want["impaired"] + want["undiagnosed"]
+    assert R.counts_here() == want
+
+    # One glucose changed: other bytes, so not the manifest's table.
+    counts_table().assign(LBXGLU=lambda t: t["LBXGLU"] + 1).to_parquet(path, index=False)
+    with pytest.raises(SystemExit, match="is not the manifest's table"):
+        R.counts_here()

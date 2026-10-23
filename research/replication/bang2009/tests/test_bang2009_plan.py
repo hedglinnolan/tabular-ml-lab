@@ -1,5 +1,6 @@
 """The pre-registration's shape: every choice the notes leave open is in it, the sweep moves one
-decision at a time, and the run's answers are the plan's (``prereg.json``, ``run.py``)."""
+decision at a time, and the run's answers are the plan's, or the run stops: a refused answer or
+eligibility, or a question offering no option the plan names (``prereg.json``, ``run.py``)."""
 from __future__ import annotations
 
 import json
@@ -185,3 +186,131 @@ def test_an_answer_the_server_records_passes_through_unchanged(monkeypatch, tmp_
     assert a.kept["answers"] == [{"ids": [plan], "sets": [],
                                   "why": "survey answered from the plan's survey answer "
                                          f"({a.settings['survey_answer']})."}]
+
+
+# ── the eligibility the run posts itself stops the run where it is refused ──
+
+
+def eligibility(a, monkeypatch, status: int, body: dict) -> tuple[list[list[str]], list[dict]]:
+    """``a`` on a scripted driver: every ask is the exclusions question, the levels preview is
+    answered, and the one ``set_exclusions`` the run posts gets ``status`` and ``body``. Returns
+    each preview's arguments and each decision posted."""
+    from research.swarm import driver
+
+    question = {"question": {"key": "exclusions", "status": "open"}, "options": []}
+    previews: list[list[str]] = []
+    posts: list[dict] = []
+
+    class Scripted:
+        def client(self):
+            return None
+
+    def cmd(name, *args):
+        if name == "ask":
+            return 0, question
+        assert name == "preview", name  # the run's only other command on this path
+        previews.append(list(args))
+        return 0, {"previewed": {"rows_left_out": 1}, "refused": None}
+
+    def post(run_, client, decision, note):
+        posts.append(decision)
+        return driver.Response(status, json.dumps(body).encode(), {})
+
+    monkeypatch.setattr(a, "cmd", cmd)
+    monkeypatch.setattr(driver.Run, "load", staticmethod(lambda run_id: Scripted()))
+    monkeypatch.setattr(driver, "post_decision", post)
+    return previews, posts
+
+
+REFUSED_RULES = {"error": {"code": "invalid_rules", "message": "scripted"}}
+
+
+def test_a_refused_eligibility_stops_the_run_and_keeps_nothing_as_posted(monkeypatch, tmp_path):
+    a = replicator(tmp_path)
+    previews, posts = eligibility(a, monkeypatch, 422, REFUSED_RULES)
+    with pytest.raises(RuntimeError, match="the eligibility was refused") as stopped:
+        a.answer([run.RULES_ID], [], "the paper's population")
+    assert "invalid_rules" in str(stopped.value)
+    assert posts == [run.the_rules(a.settings)] and len(previews) == 1
+    assert "eligibility_posted" not in a.kept
+    rules = str(len(PREREG["eligibility"]["rules"]))
+    assert a.log[-1] == {"args": ["post_decision", "set_exclusions", rules], "exit": 1,
+                         "refused": "invalid_rules"}
+
+    # Asked by the Router, the refusal ends the walk at the first post: the dry run's analyst
+    # catches only a Refused, so no other answer follows it.
+    a = replicator(tmp_path)
+    previews, posts = eligibility(a, monkeypatch, 422, REFUSED_RULES)
+    with pytest.raises(RuntimeError, match="the eligibility was refused") as stopped:
+        a.until(lambda q: False)
+    assert not isinstance(stopped.value, run.D.Refused) and len(posts) == 1
+
+
+def test_a_recorded_eligibility_is_kept_as_posted_and_its_body_returned(monkeypatch, tmp_path):
+    a = replicator(tmp_path)
+    previews, posts = eligibility(a, monkeypatch, 200, {"recorded": "set_exclusions"})
+    assert a.answer([run.RULES_ID], [], "the paper's population") == {"recorded": "set_exclusions"}
+    plan = PREREG["eligibility"]["rules"]
+    assert posts == [a.kept["eligibility_posted"]]
+    assert a.kept["eligibility_posted"] == {"kind": "set_exclusions", "rules": list(plan.values())}
+    assert a.log[-1]["exit"] == 0 and a.log[-1]["refused"] is None
+    # The preview is the driver's own level rule for DIQ010, with the plan's codes.
+    told = plan["told_diabetes"]
+    sets = previews[0][previews[0].index("levels") + 1:previews[0].index("--reason")]
+    assert sets == ["--set", f"level_column={told['column']}",
+                    "--set", f"exclude={','.join(told['exclude'])}",
+                    "--set", f"refused={','.join(told['refused'])}",
+                    "--set", f"dont_know={','.join(told['dont_know'])}"]
+    assert a.kept["driver_level_preview"] == {"exit": 0, "previewed": {"rows_left_out": 1},
+                                              "refused": None}
+
+
+# ── each answer the plan makes is the plan's, or the run stops ──────────────
+
+SURVEY, MISSING = PREREG["survey"]["population"], PREREG["missing"]["strategy"]
+# The options each question offers, by key, the plan's answer among them: the first-ranked option is
+# never the plan's, so the app's first-ranked answer is not mistaken for it; and each near miss
+# differs from it in one field.
+PLAN_IDS = {"survey": "s-plan", "missing": "m-plan", "split": "0", "event": "1.0"}
+OFFERED = {
+    "survey": [{"id": "s-sample", "decision": {"kind": "set_survey", "estimand": "sample"}},
+               {"id": "s-two-year", "decision": {"kind": "set_survey", **{
+                   k: v for k, v in SURVEY.items() if k not in ("about", "four_year_weight")}}},
+               {"id": "s-plan", "decision": {"kind": "set_survey", **{
+                   k: v for k, v in SURVEY.items() if k != "about"}}}],
+    "missing": [{"id": "m-impute", "decision": {"kind": "set_missing", "strategy": "impute"}},
+                {"id": "m-indicators", "decision": {"kind": "set_missing", "strategy": MISSING,
+                                                    "indicators": True}},
+                {"id": "m-category", "decision": {"kind": "set_missing", "strategy": MISSING,
+                                                  "categorical": "missing_category"}},
+                {"id": "m-plan", "decision": {"kind": "set_missing", "strategy": MISSING}}],
+    "split": [{"id": "0.2", "decision": {"kind": "set_split", "holdout": 0.2}},
+              {"id": "0", "decision": {"kind": "set_split", "holdout": 0.0}}],
+    "event": [{"id": "0.0"}, {"id": "1.0"}],
+}
+LANE = {"survey": "estimate", "missing": "estimate", "split": "predict", "event": "estimate"}
+# Each stop's words before the options it lists: what it looked for, and the plan's answer in it.
+NAMED = {"survey": ("no survey option records the plan's", SURVEY["four_year_weight"]),
+         "missing": ("no missing-values option records", MISSING),
+         "split": ("no split option holds out", str(PREREG["lanes"]["predict"]["holdout"])),
+         "event": ("no event level", str(PREREG["outcome"]["event"]))}
+
+
+@pytest.mark.parametrize("key", sorted(PLAN_IDS))
+def test_a_question_offering_the_plan_s_answer_is_answered_with_it(key, tmp_path):
+    a = replicator(tmp_path)
+    a.settings = run.settings(LANE[key], "default")
+    ids, sets, _ = a.choose(key, {"options": OFFERED[key]})
+    assert ids == [PLAN_IDS[key]] and sets == []
+
+
+@pytest.mark.parametrize("key", sorted(PLAN_IDS))
+def test_a_question_without_the_plan_s_answer_stops_the_run_naming_it(key, tmp_path):
+    a = replicator(tmp_path)
+    a.settings = run.settings(LANE[key], "default")
+    without = [o for o in OFFERED[key] if o["id"] != PLAN_IDS[key]]
+    with pytest.raises(RuntimeError) as stopped:
+        a.choose(key, {"options": without})
+    head = str(stopped.value).split(": [")[0]
+    looked_for, plan = NAMED[key]
+    assert head.startswith(looked_for) and plan in head[len(looked_for):]

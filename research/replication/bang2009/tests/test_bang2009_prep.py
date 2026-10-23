@@ -1,6 +1,10 @@
 """The Bang 2009 prep's predictors, each from rows built by hand whose level the paper's rule gives
-(``bang2009.md`` §2.3, Table 2's footnote), never from the prep's own output."""
+(``bang2009.md`` §2.3, Table 2's footnote), never from the prep's own output; and the intake's
+table read only where its bytes are its manifest's."""
 from __future__ import annotations
+
+import hashlib
+import json
 
 import numpy as np
 import pandas as pd
@@ -156,3 +160,35 @@ def test_a_code_column_is_refused_unless_built_from_a_series_whose_index_it_keep
     kept = prep.codes(pd.Series([1.0, 0.0, NA], index=[5, 9, 4000]))
     assert kept.index.tolist() == [5, 9, 4000]
     assert str(kept.dtype) == "Int64" and kept.tolist() == [1, 0, pd.NA]
+
+
+def manifest_of(tmp_path, table: pd.DataFrame) -> tuple:
+    """``table`` written under a scratch repo and a manifest holding its SHA-256 (hashlib's), never
+    the shared research/data."""
+    path = tmp_path / "research" / "data" / "bang2009.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table.to_parquet(path, index=False)
+    entry = {"file": "research/data/bang2009.parquet",
+             "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"table": entry}), "utf-8")
+    return path, entry, manifest
+
+
+def test_the_intake_table_is_read_only_where_its_bytes_are_the_manifest_s(monkeypatch, tmp_path):
+    table = pd.DataFrame({"SEQN": [1, 2, 3], "WTSAF2YR": [2631.0, NA, 0.0]})
+    path, entry, manifest = manifest_of(tmp_path, table)
+    monkeypatch.setattr(prep, "REPO", tmp_path)
+    monkeypatch.setattr(prep, "MANIFEST", manifest)
+    read, kept = prep.intake_table()
+    pd.testing.assert_frame_equal(read, table)
+    assert kept == entry
+
+    # One value changed: other bytes, so not the manifest's table.
+    table.assign(SEQN=[1, 2, 4]).to_parquet(path, index=False)
+    assert hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]
+    with pytest.raises(SystemExit, match="is not the manifest's table"):
+        prep.intake_table()
+    path.unlink()
+    with pytest.raises(SystemExit, match="is not the manifest's table"):
+        prep.intake_table()
