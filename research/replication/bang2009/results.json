@@ -1,0 +1,5672 @@
+{
+ "about": "The Bang 2009 replication's numbers, written by results.py from the engine's runs, reference.json and the notes' §5; the notes' results block is rendered from this file.",
+ "paper": {
+  "table2": [
+   {
+    "factor": "age 40-49, against under 40",
+    "label": "Age 40–49 (ref < 40)",
+    "odds_ratio": "2.6",
+    "ci": [
+     "1.3",
+     "5.0"
+    ],
+    "p": "0.004",
+    "log_or": "0.95",
+    "points": "1"
+   },
+   {
+    "factor": "age 50-59",
+    "label": "Age 50–59",
+    "odds_ratio": "4.8",
+    "ci": [
+     "2.2",
+     "10.6"
+    ],
+    "p": "0.0001",
+    "log_or": "1.57",
+    "points": "2"
+   },
+   {
+    "factor": "age 60 or older",
+    "label": "Age ≥ 60",
+    "odds_ratio": "8.1",
+    "ci": [
+     "3.9",
+     "16.9"
+    ],
+    "p": "< 0.0001",
+    "log_or": "2.09",
+    "points": "3"
+   },
+   {
+    "factor": "male",
+    "label": "Male",
+    "odds_ratio": "2.6",
+    "ci": [
+     "1.8",
+     "3.7"
+    ],
+    "p": "< 0.0001",
+    "log_or": "0.96",
+    "points": "1"
+   },
+   {
+    "factor": "family history of diabetes",
+    "label": "Family history of diabetes",
+    "odds_ratio": "2.0",
+    "ci": [
+     "1.5",
+     "2.6"
+    ],
+    "p": "< 0.0001",
+    "log_or": "0.67",
+    "points": "1"
+   },
+   {
+    "factor": "history of hypertension",
+    "label": "History of hypertension",
+    "odds_ratio": "1.9",
+    "ci": [
+     "1.2",
+     "2.9"
+    ],
+    "p": "0.004",
+    "log_or": "0.64",
+    "points": "1"
+   },
+   {
+    "factor": "overweight, against not overweight or obese",
+    "label": "Overweight (ref not overweight or obese)",
+    "odds_ratio": "1.3",
+    "ci": [
+     "0.6",
+     "2.8"
+    ],
+    "p": "0.47",
+    "log_or": "0.27",
+    "points": "1"
+   },
+   {
+    "factor": "obese",
+    "label": "Obese",
+    "odds_ratio": "3.1",
+    "ci": [
+     "1.6",
+     "5.8"
+    ],
+    "p": "0.0006",
+    "log_or": "1.12",
+    "points": "2"
+   },
+   {
+    "factor": "extremely obese",
+    "label": "Extremely obese",
+    "odds_ratio": "7.3",
+    "ci": [
+     "4.0",
+     "13.4"
+    ],
+    "p": "< 0.0001",
+    "log_or": "1.99",
+    "points": "3"
+   },
+   {
+    "factor": "physically active",
+    "label": "Physically active",
+    "odds_ratio": "0.7",
+    "ci": [
+     "0.5",
+     "1.0"
+    ],
+    "p": "0.06",
+    "log_or": "-0.34",
+    "points": "−1"
+   }
+  ],
+  "auc": "0.79",
+  "counts": {
+   "in_model": 5258,
+   "normal": 3396,
+   "impaired": 1652,
+   "undiagnosed": 210,
+   "known_diabetes": 482
+  }
+ },
+ "obesity_absent_rows": {
+  "rows": 67,
+  "cases": 4,
+  "default_cases": 205,
+  "default_rows": 5169,
+  "default_reference_level_cases": 13,
+  "default_reference_level_rows": 1158
+ },
+ "counts": {
+  "here": {
+   "known_diabetes": 458,
+   "normal": 3384,
+   "impaired": 1643,
+   "undiagnosed": 209,
+   "eligible": 5236
+  },
+  "reference": {
+   "about": "aged 20 or older, not pregnant, a positive fasting weight and a glucose result; known diabetes is a yes to DIQ010, DIQ050 or DIQ070; the rest by glucose",
+   "known_diabetes": 458,
+   "normal": 3384,
+   "impaired": 1643,
+   "undiagnosed": 209,
+   "eligible": 5236,
+   "complete_cases": 5169
+  },
+  "engine_flow": [
+   {
+    "label": "Rows in the table",
+    "n": 10289,
+    "dropped": 0
+   },
+   {
+    "label": "`diabetes_fpg` recorded",
+    "n": 9645,
+    "dropped": 644
+   },
+   {
+    "label": "`RIDAGEYR` at least `20`",
+    "n": 6569,
+    "dropped": 3076
+   },
+   {
+    "label": "`RIDEXPRG` not recorded: `4,320` kept",
+    "n": 6569,
+    "dropped": 0
+   },
+   {
+    "label": "`RIDEXPRG` not `1`, or not recorded",
+    "n": 6204,
+    "dropped": 365
+   },
+   {
+    "label": "`DIQ010` don't know (`9`): `1` kept",
+    "n": 6204,
+    "dropped": 0
+   },
+   {
+    "label": "`DIQ010` not `1`, or not recorded, refused or don't know",
+    "n": 5596,
+    "dropped": 608
+   },
+   {
+    "label": "`DIQ050` not recorded: `556` kept",
+    "n": 5596,
+    "dropped": 0
+   },
+   {
+    "label": "`DIQ050` not `1`, or not recorded, refused or don't know",
+    "n": 5593,
+    "dropped": 3
+   },
+   {
+    "label": "`DIQ070` not recorded: `5,593` kept",
+    "n": 5593,
+    "dropped": 0
+   },
+   {
+    "label": "`DIQ070` not `1`, or not recorded, refused or don't know",
+    "n": 5593,
+    "dropped": 0
+   },
+   {
+    "label": "`WTSAF2YR` at least `1`",
+    "n": 5236,
+    "dropped": 357
+   },
+   {
+    "label": "No predictor missing",
+    "n": 5169,
+    "dropped": 67
+   }
+  ]
+ },
+ "provenance": {
+  "derived_sha256": "853cb898acbb7a9fb954ba122cb540ff4986e09664b9b3dc523160df73d4f7c7",
+  "every_run_read_it": true,
+  "runs": 17
+ },
+ "predictors": {
+  "rows": 10289,
+  "rows_differing": {
+   "age_band": 0,
+   "male": 0,
+   "famhx": 0,
+   "famhx_close": 0,
+   "htn": 0,
+   "htn_first": 0,
+   "htn_told_rx": 0,
+   "obesity": 0,
+   "obesity_absent": 0,
+   "active": 0
+  }
+ },
+ "reference_software": {
+  "r": "R version 4.6.1 (2026-06-24)",
+  "survey": "4.5",
+  "pROC": "1.19.1",
+  "haven": "2.5.5"
+ },
+ "runs": {
+  "estimate:default": {
+   "lane": "estimate",
+   "variant": "default",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "seconds": 50.6,
+   "auc": {
+    "apparent": {
+     "value": 0.7973875316915942,
+     "rows": 5169,
+     "source": "computed here from the engine's coefficients on its model matrix"
+    }
+   },
+   "reference_auc": {
+    "apparent": 0.797387531691594,
+    "apparent_weighted": 0.827101949705558
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.0879511553636927,
+     "se": 0.36122005715325584,
+     "ci_low": 0.35995996493829785,
+     "ci_high": 1.8159423457890875,
+     "odds_ratio": 2.9681864854721876,
+     "or_low": 1.4332720322774481,
+     "or_high": 6.146865922263597,
+     "reference": {
+      "log_or": 1.0879511555132,
+      "se": 0.361220060454993,
+      "ci_low": 0.359959958433586,
+      "ci_high": 1.8159423525928,
+      "se_subset": 0.361220060454993
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.6969863724563512,
+     "se": 0.4272391128423814,
+     "ci_low": 0.8359425178996955,
+     "ci_high": 2.558030227013007,
+     "odds_ratio": 5.45747578520475,
+     "or_low": 2.306987400833942,
+     "or_high": 12.910361771082805,
+     "reference": {
+      "log_or": 1.6969863726063,
+      "se": 0.427239129621858,
+      "ci_low": 0.835942484232832,
+      "ci_high": 2.55803026097977,
+      "se_subset": 0.427239129621858
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.2019992795832772,
+     "se": 0.4041001107953495,
+     "ci_low": 1.3875890194571976,
+     "ci_high": 3.0164095397093567,
+     "odds_ratio": 9.043075073714503,
+     "or_low": 4.005181987076803,
+     "or_high": 20.417850437932774,
+     "reference": {
+      "log_or": 2.20199927973461,
+      "se": 0.404100129118044,
+      "ci_low": 1.38758898268156,
+      "ci_high": 3.01640957678765,
+      "se_subset": 0.404100129118044
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.9624362584480713,
+     "se": 0.1720164963816327,
+     "ci_low": 0.6157597893711058,
+     "ci_high": 1.309112727525037,
+     "odds_ratio": 2.6180669979914986,
+     "or_low": 1.851062483002884,
+     "or_high": 3.7028867847037117,
+     "reference": {
+      "log_or": 0.96243625845116,
+      "se": 0.172016503658299,
+      "ci_low": 0.615759774709038,
+      "ci_high": 1.30911274219328,
+      "se_subset": 0.172016503658299
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.6342824019554465,
+     "se": 0.15100368096789588,
+     "ci_low": 0.32995447971109826,
+     "ci_high": 0.9386103241997947,
+     "odds_ratio": 1.8856685038019532,
+     "or_low": 1.390904812633808,
+     "or_high": 2.556426344875147,
+     "reference": {
+      "log_or": 0.634282401958932,
+      "se": 0.151003685657369,
+      "ci_low": 0.329954470263573,
+      "ci_high": 0.938610333654292,
+      "se_subset": 0.151003685657369
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.5641167180043648,
+     "se": 0.21633818210482275,
+     "ci_low": 0.12811576067619496,
+     "ci_high": 1.0001176753325347,
+     "odds_ratio": 1.7578943803202587,
+     "or_low": 1.1366845784566864,
+     "or_high": 2.7186017219985525,
+     "reference": {
+      "log_or": 0.564116718009567,
+      "se": 0.216338180449062,
+      "ci_low": 0.128115764018363,
+      "ci_high": 1.00011767200077,
+      "se_subset": 0.216338180449062
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5964963931176013,
+     "se": 0.4561394419678235,
+     "ci_low": -0.3227922476492231,
+     "ci_high": 1.5157850338844256,
+     "odds_ratio": 1.8157459828635851,
+     "or_low": 0.7241242772628752,
+     "or_high": 4.552993978806178,
+     "reference": {
+      "log_or": 0.59649639347658,
+      "se": 0.456139449841415,
+      "ci_low": -0.322792263158425,
+      "ci_high": 1.51578505011159,
+      "se_subset": 0.456139449841415
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.433407712572476,
+     "se": 0.3924956567407024,
+     "ci_low": 0.6423846928672545,
+     "ci_high": 2.2244307322776975,
+     "odds_ratio": 4.192963287862204,
+     "or_low": 1.9010088004355596,
+     "or_high": 9.248216593911648,
+     "reference": {
+      "log_or": 1.43340771292965,
+      "se": 0.392495664733963,
+      "ci_low": 0.642384677115068,
+      "ci_high": 2.22443074874423,
+      "se_subset": 0.392495664733963
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 2.3134499341572003,
+     "se": 0.3857742477422827,
+     "ci_low": 1.5359730242019687,
+     "ci_high": 3.090926844112432,
+     "odds_ratio": 10.109240778880617,
+     "or_low": 4.645843849884657,
+     "or_high": 21.997456743605365,
+     "reference": {
+      "log_or": 2.31344993451834,
+      "se": 0.385774250050487,
+      "ci_low": 1.53597301991122,
+      "ci_high": 3.09092684912545,
+      "se_subset": 0.385774250050487
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.3182263864329102,
+     "se": 0.1808793983586292,
+     "ci_low": -0.682764860769788,
+     "ci_high": 0.046312087903967625,
+     "odds_ratio": 0.7274380876584625,
+     "or_low": 0.5052182015401119,
+     "or_high": 1.0474012412123828,
+     "reference": {
+      "log_or": -0.318226386433778,
+      "se": 0.180879396828473,
+      "ci_low": -0.682764857686828,
+      "ci_high": 0.0463120848192716,
+      "se_subset": 0.180879396828473
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5169,
+     5169
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 5.120890378407239e-10,
+    "tolerance_log_or": 1e-06,
+    "max_rel_se": 5.978555706509345e-08,
+    "tolerance_se": 0.0001,
+    "auc_abs": 1.1102230246251565e-16,
+    "tolerance_auc": 0.0001,
+    "within": true
+   },
+   "estimator": "design",
+   "table2_matches": {
+    "odds_ratio": 2,
+    "ci": 1,
+    "log_or": 1,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "estimate:fasting_any_glucose": {
+   "lane": "estimate",
+   "variant": "fasting_any_glucose",
+   "chosen": {
+    "fasting": "any_glucose",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5510,
+   "n_estimate": 5169,
+   "seconds": 51.6,
+   "auc": {
+    "apparent": {
+     "value": 0.7973875316915942,
+     "rows": 5169,
+     "source": "computed here from the engine's coefficients on its model matrix"
+    }
+   },
+   "reference_auc": {
+    "apparent": 0.797387531691594,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.0879511553636927,
+     "se": 0.36122005715325584,
+     "ci_low": 0.35995996493829785,
+     "ci_high": 1.8159423457890875,
+     "odds_ratio": 2.9681864854721876,
+     "or_low": 1.4332720322774481,
+     "or_high": 6.146865922263597,
+     "reference": {
+      "log_or": 1.0879511555132,
+      "se": 0.361220060454993,
+      "ci_low": 0.359959958433586,
+      "ci_high": 1.8159423525928,
+      "se_subset": 0.361220060454993
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.6969863724563512,
+     "se": 0.4272391128423814,
+     "ci_low": 0.8359425178996955,
+     "ci_high": 2.558030227013007,
+     "odds_ratio": 5.45747578520475,
+     "or_low": 2.306987400833942,
+     "or_high": 12.910361771082805,
+     "reference": {
+      "log_or": 1.6969863726063,
+      "se": 0.427239129621858,
+      "ci_low": 0.835942484232832,
+      "ci_high": 2.55803026097977,
+      "se_subset": 0.427239129621858
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.2019992795832772,
+     "se": 0.4041001107953495,
+     "ci_low": 1.3875890194571976,
+     "ci_high": 3.0164095397093567,
+     "odds_ratio": 9.043075073714503,
+     "or_low": 4.005181987076803,
+     "or_high": 20.417850437932774,
+     "reference": {
+      "log_or": 2.20199927973461,
+      "se": 0.404100129118044,
+      "ci_low": 1.38758898268156,
+      "ci_high": 3.01640957678765,
+      "se_subset": 0.404100129118044
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.9624362584480713,
+     "se": 0.1720164963816327,
+     "ci_low": 0.6157597893711058,
+     "ci_high": 1.309112727525037,
+     "odds_ratio": 2.6180669979914986,
+     "or_low": 1.851062483002884,
+     "or_high": 3.7028867847037117,
+     "reference": {
+      "log_or": 0.96243625845116,
+      "se": 0.172016503658299,
+      "ci_low": 0.615759774709038,
+      "ci_high": 1.30911274219328,
+      "se_subset": 0.172016503658299
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.6342824019554465,
+     "se": 0.15100368096789588,
+     "ci_low": 0.32995447971109826,
+     "ci_high": 0.9386103241997947,
+     "odds_ratio": 1.8856685038019532,
+     "or_low": 1.390904812633808,
+     "or_high": 2.556426344875147,
+     "reference": {
+      "log_or": 0.634282401958932,
+      "se": 0.151003685657369,
+      "ci_low": 0.329954470263573,
+      "ci_high": 0.938610333654292,
+      "se_subset": 0.151003685657369
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.5641167180043648,
+     "se": 0.21633818210482275,
+     "ci_low": 0.12811576067619496,
+     "ci_high": 1.0001176753325347,
+     "odds_ratio": 1.7578943803202587,
+     "or_low": 1.1366845784566864,
+     "or_high": 2.7186017219985525,
+     "reference": {
+      "log_or": 0.564116718009567,
+      "se": 0.216338180449062,
+      "ci_low": 0.128115764018363,
+      "ci_high": 1.00011767200077,
+      "se_subset": 0.216338180449062
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5964963931176013,
+     "se": 0.4561394419678235,
+     "ci_low": -0.3227922476492231,
+     "ci_high": 1.5157850338844256,
+     "odds_ratio": 1.8157459828635851,
+     "or_low": 0.7241242772628752,
+     "or_high": 4.552993978806178,
+     "reference": {
+      "log_or": 0.59649639347658,
+      "se": 0.456139449841415,
+      "ci_low": -0.322792263158425,
+      "ci_high": 1.51578505011159,
+      "se_subset": 0.456139449841415
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.433407712572476,
+     "se": 0.3924956567407024,
+     "ci_low": 0.6423846928672545,
+     "ci_high": 2.2244307322776975,
+     "odds_ratio": 4.192963287862204,
+     "or_low": 1.9010088004355596,
+     "or_high": 9.248216593911648,
+     "reference": {
+      "log_or": 1.43340771292965,
+      "se": 0.392495664733963,
+      "ci_low": 0.642384677115068,
+      "ci_high": 2.22443074874423,
+      "se_subset": 0.392495664733963
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 2.3134499341572003,
+     "se": 0.3857742477422827,
+     "ci_low": 1.5359730242019687,
+     "ci_high": 3.090926844112432,
+     "odds_ratio": 10.109240778880617,
+     "or_low": 4.645843849884657,
+     "or_high": 21.997456743605365,
+     "reference": {
+      "log_or": 2.31344993451834,
+      "se": 0.385774250050487,
+      "ci_low": 1.53597301991122,
+      "ci_high": 3.09092684912545,
+      "se_subset": 0.385774250050487
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.3182263864329102,
+     "se": 0.1808793983586292,
+     "ci_low": -0.682764860769788,
+     "ci_high": 0.046312087903967625,
+     "odds_ratio": 0.7274380876584625,
+     "or_low": 0.5052182015401119,
+     "or_high": 1.0474012412123828,
+     "reference": {
+      "log_or": -0.318226386433778,
+      "se": 0.180879396828473,
+      "ci_low": -0.682764857686828,
+      "ci_high": 0.0463120848192716,
+      "se_subset": 0.180879396828473
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5510,
+     5510
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 5.120890378407239e-10,
+    "tolerance_log_or": 1e-06,
+    "max_rel_se": 5.978555706509345e-08,
+    "tolerance_se": 0.0001,
+    "auc_abs": 1.1102230246251565e-16,
+    "tolerance_auc": 0.0001,
+    "within": true
+   },
+   "estimator": "design",
+   "table2_matches": {
+    "odds_ratio": 2,
+    "ci": 1,
+    "log_or": 1,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "estimate:bp_first_reading": {
+   "lane": "estimate",
+   "variant": "bp_first_reading",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "first",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "seconds": 65.3,
+   "auc": {
+    "apparent": {
+     "value": 0.7978587291916432,
+     "rows": 5169,
+     "source": "computed here from the engine's coefficients on its model matrix"
+    }
+   },
+   "reference_auc": {
+    "apparent": 0.797858729191644,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.085958034686012,
+     "se": 0.3586480685857224,
+     "ci_low": 0.36315034662146417,
+     "ci_high": 1.80876572275056,
+     "odds_ratio": 2.9622764233028303,
+     "or_low": 1.4378520191845936,
+     "or_high": 6.10291009851776,
+     "reference": {
+      "log_or": 1.08595803482978,
+      "se": 0.358648071672343,
+      "ci_low": 0.36315034054456,
+      "ci_high": 1.808765729115,
+      "se_subset": 0.358648071672343
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.708274108861877,
+     "se": 0.4258555182746116,
+     "ci_low": 0.8500187059332811,
+     "ci_high": 2.5665295117904727,
+     "odds_ratio": 5.519427321830861,
+     "or_low": 2.339690617613242,
+     "or_high": 13.020558244598131,
+     "reference": {
+      "log_or": 1.70827410900611,
+      "se": 0.425855534464525,
+      "ci_low": 0.850018673448883,
+      "ci_high": 2.56652954456333,
+      "se_subset": 0.425855534464525
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.2202739902796496,
+     "se": 0.40183218305941126,
+     "ci_low": 1.4104344381737615,
+     "ci_high": 3.0301135423855374,
+     "odds_ratio": 9.20985393067285,
+     "or_low": 4.097735230040908,
+     "or_high": 20.699582735969827,
+     "reference": {
+      "log_or": 2.22027399042519,
+      "se": 0.401832200759098,
+      "ci_low": 1.41043440264793,
+      "ci_high": 3.03011357820245,
+      "se_subset": 0.401832200759098
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.9591376054901184,
+     "se": 0.17201066984749197,
+     "ci_low": 0.6124728790211315,
+     "ci_high": 1.3058023319591054,
+     "odds_ratio": 2.609445131634891,
+     "or_low": 1.84498819485811,
+     "or_high": 3.690649031787816,
+     "reference": {
+      "log_or": 0.959137605492903,
+      "se": 0.172010676856459,
+      "ci_low": 0.612472864898272,
+      "ci_high": 1.30580234608753,
+      "se_subset": 0.172010676856459
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.634684554412731,
+     "se": 0.14969778260494956,
+     "ci_low": 0.33298849738458397,
+     "ci_high": 0.9363806114408779,
+     "odds_ratio": 1.8864269825262003,
+     "or_low": 1.3951312507192764,
+     "or_high": 2.5507325985051397,
+     "reference": {
+      "log_or": 0.634684554416081,
+      "se": 0.149697787205683,
+      "ci_low": 0.332988488115764,
+      "ci_high": 0.936380620716397,
+      "se_subset": 0.149697787205683
+     }
+    },
+    "history of hypertension": {
+     "term": "htn_first=1",
+     "log_or": 0.5147207401073027,
+     "se": 0.22269885442005385,
+     "ci_low": 0.06590069004335397,
+     "ci_high": 0.9635407901712515,
+     "odds_ratio": 1.6731711869432886,
+     "or_low": 1.0681206368845246,
+     "or_high": 2.620960333640543,
+     "reference": {
+      "log_or": 0.514720740112144,
+      "se": 0.22269885279313,
+      "ci_low": 0.0659006933270442,
+      "ci_high": 0.963540786897243,
+      "se_subset": 0.22269885279313
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5871916370085974,
+     "se": 0.45782481843453265,
+     "ci_low": -0.33549365683996313,
+     "ci_high": 1.509876930857158,
+     "odds_ratio": 1.7989292683808429,
+     "or_low": 0.7149850419619046,
+     "or_high": 4.526173727715077,
+     "reference": {
+      "log_or": 0.587191637354328,
+      "se": 0.457824825798559,
+      "ci_low": -0.335493671335452,
+      "ci_high": 1.50987694604411,
+      "se_subset": 0.457824825798559
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.4349998136145523,
+     "se": 0.39446419625218593,
+     "ci_low": 0.6400094632088756,
+     "ci_high": 2.229990164020229,
+     "odds_ratio": 4.199644226035281,
+     "or_low": 1.8964988261845583,
+     "or_high": 9.299774606638817,
+     "reference": {
+      "log_or": 1.43499981395854,
+      "se": 0.394464203851565,
+      "ci_low": 0.640009448237317,
+      "ci_high": 2.22999017967975,
+      "se_subset": 0.394464203851565
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 2.32470762837675,
+     "se": 0.38757757295983764,
+     "ci_low": 1.543596355251881,
+     "ci_high": 3.1058189015016184,
+     "odds_ratio": 10.22369053178553,
+     "or_low": 4.6813959962728156,
+     "or_high": 22.32749551051434,
+     "reference": {
+      "log_or": 2.32470762872463,
+      "se": 0.387577575020746,
+      "ci_low": 1.54359635144628,
+      "ci_high": 3.10581890600299,
+      "se_subset": 0.387577575020746
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.32529289911850284,
+     "se": 0.18113980297672497,
+     "ci_low": -0.6903561844789263,
+     "ci_high": 0.039770386241920586,
+     "odds_ratio": 0.7223157570068429,
+     "or_low": 0.5013974472682977,
+     "or_high": 1.0405718171540381,
+     "reference": {
+      "log_or": -0.325292899119287,
+      "se": 0.181139801426083,
+      "ci_low": -0.690356181354597,
+      "ci_high": 0.0397703831160223,
+      "se_subset": 0.181139801426083
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5169,
+     5169
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 4.9281911884691e-10,
+    "tolerance_log_or": 1e-06,
+    "max_rel_se": 5.718991481580406e-08,
+    "tolerance_se": 0.0001,
+    "auc_abs": 7.771561172376096e-16,
+    "tolerance_auc": 0.0001,
+    "within": true
+   },
+   "estimator": "design",
+   "table2_matches": {
+    "odds_ratio": 2,
+    "ci": 2,
+    "log_or": 1,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "estimate:borderline_known": {
+   "lane": "estimate",
+   "variant": "borderline_known",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5099,
+   "n_estimate": 5099,
+   "seconds": 49.8,
+   "auc": {
+    "apparent": {
+     "value": 0.7937049612371068,
+     "rows": 5099,
+     "source": "computed here from the engine's coefficients on its model matrix"
+    }
+   },
+   "reference_auc": {
+    "apparent": 0.793704961237107,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.2619880649431803,
+     "se": 0.3979417244832832,
+     "ci_low": 0.4599892169013374,
+     "ci_high": 2.063986912985023,
+     "odds_ratio": 3.532437225795408,
+     "or_low": 1.5840569038605068,
+     "or_high": 7.877313449898633,
+     "reference": {
+      "log_or": 1.26198806494293,
+      "se": 0.397941745478512,
+      "ci_low": 0.459989174587988,
+      "ci_high": 2.06398695529788,
+      "se_subset": 0.397941745478512
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.720299251251153,
+     "se": 0.4850554388594552,
+     "ci_low": 0.7427342479662176,
+     "ci_high": 2.6978642545360882,
+     "odds_ratio": 5.586199891481956,
+     "or_low": 2.101674163782034,
+     "or_high": 14.847986317459135,
+     "reference": {
+      "log_or": 1.72029925125091,
+      "se": 0.485055495985728,
+      "ci_low": 0.742734132835534,
+      "ci_high": 2.69786436966628,
+      "se_subset": 0.485055495985728
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.2729666560086166,
+     "se": 0.477055815779112,
+     "ci_low": 1.3115238336875767,
+     "ci_high": 3.234409478329656,
+     "odds_ratio": 9.708158903244964,
+     "or_low": 3.711825609747134,
+     "or_high": 25.39137319467847,
+     "reference": {
+      "log_or": 2.27296665600837,
+      "se": 0.477055878738213,
+      "ci_low": 1.3115237068016,
+      "ci_high": 3.23440960521514,
+      "se_subset": 0.477055878738213
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.9189015681721184,
+     "se": 0.1674004242488715,
+     "ci_low": 0.5815281811928132,
+     "ci_high": 1.2562749551514236,
+     "odds_ratio": 2.5065356187477517,
+     "or_low": 1.788769907653827,
+     "or_high": 3.512313563174634,
+     "reference": {
+      "log_or": 0.918901568172115,
+      "se": 0.167400459695947,
+      "ci_low": 0.581528109753923,
+      "ci_high": 1.25627502659031,
+      "se_subset": 0.167400459695947
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.5599779851441223,
+     "se": 0.16292612925793817,
+     "ci_low": 0.23162194720804036,
+     "ci_high": 0.8883340230802044,
+     "odds_ratio": 1.75063395991755,
+     "or_low": 1.2606430491045781,
+     "or_high": 2.431076158943994,
+     "reference": {
+      "log_or": 0.559977985144118,
+      "se": 0.162926152015089,
+      "ci_low": 0.231621901344012,
+      "ci_high": 0.888334068944224,
+      "se_subset": 0.162926152015089
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.5533265697929616,
+     "se": 0.2374961364437465,
+     "ci_low": 0.07468455734856305,
+     "ci_high": 1.03196858223736,
+     "odds_ratio": 1.7390284057897938,
+     "or_low": 1.0775441938714243,
+     "or_high": 2.8065853942178545,
+     "reference": {
+      "log_or": 0.553326569792958,
+      "se": 0.237496133332933,
+      "ci_low": 0.0746845636179925,
+      "ci_high": 1.03196857596792,
+      "se_subset": 0.237496133332933
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5536338014807548,
+     "se": 0.48862710283704885,
+     "ci_low": -0.43112941757143175,
+     "ci_high": 1.5383970205329414,
+     "odds_ratio": 1.7395627725050156,
+     "or_low": 0.6497748130547225,
+     "or_high": 4.65711901829363,
+     "reference": {
+      "log_or": 0.553633801480518,
+      "se": 0.488627155956928,
+      "ci_low": -0.43112952462775,
+      "ci_high": 1.53839712758879,
+      "se_subset": 0.488627155956928
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.3659413569334222,
+     "se": 0.4228940496181401,
+     "ci_low": 0.5136544019078106,
+     "ci_high": 2.2182283119590336,
+     "odds_ratio": 3.9194108805462338,
+     "or_low": 1.6713879715166962,
+     "or_high": 9.191032789714406,
+     "reference": {
+      "log_or": 1.36594135693319,
+      "se": 0.422894103343797,
+      "ci_low": 0.513654293630629,
+      "ci_high": 2.21822842023575,
+      "se_subset": 0.422894103343797
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 2.3855123936033635,
+     "se": 0.41788484519724767,
+     "ci_low": 1.543320826741379,
+     "ci_high": 3.227703960465348,
+     "odds_ratio": 10.864628204920326,
+     "or_low": 4.680106315886909,
+     "or_high": 25.221680462782587,
+     "reference": {
+      "log_or": 2.38551239360312,
+      "se": 0.417884868664969,
+      "ci_low": 1.54332077944506,
+      "ci_high": 3.22770400776119,
+      "se_subset": 0.417884868664969
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.28292157248234673,
+     "se": 0.20322663424015053,
+     "ci_low": -0.6924979413932888,
+     "ci_high": 0.12665479642859534,
+     "odds_ratio": 0.7535788868636455,
+     "or_low": 0.500324724984011,
+     "or_high": 1.1350251354154024,
+     "reference": {
+      "log_or": -0.282921572482346,
+      "se": 0.203226632802539,
+      "ci_low": -0.692497938495973,
+      "ci_high": 0.126654793531281,
+      "se_subset": 0.203226632802539
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5099,
+     5099
+    ],
+    "n_estimate": [
+     5099,
+     5099
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 4.902744876744691e-13,
+    "tolerance_log_or": 1e-06,
+    "max_rel_se": 2.830334231247125e-07,
+    "tolerance_se": 0.0001,
+    "auc_abs": 2.220446049250313e-16,
+    "tolerance_auc": 0.0001,
+    "within": true
+   },
+   "estimator": "design",
+   "table2_matches": {
+    "odds_ratio": 0,
+    "ci": 0,
+    "log_or": 0,
+    "of": 10,
+    "auc": true
+   }
+  },
+  "estimate:medicine_told": {
+   "lane": "estimate",
+   "variant": "medicine_told",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "told",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "seconds": 49.5,
+   "auc": {
+    "apparent": {
+     "value": 0.7973875316915942,
+     "rows": 5169,
+     "source": "computed here from the engine's coefficients on its model matrix"
+    }
+   },
+   "reference_auc": {
+    "apparent": 0.797387531691594,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.0879511553636927,
+     "se": 0.36122005715325584,
+     "ci_low": 0.35995996493829785,
+     "ci_high": 1.8159423457890875,
+     "odds_ratio": 2.9681864854721876,
+     "or_low": 1.4332720322774481,
+     "or_high": 6.146865922263597,
+     "reference": {
+      "log_or": 1.0879511555132,
+      "se": 0.361220060454993,
+      "ci_low": 0.359959958433586,
+      "ci_high": 1.8159423525928,
+      "se_subset": 0.361220060454993
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.6969863724563512,
+     "se": 0.4272391128423814,
+     "ci_low": 0.8359425178996955,
+     "ci_high": 2.558030227013007,
+     "odds_ratio": 5.45747578520475,
+     "or_low": 2.306987400833942,
+     "or_high": 12.910361771082805,
+     "reference": {
+      "log_or": 1.6969863726063,
+      "se": 0.427239129621858,
+      "ci_low": 0.835942484232832,
+      "ci_high": 2.55803026097977,
+      "se_subset": 0.427239129621858
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.2019992795832772,
+     "se": 0.4041001107953495,
+     "ci_low": 1.3875890194571976,
+     "ci_high": 3.0164095397093567,
+     "odds_ratio": 9.043075073714503,
+     "or_low": 4.005181987076803,
+     "or_high": 20.417850437932774,
+     "reference": {
+      "log_or": 2.20199927973461,
+      "se": 0.404100129118044,
+      "ci_low": 1.38758898268156,
+      "ci_high": 3.01640957678765,
+      "se_subset": 0.404100129118044
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.9624362584480713,
+     "se": 0.1720164963816327,
+     "ci_low": 0.6157597893711058,
+     "ci_high": 1.309112727525037,
+     "odds_ratio": 2.6180669979914986,
+     "or_low": 1.851062483002884,
+     "or_high": 3.7028867847037117,
+     "reference": {
+      "log_or": 0.96243625845116,
+      "se": 0.172016503658299,
+      "ci_low": 0.615759774709038,
+      "ci_high": 1.30911274219328,
+      "se_subset": 0.172016503658299
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.6342824019554465,
+     "se": 0.15100368096789588,
+     "ci_low": 0.32995447971109826,
+     "ci_high": 0.9386103241997947,
+     "odds_ratio": 1.8856685038019532,
+     "or_low": 1.390904812633808,
+     "or_high": 2.556426344875147,
+     "reference": {
+      "log_or": 0.634282401958932,
+      "se": 0.151003685657369,
+      "ci_low": 0.329954470263573,
+      "ci_high": 0.938610333654292,
+      "se_subset": 0.151003685657369
+     }
+    },
+    "history of hypertension": {
+     "term": "htn_told_rx=1",
+     "log_or": 0.5641167180043648,
+     "se": 0.21633818210482275,
+     "ci_low": 0.12811576067619496,
+     "ci_high": 1.0001176753325347,
+     "odds_ratio": 1.7578943803202587,
+     "or_low": 1.1366845784566864,
+     "or_high": 2.7186017219985525,
+     "reference": {
+      "log_or": 0.564116718009567,
+      "se": 0.216338180449062,
+      "ci_low": 0.128115764018363,
+      "ci_high": 1.00011767200077,
+      "se_subset": 0.216338180449062
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5964963931176013,
+     "se": 0.4561394419678235,
+     "ci_low": -0.3227922476492231,
+     "ci_high": 1.5157850338844256,
+     "odds_ratio": 1.8157459828635851,
+     "or_low": 0.7241242772628752,
+     "or_high": 4.552993978806178,
+     "reference": {
+      "log_or": 0.59649639347658,
+      "se": 0.456139449841415,
+      "ci_low": -0.322792263158425,
+      "ci_high": 1.51578505011159,
+      "se_subset": 0.456139449841415
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.433407712572476,
+     "se": 0.3924956567407024,
+     "ci_low": 0.6423846928672545,
+     "ci_high": 2.2244307322776975,
+     "odds_ratio": 4.192963287862204,
+     "or_low": 1.9010088004355596,
+     "or_high": 9.248216593911648,
+     "reference": {
+      "log_or": 1.43340771292965,
+      "se": 0.392495664733963,
+      "ci_low": 0.642384677115068,
+      "ci_high": 2.22443074874423,
+      "se_subset": 0.392495664733963
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 2.3134499341572003,
+     "se": 0.3857742477422827,
+     "ci_low": 1.5359730242019687,
+     "ci_high": 3.090926844112432,
+     "odds_ratio": 10.109240778880617,
+     "or_low": 4.645843849884657,
+     "or_high": 21.997456743605365,
+     "reference": {
+      "log_or": 2.31344993451834,
+      "se": 0.385774250050487,
+      "ci_low": 1.53597301991122,
+      "ci_high": 3.09092684912545,
+      "se_subset": 0.385774250050487
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.3182263864329102,
+     "se": 0.1808793983586292,
+     "ci_low": -0.682764860769788,
+     "ci_high": 0.046312087903967625,
+     "odds_ratio": 0.7274380876584625,
+     "or_low": 0.5052182015401119,
+     "or_high": 1.0474012412123828,
+     "reference": {
+      "log_or": -0.318226386433778,
+      "se": 0.180879396828473,
+      "ci_low": -0.682764857686828,
+      "ci_high": 0.0463120848192716,
+      "se_subset": 0.180879396828473
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5169,
+     5169
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 5.120890378407239e-10,
+    "tolerance_log_or": 1e-06,
+    "max_rel_se": 5.978555706509345e-08,
+    "tolerance_se": 0.0001,
+    "auc_abs": 1.1102230246251565e-16,
+    "tolerance_auc": 0.0001,
+    "within": true
+   },
+   "estimator": "design",
+   "table2_matches": {
+    "odds_ratio": 2,
+    "ci": 1,
+    "log_or": 1,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "estimate:obesity_absent": {
+   "lane": "estimate",
+   "variant": "obesity_absent",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "absent",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5236,
+   "n_estimate": 5236,
+   "seconds": 49.3,
+   "auc": {
+    "apparent": {
+     "value": 0.7942693188837693,
+     "rows": 5236,
+     "source": "computed here from the engine's coefficients on its model matrix"
+    }
+   },
+   "reference_auc": {
+    "apparent": 0.794269318883769,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 0.9531679859154274,
+     "se": 0.33414072461847183,
+     "ci_low": 0.2797516042182163,
+     "ci_high": 1.6265843676126384,
+     "odds_ratio": 2.5939141400759174,
+     "or_low": 1.3228011932887824,
+     "or_high": 5.086471497169946,
+     "reference": {
+      "log_or": 0.953167985925612,
+      "se": 0.334140724783025,
+      "ci_low": 0.279751603896765,
+      "ci_high": 1.62658436795446,
+      "se_subset": 0.334140724783025
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.5693453595469464,
+     "se": 0.4071385780821745,
+     "ci_low": 0.7488114709749916,
+     "ci_high": 2.389879248118901,
+     "odds_ratio": 4.803502597153673,
+     "or_low": 2.114485395293213,
+     "or_high": 10.912176197680706,
+     "reference": {
+      "log_or": 1.56934535955713,
+      "se": 0.407138578741163,
+      "ci_low": 0.748811469657072,
+      "ci_high": 2.38987924945719,
+      "se_subset": 0.407138578741163
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.0871062229530826,
+     "se": 0.37661436987710156,
+     "ci_low": 1.328089833833202,
+     "ci_high": 2.8461226120729632,
+     "odds_ratio": 8.061553041067077,
+     "or_low": 3.7738278600368966,
+     "or_high": 17.220880189617983,
+     "reference": {
+      "log_or": 2.08710622296332,
+      "se": 0.376614370635353,
+      "ci_low": 1.32808983231528,
+      "ci_high": 2.84612261361136,
+      "se_subset": 0.376614370635353
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.9549938008797522,
+     "se": 0.1779287923133544,
+     "ci_low": 0.596401882291479,
+     "ci_high": 1.3135857194680254,
+     "odds_ratio": 2.598654473498026,
+     "or_low": 1.8155743833198514,
+     "or_high": 3.719486865794591,
+     "reference": {
+      "log_or": 0.954993800879924,
+      "se": 0.177928793001093,
+      "ci_low": 0.596401880905604,
+      "ci_high": 1.31358572085424,
+      "se_subset": 0.177928793001093
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.6807164879498531,
+     "se": 0.14999836827991553,
+     "ci_low": 0.3784146402990373,
+     "ci_high": 0.9830183356006688,
+     "odds_ratio": 1.9752924986110827,
+     "or_low": 1.4599681790318138,
+     "or_high": 2.672510614345514,
+     "reference": {
+      "log_or": 0.680716487950007,
+      "se": 0.149998368673854,
+      "ci_low": 0.37841463950526,
+      "ci_high": 0.983018336394755,
+      "se_subset": 0.149998368673854
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.627811845960897,
+     "se": 0.22065485630999854,
+     "ci_low": 0.18311120341017806,
+     "ci_high": 1.072512488511616,
+     "odds_ratio": 1.8735065698313778,
+     "or_low": 1.2009479501630302,
+     "or_high": 2.9227135669991733,
+     "reference": {
+      "log_or": 0.627811845961178,
+      "se": 0.220654856696904,
+      "ci_low": 0.183111202630701,
+      "ci_high": 1.07251248929165,
+      "se_subset": 0.220654856696904
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity_absent=1",
+     "log_or": 0.28577348710100614,
+     "se": 0.3838840869785505,
+     "ci_low": -0.4878940541405139,
+     "ci_high": 1.0594410283425262,
+     "odds_ratio": 1.3307909797867534,
+     "or_low": 0.6139179116582747,
+     "or_high": 2.8847580405303144,
+     "reference": {
+      "log_or": 0.285773487104803,
+      "se": 0.383884088549193,
+      "ci_low": -0.48789405730214,
+      "ci_high": 1.05944103151175,
+      "se_subset": 0.383884088549193
+     }
+    },
+    "obese": {
+     "term": "obesity_absent=2",
+     "log_or": 1.114092150612716,
+     "se": 0.323987115278676,
+     "ci_low": 0.4611390239424986,
+     "ci_high": 1.7670452772829333,
+     "odds_ratio": 3.046800886912092,
+     "or_low": 1.5858793111497549,
+     "or_high": 5.853532219774141,
+     "reference": {
+      "log_or": 1.1140921506165,
+      "se": 0.323987117115765,
+      "ci_low": 0.461139020243874,
+      "ci_high": 1.76704528098913,
+      "se_subset": 0.323987117115765
+     }
+    },
+    "extremely obese": {
+     "term": "obesity_absent=3",
+     "log_or": 1.9706281530873173,
+     "se": 0.30658959963054566,
+     "ci_low": 1.3527374153302199,
+     "ci_high": 2.5885188908444148,
+     "odds_ratio": 7.175182185906685,
+     "or_low": 3.867999372375168,
+     "or_high": 13.31004336987238,
+     "reference": {
+      "log_or": 1.97062815309134,
+      "se": 0.306589600540982,
+      "ci_low": 1.35273741349938,
+      "ci_high": 2.5885188926833,
+      "se_subset": 0.306589600540982
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.34737566297192074,
+     "se": 0.182987932734715,
+     "ci_low": -0.7161636091199619,
+     "ci_high": 0.021412283176120428,
+     "odds_ratio": 0.7065398575344491,
+     "or_low": 0.48862321444489504,
+     "or_high": 1.0216431711127743,
+     "reference": {
+      "log_or": -0.347375662971965,
+      "se": 0.182987932524519,
+      "ci_low": -0.716163608696384,
+      "ci_high": 0.021412282752454,
+      "se_subset": 0.182987932524519
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5236,
+     5236
+    ],
+    "n_estimate": [
+     5236,
+     5236
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 1.4270362669321912e-11,
+    "tolerance_log_or": 1e-06,
+    "max_rel_se": 5.670253179486285e-09,
+    "tolerance_se": 0.0001,
+    "auc_abs": 3.3306690738754696e-16,
+    "tolerance_auc": 0.0001,
+    "within": true
+   },
+   "estimator": "design",
+   "table2_matches": {
+    "odds_ratio": 8,
+    "ci": 3,
+    "log_or": 3,
+    "of": 10,
+    "auc": true
+   }
+  },
+  "estimate:family_parent_or_sibling": {
+   "lane": "estimate",
+   "variant": "family_parent_or_sibling",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "parent_or_sibling",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "seconds": 49.3,
+   "auc": {
+    "apparent": {
+     "value": 0.8047886244374128,
+     "rows": 5169,
+     "source": "computed here from the engine's coefficients on its model matrix"
+    }
+   },
+   "reference_auc": {
+    "apparent": 0.804788624437413,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.065584591492325,
+     "se": 0.3648432695151407,
+     "ci_low": 0.33029129635746357,
+     "ci_high": 1.8008778866271864,
+     "odds_ratio": 2.9025352856237423,
+     "or_low": 1.3913733714329846,
+     "or_high": 6.054960700889535,
+     "reference": {
+      "log_or": 1.06558459171666,
+      "se": 0.364843274074092,
+      "ci_low": 0.330291287393833,
+      "ci_high": 1.80087789603948,
+      "se_subset": 0.364843274074092
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.6540368813430024,
+     "se": 0.42324165405723685,
+     "ci_low": 0.8010493756021025,
+     "ci_high": 2.507024387083902,
+     "odds_ratio": 5.228042271588504,
+     "or_low": 2.2278775826438117,
+     "or_high": 12.268369773298323,
+     "reference": {
+      "log_or": 1.65403688156843,
+      "se": 0.423241675007978,
+      "ci_low": 0.801049333604083,
+      "ci_high": 2.50702442953277,
+      "se_subset": 0.423241675007978
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.1172204719075722,
+     "se": 0.399893825575408,
+     "ci_low": 1.3112874226226248,
+     "ci_high": 2.9231535211925195,
+     "odds_ratio": 8.308013009455099,
+     "or_low": 3.7109481968209663,
+     "or_high": 18.59985009340866,
+     "reference": {
+      "log_or": 2.11722047213463,
+      "se": 0.399893847398735,
+      "ci_low": 1.31128737886766,
+      "ci_high": 2.9231535654016,
+      "se_subset": 0.399893847398735
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.96255480990061,
+     "se": 0.17033343267272624,
+     "ci_low": 0.6192703328482976,
+     "ci_high": 1.3058392869529225,
+     "odds_ratio": 2.618377392035423,
+     "or_low": 1.857572137856288,
+     "or_high": 3.690785422220105,
+     "reference": {
+      "log_or": 0.962554809906628,
+      "se": 0.170333441554907,
+      "ci_low": 0.619270314953458,
+      "ci_high": 1.3058393048598,
+      "se_subset": 0.170333441554907
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx_close=1",
+     "log_or": 0.7910106077648249,
+     "se": 0.1621274311298532,
+     "ci_low": 0.46426424013785433,
+     "ci_high": 1.1177569753917955,
+     "odds_ratio": 2.2056243213677305,
+     "or_low": 1.5908432795538183,
+     "or_high": 3.0579873640182074,
+     "reference": {
+      "log_or": 0.791010607774609,
+      "se": 0.162127431660826,
+      "ci_low": 0.464264239077532,
+      "ci_high": 1.11775697647169,
+      "se_subset": 0.162127431660826
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.5641988301383398,
+     "se": 0.2146619341019321,
+     "ci_low": 0.13157612868192192,
+     "ci_high": 0.9968215315947577,
+     "odds_ratio": 1.7580387307055074,
+     "or_low": 1.1406247386750892,
+     "or_high": 2.7096555719549653,
+     "reference": {
+      "log_or": 0.564198830146795,
+      "se": 0.214661932797595,
+      "ci_low": 0.131576131319094,
+      "ci_high": 0.996821528974495,
+      "se_subset": 0.214661932797595
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5925274341060425,
+     "se": 0.4600402935695878,
+     "ci_low": -0.33462285649169465,
+     "ci_high": 1.5196777247037796,
+     "odds_ratio": 1.8085536439728462,
+     "or_low": 0.71560792234832,
+     "or_high": 4.570751917326282,
+     "reference": {
+      "log_or": 0.592527434590512,
+      "se": 0.460040306721393,
+      "ci_low": -0.334622882512947,
+      "ci_high": 1.51967775169397,
+      "se_subset": 0.460040306721393
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.4299942845231854,
+     "se": 0.3974678480560771,
+     "ci_low": 0.628950471667027,
+     "ci_high": 2.231038097379344,
+     "odds_ratio": 4.178675308733152,
+     "or_low": 1.8756410075045902,
+     "or_high": 9.309525258805886,
+     "reference": {
+      "log_or": 1.42999428500589,
+      "se": 0.39746786149531,
+      "ci_low": 0.628950445064741,
+      "ci_high": 2.23103812494705,
+      "se_subset": 0.39746786149531
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 2.3255317065472667,
+     "se": 0.40002718370539886,
+     "ci_low": 1.5193298916113473,
+     "ci_high": 3.131733521483186,
+     "odds_ratio": 10.232119124407498,
+     "or_low": 4.5691623350228285,
+     "or_high": 22.913666466512744,
+     "reference": {
+      "log_or": 2.32553170703806,
+      "se": 0.400027190304952,
+      "ci_low": 1.51932987880162,
+      "ci_high": 3.13173353527451,
+      "se_subset": 0.400027190304952
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.32824803637644784,
+     "se": 0.18087661944391772,
+     "ci_low": -0.692780910178724,
+     "ci_high": 0.03628483742582833,
+     "odds_ratio": 0.7201843656294373,
+     "or_low": 0.5001831687332038,
+     "or_high": 1.0369511669308684,
+     "reference": {
+      "log_or": -0.32824803637796,
+      "se": 0.180876618340345,
+      "ci_low": -0.692780907956132,
+      "ci_high": 0.0362848352002123,
+      "se_subset": 0.180876618340345
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5169,
+     5169
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 7.185656514252514e-10,
+    "tolerance_log_or": 1e-06,
+    "max_rel_se": 7.41926428142339e-08,
+    "tolerance_se": 0.0001,
+    "auc_abs": 1.1102230246251565e-16,
+    "tolerance_auc": 0.0001,
+    "within": true
+   },
+   "estimator": "design",
+   "table2_matches": {
+    "odds_ratio": 2,
+    "ci": 1,
+    "log_or": 1,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "estimate:unweighted": {
+   "lane": "estimate",
+   "variant": "unweighted",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "unweighted",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "sample",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "seconds": 50.9,
+   "auc": {
+    "apparent": {
+     "value": 0.7978641339596313,
+     "rows": 5169,
+     "source": "computed here from the engine's coefficients on its model matrix"
+    }
+   },
+   "reference_auc": {
+    "apparent": 0.797864133959632,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.1174459887340487,
+     "se": 0.3484224616247244,
+     "ci_low": 0.4345505125447997,
+     "ci_high": 1.8003414649232976,
+     "odds_ratio": 3.0570365186062207,
+     "or_low": 1.544268773485585,
+     "or_high": 6.051713559549793,
+     "reference": {
+      "log_or": 1.11744598873403,
+      "se": 0.348422453253767,
+      "ci_low": 0.434550528951552,
+      "ci_high": 1.8003414485165,
+      "se_subset": null
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.780662980364101,
+     "se": 0.33194047649239344,
+     "ci_low": 1.1300716014279453,
+     "ci_high": 2.4312543593002567,
+     "odds_ratio": 5.9337891004599905,
+     "or_low": 3.095878161486089,
+     "or_high": 11.373139139247096,
+     "reference": {
+      "log_or": 1.78066298036406,
+      "se": 0.331940467698663,
+      "ci_low": 1.1300716186633,
+      "ci_high": 2.43125434206482,
+      "se_subset": null
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.1434674909203912,
+     "se": 0.3105550085401707,
+     "ci_low": 1.5347908589631278,
+     "ci_high": 2.7521441228776546,
+     "odds_ratio": 8.528960507268414,
+     "or_low": 4.640354939818817,
+     "or_high": 15.676207591435782,
+     "reference": {
+      "log_or": 2.14346749092037,
+      "se": 0.310554999097275,
+      "ci_low": 1.53479087747084,
+      "ci_high": 2.7521441043699,
+      "se_subset": null
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.6470836571065917,
+     "se": 0.15061221325398266,
+     "ci_low": 0.35188914349691947,
+     "ci_high": 0.9422781707162639,
+     "odds_ratio": 1.9099625931080888,
+     "or_low": 1.4217509046486485,
+     "or_high": 2.565820141309268,
+     "reference": {
+      "log_or": 0.647083657106592,
+      "se": 0.15061221286547,
+      "ci_low": 0.351889144258391,
+      "ci_high": 0.942278169954793,
+      "se_subset": null
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.7224200477463042,
+     "se": 0.15169669477718825,
+     "ci_low": 0.4250999894092499,
+     "ci_high": 1.0197401060833584,
+     "odds_ratio": 2.0594110579899136,
+     "or_low": 1.5297433701524223,
+     "or_high": 2.7724741211648776,
+     "reference": {
+      "log_or": 0.722420047746311,
+      "se": 0.151696694416624,
+      "ci_low": 0.425099990115949,
+      "ci_high": 1.01974010537667,
+      "se_subset": null
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.5261886720821677,
+     "se": 0.16868191095118612,
+     "ci_low": 0.19557820177445034,
+     "ci_high": 0.8567991423898851,
+     "odds_ratio": 1.6924694443511252,
+     "or_low": 1.2160138846475266,
+     "or_high": 2.3556086457783305,
+     "reference": {
+      "log_or": 0.526188672082168,
+      "se": 0.168681910466081,
+      "ci_low": 0.195578202725239,
+      "ci_high": 0.856799141439097,
+      "se_subset": null
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5357547850846798,
+     "se": 0.33198555508175276,
+     "ci_low": -0.11492494626309391,
+     "ci_high": 1.1864345164324535,
+     "odds_ratio": 1.7087374852097976,
+     "or_low": 0.891433046777507,
+     "or_high": 3.275382042337334,
+     "reference": {
+      "log_or": 0.535754785084679,
+      "se": 0.331985553005923,
+      "ci_low": -0.114924942194542,
+      "ci_high": 1.1864345123639,
+      "se_subset": null
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.2528789986124318,
+     "se": 0.29958725619591964,
+     "ci_low": 0.6656987662412551,
+     "ci_high": 1.8400592309836084,
+     "odds_ratio": 3.5004061289708637,
+     "or_low": 1.9458497405025095,
+     "or_high": 6.296911222226505,
+     "reference": {
+      "log_or": 1.25287899861243,
+      "se": 0.299587254184654,
+      "ci_low": 0.665698770183261,
+      "ci_high": 1.8400592270416,
+      "se_subset": null
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 1.9404935687679559,
+     "se": 0.3597994137718528,
+     "ci_low": 1.2352996761164996,
+     "ci_high": 2.645687461419412,
+     "odds_ratio": 6.96218644053094,
+     "or_low": 3.4394090750358126,
+     "or_high": 14.09313023697484,
+     "reference": {
+      "log_or": 1.94049356876794,
+      "se": 0.359799411638782,
+      "ci_low": 1.23529968029723,
+      "ci_high": 2.64568745723865,
+      "se_subset": null
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.24659215118947192,
+     "se": 0.1574063924733529,
+     "ci_low": -0.5551030113736202,
+     "ci_high": 0.061918708994676386,
+     "odds_ratio": 0.7814593458106478,
+     "or_low": 0.5740131282699872,
+     "or_high": 1.0638758576747616,
+     "reference": {
+      "log_or": -0.246592151189471,
+      "se": 0.157406392166113,
+      "ci_low": -0.55510301077144,
+      "ci_high": 0.0619187083924976,
+      "se_subset": null
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5169,
+     5169
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 8.348877145181177e-14,
+    "tolerance_log_or": 1e-06,
+    "max_rel_se": 3.0406516446537764e-08,
+    "tolerance_se": 0.0001,
+    "auc_abs": 6.661338147750939e-16,
+    "tolerance_auc": 0.0001,
+    "within": true
+   },
+   "estimator": "model",
+   "table2_matches": {
+    "odds_ratio": 0,
+    "ci": 0,
+    "log_or": 0,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "estimate:unknown_excluded": {
+   "lane": "estimate",
+   "variant": "unknown_excluded",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "excluded"
+   },
+   "survey": "population",
+   "n_analyzed": 4660,
+   "n_estimate": 4660,
+   "seconds": 49.9,
+   "auc": {
+    "apparent": {
+     "value": 0.7987052165060293,
+     "rows": 4660,
+     "source": "computed here from the engine's coefficients on its model matrix"
+    }
+   },
+   "reference_auc": {
+    "apparent": 0.79870521650603,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.1428335279846444,
+     "se": 0.3725951010711517,
+     "ci_low": 0.39191744288924857,
+     "ci_high": 1.8937496130800402,
+     "odds_ratio": 3.1356407149398176,
+     "or_low": 1.4798155370639925,
+     "or_high": 6.644235343477886,
+     "reference": {
+      "log_or": 1.14283352804399,
+      "se": 0.372595102999682,
+      "ci_low": 0.391917439061899,
+      "ci_high": 1.89374961702608,
+      "se_subset": 0.372595102999682
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.6322687558877824,
+     "se": 0.4467986117014237,
+     "ci_low": 0.7318053215582432,
+     "ci_high": 2.5327321902173217,
+     "odds_ratio": 5.1154673097622085,
+     "or_low": 2.0788301790028467,
+     "or_high": 12.587851601133588,
+     "reference": {
+      "log_or": 1.6322687559471,
+      "se": 0.446798619031627,
+      "ci_low": 0.731805306844506,
+      "ci_high": 2.53273220504969,
+      "se_subset": 0.446798619031627
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.2083225151860932,
+     "se": 0.4168565412663793,
+     "ci_low": 1.3682033587230538,
+     "ci_high": 3.0484416716491327,
+     "odds_ratio": 9.100437735663752,
+     "or_low": 3.92828662966802,
+     "or_high": 21.08246540749287,
+     "reference": {
+      "log_or": 2.20832251524598,
+      "se": 0.416856549133192,
+      "ci_low": 1.36820334292843,
+      "ci_high": 3.04844168756354,
+      "se_subset": 0.416856549133192
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 1.0182061480714073,
+     "se": 0.18879863423540025,
+     "ci_low": 0.6377075025341135,
+     "ci_high": 1.3987047936087011,
+     "odds_ratio": 2.768224522460065,
+     "or_low": 1.89213818140894,
+     "or_high": 4.049951045881394,
+     "reference": {
+      "log_or": 1.01820614807255,
+      "se": 0.188798637876931,
+      "ci_low": 0.637707495196233,
+      "ci_high": 1.39870480094887,
+      "se_subset": 0.188798637876931
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.5665416641083196,
+     "se": 0.15904242321326367,
+     "ci_low": 0.2460127214033459,
+     "ci_high": 0.8870706068132934,
+     "odds_ratio": 1.7621623521583853,
+     "or_low": 1.2789158430425374,
+     "or_high": 2.4280066372288207,
+     "reference": {
+      "log_or": 0.566541664109269,
+      "se": 0.159042425058203,
+      "ci_low": 0.246012717686065,
+      "ci_high": 0.887070610532473,
+      "se_subset": 0.159042425058203
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.6407318828774337,
+     "se": 0.22972306530583295,
+     "ci_low": 0.17775546595823083,
+     "ci_high": 1.1037082997966365,
+     "odds_ratio": 1.897869389239238,
+     "or_low": 1.194533181490303,
+     "or_high": 3.0153270536340964,
+     "reference": {
+      "log_or": 0.640731882879463,
+      "se": 0.229723064798019,
+      "ci_low": 0.177755466983691,
+      "ci_high": 1.10370829877523,
+      "se_subset": 0.229723064798019
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5472551722836246,
+     "se": 0.4768958366919768,
+     "ci_low": -0.41386523337261394,
+     "ci_high": 1.508375577939863,
+     "odds_ratio": 1.7285020602074344,
+     "or_low": 0.6610900381376473,
+     "or_high": 4.519383442167772,
+     "reference": {
+      "log_or": 0.547255172377034,
+      "se": 0.476895841440386,
+      "ci_low": -0.413865242848994,
+      "ci_high": 1.50837558760306,
+      "se_subset": 0.476895841440386
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.3301248668726537,
+     "se": 0.4002385558841385,
+     "ci_low": 0.5234970593015629,
+     "ci_high": 2.136752674443745,
+     "odds_ratio": 3.7815155441096966,
+     "or_low": 1.6879200972509103,
+     "or_high": 8.47188195319981,
+     "reference": {
+      "log_or": 1.33012486696546,
+      "se": 0.400238560212376,
+      "ci_low": 0.523497050671375,
+      "ci_high": 2.13675268325954,
+      "se_subset": 0.400238560212376
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 2.2798670288071343,
+     "se": 0.3881549087577177,
+     "ci_low": 1.4975922118356526,
+     "ci_high": 3.062141845778616,
+     "odds_ratio": 9.775380479101148,
+     "or_low": 4.470911093188188,
+     "or_high": 21.37328645536759,
+     "reference": {
+      "log_or": 2.27986702890177,
+      "se": 0.388154910546527,
+      "ci_low": 1.49759220832518,
+      "ci_high": 3.06214184947836,
+      "se_subset": 0.388154910546527
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.3755546404373621,
+     "se": 0.20213441754276928,
+     "ci_low": -0.782929791232136,
+     "ci_high": 0.03182051035741179,
+     "odds_ratio": 0.6869081860592785,
+     "or_low": 0.457064942877079,
+     "or_high": 1.0323321957381966,
+     "reference": {
+      "log_or": -0.375554640437681,
+      "se": 0.202134417610401,
+      "ci_low": -0.782929791368758,
+      "ci_high": 0.0318205104933962,
+      "se_subset": 0.202134417610401
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     4660,
+     4660
+    ],
+    "n_estimate": [
+     4660,
+     4660
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 1.5414158838211733e-10,
+    "tolerance_log_or": 1e-06,
+    "max_rel_se": 2.9511403686998362e-08,
+    "tolerance_se": 0.0001,
+    "auc_abs": 6.661338147750939e-16,
+    "tolerance_auc": 0.0001,
+    "within": true
+   },
+   "estimator": "design",
+   "table2_matches": {
+    "odds_ratio": 2,
+    "ci": 1,
+    "log_or": 1,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "predict:default": {
+   "lane": "predict",
+   "variant": "default",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "seconds": 58.8,
+   "auc": {
+    "apparent": {
+     "value": 0.7978115603073839,
+     "source": "the engine's (Harrell's bootstrap)"
+    },
+    "optimism_corrected": 0.7885281187911678,
+    "cross_validated": 0.7824835042187523
+   },
+   "reference_auc": {
+    "apparent": 0.797864133959632,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.1148424023418106,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.0490876122482615,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.11744598873403,
+      "se": 0.348422453253767,
+      "ci_low": 0.434550528951552,
+      "ci_high": 1.8003414485165,
+      "se_subset": null
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.7780568048889893,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 5.91834473893171,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.78066298036406,
+      "se": 0.331940467698663,
+      "ci_low": 1.1300716186633,
+      "ci_high": 2.43125434206482,
+      "se_subset": null
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.1408592914567324,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 8.506744261841702,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.14346749092037,
+      "se": 0.310554999097275,
+      "ci_low": 1.53479087747084,
+      "ci_high": 2.7521441043699,
+      "se_subset": null
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.6470555562584995,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.9099089222934995,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.647083657106592,
+      "se": 0.15061221286547,
+      "ci_low": 0.351889144258391,
+      "ci_high": 0.942278169954793,
+      "se_subset": null
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.7223925828737724,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 2.059354497304435,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.722420047746311,
+      "se": 0.151696694416624,
+      "ci_low": 0.425099990115949,
+      "ci_high": 1.01974010537667,
+      "se_subset": null
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.5261467178736557,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.692398439624641,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.526188672082168,
+      "se": 0.168681910466081,
+      "ci_low": 0.195578202725239,
+      "ci_high": 0.856799141439097,
+      "se_subset": null
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.53512246030996,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.7076573496986187,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.535754785084679,
+      "se": 0.331985553005923,
+      "ci_low": -0.114924942194542,
+      "ci_high": 1.1864345123639,
+      "se_subset": null
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.2522380413117502,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.4981632369829327,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.25287899861243,
+      "se": 0.299587254184654,
+      "ci_low": 0.665698770183261,
+      "ci_high": 1.8400592270416,
+      "se_subset": null
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 1.9398093815129518,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 6.957424630471998,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.94049356876794,
+      "se": 0.359799411638782,
+      "ci_low": 1.23529968029723,
+      "ci_high": 2.64568745723865,
+      "se_subset": null
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.24658730739481263,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 0.7814631310484209,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": -0.246592151189471,
+      "se": 0.157406392166113,
+      "ci_low": -0.55510301077144,
+      "ci_high": 0.0619187083924976,
+      "se_subset": null
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5169,
+     5169
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 0.003297374084048954,
+    "tolerance_log_or": 0.005,
+    "max_rel_se": null,
+    "tolerance_se": null,
+    "auc_abs": 5.2573652248089076e-05,
+    "tolerance_auc": 0.001,
+    "within": true
+   },
+   "estimator": null,
+   "solver": {
+    "default": {
+     "tol": 0.0001,
+     "iterations": 6,
+     "max_abs_from_engine": 0.0,
+     "max_abs_from_reference": 0.003297374084048954
+    },
+    "tight": {
+     "tol": 1e-12,
+     "iterations": 8,
+     "max_abs_from_engine": 0.003297374077900095,
+     "max_abs_from_reference": 6.148859199583967e-12
+    }
+   },
+   "table2_matches": {
+    "odds_ratio": 0,
+    "ci": 0,
+    "log_or": 0,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "predict:fasting_any_glucose": {
+   "lane": "predict",
+   "variant": "fasting_any_glucose",
+   "chosen": {
+    "fasting": "any_glucose",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5510,
+   "n_estimate": 5510,
+   "seconds": 59.1,
+   "auc": {
+    "apparent": {
+     "value": 0.7978408132219986,
+     "source": "the engine's (Harrell's bootstrap)"
+    },
+    "optimism_corrected": 0.7896134717537571,
+    "cross_validated": 0.7853843937659263
+   },
+   "reference_auc": {
+    "apparent": 0.797833755156539,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.2499728211108863,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.490248095106764,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.25321039363491,
+      "se": 0.341673549477087,
+      "ci_low": 0.583542542189854,
+      "ci_high": 1.92287824507996,
+      "se_subset": null
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.8112493641712775,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 6.118086377241372,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.81448525422706,
+      "se": 0.330340506181668,
+      "ci_low": 1.16702975947626,
+      "ci_high": 2.46194074897786,
+      "se_subset": null
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.276354282431269,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 9.74110228729515,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.27959122104925,
+      "se": 0.307338393090065,
+      "ci_low": 1.67721903952631,
+      "ci_high": 2.88196340257219,
+      "se_subset": null
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.6240806089983516,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.8665290982634641,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.624102812421177,
+      "se": 0.143199933747556,
+      "ci_low": 0.343436099687446,
+      "ci_high": 0.904769525154908,
+      "se_subset": null
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.673820122720612,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.9617170246233901,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.673838065810983,
+      "se": 0.143321101405984,
+      "ci_low": 0.392933868830643,
+      "ci_high": 0.954742262791324,
+      "se_subset": null
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.555558789470752,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.7429146350624682,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.55559097298155,
+      "se": 0.161323379481456,
+      "ci_low": 0.239402959333609,
+      "ci_high": 0.871778986629491,
+      "se_subset": null
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.1578374279620024,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.1709758113084898,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.158002571168344,
+      "se": 0.292843168322463,
+      "ci_low": -0.415959491862283,
+      "ci_high": 0.731964634198972,
+      "se_subset": null
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 0.9721465569762335,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 2.6436130392245327,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.972329719450906,
+      "se": 0.25374571812852,
+      "ci_low": 0.474997250687755,
+      "ci_high": 1.46966218821406,
+      "se_subset": null
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 1.6000767272561363,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 4.953412471562395,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.60029386387995,
+      "se": 0.318523982296379,
+      "ci_low": 0.975998330366771,
+      "ci_high": 2.22458939739313,
+      "se_subset": null
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.25943944722611784,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 0.771483922071121,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": -0.259442319533714,
+      "se": 0.149411537579925,
+      "ci_low": -0.55228355206512,
+      "ci_high": 0.033398912997692,
+      "se_subset": null
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5510,
+     5510
+    ],
+    "n_estimate": [
+     5510,
+     5510
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 0.003457744030939125,
+    "tolerance_log_or": 0.005,
+    "max_rel_se": null,
+    "tolerance_se": null,
+    "auc_abs": 7.058065459641938e-06,
+    "tolerance_auc": 0.001,
+    "within": true
+   },
+   "estimator": null,
+   "solver": {
+    "default": {
+     "tol": 0.0001,
+     "iterations": 6,
+     "max_abs_from_engine": 0.0,
+     "max_abs_from_reference": 0.003457744030939125
+    },
+    "tight": {
+     "tol": 1e-12,
+     "iterations": 8,
+     "max_abs_from_engine": 0.0034577440176652985,
+     "max_abs_from_reference": 1.3273826482418372e-11
+    }
+   },
+   "table2_matches": {
+    "odds_ratio": 1,
+    "ci": 0,
+    "log_or": 1,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "predict:bp_first_reading": {
+   "lane": "predict",
+   "variant": "bp_first_reading",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "first",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "seconds": 61.4,
+   "auc": {
+    "apparent": {
+     "value": 0.7975884907922406,
+     "source": "the engine's (Harrell's bootstrap)"
+    },
+    "optimism_corrected": 0.7882690542972581,
+    "cross_validated": 0.7816751386376548
+   },
+   "reference_auc": {
+    "apparent": 0.797591438847507,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.106163852643421,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.0227404468289465,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.10878624598389,
+      "se": 0.348728758141439,
+      "ci_low": 0.425290439653292,
+      "ci_high": 1.79228205231449,
+      "se_subset": null
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.777149210981737,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 5.912975722117661,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.77977488512681,
+      "se": 0.332103759582976,
+      "ci_low": 1.12886347721383,
+      "ci_high": 2.4306862930398,
+      "se_subset": null
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.1414759952681854,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 8.51199202144139,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.14410352788901,
+      "se": 0.310865605580351,
+      "ci_low": 1.53481813691929,
+      "ci_high": 2.75338891885873,
+      "se_subset": null
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.6477534484836392,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.9112422981032797,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.647782343101549,
+      "se": 0.150636213691937,
+      "ci_low": 0.352540789497872,
+      "ci_high": 0.943023896705226,
+      "se_subset": null
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.7282467021517416,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 2.0714455609007616,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.728275488032106,
+      "se": 0.151737407848477,
+      "ci_low": 0.430875633541626,
+      "ci_high": 1.02567534252259,
+      "se_subset": null
+     }
+    },
+    "history of hypertension": {
+     "term": "htn_first=1",
+     "log_or": 0.522609178901385,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.68642209120301,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.522658058310183,
+      "se": 0.170697868244999,
+      "ci_low": 0.188096384312221,
+      "ci_high": 0.857219732308145,
+      "se_subset": null
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5269688019888665,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.693790305535504,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.527607058678783,
+      "se": 0.331995600988398,
+      "ci_low": -0.123092362284208,
+      "ci_high": 1.17830647964177,
+      "se_subset": null
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.2519032740907101,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.496992362593461,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.25255034108035,
+      "se": 0.299635916312417,
+      "ci_low": 0.665274736633355,
+      "ci_high": 1.83982594552734,
+      "se_subset": null
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 1.948431106439632,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 7.017668963684947,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.94912500333903,
+      "se": 0.359568712458806,
+      "ci_low": 1.24438327695233,
+      "ci_high": 2.65386672972572,
+      "se_subset": null
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.25001388550890863,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 0.7787899691012724,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": -0.250018717505852,
+      "se": 0.157346017771595,
+      "ci_low": -0.558411245448978,
+      "ci_high": 0.058373810437273,
+      "se_subset": null
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5169,
+     5169
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 0.0033302692842847037,
+    "tolerance_log_or": 0.005,
+    "max_rel_se": null,
+    "tolerance_se": null,
+    "auc_abs": 2.948055266460692e-06,
+    "tolerance_auc": 0.001,
+    "within": true
+   },
+   "estimator": null,
+   "solver": {
+    "default": {
+     "tol": 0.0001,
+     "iterations": 6,
+     "max_abs_from_engine": 0.0,
+     "max_abs_from_reference": 0.0033302692842847037
+    },
+    "tight": {
+     "tol": 1e-12,
+     "iterations": 8,
+     "max_abs_from_engine": 0.0033302692778134357,
+     "max_abs_from_reference": 6.4712679659351124e-12
+    }
+   },
+   "table2_matches": {
+    "odds_ratio": 0,
+    "ci": 0,
+    "log_or": 0,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "predict:borderline_known": {
+   "lane": "predict",
+   "variant": "borderline_known",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5099,
+   "n_estimate": 5099,
+   "seconds": 58.0,
+   "auc": {
+    "apparent": {
+     "value": 0.7936389598642782,
+     "source": "the engine's (Harrell's bootstrap)"
+    },
+    "optimism_corrected": 0.7826591624292336,
+    "cross_validated": 0.7841774617389636
+   },
+   "reference_auc": {
+    "apparent": 0.793684299937786,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.2455020611648269,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.474678862804182,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.25065626435253,
+      "se": 0.370284932115885,
+      "ci_low": 0.524911133387533,
+      "ci_high": 1.97640139531752,
+      "se_subset": null
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.7528130284633003,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 5.770813326949829,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.75796997798553,
+      "se": 0.36109238239366,
+      "ci_low": 1.0502419134022,
+      "ci_high": 2.46569804256887,
+      "se_subset": null
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.1743379948290418,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 8.796359958477977,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.1795007982008,
+      "se": 0.336290953091194,
+      "ci_low": 1.52038264181541,
+      "ci_high": 2.83861895458619,
+      "se_subset": null
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.6103579946991207,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.8410903814156034,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.610406090309491,
+      "se": 0.160516714591028,
+      "ci_low": 0.295799110794382,
+      "ci_high": 0.9250130698246,
+      "se_subset": null
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.615434998435504,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.8504613723101084,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.615482477518462,
+      "se": 0.16083406377971,
+      "ci_low": 0.300253505023013,
+      "ci_high": 0.930711450013911,
+      "se_subset": null
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.48844847617910725,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.62978560611836,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.488521680581163,
+      "se": 0.179733196806187,
+      "ci_low": 0.136251088014788,
+      "ci_high": 0.840792273147539,
+      "se_subset": null
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5527520614139333,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.738029606336099,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.554056673862608,
+      "se": 0.359356564003215,
+      "ci_low": -0.150269249191757,
+      "ci_high": 1.25838259691697,
+      "se_subset": null
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.2835061076786172,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.609272063957074,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.28482754277026,
+      "se": 0.324390093865859,
+      "ci_low": 0.649034641851609,
+      "ci_high": 1.92062044368891,
+      "se_subset": null
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 2.033517816627365,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 7.640918485955947,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.03492216985594,
+      "se": 0.385790687823912,
+      "ci_low": 1.27878631615014,
+      "ci_high": 2.79105802356175,
+      "se_subset": null
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.22948553812088204,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 0.7949424649165451,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": -0.229493844466936,
+      "se": 0.168362511596288,
+      "ci_low": -0.559478303542367,
+      "ci_high": 0.100490614608495,
+      "se_subset": null
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5099,
+     5099
+    ],
+    "n_estimate": [
+     5099,
+     5099
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 0.0065628302922151605,
+    "tolerance_log_or": 0.005,
+    "max_rel_se": null,
+    "tolerance_se": null,
+    "auc_abs": 4.534007350776026e-05,
+    "tolerance_auc": 0.001,
+    "within": false
+   },
+   "estimator": null,
+   "solver": {
+    "default": {
+     "tol": 0.0001,
+     "iterations": 6,
+     "max_abs_from_engine": 0.0,
+     "max_abs_from_reference": 0.0065628302922151605
+    },
+    "tight": {
+     "tol": 1e-12,
+     "iterations": 8,
+     "max_abs_from_engine": 0.006562830195221636,
+     "max_abs_from_reference": 9.699352432335218e-11
+    }
+   },
+   "table2_matches": {
+    "odds_ratio": 0,
+    "ci": 0,
+    "log_or": 0,
+    "of": 10,
+    "auc": true
+   }
+  },
+  "predict:medicine_told": {
+   "lane": "predict",
+   "variant": "medicine_told",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "told",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "seconds": 59.1,
+   "auc": {
+    "apparent": {
+     "value": 0.7978115603073839,
+     "source": "the engine's (Harrell's bootstrap)"
+    },
+    "optimism_corrected": 0.7885281187911678,
+    "cross_validated": 0.7824835042187523
+   },
+   "reference_auc": {
+    "apparent": 0.797864133959632,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.1148424023418106,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.0490876122482615,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.11744598873403,
+      "se": 0.348422453253767,
+      "ci_low": 0.434550528951552,
+      "ci_high": 1.8003414485165,
+      "se_subset": null
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.7780568048889893,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 5.91834473893171,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.78066298036406,
+      "se": 0.331940467698663,
+      "ci_low": 1.1300716186633,
+      "ci_high": 2.43125434206482,
+      "se_subset": null
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.1408592914567324,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 8.506744261841702,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.14346749092037,
+      "se": 0.310554999097275,
+      "ci_low": 1.53479087747084,
+      "ci_high": 2.7521441043699,
+      "se_subset": null
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.6470555562584995,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.9099089222934995,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.647083657106592,
+      "se": 0.15061221286547,
+      "ci_low": 0.351889144258391,
+      "ci_high": 0.942278169954793,
+      "se_subset": null
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.7223925828737724,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 2.059354497304435,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.722420047746311,
+      "se": 0.151696694416624,
+      "ci_low": 0.425099990115949,
+      "ci_high": 1.01974010537667,
+      "se_subset": null
+     }
+    },
+    "history of hypertension": {
+     "term": "htn_told_rx=1",
+     "log_or": 0.5261467178736557,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.692398439624641,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.526188672082168,
+      "se": 0.168681910466081,
+      "ci_low": 0.195578202725239,
+      "ci_high": 0.856799141439097,
+      "se_subset": null
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.53512246030996,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.7076573496986187,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.535754785084679,
+      "se": 0.331985553005923,
+      "ci_low": -0.114924942194542,
+      "ci_high": 1.1864345123639,
+      "se_subset": null
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.2522380413117502,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.4981632369829327,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.25287899861243,
+      "se": 0.299587254184654,
+      "ci_low": 0.665698770183261,
+      "ci_high": 1.8400592270416,
+      "se_subset": null
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 1.9398093815129518,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 6.957424630471998,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.94049356876794,
+      "se": 0.359799411638782,
+      "ci_low": 1.23529968029723,
+      "ci_high": 2.64568745723865,
+      "se_subset": null
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.24658730739481263,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 0.7814631310484209,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": -0.246592151189471,
+      "se": 0.157406392166113,
+      "ci_low": -0.55510301077144,
+      "ci_high": 0.0619187083924976,
+      "se_subset": null
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5169,
+     5169
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 0.003297374084048954,
+    "tolerance_log_or": 0.005,
+    "max_rel_se": null,
+    "tolerance_se": null,
+    "auc_abs": 5.2573652248089076e-05,
+    "tolerance_auc": 0.001,
+    "within": true
+   },
+   "estimator": null,
+   "solver": {
+    "default": {
+     "tol": 0.0001,
+     "iterations": 6,
+     "max_abs_from_engine": 0.0,
+     "max_abs_from_reference": 0.003297374084048954
+    },
+    "tight": {
+     "tol": 1e-12,
+     "iterations": 8,
+     "max_abs_from_engine": 0.003297374077900095,
+     "max_abs_from_reference": 6.148859199583967e-12
+    }
+   },
+   "table2_matches": {
+    "odds_ratio": 0,
+    "ci": 0,
+    "log_or": 0,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "predict:obesity_absent": {
+   "lane": "predict",
+   "variant": "obesity_absent",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "absent",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5236,
+   "n_estimate": 5236,
+   "seconds": 57.8,
+   "auc": {
+    "apparent": {
+     "value": 0.7944939432328584,
+     "source": "the engine's (Harrell's bootstrap)"
+    },
+    "optimism_corrected": 0.7857177301293624,
+    "cross_validated": 0.7752199665678278
+   },
+   "reference_auc": {
+    "apparent": 0.794531063358343,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.0450641644494596,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 2.8435809746060032,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.04688361020973,
+      "se": 0.340319346734424,
+      "ci_low": 0.379869947368059,
+      "ci_high": 1.7138972730514,
+      "se_subset": null
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.7158893524746655,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 5.561619553651055,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.71771019860693,
+      "se": 0.323476237470271,
+      "ci_low": 1.08370842331068,
+      "ci_high": 2.35171197390319,
+      "se_subset": null
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.0958857526353443,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 8.132641289345395,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.09770872612791,
+      "se": 0.300863711409761,
+      "ci_low": 1.50802668750972,
+      "ci_high": 2.68739076474609,
+      "se_subset": null
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.6331496941796243,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.883533801650177,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.633169471948346,
+      "se": 0.149083795547904,
+      "ci_low": 0.340970601995922,
+      "ci_high": 0.925368341900771,
+      "se_subset": null
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.7420258901263358,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 2.1001859535661573,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.742045516006319,
+      "se": 0.150353070967369,
+      "ci_low": 0.44735891194528,
+      "ci_high": 1.03673212006736,
+      "se_subset": null
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.5422073002942978,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.7197987880567456,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.542237595940517,
+      "se": 0.167315769641776,
+      "ci_low": 0.214304713397037,
+      "ci_high": 0.870170478483998,
+      "se_subset": null
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity_absent=1",
+     "log_or": 0.35113569149796964,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.4206800870430227,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.351352970770084,
+      "se": 0.303140074980899,
+      "ci_low": -0.242790658463249,
+      "ci_high": 0.945496600003417,
+      "se_subset": null
+     }
+    },
+    "obese": {
+     "term": "obesity_absent=2",
+     "log_or": 1.0635249455280875,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 2.8965632427947936,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.06375293944032,
+      "se": 0.266736717382303,
+      "ci_low": 0.540958580016566,
+      "ci_high": 1.58654729886407,
+      "se_subset": null
+     }
+    },
+    "extremely obese": {
+     "term": "obesity_absent=3",
+     "log_or": 1.7449727010041112,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 5.725745166194021,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.74523172714392,
+      "se": 0.332611045436401,
+      "ci_low": 1.09332605722836,
+      "ci_high": 2.39713739705949,
+      "se_subset": null
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.26101191115503425,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 0.7702717447342675,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": -0.261016154353256,
+      "se": 0.155926317008813,
+      "ci_low": -0.566626119932504,
+      "ci_high": 0.0445938112259918,
+      "se_subset": null
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5236,
+     5236
+    ],
+    "n_estimate": [
+     5236,
+     5236
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 0.002087024583179442,
+    "tolerance_log_or": 0.005,
+    "max_rel_se": null,
+    "tolerance_se": null,
+    "auc_abs": 3.712012548462429e-05,
+    "tolerance_auc": 0.001,
+    "within": true
+   },
+   "estimator": null,
+   "solver": {
+    "default": {
+     "tol": 0.0001,
+     "iterations": 6,
+     "max_abs_from_engine": 0.0,
+     "max_abs_from_reference": 0.002087024583179442
+    },
+    "tight": {
+     "tol": 1e-12,
+     "iterations": 8,
+     "max_abs_from_engine": 0.0020870245818285227,
+     "max_abs_from_reference": 1.3526957332032907e-12
+    }
+   },
+   "table2_matches": {
+    "odds_ratio": 1,
+    "ci": 0,
+    "log_or": 0,
+    "of": 10,
+    "auc": true
+   }
+  },
+  "predict:family_parent_or_sibling": {
+   "lane": "predict",
+   "variant": "family_parent_or_sibling",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "parent_or_sibling",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "absent"
+   },
+   "survey": "population",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "seconds": 56.5,
+   "auc": {
+    "apparent": {
+     "value": 0.8061019830585092,
+     "source": "the engine's (Harrell's bootstrap)"
+    },
+    "optimism_corrected": 0.7976109746532726,
+    "cross_validated": 0.7913942047519102
+   },
+   "reference_auc": {
+    "apparent": 0.806119180047562,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.0410269738101152,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 2.8321240385918136,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.04389765032441,
+      "se": 0.349244014277309,
+      "ci_low": 0.359391960524687,
+      "ci_high": 1.72840334012412,
+      "se_subset": null
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.7023603495716864,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 5.486883081477915,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.70523826399933,
+      "se": 0.332322483229382,
+      "ci_low": 1.05389816561682,
+      "ci_high": 2.35657836238183,
+      "se_subset": null
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.0255633741872776,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 7.580380332501543,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.02844202009329,
+      "se": 0.309821076869671,
+      "ci_low": 1.42120386777732,
+      "ci_high": 2.63568017240926,
+      "se_subset": null
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.6335040960288985,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.8842014478131814,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.63354158104378,
+      "se": 0.15093748430758,
+      "ci_low": 0.337709547883844,
+      "ci_high": 0.929373614203716,
+      "se_subset": null
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx_close=1",
+     "log_or": 0.9304800896049856,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 2.5357262612589953,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.930532546089814,
+      "se": 0.147779195611453,
+      "ci_low": 0.640890645027066,
+      "ci_high": 1.22017444715256,
+      "se_subset": null
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.5098297882880838,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.6650077670028176,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.509881409048943,
+      "se": 0.168761972443763,
+      "ci_low": 0.179114021099226,
+      "ci_high": 0.840648796998661,
+      "se_subset": null
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.5224874640036019,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.686216841001817,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.523188545831139,
+      "se": 0.332473166770089,
+      "ci_low": -0.128446886864213,
+      "ci_high": 1.17482397852649,
+      "se_subset": null
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.2419744664642338,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.4624431979829864,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.2426902362201,
+      "se": 0.299922162603671,
+      "ci_low": 0.654853599351543,
+      "ci_high": 1.83052687308866,
+      "se_subset": null
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 1.9408868051686938,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 6.9649247640370335,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.94166868330641,
+      "se": 0.360215929215128,
+      "ci_low": 1.23565843538713,
+      "ci_high": 2.64767893122569,
+      "se_subset": null
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.24715282776246078,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 0.7810213226688403,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": -0.247158654263403,
+      "se": 0.157730425085259,
+      "ci_low": -0.556304606696704,
+      "ci_high": 0.0619872981698972,
+      "se_subset": null
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     5169,
+     5169
+    ],
+    "n_estimate": [
+     5169,
+     5169
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 0.0036662087616265993,
+    "tolerance_log_or": 0.005,
+    "max_rel_se": null,
+    "tolerance_se": null,
+    "auc_abs": 1.719698905278122e-05,
+    "tolerance_auc": 0.001,
+    "within": true
+   },
+   "estimator": null,
+   "solver": {
+    "default": {
+     "tol": 0.0001,
+     "iterations": 6,
+     "max_abs_from_engine": 0.0,
+     "max_abs_from_reference": 0.0036662087616265993
+    },
+    "tight": {
+     "tol": 1e-12,
+     "iterations": 8,
+     "max_abs_from_engine": 0.0036662087524241826,
+     "max_abs_from_reference": 9.202416606512998e-12
+    }
+   },
+   "table2_matches": {
+    "odds_ratio": 0,
+    "ci": 0,
+    "log_or": 0,
+    "of": 10,
+    "auc": false
+   }
+  },
+  "predict:unknown_excluded": {
+   "lane": "predict",
+   "variant": "unknown_excluded",
+   "chosen": {
+    "fasting": "weight",
+    "bp_reading": "mean",
+    "borderline": "not_known",
+    "hypertension_medicine": "taking",
+    "obesity_missing": "complete_case",
+    "family_history": "any_relative",
+    "weights": "fasting_six_year",
+    "unknown_known_diabetes": "excluded"
+   },
+   "survey": "population",
+   "n_analyzed": 4660,
+   "n_estimate": 4660,
+   "seconds": 56.5,
+   "auc": {
+    "apparent": {
+     "value": 0.8005732334089757,
+     "source": "the engine's (Harrell's bootstrap)"
+    },
+    "optimism_corrected": 0.7908532759765673,
+    "cross_validated": 0.7941192978216585
+   },
+   "reference_auc": {
+    "apparent": 0.800571476102388,
+    "apparent_weighted": null
+   },
+   "factors": {
+    "age 40-49, against under 40": {
+     "term": "age_band=1",
+     "log_or": 1.1658187786961702,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.20854889947753,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.1682518320581,
+      "se": 0.358256449266978,
+      "ci_low": 0.466082094265626,
+      "ci_high": 1.87042156985058,
+      "se_subset": null
+     }
+    },
+    "age 50-59": {
+     "term": "age_band=2",
+     "log_or": 1.6919660248845159,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 5.430146019760283,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.69439681513907,
+      "se": 0.34744172317491,
+      "ci_low": 1.01342355098971,
+      "ci_high": 2.37537007928842,
+      "se_subset": null
+     }
+    },
+    "age 60 or older": {
+     "term": "age_band=3",
+     "log_or": 2.124052103313345,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 8.36496460671055,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.12648619665901,
+      "se": 0.323680574039647,
+      "ci_low": 1.49208392904605,
+      "ci_high": 2.76088846427197,
+      "se_subset": null
+     }
+    },
+    "male": {
+     "term": "male=1",
+     "log_or": 0.6620335321965212,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.9387308000487566,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.662059494743964,
+      "se": 0.156352414469877,
+      "ci_low": 0.355614393487126,
+      "ci_high": 0.968504596000801,
+      "se_subset": null
+     }
+    },
+    "family history of diabetes": {
+     "term": "famhx=1",
+     "log_or": 0.6736112561233426,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.961307330250876,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.673632549632413,
+      "se": 0.157496173792728,
+      "ci_low": 0.364945721295804,
+      "ci_high": 0.982319377969022,
+      "se_subset": null
+     }
+    },
+    "history of hypertension": {
+     "term": "htn=1",
+     "log_or": 0.5767509196919944,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.7802448654315348,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.576795073989223,
+      "se": 0.177422784372206,
+      "ci_low": 0.229052806582883,
+      "ci_high": 0.924537341395562,
+      "se_subset": null
+     }
+    },
+    "overweight, against not overweight or obese": {
+     "term": "obesity=1",
+     "log_or": 0.531001042128111,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 1.7006338629539812,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 0.531744490464539,
+      "se": 0.36029680548157,
+      "ci_low": -0.174424272024171,
+      "ci_high": 1.23791325295325,
+      "se_subset": null
+     }
+    },
+    "obese": {
+     "term": "obesity=2",
+     "log_or": 1.325321506988077,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 3.763395118345248,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 1.32607503672786,
+      "se": 0.323855652478317,
+      "ci_low": 0.69132962168064,
+      "ci_high": 1.96082045177508,
+      "se_subset": null
+     }
+    },
+    "extremely obese": {
+     "term": "obesity=3",
+     "log_or": 2.0078240176594835,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 7.447094956788363,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": 2.0086220433119,
+      "se": 0.383361362194426,
+      "ci_low": 1.25724758034661,
+      "ci_high": 2.75999650627719,
+      "se_subset": null
+     }
+    },
+    "physically active": {
+     "term": "active=1",
+     "log_or": -0.26868699625142184,
+     "se": null,
+     "ci_low": null,
+     "ci_high": null,
+     "odds_ratio": 0.7643824727876452,
+     "or_low": null,
+     "or_high": null,
+     "reference": {
+      "log_or": -0.268691203883816,
+      "se": 0.164162687010409,
+      "ci_low": -0.59044415802954,
+      "ci_high": 0.0530617502619076,
+      "se_subset": null
+     }
+    }
+   },
+   "agreement": {
+    "rows_same": true,
+    "n_analyzed": [
+     4660,
+     4660
+    ],
+    "n_estimate": [
+     4660,
+     4660
+    ],
+    "terms_missing": [],
+    "max_abs_log_or": 0.0032337242480071637,
+    "tolerance_log_or": 0.005,
+    "max_rel_se": null,
+    "tolerance_se": null,
+    "auc_abs": 1.757306587690799e-06,
+    "tolerance_auc": 0.001,
+    "within": true
+   },
+   "estimator": null,
+   "solver": {
+    "default": {
+     "tol": 0.0001,
+     "iterations": 6,
+     "max_abs_from_engine": 0.0,
+     "max_abs_from_reference": 0.0032337242480071637
+    },
+    "tight": {
+     "tol": 1e-12,
+     "iterations": 8,
+     "max_abs_from_engine": 0.003233724243104419,
+     "max_abs_from_reference": 4.902744876744691e-12
+    }
+   },
+   "table2_matches": {
+    "odds_ratio": 1,
+    "ci": 0,
+    "log_or": 1,
+    "of": 10,
+    "auc": false
+   }
+  }
+ },
+ "table2": [
+  {
+   "factor": "age 40-49, against under 40",
+   "paper": {
+    "factor": "age 40-49, against under 40",
+    "label": "Age 40–49 (ref < 40)",
+    "odds_ratio": "2.6",
+    "ci": [
+     "1.3",
+     "5.0"
+    ],
+    "p": "0.004",
+    "log_or": "0.95",
+    "points": "1"
+   },
+   "estimate:default": {
+    "odds_ratio": 2.9681864854721876,
+    "or_low": 1.4332720322774481,
+    "or_high": 6.146865922263597,
+    "log_or": 1.0879511553636927,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 3.0570365186062207,
+    "or_low": 1.544268773485585,
+    "or_high": 6.051713559549793,
+    "log_or": 1.1174459887340487,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 3.0490876122482615,
+    "or_low": null,
+    "or_high": null,
+    "log_or": 1.1148424023418106,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  },
+  {
+   "factor": "age 50-59",
+   "paper": {
+    "factor": "age 50-59",
+    "label": "Age 50–59",
+    "odds_ratio": "4.8",
+    "ci": [
+     "2.2",
+     "10.6"
+    ],
+    "p": "0.0001",
+    "log_or": "1.57",
+    "points": "2"
+   },
+   "estimate:default": {
+    "odds_ratio": 5.45747578520475,
+    "or_low": 2.306987400833942,
+    "or_high": 12.910361771082805,
+    "log_or": 1.6969863724563512,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 5.9337891004599905,
+    "or_low": 3.095878161486089,
+    "or_high": 11.373139139247096,
+    "log_or": 1.780662980364101,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 5.91834473893171,
+    "or_low": null,
+    "or_high": null,
+    "log_or": 1.7780568048889893,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  },
+  {
+   "factor": "age 60 or older",
+   "paper": {
+    "factor": "age 60 or older",
+    "label": "Age ≥ 60",
+    "odds_ratio": "8.1",
+    "ci": [
+     "3.9",
+     "16.9"
+    ],
+    "p": "< 0.0001",
+    "log_or": "2.09",
+    "points": "3"
+   },
+   "estimate:default": {
+    "odds_ratio": 9.043075073714503,
+    "or_low": 4.005181987076803,
+    "or_high": 20.417850437932774,
+    "log_or": 2.2019992795832772,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 8.528960507268414,
+    "or_low": 4.640354939818817,
+    "or_high": 15.676207591435782,
+    "log_or": 2.1434674909203912,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 8.506744261841702,
+    "or_low": null,
+    "or_high": null,
+    "log_or": 2.1408592914567324,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  },
+  {
+   "factor": "male",
+   "paper": {
+    "factor": "male",
+    "label": "Male",
+    "odds_ratio": "2.6",
+    "ci": [
+     "1.8",
+     "3.7"
+    ],
+    "p": "< 0.0001",
+    "log_or": "0.96",
+    "points": "1"
+   },
+   "estimate:default": {
+    "odds_ratio": 2.6180669979914986,
+    "or_low": 1.851062483002884,
+    "or_high": 3.7028867847037117,
+    "log_or": 0.9624362584480713,
+    "matches": {
+     "odds_ratio": true,
+     "ci_low": false,
+     "ci_high": true,
+     "log_or": true
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 1.9099625931080888,
+    "or_low": 1.4217509046486485,
+    "or_high": 2.565820141309268,
+    "log_or": 0.6470836571065917,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 1.9099089222934995,
+    "or_low": null,
+    "or_high": null,
+    "log_or": 0.6470555562584995,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  },
+  {
+   "factor": "family history of diabetes",
+   "paper": {
+    "factor": "family history of diabetes",
+    "label": "Family history of diabetes",
+    "odds_ratio": "2.0",
+    "ci": [
+     "1.5",
+     "2.6"
+    ],
+    "p": "< 0.0001",
+    "log_or": "0.67",
+    "points": "1"
+   },
+   "estimate:default": {
+    "odds_ratio": 1.8856685038019532,
+    "or_low": 1.390904812633808,
+    "or_high": 2.556426344875147,
+    "log_or": 0.6342824019554465,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": true,
+     "log_or": false
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 2.0594110579899136,
+    "or_low": 1.5297433701524223,
+    "or_high": 2.7724741211648776,
+    "log_or": 0.7224200477463042,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": true,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 2.059354497304435,
+    "or_low": null,
+    "or_high": null,
+    "log_or": 0.7223925828737724,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  },
+  {
+   "factor": "history of hypertension",
+   "paper": {
+    "factor": "history of hypertension",
+    "label": "History of hypertension",
+    "odds_ratio": "1.9",
+    "ci": [
+     "1.2",
+     "2.9"
+    ],
+    "p": "0.004",
+    "log_or": "0.64",
+    "points": "1"
+   },
+   "estimate:default": {
+    "odds_ratio": 1.7578943803202587,
+    "or_low": 1.1366845784566864,
+    "or_high": 2.7186017219985525,
+    "log_or": 0.5641167180043648,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 1.6924694443511252,
+    "or_low": 1.2160138846475266,
+    "or_high": 2.3556086457783305,
+    "log_or": 0.5261886720821677,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": true,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 1.692398439624641,
+    "or_low": null,
+    "or_high": null,
+    "log_or": 0.5261467178736557,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  },
+  {
+   "factor": "overweight, against not overweight or obese",
+   "paper": {
+    "factor": "overweight, against not overweight or obese",
+    "label": "Overweight (ref not overweight or obese)",
+    "odds_ratio": "1.3",
+    "ci": [
+     "0.6",
+     "2.8"
+    ],
+    "p": "0.47",
+    "log_or": "0.27",
+    "points": "1"
+   },
+   "estimate:default": {
+    "odds_ratio": 1.8157459828635851,
+    "or_low": 0.7241242772628752,
+    "or_high": 4.552993978806178,
+    "log_or": 0.5964963931176013,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 1.7087374852097976,
+    "or_low": 0.891433046777507,
+    "or_high": 3.275382042337334,
+    "log_or": 0.5357547850846798,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 1.7076573496986187,
+    "or_low": null,
+    "or_high": null,
+    "log_or": 0.53512246030996,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  },
+  {
+   "factor": "obese",
+   "paper": {
+    "factor": "obese",
+    "label": "Obese",
+    "odds_ratio": "3.1",
+    "ci": [
+     "1.6",
+     "5.8"
+    ],
+    "p": "0.0006",
+    "log_or": "1.12",
+    "points": "2"
+   },
+   "estimate:default": {
+    "odds_ratio": 4.192963287862204,
+    "or_low": 1.9010088004355596,
+    "or_high": 9.248216593911648,
+    "log_or": 1.433407712572476,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 3.5004061289708637,
+    "or_low": 1.9458497405025095,
+    "or_high": 6.296911222226505,
+    "log_or": 1.2528789986124318,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 3.4981632369829327,
+    "or_low": null,
+    "or_high": null,
+    "log_or": 1.2522380413117502,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  },
+  {
+   "factor": "extremely obese",
+   "paper": {
+    "factor": "extremely obese",
+    "label": "Extremely obese",
+    "odds_ratio": "7.3",
+    "ci": [
+     "4.0",
+     "13.4"
+    ],
+    "p": "< 0.0001",
+    "log_or": "1.99",
+    "points": "3"
+   },
+   "estimate:default": {
+    "odds_ratio": 10.109240778880617,
+    "or_low": 4.645843849884657,
+    "or_high": 21.997456743605365,
+    "log_or": 2.3134499341572003,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 6.96218644053094,
+    "or_low": 3.4394090750358126,
+    "or_high": 14.09313023697484,
+    "log_or": 1.9404935687679559,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 6.957424630471998,
+    "or_low": null,
+    "or_high": null,
+    "log_or": 1.9398093815129518,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  },
+  {
+   "factor": "physically active",
+   "paper": {
+    "factor": "physically active",
+    "label": "Physically active",
+    "odds_ratio": "0.7",
+    "ci": [
+     "0.5",
+     "1.0"
+    ],
+    "p": "0.06",
+    "log_or": "-0.34",
+    "points": "−1"
+   },
+   "estimate:default": {
+    "odds_ratio": 0.7274380876584625,
+    "or_low": 0.5052182015401119,
+    "or_high": 1.0474012412123828,
+    "log_or": -0.3182263864329102,
+    "matches": {
+     "odds_ratio": true,
+     "ci_low": true,
+     "ci_high": true,
+     "log_or": false
+    }
+   },
+   "estimate:unweighted": {
+    "odds_ratio": 0.7814593458106478,
+    "or_low": 0.5740131282699872,
+    "or_high": 1.0638758576747616,
+    "log_or": -0.24659215118947192,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": false,
+     "ci_high": false,
+     "log_or": false
+    }
+   },
+   "predict:default": {
+    "odds_ratio": 0.7814631310484209,
+    "or_low": null,
+    "or_high": null,
+    "log_or": -0.24658730739481263,
+    "matches": {
+     "odds_ratio": false,
+     "ci_low": null,
+     "ci_high": null,
+     "log_or": false
+    }
+   }
+  }
+ ],
+ "moves": {
+  "estimate:fasting_any_glucose": {
+   "decision": "fasting",
+   "option": "any_glucose",
+   "n_analyzed": 5510,
+   "n_estimate": 5169,
+   "auc_change": 0.0,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "age 50-59": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "age 60 or older": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "male": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "history of hypertension": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "obese": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "extremely obese": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "physically active": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    }
+   }
+  },
+  "estimate:bp_first_reading": {
+   "decision": "bp_reading",
+   "option": "first",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "auc_change": 0.000471197500049092,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": -0.0019931206776806487,
+     "material": false,
+     "printed_change": false
+    },
+    "age 50-59": {
+     "delta_log_or": 0.011287736405525717,
+     "material": false,
+     "printed_change": false
+    },
+    "age 60 or older": {
+     "delta_log_or": 0.01827471069637232,
+     "material": false,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": -0.003298652957952952,
+     "material": false,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.000402152457284477,
+     "material": false,
+     "printed_change": false
+    },
+    "history of hypertension": {
+     "delta_log_or": -0.04939597789706207,
+     "material": false,
+     "printed_change": true
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.009304756109003831,
+     "material": false,
+     "printed_change": false
+    },
+    "obese": {
+     "delta_log_or": 0.0015921010420762993,
+     "material": false,
+     "printed_change": false
+    },
+    "extremely obese": {
+     "delta_log_or": 0.011257694219549474,
+     "material": false,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": -0.007066512685592663,
+     "material": false,
+     "printed_change": false
+    }
+   }
+  },
+  "estimate:borderline_known": {
+   "decision": "borderline",
+   "option": "known",
+   "n_analyzed": 5099,
+   "n_estimate": 5099,
+   "auc_change": -0.0036825704544873883,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": 0.1740369095794876,
+     "material": false,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": 0.023312878794801817,
+     "material": false,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": 0.07096737642533935,
+     "material": false,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": -0.043534690275952914,
+     "material": false,
+     "printed_change": true
+    },
+    "family history of diabetes": {
+     "delta_log_or": -0.07430441681132416,
+     "material": false,
+     "printed_change": true
+    },
+    "history of hypertension": {
+     "delta_log_or": -0.010790148211403228,
+     "material": false,
+     "printed_change": true
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.04286259163684647,
+     "material": false,
+     "printed_change": true
+    },
+    "obese": {
+     "delta_log_or": -0.06746635563905379,
+     "material": false,
+     "printed_change": true
+    },
+    "extremely obese": {
+     "delta_log_or": 0.07206245944616319,
+     "material": false,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": 0.03530481395056345,
+     "material": false,
+     "printed_change": true
+    }
+   }
+  },
+  "estimate:medicine_told": {
+   "decision": "hypertension_medicine",
+   "option": "told",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "auc_change": 0.0,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "age 50-59": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "age 60 or older": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "male": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "history of hypertension": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "obese": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "extremely obese": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    },
+    "physically active": {
+     "delta_log_or": 0.0,
+     "material": false,
+     "printed_change": false
+    }
+   }
+  },
+  "estimate:obesity_absent": {
+   "decision": "obesity_missing",
+   "option": "absent",
+   "n_analyzed": 5236,
+   "n_estimate": 5236,
+   "auc_change": -0.0031182128078248716,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": -0.1347831694482653,
+     "material": false,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": -0.12764101290940477,
+     "material": false,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": -0.11489305663019467,
+     "material": false,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": -0.007442457568319183,
+     "material": false,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.04643408599440657,
+     "material": false,
+     "printed_change": true
+    },
+    "history of hypertension": {
+     "delta_log_or": 0.0636951279565322,
+     "material": false,
+     "printed_change": true
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.31072290601659514,
+     "material": false,
+     "printed_change": true
+    },
+    "obese": {
+     "delta_log_or": -0.3193155619597601,
+     "material": false,
+     "printed_change": true
+    },
+    "extremely obese": {
+     "delta_log_or": -0.34282178106988304,
+     "material": false,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": -0.02914927653901056,
+     "material": false,
+     "printed_change": false
+    }
+   }
+  },
+  "estimate:family_parent_or_sibling": {
+   "decision": "family_history",
+   "option": "parent_or_sibling",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "auc_change": 0.007401092745818683,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": -0.022366563871367706,
+     "material": false,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": -0.04294949111334878,
+     "material": false,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": -0.084778807675705,
+     "material": false,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": 0.00011855145253869548,
+     "material": false,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.1567282058093784,
+     "material": true,
+     "printed_change": true
+    },
+    "history of hypertension": {
+     "delta_log_or": 8.211213397502082e-05,
+     "material": false,
+     "printed_change": false
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.003968959011558804,
+     "material": false,
+     "printed_change": false
+    },
+    "obese": {
+     "delta_log_or": -0.0034134280492905678,
+     "material": false,
+     "printed_change": false
+    },
+    "extremely obese": {
+     "delta_log_or": 0.012081772390066359,
+     "material": false,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": -0.010021649943537658,
+     "material": false,
+     "printed_change": false
+    }
+   }
+  },
+  "estimate:unweighted": {
+   "decision": "weights",
+   "option": "unweighted",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "auc_change": 0.0004766022680371407,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": 0.029494833370355966,
+     "material": false,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": 0.08367660790774978,
+     "material": false,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": -0.058531788662886,
+     "material": false,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": -0.3153526013414797,
+     "material": true,
+     "printed_change": true
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.0881376457908577,
+     "material": false,
+     "printed_change": true
+    },
+    "history of hypertension": {
+     "delta_log_or": -0.03792804592219712,
+     "material": false,
+     "printed_change": true
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.0607416080329215,
+     "material": false,
+     "printed_change": true
+    },
+    "obese": {
+     "delta_log_or": -0.18052871396004422,
+     "material": false,
+     "printed_change": true
+    },
+    "extremely obese": {
+     "delta_log_or": -0.3729563653892445,
+     "material": false,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": 0.07163423524343826,
+     "material": false,
+     "printed_change": true
+    }
+   }
+  },
+  "estimate:unknown_excluded": {
+   "decision": "unknown_known_diabetes",
+   "option": "excluded",
+   "n_analyzed": 4660,
+   "n_estimate": 4660,
+   "auc_change": 0.0013176848144351716,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": 0.05488237262095175,
+     "material": false,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": -0.06471761656856878,
+     "material": false,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": 0.006323235602816002,
+     "material": false,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": 0.055769889623335955,
+     "material": false,
+     "printed_change": true
+    },
+    "family history of diabetes": {
+     "delta_log_or": -0.06774073784712686,
+     "material": false,
+     "printed_change": true
+    },
+    "history of hypertension": {
+     "delta_log_or": 0.07661516487306885,
+     "material": false,
+     "printed_change": true
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.04924122083397664,
+     "material": false,
+     "printed_change": true
+    },
+    "obese": {
+     "delta_log_or": -0.10328284569982227,
+     "material": false,
+     "printed_change": true
+    },
+    "extremely obese": {
+     "delta_log_or": -0.03358290535006603,
+     "material": false,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": -0.057328254004451906,
+     "material": false,
+     "printed_change": false
+    }
+   }
+  },
+  "predict:fasting_any_glucose": {
+   "decision": "fasting",
+   "option": "any_glucose",
+   "n_analyzed": 5510,
+   "n_estimate": 5510,
+   "auc_change": 2.9252914614752434e-05,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": 0.1351304187690756,
+     "material": null,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": 0.03319255928228815,
+     "material": null,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": 0.13549499097453666,
+     "material": null,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": -0.022974947260147927,
+     "material": null,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": -0.04857246015316041,
+     "material": null,
+     "printed_change": true
+    },
+    "history of hypertension": {
+     "delta_log_or": 0.029412071597096245,
+     "material": null,
+     "printed_change": false
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.3772850323479576,
+     "material": null,
+     "printed_change": true
+    },
+    "obese": {
+     "delta_log_or": -0.28009148433551667,
+     "material": null,
+     "printed_change": true
+    },
+    "extremely obese": {
+     "delta_log_or": -0.33973265425681554,
+     "material": null,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": -0.012852139831305204,
+     "material": null,
+     "printed_change": false
+    }
+   }
+  },
+  "predict:bp_first_reading": {
+   "decision": "bp_reading",
+   "option": "first",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "auc_change": -0.00022306951514328155,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": -0.00867854969838966,
+     "material": null,
+     "printed_change": false
+    },
+    "age 50-59": {
+     "delta_log_or": -0.0009075939072522576,
+     "material": null,
+     "printed_change": false
+    },
+    "age 60 or older": {
+     "delta_log_or": 0.0006167038114530676,
+     "material": null,
+     "printed_change": false
+    },
+    "male": {
+     "delta_log_or": 0.0006978922251397179,
+     "material": null,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.005854119277969194,
+     "material": null,
+     "printed_change": false
+    },
+    "history of hypertension": {
+     "delta_log_or": -0.003537538972270715,
+     "material": null,
+     "printed_change": false
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.008153658321093493,
+     "material": null,
+     "printed_change": false
+    },
+    "obese": {
+     "delta_log_or": -0.0003347672210400887,
+     "material": null,
+     "printed_change": false
+    },
+    "extremely obese": {
+     "delta_log_or": 0.00862172492668023,
+     "material": null,
+     "printed_change": false
+    },
+    "physically active": {
+     "delta_log_or": -0.003426578114095996,
+     "material": null,
+     "printed_change": false
+    }
+   }
+  },
+  "predict:borderline_known": {
+   "decision": "borderline",
+   "option": "known",
+   "n_analyzed": 5099,
+   "n_estimate": 5099,
+   "auc_change": -0.004172600443105634,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": 0.13065965882301622,
+     "material": null,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": -0.02524377642568898,
+     "material": null,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": 0.033478703372309404,
+     "material": null,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": -0.036697561559378866,
+     "material": null,
+     "printed_change": true
+    },
+    "family history of diabetes": {
+     "delta_log_or": -0.10695758443826842,
+     "material": null,
+     "printed_change": true
+    },
+    "history of hypertension": {
+     "delta_log_or": -0.037698241694548495,
+     "material": null,
+     "printed_change": true
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": 0.01762960110397327,
+     "material": null,
+     "printed_change": false
+    },
+    "obese": {
+     "delta_log_or": 0.031268066366866965,
+     "material": null,
+     "printed_change": true
+    },
+    "extremely obese": {
+     "delta_log_or": 0.09370843511441329,
+     "material": null,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": 0.01710176927393059,
+     "material": null,
+     "printed_change": false
+    }
+   }
+  },
+  "predict:medicine_told": {
+   "decision": "hypertension_medicine",
+   "option": "told",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "auc_change": 0.0,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    },
+    "age 50-59": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    },
+    "age 60 or older": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    },
+    "male": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    },
+    "history of hypertension": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    },
+    "obese": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    },
+    "extremely obese": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    },
+    "physically active": {
+     "delta_log_or": 0.0,
+     "material": null,
+     "printed_change": false
+    }
+   }
+  },
+  "predict:obesity_absent": {
+   "decision": "obesity_missing",
+   "option": "absent",
+   "n_analyzed": 5236,
+   "n_estimate": 5236,
+   "auc_change": -0.003317617074525492,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": -0.06977823789235105,
+     "material": null,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": -0.062167452414323865,
+     "material": null,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": -0.044973538821388104,
+     "material": null,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": -0.01390586207887523,
+     "material": null,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.019633307252563403,
+     "material": null,
+     "printed_change": false
+    },
+    "history of hypertension": {
+     "delta_log_or": 0.01606058242064201,
+     "material": null,
+     "printed_change": false
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.1839867688119904,
+     "material": null,
+     "printed_change": true
+    },
+    "obese": {
+     "delta_log_or": -0.1887130957836627,
+     "material": null,
+     "printed_change": true
+    },
+    "extremely obese": {
+     "delta_log_or": -0.19483668050884062,
+     "material": null,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": -0.014424603760221616,
+     "material": null,
+     "printed_change": false
+    }
+   }
+  },
+  "predict:family_parent_or_sibling": {
+   "decision": "family_history",
+   "option": "parent_or_sibling",
+   "n_analyzed": 5169,
+   "n_estimate": 5169,
+   "auc_change": 0.008290422751125348,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": -0.07381542853169543,
+     "material": null,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": -0.07569645531730296,
+     "material": null,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": -0.11529591726945476,
+     "material": null,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": -0.013551460229601076,
+     "material": null,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": 0.20808750673121323,
+     "material": null,
+     "printed_change": true
+    },
+    "history of hypertension": {
+     "delta_log_or": -0.01631692958557196,
+     "material": null,
+     "printed_change": false
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.012634996306358115,
+     "material": null,
+     "printed_change": false
+    },
+    "obese": {
+     "delta_log_or": -0.010263574847516388,
+     "material": null,
+     "printed_change": false
+    },
+    "extremely obese": {
+     "delta_log_or": 0.001077423655742038,
+     "material": null,
+     "printed_change": false
+    },
+    "physically active": {
+     "delta_log_or": -0.000565520367648148,
+     "material": null,
+     "printed_change": false
+    }
+   }
+  },
+  "predict:unknown_excluded": {
+   "decision": "unknown_known_diabetes",
+   "option": "excluded",
+   "n_analyzed": 4660,
+   "n_estimate": 4660,
+   "auc_change": 0.0027616731015918106,
+   "factors": {
+    "age 40-49, against under 40": {
+     "delta_log_or": 0.05097637635435959,
+     "material": null,
+     "printed_change": true
+    },
+    "age 50-59": {
+     "delta_log_or": -0.08609078000447346,
+     "material": null,
+     "printed_change": true
+    },
+    "age 60 or older": {
+     "delta_log_or": -0.016807188143387553,
+     "material": null,
+     "printed_change": true
+    },
+    "male": {
+     "delta_log_or": 0.014977975938021637,
+     "material": null,
+     "printed_change": false
+    },
+    "family history of diabetes": {
+     "delta_log_or": -0.04878132675042979,
+     "material": null,
+     "printed_change": true
+    },
+    "history of hypertension": {
+     "delta_log_or": 0.05060420181833869,
+     "material": null,
+     "printed_change": true
+    },
+    "overweight, against not overweight or obese": {
+     "delta_log_or": -0.004121418181849079,
+     "material": null,
+     "printed_change": false
+    },
+    "obese": {
+     "delta_log_or": 0.07308346567632684,
+     "material": null,
+     "printed_change": true
+    },
+    "extremely obese": {
+     "delta_log_or": 0.06801463614653169,
+     "material": null,
+     "printed_change": true
+    },
+    "physically active": {
+     "delta_log_or": -0.022099688856609206,
+     "material": null,
+     "printed_change": false
+    }
+   }
+  }
+ },
+ "agreement": {
+  "by_lane": {
+   "estimate": {
+    "runs": 9,
+    "within": 9,
+    "rows_same": 9,
+    "max_abs_log_or": 7.185656514252514e-10,
+    "max_rel_se": 2.830334231247125e-07,
+    "max_auc_abs": 7.771561172376096e-16
+   },
+   "predict": {
+    "runs": 8,
+    "within": 7,
+    "rows_same": 8,
+    "max_abs_log_or": 0.0065628302922151605,
+    "max_rel_se": 0,
+    "max_auc_abs": 5.2573652248089076e-05
+   }
+  },
+  "all_within": false
+ }
+}

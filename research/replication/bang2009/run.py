@@ -7,7 +7,10 @@ never written into this code: the outcome and its event, the purpose by the lane
 six predictors the variant's options name, the design columns, the rest left out), each predictor
 read as a code, the eligibility, the survey answer, complete cases, the linear family (logistic
 regression for a yes/no outcome), and under prediction no holdout. A question the plan does not
-answer takes the app's first-ranked option, as the dry run's analyst does.
+answer takes the app's first-ranked option, as the dry run's analyst does. A refused answer stops
+the run: the dry run's analyst would take the refusal's first way forward, which records
+something other than the plan (the survey answer's did once, the unweighted answer in place of
+the six-year weight).
 
 **The eligibility.** The paper's population is six rules (``prereg.json``'s ``eligibility``): an
 age range, the pregnancy level rule, the three known-diabetes level rules each naming its refused
@@ -24,10 +27,14 @@ What each run keeps (``research/data/derived/bang2009/engine/``, ignored by git)
 
 * ``runs/<lane>-<variant>.json``: the driver commands and their exits, the decisions as the server
   recorded them (each sentence), the eligibility preview, the participant flow, the fitted family
-  as the results serve it (its coefficients, its scores, its concerns), the analyzed rows' SEQN and
+  as the results serve it (under inference the exposure's rows alone) and as the fit's artifact
+  holds it (its whole coefficient table, its scores and their optimism, its concerns), the
+  analyzed rows' SEQN and
   outcome and the model matrix's columns at them (read from the run's own cache: the design stage's
   matrix and the working table), and the seconds;
-* ``bundles/<lane>-<variant>.zip``: the export bundle.
+* ``bundles/<lane>-<variant>.zip``: the export bundle;
+* ``homes/<run id>/``: the driver's run folder (``$TURBOTAB_SWARM_RUNS``), its server's home, its
+  commands and its record of the data file's SHA-256.
 
     scripts/py research/replication/bang2009/run.py --list
     scripts/py research/replication/bang2009/run.py estimate:default predict:default ...
@@ -231,7 +238,8 @@ class Replicator(D.Analyst):
                          "exit": 0 if r.status == 200 else 1,
                          "refused": None if r.status == 200 else r.error().get("code")})
         if r.status != 200:
-            raise D.Refused(json.dumps({"refused": r.error(), "posted": decision})[:3000])
+            raise RuntimeError("the eligibility was refused: "
+                               + json.dumps({"refused": r.error(), "posted": decision})[:3000])
         self.kept["eligibility_posted"] = decision
         return r.json()
 
@@ -320,6 +328,9 @@ def run_one(name: str, walk: bool = False) -> dict[str, Any]:
                 results = a.results()
                 v = view(a)
                 capture["family"] = the_family(results)
+                # The results serve the exposure's rows under inference; the fit's artifact holds
+                # the family's whole coefficient table, its scores and its optimism.
+                capture["fit_model"] = the_family({"results": a.artifact("fit")})
                 capture["decisions"] = decisions_of(v)
                 capture["state"] = {k: (v.get("state") or {}).get(k)
                                     for k in ("purpose", "target", "event", "survey", "missing")}
