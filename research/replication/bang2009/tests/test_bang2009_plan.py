@@ -100,3 +100,88 @@ def test_the_eligibility_is_one_answer_of_every_rule_in_the_engine_s_shapes():
         decision = run.the_rules(run.settings("estimate", name))
         parsed = SetExclusions.model_validate(decision)
         assert len(parsed.rules) == len(run.settings("estimate", name)["rules"])
+
+
+# ── a refused answer stops the run ───────────────────────────────────────────
+
+# The refusal's way forward, which is not the plan's answer: the unweighted estimate that once
+# stood in the six-year weight's place (run.py's module docstring).
+INSTEAD = {"label": "Estimate for these participants instead",
+           "decision": {"kind": "set_survey", "estimand": "sample"}}
+
+
+def replicator(tmp_path):
+    a = run.Replicator(run.D.Spec(name="t", dataset="bang2009", target=PREREG["outcome"]["column"],
+                                  event=str(PREREG["outcome"]["event"]), purpose="inference",
+                                  lenses=["clinical"], readings={}), tmp_path)
+    a.settings, a.kept = run.settings("estimate", "default"), {}
+    return a
+
+
+def scripted(a, monkeypatch, refuse: bool) -> tuple[list[list[str]], str]:
+    """``a`` on a scripted driver: every ask is the survey question, offering the plan's answer
+    alone; that answer is refused with one way forward (``INSTEAD``) when ``refuse``, and every
+    other answer is recorded. Returns the ids of each answer posted, and the plan's option id."""
+    from research.swarm import options as opts
+
+    want = a.settings["survey"]
+    plan = {"kind": "set_survey", **{k: v for k, v in want.items() if k != "about"}}
+    question = {"question": {"key": "survey", "status": "open"},
+                "options": [{"id": "s-plan", "label": "The six-year weight", "decision": plan}]}
+    refusal = {"refused": {"by": "server", "status": 422, "code": "survey_design_refused",
+                           "message": "scripted", "exits": opts.exits([INSTEAD])}}
+    posted: list[list[str]] = []
+
+    def cmd(name, *args):
+        if name == "ask":
+            return 0, question
+        assert name == "answer"
+        ids = list(args[:args.index("--reason")])
+        posted.append(ids)
+        if refuse and ids == ["s-plan"]:
+            return 1, refusal
+        return 0, {"recorded": ids}
+
+    monkeypatch.setattr(a, "cmd", cmd)
+    return posted, "s-plan"
+
+
+def test_a_refused_answer_stops_the_run_and_its_way_forward_is_never_posted(monkeypatch, tmp_path):
+    from research.swarm import options as opts
+
+    exit_id = opts.exits([INSTEAD])[0]["id"]
+    # The premise: on this refusal the dry run's analyst posts its first way forward.
+    unguarded = replicator(tmp_path)
+    unguarded.answer = lambda ids, sets, why, marker=run.D.DEFAULT_MARKER: \
+        run.D.Analyst.answer(unguarded, ids, sets, why, marker)
+    posted, plan = scripted(unguarded, monkeypatch, refuse=True)
+    unguarded.until(lambda q: bool(posted))
+    assert posted == [[plan], [exit_id]]
+
+    # The run's analyst stops at the refusal instead, and posts nothing after it.
+    a = replicator(tmp_path)
+    posted, plan = scripted(a, monkeypatch, refuse=True)
+    with pytest.raises(RuntimeError, match="an answer was refused") as stopped:
+        a.until(lambda q: bool(posted))
+    assert not isinstance(stopped.value, run.D.Refused)  # the dry run catches only a Refused
+    assert posted == [[plan]]
+    assert exit_id not in {i for ids in posted for i in ids}
+
+    a = replicator(tmp_path)
+    posted, plan = scripted(a, monkeypatch, refuse=True)
+    with pytest.raises(RuntimeError) as direct:
+        a.answer([plan], [], "the plan's survey answer")
+    assert not isinstance(direct.value, run.D.Refused) and posted == [[plan]]
+
+
+def test_an_answer_the_server_records_passes_through_unchanged(monkeypatch, tmp_path):
+    a = replicator(tmp_path)
+    posted, plan = scripted(a, monkeypatch, refuse=False)
+    assert a.answer([plan], [], "the plan's survey answer") == {"recorded": [plan]}
+    a = replicator(tmp_path)
+    posted, plan = scripted(a, monkeypatch, refuse=False)
+    a.until(lambda q: bool(posted))
+    assert posted == [[plan]]
+    assert a.kept["answers"] == [{"ids": [plan], "sets": [],
+                                  "why": "survey answered from the plan's survey answer "
+                                         f"({a.settings['survey_answer']})."}]

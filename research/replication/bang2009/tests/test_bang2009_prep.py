@@ -145,3 +145,14 @@ def test_derive_keeps_every_row_and_the_codes_of_sex_and_activity():
     assert str(out["diabetes_fpg"].dtype) == "Int64"
     assert out["diabetes_fpg"].tolist() == [0, 1, pd.NA, 0, 1, 0]
     assert set(prep.PREDICTORS) <= set(out.columns)
+
+
+def test_a_code_column_is_refused_unless_built_from_a_series_whose_index_it_keeps():
+    # A bare array would take a fresh index 0..n-1, and its codes would land on other rows.
+    with pytest.raises(TypeError, match="Series"):
+        prep.codes(np.array([1, 0]))
+    with pytest.raises(TypeError, match="Series"):
+        prep.codes([1, 0])
+    kept = prep.codes(pd.Series([1.0, 0.0, NA], index=[5, 9, 4000]))
+    assert kept.index.tolist() == [5, 9, 4000]
+    assert str(kept.dtype) == "Int64" and kept.tolist() == [1, 0, pd.NA]
