@@ -377,13 +377,16 @@ def test_the_split_sentence_says_what_the_cut_point_held_out():
     text = voice.sentence_for(d.SetSplit(holdout=0.0, seed=3, folds=5, cut_point=cut,
                                          fold_order="random"),
                               ProjectState(target="glucose", task="regression"))
+    # With no count of the rows, the comparisons' repeats are said as their rule (10, 5 from
+    # 5,000 training rows: the large-table ruling of 2026-10-23).
     assert text == ("A cut-point at `2017` on `cycle` held out every row at or after it for one "
                     "final score; performance was "
                     "estimated on the rest by `5`-fold cross-validation; models were compared with "
                     "each other and with the no-predictor baseline on `5`-fold cross-validation "
-                    "repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; "
-                    "Bouckaert & Frank 2004); R² was measured against the training rows' mean and "
-                    "pooled over every out-of-fold prediction.")
+                    "repeated `10` times (`5` where `5,000` or more rows train), by the corrected "
+                    "repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was "
+                    "measured against the training rows' mean and pooled over every out-of-fold "
+                    "prediction.")
     timed = voice.sentence_for(d.SetSplit(holdout=0.0, seed=3, folds=5, cut_point=cut,
                                           fold_order="time"),
                                ProjectState(target="glucose", task="regression"))

@@ -1518,6 +1518,38 @@ def _units_within_levels(ctx: Any, column: str | None, cluster: str) -> bool:
         return False
 
 
+def _comparison_repeats(d: Any, ctx: Any, plan: Any, group: Any, own: int) -> str:
+    """How many times the comparisons' folds are drawn, said when the split is answered, before any
+    row is drawn: at least the repeats the training units take (``models.folds.comparison_repeats``,
+    the claim ``models.comparisons``), and ``own``, the split's own. The count, where the units are
+    known now: nothing held out and the seal plan counting them (every analyzed row, or the units it
+    keeps whole where it read no row the analysis leaves out), or at most the rows entering the
+    split, fewer than the threshold. Otherwise the held-out draw decides how many train, and the
+    rule is said, from its claim's values."""
+    from turbotab.core.models.folds import (COMPARISON_REPEATS, LARGE_REPEATS, LARGE_UNITS,
+                                            comparison_repeats)
+
+    fewer, more = max(own, COMPARISON_REPEATS), max(own, LARGE_REPEATS)
+    planned = _attr(plan, "n_analyzed") if plan else None
+    basis = _attr(plan, "basis") if plan else None
+    analyzed = planned if planned is not None else _get(ctx, "n_cohort")
+    units = None
+    if (planned is not None and basis is not None and not d.holdout
+            and getattr(d, "cut_point", None) is None):
+        if not group:  # the folds are drawn by row, and every analyzed row trains
+            units = int(planned)
+        elif _attr(plan, "n_measured") == planned and _attr(basis, "n_units"):
+            units = int(_attr(basis, "n_units"))
+    if units is None and analyzed is not None and int(analyzed) < LARGE_UNITS:
+        units = int(analyzed)  # at most these train, so fewer units, whatever is held out
+    if units is not None:
+        return f"{tick(max(own, comparison_repeats(units)))} times"
+    if fewer == more:
+        return f"{tick(fewer)} times"
+    return (f"{tick(fewer)} times ({tick(more)} where {tick(f'{LARGE_UNITS:,}')} or more "
+            f"{'units' if group else 'rows'} train)")
+
+
 @register_sentence("set_split")
 def _set_split(d: Any, state: Any, ctx: Any) -> str:
     task = getattr(state, "task", None) or _get(ctx, "detected_task")  # answered, else detected
@@ -1577,15 +1609,15 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
                 f"bootstrap ({tick(d.n_boot)} resamples, the whole pipeline refit on each) and "
                 f"subtracted, except for a family that nearly memorizes its rows (boosted trees), "
                 f"whose cross-validated score stands because the bootstrap overstates it")
-    # MS6 (MODELING_SEQUENCE ruling 4): under prediction the comparisons run on repeated k-fold,
-    # at least 10 × K, whatever validation gives the score (models/folds.py).
+    # MS6 (MODELING_SEQUENCE ruling 4): under prediction the comparisons run on repeated k-fold
+    # whatever validation gives the score, at least the repeats the training units take
+    # (models/folds.py), said as the fit will run them (:func:`_comparison_repeats`).
     if getattr(state, "purpose", None) != "inference" and not time_ordered:
-        from turbotab.core.models.folds import COMPARISON_REPEATS
-
-        r = max(int(d.repeats) if validation == "repeated_kfold" else 1, COMPARISON_REPEATS)
+        said = _comparison_repeats(d, ctx, plan, group,
+                                   int(d.repeats) if validation == "repeated_kfold" else 1)
         compared = f"performance was estimated on the rest by {folds}"
         boot += (f"; models were compared with each other and with the no-predictor baseline on "
-                 f"{tick(d.folds)}-fold cross-validation repeated {tick(r)} times, by the corrected "
+                 f"{tick(d.folds)}-fold cross-validation repeated {said}, by the corrected "
                  f"repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004)")
         if getattr(d, "nested_cv", False):
             from turbotab.core.models.validation import NESTED_REPS

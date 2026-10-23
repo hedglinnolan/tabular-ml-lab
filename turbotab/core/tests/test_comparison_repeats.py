@@ -20,11 +20,13 @@ import pandas as pd
 import pytest
 from scipy import stats
 
-from turbotab.core.decisions import GrainSpec, ProjectState, SplitSpec
+from turbotab.core import voice
+from turbotab.core.decisions import GrainSpec, ProjectState, SetSplit, SplitSpec
 from turbotab.core.models.folds import comparison_folds
 from turbotab.core.models.validation import corrected_t, validation_plan
-from turbotab.core.stages.modeling import design_stage, fit_stage
+from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage
 from turbotab.core.stages.rows import cohort_stage, split_stage
+from turbotab.core.stages.seal import seal_plan_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.tests.acceptance import references_ms6 as ref
 from turbotab.core.tests.stage_harness import Ingested
@@ -225,6 +227,166 @@ def _null_cv(rng: np.random.Generator, n: int, r: int, K: int = 5):
                 pred = beta[0] + beta[1] * x[test, j]
                 out[j].append(-float(np.mean((y[test] - pred) ** 2)))
     return out[0], out[1]
+
+
+# ── the split's record sentence says the repeats the fit runs ───────────────
+#
+# The sentence is written when the split is answered, before any row is drawn. Where nothing is
+# held out every analyzed unit trains, so the seal plan counts them; where a holdout is drawn, at
+# most the analyzed rows train, so fewer than 5,000 analyzed rows take 10 repeats, and otherwise
+# the draw decides and the sentence states the rule.
+
+COMPARED = ("models were compared with each other and with the no-predictor baseline on `5`-fold "
+            "cross-validation repeated ")
+
+
+def _project(units: int, per_unit: int, split: SplitSpec, folder, *,
+             purpose: str = "prediction") -> tuple[ProjectState, Ingested, dict]:
+    """``units`` units of ``per_unit`` rows each (y = 1 + 0.8·x1 + noise), their stages through the
+    split, and the seal plan the split's sentence reads."""
+    rng = np.random.default_rng(units + per_unit)
+    n = units * per_unit
+    frame = pd.DataFrame({"x1": rng.normal(size=n), "x2": rng.normal(size=n),
+                          "pid": np.repeat(np.arange(units), per_unit)})
+    frame["y"] = 1.0 + 0.8 * frame["x1"] + rng.normal(size=n)
+    folder.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(folder / "table.csv", index=False)
+    repeated = per_unit > 1
+    state = ProjectState(
+        lens=["clinical"], target="y", task="regression", purpose=purpose,
+        roles={"pid": "identifier", "x1": "covariate", "x2": "covariate"},
+        missing="complete_case", split=split, models=["linear"],
+        grain=GrainSpec(grain="repeated" if repeated else "one_row_per_unit", id_column="pid"),
+        **({"repeat_kind": {"repeat_kind": "repeats"}} if repeated else {}))
+    table = Ingested(folder / "table.csv", folder / "i")
+    info = table.run(target_info_stage, state)
+    cohort = table.run(cohort_stage, state, {"target_info": info})
+    plan = table.run(seal_plan_stage, state, {"cohort": cohort, "target_info": info})
+    split_ = table.run(split_stage, state, {"cohort": cohort, "target_info": info})
+    return state, table, {"target_info": info, "cohort": cohort, "split": split_, "plan": plan}
+
+
+def _said(state: ProjectState, ctx: dict) -> str:
+    return voice.sentence_for(SetSplit(**state.split.model_dump()), state, ctx)
+
+
+def _fit_repeats(state: ProjectState, table: Ingested, run: dict) -> int:
+    design = table.run(design_stage, state,
+                       {"split": run["split"], "target_info": run["target_info"]})
+    fit = table.run(fit_stage, state, {"design": design, "split": run["split"],
+                                       "target_info": run["target_info"]})
+    return fit.data["comparison"]["repeats"]
+
+
+@pytest.mark.parametrize("units,per_unit", [(5_000, 1), (5_000, 2)])
+def test_with_nothing_held_out_the_split_sentence_says_5_repeats_from_5000_units(
+        tmp_path, units, per_unit):
+    """No rows held out, one 5-fold run: 5,000 rows of one unit each, and 5,000 units of two rows
+    each, take 5 repeats, and the sentence says the 5 the fit runs, with no rule beside it."""
+    state, table, run = _project(units, per_unit, SplitSpec(holdout=0.0, seed=5, folds=5),
+                                 tmp_path)
+    said = _said(state, {"seal_plan": run["plan"]})
+    assert f"{COMPARED}`5` times, by the corrected repeated k-fold t" in said, said
+    if per_unit > 1:
+        assert "keeping each `pid`'s rows together" in said
+    assert _fit_repeats(state, table, run) == 5
+
+
+@pytest.mark.parametrize("units,per_unit", [(4_999, 1), (4_999, 2)])
+def test_with_nothing_held_out_the_split_sentence_keeps_10_repeats_below_5000_units(
+        tmp_path, units, per_unit):
+    """4,999 rows, and 4,999 units of two rows each (9,998 rows: the units are counted): 10
+    repeats, said as the fit runs them, with no rule beside them."""
+    state, table, run = _project(units, per_unit, SplitSpec(holdout=0.0, seed=5, folds=5),
+                                 tmp_path)
+    said = _said(state, {"seal_plan": run["plan"]})
+    assert f"{COMPARED}`10` times, by the corrected repeated k-fold t" in said, said
+    assert _fit_repeats(state, table, run) == 10
+
+
+def test_where_a_holdout_decides_how_many_train_the_split_sentence_states_the_rule(tmp_path):
+    """6,250 rows, a 20% holdout: the draw leaves 5,000 to train, which the sentence cannot know
+    when the split is answered, so it states the rule (10 repeats, 5 from 5,000 training rows); the
+    fit runs 5. On 4,999 rows at most 4,999 train, so 10, with no rule. 5,000 units of two rows
+    each with a holdout: the rule counts units."""
+    state, table, run = _project(6_250, 1, SplitSpec(holdout=0.2, seed=5, folds=5),
+                                 tmp_path / "a")
+    said = _said(state, {"seal_plan": run["plan"]})
+    assert (f"{COMPARED}`10` times (`5` where `5,000` or more rows train), by the corrected "
+            f"repeated k-fold t") in said, said
+    assert int(run["split"].data["n_train"]) == 5_000 and _fit_repeats(state, table, run) == 5
+    state, _, run = _project(4_999, 1, SplitSpec(holdout=0.2, seed=5, folds=5), tmp_path / "b")
+    said = _said(state, {"seal_plan": run["plan"]})
+    assert f"{COMPARED}`10` times, by the corrected repeated k-fold t" in said, said
+    state, _, run = _project(5_000, 2, SplitSpec(holdout=0.2, seed=5, folds=5), tmp_path / "c")
+    said = _said(state, {"seal_plan": run["plan"]})
+    assert (f"{COMPARED}`10` times (`5` where `5,000` or more units train), by the corrected "
+            f"repeated k-fold t") in said, said
+
+
+@pytest.mark.parametrize("own,holdout,says", [
+    (3, 0.0, "`5` times"), (3, 0.2, "`10` times (`5` where `5,000` or more rows train)"),
+    (7, 0.2, "`10` times (`7` where `5,000` or more rows train)"), (12, 0.2, "`12` times")])
+def test_the_splits_own_repeats_count_in_the_sentence_as_in_the_fit(tmp_path, own, holdout, says):
+    """Repeated k-fold on 6,250 rows: the substrate runs the split's own repeats where they are
+    more than the rule's, so 12 of its own are said with no rule, whatever is held out; 3 of its
+    own and nothing held out take the 5 of 6,250 training rows."""
+    split = SplitSpec(holdout=holdout, seed=5, folds=5, validation="repeated_kfold", repeats=own)
+    state, _, run = _project(6_250, 1, split, tmp_path)
+    said = _said(state, {"seal_plan": run["plan"]})
+    assert f"cross-validation repeated `{own}` times, each score the mean over the repeats" in said
+    assert f"{COMPARED}{says}, by the corrected repeated k-fold t" in said, said
+
+
+def test_without_the_seal_plan_the_sentence_counts_what_it_can():
+    """No seal plan: 4,999 rows entering the split train fewer than 5,000, so 10; 5,000 rows may
+    group into fewer units, so the rule; with no count at all, the rule."""
+    state = ProjectState(target="y", task="regression", purpose="prediction",
+                         split=SplitSpec(holdout=0.0, seed=5, folds=5))
+    assert f"{COMPARED}`10` times, by" in _said(state, {"n_cohort": 4_999})
+    rule = f"{COMPARED}`10` times (`5` where `5,000` or more rows train), by"
+    assert rule in _said(state, {"n_cohort": 5_000})
+    assert rule in _said(state, {})
+
+
+def test_under_inference_the_split_sentence_says_no_comparison(tmp_path):
+    """Under inference the scores describe fit: no comparisons, so no repeats, at any size."""
+    state, _, run = _project(5_000, 1, SplitSpec(holdout=0.0, seed=5, folds=5), tmp_path,
+                             purpose="inference")
+    said = _said(state, {"seal_plan": run["plan"]})
+    assert "compared with each other" not in said and "repeated" not in said, said
+
+
+# ── the shelf's estimate counts the comparisons' refits the fit will make ──────
+
+
+@pytest.mark.parametrize("units,per_unit,holdout,refits", [
+    (5_000, 1, 0.0, 25), (4_999, 1, 0.0, 50), (5_000, 2, 0.0, 25), (4_999, 2, 0.0, 50),
+    (6_250, 1, 0.2, 25)])
+def test_the_shelfs_estimate_counts_the_comparisons_refits_by_the_training_units(
+        tmp_path, monkeypatch, units, per_unit, holdout, refits):
+    """One 5-fold run as the headline, so every fit the estimate counts is the comparisons': 5 × 5
+    from 5,000 training units (5,000 rows, 5,000 units of two rows, or 6,250 rows less a 20%
+    holdout), 10 × 5 below (4,999 rows, or 4,999 units of two rows), counted on the training rows
+    the shelf times, as the fit stage counts them."""
+    import turbotab.core.models.cost as cost
+
+    state, table, run = _project(units, per_unit, SplitSpec(holdout=holdout, seed=5, folds=5),
+                                 tmp_path)
+    seen: dict[str, int] = {}
+    real = cost.estimate_fits
+
+    def spy(store, state, task, train_ids, families, folds, **kw):
+        seen["folds"] = folds
+        return real(store, state, task, train_ids, families, folds, **kw)
+
+    monkeypatch.setattr(cost, "estimate_fits", spy)
+    table.run(shelf_stage, state, {"cohort": run["cohort"], "target_info": run["target_info"],
+                                   "split": run["split"]})
+    assert seen["folds"] == refits
+
+
+# ── the corrected t at 5 × 5 on a large table, under a true null ────────────
 
 
 def test_at_5_by_5_folds_on_5000_rows_a_true_null_rarely_calls_a_family_ahead():

@@ -922,12 +922,22 @@ COMPARISONS = register(Claim(
               "corrected_t", truth="construction"),
         Fires(f"{REPEATS_TESTS}::test_at_5_by_5_folds_on_5000_rows_a_true_null_rarely_calls_a_"
               "family_ahead", truth="independent:scipy"),
+        Fires(f"{REPEATS_TESTS}::test_with_nothing_held_out_the_split_sentence_says_5_repeats_"
+              "from_5000_units", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_where_a_holdout_decides_how_many_train_the_split_sentence_"
+              "states_the_rule", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_the_shelfs_estimate_counts_the_comparisons_refits_by_the_"
+              "training_units", truth="construction"),
         Silent(f"{REPEATS_TESTS}::test_below_5000_training_units_the_substrate_keeps_10_repeats",
                truth="construction"),
+        Silent(f"{REPEATS_TESTS}::test_with_nothing_held_out_the_split_sentence_keeps_10_repeats_"
+               "below_5000_units", truth="construction"),
     ),
     enforced_by=("turbotab.core.models.folds:comparison_repeats",
                  "turbotab.core.models.folds:comparison_folds",
-                 "turbotab.core.models.validation:validation_plan"),
+                 "turbotab.core.models.validation:validation_plan",
+                 "turbotab.core.voice:_comparison_repeats",
+                 "turbotab.core.stages.modeling:_estimates"),
     author=REPEATS_AUTHOR,
     origin="engine",
     ruled="the owner's ruling of 2026-10-23 (option 3: lighten the model comparison on large "

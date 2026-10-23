@@ -128,13 +128,16 @@ def test_the_split_names_its_seed_grouping_and_stratification():
                               ProjectState(target="event", task="binary"),
                               {"n_cohort": 5352, "repeats": {"column": "SEQN"}})
     # MS6: under prediction (an undeclared purpose reads as prediction) the comparisons run on
-    # repeated k-fold whatever validation gives the score.
+    # repeated k-fold whatever validation gives the score: 10 repeats, 5 from 5,000 training
+    # units (the large-table ruling of 2026-10-23), said as the rule, since `5,352` rows enter
+    # the split and the held-out draw decides how many of their units train.
     assert text == ("A random `20%` of the rows with `event` recorded (seed `3`, keeping each `SEQN`'s rows "
                     "together, stratified by `event`) was held out for one final score; performance "
                     "was estimated on the rest by `5`-fold cross-validation; models were compared "
                     "with each other and with the no-predictor baseline on `5`-fold "
-                    "cross-validation repeated `10` times, by the corrected repeated k-fold t "
-                    "(Nadeau & Bengio 2003; Bouckaert & Frank 2004).")
+                    "cross-validation repeated `10` times (`5` where `5,000` or more units train), "
+                    "by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank "
+                    "2004).")
 
 
 def test_the_residual_sentence_says_where_it_was_fit():

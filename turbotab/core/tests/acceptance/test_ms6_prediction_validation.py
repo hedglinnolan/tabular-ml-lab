@@ -1277,10 +1277,13 @@ def test_7_with_several_families_the_label_says_what_nested_cross_validation_wid
         f"the nested cross-validation interval ran for each family's own score; the "
         f"selection-corrected interval stays labeled {TOO_NARROW}, since no nested interval "
         f"exists for a choice among families")
+    # With no count of the rows in its context, the sentence says the comparisons' repeats as
+    # their rule (10, 5 from 5,000 training rows: the large-table ruling of 2026-10-23).
     assert voice.sentence_for(d.SetSplit(**ran.split.model_dump()), ran, {}) == (
         "No rows were held out; performance was estimated by `5`-fold cross-validation (seed "
         "`2`); models were compared with each other and with the no-predictor baseline on "
-        "`5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t "
+        "`5`-fold cross-validation repeated `10` times (`5` where `5,000` or more rows train), "
+        "by the corrected repeated k-fold t "
         "(Nadeau & Bengio 2003; Bouckaert & Frank 2004); each family's own performance interval "
         "is the nested cross-validation interval (`50` repetitions of `5` folds; Bates, Hastie & "
         "Tibshirani 2023); R² was measured against the training rows' mean and pooled over every "
