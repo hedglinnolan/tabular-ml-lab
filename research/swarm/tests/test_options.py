@@ -423,7 +423,7 @@ def test_the_exclusions_card_offers_every_row_each_screen_and_a_range_of_ones_ow
     else:
         assert "labels" not in none
     fields = {f["name"]: f for f in opts.public(q)["fields"]}
-    assert set(fields) == {"column", "low", "high", "level_column", *LEVEL_LISTS}
+    assert set(fields) == {"column", "low", "high", "level_column", *LEVEL_LISTS, "missing"}
     # the numeric columns, never the outcome or the row id (AskFor.tsx's numericColumns)
     assert [c["value"] for c in fields["column"]["choices"]] == ["kcal", "age"]
     # a level rule reads any column but the outcome and the row id (AskFor.tsx's levelColumns)
@@ -431,7 +431,8 @@ def test_the_exclusions_card_offers_every_row_each_screen_and_a_range_of_ones_ow
         "kcal", "age", "sex", "smoker"]
     assert {n: f["applies_to"] for n, f in fields.items()} == {
         **{n: ["custom"] for n in ("column", "low", "high")},
-        **{n: ["levels"] for n in ("level_column", *LEVEL_LISTS)}}
+        **{n: ["levels"] for n in ("level_column", *LEVEL_LISTS)},
+        "missing": ["custom", "levels"]}
     assert all(fields[n]["initial"] is None for n in ("level_column", *LEVEL_LISTS))
 
 
@@ -534,6 +535,103 @@ def test_what_the_levels_option_records_the_engine_accepts():
     rule = decision.rules[0]
     assert isinstance(rule, LevelRule) and rule.column == "sex" and rule.missing == "exclude"
     assert (rule.exclude, rule.refused, rule.dont_know) == (["1", "3"], ["7"], ["9"])
+
+
+# ── several rules in one answer (the final fix round's A1) ───────────────────
+# A card's population is often several rules: Bang 2009's is an age range and four level rules
+# (research/datasets/bang2009/card.json), each with its own handling of a row it cannot confirm.
+# One answer records them all, in the order named; a setting goes to the one option named that
+# takes it, or, where several do, to the one its place names (``--set 2.level_column=DIQ010``).
+# The expected rules are written here by hand from the constructed card above.
+
+RANGE_20 = {"kind": "range", "column": "age", "low": 20.0, "high": None, "by": None,
+            "reason": "implausible values (your own range)", "missing": "exclude"}
+
+
+def engine_handlings() -> dict[str, tuple[str, ...]]:
+    """What each of the engine's rule models takes for a row it cannot confirm (its ``missing``
+    field's literal values), read off the models themselves."""
+    from typing import get_args
+
+    from turbotab.core.decisions import ExclusionRule, LevelRule
+
+    return {m.__name__: get_args(m.model_fields["missing"].annotation)
+            for m in (ExclusionRule, LevelRule)}
+
+
+def test_one_answer_records_several_rules_each_set_by_its_place():
+    q = exclusions()
+    assert q["multi"] == "rules"
+    got = opts.resolve(q, ["custom", "levels", "levels"], [
+        "1.column=age", "1.low=20", "2.level_column=sex", "2.exclude=2", "2.missing=keep",
+        "3.level_column=smoker", "3.exclude=1", "3.refused=7", "3.dont_know=9"])
+    assert got == {"kind": "set_exclusions", "rules": [
+        RANGE_20, {**OWN_LEVELS, "missing": "keep"},
+        {**OWN_LEVELS, "column": "smoker", "exclude": ["1"], "refused": ["7"],
+         "dont_know": ["9"]}]}
+    # a setting only one option named takes needs no place; an offered screen adds its own rule
+    assert opts.resolve(q, ["sex_neutral_500_3500", "levels"], [
+        "level_column=sex", "exclude=2"]) == {"kind": "set_exclusions",
+                                              "rules": [SCREEN, OWN_LEVELS]}
+    assert opts.resolve(q, ["custom", "levels"], ["column=age", "low=20", "level_column=sex",
+                                                  "exclude=2", "2.missing=keep"])["rules"] == [
+        RANGE_20, {**OWN_LEVELS, "missing": "keep"}]
+    # one option: its place may be named, and a range's own handling is set as a level rule's
+    assert opts.resolve(q, ["custom"], ["1.column=age", "low=20", "missing=keep"])["rules"] == [
+        {**RANGE_20, "missing": "keep"}]
+    assert q["options"][-1]["decision"] is None and q["options"][-2]["decision"] is None
+
+
+def test_what_several_rules_record_the_engine_reads_rule_by_rule():
+    """Silent: the decision parses as the engine's own answer, each rule of the kind named and
+    with the handling set for it."""
+    from turbotab.core.decisions import ExclusionRule, LevelRule, parse_decision
+
+    decision = parse_decision(opts.resolve(exclusions(), ["custom", "levels", "levels"], [
+        "1.column=age", "1.low=20", "2.level_column=sex", "2.exclude=2", "2.missing=keep",
+        "3.level_column=smoker", "3.exclude=1", "3.refused=7", "3.dont_know=9"]))
+    assert [type(r) for r in decision.rules] == [ExclusionRule, LevelRule, LevelRule]
+    assert [r.missing for r in decision.rules] == ["exclude", "keep", "exclude"]
+    assert (decision.rules[2].refused, decision.rules[2].dont_know) == (["7"], ["9"])
+
+
+def test_a_rules_handling_of_what_it_cannot_confirm_is_the_engines_choice():
+    """The field ``missing`` offers what the engine's rule models take, read off the models, and
+    starts where the card records it (a row the rule cannot confirm left out)."""
+    field = next(f for f in exclusions()["fields"] if f["name"] == "missing")
+    handlings = engine_handlings()
+    assert handlings["ExclusionRule"] == handlings["LevelRule"]
+    assert [c["value"] for c in field["choices"]] == list(handlings["LevelRule"])
+    assert (field["initial"], field["applies_to"]) == ("exclude", ["custom", "levels"])
+
+
+@pytest.mark.parametrize("ids,sets,words", [
+    # a setting two options named take, with no place: each place is named
+    (["custom", "levels"], ["column=age", "low=20", "level_column=sex", "exclude=2",
+                            "missing=keep"], ["1.missing", "2.missing"]),
+    (["levels", "levels"], ["level_column=sex", "exclude=2"], ["1.level_column"]),
+    # the second rule unset, or half set: its own fields by its place
+    (["levels", "levels"], ["1.level_column=sex", "1.exclude=2"], ["Option 2 (levels)",
+                                                                   "2.level_column"]),
+    (["levels", "levels"], ["1.level_column=sex", "1.exclude=2", "2.level_column=age"],
+     ["Option 2 (levels)", "2.exclude"]),
+    (["custom", "custom"], ["1.column=age", "1.low=20", "2.column=kcal"],
+     ["Option 2 (custom)", "2.low"]),
+    # a place past the options named, or one whose option does not take the setting
+    (["levels"], ["2.level_column=sex", "exclude=2"], ["2", "1 is named"]),
+    (["custom", "levels"], ["1.level_column=sex", "1.exclude=2"],
+     ["does not apply to option custom"]),
+    # keeping every row records no rule beside another
+    (["none", "levels"], ["level_column=sex", "exclude=2"], ["none", "alone"]),
+    # a handling the engine does not take
+    (["levels"], ["level_column=sex", "exclude=2", "missing=maybe"], ["exclude", "keep"]),
+    (["levels", "levels"], ["1.level_column=sex", "1.exclude=2", "2.level_column=age",
+                            "2.exclude=1", "2.refused=1"], ["Option 2 (levels)", "`1`"]),
+])
+def test_several_rules_left_unset_or_set_out_of_place_are_refused(ids, sets, words):
+    with pytest.raises(opts.Unanswerable) as caught:
+        opts.resolve(exclusions(), ids, sets)
+    assert all(w in str(caught.value) for w in words), str(caught.value)
 
 
 def test_the_estimand_offers_each_exposure_with_the_cards_measures_as_a_field():
@@ -738,3 +836,200 @@ def test_bangs_population_is_answered_by_its_code_through_the_driver_and_counted
         assert dropped["exclusion:0"] == n["at_level"]
         kept = recorded & code.isin([2, 3]).fillna(False)
         assert next(s for s in steps if s["key"] == "exclusion:0")["n"] == int(kept.sum())
+
+
+# ── a card's whole population in one answer, through the driver (A1) ─────────
+# Each card's eligibility rules as the card states them (research/datasets/<id>/card.json, checked
+# against its words below), with the handling of an unconfirmed row each rule is given here: the
+# pregnancy rule keeps a blank (every man, asked of no man), as do the medication rules (asked only
+# of some), while the diagnosis rule leaves out a blank, refused or don't-know answer. The rows the
+# driver's one answer keeps are counted by the engine's participant flow and checked against a
+# pandas filter of the same codes over the table written here, never against the engine.
+
+def _level(column: str, refused: bool, missing: str) -> dict[str, Any]:
+    return {"kind": "levels", "column": column, "exclude": ["1"],
+            "refused": ["7"] if refused else [], "dont_know": ["9"] if refused else [],
+            "missing": missing}
+
+
+AGE_20 = {"kind": "range", "column": "RIDAGEYR", "low": 20.0, "missing": "exclude"}
+POPULATIONS = {
+    "bang2009": [AGE_20, _level("RIDEXPRG", False, "keep"), _level("DIQ010", True, "exclude"),
+                 _level("DIQ050", True, "keep"), _level("DIQ070", True, "keep")],
+    "nhanes_glucose_predict": [AGE_20, _level("DIQ010", True, "exclude"),
+                               _level("DIQ050", True, "keep"), _level("DIQ070", True, "keep"),
+                               _level("RIDEXPRG", False, "keep")],
+}
+
+
+def _population_table(path: Any, card: str) -> Any:
+    """900 people aged 12 to 85, coded as NHANES codes them, with the skip patterns behind the
+    blanks: RIDEXPRG asked of women aged 20 to 44 only, so blank for every man; DIQ070 asked only
+    of a person told of diabetes or borderline (DIQ010 1 or 3); and, for the glucose card, DIQ050
+    skipped in the 2017 cycle but for those (the card: its blanks all in 2017–March 2020) and asked
+    of everyone before. The outcome is blank on about a third of the rows."""
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(2009 if card == "bang2009" else 2017)
+    n = 900
+    age = rng.integers(12, 86, n)
+    male = rng.random(n) < 0.49
+    diq010 = rng.choice([1, 2, 3, 7, 9], n, p=[0.10, 0.76, 0.06, 0.04, 0.04]).astype(float)
+    diq010[rng.random(n) < 0.03] = np.nan
+    told = np.isin(diq010, [1, 3])
+    asked = ~male & (age >= 20) & (age <= 44)
+    frame = pd.DataFrame({
+        "SEQN": np.arange(1, n + 1), "RIDAGEYR": age, "RIAGENDR": np.where(male, 1, 2),
+        "RIDEXPRG": np.where(asked, rng.choice([1, 2, 3], n, p=[0.12, 0.80, 0.08]), np.nan),
+        "DIQ010": diq010,
+        "DIQ050": rng.choice([1, 2, 7, 9], n, p=[0.05, 0.89, 0.03, 0.03]).astype(float),
+        "DIQ070": np.where(told, rng.choice([1, 2, 7, 9], n, p=[0.5, 0.4, 0.05, 0.05]), np.nan),
+        "BMXBMI": np.round(rng.normal(28, 5, n), 1)})
+    if card == "nhanes_glucose_predict":
+        frame["cycle_begin_year"] = rng.choice([2011, 2013, 2015, 2017], n)
+        frame.loc[(frame["cycle_begin_year"] == 2017) & ~told, "DIQ050"] = np.nan
+    else:
+        frame.loc[rng.random(n) < 0.08, "DIQ050"] = np.nan
+    frame["LBXGLU"] = np.round(70 + 0.3 * age + 0.8 * frame["BMXBMI"] + rng.normal(0, 8, n), 1)
+    frame.loc[rng.random(n) < 0.33, "LBXGLU"] = np.nan
+    for c in ("RIDEXPRG", "DIQ010", "DIQ050", "DIQ070"):
+        frame[c] = frame[c].astype("Int64")
+    frame.to_csv(path, index=False)
+    return frame
+
+
+def _passes(frame: Any, rule: dict[str, Any]) -> Any:
+    """The rows ``rule`` keeps, by pandas over the codes: a range keeps a value at or above its
+    low; a level rule keeps every level but those excluded; a blank (for a level rule also a
+    refused or a don't-know code) stays only where the rule keeps what it cannot confirm."""
+    col = frame[rule["column"]]
+    blank = col.isna()
+    if rule["kind"] == "range":
+        inside = (col >= rule["low"]).fillna(False).astype(bool)
+        return inside | blank if rule["missing"] == "keep" else inside
+    codes = lambda levels: col.isin([int(v) for v in levels]).fillna(False).astype(bool)  # noqa: E731
+    excluded = codes(rule["exclude"])
+    if rule["missing"] == "keep":
+        return ~excluded
+    return ~excluded & ~blank & ~codes(rule["refused"]) & ~codes(rule["dont_know"])
+
+
+def _answer_words(rules: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    """The driver's one answer for ``rules``: an option per rule, each setting by its place."""
+    ids, sets = [], []
+    for i, rule in enumerate(rules, 1):
+        if rule["kind"] == "range":
+            ids.append("custom")
+            sets += [f"{i}.column={rule['column']}", f"{i}.low={rule['low']:g}"]
+        else:
+            ids.append("levels")
+            sets += [f"{i}.level_column={rule['column']}",
+                     *(f"{i}.{k}={','.join(rule[k])}" for k in LEVEL_LISTS if rule[k])]
+        if rule["missing"] != "exclude":
+            sets.append(f"{i}.missing={rule['missing']}")
+    return ids, sets
+
+
+def _stated_by_the_card(card: dict[str, Any], rule: dict[str, Any]) -> bool:
+    """Whether the card's own eligibility sentence for the rule's column states its codes."""
+    said = next(s for s in card["eligibility"] if f"rule on {rule['column']} " in s)
+    if rule["kind"] == "range":
+        return f"a range rule on {rule['column']} from {rule['low']:g}" in said
+    named = (f"naming {rule['refused'][0]} as its refused code and {rule['dont_know'][0]} as its "
+             f"don't-know code" if rule["refused"] else "which has no refused or don't-know code")
+    return f"a level rule on {rule['column']} excluding level {rule['exclude'][0]} " in said \
+        and named in said
+
+
+@pytest.mark.parametrize("card_id", list(POPULATIONS))
+def test_a_cards_population_is_one_answer_through_the_driver_and_keeps_the_rows_pandas_keeps(
+        card_id, tmp_path, monkeypatch):
+    import functools
+
+    from research.swarm import driver
+    from turbotab.core import config
+    from turbotab.core.tests.acceptance.server_drive import local_server
+    from turbotab.server.tests.conftest import answer_settled, declare, prepare, wait_for
+
+    card = json.loads((driver.REPO / "research" / "datasets" / card_id / "card.json").read_text())
+    rules = POPULATIONS[card_id]
+    assert all(_stated_by_the_card(card, r) for r in rules)
+    frame = _population_table(tmp_path / "population.csv", card_id)
+    # Pandas over the codes: the rows recorded with the outcome, then each rule in its order.
+    kept = frame["LBXGLU"].notna()
+    after = []
+    for rule in rules:
+        kept = kept & _passes(frame, rule)
+        after.append(int(kept.sum()))
+    male = frame["RIAGENDR"].eq(1)
+    pregnancy = next(i for i, r in enumerate(rules) if r["column"] == "RIDEXPRG")
+    others = frame["LBXGLU"].notna()
+    for i, rule in enumerate(rules):
+        if i != pregnancy:
+            others = others & _passes(frame, rule)
+    # Construction: every man is blank on RIDEXPRG, so the rule's keep is what keeps them all.
+    assert int((others & male).sum()) == int((kept & male).sum()) > 0
+    assert int((kept & male & frame["RIDEXPRG"].notna()).sum()) == 0
+    if card_id == "nhanes_glucose_predict":  # DIQ050's skip pattern: most of 2017 is blank
+        later = frame["cycle_begin_year"].eq(2017)
+        blank = frame["DIQ050"].isna()
+        assert int((kept & later).sum()) > 0
+        assert int((kept & later & blank).sum()) > int((kept & later & ~blank).sum())
+
+    monkeypatch.setattr(config, "Settings", functools.partial(config.Settings, analyst=True))
+    monkeypatch.setenv("TURBOTAB_CLAIMS_STRICT", "1")
+    with local_server(tmp_path / "home") as client:
+        made = client.post("/api/projects", json={"path": str(tmp_path / "population.csv")})
+        assert made.status_code == 200, made.text
+        pid = made.json()["id"]
+        declare(pid, {**{f"code_or_count:{c}": "code" for c in (
+            "SEQN", "RIAGENDR", "RIDEXPRG", "DIQ010", "DIQ050", "DIQ070")},
+            "code_or_count:RIDAGEYR": "amount", "unit:RIDAGEYR": "years",
+            "code_or_count:cycle_begin_year": "amount"}, fixture="population.csv")
+        wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
+        for body in ({"kind": "set_lens", "lenses": ["clinical"]},
+                     {"kind": "set_target", "column": "LBXGLU"},
+                     {"kind": "set_purpose", "purpose": "prediction"}):
+            prepare(client, pid, body)
+            assert answer_settled(client, pid, None, body).status_code == 200, body
+        prepare(client, pid, {"kind": "set_exclusions", "rules": []})
+
+        ids, sets = _answer_words(rules)
+        words = [a for s in sets for a in ("--set", s)]
+        run_id = "run_01-" + "0" * 32
+        run = driver.Run(tmp_path / run_id, {"project": pid})
+        run.folder.mkdir()
+        served = _InProcess(client)
+        monkeypatch.setattr(driver.Run, "load", classmethod(lambda cls, rid: run))
+        monkeypatch.setattr(driver.Run, "client", lambda self: served)
+        # The analyst previews the whole population first, then records it, in one command each.
+        looked = driver.build_parser().parse_args([
+            "preview", "--run", run_id, *ids, *words, "--reason", "The card's population."])
+        code, previewed, _ = driver.cmd_preview(looked)
+        assert code == 0, previewed
+        args = driver.build_parser().parse_args([
+            "answer", "--run", run_id, *ids, *words, "--marker", "rows",
+            "--reason", "The card's population."])
+        decision, q = driver.chosen(run, served, list(args.option), args.set)
+        assert q["question"]["key"] == "exclusions" and previewed["previewed"] == decision
+        reasons = {"range": "implausible values (your own range)",
+                   "levels": "not in the study population (your own levels)"}
+        assert decision == {"kind": "set_exclusions", "rules": [
+            {**({"by": None, "high": None} if r["kind"] == "range" else {}), **r,
+             "reason": reasons[r["kind"]]} for r in rules]}
+        posted = driver.post_decision(run, served, decision, args.reason)
+        assert posted.status == 200, posted.body[:600]
+
+        wait_for(client, pid, {"cohort": "fresh"}, timeout=180)
+        steps = {s["key"]: s for s in
+                 client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["steps"]}
+        assert steps["outcome_measured"]["n"] == int(frame["LBXGLU"].notna().sum())
+        assert [steps[f"exclusion:{i}"]["n"] for i in range(len(rules))] == after
+        # The men: blank on RIDEXPRG, kept on a line of the rule's own that says so.
+        before = frame["LBXGLU"].notna()
+        for rule in rules[:pregnancy]:
+            before = before & _passes(frame, rule)
+        line = steps[f"exclusion:{pregnancy}:not_recorded"]
+        blanks = int((before & frame["RIDEXPRG"].isna()).sum())
+        assert line["dropped"] == 0 and line["label"].endswith(f": `{blanks:,}` kept")

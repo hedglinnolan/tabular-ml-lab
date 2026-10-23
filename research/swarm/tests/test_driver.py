@@ -539,6 +539,31 @@ def test_an_analysts_command_reads_no_answer_truth_decoy_or_record(tmp_path, mon
                    "turbotab.core.reference.journeys": "imported"}
 
 
+def test_an_analysts_command_reads_no_glucose_benchmark_even_with_the_intake_loaded():
+    """The final fix round's B5: the glucose benchmark (Bang's reported AUC and the comparator's
+    held-out score) is refused by name, its source file and its module, not only through its
+    import of the intake: here the intake is loaded before the command, so importing the benchmark
+    loads nothing refused but itself. A module the analyst's commands do read (the live markers',
+    not loaded before) still imports."""
+    probe = ("import research.swarm.intake\n"
+             "from research.swarm import driver\n"
+             "with driver.analyst_sealed():\n"
+             "    for what, read in (('file', lambda: open(driver.REPO / 'research' / 'swarm' / "
+             "'benchmark.py', 'rb').close()),\n"
+             "                       ('module', lambda: __import__('research.swarm.benchmark')),\n"
+             "                       ('markers', lambda: __import__('research.swarm.markers'))):\n"
+             "        try:\n"
+             "            read()\n"
+             "            print(what, 'read')\n"
+             "        except driver.DriverError as exc:\n"
+             "            print(what, exc.code)\n")
+    out = subprocess.run([sys.executable, "-c", probe], cwd=REPO, capture_output=True, text=True,
+                         timeout=120, env={**os.environ, "OMP_NUM_THREADS": "2"})
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert dict(line.split() for line in out.stdout.splitlines()) == {
+        "file": "not_for_the_analyst", "module": "not_for_the_analyst", "markers": "read"}
+
+
 def test_through_the_driver_an_analysts_command_is_refused_what_a_run_is_judged_against(
         tmp_path, monkeypatch):
     """DRV-INT round 1 (P3): through ``driver.main``, an analyst's command (here ``results``,
