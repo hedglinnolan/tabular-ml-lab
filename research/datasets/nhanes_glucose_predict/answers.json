@@ -1,45 +1,6 @@
 {
  "id": "nhanes_glucose_predict",
  "kind": "no_known_answer",
- "about": "Real data: nobody knows how well these measures can predict fasting glucose, so a run is checked by the protocol checks alone. Its readings are declared.",
- "fixture_key": "_tt_tmp_nhanes.csv",
- "truths": [
-  {
-   "name": "the readings a user who knows the export gives",
-   "source": "turbotab/core/tests/truths.py FIXTURE_TRUTHS",
-   "value": {
-    "unit:kcal": "kcal",
-    "day_count:kcal": "1",
-    "code_or_count:age": "amount",
-    "code_or_count:hdl": "amount",
-    "code_or_count:triglycerides": "amount",
-    "code_or_count:kcal": "amount",
-    "code_or_count:cycle_begin_year": "code",
-    "unit:weight": "kg",
-    "unit:height": "cm",
-    "unit:age": "years",
-    "exposure:glucose": "sugar",
-    "contrast:sugar": "substitution",
-    "adjust:age": "yes,yes,no",
-    "adjust:gender": "yes,yes,no",
-    "adjust:cycle_begin_year": "yes,yes,no",
-    "adjust:protein": "unknown,unknown,no",
-    "adjust:carb": "unknown,unknown,no",
-    "adjust:fat_total": "unknown,unknown,no",
-    "adjust:fat_sat": "unknown,unknown,no",
-    "adjust:fat_mon": "unknown,unknown,no",
-    "adjust:fat_poly": "unknown,unknown,no",
-    "adjust:weight": "unknown,yes,unknown",
-    "adjust:height": "unknown,yes,unknown",
-    "adjust:bmi": "unknown,yes,unknown",
-    "adjust:waist": "unknown,yes,unknown",
-    "adjust:bp_sys": "no,yes,yes",
-    "adjust:bp_di": "no,yes,yes",
-    "adjust:hdl": "no,yes,yes",
-    "adjust:triglycerides": "no,yes,yes",
-    "adjust:meds_hbp": "no,yes,yes",
-    "adjust:meds_chol": "no,yes,yes"
-   }
-  }
- ]
+ "about": "Real data: nobody knows how well these measures predict fasting glucose, so a run is checked by the protocol checks alone. Its benchmark, Bang et al. 2009's points score on the run's own held-out participants, is computed from the run's record by research/swarm/benchmark.py.",
+ "truths": []
 }

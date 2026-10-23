@@ -3,7 +3,16 @@
  "design": "replication",
  "purpose": "Predict",
  "question": "How well can undiagnosed diabetes in U.S. adults be predicted from what a person can tell about themselves, without a blood test?",
- "population": "U.S. adults aged 20 or older in NHANES 1999–2004 who have a fasting plasma glucose result, pregnant women excluded. People with known diabetes are not in the model: known diabetes is a yes to DIQ010 (a doctor said you have diabetes), taking insulin now (DIQ050) or taking diabetic pills (DIQ070).",
+ "population": "U.S. adults aged 20 or older in NHANES 1999–2004 who have a fasting plasma glucose result, pregnant women excluded. People with known diabetes are not in the model: known diabetes is a yes to DIQ010 (a doctor said you have diabetes), taking insulin now (DIQ050) or taking diabetic pills (DIQ070). The table keeps everyone: these exclusions are the analyst's eligibility decisions, made in the app.",
+ "eligibility": [
+  "The table keeps every participant: the paper's population is the analyst's eligibility decisions, each recorded in the app as a rule.",
+  "Aged 20 or older: a range rule on RIDAGEYR from 20. Its one code, 85, stands for “>= 85 years of age”.",
+  "Pregnant women excluded: a level rule on RIDEXPRG excluding level 1 (Yes, positive lab pregnancy test or self-reported pregnant at exam), which has no refused or don't-know code; its other levels are 2 (SP not pregnant at exam) and 3 (Cannot ascertain if SP is pregnant at exam). RIDEXPRG is blank in 6,269 of the 9,645 rows with a fasting glucose. A level rule leaves out a row it cannot confirm (a blank, a refused or a don't-know answer) unless it keeps them all.",
+  "Without known diabetes, the paper's first condition (a doctor said you have diabetes): a level rule on DIQ010 excluding level 1 (Yes), naming 7 as its refused code and 9 as its don't-know code; its other levels are 2 (No) and 3 (Borderline). DIQ010 is blank in 1 of the 9,645 rows with a fasting glucose. A level rule leaves out a row it cannot confirm (a blank, a refused or a don't-know answer) unless it keeps them all.",
+  "Not taking insulin now, its second: a level rule on DIQ050 excluding level 1 (Yes), naming 7 as its refused code and 9 as its don't-know code; its other levels are 2 (No). DIQ050 is blank in 901 of the 9,645 rows with a fasting glucose. A level rule leaves out a row it cannot confirm (a blank, a refused or a don't-know answer) unless it keeps them all.",
+  "Not taking diabetic pills to lower blood sugar, its third: a level rule on DIQ070 excluding level 1 (Yes), naming 7 as its refused code and 9 as its don't-know code; its other levels are 2 (No). DIQ070 is blank in 9,015 of the 9,645 rows with a fasting glucose. A level rule leaves out a row it cannot confirm (a blank, a refused or a don't-know answer) unless it keeps them all.",
+  "The paper does not say whether DIQ010's level 3 (Borderline) is known diabetes (among the choices the replication notes list as left open). Of a categorical answer that is missing or unknown it says, as the notes quote it: “If information was missing or unknown in categorical variables, we defined the condition as absent.”"
+ ],
  "outcome": {
   "column": "diabetes_fpg",
   "meaning": "fasting plasma glucose of 126 mg/dL or more (1) or below (0), blank without a glucose result; the paper's undiagnosed diabetes is diabetes_fpg = 1 in a participant without known diabetes"

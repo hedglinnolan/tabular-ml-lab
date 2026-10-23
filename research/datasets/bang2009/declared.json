@@ -1,0 +1,37 @@
+[
+ {
+  "name": "instrument",
+  "status": "declared",
+  "value": "Blood pressure: a mercury sphygmomanometer in 1999–2000 and 2001–2002 (BPX, BPX_B); the 2003–2004 page (BPX_C) names no device. Fasting glucose: the three pages name the laboratory and the method, not an analyzer.",
+  "quote": "Three and sometimes 4 BP determinations (systolic and diastolic) are taken in the mobile examination center (MEC) and during home examinations on all eligible individuals using a mercury sphygmomanometer.\nThree and sometimes 4 BP determinations (systolic and diastolic) are taken in the mobile examination center (MEC) and during home examinations on all eligible individuals using a mercury sphygmomanometer.",
+  "source": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/BPX.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/BPX_B.htm"
+ },
+ {
+  "name": "assay_platform",
+  "status": "declared",
+  "value": "Fasting glucose (LBXGLU): the hexokinase method, at the Diabetes Diagnostic Laboratory of the University of Missouri-Columbia, in each cycle.",
+  "quote": "The enzyme hexokinase (HK) catalyzes the reaction between glucose and adenosine triphosphate (ATP) to form glucose-6-phosphate (G-6-P) and adenosine diphosphate (ADP).\nThe enzyme hexokinase (HK) catalyzes the reaction between glucose and adenosine triphosphate (ATP) to form glucose-6-phosphate (G-6-P) and adenosine diphosphate (ADP).\nThe enzyme hexokinase (HK) catalyzes the reaction between glucose and adenosine triphosphate (ATP) to form glucose-6-phosphate (G-6-P) and adenosine diphosphate (ADP).\nThe Diabetes Diagnostic Laboratory at the University of Missouri, Columbia measure plasma glucose, serum C-peptide and insulin on participants aged 12 years and older.\nPlasma glucose, serum C-peptide and insulin were measured by the Diabetes Diagnostic Laboratory at the University of Missouri-Columbia on participants aged 12 years and older in the morning examination session only.\nPlasma glucose and serum c-peptide were measured by the Diabetes Diagnostic Laboratory at the University of Missouri-Columbia on participants aged 12 years and older in the morning examination session only.",
+  "source": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/LAB10AM.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/L10AM_B.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/L10AM_C.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/LAB10AM.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/L10AM_B.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/L10AM_C.htm"
+ },
+ {
+  "name": "preprocessing",
+  "status": "declared",
+  "value": "Fasting glucose: the 2003–2004 file has no top coding or derived variables; the 1999–2000 and 2001–2002 pages state no processing of the glucose values.",
+  "quote": "There was no top coding or derived variables in this file.",
+  "source": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/L10AM_C.htm"
+ },
+ {
+  "name": "declared_units",
+  "status": "declared",
+  "value": "Fasting glucose (LBXGLU) in mg/dL, as each cycle's codebook labels it.",
+  "quote": "LBXGLU - Glucose, plasma (mg/dL)\nLBXGLU - Glucose, plasma (mg/dL)\nLBXGLU - Glucose, plasma (mg/dL)",
+  "source": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/LAB10AM.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/L10AM_B.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/L10AM_C.htm"
+ },
+ {
+  "name": "recall_method",
+  "status": "declared",
+  "value": "The self-reported items: the diabetes questions administered in the home by a trained household interviewer (DIQ_B: a home interview, in person); the medical conditions, family history among them, asked in the household interview in 2001–2002 and 2003–2004 (the 1999–2000 page says nothing of it); the physical activity questions asked of those 16 or older in the household interview.",
+  "quote": "The DIQ section is administered in the home by a trained household interviewer.\nThe DIQ section is administered in the home by a trained household interviewer.\nInterview Setting and Mode of Administration Home Interview; In-person.\nInterview Setting and Mode of Administration Home Interview In-person\nThe questions were asked in the household interview.\nFor respondents 2–11 and 16 or more years of age, the questions were asked in the household interview.\nFor respondents 2–11 and 16 or more years of age, the questions were asked in the household interview.\nFor respondents 2–11 and 16 or more years of age, the questions were asked in the household interview.",
+  "source": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/DIQ.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/DIQ_C.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/DIQ_B.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/MCQ_B.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/MCQ_C.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/PAQ.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/PAQ_B.htm\nhttps://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/PAQ_C.htm"
+ }
+]
