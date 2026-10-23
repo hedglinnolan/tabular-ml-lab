@@ -30,9 +30,9 @@ from turbotab.core.claims.inference import (beyond_li_redden, cluster_randomized
                                             cox_partial_likelihood, design_unanswered,
                                             drawn_by_outcome, estimating_equations,
                                             least_squares_with_a_cut_off, numeric_exposure,
-                                            primary_interval_excludes_zero,
+                                            pooled_over_copies, primary_interval_excludes_zero,
                                             proportional_odds_cluster_sandwich, randomized_trial,
-                                            rows_repeat, zero_one_outcome)
+                                            rows_repeat, separated_in_a_copy, zero_one_outcome)
 
 # ── the trial core's few clusters (Li & Redden 2015) ─────────────────────────
 
@@ -877,6 +877,9 @@ def test_each_predicate_holds_in_its_regime_and_not_outside_it():
          {"estimator": "logistic", "cut_off": 7.0, "tail": "below"}),
         (primary_interval_excludes_zero, {"primary_interval": (-2.0, -0.1)},
          {"primary_interval": (-0.1, 2.0)}),
+        (pooled_over_copies, {"copies": 20}, {"copies": 0}),
+        (pooled_over_copies, {"copies": 1}, {"copies": True}),
+        (separated_in_a_copy, {"separated": ["x"]}, {"separated": []}),
     ]
     for predicate, inside, outside in cases:
         assert predicate(inside) is True, predicate.__name__
@@ -927,3 +930,16 @@ def test_the_proportional_odds_sentence_refuses_a_linear_model_s_context_in_stri
     said = claims.card(c.id, {"model": "proportional_odds", "covariance": "CR1",
                               "cluster_codes": repeat}, strict=True)
     assert said.endswith("can still be too narrow"), said
+
+
+def test_the_pooled_separation_sentence_renders_only_over_copies_some_column_separates():
+    """The withheld pooled interval's reason renders, in strict mode, for a table pooled over
+    copies with a separated coefficient, and refuses a table of no copies, or copies none
+    separates."""
+    said = claims.card("inference.pooled_separation", {"copies": 20, "separated": ["x"]},
+                       strict=True)
+    assert said.startswith("a Wald interval on a separated coefficient's Firth estimate is not "
+                           "certified")
+    for outside in ({"copies": 0, "separated": ["x"]}, {"copies": 20, "separated": []}):
+        with pytest.raises(claims.OutsideRegime):
+            claims.card("inference.pooled_separation", outside, strict=True)

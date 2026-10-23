@@ -42,7 +42,9 @@ missing, Model 3 alone is fit on the rows where they are recorded, with the prim
 refit on those same rows beside it, so the two differ by the added columns alone; it says how many.
 Under multiple imputation each model is fit in each completed copy and pooled by Rubin's rules, the
 crude model, Model 1 and Model 2 in the fit's own copies and Model 3 in copies imputed with its
-added columns; the diagnostics and the robustness value read the first copy, and say so.
+added columns; the diagnostics and the robustness value read the first copy, and say so. Where a
+column separates the outcome in some copy, the pooled intervals are Wald ones from Firth's standard
+errors, and each separated coefficient's is withheld (``inference.pooled_firth``), as the fit's.
 
 **The surveyed population** (MODELING_SEQUENCE §0 ruling 6, "binds every family and every
 display"): every model of a family with a design-based estimator (least squares, logistic, Cox,
@@ -711,7 +713,8 @@ class _Run:
             if not supported:
                 table = self._table(lambda: _inference_table(
                     family, fitted, X, self.y, task=self.task, clusters=self.clusters,
-                    outcome=self.outcome, rows="all", survey=design), "model_2", failures)
+                    outcome=self.outcome, rows="all", survey=design), "model_2", failures,
+                    pooled=imputed is not None)
                 per_copy.setdefault("model_2", []).append(table)
                 if k == 0 and table is not None:
                     features = sorted({f for e in self.exposures for f in est.primary_features(
@@ -744,7 +747,7 @@ class _Run:
                 per_copy.setdefault(name, []).append(self._table(
                     lambda _c=cols: self._with_relative(
                         family, fitted, M[_c], self.y, matrix_table(family, M[_c], self.y, **kw),
-                        kw), name, failures))
+                        kw), name, failures, pooled=imputed is not None))
             if k == 0:
                 features = feats
                 first = {"fitted": fitted, "matrix": M, "sources": sources, "classes": classes}
@@ -879,7 +882,7 @@ class _Run:
             per_copy.setdefault("model_3", []).append(self._table(
                 lambda: self._with_relative(family, fitted3, M3, self.y3,
                                             matrix_table(family, M3, self.y3, **kw3), kw3),
-                "model_3", failures))
+                "model_3", failures, pooled=imputed3 is not None))
             if self.rows3 is not None and k == 0:
                 sources3 = matrix_sources(fitted3, self.spec3.inputs)
                 added = set(self.extra)
@@ -924,11 +927,17 @@ class _Run:
 
             raise Cancelled()
 
-    def _table(self, fn: Any, name: str, failures: dict[str, str]) -> Any:
+    def _table(self, fn: Any, name: str, failures: dict[str, str], pooled: bool = False) -> Any:
         """``fn()``, the table of one declared model in one copy; a model that cannot be fit is
-        listed with its reason, never dropped silently and never taking the others down."""
+        listed with its reason, never dropped silently and never taking the others down.
+        ``pooled``: one completed copy's, made for Rubin's rules (``inference.for_pooling``)."""
+        from contextlib import nullcontext
+
+        from turbotab.core.models.inference import for_pooling
+
         try:
-            return fn()
+            with for_pooling() if pooled else nullcontext():
+                return fn()
         except Exception as exc:  # noqa: BLE001
             self._unless_cancelled()
             failures.setdefault(name, str(exc))
@@ -1015,21 +1024,28 @@ class _Run:
             return tables[0]
         from turbotab.core.methods.imputation import pool_rows
         from turbotab.core.methods.missing import mi_concerns, multiple_imputation_info
+        from turbotab.core.models.inference import pooled_firth
 
         imputations = missing.imputations
         y = self.y3 if spec is self.spec3 else self.y
         pooled = pool_rows([t.rows for t in tables])
         info = dict(tables[0].info)
+        # A column that separates the outcome in some copy: Wald intervals from Firth's standard
+        # errors, each separated coefficient's withheld (as the fit's pooled table).
+        firth = pooled_firth(tables, pooled, answer=spec.missing or {})
+        each = firth.caption if firth is not None else info.get("caption", "")
         info["caption"] = (f"Multiple imputation, m = {len(tables)}: each completed copy analyzed "
-                           f"as follows, then pooled by Rubin's rules. {info.get('caption', '')}"
-                           ).strip()
+                           f"as follows, then pooled by Rubin's rules. {each}").strip()
+        if firth is not None:
+            info.update(firth.info)
         # MS2 (wave 1b): the record names the design's df as Rubin's complete-data df and the
         # largest Monte Carlo error among the pooled rows, as the fit's record does.
         from turbotab.core.stages.modeling import _design_df
 
         info["missing"] = multiple_imputation_info(imputations, spec, len(y), rows=pooled,
                                                    df_com=_design_df(tables[0]))
-        concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(y))
+        concerns = (list(tables[0].concerns) + ([firth.concern] if firth is not None else [])
+                    + mi_concerns(imputations, pooled, len(y)))
         return InferenceTable(pooled, info, concerns)
 
     # ── the marginal risk difference and ratio ──

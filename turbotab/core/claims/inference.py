@@ -119,6 +119,20 @@ def least_squares_with_a_cut_off(ctx: Any) -> bool:
             and _get(ctx, "tail") in ("above", "below"))
 
 
+def pooled_over_copies(ctx: Any) -> bool:
+    """A table pooled by Rubin's rules over completed copies (``copies``: how many, one or more;
+    one, the data's own single copy, pools to its own Wald intervals)."""
+    copies = _get(ctx, "copies")
+    return isinstance(copies, int) and not isinstance(copies, bool) and copies >= 1
+
+
+def separated_in_a_copy(ctx: Any) -> bool:
+    """Some coefficient separates the outcome in some completed copy (``separated``: the names of
+    the coefficients a copy's linear program finds infinite, over every copy)."""
+    separated = _get(ctx, "separated")
+    return separated is not None and len(separated) > 0
+
+
 def primary_interval_excludes_zero(ctx: Any) -> bool:
     """The primary estimate's interval, ``(low, high)``, lies wholly above or wholly below zero."""
     interval = _get(ctx, "primary_interval")
@@ -1007,11 +1021,63 @@ EXPLORE_MISSING_BY_GROUP = register(Claim(
     origin="audit",
 ))
 
+POOLED_FIRTH_TESTS = "turbotab/core/tests/test_pooled_firth.py"
+
+POOLED_SEPARATION = register(Claim(
+    id="inference.pooled_separation",
+    kind="rule",
+    card=("a Wald interval on a separated coefficient's Firth estimate is not certified, and the "
+          "profile penalized-likelihood interval advised in its place is not one Rubin's rules "
+          "pool"),
+    methods=("Under multiple imputation, a coefficient that separates the outcome in any completed "
+             "copy keeps its pooled estimate and standard error, and no pooled interval or p-value "
+             "is reported for it: Rubin's rules pool each copy's estimate and standard error into "
+             "a Wald interval, which is not certified on a separated coefficient's Firth estimate, "
+             "and the profile penalized-likelihood interval advised in its place is not one they "
+             "pool."),
+    goal=("inference",),
+    regime=Regime("a logistic coefficient table pooled by Rubin's rules over completed copies, in "
+                  "some of which a coefficient separates the outcome (its maximum-likelihood "
+                  "estimate infinite, found by the linear program) and the copy is fit by Firth's "
+                  "penalized likelihood",
+                  requires=(f"{HERE}:pooled_over_copies", f"{HERE}:separated_in_a_copy")),
+    decision="pooled_table.intervals",
+    verdict="refused",
+    parts=(
+        Part("wald_not_certified", grade="judgment", basis=Basis(reason=(
+            "The orchestrator's ruling on the slow-fit audit's F3 (2026-10-23): a number is "
+            "right or refused. The unpooled table cites Heinze & Schemper (2002, Stat Med "
+            "21:2409) for profile penalized-likelihood intervals and likelihood-ratio p-values "
+            "under separation in place of Wald ones (models/inference.py), and reports those. "
+            "Rubin's rules (Rubin 1987) pool an estimate and its variance, so the pooled interval "
+            "of a separated coefficient would be the Wald interval that citation sets aside. The "
+            "paper is not in the citation registry and its author did not read it for this "
+            "claim, which rests on the module's own citation: graded by judgment."))),
+        Part("any_copy", grade="judgment", basis=Basis(reason=(
+            "A coefficient is withheld where the linear program finds it infinite in at least one "
+            "copy, since its pooled interval then rests on that copy's Firth estimate; a "
+            "coefficient no copy separates keeps Rubin's interval, even beside one that is "
+            "separated. A copy no column separates is a maximum-likelihood fit, and the caption "
+            "says how many such copies the pooled table holds."))),
+    ),
+    tests=(
+        Fires(f"{POOLED_FIRTH_TESTS}::test_a_coefficient_separated_in_the_copies_keeps_its_pooled_"
+              "estimate_and_withholds_its_interval", truth="construction"),
+        Silent(f"{POOLED_FIRTH_TESTS}::test_a_coefficient_no_copy_separates_keeps_rubins_wald_"
+               "interval_on_t", truth="independent:scipy"),
+        Silent(f"{POOLED_FIRTH_TESTS}::test_a_table_no_copy_separates_withholds_nothing",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.models.inference:pooled_firth",),
+    author="swarm-mi-firth builder",
+    origin="engine",
+))
+
 CLAIMS: tuple[Claim, ...] = (
     INFERENCE_FEW_CLUSTERS, TRIALS_FEW_CLUSTERS, TRIALS_FEW_CLUSTERS_EXTENDED,
     ORDINAL_CLUSTER_ROBUST_INTERVALS,
     TRIALS_SEPARATION, DESIGNS_OBSERVATIONAL_DEFAULT, DESIGNS_SAMPLED_BY_OUTCOME,
     CAUSAL_NUMERIC_EXPOSURE_R2, SURVIVAL_MONOTONE_LIKELIHOOD, RESULTS_TAIL_SHARE,
     DESIGNS_ADJUSTMENT_BY_DESIGN, MISSING_MI_UNLESS_INFERENCE, COLLINEAR_INSIDE,
-    EXPLORE_MISSING_BY_GROUP,
+    EXPLORE_MISSING_BY_GROUP, POOLED_SEPARATION,
 )

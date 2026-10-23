@@ -1656,12 +1656,16 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
     data carried with their own outcomes (``Imputations.outcomes``, NHANES DXA) are fit as
     ``fit(model, X_k, y_k)``. A table refused in one copy (too few clusters) is refused: the reason
     does not depend on the imputed values. ``rows`` = None in the result marks such a refusal.
+    Each copy's table and energy rows are made for Rubin's rules (``inference.for_pooling``: a
+    Firth copy computes no profile), and where a column separates the outcome in some copy the
+    pooled table says its intervals are Wald ones from Firth's standard errors and withholds each
+    separated coefficient's (``inference.pooled_firth``).
     ``collect``, when given, receives each copy's fit (``fits``) and table (``tables``).
     ``models``: the chosen families, which a block's exit keeps (``_inference_table``)."""
     from turbotab.core.methods.exposure_form import exposure_tests
     from turbotab.core.methods.imputation import pool_rows, pooled_cov
     from turbotab.core.methods.missing import copy_template, mi_concerns, multiple_imputation_info
-    from turbotab.core.models.inference import InferenceTable
+    from turbotab.core.models.inference import InferenceTable, for_pooling, pooled_firth
 
     m = int(imputations.m)
     plan = dict(getattr(imputations, "plan", None) or {})
@@ -1674,14 +1678,15 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
         y_k = y if outcomes is None else outcomes[k]
         model = copy_template(template, plan)
         fitted = fit(model, X_k) if outcomes is None else fit(model, X_k, y_k)
-        table = _inference_table(family, fitted, X_k, y_k, task=task, clusters=clusters,
-                                 outcome=outcome, rows=rows, survey=survey,
-                                 models=models)
-        if table.info.get("refused"):
-            table.info["missing"] = multiple_imputation_info(imputations, spec, len(y_k))
-            return table, None, [], []
-        row_sets.append(_energy_rows(table.rows, design, spec, family, fitted, X_k, y_k, task,
-                                     clusters, outcome, survey) if energy_rows else table.rows)
+        with for_pooling():
+            table = _inference_table(family, fitted, X_k, y_k, task=task, clusters=clusters,
+                                     outcome=outcome, rows=rows, survey=survey,
+                                     models=models)
+            if table.info.get("refused"):
+                table.info["missing"] = multiple_imputation_info(imputations, spec, len(y_k))
+                return table, None, [], []
+            row_sets.append(_energy_rows(table.rows, design, spec, family, fitted, X_k, y_k, task,
+                                         clusters, outcome, survey) if energy_rows else table.rows)
         found, worries = exposure_tests(family, fitted, X_k, y_k, task=task, clusters=clusters,
                                         table=table, outcome=outcome, survey=survey)
         if k == 0:
@@ -1692,18 +1697,23 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
     pooled = pool_rows(row_sets)
     info = dict(tables[0].info)
     copies = getattr(imputations, "method", "") == "supplied"
+    # The data's own copies have no complete cases to offer (each copy is the data).
+    firth = pooled_firth(tables, pooled, answer=None if copies else (spec.missing or {}))
     how = (f"The data's {m} imputed copies, each analyzed as follows with its own outcome" if copies
            else f"Multiple imputation, m = {m}: each completed table analyzed as follows")
+    each = firth.caption if firth is not None else tables[0].info.get("caption", "")
     info["caption"] = (f"{how}, then pooled by Rubin's rules, each interval on t with Barnard–Rubin "
-                       f"degrees of freedom. {tables[0].info.get('caption', '')}").strip()
+                       f"degrees of freedom. {each}").strip()
+    if firth is not None:
+        info.update(firth.info)
     form_tests = _pool_form_tests(tests, tables, fits, m)
     df_com = _design_df(tables[0])
     info["missing"] = multiple_imputation_info(
         imputations, spec, len(y if outcomes is None else outcomes[0]), rows=pooled, df_com=df_com,
         tests=sum(1 for t in form_tests if t.get("distribution") in ("F", "chi2")
                   and int(t.get("df_num") or 0) > 1))
-    concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(y if outcomes is None
-                                                                                else outcomes[0]))
+    concerns = (list(tables[0].concerns) + ([firth.concern] if firth is not None else [])
+                + mi_concerns(imputations, pooled, len(y if outcomes is None else outcomes[0])))
     covs = [t.cov for t in tables]
     cov = None
     if all(c is not None for c in covs) and len({np.shape(c) for c in covs}) == 1:
