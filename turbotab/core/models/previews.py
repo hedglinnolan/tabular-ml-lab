@@ -14,9 +14,10 @@ then the nutrient's distribution before and after. Each method also tells its ow
 
 ``select_models``: one lineage view per chosen family, newly added families first, each traced
 from the family's own pipeline — so a family registered later previews itself with no code here.
-A step fitted on each training fold's outcome (the selection; a family's own step that can be
-fitted only with an outcome, as the screened elastic net's screen) is left out, since a preview
-reads no outcome, and the caption names it.
+A step that reads each training fold's outcome where it is given one is left out, since a preview
+reads no outcome, and the caption names it: the selection; Explore's forms by inner
+cross-validation, and by the stated rule where a class's count sets its knots; a family's own step
+that can be fitted only with an outcome, as the screened elastic net's screen.
 
 Both fit only on a sample of ``ctx.training_row_ids``; before the split exists they show nothing.
 """
@@ -536,17 +537,18 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
             continue
         steps = family_steps(spec, family)
         extra = [name for name, _ in steps if name not in shared_names]
-        # A step fitted on each training fold's outcome (the selection, a family's screen) is left
-        # out, since the preview reads no outcome: it shows the matrix of the steps that read none
-        # and names each step it left out.
-        fitted, unread = _without_outcome(steps, shared, shared_names, X)
+        # A step that reads each training fold's outcome where it is given one (the selection,
+        # Explore's forms that read it, a family's screen) is left out, since the preview reads no
+        # outcome: it shows the matrix of the steps that read none and names each step left out.
+        fitted, unread = _without_outcome(steps, shared, shared_names, X,
+                                          _reading_the_outcome(steps, spec, state.task))
         after = trace(fitted.steps, spec.inputs, spec.roles, missing) if fitted is not shared else base
         method = (getattr(spec, "selection", None) or {}).get("method")
         labels = _step_labels(spec, family, state, unread)
         # The selection alone is named as it picks among the columns shown; with any other step
         # left out, each is named in one clause the word budget keeps whole: the selection as the
         # selection (its method's name alone, as "the elastic net", would read as a family left
-        # out), every other step by its label.
+        # out), every other step by its label; where the names overrun the budget, their count.
         alone = not labels
         phrases = [f"{NAMES.get(method, 'a selection')} picking among them in each training fold"
                    if name == "select" else STEP_PHRASES.get(name, name.replace("_", " "))
@@ -563,11 +565,15 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         else:
             names = ["the selection" if name == "select" else f"“{labels[name]}”"
                      for name in extra if name in unread]
-            left = (f"without {' and '.join(names)}, which {'reads' if len(names) == 1 else 'read'}"
+            listed = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+            left = (f"without {listed}, which {'reads' if len(names) == 1 else 'read'}"
                     f" {READS_ITS_OUTCOME}")
+            counted = f"without the {len(names)} steps that read {READS_ITS_OUTCOME}"
             parts = [*phrases, left]
-            if len(f"{lead}, {', '.join(parts)}.".split()) > CAPTION_WORDS:
-                parts = [left]
+            for shorter in ([left], *([[counted]] if len(names) > 1 else [])):
+                if len(f"{lead}, {', '.join(parts)}.".split()) <= CAPTION_WORDS:
+                    break
+                parts = shorter
             caption = f"{lead}, {', '.join(parts)}{tail}."
         views.append(LineageView(
             title=fit_words(f"Model matrix for {family.label.lower()}", TITLE_WORDS),
@@ -591,18 +597,35 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
 READS_ITS_OUTCOME = "each training fold's outcome"
 
 
+def _reading_the_outcome(steps: list[tuple[str, Any]], spec: Any, task: str | None) -> list[str]:
+    """The names of the design's ``steps`` that read the outcome where they are given one, so that,
+    fitted without it as a preview fits them, they would stand for steps no fit builds: the
+    selection, which chooses on it; Explore's forms by inner cross-validation, which compare each
+    form's inner loss on it (``levers.InnerCVForms``) and, given none, keep every input linear;
+    and the forms by the stated rule where Harrell's effective size, which sets their knots, is a
+    class's count (``levers.effective_size``: the rarer class's under ``task``; the rows' under a
+    numeric outcome or a time to an event, which a fit without the outcome counts as well). The
+    rule is read from ``effective_size`` itself, on two rows of two classes: a class's count is 1."""
+    from turbotab.core.methods.levers import effective_size
+
+    forms = (getattr(spec, "levers", None) or {}).get("forms")
+    counted = forms == "rule" and effective_size(task, np.array([0, 1]), 2) != 2
+    return [name for name, _ in steps
+            if name == "select" or (name == "lever_forms" and (forms == "inner_cv" or counted))]
+
+
 def _without_outcome(steps: list[tuple[str, Any]], shared: Any, shared_names: set[str],
-                     X: Any) -> tuple[Any, list[str]]:
+                     X: Any, reading: Sequence[str]) -> tuple[Any, list[str]]:
     """A family's ``steps`` fitted on ``X`` without the outcome, which a preview never reads, and
-    the names of the steps left out because each can be fitted only with it: the selection step,
-    which chooses on each training fold's outcome, and any other step that refuses to be fitted
-    without an outcome and is fitted with one (a family's screen, ``omics.UnivariateScreen``). A
-    step that fails with an outcome as well is not one of them: its error is raised, as before.
-    ``shared`` (the shared steps, fitted on ``X``) stands for the fit when no other step is left."""
+    the names of the steps left out: those of ``reading``, which read the outcome where they are
+    given one (:func:`_reading_the_outcome`), and any other step that refuses to be fitted without
+    an outcome and is fitted with one (a family's screen, ``omics.UnivariateScreen``). A step that
+    fails with an outcome as well is not one of them: its error is raised, as before. ``shared``
+    (the shared steps, fitted on ``X``) stands for the fit when no other step is left."""
     from turbotab.core.models.pipeline import transformer
 
-    unread = [name for name, _ in steps if name == "select"]
-    candidate = [(name, step) for name, step in steps if name != "select"]
+    unread = [name for name, _ in steps if name in reading]
+    candidate = [(name, step) for name, step in steps if name not in reading]
     if not any(name not in shared_names for name, _ in candidate):
         return shared, unread
     try:
