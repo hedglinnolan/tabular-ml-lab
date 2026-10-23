@@ -13,13 +13,17 @@ import pytest
 from research.swarm import driver, launcher as L
 
 ENGINE = {"commit": "c0", "engine_tree": "t0", "engine_modified": False}
+# The table the dataset's manifest names, read from the manifest itself.
+TABLE = json.loads((L.DATASETS / "outpatient_admission_predict" / "manifest.json")
+                   .read_text())["table"]["sha256"]
 
 
 def report(**changes):
     out = {"dataset": "outpatient_admission_predict", "complete": True, "unvisited": [],
            "defects": [], "passed": True, "engine_tree": "t0", "engine_modified": False,
            "commit": "c0", "fit_seconds": {"fits": 4, "total": 20.0, "median": 4.0, "p90": 7.2,
-                                           "max": 7.2}}
+                                           "max": 7.2},
+           "only": None, "data": {"path": "outpatient_visits.csv", "sha256": TABLE}}
     out.update(changes)
     return out
 
@@ -95,12 +99,29 @@ def test_a_crash_sweep_that_passed_on_this_engine_lets_the_dataset_launch():
     ({"engine_modified": True}, ENGINE, "when the crash sweep ran"),
     ({}, {**ENGINE, "engine_modified": True}, "now"),
     ({"engine_tree": "t1"}, ENGINE, "runs again on the frozen engine"),
+    ({"only": ["question:missing", "question:split"]}, ENGINE, "swept only 2"),
+    ({"only": []}, ENGINE, "swept only 0"),
+    ({"data": {"path": "tiny.csv", "sha256": "0" * 64}}, ENGINE, "not the manifest's"),
+    ({"data": None}, ENGINE, "not the manifest's"),
 ], ids=["other_dataset", "incomplete", "defect", "not_passed", "modified_then", "modified_now",
-        "other_engine"])
+        "other_engine", "some_decisions", "no_decision", "other_table", "no_table"])
 def test_a_crash_sweep_that_has_not_passed_on_this_engine_refuses_the_launch(changes, engine,
                                                                                words):
     why = L.crash_passed(report(**changes), "outpatient_admission_predict", engine)
     assert why is not None and words in why
+
+
+def test_a_report_that_does_not_say_what_it_swept_refuses_the_launch():
+    said = {k: v for k, v in report().items() if k != "only"}
+    why = L.crash_passed(said, "outpatient_admission_predict", ENGINE)
+    assert why is not None and "does not say whether it swept every decision" in why
+
+
+def test_a_dataset_whose_manifest_names_no_table_is_not_launched(monkeypatch, tmp_path):
+    (tmp_path / "outpatient_admission_predict").mkdir()
+    monkeypatch.setattr(L, "DATASETS", tmp_path)
+    why = L.crash_passed(report(), "outpatient_admission_predict", ENGINE)
+    assert why is not None and "names no table" in why
 
 
 def test_the_budget_is_its_fits_at_the_slowest_fit_measured_rounded_up():

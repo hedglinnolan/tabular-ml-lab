@@ -43,11 +43,15 @@ copied, answered random where a cut-point seal holds the rows out (it leaves the
 free); where the held-out draw orders the folds by time (a draw by share), random folds cannot be
 had without moving the held-out rows, so the plan's own folds score it, and ``scoring`` says so.
 
-**Each refit is classed** (:func:`classed`): ``scored``; ``refused`` in words, by the server at the
-answer or by the engine at the fit, with its typed code, its words and the option refused;
-``failed``, an HTTP 500 anywhere in the refit or a fit error the engine did not type;
-``unreached``, a path the walk could not take to Fit (its reason in its words: no engine defect);
-``duplicate``.
+**Each refit is classed** (:func:`classed`): ``scored``; ``refused`` in words, with its typed code,
+its words and the option refused: by the server at the option's answer, at an answer the walk gave
+after it with no way forward and no other option left, or at the sweep's own scoring, or by the
+engine at a stage or at the fit; ``failed``, an HTTP 500 anywhere in the refit, an answer that
+failed, or a stage or fit error the engine did not type (the driver's typing, ``driver.failures``,
+whether the walk met it waiting or it stopped at a limit of its own with a stage of its copy in
+error that was not before the option); ``unreached``, an option that records nothing by itself,
+or a path that stopped at a limit of the walk's or the revisit's own with no stage failed (its
+reason in its words: no engine defect); ``duplicate``.
 
 **Materiality** (§7, :func:`materiality`): under Predict package 1's signed change of each family's
 primary score against the plan's (``assemble.signed_change`` over the two fit records, each arm's
@@ -75,8 +79,11 @@ of the project kept); each refusal is kept with its reason; each fit's run time 
 summed into the dataset's fit budget and the sweep's compute estimate (``crash.json``). It is
 resumable: its home with the template is kept under ``--out``, and ``progress.jsonl`` holds the
 plan and every option finished, written as it goes, so a second run takes up where the first
-stopped without refitting what it finished. It passes when every option was visited and no engine
-defect was met, on the engine commit it ran on.
+stopped without refitting what it finished. It passes (:func:`passed`) when every decision of the
+plan was swept (``only``, said in the report, is none), every option of each was visited (a
+decision whose options could not be listed, or that offered none though the plan answered it, was
+not: :func:`unlisted_of`) and no engine defect was met, on the engine commit it ran on; the report
+names the table it ran on by its SHA-256, which the launcher holds to the dataset's manifest.
 """
 from __future__ import annotations
 
@@ -161,6 +168,12 @@ def plan_digest(view: Mapping[str, Any]) -> str:
 
 def last_seq(view: Mapping[str, Any]) -> int:
     return max((int(r.get("seq") or 0) for r in view.get("decisions") or []), default=0)
+
+
+def errored(view: Mapping[str, Any]) -> set[tuple[str, Any]]:
+    """Each stage in error in ``view``, with the key it failed at."""
+    return {(name, (status or {}).get("key")) for name, status in (view.get("stages") or {}).items()
+            if (status or {}).get("status") == "error"}
 
 
 # ── what is swept ────────────────────────────────────────────────────────────
@@ -533,8 +546,9 @@ def materiality(refit: Refit, plan: Refit, purpose: str) -> None:
 def decisions_of(points: Sequence[Point], refits: Sequence[Refit]) -> list[dict[str, Any]]:
     """Each decision's summary: its options, how its refits were classed, its refused share with
     the refusals' codes beside its materiality (§7, "Refused refits"). The share is of the options
-    refitted: a duplicate is the plan it duplicates, and an option that records nothing by itself,
-    or whose path did not reach Fit, was not refitted."""
+    refitted, each refusal of the engine's among them wherever on the refit's path it came: a
+    duplicate is the plan it duplicates, and an option that records nothing by itself, or whose
+    path stopped at a limit of the walk's own (``unreached``), was not refitted."""
     out = []
     for p in points:
         mine = [r for r in refits if r.point == p.id]
@@ -555,6 +569,32 @@ def decisions_of(points: Sequence[Point], refits: Sequence[Refit]) -> list[dict[
             "material_options": [r.option for r in counted if r.material],
         })
     return out
+
+
+def unlisted_of(points: Sequence[Point], offered: Mapping[str, Mapping[str, Any]]
+                ) -> list[dict[str, Any]]:
+    """Each decision whose options were not listed, so none of them was visited: not yet listed;
+    listed with why they could not be (a revisit refused, a question that did not open again); or
+    listed with none, where the plan records an answer to it (a decision the plan answered has at
+    least that answer to offer)."""
+    out = []
+    for p in points:
+        listed = offered.get(p.id)
+        if listed is None:
+            out.append({"point": p.id, "why": "Its options were not listed."})
+        elif listed.get("why"):
+            out.append({"point": p.id, "why": str(listed["why"])})
+        elif not listed.get("options") and p.decision is not None:
+            out.append({"point": p.id, "why": "No option was offered for a decision the plan "
+                                              "answered."})
+    return out
+
+
+def passed(report: Mapping[str, Any]) -> bool:
+    """Whether the crash sweep passed (the module docstring): every decision of the plan swept
+    (no ``only``), every option visited, no engine defect met."""
+    return bool(report.get("complete") and not report.get("defects")
+                and "only" in report and report["only"] is None)
 
 
 def timed_of(refit: Refit) -> float | None:
@@ -588,13 +628,15 @@ def seconds_of(timed: Sequence[float]) -> dict[str, Any]:
 class Sweep:
     """One sweep around one plan in ``out`` (the module docstring), resumable from its
     ``progress.jsonl``. ``crash``: the crash sweep's mode (previews, readings, the scheme).
-    ``only``: the decisions swept, by point id (every one where None)."""
+    ``only``: the decisions swept, by point id (every one where None), said in the report.
+    ``data``: the table the plan was made from, named in each defect's reproduction."""
 
     def __init__(self, out: Path, *, dataset: str | None, question: arms.Question,
                  crash: bool, plan: str, only: Iterable[str] | None = None,
-                 log: Callable[[str], None] | None = None):
+                 log: Callable[[str], None] | None = None, data: Path | None = None):
         self.out = Path(out).absolute()
         self.dataset, self.question, self.crash, self.plan = dataset, question, crash, plan
+        self.data = None if data is None else str(Path(data).absolute())  # the table, for a defect
         self.only = set(only) if only is not None else None
         self.progress = self.out / "progress.jsonl"
         self.policy = arms.Default(question)
@@ -746,6 +788,11 @@ class Sweep:
                 session.answer([settled[0]], [], f"{self.policy.name}: {settled[1]}.")
                 continue
             if question.get("status") == "waiting":
+                if q.get("failed"):
+                    raise arms.met_stages(arms.failed_stages(session, q),
+                                          f"Revisiting {point.id}, the {question.get('key')} "
+                                          f"question waits on stages that failed: "
+                                          f"{json.dumps(q['failed'])[:800]}")
                 time.sleep(0.5)
                 continue
             raise arms.Stuck(f"Revisiting {point.id} left the {question.get('key')} question "
@@ -761,22 +808,30 @@ class Sweep:
         refit = Refit(point.id, str(option.get("id")), dict(option.get("decision") or {}))
         started = time.monotonic()
         errors = len(session.errors)
+        before: set[tuple[str, Any]] | None = None
         try:
             refit.project = self._copy(session)
+            before = self._errored(session)
             if point.kind != "declaration":
                 offered = {str(o.get("id")) for o in self.options(session, point)}
                 if refit.option not in offered:
                     raise arms.Stuck(f"The revisit offers no option {refit.option} now.")
             self._refit(session, point, option, refit, later, plan)
+        except arms.Met as met:
+            if refit.kind not in ("failed", "refused"):
+                self._met(refit, met)
         except arms.Stuck as exc:
             if refit.kind not in ("failed", "refused"):
                 refit.kind, refit.why = "unreached", str(exc)
+                if before is not None:
+                    self._failed_anew(session, refit, before)
         new_errors = list(session.errors[errors:])
         if new_errors and refit.kind != "failed":
             refit.kind = "failed"
             refit.failed = {"kind": "failed", "by": "server", "code": "http_500",
                             "message": new_errors[-1].get("said")}
         if refit.kind == "failed":
+            refit.failed = (refit.failed or {}) | {"option": refit.option}
             self._defect(session, refit, new_errors)
         else:
             materiality(refit, plan, self.question.purpose)
@@ -784,6 +839,48 @@ class Sweep:
                 refit.project = None
         refit.took = round(time.monotonic() - started, 3)
         return refit
+
+    @staticmethod
+    def _errored(session: Any) -> set[tuple[str, Any]] | None:
+        """The copy's stages in error before the option (:func:`errored`), or None where the
+        project could not be read (a 500, which classes the refit failed)."""
+        from research.swarm import driver
+
+        try:
+            return errored(session.view())
+        except driver.DriverError:
+            return None
+
+    @staticmethod
+    def _met(refit: Refit, met: arms.Met) -> None:
+        """The refit classed as the engine's words that stopped it (:class:`arms.Met`): failed or
+        refused, with what the class rests on and the option."""
+        detail = dict(met.detail) | {"option": refit.option}
+        refit.kind, refit.why = met.kind, str(met)
+        if met.kind == "failed":
+            refit.failed = detail
+        else:
+            refit.refused = detail
+
+    def _failed_anew(self, session: Any, refit: Refit, before: set[tuple[str, Any]]) -> None:
+        """A refit whose path stopped at a limit of the walk's own (``refit.why``), where stages
+        of its copy are in error that were not before the option (a question opened over a stage
+        that failed, say): classed by the driver's typing of them (``driver.failures``; the
+        module docstring), failed where any is an error the engine did not type, else refused.
+        Unreached where none is."""
+        from research.swarm import driver
+
+        try:
+            view = session.view()
+        except driver.DriverError:
+            return  # the project unreadable is a 500, which the refit is classed failed by
+        anew = [name for name, status in (view.get("stages") or {}).items()
+                if (status or {}).get("status") == "error"
+                and (name, (status or {}).get("key")) not in before]
+        if anew:
+            self._met(refit, arms.met_stages(driver.failures(view, anew),
+                                             f"{refit.why} Stages failed on the way: "
+                                             f"{', '.join(anew)}."))
 
     def _post(self, session: Any, point: Point, option: Mapping[str, Any], reason: str,
               preview: bool = False) -> Any:
@@ -862,8 +959,12 @@ class Sweep:
                                     f"cross-validation, {REPEATS} repeats.")
         refit.answered.append({"answer": "the sweep's scoring", **said_json(said)})
         if not said.ok:
-            raise arms.Stuck(f"The sweep's scoring could not be recorded after {refit.id}: "
-                             f"{said.code}: {said.message}")
+            # Refused, the sweep's own folds are what the engine refuses (§7: the sweep's share).
+            raise arms.Met(f"The sweep's scoring could not be recorded after {refit.id}: "
+                           f"{said.code}: {said.message}",
+                           "failed" if said.kind == "failed" else "refused",
+                           said_json(said) | {"at": "scoring", "decision": body,
+                                              "exits": arms.exit_fields(said.exits)})
 
     def _later(self, p: Point) -> dict[str, Any]:
         """The plan's answer to ``p`` as the template holds it: a split answer with the sweep's
@@ -885,23 +986,34 @@ class Sweep:
 
     def _defect(self, session: Any, refit: Refit, errors: Sequence[Mapping[str, Any]]) -> None:
         """An engine defect, with its reproduction (``defects/<id>.json``): the decision log as it
-        stood, the data file, the requests that failed (or the fit's untyped error), and the copy
-        of the project it met it on, kept."""
+        stood, the data file, the requests that failed (or the untyped error), each stage of the
+        copy in error with its own words (``driver.failures``: a fit that failed on a stage
+        upstream says only that it needs it), and the copy of the project it met it on, kept."""
+        from research.swarm import driver
+
         log: list[dict[str, Any]] = []
+        stages: list[dict[str, Any]] = []
         try:
+            view = session.view()
             log = [{k: r.get(k) for k in ("seq", "decision", "recorded_by", "note")}
-                   for r in session.view().get("decisions") or []]
+                   for r in view.get("decisions") or []]
+            stages = driver.failures(view, list(view.get("stages") or {}))  # in the graph's order
         except Exception as exc:  # noqa: BLE001 - the project itself fails to read: said
             log = [{"unread": f"{type(exc).__name__}: {str(exc)[:300]}"}]
         folder = self.out / "defects"
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{hashlib.sha256(refit.id.encode('utf-8')).hexdigest()[:12]}.json"
+        stage = (refit.failed or {}).get("stage") if (refit.failed or {}).get("at") == "stage" \
+            else None
+        then = ("repeat each request of `requests`" if errors else
+                f"read the {stage} stage, in error as `failed` says" if stage else "press Fit")
         defect = {"refit": refit.id, "point": refit.point, "option": refit.option,
-                  "failed": refit.failed, "requests": list(errors), "log": log,
-                  "project": refit.project, "data": self.base.get("data") if self.base else None,
-                  "reproduce": "Make a project from the data file, post each decision of `log` "
-                               "in order, then repeat each request of `requests` (none: press "
-                               "Fit); the project the sweep met it on is kept in its home."}
+                  "failed": refit.failed, "requests": list(errors), "stages": stages,
+                  "log": log,
+                  "project": refit.project, "data": self.data,
+                  "reproduce": f"Make a project from the data file, post each decision of `log` "
+                               f"in order, then {then}; the project the sweep met it on is kept "
+                               f"in its home."}
         path.write_text(json.dumps(defect, indent=1, default=str) + "\n", "utf-8")
         entry = {"refit": refit.id, "point": refit.point, "option": refit.option,
                  "failed": refit.failed, "path": str(path), "project": refit.project}
@@ -921,16 +1033,21 @@ class Sweep:
             if listed is None:
                 copy = self._copy(session)
                 errors = len(session.errors)
+                met: arms.Met | None = None
                 try:
                     options = self.options(session, point)
                     why = None
                 except arms.Stuck as exc:
                     options, why = [], str(exc)
+                    met = exc if isinstance(exc, arms.Met) and exc.kind == "failed" else None
                 failed = list(session.errors[errors:])
-                if failed:  # a 500 met on the revisit itself: an engine defect, kept with it
+                if failed or met is not None:
+                    # A 500, or a stage failed untyped, met on the revisit itself: an engine
+                    # defect, kept with it.
                     revisit = Refit(point.id, "(the revisit)", None, kind="failed",
                                     failed={"kind": "failed", "by": "server", "code": "http_500",
-                                            "message": failed[-1].get("said")}, project=copy)
+                                            "message": failed[-1].get("said")} if failed
+                                    else dict(met.detail), project=copy)
                     self._defect(session, revisit, failed)
                     self.done[revisit.id] = revisit
                     self._write({"refit": revisit.json()})
@@ -962,19 +1079,21 @@ class Sweep:
         unvisited = [f"{p.id}={o.get('id')}" for p in self.points
                      for o in (self.offered.get(p.id) or {}).get("options") or []
                      if f"{p.id}={o.get('id')}" not in self.done]
-        unvisited += [p.id for p in self.points if p.id not in self.offered]
+        unlisted = unlisted_of(self.points, self.offered)
+        unvisited += [u["point"] for u in unlisted]
         return {
             "dataset": self.dataset, "plan": self.plan, "purpose": self.question.purpose,
             **engine_version(), "written": now(), "seconds": round(seconds, 1),
             "template": {k: (self.base or {}).get(k) for k in ("project", "digest", "seq")},
             "scoring": (self.base or {}).get("scoring"),
             "baseline": plan.json(),
+            "only": sorted(self.only) if self.only is not None else None,
             "points": [p.json() for p in self.points], "not_swept": self.skipped,
             "offered": [self.offered[p.id] for p in self.points if p.id in self.offered],
             "refits": [r.json() for r in refits],
             "decisions": decisions_of(self.points, refits),
             "fit_seconds": seconds_of(timed),
-            "complete": not unvisited, "unvisited": unvisited,
+            "complete": not unvisited, "unvisited": unvisited, "unlisted": unlisted,
             "defects": list(self.defects),
         }
 
@@ -1028,7 +1147,9 @@ def table_md(report: Mapping[str, Any]) -> str:
              f"Engine commit `{report.get('commit')}` (engine tree `{report.get('engine_tree')}`"
              f"{', modified' if report.get('engine_modified') else ''}); "
              f"{len(report.get('refits') or [])} options; complete: {report.get('complete')}"
-             + (f"; passed: {report['passed']}" if "passed" in report else "") + ".", "",
+             + (f"; passed: {report['passed']}" if "passed" in report else "")
+             + (f"; swept only {', '.join(report['only'])}" if report.get("only") is not None
+                else "") + ".", "",
              "| Decision | Options | Scored | Refused | Failed | Unreached | Duplicate | Refused "
              "share | Material |", "|---|---|---|---|---|---|---|---|---|"]
     for d in report.get("decisions") or []:
@@ -1037,6 +1158,9 @@ def table_md(report: Mapping[str, Any]) -> str:
         lines.append(f"| {d['point']} | {d['options']} | {c['scored']} | {c['refused']} | "
                      f"{c['failed']} | {c['unreached']} | {c['duplicate']} | {share} | "
                      f"{d['material']} |")
+    if report.get("unlisted"):
+        lines += ["", "## Decisions whose options were not listed", ""]
+        lines += [f"- `{u['point']}`: {str(u['why'])[:300]}" for u in report["unlisted"]]
     if report.get("defects"):
         lines += ["", "## Engine defects", ""]
         lines += [f"- `{d['refit']}`: {json.dumps(d.get('failed'))[:300]} ({d.get('path')})"
@@ -1057,13 +1181,13 @@ def crash(dataset: str, out: Path, *, only: Iterable[str] | None = None,
     question = question or arms.Question.of_card(arms.card_of(dataset))
     table = Path(data).absolute() if data is not None else table_of(dataset, out / "data")
     sweep = Sweep(out, dataset=dataset, question=question, crash=True, plan="default",
-                  only=only, log=log)
+                  only=only, log=log, data=table)
     with arms.Local(out / "home") as session:
         report = sweep.run(session, default_build(sweep.policy, table))
         session.use(str(sweep.base["project"]))
         report["readings"] = graded(session.view(), readings_truth(dataset))
     report["data"] = {"path": str(table), "sha256": hashlib.sha256(table.read_bytes()).hexdigest()}
-    report["passed"] = bool(report["complete"] and not report["defects"])
+    report["passed"] = passed(report)
     write_outputs(out, "crash", report)
     return report
 
@@ -1076,7 +1200,7 @@ def sweep_plan(dataset: str, bundle: Path, name: str, out: Path, *, data: Path |
     out = Path(out).absolute()
     question = question or arms.Question.of_card(arms.card_of(dataset))
     sweep = Sweep(out, dataset=dataset, question=question, crash=False, plan=name, only=only,
-                  log=log)
+                  log=log, data=data)
     pid = sweep.base["project"] if sweep.base else replayed(Path(bundle), data, out)
     with arms.Local(out / "home") as session:
         report = sweep.run(session, lambda s: pid)

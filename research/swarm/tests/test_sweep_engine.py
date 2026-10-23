@@ -9,8 +9,11 @@ own answer deduplicated by the plan's digest; a refusal the engine types at the 
 (multiple imputation that reads the outcome under prediction); an HTTP 500 induced in this process
 (the server's preview of one option raises), classed failed and reported with its reproduction;
 every option the driver offers listed and visited; the materiality of each paired refit
-recomputed by numpy and scipy from the two fit records' served fold scores; and a second run after
-an interruption that refits nothing the first finished."""
+recomputed by numpy and scipy from the two fit records' served fold scores; a second run after
+an interruption that refits nothing the first finished; and a stage error induced in the engine
+under one option (the cohort failed with an error it did not type; the draw refused in words),
+classed failed and reported as a defect with the stage's own words, and refused with the stage,
+its code, words and way forward, while every other option is neither."""
 from __future__ import annotations
 
 import json
@@ -344,3 +347,111 @@ def test_a_named_plan_is_rebuilt_from_its_bundle_cut_before_the_opening(tmp_path
     assert report["baseline"]["split"]["repeats"] == 5 and report["complete"] is True
     assert {r["id"].split("=")[0] for r in report["refits"]} == {"question:missing"}
     assert (out / "sweep.json").exists()
+
+
+# ── a stage error induced in the engine after an option ──────────────────────
+
+CRASHES_UNDER = "complete_case"  # the missing-values option under which the cohort fails, here
+CRASHED = "RuntimeError: the cohort fails here, as a defect would"
+REFUSED_AT = 0.3  # the held-out share whose draw the split refuses in words, here
+REFUSED_WORDS = "The draw refuses this share here, in words."
+
+
+@pytest.fixture(scope="module")
+def induced(tmp_path_factory):
+    """The crash sweep of the missing values and the held-out share, with the engine recording a
+    stage in error where one option is in force: the cohort failed with an error it did not type
+    under complete cases, and the split's draw refused in words (``graph.StageRefusal``, its code,
+    words and a way forward) under a share of 0.3. Each is recorded where the engine records a
+    stage it could not start (``Engine._start``), since the stages run in worker processes a test
+    cannot patch."""
+    from turbotab.core import graph
+    from turbotab.core.decisions import missing_strategy
+    from turbotab.core.jobs import failure_of
+
+    work = tmp_path_factory.mktemp("induced")
+    data = table(work / "tiny.csv")
+    original = graph.Engine._start
+
+    def start(self, p, stage, key):
+        state = p.ctx.state
+        if stage.name == "cohort" and missing_strategy(state) == CRASHES_UNDER:
+            p.errors[(stage.name, key)] = CRASHED
+            return None
+        split = getattr(state, "split", None)
+        if stage.name == "split" and split is not None and float(split.holdout) == REFUSED_AT:
+            error, refusal = failure_of(graph.StageRefusal(
+                "induced_refusal", REFUSED_WORDS,
+                exits=[{"label": "Hold out a fifth", "decision": {"kind": "set_split",
+                                                                  "holdout": 0.2}}]))
+            p.errors[(stage.name, key)] = error
+            p.refusals[(stage.name, key)] = {"stage": stage.name, **refusal}
+            return None
+        return original(self, p, stage, key)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(graph.Engine, "_start", start)
+    try:
+        report = W.crash("tiny", work / "out", data=data, question=QUESTION,
+                         only=["question:missing", "question:split"])
+    finally:
+        mp.undo()
+    return {"report": report, "out": work / "out", "data": data}
+
+
+@pytest.mark.slow
+def test_a_stage_that_fails_untyped_after_an_option_is_a_failed_refit_and_an_engine_defect(
+        induced):
+    report = induced["report"]
+    plan = {p["id"]: p for p in report["points"]}
+    assert plan["question:missing"]["decision"]["strategy"] != CRASHES_UNDER  # an option, not
+    refits = {r["id"]: r for r in report["refits"]}  # the plan's own answer
+    crashed = refits[f"question:missing={CRASHES_UNDER}"]
+    assert crashed["kind"] == "failed", crashed
+    assert crashed["failed"]["option"] == CRASHES_UNDER, crashed["failed"]
+    (defect,) = report["defects"]
+    assert defect["refit"] == crashed["id"] and report["passed"] is False
+    kept = json.loads(open(defect["path"]).read())
+    cohort = next(s for s in kept["stages"] if s["stage"] == "cohort")
+    assert cohort["kind"] == "failed" and cohort["error"] == CRASHED
+    assert kept["data"] == str(induced["data"])
+    assert {"kind": "set_missing", "strategy": CRASHES_UNDER}.items() <= next(
+        e["decision"] for e in reversed(kept["log"])
+        if e["decision"]["kind"] == "set_missing").items()
+    assert (induced["out"] / "home" / "projects" / crashed["project"]).is_dir()
+
+
+@pytest.mark.slow
+def test_a_stage_that_refuses_in_words_after_an_option_is_a_refused_refit(induced):
+    report = induced["report"]
+    refits = {r["id"]: r for r in report["refits"]}
+    refused = refits[f"question:split={REFUSED_AT:g}"]
+    assert refused["kind"] == "refused", refused
+    r = refused["refused"]
+    assert (r["by"], r["stage"], r["code"], r["message"]) == (
+        "engine", "split", "induced_refusal", REFUSED_WORDS)
+    assert r["option"] == f"{REFUSED_AT:g}"
+    assert [e["label"] for e in r["exits"]] == ["Hold out a fifth"]
+    assert r["exits"][0]["decision"]["holdout"] == 0.2
+    split = next(d for d in report["decisions"] if d["point"] == "question:split")
+    assert split["refused_codes"] == {"induced_refusal": 1}
+
+
+@pytest.mark.slow
+def test_no_other_option_is_failed_or_refused_at_a_stage(induced):
+    """Both ways: under every option no stage was made to fail under, the refit is not failed and
+    not refused at a stage or the fit (a refusal the server gives at the answer, as multiple
+    imputation's, is the answer's), and no other defect is said."""
+    report = induced["report"]
+    refits = {r["id"]: r for r in report["refits"]}
+    induced_ids = {f"question:missing={CRASHES_UNDER}", f"question:split={REFUSED_AT:g}"}
+    others = {rid: r for rid, r in refits.items() if rid not in induced_ids}
+    assert len(others) >= 6, sorted(others)
+    for rid, r in others.items():
+        assert r["kind"] != "failed", rid
+        if r["kind"] == "refused":
+            assert r["refused"]["at"] == "answer" and r["refused"]["by"] == "server", rid
+    assert others["question:missing=multiple_imputation"]["kind"] == "refused"
+    assert others["question:split=cut"]["kind"] == "unreached"  # it takes a field of one's own
+    assert [d["refit"] for d in report["defects"]] == [f"question:missing={CRASHES_UNDER}"]
+    assert report["only"] == ["question:missing", "question:split"]
