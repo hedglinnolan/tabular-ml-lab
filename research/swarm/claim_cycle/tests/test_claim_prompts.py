@@ -69,6 +69,7 @@ def test_the_survey_counts_records_so_an_effect_on_one_dataset_reaches_it(tmp_pa
     planted records all sit on their template's one dataset (``shuffle.planted``), each with its
     decision's materiality measured, so that decision's kind meets the rule on them alone, and it
     is one the theorist may propose about."""
+    from research.swarm import record as R
     from research.swarm import shuffle as S
     from research.swarm.claim_cycle import view as W
     from research.swarm.tests import test_shuffle as TS
@@ -79,7 +80,8 @@ def test_the_survey_counts_records_so_an_effect_on_one_dataset_reaches_it(tmp_pa
     assert "at least two datasets" not in text
     written = S.write(TS.corpus(tmp_path / "corpus", per=3), tmp_path / "copy", tmp_path / "s.json",
                       seed=5, k=6)
-    effect, planted = written["planted"]["effect"], set(written["planted"]["records"])
+    effect = written["planted"]["effect"]
+    planted = {R.neutral_id(r) for r in written["planted"]["records"]}  # as the view serves them
     measured = [v for v in W.read(tmp_path / "copy") if v["run"]["id"] in planted
                 and any(d["kind"] == effect["decision"] and d["materiality"]["source"] == "fits"
                         for d in v["decisions"])]

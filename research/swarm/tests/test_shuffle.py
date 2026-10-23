@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from research.swarm import shuffle as S
-from research.swarm.record import validate
+from research.swarm.record import neutral_id, validate
 from research.swarm.tests.constructed import (estimate_record, marker, predict_record,
                                               revert_record)
 
@@ -633,10 +633,10 @@ def test_a_planted_record_is_its_templates_clone_and_the_sealed_file_says_so(tmp
     src = corpus(tmp_path / "corpus", per=3)
     body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=5, k=6)
     effect = body["planted"]["effect"]
-    views = {v["run"]["id"]: v for v in W.read(tmp_path / "copy")}
-    template = views[effect["template"]]
+    views = {v["run"]["id"]: v for v in W.read(tmp_path / "copy")}  # by the ids they serve
+    template = views[neutral_id(effect["template"])]
     for run_id in body["planted"]["records"]:
-        v = views[run_id]
+        v = views[neutral_id(run_id)]
         assert [(d["seq"], d["kind"], d["source"], d["phase"]) for d in v["decisions"]] == [
             (d["seq"], d["kind"], d["source"], d["phase"]) for d in template["decisions"]]
         assert v["attempts"][0]["movement"] == template["attempts"][0]["movement"]
