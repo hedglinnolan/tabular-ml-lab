@@ -13,7 +13,11 @@ Claude Code runs this script before each tool call, with the call as JSON on sta
   (:data:`COMMANDS`: the experimentalist proposes nothing), from the repo root, that no shell
   expands or runs anything in, under the analyst hook's rules (``analyst_hook.shell_refusal``:
   none of ``; & | $ < >``, a backtick or a line break anywhere, quoted or not; outside quotes only
-  plain characters; so a proposal's JSON goes in single quotes).
+  plain characters; so a proposal's JSON goes in single quotes);
+* every tools command while no cycle is pinned, and every one that names a folder or a file other
+  than the pinned cycle's corpus folder and proposals file (``pin.py``: one cycle at a time, so no
+  agent reads both the corpus and its shuffled copy). The command is read with the tools' own
+  parser (``pin.build_parser``), so what the hook checks is what the tools read.
 
 For every other caller it says nothing: the call goes on to the permissions. An allowed command is
 not approved here either. Input that does not read as a hook call is refused (exit 2).
@@ -24,8 +28,8 @@ never committed:
     {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command",
         "command": "python3 <repo>/research/swarm/claim_cycle/hook.py"}]}]}}
 
-It uses the standard library and the analyst hook, which uses only the standard library, so any
-Python 3 runs it.
+It uses the standard library, the analyst hook and the pin, which use only the standard library, so
+any Python 3 runs it.
 """
 from __future__ import annotations
 
@@ -40,18 +44,36 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 
 
+def _beside(name: str, path: Path) -> Any:
+    """The module ``name`` at ``path``, loaded from its file (run as a script, the repo is not on
+    the path)."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault(name, module)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _analyst_hook() -> Any:
     try:
         from research.swarm import analyst_hook
     except ImportError:  # run as a script, with the repo not on the path
-        spec = importlib.util.spec_from_file_location("analyst_hook",
-                                                      HERE.parent / "analyst_hook.py")
-        analyst_hook = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(analyst_hook)
+        analyst_hook = _beside("analyst_hook", HERE.parent / "analyst_hook.py")
     return analyst_hook
 
 
+def _pin() -> Any:
+    try:
+        from research.swarm.claim_cycle import pin
+    except ImportError:  # run as a script, with the repo not on the path
+        pin = _beside("claim_cycle_pin", HERE / "pin.py")
+    return pin
+
+
 A = _analyst_hook()
+N = _pin()
+# The pin the hook reads (``pin.PIN``: ``.claude/claim_cycle.json`` at the repo root).
+PIN = N.PIN
 THEORIST = "theorist"
 EXPERIMENTALIST = "experimentalist"
 MODULE = "research.swarm.claim_cycle.tools"
@@ -90,7 +112,7 @@ def bash_refusal(command: Any, cwd: Any, role: str) -> str | None:
         here = None
     if here != REPO:
         return f"The tools run from the repo root, {REPO}, not from {cwd or 'an unknown folder'}."
-    return None
+    return N.refusal(words[3:], role, pin=PIN, repo=REPO)
 
 
 def decide(call: Any) -> dict[str, Any] | None:

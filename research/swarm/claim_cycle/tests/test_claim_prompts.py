@@ -35,7 +35,15 @@ def test_it_shows_one_example_of_each_command_its_role_runs(role):
 
 
 @pytest.mark.parametrize("role, example", [(r, e) for r in PROMPTS for e in examples(r)])
-def test_each_example_is_one_the_hook_passes_and_the_tools_read(role, example):
+def test_each_example_is_one_the_hook_passes_and_the_tools_read(role, example, tmp_path,
+                                                                 monkeypatch):
+    """Under a pin naming the examples' corpus folder and proposals file, as the orchestrator
+    pins a cycle's (``pin.py``), never the repo's own pin."""
+    from research.swarm.claim_cycle import pin as N
+
+    pin = tmp_path / "pin.json"
+    pin.write_text(json.dumps(N.body("cycle/corpus", "cycle/proposals.jsonl", H.REPO)), "utf-8")
+    monkeypatch.setattr(H, "PIN", pin)
     assert H.bash_refusal(example, H.REPO, role) is None
     args = T.build_parser().parse_args(shlex.split(example)[3:])
     assert args.command in H.COMMANDS[role]
@@ -123,6 +131,10 @@ def test_it_names_what_its_prompt_must_carry(role, names):
     text = " ".join(body(role).split())
     assert f"Your prompt must name: {names}." in text
     assert "If any is missing, run nothing and say which." in text
+    # The hook holds it to the pinned cycle's folder and file (``pin.py``), and says so.
+    assert ("Read only that corpus folder and that proposals file: a command that names any "
+            "other folder or file is refused.") in text
+    assert "If a command is refused because no claim cycle is pinned, run nothing more" in text
 
 
 @pytest.mark.parametrize("role", list(PROMPTS))

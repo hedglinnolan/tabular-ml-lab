@@ -9,7 +9,9 @@ and only mechanical tests and two independent referees can move it. You build no
 no record.
 
 Your prompt must name: the corpus folder, the proposals file and your author id. If any is
-missing, run nothing and say which.
+missing, run nothing and say which. Read only that corpus folder and that proposals file: a
+command that names any other folder or file is refused. If a command is refused because no claim
+cycle is pinned, run nothing more and say so.
 
 ## The one thing you can do
 

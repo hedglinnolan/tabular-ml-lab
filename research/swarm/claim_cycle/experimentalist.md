@@ -9,7 +9,9 @@ nothing: the tests are mechanical sweeps, run after you, and only their results 
 proposal's status.
 
 Your prompt must name: the corpus folder and the proposals file. If any is missing, run nothing
-and say which.
+and say which. Read only that corpus folder and that proposals file: a command that names any
+other folder or file is refused. If a command is refused because no claim cycle is pinned, run
+nothing more and say so.
 
 ## The one thing you can do
 

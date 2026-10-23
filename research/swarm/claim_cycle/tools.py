@@ -17,7 +17,9 @@ through the view (``view.py``) and never the sealed file:
   says why it is refused; nothing is written then.
 
 Each prints one JSON object: what it read, or ``refused`` with why (exit status 1). Which agent may
-run which is the hook's (``hook.py``): the experimentalist proposes nothing.
+run which is the hook's (``hook.py``): the experimentalist proposes nothing, and neither agent names
+a folder or a file but the cycle's pinned corpus folder and proposals file (``pin.py``). The
+command line is ``pin.build_parser``'s, so the hook reads a command as the tools do.
 """
 from __future__ import annotations
 
@@ -26,29 +28,16 @@ import json
 import sys
 from typing import Any, Callable, Sequence
 
+from research.swarm.claim_cycle import pin as N
 from research.swarm.claim_cycle import proposal as P
 from research.swarm.claim_cycle import view as W
 
-COMMANDS = ("index", "records", "proposals", "propose")
+COMMANDS = N.COMMANDS
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m research.swarm.claim_cycle.tools",
-                                     description=__doc__.split("\n\n")[0])
-    sub = parser.add_subparsers(dest="command", required=True)
-    index = sub.add_parser("index", help="one line per record")
-    index.add_argument("corpus")
-    records = sub.add_parser("records", help="each record's view")
-    records.add_argument("corpus")
-    records.add_argument("--run", action="append", default=None, help="a run's id (repeatable)")
-    records.add_argument("--dataset", default=None, help="a dataset's label, as index prints it")
-    records.add_argument("--fields", default=None, help="fields of the view, comma-separated")
-    proposals = sub.add_parser("proposals", help="the proposals file's proposals")
-    proposals.add_argument("file")
-    propose = sub.add_parser("propose", help="validate one proposal and append it")
-    propose.add_argument("--out", required=True, help="the proposals file (.jsonl)")
-    propose.add_argument("proposal", help="the proposal, one JSON object")
-    return parser
+    """The tools' command line, the one the hook reads a command with (``pin.build_parser``)."""
+    return N.build_parser()
 
 
 def _run(args: argparse.Namespace) -> dict[str, Any]:

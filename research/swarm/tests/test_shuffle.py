@@ -19,24 +19,41 @@ from research.swarm.tests.constructed import (estimate_record, marker, predict_r
 ROWS = {"d1": 101, "d2": 202, "d3": 303}
 
 
-def corpus(folder: Path, datasets: tuple[str, ...] = ("d1", "d2", "d3")) -> Path:
+PREDICTORS = 6  # each record's predictors, so its predictors per row is this over its rows analyzed
+
+
+def corpus(folder: Path, datasets: tuple[str, ...] = ("d1", "d2", "d3"), per: int = 1) -> Path:
+    """One record per dataset (``per`` 1: its rows ``ROWS``, its rows analyzed one fewer); or
+    ``per`` records per dataset, each of the dataset's own kind, its rows the dataset's and its rows
+    analyzed nine fewer for each record before it, its predictors per row and its count of rows
+    analyzed read from them, as the engine reads a real record's: a marker that varies across a
+    dataset's records beside one that does not."""
     folder.mkdir(parents=True)
     makers = [predict_record, estimate_record, revert_record]
     for i, dataset in enumerate(datasets):
-        rec = makers[i % len(makers)]()
-        if makers[i % len(makers)] is predict_record:
-            planted_scores(rec)
-        rec["run"]["id"] = f"run_{i + 1:02d}"
-        rec["dataset"]["id"] = dataset
-        rec["regime"]["n_rows"] = ROWS[dataset]
-        rec["regime"]["markers"] = [marker("rows", ROWS[dataset]),
-                                    marker("rows_analyzed", ROWS[dataset] - 1)]
-        rec["dataset"]["declared"] = [{"name": "instrument", "status": "declared",
-                                       "value": f"device {dataset}", "quote": f"by {dataset}",
-                                       "source": f"{dataset} methods"}]
-        for a in rec["attempts"]:
-            a["markers"] = [marker("rows", ROWS[dataset])]
-        (folder / f"{rec['run']['id']}.json").write_text(json.dumps(rec), "utf-8")
+        for r in range(per):
+            rec = makers[i % len(makers)]()
+            if makers[i % len(makers)] is predict_record:
+                planted_scores(rec)
+            n = i * per + r + 1
+            rec["run"]["id"] = f"run_{i + 1:02d}" if per == 1 else f"run_{n:02d}-{n:032x}"
+            rec["dataset"]["id"] = dataset
+            rec["regime"]["n_rows"] = ROWS[dataset]
+            analyzed = ROWS[dataset] - 1 - 9 * r
+            rec["regime"]["markers"] = [marker("rows", ROWS[dataset]),
+                                        marker("rows_analyzed", analyzed)]
+            fits = [marker("rows", ROWS[dataset])]
+            if per > 1:
+                rec["regime"]["n_analyzed"] = analyzed
+                ratio = marker("predictors_per_row", PREDICTORS / analyzed)
+                rec["regime"]["markers"].append(ratio)
+                fits = [*rec["regime"]["markers"]]
+            rec["dataset"]["declared"] = [{"name": "instrument", "status": "declared",
+                                           "value": f"device {dataset}", "quote": f"by {dataset}",
+                                           "source": f"{dataset} methods"}]
+            for a in rec["attempts"]:
+                a["markers"] = json.loads(json.dumps(fits))
+            (folder / f"{rec['run']['id']}.json").write_text(json.dumps(rec), "utf-8")
     (folder / "failed").mkdir()
     (folder / "failed" / "run_99.json").write_text("{}", "utf-8")  # a failed run: not a record
     return folder
