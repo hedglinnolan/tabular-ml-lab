@@ -14,6 +14,9 @@ then the nutrient's distribution before and after. Each method also tells its ow
 
 ``select_models``: one lineage view per chosen family, newly added families first, each traced
 from the family's own pipeline — so a family registered later previews itself with no code here.
+A step fitted on each training fold's outcome (the selection; a family's own step that can be
+fitted only with an outcome, as the screened elastic net's screen) is left out, since a preview
+reads no outcome, and the caption names it.
 
 Both fit only on a sample of ``ctx.training_row_ids``; before the split exists they show nothing.
 """
@@ -533,25 +536,41 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
             continue
         steps = family_steps(spec, family)
         extra = [name for name, _ in steps if name not in shared_names]
-        # The selection step chooses its columns on each training fold's outcome, so the preview
-        # (which reads no outcome) shows the candidates it chooses among and names it.
-        shown = [(name, step) for name, step in steps if name != "select"]
-        fitted = (transformer(shown).fit(X) if any(name not in shared_names for name, _ in shown)
-                  else shared)
+        # A step fitted on each training fold's outcome (the selection, a family's screen) is left
+        # out, since the preview reads no outcome: it shows the matrix of the steps that read none
+        # and names each step it left out.
+        fitted, unread = _without_outcome(steps, shared, shared_names, X)
         after = trace(fitted.steps, spec.inputs, spec.roles, missing) if fitted is not shared else base
         method = (getattr(spec, "selection", None) or {}).get("method")
+        labels = _step_labels(spec, family, state, unread)
+        # The selection alone is named as it picks among the columns shown; with any other step
+        # left out, each is named in one clause the word budget keeps whole: the selection by its
+        # method, every other step by its label.
+        alone = not labels
         phrases = [f"{NAMES.get(method, 'a selection')} picking among them in each training fold"
                    if name == "select" else STEP_PHRASES.get(name, name.replace("_", " "))
-                   for name in extra]
+                   for name in extra if name not in unread or (alone and name == "select")]
         if getattr(state, "purpose", None) == "inference":
             phrases = [ph.replace("on training rows", "on every analyzed row") for ph in phrases]
-        how = ", ".join(phrases) if phrases else "taken as they are, unscaled"
         tail = ""
         if has_missing and not spec.impute:
             tail = "; missing values allowed" if family.handles_missing else "; rows need complete values"
+        lead = f"{family.label}: {width} columns"
+        if alone:
+            how = ", ".join(phrases) if phrases else "taken as they are, unscaled"
+            caption = f"{lead}, {how}{tail}."
+        else:
+            names = [NAMES.get(method, "a selection") if name == "select" else f"“{labels[name]}”"
+                     for name in extra if name in unread]
+            left = (f"without {' and '.join(names)}, which {'reads' if len(names) == 1 else 'read'}"
+                    f" {READS_ITS_OUTCOME}")
+            parts = [*phrases, left]
+            if len(f"{lead}, {', '.join(parts)}.".split()) > CAPTION_WORDS:
+                parts = [left]
+            caption = f"{lead}, {', '.join(parts)}{tail}."
         views.append(LineageView(
             title=fit_words(f"Model matrix for {family.label.lower()}", TITLE_WORDS),
-            caption=fit_words(f"{family.label}: {width} columns, {how}{tail}.", CAPTION_WORDS),
+            caption=fit_words(caption, CAPTION_WORDS),
             emphasis=[],
             before=base,
             after=after,
@@ -566,6 +585,72 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     # of a family with no coefficient table, its estimates, as the record's sentence says.
     population_block(ctx, after_state(decision, ctx), decision, every_family=True)
     return views
+
+
+READS_ITS_OUTCOME = "each training fold's outcome"
+
+
+def _without_outcome(steps: list[tuple[str, Any]], shared: Any, shared_names: set[str],
+                     X: Any) -> tuple[Any, list[str]]:
+    """A family's ``steps`` fitted on ``X`` without the outcome, which a preview never reads, and
+    the names of the steps left out because each can be fitted only with it: the selection step,
+    which chooses on each training fold's outcome, and any other step that refuses to be fitted
+    without an outcome and is fitted with one (a family's screen, ``omics.UnivariateScreen``). A
+    step that fails with an outcome as well is not one of them: its error is raised, as before.
+    ``shared`` (the shared steps, fitted on ``X``) stands for the fit when no other step is left."""
+    from turbotab.core.models.pipeline import transformer
+
+    unread = [name for name, _ in steps if name == "select"]
+    candidate = [(name, step) for name, step in steps if name != "select"]
+    if not any(name not in shared_names for name, _ in candidate):
+        return shared, unread
+    try:
+        return transformer(candidate).fit(X), unread
+    except (ValueError, TypeError):
+        pass  # some step needs what the preview does not read, or fails here: each is told apart
+    shown: list[tuple[str, Any]] = []
+    for name, step in candidate:
+        if name not in shared_names:
+            try:
+                transformer([*shown, (name, step)]).fit(X)
+            except (ValueError, TypeError):
+                if not _fits_with_an_outcome([*shown, (name, step)], X):
+                    raise
+                unread.append(name)
+                continue
+        shown.append((name, step))
+    if not any(name not in shared_names for name, _ in shown):
+        return shared, unread
+    return transformer(shown).fit(X), unread
+
+
+def _fits_with_an_outcome(steps: list[tuple[str, Any]], X: Any) -> bool:
+    """Whether copies of ``steps`` fit on ``X`` given an outcome: a stand-in alternating 0 and 1
+    (a number and a two-level event alike), read only to tell a step that needs an outcome from
+    one that fails on these rows either way, and never shown."""
+    from sklearn.base import clone
+
+    from turbotab.core.models.pipeline import transformer
+
+    standin = np.arange(len(X)) % 2
+    try:
+        transformer([(name, clone(step)) for name, step in steps]).fit(X, standin)
+    except (ValueError, TypeError):
+        return False
+    return True
+
+
+def _step_labels(spec: Any, family: Any, state: Any, names: Sequence[str]) -> dict[str, str]:
+    """Each step of ``names`` (but the selection, which the caption names by its method) by its
+    label in the design's step list (``pipeline.describe_steps``)."""
+    named = [name for name in names if name != "select"]
+    if not named:
+        return {}
+    from turbotab.core.models.pipeline import describe_steps
+
+    listed = {s["key"]: s["label"] for s in describe_steps(spec, family, state.task,
+                                                            getattr(state, "purpose", None))}
+    return {name: listed.get(name, name.replace("_", " ").capitalize()) for name in named}
 
 
 def _say_the_cost(decision: Any, ctx: PreviewContext, n_rows: int, n_columns: int) -> None:
