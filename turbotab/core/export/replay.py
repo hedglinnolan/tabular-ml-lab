@@ -47,13 +47,25 @@ rebuild finished:
   is cut before it (``--truncate open_seal``; :func:`refuse_live_opening`): the opening keeps the
   held-out scores of the draw it was recorded on as the plan's reported result, so replayed as
   written it would report the recorded draw's.
-* **A spline's k on a fresh draw** (:func:`rule_forms`): a spline whose k the server set by
-  Harrell's rule records the effective sample size the rule read on the analyzed rows. Once the
-  rebuild's result stages are computed, the rule is read again on the new draw's rows as the engine
-  records it, and where it reads another size than the record states (compared as the engine
-  compares a form with its card) the rebuild is refused, since the record's k and size would be
-  replayed as recorded. A form's cut points and knot places are not in its record: the form step
-  learns them on the rows the fit reads, and declared categories' cut points are the analyst's.
+* **A spline's k on a fresh draw** (:func:`fresh_splines`): a spline whose k the server set by
+  Harrell's rule records the effective sample size the rule read on the analyzed rows when it was
+  declared. Before the rebuild's result stages are waited for, once the stages the rule reads are
+  computed, the rule is read again as the engine records it (:func:`rule_forms`), on the new
+  draw's rows as the log ends, and ruled by the purpose (:func:`rule_verdict`):
+  - under inference, where the engine asks the form question again when the analyzed rows' size
+    is not the one the record states (``exposure_form.rule_stale``), another size refuses the
+    rebuild, since the record's k and size would be replayed as recorded;
+  - under prediction the engine keeps the record's k whatever the rows, so the rebuild is refused
+    only where the rule gives another k on the new draw (or reads no size). Where it gives the
+    record's k on another size, the record is replayed stating the new draw's size, its sentence
+    (which the methods text quotes) authored again as the log authors one, and the report's
+    messages give both sizes (:func:`refilled_line`; refused where the record's own sentence is not
+    the one the log authors for it now).
+  A refusal says the size was read on the rows as the log ends, and names each later record that
+  writes what those rows or their outcome are read under (an exclusion, the missing-values answer,
+  a confirmed reading; :func:`later_records`), which can change them. A form's cut points and knot
+  places are not in its record: the form step learns them on the rows the fit reads, and declared
+  categories' cut points are the analyst's.
 * **The findings rule on a fresh draw** (:func:`findings_rule`): a record tied to a finding by its
   ``finding_id`` (``apply_repair``, ``dismiss_finding``, ``defer_finding``) is left out where its
   finding does not fire on the new bytes, with every revert of a record left out: a repair answers
@@ -441,21 +453,28 @@ def _offered(finding: Mapping[str, Any], option: str) -> list[tuple[dict[str, An
             for o in finding.get("repairs") or [] if o.get("key") == option]
 
 
-def _redrawn_line(record: Any, params: Mapping[str, Any], finding: Mapping[str, Any],
-                  offer: Mapping[str, Any], before: Sequence[Any]) -> bytes:
-    """``record`` with the new draw's settings, its sentence authored again as the log authors one
-    (``voice.sentence_for`` on the state before it, then led by what had been seen when it was
-    made), every other field as recorded."""
+def _authored(record: Any, decision: Any, before: Sequence[Any], facts: Any) -> str | None:
+    """``decision``'s sentence as the log authors one for ``record`` (``voice.sentence_for`` on the
+    state before it, then led by what had been seen when it was made; ``DecisionLog.append``)."""
     from turbotab.core import voice
-    from turbotab.core.decisions import decided_early, disclose, fold, record_line
+    from turbotab.core.decisions import decided_early, disclose, fold
 
-    decision = record.decision.model_copy(update={"params": dict(params)})
-    text = voice.sentence_for(decision, fold(list(before)), {"finding": finding, "repair": offer})
+    text = voice.sentence_for(decision, fold(list(before)), facts)
     if isinstance(text, str) and record.early:
         text = decided_early(text, record.early)
     text = disclose(text, post_seal=record.post_seal, after_estimates=record.after_estimates)
-    again = record.model_copy(update={"decision": decision,
-                                      "sentence": text if text and text.strip() else None})
+    return text if text and text.strip() else None
+
+
+def _redrawn_line(record: Any, params: Mapping[str, Any], finding: Mapping[str, Any],
+                  offer: Mapping[str, Any], before: Sequence[Any]) -> bytes:
+    """``record`` with the new draw's settings, its sentence authored again as the log authors one
+    (:func:`_authored`), every other field as recorded."""
+    from turbotab.core.decisions import record_line
+
+    decision = record.decision.model_copy(update={"params": dict(params)})
+    text = _authored(record, decision, before, {"finding": finding, "repair": offer})
+    again = record.model_copy(update={"decision": decision, "sentence": text})
     return record_line(again).rstrip(b"\n")
 
 
@@ -617,47 +636,215 @@ def _size(n: float) -> str:
     return f"{n:,.0f}" if abs(n - round(n)) < 1e-9 else f"{n:,.1f}"
 
 
-def rule_forms(service: Any, pid: str) -> list[str]:
+# The stages a spline's rule reads its rows through, waited for before it is read on a fresh draw:
+# the form card (and the stages before it), and the split, whose rows the rule reads under
+# prediction (``exposure_form._n_effective``; ``ProjectService.analyzed_rows``).
+RULE_STAGES = ("forms", "split")
+
+
+@dataclasses.dataclass(frozen=True)
+class RuleRead:
+    """A standing spline whose k the server set by Harrell's rule, read again on a fresh draw
+    (:func:`rule_forms`): the record that gives the column its form (its ``seq`` and ``kind``;
+    None when no live record does), the k and the effective sample size it states, the rule's k
+    and size on this draw's rows as the log ends (``read`` None where the rule reads none), and
+    the later records those rows are read under (:func:`later_records`), as (seq, kind)."""
+
+    column: str
+    seq: int | None
+    kind: str | None
+    knots: int | None
+    said: float | None
+    k: int | None
+    read: float | None
+    later: tuple[tuple[int, str], ...] = ()
+
+
+def later_records(records: Sequence[Any], seq: int, reads: set[str]) -> tuple[tuple[int, str], ...]:
+    """The live records after ``seq`` that write a slot in ``reads`` (what the rule's size is read
+    on: the rows and their outcome; :func:`rule_forms`), as (seq, kind): a revert by
+    the record it withdraws, when that one was recorded before ``seq`` (one withdrawing a later
+    record leaves the rows as they were)."""
+    from turbotab.core.decisions import reverted
+
+    withdrawn = reverted(records)
+    by_id = {r.id: r for r in records}
+    out: list[tuple[int, str]] = []
+    for r in sorted(records, key=lambda r: r.seq):
+        if r.seq <= seq or r.id in withdrawn:
+            continue
+        decision = r.decision
+        if decision.kind == "revert":
+            target = by_id.get(decision.decision_id)
+            if target is None or target.seq > seq:
+                continue
+            decision = target.decision
+        if _writes(decision, reads) & reads:
+            out.append((r.seq, r.decision.kind))
+    return tuple(out)
+
+
+def _by_rule(spec: Any) -> dict[str, Any] | None:
+    """A declared form as a dict, when it is a spline whose k the server set by Harrell's rule
+    (``knots_rule`` "harrell"); else None."""
+    from turbotab.core.methods import exposure_form as ef
+
+    if isinstance(spec, str) or spec is None:
+        return None
+    given = spec.model_dump() if hasattr(spec, "model_dump") else dict(spec)
+    by_rule = given.get("form") in ef.SPLINE_FORMS and given.get("knots_rule") == "harrell"
+    return given if by_rule else None
+
+
+def rule_forms(service: Any, pid: str) -> list[RuleRead]:
     """Each standing spline of the project ``pid`` whose k the server set by Harrell's rule
-    (``knots_rule`` "harrell") and whose record states an effective sample size the rule does not
-    read on these rows, said: the rule read again as the engine records it now
-    (``exposure_form.complete_spec`` under the project's decision context) and compared as the
-    engine compares a form's size with the form card's (``exposure_form.rule_stale``). A fresh
-    draw replays the record's k and size as recorded, so the caller refuses it (module
-    docstring)."""
+    (``knots_rule`` "harrell"), read again: the rule as the engine records it now
+    (``exposure_form.complete_spec`` under the project's decision context, on the rows as the log
+    ends), beside the k and size the record states (module docstring). The caller waits for
+    :data:`RULE_STAGES` first."""
     from turbotab.core.decisions import Refusal, reverted
     from turbotab.core.methods import exposure_form as ef
 
     records = sorted(service.log(pid).records(), key=lambda r: r.seq)
     withdrawn = reverted(records)
+    graph = service.engine.graph
+    # What the rule's size is read on: the rows and the outcome the stages before the form card
+    # compute, and the outcome's task and event, which the rule reads itself.
+    reads = {s for name in graph.upstream("forms") for s in graph[name].reads}
+    reads |= {"target", "task", "event"}
     ctx = service.decision_context(pid)
-    out: list[str] = []
+    out: list[RuleRead] = []
     for column, spec in ef.current_forms(ctx.state).items():
-        given = spec.model_dump() if hasattr(spec, "model_dump") else dict(spec)
-        if given.get("form") not in ef.SPLINE_FORMS or given.get("knots_rule") != "harrell":
+        given = _by_rule(spec)
+        if given is None:
             continue
         try:
             again = ef.complete_spec(column, given, ctx)
         except Refusal:  # the rule cannot read these rows: the record's size is not certified
             again = {"knots": None, "n_effective": None}
-        said, read = given.get("n_effective"), again.get("n_effective")
-        if not ef.rule_stale(given, {"n_effective": read}) and not (read is None and
-                                                                    said is not None):
-            continue
         last = [r for r in records if r.id not in withdrawn and (
             (r.decision.kind == "set_exposure_form" and r.decision.column == column)
             or (r.decision.kind == "set_forms" and column in r.decision.forms))]
-        where = f"Record {last[-1].seq} ({last[-1].decision.kind})" if last else "The plan"
-        before = (f"k = {given.get('knots')} on an effective sample size of {_size(said)}"
-                  if said is not None else
-                  f"k = {given.get('knots')} with no effective sample size read")
-        now = (f"{_size(read)} (k = {again.get('knots')})" if read is not None else
-               "no effective sample size")
-        out.append(f"{where} gives `{column}` a spline whose k is Harrell's rule on the analyzed "
-                   f"rows: {before} on the recorded draw, and on this draw the rule reads {now}. "
-                   f"A fresh draw replays the record's k and the size it states as recorded, so "
-                   f"the rebuild is refused.")
+        record = last[-1] if last else None
+        read = again.get("n_effective")
+        out.append(RuleRead(
+            column=column, seq=record.seq if record else None,
+            kind=record.decision.kind if record else None, knots=given.get("knots"),
+            said=given.get("n_effective"), k=again.get("knots") if read is not None else None,
+            read=read, later=later_records(records, record.seq, reads) if record else ()))
     return out
+
+
+def rule_verdict(r: RuleRead, purpose: str | None) -> tuple[str, str | None]:
+    """What a fresh draw does with the spline ``r`` (module docstring), and its sentence:
+    ``("kept", None)`` where the rule reads the size the record states (under prediction, also
+    where neither states one); ``("refilled", …)`` under prediction, where the rule reads another
+    size that gives the record's k; ``("refused", …)`` otherwise: under prediction another k or no
+    size read, under inference any other size (``exposure_form.rule_stale``)."""
+    from turbotab.core.methods import exposure_form as ef
+    from turbotab.core.voice import listing
+
+    given = {"form": "spline", "knots_rule": "harrell", "n_effective": r.said}
+    other = r.read is None and r.said is not None
+    if not other and not ef.rule_stale(given, {"n_effective": r.read}):
+        return "kept", None
+    where = f"Record {r.seq} ({r.kind})" if r.seq is not None else "The plan"
+    before = (f"k = {r.knots} on an effective sample size of {_size(r.said)}"
+              if r.said is not None else f"k = {r.knots} with no effective sample size read")
+    now = f"{_size(r.read)} (k = {r.k})" if r.read is not None else "no effective sample size"
+    after = ""
+    if r.later:
+        named = listing([f"{seq} ({kind})" for seq, kind in r.later], limit=len(r.later),
+                        ticked=False)
+        after = (f", after {'record' if len(r.later) == 1 else 'records'} {named}, which can "
+                 f"change them")
+    said = (f"{where} gives `{r.column}` a spline whose k is Harrell's rule on the analyzed rows: "
+            f"{before} on the recorded draw, and on this draw the rule reads {now} on the rows as "
+            f"the log ends{after}.")
+    if purpose == "prediction" and r.read is not None and r.seq is not None:
+        if r.k == r.knots:
+            was = f"in place of {_size(r.said)}" if r.said is not None else "where it stated none"
+            return "refilled", (f"{said} Under prediction the record's k is replayed as recorded, "
+                                f"and it is the rule's on this draw too, so the record is replayed "
+                                f"stating this draw's size, {_size(r.read)}, {was}.")
+        return "refused", (f"{said} Under prediction a fresh draw replays the record's k as "
+                           f"recorded, not the rule's on this draw, so the rebuild is refused.")
+    return "refused", (f"{said} A fresh draw replays the record's k and the size it states as "
+                       f"recorded, so the rebuild is refused.")
+
+
+def refilled_line(record: Any, sizes: Mapping[str, float], before: Sequence[Any],
+                  facts: Any) -> bytes:
+    """``record`` (a ``set_exposure_form`` or ``set_forms``) with each column of ``sizes`` stating
+    that effective sample size, its sentence authored again (:func:`_authored`; ``before``, the
+    records before it; ``facts``, what the sentence reads, as the server's ``SentenceFacts``),
+    every other field as recorded. Right or refused: raises :class:`Refused` where the record's own
+    sentence is not the one authored again on its own size, since then more than the size would
+    change."""
+    from turbotab.core.decisions import record_line
+
+    d = record.decision
+    if d.kind == "set_exposure_form":
+        decision = d.model_copy(update={"n_effective": float(sizes[d.column])})
+    else:
+        forms = dict(d.forms)
+        for column, n in sizes.items():
+            spec = forms[column]
+            forms[column] = (spec.model_copy(update={"n_effective": float(n)})
+                             if hasattr(spec, "model_copy") else {**spec, "n_effective": float(n)})
+        decision = d.model_copy(update={"forms": forms})
+    if record.sentence is not None and _authored(record, d, before, facts) != record.sentence:
+        raise Refused(f"Record {record.seq} ({d.kind})'s sentence is not the one the log authors "
+                      f"for it now, so it cannot be said again stating this draw's size: the "
+                      f"rebuild is refused.")
+    text = _authored(record, decision, before, facts) if record.sentence is not None else None
+    again = record.model_copy(update={"decision": decision, "sentence": text})
+    return record_line(again).rstrip(b"\n")
+
+
+def fresh_splines(service: Any, pid: str, written: Path, log: bytes, timeout: float
+                  ) -> tuple[bytes, list[str]]:
+    """The spline rule on the project ``pid`` (made from a fresh draw; its log ``log``, at
+    ``written``), as the module docstring says: once the stages the rule reads are computed
+    (:data:`RULE_STAGES`), each spline the rule set is read again (:func:`rule_forms`) and ruled
+    (:func:`rule_verdict`); a record whose size is refilled is written again
+    (:func:`refilled_line`) and the engine told. Returns the log as written and the sentences of
+    the refilled records; raises :class:`Refused` for a spline the rule refuses."""
+    from turbotab.core.decisions import fold
+    from turbotab.core.methods import exposure_form as ef
+    from turbotab.server.service import SentenceFacts
+
+    lines = log_lines(log)
+    state = fold([r for r, _ in lines])
+    if not any(_by_rule(f) for f in ef.current_forms(state).values()):
+        return log, []
+    _wait(service, pid, RULE_STAGES, timeout)
+    refused: list[str] = []
+    said: list[str] = []
+    sizes: dict[int, dict[str, float]] = {}
+    for r in rule_forms(service, pid):
+        verdict, text = rule_verdict(r, state.purpose)
+        if verdict == "refused":
+            refused.append(str(text))
+        elif verdict == "refilled":
+            said.append(str(text))
+            sizes.setdefault(int(r.seq), {})[r.column] = float(r.read)
+    if refused:
+        raise Refused(" ".join(refused))
+    if not sizes:
+        return log, []
+    ctx = service.decision_context(pid)
+    out: list[tuple[Any, bytes]] = []
+    for i, (record, line) in enumerate(lines):
+        if record.seq in sizes:
+            before = [x for x, _ in lines[:i]]
+            line = refilled_line(record, sizes[record.seq], before,
+                                 SentenceFacts(ctx, record.decision, before))
+        out.append((record, line))
+    again = join_lines(out)
+    written.write_bytes(again)
+    service.engine.on_decision(pid)
+    return again, said
 
 
 @dataclasses.dataclass(frozen=True)
@@ -781,8 +968,9 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
     """Replay ``bundle`` (module docstring). Never raises for a refusal or a failed comparison:
     the report says which. ``cut``: True truncates the log by its purpose, or names the kind to cut
     before (:func:`truncate`); ``fresh``: rebuild on a fresh draw (:class:`FreshDraw`), refused
-    for a log with a live opening left uncut and for a spline whose rule reads another size on the
-    new draw. Either rebuilds without comparing (``finished`` and ``estimates_again``)."""
+    for a log with a live opening left uncut and for a spline the rule rules out on the new draw
+    (:func:`fresh_splines`). Either rebuilds without comparing (``finished`` and
+    ``estimates_again``)."""
     started = time.monotonic()
     report = ReplayReport(bundle=str(bundle), reproduced=False)
     rebuild = bool(cut) or fresh is not None
@@ -857,11 +1045,11 @@ def run(bundle: str | Path, *, data: str | None = None, files: Mapping[str, str]
         records = service.log(meta.id).records()
         report.decisions = len(records)
         service.engine.on_decision(meta.id)
-        _wait(service, meta.id, gate.result_stages(fold(records)), timeout)
         if fresh is not None:
-            stale = rule_forms(service, meta.id)
-            if stale:
-                raise Refused(" ".join(stale))
+            # The spline rule, read before the result stages are waited for (module docstring).
+            log, refilled = fresh_splines(service, meta.id, written, log, timeout)
+            report.messages.extend(refilled)
+        _wait(service, meta.id, gate.result_stages(fold(records)), timeout)
         source = service.export_source(meta.id)
         # A rebuild is not the recorded analysis: its bundle is assembled as it stands, ungated.
         again = contents(source, gated=not rebuild)
@@ -1009,8 +1197,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = ["CUT_KINDS", "Cut", "EstimateCheck", "FINDING_KINDS", "FreshDraw", "FreshDrawCheck",
-           "InputCheck", "LeftOut", "MatrixCheck", "Redrawn", "Refused", "ReplayReport", "Ruled",
-           "close", "compare", "compare_estimates", "findings_inputs", "findings_rule",
-           "fresh_findings", "fresh_table", "join_lines", "live_record", "load_bundle", "log_lines",
-           "main", "refuse_live_opening", "rule_forms", "run", "summary", "truncate",
-           "verify_inputs", "write_draw"]
+           "InputCheck", "LeftOut", "MatrixCheck", "RULE_STAGES", "Redrawn", "Refused",
+           "ReplayReport", "RuleRead", "Ruled", "close", "compare", "compare_estimates",
+           "findings_inputs", "findings_rule", "fresh_findings", "fresh_splines", "fresh_table",
+           "join_lines", "later_records", "live_record", "load_bundle", "log_lines", "main",
+           "refilled_line", "refuse_live_opening", "rule_forms", "rule_verdict", "run", "summary",
+           "truncate", "verify_inputs", "write_draw"]

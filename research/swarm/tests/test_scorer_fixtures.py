@@ -15,8 +15,9 @@ the engine: statsmodels' least squares, the logs' own lines.
   probability would misreport; a metabolite panel exported features-in-rows and turned; a plan
   whose outcome is analyzed on the log scale (``ln_albumin_g_dl``), whose model predicts the log;
   and, from a plan fit on complete cases, new rows with a blank in a predictor its pipeline does
-  not fill, the columns named and the rows counted (the same rows with no blank are scored as
-  statsmodels' Logit).
+  not fill, the columns named with "or", each with its rows blank (pandas), and the rows blank in
+  any of them counted, on rows blank in different columns and on rows blank in both (the same
+  rows with no blank are scored as statsmodels' Logit).
 
 Each plan is built the first time a test asks for it, so a test run by name pays for its own.
 
@@ -457,14 +458,40 @@ def test_a_complete_case_plan_refuses_new_rows_with_a_blank_it_does_not_fill(pla
     blank.loc[blank.index % 5 == 0, "hemoglobin_g_dl"] = np.nan
     blank.loc[3, "age"] = np.nan
     count = int(blank[predictors].isna().any(axis=1).sum())
-    assert count == 11
+    per = {c: int(blank[c].isna().sum()) for c in ("age", "hemoglobin_g_dl")}
+    assert count == 11 and per == {"age": 1, "hemoglobin_g_dl": 10}
+    assert not blank[list(per)].isna().all(axis=1).any()  # no row is blank in both
     with pytest.raises(scorer.ScoreRefused) as refused:
         scorer.predict_in(home, pid, blank, workers=2)
     assert refused.value.message.startswith(
-        f"{count} of the 50 new rows hold a blank in `age` and `hemoglobin_g_dl`, predictors the "
-        f"plan's fitted pipeline does not fill")
+        f"{count} of the 50 new rows hold a blank in `age` ({per['age']} row) or "
+        f"`hemoglobin_g_dl` ({per['hemoglobin_g_dl']} rows), predictors the plan's fitted pipeline "
+        f"does not fill")
     assert "`complete_case`" in refused.value.message
+    both = blank.copy()  # two rows blank in both columns: counted once among the rows
+    both.loc[[0, 5], "age"] = np.nan
+    count = int(both[predictors].isna().any(axis=1).sum())
+    per = {c: int(both[c].isna().sum()) for c in ("age", "hemoglobin_g_dl")}
+    assert count == 11 and per == {"age": 3, "hemoglobin_g_dl": 10}
+    with pytest.raises(scorer.ScoreRefused, match=(
+            rf"^{count} of the 50 new rows hold a blank in `age` \({per['age']} rows\) or "
+            rf"`hemoglobin_g_dl` \({per['hemoglobin_g_dl']} rows\), predictors the plan's")):
+        scorer.predict_in(home, pid, both, workers=2)
     empty = new.assign(hemoglobin_g_dl=np.nan)  # no value to read: blanks, not text
     with pytest.raises(scorer.ScoreRefused, match=r"^50 of the 50 new rows hold a blank in "
                                                   r"`hemoglobin_g_dl`, a predictor the plan's"):
         scorer.predict_in(home, pid, empty, workers=2)
+
+
+def test_the_columns_with_a_blank_are_said_with_or_each_with_its_rows():
+    """Blanks in five columns, the i-th blank in its first i rows (counted by construction): the
+    first three said with their rows, the rest counted, joined by "or"; one column alone is just
+    named (its rows are the sentence's count)."""
+    from turbotab.core.export import scorer
+
+    names = ["a", "b", "c", "d", "e"]
+    frame = pd.DataFrame({c: [np.nan] * (i + 1) + [1.0] * (9 - i) for i, c in enumerate(names)})
+    assert [int(frame[c].isna().sum()) for c in names] == [1, 2, 3, 4, 5]
+    assert scorer._blank_in(names, frame) == "`a` (1 row), `b` (2 rows), `c` (3 rows) or 2 more"
+    assert scorer._blank_in(names[:2], frame) == "`a` (1 row) or `b` (2 rows)"
+    assert scorer._blank_in(["c"], frame) == "`c`"

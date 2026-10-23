@@ -26,7 +26,8 @@ module does not apply), a family the fit did not keep, more than one family with
 or design not computed, new rows without a predictor that is a column of the table (each named),
 new rows whose predictor reads as text where the plan's read numbers, or the reverse, and new rows
 holding a blank in a predictor the fitted pipeline does not fill (a plan fit on complete cases holds
-no imputer), the columns named and the rows with a blank counted, before anything is predicted.
+no imputer), the columns named, the rows with a blank in any of them counted, and each column's
+rows with a blank beside it, before anything is predicted.
 """
 from __future__ import annotations
 
@@ -88,6 +89,23 @@ def _same(a: pd.Series, b: pd.Series) -> bool:
     if _kind(a) == "number" and _kind(b) == "number":
         return bool(np.array_equal(av.astype(float), bv.astype(float)))
     return bool(np.array_equal(av.astype(str), bv.astype(str)))
+
+
+def _blank_in(columns: Sequence[str], frame: pd.DataFrame, limit: int = 4) -> str:
+    """The columns of ``frame`` with a blank, joined by "or", each with the rows blank in it when
+    there are several (a row blank in two is counted under each): ```a```, or ```a`` (1 row) or
+    ``b`` (10 rows)``, the fourth and later said as ``or 3 more``."""
+    from turbotab.core.voice import plural, tick
+
+    if len(columns) == 1:
+        return tick(columns[0])
+    shown = []
+    for c in columns:
+        n = int(frame[c].isna().sum())
+        shown.append(f"{tick(c)} ({n:,} {plural(n, 'row')})")
+    if len(shown) > limit:
+        shown = shown[: limit - 1] + [f"{len(shown) - (limit - 1)} more"]
+    return ", ".join(shown[:-1]) + " or " + shown[-1]
 
 
 def _columns(parquet: str | Path) -> list[str]:
@@ -201,7 +219,8 @@ def predict(service: Any, pid: str, rows: pd.DataFrame | str | Path, *,
         why = (f"its missing-values answer is `{answer}`" if answer else
                "it was given no missing-values answer")
         raise ScoreRefused(f"{count:,} of the {len(new):,} new rows "
-                           f"{'holds' if count == 1 else 'hold'} a blank in {listing(blank)}, "
+                           f"{'holds' if count == 1 else 'hold'} a blank in "
+                           f"{_blank_in(blank, new)}, "
                            f"{'a predictor' if len(blank) == 1 else 'predictors'} the plan's "
                            f"fitted pipeline does not fill: it holds no imputer ({why}). Nothing "
                            f"was predicted.")
