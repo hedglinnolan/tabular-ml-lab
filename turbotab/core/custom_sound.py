@@ -28,9 +28,11 @@ The sources quoted here, read on 2026-10-03:
 """
 from __future__ import annotations
 
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Callable, Literal, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
+
+from turbotab.core import claims
 
 Purpose = Literal["prediction", "inference"]
 Verdict = Literal["sound", "conditional", "unsound"]
@@ -90,7 +92,10 @@ Row = tuple[str, str, str, str, str, Mapping[str, tuple[str, str]], Mapping[str,
 
 
 def _build(question: str, purpose: str | None, rows: Sequence[Row], customary_first: str,
-           tensions: Mapping[str, str], keys: Sequence[str] | None = None) -> LabeledQuestion:
+           tensions: Mapping[str, str | Callable[[], str]],
+           keys: Sequence[str] | None = None) -> LabeledQuestion:
+    """The labeled question. A tension given as a function is a claim's sentence, rendered only
+    when it is the one shown, so the claims render log lists only what the person reads."""
     p = purpose if purpose in PURPOSES else "prediction"
     chosen = [r for r in rows if keys is None or r[0] in keys]
     chosen.sort(key=lambda r: r[6][p])
@@ -100,6 +105,8 @@ def _build(question: str, purpose: str | None, rows: Sequence[Row], customary_fi
                for k, label, field, text, source, sound, _ in chosen]
     first = options[0].key if options else None
     tension = tensions.get(p) if first is not None and first != customary_first else None
+    if callable(tension):
+        tension = tension()
     return LabeledQuestion(question=question, purpose=p, options=options,
                            customary_first=customary_first, tension=tension)
 
@@ -193,8 +200,9 @@ def missing(purpose: str | None) -> LabeledQuestion:
         "inference": ("Complete cases are the field's habit; when the blanks depend on measured "
                       "variables they may be biased, and multiple imputation with the outcome is "
                       f"sounder ({STERNE})."),
-        "prediction": ("Complete cases are the field's habit, but a new row with a blank cannot be "
-                       f"scored; a fill learned in each training fold without the outcome can ({SISK})."),
+        # Its claim's words (``missing.fold_fill_first_under_prediction``, citing SISK).
+        "prediction": lambda: claims.card("missing.fold_fill_first_under_prediction",
+                                          {"purpose": "prediction"}),
     }
     return _build("missing", purpose, rows, "complete_case", tensions)
 
@@ -324,8 +332,9 @@ def exclusions(purpose: str | None, offered: Sequence[str] | None = None) -> Lab
     tensions = {
         "inference": ("Fixed kcal cut-offs are the field's habit; they are not individualized, so "
                       f"the every-row analysis is reported beside the screen ({BANNA})."),
-        "prediction": ("Screens are the field's habit; under prediction the people they remove will "
-                       "still be scored, so keeping every row comes first."),
+        # Its claim's words (``exclusions.every_row_first_under_prediction``).
+        "prediction": lambda: claims.card("exclusions.every_row_first_under_prediction",
+                                          {"purpose": "prediction"}),
     }
     return _build("exclusions", purpose, EXCLUSION_ROWS, "willett_2013_by_sex", tensions, keys)
 

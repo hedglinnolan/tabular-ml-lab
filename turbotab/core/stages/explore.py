@@ -49,6 +49,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
+from turbotab.core import claims
 from turbotab.core.graph import Bundle, StageContext
 from turbotab.core.stages.data import open_store
 
@@ -61,7 +62,9 @@ EXPLORE_READS: tuple[str, ...] = ("target", "purpose", "task", "event", "outcome
 MAX_SHOWN = 12  # BLUEPRINT §11 rule 3: wide data shows what the choice touched (≤ 12)
 BINS = 10
 RARE_CLASS = 0.20  # a convention: the rarer class below a fifth of the rows is called rare here
-COLLINEAR = 0.90  # |r| at or above this, a nearly collinear pair (a convention)
+# |r| at or above this, a nearly collinear pair (a convention): its claim's parameter
+# (``turbotab/core/claims/models.py``, package 6a).
+COLLINEAR = claims.value("explore.collinear_pair", "collinear")
 MAX_PAIRS_P = 500  # beyond this many numeric predictors the pair scan is skipped, and says so
 GROUP_GAP = 0.05  # a missing-share gap across groups at or above 5 points is called out
 FORKING = "Gelman & Loken 2013"
@@ -455,8 +458,7 @@ def explore_stage(ctx: StageContext) -> Bundle:
     if pairs:
         findings.append(ExploreFinding(
             id="explore::collinear", kind="collinear",
-            summary=f"{len(pairs):,} pair{'s' if len(pairs) != 1 else ''} of predictors move almost "
-                    f"together (|r| ≥ {COLLINEAR:g})",
+            summary=collinear_summary(len(pairs)),
             columns=sorted({c for a, b, _ in pairs[:MAX_SHOWN] for c in (a, b)}),
             view="relationship",
             detail="; ".join(f"`{a}` and `{b}`: r = {r:.2f}" for a, b, r in pairs[:MAX_SHOWN]),
@@ -703,6 +705,13 @@ def _collinear_lever(state: Any, *, wide: bool = False) -> Lever:
         LeverOption(key="by_hand", label="Leave one out by hand",
                     customary="Common practice",
                     sound="Outside the resampling when chosen on these rows", rung="rank_lower")])
+
+
+def collinear_summary(n_pairs: int) -> str:
+    """The collinear finding's summary: the pairs counted, then its claim's words
+    (``explore.collinear_pair``), rendered in the stage so the claims render log holds them."""
+    return (f"{n_pairs:,} pair{'s' if n_pairs != 1 else ''} of predictors "
+            + claims.card("explore.collinear_pair"))
 
 
 def _collinear(frame: pd.DataFrame, numeric: Sequence[str]) -> list[tuple[str, str, float]]:
