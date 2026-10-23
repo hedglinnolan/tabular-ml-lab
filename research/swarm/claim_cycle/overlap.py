@@ -1,0 +1,83 @@
+"""The prior-driven share (SWARM_PLAN §9, the plumbing test's pre-stated outputs): how much of what
+the theorist proposed from the corpus it also proposed from the shuffled copy, whose markers carry
+no dataset's own.
+
+    python -m research.swarm.claim_cycle.overlap --real <proposals.jsonl> --shuffled <proposals.jsonl>
+
+Each file's proposals are read through the validator (``proposal.read_proposals``); a file holding
+one the validator refuses is refused, and no share is given. Two proposals **match** where they
+name the same decision, the same set of live-marker names in their regions (thresholds and
+comparisons ignored, the markers' order too) and the same direction. Proposals of one file that
+match one another are one distinct proposal.
+
+**The share** is the share of the real corpus's distinct proposals that match a proposal from the
+shuffled copy: a high share means the proposals come from the theorist's prior, not the data. Its
+denominator is the real corpus's, so the planted effect, carried by the shuffled copy alone, cannot
+dilute it. With no proposal from the real corpus there is no share, and it is refused; with none
+from the copy, it is 0. The report gives both files' counts of proposals and of distinct ones, the
+matched keys, the share and a sentence saying it, in numbers interpolated from these counts.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from typing import Any, Callable, Iterable, Sequence
+
+from research.swarm.claim_cycle import proposal as P
+
+Key = tuple[str, frozenset[str], str]
+
+
+class OverlapRefused(ValueError):
+    """No share can be given, in words."""
+
+
+def key(p: P.Proposal) -> Key:
+    """What two proposals match on: the decision, the set of live-marker names, the direction."""
+    return (p.decision, frozenset(b.marker for b in p.region), p.direction)
+
+
+def _shown(k: Key) -> dict[str, Any]:
+    return {"decision": k[0], "markers": sorted(k[1]), "direction": k[2]}
+
+
+def _order(k: Key) -> tuple[str, list[str], str]:
+    return (k[0], sorted(k[1]), k[2])
+
+
+def overlap(real: Iterable[P.Proposal], shuffled: Iterable[P.Proposal]) -> dict[str, Any]:
+    """The share (the module docstring), with the counts it is read from."""
+    real, shuffled = list(real), list(shuffled)
+    mine, theirs = {key(p) for p in real}, {key(p) for p in shuffled}
+    if not mine:
+        raise OverlapRefused("The real corpus's cycle proposed nothing, so no share of its "
+                             "proposals can be prior-driven; there is no share.")
+    matched = sorted(mine & theirs, key=_order)
+    share = len(matched) / len(mine)
+    return {"real": {"proposals": len(real), "distinct": len(mine)},
+            "shuffled": {"proposals": len(shuffled), "distinct": len(theirs)},
+            "matched": [_shown(k) for k in matched], "share": share,
+            "says": (f"{len(matched)} of the {len(mine)} distinct proposals from the real corpus "
+                     f"(matched on the decision, the set of live-marker names and the direction) "
+                     f"{'was' if len(matched) == 1 else 'were'} also proposed from the shuffled "
+                     f"copy.")}
+
+
+def main(argv: Sequence[str] | None = None, out: Callable[[str], Any] = print) -> int:
+    parser = argparse.ArgumentParser(prog="python -m research.swarm.claim_cycle.overlap",
+                                     description=__doc__.split("\n\n")[0])
+    parser.add_argument("--real", required=True, help="the proposals from the corpus")
+    parser.add_argument("--shuffled", required=True, help="the proposals from the shuffled copy")
+    args = parser.parse_args(argv)
+    try:
+        body = overlap(P.read_proposals(args.real), P.read_proposals(args.shuffled))
+    except (P.ProposalRefused, OverlapRefused) as exc:
+        out(json.dumps({"refused": str(exc)}, ensure_ascii=False))
+        return 1
+    out(json.dumps(body, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
