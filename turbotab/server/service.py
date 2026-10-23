@@ -2619,9 +2619,10 @@ class ProjectService:
     def _flow_counts(self, pid: str) -> dict[str, Any]:
         """The counts the participant flow has now, by the decision kind whose sentence states them
         (EXPORT; ``voice.restated_counts``): the complete cases kept of the rows before them, and
-        each exclusion rule's rows. Empty while the flow is being computed: the sentences stay as
-        said."""
-        from turbotab.core.stages.rows import rule_drops
+        each exclusion rule's rows and, of those, the rows it could not confirm (a level rule's
+        sentence counts them apart, as its live sentence does: the package 4 verifier's V8).
+        Empty while the flow is being computed: the sentences stay as said."""
+        from turbotab.core.stages.rows import rule_drops, rule_unconfirmed
 
         cohort = self._fresh(pid, "cohort", public=True)
         steps = cohort.get("steps") if isinstance(cohort, dict) else None
@@ -2642,7 +2643,8 @@ class ProjectService:
                                   "row_ids": self._cohort_ids(pid, self.engine.status(pid)),
                                   "analyzed_columns": analyzed_columns(state)}
         if any(str(s.get("key")).startswith("exclusion:") for s in steps):
-            out["set_exclusions"] = {"exclusion_counts": rule_drops(steps)}
+            out["set_exclusions"] = {"exclusion_counts": rule_drops(steps),
+                                     "exclusion_unconfirmed": rule_unconfirmed(steps)}
         return out
 
     # ── stages and jobs ──

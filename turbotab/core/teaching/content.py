@@ -1084,8 +1084,11 @@ SPLIT = {
         option("0.3", "Hold out 30%",
                "Nearly a third is sealed: a steadier final score, fewer rows to train."),
         # SWARM_PLAN §8: the temporal seal by cut-point (decisions.CutPoint; claim seal.cut_point).
+        # Said for every basis: a unit is held out whole only where the seal groups rows by it
+        # (seal.cut_point_units), and the seal card says so beside a grouped basis (SealQuestions'
+        # cutLine); under any other the rows are held out one by one (the package 4 verifier's W1).
         option("cut", "Hold out by cut-point",
-               "Rows at or after a time value you name are sealed, each unit kept whole."),
+               "Rows at or after a time value you name are sealed."),
     ],
     "terms": [
         term("holdout", "Rows set aside before any modeling and scored once, at the end; the "

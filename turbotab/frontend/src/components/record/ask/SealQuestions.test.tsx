@@ -305,8 +305,9 @@ describe("the cut-point option's line", () => {
       reason: "",
       options: [{ holdout: 0.2, label: "Hold out 20%", measures: "" }],
     }) as unknown as SealPlan;
-  // The teaching entry the server serves (core/teaching/content.py SPLIT): its cut-point line
-  // promises whole units whatever the basis, so the card does not read it.
+  // The teaching entry the server serves (core/teaching/content.py SPLIT): its cut-point line says
+  // what holds on every basis (the package 4 verifier's W1), and the card's line says more only
+  // where the basis keeps units whole, so the card does not read it.
   const served = {
     key: "split",
     title: "The seal: held-out rows",
@@ -319,19 +320,24 @@ describe("the cut-point option's line", () => {
       {
         value: "cut",
         label: "Hold out by cut-point",
-        consequence: "Rows at or after a time value you name are sealed, each unit kept whole.",
+        consequence: "Rows at or after a time value you name are sealed.",
       },
     ],
   } as unknown as TeachingEntry;
   const shown = () => screen.getByTestId("option-cut").textContent ?? "";
 
+  // The draw reads only the rows with the outcome recorded (core/seal.py `seal_inputs`' universe),
+  // so a unit whose rows at or after the cut have none trains, its earlier rows with it
+  // (core/tests/test_cut_point_seal.py draws it): the line names the rows the seal reads (W1).
   it("keeps a unit whole where the seal groups by its column", () => {
     const line = cutLine(basis("grouped", "pid") as never);
     expect(line).toBe(
-      "Rows at or after a time value you name are sealed; a `pid` seen on both sides is sealed whole.",
+      "Rows at or after a time value you name are sealed; a `pid` with the outcome recorded on " +
+        "both sides is sealed whole.",
     );
     renderSeal(null, planOn(basis("grouped", "pid")), [], served);
-    expect(shown()).toContain("a pid seen on both sides is sealed whole.");
+    expect(shown()).toContain("a pid with the outcome recorded on both sides is sealed whole.");
+    expect(shown()).not.toContain("seen on both sides");
   });
 
   it.each([

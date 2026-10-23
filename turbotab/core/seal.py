@@ -29,15 +29,17 @@ What this module decides, and where each piece runs:
   The cross-validation folds follow the same ranking (:func:`time_order`): forward chaining by whole
   unit, each fold scored by models fit on the folds before it (``turbotab/core/models/folds.py``).
 * **The temporal seal by cut-point** (SWARM_PLAN §8), in place of a share: the split names a
-  column and a value (``SplitSpec.cut_point``), and every row at or after it is held out, a unit
-  with rows on both sides held out whole by its last observation (:func:`cut_holdout`, its earlier
-  rows counted), every other analyzed row training; its sentence counts the analyzed rows, as the
-  split's own counts do. It reads its own column, not the temporal answer (which is asked only
-  when time points stay as rows), and refuses an outcome column, a value the column cannot read,
-  one that holds out nothing or leaves nothing to train, and more than
-  :data:`MAX_UNDATED_SHARE` of the rows with no readable time (:func:`cut_problem`). Its folds'
-  order is the split's own answer (``fold_order``: random, repeated or not, or time-ordered by the
-  cut-point's column), never the draw's, so the same held-out rows can be scored either way.
+  column and a value (``SplitSpec.cut_point``), and among the rows with the outcome recorded every
+  row at or after it is held out; where the seal groups rows by a unit, a unit with rows on both
+  sides is held out whole by its last observation (:func:`cut_holdout`, its earlier rows counted),
+  and every other analyzed row trains; its sentence counts the analyzed rows, as the split's own
+  counts do. It reads its own column, not the temporal answer (which is asked only when time
+  points stay as rows), and refuses an outcome column, a value the column cannot read, one that
+  holds out nothing or leaves nothing to train, and more than :data:`MAX_UNDATED_SHARE` of the
+  rows with no readable time, each judged among the rows with the outcome recorded
+  (:func:`cut_problem`). Its folds' order is the split's own answer (``fold_order``: random,
+  repeated or not, or time-ordered by the cut-point's column), never the draw's, so the same
+  held-out rows can be scored either way.
 * **What a holdout of this size can measure**: the split question's options, each with the
   precision of a held-out score on that many rows, ordered so cross-validation alone comes first
   when the usual holdout falls below a stated floor (:func:`holdout_options`). Never a refusal.
@@ -404,6 +406,8 @@ def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: 
     Units with no readable time are never held out (they train) and are counted. Units tied at
     the boundary are ordered by a seeded draw, and the sentence says so.
     """
+    from turbotab.core.voice import plural
+
     keys, dated_units, ranked, n_undated = _units_by_time(times, groups, seed)
     n = len(keys)
     mask = np.zeros(n, dtype=bool)
@@ -428,7 +432,9 @@ def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: 
     tied = train_last >= boundary_value
     tie = (f" `{int((dated_units == boundary_value).sum()):,}` {word} share that last `{column}`; "
            f"which of them are held out was drawn at random." if tied else "")
-    undated = (f" `{n_undated:,}` {word} with no readable `{column}` train and are never held out."
+    # A count of one takes a singular noun and verb (the integration fix list's item 9).
+    undated = (f" `{n_undated:,}` {plural(n_undated, word[:-1])} with no readable `{column}` "
+               f"{'trains and is' if n_undated == 1 else 'train and are'} never held out."
                if n_undated else "")
     # Audit IN-24: whole units are held out, so their earlier rows can predate training rows.
     before = (f" Whole units are held out, earlier rows included: `{n_earlier / n_held_rows:.0%}` "
@@ -638,9 +644,10 @@ def _isna(value: Any) -> bool:
 
 
 # ── the temporal seal by cut-point (SWARM_PLAN §8) ───────────────────────────
-# Beside the draw by share: every row at or after a value of a time column is held out, a unit
-# with rows on both sides held out whole (by its last observation, as ``_units_by_time`` ranks
-# units), and every other analyzed row trains. Its folds' order is the split's own answer
+# Beside the draw by share: among the rows with the outcome recorded, every row at or after a
+# value of a time column is held out (where the seal groups rows by a unit, a unit with rows on
+# both sides is held out whole, by its last observation as ``_units_by_time`` ranks units), and
+# every other analyzed row trains. Its folds' order is the split's own answer
 # (``fold_order``), never the held-out draw's, so the same held-out rows take random or
 # time-ordered folds.
 

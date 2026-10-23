@@ -2018,10 +2018,15 @@ def draw_split(
 
 
 def split_note(info: Mapping[str, Any], unit_rows: int | None = None) -> str:
-    """One plain sentence on how the rows were divided."""
+    """One plain sentence on how the rows were divided, a count of one in the singular (the
+    integration fix list's item 9)."""
+    from turbotab.core.voice import plural
+
     parts: list[str] = []
-    if info["n_holdout"]:
-        parts.append(f"`{info['n_holdout']:,}` rows are held out and `{info['n_train']:,}` train")
+    n_holdout, n_train, k = int(info["n_holdout"]), int(info["n_train"]), int(info["folds"])
+    if n_holdout:
+        parts.append(f"`{n_holdout:,}` {plural(n_holdout, 'row is', 'rows are')} held out and "
+                     f"`{n_train:,}` {plural(n_train, 'trains', 'train')}")
     else:
         parts.append(f"All `{info['n_train']:,}` rows train, checked by cross-validation")
     if info["grouped_by"]:
@@ -2029,15 +2034,15 @@ def split_note(info: Mapping[str, Any], unit_rows: int | None = None) -> str:
     if info["stratified"]:
         parts.append("with the outcome's classes in proportion")
     if info.get("cluster"):
-        sentence = (", ".join(parts) + f"; `{info['folds']}` folds, one per level of "
+        sentence = (", ".join(parts) + f"; `{k}` {plural(k, 'fold')}, one per level of "
                     f"`{info['cluster']}`, each scored by models fit on the others.")
     elif info.get("fold_scheme") == "time_ordered":
-        sentence = (", ".join(parts) + f"; `{info['folds']}` time-ordered folds, each scored by models "
-                    f"fit on the units before it.")
+        sentence = (", ".join(parts) + f"; `{k}` time-ordered {plural(k, 'fold')}, each scored by "
+                    f"models fit on the units before it.")
     elif int(info.get("repeats") or 1) > 1:
-        sentence = ", ".join(parts) + f"; `{info['folds']}` folds, drawn `{info['repeats']}` times."
+        sentence = ", ".join(parts) + f"; `{k}` {plural(k, 'fold')}, drawn `{info['repeats']}` times."
     else:
-        sentence = ", ".join(parts) + f"; `{info['folds']}` folds."
+        sentence = ", ".join(parts) + f"; `{k}` {plural(k, 'fold')}."
     extra = " ".join(info.get("notes") or [])
     return f"{sentence} {extra}".strip()
 

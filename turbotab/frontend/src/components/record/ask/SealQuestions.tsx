@@ -83,16 +83,17 @@ export function cutShown(at: number | string): string {
 
 /**
  * The cut-point option's line, which says a unit is kept whole only where the seal keeps it so:
- * under a grouped basis the draw groups rows by its column, and a unit seen on both sides of the
- * cut is held out whole (core/seal.py `seal_inputs`, `cut_holdout`; claim seal.cut_point_units);
- * under any other basis the rows are held out one by one (seal.cut_point); with no basis yet it
- * says neither. The teaching entry's line is not read: it says units are kept whole whatever the
- * basis (the package 4 verifier's V7).
+ * under a grouped basis the draw groups rows by its column, and a unit with the outcome recorded
+ * on both sides of the cut is held out whole (core/seal.py `seal_inputs`, whose draw reads only
+ * the rows with the outcome recorded, and `cut_holdout`; claim seal.cut_point_units); under any
+ * other basis the rows are held out one by one (seal.cut_point); with no basis yet it says
+ * neither. The teaching entry's line says only what holds on every basis, so it is not read (the
+ * package 4 verifiers' V7 and W1).
  */
 export function cutLine(basis: SealBasis | null | undefined): string {
   const lead = "Rows at or after a time value you name are sealed";
   if (basis?.state === "grouped" && basis.column)
-    return `${lead}; a \`${basis.column}\` seen on both sides is sealed whole.`;
+    return `${lead}; a \`${basis.column}\` with the outcome recorded on both sides is sealed whole.`;
   return basis ? `${lead}, row by row.` : `${lead}.`;
 }
 

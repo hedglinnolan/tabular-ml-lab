@@ -15,7 +15,8 @@ from turbotab.server.tests.conftest import (answer_settled, declare, open_by_pat
 CYCLES = (2011, 2013, 2015, 2017)
 
 
-def table(path) -> pd.DataFrame:
+def table(path, blanks: bool = False) -> pd.DataFrame:
+    """``blanks``: `bmi` and `DIQ010` blank on a few rows each, after the outcome is drawn."""
     rng = np.random.default_rng(2017)
     n = 480
     frame = pd.DataFrame({
@@ -28,6 +29,10 @@ def table(path) -> pd.DataFrame:
     })
     frame["LBXGLU"] = np.round(70 + 0.3 * frame["age"] + 0.8 * frame["bmi"]
                                + rng.normal(0, 8, n), 1)
+    if blanks:
+        frame.loc[rng.choice(n, 9, replace=False), "bmi"] = np.nan
+        frame["DIQ010"] = frame["DIQ010"].astype("Int64")
+        frame.loc[rng.choice(n, 11, replace=False), "DIQ010"] = pd.NA
     frame.to_csv(path, index=False)
     return frame
 
@@ -78,9 +83,13 @@ def test_a_cut_point_seal_by_cycle_on_the_rows_a_level_rule_keeps_fits_and_opens
     held = int((eligible & (frame["cycle"] >= 2017)).sum())
     assert split["n_holdout"] == held and split["n_train"] == int(eligible.sum()) - held
     assert split["chronology"]["cut_point"] == "2017" and split["fold_scheme"] == "random"
-    # Restated on the flow for the export, the refused and don't-know rows keep their own reason.
+    # Restated on the flow for the export, the refused and don't-know rows keep their own reason
+    # and their own count, as the live sentence gives them (the package 4 verifier's V8).
     text = client.get(f"/api/projects/{pid}/methods").json()["text"]
-    assert "as not confirmed eligible" in text and "or not recorded were excluded as" not in text
+    assert (f"`{at_level}` rows with `DIQ010` `1` were excluded as diagnosed diabetes, and "
+            f"`{unconfirmed}` with `DIQ010` refused (`7`), don't know (`9`) or not recorded were "
+            f"excluded as not confirmed eligible.") in text
+    assert "otherwise as not confirmed eligible" not in text
     # The seal counts the rows the exclusion leaves, as the split's own counts do (P1).
     assert split["chronology"]["sentence"].startswith(
         f"Held out by a cut-point at `2017` on `cycle`: `{held}` rows held out and "
@@ -107,3 +116,48 @@ def test_a_cut_point_seal_by_cycle_on_the_rows_a_level_rule_keeps_fits_and_opens
     assert opened.json()["state"]["seal_opened"] is True
     fit = client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]
     assert fit["holdout_sealed"] is False and fit["models"][0]["holdout"] is not None
+
+
+def test_the_methods_export_counts_a_level_rule_by_reason_and_a_range_in_all(client, tmp_path):
+    """The package 4 verifier's V8, both ways: ``GET /methods`` restates the exclusions with the
+    participant flow's counts as they stand. A level rule that names refused and don't-know codes
+    gives its rows at the excluded level apart from those it could not confirm (a blank, `7` or
+    `9`), as its live sentence does (STROBE item 13a counts each stage); a range rule before it,
+    whose blanks the flow also counts on a line of their own, still gives one total, its blanks in
+    it. Each count is pandas', over the table written, in the flow's order: the range first, then
+    the level rule on the rows the range kept."""
+    frame = table(tmp_path / "blanks.csv", blanks=True)
+    pid = open_by_path(client, tmp_path / "blanks.csv")
+    declare(pid, {"code_or_count:age": "amount", "code_or_count:cycle": "code",
+                  "code_or_count:DIQ010": "code", "code_or_count:SEQN": "code",
+                  "unit:age": "years"}, fixture="blanks.csv")
+    wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"})
+    decide(client, pid, {"kind": "set_lens", "lenses": ["clinical"]})
+    decide(client, pid, {"kind": "set_target", "column": "LBXGLU"})
+    decide(client, pid, {"kind": "set_purpose", "purpose": "prediction"})
+    bmi = {"kind": "range", "column": "bmi", "low": 20, "high": 40, "reason": "implausible bmi"}
+    levels = {"kind": "levels", "column": "DIQ010", "exclude": [1], "refused": [7],
+              "dont_know": [9], "reason": "diagnosed diabetes"}
+    view = decide(client, pid, {"kind": "set_exclusions", "rules": [bmi, levels]})
+
+    keep = frame["LBXGLU"].notna()
+    by_bmi = keep & ~frame["bmi"].between(20, 40)  # a blank bmi is not between them
+    keep &= ~by_bmi
+    code = frame["DIQ010"]
+    unconfirmed = keep & (code.isna() | code.isin([7, 9]).fillna(False))
+    keep &= ~unconfirmed
+    at_level = keep & code.eq(1).fillna(False)
+    a, b, c = int(by_bmi.sum()), int(at_level.sum()), int(unconfirmed.sum())
+    assert int(frame["bmi"].isna().sum()) == 9 and int(code.isna().sum()) == 11
+    assert min(a, b, c) > 0
+    said = (f"`{a}` rows with `bmi` outside `20`–`40` or not recorded were excluded as "
+            f"implausible bmi; `{b}` rows with `DIQ010` `1` were excluded as diagnosed diabetes, "
+            f"and `{c}` with `DIQ010` refused (`7`), don't know (`9`) or not recorded were "
+            f"excluded as not confirmed eligible, `{a + b + c}` in all.")
+    assert view["decisions"][-1]["sentence"] == said
+    wait_for(client, pid, {"cohort": "fresh"}, timeout=180)
+    steps = {s["key"]: s["dropped"]
+             for s in client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["steps"]}
+    assert steps["exclusion:0:not_recorded"] == int(frame["bmi"].isna().sum())  # its own line
+    text = client.get(f"/api/projects/{pid}/methods").json()["text"]
+    assert said in text

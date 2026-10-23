@@ -210,6 +210,32 @@ def test_chronological_by_row_when_no_unit_repeats():
     assert chronology.drawn and chronology.boundary == "8"
 
 
+@pytest.mark.parametrize("groups, undated, words", [
+    (None, 1, "`1` row with no readable `year` trains and is never held out."),
+    (None, 2, "`2` rows with no readable `year` train and are never held out."),
+    ("units", 1, "`1` unit with no readable `year` trains and is never held out."),
+    ("units", 2, "`2` units with no readable `year` train and are never held out."),
+])
+def test_the_undated_rows_or_units_of_a_chronological_draw_are_counted_in_number(groups, undated,
+                                                                                words):
+    """The integration fix list's item 9 (the package 4 verifier's V9, seal.py's older sentence):
+    the rows (or units) with no readable time, one or two by construction, take a singular noun
+    and verb at one, the plural at two."""
+    times = np.array([5.0, 1.0, 3.0, 9.0, 7.0, 2.0, 8.0, 4.0, 6.0, 10.0] + [np.nan] * undated)
+    keys = None
+    if groups == "units":  # each time a unit of two rows, a hair apart; each undated unit too
+        times = np.repeat(times, 2) - np.tile([0.5, 0.0], len(times))
+        keys = np.repeat([f"u{i}" for i in range(len(times) // 2)], 2)
+    mask, chronology = seal.chronological_holdout(times, keys, 0.3, 0, "year", dated=False)
+    word = "unit" if groups else "row"
+    assert int(np.isnan(times).sum()) == undated * (2 if groups else 1)
+    assert not mask[np.isnan(times)].any()  # they train
+    assert chronology.sentence.startswith(
+        f"The latest `3` {word}s by their last `year` are held out, from `8` on; every training "
+        f"{word}'s last `year` comes earlier.")
+    assert chronology.sentence.endswith(words) and chronology.n_undated == undated
+
+
 def test_temporal_without_a_time_column_draws_at_random_and_says_so(clinical):
     split = drawn(clinical, clinical_state(temporal=TemporalSpec(temporal=True),
                                            repeat_kind=RepeatSpec(repeat_kind="time_points")))

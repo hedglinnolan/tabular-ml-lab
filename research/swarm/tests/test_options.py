@@ -4,11 +4,14 @@ artifact offers is listed by the id the server serves, in the server's words and
 driver's own; an id or a field it does not offer is refused; ``--set`` changes only what it names.
 
 The expected ids and decisions are read off the constructed artifacts by hand, and a way
-forward's id is derived here from its decision with hashlib, independently of the module."""
+forward's id is derived here from its decision with hashlib, independently of the module. The last
+test answers a level rule through the driver's own ``answer`` path on an in-process server and
+checks the participant flow's counts against pandas."""
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 import pytest
@@ -261,6 +264,38 @@ def test_the_cut_points_scheme_carries_the_plans_words_only_for_the_folds_they_w
         "cut_point": {"column": "cycle", "at": "2017"}, "fold_order": "random"}
 
 
+def basis(state: str, column: str | None) -> dict[str, Any]:
+    """A seal plan's basis as ``seal.SealBasis`` serves it."""
+    return {"state": state, "column": column, "label": state, "sentence": "",
+            "exploratory": state in ("abandoned", "undetermined"), "source": "grain",
+            "n_units": None}
+
+
+@pytest.mark.parametrize("state, column", [("undetermined", None), ("abandoned", "pid"),
+                                           ("abandoned", None)])
+def test_the_cut_points_served_line_promises_no_whole_unit_where_the_seal_draws_by_row(state,
+                                                                                    column):
+    """The package 4 wording verifier's W1: the cut-point option's consequence is the served
+    teaching entry's (``teaching.entries``, as ``GET /teaching`` serves it, never a stand-in), and
+    under a basis that draws by row (undetermined; abandoned, by a column or by none) the seal
+    holds the rows out one by one, a unit on both sides of the cut-point
+    (``turbotab/core/tests/test_cut_point_seal.py`` draws it), so neither the served line, under
+    any purpose, nor the driver's option promises a unit kept whole."""
+    from turbotab.core import teaching
+
+    served = {}
+    for purpose in (None, "prediction", "inference"):
+        entry = next(e for e in teaching.entries(purpose)
+                     if e.key == "split").model_dump(mode="json")
+        served[purpose] = next(o for o in entry["options"] if o["value"] == "cut")["consequence"]
+        assert not re.search(r"whole|unit", served[purpose]), (purpose, served[purpose])
+        q = compose("split", {"seal_plan": {**SEAL_PLAN, "basis": basis(state, column)},
+                              "ingest": TIME_COLUMNS}, entry, target="LBXGLU")
+        cut = next(o for o in q["options"] if o["id"] == "cut")
+        assert cut["consequence"] == served[purpose]
+    assert set(served.values()) == {"Rows at or after a time value you name are sealed."}
+
+
 def test_the_roles_are_the_proposal_with_one_field_per_column():
     q = compose("roles", {"roles": ROLES}, ROLES_ENTRY, purpose="prediction")
     assert [o["id"] for o in q["options"]] == ["proposed"]
@@ -345,7 +380,9 @@ EXCLUSIONS_ENTRY = {"key": "exclusions", "question": "Is your study restricted t
                                 {"value": "sex_neutral_500_3500", "label": "500–3,500 kcal a day",
                                  "consequence": "Anyone outside 500–3,500 kcal a day is excluded."},
                                 {"value": "custom", "label": "Your own range",
-                                 "consequence": "Rows outside a range you set are excluded."}]}
+                                 "consequence": "Rows outside a range you set are excluded."},
+                                {"value": "levels", "label": "By level",
+                                 "consequence": "Rows at levels you name are excluded."}]}
 SCREEN = {"kind": "range", "column": "kcal", "low": 500.0, "high": 3500.0, "by": None,
           "reason": "implausible intake", "missing": "exclude"}
 COLUMNS = {"columns": [{"name": "__row_id", "dtype": "integer"}, {"name": "kcal", "dtype": "numeric"},
@@ -368,26 +405,34 @@ def exclusions(labeled: bool = True) -> dict[str, Any]:
 @pytest.mark.parametrize("labeled", [True, False])
 def test_the_exclusions_card_offers_every_row_each_screen_and_a_range_of_ones_own(labeled):
     """As the card offers them: keeping every row, in the teaching entry's words, under its id;
-    each screen offered with the rule it records; a range of one's own, which records nothing
-    until it is set."""
+    each screen offered with the rule it records; a range of one's own and levels of one's own
+    (SWARM_PLAN §5, the package 4 verifier's P11), each recording nothing until it is set."""
     q = exclusions(labeled)
-    assert [o["id"] for o in q["options"]] == ["none", "sex_neutral_500_3500", "custom"]
-    none, screen, custom = q["options"]
+    assert [o["id"] for o in q["options"]] == ["none", "sex_neutral_500_3500", "custom", "levels"]
+    none, screen, custom, levels = q["options"]
     assert (none["label"], none["consequence"]) == ("Keep every row",
                                                      "No row is excluded; the record says so.")
     assert none["decision"] == {"kind": "set_exclusions", "rules": []}
     assert screen["decision"] == {"kind": "set_exclusions", "rules": [SCREEN]}
     assert screen["label"] == "500–3,500 kcal a day" and screen["note"] == "Waits for the energy unit."
     assert (custom["label"], custom["decision"]) == ("Your own range", None)
+    assert (levels["label"], levels["consequence"], levels["decision"]) == (
+        "By level", "Rows at levels you name are excluded.", None)
     if labeled:  # the two labels the server gives keeping every row ride on its option
         assert none["labels"]["customary"]["text"] == "customary keep_every_row"
     else:
         assert "labels" not in none
     fields = {f["name"]: f for f in opts.public(q)["fields"]}
-    assert set(fields) == {"column", "low", "high"}
+    assert set(fields) == {"column", "low", "high", "level_column", *LEVEL_LISTS}
     # the numeric columns, never the outcome or the row id (AskFor.tsx's numericColumns)
     assert [c["value"] for c in fields["column"]["choices"]] == ["kcal", "age"]
-    assert all(f["applies_to"] == ["custom"] for f in fields.values())
+    # a level rule reads any column but the outcome and the row id (AskFor.tsx's levelColumns)
+    assert [c["value"] for c in fields["level_column"]["choices"]] == [
+        "kcal", "age", "sex", "smoker"]
+    assert {n: f["applies_to"] for n, f in fields.items()} == {
+        **{n: ["custom"] for n in ("column", "low", "high")},
+        **{n: ["levels"] for n in ("level_column", *LEVEL_LISTS)}}
+    assert all(fields[n]["initial"] is None for n in ("level_column", *LEVEL_LISTS))
 
 
 def test_a_range_of_ones_own_records_the_rule_the_card_records():
@@ -427,6 +472,68 @@ def test_a_range_without_a_bound_or_with_one_that_is_not_a_number_is_refused(set
 def test_a_range_is_set_only_on_its_own_option():
     with pytest.raises(opts.Unanswerable):
         opts.resolve(exclusions(), ["none"], ["column=age", "low=18"])
+    for other in (["exclude=1"], ["level_column=sex"]):  # a level rule's field on the range
+        with pytest.raises(opts.Unanswerable) as caught:
+            opts.resolve(exclusions(), ["custom"], ["column=age", "low=18", *other])
+        assert "does not apply to option custom" in str(caught.value)
+
+
+# Levels of one's own as the app's card records them (ChoiceQuestions.tsx's ``levelRule``, read by
+# hand): the column; the levels excluded and the codes that record a refused or a don't-know
+# answer, each a list as typed, by commas, each trimmed and a blank dropped; the card's reason; and
+# a blank, refused or don't-know answer left out as not confirmed eligible (the server's default).
+LEVEL_LISTS = ("exclude", "refused", "dont_know")
+OWN_LEVELS = {"kind": "levels", "column": "sex", "exclude": ["2"], "refused": [], "dont_know": [],
+              "reason": "not in the study population (your own levels)", "missing": "exclude"}
+
+
+def test_levels_of_ones_own_record_the_rule_the_card_records():
+    q = exclusions()
+    assert opts.resolve(q, ["levels"], ["level_column=sex", "exclude=2"]) == {
+        "kind": "set_exclusions", "rules": [OWN_LEVELS]}
+    # several levels by commas, as typed: the server compares them in one spelling (``_level_key``)
+    assert opts.resolve(q, ["levels"], ["level_column=age", "exclude= 1, 3,,", "refused=7",
+                                        "dont_know=9,99"])["rules"] == [
+        {**OWN_LEVELS, "column": "age", "exclude": ["1", "3"], "refused": ["7"],
+         "dont_know": ["9", "99"]}]
+    # a list set twice keeps the last, as a field does
+    assert opts.resolve(q, ["levels"], ["level_column=sex", "exclude=1", "exclude=2"]) == {
+        "kind": "set_exclusions", "rules": [OWN_LEVELS]}
+    assert q["options"][-1]["decision"] is None  # the offer itself unchanged
+
+
+@pytest.mark.parametrize("sets,word", [
+    ([], "--set"),  # nothing set: it records nothing by itself
+    (["exclude=1"], "level_column"),  # no column
+    (["level_column=sex"], "exclude"),  # no level excluded
+    (["level_column=sex", "refused=7"], "exclude"),
+    (["level_column=sex", "exclude=, ,"], "exclude"),  # blanks only
+    (["level_column=glucose", "exclude=1"], "level_column"),  # the outcome
+    (["level_column=__row_id", "exclude=1"], "level_column"),
+    (["level_column=height", "exclude=1"], "level_column"),  # not a column
+    (["level_column=sex", "exclude=1", "refused=1"], "`1`"),  # one level, two meanings
+    (["level_column=sex", "exclude=2,2.0"], "`2`"),  # one level twice, as the server compares
+    (["level_column=sex", "exclude=1", "dont_know=7", "refused=7.0"], "`7`"),
+    (["level_column=sex", "exclude=1", "low=1"], "low"),  # the range's bound
+])
+def test_levels_without_a_column_or_a_level_or_with_a_level_named_twice_are_refused(sets, word):
+    """The card records nothing while its rule excludes no level or names one level twice
+    (``levelRule`` returns null; ``LevelRule`` refuses it too), nor without a column it lists."""
+    with pytest.raises(opts.Unanswerable) as caught:
+        opts.resolve(exclusions(), ["levels"], sets)
+    assert word in str(caught.value), (sets, str(caught.value))
+
+
+def test_what_the_levels_option_records_the_engine_accepts():
+    """Silent: each level named once, the decision ``resolve`` builds parses as the engine's
+    eligibility rule by level, its lists as given."""
+    from turbotab.core.decisions import LevelRule, parse_decision
+
+    decision = parse_decision(opts.resolve(exclusions(), ["levels"], [
+        "level_column=sex", "exclude=1,3", "refused=7", "dont_know=9"]))
+    rule = decision.rules[0]
+    assert isinstance(rule, LevelRule) and rule.column == "sex" and rule.missing == "exclude"
+    assert (rule.exclude, rule.refused, rule.dont_know) == (["1", "3"], ["7"], ["9"])
 
 
 def test_the_estimand_offers_each_exposure_with_the_cards_measures_as_a_field():
@@ -508,3 +615,126 @@ def test_the_private_parts_are_never_printed():
     q = compose("split", {"seal_plan": SEAL_PLAN})
     assert any("_apply" in f for f in q["fields"])
     assert "_apply" not in json.dumps(opts.public(q))
+
+
+# ── Bang's population, answered through the driver and counted by the engine ─
+# Bang et al. 2009 left out the people told they have diabetes (NHANES DIQ010 1), its refused (7)
+# and don't-know (9) codes apart (SWARM_PLAN §5). The analyst records it as ``answer levels --set
+# level_column=DIQ010 --set exclude=1 --set refused=7 --set dont_know=9``: parsed by the driver's
+# own parser, composed and resolved by ``driver.chosen`` from what an in-process analyst-mode
+# server serves, and posted by ``driver.post_decision``. The participant flow's counts are checked
+# against pandas over the table written here, never against the engine.
+
+
+class _InProcess:
+    """The driver's ``Client`` on FastAPI's ``TestClient``: the same paths under ``/api``, each
+    answer as the driver's ``Response``."""
+
+    def __init__(self, client: Any):
+        self.c = client
+
+    def request(self, method: str, path: str, *, body: bytes | None = None,
+                headers: dict[str, str] | None = None, query: dict[str, Any] | None = None) -> Any:
+        from research.swarm import driver
+
+        q = {k: v for k, v in (query or {}).items() if v is not None}
+        r = self.c.request(method, "/api" + path, content=body, headers=headers or {}, params=q)
+        return driver.Response(r.status_code, r.content, dict(r.headers))
+
+    def get(self, path: str, **query: Any) -> Any:
+        return self.request("GET", path, query=query)
+
+    def post(self, path: str, data: Any = None, **query: Any) -> Any:
+        body = None if data is None else json.dumps(data).encode("utf-8")
+        return self.request("POST", path, body=body, query=query,
+                            headers={"Content-Type": "application/json"} if body else {})
+
+
+def _diabetes_table(path: Any) -> Any:
+    """400 adults: DIQ010 1 yes, 2 no, 3 borderline, 7 refused, 9 don't know, or blank; glucose
+    blank on a few rows, so the rule is counted among the rows with the outcome recorded."""
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(2009)
+    n = 400
+    codes = rng.choice([1, 2, 3, 7, 9, -1], n, p=[0.1, 0.7, 0.06, 0.05, 0.05, 0.04])
+    frame = pd.DataFrame({
+        "SEQN": np.arange(1, n + 1),
+        "age": rng.integers(20, 80, n),
+        "bmi": np.round(rng.normal(28, 5, n), 1),
+        "DIQ010": pd.array([None if c == -1 else int(c) for c in codes], dtype="Int64"),
+    })
+    frame["LBXGLU"] = np.round(70 + 0.3 * frame["age"] + 0.8 * frame["bmi"]
+                               + rng.normal(0, 8, n), 1)
+    frame.loc[rng.choice(n, 12, replace=False), "LBXGLU"] = np.nan
+    frame.to_csv(path, index=False)
+    return frame
+
+
+def test_bangs_population_is_answered_by_its_code_through_the_driver_and_counted_by_the_flow(
+        tmp_path, monkeypatch):
+    import functools
+
+    from research.swarm import driver
+    from turbotab.core import config
+    from turbotab.core.tests.acceptance.server_drive import local_server
+    from turbotab.server.tests.conftest import answer_settled, declare, prepare, wait_for
+
+    frame = _diabetes_table(tmp_path / "bang_like.csv")
+    monkeypatch.setattr(config, "Settings", functools.partial(config.Settings, analyst=True))
+    monkeypatch.setenv("TURBOTAB_CLAIMS_STRICT", "1")
+    with local_server(tmp_path / "home") as client:
+        made = client.post("/api/projects", json={"path": str(tmp_path / "bang_like.csv")})
+        assert made.status_code == 200, made.text
+        pid = made.json()["id"]
+        # What a user who knows the table answers when asked (as _diabetes_table writes it).
+        declare(pid, {"code_or_count:age": "amount", "code_or_count:DIQ010": "code",
+                      "code_or_count:SEQN": "code", "unit:age": "years"}, fixture="bang_like.csv")
+        wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
+        for body in ({"kind": "set_lens", "lenses": ["clinical"]},
+                     {"kind": "set_target", "column": "LBXGLU"},
+                     {"kind": "set_purpose", "purpose": "prediction"}):
+            prepare(client, pid, body)
+            assert answer_settled(client, pid, None, body).status_code == 200, body
+        prepare(client, pid, {"kind": "set_exclusions", "rules": []})
+
+        run_id = "run_01-" + "0" * 32
+        args = driver.build_parser().parse_args([
+            "answer", "--run", run_id, "levels", "--set", "level_column=DIQ010",
+            "--set", "exclude=1", "--set", "refused=7", "--set", "dont_know=9",
+            "--marker", "rows", "--reason", "Bang 2009 left out known diabetes."])
+        run = driver.Run(tmp_path / run_id, {"project": pid})
+        run.folder.mkdir()
+        served = _InProcess(client)
+        decision, q = driver.chosen(run, served, list(args.option), args.set)
+        assert q["question"]["key"] == "exclusions"
+        assert decision == {"kind": "set_exclusions", "rules": [{
+            "kind": "levels", "column": "DIQ010", "exclude": ["1"], "refused": ["7"],
+            "dont_know": ["9"], "reason": "not in the study population (your own levels)",
+            "missing": "exclude"}]}
+        posted = driver.post_decision(run, served, decision, args.reason)
+        assert posted.status == 200, posted.body[:600]
+
+        recorded = frame["LBXGLU"].notna()
+        code = frame["DIQ010"]
+        n = {"not_recorded": int((recorded & code.isna()).sum()),
+             "refused": int((recorded & code.eq(7).fillna(False)).sum()),
+             "dont_know": int((recorded & code.eq(9).fillna(False)).sum()),
+             "at_level": int((recorded & code.eq(1).fillna(False)).sum())}
+        assert min(n.values()) > 0 and int(recorded.sum()) < len(frame)
+        unconfirmed = n["not_recorded"] + n["refused"] + n["dont_know"]
+        assert posted.json()["decisions"][-1]["sentence"] == (
+            f"`{n['at_level']}` rows with `DIQ010` `1` were excluded as not in the study "
+            f"population (your own levels), and `{unconfirmed}` with `DIQ010` refused (`7`), don't "
+            f"know (`9`) or not recorded were excluded as not confirmed eligible.")
+        wait_for(client, pid, {"cohort": "fresh"}, timeout=180)
+        steps = client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["steps"]
+        dropped = {s["key"]: s["dropped"] for s in steps}
+        assert dropped["outcome_measured"] == int((~recorded).sum())
+        assert {k: dropped.get(f"exclusion:0:{k}") for k in ("not_recorded", "refused",
+                                                               "dont_know")} == {
+            k: n[k] for k in ("not_recorded", "refused", "dont_know")}
+        assert dropped["exclusion:0"] == n["at_level"]
+        kept = recorded & code.isin([2, 3]).fillna(False)
+        assert next(s for s in steps if s["key"] == "exclusion:0")["n"] == int(kept.sum())
