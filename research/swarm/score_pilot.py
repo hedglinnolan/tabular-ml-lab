@@ -25,7 +25,8 @@ referees' verdicts: a list of ``{run, seq, planted, faithful}``, one per audited
   measurement fixture) its numbers reported;
 * the unit per model and fixture (:func:`unit`);
 * materiality on every sweep with prereg.json's margins (:func:`sweep_verdicts`), beside the
-  sweep's own verdict, each disagreement listed, never silently;
+  sweep's own verdict, each disagreement listed, never silently; and the runs whose final plans
+  the sweeps go around, by when each started (:func:`named_plans`);
 * reach (:func:`reach_of`), the decision rule (:func:`decision`), the persona rule
   (:func:`persona_rule`), early stopping (:func:`early_stopping`), the comparisons with the
   mechanical arms, refusals as their own rate, cost per useful result and the expected false
@@ -351,6 +352,22 @@ def reach_of(rec: Any, union: set[str], prereg: Mapping[str, Any]) -> float | No
     return len(examined_points(rec) & union) / len(union)
 
 
+def named_plans(recs: Sequence[Any], prereg: Mapping[str, Any]) -> dict[str, list[dict]]:
+    """The runs whose final plans are swept beyond the default (prereg.json's ``sweeps``): for
+    each named model and persona on each pilot dataset, its run that started first, or None
+    where it has none yet. Chosen by when the runs started, never by their results."""
+    out: dict[str, list[dict]] = {}
+    for dataset, wanted in prereg["sweeps"]["plans"].items():
+        out[dataset] = []
+        for w in wanted:
+            runs = sorted((r for r in recs if r.dataset.id == dataset
+                           and model_of(r, prereg) == w["model"] and r.run.persona == w["persona"]),
+                          key=lambda r: (r.run.started, r.run.id))
+            out[dataset].append({"model": w["model"], "persona": w["persona"],
+                                 "run": runs[0].run.id if runs else None})
+    return out
+
+
 # ── the referees, robustness and cost ────────────────────────────────────────
 
 
@@ -604,6 +621,7 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
         "persona": persona_rule(records, reach, prereg),
         "early_stopping": early_stopping(estimate_units, records, plans, prereg, budget_fresh),
         "sweeps": swept,
+        "named_plans": named_plans(records, prereg),
         "material": {d: sorted(u) for d, u in union.items()},
         "reach": reach,
         "choosing_well": {
@@ -922,9 +940,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = ["decision", "early_stopping", "examined_points", "faithfulness", "fixture_of",
-           "locate", "main", "make_replay", "model_of", "persona_rule", "point_of",
-           "reach_of", "regression_checks", "report_md", "robustness", "score", "score_replay",
-           "sweep_verdicts", "target_of", "unit"]
+           "locate", "main", "make_replay", "model_of", "named_plans", "persona_rule",
+           "point_of", "reach_of", "regression_checks", "report_md", "robustness", "score",
+           "score_replay", "sweep_verdicts", "target_of", "unit"]
 
 
 if __name__ == "__main__":

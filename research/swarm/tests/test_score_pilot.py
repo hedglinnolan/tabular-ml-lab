@@ -423,6 +423,24 @@ def test_the_score_and_its_report_carry_the_same_numbers(prereg):
     assert report["decision"]["why"] in text
 
 
+def test_the_plans_to_sweep_are_each_named_run_by_when_it_started_never_by_its_result(prereg):
+    est = P.ESTIMATE_FIXTURE
+    recs = [record(run="h-late", minute=30), record(run="h-early", minute=5),
+            record(run="h-explorer", persona="explorer", minute=1),
+            record(run="s-conv", model="claude-sonnet-5-5", minute=9),
+            record(run="o-conv", model="claude-opus-5-5", minute=2),
+            record(run="arm", model="mechanical-default", persona=None, minute=0),
+            record(kind="predict", run="h-predict", minute=3)]
+    named = S.named_plans(recs, prereg)
+    assert named[est] == [{"model": "haiku", "persona": "conventional", "run": "h-early"},
+                          {"model": "sonnet", "persona": "conventional", "run": "s-conv"},
+                          {"model": "opus", "persona": "conventional", "run": "o-conv"},
+                          {"model": "haiku", "persona": "explorer", "run": "h-explorer"},
+                          {"model": "sonnet", "persona": "explorer", "run": None}]
+    assert named[P.PREDICT_FIXTURE][0]["run"] == "h-predict"
+    assert named["bang2009"][0]["run"] is None
+
+
 def test_the_command_writes_the_score_and_its_report_from_the_folders_it_is_given(prereg,
                                                                                  tmp_path):
     import json
