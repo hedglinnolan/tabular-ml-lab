@@ -12,25 +12,34 @@ any writer of the same shape): its run, its dataset, and each draw's seed with t
 on it, or the reason the draw was refused: on the Estimate fixture the reported estimate and its
 interval, on the Predict fixture the Brier regret against the true risk on the pre-registered
 evaluation rows, on the measurement fixture each feature's estimate and q-value and the scale the
-plan analyzed. The sweeps (``research/swarm/sweep.py``'s ``sweep.json`` and ``crash.json``). The
-referees' verdicts: a list of ``{run, seq, planted, faithful}``, one per audited attempt
-(``referee.py`` draws them; the referees run in the pilot). The blind reader's classes: run id →
-``engine_defect``, ``driver_defect``, ``capability_gap`` or ``analyst_failure``.
+plan analyzed; or, with no draws, why at its top: ``refused`` (the run reported no result) or
+``unjudged`` (the record cannot say what the run reported, or the bundle does not hold its
+reported number once). The sweeps (``research/swarm/sweep.py``'s ``sweep.json`` and
+``crash.json``). The referees' verdicts: a list of ``{run, seq, planted, faithful}``, one per
+audited attempt (``referee.py`` draws them; the referees run in the pilot). The blind reader's
+classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
+``analyst_failure``.
 
 **What it applies,** each rule in prereg.json's own numbers:
 
 * the regression checks on every run (:func:`regression_checks`);
 * each replay against its fixture's margins (:func:`score_replay`): the pre-registered draws or
-  none, a draw refused making the plan a refused plan; b0 and the coverage band, r0, or (the
-  measurement fixture) its numbers reported;
+  none, a draw refused making the plan a refused plan, as a replay refused as a whole does; b0
+  and the coverage band, r0, or (the measurement fixture) its numbers reported. An exported
+  record on a fixture whose result is refused is judged by its record whatever replay is given
+  (:func:`result_refusal`): a refused plan where the run reported no result or the engine served
+  none, unjudged where the record cannot say;
 * the unit per model and fixture (:func:`unit`);
 * materiality on every sweep with prereg.json's margins (:func:`sweep_verdicts`), beside the
   sweep's own verdict, each disagreement listed, never silently; and the runs whose final plans
   the sweeps go around, by when each started (:func:`named_plans`);
-* reach (:func:`reach_of`), the decision rule (:func:`decision`), the persona rule
-  (:func:`persona_rule`), early stopping (:func:`early_stopping`), the comparisons with the
-  mechanical arms, refusals as their own rate, cost per useful result and the expected false
-  alarms (:func:`score`).
+* reach (:func:`reach_of`), the decision rule (:func:`decision`; no analyst named until the
+  reference is within), the persona rule (:func:`persona_rule`), early stopping
+  (:func:`early_stopping`; once a model has a record under every persona, a stuck run's
+  included), the comparisons with the mechanical arms, refusals as their own rate, cost per
+  useful result and the expected false alarms (:func:`score`; the coverage band's bounded over
+  the plans judged on coverage, a count outside the band reported as that, never as a false
+  alarm).
 
 **The output**: ``score.json``, every number computed, and ``score.md``, whose every number is
 interpolated from it (:func:`report_md`).
@@ -109,11 +118,25 @@ def _refused(out: dict[str, Any], why: str, **more: Any) -> dict[str, Any]:
     return out
 
 
+# A record's result with no numbers (``record.RefusedKind``): the run reported none, or the engine
+# served none, is a refused plan; a record that cannot say what the run reported is not judged,
+# as the record's own checks judge it ("does not judge one it cannot know").
+NO_RESULT = {"not_reported": ("refused", "none reported"), "not_served": ("refused", "none served"),
+             "not_known": ("unjudged", "the record cannot say what the run reported")}
+
+
+def result_refusal(kind: str | None, words: str) -> tuple[str, str]:
+    """The verdict and why of a plan whose record's result is refused (:data:`NO_RESULT`)."""
+    verdict, said = NO_RESULT.get(str(kind), ("unjudged", f"of an unknown kind {kind!r}"))
+    return verdict, f"The record reports no result ({said}, {kind}): {words}"
+
+
 def score_replay(replay: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[str, Any]:
     """One final plan's replay against its fixture's margins (the module docstring): its numbers
-    and its verdict, ``within``, ``outside``, ``refused`` (a draw refused, or a number a draw does
-    not hold), ``invalid`` (not the pre-registered draws), ``unjudged`` (a margin prereg.json does
-    not fix) or ``reported`` (the measurement fixture)."""
+    and its verdict, ``within``, ``outside``, ``refused`` (a draw refused, a number a draw does
+    not hold, or the replay refused as a whole: its run reported no result), ``invalid`` (not the
+    pre-registered draws), ``unjudged`` (a margin prereg.json does not fix, or the replay not read
+    as a whole, with why) or ``reported`` (the measurement fixture)."""
     kind = fixture_of(prereg, replay.get("dataset"))
     out: dict[str, Any] = {"run": replay.get("run"), "dataset": replay.get("dataset"),
                            "kind": kind, "verdict": None, "why": None}
@@ -122,6 +145,11 @@ def score_replay(replay: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[s
     draws = list(replay.get("draws") or [])
     if kind is None:
         out.update(verdict="invalid", why=f"{replay.get('dataset')!r} is not a fixture.")
+        return out
+    if replay.get("refused"):
+        return _refused(out, str(replay["refused"]))
+    if replay.get("unjudged"):
+        out.update(verdict="unjudged", why=str(replay["unjudged"]))
         return out
     if [d.get("seed") for d in draws] != expected:
         out.update(verdict="invalid",
@@ -418,7 +446,8 @@ def decision(models: Mapping[str, Mapping[str, Any]], prereg: Mapping[str, Any]
              ) -> dict[str, Any]:
     """The decision rule (prereg.json's) on each candidate's unit on the Estimate fixture, its
     referees' share and its export rate; the production analyst, the cheaper of the acceptable by
-    fresh tokens per useful result at its relative price."""
+    fresh tokens per useful result at its relative price, named only once the reference's own
+    unit there is within (its ``reference_rule``)."""
     rule = prereg["decision_rule"]
     out: dict[str, Any] = {"models": {}, "production": None, "why": None}
     for m in rule["candidates"]:
@@ -431,9 +460,15 @@ def decision(models: Mapping[str, Mapping[str, Any]], prereg: Mapping[str, Any]
         acceptable = False if False in values else (None if None in values else True)
         out["models"][m] = {**parts, "acceptable": acceptable,
                             "cost_per_useful": (s.get("cost") or {}).get("cost_per_useful")}
-    ref = ((models.get(rule["reference"]) or {}).get("units") or {}).get("estimate", {})
-    if ref.get("verdict") == "outside":
-        out["why"] = rule["reference_rule"]
+    name = rule["reference"]
+    ref = models.get(name)
+    unit_ = ((ref or {}).get("units") or {}).get("estimate") or {}
+    if unit_.get("verdict") != "within":
+        state = ("has no run" if ref is None else "is outside the margins"
+                 if unit_.get("verdict") == "outside" else
+                 f"is not judged ({str(unit_.get('why') or 'no verdict').rstrip('.')})")
+        out["why"] = f"The reference, {name}, {state} on the Estimate fixture. " \
+                     f"{rule['reference_rule']}"
         return out
     undecided = [m for m, v in out["models"].items() if v["acceptable"] is None]
     if undecided:
@@ -487,19 +522,19 @@ def persona_rule(recs: Sequence[Any], reach: Mapping[str, float | None],
 
 
 def early_stopping(units: Mapping[str, Mapping[str, Any]], recs: Sequence[Any],
-                   plans: Sequence[Mapping[str, Any]], prereg: Mapping[str, Any],
-                   budget_fresh: float | None) -> dict[str, Any]:
-    """prereg.json's early stopping: each model outside the margins on the Estimate fixture once
-    its plans there under every persona it runs are scored; and the spend projected over the
-    remaining scheduled runs, against ``budget_fresh``."""
+                   prereg: Mapping[str, Any], budget_fresh: float | None) -> dict[str, Any]:
+    """prereg.json's early stopping: each model whose unit on the Estimate fixture (``units``) is
+    outside once it has a record there under every persona it runs (a run that ended, one stuck
+    before its export and so with no plan included); and the spend projected over the remaining
+    scheduled runs, against ``budget_fresh``."""
     estimate = prereg["datasets"]["estimate_fixture"]
     stopped = []
     for m in _agents(prereg):
         personas = {p for s in prereg["models"]["schedule"] if s["model"] == m
                     and estimate in s["datasets"] for p in s["personas"]}
-        seen = {s.get("persona") for s in plans if s.get("model") == m
-                and s.get("dataset") == estimate and s.get("verdict") in (*SCORED, "refused")}
-        if personas and personas <= seen and units.get(m, {}).get("verdict") == "outside":
+        ran = {r.run.persona for r in recs if model_of(r, prereg) == m
+               and r.dataset.id == estimate}
+        if personas and personas <= ran and units.get(m, {}).get("verdict") == "outside":
             stopped.append(m)
     scheduled = {m: sum(len(s["personas"]) * len(s["datasets"]) * s["runs"]
                         for s in prereg["models"]["schedule"] if s["model"] == m)
@@ -536,10 +571,20 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
 
     classes = classes or {}
     by_run = {r.run.id: r for r in records}
+
+    def judged_by_record(rec: Any) -> dict[str, Any] | None:
+        # An exported plan on a fixture whose result is refused: no replay judges it.
+        kind = fixture_of(prereg, rec.dataset.id)
+        if not kind or not rec.export.sha256 or rec.result.refused is None:
+            return None
+        verdict, why = result_refusal(rec.result.refused_kind, rec.result.refused)
+        return {"run": rec.run.id, "dataset": rec.dataset.id, "kind": kind, "verdict": verdict,
+                "why": why}
+
     plans = []
     for rp in replays:
-        s = score_replay(rp, prereg)
         rec = by_run.get(str(rp.get("run")))
+        s = (judged_by_record(rec) if rec else None) or score_replay(rp, prereg)
         s.update(model=model_of(rec, prereg) if rec else None,
                  persona=rec.run.persona if rec else None)
         plans.append(s)
@@ -547,9 +592,10 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
     for rec in records:
         kind = fixture_of(prereg, rec.dataset.id)
         if kind and rec.export.sha256 and rec.run.id not in replayed:
-            plans.append({"run": rec.run.id, "dataset": rec.dataset.id, "kind": kind,
-                          "model": model_of(rec, prereg), "persona": rec.run.persona,
-                          "verdict": "unscored", "why": "No replay of this plan is given."})
+            plans.append((judged_by_record(rec) or {
+                "run": rec.run.id, "dataset": rec.dataset.id, "kind": kind,
+                "verdict": "unscored", "why": "No replay of this plan is given."})
+                | {"model": model_of(rec, prereg), "persona": rec.run.persona})
     verdict_of = {p["run"]: p for p in plans}
     swept = [sweep_verdicts(s, prereg) for s in sweeps]
     union: dict[str, set[str]] = {}
@@ -597,9 +643,10 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
     estimate_units = {m: v["units"]["estimate"] for m, v in models.items()}
     decoys = [r for r in records if r.dataset.control == "null_decoy"]
     false_alarms = prereg["expected_false_alarms"]
-    # The coverage band's misses are false alarms only for a plan unbiased by the margin.
-    est_plans = [p for p in plans if p["kind"] == "estimate" and p["verdict"] in SCORED
-                 and p.get("bias_within")]
+    # The band's miss rate is a false alarm's chance for a plan covering at exactly 95% only, so
+    # over the plans judged on coverage it bounds the false alarms expected, and a count outside
+    # the band is reported as that.
+    est_plans = [p for p in plans if p["kind"] == "estimate" and p["verdict"] in SCORED]
     finding = []
     for s in swept:
         u = union.get(str(s["dataset"]), set())
@@ -619,7 +666,7 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
         "models": models,
         "decision": decision(models, prereg),
         "persona": persona_rule(records, reach, prereg),
-        "early_stopping": early_stopping(estimate_units, records, plans, prereg, budget_fresh),
+        "early_stopping": early_stopping(estimate_units, records, prereg, budget_fresh),
         "sweeps": swept,
         "named_plans": named_plans(records, prereg),
         "material": {d: sorted(u) for d, u in union.items()},
@@ -653,9 +700,9 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
                       "observed": sum(1 for r in decoys
                                       if checks.null_decoy(r).outcome == "fail")},
             "coverage": {"plans": len(est_plans),
-                         "expected": len(est_plans)
+                         "expected_at_most": len(est_plans)
                          * float(false_alarms["coverage_band"]["per_plan"]),
-                         "observed": sum(1 for p in est_plans if not p["coverage_within"])}},
+                         "outside_band": sum(1 for p in est_plans if not p["coverage_within"])}},
     }
 
 
@@ -726,9 +773,11 @@ def report_md(report: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
     f = report["false_alarms"]
     lines += ["## Expected false alarms", "",
               f"Decoy runs: {f['decoy']['runs']}, {_n(f['decoy']['expected'])} false alarm(s) "
-              f"expected, {f['decoy']['observed']} observed. Estimate plans whose mean bias is "
-              f"within b0: {f['coverage']['plans']}, {_n(f['coverage']['expected'])} coverage "
-              f"miss(es) expected, {f['coverage']['observed']} observed.", ""]
+              f"expected, {f['decoy']['observed']} observed. Estimate plans judged on coverage: "
+              f"{f['coverage']['plans']}; at most {_n(f['coverage']['expected_at_most'])} false "
+              f"alarm(s) expected among them, the count were every one to cover at exactly "
+              f"{fx['coverage']['level']:.0%}; {f['coverage']['outside_band']} fell outside the "
+              f"band, which for a plan covering more or less than that is no false alarm.", ""]
     bad = {k: v for k, v in report["regression"]["runs"].items() if v}
     lines += ["## Regression checks", "",
               f"{len(report['regression']['failed_schema'])} record(s) failed the schema; "
@@ -772,8 +821,13 @@ def _bundle_estimates(bundle: Path) -> dict[str, float | None]:
 
 def target_of(rec: Any, prereg: Mapping[str, Any]) -> dict[str, Any]:
     """What a replay of the record's final plan reads on each draw: its kind, and its reported
-    family with (Estimate) the exposure's row and value, (measurement) every feature's."""
+    family with (Estimate) the exposure's row and value, (measurement) every feature's; where the
+    record's result is refused, its kind and words (``result_refused``) and nothing to read."""
     kind = fixture_of(prereg, rec.dataset.id)
+    if rec.result.refused is not None:
+        return {"kind": kind, "family": rec.result.family, "rows": [],
+                "result_refused": {"kind": rec.result.refused_kind,
+                                   "words": rec.result.refused}}
     if kind == "predict":
         return {"kind": kind, "family": rec.result.family}
     rows = [e for e in rec.result.estimates or [] if e.estimate is not None]
@@ -795,10 +849,14 @@ def make_replay(bundle: Path, target: Mapping[str, Any], dataset: str, run: str,
                 evaluation: Any = None, keep: Path | None = None) -> dict[str, Any]:
     """The final plan in ``bundle`` replayed on each pre-registered fresh draw of its fixture's
     generator (``core/export/replay.py``), read as ``target`` says (:func:`target_of`); a draw the
-    replay or the scorer refuses is kept with its reason. ``generator``, ``seeds`` and
-    ``evaluation`` (the Predict fixture's rows) stand in for prereg.json's in a test; ``keep``
-    keeps each Predict draw's rebuilt home in ``keep/<seed>`` (its ``project`` in the draw),
-    which is otherwise removed once scored."""
+    replay or the scorer refuses is kept with its reason. Before any draw, a record whose result
+    is refused is replayed as a whole as :func:`result_refusal` classes it (``refused`` or
+    ``unjudged``, with its words), and a reported number the bundle does not hold once as
+    ``unjudged``. The replay names its bundle's SHA-256, the generator and (Predict) the
+    evaluation rows it read. ``generator``, ``seeds`` and ``evaluation`` (the Predict fixture's
+    rows) stand in for prereg.json's in a test, and are named so; ``keep`` keeps each Predict
+    draw's rebuilt home in ``keep/<seed>`` (its ``project`` in the draw), which is otherwise
+    removed once scored."""
     from turbotab.core.export import replay, scorer
 
     from research.swarm import generators as G
@@ -808,23 +866,33 @@ def make_replay(bundle: Path, target: Mapping[str, Any], dataset: str, run: str,
                  "measurement": "measurement_fixture"}[kind]]
     first, last = prereg["replays"]["seeds"]
     seeds = list(seeds) if seeds is not None else list(range(first, last + 1))
+    named = str(fx["generator"]) if generator is None else (
+        f"given: {getattr(generator, '__module__', '?')}:"
+        f"{getattr(generator, '__qualname__', repr(generator))}")
     generator = generator or fx["generator"]
-    out: dict[str, Any] = {"run": run, "dataset": dataset, "generator": str(fx["generator"]),
+    out: dict[str, Any] = {"run": run, "dataset": dataset, "generator": named,
                            "recorded_seed": fx["recorded_seed"], "target": dict(target),
-                           "draws": []}
+                           "bundle_sha256": P._sha256(Path(bundle)), "draws": []}
+    if kind == "predict":
+        out["evaluation"] = (dict(prereg["replays"]["predict_evaluation"]) if evaluation is None
+                             else {"given": True, "rows": len(evaluation)})
+    no_result = target.get("result_refused")
+    if no_result:
+        verdict, why = result_refusal(no_result.get("kind"), str(no_result.get("words")))
+        return out | {verdict: why}
     where: tuple[str, str, str] | None = None
     if kind != "predict":
         rows = target.get("rows") or []
         if not rows:
-            return out | {"refused": "The record reports no estimate to replay."}
+            return out | {"unjudged": "The record reports no estimate row to replay."}
         first_row = rows[0]
         where = locate(_bundle_estimates(Path(bundle)), str(target["family"]),
                        [str(first_row["feature"]), str(first_row["setting"])],
                        float(first_row["estimate"]))
         if where is None:
-            return out | {"refused": ("The bundle's reported numbers hold no one row equal to "
-                                      "the record's estimate, so a draw's estimate cannot be "
-                                      "read as the record's.")}
+            return out | {"unjudged": ("The bundle's reported numbers hold no one row equal to "
+                                       "the record's estimate, so a draw's estimate cannot be "
+                                       "read as the record's.")}
     if kind == "predict":
         ev = evaluation if evaluation is not None else G.readmission(
             prereg["replays"]["predict_evaluation"]["seed"],

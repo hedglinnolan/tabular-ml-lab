@@ -4,12 +4,14 @@ hand.
 
     python -m research.swarm.prereg_fill            # write prereg.json from the generators
     python -m research.swarm.prereg_fill --check    # fail where prereg.json is not what they give
-    python -m research.swarm.prereg_fill crash <crash.json> … [--r0-class C --ruling WORDS]
+    python -m research.swarm.prereg_fill crash <crash.json> …
+    python -m research.swarm.prereg_fill r0 --record <default.json> --replay <replay.json>
     python -m research.swarm.prereg_fill prices haiku=P sonnet=P opus=P --source WORDS
     python -m research.swarm.prereg_fill ready      # whether the trio may start
 
 **Every margin is computed from the generators** (``research/swarm/generators.py``), never from a
-draw a plan is graded on:
+draw a plan is graded on, but r0, which the orchestrator's ruling measures on the very draws and
+rows every plan's regret is read on:
 
 * **b0** (:func:`compute`'s ``estimate_fixture``): half the smallest population bias the Estimate
   generator plants (``generators.planted_biases``, in closed form), with the four-standard-error
@@ -18,24 +20,26 @@ draw a plan is graded on:
 * **the coverage band** (:func:`binomial_band`): the counts of 95% intervals covering the truth
   that a plan with exactly 95% coverage reaches with each tail's chance at most 2.5%, at the
   number of draws a plan is replayed on, with the band's own miss rate, in exact arithmetic;
-* **r0** (:func:`r0_of`): half the population regret (``generators.readmission_regrets``) of the
-  model class the default path's final plan falls in on the Predict fixture. The default path
-  (``research/swarm/arms.py``) fits the shelf's first two predicting families there and declares
-  final the first, so the rule reads that family, the one §7's replay grades ("each final plan
-  is replayed"). Which family it is, and which readings and forms the plan holds, is read from
-  the crash sweep's default plan on the frozen engine (``crash``); r0 waits for it. A class is
-  read only where the generator computes it: a straight-line logistic family (its declared
-  ``curve_shape`` and its yes/no estimator), every predictor read as an amount, no form recorded
-  and no repair but a two-level text's 0/1 coding is the additive straight-line class; any other
-  plan's r0 is refused with why, unless the orchestrator rules a class (``--r0-class``, with its
-  words), which is then recorded as a ruling;
-* **the measurement fixture's materiality k** (:func:`measurement_oracle`): half the discovery
-  set's own draw-to-draw change, as §7 makes a change material at half the result's own interval
-  half-width: the mean size of the symmetric difference between the discovery sets (q < the
-  feature-wise family's FDR) of the analysis of the true concentrations on two independent
-  draws, over the tuning seeds in pairs, half of it rounded up, at least 1. That analysis (each
-  feature's Student t-test of its true log2 concentration between cases and controls, the
-  participants only, Benjamini–Hochberg) is also the oracle the plans' power is reported against;
+* **r0** (:func:`r0_of`, the orchestrator's ruling of 2026-10-23, :func:`r0_ruling`): measured,
+  half the default plan's mean Brier regret against the true risk over the pre-registered replay
+  draws on the pre-registered evaluation rows. The default path (``research/swarm/arms.py``) fits
+  the shelf's first two predicting families on the Predict fixture and declares final the first,
+  which §7's replay grades ("each final plan is replayed"); a family with no class the generator
+  computes a regret for (a tree ensemble) leaves r0 nothing to read but the replay. So the default
+  path's exported plan on the frozen engine is replayed by ``score_pilot replay`` (its
+  ``make_replay``) on the draws and rows every plan is replayed on, read by ``score_pilot``'s own
+  scorer (``score_replay``), and filled after the crash fill (``r0``, :func:`fill_r0`): r0 and
+  every plan's regret come from the same draws, rows and scorer. Half the additive straight-line
+  class's population regret (``generators.readmission_regrets``) is kept beside it as a
+  reference, labeled so;
+* **the measurement fixture's materiality k** (:func:`measurement_oracle`, the orchestrator's
+  ruling of 2026-10-23, :func:`k_ruling`): the discovery set's own draw-to-draw change, rounded
+  up: the mean size of the symmetric difference between the discovery sets (q < the feature-wise
+  family's FDR) of the analysis of the true concentrations on two independent draws, over the
+  tuning seeds in pairs, rounded up, at least 1. A change smaller than two independent draws of
+  the same truth differ by is within noise. That analysis (each feature's Student t-test of its
+  true log2 concentration between cases and controls, the participants only, Benjamini–Hochberg)
+  is also the oracle the plans' power is reported against;
 * **the graded menus** (:func:`graded_menus`): the engine's own menus
   (``generators.graded_measurement_decisions``), each option graded a choice, or the engine's
   refusal where its contract's rung under inference is ``refused`` (outcome-protected ComBat,
@@ -49,15 +53,24 @@ dataset, each passed on one engine tree: ``launcher.crash_passed``):
   (``launcher.budget_of``);
 * **the sweep's compute cap**: per dataset, the plans §6 names to sweep beyond the default (whose
   fits the crash sweep already paid) times the crash sweep's own fit seconds there, summed;
-* the default plan on the Predict fixture, from which r0 is read.
+* the default plan on the Predict fixture: its final family, which the replay r0 is measured on
+  must read.
+
+**Measured after the crash fill** (:func:`fill_r0`): r0, from the default path's record on the
+Predict fixture and its replay, each checked: the record the default path's
+(``mechanical-default``) on the Predict fixture, exported, its final family the crash sweep's
+default plan's; the replay of that run's bundle (its SHA-256 the record's export's), from the
+fixture's generator at its recorded seed, on the pre-registered draws and evaluation rows, reading
+that family, refused on no draw. A crash fill clears it, since it reads the crash sweep's default
+plan.
 
 **Set before the scoring** (:func:`set_prices`): each model's list price relative to the others',
 a fact rather than a choice, which the decision rule's "the cheaper" reads. The ``filled`` section
 holds these inputs, and ``--check`` reads them as held.
 
 :func:`ready` says why the trio may not start (a pilot dataset without its fit budget, no compute
-cap, no r0, reports on different engines or not the engine now, or margins that are no longer the
-generators'), or None; the launcher calls it before the trio.
+cap, no r0 measured, reports on different engines or not the engine now, or margins that are no
+longer the generators'), or None: the launcher is to call it before the trio.
 """
 from __future__ import annotations
 
@@ -91,6 +104,7 @@ PERSONAS = ("conventional", "skeptical", "explorer")
 # mechanical arm's model starts with ``mechanical-`` (``arms.run_arm``).
 MODELS = ("haiku", "sonnet", "opus")
 MECHANICAL = "mechanical-"
+DEFAULT_MODEL = MECHANICAL + "default"  # the default path's run (``arms.run_arm``)
 SCHEDULE: tuple[dict[str, Any], ...] = (
     {"model": "haiku", "personas": list(PERSONAS), "datasets": list(PILOT), "runs": 1},
     {"model": "sonnet", "personas": list(PERSONAS), "datasets": list(PILOT), "runs": 1},
@@ -120,9 +134,11 @@ CONTRACT_OF = {"normalization and the log scale": "omics_normalization",
                "batch handling": "batch",
                "drift and batch correction from the pooled QCs": "qc_rlsc",
                "detection-limit handling": "detection_limit"}
-# The kinds that record a predictor's functional form (``core/decisions.py``).
-FORM_KINDS = ("set_exposure_form", "set_forms")
-CODING_REPAIR = "binary_text__"  # a two-level text recoded 0/1, as the linear class codes sex
+# The orchestrator's rulings, each recorded in prereg.json with its words and date for the owner
+# to review.
+RULED_BY = "the orchestrator, the methods lead"
+RULED_ON = "2026-10-23"
+REVIEW = "for the owner to review"
 
 
 def _f(x: Fraction | float) -> float:
@@ -194,8 +210,8 @@ def measurement_oracle(draws: int = G.TUNING_DRAWS, first_seed: int = G.TUNING_F
                        ) -> dict[str, Any]:
     """The analysis of the true concentrations on the tuning draws (:func:`latent_discoveries`):
     its mean power, false-discovery proportion and discoveries, the mean symmetric difference of
-    its discovery sets on the draws in pairs (first and second, third and fourth, …), and k, half
-    that rounded up, at least 1 (the module docstring)."""
+    its discovery sets on the draws in pairs (first and second, third and fourth, …), and k, that
+    rounded up, at least 1 (the module docstring, :func:`k_ruling`)."""
     from turbotab.core.models.featurewise import FDR
 
     truth = set(G.panel_truth()["associated"])
@@ -210,7 +226,17 @@ def measurement_oracle(draws: int = G.TUNING_DRAWS, first_seed: int = G.TUNING_F
             "associated": len(truth), "power": float(np.mean(power)),
             "fdp": float(np.mean(fdp)), "discoveries": float(np.mean([len(s) for s in sets])),
             "pairs": len(pairs), "symmetric_difference": change,
-            "k": max(1, math.ceil(_f(HALF) * change))}
+            "k": max(1, math.ceil(change))}
+
+
+def k_ruling(oracle: Mapping[str, Any]) -> dict[str, str]:
+    """The orchestrator's ruling of k (the module docstring), its numbers ``oracle``'s."""
+    return {"by": RULED_BY, "date": RULED_ON, "review": REVIEW,
+            "words": (f"The measurement fixture's materiality k is the mean draw-to-draw "
+                      f"symmetric difference of the latent oracle's discovery set, rounded up "
+                      f"({oracle['k']}, from {oracle['symmetric_difference']:g}): a change "
+                      f"smaller than two independent draws of the same truth differ by is within "
+                      f"noise.")}
 
 
 def graded_menus() -> list[dict[str, Any]]:
@@ -246,72 +272,47 @@ def default_plan_of(report: Mapping[str, Any]) -> dict[str, Any]:
             "decisions": decisions}
 
 
-def _straight_logistic(family: str) -> tuple[bool, str]:
-    from sklearn.linear_model import LogisticRegression
+def r0_ruling() -> dict[str, str]:
+    """The orchestrator's ruling of r0 (the module docstring), its numbers the pre-registered
+    draws' and rows'."""
+    seeds = replay_seeds()
+    return {"by": RULED_BY, "date": RULED_ON, "review": REVIEW,
+            "words": (f"The default path on the Predict fixture declares boosted_trees final, "
+                      f"which has no generator class, so r0 is measured: half the default plan's "
+                      f"mean Brier regret against the generator's oracle over the pre-registered "
+                      f"replay draws (seeds {seeds[0]}-{seeds[-1]}) on the pre-registered "
+                      f"evaluation rows (seed {EVALUATION_SEED} x {EVALUATION_ROWS:,}), computed "
+                      f"by score_pilot's own replay producer after the crash fill and before the "
+                      f"trio, so r0 and every plan's regret come from the same draws, rows and "
+                      f"scorer. The linear class's value stays in prereg.json as a reference, "
+                      f"labeled so.")}
 
-    from turbotab.core.models.base import get_family
 
-    fam = get_family(family)
-    if fam.curve_shape != "straight":
-        return False, (f"`{family}` is a {fam.curve_shape.replace('_', ' ')} learner, a class the "
-                       f"generator computes no regret for")
-    estimator = fam.build("binary", "prediction", G.READMISSION_ROWS, 10)
-    if not isinstance(estimator, LogisticRegression):
-        return False, f"`{family}`'s yes/no model is not a logistic regression"
-    return True, f"`{family}` is a straight-line logistic regression"
-
-
-def r0_of(default_plan: Mapping[str, Any] | None, regrets: Mapping[str, float],
-          ruling: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """r0 from the default plan on the Predict fixture (the module docstring): its final family,
-    the generator's class it falls in, and half that class's regret; refused (``value`` None)
-    with why where no class is read; a ruling's class where the orchestrator ruled one."""
-    out: dict[str, Any] = {"final": None, "class": None, "value": None, "why": None,
-                           "ruling": None}
-    reasons: list[str] = []
+def r0_of(default_plan: Mapping[str, Any] | None, measured: Mapping[str, Any] | None,
+          regrets: Mapping[str, float]) -> dict[str, Any]:
+    """r0 (the module docstring): half the default plan's mean regret ``measured`` (the filled
+    section's, :func:`fill_r0`), the final family the crash sweep's ``default_plan`` declares,
+    and the straight-line class's reference; with no value, why."""
+    out: dict[str, Any] = {
+        "final": (list((default_plan or {}).get("families") or []) or [None])[0],
+        "value": None, "default_regret": None, "why": None,
+        "reference": {"class": "linear", "value": _f(HALF) * float(regrets["linear"]),
+                      "label": ("A reference only, not r0: half the population regret of the "
+                                "generator's additive straight-line class "
+                                "(generators.readmission_regrets), whatever the default plan's "
+                                "final family.")},
+        "ruling": r0_ruling()}
     if default_plan is None:
-        reasons.append("No crash sweep of the Predict fixture has been filled in, so the default "
-                       "plan's final family is not known.")
-    elif not default_plan.get("families"):
-        reasons.append("The crash sweep's default plan records no models answer.")
+        out["why"] = ("No crash sweep of the Predict fixture has been filled in, so the default "
+                      "plan is not known; r0 is measured after it (python -m "
+                      "research.swarm.prereg_fill r0 …).")
+    elif measured is None:
+        out["why"] = ("The default plan's regret on the pre-registered draws has not been "
+                      "measured: replay its export (python -m research.swarm.score_pilot replay "
+                      "…) and fill it (python -m research.swarm.prereg_fill r0 …).")
     else:
-        final = str(default_plan["families"][0])
-        out["final"] = final
-        ok, said = _straight_logistic(final)
-        if not ok:
-            reasons.append(f"The default plan declares `{final}` final: {said}.")
-        decisions = default_plan.get("decisions") or []
-        numeric = set(G.SPLINE_COLUMNS) | {t["column"] for t in G.READMISSION_MODEL["terms"]}
-        coded = sorted({str(i.get("column")) for d in decisions
-                        for i in ([d] if d.get("kind") == "confirm_reading" else
-                                  d.get("items") or [] if d.get("kind") == "confirm_readings"
-                                  else [])
-                        if i.get("reading") == "code_or_count" and i.get("value") == "code"
-                        and i.get("column") in numeric})
-        if coded:
-            reasons.append(f"The default plan reads {', '.join(f'`{c}`' for c in coded)} as "
-                           f"codes, which the generator's classes read as amounts.")
-        forms = [d for d in decisions if d.get("kind") in FORM_KINDS]
-        if forms:
-            reasons.append(f"The default plan records {len(forms)} functional form answer(s), "
-                           f"outside the generator's additive straight-line class.")
-        repairs = sorted({str(d.get("finding_id")) for d in decisions
-                          if d.get("kind") == "apply_repair"
-                          and not str(d.get("finding_id")).startswith(CODING_REPAIR)})
-        if repairs:
-            reasons.append(f"The default plan repairs {', '.join(repairs)}, which the generator's "
-                           f"classes do not.")
-        if not reasons:
-            out["class"] = "linear"
-    if ruling is not None:
-        cls = str(ruling["class"])
-        out.update({"class": cls, "ruling": {"class": cls, "words": str(ruling["words"])},
-                    "automatic": " ".join(reasons) or None})
-        reasons = []
-    if out["class"] is not None:
-        out["value"] = _f(HALF) * float(regrets[out["class"]])
-    else:
-        out["why"] = " ".join(reasons)
+        regret = float(measured["mean_regret"])
+        out.update(default_regret=regret, value=_f(HALF) * regret)
     return out
 
 
@@ -340,7 +341,7 @@ def swept_plans() -> dict[str, list[dict[str, str]]]:
 
 def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Every margin and rule of §7 from the generators (the module docstring); r0 from the default
-    plan and the ruling the ``filled`` section holds."""
+    plan and its measured regret the ``filled`` section holds."""
     from turbotab.core.models.featurewise import FDR
 
     from research.swarm import sweep
@@ -351,7 +352,7 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
     regrets = G.readmission_regrets()
     oracle = measurement_oracle()
     filled = filled or {}
-    r0 = r0_of(filled.get("default_plan"), regrets, filled.get("ruling"))
+    r0 = r0_of(filled.get("default_plan"), filled.get("r0"), regrets)
     seeds = replay_seeds()
     tuned = tuning["plans"]["oracle"]
     runs = sum(len(s["personas"]) * len(s["datasets"]) * s["runs"] for s in SCHEDULE)
@@ -395,10 +396,11 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
                             "rule": (f"On the measurement fixture a refit is material where its "
                                      f"discovery set at q < {FDR:g} differs from the plan's by "
                                      f"at least {oracle['k']} feature(s) (the symmetric "
-                                     f"difference), k being half the discovery set's own "
+                                     f"difference), k being the discovery set's own mean "
                                      f"draw-to-draw change rounded up "
                                      f"({oracle['symmetric_difference']:g} features)."),
-                            "derivation": "measurement_fixture.oracle"},
+                            "derivation": "measurement_fixture.oracle",
+                            "ruling": k_ruling(oracle)},
             "decision": "A decision is material where any of its refits is.",
             "refused_refits": ("A refit the engine refuses has no score: it is reported beside "
                                "its decision's materiality as the sweep's refused share, kept "
@@ -408,8 +410,11 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
             "rule": (f"Every final plan on a fixture is replayed on the same {REPLAY_DRAWS} fresh "
                      f"draws of its generator, seeds {seeds[0]} to {seeds[-1]} "
                      f"(core/export/replay.py's fresh draw). A plan refused on any draw is a "
-                     f"refused plan: it counts as neither within nor outside the margins, and goes "
-                     f"into the refusal rate with each draw's reason."),
+                     f"refused plan, and so is a plan whose run reported no result (its record's "
+                     f"result refused: none reported, or none served): it counts as neither "
+                     f"within nor outside the margins, and goes into the refusal rate with its "
+                     f"reasons. A plan whose record cannot say what the run reported, or whose "
+                     f"reported number its bundle does not hold once, is not judged."),
             "predict_evaluation": {"seed": EVALUATION_SEED, "rows": EVALUATION_ROWS}},
         "estimate_fixture": {
             "dataset": ESTIMATE_FIXTURE, "generator": "research.swarm.generators:blood_pressure",
@@ -441,8 +446,7 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
             "r0": r0,
             "rule": ("A plan is within the margin where its mean Brier regret against the true "
                      "risk over the draws (its predictions on the evaluation rows) is less than "
-                     "r0, half the population regret of the class the default path's final plan "
-                     "falls in.")},
+                     "r0, half the default plan's mean regret on the same draws and rows.")},
         "measurement_fixture": {
             "dataset": MEASUREMENT_FIXTURE,
             "generator": "research.swarm.generators:metabolite_panel",
@@ -459,8 +463,9 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
                      f"there are within them, with at least {UNIT_MIN} non-refused plans; outside "
                      f"them with at least {UNIT_MIN} non-refused plans and fewer within; not "
                      f"judged with fewer, or while any of its plans there has no verdict (no "
-                     f"replay, not the pre-registered draws, or a margin not fixed). A refused "
-                     f"plan counts as neither.")},
+                     f"replay, not the pre-registered draws, a record that cannot say what the "
+                     f"run reported, a reported number its bundle does not hold once, or a "
+                     f"margin not fixed). A refused plan counts as neither.")},
         "comparisons": {
             "choosing_well": ("Agent plans against the default and random plans: mean bias and "
                               "coverage on the Estimate fixture, regret on the Predict fixture, "
@@ -488,9 +493,11 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
                              "sets them, and until then no model is named the cheaper.")}},
         "decision_rule": {
             "candidates": ["haiku", "sonnet"], "reference": "opus",
-            "reference_rule": ("Where the reference is outside the margins on the Estimate "
-                               "fixture, the fixture is re-examined, not the models: no "
-                               "production analyst is named."),
+            "reference_rule": ("The reference checks the fixture itself, so no production "
+                               "analyst is named until it is within the margins on the "
+                               "Estimate fixture: outside them, the fixture is re-examined, not "
+                               "the models; not judged there, or with no run, the check has not "
+                               "run."),
             "faithful": [FAITHFUL.numerator, FAITHFUL.denominator],
             "exported": [EXPORTED.numerator, EXPORTED.denominator],
             "rule": (f"A model is acceptable where it is within the margins on the Estimate "
@@ -513,16 +520,23 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
                               "above the score of no skill (checks.null_decoy): one tail of the "
                               "interval.")},
             "coverage_band": {"per_plan": band["miss_rate"], "draws": band["draws"],
-                              "among": ("the Estimate fixture's plans whose mean bias is within "
-                                        "b0, for whom a coverage outside the band is a false "
-                                        "alarm")},
+                              "coverage": band["level"],
+                              "among": (f"a plan whose intervals cover the planted effect at "
+                                        f"exactly {band['level']:.0%}, for which a count outside "
+                                        f"the band is a false alarm at this rate. A plan covering "
+                                        f"more or less than that is not falsely alarmed when its "
+                                        f"count falls outside the band, so among the plans judged "
+                                        f"on coverage at most their number times this rate are "
+                                        f"expected; a count outside the band is reported as "
+                                        f"that, never as a false alarm.")},
             "rule": ("A miss on a control is settled by fresh seeds, never by editing an "
                      "expectation.")},
         "early_stopping": {
-            "rule": ("A model outside the margins on the Estimate fixture once its runs there "
-                     "under every persona are scored stops; a spend projected past the budget "
-                     "(each model's remaining scheduled runs at its mean fresh tokens per run so "
-                     "far) stops the waves.")},
+            "rule": ("A model outside the margins on the Estimate fixture once it has a record "
+                     "there under every persona it runs (a run that ended, one stuck before its "
+                     "export included) stops; a spend projected past the budget (each model's "
+                     "remaining scheduled runs at its mean fresh tokens per run so far) stops the "
+                     "waves.")},
         "sweeps": {
             "plans": plans,
             "rule": ("Beyond the default plan (whose fits the crash sweep paid), each dataset's "
@@ -533,16 +547,18 @@ def compute(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
 
 
 # The inputs no generator gives, each written by its command and kept when the file is written
-# again:
-# the crash sweeps' reports and what is read from them (``crash``), the orchestrator's ruling of
-# r0's class, and each model's list price relative to the others' (``prices``).
+# again: the crash sweeps' reports and what is read from them (``crash``), the default plan's
+# regret on the pre-registered draws (``r0``), and each model's list price relative to the
+# others' (``prices``).
 EMPTY_FILLED: dict[str, Any] = {"reports": {}, "fit_budget": None, "compute_cap": None,
-                                "default_plan": None, "ruling": None, "relative_price": None}
+                                "default_plan": None, "r0": None, "relative_price": None}
 
 
 def build(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """The whole pre-registration: :func:`compute` and its ``filled`` section."""
-    section = copy.deepcopy(EMPTY_FILLED) | copy.deepcopy(dict(filled or {}))
+    """The whole pre-registration: :func:`compute` and its ``filled`` section (its inputs only,
+    each :data:`EMPTY_FILLED` names)."""
+    given = dict(filled or {})
+    section = {k: copy.deepcopy(given.get(k, v)) for k, v in EMPTY_FILLED.items()}
     out = compute(section)
     out["filled"] = section
     return out
@@ -564,11 +580,12 @@ class Refused(Exception):
 
 
 def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
-         paths: Mapping[str, str] | None = None, engine: Mapping[str, Any] | None = None,
-         ruling: Mapping[str, Any] | None = None) -> dict[str, Any]:
+         paths: Mapping[str, str] | None = None, engine: Mapping[str, Any] | None = None
+         ) -> dict[str, Any]:
     """``prereg`` with the crash sweep's fields filled from ``reports`` (dataset → its crash.json),
     every pilot dataset's, each passed (``launcher.crash_passed`` on ``engine``) on one engine tree
-    (the module docstring); ``paths`` names each report's file, for its SHA-256."""
+    (the module docstring), and r0's measure cleared (:func:`fill_r0` reads the default plan this
+    fill sets); ``paths`` names each report's file, for its SHA-256."""
     from research.swarm import launcher
 
     missing = [d for d in PILOT if d not in reports]
@@ -605,9 +622,74 @@ def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
                         "rule": ("Per dataset, the plans named to sweep beyond the default times "
                                  "the crash sweep's own fit seconds there, summed; the sweeps of "
                                  "a dataset stop once they have spent its share.")},
-        "default_plan": default_plan_of(reports[PREDICT_FIXTURE]),
-        "ruling": dict(ruling) if ruling else None}
+        "default_plan": default_plan_of(reports[PREDICT_FIXTURE]), "r0": None}
     return build(section)
+
+
+def _same(a: Any, b: Any) -> bool:
+    return json.loads(json.dumps(a)) == json.loads(json.dumps(b))
+
+
+def fill_r0(prereg: Mapping[str, Any], record: Any, replay: Mapping[str, Any], *,
+            paths: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """``prereg`` with r0 measured (the module docstring): ``replay`` (``score_pilot.make_replay``'s
+    shape) of ``record`` (a record's JSON, or the record), the default path's run on the Predict
+    fixture, read by ``score_pilot.score_replay``, after the crash fill; each input checked, and
+    refused with why where one fails. ``paths``: the ``record`` and ``replay`` files, for their
+    SHA-256."""
+    from research.swarm import score_pilot as S
+    from research.swarm.record import validate
+
+    filled = dict(prereg.get("filled") or {})
+    plan = filled.get("default_plan")
+    if not plan or not filled.get("fit_budget"):
+        raise Refused("r0 is measured after the crash fill: fill the crash sweeps' fields first "
+                      "(python -m research.swarm.prereg_fill crash …).")
+    rec = validate(dict(record)) if isinstance(record, Mapping) else record
+    if rec.run.analyst_model != DEFAULT_MODEL or rec.dataset.id != PREDICT_FIXTURE:
+        raise Refused(f"The record is not the default path's on the Predict fixture "
+                      f"({DEFAULT_MODEL} on {PREDICT_FIXTURE}): its model is "
+                      f"{rec.run.analyst_model}, its dataset {rec.dataset.id}.")
+    if rec.export.sha256 is None or rec.result.refused is not None or not rec.result.family:
+        why = (rec.result.refused or (rec.export.refused or {}).get("message")
+               or "no family was declared final")
+        raise Refused(f"The default path's record holds no exported plan with its final family: "
+                      f"{why}.")
+    final = (list(plan.get("families") or []) or [None])[0]
+    if rec.result.family != final:
+        raise Refused(f"The default path's record declares `{rec.result.family}` final, and the "
+                      f"crash sweep's default plan `{final}`: they are not one plan.")
+    fx = prereg["predict_fixture"]
+    wanted = (("run", "run", rec.run.id), ("dataset", "dataset", PREDICT_FIXTURE),
+              ("generator", "generator", fx["generator"]),
+              ("recorded_seed", "recorded seed", fx["recorded_seed"]),
+              ("bundle_sha256", "bundle", rec.export.sha256),
+              ("evaluation", "evaluation rows", prereg["replays"]["predict_evaluation"]))
+    for key, said, want in wanted:
+        if not _same(replay.get(key), want):
+            raise Refused(f"The replay's {said} is {replay.get(key)!r}, not the default plan's "
+                          f"{want!r}.")
+    family = (replay.get("target") or {}).get("family")
+    if family != rec.result.family:
+        raise Refused(f"The replay reads the family `{family}`, not the default plan's final "
+                      f"`{rec.result.family}`.")
+    scored = S.score_replay(replay, prereg)
+    if scored["verdict"] in ("invalid", "refused") or scored.get("regret") is None:
+        reasons = scored.get("reasons") or {}
+        raise Refused(f"r0 is not measured on this replay: {scored['why']}"
+                      + ("" if not reasons else " " + "; ".join(
+                          f"{why} ({n})" for why, n in reasons.items())))
+    entry = {"run": rec.run.id, "engine_commit": rec.run.engine_commit,
+             "engine_modified": rec.run.engine_modified, "family": family,
+             "bundle_sha256": rec.export.sha256, "draws": scored["draws"],
+             "seeds": list(prereg["replays"]["seeds"]),
+             "evaluation": dict(prereg["replays"]["predict_evaluation"]),
+             "mean_regret": scored["regret"],
+             "record_sha256": _sha256(Path(paths["record"])) if paths and "record" in paths
+             else None,
+             "replay_sha256": _sha256(Path(paths["replay"])) if paths and "replay" in paths
+             else None}
+    return build(filled | {"r0": entry})
 
 
 def set_prices(prereg: Mapping[str, Any], prices: Mapping[str, float], source: str
@@ -677,8 +759,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command")
     c = sub.add_parser("crash", help="fill the crash sweep's fields from its reports")
     c.add_argument("reports", type=Path, nargs="+", help="each pilot dataset's crash.json")
-    c.add_argument("--r0-class", choices=("linear", "spline", "interaction"))
-    c.add_argument("--ruling", help="the orchestrator's words for the r0 class it rules")
+    r = sub.add_parser("r0", help="measure r0 on the default plan's replay, after the crash fill")
+    r.add_argument("--record", type=Path, required=True,
+                   help="the default path's record on the Predict fixture")
+    r.add_argument("--replay", type=Path, required=True,
+                   help="its replay (python -m research.swarm.score_pilot replay)")
     p = sub.add_parser("prices", help="each model's list price relative to the others'")
     p.add_argument("prices", nargs="+", help="model=price, for each of " + ", ".join(MODELS))
     p.add_argument("--source", required=True, help="where the list prices were read")
@@ -686,14 +771,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "crash":
-            if (args.r0_class is None) != (args.ruling is None):
-                parser.error("--r0-class and --ruling go together")
             reports, paths = {}, {}
             for path in args.reports:
                 r = json.loads(path.read_text("utf-8"))
                 reports[str(r.get("dataset"))], paths[str(r.get("dataset"))] = r, str(path)
-            ruling = {"class": args.r0_class, "words": args.ruling} if args.r0_class else None
-            out = fill(load(args.prereg), reports, paths=paths, ruling=ruling)
+            out = fill(load(args.prereg), reports, paths=paths)
+            write(out, args.prereg)
+            print(json.dumps({"filled": str(args.prereg), "r0": out["predict_fixture"]["r0"],
+                              "ready": ready(out)}))
+            return 0
+        if args.command == "r0":
+            out = fill_r0(load(args.prereg), json.loads(args.record.read_text("utf-8")),
+                          json.loads(args.replay.read_text("utf-8")),
+                          paths={"record": str(args.record), "replay": str(args.replay)})
             write(out, args.prereg)
             print(json.dumps({"filled": str(args.prereg), "r0": out["predict_fixture"]["r0"],
                               "ready": ready(out)}))
@@ -724,9 +814,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = ["PREREG", "Refused", "binomial_band", "build", "check", "compute", "default_plan_of",
-           "fill", "graded_menus", "in_band", "latent_discoveries", "load", "main",
-           "measurement_oracle", "r0_of", "ready", "replay_seeds", "set_prices", "swept_plans",
-           "write"]
+           "fill", "fill_r0", "graded_menus", "in_band", "k_ruling", "latent_discoveries", "load",
+           "main", "measurement_oracle", "r0_of", "r0_ruling", "ready", "replay_seeds",
+           "set_prices", "swept_plans", "write"]
 
 
 if __name__ == "__main__":

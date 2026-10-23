@@ -112,9 +112,15 @@
   },
   "measurement": {
    "q": 0.05,
-   "k": 1,
-   "rule": "On the measurement fixture a refit is material where its discovery set at q < 0.05 differs from the plan's by at least 1 feature(s) (the symmetric difference), k being half the discovery set's own draw-to-draw change rounded up (1.88 features).",
-   "derivation": "measurement_fixture.oracle"
+   "k": 2,
+   "rule": "On the measurement fixture a refit is material where its discovery set at q < 0.05 differs from the plan's by at least 2 feature(s) (the symmetric difference), k being the discovery set's own mean draw-to-draw change rounded up (1.88 features).",
+   "derivation": "measurement_fixture.oracle",
+   "ruling": {
+    "by": "the orchestrator, the methods lead",
+    "date": "2026-10-23",
+    "review": "for the owner to review",
+    "words": "The measurement fixture's materiality k is the mean draw-to-draw symmetric difference of the latent oracle's discovery set, rounded up (2, from 1.88): a change smaller than two independent draws of the same truth differ by is within noise."
+   }
   },
   "decision": "A decision is material where any of its refits is.",
   "refused_refits": "A refit the engine refuses has no score: it is reported beside its decision's materiality as the sweep's refused share, kept apart from the analysts' refusal rate."
@@ -125,7 +131,7 @@
    1001,
    1100
   ],
-  "rule": "Every final plan on a fixture is replayed on the same 100 fresh draws of its generator, seeds 1001 to 1100 (core/export/replay.py's fresh draw). A plan refused on any draw is a refused plan: it counts as neither within nor outside the margins, and goes into the refusal rate with each draw's reason.",
+  "rule": "Every final plan on a fixture is replayed on the same 100 fresh draws of its generator, seeds 1001 to 1100 (core/export/replay.py's fresh draw). A plan refused on any draw is a refused plan, and so is a plan whose run reported no result (its record's result refused: none reported, or none served): it counts as neither within nor outside the margins, and goes into the refusal rate with its reasons. A plan whose record cannot say what the run reported, or whose reported number its bundle does not hold once, is not judged.",
   "predict_evaluation": {
    "seed": 2001,
    "rows": 20000
@@ -208,12 +214,22 @@
   },
   "r0": {
    "final": null,
-   "class": null,
    "value": null,
-   "why": "No crash sweep of the Predict fixture has been filled in, so the default plan's final family is not known.",
-   "ruling": null
+   "default_regret": null,
+   "why": "No crash sweep of the Predict fixture has been filled in, so the default plan is not known; r0 is measured after it (python -m research.swarm.prereg_fill r0 …).",
+   "reference": {
+    "class": "linear",
+    "value": 0.009418361832874013,
+    "label": "A reference only, not r0: half the population regret of the generator's additive straight-line class (generators.readmission_regrets), whatever the default plan's final family."
+   },
+   "ruling": {
+    "by": "the orchestrator, the methods lead",
+    "date": "2026-10-23",
+    "review": "for the owner to review",
+    "words": "The default path on the Predict fixture declares boosted_trees final, which has no generator class, so r0 is measured: half the default plan's mean Brier regret against the generator's oracle over the pre-registered replay draws (seeds 1001-1100) on the pre-registered evaluation rows (seed 2001 x 20,000), computed by score_pilot's own replay producer after the crash fill and before the trio, so r0 and every plan's regret come from the same draws, rows and scorer. The linear class's value stays in prereg.json as a reference, labeled so."
+   }
   },
-  "rule": "A plan is within the margin where its mean Brier regret against the true risk over the draws (its predictions on the evaluation rows) is less than r0, half the population regret of the class the default path's final plan falls in."
+  "rule": "A plan is within the margin where its mean Brier regret against the true risk over the draws (its predictions on the evaluation rows) is less than r0, half the default plan's mean regret on the same draws and rows."
  },
  "measurement_fixture": {
   "dataset": "plasma_panel_estimate",
@@ -375,7 +391,7 @@
    "discoveries": 15.44,
    "pairs": 50,
    "symmetric_difference": 1.88,
-   "k": 1
+   "k": 2
   },
   "reported": [
    "the false-discovery proportion against the nominal rate",
@@ -390,7 +406,7 @@
    3
   ],
   "minimum": 2,
-  "rule": "A model is within the margins on a fixture where at least 2 in 3 of its non-refused plans there are within them, with at least 2 non-refused plans; outside them with at least 2 non-refused plans and fewer within; not judged with fewer, or while any of its plans there has no verdict (no replay, not the pre-registered draws, or a margin not fixed). A refused plan counts as neither."
+  "rule": "A model is within the margins on a fixture where at least 2 in 3 of its non-refused plans there are within them, with at least 2 non-refused plans; outside them with at least 2 non-refused plans and fewer within; not judged with fewer, or while any of its plans there has no verdict (no replay, not the pre-registered draws, a record that cannot say what the run reported, a reported number its bundle does not hold once, or a margin not fixed). A refused plan counts as neither."
  },
  "comparisons": {
   "choosing_well": "Agent plans against the default and random plans: mean bias and coverage on the Estimate fixture, regret on the Predict fixture, discovery quality on the measurement fixture, and the reported held-out score or estimate on the real datasets.",
@@ -415,7 +431,7 @@
    "sonnet"
   ],
   "reference": "opus",
-  "reference_rule": "Where the reference is outside the margins on the Estimate fixture, the fixture is re-examined, not the models: no production analyst is named.",
+  "reference_rule": "The reference checks the fixture itself, so no production analyst is named until it is within the margins on the Estimate fixture: outside them, the fixture is re-examined, not the models; not judged there, or with no run, the check has not run.",
   "faithful": [
    4,
    5
@@ -440,12 +456,13 @@
   "coverage_band": {
    "per_plan": 0.017392939287818727,
    "draws": 100,
-   "among": "the Estimate fixture's plans whose mean bias is within b0, for whom a coverage outside the band is a false alarm"
+   "coverage": 0.95,
+   "among": "a plan whose intervals cover the planted effect at exactly 95%, for which a count outside the band is a false alarm at this rate. A plan covering more or less than that is not falsely alarmed when its count falls outside the band, so among the plans judged on coverage at most their number times this rate are expected; a count outside the band is reported as that, never as a false alarm."
   },
   "rule": "A miss on a control is settled by fresh seeds, never by editing an expectation."
  },
  "early_stopping": {
-  "rule": "A model outside the margins on the Estimate fixture once its runs there under every persona are scored stops; a spend projected past the budget (each model's remaining scheduled runs at its mean fresh tokens per run so far) stops the waves."
+  "rule": "A model outside the margins on the Estimate fixture once it has a record there under every persona it runs (a run that ended, one stuck before its export included) stops; a spend projected past the budget (each model's remaining scheduled runs at its mean fresh tokens per run so far) stops the waves."
  },
  "sweeps": {
   "plans": {
@@ -544,7 +561,7 @@
   "fit_budget": null,
   "compute_cap": null,
   "default_plan": null,
-  "ruling": null,
+  "r0": null,
   "relative_price": null
  }
 }

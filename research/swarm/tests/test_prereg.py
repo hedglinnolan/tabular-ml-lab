@@ -8,16 +8,20 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
   (scikit-learn's logistic model, numpy's least squares) on the same tuning draws.
 * The coverage band and its miss rate: scipy's binomial distribution; a count inside the band
   passes and one beside it fails.
-* r0: statsmodels' maximum-likelihood logistic fit of the additive straight-line class on the
-  generator's rows, half its regret against the true risk; refused for a piecewise-constant
-  default, for count columns read as codes, for a form and for a repair, each named.
-* k: statsmodels' t-tests and Benjamini-Hochberg on the true concentrations give the same
-  discovery sets, so the same power, false-discovery proportion and k.
+* r0 (the orchestrator's ruling of 2026-10-23): half the default plan's mean regret on the
+  pre-registered draws and rows, numpy's mean of a constructed replay's regrets; the fill refuses a
+  replay that is not the default path's export on the Predict fixture on those draws and rows, or
+  one refused on a draw, and the trio waits for it. Its reference, half the additive
+  straight-line class's regret, is statsmodels' maximum-likelihood logistic fit on the generator's
+  rows against the true risk.
+* k (the orchestrator's ruling of 2026-10-23): statsmodels' t-tests and Benjamini-Hochberg on the
+  true concentrations give the same discovery sets, so the same power, false-discovery proportion
+  and mean draw-to-draw change, whose rounding up is k.
 * The graded menus: outcome-protected ComBat graded the engine's refusal, the covariate a choice.
 * The committed prereg.json is what the generators give, and a changed margin is named.
 * The crash sweep's fields: the fit budget the launcher's own rule gives, the compute cap summed by
-  hand from §6's named plans, r0 read from the Predict fixture's default plan; the trio refused
-  without them, on a report that did not pass, and across two engine trees.
+  hand from §6's named plans, the Predict fixture's default plan; the trio refused without them,
+  on a report that did not pass, and across two engine trees.
 """
 from __future__ import annotations
 
@@ -202,48 +206,140 @@ SEX = {"kind": "apply_repair", "finding_id": "binary_text__sex", "option": "leve
        "params": {"column": "sex", "one": "f", "zero": "m", "relabels": True}}
 
 
-def plan(families: list[str], *decisions: dict) -> dict:
-    return {"families": families, "decisions": [SEX, *amounts("age", "charlson_index"),
-                                                {"kind": "select_models", "models": families},
-                                                *decisions]}
-
-
-def test_r0_is_half_the_straight_line_classs_regret_by_statsmodels_for_a_straight_line_default(
-        prereg):
+def test_r0s_reference_is_half_the_straight_line_classs_regret_by_statsmodels(prereg):
     regret = _straight_line_regret()
     classes = prereg["predict_fixture"]["regrets"]["classes"]
     assert classes["linear"] == pytest.approx(regret, rel=1e-3)
-    r0 = P.r0_of(plan(["elastic_net", "boosted_trees"]), classes)
-    assert (r0["final"], r0["class"], r0["why"]) == ("elastic_net", "linear", None)
-    assert r0["value"] == pytest.approx(regret / 2, rel=1e-3)
+    reference = prereg["predict_fixture"]["r0"]["reference"]
+    assert reference["class"] == "linear" and reference["value"] == classes["linear"] / 2
+    assert reference["value"] == pytest.approx(regret / 2, rel=1e-3)
+    assert "not r0" in reference["label"]
 
 
-@pytest.mark.parametrize("default,named", [
-    (plan(["boosted_trees", "elastic_net"]), "piecewise constant"),
-    (plan(["elastic_net"], {"kind": "confirm_reading", "reading": "code_or_count",
-                            "column": "prior_admissions_12mo", "value": "code"}),
-     "`prior_admissions_12mo`"),
-    (plan(["elastic_net"], {"kind": "set_exposure_form", "column": "age", "form": "spline"}),
-     "functional form"),
-    (plan(["elastic_net"], {"kind": "apply_repair", "finding_id": "skewed__creatinine_mg_dl",
-                            "option": "log"}), "skewed__creatinine_mg_dl"),
-])
-def test_r0_is_refused_naming_why_where_the_generator_computes_no_class(prereg, default, named):
-    r0 = P.r0_of(default, prereg["predict_fixture"]["regrets"]["classes"])
-    assert r0["value"] is None and r0["class"] is None and named in r0["why"]
-
-
-def test_an_orchestrators_ruling_sets_r0_and_keeps_the_automatic_refusal_beside_it(prereg):
-    classes = prereg["predict_fixture"]["regrets"]["classes"]
-    r0 = P.r0_of(plan(["boosted_trees"]), classes, {"class": "linear", "words": "ruled"})
-    assert r0["value"] == classes["linear"] / 2 and r0["ruling"]["words"] == "ruled"
-    assert "piecewise constant" in r0["automatic"]
-
-
-def test_r0_waits_for_the_crash_sweep_in_the_committed_file(prereg):
+def test_r0_waits_for_the_crash_sweep_and_its_measure_in_the_committed_file(prereg):
     r0 = prereg["predict_fixture"]["r0"]
-    assert prereg["filled"]["default_plan"] is None
+    assert prereg["filled"]["default_plan"] is None and prereg["filled"]["r0"] is None
     assert r0["value"] is None and "crash sweep" in r0["why"]
+    ruling = r0["ruling"]
+    assert (ruling["date"], ruling["by"]) == ("2026-10-23", "the orchestrator, the methods lead")
+    assert "measured" in ruling["words"] and "seeds 1001-1100" in ruling["words"]
+    assert "seed 2001 x 20,000" in ruling["words"]
+
+
+def default_record(family: str = "boosted_trees", **run) -> dict:
+    """The default path's record on the Predict fixture (``arms.run_arm``' model), its final
+    family ``family``, its export's bundle the constructed one."""
+    from research.swarm.tests import constructed as C
+
+    data = C.predict_record()
+    data["run"].update({"id": "run_default", "analyst_model": "mechanical-default",
+                        "persona": None} | run)
+    data["dataset"]["id"] = P.PREDICT_FIXTURE
+    data["result"]["family"] = family
+    return data
+
+
+def regrets_of(seeds: list[int]) -> list[float]:
+    return [0.004 + 0.001 * ((7 * s) % 5) for s in seeds]
+
+
+def default_replay(prereg, data: dict, **changes) -> dict:
+    """``data``'s replay as ``score_pilot.make_replay`` writes one, on the pre-registered draws
+    and evaluation rows, each draw's regret :func:`regrets_of` its seed."""
+    first, last = prereg["replays"]["seeds"]
+    seeds = list(range(first, last + 1))
+    fx = prereg["predict_fixture"]
+    out = {"run": data["run"]["id"], "dataset": P.PREDICT_FIXTURE, "generator": fx["generator"],
+           "recorded_seed": fx["recorded_seed"],
+           "target": {"kind": "predict", "family": data["result"]["family"]},
+           "evaluation": dict(prereg["replays"]["predict_evaluation"]),
+           "bundle_sha256": data["export"]["sha256"],
+           "draws": [{"seed": s, "refused": None, "regret": r}
+                     for s, r in zip(seeds, regrets_of(seeds))]}
+    out.update(changes)
+    return out
+
+
+def measured(prereg) -> dict:
+    """``prereg`` with its crash fields filled (the default plan's final family boosted_trees)
+    and r0 measured on :func:`default_replay`."""
+    crashed = P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
+    data = default_record()
+    return P.fill_r0(crashed, data, default_replay(crashed, data))
+
+
+def test_r0_is_half_the_default_plans_mean_regret_on_the_preregistered_draws_and_rows(prereg):
+    crashed = P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
+    why = P.ready(crashed, ENGINE, margins=False)
+    assert "no r0" in why and "prereg_fill r0" in why
+    filled = measured(prereg)
+    first, last = prereg["replays"]["seeds"]
+    expected = float(np.mean(regrets_of(list(range(first, last + 1))))) / 2
+    r0 = filled["predict_fixture"]["r0"]
+    assert r0["value"] == pytest.approx(expected, rel=1e-12)
+    assert (r0["final"], r0["why"]) == ("boosted_trees", None)
+    assert filled["filled"]["r0"]["run"] == "run_default"
+    assert filled["filled"]["r0"]["draws"] == 100
+    assert P.ready(filled, ENGINE) is None
+    assert P.check(filled) == []
+    again = P.fill(filled, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
+    assert again["filled"]["r0"] is None and again["predict_fixture"]["r0"]["value"] is None
+
+
+def _short(prereg, data):
+    replay = default_replay(prereg, data)
+    replay["draws"] = replay["draws"][:-1]
+    return replay
+
+
+def _refused_draw(prereg, data):
+    replay = default_replay(prereg, data)
+    replay["draws"][4] = {"seed": replay["draws"][4]["seed"], "refused": "a level unseen"}
+    return replay
+
+
+@pytest.mark.parametrize("record,replay,named", [
+    (lambda: default_record(analyst_model="claude-haiku-5-5"), None, "default path"),
+    (lambda: default_record() | {"dataset": default_record()["dataset"] | {"id": "bang2009"}},
+     None, "default path"),
+    (lambda: default_record("elastic_net"), None, "boosted_trees"),
+    (default_record, lambda p, d: default_replay(p, d, run="run_other"), "run_other"),
+    (default_record, lambda p, d: default_replay(p, d, bundle_sha256="ef" * 32), "bundle"),
+    (default_record, lambda p, d: default_replay(p, d, evaluation={"seed": 2001, "rows": 1000}),
+     "evaluation rows"),
+    (default_record, lambda p, d: default_replay(p, d, generator="tests:small"), "generator"),
+    (default_record, lambda p, d: default_replay(p, d, target={"kind": "predict",
+                                                               "family": "linear"}), "family"),
+    (default_record, _short, "pre-registered"),
+    (default_record, _refused_draw, "refused"),
+])
+def test_the_r0_fill_refuses_a_replay_not_the_default_plans_on_the_preregistered_draws(
+        prereg, record, replay, named):
+    crashed = P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
+    data = record()
+    given = replay(crashed, data) if replay else default_replay(crashed, data)
+    with pytest.raises(P.Refused, match=named):
+        P.fill_r0(crashed, data, given)
+
+
+def test_r0_is_measured_only_after_the_crash_fill(prereg):
+    data = default_record()
+    with pytest.raises(P.Refused, match="crash"):
+        P.fill_r0(prereg, data, default_replay(prereg, data))
+
+
+def test_the_r0_command_writes_the_measure_it_reads(prereg, tmp_path):
+    crashed = P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
+    path = P.write(crashed, tmp_path / "prereg.json")
+    data = default_record()
+    (tmp_path / "record.json").write_text(json.dumps(data), "utf-8")
+    (tmp_path / "replay.json").write_text(json.dumps(default_replay(crashed, data)), "utf-8")
+    assert P.main(["--prereg", str(path), "r0", "--record", str(tmp_path / "record.json"),
+                   "--replay", str(tmp_path / "replay.json")]) == 0
+    written = P.load(path)
+    assert written["predict_fixture"]["r0"]["value"] == measured(prereg)["predict_fixture"][
+        "r0"]["value"]
+    assert written["filled"]["r0"]["replay_sha256"] == P._sha256(tmp_path / "replay.json")
 
 
 # ── the measurement fixture ──────────────────────────────────────────────────
@@ -269,8 +365,11 @@ def test_k_power_and_fdp_are_statsmodels_t_tests_on_the_true_concentrations(prer
     assert oracle["power"] == pytest.approx(np.mean([len(s & truth) / len(truth) for s in sets]))
     assert oracle["fdp"] == pytest.approx(np.mean([len(s - truth) / len(s) for s in sets]))
     assert oracle["symmetric_difference"] == pytest.approx(np.mean(pairs))
-    assert oracle["k"] == max(1, math.ceil(np.mean(pairs) / 2))
+    assert oracle["k"] == max(1, math.ceil(np.mean(pairs))) == 2
     assert prereg["material"]["measurement"]["k"] == oracle["k"]
+    ruling = prereg["material"]["measurement"]["ruling"]
+    assert (ruling["date"], ruling["by"]) == ("2026-10-23", "the orchestrator, the methods lead")
+    assert f"({oracle['k']}, from {oracle['symmetric_difference']:g})" in ruling["words"]
 
 
 def test_the_graded_menus_grade_a_refused_rung_the_engines_refusal_and_the_rest_choices(prereg):
@@ -338,7 +437,7 @@ def reports(default: list[str]) -> dict[str, dict]:
     return out
 
 
-def test_the_crash_fill_sets_each_budget_the_cap_and_r0_and_lets_the_trio_start(prereg):
+def test_the_crash_fill_sets_each_budget_the_cap_and_the_default_plans_final_family(prereg):
     from research.swarm import launcher
 
     filled = P.fill(prereg, reports(["elastic_net", "boosted_trees"]), engine=ENGINE)
@@ -348,9 +447,9 @@ def test_the_crash_fill_sets_each_budget_the_cap_and_r0_and_lets_the_trio_start(
     assert estimate["seconds"] == math.ceil(11 * 20.25)
     # Five named plans on the Estimate fixture at its 100 s, two on each of five others at 30 s.
     assert crash_["compute_cap"]["seconds"] == 5 * 100.0 + 5 * 2 * 30.0
-    classes = filled["predict_fixture"]["regrets"]["classes"]
-    assert filled["predict_fixture"]["r0"]["value"] == classes["linear"] / 2
-    assert P.ready(filled, ENGINE) is None
+    r0 = filled["predict_fixture"]["r0"]
+    assert (r0["final"], r0["value"]) == ("elastic_net", None)
+    assert "not been measured" in r0["why"]
     assert P.check(filled) == []
 
 
@@ -358,10 +457,8 @@ def test_the_trio_is_refused_without_the_crash_sweeps_fields_or_r0(prereg):
     assert "no fit budget" in P.ready(prereg, ENGINE, margins=False)
     boosted = P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
     assert "no r0" in P.ready(boosted, ENGINE, margins=False)
-    assert "piecewise constant" in P.ready(boosted, ENGINE, margins=False)
     other = {**ENGINE, "engine_tree": "t1"}
-    filled = P.fill(prereg, reports(["elastic_net"]), engine=ENGINE)
-    assert "engine tree" in P.ready(filled, other, margins=False)
+    assert "engine tree" in P.ready(measured(prereg), other, margins=False)
 
 
 def test_the_fill_refuses_a_missing_report_one_that_did_not_pass_and_two_engine_trees(prereg):

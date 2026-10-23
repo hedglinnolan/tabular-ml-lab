@@ -4,7 +4,10 @@ rule both ways.
 
 * A replay on the Estimate fixture: a mean bias built just inside b0 passes and just outside fails;
   a coverage count at each end of the band passes and one beside it fails; a refused draw makes a
-  refused plan, and draws other than the pre-registered ones are refused as invalid.
+  refused plan, and draws other than the pre-registered ones are refused as invalid. A replay
+  refused as a whole (its run reported no result) is a refused plan with its words, one whose
+  reported number the bundle does not hold once unjudged; an exported record whose run reported
+  no result is a refused plan in its model's refusal rate, given a replay or not.
 * On the Predict fixture: a regret below r0 passes, above fails, and with no r0 the plan is not
   judged. On the measurement fixture: a discovery set built with one false and one missed feature
   gives its proportion and power, an effect error built at 0.1 away from zero gives 0.1.
@@ -14,9 +17,12 @@ rule both ways.
   fixture's discovery-set rule at k and below it, and refused without q-values.
 * Reach over a union of three, none over two; the persona rule kept, not kept and deferred.
 * The referees' share, the export rate with the blind reader's classes, the decision rule (the
-  cheaper of two acceptable, the reference outside, none acceptable), early stopping and the
-  projected spend.
-* The report's sentences carry the numbers of the report they come from.
+  cheaper of two acceptable, none acceptable, and no analyst named while the reference is outside,
+  not judged or without a run), early stopping (once the model has a record under every persona,
+  a stuck run's included, and its unit is outside) and the projected spend.
+* The report's sentences carry the numbers of the report they come from; the coverage band's
+  false alarms are bounded over every plan judged on coverage, a count outside the band reported
+  as that, never as a false alarm.
 * The replay of a plan: the row a draw is read from is located on the recorded bundle (one row,
   never two), and (slow) on two fresh draws its estimate and interval are statsmodels' on the
   generator's own table at each seed.
@@ -44,11 +50,11 @@ def prereg():
 
 @pytest.fixture(scope="module")
 def filled(prereg):
-    """prereg.json with its crash fields filled from constructed reports, the default plan a
-    straight-line one, so r0 is half the straight-line class's regret."""
-    from research.swarm.tests.test_prereg import reports
+    """prereg.json with its crash fields filled from constructed reports and r0 measured on a
+    constructed replay of the default plan."""
+    from research.swarm.tests.test_prereg import measured
 
-    return P.fill(prereg, reports(["elastic_net", "boosted_trees"]), engine=ENGINE)
+    return measured(prereg)
 
 
 def seeds(prereg) -> list[int]:
@@ -58,14 +64,25 @@ def seeds(prereg) -> list[int]:
 
 def record(kind: str = "estimate", run: str = "run_01", model: str = "claude-haiku-5-5",
            persona: str = "conventional", dataset: str | None = None, reached: bool = True,
-           fresh: int = 1000, minute: int = 0) -> Any:
+           fresh: int = 1000, minute: int = 0, exported: bool = True,
+           result_refused: str | None = None) -> Any:
+    """A constructed record; ``exported`` False: the run stuck before its export, which the
+    server refused after it (no bundle, so no plan); ``result_refused``: the result's kind of none
+    (``record.RefusedKind``), the run having reported no estimate."""
     data = C.estimate_record() if kind == "estimate" else C.predict_record()
     data["run"].update(id=run, analyst_model=model, persona=persona,
                        started=f"2026-10-24T10:{minute:02d}:00+00:00")
     data["run"]["spend"]["fresh"] = fresh
     data["dataset"]["id"] = dataset or {"estimate": P.ESTIMATE_FIXTURE,
                                         "predict": P.PREDICT_FIXTURE}[kind]
-    data["export"]["reached"] = reached
+    data["export"]["reached"] = reached and exported
+    if not exported:
+        data["export"].update(sha256=None, methods=None, checklist=None,
+                              refused={"code": "result_not_ready", "message": "no fit"})
+    if result_refused:
+        data["result"].update(estimates=None, measure=None, scale=None, conditioning=None,
+                              source=None, refused=f"constructed: {result_refused}",
+                              refused_kind=result_refused)
     for d in data["decisions"]:  # every preview made through the driver, with its reason
         for e in d["examined"]:
             if e["how"] == "preview":
@@ -119,6 +136,83 @@ def test_a_refused_draw_makes_a_refused_plan_and_other_draws_are_invalid(prereg)
     moved = estimate_replay(prereg, bias=0.0, covered=95)
     moved["draws"][0]["seed"] = 1
     assert S.score_replay(moved, prereg)["verdict"] == "invalid"
+
+
+def test_a_replay_refused_as_a_whole_is_a_refused_plan_and_one_unread_is_unjudged(prereg):
+    """A replay with no draws carries why at its top: refused (the run reported no result) is a
+    refused plan with those words, unjudged (the bundle holds no one row equal to the record's
+    number) is unjudged with its words; neither is a replay of the wrong draws."""
+    whole = {"run": "x", "dataset": P.ESTIMATE_FIXTURE, "draws": [],
+             "refused": "The run reported no result (none reported): never locked"}
+    got = S.score_replay(whole, prereg)
+    assert (got["verdict"], got["why"]) == ("refused", whole["refused"])
+    unread = {"run": "x", "dataset": P.ESTIMATE_FIXTURE, "draws": [], "unjudged": "no one row"}
+    got = S.score_replay(unread, prereg)
+    assert (got["verdict"], got["why"]) == ("unjudged", "no one row")
+    assert S.score_replay({**whole, "refused": None}, prereg)["verdict"] == "invalid"
+    assert S.score_replay(estimate_replay(prereg, bias=0.0, covered=95), prereg)["verdict"] == \
+        "within"
+
+
+def _bundle(tmp_path, estimates: dict) -> Any:
+    import json
+    import zipfile
+
+    path = tmp_path / "export.zip"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("turbotab-export/provenance.json", json.dumps({"estimates": estimates}))
+    return path
+
+
+def test_the_replay_of_a_record_with_no_result_is_refused_and_of_an_unlocated_row_unjudged(
+        prereg, tmp_path):
+    """Before any draw: a record whose result the run reported none of (or the engine served none
+    of) is replayed as refused with its words, one whose record cannot say what was reported as
+    unjudged, as the record's own checks read them; a reported number the bundle does not hold
+    once is unjudged."""
+    import hashlib
+
+    bundle = _bundle(tmp_path, {"table2|linear/model_2/x|estimate": 0.30})
+    for kind, key in (("not_reported", "refused"), ("not_served", "refused"),
+                      ("not_known", "unjudged")):
+        rec = record(run="r", result_refused=kind)
+        target = S.target_of(rec, prereg)
+        assert target["result_refused"] == {"kind": kind, "words": f"constructed: {kind}"}
+        got = S.make_replay(bundle, target, P.ESTIMATE_FIXTURE, "r", prereg, seeds=[])
+        assert got["draws"] == [] and f"constructed: {kind}" in got[key], kind
+        assert S.score_replay(got, prereg)["verdict"] == key
+    target = S.target_of(record(run="r"), prereg)
+    assert "result_refused" not in target and target["rows"][0]["estimate"] == 0.30
+    got = S.make_replay(bundle, target, P.ESTIMATE_FIXTURE, "r", prereg, seeds=[])
+    assert got.get("unjudged") is None and got.get("refused") is None
+    assert got["bundle_sha256"] == hashlib.sha256(bundle.read_bytes()).hexdigest()
+    other = _bundle(tmp_path, {"table2|linear/model_2/x|estimate": 0.31})
+    got = S.make_replay(other, target, P.ESTIMATE_FIXTURE, "r", prereg, seeds=[])
+    assert "no one row" in got["unjudged"] and S.score_replay(got, prereg)["verdict"] == "unjudged"
+
+
+def test_a_fixture_record_whose_result_was_refused_is_a_refused_plan_in_the_refusal_rate(prereg):
+    """With no replay given, an exported record on a fixture whose run reported no result is a
+    refused plan with its words, counted as neither in the unit and in the model's refusal rate;
+    one that cannot say what was reported is unjudged; one with its numbers is still unscored. A
+    replay given for a record with no result does not judge it."""
+    b0 = prereg["estimate_fixture"]["b0"]
+    recs = [record(run="a"), record(run="b"), record(run="none", result_refused="not_reported")]
+    replays = [estimate_replay(prereg, bias=2 * b0, covered=95, run=r) for r in ("a", "b")]
+    replays.append(estimate_replay(prereg, bias=0.0, covered=95, run="none"))
+    report = S.score(recs, replays, [], prereg)
+    plans = {p["run"]: p for p in report["plans"]}
+    assert plans["none"]["verdict"] == "refused"
+    assert "constructed: not_reported" in plans["none"]["why"]
+    haiku = report["models"]["haiku"]
+    assert haiku["units"]["estimate"]["verdict"] == "outside"  # 0 of 2 judged within
+    assert (haiku["refusals"]["refused"], haiku["refusals"]["share"]) == (1, 1 / 3)
+    recs = [record(run="unknown", result_refused="not_known"), record(run="whole")]
+    plans = {p["run"]: p for p in S.score(recs, [], [], prereg)["plans"]}
+    assert plans["unknown"]["verdict"] == "unjudged" and "not_known" in plans["unknown"]["why"]
+    assert plans["whole"]["verdict"] == "unscored"
+    stuck = record(run="stuck", exported=False, result_refused="not_reported")
+    assert S.score([stuck], [], [], prereg)["plans"] == []  # no bundle, so no plan
 
 
 # ── the Predict and measurement fixtures ─────────────────────────────────────
@@ -334,26 +428,62 @@ def test_the_decision_names_the_cheaper_acceptable_model(prereg):
     assert got["production"] is None and "returns to Nolan" in got["why"]
 
 
-def test_the_decision_waits_on_an_undecided_model_and_on_a_reference_outside(prereg):
+def test_the_decision_waits_on_an_undecided_model(prereg):
     models = {"haiku": stats("within", True, True, 10.0),
               "sonnet": stats("not_judged", True, True, 5.0),
               "opus": stats("within", None, None, None)}
     got = S.decision(models, prereg)
     assert got["production"] is None and "sonnet" in got["why"]
-    models["sonnet"] = stats("within", True, True, 5.0)
-    models["opus"] = stats("outside", None, None, None)
+
+
+@pytest.mark.parametrize("reference,said", [
+    (stats("outside", None, None, None), "outside the margins"),
+    ({"units": {"estimate": {"verdict": "not_judged",
+                             "why": "1 non-refused plan(s), fewer than 2."}}},
+     "not judged (1 non-refused plan(s), fewer than 2)"),
+    (None, "has no run"),
+])
+def test_no_production_analyst_is_named_until_the_reference_is_within(prereg, reference, said):
+    """The reference checks the fixture itself (§7), so the candidates' verdicts name no analyst
+    until its own unit on the Estimate fixture is within: outside, not judged, or with no run,
+    no analyst is named, and why names the reference's state."""
+    models = {"haiku": stats("within", True, True, 10.0),
+              "sonnet": stats("within", True, True, 30.0),
+              "opus": stats("within", None, None, None)}
+    assert S.decision(models, prereg)["production"] == "haiku"
+    if reference is None:
+        del models["opus"]
+    else:
+        models["opus"] = reference
     got = S.decision(models, prereg)
-    assert got["production"] is None and got["why"] == prereg["decision_rule"]["reference_rule"]
+    assert got["production"] is None
+    assert got["why"].startswith("The reference, opus, ") and said in got["why"]
+    assert prereg["decision_rule"]["reference_rule"] in got["why"]
+    assert got["models"]["haiku"]["acceptable"] is True
 
 
-def test_early_stopping_stops_a_model_outside_once_every_persona_is_scored(prereg):
-    est = P.ESTIMATE_FIXTURE
-    scored = [{"model": "haiku", "dataset": est, "persona": p, "verdict": "outside"}
-              for p in P.PERSONAS]
-    recs = [record(run=f"h{i}", fresh=2000) for i in range(3)]
-    got = S.early_stopping({"haiku": {"verdict": "outside"}}, recs, scored, prereg, None)
+def test_early_stopping_stops_a_model_outside_once_it_has_a_record_under_every_persona(prereg):
+    """A persona has run once the model has a record on the Estimate fixture under it, a run
+    stuck before its export (so with no plan) included, and the unit decides: haiku's
+    conventional and skeptical plans outside (0 of 2 judged within) and its explorer stuck stop
+    it; with no explorer record yet, or with the plans within, it goes on."""
+    b0 = prereg["estimate_fixture"]["b0"]
+    planned = [record(run="hc", persona="conventional"), record(run="hs", persona="skeptical")]
+    stuck = record(run="he", persona="explorer", reached=False, exported=False)
+
+    def stopped(recs: list, bias: float) -> tuple[list[str], str]:
+        replays = [estimate_replay(prereg, bias=bias, covered=95, run=r.run.id) for r in planned]
+        report = S.score(recs, replays, [], prereg)
+        return report["early_stopping"]["stopped"], report["models"]["haiku"]["units"][
+            "estimate"]["verdict"]
+
+    assert stopped([*planned, stuck], 2 * b0) == (["haiku"], "outside")
+    assert stopped(planned, 2 * b0) == ([], "outside")
+    assert stopped([*planned, stuck], 0.0) == ([], "within")
+    recs = [record(run=f"h{p}", persona=p, fresh=2000) for p in P.PERSONAS]
+    got = S.early_stopping({"haiku": {"verdict": "outside"}}, recs, prereg, None)
     assert got["stopped"] == ["haiku"] and got["stop_waves"] is None
-    got = S.early_stopping({"haiku": {"verdict": "outside"}}, recs, scored[:2], prereg, None)
+    got = S.early_stopping({"haiku": {"verdict": "outside"}}, recs[:2], prereg, None)
     assert got["stopped"] == []
 
 
@@ -364,10 +494,10 @@ def test_the_projected_spend_stops_the_waves_past_the_budget_and_not_below(prere
                    for s in prereg["models"]["schedule"] if s["model"] == m)
             for m in prereg["models"]["keys"]}
     projected = runs["haiku"] * 1000 + runs["sonnet"] * 3000 + runs["opus"] * 5000
-    got = S.early_stopping({}, recs, [], prereg, projected - 1)
+    got = S.early_stopping({}, recs, prereg, projected - 1)
     assert got["projected"] == projected and got["stop_waves"] is True
-    assert S.early_stopping({}, recs, [], prereg, projected)["stop_waves"] is False
-    assert S.early_stopping({}, recs[:2], [], prereg, projected)["projected"] is None
+    assert S.early_stopping({}, recs, prereg, projected)["stop_waves"] is False
+    assert S.early_stopping({}, recs[:2], prereg, projected)["projected"] is None
 
 
 def test_regression_checks_name_a_decision_with_no_reason_and_pass_a_whole_record():
@@ -406,12 +536,14 @@ def test_the_score_and_its_report_carry_the_same_numbers(prereg):
     assert (found["reach"], found["fit_hours"], found["reach_per_fit_hour"]) == (1.0, 2.0, 0.5)
     assert report["reach"]["hexplorer"] == pytest.approx(1 / 3)
     assert report["finding_what_matters"]["agents"]["haiku"] == pytest.approx((1 / 3) / 1e-3)
-    # The coverage band's misses are counted among the plans unbiased by the margin only: the
-    # conventional and the explorer plans, the explorer's a miss.
+    # The band's miss rate is a false alarm's chance for a plan covering at exactly 95% only, so
+    # over the three plans judged on coverage it bounds the false alarms expected; the explorer's
+    # count outside the band is reported as outside it, not as a false alarm.
     alarms = report["false_alarms"]["coverage"]
-    assert (alarms["plans"], alarms["observed"]) == (2, 1)
-    assert alarms["expected"] == pytest.approx(
-        2 * prereg["expected_false_alarms"]["coverage_band"]["per_plan"])
+    assert (alarms["plans"], alarms["outside_band"]) == (3, 1)
+    assert alarms["expected_at_most"] == pytest.approx(
+        3 * prereg["expected_false_alarms"]["coverage_band"]["per_plan"])
+    assert "observed" not in alarms and "expected" not in alarms
     verdicts = {p["run"]: p["verdict"] for p in report["plans"]}
     assert verdicts == {"hconventional": "within", "hskeptical": "outside",
                         "hexplorer": "outside", "unreplayed": "unscored"}
@@ -421,6 +553,9 @@ def test_the_score_and_its_report_carry_the_same_numbers(prereg):
     assert f"b0 = {S._n(b0)}" in text
     assert f"| hskeptical | haiku | estimate | outside | {S._n(b0 * 2)} |" in text
     assert report["decision"]["why"] in text
+    assert (f"Estimate plans judged on coverage: 3; at most {S._n(alarms['expected_at_most'])} "
+            f"false alarm(s) expected among them") in text
+    assert "1 fell outside the band" in text
 
 
 def test_the_plans_to_sweep_are_each_named_run_by_when_it_started_never_by_its_result(prereg):
@@ -612,6 +747,14 @@ def test_a_replayed_plans_regret_on_a_fresh_draw_is_statsmodels_logit_on_its_tra
                         evaluation=evaluation, keep=tmp_path / "kept")
     [draw] = got["draws"]
     assert draw["refused"] is None and draw["seed"] == seed
+    # The replay names what stood in for prereg.json's, so the r0 fill cannot read it as r0's.
+    import hashlib
+
+    assert got["evaluation"] == {"given": True, "rows": 1000}
+    assert got["generator"].startswith("given: ") and got["generator"] != \
+        prereg["predict_fixture"]["generator"]
+    assert got["bundle_sha256"] == hashlib.sha256(
+        (tmp_path / "p6b-predict.zip").read_bytes()).hexdigest()
     train = _training_rows(tmp_path / "kept" / str(seed) / "home", draw["project"])
     frame = small(seed)
     predictors = [c for c in frame.columns if c not in ("encounter_id", G.READMISSION_OUTCOME)]
