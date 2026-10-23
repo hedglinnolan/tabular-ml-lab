@@ -11,29 +11,48 @@ copy is refused). Each record of a dataset takes every marker of a record of the
 mapped to, its donor (the donor dataset's records in run-id order, the i-th record taking the
 i-th, cycling): the whole regime (its readings and its markers, live and post hoc), the dataset's
 declared markers, and each fit's live markers (the donor's fit of the same index, cycling; with
-none, the donor's regime's live markers). Everything else stays the record's own, so a decision's
-materiality is read beside markers that are not its dataset's: a pattern the claim pipeline finds
-in the copy comes from its prior, or from the planted effect.
+none, the donor's regime's live markers), but the purpose and its loss (below). Everything else
+stays the record's own, so a decision's materiality is read beside markers that are not its
+dataset's: a pattern the claim pipeline finds in the copy comes from its prior, or from the
+planted effect.
+
+**The purpose and its loss stay the record's own.** The live markers of that axis (SWARM_PLAN §4:
+the purpose, the primary score, the intended use and its thresholds, the estimand, the
+multiplicity family; :func:`restates`) restate the record's own question and fits, which the copy
+keeps its own, so they are kept as the question is: at the regime and at each fit, the record's
+own (where its own fit held no markers, that fit holds none of the axis). A record of the copy
+never shows a purpose, a primary score or an estimand its question and fits contradict, and a
+claim keyed on the purpose is no more permuted than the question it restates.
 
 **The planted effect.** ``--planted K`` records are appended to the copy, each a clone of one
 record of the copy (the template, drawn from the seed) carrying one true effect written in by
 construction: where the live marker M is below a threshold t (half the clones), the decision D
 moved its fit's primary score materially (its fit's paired change has an interval excluding zero);
-where M is above t (the other half), by little (an interval holding zero). Nothing else tells a
-planted record from a real one in form:
+where M is at or above t (the other half), by little (an interval holding zero). Each planted
+record holds a real record's markers whole, so no planted record holds a value, or a pair of
+values, that no real record of its dataset holds; in form it differs from a real one only as a
+clone does (below):
 
 * **the template** is a Predict record whose last fit's whole change from the fit before is one
   decision of the analyst's, D (so D's materiality is that fit's movement, as the assembler reads
   it), and whose two fits scored the same folds with a signed change computed for a family (its
-  share of rows a fold scores is the one the planted change uses); M is one of its regime's
-  numeric live markers above zero, t its value there;
+  share of rows a fold scores is the one the planted change uses); D is of a kind the theorist can
+  propose about (``claim_cycle.proposal.proposable``: not one that records the protocol, which
+  the validator refuses, and not ``set_selection``, which the theorist's prompt sets aside), so
+  the planted effect's claim can be proposed; M is a numeric live marker whose value varies
+  across the real records of the template's dataset in the copy (one constant across them, as
+  their rows are, is never M), and t is one of those values above the least, so some of those
+  records lie below it and the rest at or above it; a copy with no such template is refused;
 * **the run** takes a run id as ``start`` draws one, a label and 32 hex digits: the label of a real
   record of the copy, as runs started together share one (``driver.new_run_id``), with every time
   the template holds moved by one offset to start beside that record's start; **the dataset** is
   the template's own, one of the copy's datasets, so its files, columns and markers agree with it;
-* **M's value** is drawn below t or above it in M's own type (a count stays a whole number, a share
-  stays within 0 and 1), in the regime and in each fit's live markers that hold M, with the
-  regime's own count of it where it has one (``n_rows``, ``n_analyzed``);
+* **the markers** are a real record's whole, those of a record of the template's dataset in the
+  copy (drawn from the seed among those on the planted record's side of t, and named in the sealed
+  file's ``markers_from``): its regime, readings and markers, and at each fit its fit of the same
+  index's live markers (cycling), as a record of the copy takes its donor's; the purpose and its
+  loss stay the template's own (:func:`restates`). So M's value, and every value beside it (the
+  rows, the predictors per row, the regime's counts), is one that real record holds;
 * **the effect** is in the last fit's fold scores of that family's primary score: the fit before's
   scores plus a constructed difference whose fold-to-fold spread is a share of theirs and whose
   mean, toward a better score by the metric's direction, is a drawn number of that spread (inside:
@@ -43,14 +62,19 @@ planted record from a real one in form:
   recomputed from them, as the engine and the assembler compute a real record's; each planted
   change is against the fit before, ``better`` by the metric's direction.
 
-What a clone keeps of its template's own (its reasons, its account, its export's SHA-256) is said
-in the sealed file's ``kept``: a reader who compares records' words can find the template's
-clones, so which of a record's fields the theorist reads is for the claim cycle's tools to decide.
+What a clone keeps of its template's own is said in the sealed file's ``kept``: its reasons and its
+account, its export's SHA-256, and its decisions and its earlier fits, which the claim cycle's view
+serves. **The clones are accepted:** a reader of the view who compares records finds the planted
+records beside their template, records of one dataset with one sequence of decisions and one first
+fit, which runs by different analysts rarely share. The shuffle does not hide that cluster:
+writing each planted record's decisions anew would make a run the engine never made. Which of a
+record's fields the theorist reads is for the claim cycle's tools to decide.
 
 **The sealed file** (``--sealed``, which must lie outside the copy and the corpus) lists the
-planted records by run id, with M, t, D, the direction, each record's side, movement and change,
-the seed and the derangement, so the theorist, who reads only the copy, never sees which records
-are planted; the pipeline's routing of the planted claim is scored against it after the cycle.
+planted records by run id, with M, t, D, the direction, each record's side, value of M, movement
+and change and the real record whose markers it holds, the seed and the derangement, so the
+theorist, who reads only the copy, never sees which records are planted; the pipeline's routing of
+the planted claim is scored against it after the cycle.
 Nothing in the corpus itself is written: a copy at, under or above the corpus is refused, as is a
 sealed file at or under the corpus or the copy.
 """
@@ -105,8 +129,29 @@ def _live(regime: dict[str, Any]) -> list[dict[str, Any]]:
     return [m for m in regime.get("markers") or [] if m.get("timing") == "live"]
 
 
+ORDER = {name: i for i, name in enumerate(V.NAMES)}
+
+
+def restates(m: dict[str, Any]) -> bool:
+    """Whether the marker ``m`` is a live marker of the purpose and its loss, which restates its
+    record's own question and fits (the module docstring)."""
+    fixed = V.BY_NAME.get(str(m.get("name")))
+    return fixed is not None and fixed.axis == "purpose" and fixed.timing == "live"
+
+
+def with_own(markers: list[dict[str, Any]] | None, own: list[dict[str, Any]] | None
+             ) -> list[dict[str, Any]] | None:
+    """``markers``, another record's, with the purpose and its loss ``own``'s, the record's own,
+    in the vocabulary's order (None where ``markers`` is None)."""
+    if markers is None:
+        return None
+    kept = [m for m in markers if not restates(m)] + [m for m in own or () if restates(m)]
+    return copy.deepcopy(sorted(kept, key=lambda m: ORDER.get(m.get("name"), len(ORDER))))
+
+
 def shuffled(records: list[dict[str, Any]], mapping: dict[str, str]) -> list[dict[str, Any]]:
-    """Each record with every marker of its donor (the module docstring)."""
+    """Each record with every marker of its donor but the purpose and its loss, its own (the
+    module docstring)."""
     by: dict[str, list[dict[str, Any]]] = {}
     for rec in records:
         by.setdefault(rec["dataset"]["id"], []).append(rec)
@@ -117,12 +162,14 @@ def shuffled(records: list[dict[str, Any]], mapping: dict[str, str]) -> list[dic
             donor = donors[i % len(donors)]
             new = copy.deepcopy(rec)
             new["regime"] = copy.deepcopy(donor["regime"])
+            new["regime"]["markers"] = with_own(donor["regime"]["markers"],
+                                                rec["regime"]["markers"])
             new["dataset"]["declared"] = copy.deepcopy(donor["dataset"].get("declared") or [])
             fits = donor.get("attempts") or []
             for j, attempt in enumerate(new.get("attempts") or []):
                 source = fits[j % len(fits)] if fits else None
                 markers = (source or {}).get("markers") if source else _live(donor["regime"])
-                attempt["markers"] = copy.deepcopy(markers)
+                attempt["markers"] = with_own(markers, rec["attempts"][j].get("markers"))
                 attempt["markers_why"] = (None if markers is not None else
                                           (source or {}).get("markers_why")
                                           or "The donor's fit held no live markers.")
@@ -131,43 +178,52 @@ def shuffled(records: list[dict[str, Any]], mapping: dict[str, str]) -> list[dic
     return sorted(out, key=lambda d: d["run"]["id"])
 
 
-# The regime's own count a marker restates, set with it.
-RESTATED = {"rows": "n_rows", "rows_analyzed": "n_analyzed"}
 # The planted mean difference, in its fold-to-fold spread: inside, this many times what puts the
 # corrected interval's edge at zero; outside, a share of a spread at most.
 INSIDE = (1.5, 2.5)
 OUTSIDE = (0.02, 0.25)
 SPREAD = 0.5  # the planted difference's spread, as a share of the fit before's fold scores' SD
 KEPT = ("the template's reasons, tags, wants and account", "its export and its SHA-256",
-        "its fit keys and plan digests", "its server's pid and port")
+        "its fit keys and plan digests", "its server's pid and port",
+        "its decisions and its earlier fits, which the view serves, so a reader who compares "
+        "records finds the planted records beside their template")
 
 
-def _numeric_markers(rec: dict[str, Any]) -> list[dict[str, Any]]:
-    """The regime's numeric live markers a value can be drawn on either side of: above zero (a
-    count at least 2, so a whole number lies below it), a share below 1."""
-    out = []
-    for m in _live(rec["regime"]):
-        v = m.get("value")
-        if isinstance(v, bool) or not isinstance(v, NUMERIC) or v <= 0:
-            continue
-        if isinstance(v, int) and v < 2 or _share(m) and v >= 1:
-            continue
-        out.append(m)
+def _number(v: Any) -> bool:
+    return isinstance(v, NUMERIC) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _value(rec: dict[str, Any], name: str) -> int | float | None:
+    """The value of the regime's live marker ``name`` in ``rec``, where it is a number."""
+    v = next((m.get("value") for m in _live(rec["regime"]) if m.get("name") == name), None)
+    return v if _number(v) else None
+
+
+def _varying(records: list[dict[str, Any]]) -> dict[str, dict[str, int | float]]:
+    """Each numeric live marker of the regime whose value varies across ``records`` (one dataset's
+    real records in the copy), with each record's value by run id, in the vocabulary's order."""
+    names = {m["name"] for r in records for m in _live(r["regime"])}
+    out = {}
+    for name in sorted(names, key=lambda n: ORDER.get(n, len(ORDER))):
+        held = {r["run"]["id"]: v for r in records if (v := _value(r, name)) is not None}
+        if len(set(held.values())) > 1:
+            out[name] = held
     return out
 
 
-def _share(m: dict[str, Any]) -> bool:
-    return str(m.get("name", "")).endswith("_share")
-
-
-def _side(m: dict[str, Any], below: bool, rng: random.Random) -> int | float:
-    """A value of marker ``m`` below its value t, or above it, in its own type."""
-    t = m["value"]
-    if isinstance(t, int):
-        return rng.randint(-(-t // 2), t - 1) if below else rng.randint(t + 1, t + t // 2)
-    if below:
-        return t * rng.uniform(0.5, 0.95)
-    return t + (1 - t) * rng.uniform(0.05, 0.5) if _share(m) else t * rng.uniform(1.05, 1.5)
+def _borrowed(rec: dict[str, Any], source: dict[str, Any]) -> None:
+    """``rec`` (a planted record) with ``source``'s markers whole, the purpose and its loss its own
+    (the module docstring)."""
+    rec["regime"] = {**copy.deepcopy(source["regime"]),
+                     "markers": with_own(source["regime"]["markers"], rec["regime"]["markers"])}
+    fits = source.get("attempts") or []
+    for j, attempt in enumerate(rec.get("attempts") or []):
+        given = fits[j % len(fits)] if fits else None
+        markers = given.get("markers") if given else _live(source["regime"])
+        attempt["markers"] = with_own(markers, attempt.get("markers"))
+        attempt["markers_why"] = (None if markers is not None else
+                                  (given or {}).get("markers_why")
+                                  or "The record its markers are taken from held none at this fit.")
 
 
 def _computed(change: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -178,6 +234,8 @@ def _computed(change: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 def _plantable(rec: dict[str, Any]) -> tuple[dict[str, Any], list[str]] | None:
     """The decision D and the families a planted effect can be written in, where ``rec`` can be a
     template (the module docstring); else None."""
+    from research.swarm.claim_cycle.proposal import proposable
+
     attempts = rec.get("attempts") or []
     if rec["question"].get("purpose") != "prediction" or len(attempts) < 2:
         return None
@@ -186,7 +244,9 @@ def _plantable(rec: dict[str, Any]) -> tuple[dict[str, Any], list[str]] | None:
     loose = [s for s in (fit.get("withdrawn") or []) + (fit.get("reinstated") or [])
              if s.get("by") is None]
     decision = next((d for d in rec["decisions"] if len(seqs) == 1 and d["seq"] == seqs[0]), None)
-    if decision is None or decision["source"] != "analyst" or loose or not _numeric_markers(rec):
+    if decision is None or decision["source"] != "analyst" or loose:
+        return None
+    if not proposable(decision["kind"]):
         return None
     if fit.get("folds") is None or fit.get("folds") != before.get("folds"):
         return None
@@ -274,15 +334,27 @@ def planted(records: list[dict[str, Any]], k: int, rng: random.Random
     if k < 2:
         raise ShuffleRefused("A planted effect needs at least two records: one on each side of "
                              "its threshold.")
-    templates = [(r, got) for r in records if (got := _plantable(r)) is not None]
+    siblings: dict[str, list[dict[str, Any]]] = {}
+    for r in records:
+        siblings.setdefault(r["dataset"]["id"], []).append(r)
+    varying = {d: _varying(rs) for d, rs in siblings.items()}
+    templates = [(r, got) for r in records if (got := _plantable(r)) is not None
+                 and varying[r["dataset"]["id"]]]
     if not templates:
         raise ShuffleRefused("No record of the copy is a Predict run whose last fit's whole change "
-                             "is one decision of the analyst's, paired with a signed change over "
-                             "the same folds, beside a numeric live marker, to plant an effect in.")
+                             "is one decision of the analyst's, of a kind the theorist can propose "
+                             "about, paired with a signed change over the same folds, on a dataset "
+                             "with a numeric live marker whose value varies across the records of "
+                             "its dataset in the copy, to plant an effect in.")
     template, (decision, families) = rng.choice(templates)
-    marker = rng.choice(_numeric_markers(template))
+    dataset = template["dataset"]["id"]
+    name = rng.choice(list(varying[dataset]))
+    values = varying[dataset][name]  # each real record's value of M, by run id
+    cuts = sorted(set(values.values()))
+    t = cuts[rng.randrange(1, len(cuts))]  # above the least, so both sides hold a real record
+    sides = {below: [r for r in siblings[dataset] if r["run"]["id"] in values
+                     and (values[r["run"]["id"]] < t) == below] for below in (True, False)}
     family = rng.choice(families)
-    t = marker["value"]
     before, fit = template["attempts"][-2], template["attempts"][-1]
     metric = fit["primary_metric"]
     higher = higher_is_better(metric)
@@ -295,8 +367,8 @@ def planted(records: list[dict[str, Any]], k: int, rng: random.Random
     reach = S._t(j - 1, S.LEVEL) * math.sqrt(1.0 / j + float(share[0]))  # mean/SD at the edge
     stamped = [r for r in records if r["run"]["id"].startswith(LABEL_STEM)] or records
     effect = {"decision": decision["kind"], "decision_id": decision["id"],
-              "marker": marker["name"], "threshold": t, "family": family, "metric": metric,
-              "direction": "material below the threshold, none above",
+              "marker": name, "threshold": t, "family": family, "metric": metric,
+              "direction": "material below the threshold, none at or above it",
               "template": template["run"]["id"], "kept": list(KEPT), "records": []}
     out = []
     for n in range(k):
@@ -309,13 +381,9 @@ def planted(records: list[dict[str, Any]], k: int, rng: random.Random
                for key, v in template.items()}
         label = beside["run"]["id"].rsplit("-", 1)[0]
         rec["run"]["id"] = f"{label}-{rng.getrandbits(128):032x}"
-        value = _side(marker, inside, rng)
-        for m in [*rec["regime"]["markers"], *(m for a in rec["attempts"]
-                                               for m in a.get("markers") or ())]:
-            if m["name"] == marker["name"] and m.get("value") is not None:
-                m["value"] = value
-        if marker["name"] in RESTATED:
-            rec["regime"][RESTATED[marker["name"]]] = value
+        source = rng.choice(sides[inside])
+        _borrowed(rec, source)
+        value = values[source["run"]["id"]]
         size = rng.uniform(*INSIDE) * reach if inside else rng.uniform(*OUTSIDE) * rng.choice((-1, 1))
         sign = 1.0 if higher else -1.0  # toward a better score
         after = [b + sign * spread * (size + e) for b, e in zip(base, _standard(rng, j))]
@@ -341,6 +409,7 @@ def planted(records: list[dict[str, Any]], k: int, rng: random.Random
         out.append(rec)
         fm = next(m for m in last["movement"] if m["family"] == family)
         effect["records"].append({"run": rec["run"]["id"], "below": inside, "value": value,
+                                  "markers_from": source["run"]["id"],
                                   "movement": fm["movement"]["value"],
                                   "difference": changed["difference"],
                                   "excludes_zero": changed["excludes_zero"]})

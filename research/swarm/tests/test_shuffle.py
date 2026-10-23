@@ -19,24 +19,41 @@ from research.swarm.tests.constructed import (estimate_record, marker, predict_r
 ROWS = {"d1": 101, "d2": 202, "d3": 303}
 
 
-def corpus(folder: Path, datasets: tuple[str, ...] = ("d1", "d2", "d3")) -> Path:
+PREDICTORS = 6  # each record's predictors, so its predictors per row is this over its rows analyzed
+
+
+def corpus(folder: Path, datasets: tuple[str, ...] = ("d1", "d2", "d3"), per: int = 1) -> Path:
+    """One record per dataset (``per`` 1: its rows ``ROWS``, its rows analyzed one fewer); or
+    ``per`` records per dataset, each of the dataset's own kind, its rows the dataset's and its rows
+    analyzed nine fewer for each record before it, its predictors per row and its count of rows
+    analyzed read from them, as the engine reads a real record's: a marker that varies across a
+    dataset's records beside one that does not."""
     folder.mkdir(parents=True)
     makers = [predict_record, estimate_record, revert_record]
     for i, dataset in enumerate(datasets):
-        rec = makers[i % len(makers)]()
-        if makers[i % len(makers)] is predict_record:
-            planted_scores(rec)
-        rec["run"]["id"] = f"run_{i + 1:02d}"
-        rec["dataset"]["id"] = dataset
-        rec["regime"]["n_rows"] = ROWS[dataset]
-        rec["regime"]["markers"] = [marker("rows", ROWS[dataset]),
-                                    marker("rows_analyzed", ROWS[dataset] - 1)]
-        rec["dataset"]["declared"] = [{"name": "instrument", "status": "declared",
-                                       "value": f"device {dataset}", "quote": f"by {dataset}",
-                                       "source": f"{dataset} methods"}]
-        for a in rec["attempts"]:
-            a["markers"] = [marker("rows", ROWS[dataset])]
-        (folder / f"{rec['run']['id']}.json").write_text(json.dumps(rec), "utf-8")
+        for r in range(per):
+            rec = makers[i % len(makers)]()
+            if makers[i % len(makers)] is predict_record:
+                planted_scores(rec)
+            n = i * per + r + 1
+            rec["run"]["id"] = f"run_{i + 1:02d}" if per == 1 else f"run_{n:02d}-{n:032x}"
+            rec["dataset"]["id"] = dataset
+            rec["regime"]["n_rows"] = ROWS[dataset]
+            analyzed = ROWS[dataset] - 1 - 9 * r
+            rec["regime"]["markers"] = [marker("rows", ROWS[dataset]),
+                                        marker("rows_analyzed", analyzed)]
+            fits = [marker("rows", ROWS[dataset])]
+            if per > 1:
+                rec["regime"]["n_analyzed"] = analyzed
+                ratio = marker("predictors_per_row", PREDICTORS / analyzed)
+                rec["regime"]["markers"].append(ratio)
+                fits = [*rec["regime"]["markers"]]
+            rec["dataset"]["declared"] = [{"name": "instrument", "status": "declared",
+                                           "value": f"device {dataset}", "quote": f"by {dataset}",
+                                           "source": f"{dataset} methods"}]
+            for a in rec["attempts"]:
+                a["markers"] = json.loads(json.dumps(fits))
+            (folder / f"{rec['run']['id']}.json").write_text(json.dumps(rec), "utf-8")
     (folder / "failed").mkdir()
     (folder / "failed" / "run_99.json").write_text("{}", "utf-8")  # a failed run: not a record
     return folder
@@ -105,6 +122,115 @@ def test_every_record_takes_another_datasets_markers_whole(tmp_path):
     assert {p.name: p.read_bytes() for p in src.rglob("*.json")} == before  # never written
 
 
+# ── the purpose and its loss: the record's own ──────────────────────────────
+
+DRY_RUN = Path(__file__).resolve().parents[1] / "dryrun"
+
+
+def purposed(folder: Path) -> Path:
+    """Each record of ``folder`` given the live markers of the purpose and its loss as the driver
+    reads them (``markers.py``): its purpose; under Predict its primary score, the metric its newest
+    fit names, and no estimand; under Estimate an estimand on a measure of its own and no primary
+    score. At each fit, the same, the primary score the metric of that fit."""
+    from research.swarm.markers import marker as read
+
+    for i, path in enumerate(sorted(folder.glob("*.json"))):
+        rec = json.loads(path.read_text())
+        purpose = rec["question"]["purpose"]
+
+        def axis(metric):
+            if purpose == "prediction":
+                return [read("purpose", purpose, "constructed"),
+                        read("primary_score", {"metric": metric}, "constructed"),
+                        read("estimand", why="No estimand is declared.")]
+            return [read("purpose", purpose, "constructed"),
+                    read("primary_score", why="Under Estimate the result is the estimate."),
+                    read("estimand", {"exposure": f"x{i}", "measure": "odds_ratio"}, "constructed")]
+
+        named = [a["primary_metric"] for a in rec["attempts"] if a["primary_metric"]]
+        rec["regime"]["markers"] = [*rec["regime"]["markers"],
+                                    *axis(named[-1] if named else "auc")]
+        for a in rec["attempts"]:
+            a["markers"] = [*(a["markers"] or []), *axis(a["primary_metric"] or "auc")]
+        validate(rec)
+        path.write_text(json.dumps(rec), "utf-8")
+    return folder
+
+
+AXIS = ("purpose", "primary_score", "estimand")
+
+
+def disagreements(v: dict) -> list[tuple[str, str]]:
+    """Where a view's live markers of the purpose and its loss contradict its own question or
+    fits: a purpose not its question's; a primary score under Estimate, or one naming a metric no
+    fit of its scored; an estimand under Predict."""
+    purpose = v["question"]["purpose"]
+    metrics = {a["primary_metric"] for a in v["attempts"] if a["primary_metric"]}
+    out = []
+    places = [("regime", v["regime"]["markers"])] + [(f"fit {a['seq']}", a["markers"] or [])
+                                                     for a in v["attempts"]]
+    for where, markers in places:
+        held = {m["name"]: m["value"] for m in markers}
+        if held.get("purpose") is not None and held["purpose"] != purpose:
+            out.append((where, "purpose"))
+        score = held.get("primary_score")
+        if score is not None and (purpose != "prediction" or score.get("metric") not in metrics):
+            out.append((where, "primary_score"))
+        if held.get("estimand") is not None and purpose != "inference":
+            out.append((where, "estimand"))
+    return out
+
+
+def test_no_view_of_the_copy_holds_a_purpose_its_own_question_and_fits_contradict(tmp_path):
+    """The verifier's V6D-1: the copy permutes the markers across datasets, and the purpose and its
+    loss restate a record's own question and fits, which the copy keeps its own. On the dry run's
+    three records (two Predict, one Estimate) and on the constructed corpus, under every seed's
+    derangement, no record's view holds a purpose, a primary score or an estimand its own question
+    or fits contradict. The construction: in the corpus itself none does, and the copy permutes
+    the datasets."""
+    from research.swarm.claim_cycle import view as W
+
+    dry = tmp_path / "dry"
+    dry.mkdir()
+    for path in sorted(DRY_RUN.glob("run_0*.json")):
+        (dry / path.name).write_bytes(path.read_bytes())
+    built = purposed(corpus(tmp_path / "built"))
+    for src in (dry, built):
+        purposes = {v["question"]["purpose"] for v in W.read(src)}
+        assert purposes == {"prediction", "inference"}  # a corpus of both purposes
+        assert not [d for v in W.read(src) for d in disagreements(v)]
+        mappings = set()
+        for seed in range(8):
+            out = tmp_path / f"{src.name}-{seed}"
+            body = S.write(src, out, tmp_path / f"{src.name}-{seed}.json", seed=seed, k=0)
+            mappings.add(json.dumps(body["derangement"], sort_keys=True))
+            found = [(v["run"]["id"], d) for v in W.read(out) for d in disagreements(v)]
+            assert found == [], (src.name, seed)
+        assert len(mappings) == 2  # both of the three datasets' derangements were drawn
+
+
+def test_the_copy_keeps_a_records_own_purpose_markers_and_takes_the_rest_from_its_donor(tmp_path):
+    """The rule itself, by construction: in the copy each record's live markers of the purpose and
+    its loss, at the regime and at each fit, are its own in the corpus, and every other marker is
+    its donor's; and a regime marker the copy permutes still moves (each record's rows are its
+    donor's)."""
+    src = purposed(corpus(tmp_path / "corpus"))
+    body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=3, k=0)
+    mine, copied = by_dataset(src), by_dataset(tmp_path / "copy")
+    own = lambda ms: [m for m in ms or [] if m["name"] in AXIS]  # noqa: E731
+    rest = lambda ms: [m for m in ms or [] if m["name"] not in AXIS]  # noqa: E731
+    for dataset, rec in copied.items():
+        donor = mine[body["derangement"][dataset]]
+        assert own(rec["regime"]["markers"]) == own(mine[dataset]["regime"]["markers"])
+        assert rest(rec["regime"]["markers"]) == rest(donor["regime"]["markers"])
+        assert rec["regime"]["n_rows"] == ROWS[body["derangement"][dataset]] != ROWS[dataset]
+        fits = donor["attempts"]
+        for j, a in enumerate(rec["attempts"]):
+            assert own(a["markers"]) == own(mine[dataset]["attempts"][j]["markers"])
+            assert rest(a["markers"]) == rest(fits[j % len(fits)]["markers"])
+        validate(rec)
+
+
 def test_the_same_seed_gives_the_same_copy_and_another_seed_may_not(tmp_path):
     src = corpus(tmp_path / "corpus")
     a = S.write(src, tmp_path / "a", tmp_path / "sa.json", seed=11, k=0)["derangement"]
@@ -122,13 +248,13 @@ def test_one_dataset_cannot_be_shuffled(tmp_path):
 
 
 def test_the_planted_records_are_in_the_copy_only_and_listed_in_the_sealed_file(tmp_path):
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     sealed = tmp_path / "sealed" / "s.json"
     body = S.write(src, tmp_path / "copy", sealed, seed=5, k=6)
     planted = body["planted"]["records"]
     assert len(planted) == 6 and json.loads(sealed.read_text())["planted"]["records"] == planted
     copy = {p.stem for p in (tmp_path / "copy").glob("*.json")}
-    assert set(planted) <= copy and len(copy) == 3 + 6
+    assert set(planted) <= copy and len(copy) == 9 + 6
     assert not set(planted) & {p.stem for p in src.rglob("*.json")}
     effect = body["planted"]["effect"]
     for run_id in planted:
@@ -141,7 +267,7 @@ def test_the_planted_effect_is_one_true_effect_by_construction(tmp_path):
     """Below the threshold the decision moved the score materially (a better score, its paired
     interval excluding zero), above it by little (an interval holding zero): the planted records
     split exactly so, and the sealed file says each one's side."""
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=8, k=6)
     effect = body["planted"]["effect"]
     below, above = [], []
@@ -176,16 +302,19 @@ def test_no_planted_record_differs_in_form_from_a_real_one_beyond_the_planted_ef
     """The verifier's P6: a planted record's ids are drawn as a real record's are, its dataset is
     one of the copy's, each value keeps its type, each change is against the fit before with
     ``better`` by the metric's direction, and its movement, materiality and signed change are what
-    the engine and the assembler compute from its own fold scores."""
+    the engine and the assembler compute from its own fold scores. Its regime, and each fit's live
+    markers, are a real record's of its dataset in the copy (the verifier's V6D-2), so their form
+    is that record's, and the rest is its template's."""
     from turbotab.core import runs
     from turbotab.core.models.metrics import higher_is_better
 
     from research.swarm import signed
     from research.swarm.driver import RUN_ID
 
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=8, k=6)
     effect = body["planted"]["effect"]
+    sources = {r["run"]: r["markers_from"] for r in effect["records"]}
     copy = {json.loads(p.read_text())["run"]["id"]: json.loads(p.read_text())
             for p in (tmp_path / "copy").glob("*.json")}
     real = {i: r for i, r in copy.items() if i not in body["planted"]["records"]}
@@ -197,7 +326,9 @@ def test_no_planted_record_differs_in_form_from_a_real_one_beyond_the_planted_ef
         validate(rec)
         assert RUN_ID.fullmatch(run_id) and run_id.rsplit("-", 1)[0] in labels
         assert rec["dataset"] == template["dataset"] and rec["dataset"]["id"] in datasets
-        assert _form(rec) == _form(template)  # every key, and each value's type, the template's
+        mine = {k: v for k, v in rec.items() if k != "regime"}
+        assert _form(mine) == _form({k: v for k, v in template.items() if k != "regime"})
+        assert _form(rec["regime"]) == _form(real[sources[run_id]]["regime"])
         for m in rec["regime"]["markers"]:
             if m["name"] == effect["marker"]:
                 assert type(m["value"]) is type(effect["threshold"])
@@ -233,11 +364,133 @@ def test_no_planted_record_differs_in_form_from_a_real_one_beyond_the_planted_ef
         assert score["estimate"] == pytest.approx(sum(score["folds"]) / len(score["folds"]))
 
 
+def _markers_whole(regime: dict) -> str:
+    return json.dumps(regime, sort_keys=True)
+
+
+def test_each_planted_record_holds_a_real_records_markers_whole(tmp_path):
+    """The verifier's V6D-2. A planted record's regime, readings and markers, is that of a real
+    record of its dataset in the copy, the one the sealed file names (``markers_from``), on the side
+    of the threshold the sealed file says; M is a marker whose value varies across the dataset's
+    real records, never one constant across them (`rows`), and t is one of their values, so no
+    planted record holds a value, or a pair of values (more rows analyzed than rows; predictors per
+    row not its predictors over its rows analyzed), no real record of its dataset holds. Both ways:
+    in the view, each planted record's markers are a real record's of its dataset, and each real
+    record's are its own."""
+    from research.swarm.claim_cycle import view as W
+
+    src = corpus(tmp_path / "corpus", per=3)
+    markers = set()
+    for seed in range(40):
+        out, sealed = tmp_path / f"copy{seed}", tmp_path / f"s{seed}.json"
+        body = S.write(src, out, sealed, seed=seed, k=6)
+        effect = body["planted"]["effect"]
+        markers.add(effect["marker"])
+        planted = set(body["planted"]["records"])
+        copied = {json.loads(p.read_text())["run"]["id"]: json.loads(p.read_text())
+                  for p in out.glob("*.json")}
+        dataset = copied[effect["template"]]["dataset"]["id"]
+        real = {i: r for i, r in copied.items()
+                if i not in planted and r["dataset"]["id"] == dataset}
+        values = {r["regime"]["markers"][[m["name"] for m in r["regime"]["markers"]].index(
+            effect["marker"])]["value"] for r in real.values()}
+        assert len(values) > 1 and effect["threshold"] in values  # M varies; t is a real value
+        for entry in effect["records"]:
+            rec, source = copied[entry["run"]], real[entry["markers_from"]]
+            assert rec["regime"] == source["regime"]
+            assert [a["markers"] for a in rec["attempts"]] == [
+                source["attempts"][j % len(source["attempts"])]["markers"]
+                for j in range(len(rec["attempts"]))]
+            held = {m["name"]: m["value"] for m in rec["regime"]["markers"]}
+            assert (held[effect["marker"]] < effect["threshold"]) == entry["below"]
+            assert held[effect["marker"]] == entry["value"]
+            assert held["rows_analyzed"] <= held["rows"]
+            assert held["predictors_per_row"] == PREDICTORS / held["rows_analyzed"]
+        views = W.read(out)
+        whole = {}
+        for v in views:
+            if v["run"]["id"] not in planted:
+                whole.setdefault(v["dataset"]["id"], set()).add(_markers_whole(v["regime"]))
+        for v in views:
+            assert _markers_whole(v["regime"]) in whole[v["dataset"]["id"]], (seed, v["run"]["id"])
+    assert markers == {"rows_analyzed", "predictors_per_row"}  # never `rows`, constant per dataset
+
+
+def test_a_template_whose_dataset_holds_no_marker_that_varies_is_refused(tmp_path):
+    """The guard both ways: where every record of each dataset holds the same markers, no value of
+    a marker lies on either side of a threshold among them, and the planted effect is refused; the
+    same corpus with its rows analyzed varying is planted in."""
+    flat = corpus(tmp_path / "flat", per=3)
+    for path in flat.glob("*.json"):
+        rec = json.loads(path.read_text())
+        rows = rec["regime"]["n_rows"]
+        rec["regime"]["n_analyzed"] = rows - 1
+        rec["regime"]["markers"] = [marker("rows", rows), marker("rows_analyzed", rows - 1),
+                                    marker("predictors_per_row", PREDICTORS / (rows - 1))]
+        for a in rec["attempts"]:
+            a["markers"] = json.loads(json.dumps(rec["regime"]["markers"]))
+        path.write_text(json.dumps(rec), "utf-8")
+    with pytest.raises(S.ShuffleRefused, match="varies across the records of its dataset"):
+        S.write(flat, tmp_path / "copy", tmp_path / "s.json", seed=1, k=2)
+    S.write(corpus(tmp_path / "varied", per=3), tmp_path / "copy2", tmp_path / "s2.json",
+            seed=1, k=2)
+    # One record a dataset, as each dataset of the default corpus holds: nothing varies there.
+    with pytest.raises(S.ShuffleRefused, match="varies across the records of its dataset"):
+        S.write(corpus(tmp_path / "one"), tmp_path / "copy3", tmp_path / "s3.json", seed=1, k=2)
+
+
+def test_a_planted_record_is_its_templates_clone_and_the_sealed_file_says_so(tmp_path):
+    """The planted records' decisions, and their fits but the last one's scores, movement and
+    change, are their template's (the verifier's V6D-2 (c), accepted): a reader of the view who
+    compares records finds them with their template, and the sealed file's ``kept`` says so."""
+    from research.swarm.claim_cycle import view as W
+
+    src = corpus(tmp_path / "corpus", per=3)
+    body = S.write(src, tmp_path / "copy", tmp_path / "s.json", seed=5, k=6)
+    effect = body["planted"]["effect"]
+    views = {v["run"]["id"]: v for v in W.read(tmp_path / "copy")}
+    template = views[effect["template"]]
+    for run_id in body["planted"]["records"]:
+        v = views[run_id]
+        assert [(d["seq"], d["kind"], d["source"], d["phase"]) for d in v["decisions"]] == [
+            (d["seq"], d["kind"], d["source"], d["phase"]) for d in template["decisions"]]
+        assert v["attempts"][0]["movement"] == template["attempts"][0]["movement"]
+    assert any("decisions" in k and "earlier fits" in k for k in effect["kept"])
+
+
 def signed_times(rec):
     from research.swarm.record import STAMP
 
     return [m.group() for m in STAMP.finditer(json.dumps({k: v for k, v in rec.items()
                                                           if k != "dataset"}))]
+
+
+def _template_deciding(kind: str) -> dict:
+    """The constructed Predict record (fit2's whole change is the analyst's record #4), with
+    record #4 of decision kind ``kind``."""
+    rec = predict_record()
+    planted_scores(rec)
+    rec["decisions"][3]["kind"] = kind
+    return rec
+
+
+def test_the_planted_decision_is_one_a_theorist_can_propose_about():
+    """The planted effect's claim must be one the theorist can propose (SWARM_PLAN §9: "the planted
+    effect's claim proposed and routed"): a template's decision is one the validator takes and the
+    theorist's prompt does not set aside (`set_selection`), and every other kind the engine
+    records, one of the protocol's among them, is no template's."""
+    from research.swarm.claim_cycle import proposal as P
+    from research.swarm.claim_cycle.tests.constructed import proposal
+
+    kinds = sorted(P.decision_kinds())
+    plantable = {k for k in kinds if S._plantable(_template_deciding(k)) is not None}
+    assert "select_models" in plantable and not {"revert", "open_seal", P.SELECTION} & plantable
+    assert plantable == set(kinds) - set(P.PROTOCOL) - {P.SELECTION}
+    for kind in plantable:
+        assert P.validate(proposal(decision=kind)).decision == kind
+    for kind in set(kinds) - plantable - {P.SELECTION}:
+        with pytest.raises(P.ProposalRefused, match="records the protocol"):
+            P.validate(proposal(decision=kind))
 
 
 def test_a_corpus_with_no_record_to_plant_in_is_refused(tmp_path):
@@ -298,17 +551,17 @@ def test_a_copy_or_a_sealed_file_at_or_under_the_corpus_or_a_sealed_file_in_the_
 ])
 def test_a_copy_and_a_sealed_file_apart_from_the_corpus_and_each_other_are_written(
         tmp_path, out, sealed):
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     S.write(src, tmp_path / out, tmp_path / sealed, seed=1, k=2)
-    assert len(list((tmp_path / out).glob("*.json"))) == 3 + 2 and (tmp_path / sealed).is_file()
+    assert len(list((tmp_path / out).glob("*.json"))) == 9 + 2 and (tmp_path / sealed).is_file()
 
 
 def test_the_command_line_writes_the_copy_and_says_where(tmp_path, capsys):
-    src = corpus(tmp_path / "corpus")
+    src = corpus(tmp_path / "corpus", per=3)
     assert S.main([str(src), "--out", str(tmp_path / "copy"), "--sealed",
                    str(tmp_path / "s.json"), "--seed", "2", "--planted", "4"]) == 0
     said = json.loads(capsys.readouterr().out)
-    assert said == {"copy": str(tmp_path / "copy"), "records": 3, "planted": 4,
+    assert said == {"copy": str(tmp_path / "copy"), "records": 9, "planted": 4,
                     "sealed": str(tmp_path / "s.json")}
     assert S.main([str(src), "--out", str(tmp_path / "copy"), "--sealed",
                    str(tmp_path / "t.json")]) == 1  # the copy is written once
