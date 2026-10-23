@@ -32,6 +32,9 @@ the engine constant that holds it reads it with ``claims.value``.
 * ``materiality.collinear_under_prediction`` (C-170): under Predict the collinear line is a
   Confirm, both of a pair kept and no selection recorded; reading their importance together is
   the line's advice, since nothing groups it (BEATS_PREDICT M4's grouped importance is not built).
+* ``models.comparisons`` (the owner's ruling of 2026-10-23, option 3): under Predict the
+  comparison substrate's repeats at least, fewer from a number of training units, which
+  ``models.folds``' constants read and ``comparison_folds`` applies.
 
 The regime predicates below read the context the caller passes, a mapping or an object with
 those names, and nothing of the engine: each is written from the regime's words, never by calling
@@ -848,6 +851,89 @@ VALIDATION_PAIRED_INTERVAL = register(Claim(
     origin="audit",
 ))
 
+# ── the comparison substrate's repeats (the owner's ruling of 2026-10-23, option 3) ──────────
+#
+# A default fit of the NHANES glucose table took about 28 minutes in the crash sweep, about half of
+# it the comparisons' repeats beyond the headline's own folds; the pilot's analysts would wait that
+# long for every fit. From a number of training units the substrate takes fewer repeats.
+
+REPEATS_AUTHOR = "swarm-large-n builder"
+REPEATS_TESTS = "turbotab/core/tests/test_comparison_repeats.py"
+
+COMPARISONS = register(Claim(
+    id="models.comparisons",
+    kind="parameter",
+    methods="paired comparisons and the baseline verdict on at least {repeats} × K folds, at least "
+            "{large_repeats} × K where the training units number {large_units:,} or more, with "
+            "rK − 1 degrees of freedom",
+    goal=("prediction",),
+    regime=Regime("Predict, the families and the no-predictor baseline compared on the repeated "
+                  "k-fold substrate, its folds drawn at random (time-ordered folds run once)",
+                  requires=(f"{HERE}:under_prediction",)),
+    decision="models.comparisons",
+    params={
+        "repeats": Param(10, unit="repeats of the K folds, at least, below the training units' "
+                                  "threshold",
+                         constant="turbotab.core.models.folds:COMPARISON_REPEATS"),
+        "large_repeats": Param(5, unit="repeats of the K folds, at least, from the training "
+                                       "units' threshold",
+                               constant="turbotab.core.models.folds:LARGE_REPEATS"),
+        "large_units": Param(5_000, unit="training units: the units the folds keep whole, or the "
+                                         "rows where the folds are drawn by row",
+                             constant="turbotab.core.models.folds:LARGE_UNITS"),
+    },
+    parts=(
+        Part("repeats", grade="judgment", basis=Basis(
+            cites=("bouckaert2004",),
+            reason="Bouckaert & Frank (2004) recommend ten repeats of ten-fold cross-validation "
+                   "for replicability (quoted in models/folds.py); the substrate keeps their ten "
+                   "repeats of the split's own K folds (5 by default), a judgment. The owner's "
+                   "ruling of 2026-10-23 reads their recommendation as made on small tables; this "
+                   "claim's author did not check the sizes of their data sets against the paper.")),
+        Part("large", grade="judgment", basis=Basis(
+            cites=("nadeau2003variance",),
+            reason="The corrected resampled t estimates the variance of the mean paired "
+                   "difference as (1/(rK) + n₂/n₁)·σ², σ² the variance of one fold's difference, "
+                   "which falls as the folds hold more rows (Nadeau & Bengio 2003); at K = 5, "
+                   "n₂/n₁ is 1/4, so five repeats instead of ten move the factor from 0.27 to 0.29, "
+                   "and with the t quantile on 24 degrees of freedom instead of 49 the interval is "
+                   "about 6% wider at the same σ², while each repeat refits every family on every "
+                   "fold. The threshold of 5,000 training units and the five repeats are the "
+                   "orchestrator's ruling on the owner's option 3, a convention, not a cited "
+                   "rule. On a true null built here (two exchangeable least-squares models, "
+                   "5,000 rows, 5 × 5 folds) the interval calls one ahead in at most the nominal "
+                   "share of 300 tables.")),
+        Part("units", grade="judgment", basis=Basis(
+            reason="The threshold counts what the folds are drawn by: the units where a unit's "
+                   "rows repeat and the folds keep them whole, and the rows otherwise, including "
+                   "where the seal could not keep a unit's rows together and every score is "
+                   "within-unit performance; there the rows may outnumber the people.")),
+    ),
+    tests=(
+        Fires(f"{REPEATS_TESTS}::test_from_5000_training_units_the_substrate_takes_5_repeats",
+              truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_the_splits_own_repeats_come_first_and_stay_where_they_are_"
+              "more", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_beside_internal_external_validation_the_substrate_is_drawn_"
+              "afresh_by_the_rule", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_the_plans_cost_counts_25_comparison_refits_from_5000_units_"
+              "and_says_when_50", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_a_fit_pairs_its_families_over_the_folds_it_ran_by_the_"
+              "corrected_t", truth="construction"),
+        Fires(f"{REPEATS_TESTS}::test_at_5_by_5_folds_on_5000_rows_a_true_null_rarely_calls_a_"
+              "family_ahead", truth="independent:scipy"),
+        Silent(f"{REPEATS_TESTS}::test_below_5000_training_units_the_substrate_keeps_10_repeats",
+               truth="construction"),
+    ),
+    enforced_by=("turbotab.core.models.folds:comparison_repeats",
+                 "turbotab.core.models.folds:comparison_folds",
+                 "turbotab.core.models.validation:validation_plan"),
+    author=REPEATS_AUTHOR,
+    origin="engine",
+    ruled="the owner's ruling of 2026-10-23 (option 3: lighten the model comparison on large "
+          "tables), with the orchestrator's ruling on its parameters",
+))
+
 MODELING_NO_RESAMPLING = register(Claim(
     id="modeling.no_resampling",
     kind="rule",
@@ -1388,11 +1474,12 @@ P6A_CLAIMS = (WHOLE_NUMBERS_WAIT, BLANK_NOT_ASKED, FOLD_FILL_FIRST, EVERY_ROW_FI
 CLAIMS = (SMALL_SAMPLE_STANDARD, SMALL_SAMPLE_STANDARD_ESTIMATE, SMALL_SAMPLE_STANDARD_CLASSES,
           SMALL_SAMPLE_NO_SEARCH, BOOSTED_TREES_SMALL_ROWS, FOREST_SMALL_ROWS, BASELINE_FLOOR, ROWS_SMD_FLOOR,
           ROWS_SMD_FLOOR_PREDICTION, COLLINEAR_UNDER_PREDICTION, VALIDATION_RESAMPLING_FIRST,
-          VALIDATION_PAIRED_INTERVAL, MODELING_NO_RESAMPLING, SEAL_BY_ROW, SEAL_CUT_POINT,
-          SEAL_CUT_POINT_UNITS, SEAL_CUT_POINT_UNDATED, SEAL_CUT_POINT_ANALYZED)
+          VALIDATION_PAIRED_INTERVAL, COMPARISONS, MODELING_NO_RESAMPLING, SEAL_BY_ROW,
+          SEAL_CUT_POINT, SEAL_CUT_POINT_UNITS, SEAL_CUT_POINT_UNDATED, SEAL_CUT_POINT_ANALYZED)
 
 __all__ = ["AUTHOR", "BASELINE_FLOOR", "BOOSTED_TREES_SMALL_ROWS", "CLAIMS",
-           "COLLINEAR_UNDER_PREDICTION", "FOREST_SMALL_ROWS", "MODELING_NO_RESAMPLING",
+           "COLLINEAR_UNDER_PREDICTION", "COMPARISONS", "FOREST_SMALL_ROWS",
+           "MODELING_NO_RESAMPLING",
            "ROWS_SMD_FLOOR", "ROWS_SMD_FLOOR_PREDICTION", "SEAL_BY_ROW", "SEAL_CUT_POINT",
            "SEAL_CUT_POINT_ANALYZED", "SEAL_CUT_POINT_UNDATED", "SEAL_CUT_POINT_UNITS",
            "SMALL_SAMPLE_STANDARD",

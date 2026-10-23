@@ -580,7 +580,8 @@ def test_each_constant_takes_its_value_from_its_claim():
     ``claims.value(<that claim's id>, <its parameter>)``: no number is typed there. The two 500s
     are read from two claims, each in its own module, and neither is the tuning's threshold. The
     seal's ceiling on rows with no readable time is read from the cut-point's claim (SWARM_PLAN
-    package 4)."""
+    package 4), and the comparison substrate's repeats and their training units from theirs (the
+    large-table ruling of 2026-10-23)."""
     read: dict[str, str] = {}
     for c in area.CLAIMS:
         for key, p in c.params.items():
@@ -594,7 +595,7 @@ def test_each_constant_takes_its_value_from_its_claim():
             read[module] = c.id
     models = "turbotab.core.models"
     assert set(read) == {f"{models}.{m}" for m in ("tuning", "boosted_trees", "forest",
-                                                   "baseline")} | {"turbotab.core.seal"}
+                                                   "baseline", "folds")} | {"turbotab.core.seal"}
     assert len({read[f"{models}.{m}"] for m in ("tuning", "boosted_trees", "forest")}) == 3
 
 

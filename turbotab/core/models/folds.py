@@ -30,11 +30,20 @@ no-predictor baseline, and the choice among them is corrected, on **repeated k-f
 at least :data:`COMPARISON_REPEATS` × K** (:func:`comparison_folds`). Bouckaert & Frank (PAKDD 2004):
 "replicability improved even further by using 10-times 10-fold cross-validation instead of random
 subsampling … for best replicability we recommend the latter one." A one-partition comparison rests
-on df = K − 1 and replicates poorly across partitions. The first repeats are the split's own folds,
-so the headline's one k-fold run is a subset of the substrate; the rest are drawn as the split draws
-its folds (grouped by unit, stratified for classes or events, seeded ``seed + r``). Time-ordered
-folds are the same in every repeat, so they run once. Internal–external validation's folds are the
-clusters, so the substrate is drawn afresh beside them.
+on df = K − 1 and replicates poorly across partitions. **From :data:`LARGE_UNITS` training units the
+substrate is at least :data:`LARGE_REPEATS` × K** (:func:`comparison_repeats`; the owner's ruling of
+2026-10-23, option 3, claim ``models.comparisons``): in the corrected t's variance,
+(1/(rK) + n₂/n₁)·σ², the n₂/n₁ term (1/4 at K = 5) outweighs 1/(rK) at five repeats as at ten, and
+σ², one fold's paired difference, falls as the folds hold more rows (Nadeau & Bengio 2003), while
+each repeat refits every family on every fold (on the NHANES glucose table, the repeats beyond the
+split's own were about half of the time of a fit validated by 5 × 5-fold cross-validation). The
+training units are the units the folds keep whole where rows repeat within one, the rows otherwise
+(the seal's draw by row included). The first repeats are the split's own folds, so the
+headline's one k-fold run is a subset of the substrate, and a split that drew more repeats keeps
+them all; the rest are drawn as the split draws its folds (grouped by unit, stratified for classes
+or events, seeded ``seed + r``). Time-ordered folds are the same in every repeat, so they run once.
+Internal–external validation's folds are the clusters, so the substrate is drawn afresh beside
+them.
 
 **Whole units in every resample.** When rows repeat within a unit, each fold, each bootstrap
 resample (:func:`unit_rows`, :func:`draw_units`) and each nested cross-validation fold
@@ -50,8 +59,14 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from turbotab.core import claims
+
 UNDATED = -np.inf  # the order key of a unit with no readable time: earliest, so it only trains
-COMPARISON_REPEATS = 10  # the substrate's repeats at least (Bouckaert & Frank 2004: 10 × 10)
+# The substrate's repeats at least: below LARGE_UNITS training units (Bouckaert & Frank 2004's
+# 10 × 10 keeps its ten repeats), and from them. The values are their claim's.
+COMPARISON_REPEATS = claims.value("models.comparisons", "repeats")
+LARGE_REPEATS = claims.value("models.comparisons", "large_repeats")
+LARGE_UNITS = claims.value("models.comparisons", "large_units")
 TIME_ORDERED_ONCE = ("Time-ordered folds are the same in every repeat, so the comparisons rest on one "
                      "run of them.")
 
@@ -233,18 +248,31 @@ def kfold_assignment(n: int, *, strata: Any = None, groups: Any = None, folds: i
     return fold
 
 
+def comparison_repeats(units: int) -> int:
+    """The substrate's repeats at least for ``units`` training units (module docstring):
+    :data:`LARGE_REPEATS` from :data:`LARGE_UNITS`, :data:`COMPARISON_REPEATS` below."""
+    return int(LARGE_REPEATS if int(units) >= LARGE_UNITS else COMPARISON_REPEATS)
+
+
 def comparison_folds(headline: Sequence[Any], *, validation: str, scheme: str, n: int,
                      strata: Any = None, groups: Any = None, folds: int = 5, seed: int = 0,
-                     repeats: int = COMPARISON_REPEATS) -> tuple[list[np.ndarray], int, str | None]:
+                     repeats: int | None = None) -> tuple[list[np.ndarray], int, str | None]:
     """The comparison substrate's fold columns (module docstring); how many of them are the
     headline's own (they come first, so the headline is their subset); and a note, or None.
 
-    ``headline``: the split's fold columns over the training rows (``fold``, ``fold_r1``, …).
+    ``headline``: the split's fold columns over the training rows (``fold``, ``fold_r1``, …). The
+    substrate runs at least :func:`comparison_repeats` of the training units (``groups``' distinct
+    units, or the ``n`` rows without them), at least ``repeats`` where given, and every column of
+    the headline's.
     """
+    import pandas as pd
+
     columns = [np.asarray(c).astype(np.int64) for c in headline]
     if scheme == "time_ordered":
         return columns[:1], 1, TIME_ORDERED_ONCE
-    want = max(int(repeats), COMPARISON_REPEATS)
+    labels = unit_labels(groups, n)
+    units = len(pd.unique(labels)) if labels is not None else int(n)
+    want = max(int(repeats or 0), comparison_repeats(units))
     if validation == "internal_external":
         return [kfold_assignment(n, strata=strata, groups=groups, folds=folds, seed=seed + r)
                 for r in range(want)], 0, None
@@ -291,6 +319,6 @@ def nested_folds(n: int, *, groups: Any = None, folds: int = 5,
     return out
 
 
-__all__ = ["COMPARISON_REPEATS", "TIME_ORDERED_ONCE", "UNDATED", "comparison_folds", "draw_units",
-           "forward_blocks", "forward_pairs", "kfold_assignment", "nested_folds", "unit_labels",
-           "unit_rows"]
+__all__ = ["COMPARISON_REPEATS", "LARGE_REPEATS", "LARGE_UNITS", "TIME_ORDERED_ONCE", "UNDATED",
+           "comparison_folds", "comparison_repeats", "draw_units", "forward_blocks",
+           "forward_pairs", "kfold_assignment", "nested_folds", "unit_labels", "unit_rows"]

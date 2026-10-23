@@ -3354,7 +3354,7 @@ None declared.
 - **Needs:**
   - training rows
   - the unit when rows repeat
-- **Question:** (stated: whatever validation leads, at least 10 × K folds)
+- **Question:** (stated: whatever validation leads, at least 10 × K folds, 5 × K from 5,000 training units)
 - **Where:** recorded by `set_split`; run by the `fit` stage; placed at 11 · Tuning and comparison.
 - **Lenses:** every lens (shared). Declared by the VALID package.
 
@@ -3362,11 +3362,11 @@ None declared.
 
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
-| `repeated_kfold`: At least 10 × K folds, whole units together | A single k-fold run or one split is the field's habit | Stated: whatever validation leads, at least 10 × K folds | recommended, 1 | Not a comparison | not offered, 1 |
+| `repeated_kfold`: At least 10 × K folds (5 × K from 5,000 training units), whole units together | A single k-fold run or one split is the field's habit | Stated: whatever validation leads, at least 10 × K folds, 5 × K from 5,000 training units | recommended, 1 | Not a comparison | not offered, 1 |
 
 **Storyboard** (the transform player's real steps):
 
-1. draw the folds 10 times, whole units together
+1. draw the folds 10 times (5 from 5,000 training units), whole units together
 2. fit every family and the baseline on each fold
 3. pair their fold scores
 4. the corrected repeated k-fold t
@@ -3379,7 +3379,7 @@ None declared.
 
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
-| implies | `corrected_repeated_t` (id `families_compared_on_substrate`) | any option; when any family under prediction | prediction | paired comparisons and the baseline verdict on at least 10 × K folds, with rK − 1 degrees of freedom | `turbotab.core.models.validation:corrected_t` |
+| implies | `corrected_repeated_t` (id `families_compared_on_substrate`) | any option; when any family under prediction | prediction | paired comparisons and the baseline verdict on at least 10 × K folds, at least 5 × K where the training units number 5,000 or more, with rK − 1 degrees of freedom | `turbotab.core.models.validation:corrected_t` |
 | implies | `grouped_resampling` (id `repeated_units_group_resampling`) | any option; when rows repeat within a unit | prediction, inference | grouped folds in every repeat, a grouped holdout, a bootstrap by unit, BBC-CV by unit and nested folds by unit | `turbotab.core.models.folds:kfold_assignment` |
 | implies | `within_unit_scores` (id `within_unit_performance`) | any option; when rows repeat within a unit, but the seal could not keep units whole (one unit, too few, an unconfirmed identifier, a grain not known) | prediction, inference | the folds (unless they are a grouping's levels), the comparisons' folds, the nested folds, the resamples and BBC-CV are drawn by row, and each score whose rows share a unit with rows the models were fit on, as the drawn folds and a grouping's levels show, is stated as within-unit performance, never as performance on new units | `turbotab.core.models.validation:unit_spans` |
 | implies | `site_heterogeneity` (id `clusters_site_heterogeneity`) | any option; when the grouping question named a column with 2 to 30 levels | prediction | every family is also validated internal–externally by the grouping, each level scored by models fit on the others, with the random-effects summary and the spread (TRIPOD+AI 12d, 23b) | `turbotab.core.models.validation:internal_external` |
