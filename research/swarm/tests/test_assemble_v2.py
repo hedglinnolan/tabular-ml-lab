@@ -253,7 +253,8 @@ def test_a_run_with_markers_wants_and_an_account_assembles_to_a_valid_version_2_
     assert rec.version == 2 and rec.run.persona == "skeptical" and rec.run.vocabulary == V.DIGEST
     assert [m.name for m in rec.regime.markers] == [*V.LIVE, *V.POST_HOC]
     assert rec.wants[0].what == "drift correction" and rec.account.text == "Nothing was fitted."
-    assert rec.replay is None and rec.surfacings.failed_fits == []
+    assert "replay" not in json.loads(path.read_text("utf-8"))  # the replays are score_pilot's
+    assert rec.surfacings.failed_fits == []
     # The routes the markers read: the stages that are no estimate's, the readings, the fits.
     assert A.MARKER_STAGES == ("ingest", "target_info", "cohort", "structure", "seal_plan",
                                "shelf", "findings")

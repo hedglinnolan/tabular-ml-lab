@@ -1690,7 +1690,6 @@ def build(served: Served, run: RunDir, meta: Mapping[str, Any]) -> dict[str, Any
         "replication": None,
         "wants": wants_of(run.commands),
         "account": account_of(run.commands),
-        "replay": None,
     }
 
 

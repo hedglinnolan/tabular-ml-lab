@@ -8,11 +8,13 @@ option (a stage in error, typed or not, and an answer refused with no way forwar
 built here; the crash sweep's previews after an option, of every later decision's plan answer (a
 question's, a finding's, a reading's, a declaration's) and of a question opened again at its
 default, which decisions they reach and that an HTTP 500 induced on one fails the refit as a
-defect, while one on a decision before the option does not; the decisions a plan offers the sweep
-and those it does not, from a decision log built
-here; what the report counts as not visited and what it says it swept; the readings graded against
-a declared truth; the run times' summary by hand. The sweep on a real engine is
-``test_sweep_engine.py``'s."""
+defect, while one on a decision before the option does not; a revisit the engine refuses until
+the answers that read the column are withdrawn, those answers given again in the plan's order on a
+log built here and folded; a refusal's way forward after an option, in its answer or served on the
+asks after it, taken only where the plan or the option names it; the decisions a plan offers the
+sweep and those it does not, from a decision log built here; what the report counts as not visited
+and what it says it swept; the readings graded against a declared truth; the run times' summary by
+hand. The sweep on a real engine is ``test_sweep_engine.py``'s."""
 from __future__ import annotations
 
 import json
@@ -857,3 +859,488 @@ def test_a_question_the_option_opens_again_is_previewed_at_its_default_before_it
         assert refit.kind == "failed" and refit.failed["code"] == "http_500"
         assert refit.previews[-1]["code"] == "http_500"
         assert [d["refit"] for d in sweep.defects] == [refit.id]
+
+
+# ── a revisit the engine refuses until the answer that reads the column is withdrawn ─────────
+
+STAGE_CODE = {"kind": "confirm_reading", "reading": "code_or_count", "column": "stage",
+              "value": "code"}
+STAGE_COUNT = {**STAGE_CODE, "value": "count"}
+TWO_MODELS = {"kind": "select_models", "models": ["elastic_net", "screened_elastic_net"]}
+# The engine's words for it, as ``decisions._answers_keep_settled_readings`` writes them.
+READS_STAGE = ("The recorded models answer reads `stage`, which would then rest on a reading "
+               "nobody settled. Change the models answer first, or keep the confirmation.")
+STAGE = W.Point("reading", "code_or_count:stage", 13, "r13", STAGE_CODE)
+
+
+class Reads(Walked):
+    """A copy of a plan whose models answer (record 14) reads `stage`, read as a code by record 13:
+    reverting the reading is refused (``code``, the engine's ``words``) while the models answer
+    stands; reverting the models answer withdraws it, unless ``refuse`` (``"withdraw"``) refuses
+    that revert or ``fail`` fails it as an HTTP 500; then the reading's two ways are asked. The
+    models answer posted again is refused where ``refuse`` is ``"again"``. Every log is the plan's,
+    so each refit is its duplicate and no Fit is pressed."""
+
+    def __init__(self, *, refuse=None, fail=None, code="role_unconfirmed", words=READS_STAGE):
+        super().__init__([])
+        self.calls, self.refuse, self.fail, self.code, self.words = [], refuse, fail, code, words
+        self.withdrawn = self.reopened = False
+
+    def copy(self, pid):
+        self.withdrawn = self.reopened = False  # a fresh copy of the template
+        self.calls.append(("copy",))
+        return "c1"
+
+    def view(self):
+        at = datetime(2026, 10, 23, tzinfo=timezone.utc).isoformat()
+        return {"decisions": [{"id": f"r{seq}", "seq": seq, "at": at, "recorded_by": "you",
+                               "decision": d} for seq, d in ((13, STAGE_CODE), (14, TWO_MODELS))],
+                "stages": self.stages, "state": {}}
+
+    def revisit(self, record, reason):
+        self.calls.append(("revisit", record))
+        if record == "r14":
+            if self.fail == "withdraw":
+                self.errors.append({"method": "POST", "path": "/projects/c1/decisions",
+                                    "status": 500, "body": "{}", "said": "Internal Server Error"})
+                return arms.Said("failed", {}, by="server", code="http_500",
+                                 message="Internal Server Error", status=500)
+            if self.refuse == "withdraw":
+                return arms.Said("refused", {}, by="server", code="models_read_later",
+                                 message="The recorded levers read the models answer.",
+                                 exits=[{"label": "Keep the answers as they are",
+                                         "decision": None}])
+            self.withdrawn = True
+            return arms.Said("ok", {})
+        if record == "r13" and not self.withdrawn:
+            return arms.Said("refused", {}, by="server", code=self.code, message=self.words,
+                             exits=[{"label": "Keep the answers as they are", "decision": None}])
+        self.reopened = True
+        return arms.Said("ok", {})
+
+    def ask(self):
+        from research.swarm.tests.test_arms import opt
+
+        if self.reopened:
+            return {"question": {"key": "models", "status": "open"},
+                    "readings": {"exits": [opt("x-code", STAGE_CODE),
+                                           opt("x-count", STAGE_COUNT)]}}
+        return {"question": None, "fit_reached": True}
+
+    def preview(self, ids, sets, reason):
+        self.calls.append(("preview", list(ids)))
+        return arms.Said("ok", {})
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.reopened = False
+        self.calls.append(("answer", list(ids)))
+        return arms.Said("ok", {})
+
+    def decide(self, decision, reason):
+        self.calls.append(("decide", dict(decision)))
+        if self.refuse == "again" and decision.get("kind") == "select_models":
+            return arms.Said("refused", {}, by="server", code="models_refused",
+                             message="Not with `stage` read as a count.")
+        return arms.Said("ok", {})
+
+
+def swept_reads(tmp_path, session):
+    sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
+        target="y", purpose="prediction"), crash=True, plan="default")
+    sweep.base = {"project": "p0", "digest": "d0", "seq": 14, "scoring": {"set": False},
+                  "points": [STAGE.json()], "skipped": []}
+    sweep.done[W.PLAN] = W.Refit(W.PLAN, None, None, kind="scored",
+                                 digest=W.plan_digest(session.view()))
+    report = sweep.run(session, lambda s: "p0")
+    return sweep, report, {r["id"]: r for r in report["refits"]}
+
+
+def test_a_reading_the_models_answer_reads_is_revisited_by_the_way_the_engine_names(tmp_path):
+    """The orchestrator's ruling on V2-1: the models answer withdrawn first, the reading's
+    options listed and each answered, the models answer answered again as the plan had it; the
+    reading visited, and the crash sweep passes with no defect."""
+    session = Reads()
+    sweep, report, refits = swept_reads(tmp_path, session)
+    assert report["unlisted"] == [] and report["unvisited"] == [] and report["defects"] == []
+    assert report["complete"] is True and W.passed(report) is True
+    (offered,) = report["offered"]
+    assert [o["id"] for o in offered["options"]] == ["x-code", "x-count"]
+    assert offered["withdrawn"] == [{"what": "models answer", "column": "stage", "seq": 14,
+                                     "record": "r14"}]
+    count = refits[f"{STAGE.id}=x-count"]
+    start = max(i for i, c in enumerate(session.calls) if c == ("copy",))
+    assert session.calls[start + 1:] == [("revisit", "r13"), ("revisit", "r14"),
+                                         ("revisit", "r13"), ("preview", ["x-count"]),
+                                         ("answer", ["x-count"]), ("decide", TWO_MODELS)]
+    assert [w["decision"] for w in count["withdrawn"]] == [TWO_MODELS]
+    assert "the plan's models answer again (record 14)" in [a["answer"]
+                                                             for a in count["answered"]]
+    assert {r["kind"] for r in refits.values()} == {"duplicate"}
+    assert "the models answer (record 14), which reads `stage`" in W.table_md(report)
+
+
+def test_where_the_way_the_engine_names_is_refused_the_reading_is_visited_and_refused(tmp_path):
+    sweep, report, refits = swept_reads(tmp_path, Reads(refuse="withdraw"))
+    revisit = refits[f"{STAGE.id}={W.REVISIT}"]
+    assert revisit["kind"] == "refused" and revisit["refused"]["at"] == "revisit"
+    assert revisit["refused"]["code"] == "models_read_later"
+    assert revisit["refused"]["message"] == "The recorded levers read the models answer."
+    assert [w["what"] for w in revisit["refused"]["withdrawn"]] == ["models answer"]
+    assert report["unlisted"] == [] and report["complete"] is True and report["defects"] == []
+    (decision,) = report["decisions"]
+    assert decision["refused_share"] == 1.0 and decision["refused_codes"] == {
+        "models_read_later": 1}
+
+
+def test_where_the_plans_answer_is_refused_again_after_the_option_the_option_is_refused(
+        tmp_path):
+    sweep, report, refits = swept_reads(tmp_path, Reads(refuse="again"))
+    for option in ("x-code", "x-count"):
+        r = refits[f"{STAGE.id}={option}"]
+        assert r["kind"] == "refused", r
+        assert (r["refused"]["at"], r["refused"]["code"], r["refused"]["option"]) == (
+            "answer_again", "models_refused", option)
+        assert r["refused"]["decision"] == TWO_MODELS
+    assert report["complete"] is True and report["defects"] == []
+
+
+@pytest.mark.parametrize("code, words", [
+    ("some_other_refusal", READS_STAGE),
+    ("role_unconfirmed", READS_STAGE.replace("models answer", "levers answer"))],
+    ids=["another_code", "an_answer_it_cannot_name"])
+def test_a_revisit_refused_otherwise_is_unlisted_with_its_words_and_withdraws_nothing(
+        tmp_path, code, words):
+    session = Reads(code=code, words=words)
+    sweep, report, refits = swept_reads(tmp_path, session)
+    (unlisted,) = report["unlisted"]
+    assert unlisted["point"] == STAGE.id and code in unlisted["why"]
+    assert ("revisit", "r14") not in session.calls and report["complete"] is False
+
+
+def test_a_500_on_the_way_the_engine_names_is_an_engine_defect(tmp_path):
+    sweep, report, refits = swept_reads(tmp_path, Reads(fail="withdraw"))
+    revisit = refits[f"{STAGE.id}={W.REVISIT}"]
+    assert revisit["kind"] == "failed" and revisit["failed"]["code"] == "http_500"
+    assert [d["refit"] for d in report["defects"]] == [revisit["id"]]
+    assert W.passed(report) is False
+
+
+LINEAR = {"kind": "select_models", "models": ["linear"]}
+
+
+class Logged(Walked):
+    """A copy of a plan whose log answers the models slot twice, neither answer reverted: record
+    12 (linear) before record 13 reads `stage` as a code, and record 14 (the two families) after
+    it, so the latest, 14, is the one in force (``decisions.fold``). The engine's guard as
+    ``decisions._answers_keep_settled_readings`` holds it: reverting the reading is refused while
+    any models answer is in force. Each post is a record of the log, so what the refit leaves in
+    force is the fold of what it posted; while the reading is reverted, the ask asks it."""
+
+    def __init__(self):
+        super().__init__([])
+        self.log = [(12, LINEAR), (13, STAGE_CODE), (14, TWO_MODELS)]
+
+    def view(self):
+        return {**view_at(self.log), "stages": self.stages, "state": {}}
+
+    def _post(self, decision):
+        self.log.append((max(seq for seq, _ in self.log) + 1, dict(decision)))
+        return arms.Said("ok", {})
+
+    def revisit(self, record, reason):
+        if record == "r13" and any(r.decision.kind == "select_models"
+                                   for r in W.live(self.view())):
+            return arms.Said("refused", {}, by="server", code="role_unconfirmed",
+                             message=READS_STAGE,
+                             exits=[{"label": "Keep the answers as they are", "decision": None}])
+        return self._post({"kind": "revert", "decision_id": record})
+
+    def ask(self):
+        from research.swarm.tests.test_arms import opt
+
+        if any(r.decision.kind == "confirm_reading" for r in W.live(self.view())):
+            return {"question": None, "fit_reached": True}
+        return {"question": {"key": "models", "status": "open"},
+                "readings": {"exits": [opt("x-code", STAGE_CODE), opt("x-count", STAGE_COUNT)]}}
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.answered.append(list(ids))
+        return self._post({"x-code": STAGE_CODE, "x-count": STAGE_COUNT}[ids[0]])
+
+    def decide(self, decision, reason):
+        self.answered.append(dict(decision))
+        return self._post(decision)
+
+    def fit(self, wait=0):
+        return arms.Said("refused", {"fit": {}}, by="driver", code="not_here",
+                         message="No fit is made here.")
+
+
+def view_at(log):
+    at = datetime(2026, 10, 23, tzinfo=timezone.utc).isoformat()
+    return {"decisions": [{"id": f"r{seq}", "seq": seq, "at": at, "recorded_by": "you",
+                           "decision": d} for seq, d in log]}
+
+
+def test_the_answers_withdrawn_first_are_answered_again_in_the_plans_order(tmp_path):
+    """P3-F1: both models answers are withdrawn before the reading can be revisited, the latest
+    first; answered again in the plan's order, the plan's latest is the one in force again, so
+    the refit is the plan with the option and nothing else (its digest that plan's, built here)."""
+    from turbotab.core import decisions as D
+
+    session = Logged()
+    sweep = a_sweep(tmp_path)
+    plan = W.Refit(W.PLAN, None, None, kind="scored", digest=W.plan_digest(session.view()))
+    refit = sweep.refit(session, STAGE, {"id": "x-count", "decision": STAGE_COUNT}, [], plan)
+    assert [w["seq"] for w in refit.withdrawn] == [14, 12]  # in the order withdrawn
+    assert session.answered == [["x-count"], LINEAR, TWO_MODELS]  # again in the plan's order
+    state = D.fold(W.records_of(session.view()))
+    assert state.models == TWO_MODELS["models"]
+    with_option = view_at([(12, LINEAR), (13, STAGE_COUNT), (14, TWO_MODELS)])
+    assert refit.digest == W.plan_digest(with_option) != plan.digest
+
+
+# ── a refusal's way forward after an option: only one the plan or the option names ─────────
+
+PLAN_MISSING = {"kind": "set_missing", "strategy": "complete_case"}
+UNNAMED = {"kind": "set_split", "holdout": 0.3}
+
+
+class WalkedOnPlan(Walked):
+    """The walk after an option meets a question whose first option is refused with ``exits``,
+    on a plan whose log holds :data:`PLAN_MISSING`."""
+
+    def __init__(self, exits):
+        from research.swarm.tests.test_arms import ask, opt
+
+        q = ask("grain_like", [opt("a", {"kind": "set_grain_like", "v": "a"}),
+                               opt("b", {"kind": "set_grain_like", "v": "b"})])
+        super().__init__([q, q, q, {"question": None, "fit_reached": True}])
+        self.exits = [{"id": f"x-{i}", "label": f"way {i}", "decision": d}
+                      for i, d in enumerate(exits, start=1)]
+
+    def view(self):
+        return {**view_of([("you", PLAN_MISSING)]), "stages": self.stages, "state": {}}
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.answered.append(list(ids))
+        if list(ids) == ["a"]:
+            return arms.Said("refused", {}, by="server", code="not_here", message="Not here.",
+                             exits=self.exits)
+        self.asks = [{"question": None, "fit_reached": True}]  # answered: Fit is reached
+        return arms.Said("ok", {})
+
+
+def walked_refit(tmp_path, session):
+    sweep = a_sweep(tmp_path)
+    plan = W.Refit(W.PLAN, None, None, kind="scored", digest=W.plan_digest(session.view()))
+    return sweep.refit(session, POINT, OPTION, [], plan)
+
+
+@pytest.mark.parametrize("exits, taken, by", [
+    ([UNNAMED, PLAN_MISSING], "x-2", "the plan"),
+    ([UNNAMED, OPTION["decision"]], "x-2", "the option")], ids=["the_plan", "the_option"])
+def test_after_an_option_the_walk_takes_the_way_forward_the_plan_or_the_option_names(
+        tmp_path, exits, taken, by):
+    session = WalkedOnPlan(exits)
+    refit = walked_refit(tmp_path, session)
+    assert session.answered[1:] == [["a"], [taken]]  # after the option's own (``decide``)
+    assert refit.ways == [{"id": taken, "label": "way 2", "decision": exits[1], "named_by": by}]
+    assert refit.kind == "duplicate"
+
+
+def test_after_an_option_the_walk_takes_no_way_forward_the_plan_and_the_option_never_chose(
+        tmp_path):
+    session = WalkedOnPlan([UNNAMED])
+    refit = walked_refit(tmp_path, session)
+    assert ["x-1"] not in session.answered and refit.ways == []
+    assert session.answered[1:] == [["a"], ["b"]]  # the question's next option, as with none
+    assert refit.kind == "duplicate"
+
+
+STAGE_AMOUNT = {**STAGE_CODE, "value": "amount"}
+
+
+class ServedAfter(Walked):
+    """The walk after an option meets a question whose first option, ``a``, is refused with no
+    way forward in its answer until the reading ``way`` is recorded, on a plan whose log holds
+    ``plan``. The refusal's way is served on the asks after it as the driver serves a last
+    refusal's (``last_refusal_exits``) until an answer is recorded, which clears it as the
+    driver's ``answer`` does; or, with ``card``, the ask card asks the reading itself
+    (``readings.exits``) until it is recorded."""
+
+    def __init__(self, way, *, card=False, plan=PLAN_MISSING):
+        from research.swarm.tests.test_arms import ask, opt
+
+        super().__init__([])
+        self.q = ask("grain_like", [opt("a", {"kind": "set_grain_like", "v": "a"}),
+                                    opt("b", {"kind": "set_grain_like", "v": "b"})])
+        self.way = {"id": "x-1", "label": "way 1", "decision": way}
+        self.card, self.plan = card, plan
+        self.kept, self.refused, self.read, self.done = [], False, False, False
+
+    def view(self):
+        return {**view_of([("you", self.plan)]), "stages": self.stages, "state": {}}
+
+    def ask(self):
+        if self.done:
+            return {"question": None, "fit_reached": True}
+        q = dict(self.q)
+        if self.kept:
+            q["last_refusal_exits"] = list(self.kept)
+        if self.card and self.refused and not self.read:
+            q["readings"] = {"exits": [dict(self.way)]}
+        return q
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.answered.append(list(ids))
+        if list(ids) == ["a"] and not self.read:
+            self.refused = True
+            self.kept = [] if self.card else [dict(self.way)]
+            return arms.Said("refused", {}, by="server", code="reading_first",
+                             message="Read `stage` first.", exits=[])
+        self.kept = []  # an answer recorded: no last refusal's way is kept
+        if list(ids) == ["x-1"]:
+            self.read = True
+        else:
+            self.done = True
+        return arms.Said("ok", {})
+
+
+def test_after_an_option_a_refusals_way_served_later_is_not_taken_where_none_names_it(
+        tmp_path):
+    """P3-F3: the way forward a refusal leaves for the asks after it (a reading neither the plan
+    nor the option records) is not taken; the walk goes on as with no way forward."""
+    session = ServedAfter(STAGE_AMOUNT)
+    refit = walked_refit(tmp_path, session)
+    assert ["x-1"] not in session.answered and refit.ways == []
+    assert session.answered[1:] == [["a"], ["b"]]  # the question's next option, as with none
+    assert refit.kind == "duplicate"
+
+
+def test_after_an_option_a_refusals_way_served_later_is_taken_where_the_plan_names_it(
+        tmp_path):
+    session = ServedAfter(STAGE_AMOUNT, plan=STAGE_AMOUNT)
+    refit = walked_refit(tmp_path, session)
+    assert session.answered[1:3] == [["a"], ["x-1"]]
+    assert refit.ways == [{"id": "x-1", "label": "way 1", "decision": STAGE_AMOUNT,
+                           "named_by": "the plan"}]
+
+
+def test_after_an_option_a_reading_the_ask_card_asks_itself_is_answered_as_the_default_path_does(
+        tmp_path):
+    """The reading the card asks is no refusal's way: the default path's policy answers it,
+    named or not, and it is not recorded as a way forward taken."""
+    session = ServedAfter(STAGE_AMOUNT, card=True)
+    refit = walked_refit(tmp_path, session)
+    assert ["x-1"] in session.answered and refit.ways == []
+
+
+def test_a_named_way_needs_every_field_the_way_records():
+    assert W.names_way({"kind": "set_missing", "strategy": "impute", "m": 20},
+                       {"kind": "set_missing", "strategy": "impute"}) is True
+    assert W.names_way({"kind": "set_missing", "strategy": "complete_case"},
+                       {"kind": "set_missing", "strategy": "impute"}) is False
+    assert W.names_way({"kind": "set_missing"}, {}) is False
+
+
+# ── the q-value beside each estimate read from the locked fit ────────────────
+
+
+def test_an_estimate_read_from_the_locked_fit_keeps_its_rows_q_value():
+    rows = [{"family": "featurewise", "feature": f, "setting": None, "estimate": e,
+             "ci_low": e - 1, "ci_high": e + 1, "why": None}
+            for f, e in (("mz_0001", 1.0), ("mz_0002", 0.5))]
+    rows.append({"family": "linear", "feature": "mz_0001", "setting": None, "estimate": 2.0,
+                 "ci_low": 1.0, "ci_high": 3.0, "why": None})
+    got = {"source": "fits", "attempt": "f2", "estimates": rows}
+    fits = [{"id": "f1", "effects": {"featurewise": [{"feature": "mz_0001", "q": 0.9}]}},
+            {"id": "f2", "effects": {"featurewise": [{"feature": "mz_0001", "q": 0.01},
+                                                     {"feature": "mz_0002", "q": None}],
+                                     "linear": [{"feature": "mz_0001", "estimate": 2.0}]}}]
+    kept = W.with_q(got, fits)
+    assert [r.get("q", "none served") for r in kept] == [0.01, None, "none served"]
+    assert [{k: v for k, v in r.items() if k != "q"} for r in kept] == rows
+    assert W.with_q(got | {"source": "results"}, fits) == rows  # the results' rows: as held
+
+
+# ── the compute cap of a dataset's sweeps around named plans ─────────────────
+
+THREE = [{"id": o, "label": o, "decision": {"kind": "set_missing", "strategy": o},
+          "needs": None} for o in ("impute", "multiple_imputation", "drop")]
+
+
+def capped(tmp_path, monkeypatch, *, cap, spent):
+    """A sweep around a named plan whose plan's fit took 2 s and each refit's 3 s, with three
+    options of the missing values left: the refits made, and the report."""
+    sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
+        target="y", purpose="prediction"), crash=False, plan="named", cap=cap, spent=spent)
+    sweep.base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False},
+                  "points": [MISSING.json()], "skipped": []}
+    sweep.done[W.PLAN] = W.Refit(W.PLAN, None, None, kind="scored", fit_seconds=2.0)
+    sweep.offered = {MISSING.id: {"point": MISSING.id, "why": None, "options": THREE}}
+    fitted = []
+
+    def refit(session, point, option, later, plan):
+        fitted.append(option["id"])
+        return W.Refit(point.id, option["id"], option["decision"], kind="scored",
+                       fit_seconds=3.0)
+
+    monkeypatch.setattr(sweep, "refit", refit)
+    return fitted, sweep.run(Walked([]), lambda s: "p0")
+
+
+def test_the_sweep_stops_before_a_fit_once_the_datasets_compute_cap_is_spent(tmp_path,
+                                                                            monkeypatch):
+    # 4 s before and 2 s the plan's: 6 < 10; a refit: 9 < 10; another: 12, and none after it.
+    fitted, report = capped(tmp_path, monkeypatch, cap=10.0, spent=4.0)
+    assert fitted == ["impute", "multiple_imputation"]
+    assert report["stopped"]["cap"] == 10.0 and report["stopped"]["spent"] == 12.0
+    assert report["stopped"]["why"] == (
+        "The sweeps of tiny stopped at its compute cap: 12 of 10 fit seconds spent "
+        "(prereg.json's compute_cap), before the next fit.")
+    assert report["cap"] == {"seconds": 10.0, "spent": 12.0, "spent_before": 4.0}
+    assert report["complete"] is False and report["unvisited"] == [f"{MISSING.id}=drop"]
+    assert "## Stopped at the compute cap" in W.table_md(report)
+
+
+@pytest.mark.parametrize("cap", [None, 15.1], ids=["no_cap", "a_cap_not_reached"])
+def test_a_cap_not_reached_stops_no_fit(tmp_path, monkeypatch, cap):
+    fitted, report = capped(tmp_path, monkeypatch, cap=cap, spent=4.0)  # 15 s at the end
+    assert fitted == ["impute", "multiple_imputation", "drop"] and report["stopped"] is None
+    assert report["complete"] is True
+
+
+def written_sweep(folder, name, *, dataset, crash, seconds):
+    folder = folder / name
+    folder.mkdir(parents=True)
+    lines = [{"template": {"project": "p", "dataset": dataset, "crash": crash, "points": [],
+                           "skipped": []}}]
+    lines += [{"refit": W.Refit(W.PLAN if i == 0 else "question:missing",
+                                None if i == 0 else str(i), None, kind="scored",
+                                fit_seconds=s).json()}
+              for i, s in enumerate(seconds)]
+    (folder / "progress.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+    return folder
+
+
+def test_a_datasets_earlier_sweeps_spend_counts_its_named_plans_but_not_its_crash_sweep(
+        tmp_path):
+    root = tmp_path / "sweeps"
+    written_sweep(root, "haiku", dataset="tiny", crash=False, seconds=[2.0, 3.0])
+    written_sweep(root, "sonnet", dataset="tiny", crash=False, seconds=[1.5])
+    written_sweep(root, "default", dataset="tiny", crash=True, seconds=[100.0])
+    written_sweep(root, "elsewhere", dataset="other", crash=False, seconds=[50.0])
+    me = written_sweep(root, "opus", dataset="tiny", crash=False, seconds=[9.0])
+    assert W.spent_by(root, "tiny", but=me) == 6.5
+    assert W.spent_by(root, "tiny") == 15.5
+
+
+def test_the_cap_is_prereg_jsons_and_a_dataset_without_one_is_refused_in_words():
+    prereg = {"filled": {"compute_cap": {"seconds": 30.0, "by_dataset": {
+        "tiny": {"plans": 2, "crash_seconds": 12.5, "seconds": 25.0}}}}}
+    assert W.compute_cap("tiny", prereg) == 25.0
+    for given in ({"filled": {"compute_cap": None}}, prereg):
+        with pytest.raises(arms.Stuck, match="prereg.json holds no compute cap for the sweeps "
+                                             "of other"):
+            W.compute_cap("other", given)
