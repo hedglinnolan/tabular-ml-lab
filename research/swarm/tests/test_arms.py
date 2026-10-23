@@ -1,7 +1,8 @@
 """The mechanical arms (SWARM_PLAN §6; ``research/swarm/arms.py``): the card's question, the default
 path's and the random path's answers on asks built here, the walk on a session that serves those
-asks, and, slow, each path through the driver's own commands on a small dataset that is not one of
-the pilot's six (``clinical_readmission_predict``, 480 rows) to a record that validates.
+asks (and what stops it, classed by what the engine said), and, slow, each path through the
+driver's own commands on a small dataset that is not one of the pilot's six
+(``clinical_readmission_predict``, 480 rows) to a record that validates.
 
 Known truth: the event level from the card's own words; each default from what the ask offers in
 its order and the app's own guess and detection, built here; each random draw from numpy's
@@ -257,3 +258,101 @@ def test_each_path_runs_through_the_driver_to_a_record_that_validates(tmp_path, 
                            ("open_seal", "revert"))
     if path == "default":
         assert not [d for d in rec.decisions if d.kind.startswith("set_selection")]
+
+
+# ── what the engine said stops the walk, classed ─────────────────────────────
+
+
+def stage_view(**errors):
+    """A project view whose stages ``errors`` are in error, each ``(words, refusal or None)``."""
+    stages = {"working": {"status": "fresh", "key": "w1"}}
+    for name, (words, refusal) in errors.items():
+        stages[name] = {"status": "error", "key": f"{name}1", "error": words,
+                        "refusal": refusal}
+    return {"stages": stages}
+
+
+def waiting_on(view, *names):
+    """The ask the driver serves for a question waiting on ``names`` (``driver.the_question``:
+    ``failed`` from ``failed_on``, ``fit_failed`` from ``failures`` over the same view)."""
+    from research.swarm import driver
+
+    step = {"key": "models", "status": "waiting", "waiting_on": list(names)}
+    return {"question": {"key": "models", "status": "waiting", "waiting_on": list(names)},
+            "failed": driver.failed_on(view, step),
+            "fit_failed": driver.failures(view, [*names, "fit"])}
+
+
+REFUSAL = {"stage": "cohort", "code": "too_few_rows",
+           "message": "The answers recorded leave 3 of the 60 rows.",
+           "exits": [{"id": "x-c", "label": "Fill the blanks",
+                      "decision": {"kind": "set_missing", "strategy": "impute"}}]}
+
+
+def test_a_question_waiting_on_a_stage_that_failed_untyped_stops_the_walk_failed():
+    view = stage_view(shelf=("RuntimeError: boom", None))
+    with pytest.raises(arms.Met) as got:
+        arms.walk(Scripted([waiting_on(view, "shelf")]), arms.Default(Q))
+    assert got.value.kind == "failed"
+    assert got.value.detail["code"] == "stage_failed" and got.value.detail["stage"] == "shelf"
+    assert got.value.detail["message"] == "RuntimeError: boom"
+
+
+def test_a_question_waiting_on_a_stage_that_refused_in_words_stops_the_walk_refused():
+    view = stage_view(cohort=("ValueError: The answers recorded leave 3 of the 60 rows.",
+                              REFUSAL))
+    with pytest.raises(arms.Met) as got:
+        arms.walk(Scripted([waiting_on(view, "cohort")]), arms.Default(Q))
+    detail = got.value.detail
+    assert got.value.kind == "refused" and detail["by"] == "engine" and detail["at"] == "stage"
+    assert (detail["stage"], detail["code"], detail["message"]) == (
+        "cohort", "too_few_rows", "The answers recorded leave 3 of the 60 rows.")
+    assert detail["exits"] == [{"label": "Fill the blanks",
+                                "decision": {"kind": "set_missing", "strategy": "impute"}}]
+
+
+def test_one_untyped_stage_among_typed_ones_is_a_failure():
+    view = stage_view(cohort=("ValueError: refused", REFUSAL), shelf=("KeyError: 'x'", None))
+    with pytest.raises(arms.Met) as got:
+        arms.walk(Scripted([waiting_on(view, "cohort", "shelf")]), arms.Default(Q))
+    assert got.value.kind == "failed" and got.value.detail["stage"] == "shelf"
+    assert [s["kind"] for s in got.value.detail["stages"]] == ["refused", "failed"]
+
+
+def test_an_answer_refused_with_no_way_forward_and_no_other_option_stops_the_walk_refused():
+    asks = [ask("missing", [opt("impute", {"kind": "set_missing"})]),
+            ask("missing", [opt("impute", {"kind": "set_missing"})])]
+    s = Scripted(asks, refuse={"impute": []})
+    with pytest.raises(arms.Met) as got:
+        arms.walk(s, arms.Default(Q))
+    detail = got.value.detail
+    assert got.value.kind == "refused" and detail["code"] == "no" and detail["by"] == "server"
+    assert detail["at"] == "walk" and detail["question"] == "missing"
+    assert detail["answered"] == ["impute"]
+
+
+def test_the_cards_own_answer_refused_with_no_way_forward_stops_the_walk_refused():
+    asks = [ask("target", [opt("y", {"kind": "set_target", "column": "y"}),
+                           opt("x", {"kind": "set_target", "column": "x"})])] * 2
+    s = Scripted(asks, refuse={"y": []})
+    with pytest.raises(arms.Met) as got:
+        arms.walk(s, arms.Default(Q))
+    assert got.value.kind == "refused" and got.value.detail["question"] == "target"
+    assert s.answers == [(["y"], [])]  # never another of the card's answers
+
+
+def test_a_walk_that_meets_its_own_limit_stops_unclassed():
+    """A question the path cannot answer (every option takes a field) is the walk's own limit,
+    not what the engine said."""
+    s = Scripted([ask("grain_like", [opt("needs", None, needs=["column"])])])
+    with pytest.raises(arms.Stuck) as got:
+        arms.walk(s, arms.Default(Q))
+    assert not isinstance(got.value, arms.Met)
+
+
+def test_an_answer_that_failed_stops_the_walk_failed():
+    failing = Scripted([ask("missing", [opt("impute", {"kind": "set_missing"})])],
+                       fail={"impute"})
+    with pytest.raises(arms.Met) as got:
+        arms.walk(failing, arms.Default(Q))
+    assert got.value.kind == "failed" and got.value.detail["code"] == "http_500"

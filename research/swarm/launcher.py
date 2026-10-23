@@ -7,10 +7,11 @@ analyst's command reads it.
                                       [--runs DIR] [--launches DIR] [--scripted]
 
 **The crash sweep must have passed** (``research/swarm/sweep.py``, :func:`crash_passed`): its report
-is the dataset's, it visited every option and met no engine defect, and it ran on the engine the
-launch runs: the same tree of ``turbotab/`` (``git rev-parse HEAD:turbotab``, the frozen engine:
-the same for every commit that leaves it unchanged), with no tracked file under it modified, then
-or now. Otherwise the dataset is not launched, and the launcher says why.
+is the dataset's, on the table the dataset's manifest names (its SHA-256), it swept every decision
+of the default plan (no ``only``), visited every option and met no engine defect, and it ran on
+the engine the launch runs: the same tree of ``turbotab/`` (``git rev-parse HEAD:turbotab``, the
+frozen engine: the same for every commit that leaves it unchanged), with no tracked file under it
+modified, then or now. Otherwise the dataset is not launched, and the launcher says why.
 
 **The fit budget** (:func:`budget_of`): ``--budget-fits`` fits, the count the orchestrator sets for
 the pilot, and as many seconds as that many fits take at the slowest fit the crash sweep measured
@@ -70,6 +71,14 @@ def engine_now() -> dict[str, Any]:
 # ── the crash sweep ──────────────────────────────────────────────────────────
 
 
+def table_sha256(dataset: str) -> str | None:
+    """The SHA-256 of the table ``dataset``'s manifest names, or None where it names none."""
+    try:
+        return str(_json(DATASETS / dataset / "manifest.json")["table"]["sha256"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def crash_passed(report: Mapping[str, Any], dataset: str,
                  engine: Mapping[str, Any] | None = None) -> str | None:
     """Why the crash sweep ``report`` does not let ``dataset`` launch on ``engine`` (the module
@@ -78,6 +87,21 @@ def crash_passed(report: Mapping[str, Any], dataset: str,
     if report.get("dataset") != dataset:
         return (f"The crash sweep's report is of {report.get('dataset')!r}, not of "
                 f"{dataset!r}.")
+    table = table_sha256(dataset)
+    ran_on = (report.get("data") or {}).get("sha256")
+    if table is None:
+        return f"The manifest of {dataset} names no table's SHA-256 to hold the crash sweep to."
+    if ran_on != table:
+        return (f"The crash sweep on {dataset} ran on a table whose SHA-256 is {ran_on}, not the "
+                f"manifest's {table}.")
+    if "only" not in report:
+        return (f"The crash sweep's report on {dataset} does not say whether it swept every "
+                f"decision of the default plan.")
+    if report["only"] is not None:
+        only = [str(o) for o in report["only"] or []]
+        named = f" ({', '.join(only[:3])}{', ...' if len(only) > 3 else ''})" if only else ""
+        return (f"The crash sweep on {dataset} swept only {len(only)} of the default plan's "
+                f"decisions{named}, not every one.")
     if not report.get("complete"):
         left = report.get("unvisited") or []
         return (f"The crash sweep on {dataset} did not visit every option ({len(left)} left, "

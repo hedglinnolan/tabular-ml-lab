@@ -28,9 +28,11 @@ uniformly from those the driver offers that record something by themselves (a fi
 never invented), answers each open declaration line once the same way before Fit, and declares
 final a family drawn from those fitted. Where an answer or a fit is refused, either takes a way
 forward the refusal offers (the first, or one drawn); where an answer is refused with none, it takes
-another option (the next offered, or another drawn), never another of the card's answers. Under
-Predict, what the fit raises is answered and Fit pressed again before the held-out rows open, so
-they open on a current fit. Each record is given the dataset as the launcher gives an analyst's
+another option (the next offered, or another drawn), never another of the card's answers. Where
+none is left, an answer fails, or a question waits on stages that failed, the walk stops with what
+the engine said, classed refused or failed (:class:`Met`), which the sweep classes its refit by.
+Under Predict, what the fit raises is answered and Fit pressed again before the held-out rows open,
+so they open on a current fit. Each record is given the dataset as the launcher gives an analyst's
 run (``launcher.dataset_meta``: its control kind and known answer).
 
 **Two sessions** (:class:`Driven`, :class:`Local`), one walker (:func:`walk`). ``Driven`` is a run
@@ -163,6 +165,76 @@ def said_of(code: int, payload: dict[str, Any]) -> Said:
 
 class Stuck(RuntimeError):
     """A walk that cannot go on: what it met, in words."""
+
+
+class Met(Stuck):
+    """A walk stopped by what the engine said, classed: ``kind`` ``refused`` (in words: an answer
+    refused with no way forward, or a stage's typed refusal) or ``failed`` (an answer that failed,
+    or a stage in error the engine did not type); ``detail``, what the class rests on (its code,
+    words and ways forward, where it stopped, and each stage that failed)."""
+
+    def __init__(self, words: str, kind: str, detail: Mapping[str, Any]):
+        super().__init__(words)
+        self.kind, self.detail = kind, dict(detail)
+
+
+def said_fields(said: Said) -> dict[str, Any]:
+    return {"kind": said.kind, "by": said.by, "code": said.code, "message": said.message,
+            "status": said.status}
+
+
+def exit_fields(exits: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [{k: e.get(k) for k in ("label", "decision")} for e in exits]
+
+
+def failed_stages(session: Any, q: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Each stage the ask's question waits on that failed (``q["failed"]``), typed as the driver
+    types it (``driver.failures``: ``refused`` where the stage serves the engine's typed refusal,
+    else ``failed``): the ask's own ``fit_failed``, the driver's typing over the view the ask read,
+    else the driver's typing over the project's view. A stage neither types is ``failed``."""
+    from research.swarm import driver
+
+    names = [str(n) for n in q.get("failed") or {}]
+    typed = {f.get("stage"): f for f in q.get("fit_failed") or [] if f.get("stage") in names}
+    missing = [n for n in names if n not in typed]
+    if missing:
+        try:
+            typed.update({f["stage"]: f for f in driver.failures(session.view(), missing)})
+        except driver.DriverError:
+            pass  # the project could not be read: each such stage is said untyped, below
+    return [typed.get(n) or {"stage": n, "key": None, "error": (q.get("failed") or {}).get(n),
+                             "kind": "failed", "refusal": None} for n in names]
+
+
+def met_stages(failures: Sequence[Mapping[str, Any]], words: str) -> Met:
+    """Stages in error (``driver.failures``' entries), classed: ``failed`` where any is an error
+    the engine did not type (the first such, its words), else ``refused`` with the first typed
+    refusal's stage, code, words and ways forward; each stage kept (``stages``)."""
+    untyped = [f for f in failures if f.get("kind") != "refused"] or (
+        [] if failures else [{"stage": None, "error": words}])  # none named: said untyped
+    if untyped:
+        first = untyped[0]
+        return Met(words, "failed", {"kind": "failed", "by": "engine", "code": "stage_failed",
+                                     "message": first.get("error"), "status": None,
+                                     "at": "stage", "stage": first.get("stage"),
+                                     "stages": [dict(f) for f in failures]})
+    first = failures[0]
+    refusal = first.get("refusal") or {}
+    return Met(words, "refused", {"kind": "refused", "by": "engine", "code": refusal.get("code"),
+                                  "message": refusal.get("message"), "status": None,
+                                  "at": "stage",
+                                  "stage": refusal.get("stage") or first.get("stage"),
+                                  "exits": exit_fields(refusal.get("exits") or []),
+                                  "stages": [dict(f) for f in failures]})
+
+
+def met_answer(words: str, key: str | None, said: Said, answered: Sequence[str] = ()) -> Met:
+    """An answer the walk gave that the engine refused with no way forward (``refused``) or that
+    failed (``failed``), classed as ``said`` is, with the question and the options answered."""
+    kind = "failed" if said.kind == "failed" else "refused"
+    return Met(words, kind, said_fields(said) | {"at": "walk", "question": key,
+                                                 "answered": list(answered),
+                                                 "exits": exit_fields(said.exits)})
 
 
 # ── the sessions ─────────────────────────────────────────────────────────────
@@ -858,12 +930,16 @@ def walk(session: Any, policy: Default, *, stop: Callable[[dict[str, Any]], bool
     are what is left to open, or ``stop(ask)``; returns that ask. Each answer is kept in ``steps``;
     ``before(key, ask)`` runs before an open question is answered (the crash sweep's preview of the
     answer). An answer refused in words takes the way forward the policy picks (a refusal that only
-    asks for a reading takes the reading); one that fails stops the walk (:class:`Stuck`)."""
+    asks for a reading takes the reading). What the engine said stops the walk classed
+    (:class:`Met`): an answer that failed, an answer refused with no way forward and no other
+    option left, a question waiting on stages that failed (typed as the driver types them,
+    :func:`failed_stages`); any other limit stops it in its words (:class:`Stuck`)."""
     steps = steps if steps is not None else []
     read = session.read
     waits = 0
     n = len(steps)
     refused: dict[str, set[str]] = {}  # each question's options refused with no way forward
+    last: dict[str, Said] = {}  # each question's last such refusal
     for _ in range(limit):
         q = session.ask()
         settled = policy.settle(q)
@@ -873,7 +949,8 @@ def walk(session: Any, policy: Default, *, stop: Callable[[dict[str, Any]], bool
             steps.append(Step("way", None, [], [way], [], why, said.kind, said.code,
                               (said.payload.get("recorded") if said.ok else None)))
             if said.kind == "failed":
-                raise Stuck(f"An answer failed: {json.dumps(said.payload)[:800]}")
+                raise met_answer(f"An answer failed: {json.dumps(said.payload)[:800]}", None,
+                                 said, [way])
             continue
         if stop is not None and stop(q):
             return q
@@ -882,8 +959,9 @@ def walk(session: Any, policy: Default, *, stop: Callable[[dict[str, Any]], bool
             return q
         if question.get("status") != "open":
             if q.get("failed"):
-                raise Stuck(f"The {question.get('key')} question waits on stages that failed: "
-                            f"{json.dumps(q['failed'])[:800]}")
+                raise met_stages(failed_stages(session, q),
+                                 f"The {question.get('key')} question waits on stages that "
+                                 f"failed: {json.dumps(q['failed'])[:800]}")
             waits += 1
             if waits > 40:
                 raise Stuck(f"The {question.get('key')} question kept waiting.")
@@ -895,8 +973,10 @@ def walk(session: Any, policy: Default, *, stop: Callable[[dict[str, Any]], bool
         if ids and ids[0] in refused.get(key, set()):
             other = policy.instead(key, q, refused[key])
             if other is None:
-                raise Stuck(f"Every option of the {key} question this path takes was refused "
-                            f"with no way forward ({', '.join(sorted(refused[key]))}).")
+                raise met_answer(f"Every option of the {key} question this path takes was "
+                                 f"refused with no way forward "
+                                 f"({', '.join(sorted(refused[key]))}).", key, last[key],
+                                 sorted(refused[key]))
             ids, sets, why = other
         if before is not None:
             before(key, q)
@@ -905,7 +985,8 @@ def walk(session: Any, policy: Default, *, stop: Callable[[dict[str, Any]], bool
         steps.append(Step("question", key, _offered_of(q), list(ids), list(sets), why, said.kind,
                           said.code, said.payload.get("recorded") if said.ok else None))
         if said.kind == "failed":
-            raise Stuck(f"The {key} answer failed: {json.dumps(said.payload)[:800]}")
+            raise met_answer(f"The {key} answer failed: {json.dumps(said.payload)[:800]}", key,
+                             said, ids)
         if said.kind == "refused":
             way = policy.way(said.exits)
             if way is None:
@@ -914,17 +995,19 @@ def walk(session: Any, policy: Default, *, stop: Callable[[dict[str, Any]], bool
                 q2 = session.ask()
                 if policy.settle(q2) is None:
                     refused.setdefault(key, set()).add(ids[0])
+                    last[key] = said
                     if policy.instead(key, q, refused[key]) is None:
-                        raise Stuck(f"The {key} answer was refused with no way forward: "
-                                    f"{said.code}: {said.message}")
+                        raise met_answer(f"The {key} answer was refused with no way forward: "
+                                         f"{said.code}: {said.message}", key, said,
+                                         sorted(refused[key]))
                 continue
             again = session.answer([way], [], f"{policy.name}: the refusal's way forward.")
             steps.append(Step("way", key, list(said.exits), [way], [], "the refusal's way forward",
                               again.kind, again.code,
                               again.payload.get("recorded") if again.ok else None))
             if again.kind == "failed":
-                raise Stuck(f"The {key} refusal's way forward failed: "
-                            f"{json.dumps(again.payload)[:800]}")
+                raise met_answer(f"The {key} refusal's way forward failed: "
+                                 f"{json.dumps(again.payload)[:800]}", key, again, [way])
     raise Stuck(f"The Router never reached Fit in {limit} answers ({len(steps) - n} given).")
 
 
