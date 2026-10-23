@@ -963,6 +963,29 @@ def _selection_is_sensitivity_under_inference(decision: Any, ctx: Any) -> None:
             exits=[exit_])
 
 
+def _sensitivity_is_for_inference(decision: Any, ctx: Any) -> None:
+    """The labeled sensitivity analysis runs under inference only (``stages.evaluation``'s
+    ``_inference``); under prediction the selection step skips a sensitivity answer
+    (:func:`selection_step`), so no selection would run while the record's sentence said one ran
+    (:func:`decision_sentence`). Refused there, with the selection run in each training fold and
+    no selection as the ways forward. With the goal unanswered nothing yet says it would not run."""
+    from turbotab.core.decisions import Refusal
+
+    state = _ctx_state(ctx)
+    if not decision.sensitivity or getattr(state, "purpose", None) != "prediction":
+        return
+    plain = {"sensitivity": False, "where": "in_fold"}
+    exits = [] if decision.method == "none" else [
+        {"label": "Run it in each training fold", "decision": decision.model_copy(update=plain)}]
+    raise Refusal(
+        "sensitivity_only_under_inference",
+        "A labeled sensitivity analysis of the selection runs only when the goal is to estimate "
+        "an effect, beside the declared model. To predict, a selection runs in each training fold "
+        "as one of the model's steps, or none runs.",
+        exits=[*exits, {"label": "No selection",
+                        "decision": decision.model_copy(update={**plain, "method": "none"})}])
+
+
 def _selection_fits_the_task(decision: Any, ctx: Any) -> None:
     """The selection methods here read a numeric or yes/no outcome; stepwise needs more rows than
     predictors."""
@@ -1062,6 +1085,7 @@ def _register_validators() -> None:
 
     register_validator("set_selection", _selection_runs_in_fold)
     register_validator("set_selection", _selection_is_sensitivity_under_inference)
+    register_validator("set_selection", _sensitivity_is_for_inference)
     register_validator("set_selection", _selection_fits_the_task)
 
 

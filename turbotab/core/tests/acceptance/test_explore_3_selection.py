@@ -299,6 +299,34 @@ def test_7_under_inference_selection_is_only_a_labeled_sensitivity_analysis():
     assert _explore_answer(state, "selection") is None  # never a step of the declared model
 
 
+@pytest.mark.parametrize("method", ["stepwise", "elastic_net", "none"])
+def test_7_under_prediction_a_labeled_sensitivity_analysis_is_refused(method):
+    """The sensitivity analysis runs only under inference (``stages.evaluation._inference``); under
+    prediction the selection step skips a sensitivity answer (``selection_step``), so the record
+    would say a sensitivity analysis ran where no selection ran. It is refused, with the selection
+    run in each training fold and no selection as the ways forward; under inference it stands, and
+    the same selection without the label stands under prediction."""
+    with pytest.raises(Refusal) as caught:
+        d.validate(d.SetSelection(method=method, sensitivity=True), {"state": PREDICTION})
+    r = caught.value
+    assert r.code == "sensitivity_only_under_inference"
+    ways = [(e["label"], e["decision"]["method"], e["decision"]["sensitivity"]) for e in r.exits]
+    in_fold = [] if method == "none" else [("Run it in each training fold", method, False)]
+    assert ways == [*in_fold, ("No selection", "none", False)]
+    for e in r.exits:
+        d.validate(e["decision"], {"state": PREDICTION})  # each way forward is accepted
+    assert VS.selection_step({"method": method, "sensitivity": True}, "regression") == []
+
+
+def test_7_a_labeled_sensitivity_analysis_stands_under_inference_and_before_the_goal():
+    """The guard's other side: under inference the sensitivity analysis is accepted; with the goal
+    unanswered nothing yet says it would not run, so it is not refused there either."""
+    assert d.validate(d.SetSelection(method="stepwise", sensitivity=True), {"state": INFERENCE})
+    unanswered = d.ProjectState(task="regression", target="y")
+    assert d.validate(d.SetSelection(method="stepwise", sensitivity=True), {"state": unanswered})
+    assert d.validate(d.SetSelection(method="elastic_net"), {"state": PREDICTION})
+
+
 def _copies(seed: int = 11, m: int = 5, n: int = 300):
     """Five completed copies of a table with x2 and x3 missing at random: each filled by a
     stochastic regression draw on the observed rows (an independent imputation, not the app's)."""

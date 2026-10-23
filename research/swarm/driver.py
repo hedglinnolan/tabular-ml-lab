@@ -54,7 +54,8 @@ the multiplicity and the sensitivity analyses; ``quest.DECLARATIONS``) is listed
 ``also_open`` with its options and fields, composed by :mod:`research.swarm.declarations` from the
 engine's own definitions, and ``preview`` and ``answer`` take them by id like a question's. A fit
 the engine refused in words (its stage status's typed ``refusal``) is said with its code and its
-ways forward, which ``answer`` takes by id; a fit that failed otherwise is said as it failed.
+ways forward, which ``answer`` takes by id; a fit that failed with an error the engine did not type
+as a refusal is said as it failed.
 
 **The analyst's tags** (SWARM_PLAN §2, §4): ``preview`` and ``answer`` take a reason; ``answer``
 takes a marker of the controlled vocabulary (``research/swarm/vocabulary.py``) and may name the
@@ -552,7 +553,7 @@ def failed_on(view: dict[str, Any], step: dict[str, Any]) -> dict[str, Any]:
 def failures(view: dict[str, Any], names: list[str]) -> list[dict[str, Any]]:
     """Each stage of ``names`` in error, classed by its status alone: ``refused`` where it serves
     the engine's typed refusal (its code, words and ways forward, each way with its id), else
-    ``failed``."""
+    ``failed`` (an error the engine did not type as a refusal)."""
     stages = view.get("stages") or {}
     out = []
     for name in dict.fromkeys(names):

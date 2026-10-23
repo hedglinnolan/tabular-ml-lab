@@ -1,16 +1,20 @@
 """A typed fit-time refusal (SWARM_PLAN §8; the sixth review's §3 item 2): a stage that refuses in
 words carries a code and its ways forward, as an answer-time refusal does, and the stage's status
-serves them apart from a crash, so a script classes a refused fit without reading its prose.
+serves them apart from an error the engine did not type as a refusal, so a script classes a
+refused fit without reading its prose.
 
 Each guard both ways, on stages built here: a refusal in words is served with its code and exits
-(a light stage, a heavy one in a job worker, and a stage waiting on a refused one); a crash, the
-same ``ValueError`` text with no refusal, is served with none. The fit's own refusals are held to
-their construction: an empty selection (columns of a Hadamard matrix, exactly uncorrelated with
-the outcome, so nothing is kept) refuses with ``nothing_kept`` and the two selections the words
-name; the design stage's refusals in words keep their words and gain a code. A selection's
-fit-time ways forward are the recorded answer with only its method changed (its pre-selection
-answer kept), as the answer-time refusal builds them, wherever the stage ran; with no answer
-recorded, as raised."""
+(a light stage, a heavy one in a job worker, and a stage waiting on a refused one), and so is a
+reading the fit waits on (``readings.Unsettled``, with the ask's code and its own exits); a crash,
+the same ``ValueError`` text with no refusal, is served with none, as is scikit-learn's own error.
+The fit's own refusals are held to their construction: an empty selection (columns of a Hadamard
+matrix, exactly uncorrelated with the outcome, so nothing is kept) refuses with ``nothing_kept``
+and the two selections the words name; the design stage's refusals in words keep their words and
+gain a code, the pipeline's among them (amounts not numbers yet, a tuned family with no per-row
+loss, blanks with no missing-values answer), each with the ways forward its words name. A
+selection's fit-time ways forward are the recorded answer with only its method changed (its
+pre-selection answer kept), as the answer-time refusal builds them, wherever the stage ran; with
+no answer recorded, as raised."""
 from __future__ import annotations
 
 import pickle
@@ -44,9 +48,26 @@ def stage_after(ctx):
     return {"after": ctx.inputs}
 
 
+# A reading the fit waits on (``readings.Unsettled``: it asks, never guesses), with its own ways
+# forward: one confirmation per answer the reading can take.
+ASKED = "`age` holds whole numbers, which may be codes or amounts; the fit waits for the answer."
+ASKED_EXITS = [
+    {"label": "`age` is an amount", "decision": {"kind": "confirm_reading", "reading":
+                                                 "code_or_count", "column": "age",
+                                                 "value": "amount"}},
+    {"label": "`age` holds codes", "decision": {"kind": "confirm_reading", "reading":
+                                                "code_or_count", "column": "age", "value": "code"}}]
+
+
+def stage_waits(ctx):
+    from turbotab.core.readings import Unsettled
+
+    raise Unsettled(ASKED, exits=ASKED_EXITS)
+
+
 def refusing_graph() -> Graph:
     """R refuses (light), RH refuses in a job worker, C and CH fail with the same words untyped,
-    AR waits on RH, AC on CH."""
+    AR waits on RH, AC on CH; U and UH wait on an unsettled reading (light, in a job worker)."""
     return Graph([
         Stage("R", 1, (), (), stage_refuses),
         Stage("RH", 1, (), (), stage_refuses, heavy=True),
@@ -54,6 +75,8 @@ def refusing_graph() -> Graph:
         Stage("CH", 1, (), (), stage_crashes, heavy=True),
         Stage("AR", 1, ("RH",), (), stage_after),
         Stage("AC", 1, ("CH",), (), stage_after),
+        Stage("U", 1, (), (), stage_waits),
+        Stage("UH", 1, (), (), stage_waits, heavy=True),
     ])
 
 
@@ -102,6 +125,36 @@ def test_a_crash_with_the_same_words_is_served_with_no_refusal(statuses, stage):
     status = statuses[stage]
     assert status.error == f"ValueError: {WORDS}"
     assert status.refusal is None
+
+
+@pytest.mark.parametrize("stage", ["U", "UH"])
+def test_a_stage_waiting_on_an_unsettled_reading_is_served_refused_with_its_own_ways_forward(
+        statuses, stage):
+    """The verifier's V4: a reading the fit waits on (``readings.Unsettled``) is a refusal in words
+    with its own ways forward, served with the answer-time ask's code (``reading_unsettled``);
+    its error text is the one it had (what a person reads does not move)."""
+    status = statuses[stage]
+    assert status.error == f"Unsettled: {ASKED}"
+    assert status.refusal is not None
+    assert status.refusal.model_dump(mode="json") == {
+        "stage": stage, "code": "reading_unsettled", "message": ASKED,
+        "exits": normalized(ASKED_EXITS)}
+
+
+def test_a_scikit_learn_value_error_is_still_served_with_no_refusal():
+    """The guard's other side: an error the engine did not type, scikit-learn's own ValueError on
+    an empty design, carries no refusal; nor does a ValueError that merely holds ``exits``."""
+    from sklearn.linear_model import LinearRegression
+
+    from turbotab.core.jobs import failure_of
+
+    with pytest.raises(ValueError) as raised:
+        LinearRegression().fit(np.empty((0, 1)), np.empty(0))
+    text, refusal = failure_of(raised.value)
+    assert text == f"ValueError: {raised.value}" and refusal is None
+    lookalike = ValueError(ASKED)
+    lookalike.exits = ASKED_EXITS
+    assert failure_of(lookalike) == (f"ValueError: {ASKED}", None)
 
 
 def test_a_stage_waiting_on_a_refused_one_serves_that_refusal_and_on_a_crash_none(statuses):
@@ -242,6 +295,184 @@ def test_a_design_that_can_be_built_refuses_nothing(tmp_path):
 
     out = _design(tmp_path, mf.state(models=["linear"]))
     assert out is not None
+
+
+def test_a_design_waiting_on_an_unsettled_reading_is_typed_with_its_two_ways_forward(tmp_path):
+    """The verifier's V4, reproduced: with no reading confirmed, the fixture's `age` (whole years,
+    by its construction) may be codes or amounts, so the design asks (``readings.Unsettled``) and
+    fits nothing. The failure is typed with the ask's code and its own two ways forward, one
+    confirmation per answer, its error text as before."""
+    from turbotab.core.jobs import failure_of
+    from turbotab.core.readings import Unsettled
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    with pytest.raises(Unsettled) as asked:
+        _design(tmp_path, mf.state(models=["linear"], shape_confirmations={}))
+    text, refusal = failure_of(asked.value)
+    assert text == f"Unsettled: {asked.value}"
+    assert refusal["code"] == "reading_unsettled" and refusal["message"] == str(asked.value)
+    assert [e["decision"] for e in refusal["exits"]] == [
+        {"kind": "confirm_reading", "reading": "code_or_count", "column": "age", "value": value}
+        for value in ("amount", "code")]
+    assert [e["label"] for e in refusal["exits"]] == [e["label"] for e in asked.value.exits]
+
+
+# ── the design's refusals in words from the pipeline (the verifier's V4) ─────
+
+
+def _amounts_state(**slots):
+    return d.ProjectState(target="y", purpose="prediction",
+                          roles={"crp": "covariate", "age": "covariate"},
+                          shape_confirmations={"code_or_count:crp": "amount",
+                                               "code_or_count:age": "amount"}, **slots)
+
+
+AMOUNTS_WORDS = ("`crp` is recorded as amounts, but some of its values are not numbers yet (values "
+                 "below a detection limit, or commas that read two ways); answer how they read "
+                 "before the fit.")
+
+
+def test_amounts_below_a_detection_limit_refuse_with_the_limits_answers():
+    """`crp` recorded as amounts holds `<0.20` ten times (the construction): the design's backstop
+    keeps its words and offers the below-detection repair's two readings (half the limit, the
+    limit over √2) and codes instead, as the fit's ask offers them."""
+    from turbotab.core.models.pipeline import design_spec
+
+    frame = pd.DataFrame({"crp": ["1.2", "<0.20", "3.4", "0.5"] * 10,
+                          "age": np.arange(40, dtype=float)})
+    with pytest.raises(StageRefusal) as refused:
+        design_spec(_amounts_state(), frame, ["crp", "age"])
+    r = refused.value
+    assert r.code == "reading_unsettled" and str(r) == AMOUNTS_WORDS
+    repairs, codes = r.exits[:2], r.exits[2:]
+    assert [(e["decision"]["kind"], e["decision"]["finding_id"], e["decision"]["option"])
+            for e in repairs] == [("apply_repair", "below_detection__crp", "half_limit"),
+                                  ("apply_repair", "below_detection__crp", "limit_root2")]
+    read = [e["decision"]["params"]["columns"]["crp"] for e in repairs]
+    assert [(c["decimal"], c["thousands"]) for c in read] == [(".", False), (".", False)]
+    assert [c["factor"] for c in read] == pytest.approx([0.5, 1 / np.sqrt(2)])
+    assert [e["decision"] for e in codes] == [{"kind": "confirm_reading", "reading":
+                                               "code_or_count", "column": "crp", "value": "code"}]
+
+
+def test_amounts_whose_commas_read_two_ways_refuse_with_the_two_readings_of_the_commas():
+    """Every `crp` value is `d,ddd`: a comma that splits thousands or marks decimals. The backstop
+    offers the text-number repair's two readings and codes instead."""
+    from turbotab.core.models.pipeline import design_spec
+
+    frame = pd.DataFrame({"crp": ["1,234", "2,500", "3,125", "4,750"] * 10,
+                          "age": np.arange(40, dtype=float)})
+    with pytest.raises(StageRefusal) as refused:
+        design_spec(_amounts_state(), frame, ["crp", "age"])
+    r = refused.value
+    assert r.code == "reading_unsettled" and str(r) == AMOUNTS_WORDS
+    assert [(e["decision"]["kind"], e["decision"].get("option") or e["decision"].get("value"))
+            for e in r.exits] == [("apply_repair", "thousands"), ("apply_repair", "decimal_comma"),
+                                  ("confirm_reading", "code")]
+    assert [e["decision"]["params"]["columns"]["crp"] for e in r.exits[:2]] == [
+        {"decimal": ".", "thousands": True}, {"decimal": ",", "thousands": False}]
+
+
+def test_amounts_that_are_numbers_refuse_nothing():
+    from turbotab.core.models.pipeline import design_spec
+
+    frame = pd.DataFrame({"crp": [1.2, 0.1, 3.4, 0.5] * 10, "age": np.arange(40, dtype=float)})
+    assert design_spec(_amounts_state(), frame, ["crp", "age"]).numeric == ["crp", "age"]
+
+
+class _Tuned:
+    """A family tuned for every task (its ``tuning`` a mapping, read by ``tuning_for``)."""
+
+    key, label, tasks = "toy_tuned", "Toy tuned model", ("regression", "time_to_event")
+    tuning = {"time_to_event": object(), "regression": object()}
+
+
+def test_a_tuned_family_on_an_outcome_with_no_per_row_loss_refuses_with_a_code():
+    """The losses a plan tunes on are mse, log loss and the RPS (``tuning.Loss``); a time-to-event
+    outcome's primary is the time-dependent Brier score (``metrics.PRIMARY``), none of them, so a
+    tuned family cannot be fit. The words name no way forward, and none is offered."""
+    from typing import get_args
+
+    from turbotab.core.models.metrics import PRIMARY
+    from turbotab.core.models.pipeline import make_plans
+    from turbotab.core.models.tuning import Loss
+
+    assert PRIMARY["time_to_event"] not in get_args(Loss)  # the construction
+    with pytest.raises(StageRefusal) as refused:
+        make_plans([_Tuned()], "time_to_event", np.zeros(40))
+    r = refused.value
+    assert r.code == "no_per_row_loss" and r.exits == []
+    assert str(r) == ("Toy tuned model is tuned on a strictly proper per-row loss, which this "
+                      "outcome has none of, so it cannot be fit here.")
+    assert make_plans([_Tuned()], "time_to_event", np.zeros(40), strict=False) == {}
+
+
+def test_a_family_with_nothing_to_tune_refuses_no_loss():
+    """The guard's other side: a family with no tuning on the same outcome makes no plan and
+    refuses nothing."""
+    from turbotab.core.models.pipeline import make_plans
+
+    untuned = _Tuned()
+    untuned.tuning = None
+    assert make_plans([untuned], "time_to_event", np.zeros(40)) == {}
+
+
+def _blank_design(purpose):
+    from turbotab.core.models.pipeline import design_spec
+
+    X = pd.DataFrame({"x": [1.0, np.nan, 3.0, 4.0] * 5})
+    st = d.ProjectState(target="y", purpose=purpose, roles={"x": "covariate"},
+                        shape_confirmations={"code_or_count:x": "amount"})
+    return design_spec(st, X, ["x"]), X
+
+
+# Each purpose's answers to the missing-values question that the leash accepts as they stand
+# (MODELING_SEQUENCE ruling 6, WP7): under prediction a fill in each training fold, with
+# indicators or with blanks as their own level, or complete cases; under inference multiple
+# imputation or complete cases (a single fill there is recorded only with its attestation).
+ACCEPTED_FILLS = {
+    "prediction": [{"strategy": "impute"}, {"strategy": "impute", "indicators": True},
+                   {"strategy": "complete_case"},
+                   {"strategy": "impute", "categorical": "missing_category"}],
+    "inference": [{"strategy": "multiple_imputation"}, {"strategy": "complete_case"}],
+}
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_blanks_with_no_missing_values_answer_refuse_with_the_answers_that_handle_them(purpose):
+    """Five of twenty rows have a blank `x` and no missing-values strategy was chosen: the linear
+    model cannot use them. The words are kept, and the ways forward are the missing-values answers
+    the purpose accepts, each recorded as it stands."""
+    from turbotab.core.models.base import get_family
+    from turbotab.core.models.pipeline import warnings_for
+
+    spec, X = _blank_design(purpose)
+    rows = "analyzed rows" if purpose == "inference" else "training rows"
+    with pytest.raises(StageRefusal) as refused:
+        warnings_for(spec, X, ["linear"], {"linear": get_family("linear")}, rows_word=rows)
+    r = refused.value
+    assert r.code == "no_missing_strategy"
+    assert str(r) == (f"5 {rows} have a missing predictor value and no missing-values strategy "
+                      f"was chosen; Linear model cannot use them. Choose complete cases or "
+                      f"imputation first.")
+    assert [e["decision"] for e in r.exits] == [
+        d.parse_decision({"kind": "set_missing", **body}).model_dump(mode="json")
+        for body in ACCEPTED_FILLS[purpose]]
+    state = d.ProjectState(target="y", purpose=purpose)
+    for e in r.exits:
+        d.validate(e["decision"], {"state": state})  # each way forward is accepted as it stands
+
+
+def test_blanks_a_family_handles_or_no_blanks_refuse_nothing():
+    """The guard's other side: a family that handles blanks itself, or no blank at all."""
+    from turbotab.core.models.base import families, get_family
+    from turbotab.core.models.pipeline import warnings_for
+
+    spec, X = _blank_design("prediction")
+    handles = next(f for f in families("regression") if f.handles_missing)
+    assert warnings_for(spec, X, [handles.key], {handles.key: handles}) == []
+    full = X.fillna(2.0)
+    assert warnings_for(spec, full, ["linear"], {"linear": get_family("linear")}) == []
 
 
 def test_a_batch_confounded_with_the_outcome_is_typed_as_the_answer_refuses_it():

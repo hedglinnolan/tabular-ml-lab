@@ -219,6 +219,51 @@ def test_the_redacted_view_keeps_no_time_of_the_record_only_their_order(make):
     R.validate(blind)
 
 
+def _started(label: str, secret: str, pid: int, port: int, said: str):
+    """A record of a run started as the driver starts one: its id ``start``'s label (``run_`` and
+    the runs before it) and its secret, its server's PID and port, and an analyst who names its
+    own run in its reason."""
+    data = predict_record()
+    run_id = f"{label}-{secret}"
+    data["run"].update(id=run_id, server={"pid": pid, "port": port, "mode": "local",
+                                          "workers": 2})
+    data["decisions"][3]["reason"] = f"{said} {run_id}, {label} for short."
+    return data, run_id
+
+
+def test_the_redacted_view_keeps_no_channel_of_the_runs_start_order():
+    """The verifier's inbox: a run's label counts the runs started before it (``driver.new_run_id``)
+    and its server's PID and port grow with the start order, so a reader who knows the schedule
+    could name a run's model from them. Two runs that differ only there give redacted views that
+    differ only in a neutral token: no label, no PID and no port survives, in a field or in the
+    analyst's words."""
+    from research.swarm import driver
+
+    first, first_id = _started("run_01", "a" * 32, 99972, 58134, "This is")
+    later, later_id = _started("run_02", "b" * 32, 100537, 58611, "This is")
+    views = [R.redacted(first), R.redacted(later)]
+    for view, (label, run_id, pid, port) in zip(views, [("run_01", first_id, 99972, 58134),
+                                                         ("run_02", later_id, 100537, 58611)]):
+        shown = json.dumps(view)
+        assert run_id not in shown and label not in shown and run_id.split("-")[1] not in shown
+        assert str(pid) not in shown and str(port) not in shown
+        assert view["run"]["server"] == {"mode": "local", "workers": 2}
+        assert driver.RUN_ID.fullmatch(view["run"]["id"])
+        assert view["run"]["id"].startswith(f"{R.REDACTED}-")
+    tokens = [v["run"]["id"] for v in views]
+    assert tokens[0] != tokens[1]  # each run still has its own name in the blind view
+    blank = [json.loads(json.dumps(v).replace(t, "TOKEN")) for v, t in zip(views, tokens)]
+    assert blank[0] == blank[1]
+    assert R.redacted(first)["run"]["id"] == tokens[0]  # the same record, the same token
+    assert first["run"]["id"] == first_id  # the record itself is untouched
+
+
+def test_a_redacted_view_of_a_run_with_no_server_keeps_none():
+    data = predict_record()
+    data["run"]["server"] = None
+    assert R.redacted(data)["run"]["server"] is None
+
+
 def test_the_checks_read_the_redacted_view_as_they_read_the_record():
     from research.swarm import checks
 
