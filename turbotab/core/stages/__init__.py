@@ -606,7 +606,13 @@ def build_graph() -> Graph:
             # design 33 (the slow-fit audit, 2026-10-23): the impute step's line states the number
             # of imputations the coefficient table draws on the design's rows, not the answer's m,
             # so a design cached before is computed again rather than served with that m.
-            Stage("design", 33, ("working", "split", "target_info"),
+            # design 34 (the freeze's last engine fixes, 2026-10-23): the impute step's line states
+            # a number of imputations, and says the coefficients are pooled, only under inference,
+            # where the fit draws the copies; under prediction or with the goal unanswered it says
+            # the fill serves the fit and no copy is drawn, and the feature-wise line names no
+            # cross-validated score, so a design cached before is computed again rather than
+            # served with a count the fit never drew.
+            Stage("design", 34, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection", "survey"),
@@ -693,7 +699,11 @@ def build_graph() -> Graph:
             # fit 31 (the large-table ruling of 2026-10-23, option 3): under prediction the
             # comparison substrate runs at least 5 repeats of K folds from 5,000 training units, not
             # 10, so a fit cached before it is computed again rather than served with 10.
-            Stage("fit", 31, ("working", "design", "split", "target_info", "cohort"),
+            # fit 32 (the freeze's last engine fixes, 2026-10-23): a coefficient table on no more
+            # rows than its coefficients is refused, its estimates with its intervals
+            # (``inference._no_spare_rows``), so a fit cached before it is computed again rather
+            # than served with estimates those rows cannot determine.
+            Stage("fit", 32, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -782,7 +792,12 @@ def build_graph() -> Graph:
             # value of the outcome, is not fit, its reason in plain words (``core.row_floor``).
             # sensitivity 15, calibration 12, secondary 5, effects 6 (engine residue): as fit 26,
             # the held table's missing-values exits.
-            Stage("sensitivity", 15, ("working", "design", "split", "target_info"),
+            # sensitivity 16, calibration 14, secondary 7, effects 7, scales 5, modification 2 (the
+            # freeze's last engine fixes, 2026-10-23): as fit 32, a table on no more rows than its
+            # coefficients is refused; with no chosen family that has one, sensitivity is refused
+            # typed under either goal, and its, effects' and secondary's ways forward leave out a
+            # table that rests on cluster-robust intervals below the unit floor.
+            Stage("sensitivity", 16, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
@@ -804,7 +819,8 @@ def build_graph() -> Graph:
             # preview shares (``unread_refusal``); rows that are no mean of recalls said in 30 words.
             # calibration 13 (resume integration 2): both calibration 12s (this one and the engine
             # residue's, beside sensitivity 15 above).
-            Stage("calibration", 13,
+            # calibration 14: as sensitivity 16 above (its uncorrected estimate's table).
+            Stage("calibration", 14,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models", "purpose"),
@@ -812,7 +828,8 @@ def build_graph() -> Graph:
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
             # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
-            Stage("secondary", 6, ("working", "design", "split", "target_info"),
+            # secondary 7: as sensitivity 16 above.
+            Stage("secondary", 7, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -828,7 +845,8 @@ def build_graph() -> Graph:
             # blocks what it would move.
             # scales 4 (wave 1b repairs integrated): each copy's correction fit as the fit fits a
             # copy (REPAIR-MI's copy_pipeline: no median fill inside a copy).
-            Stage("scales", 4, ("working", "design", "split", "target_info", "cohort"),
+            # scales 5: as sensitivity 16 above (the uncorrected coefficient's table).
+            Stage("scales", 5, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models", "purpose"),
                   label="Estimating each scale's reliability", serves=ESTIMATE),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
@@ -853,7 +871,9 @@ def build_graph() -> Graph:
             # carries that question's exits, and the methods text lists only the models reported.
             # effects 5 (wave 2b, LEASH): a difference's E-value records the SD it was standardized
             # by and whose it is, and the methods text names the surveyed population's.
-            Stage("effects", 6, ("working", "design", "split", "target_info"),
+            # effects 7: as sensitivity 16 above (Model 3 on no more rows than its coefficients is
+            # refused, its estimates with its intervals).
+            Stage("effects", 7, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",
@@ -910,7 +930,8 @@ def build_graph() -> Graph:
                   label="Reading which continuous terms take a declared form"),
             # modification: each declared effect modifier or second exposure, against a single
             # reference on both scales (Knol & VanderWeele 2012); an estimate stage.
-            Stage("modification", 1, ("working", "design", "split", "target_info"),
+            # modification 2: as sensitivity 16 above (the product terms' table).
+            Stage("modification", 2, ("working", "design", "split", "target_info"),
                   MODIFICATION_READS, modification_stage, heavy=True,
                   requires=("modifications", "models", "purpose"),
                   label="Estimating the declared effect modification", serves=ESTIMATE),

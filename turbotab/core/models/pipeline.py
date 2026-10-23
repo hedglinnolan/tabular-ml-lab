@@ -1015,7 +1015,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             out.append({"key": "normalize", "label": label, "detail": detail})
         elif name == "impute":
             out.append({"key": "impute", "label": "Fill missing values",
-                        "detail": impute_detail(spec, step, family)})
+                        "detail": impute_detail(spec, step, family, purpose=purpose)})
         elif name == "detect":
             out.append({"key": "detect", "label": "Fill values below detection",
                         "detail": detect_detail(spec)})
@@ -1064,14 +1064,20 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
     return out
 
 
-def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None) -> str:
+def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None, *,
+                  purpose: Purpose | None) -> str:
     """The impute step's line: what fills which blanks, learned where, and under multiple
-    imputation what the step is for. A number of imputations is stated only on the line of a
-    family whose table is pooled over the copies (every family where ``family`` is None), as
-    ``stages.modeling._missing_for_table`` reads the chosen families before drawing any: a family
-    with no inference table is said to be fit on this fill, and one whose table pools no copies
-    (``pools_imputations`` False: the feature-wise tests) to have its table not fit, the fit's
-    refusal saying why and what to choose instead (``omics.unpooled_refusal``)."""
+    imputation what the step is for. The fit draws imputed copies only under inference
+    (``stages.modeling.fit_stage``), so under ``purpose`` prediction, or with it unanswered, the
+    line says the fill serves the fit (and its cross-validated scores, for a family that predicts)
+    and that no copy is drawn, with no count. Under inference a number of imputations is stated
+    only on the line of a family whose table is pooled over the copies (every family where
+    ``family`` is None), as ``stages.modeling._missing_for_table`` reads the chosen families
+    before drawing any: a family with no inference table is said to be fit on this fill, and one
+    whose table pools no copies (``pools_imputations`` False: the feature-wise tests) to have its
+    table not fit, the fit's refusal saying why and what to choose instead
+    (``omics.unpooled_refusal``). A family that makes no predictions (``predicts`` False: the
+    feature-wise tests) has no cross-validated score, and its line names none."""
     marked = "; each filled number also gets a missing indicator" if spec.indicators else ""
     fill = getattr(spec, "energy_fill", None) or {}
     nutrients = list(fill.get("nutrients") or [])
@@ -1090,10 +1096,20 @@ def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None) -> str
     if spec.multiple_imputation():
         # The number the coefficient table draws (:func:`imputation_count`), never the answer's.
         m = getattr(spec, "imputations", None)
+        scored = family is None or getattr(family, "predicts", True)
         if m == 0:
-            text += (" It serves the cross-validated scores; no predictor value is missing among "
-                     "the analyzed rows, so the coefficients are not imputed.")
-        elif family is not None and getattr(family, "inference", None) is None:
+            text += ((" It serves the cross-validated scores; no" if scored else " No")
+                     + " predictor value is missing among the analyzed rows, so the coefficients "
+                       "are not imputed.")
+        elif purpose != "inference":
+            # Under prediction no imputed copies are drawn: multiple imputation is the inference
+            # table's (``stages.modeling.fit_stage`` hands the table its missing values only
+            # under inference), and the goal unanswered is not inference either.
+            serves = "the fit and its cross-validated scores" if scored else "its fit"
+            when = ("under prediction no imputed copies are drawn" if purpose == "prediction" else
+                    "with the goal unanswered, no imputed copies are drawn")
+            text += f" This fill serves {serves}; {when}."
+        elif family is not None and family.inference is None:
             # No table draws copies for it: its fit, as its scores, is on this fill.
             text += (f" {family.label} has no coefficient table to pool over multiple "
                      f"imputations: this fill serves its fit and its cross-validated scores.")

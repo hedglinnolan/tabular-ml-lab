@@ -29,6 +29,10 @@ Under inference the linear family's coefficient table is made here, in four part
   separates the outcome in any copy, withholding the standard error and the Wald interval and
   p-value built from it (:func:`pooled_firth`).
 
+A table whose rows do not exceed its coefficients (the intercept among them) is refused before
+any of these, its estimates with its intervals: those rows cannot both determine the estimates and
+measure their uncertainty (:func:`_no_spare_rows`).
+
 And on the outcome's own scale (AUDIT_REPORT §5 WP8: ME-07): every table says what one unit of an
 input does, in words that name the outcome (:class:`Outcome`). A least-squares row is a difference
 in the mean outcome. A logistic row's estimate is a log-odds; its ``ratio`` is the odds ratio
@@ -838,9 +842,43 @@ def inference_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[A
 
     ``outcome`` names the outcome and its levels for the scale's words; ``rows`` says whether
     the matrix holds every analyzed row (inference, BLUEPRINT §12 ruling 3) or the training rows.
+    A table refused with no estimate (:func:`_no_spare_rows`) is put on no scale and says only
+    how many rows it was handed.
     """
     table = _table(task, matrix, y, classes, clusters)
+    if not table.rows:
+        table.info.update(n_rows=int(len(matrix)), rows=rows)
+        return table
     return _on_rows(_on_scale(table, task, classes, outcome), len(matrix), rows)
+
+
+ESTIMATORS = {"regression": "ordinary least squares",
+              "binary": "logistic regression (maximum likelihood)"}
+MULTINOMIAL = "multinomial logistic regression (maximum likelihood)"
+
+
+def _no_spare_rows(task: str, n_rows: int, n_coefficients: int,
+                   clusters: Clusters) -> InferenceTable | None:
+    """The table refused, its estimates and intervals both, where its rows do not exceed its
+    coefficients (the intercept among them; for several classes, those of each level against the
+    reference); None where they do. On n ≤ p rows least squares cannot do both: with its rank
+    below p many coefficient vectors fit the rows equally well, and with a square matrix of full
+    rank one fits them exactly, leaving no residual degree of freedom to measure its uncertainty;
+    a logistic or multinomial likelihood there has no unique maximum (a rank below p, or a square
+    matrix that separates the outcome). The ways forward: fewer columns, or more rows."""
+    if n_rows > n_coefficients:
+        return None
+    per = "" if task in ESTIMATORS else " for each level against the reference"
+    reason = (f"The model has {n_coefficients:,} coefficients{per}, the intercept among them, and "
+              f"is fit on {n_rows:,} rows: with no more rows than coefficients, the rows cannot "
+              f"both determine the estimates and measure their uncertainty, so no estimate or "
+              f"interval is reported.")
+    exits = [{"label": "Leave columns out of the model, so it has fewer coefficients than rows",
+              "decision": None},
+             {"label": f"Fit the model on more than {n_coefficients:,} rows", "decision": None}]
+    info = _info(ESTIMATORS.get(task, MULTINOMIAL), "none", f"No coefficients: {reason}",
+                 clusters, refused=reason, exits=exits)
+    return InferenceTable([], info, [reason])
 
 
 def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
@@ -853,6 +891,9 @@ def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | Non
     # The fits are handed the indexed frame, so which rows they saw stays checkable.
     exog = sm.add_constant(matrix.astype(float), has_constant="add")
     names = ["(intercept)" if c == "const" else str(c) for c in exog.columns]
+    refused = _no_spare_rows(task, len(exog), exog.shape[1], clusters)
+    if refused is not None:
+        return refused
     if task == "regression":
         return _least_squares(names, exog, np.asarray(y, dtype=float), clusters)
     if task == "binary":

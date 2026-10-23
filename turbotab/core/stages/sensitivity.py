@@ -19,7 +19,9 @@ leaves out are still in the population the model will be used on.
 
 **The model** is the design's own pipeline, refit per analysis (every step, energy adjustment and
 imputation included, is fit on that analysis's rows), so the analyses differ only by their rows.
-Families without a coefficient table are left out of this answer.
+Families without a coefficient table are left out of this answer; where none of the chosen ones
+has one the stage is refused in words, under either goal, each way forward a family whose
+coefficients the analyses' rows give (``effects.no_table_refusal``).
 
 A rule that reads the outcome is refused per analysis, as the primary's would be (audit RO-01). A
 Goldberg screen reads body weight; when the outcome correlates with it, a concern quotes Banna et
@@ -452,8 +454,18 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
         else:
             out_families.append({"family": family.key, "label": family.label, "fits": fits})
     if not out_families:
-        raise ValueError("None of the chosen model families has a coefficient table, so there is "
-                         "no estimate to set beside the primary's; choose the linear model.")
+        # Refused typed, as the declared models and the secondary model are, under either goal:
+        # each way forward a family whose coefficients every analysis's rows give
+        # (``effects.no_table_refusal``; under prediction, one that reports coefficients).
+        from turbotab.core.models.inference import resolve_clusters
+        from turbotab.core.stages.effects import no_table_refusal
+
+        tables = [(spec, frame.loc[rows][list(spec.inputs)],
+                   resolve_clusters(state, frame.loc[rows][list(unit_columns)])
+                   if unit_columns else None)
+                  for a, rows in zip(analyses, rows_by) if rows is not None and not a.get("refused")]
+        raise no_table_refusal(state, task, "no estimate to set beside the primary's", tables,
+                               survey)
 
     if not inference:
         concerns.append("Under prediction, people a screen leaves out are still among those the "

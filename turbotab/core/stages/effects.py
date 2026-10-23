@@ -290,30 +290,64 @@ def draws_copies(state: Any, spec: Any, X: pd.DataFrame) -> bool:
     return any(c not in levels and c in X.columns and X[c].isna().any() for c in spec.inputs)
 
 
+# The interval kinds (``models.base.INTERVAL_KINDS``) that rest on unit-level residuals where the
+# rows repeat: a table that declares one runs ``inference.floor_refusal`` on clustered rows (the
+# linear model's, the feature-wise tests', GEE's, the proportional-odds and Cox models'); the
+# mixed model's intervals are model-based (REML, Satterthwaite), so it declares neither.
+CLUSTER_ROBUST = ("CR2", "sandwich")
+
+
+def rests_on_units(family: Any) -> bool:
+    """Whether ``family``'s table rests on cluster-robust intervals where the rows repeat, as it
+    declares them (``InferenceDecl.intervals``), so below the unit floor it reports none."""
+    decl = getattr(family, "inference_decl", None)
+    return bool(decl is not None and set(decl.intervals) & set(CLUSTER_ROBUST))
+
+
 def table_given(state: Any, family: Any, task: str,
                 fits: Sequence[tuple[Any, pd.DataFrame, Any]], survey: Any = None) -> bool:
     """Whether ``family``'s table can be given on each of ``fits`` (a table the stage fits: its
     design spec, its rows' inputs, and the clusters ``inference.resolve_clusters`` reads from its
-    rows, None where no column may name a unit), as far as the rows and the answers decide it: a
-    family with no design-based estimator is blocked under the surveyed population (``survey``,
-    the stage's ``FitSurvey``, holds the design; ``survey.no_design_estimator``); a table that
-    pools no imputed copies (``pools_imputations`` False: the feature-wise tests) is refused where
-    the copies are drawn (:func:`draws_copies`; ``omics.unpooled_refusal``); and a family that
-    models the unit itself (its estimator is handed the rows' ``units``, as the fit stage reads
-    it: a random intercept, a working correlation) has its table refused unless an identifier
+    rows, None where no column may name a unit), as far as the rows and the answers decide it.
+    Under inference: a family with no design-based estimator is blocked under the surveyed
+    population (``survey``, the stage's ``FitSurvey``, holds the design;
+    ``survey.no_design_estimator``); a table that pools no imputed copies (``pools_imputations``
+    False: the feature-wise tests) is refused where the copies are drawn (:func:`draws_copies`;
+    ``omics.unpooled_refusal``); and with no survey design, a table that rests on cluster-robust
+    intervals (:func:`rests_on_units`) reports none where the rows repeat by fewer units than the
+    floor (``inference.min_clusters``; ``inference.floor_refusal``). Under either goal a family
+    that models the unit itself (its estimator is handed the rows' ``units``, as the fit stage
+    reads it: a random intercept, a working correlation) is not given unless an identifier
     repeats over two units or more (``repeated._no_units``)."""
+    from turbotab.core.models.inference import min_clusters
     from turbotab.core.models.survey import has_design_estimator
 
-    if survey is not None and survey.design is not None and not has_design_estimator(family, task):
+    inference = getattr(state, "purpose", None) == "inference"
+    design = survey is not None and survey.design is not None
+    if inference and design and not has_design_estimator(family, task):
         return False
     for spec, X, clusters in fits:
-        if not getattr(family, "pools_imputations", True) and draws_copies(state, spec, X):
+        if inference and not getattr(family, "pools_imputations", True) and draws_copies(
+                state, spec, X):
             return False
-        estimator = family.build(task, "inference", len(X), X.shape[1])
+        estimator = family.build(task, "inference" if inference else "prediction", len(X),
+                                 X.shape[1])
         if "units" in estimator.get_params(deep=False) and not (
                 clusters is not None and clusters.clustered and clusters.n_clusters >= 2):
             return False
+        if (inference and not design and rests_on_units(family) and clusters is not None
+                and clusters.clustered and clusters.n_clusters < min_clusters()):
+            return False
     return True
+
+
+def _named(family: Any, task: str) -> str:
+    """``family`` mid-sentence after "the": its label with its first letter in lower case, unless
+    its first word is an acronym (GEE) or a name its own mid-sentence words keep (Cox)."""
+    label = str(family.label)
+    first = label.split()[0]
+    keep = first[:2].isupper() or first in str(family.methods_label(task))
+    return f"the {label if keep else label[0].lower() + label[1:]}"
 
 
 def no_table_refusal(state: Any, task: str, nothing: str,
@@ -321,22 +355,34 @@ def no_table_refusal(state: Any, task: str, nothing: str,
     """The refusal (coded :data:`NO_COEFFICIENT_TABLE`) of a stage that refits only families with
     a coefficient table when none of the chosen ones has one; ``nothing`` says what there is then
     none of, and ``fits`` holds each table the stage fits and ``survey`` the survey answer as the
-    stage applies it (:func:`table_given`). Its ways forward
-    add, to the chosen families, each family the engine registers for ``task`` that has one
+    stage applies it (:func:`table_given`). Under inference its ways forward add, to the chosen
+    families, each family the engine registers for ``task`` that has one
     (:func:`has_coefficient_table`), serves inference and whose table every one of ``fits`` can
-    give, in the shelf's order, the linear model first."""
+    give, in the shelf's order, the linear model first; under prediction (the sensitivity stage
+    runs under either goal and reports each family's coefficients as fit), each family that
+    reports coefficients (``base.reports_coefficients``) and serves prediction. The words name
+    the first family offered, or say that none is."""
     from turbotab.core.graph import StageRefusal
-    from turbotab.core.models.base import families
+    from turbotab.core.models.base import families, reports_coefficients
 
+    inference = getattr(state, "purpose", None) == "inference"
     chosen = list(state.models or [])
-    exits = [{"label": f"Add {f.label}, which has a coefficient table",
-              "decision": {"kind": "select_models", "models": [*chosen, f.key]}}
-             for f in families(task)
-             if has_coefficient_table(f) and "inference" in f.purposes and f.key not in chosen
-             and table_given(state, f, task, fits, survey)]
-    return StageRefusal(NO_COEFFICIENT_TABLE,
-                        f"None of the chosen model families has a coefficient table, so there is "
-                        f"{nothing}; choose the linear model.", exits=exits)
+    has = "has a coefficient table" if inference else "reports coefficients"
+    offered = [f for f in families(task) if f.key not in chosen and (
+        (has_coefficient_table(f) and "inference" in f.purposes) if inference
+        else (reports_coefficients(f) and "prediction" in f.purposes))
+        and table_given(state, f, task, fits, survey)]
+    exits = [{"label": f"Add {f.label}, which {has}",
+              "decision": {"kind": "select_models", "models": [*chosen, f.key]}} for f in offered]
+    head = f"None of the chosen model families {has}, so there is {nothing}"
+    if offered:
+        message = f"{head}; choose {_named(offered[0], task)}."
+    elif inference:
+        message = (f"{head}; no model family TurboTab offers gives one on these rows under these "
+                   f"answers.")
+    else:
+        message = f"{head}; no model family TurboTab offers reports them on these rows."
+    return StageRefusal(NO_COEFFICIENT_TABLE, message, exits=exits)
 
 
 # ── what a family declares, as this stage reads it (MODEL_FAMILY_CONTRACT §1; MC-2b-3) ────────

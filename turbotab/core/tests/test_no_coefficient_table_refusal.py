@@ -3,7 +3,10 @@ primary (``secondary``) are refit only for a family with a coefficient table. Wh
 family has one (elastic net, ridge, boosted trees, random forest, XGBoost: the crash sweep's
 cases on the walking_bp table) the stage is refused, typed as a fit-time refusal (SWARM_PLAN §8)
 with its code and ways forward, so the record classes it as refused, not a crash
-(``jobs.failure_of``), and with the words a person reads unchanged.
+(``jobs.failure_of``), and with the words a person reads unchanged where the linear model is
+offered first; the words name the first family offered, or say that none is. The sensitivity
+stage, which runs under either goal, is refused the same way where no chosen family reports
+coefficients (it raised a bare ``ValueError``).
 
 Each way forward adds one family whose table these rows and these answers give.
 Expected values come from the construction: the families registered for a numeric outcome whose
@@ -17,8 +20,10 @@ tests pool no imputed copies, so under multiple imputation with `activity` blank
 their table is refused (``omics.unpooled_refusal``) and only the linear model is offered. Of the
 four, only the linear model declares a design-based estimator (``InferenceDecl.design_based``), so
 under the surveyed population the feature-wise table is blocked (``survey.no_design_estimator``)
-and only the linear model is offered; under the "these participants" answer both are. With the
-first way forward taken, the stage fits the linear model.
+and only the linear model is offered; under the "these participants" answer both are. Below the
+unit floor every table that rests on cluster-robust intervals reports none (see the floor's
+section), so only the mixed model is offered. With the first way forward taken, the stage fits
+the linear model.
 """
 from __future__ import annotations
 
@@ -52,14 +57,17 @@ SECONDARY_WORDS = ("None of the chosen model families has a coefficient table, s
 
 
 def _run(tmp_path: Path, models: list[str], *, secondary: bool, imputed: bool = False,
-         repeated: bool = False, binary: bool = False, survey: str | None = None) -> dict:
+         repeated: bool = False, binary: bool = False, survey: str | None = None,
+         units: int | None = None) -> dict:
     """``ef.cohort(300)`` under Estimate (the mean difference in `glucose` per unit of `fiber`, or
     with ``binary`` the odds ratio of `dm`; `bmi` of unknown timing, so a secondary model is
     declared beside the primary), the chosen ``models``: design, then the effects stage, or the
     secondary stage. ``imputed``: `activity` blank on 112 rows, under multiple imputation (m 20).
     ``repeated``: `pid` repeats over 100 units of 3 rows, the grain answer says so, and the split
-    keeps each unit whole. ``survey``: a weight, 4 strata and 2 PSUs in each, the survey answer
-    ``"population"`` or ``"sample"``."""
+    keeps each unit whole. ``units``: `pid` repeats over that many units of equal size (60 rows
+    each for 5), the grain answer says so, and the split keeps each unit whole from 8 units and
+    is drawn by row below (as the seal draws it). ``survey``: a weight, 4 strata and 2 PSUs in
+    each, the survey answer ``"population"`` or ``"sample"``."""
     from turbotab.core.stages.effects import effects_stage
     from turbotab.core.stages.modeling import design_stage
     from turbotab.core.stages.secondary import secondary_stage
@@ -73,6 +81,11 @@ def _run(tmp_path: Path, models: list[str], *, secondary: bool, imputed: bool = 
     if repeated:
         frame["pid"] = np.arange(len(frame)) // 3
         answers["grain"] = d.GrainSpec(grain="repeated", id_column="pid")
+    if units is not None:
+        frame["pid"] = np.arange(len(frame)) * units // len(frame)
+        assert frame["pid"].nunique() == units
+        answers["grain"] = d.GrainSpec(grain="repeated", id_column="pid")
+    grouped = repeated or (units is not None and units >= 8)
     if survey is not None:
         rng = np.random.default_rng(5)
         frame["sampling_weight"] = rng.uniform(0.5, 3.0, len(frame))
@@ -91,8 +104,8 @@ def _run(tmp_path: Path, models: list[str], *, secondary: bool, imputed: bool = 
     paths = mf.ingest_frame(frame, tmp_path)
     split = (mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed,
                              groups=frame["pid"].to_numpy(), grouped_by="pid")
-             if repeated else mf.split_bundle(np.arange(len(frame)), holdout=0.0,
-                                              seed=st.split.seed))
+             if grouped else mf.split_bundle(np.arange(len(frame)), holdout=0.0,
+                                             seed=st.split.seed))
     info = mf.target_info(st.task, st.target)
     design = design_stage(mf.context(st, {"split": split, "target_info": info}, paths))
     stage = secondary_stage if secondary else effects_stage
@@ -100,13 +113,14 @@ def _run(tmp_path: Path, models: list[str], *, secondary: bool, imputed: bool = 
     return stage(mf.context(st, inputs, paths)).data
 
 
-def _check_refusal(exc: StageRefusal, words: str, chosen: list[str], offered: list[str]) -> None:
+def _check_refusal(exc: StageRefusal, words: str, chosen: list[str], offered: list[str],
+                   has: str = "has a coefficient table") -> None:
     assert isinstance(exc, ValueError)
     shown, refusal = failure_of(exc)
     assert shown == f"ValueError: {words}"
     assert refusal is not None and refusal["code"] == "no_coefficient_table"
-    assert [e["label"] for e in refusal["exits"]] == [
-        f"Add {LABELS[k]}, which has a coefficient table" for k in offered]
+    assert [e["label"] for e in refusal["exits"]] == [f"Add {LABELS[k]}, which {has}"
+                                                      for k in offered]
     for key, way in zip(offered, refusal["exits"]):
         decision = parse_decision(way["decision"])
         assert decision.kind == "select_models" and decision.models == [*chosen, key]
@@ -180,13 +194,14 @@ def test_under_the_surveyed_population_only_a_design_based_table_is_offered(tmp_
 @pytest.mark.parametrize(("key", "answers"), [
     ("featurewise", {}), ("linear", {"imputed": True}), ("linear", {"survey": "population"}),
     ("featurewise", {"survey": "sample"}), ("mixed", {"repeated": True}),
-    ("gee", {"repeated": True})])
+    ("gee", {"repeated": True}), ("mixed", {"units": 5})])
 def test_a_way_forward_taken_is_fit(tmp_path, key, answers):
     """Each way forward taken where it is offered: the feature-wise regression under complete
     cases and for these participants, the linear model under multiple imputation (pooled over the
     copies) and under the surveyed population (over the design), the mixed model and GEE on the
-    100 units of 3 rows (by those 100 units). Model 2's table and both of the secondary stage's
-    are fit, with an interval for `fiber`, not refused."""
+    100 units of 3 rows (by those 100 units), and the mixed model on 5 units of 60 rows, below the
+    unit floor, where it is the only one offered. Model 2's table and both of the secondary
+    stage's are fit, with an interval for `fiber`, not refused."""
     effects = _run(tmp_path / "effects", ["elastic_net", key], secondary=False, **answers)
     assert [f["family"] for f in effects["families"]] == [key]
     model_2 = ef.sequence(effects)["model_2"]
@@ -198,8 +213,8 @@ def test_a_way_forward_taken_is_fit(tmp_path, key, answers):
     assert len(tables) == 3
     for inference, rows in tables:
         assert inference["refused"] is None
-        if answers.get("repeated"):
-            assert f"G = {UNITS} " in inference["caption"]
+        if answers.get("repeated") or answers.get("units"):
+            assert f"G = {answers.get('units') or UNITS} " in inference["caption"]
         if answers.get("imputed"):
             assert inference["missing"]["method"] == "multiple_imputation"
         if answers.get("survey") == "population":
@@ -222,3 +237,136 @@ def test_with_the_first_way_forward_taken_the_linear_model_is_refit(tmp_path):
     assert linear["family"] == "linear"
     assert [[r["feature"] for r in f["coefficients"]] for f in linear["fits"]] == [["fiber"],
                                                                                    ["fiber"]]
+
+
+# ── below the unit floor (the verifier's V2) ─────────────────────────────────
+#
+# With rows clustered by fewer units than the floor (``inference.min_clusters``, the seal's own),
+# every table that rests on cluster-robust intervals reports none: the linear model's, the
+# feature-wise tests' and GEE's (each runs ``inference.floor_refusal``; written out here from
+# ``models/inference.py``, ``featurewise.py`` and ``repeated.py``). The mixed model's intervals
+# are model-based (REML, on t with Satterthwaite degrees of freedom), so it is the one way forward
+# for a numeric outcome; a yes/no outcome has no mixed model, so none is offered. At the floor
+# itself every family with a table is offered, as with 100 units.
+
+BELOW_FLOOR, AT_FLOOR = 5, 8
+FLOOR_TABLES = ["linear", "featurewise", "gee"]
+
+
+def _floor_holds() -> None:
+    from turbotab.core.models.inference import min_clusters
+
+    assert BELOW_FLOOR < min_clusters() <= AT_FLOOR
+
+
+@pytest.mark.parametrize("secondary", [False, True])
+def test_below_the_unit_floor_only_the_mixed_model_is_offered_and_named(tmp_path, secondary):
+    """5 units of 60 rows: the linear model, the feature-wise regression and GEE are left out,
+    and the words name the mixed model, offered, where they said "choose the linear model"."""
+    _floor_holds()
+    with pytest.raises(StageRefusal) as refused:
+        _run(tmp_path, ["elastic_net"], secondary=secondary, units=BELOW_FLOOR)
+    words = (SECONDARY_WORDS if secondary else EFFECTS_WORDS).replace(
+        "choose the linear model", "choose the random-intercept mixed model")
+    _check_refusal(refused.value, words, ["elastic_net"], ["mixed"])
+    assert "linear model" not in str(refused.value)
+
+
+@pytest.mark.parametrize("secondary", [False, True])
+def test_below_the_unit_floor_a_yes_no_outcome_is_offered_no_family_and_says_so(tmp_path,
+                                                                                 secondary):
+    """Ridge on `dm` with 5 units: the families with a table for a yes/no outcome (the linear
+    model, the feature-wise regression, GEE) each rest on cluster-robust intervals, so none is
+    offered, and the words say no family gives a table here, naming none."""
+    _floor_holds()
+    with pytest.raises(StageRefusal) as refused:
+        _run(tmp_path, ["ridge"], secondary=secondary, units=BELOW_FLOOR, binary=True)
+    nothing = "no estimate to set beside the primary's" if secondary else "no effect to report"
+    words = (f"None of the chosen model families has a coefficient table, so there is {nothing}; "
+             f"no model family TurboTab offers gives one on these rows under these answers.")
+    _check_refusal(refused.value, words, ["ridge"], [])
+    assert "linear model" not in str(refused.value)
+
+
+@pytest.mark.parametrize("secondary", [False, True])
+def test_at_the_unit_floor_every_family_with_a_table_is_offered(tmp_path, secondary):
+    _floor_holds()
+    with pytest.raises(StageRefusal) as refused:
+        _run(tmp_path, ["elastic_net"], secondary=secondary, units=AT_FLOOR)
+    _check_refusal(refused.value, SECONDARY_WORDS if secondary else EFFECTS_WORDS,
+                   ["elastic_net"], WITH_A_TABLE)
+
+
+@pytest.mark.parametrize("key", FLOOR_TABLES)
+def test_below_the_unit_floor_each_family_left_out_has_its_table_refused(tmp_path, key):
+    """Why they are left out, from the stage itself: each taken with 5 units gives Model 2's table
+    refused for want of units, its interval withheld."""
+    _floor_holds()
+    effects = _run(tmp_path, ["elastic_net", key], secondary=False, units=BELOW_FLOOR)
+    model_2 = ef.sequence(effects)["model_2"]
+    refused = model_2["inference"]["refused"] or ""
+    assert refused.startswith(f"`pid` has {BELOW_FLOOR} units, fewer than the "), refused
+    assert "TurboTab requires for cluster-robust intervals" in refused
+    assert all(r["ci_low"] is None for r in model_2["effects"] or [])
+
+
+# ── the sensitivity stage (its bare ValueError, typed) ───────────────────────
+
+# Read off the family declarations by hand: under prediction the sensitivity stage reports each
+# family's coefficients as it fits them, so a way forward is a family that reports coefficients
+# and serves prediction, in the shelf's order. The mixed model and GEE model the unit, and no
+# identifier repeats in ``ef.cohort``, so neither is offered.
+PREDICT_COEFFICIENTS = ["linear", "elastic_net", "ridge", "huber", "screened_elastic_net"]
+LABELS.update({"elastic_net": "Elastic net", "ridge": "Ridge", "huber": "Robust linear regression",
+               "screened_elastic_net": "Screened elastic net"})
+
+
+def _sensitivity(tmp_path: Path, models: list[str], purpose: str) -> dict:
+    """``ef.cohort(300)`` with the chosen ``models`` under ``purpose``: design, then the
+    sensitivity stage (the primary analysis alone: no rule excludes a row)."""
+    from turbotab.core.datastore import DataStore
+    from turbotab.core.stages.modeling import design_stage
+    from turbotab.core.stages.sensitivity import sensitivity_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    frame = ef.cohort(300, seed=5)
+    st = ef.state(target="glucose", task="regression", measure="mean_difference", models=models)
+    st = st.model_copy(update={"purpose": purpose})
+    paths = mf.ingest_frame(frame, tmp_path)
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed)
+    inputs = {"split": split, "target_info": mf.target_info(st.task, st.target)}
+    design = design_stage(mf.context(st, inputs, paths))
+    with DataStore(paths["data"], 1 << 30) as store:
+        ingest = store.info().to_dict()
+    return sensitivity_stage(mf.context(st, {**inputs, "design": design, "ingest": ingest},
+                                        paths)).data
+
+
+@pytest.mark.parametrize("purpose", ["inference", "prediction"])
+def test_the_sensitivity_stage_with_no_family_that_has_coefficients_is_refused_typed(tmp_path,
+                                                                                      purpose):
+    """A random forest reports no coefficients: the sensitivity stage, which runs under either
+    goal, raised a bare ``ValueError``. It is refused typed, in words true under each goal: under
+    Estimate the secondary stage's, each way forward a family with a coefficient table these rows
+    give; under Predict, where each family's coefficients are reported as fit, a family that
+    reports coefficients and serves prediction."""
+    with pytest.raises(StageRefusal) as refused:
+        _sensitivity(tmp_path, ["random_forest"], purpose)
+    if purpose == "inference":
+        _check_refusal(refused.value, SECONDARY_WORDS, ["random_forest"], NO_UNIT_REPEATS)
+        return
+    words = ("None of the chosen model families reports coefficients, so there is no estimate to "
+             "set beside the primary's; choose the linear model.")
+    _check_refusal(refused.value, words, ["random_forest"], PREDICT_COEFFICIENTS,
+                   has="reports coefficients")
+
+
+@pytest.mark.parametrize("purpose", ["inference", "prediction"])
+def test_with_the_first_way_forward_taken_the_sensitivity_stage_is_fit(tmp_path, purpose):
+    """The same stage with the linear model beside the forest: no refusal, and the linear model's
+    coefficients of the primary analysis are reported (the forest has none)."""
+    out = _sensitivity(tmp_path, ["random_forest", "linear"], purpose)
+    [linear] = out["families"]
+    assert linear["family"] == "linear"
+    [primary] = linear["fits"]
+    assert primary["label"] == "Primary" and primary["coefficients"]
