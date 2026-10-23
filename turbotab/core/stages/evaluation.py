@@ -531,16 +531,20 @@ def _design_based(state: Any, task: str, metric: str, X: pd.DataFrame, y: np.nda
                   labels: Mapping[str, str], fit_rows: Any, check: Any,
                   classes: Sequence[Any]) -> DesignBased:
     """Design-based cross-validation (``models.design_cv``) of each family, the benchmark and the
-    baseline."""
+    baseline, weighted by the survey answer's analysis weight on the training rows; a weight
+    ``methods.survey.analysis_weights`` refuses on them (a four-year weight blank on a 1999–2002
+    row they hold) refuses the scores in its words (``methods.survey.refuse_weights``)."""
     from sklearn.base import clone
 
-    from turbotab.core.methods.survey import analysis_weights
+    from turbotab.core.methods.survey import analysis_weights, refuse_weights
     from turbotab.core.models import design_cv as D
     from turbotab.core.models.metrics import cross_validate
     from turbotab.core.models.validation import loss_rows, score_words
     from turbotab.core.stages.modeling import baseline_model
 
-    weights = analysis_weights(frame, survey.weight, survey.cycle, survey.four_year_weight).weights
+    pooled = analysis_weights(frame, survey.weight, survey.cycle, survey.four_year_weight)
+    refuse_weights(pooled)
+    weights = pooled.weights
     strata = frame[survey.strata].to_numpy() if survey.strata else None
     psu = frame[survey.psu].to_numpy() if survey.psu else None
     k = int(getattr(state.split, "folds", None) or 5)

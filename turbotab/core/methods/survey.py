@@ -107,6 +107,26 @@ def analysis_weights(frame: pd.DataFrame, weight: str, cycle: str | None = None,
     return PooledWeight(out, note, cycles=levels)
 
 
+NAME_THE_FOUR_YEAR = "Name the four-year weight (the survey question)"
+
+
+def refuse_weights(pooled: PooledWeight) -> None:
+    """Raise the stage refusal of a weight :func:`analysis_weights` refuses (``pooled.refusal``),
+    in its words, with the ways on usual intake's survey plan gives: name the four-year weight on
+    the survey question, or estimate for these participants; nothing when it is not refused. The
+    design-based cross-validation and ``stages.modeling.fit_designs`` (a tuned family's plan and
+    fits, and every stage that reads it) are refused so, never weighted by the 2-year weight ÷ k
+    a refused weight holds, nor left unweighted."""
+    if pooled.refusal is None:
+        return
+    from turbotab.core.graph import StageRefusal
+    from turbotab.core.models.survey import SAMPLE_EXIT
+
+    raise StageRefusal("four_year_weight", pooled.refusal, exits=[
+        {"label": NAME_THE_FOUR_YEAR, "decision": None},
+        {"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}}])
+
+
 # ── the fit's view of the answer ─────────────────────────────────────────────
 
 UNANSWERED = ("Survey design columns are in this table, and whether the estimates describe the "
@@ -174,8 +194,7 @@ def for_fit(state: Any, store: Any, unit_column: str | None = None) -> FitSurvey
     pooled = analysis_weights(frame, spec.weight, spec.cycle, spec.four_year_weight, outcome)
     if pooled.refusal:
         return FitSurvey("population", refusal=pooled.refusal, reading=reading,
-                         exits=({"label": "Name the four-year weight (the survey question)",
-                                 "decision": None},))
+                         exits=({"label": NAME_THE_FOUR_YEAR, "decision": None},))
     unit_codes = None
     if unit is not None:
         keys = frame[unit].astype(object).to_numpy().copy()
@@ -234,4 +253,5 @@ def proposal(state: Any, store: Any) -> dict[str, Any] | None:
             "options": offered(state, pooled_cycle, frame, placed)}
 
 
-__all__ = ["FitSurvey", "PooledWeight", "UNANSWERED", "analysis_weights", "for_fit", "proposal"]
+__all__ = ["FitSurvey", "NAME_THE_FOUR_YEAR", "PooledWeight", "UNANSWERED", "analysis_weights",
+           "for_fit", "proposal", "refuse_weights"]
