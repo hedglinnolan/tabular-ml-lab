@@ -1932,11 +1932,12 @@ export interface components {
         };
         /**
          * CutPoint
-         * @description A temporal seal by cut-point (SWARM_PLAN §8; ``core/seal.py``): every row whose ``column``
-         *     reads at or after ``at`` is held out, a unit with rows on both sides held out whole (by its last
-         *     observation, as the chronological draw ranks units), and the other rows train. ``at`` is a
-         *     value of the column as it reads: a number for a numeric column (a numeral written as text reads
-         *     as that number), a date for a dated one.
+         * @description A temporal seal by cut-point (SWARM_PLAN §8; ``core/seal.py``): among the rows with the
+         *     outcome recorded, every row whose ``column`` reads at or after ``at`` is held out; where the
+         *     seal groups rows by a unit, a unit with rows on both sides is held out whole (by its last
+         *     observation, as the chronological draw ranks units); and every other analyzed row trains.
+         *     ``at`` is a value of the column as it reads: a number for a numeric column (a numeral written
+         *     as text reads as that number), a date for a dated one.
          */
         CutPoint: {
             /** Column */

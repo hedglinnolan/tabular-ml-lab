@@ -1153,10 +1153,13 @@ def test_the_budget_bounds_the_fits_the_analyst_gets(tmp_path):
     * a press for the first fit, the triage and the seal still pass.
     """
     def exclusions_card(q: dict[str, Any]) -> None:
-        assert [o["id"] for o in q["options"]] == ["none", "custom"]
+        # keeping every row, a range of one's own, and levels of one's own (the level rule)
+        assert [o["id"] for o in q["options"]] == ["none", "custom", "levels"]
         _, taught = http(meta["port"], "/teaching?purpose=prediction")
         entry = {o["value"]: o for o in next(e for e in taught if e["key"] == "exclusions")["options"]}
-        none, custom = q["options"]
+        none, custom, levels = q["options"]
+        assert (levels["label"], levels["consequence"], levels["decision"]) == (
+            entry["levels"]["label"], entry["levels"]["consequence"], None)
         assert (none["label"], none["consequence"]) == (entry["none"]["label"],
                                                          entry["none"]["consequence"])
         assert none["decision"] == {"kind": "set_exclusions", "rules": []}

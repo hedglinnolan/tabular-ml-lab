@@ -118,6 +118,53 @@ def test_a_unit_seen_on_both_sides_is_held_out_whole_and_its_earlier_rows_are_co
         f"observed before `2017`.")
 
 
+@pytest.mark.parametrize("grain, basis", [
+    (GrainSpec(grain="unknown"), "undetermined"),  # "I don't know"
+    (GrainSpec(grain="one_row_per_unit"), "abandoned"),  # said one row per unit; pid repeats
+    (GrainSpec(grain="repeated"), "abandoned"),  # said to repeat; no column names the unit
+])
+def test_where_the_seal_draws_by_row_a_unit_sits_on_both_sides_and_the_taught_line_says_no_more(
+        tmp_path, grain, basis):
+    """The package 4 wording verifier's W1: under a basis that holds the rows out one by one, each
+    row at or after the cut-point is held out, so a person seen in 2013 and again in 2017 sits on
+    both sides (pandas over the table written); the cut-point's taught line, on every purpose,
+    says only that the rows at or after it are sealed, never that a unit is kept whole."""
+    from turbotab.core import teaching
+
+    t, frame = table(tmp_path, grouped=True)
+    roles = {"x": "covariate", **({"pid": "identifier"} if grain.grain != "repeated" else {})}
+    s = state(CutPoint(column="cycle", at=2017)).model_copy(update={"grain": grain, "roles": roles})
+    split = drawn(t, s)
+    assert split.data["basis"]["state"] == basis and split.data["basis"]["exploratory"]
+    later = frame["cycle"] >= 2017.0
+    assert held_rows(split) == set(np.flatnonzero(later.to_numpy()).tolist())
+    both = set(frame.loc[later, "pid"]) & set(frame.loc[~later, "pid"])
+    assert len(both) == 20  # p10 to p29: rows 10 to 29 before 2017, rows 40 to 59 at or after it
+    for purpose in (None, "prediction", "inference"):
+        entry = next(e for e in teaching.entries(purpose) if e.key == "split")
+        line = next(o.consequence for o in entry.options if o.value == "cut")
+        assert line == "Rows at or after a time value you name are sealed.", purpose
+
+
+def test_a_unit_whose_later_rows_have_no_outcome_recorded_trains_whole(tmp_path):
+    """W1's inbox: the draw reads only the rows with the outcome recorded, so a person seen in
+    2013 and again in 2017, with y blank in 2017, is not held out: their 2013 row trains. Only a
+    unit with the outcome recorded on both sides is held out whole (the seal card's grouped line,
+    SealQuestions' ``cutLine``). The rows held out are pandas' over the rows with y recorded."""
+    t, frame = table(tmp_path, grouped=True)
+    blank = (frame["cycle"] >= 2017.0) & frame["pid"].isin(["p10", "p11"])
+    frame.loc[blank, "y"] = np.nan
+    t = _write(tmp_path, frame)
+    split = drawn(t, state(CutPoint(column="cycle", at=2017), grouped=True))
+    recorded = frame["y"].notna()
+    last = frame.loc[recorded].groupby("pid")["cycle"].transform("max")
+    expect = set(last.index[last >= 2017.0].tolist())
+    assert held_rows(split) == expect and {10, 11}.isdisjoint(expect) and len(expect) == 36
+    a = split.frames["assignment"].set_index("row_id")
+    assert set(a.loc[[10, 11], "partition"]) == {"train"}  # their 2013 rows train
+    assert set(frame.loc[blank, "pid"]) == {"p10", "p11"} and not a.index.isin([40, 41]).any()
+
+
 # ── what is refused, and what is not ─────────────────────────────────────────
 
 
@@ -436,7 +483,9 @@ def test_the_split_sentence_names_units_only_where_the_seal_keeps_units_whole():
 
 def test_a_grouped_preview_says_whole_units_are_held_out_with_their_earlier_rows(tmp_path):
     """P2: where a unit spans the cut-point the preview says each such unit is held out whole and
-    counts its earlier rows; by row it says the rows at or after it, as before."""
+    counts its earlier rows; by row it says the rows at or after it, as before. The c-seal repair's
+    M2: the units it names are those with the outcome recorded at or after it, as the draw reads
+    only those rows (every row here has it; the test below leaves some blank)."""
     from turbotab.core import fact_previews, row_previews  # noqa: F401 - registers the builders
     from turbotab.core.consequences import PreviewContext, plan
     from turbotab.core.datastore import DataStore, ingest
@@ -455,8 +504,8 @@ def test_a_grouped_preview_says_whole_units_are_held_out_with_their_earlier_rows
     earlier = int(((last >= 2017) & (frame["cycle"] < 2017)).sum())
     assert (held, earlier) == (40, 20)
     assert flow.caption.startswith(
-        f"`{held}` rows held out: every unit seen at or after `2017` on `cycle`, whole "
-        f"(`{earlier}` rows before it). About")
+        f"`{held}` rows held out: units with the outcome recorded at or after `2017` on `cycle`, "
+        f"whole (`{earlier}` rows before it)")
 
 
 def test_time_ordered_folds_under_repeated_k_fold_are_said_to_run_once(tmp_path):
@@ -900,6 +949,105 @@ def test_the_seal_sentence_agrees_with_its_counts_row_by_row(tmp_path, before, a
         "Held out by a cut-point at `2017` on `cycle`: " + words.format(ROWS=ROWS))
 
 
+@pytest.mark.parametrize("before, after, note", [
+    (40, 1, "`1` row is held out and `40` train;"),
+    (1, 40, "`40` rows are held out and `1` trains;"),
+    (40, 2, "`2` rows are held out and `40` train;"),
+])
+def test_the_split_note_counts_its_rows_in_number(tmp_path, before, after, note):
+    """The integration fix list's item 9: the split's note (``stages.rows.split_note``) gives one
+    row held out, or one training, a singular noun and verb, and two or more the plural (the
+    counts by construction, checked with pandas)."""
+    frame = _counted(before, after)
+    held = int((frame["cycle"] >= 2017).sum())
+    assert (held, len(frame) - held) == (after, before)
+    split = drawn(_write(tmp_path, frame), state(CutPoint(column="cycle", at=2017)))
+    assert (split.data["n_holdout"], split.data["n_train"]) == (after, before)
+    assert split.data["note"].startswith(note)
+
+
+def _preview(tmp_path, frame: pd.DataFrame, grouped: bool, task: str = "regression"):
+    """The split preview for a cut-point at 2017 on ``cycle`` over ``frame``."""
+    from turbotab.core import fact_previews, row_previews  # noqa: F401 - registers the builders
+    from turbotab.core.consequences import PreviewContext, plan
+    from turbotab.core.datastore import DataStore, ingest
+
+    frame.to_csv(tmp_path / "preview.csv", index=False)
+    ingest(tmp_path / "preview.csv", tmp_path / "preview.parquet")
+    cut = {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 3, "fold_order": "random",
+           "cut_point": {"column": "cycle", "at": 2017}}
+    s = state(None, holdout=0.2, grouped=grouped).model_copy(update={"task": task})
+    with DataStore(tmp_path / "preview.parquet", 2 << 30) as store:
+        ctx = PreviewContext(project_id="p", state=s, datastore=store, artifact={}.get,
+                             training_row_ids=None, cohort_row_ids=None, sealed_row_ids=None)
+        return plan(d.parse_decision(cut), ctx, basis="b")
+
+
+def _caption(tmp_path, frame: pd.DataFrame, grouped: bool) -> str:
+    """The split preview's caption for a cut-point at 2017 on ``cycle`` over ``frame``."""
+    return _preview(tmp_path, frame, grouped).views[0].caption
+
+
+@pytest.mark.parametrize("task, after, caption, measures", [
+    ("regression", 1, "`1` row held out, at or after `2017` on `cycle`. About `1` held-out row: "
+                      "too few to measure an R².", "About `1` held-out row: too few to measure an "
+                                                   "R²."),
+    ("regression", 2, "`2` rows held out, at or after `2017` on `cycle`. About `2` held-out rows: "
+                      "too few to measure an R².", "About `2` held-out rows: too few to measure an "
+                                                   "R²."),
+    ("binary", 1, "`1` row held out, at or after `2017` on `cycle`. About `1` held-out row, `0` in "
+                  "the rarer class: too…", "About `1` held-out row, `0` in the rarer class: too few "
+                                           "to measure an AUC."),
+    ("binary", 2, "`2` rows held out, at or after `2017` on `cycle`. About `2` held-out rows, `0` "
+                  "in the rarer class: too…", "About `2` held-out rows, `0` in the rarer class: too "
+                                              "few to measure an AUC."),
+])
+def test_the_split_previews_whole_caption_counts_its_held_out_rows_in_number(tmp_path, task,
+                                                                             after, caption,
+                                                                             measures):
+    """The c-seal repair's M1: past its opening clause, the caption's measure of what the held-out
+    rows can tell (``seal.measure``), and the caution that repeats it, give one held-out row the
+    singular noun and two the plural. The counts are pandas' over the table written; a held-out
+    score of R² at the plan's R² of 0.2 is known to ±1.96·2·√0.2·0.8/√n, wider than 0.5 at one or
+    two rows, and a binary outcome held out in one class has no event and non-event to pair, so
+    neither score can be measured. A caption is cut at ``CAPTION_WORDS`` (twenty) words, so the
+    binary one ends early; its caution says the whole measure."""
+    frame = _counted(40, after)
+    if task == "binary":  # both classes train; the held-out rows are all in one
+        frame["y"] = np.where(frame["cycle"] >= 2017, 1, np.arange(len(frame)) % 2)
+    held = frame["cycle"] >= 2017
+    assert int(held.sum()) == after and int((~held).sum()) == 40
+    assert task != "binary" or (frame.loc[held, "y"].nunique(), frame.loc[~held, "y"].nunique()) \
+        == (1, 2)
+    assert 1.96 * 2 * np.sqrt(0.2) * 0.8 / np.sqrt(after) > 0.5
+    preview = _preview(tmp_path, frame, grouped=False, task=task)
+    assert preview.views[0].caption == caption
+    assert preview.caution.text.startswith(f"{measures} A ")
+
+
+@pytest.mark.parametrize("rows, grouped, counts, caption", [
+    (lambda: _counted(40, 1), False, (1, 0), "`1` row held out, at or after `2017` on `cycle`. "),
+    (lambda: _counted(40, 2), False, (2, 0), "`2` rows held out, at or after `2017` on `cycle`. "),
+    (lambda: _people(TWICE_BEFORE + [("p0", 2015.0), ("p0", 2019.0)]), True, (2, 1),
+     "`2` rows held out: units with the outcome recorded at or after `2017` on `cycle`, whole (`1` "
+     "row before it)"),
+    (lambda: _people(TWICE_BEFORE + [("p0", 2015.0), ("p0", 2016.0), ("p0", 2019.0)]), True,
+     (3, 2),
+     "`3` rows held out: units with the outcome recorded at or after `2017` on `cycle`, whole (`2` "
+     "rows before it)"),
+])
+def test_the_split_previews_caption_counts_its_rows_in_number(tmp_path, rows, grouped, counts,
+                                                              caption):
+    """The integration fix list's item 9: the split preview's caption gives one held-out row, or
+    one of them before the cut-point, a singular noun, and two or more the plural. ``counts`` (the
+    rows held out, those before the cut-point) are pandas' over the table written."""
+    frame = rows()  # built when run: the helpers that build them come later in the file
+    last = frame.groupby("pid")["cycle"].transform("max") if grouped else frame["cycle"]
+    held = last >= 2017
+    assert (int(held.sum()), int((held & (frame["cycle"] < 2017)).sum())) == counts
+    assert _caption(tmp_path, frame, grouped).startswith(caption)
+
+
 def test_one_undated_row_of_too_few_is_said_in_the_singular(tmp_path):
     """V9: one of eight rows with no cycle is more than a tenth, and the refusal says that one row
     has none; six of fifty (above) have none."""
@@ -951,6 +1099,31 @@ def test_the_seal_sentence_agrees_with_its_counts_in_whole_units(tmp_path, rows,
     split = drawn(_write(tmp_path, frame), state(CutPoint(column="cycle", at=2017), grouped=True))
     assert split.data["chronology"]["sentence"] == (
         "Held out by a cut-point at `2017` on `cycle`: " + words.format(UNITS=UNITS))
+
+
+@pytest.mark.parametrize("blank, counts", [
+    (5, (20, 15, 30, 15)),  # five units' rows at or after the cut-point have no outcome: they train
+    (0, (20, 20, 40, 20)),  # the outcome on every row: every unit seen at or after it is held out
+])
+def test_a_grouped_preview_names_only_units_with_the_outcome_recorded_at_or_after(tmp_path, blank,
+                                                                                  counts):
+    """The c-seal repair's M2, both ways: the draw reads only the rows with the outcome recorded,
+    so a unit whose rows at or after the cut-point have none trains, and the caption neither counts
+    it nor says every unit seen at or after it is held out. With the outcome on every row the
+    counts are those of every unit seen at or after it. ``counts`` (units seen at or after it,
+    units with the outcome recorded there, the rows held out, those before it) are pandas' over
+    the table written."""
+    frame = _people(TWICE_BEFORE + SPANNING)
+    no_outcome = frame["pid"].isin([f"p{i}" for i in range(blank)]) & (frame["cycle"] >= 2017)
+    frame.loc[no_outcome, "y"] = np.nan
+    recorded = frame.dropna(subset=["y"])
+    held = recorded.groupby("pid")["cycle"].transform("max") >= 2017
+    assert (int(frame.loc[frame["cycle"] >= 2017, "pid"].nunique()),
+            int(recorded.loc[held, "pid"].nunique()), int(held.sum()),
+            int((held & (recorded["cycle"] < 2017)).sum())) == counts
+    assert _caption(tmp_path, frame, grouped=True).startswith(
+        f"`{counts[2]}` rows held out: units with the outcome recorded at or after `2017` on "
+        f"`cycle`, whole (`{counts[3]}` rows before it)")
 
 
 LEFT_OUT_ONE = ("is left out by the answers that choose the analyzed rows, an exclusion or the "

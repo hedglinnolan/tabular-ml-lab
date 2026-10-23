@@ -642,19 +642,27 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     chron = draw.chronology if draw.chronology is not None and draw.chronology.drawn else None
     cut_earlier = (int(chron.n_held_earlier or 0)
                    if chron is not None and chron.cut_point is not None else 0)
+    # A count of one takes a singular noun (the integration fix list's item 9).
+    from turbotab.core.voice import plural
+
+    held_rows = f"{fmt_count(info['n_holdout'])} {plural(int(info['n_holdout']), 'row')}"
     if info["n_holdout"] and cut_earlier:
         # A unit with rows on both sides of the cut-point is held out whole, so some held-out rows
         # come before it: counted, never said to be at or after it (the verifier's P2). The seal
-        # counts the rows analyzed, as ``n_holdout`` does (``seal.cut_holdout``).
-        caption = (f"{fmt_count(info['n_holdout'])} rows held out: every unit seen at or after "
+        # counts the rows analyzed, as ``n_holdout`` does (``seal.cut_holdout``). The draw reads
+        # only the rows with the outcome recorded, so a unit with none at or after the cut-point
+        # trains, and the caption says so (the c-seal repair's M2), in twenty words up to the
+        # measure, so ``CAPTION_WORDS`` keeps the count of earlier rows where the time column's
+        # name and the cut-point are one word each.
+        caption = (f"{held_rows} held out: units with the outcome recorded at or after "
                    f"`{chron.cut_point}` on `{chron.time_column}`, whole "
-                   f"({fmt_count(cut_earlier)} rows before it). {measures}")
+                   f"({fmt_count(cut_earlier)} {plural(cut_earlier, 'row')} before it). {measures}")
     elif info["n_holdout"]:
         how = (f"at or after `{chron.cut_point}` on `{chron.time_column}`"
                if chron is not None and chron.cut_point is not None
                else f"the latest by `{chron.time_column}`" if chron is not None
                else f"grouped by `{info['grouped_by']}`" if info["grouped_by"] else "by row")
-        caption = f"{fmt_count(info['n_holdout'])} rows held out, {how}. {measures}"
+        caption = f"{held_rows} held out, {how}. {measures}"
     else:
         caption = (f"All {fmt_count(info['n_train'])} rows train, scored by "
                    + (f"{fmt_count(info['folds'])} time-ordered folds."
