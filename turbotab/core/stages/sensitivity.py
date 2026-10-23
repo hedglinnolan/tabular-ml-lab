@@ -260,10 +260,11 @@ def _no_spare_rows(family: Any, rows: list[dict[str, Any]] | None, n_rows: int, 
     coefficients (``family.inference``: an unpenalized fit) reports its fit's own coefficients;
     on such rows they are refused as its table is (``inference._no_spare_rows``), so none is shown
     or taken into ``changes``. They are counted from the rows it reports: the intercept, a
-    proportional-odds model's cut-points, and for several classes each level's own; the estimator
-    is the model step's own label. None where the rows exceed them, or where the family has no
-    table: a penalized fit's coefficients (elastic net's, ridge's) exist on any rows, and Huber's,
-    which has no table either, are left as they are."""
+    proportional-odds model's cut-points, and for several classes each level's own, said for each
+    of its levels as the fit shows them (one block for every level, none against a reference);
+    the estimator is the model step's own label. None where the rows exceed them, or where the
+    family has no table: a penalized fit's coefficients (elastic net's, ridge's) exist on any rows,
+    and Huber's, which has no table either, are left as they are."""
     from turbotab.core.models.inference import _no_spare_rows as refusal
 
     if not rows or family.inference is None:
@@ -274,7 +275,7 @@ def _no_spare_rows(family: Any, rows: list[dict[str, Any]] | None, n_rows: int, 
     levels = max(intercepts, 1)
     return refusal("multiclass" if levels > 1 else task, n_rows, len(rows) // levels,
                    estimator=family.describe(task, purpose)[0], intercept=intercepts > 0,
-                   cut_points=cuts)
+                   cut_points=cuts, levels=levels if levels > 1 else 0)
 
 
 def exposure_features(fitted: Any, inputs: Sequence[str], roles: Mapping[str, str]) -> list[str]:

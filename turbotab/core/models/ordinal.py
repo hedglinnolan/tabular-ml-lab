@@ -356,7 +356,8 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
     """The proportional-odds inference table on the model matrix: coefficients (log cumulative
     odds ratios), then the cut-points; intervals as the module docstring says. On no more rows
     than its coefficients, the cut-points among them, refused with no estimate
-    (``inference._no_spare_rows``)."""
+    (``inference._no_spare_rows``), in words that say TurboTab's rule: the cut-points are shared
+    by every row, so the likelihood there can still have a unique maximum."""
     from turbotab.core.models.inference import (
         InferenceTable,
         _info,

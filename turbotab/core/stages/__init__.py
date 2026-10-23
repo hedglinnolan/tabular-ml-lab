@@ -702,8 +702,8 @@ def build_graph() -> Graph:
             # fit 32 (the freeze's last engine fixes, 2026-10-23): a coefficient table on no more
             # rows than its coefficients is refused, its estimates with its intervals
             # (``inference._no_spare_rows``; the linear, mixed, GEE and proportional-odds tables),
-            # so a fit cached before it is computed again rather than served with estimates those
-            # rows cannot determine.
+            # so a fit cached before it is computed again rather than served with estimates on
+            # those rows.
             Stage("fit", 32, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),

@@ -391,7 +391,8 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
     """Every score in ``specs`` corrected together in each copy, each combined over the copies by
     Rubin's rules (one copy: as it is). Raises ``ScaleRefused`` naming the score whose data refuse
     (``which``, its position in ``specs``), or None when they refuse together (the uncorrected
-    table refused with no estimate, in its words, among them). ``imputations``:
+    table refused with no estimate, in its words, checked before the correction runs, among
+    them). ``imputations``:
     the multiple imputations ``copies`` come from, whose plan each copy's pipeline follows (the
     knots placed once on the observed values; no median fill inside a copy: ``copy_pipeline``).
     Each copy's refit is fit at the split's ``seed``, with its rows' survey design (``designs``,
@@ -437,16 +438,18 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
                                         reliability=S.retest_source(W[:, i], retests[s.name])))
             else:
                 sources.append(S.Source("calibration_substudy", reference=references[s.name]))
-        per_copy.append(S.correct_jointly(W, Z, y, js, sources, fit=fit, n_boot=n_boot,
-                                          seed=seed + k, groups=groups))
         table = family.inference_matrix(matrix, y, task=task,
                                         classes=list(getattr(fitted[-1], "classes_", [])) or None,
                                         clusters=clusters, outcome=outcome)
         if not table.rows:
             # The uncorrected table is refused with no estimate (on no more rows than its
             # coefficients: ``inference._no_spare_rows``); the correction refits that model on
-            # those rows, so every score leaves the set with the table's reason.
+            # those rows, so every score leaves the set with the table's reason, checked before
+            # the correction runs: on fewer rows the covariates can fit the score exactly, and the
+            # correction's own refusal would blame its error variance for what is too few rows.
             raise S.ScaleRefused(table.info["refused"])
+        per_copy.append(S.correct_jointly(W, Z, y, js, sources, fit=fit, n_boot=n_boot,
+                                          seed=seed + k, groups=groups))
         tables.append(table.rows)
     rows = pool_rows(tables) if len(tables) > 1 else tables[0]
     ratio = task in ("binary", "ordinal")
