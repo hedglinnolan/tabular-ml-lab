@@ -26,10 +26,15 @@ hashed here with hashlib.
   step on the rows it is given (numpy's quantiles).
 * A spline whose k the server set by Harrell's rule, on a fresh draw (:func:`replay.rule_verdict`,
   k by the rule as RMS states it): under prediction another size at the record's k is replayed
-  with that size, another k (or no size read) refused; under inference any other size refused;
-  a refusal names the later records the rows are read under (:func:`replay.later_records`: an
+  with that size, another k (or no size read) refused; under inference any other size refused.
+  The later records that write what the rows are read under (:func:`replay.later_records`: an
   exclusion, and a revert of one recorded before the spline, but not the models answer nor a
-  withdrawn record). A refilled record (:func:`replay.refilled_line`) holds the decision and the
+  withdrawn record) are named only where their own step changed the rule's size
+  (:func:`replay.later_changes`, each size pandas' on the rows named): an exclusion of the rows
+  under 50 is, a reading confirmed in a table with no blank cell is not; where the sizes are not
+  the engine's (over every row, or every row not held out) or a later record rewrites the table
+  read (the grain, a reading of a column the flow reads), each is named as one that can change
+  them. A refilled record (:func:`replay.refilled_line`) holds the decision and the
   sentence the log's own appender writes for the spline declared on the new size, every other
   field as recorded; one whose sentence the log would not author now is refused.
 
@@ -37,6 +42,7 @@ The engine-level rebuilds on the swarm's fixtures are ``research/swarm/tests/tes
 """
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 from pathlib import Path
@@ -527,15 +533,142 @@ def test_under_inference_another_size_is_refused_whatever_k_it_gives():
     assert replay.rule_verdict(rule_read(400.0, None), "inference")[0] == "refused"
 
 
-def test_a_refusal_names_each_later_record_the_rows_are_read_under():
+def test_a_refusal_names_each_later_record_that_changed_the_size_the_rule_reads():
+    """A later record whose own step changed the rule's size on this draw is named as one that
+    changed it; where the sizes could not be read step by step (``traced`` False), each later
+    record that writes what the rows are read under is named as one that can change them."""
     _, one = replay.rule_verdict(rule_read(117.0, 95.0, later=((16, "set_exclusions"),)),
                                  "prediction")
     assert ("the rule reads 95 (k = 4) on the rows as the log ends, after record 16 "
-            "(set_exclusions), which can change them. Under prediction") in one
+            "(set_exclusions), which changed the size it reads. Under prediction") in one
     _, two = replay.rule_verdict(rule_read(400.0, 380.0, later=((16, "set_exclusions"),
                                                                (18, "set_missing"))), "inference")
     assert ("on the rows as the log ends, after records 16 (set_exclusions) and 18 "
-            "(set_missing), which can change them. A fresh draw") in two
+            "(set_missing), which changed the size it reads. A fresh draw") in two
+    loose = dataclasses.replace(rule_read(117.0, 95.0, later=((16, "set_exclusions"),
+                                                              (17, "confirm_readings"))),
+                                traced=False)
+    _, three = replay.rule_verdict(loose, "prediction")
+    assert ("on the rows as the log ends, after records 16 (set_exclusions) and 17 "
+            "(confirm_readings), which can change them. Under prediction") in three
+    _, none = replay.rule_verdict(rule_read(117.0, 95.0), "prediction")
+    assert "on the rows as the log ends. Under prediction" in none and "after" not in none
+
+
+# A yes/no outcome beside ``age`` and ``bmi``, no cell blank, for the rule's size step by step
+# (:func:`replay.later_changes`); every size below is pandas' smaller of the events and the
+# non-events on the rows named.
+FIFTY = 50
+
+
+@pytest.fixture(scope="module")
+def ages(tmp_path_factory):
+    from turbotab.core.datastore import DataStore, ingest
+
+    rng = np.random.default_rng(11)
+    n = 400
+    frame = pd.DataFrame({"y": (rng.random(n) < 0.3).astype(int),
+                          "age": rng.integers(20, 81, n), "bmi": rng.normal(27, 4, n).round(1)})
+    assert not frame.isna().any().any()
+    folder = tmp_path_factory.mktemp("ages")
+    frame.to_csv(folder / "ages.csv", index=False)
+    ingest(folder / "ages.csv", folder / "ages.parquet")
+    with DataStore(folder / "ages.parquet", 2 << 30) as store:
+        yield frame, store
+
+
+def events_or_not(frame: pd.DataFrame) -> float:
+    return float(min(frame["y"].sum(), len(frame) - frame["y"].sum()))
+
+
+SPLINE_THEN = [
+    {"kind": "set_lens", "lenses": ["clinical"]},
+    {"kind": "set_target", "column": "y"},
+    {"kind": "set_purpose", "purpose": "prediction"},
+    {"kind": "set_exposure_form", "column": "age", "form": "spline"},
+    {"kind": "confirm_readings", "items": [{"reading": "code_or_count", "column": "bmi",
+                                            "value": "amount"}]},
+]
+FIFTY_AND_OVER = {"kind": "set_exclusions", "rules": [{"kind": "range", "column": "age",
+                                                       "low": FIFTY, "reason": "fifty and over"}]}
+
+
+def _slots():
+    """What the rule's size is read on (as :func:`replay.rule_forms` reads it), and what the
+    working table is built from."""
+    from turbotab.core.stages import build_graph
+
+    graph = build_graph()
+    reads = {s for name in graph.upstream("forms") for s in graph[name].reads}
+    table = {s for name in graph.upstream("working") | {"working"} for s in graph[name].reads}
+    return reads | {"target", "task", "event"}, table
+
+
+def test_the_rule_reads_its_size_on_the_rows_each_states_cohort_keeps(ages, tmp_path):
+    from turbotab.core.decisions import fold
+
+    frame, store = ages
+    records = [r for r, _ in replay.log_lines(_log(tmp_path, [*SPLINE_THEN, FIFTY_AND_OVER]))]
+    states = [fold(records[:4]), fold(records)]
+    old, kept = events_or_not(frame), events_or_not(frame[frame["age"] >= FIFTY])
+    assert old != kept
+    assert replay.rule_sizes(store, states, "binary") == [old, kept]
+    # Over the same rows, every row but those held out.
+    held = np.arange(0, len(frame), 5)
+    pool = frame.drop(index=held)
+    assert replay.rule_sizes(store, states, "binary", np.setdiff1d(np.arange(len(frame)), held)
+                             ) == [events_or_not(pool), events_or_not(pool[pool["age"] >= FIFTY])]
+
+
+def test_only_a_later_record_whose_step_changed_the_rules_size_is_named(ages, tmp_path):
+    """After the spline (record 4): confirming `bmi`'s reading in a table with no blank cell
+    changes no row, and the exclusion of the rows under 50 does (pandas): the exclusion alone is
+    named, as one that changed the size. With no exclusion, nothing is named."""
+    frame, store = ages
+    reads, table = _slots()
+    kept = events_or_not(frame[frame["age"] >= FIFTY])
+    records = [r for r, _ in replay.log_lines(_log(tmp_path, [
+        *SPLINE_THEN, FIFTY_AND_OVER, {"kind": "select_models", "models": ["linear"]}]))]
+    assert replay.later_records(records, 4, reads) == ((5, "confirm_readings"),
+                                                      (6, "set_exclusions"))
+    assert replay.later_changes(records, 4, reads, store, "binary", kept, table=table) == (
+        ((6, "set_exclusions"),), True)
+    plain = [r for r, _ in replay.log_lines(_log(tmp_path, SPLINE_THEN, "plain.jsonl"))]
+    assert replay.later_changes(plain, 4, reads, store, "binary", events_or_not(frame),
+                                table=table) == ((), True)
+
+
+def test_the_steps_are_read_on_the_rows_whose_size_is_the_engines(ages, tmp_path):
+    """The sizes are read over every row, else over every row not held out, whichever gives the
+    size the engine reads as the log ends; where neither does, or a later record rewrites the
+    table the walk reads (the grain; a confirmed reading of `age`, which the exclusion reads,
+    where one of `bmi` alone is traced above), each later record that writes what the rows are
+    read under is named, not traced."""
+    frame, store = ages
+    reads, table = _slots()
+    records = [r for r, _ in replay.log_lines(_log(tmp_path, [*SPLINE_THEN, FIFTY_AND_OVER]))]
+    held = np.arange(0, len(frame), 5)
+    pool = frame.drop(index=held)
+    training = events_or_not(pool[pool["age"] >= FIFTY])
+    assert training != events_or_not(frame[frame["age"] >= FIFTY])
+    assert replay.later_changes(records, 4, reads, store, "binary", training, table=table,
+                                sealed=held) == (((6, "set_exclusions"),), True)
+    later = ((5, "confirm_readings"), (6, "set_exclusions"))
+    assert replay.later_changes(records, 4, reads, store, "binary", training + 1, table=table,
+                                sealed=held) == (later, False)
+    assert "grain" in table and "grain" in reads
+    grained = [r for r, _ in replay.log_lines(_log(tmp_path, [
+        *SPLINE_THEN, FIFTY_AND_OVER, {"kind": "set_grain", "grain": "one_row_per_unit"}],
+        "grain.jsonl"))]
+    assert replay.later_changes(grained, 4, reads, store, "binary",
+                                events_or_not(frame[frame["age"] >= FIFTY]), table=table) == (
+        (*later, (7, "set_grain")), False)
+    aged = [r for r, _ in replay.log_lines(_log(tmp_path, [
+        *SPLINE_THEN, FIFTY_AND_OVER, {"kind": "confirm_readings", "items": [
+            {"reading": "code_or_count", "column": "age", "value": "amount"}]}], "aged.jsonl"))]
+    assert replay.later_changes(aged, 4, reads, store, "binary",
+                                events_or_not(frame[frame["age"] >= FIFTY]), table=table) == (
+        (*later, (7, "confirm_readings")), False)
 
 
 def test_the_later_records_are_those_that_write_what_the_rows_are_read_under(tmp_path):

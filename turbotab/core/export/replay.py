@@ -61,9 +61,14 @@ rebuild finished:
     (which the methods text quotes) authored again as the log authors one, and the report's
     messages give both sizes (:func:`refilled_line`; refused where the record's own sentence is not
     the one the log authors for it now).
-  A refusal says the size was read on the rows as the log ends, and names each later record that
-  writes what those rows or their outcome are read under (an exclusion, the missing-values answer,
-  a confirmed reading; :func:`later_records`), which can change them. A form's cut points and knot
+  A refusal, and a refilled record's message, says the size was read on the rows as the log ends,
+  and names each later record whose own step changed that size on the new draw
+  (:func:`later_changes`): the rule's size read on the state folded up to the spline's record and
+  after each later record that writes what those rows or their outcome are read under (an
+  exclusion, the missing-values answer, a confirmed reading; :func:`later_records`), every state
+  over the same rows; none where the size at the spline's record is the one as the log ends.
+  Where the sizes cannot be read that way, each such later record is named as one that can
+  change them. A form's cut points and knot
   places are not in its record: the form step learns them on the rows the fit reads, and declared
   categories' cut points are the analyst's.
 * **The findings rule on a fresh draw** (:func:`findings_rule`): a record tied to a finding by its
@@ -648,7 +653,10 @@ class RuleRead:
     (:func:`rule_forms`): the record that gives the column its form (its ``seq`` and ``kind``;
     None when no live record does), the k and the effective sample size it states, the rule's k
     and size on this draw's rows as the log ends (``read`` None where the rule reads none), and
-    the later records those rows are read under (:func:`later_records`), as (seq, kind)."""
+    the later records to name beside that size (:func:`later_changes`), as (seq, kind):
+    ``traced``, those whose own step changed the size the rule reads on this draw; else each
+    later record that writes what those rows are read under (:func:`later_records`), the size
+    not read step by step."""
 
     column: str
     seq: int | None
@@ -658,6 +666,7 @@ class RuleRead:
     k: int | None
     read: float | None
     later: tuple[tuple[int, str], ...] = ()
+    traced: bool = True
 
 
 def later_records(records: Sequence[Any], seq: int, reads: set[str]) -> tuple[tuple[int, str], ...]:
@@ -665,11 +674,17 @@ def later_records(records: Sequence[Any], seq: int, reads: set[str]) -> tuple[tu
     on: the rows and their outcome; :func:`rule_forms`), as (seq, kind): a revert by
     the record it withdraws, when that one was recorded before ``seq`` (one withdrawing a later
     record leaves the rows as they were)."""
+    return tuple((r.seq, r.decision.kind) for r, _ in _later(records, seq, reads))
+
+
+def _later(records: Sequence[Any], seq: int, reads: set[str]) -> list[tuple[Any, Any]]:
+    """:func:`later_records` as (record, the decision whose writes count: a revert's, the one it
+    withdraws)."""
     from turbotab.core.decisions import reverted
 
     withdrawn = reverted(records)
     by_id = {r.id: r for r in records}
-    out: list[tuple[int, str]] = []
+    out: list[tuple[Any, Any]] = []
     for r in sorted(records, key=lambda r: r.seq):
         if r.seq <= seq or r.id in withdrawn:
             continue
@@ -680,8 +695,121 @@ def later_records(records: Sequence[Any], seq: int, reads: set[str]) -> tuple[tu
                 continue
             decision = target.decision
         if _writes(decision, reads) & reads:
-            out.append((r.seq, r.decision.kind))
-    return tuple(out)
+            out.append((r, decision))
+    return out
+
+
+def _same_size(a: float | None, b: float | None) -> bool:
+    """Two effective sample sizes alike, as the engine compares a form's with the form card's
+    (``exposure_form.rule_stale``); None alike only with None."""
+    from turbotab.core.methods import exposure_form as ef
+
+    if a is None or b is None:
+        return a is None and b is None
+    return not ef.rule_stale({"form": "spline", "knots_rule": "harrell", "n_effective": a},
+                             {"n_effective": b})
+
+
+def _ingest_of(store: Any) -> dict[str, Any]:
+    """The table's columns as a cohort flow reads them (``row_previews``'s)."""
+    return {"columns": [c.to_dict() for c in store.info().columns]}
+
+
+def _rewrites(decision: Any) -> set[str] | None:
+    """The columns of the working table a decision that writes what it is built from rewrites: a
+    confirmed reading's own columns (the working table reads each column as its reading says);
+    None (any column, or the rows) for every other."""
+    if decision.kind == "confirm_reading":
+        return {decision.column}
+    if decision.kind == "confirm_readings":
+        return {item.column for item in decision.items}
+    return None
+
+
+def _flow_columns(state: Any, ingest: Mapping[str, Any]) -> set[str]:
+    """The columns ``state``'s cohort flow reads (``stages.rows.cohort_inputs``): the outcome and
+    the rules' columns, and under complete cases every predictor."""
+    from turbotab.core.decisions import missing_strategy
+    from turbotab.core.stages.rows import cohort_inputs
+
+    needed, preds, _ = cohort_inputs(state, ingest)
+    return {*needed, *(preds if missing_strategy(state) == "complete_case" else [])}
+
+
+def rule_sizes(store: Any, states: Sequence[Any], task: str | None,
+               rows: Any | None = None) -> list[float | None]:
+    """Harrell's rule's effective sample size on each of ``states`` (``exposure_form.effective_n``),
+    read on the rows its cohort keeps, every state's flow over the same rows (``rows``; None:
+    every row of ``store``; ``stages.rows.cohort_flows``, as the row previews compare flows), from
+    its outcome and event, by its task, else ``task`` (the one the engine reads for that outcome).
+    None where it reads none."""
+    from turbotab.core.methods.exposure_form import effective_n
+    from turbotab.core.stages.rows import cohort_flows
+
+    frame, _, flows = cohort_flows(store, states, _ingest_of(store), rows)
+    out: list[float | None] = []
+    for state, (_, kept) in zip(states, flows):
+        told = state.task or task
+        if not state.target or state.target not in frame.columns or told is None:
+            out.append(None)
+            continue
+        out.append(effective_n(told, frame.loc[kept, state.target], state.event))
+    return out
+
+
+def later_changes(records: Sequence[Any], seq: int, reads: set[str], store: Any,
+                  task: str | None, read: float | None, *, table: set[str] = frozenset(),
+                  sealed: Any | None = None) -> tuple[tuple[tuple[int, str], ...], bool]:
+    """The later records to name beside the size the rule reads on this draw as the log ends
+    (``read``, the engine's), for the spline recorded at ``seq``, and whether they were traced:
+    the rule's size (:func:`rule_sizes`) on the state folded up to ``seq`` and then after each
+    later record in turn (:func:`later_records`, folded onto the records up to ``seq``), each
+    read over every row of this draw, else over every row not held out (``sealed``), whichever
+    gives ``read`` as the log ends. Where the first and last sizes agree, none is named; else
+    each whose own step changed the size. Not traced (each later record named, as one that can
+    change the rows) where neither gives ``read``, where a later record writes the task (the
+    sizes are read by the task as the log ends), or where one writes a slot in ``table`` (what
+    the working table is built from, read as the log ends) other than a confirmed reading of
+    columns no state's flow reads (:func:`_rewrites`)."""
+    import numpy as np
+
+    from turbotab.core.decisions import fold
+
+    steps = _later(records, seq, reads)
+    later = tuple((r.seq, r.decision.kind) for r, _ in steps)
+    if not later:
+        return (), True
+    rewritten: set[str] = set()
+    for _, d in steps:
+        written = _writes(d, reads | set(table))
+        if "task" in written:
+            return later, False
+        if written & set(table):
+            columns = _rewrites(d)
+            if columns is None:
+                return later, False
+            rewritten |= columns
+    base = [r for r in records if r.seq <= seq]
+    try:
+        states = [fold(base + [r for r, _ in steps[:j]]) for j in range(len(steps) + 1)]
+        ingest = _ingest_of(store)
+        if rewritten & set().union(*(_flow_columns(s, ingest) for s in states)):
+            return later, False
+        pools: list[Any] = [None]
+        if sealed is not None and len(sealed):
+            pools.append(np.setdiff1d(np.arange(int(store.n_rows), dtype=np.int64),
+                                      np.asarray(sealed, dtype=np.int64)))
+        for rows in pools:
+            sizes = rule_sizes(store, states, task, rows)
+            if not _same_size(sizes[-1], read):
+                continue
+            if _same_size(sizes[0], sizes[-1]):
+                return (), True
+            return tuple(x for x, a, b in zip(later, sizes, sizes[1:])
+                         if not _same_size(a, b)), True
+    except Exception:  # noqa: BLE001 - a state whose rows cannot be read here: not traced
+        pass
+    return later, False
 
 
 def _by_rule(spec: Any) -> dict[str, Any] | None:
@@ -712,7 +840,10 @@ def rule_forms(service: Any, pid: str) -> list[RuleRead]:
     # compute, and the outcome's task and event, which the rule reads itself.
     reads = {s for name in graph.upstream("forms") for s in graph[name].reads}
     reads |= {"target", "task", "event"}
+    # What the working table is built from, which the rule's sizes step by step do not re-read.
+    table = {s for name in graph.upstream("working") | {"working"} for s in graph[name].reads}
     ctx = service.decision_context(pid)
+    walked: dict[int, tuple[tuple[tuple[int, str], ...], bool]] = {}
     out: list[RuleRead] = []
     for column, spec in ef.current_forms(ctx.state).items():
         given = _by_rule(spec)
@@ -726,12 +857,19 @@ def rule_forms(service: Any, pid: str) -> list[RuleRead]:
             (r.decision.kind == "set_exposure_form" and r.decision.column == column)
             or (r.decision.kind == "set_forms" and column in r.decision.forms))]
         record = last[-1] if last else None
-        read = again.get("n_effective")
+        read, said = again.get("n_effective"), given.get("n_effective")
+        later: tuple[tuple[tuple[int, str], ...], bool] = ((), True)
+        if record is not None and not _same_size(said, read):  # a size a sentence will state
+            if record.seq not in walked:
+                walked[record.seq] = later_changes(
+                    records, record.seq, reads, ctx.store(), ctx.task, read, table=table,
+                    sealed=ctx.sealed() if callable(ctx.sealed) else None)
+            later = walked[record.seq]
         out.append(RuleRead(
             column=column, seq=record.seq if record else None,
             kind=record.decision.kind if record else None, knots=given.get("knots"),
-            said=given.get("n_effective"), k=again.get("knots") if read is not None else None,
-            read=read, later=later_records(records, record.seq, reads) if record else ()))
+            said=said, k=again.get("knots") if read is not None else None,
+            read=read, later=later[0], traced=later[1]))
     return out
 
 
@@ -756,8 +894,8 @@ def rule_verdict(r: RuleRead, purpose: str | None) -> tuple[str, str | None]:
     if r.later:
         named = listing([f"{seq} ({kind})" for seq, kind in r.later], limit=len(r.later),
                         ticked=False)
-        after = (f", after {'record' if len(r.later) == 1 else 'records'} {named}, which can "
-                 f"change them")
+        after = (f", after {'record' if len(r.later) == 1 else 'records'} {named}, "
+                 f"{'which changed the size it reads' if r.traced else 'which can change them'}")
     said = (f"{where} gives `{r.column}` a spline whose k is Harrell's rule on the analyzed rows: "
             f"{before} on the recorded draw, and on this draw the rule reads {now} on the rows as "
             f"the log ends{after}.")
@@ -1200,6 +1338,7 @@ __all__ = ["CUT_KINDS", "Cut", "EstimateCheck", "FINDING_KINDS", "FreshDraw", "F
            "InputCheck", "LeftOut", "MatrixCheck", "RULE_STAGES", "Redrawn", "Refused",
            "ReplayReport", "RuleRead", "Ruled", "close", "compare", "compare_estimates",
            "findings_inputs", "findings_rule", "fresh_findings", "fresh_splines", "fresh_table",
-           "join_lines", "later_records", "live_record", "load_bundle", "log_lines", "main",
-           "refilled_line", "refuse_live_opening", "rule_forms", "rule_verdict", "run", "summary",
-           "truncate", "verify_inputs", "write_draw"]
+           "join_lines", "later_changes", "later_records", "live_record", "load_bundle",
+           "log_lines", "main", "refilled_line", "refuse_live_opening", "rule_forms",
+           "rule_sizes", "rule_verdict", "run", "summary", "truncate", "verify_inputs",
+           "write_draw"]
