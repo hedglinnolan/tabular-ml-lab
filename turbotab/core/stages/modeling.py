@@ -329,11 +329,16 @@ def fit_designs(state: Any, store: Any, row_ids: Any) -> pd.DataFrame | None:
     ``psu`` when the design names them, and ``weight``: the analysis weight, 0 where a row has
     none), indexed by row id, as evaluation's design-based folds read them; None otherwise. A
     tuned fit draws its inner splits by whole PSU and weights its inner loss by them (RECIPES
-    §4.3); the models are fit unweighted."""
+    §4.3); the models are fit unweighted. A weight ``methods.survey.analysis_weights`` refuses
+    on these rows (a four-year weight blank on a 1999–2002 row they hold, as where the target
+    changed after the answer) is refused (``methods.survey.refuse_weights``, its words counting
+    the blank on every row with the target recorded, as the survey question does), so the stage
+    that reads these designs is refused (a tuned family's plan among them), its fits never
+    weighted by the 2-year weight ÷ k nor left unweighted."""
     survey = getattr(state, "survey", None)
     if survey is None or getattr(survey, "estimand", None) != "population":
         return None
-    from turbotab.core.methods.survey import analysis_weights
+    from turbotab.core.methods.survey import analysis_weights, refuse_weights
     from turbotab.core.models.pipeline import modeling_frame
 
     present = set(store.columns)
@@ -343,10 +348,11 @@ def fit_designs(state: Any, store: Any, row_ids: Any) -> pd.DataFrame | None:
         return None
     frame = modeling_frame(store, wanted, np.asarray(row_ids))
     try:
-        weights = np.asarray(analysis_weights(frame, survey.weight, survey.cycle,
-                                              survey.four_year_weight).weights, dtype=float)
+        pooled = analysis_weights(frame, survey.weight, survey.cycle, survey.four_year_weight)
     except Exception:  # noqa: BLE001 - a weight that cannot be built weighs nothing here
         return None
+    refuse_weights(pooled, state, store)
+    weights = np.asarray(pooled.weights, dtype=float)
     out = pd.DataFrame({"weight": np.where(np.isfinite(weights) & (weights > 0), weights, 0.0)},
                        index=frame.index)
     if survey.strata and survey.strata in frame.columns:

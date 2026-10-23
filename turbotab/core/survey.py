@@ -416,7 +416,10 @@ def _names_its_units(decision: Any, ctx: Any) -> None:
 
 
 def _pools_cycles_by_the_rule(decision: Any, ctx: Any) -> None:
-    """1999–2000 pooled with other cycles takes the four-year weight (Analytic Guidelines §3.1.4)."""
+    """1999–2000 pooled with other cycles takes the four-year weight (Analytic Guidelines §3.1.4).
+    A blank four-year weight is counted on the rows with the target recorded, as
+    ``methods.survey.for_fit`` counts it (``analysis_weights``); with no target, on every row. It is
+    counted under the target the answer is recorded under, not again when the target changes."""
     from turbotab.core.decisions import Refusal, _ctx, _state
 
     if decision.estimand != "population" or not decision.weight:
@@ -428,13 +431,16 @@ def _pools_cycles_by_the_rule(decision: Any, ctx: Any) -> None:
     if cycle is None or not callable(store_fn):
         return
     store = store_fn()
-    if store is None or cycle not in set(getattr(store, "columns", ()) or ()):
+    present = set(getattr(store, "columns", ()) or ()) if store is not None else set()
+    if cycle not in present:
         return
     from turbotab.core.methods.survey import analysis_weights
 
-    wanted = [c for c in (decision.weight, cycle, decision.four_year_weight) if c]
+    target = getattr(state, "target", None)
+    outcome = target if target and target in present else None
+    wanted = [c for c in (decision.weight, cycle, decision.four_year_weight, outcome) if c]
     frame = store.materialize(list(dict.fromkeys(wanted)), None)
-    pooled = analysis_weights(frame, decision.weight, cycle, decision.four_year_weight)
+    pooled = analysis_weights(frame, decision.weight, cycle, decision.four_year_weight, outcome)
     if pooled.refusal is not None:
         partner = reading.four_year.get(decision.weight)
         exits: list[dict[str, Any]] = []

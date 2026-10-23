@@ -265,10 +265,10 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `eligibility.level_spelling`
 
-*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `b25ce93f22db`
+*rule* · from *engine* · weakest part *judgment* · built · version 1 · hash `61325d37d45f`
 
 - **Card:** none
-- **Methods:** none
+- **Methods:** A level of an eligibility rule that reads as a whole number named that number however it was written, as a number or as text, with or without a decimal point or a leading zero; a level that reads as no number named only itself, as written, case and spacing included.
 - **Regime:** a categorical eligibility rule, its levels compared with its column's values; predicates `turbotab.core.claims.data:a_level_rule`
 - **Decision:** decision `set_exclusions.level_spelling`; verdict *noted*
 - **Parts:**

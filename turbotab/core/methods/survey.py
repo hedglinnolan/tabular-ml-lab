@@ -46,8 +46,16 @@ def _plain(value: Any) -> Any:
     return value
 
 
+def _recorded(values: pd.Series) -> np.ndarray:
+    """The rows with a value, as the participant flow's ``outcome_measured`` line counts them."""
+    present = values.notna()
+    if pd.api.types.is_float_dtype(values):
+        present &= np.isfinite(values.to_numpy(dtype=float, na_value=np.nan))
+    return present.to_numpy(dtype=bool)
+
+
 def analysis_weights(frame: pd.DataFrame, weight: str, cycle: str | None = None,
-                     four_year: str | None = None) -> PooledWeight:
+                     four_year: str | None = None, outcome: str | None = None) -> PooledWeight:
     """The weight the estimate uses, by the Analytic Guidelines §3.1.3–3.1.4.
 
     One cycle: the weight as it is. ``k`` pooled cycles from 2001–2002 on: the 2-year weight ÷ k.
@@ -55,6 +63,12 @@ def analysis_weights(frame: pd.DataFrame, weight: str, cycle: str | None = None,
     2-year weight ÷ k on the others (which is the four-year weight itself when only 1999–2002 is
     pooled). 1999–2000 pooled without the four-year weight is refused: "the 2-year weights for
     1999–2000 and 2001–2002 are not comparable" (§3.1.4).
+
+    A four-year weight blank on a 1999–2002 row the analysis reads is refused too. With
+    ``outcome`` a column of ``frame``, the rows counted are those with it recorded, the only rows
+    an analysis of it reads (a subsample's weight, such as the fasting subsample's ``WTSAF4YR``, is
+    blank on the rows outside the subsample, where its outcome was not measured); else every row.
+    A row not counted keeps its blank weight, as the design takes a row outside the analysis.
     """
     w2 = pd.to_numeric(frame[weight], errors="coerce").to_numpy(dtype=float)
     if cycle is None or cycle not in frame.columns:
@@ -76,12 +90,14 @@ def analysis_weights(frame: pd.DataFrame, weight: str, cycle: str | None = None,
                      f"1999–2000 and 2001–2002 are not comparable ({GUIDELINES} §3.1.4): the "
                      f"1999–2002 rows need their four-year weight."))
     w4 = pd.to_numeric(frame[four_year], errors="coerce").to_numpy(dtype=float)
-    missing = first_two & ~np.isfinite(w4)
+    read = outcome is not None and outcome in frame.columns
+    missing = first_two & ~np.isfinite(w4) & (_recorded(frame[outcome]) if read else True)
     if missing.any():
+        rows = f"rows with `{outcome}` recorded" if read else "rows"
         return PooledWeight(
             w2 / k, None, cycles=levels,
-            refusal=(f"`{four_year}` is missing on {int(missing.sum()):,} of the 1999–2002 rows, so "
-                     f"their four-year weight cannot be used ({GUIDELINES} §3.1.4)."))
+            refusal=(f"`{four_year}` is missing on {int(missing.sum()):,} of the 1999–2002 {rows}, "
+                     f"so their four-year weight cannot be used ({GUIDELINES} §3.1.4)."))
     out = np.where(first_two, 2.0 * w4 / k, w2 / k)
     if first_two[values.notna().to_numpy()].all():
         note = f"`{four_year}`, the four-year weight NCHS provides for 1999–2002 ({GUIDELINES} §3.1.4)"
@@ -89,6 +105,43 @@ def analysis_weights(frame: pd.DataFrame, weight: str, cycle: str | None = None,
         note = (f"2 × `{four_year}` ÷ {k} on the 1999–2002 rows and `{weight}` ÷ {k} on the "
                 f"others, over the {k} pooled cycles ({shown}; {GUIDELINES} §3.1.4)")
     return PooledWeight(out, note, cycles=levels)
+
+
+NAME_THE_FOUR_YEAR = "Name the four-year weight (the survey question)"
+
+
+def refuse_weights(pooled: PooledWeight, state: Any, store: Any) -> None:
+    """Raise the stage refusal of a weight :func:`analysis_weights` refuses on a stage's rows
+    (``pooled.refusal``), with the ways on usual intake's survey plan gives: name the four-year
+    weight on the survey question, or estimate for these participants; nothing when it is not
+    refused. The design-based cross-validation and ``stages.modeling.fit_designs`` (a tuned
+    family's plan and fits, and every stage that reads it) are refused so, never weighted by the
+    2-year weight ÷ k a refused weight holds, nor left unweighted.
+
+    Its words count the blank four-year weight over every row of ``store`` (the working table)
+    with the target recorded, as the survey question's record-time check and :func:`for_fit`
+    count it, so one blank gives one count wherever it is refused, whichever of those rows a
+    stage weighs (a holdout's training rows, say). Where that count finds none (a stage row
+    without the target recorded holds every blank), the words are the stage rows' own."""
+    if pooled.refusal is None:
+        return
+    from turbotab.core.graph import StageRefusal
+    from turbotab.core.models.survey import SAMPLE_EXIT
+
+    words = pooled.refusal
+    spec = getattr(state, "survey", None)
+    present = set(getattr(store, "columns", ()) or ())
+    if spec is not None and spec.weight in present:
+        target = getattr(state, "target", None)
+        outcome = target if target and target in present else None
+        wanted = [c for c in (spec.weight, spec.cycle, spec.four_year_weight, outcome)
+                  if c and c in present]
+        frame = store.materialize(list(dict.fromkeys(wanted)), None)
+        whole = analysis_weights(frame, spec.weight, spec.cycle, spec.four_year_weight, outcome)
+        words = whole.refusal or words
+    raise StageRefusal("four_year_weight", words, exits=[
+        {"label": NAME_THE_FOUR_YEAR, "decision": None},
+        {"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}}])
 
 
 # ── the fit's view of the answer ─────────────────────────────────────────────
@@ -118,7 +171,8 @@ def for_fit(state: Any, store: Any, unit_column: str | None = None) -> FitSurvey
     ``store`` is the working table's DataStore: a population design is read over every row of it,
     so rows outside the analysis keep their strata and PSUs (a domain). ``unit_column`` names which
     rows belong together (a person's repeated rows), for a design with no PSU column: each unit is
-    then one sampling unit rather than each row.
+    then one sampling unit rather than each row. A blank four-year weight is counted on the rows
+    with the outcome recorded (:func:`analysis_weights`).
     """
     from turbotab.core.models.survey import build_design
 
@@ -134,8 +188,10 @@ def for_fit(state: Any, store: Any, unit_column: str | None = None) -> FitSurvey
         return FitSurvey("sample", reading=reading)
     unit = unit_column if (unit_column and unit_column in set(getattr(store, "columns", ()) or ())) \
         else None
+    target = getattr(state, "target", None)
+    outcome = target if target and target in set(getattr(store, "columns", ()) or ()) else None
     columns = [c for c in (spec.weight, spec.strata, spec.psu, spec.cycle, spec.four_year_weight,
-                           unit) if c]
+                           unit, outcome) if c]
     frame = store.materialize(list(dict.fromkeys(columns)), None)
     if unit is not None and spec.psu is not None:
         # A unit's rows are one person's: the PSU totals hold all of them only if they share a PSU.
@@ -152,11 +208,10 @@ def for_fit(state: Any, store: Any, unit_column: str | None = None) -> FitSurvey
                          f"PSU columns or the unit column are not what they seem."),
                 exits=({"label": "Check the survey question's strata and PSU", "decision": None},))
         unit = None  # the PSU already holds each unit's rows together
-    pooled = analysis_weights(frame, spec.weight, spec.cycle, spec.four_year_weight)
+    pooled = analysis_weights(frame, spec.weight, spec.cycle, spec.four_year_weight, outcome)
     if pooled.refusal:
         return FitSurvey("population", refusal=pooled.refusal, reading=reading,
-                         exits=({"label": "Name the four-year weight (the survey question)",
-                                 "decision": None},))
+                         exits=({"label": NAME_THE_FOUR_YEAR, "decision": None},))
     unit_codes = None
     if unit is not None:
         keys = frame[unit].astype(object).to_numpy().copy()
@@ -215,4 +270,5 @@ def proposal(state: Any, store: Any) -> dict[str, Any] | None:
             "options": offered(state, pooled_cycle, frame, placed)}
 
 
-__all__ = ["FitSurvey", "PooledWeight", "UNANSWERED", "analysis_weights", "for_fit", "proposal"]
+__all__ = ["FitSurvey", "NAME_THE_FOUR_YEAR", "PooledWeight", "UNANSWERED", "analysis_weights",
+           "for_fit", "proposal", "refuse_weights"]

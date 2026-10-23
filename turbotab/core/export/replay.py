@@ -850,11 +850,12 @@ def later_changes(records: Sequence[Any], seq: int, reads: set[str], store: Any,
     folded up to each later record in turn (:func:`later_records`), each read over every row of
     this draw, else over every row not held out (``sealed``), whichever gives ``read`` as the log
     ends. Where the first and last sizes agree, none is named; else each whose own step changed
-    the size. Not traced (each later record named, as one that can change the rows) where neither
-    gives ``read``, where a later record writes the task or the outcome (a state with no answered
-    task is read by the task as the log ends, ``task``), or where one writes a slot in ``table``
-    (what the working table is built from, read as the log ends) other than a confirmed reading
-    of columns no state's flow reads (:func:`_rewrites`)."""
+    the size. Not traced (each later record named, as one that can change the size it reads: each
+    writes what the size is read on, as a task answer does, though it changes no row) where
+    neither gives ``read``, where a later record writes the task or the outcome (a state with no
+    answered task is read by the task as the log ends, ``task``), or where one writes a slot in
+    ``table`` (what the working table is built from, read as the log ends) other than a confirmed
+    reading of columns no state's flow reads (:func:`_rewrites`)."""
     import numpy as np
 
     from turbotab.core.decisions import fold
@@ -986,7 +987,8 @@ def rule_verdict(r: RuleRead, purpose: str | None) -> tuple[str, str | None]:
                         ticked=False)
         which = (f"which changed what the size is read under: "
                  f"{listing(list(r.inputs), limit=len(r.inputs), ticked=False)}" if r.inputs else
-                 "which changed the size it reads" if r.traced else "which can change them")
+                 "which changed the size it reads" if r.traced else
+                 "which can change the size it reads")
         after = f", after {'record' if len(r.later) == 1 else 'records'} {named}, {which}"
     said = (f"{where} gives `{r.column}` a spline whose k is Harrell's rule on the analyzed rows: "
             f"{before} on the recorded draw, and on this draw the rule reads {now} on the rows as "

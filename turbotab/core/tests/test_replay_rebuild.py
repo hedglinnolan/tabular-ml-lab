@@ -35,8 +35,9 @@ hashed here with hashlib.
   exclusion of the rows under 50 is, a reading confirmed in a table with no blank cell is not;
   where the sizes are not the engine's (over every row, or every row not held out) or a later
   record rewrites the table read (the grain, a reading of a column the flow reads) or writes the
-  task or the outcome, each is named as one that can change them. Where a later record changed
-  the outcome, its scale, task or event from the record to the log's end
+  task or the outcome, each is named as one that can change the size the rule reads (RF-P2: not
+  the rows, which a task answer cannot). Where a later record changed the outcome, its scale,
+  task or event from the record to the log's end
   (:func:`replay.input_changes`), another size is refused under either purpose, the record and
   the change named; a task answered as the detected one, or changed and changed back, changes
   none. A refilled record (:func:`replay.refilled_line`) holds the decision and the
@@ -542,7 +543,8 @@ def test_under_inference_another_size_is_refused_whatever_k_it_gives():
 def test_a_refusal_names_each_later_record_that_changed_the_size_the_rule_reads():
     """A later record whose own step changed the rule's size on this draw is named as one that
     changed it; where the sizes could not be read step by step (``traced`` False), each later
-    record that writes what the rows are read under is named as one that can change them."""
+    record that writes what the rows are read under is named as one that can change the size it
+    reads."""
     _, one = replay.rule_verdict(rule_read(117.0, 95.0, later=((16, "set_exclusions"),)),
                                  "prediction")
     assert ("the rule reads 95 (k = 4) on the rows as the log ends, after record 16 "
@@ -556,7 +558,7 @@ def test_a_refusal_names_each_later_record_that_changed_the_size_the_rule_reads(
                                 traced=False)
     _, three = replay.rule_verdict(loose, "prediction")
     assert ("on the rows as the log ends, after records 16 (set_exclusions) and 17 "
-            "(confirm_readings), which can change them. Under prediction") in three
+            "(confirm_readings), which can change the size it reads. Under prediction") in three
     _, none = replay.rule_verdict(rule_read(117.0, 95.0), "prediction")
     assert "on the rows as the log ends. Under prediction" in none and "after" not in none
 
@@ -792,8 +794,8 @@ def test_a_later_record_that_writes_the_task_or_the_outcome_leaves_the_sizes_unt
     """The guard: the sizes step by step read a state with no answered task by the task as the
     log ends, so where a later record writes the task or the outcome (here the detected task
     answered, and the outcome moved to `bmi` and back, the outcome and its task the same at both
-    ends), each later record is named as one that can change them, not traced. With neither, the
-    exclusion alone is named, traced (above)."""
+    ends), each later record is named as one that can change the size the rule reads, not
+    traced. With neither, the exclusion alone is named, traced (above)."""
     frame, store = ages
     reads, table = _slots()
     kept = events_or_not(frame[frame["age"] >= FIFTY])
@@ -809,6 +811,26 @@ def test_a_later_record_that_writes_the_task_or_the_outcome_leaves_the_sizes_unt
     plain = _after_the_spline(tmp_path, "plain.jsonl", FIFTY_AND_OVER)
     assert replay.later_changes(plain, 4, reads, store, "binary", kept, table=table) == (
         ((6, "set_exclusions"),), True)
+
+
+def test_an_untraced_refusal_names_a_task_answer_as_a_record_that_can_change_the_size(
+        ages, tmp_path):
+    """RF-P2: on the log above with the detected task answered after the spline, the sizes are
+    not traced, and the refusal names each later record, the task answer among them, as one that
+    can change the size the rule reads, which a task answer can and the rows it cannot."""
+    frame, store = ages
+    reads, table = _slots()
+    kept = events_or_not(frame[frame["age"] >= FIFTY])
+    answered = _after_the_spline(tmp_path, "answered.jsonl", {**TASK, "task": "binary"},
+                                 FIFTY_AND_OVER)
+    later, traced = replay.later_changes(answered, 4, reads, store, "binary", kept, table=table)
+    assert (5, "confirm_readings") in later and (6, "set_task") in later and not traced
+    read = replay.RuleRead(column="age", seq=4, kind="set_exposure_form",
+                           knots=harrell(events_or_not(frame)), said=events_or_not(frame),
+                           k=harrell(kept), read=kept, later=later, traced=traced)
+    _, said = replay.rule_verdict(read, "prediction")
+    assert ("on the rows as the log ends, after records 5 (confirm_readings), 6 (set_task) and 7 "
+            "(set_exclusions), which can change the size it reads.") in said
 
 
 def _spline_log(tmp_path: Path, spline: dict, name: str = "decisions.jsonl") -> list:
