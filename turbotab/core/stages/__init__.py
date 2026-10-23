@@ -603,7 +603,10 @@ def build_graph() -> Graph:
             # design 32 (W1-T, ruling 5 extended): under prediction the design serves no estimand
             # and no coefficient's meaning, a substitution among them, so a design cached before
             # is computed again rather than served with them into a saved figure's provenance.
-            Stage("design", 32, ("working", "split", "target_info"),
+            # design 33 (the slow-fit audit, 2026-10-23): the impute step's line states the number
+            # of imputations the coefficient table draws on the design's rows, not the answer's m,
+            # so a design cached before is computed again rather than served with that m.
+            Stage("design", 33, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection", "survey"),

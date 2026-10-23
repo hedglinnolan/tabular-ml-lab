@@ -205,7 +205,11 @@ NOT_A_STEP = {"predictors", "inputs", "numeric", "roles", "lenses",
               "plans",
               # the declared purpose: read by the design's concerns (``warnings_for``), never by a
               # step, which takes the purpose as its own argument
-              "purpose"}
+              "purpose",
+              # the number of imputations the coefficient table draws, which the impute step's
+              # line states (``impute_detail``); no step reads it, and the copies are not this
+              # pipeline's to draw
+              "imputations"}
 
 
 def _applies(option: str, task: str) -> bool:
