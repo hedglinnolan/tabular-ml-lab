@@ -21,7 +21,12 @@ a way forward for each (BLUEPRINT §3's refusal shape):
     final model is not declared and no held-out score is the result yet; or nothing could be
     declared (``selection.declared_result``'s "not_declared");
 * **a result is not computed**: a stage the bundle reports (:func:`result_stages`) is still being
-  computed, waits for an answer, or failed;
+  computed, waits for an answer, failed, or was refused in words (a fit-time refusal,
+  ``graph.StageRefusal``, which its status serves as its ``refusal``). A refusal is said as the
+  stage served it, with its own code, words and ways forward (none where it offers none:
+  computing it again would refuse again), the stage named as refused (or as waiting on the one
+  that refused), and once where the stages after it serve it as theirs; only an error the engine
+  did not type is said as failed, with computing it again as the way forward;
 * **the estimates are withheld** while a question they rest on is unanswered (WP17's gate), or,
   under prediction, until Fit is pressed (P0.8).
 
@@ -96,6 +101,27 @@ def _listed(items: list[str]) -> str:
     return ", ".join(items[:-1]) + " and " + items[-1]
 
 
+def _stage_name(stage: str) -> str:
+    return STAGE_NAMES.get(stage, f"The {stage} stage")
+
+
+def _refused(stage: str, refused: Any, said: set[tuple[str, str, str]]) -> Missing | None:
+    """A stage's refusal in words (its status's ``refusal``, ``graph.Refused``) as the export says
+    it: the refusal's own code, words and ways forward, the stage named as refused, not failed.
+    A refusal the stage serves for one it waits on names that stage. None where ``said`` holds it
+    already (the fit and Table 2 serve the model matrix's refusal as theirs)."""
+    whose = str(_get(refused, "stage") or stage)
+    code, words = str(_get(refused, "code")), str(_get(refused, "message"))
+    if (whose, code, words) in said:
+        return None
+    said.add((whose, code, words))
+    head = (f"{_stage_name(stage)} was refused" if whose == stage else
+            f"{_stage_name(stage)} waits on {_stage_name(whose)[:1].lower()}"
+            f"{_stage_name(whose)[1:]}, which was refused")
+    return Missing(code, f"{head}, so its result cannot be reported: {words}",
+                   [dict(e) for e in _get(refused, "exits") or []])
+
+
 def missing(source: Any) -> list[Missing]:
     """Everything the export waits for, most fundamental first (module docstring)."""
     out: list[Missing] = []
@@ -155,13 +181,19 @@ def missing(source: Any) -> list[Missing]:
             out.append(Missing("plan_open", (
                 f"No result is declared: {result.get('sentence') or 'the fit declared none.'}"),
                 [{"label": "Choose the model families again", "decision": None}]))
+    said: set[tuple[str, str, str]] = set()  # each stage's refusal in words, said once
     for stage in result_stages(state):
         status = source.status(stage)
         name = str(_get(status, "status") or "idle")
         if name == "fresh":
             continue
-        label = STAGE_NAMES.get(stage, f"The {stage} stage")
-        if name == "error":
+        label = _stage_name(stage)
+        refused = _get(status, "refusal") if name == "error" else None
+        if refused is not None:
+            found = _refused(stage, refused, said)
+            if found is not None:
+                out.append(found)
+        elif name == "error":
             out.append(Missing("result_failed", (
                 f"{label} failed, so its result cannot be reported: "
                 f"{_get(status, 'error') or 'no reason was given.'}"),
