@@ -1274,6 +1274,42 @@ def test_a_locked_fit_with_a_coefficient_table_keeps_its_row_and_a_shrunk_one_be
     assert validate_result(both)
 
 
+@pytest.fixture(scope="module")
+def walking_locks() -> dict[str, dict[str, Any]]:
+    """The walking table's short Estimate journeys, ridge alone and the linear model alone, each
+    locked by Fit, as the server serves them (``test_results_no_coefficient_table_api``)."""
+    from turbotab.server.tests.test_results_no_coefficient_table_api import _locked_journey
+
+    return {"ridge": _locked_journey(["ridge"]), "linear": _locked_journey(["linear"])}
+
+
+def test_on_the_served_journeys_a_ridge_lock_is_refused_and_a_linear_lock_is_least_squares(
+        walking_locks):
+    """End to end on the server's own documents: ridge alone, locked, is refused, none served, in
+    the effects stage's words as its status serves them, which are those its construction gives;
+    the linear model alone is its row of `walks_daily`, statsmodels' least squares with HC3
+    intervals on the 120 complete cases (``_ols_hc3``)."""
+    from turbotab.server.tests.test_results_no_coefficient_table_api import _ols_hc3
+
+    def result(name: str) -> dict[str, Any]:
+        j = walking_locks[name]
+        return A.result_of("inference", j["view"]["decisions"], j["fits"],
+                           A.Read(200, j["results"]))
+
+    stage = walking_locks["ridge"]["view"]["stages"]["effects"]["refusal"]
+    got = result("ridge")
+    assert (got["refused"], got["refused_kind"], got.get("estimates")) == (
+        stage["message"], "not_served", None)
+    assert stage["message"] == NO_TABLE_WORDS and validate_result(got)
+    got = result("linear")
+    truth = _ols_hc3()
+    assert got.get("refused") is None and got["source"] == "fits" and validate_result(got)
+    [e] = got["estimates"]
+    assert (e["family"], e["feature"], e["why"]) == ("linear", "walks_daily", None)
+    assert (e["estimate"], e["ci_low"], e["ci_high"]) == pytest.approx(
+        (truth["estimate"], truth["ci_low"], truth["ci_high"]), rel=1e-9)
+
+
 def test_a_lock_whose_plan_declares_no_estimand_reports_no_estimate():
     no_estimand = [*_locked("odds_ratio")[:3], _rec(4, 4, {"kind": "lock_plan", "plan": {},
                                                             "digest": "d"})]

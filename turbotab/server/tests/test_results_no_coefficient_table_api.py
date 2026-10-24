@@ -45,7 +45,8 @@ NO_TABLE_WORDS = ("None of the chosen model families has a coefficient table, so
 
 def _locked_journey(models: list[str]) -> dict[str, Any]:
     """The walking table under Estimate with ``models`` chosen, Fit pressed (the plan locked), and
-    what the routes serve then: GET /results, the project's view and GET /stages/fit."""
+    what the routes serve then: GET /results, the project's view, GET /stages/fit and the fit
+    records (GET /fits, once the recorder has written them)."""
     from turbotab.core.reference import journeys as J
     from turbotab.core.tests.acceptance.server_drive import Drive, local_server, press_fit
     from turbotab.core.tests.truths import FIXTURE_TRUTHS
@@ -89,8 +90,10 @@ def _locked_journey(models: list[str]) -> dict[str, Any]:
             shown = client.app.state.service._shown_lock(pid)
             [lock] = [r["id"] for r in view["decisions"] if r["decision"]["kind"] == "lock_plan"]
             fit = client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]
+            client.app.state.service._recorder.submit(lambda: None).result(timeout=60)
+            fits = client.get(f"/api/projects/{pid}/fits").json()["records"]
             return {"results": response.json(), "view": view, "fit": fit, "shown": shown,
-                    "lock": lock}
+                    "lock": lock, "fits": fits}
 
 
 @pytest.fixture(scope="module")
