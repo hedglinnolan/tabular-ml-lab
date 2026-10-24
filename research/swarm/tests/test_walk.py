@@ -495,6 +495,24 @@ def test_a_run_skips_each_seed_already_reported(tmp_path, monkeypatch):
     assert (tmp_path / "walk.md").read_text("utf-8").startswith("# The walks of d")
 
 
+def test_an_error_of_the_walkers_own_is_kept_and_the_report_does_not_pass(tmp_path, monkeypatch):
+    """A fault in the walker's own code (here at the run's start) ends that walk, kept as the
+    walker's error in its words, not the engine's; a report holding one does not pass, and one
+    without passes (above)."""
+    def broken(self, *a, **k):
+        raise KeyError("a fault of the walker's")
+
+    monkeypatch.setattr(walk.Walked, "start", broken)
+    table = tmp_path / "t.csv"
+    table.write_text("y,x\n1,2\n0,3\n", "utf-8")
+    w = walk.walk_one("d", 4, tmp_path, data=table, question=arms.Question("y", "prediction"))
+    assert [(s["by"], s["kind"]) for s in w["stops"]] == [("walker", "error")]
+    assert "KeyError" in w["stops"][0]["words"] and w["run"] is None and w["defects"] == []
+    w = {**summary(4, kind=w["class"]), "stops": w["stops"]}
+    report = walk.report_of("d", "prediction", [4], [w], ENGINE, 1.0)
+    assert report["walker_errors"] == [4] and report["passed"] is False
+
+
 def test_the_seeds_read_as_a_range_or_one():
     assert walk.seeds_of("1-3") == [1, 2, 3] and walk.seeds_of("7") == [7]
     with pytest.raises(ValueError):

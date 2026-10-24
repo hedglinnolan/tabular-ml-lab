@@ -64,9 +64,10 @@ times at most.
 
 Else it is ``clean`` where it reached the export and the export was given, and ``refused`` where it
 stopped short (``stops``, each by whom and in its words): a refusal in words that left it no way on
-(the engine's, the server's or the driver's), or a limit of the walk's own. A refusal is expected,
-never a defect, when it is typed and worded and its way forward works, or it has none and its words
-say why. That no held-out row is read before the seal is not checked: the driver cannot observe it,
+(the engine's, the server's or the driver's), or a limit of the walk's own. A fault in the walker's
+own code ends that walk too, kept as the walker's (``by: walker``): evidence neither way, so a report
+holding one does not pass. A refusal is expected, never a defect, when it is typed and worded and
+its way forward works, or it has none and its words say why. That no held-out row is read before the seal is not checked: the driver cannot observe it,
 and a known deferred exception exists (Harrell's rule under prediction reads every cohort row).
 
 **Each defect keeps its reproduction** (``defects/<dataset>-<seed>-<n>.json``): the seed, the
@@ -82,7 +83,7 @@ whose engines differ, any walk's start or end from the report's end, is refused
 seed already written is not walked again. The report (``walk.json``, and ``walk.md`` to read; the
 crash sweep's shape) holds each walk's class and summary, the defects with their reproductions, the
 count of each class and of the options skipped, the fit records held to the log, and whether it
-passed: every seed reported, no defect, one engine.
+passed: every seed reported, none ended by the walker's own fault, no defect, one engine.
 """
 from __future__ import annotations
 
@@ -790,6 +791,10 @@ def walk_one(dataset: str, seed: int, out: Path, *, data: Path | None = None,
             walker.end()
         except arms.Stuck as exc:
             walk["stops"].append(stop_of(exc))
+        except Exception as exc:  # noqa: BLE001 - a fault of the walker's own: kept, in its words
+            walk["stops"].append({"by": "walker", "kind": "error",
+                                  "words": f"{type(exc).__name__}: {str(exc)[:600]}",
+                                  "detail": None})
         if session.run is not None:
             try:
                 walk["stages"] = stages_of(session.view())
@@ -846,7 +851,8 @@ def summary_of(walk: Mapping[str, Any]) -> dict[str, Any]:
 def report_of(dataset: str, purpose: str, seeds: Sequence[int], walks: Sequence[Mapping[str, Any]],
               end: Mapping[str, Any], seconds: float) -> dict[str, Any]:
     """The walks' report (the module docstring): refused where any walk's engine at its start or
-    its end is not ``end``'s (``sweep.engine_changed``)."""
+    its end is not ``end``'s (``sweep.engine_changed``); a walk the walker's own fault ended
+    (``walker_errors``) is evidence neither way, so a report holding one does not pass."""
     walks = sorted(walks, key=lambda w: int(w["seed"]))
     starts = [dict(s) for w in walks for s in (w["engine"]["start"], w["engine"]["end"])]
     changed = sweep.engine_changed(starts, end) if walks else None
@@ -854,6 +860,8 @@ def report_of(dataset: str, purpose: str, seeds: Sequence[int], walks: Sequence[
     unreported = [int(s) for s in seeds if int(s) not in reported]
     classes = {k: sum(1 for w in walks if w.get("class") == k) for k in CLASSES}
     checks = [c for w in walks for c in w.get("checks") or []]
+    errors = [int(w["seed"]) for w in walks
+              if any(s.get("by") == "walker" for s in w.get("stops") or [])]
     return {
         "dataset": dataset, "purpose": purpose, "seeds": [int(s) for s in seeds],
         **{k: end.get(k) for k in ("commit", "engine_tree", "engine_modified")},
@@ -868,8 +876,8 @@ def report_of(dataset: str, purpose: str, seeds: Sequence[int], walks: Sequence[
             w.get("after_seal") or [])],
         "checks": {"records": len(checks), "checked": sum(1 for c in checks if c.get("checked")),
                    "matched": sum(1 for c in checks if c.get("matched"))},
-        "unreported": unreported, "complete": not unreported,
-        "passed": not unreported and not classes["defect"] and changed is None,
+        "walker_errors": errors, "unreported": unreported, "complete": not unreported,
+        "passed": not unreported and not errors and not classes["defect"] and changed is None,
     }
 
 
@@ -893,6 +901,9 @@ def walk_md(report: Mapping[str, Any]) -> str:
                      f"{said.replace('|', '/')} |")
     if report.get("engine_changed"):
         lines += ["", "## The engine changed while the walks ran", "", str(report["engine_changed"])]
+    if report.get("walker_errors"):
+        lines += ["", "## Walks the walker's own fault ended (evidence neither way)", "",
+                  ", ".join(str(s) for s in report["walker_errors"])]
     if report.get("unreported"):
         lines += ["", "## Seeds not reported", "",
                   ", ".join(str(s) for s in report["unreported"])]
