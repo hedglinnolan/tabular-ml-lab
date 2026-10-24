@@ -27,10 +27,17 @@ its own scores, (1/J_arm + share_arm)·s²_arm, since repeated folds are correla
 Welch's over those two variances, its degrees of freedom by the Welch–Satterthwaite rule.
 
 **A pooled score.** A numeric outcome's MSE (and MAE) is pooled over every out-of-fold prediction
-(``metrics.summarize``: ``estimator`` "pooled"), the folds' scores weighted by their sizes, which
-is the mean of the fold scores only where every fold holds the same rows (N a multiple of K): the
-change is computed there, and has no number where the sizes differ. A pooled score that is no
-weighted mean of the fold scores (the RMSE, R²) has none either.
+(``metrics.summarize``: ``estimator`` "pooled"), in each repeat its folds' scores weighted by their
+sizes, and the score the mean over the repeats. Where every fold holds the same rows (N a multiple
+of K) that is the mean of the fold scores, and the change is computed on them as on any. Where the
+sizes differ, the change is computed on the size-weighted mean of the fold scores, each fold
+weighted by the rows the split's facts give it (:func:`fold_sizes`, in the order the fit scores
+the folds), which is the pooled score: the difference of the two weighted means (paired, the
+weighted mean of the differences), with the corrected variance on the fold scores as for any
+change, (1/J + n_test/n_train)·s². A weighted mean that is not the pooled score the fit serves
+(``estimate``, where it serves one) to :data:`AGREES` of it has no number, and says so: the folds
+were weighted by sizes that are not theirs. A pooled score that is no weighted mean of the fold
+scores (the RMSE, R²) has none either.
 
 The change is signed on the metric's own scale (``difference``: after less before), and
 ``better`` says whether the later fit scored better, by the metric's direction (a loss is better
@@ -42,7 +49,9 @@ fewer than two fold scores in an arm, a paired change whose arms are not the sam
 that are not k-fold scores has no number, and says why; so has a change with no fold-to-fold
 spread, its differences (paired) or both its arms (unpaired) each one value but for float64's
 rounding of the scores (:data:`ROUNDING`), whose interval would have no width and certify nothing
-(the engine's own paired movement, ``runs.movement``, refuses the same).
+(the engine's own paired movement, ``runs.movement``, refuses the same). Whether two fits scored
+the same in every fold but for that rounding is :func:`same_scores`'s to say (a sweep reads such a
+change as zero, not as no number).
 """
 from __future__ import annotations
 
@@ -64,6 +73,13 @@ NO_SPLIT = ("The facts of the folds this fit was scored on were not read (the dr
 # Values that differ by no more than this many units of float64's precision of the largest score
 # are one value: what rounding each score once, and their difference once, can part.
 ROUNDING = 8
+# A size-weighted mean of fold scores is the pooled score the fit serves where the two agree to
+# this share of the score: float64 summing the same squared errors in another order parts them by
+# far less, and a fold weighted by another fold's size by more wherever two folds' scores differ
+# by more than this share of the score times the training rows.
+AGREES = 1e-9
+WEIGHTED_UNSCORED = ("A fold holds no score, so the size-weighted mean of the fold scores is not "
+                     "the pooled score.")
 
 
 def _finite(values: Sequence[Any]) -> list[float]:
@@ -89,6 +105,27 @@ def _no_spread(xs: Sequence[float], scores: Sequence[float]) -> bool:
     width it can certify."""
     scale = max((abs(float(x)) for x in scores), default=0.0)
     return max(xs) - min(xs) <= ROUNDING * sys.float_info.epsilon * scale
+
+
+def same_scores(after: Sequence[Any] | None, before: Sequence[Any] | None) -> bool:
+    """Whether ``after``'s fold scores are ``before``'s, fold by fold, but for float64's rounding
+    of each (:data:`ROUNDING` units of the precision of the largest score): the same count of
+    folds, at least two, each scored in both."""
+    if not isinstance(after, Sequence) or not isinstance(before, Sequence) \
+            or isinstance(after, str) or isinstance(before, str):
+        return False
+    a, b = _finite(after), _finite(before)
+    if len(after) != len(before) or len(a) != len(after) or len(b) != len(before) or len(a) < 2:
+        return False
+    scale = max(abs(x) for x in (*a, *b))
+    return all(abs(x - y) <= ROUNDING * sys.float_info.epsilon * scale for x, y in zip(a, b))
+
+
+def _mean(xs: Sequence[float], weights: Sequence[float] | None) -> float:
+    """The mean of ``xs``, or their mean weighted by ``weights``."""
+    if weights is None:
+        return sum(xs) / len(xs)
+    return sum(w * x for w, x in zip(weights, xs)) / sum(weights)
 
 
 def _t(df: float, level: float) -> float:
@@ -157,13 +194,17 @@ def folds_per_repeat(score: Mapping[str, Any]) -> int | None:
 
 
 def paired(after: Sequence[Any], before: Sequence[Any], share: float, *,
-           level: float = LEVEL) -> dict[str, Any]:
+           level: float = LEVEL, weights: Sequence[float] | None = None) -> dict[str, Any]:
     """The paired change over the same folds, in order (the module docstring): fold pairs where
-    either score is missing are left out, as the engine's own comparison leaves them."""
+    either score is missing are left out, as the engine's own comparison leaves them. With
+    ``weights`` (each fold score's rows: a pooled score on folds of different sizes) the change
+    is the weighted mean of the differences, every fold scored in both."""
     if len(after) != len(before):
         return {"why": f"The two fits hold {len(after)} and {len(before)} fold scores, so they "
                        f"are not the same folds."}
     pairs = [(float(a), float(b)) for a, b in zip(after, before) if _finite([a]) and _finite([b])]
+    if weights is not None and (len(pairs) != len(after) or len(weights) != len(after)):
+        return {"why": WEIGHTED_UNSCORED}
     d = [a - b for a, b in pairs]
     if len(d) < 2:
         return {"why": "Fewer than two folds hold both fits' scores."}
@@ -174,7 +215,7 @@ def paired(after: Sequence[Any], before: Sequence[Any], share: float, *,
         return {"why": f"Every fold's score {moved}, so the change has no fold-to-fold spread and "
                        f"its corrected interval, of no width, is not defined."}
     j = len(d)
-    mean = sum(d) / j
+    mean = _mean(d, weights)
     se = math.sqrt((1.0 / j + share) * _variance(d))
     if se == 0:  # a spread too small for float64 to square
         return {"why": "The differences' spread is too small for float64 to give the change an "
@@ -185,11 +226,19 @@ def paired(after: Sequence[Any], before: Sequence[Any], share: float, *,
 
 
 def unpaired(after: Sequence[Any], before: Sequence[Any], share_after: float,
-             share_before: float, *, level: float = LEVEL) -> dict[str, Any]:
-    """The unpaired change between two fits on different rows or folds (the module docstring)."""
+             share_before: float, *, level: float = LEVEL,
+             weights: tuple[Sequence[float] | None, Sequence[float] | None] = (None, None)
+             ) -> dict[str, Any]:
+    """The unpaired change between two fits on different rows or folds (the module docstring):
+    each arm's mean its weighted mean where its ``weights`` are given (the later fit's, then the
+    earlier's: each fold score's rows, a pooled score on folds of different sizes), every fold of
+    it scored."""
     a, b = _finite(after), _finite(before)
     if len(a) < 2 or len(b) < 2:
         return {"why": "An arm holds fewer than two fold scores."}
+    for scores, kept, w in ((after, a, weights[0]), (before, b, weights[1])):
+        if w is not None and (len(kept) != len(scores) or len(w) != len(scores)):
+            return {"why": WEIGHTED_UNSCORED}
     if _no_spread(a, a) and _no_spread(b, b):
         return {"why": f"Each fit scored the same in every fold ({a[0]:.4g} and {b[0]:.4g}), so "
                        f"the change has no fold-to-fold spread and its interval, of no width, is "
@@ -197,7 +246,7 @@ def unpaired(after: Sequence[Any], before: Sequence[Any], share_after: float,
     # An arm with no spread but rounding's adds none (Welch's interval rests on the other's).
     va = 0.0 if _no_spread(a, a) else (1.0 / len(a) + share_after) * _variance(a)
     vb = 0.0 if _no_spread(b, b) else (1.0 / len(b) + share_before) * _variance(b)
-    mean = sum(a) / len(a) - sum(b) / len(b)
+    mean = _mean(a, weights[0]) - _mean(b, weights[1])
     se = math.sqrt(va + vb)
     denominator = (va ** 2 / (len(a) - 1) if va else 0.0) + (vb ** 2 / (len(b) - 1) if vb else 0.0)
     if se == 0 or denominator == 0:  # spreads too small for float64 to square
@@ -210,31 +259,47 @@ def unpaired(after: Sequence[Any], before: Sequence[Any], share_after: float,
 
 
 def _arm(score: Mapping[str, Any], split: Mapping[str, Any] | None, metric: str | None
-         ) -> tuple[float | None, str | None]:
-    """One fit's share, or why its scores give no change: its folds' facts, and a pooled score
-    that is the mean of its fold scores (the module docstring)."""
+         ) -> tuple[float | None, list[float] | None, str | None]:
+    """One fit's share and, for a pooled score on folds of different sizes, each fold score's
+    weight (its fold's rows, in the order the fit scores the folds, repeat after repeat); or why
+    its scores give no change: its folds' facts, and a pooled score that is a weighted mean of its
+    fold scores, the one the fit serves where it serves one (the module docstring)."""
     k = folds_per_repeat(score)
     if k is None:
-        return None, "A fit's score is no k-fold score of at least two folds."
+        return None, None, "A fit's score is no k-fold score of at least two folds."
     share, why = test_share(split)
     if share is None:
-        return None, why
+        return None, None, why
     sizes, _ = fold_sizes(split)
     repeats = int(score.get("repeats") or 1)
     if len(sizes) != k or int(split.get("repeats") or 1) != repeats:
-        return None, (f"The fit's scores are of {repeats} × {k} folds, and the split it was read "
-                      f"with draws {int(split.get('repeats') or 1)} × {len(sizes)}.")
-    if score.get("estimator") == "pooled":
-        name = metric or "score"
-        if metric not in WEIGHTED_MEAN:
-            return None, (f"The {name} is pooled over every out-of-fold prediction and is no "
-                          f"weighted mean of the fold scores, so their mean is not the score.")
-        if len(set(sizes)) > 1:
-            return None, (f"The {name} is pooled over every out-of-fold prediction, the folds' "
-                          f"size-weighted mean, and these {sum(sizes):,} training rows in {k} "
-                          f"folds give folds of {max(sizes):,} and {min(sizes):,} rows, so the "
-                          f"mean of the fold scores is not the score.")
-    return share, None
+        return None, None, (f"The fit's scores are of {repeats} × {k} folds, and the split it "
+                            f"was read with draws {int(split.get('repeats') or 1)} × "
+                            f"{len(sizes)}.")
+    if score.get("estimator") != "pooled":
+        return share, None, None
+    name = metric or "score"
+    if metric not in WEIGHTED_MEAN:
+        return None, None, (f"The {name} is pooled over every out-of-fold prediction and is no "
+                            f"weighted mean of the fold scores, so their mean is not the score.")
+    if len(set(sizes)) == 1:
+        return share, None, None  # folds of one size: the pooled score is their scores' mean
+    weights = [float(s) for s in sizes] * repeats
+    folds = list(score.get("folds") or [])
+    scored = _finite(folds)
+    if len(scored) != len(folds):
+        return None, None, WEIGHTED_UNSCORED
+    served = score.get("estimate")
+    if _finite([served]):
+        weighted, served = _mean(scored, weights), float(served)
+        if abs(weighted - served) > AGREES * max(abs(weighted), abs(served)):
+            return None, None, (
+                f"The {name}'s fold scores, each weighted by its fold's rows as the split's facts "
+                f"give them ({', '.join(f'{s:,}' for s in sizes)} of {sum(sizes):,} in each "
+                f"of {repeats} repeat{'s' if repeats != 1 else ''}), average to {weighted:.10g}, "
+                f"which is not the {name} it serves, {served:.10g}: the folds are not weighted "
+                f"by their own sizes, so the change has no number.")
+    return share, weights, None
 
 
 def _empty(before: Mapping[str, Any], same_folds: bool) -> dict[str, Any]:
@@ -250,14 +315,19 @@ def _empty(before: Mapping[str, Any], same_folds: bool) -> dict[str, Any]:
 
 def from_shares(after: Mapping[str, Any], before: Mapping[str, Any], *, same_folds: bool,
                 higher_is_better: bool, shares: tuple[float, float],
-                level: float = LEVEL) -> dict[str, Any]:
+                level: float = LEVEL,
+                weights: tuple[Sequence[float] | None, Sequence[float] | None] = (None, None)
+                ) -> dict[str, Any]:
     """:func:`change` once each arm's share is known (``shares``: the later fit's, then the
-    earlier's), and both scores are k-fold scores it covers."""
+    earlier's), and both scores are k-fold scores it covers; ``weights``, each arm's fold scores'
+    weights where its score is pooled on folds of different sizes (``_arm``)."""
     out = _empty(before, same_folds)
     if same_folds:  # one split's facts for both, each arm's scores of its folds (``_arm``)
-        got = paired(after["folds"], before["folds"], shares[0], level=level)
+        got = paired(after["folds"], before["folds"], shares[0], level=level,
+                     weights=weights[0])
     else:
-        got = unpaired(after["folds"], before["folds"], shares[0], shares[1], level=level)
+        got = unpaired(after["folds"], before["folds"], shares[0], shares[1], level=level,
+                       weights=weights)
     out.update(got)
     if out["difference"] is not None:
         diff = out["difference"]
@@ -280,16 +350,18 @@ def change(after: Mapping[str, Any], before: Mapping[str, Any], *, same_folds: b
     if same_folds:
         after_split = after_split if after_split is not None else before_split
         before_split = after_split
-    share_after, why = _arm(after, after_split, metric)
-    share_before, why_before = _arm(before, before_split, metric) if why is None else (None, why)
+    share_after, weights_after, why = _arm(after, after_split, metric)
+    share_before, weights_before, why_before = _arm(before, before_split, metric) \
+        if why is None else (None, None, why)
     if share_after is None or share_before is None:
         out = _empty(before, same_folds)
         out["why"] = why or why_before
         return out
     return from_shares(after, before, same_folds=same_folds, higher_is_better=higher_is_better,
-                       shares=(share_after, share_before), level=level)
+                       shares=(share_after, share_before), level=level,
+                       weights=(weights_after, weights_before))
 
 
-__all__ = ["LEVEL", "NO_SPLIT", "RANDOM_KFOLD", "ROUNDING", "SPLIT_FACTS", "WEIGHTED_MEAN",
-           "change", "fold_sizes", "folds_per_repeat", "from_shares", "paired", "split_facts",
-           "test_share", "unpaired"]
+__all__ = ["AGREES", "LEVEL", "NO_SPLIT", "RANDOM_KFOLD", "ROUNDING", "SPLIT_FACTS",
+           "WEIGHTED_MEAN", "WEIGHTED_UNSCORED", "change", "fold_sizes", "folds_per_repeat",
+           "from_shares", "paired", "same_scores", "split_facts", "test_share", "unpaired"]

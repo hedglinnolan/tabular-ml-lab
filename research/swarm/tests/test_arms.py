@@ -8,7 +8,8 @@ each path through the driver's own commands on a small dataset that is not one o
 
 Known truth: the event level from the card's own words; each default from what the ask offers in
 its order and the app's own guess and detection, built here; each random draw from numpy's
-generator at the same seed, drawn here; the record from the schema (``record.validate``)."""
+generator at the same seed, drawn here, the adjustment's columns each drawn in or out as the
+driver's composer takes them; the record from the schema (``record.validate``)."""
 from __future__ import annotations
 
 import json
@@ -160,6 +161,67 @@ def test_the_random_path_draws_as_numpy_does_at_its_seed_among_what_records_some
     other = arms.Random(Q, seed=8)
     assert [other.answer("missing", ask("missing", options), no_read)[0][0]
             for _ in range(40)] != got
+
+
+IN = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+OUT = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+
+
+def adjustment_ask(columns):
+    """The adjustment question as the driver composes it: a guessed group's one tap, and the
+    answers option over ``columns``, each column's three answers its fields."""
+    from research.swarm import options as opts
+
+    groups = [{"key": "confounder", "label": "Confounders", "columns": columns[:1],
+               "decision": {"kind": "set_adjustment", "exposure": "walks",
+                            "answers": {columns[0]: dict(IN)}}} if columns else None,
+              {"key": "unguessed", "label": "No guess", "columns": columns[1:],
+               "decision": None}]
+    composed = opts.compose("adjustment", {"key": "adjustment", "status": "open"}, {"state": {}},
+                            {"proposals": {"adjustment": {"exposure": "walks", "groups": [
+                                g for g in groups if g]}}}.get, None)
+    return composed, ask("adjustment", composed["options"])
+
+
+def test_the_random_path_draws_each_adjustment_column_in_or_out_as_numpy_does_at_its_seed():
+    """F4: the random path answers the adjustment question with every column the answers option
+    takes, each drawn in (a confounder's answers) or out (a cause of neither's), one draw of
+    numpy's generator at the seed a column, in the option's order; the driver's composer takes the
+    answer (``options.resolve``). Drawn again at the same seed, the same; at others, both ways
+    for each column."""
+    from research.swarm import options as opts
+
+    columns = ["age", "chronic_pain", "height_cm", "health_concern_score"]
+    composed, q = adjustment_ask(columns)
+    ids, sets, _ = arms.Random(Q, seed=7).answer("adjustment", q, no_read)
+    rng = np.random.default_rng(7)
+    drawn = [bool(rng.integers(2)) for _ in columns]
+    words = {True: ",".join(IN[k] for k in opts.ADJUSTMENT_ASKED),
+             False: ",".join(OUT[k] for k in opts.ADJUSTMENT_ASKED)}
+    assert ids == ["answers"] and sets == [f"{c}={words[d]}" for c, d in zip(columns, drawn)]
+    resolved = opts.resolve(composed, ids, sets)
+    assert resolved == {"kind": "set_adjustment", "exposure": "walks",
+                        "answers": {c: IN if d else OUT for c, d in zip(columns, drawn)}}
+    assert arms.Random(Q, seed=7).answer("adjustment", q, no_read)[:2] == (ids, sets)
+    seen = {c: set() for c in columns}
+    for seed in range(40):
+        _, drew, _ = arms.Random(Q, seed=seed).answer("adjustment", q, no_read)
+        for c, s in zip(columns, drew):
+            seen[c].add(s.split("=", 1)[1])
+    assert all(len(v) == 2 for v in seen.values())
+
+
+def test_with_no_column_to_answer_the_random_path_draws_among_the_options_as_before():
+    """The guard's other side: an adjustment question whose answers option takes no column draws
+    among the options that record something by themselves, as for any question."""
+    options = [opt("confounder", {"kind": "set_adjustment", "exposure": "walks",
+                                  "answers": {"age": dict(IN)}}), opt("other", {"kind": "k"}),
+               opt("answers", None, columns=[])]
+    q = ask("adjustment", options)
+    got = [arms.Random(Q, seed=s).answer("adjustment", q, no_read)[0][0] for s in range(20)]
+    rng_draws = [["confounder", "other"][int(np.random.default_rng(s).integers(2))]
+                 for s in range(20)]
+    assert got == rng_draws
 
 
 def test_the_random_path_keeps_the_cards_question_and_answers_each_declaration_once():

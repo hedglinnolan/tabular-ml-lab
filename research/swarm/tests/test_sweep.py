@@ -26,7 +26,17 @@ hand; and the options that take fields of their own: the card's rules read back 
 own sentences and from the pilot cards, each answer resolved by the driver's composer, each value
 built from a table here checked against the table, every builder both ways, none on the outcome
 or the declared exposure, and the crash sweep's answer of one, named by its source and superseding
-the unreached line of a report finished before.
+the unreached line of a report finished before. A revisit refused because the split is drawn
+(``sealed``) taken through the way its refusal names, both splits withdrawn and drawn again in the
+plan's order on a log built here and folded, visited and refused where that way is refused, and
+unlisted where it names none. Around an Estimate plan, named or the crash sweep's, each column
+the adjustment question offers toggled in or out by the modified disjunctive cause criterion with
+the plan's other answers fixed, previewed and posted as composed, and none under Predict, for
+another question or without the plan's answers. The engine recorded as the sweep starts and ends:
+one engine (a commit that leaves the tree as it was among them) can pass, another tree or
+modified files at the end refuse the report in words, as does a resumed run on another engine
+or progress holding work of a run that recorded none. A refit scored as the plan in every fold
+is not material, and one whose folds all moved by the same amount, or on other folds, is not read.
 The sweep on a real engine is ``test_sweep_engine.py``'s."""
 from __future__ import annotations
 
@@ -137,16 +147,38 @@ def test_a_refit_on_other_rows_is_the_unpaired_change_with_each_arms_inflation_b
     assert by_rule is material and change["material"] is material
 
 
-def test_a_change_with_no_number_reads_as_no_materiality_and_says_why():
-    """The same scores in every fold (an answer the fit does not read): no spread, so package
-    1's change has no number, and §7 reads none."""
+def test_a_refit_scored_the_same_as_the_plan_in_every_fold_is_not_material():
+    """The same scores in every fold, on the same folds (an answer the fit does not read): no
+    spread, so package 1's change has no number and says why, but the change is zero by
+    construction, so §7 reads it not material (F15), and so does the decision."""
     before, _ = draws(0.0)
     plan = scored(W.PLAN, record(before, digest="d0", fid="f0", low=0.63, high=0.67))
     refit = scored("question:missing", record(before, digest="d0", fid="f1", low=0.63,
                                               high=0.67))
     W.materiality(refit, plan, "prediction")
-    assert refit.change[0]["difference"] is None and refit.change[0]["why"]
-    assert refit.change[0]["material"] is None and refit.material is None
+    (change,) = refit.change
+    assert change["difference"] is None and "no fold-to-fold spread" in change["why"]
+    assert change["material"] is False and refit.material is False
+    (decision,) = W.decisions_of([W.Point("question", "missing")], [refit])
+    assert decision["material"] is False and decision["material_options"] == []
+
+
+@pytest.mark.parametrize("before, after, digest", [
+    (draws(0.0)[0], draws(0.0)[0] + 0.01, "d0"),
+    (np.full(25, 0.65), np.full(25, 0.65), "d1")], ids=["shifted_every_fold", "other_folds"])
+def test_a_change_with_no_number_that_is_not_the_plans_scores_again_is_not_read(before, after,
+                                                                                 digest):
+    """The guard's other side: every fold moved by the same 0.01 (a change, with no spread), or
+    the plan's very scores on other folds (another digest: an exclusion's, no fold the plan's;
+    both arms one value, so no spread), has no number, and §7 reads none: neither is the plan
+    scored again on its own folds."""
+    plan = scored(W.PLAN, record(before, digest="d0", fid="f0", low=0.63, high=0.67))
+    refit = scored("question:missing", record(after, digest=digest, fid="f1", low=0.63,
+                                              high=0.67))
+    W.materiality(refit, plan, "prediction")
+    (change,) = refit.change
+    assert change["difference"] is None and change["why"]
+    assert change["material"] is None and refit.material is None
 
 
 def test_a_refit_of_the_scheme_moves_no_model_and_is_read_so():
@@ -514,10 +546,13 @@ def test_material_needs_both_the_interval_and_half_the_plans_half_width(case, pa
 
 
 def a_sweep(tmp_path, *, only=None):
+    """A sweep around a plan with no decision, its start recorded on the engine as it is (a
+    report read without a run of it would hold no start, and pass nothing)."""
     sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
         target="y", purpose="prediction"), crash=True, plan="default", only=only)
     sweep.base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False},
                   "points": [], "skipped": []}
+    sweep.engines.append({**W.engine_version(), "at": W.now()})
     return sweep
 
 
@@ -576,6 +611,96 @@ def test_a_sweep_of_some_decisions_says_so_and_does_not_pass(tmp_path):
     assert W.passed({k: v for k, v in report.items() if k != "only"} | {"complete": True}) \
         is False  # a report that does not say what it swept
     assert W.passed(report | {"only": None, "defects": [{"refit": "x"}]}) is False
+
+
+# ── the engine a sweep ran on, recorded when it starts and when it ends (F10) ──
+
+ENGINE_1 = {"commit": "c1", "engine_tree": "t1", "engine_modified": False}
+
+
+def served_engines(monkeypatch, *engines):
+    """``sweep.engine_version`` serving ``engines`` in turn (the last one again once they are
+    served): what git would read at the sweep's start, then at its end."""
+    left = [dict(e) for e in engines]
+    monkeypatch.setattr(W, "engine_version", lambda: dict(left.pop(0) if len(left) > 1
+                                                          else left[0]))
+
+
+def ran(tmp_path, monkeypatch, *engines, folder="sweep"):
+    """A sweep around a plan with no decision, its plan already scored, run once with the engine
+    read as ``engines`` serve it: its report."""
+    served_engines(monkeypatch, *engines)
+    sweep = W.Sweep(tmp_path / folder, dataset="tiny", question=arms.Question(
+        target="y", purpose="prediction"), crash=True, plan="default")
+    if sweep.base is None:  # the template and the plan's refit as a run would have kept them
+        sweep.base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False},
+                      "points": [], "skipped": []}
+    sweep.done.setdefault(W.PLAN, W.Refit(W.PLAN, None, None, kind="scored"))
+    return sweep.run(object(), lambda s: "p0")
+
+
+@pytest.mark.parametrize("end", [
+    ENGINE_1,
+    {**ENGINE_1, "commit": "c2"},  # another commit that leaves turbotab/ as it was: one engine
+], ids=["same", "same_tree_other_commit"])
+def test_a_sweep_that_starts_and_ends_on_one_engine_names_both_and_can_pass(tmp_path,
+                                                                            monkeypatch, end):
+    report = ran(tmp_path, monkeypatch, ENGINE_1, end)
+    assert report["engine_changed"] is None and W.passed(report) is True
+    (start,) = report["engine_starts"]
+    assert {k: start[k] for k in ENGINE_1} == ENGINE_1 and start["at"]
+    assert {k: report[k] for k in ENGINE_1} == end  # the engine at the end, as before
+    assert "## The engine changed" not in W.table_md(report)
+
+
+@pytest.mark.parametrize("end, said", [
+    ({**ENGINE_1, "commit": "c2", "engine_tree": "t2"}, "ended on engine tree t2 (commit c2)"),
+    ({**ENGINE_1, "engine_modified": True},
+     "ended on engine tree t1 (commit c1), its tracked files modified"),
+], ids=["another_tree", "modified_files"])
+def test_a_sweep_whose_engine_changed_while_it_ran_is_refused_and_says_so(tmp_path, monkeypatch,
+                                                                         end, said):
+    report = ran(tmp_path, monkeypatch, ENGINE_1, end)
+    why = report["engine_changed"]
+    assert why is not None and W.passed(report) is False
+    assert "started on engine tree t1 (commit c1)" in why and said in why
+    assert "refused" in why
+    md = W.table_md(report | {"passed": W.passed(report)})
+    assert "passed: False" in md and f"## The engine changed while the sweep ran\n\n{why}" in md
+
+
+def test_a_resumed_sweep_holds_each_runs_start_and_is_refused_where_one_is_another_engine(
+        tmp_path, monkeypatch):
+    """A first run on tree t1, interrupted after its plan; the second run on tree t2 from its
+    start to its end: the results are of two engines, so the report is refused. Resumed on the
+    first run's engine, it can pass."""
+    ran(tmp_path, monkeypatch, ENGINE_1, ENGINE_1, folder="a")
+    other = {**ENGINE_1, "commit": "c2", "engine_tree": "t2"}
+    report = ran(tmp_path, monkeypatch, other, other, folder="a")
+    assert [s["engine_tree"] for s in report["engine_starts"]] == ["t1", "t2"]
+    assert "started on engine tree t1" in report["engine_changed"]
+    assert W.passed(report) is False
+    ran(tmp_path, monkeypatch, ENGINE_1, ENGINE_1, folder="b")
+    again = ran(tmp_path, monkeypatch, ENGINE_1, ENGINE_1, folder="b")
+    assert again["engine_changed"] is None and W.passed(again) is True
+
+
+def test_a_sweep_holding_work_from_a_run_that_recorded_no_engine_is_refused(tmp_path,
+                                                                            monkeypatch):
+    """Progress written by a run that recorded no start (before the sweep recorded one): the
+    engine that work ran on is not known, so the report is refused; with a start, it is not."""
+    folder = tmp_path / "old"
+    folder.mkdir()
+    base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False}, "points": [],
+            "skipped": []}
+    (folder / "progress.jsonl").write_text(
+        json.dumps({"template": base}) + "\n"
+        + json.dumps({"refit": W.Refit(W.PLAN, None, None, kind="scored").json()}) + "\n")
+    report = ran(tmp_path, monkeypatch, ENGINE_1, ENGINE_1, folder="old")
+    assert "recorded no engine when it started" in report["engine_changed"]
+    assert W.passed(report) is False
+    fresh = ran(tmp_path, monkeypatch, ENGINE_1, ENGINE_1, folder="new")
+    assert fresh["engine_changed"] is None
 
 
 # ── an engine outcome the walk meets after an option, classed ────────────────
@@ -1301,6 +1426,155 @@ def test_a_500_on_the_way_the_engine_names_is_an_engine_defect(tmp_path):
     assert W.passed(report) is False
 
 
+# ── a revisit refused because the split is drawn (F1): the way the engine names ──
+
+GRAIN_ONE = {"kind": "set_grain", "grain": "one_row_per_unit"}
+GRAIN_UNKNOWN = {"kind": "set_grain", "grain": "unknown"}
+SPLIT_A = {"kind": "set_split", "holdout": 0.0, "seed": 0}
+SPLIT_B = {"kind": "set_split", "holdout": 0.0, "seed": 1}
+GRAIN = W.Point("question", "grain", 6, "r6", GRAIN_ONE)
+SEALED_WORDS = ("The cross-validation folds are drawn, and changing whether a unit can appear in "
+                "more than one row changes what a row is: the folds name rows as they were. "
+                "Withdraw the split first, then draw it again.")
+
+
+class Sealed(Walked):
+    """A copy of a plan whose grain answer (record 6) was given before two split answers (records
+    7 and 8, neither reverted, so 8's draw is in force: ``decisions.fold``). As the engine's
+    ``seal._decision_a_waits_for_a_reseal`` holds it, reverting the grain is refused ``sealed``
+    while a split is in force, its one way forward the revert of the latest split in force
+    (``seal._reseal_exit``: "Re-draw: withdraw the folds, change this, then draw them again");
+    ``refuse`` ``"withdraw"`` refuses that revert, ``"no_way"`` offers none. Each post is a
+    record of the log, so what a refit leaves in force is the fold of what it posted; while the
+    grain is reverted the ask opens the grain question, else Fit is reached."""
+
+    def __init__(self, refuse=None):
+        super().__init__([])
+        self.refuse, self.calls = refuse, []
+        self.template = [(6, GRAIN_ONE), (7, SPLIT_A), (8, SPLIT_B)]
+        self.log = list(self.template)
+
+    def copy(self, pid):
+        self.log = list(self.template)  # a fresh copy of the template
+        return "c1"
+
+    def view(self):
+        return {**view_at(self.log), "stages": self.stages, "state": {}}
+
+    def _post(self, decision):
+        self.log.append((max(seq for seq, _ in self.log) + 1, dict(decision)))
+        return arms.Said("ok", {})
+
+    def _splits(self):
+        return [r for r in W.live(self.view()) if r.decision.kind == "set_split"]
+
+    def revisit(self, record, reason):
+        self.calls.append(("revisit", record))
+        if record == "r6" and self._splits():
+            exits = [{"id": None, "label": "Keep the folds as they are", "decision": None}]
+            if self.refuse != "no_way":
+                exits = [{"id": "x-redraw",
+                          "label": "Re-draw: withdraw the folds, change this, then draw them "
+                                   "again",
+                          "decision": {"kind": "revert", "decision_id": self._splits()[-1].id}}]
+            return arms.Said("refused", {}, by="server", code="sealed", message=SEALED_WORDS,
+                             exits=exits)
+        if record in ("r7", "r8") and self.refuse == "withdraw":
+            return arms.Said("refused", {}, by="server", code="split_read_later",
+                             message="The recorded scheme reads this split.",
+                             exits=[{"id": None, "label": "Keep the split", "decision": None}])
+        return self._post({"kind": "revert", "decision_id": record})
+
+    def ask(self):
+        from research.swarm.tests.test_arms import opt
+
+        if any(r.decision.kind == "set_grain" for r in W.live(self.view())):
+            return {"question": None, "fit_reached": True}
+        return {"question": {"key": "grain", "status": "open"},
+                "options": [opt("one_row_per_unit", GRAIN_ONE), opt("unknown", GRAIN_UNKNOWN)]}
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.calls.append(("answer", list(ids)))
+        return self._post({"one_row_per_unit": GRAIN_ONE, "unknown": GRAIN_UNKNOWN}[ids[0]])
+
+    def decide(self, decision, reason):
+        self.calls.append(("decide", dict(decision)))
+        return self._post(decision)
+
+    def fit(self, wait=0):
+        return arms.Said("refused", {"fit": {}}, by="driver", code="not_here",
+                         message="No fit is made here.")
+
+
+def swept_sealed(tmp_path, session):
+    sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
+        target="y", purpose="prediction"), crash=True, plan="default")
+    sweep.base = {"project": "p0", "digest": "d0", "seq": 8, "scoring": {"set": False},
+                  "points": [GRAIN.json()], "skipped": []}
+    sweep.done[W.PLAN] = W.Refit(W.PLAN, None, None, kind="scored",
+                                 digest=W.plan_digest(session.view()))
+    report = sweep.run(session, lambda s: "p0")
+    return report, {r["id"]: r for r in report["refits"]}
+
+
+def test_a_revisit_refused_as_the_split_is_drawn_takes_the_way_the_engine_names(tmp_path):
+    """F1: the grain's revisit is refused while the folds are drawn; the sweep withdraws the
+    split by the revert the refusal names (the latest in force first, then the one the next
+    refusal names), revisits the grain, answers each option, and draws the split again as the plan
+    had it, in the plan's order: the plan's latest draw is again the one in force, so the refit is
+    the plan with the option and nothing else (its digest that plan's, built here); the grain is
+    visited and the crash sweep passes."""
+    from turbotab.core import decisions as D
+
+    session = Sealed()
+    report, refits = swept_sealed(tmp_path, session)
+    assert report["unlisted"] == [] and report["unvisited"] == [] and report["defects"] == []
+    assert report["complete"] is True and W.passed(report) is True
+    (offered,) = report["offered"]
+    assert [o["id"] for o in offered["options"]] == ["one_row_per_unit", "unknown"]
+    assert offered["withdrawn"] == [{"what": "split", "column": None, "seq": 8, "record": "r8"},
+                                    {"what": "split", "column": None, "seq": 7, "record": "r7"}]
+    unknown = refits[f"{GRAIN.id}=unknown"]
+    assert [w["decision"]["seed"] for w in unknown["withdrawn"]] == [1, 0]  # in the order withdrawn
+    start = max(i for i, c in enumerate(session.calls) if c == ("revisit", "r6")) - 4
+    assert [c[0] for c in session.calls[start:start + 5]] == ["revisit"] * 5
+    assert [c[1] for c in session.calls[start:start + 5]] == ["r6", "r8", "r6", "r7", "r6"]
+    again = [c[1] for c in session.calls if c[0] == "decide"][-2:]
+    assert [d["seed"] for d in again] == [0, 1]  # drawn again in the plan's order
+    assert "the plan's split again (record 7)" in [a["answer"] for a in unknown["answered"]]
+    state = D.fold(W.records_of(session.view()))
+    assert (state.grain.grain, state.split.seed) == ("unknown", 1)
+    with_option = view_at([(6, GRAIN_UNKNOWN), (7, SPLIT_A), (8, SPLIT_B)])
+    assert unknown["digest"] == W.plan_digest(with_option) != report["template"]["digest"]
+    assert refits[f"{GRAIN.id}=one_row_per_unit"]["kind"] == "duplicate"
+    assert "the split (record 8), the split (record 7); answered again" in W.table_md(report)
+
+
+def test_where_the_split_cannot_be_withdrawn_the_decision_is_visited_and_refused(tmp_path):
+    report, refits = swept_sealed(tmp_path, Sealed(refuse="withdraw"))
+    revisit = refits[f"{GRAIN.id}={W.REVISIT}"]
+    assert revisit["kind"] == "refused" and revisit["refused"]["at"] == "revisit"
+    assert (revisit["refused"]["code"], revisit["refused"]["message"]) == (
+        "split_read_later", "The recorded scheme reads this split.")
+    assert [w["what"] for w in revisit["refused"]["withdrawn"]] == ["split"]
+    assert report["unlisted"] == [] and report["complete"] is True and report["defects"] == []
+    (decision,) = report["decisions"]
+    assert decision["refused_share"] == 1.0 and decision["refused_codes"] == {
+        "split_read_later": 1}
+
+
+def test_a_sealed_revisit_that_names_no_withdrawal_is_unlisted_and_withdraws_nothing(tmp_path):
+    """The guard's other side: a refusal ``sealed`` whose ways forward revert nothing names no
+    way to take, so the decision is unlisted in the engine's words, and nothing is withdrawn."""
+    session = Sealed(refuse="no_way")
+    report, refits = swept_sealed(tmp_path, session)
+    (unlisted,) = report["unlisted"]
+    assert unlisted["point"] == GRAIN.id and "sealed" in unlisted["why"]
+    assert SEALED_WORDS in unlisted["why"]
+    assert [c for c in session.calls if c[0] == "revisit" and c[1] != "r6"] == []
+    assert report["complete"] is False and W.passed(report) is False
+
+
 LINEAR = {"kind": "select_models", "models": ["linear"]}
 
 
@@ -1910,6 +2184,147 @@ def test_an_adjustment_set_of_ones_own_is_the_covariates_the_roles_name_each_a_c
     answers, why = W.Fields(q, roles={**roles, "age": "exposure", "height": "exposure"}).answers(
         ADJUSTMENT, option("answers"))
     assert answers == [] and "records nothing by itself" in why and "no covariate" in why
+
+
+# ── the adjustment answers toggled one column at a time around an Estimate plan (F4) ──
+
+CONFOUNDER = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+NEITHER = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+UNKNOWN = {"causes_exposure": "unknown", "causes_outcome": "unknown", "after_exposure": "unknown"}
+TOGGLED = W.Point("question", "adjustment", 11, "r11", {
+    "kind": "set_adjustment", "exposure": "walks",
+    "answers": {"age": CONFOUNDER, "pain": UNKNOWN, "height": NEITHER}})
+ESTIMATE_Q = arms.Question(target="sbp", purpose="inference", exposure="walks")
+GUESSED = {"id": "confounder", "label": "Confounders",
+           "decision": {"kind": "set_adjustment", "exposure": "walks",
+                        "answers": {"age": CONFOUNDER}}, "needs": None, "columns": ["age"]}
+ANSWERS = {"id": "answers", "label": None, "decision": None, "needs": None,
+           "columns": ["age", "pain", "height"]}
+
+
+def toggling_sweep(tmp_path, *, crash, question=ESTIMATE_Q):
+    sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=question, crash=crash,
+                    plan="default" if crash else "haiku-conventional")
+    sweep.base = {"project": "p0", "digest": "d0", "seq": 11, "scoring": {"set": False},
+                  "points": [TOGGLED.json()], "skipped": []}
+    sweep.fields = W.Fields(question, roles={"age": "covariate", "pain": "exposure",
+                                             "height": "covariate", "walks": "exposure"})
+    return sweep
+
+
+@pytest.mark.parametrize("crash", [False, True], ids=["named_plan", "crash"])
+def test_around_an_estimate_plan_each_offered_column_is_toggled_with_the_others_fixed(
+        tmp_path, crash):
+    """F4: one refit per column the adjustment question offers (the answers option's columns, as
+    the driver composes it), that column answered in where the plan leaves it out and out where
+    the plan adjusts for it, every other column answered as the plan answered it. By the modified
+    disjunctive cause criterion (VanderWeele 2019): age, a cause of the exposure and the outcome,
+    is adjusted for, so it is toggled out; pain, of unknown timing, is declared without it beside
+    with it (out of the primary model), and height, a cause of neither, is left out, so both are
+    toggled in. In is a confounder's answers (yes, yes, no), out a cause of neither's (no, no,
+    no). Around a named plan, too, where the answers option is otherwise unreached."""
+    from turbotab.core.estimand import derive
+
+    sweep = toggling_sweep(tmp_path, crash=crash)
+    listed = {"point": TOGGLED.id, "why": None, "options": [GUESSED, ANSWERS]}
+    planned = {p["id"]: p for p in sweep._planned(object(), TOGGLED, listed)}
+    plan = TOGGLED.decision["answers"]
+    expected = {"age": ("out", NEITHER), "pain": ("in", CONFOUNDER), "height": ("in", CONFOUNDER)}
+    for column, (way, answer) in expected.items():
+        p = planned[f"{TOGGLED.id}=answers@toggle:{column}:{way}"]
+        fielded = p["fielded"]
+        assert fielded.source == "toggle" and fielded.ids == ["answers"]
+        assert fielded.decision == {"kind": "set_adjustment", "exposure": "walks",
+                                    "answers": {**plan, column: answer}}
+        assert list(fielded.decision["answers"]) == ["age", "pain", "height"]  # the plan's order
+        # The engine's criterion agrees: the column flips, and no other moves.
+        flipped = {c: derive(a).adjusted for c, a in fielded.decision["answers"].items()}
+        assert flipped == {c: derive(a).adjusted != (c == column) for c, a in plan.items()}
+        assert f"`{column}` toggled {way}" in fielded.words
+    assert f"{TOGGLED.id}=confounder" in planned  # an option that records itself, as listed
+    if not crash:  # around a named plan the toggles answer the answers option: none unreached
+        assert not [p for p in planned.values() if p.get("why")]
+        assert set(planned) == {f"{TOGGLED.id}=confounder", *(
+            f"{TOGGLED.id}=answers@toggle:{c}:{w}" for c, (w, _) in expected.items())}
+    else:  # beside the crash sweep's own set of one's own
+        assert f"{TOGGLED.id}=answers@built:covariates" in planned
+
+
+def test_no_toggle_is_made_under_predict_for_another_question_or_without_the_plans_answers(
+        tmp_path):
+    """The guard's other side: under Predict, for another question's options, and for an answers
+    option the plan's record holds no answers for, no column is toggled: around a named plan the
+    answers option stays unreached, with why."""
+    listed = {"point": TOGGLED.id, "why": None, "options": [GUESSED, ANSWERS]}
+    predict = toggling_sweep(tmp_path / "p", crash=False,
+                             question=arms.Question(target="sbp", purpose="prediction"))
+    other = W.Point("question", "missing", 11, "r11", TOGGLED.decision)
+    unanswered = W.Point("question", "adjustment", 11, "r11", None)
+    for sweep, point in ((predict, TOGGLED),
+                         (toggling_sweep(tmp_path / "o", crash=False), other),
+                         (toggling_sweep(tmp_path / "u", crash=False), unanswered)):
+        planned = sweep._planned(object(), point, {**listed, "point": point.id})
+        assert not [p for p in planned if "@toggle:" in p["id"]]
+        (bare,) = [p for p in planned if p["option"] == "answers"]
+        assert bare["why"].startswith(W.NOTHING)
+
+
+class Adjusting(Walked):
+    """A copy of an Estimate plan whose revisit opens the adjustment question again with its
+    answers option over three columns; each preview and post kept in ``calls``; once an
+    adjustment is posted, Fit is reached. Every refit is the plan's duplicate (no Fit pressed)."""
+
+    def __init__(self):
+        super().__init__([])
+        self.calls, self.reopened = [], False
+
+    def revisit(self, record, reason):
+        self.reopened = True
+        return arms.Said("ok", {})
+
+    def ask(self):
+        from research.swarm.tests.test_arms import ask
+
+        if self.reopened:
+            return ask("adjustment", [GUESSED, ANSWERS])
+        return {"question": None, "fit_reached": True}
+
+    def preview_of(self, decision):
+        self.calls.append(("preview_of", dict(decision)))
+        return arms.Said("ok", {"previewed": dict(decision)})
+
+    def decide(self, decision, reason):
+        self.reopened = False
+        self.calls.append(("decide", dict(decision)))
+        return arms.Said("ok", {})
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.reopened = False
+        self.calls.append(("answer", list(ids), list(sets)))
+        return arms.Said("ok", {})
+
+
+@pytest.mark.parametrize("crash", [False, True], ids=["named_plan", "crash"])
+def test_a_toggle_is_previewed_and_posted_as_the_decision_it_composed(tmp_path, crash):
+    """A toggle's refit posts the plan's adjustment with its one column flipped, as composed (the
+    driver's answers option takes three answers a column, and the plan's may hold more), the crash
+    sweep previewing it first; the refit keeps the decision and what it was answered with."""
+    sweep = toggling_sweep(tmp_path, crash=crash)
+    session = Adjusting()
+    sweep.done[W.PLAN] = W.Refit(W.PLAN, None, None, kind="scored",
+                                 digest=W.plan_digest(session.view()))
+    report = sweep.run(session, lambda s: "p0")
+    rid = f"{TOGGLED.id}=answers@toggle:pain:in"
+    refit = {r["id"]: r for r in report["refits"]}[rid]
+    decision = {"kind": "set_adjustment", "exposure": "walks",
+                "answers": {**TOGGLED.decision["answers"], "pain": CONFOUNDER}}
+    assert refit["decision"] == decision and refit["answered_with"]["source"] == "toggle"
+    assert refit["answered_with"]["decision"] == decision
+    posted = [c for c in session.calls if c[0] in ("preview_of", "decide")
+              and c[1] == decision]
+    assert posted == ([("preview_of", decision)] if crash else []) + [("decide", decision)]
+    assert refit["answered"][0]["answer"] == rid and refit["answered"][0]["kind"] == "ok"
+    assert {f["refit"] for f in report["fielded"]} >= {rid}
 
 
 def test_a_cut_point_of_ones_own_is_the_cards_held_out_rows_and_else_unreached():

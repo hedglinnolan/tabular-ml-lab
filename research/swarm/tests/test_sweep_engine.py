@@ -23,7 +23,11 @@ and its whole population as one answer; each answer's rows, read from the flow t
 equal to a pandas filter of the same codes; a 500 induced on one card rule's preview, a defect; a
 resumed crash sweep on a report finished before, fitting only the new options, each fit's record
 written by the server three seconds late and each fit still read as scored; and, under Estimate,
-the adjustment set of one's own as the covariates the plan's roles name.
+the adjustment set of one's own as the covariates the plan's roles name, and each column the
+adjustment question offers toggled in or out with the plan's other answers fixed, each fitted
+or refused in words, the two the default roles call exposures among them. On the small table,
+the grain's revisit, refused while the folds are drawn, taken by withdrawing the split as the
+refusal names and drawing it again: the grain visited and no defect met.
 
 A refit's wait and the estimate stages after a fitted refit (the panel audit's F1 and N2), under
 Estimate on the walking table, with stand-in stages run as jobs in the workers
@@ -940,18 +944,27 @@ def walking_table(path):
     return frame
 
 
-@pytest.mark.slow
-def test_an_adjustment_set_of_ones_own_is_the_covariates_the_roles_name(tmp_path):
-    """Under Estimate the adjustment's set of one's own is answered with the covariates the plan's
-    roles name, each a confounder of the declared exposure, previewed, answered and fitted."""
-    walking_table(tmp_path / "walking.csv")
+@pytest.fixture(scope="module")
+def adjusted(tmp_path_factory):
+    """The crash sweep of the adjustment question on the walking table, under Estimate, and the
+    template's roles."""
+    work = tmp_path_factory.mktemp("adjusted")
+    walking_table(work / "walking.csv")
     question = arms.Question(target="sbp_mmhg", purpose="inference", exposure="walks_daily",
                              meaning="systolic blood pressure (mmHg)")
-    report = W.crash("walking", tmp_path / "out", data=tmp_path / "walking.csv",
+    report = W.crash("walking", work / "out", data=work / "walking.csv",
                      question=question, only=["question:adjustment"])
-    with W.arms.Local(tmp_path / "out" / "home") as session:
+    with W.arms.Local(work / "out" / "home") as session:
         session.use(report["template"]["project"])
         roles = session.view()["state"]["roles"]
+    return {"report": report, "roles": roles}
+
+
+@pytest.mark.slow
+def test_an_adjustment_set_of_ones_own_is_the_covariates_the_roles_name(adjusted):
+    """Under Estimate the adjustment's set of one's own is answered with the covariates the plan's
+    roles name, each a confounder of the declared exposure, previewed, answered and fitted."""
+    report, roles = adjusted["report"], adjusted["roles"]
     plan = next(p for p in report["points"] if p["id"] == "question:adjustment")
     covariates = [c for c in plan["decision"]["answers"] if roles.get(c) == "covariate"]
     assert covariates  # the roles name some
@@ -967,6 +980,82 @@ def test_an_adjustment_set_of_ones_own_is_the_covariates_the_roles_name(tmp_path
     assert not [a for a in r["answered"][1:] if ":adjustment=" in a["answer"]], r["answered"]
     if r["kind"] == "scored":
         assert r["digest"] != report["baseline"]["digest"]
+
+
+@pytest.mark.slow
+def test_each_column_the_adjustment_question_offers_is_toggled_and_fitted(adjusted):
+    """F4 on the engine: one refit per column the adjustment question offers (the answers
+    option's columns, as the driver lists them), the plan's answers with that column flipped (in:
+    a confounder's answers; out: a cause of neither's) and every other as the plan answered it;
+    each previewed, posted and fitted, its estimate read or refused in the engine's words, never
+    an engine defect. The default roles call chronic_pain and health_concern_score exposures, not
+    covariates, so the crash sweep's own set of one's own never moves them; each is toggled all
+    the same."""
+    report = adjusted["report"]
+    confounder = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+    neither = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+    plan = next(p for p in report["points"] if p["id"] == "question:adjustment")["decision"]
+    (offered,) = report["offered"]
+    (answers,) = [o for o in offered["options"] if o["id"] == "answers"]
+    columns = [c for c in answers["columns"] if c in plan["answers"]]
+    assert {"chronic_pain", "health_concern_score", "age", "height_cm"} <= set(columns)
+    assert {adjusted["roles"][c] for c in ("chronic_pain", "health_concern_score")} == {
+        "exposure"}
+    toggles = {r["option"]: r for r in report["refits"] if "@toggle:" in r["option"]}
+    assert len(toggles) == len(columns)
+    for c in columns:
+        (r,) = [r for o, r in toggles.items() if o.startswith(f"answers@toggle:{c}:")]
+        way = r["option"].rsplit(":", 1)[1]
+        assert r["decision"]["exposure"] == "walks_daily"
+        flipped = {k: {q: a[q] for q in confounder} for k, a in r["decision"]["answers"].items()}
+        for k, a in plan["answers"].items():
+            want = (confounder if way == "in" else neither) if k == c else {
+                q: a[q] for q in confounder}
+            assert flipped[k] == want, (c, k)
+        assert r["kind"] in ("scored", "refused"), (r.get("refused") or r.get("failed"))
+        assert r["answered_with"]["source"] == "toggle"
+        if r["kind"] == "refused":
+            assert r["refused"]["code"] and r["refused"]["message"]
+    assert report["defects"] == [] and report["complete"] is True
+
+
+# ── a revisit refused because the split is drawn (F1), on the engine ─────────
+
+
+@pytest.mark.slow
+def test_a_grain_revisit_the_drawn_split_holds_is_taken_and_every_option_visited(tmp_path):
+    """F1 on the engine: on the small table (no column names a person, so the grain is asked),
+    the grain's revisit is refused ``sealed`` while the folds are drawn; the sweep withdraws the
+    split by the way the refusal names, revisits the grain, answers each option and draws the
+    split again as the plan had it; the grain is visited and no defect is met, so the sweep
+    passes but for the one decision it was told to sweep."""
+    data = table(tmp_path / "tiny.csv")
+    report = W.crash("tiny", tmp_path / "out", data=data, question=QUESTION,
+                     only=["question:grain"])
+    with W.arms.Local(tmp_path / "out" / "home") as session:
+        session.use(report["template"]["project"])
+        log = session.view()["decisions"]
+    splits = [r for r in log if r["decision"]["kind"] == "set_split"]
+    assert splits and [r for r in log if r["decision"]["kind"] == "set_grain"]
+    (offered,) = report["offered"]
+    assert offered["why"] is None and report["unlisted"] == []
+    assert [w["what"] for w in offered["withdrawn"]] == ["split"] * len(offered["withdrawn"])
+    assert offered["withdrawn"][0]["record"] == splits[-1]["id"]
+    assert report["complete"] is True and report["defects"] == []
+    assert W.passed(report) is False and W.passed(report | {"only": None}) is True
+    refits = [r for r in report["refits"] if r["point"] == "question:grain"]
+    assert {r["option"] for r in refits} >= {o["id"] for o in offered["options"]}
+    for r in refits:
+        assert r["kind"] != "failed", r
+        answered = [a for a in r["answered"] if a["answer"] == r["id"]]
+        if r["withdrawn"] and answered and answered[0]["kind"] == "ok":
+            # The option recorded: the split drawn again after it, as the plan had it.
+            again = [a for a in r["answered"] if a["answer"].startswith("the plan's split again")]
+            assert again and all(a["kind"] == "ok" for a in again), r["answered"]
+        elif answered:  # the option refused at its answer, in the engine's words: no draw after
+            assert r["kind"] == "refused" and r["refused"]["at"] == "answer", r
+    (own,) = [r for r in refits if r["option"] == "one_row_per_unit"]
+    assert own["kind"] == "duplicate" and own["duplicate_of"] == "plan"
 
 
 # ── a refit's wait, and the estimate stages after a fitted refit (the panel audit's F1, N2) ──
