@@ -385,6 +385,83 @@ def test_the_gate_names_each_thing_missing_with_a_way_forward(tmp_path):
     assert gate.missing(changed)[0].code == "input_changed"
 
 
+def test_a_stage_that_refused_in_words_is_reported_as_its_refusal(tmp_path):
+    """A stage whose status serves a typed refusal (``graph.Refused``: a fit-time refusal,
+    SWARM_PLAN §8) is reported as that refusal: its code, its words said as refused, with no
+    exception's name, and its ways forward with their decisions, where the export said it
+    "failed" and offered only to compute it again, which refuses again. A refusal a stage serves
+    for one it waits on is said once, naming the stage that refused. A status with no refusal is
+    an error the engine did not type, still ``result_failed``."""
+    from turbotab.core.graph import Refused
+
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    log.append(d.SetTarget(column="y"), sentence=_say)
+    log.append(d.SetPurpose(purpose="inference"), sentence=_say)
+    log.append(d.validate({"kind": "lock_plan"}, {"state": log.state()}), sentence=_say)
+    words = ("None of the chosen model families has a coefficient table, so there is no effect "
+             "to report; choose the linear model.")
+    add = {"label": "Add Linear model, which has a coefficient table",
+           "decision": {"kind": "select_models", "models": ["ridge", "linear"]}}
+
+    def status(name: str, error: str | None = None, refusal: Any = None) -> Any:
+        return SimpleNamespace(status=name, key="k", error=error, missing=[], refusal=refusal)
+
+    fresh = status("fresh")
+    own = Refused(stage="effects", code="no_coefficient_table", message=words, exits=[add])
+    source = _source(log.records(), statuses={
+        "cohort": fresh, "design": fresh, "fit": fresh,
+        "effects": status("error", f"ValueError: {words}", own)})
+    [found] = gate.missing(source)
+    assert found.code == "no_coefficient_table"
+    assert found.message == ("Table 2 (the declared models) was refused, so its result cannot be "
+                             f"reported: {words}")
+    assert found.exits == [add]
+    with pytest.raises(d.Refusal) as caught:
+        gate.check(source)
+    assert caught.value.code == "no_coefficient_table"
+    [way] = caught.value.exits
+    assert way["label"] == add["label"]
+    assert d.parse_decision(way["decision"]).models == ["ridge", "linear"]
+
+    # Waited on, as the graph serves it (``graph.Engine._status``: a stage whose first failed
+    # dependency refused serves that refusal): the split refused, a stage the bundle does not
+    # report; the model matrix waits on it, the fit and Table 2 on the model matrix, and each
+    # serves the split's refusal, so the model matrix names the split, as the app names that
+    # answer ("the split"), once. Then the model matrix refused, and the fit and Table 2 serve
+    # its own.
+    held = {"label": "Hold out a share of the rows", "decision": None}
+    split = Refused(stage="split", code="seal_refused", message="No analyzed row would be held out.",
+                    exits=[held])
+    waited = _source(log.records(), statuses={
+        "cohort": fresh, "design": status("error", "Needs 'split', which failed.", split),
+        "fit": status("error", "Needs 'design', which failed.", split),
+        "effects": status("error", "Needs 'design', which failed.", split)})
+    [found] = gate.missing(waited)
+    assert (found.code, found.exits) == ("seal_refused", [held])
+    assert found.message == ("The model matrix waits on the split, which was refused, so its "
+                             "result cannot be reported: No analyzed row would be held out.")
+    matrix = Refused(stage="design", code="no_predictors", message="No column is a predictor.")
+    upstream = _source(log.records(), statuses={
+        "cohort": fresh, "design": status("error", "ValueError: No column is a predictor.", matrix),
+        "fit": status("error", "Needs 'design', which failed.", matrix),
+        "effects": status("error", "Needs 'design', which failed.", matrix)})
+    [found] = gate.missing(upstream)
+    assert (found.code, found.exits) == ("no_predictors", [])
+    assert found.message == ("The model matrix was refused, so its result cannot be reported: No "
+                             "column is a predictor.")
+
+    # Silent where the status serves no refusal: an error the engine did not type, as it was.
+    crashed = _source(log.records(), statuses={
+        "cohort": fresh, "design": fresh, "fit": fresh,
+        "effects": status("error", "KeyError: 'walks_daily'")})
+    [found] = gate.missing(crashed)
+    assert found.code == "result_failed"
+    assert found.message == ("Table 2 (the declared models) failed, so its result cannot be "
+                             "reported: KeyError: 'walks_daily'.")
+    assert found.exits == [{"label": "Compute table 2 (the declared models) again",
+                            "decision": None}]
+
+
 # ── the checklists ───────────────────────────────────────────────────────────
 
 

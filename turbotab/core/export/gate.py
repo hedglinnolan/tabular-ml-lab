@@ -3,8 +3,9 @@ journey; §3.6).
 
 A manuscript bundle states a finished analysis: its methods are the record's sentences as they
 stand, its tables the declared result. So the export refuses — HTTP 409, never a partial bundle —
-while anything it would report is not settled yet, and the refusal names each thing missing, with
-a way forward for each (BLUEPRINT §3's refusal shape):
+while anything it would report is not settled yet, and the refusal names each thing missing, each
+with its ways forward (BLUEPRINT §3's refusal shape): at least one, except for a stage's refusal in
+words that offers none, which is said with none (computing it again would refuse again):
 
 * **an input file changed** since TurboTab read it: no record could name the data the results
   came from (its bytes no longer match the fingerprint recorded when it was read);
@@ -21,7 +22,12 @@ a way forward for each (BLUEPRINT §3's refusal shape):
     final model is not declared and no held-out score is the result yet; or nothing could be
     declared (``selection.declared_result``'s "not_declared");
 * **a result is not computed**: a stage the bundle reports (:func:`result_stages`) is still being
-  computed, waits for an answer, or failed;
+  computed, waits for an answer, failed, or was refused in words (a fit-time refusal,
+  ``graph.StageRefusal``, which its status serves as its ``refusal``). A refusal is said as the
+  stage served it, with its own code, words and ways forward (none where it offers none:
+  computing it again would refuse again), the stage named as refused (or as waiting on the one
+  that refused), and once where the stages after it serve it as theirs; only an error the engine
+  did not type is said as failed, with computing it again as the way forward;
 * **the estimates are withheld** while a question they rest on is unanswered (WP17's gate), or,
   under prediction, until Fit is pressed (P0.8).
 
@@ -44,6 +50,9 @@ PLAN_QUESTIONS = ("open_seal",)
 STAGE_NAMES = {"cohort": "The participant flow", "design": "The model matrix",
                "fit": "The fit", "effects": "Table 2 (the declared models)",
                "calibration": "The regression calibration (the declared secondary analysis)"}
+# The stages the bundle does not report that are named, where one waits on them, by the answer they
+# compute, as the app names that answer (``voice``'s subject of its slot): the split.
+ANSWER_STAGES = ("split",)
 OPEN = ("open", "waiting")
 
 
@@ -94,6 +103,36 @@ def _listed(items: list[str]) -> str:
     if len(items) <= 1:
         return "".join(items)
     return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _stage_name(stage: str) -> str:
+    """What the refusal calls ``stage``: :data:`STAGE_NAMES`, else for one of
+    :data:`ANSWER_STAGES` the app's name for the answer it computes, else the engine's name."""
+    if stage in STAGE_NAMES:
+        return STAGE_NAMES[stage]
+    if stage in ANSWER_STAGES:
+        from turbotab.core.voice import _SLOT_SUBJECT
+
+        subject = _SLOT_SUBJECT[stage]
+        return subject[:1].upper() + subject[1:]
+    return f"The {stage} stage"
+
+
+def _refused(stage: str, refused: Any, said: set[tuple[str, str, str]]) -> Missing | None:
+    """A stage's refusal in words (its status's ``refusal``, ``graph.Refused``) as the export says
+    it: the refusal's own code, words and ways forward, the stage named as refused, not failed.
+    A refusal the stage serves for one it waits on names that stage. None where ``said`` holds it
+    already (the fit and Table 2 serve the model matrix's refusal as theirs)."""
+    whose = str(_get(refused, "stage") or stage)
+    code, words = str(_get(refused, "code")), str(_get(refused, "message"))
+    if (whose, code, words) in said:
+        return None
+    said.add((whose, code, words))
+    head = (f"{_stage_name(stage)} was refused" if whose == stage else
+            f"{_stage_name(stage)} waits on {_stage_name(whose)[:1].lower()}"
+            f"{_stage_name(whose)[1:]}, which was refused")
+    return Missing(code, f"{head}, so its result cannot be reported: {words}",
+                   [dict(e) for e in _get(refused, "exits") or []])
 
 
 def missing(source: Any) -> list[Missing]:
@@ -155,13 +194,19 @@ def missing(source: Any) -> list[Missing]:
             out.append(Missing("plan_open", (
                 f"No result is declared: {result.get('sentence') or 'the fit declared none.'}"),
                 [{"label": "Choose the model families again", "decision": None}]))
+    said: set[tuple[str, str, str]] = set()  # each stage's refusal in words, said once
     for stage in result_stages(state):
         status = source.status(stage)
         name = str(_get(status, "status") or "idle")
         if name == "fresh":
             continue
-        label = STAGE_NAMES.get(stage, f"The {stage} stage")
-        if name == "error":
+        label = _stage_name(stage)
+        refused = _get(status, "refusal") if name == "error" else None
+        if refused is not None:
+            found = _refused(stage, refused, said)
+            if found is not None:
+                out.append(found)
+        elif name == "error":
             out.append(Missing("result_failed", (
                 f"{label} failed, so its result cannot be reported: "
                 f"{_get(status, 'error') or 'no reason was given.'}"),
