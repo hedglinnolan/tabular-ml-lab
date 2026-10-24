@@ -173,8 +173,8 @@ def test_one_record_per_distinct_fit_withheld_as_the_stage_route_and_never_rewri
     assert document["withheld"] == served["withheld"]
     assert document["families"] == [{
         "family": "linear", "label": by_family(served)["linear"]["label"], "cv": {},
-        "holdout": None, "intervals": None, "calibration": None, "effect": None, "sequence": [],
-        "marginal": None, "e_values": []}]
+        "holdout": None, "intervals": None, "calibration": None, "effect": None, "refusal": None,
+        "sequence": [], "marginal": None, "e_values": []}]
     assert document["result"] == served.get("result")
 
     # A press that fits nothing new writes no record, however often it is pressed.

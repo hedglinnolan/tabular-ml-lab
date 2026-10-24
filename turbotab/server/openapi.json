@@ -14618,6 +14618,16 @@
             ],
             "title": "Effect"
           },
+          "refusal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Refused"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sequence": {
             "items": {
               "additionalProperties": true,
@@ -14657,6 +14667,7 @@
           "intervals",
           "calibration",
           "effect",
+          "refusal",
           "sequence",
           "marginal",
           "e_values"

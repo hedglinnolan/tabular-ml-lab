@@ -533,6 +533,30 @@ def _stage_served(result: Any) -> dict[str, Any]:
     return {"key": result.key, "fresh": result.fresh, "status": result.status}
 
 
+def _has_table(family: str) -> bool:
+    """Whether ``family`` gives a coefficient table under inference, as the effects stage reads it
+    (``stages.effects.has_coefficient_table``); a family the engine does not register has none."""
+    from turbotab.core.models.base import get_family
+    from turbotab.core.stages.effects import has_coefficient_table
+
+    try:
+        return has_coefficient_table(get_family(family))
+    except KeyError:
+        return False
+
+
+def _no_table_refusal(status: Any) -> dict[str, Any] | None:
+    """The effects stage's own refusal where no chosen family has a coefficient table (its code
+    ``stages.effects.NO_COEFFICIENT_TABLE``, its words and its ways forward), as its status serves
+    it for the current key; None for any other status."""
+    from turbotab.core.stages.effects import NO_COEFFICIENT_TABLE
+
+    refused = getattr(status, "refusal", None)
+    if refused is None or refused.stage != "effects" or refused.code != NO_COEFFICIENT_TABLE:
+        return None
+    return refused.model_dump(mode="json")
+
+
 def _other_goal(then: str, now: str) -> str:
     return (f"This fit was computed under {then}, and the goal is now {now}: a fit's numbers are "
             f"served only under the goal it was computed for.")
@@ -2500,12 +2524,18 @@ class ProjectService:
         the post-seal decisions that changed it, and how the split drew the held-out rows (its
         basis, its chronology, and whether they make the held-out scores exploratory). Under
         Estimate: the estimand, each family's rows of the exposure from the fit and, from the
-        effects stage, its sequence fits, its marginal contrast and its E-values.
+        effects stage, its sequence fits, its marginal contrast and its E-values. A family whose
+        fit gives no coefficient table (``stages.effects.has_coefficient_table``: a penalized
+        family's shrunk rows, a family with no coefficients) serves no rows of the exposure: in
+        their place, ``refusal`` is the effects stage's own refusal for it (``no_coefficient_table``,
+        its words and ways forward, as the stage's status serves them) where the stage gives one,
+        since no chosen family has a table; beside a family that has one, the stage gives none.
 
         What is served counts as shown: the families whose cross-validated scores the fit serves,
         fresh or not, are kept as seen for the outcome that fit predicts (:meth:`_fit_outcome`); a
         fit that is not the current one and whose outcome is not known serves no score. An
-        estimate served under the plan's lock makes the lock stand."""
+        estimate served under the plan's lock makes the lock stand: the rows of the exposure
+        served here, and the effects stage's estimates."""
         from turbotab.core.models.selection import note_seen, scored_in
 
         self.workspace.get(pid)
@@ -2554,16 +2584,20 @@ class ProjectService:
             by_family = {str(f["family"]): f for f in effects.get("families") or []
                          if isinstance(f, dict) and f.get("family")}
             fitted = {m["family"]: m for m in models}
+            refusal = _no_table_refusal(self.engine.status(pid).get("effects"))
             for name in [*fitted, *(f for f in by_family if f not in fitted)]:
                 m, e = fitted.get(name, {}), by_family.get(name, {})
+                tabled = _has_table(name)
                 out["families"].append({
                     "family": name, "label": m.get("label") or e.get("label"),
-                    "effect": m.get("coefficients"), "sequence": e.get("sequence") or [],
-                    "marginal": e.get("marginal"),
+                    "effect": m.get("coefficients") if tabled else None,
+                    "refusal": None if tabled else refusal,
+                    "sequence": e.get("sequence") or [], "marginal": e.get("marginal"),
                     "e_values": [{"feature": s["feature"], "e_value": s["e_value"]}
                                  for s in e.get("sensitivity") or []
                                  if isinstance(s, dict) and s.get("e_value") is not None]})
-            self._note_shown(pid, "fit", fit)
+            self._note_shown(pid, "fit", {"models": [{"coefficients": f["effect"]}
+                                                     for f in out["families"] if f["effect"]]})
             self._note_shown(pid, "effects", effects)
         return out
 

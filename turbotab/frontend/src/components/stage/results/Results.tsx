@@ -32,7 +32,7 @@ import {
 import { glyphOf, sealPhase } from "../seal/phase";
 import { SaveMenu } from "../save/SaveMenu";
 import { Rich } from "../text";
-import { Coefficients } from "./Coefficients";
+import { Coefficients, withoutTable, withoutTableNote } from "./Coefficients";
 import { Comparison } from "./Comparison";
 import { Curves } from "./Curves";
 import {
@@ -267,9 +267,11 @@ export function Results({ pid, view, data }: Props) {
                     title: `${linear[0]!.model.label}: coefficients of the exposures`,
                     caption:
                       view.state.purpose === "inference"
-                        ? linear[0]!.model.inference?.refused
-                          ? `Squares: estimates. ${linear[0]!.model.inference.caption}`
-                          : `Squares: estimates; lines: ${linear[0]!.model.inference?.caption ?? "95% confidence intervals."}`
+                        ? withoutTable(linear[0]!.model, view.state.purpose)
+                          ? `Squares: coefficients as fitted. ${withoutTableNote(linear[0]!.model.label)}`
+                          : linear[0]!.model.inference?.refused
+                            ? `Squares: estimates. ${linear[0]!.model.inference.caption}`
+                            : `Squares: estimates; lines: ${linear[0]!.model.inference?.caption ?? "95% confidence intervals."}`
                         : "Squares: estimates of the fitted prediction model, not interpreted as effects.",
                     provenance: plain(recorded),
                   })

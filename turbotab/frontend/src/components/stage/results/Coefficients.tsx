@@ -1,7 +1,9 @@
 /**
  * Coefficients for the linear families (§13): a forest plot of the exposures, with confidence
  * intervals under inference. Under prediction the estimates are drawn without intervals and a
- * note says they are not interpreted.
+ * note says they are not interpreted. Under inference a family whose fit gives no coefficient
+ * table (a penalized family's shrunk coefficients) is drawn without intervals too, and its note
+ * says they are not read as effects (the ruling of 2026-10-23: the engine reports no effect for it).
  */
 import { useState } from "react";
 import { scaleLinear } from "d3-scale";
@@ -18,6 +20,18 @@ interface Props {
 }
 
 const ROW = 24;
+
+/** Under inference, whether ``model``'s fit gives no coefficient table: it says how its intervals
+ *  were made (``inference``) only when it has one (``stages.effects.has_coefficient_table``), so
+ *  it has neither intervals nor an effect to report (the effects stage refuses it). */
+export function withoutTable(model: FittedModel, purpose: string | null): boolean {
+  return purpose === "inference" && !model.inference;
+}
+
+/** The note beside such a family's coefficients: neither an effect nor an interval is claimed. */
+export function withoutTableNote(label: string): string {
+  return `${label} has no coefficient table, so its coefficients describe the fitted model; they are not interpreted as effects, and no intervals are drawn.`;
+}
 
 function fmtP(p: number | null): string {
   if (p === null || !Number.isFinite(p)) return "";
@@ -105,9 +119,11 @@ export function Coefficients({ models, purpose, target }: Props) {
         </div>
       </div>
       <p className={s.basis}>
-        {inference
-          ? `Change in predicted ${target} per unit of each input, holding the others${how?.refused ? ". " : "; "}${how?.caption ?? "95% confidence intervals."}`
-          : `Under prediction the coefficients describe the fitted model; they are not interpreted as effects, so no intervals are drawn.`}
+        {withoutTable(current.model, purpose)
+          ? withoutTableNote(current.model.label)
+          : inference
+            ? `Change in predicted ${target} per unit of each input, holding the others${how?.refused ? ". " : "; "}${how?.caption ?? "95% confidence intervals."}`
+            : `Under prediction the coefficients describe the fitted model; they are not interpreted as effects, so no intervals are drawn.`}
       </p>
     </div>
   );

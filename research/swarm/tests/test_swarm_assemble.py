@@ -1210,6 +1210,70 @@ def test_a_conditional_measure_is_the_locked_fits_row_on_its_scale(measure, rati
     assert (differ["refused"], differ["refused_kind"]) == (A.rows_differ_why(4), "not_known")
 
 
+# The ruling of 2026-10-23 on the shrunk effect: ridge declares a shrunk table with no intervals
+# (``ridge.py``), so its fit's row of the exposure is no estimate of the effect; the effects stage
+# refuses where no chosen family has a coefficient table, in the words its construction gives
+# (``stages.effects.no_table_refusal``, the linear model offered first).
+SHRUNK = {"feature": "x", "estimate": 0.42, "ci_low": None, "ci_high": None, "p": None}
+NO_TABLE_WORDS = ("None of the chosen model families has a coefficient table, so there is no "
+                  "effect to report; choose the linear model.")
+NO_TABLE_REFUSAL = {"stage": "effects", "code": "no_coefficient_table", "message": NO_TABLE_WORDS,
+                    "exits": [{"label": "Add Linear model, which has a coefficient table",
+                               "decision": {"kind": "select_models",
+                                            "models": ["ridge", "linear"]}}]}
+
+
+def _fit_of(effects: dict[str, Any]) -> list[dict[str, Any]]:
+    return [{**_locked_fit()[0], "effects": effects}]
+
+
+def _served_for(families: list[dict[str, Any]], effects_stage: dict[str, Any]) -> dict[str, Any]:
+    """GET …/results for the locked fit's key: ``families`` as served, the effects stage as
+    ``effects_stage`` serves its status."""
+    return {**_results("mean_difference"), "effects": effects_stage,
+            "families": [{"label": None, "sequence": [], "marginal": None, "e_values": [], **f}
+                         for f in families]}
+
+
+def test_a_locked_fit_whose_families_have_no_coefficient_table_is_refused_in_the_engines_words():
+    """Ridge alone, locked: its fit's shrunk row of `x` is no estimate. The results serve none for
+    it and, in its place, the effects stage's refusal; the record takes no estimate from the fit's
+    row and is refused in the stage's words, none served. Where the results serve another fit (a
+    change of models after the lock), the stage's words for it are not the locked fit's, and the
+    refusal says only that no family of the locked fit has a table."""
+    refused_stage = {"key": None, "fresh": False, "status": "error"}
+    doc = _served_for([{"family": "ridge", "effect": None, "refusal": NO_TABLE_REFUSAL}],
+                      refused_stage)
+    got = A.result_of("inference", _locked("mean_difference"), _fit_of({"ridge": [SHRUNK]}),
+                      A.Read(200, doc))
+    assert (got["refused"], got["refused_kind"], got.get("estimates")) == (
+        NO_TABLE_WORDS, "not_served", None)
+    assert got["attempt"] == "fit1" and validate_result(got)
+    other = {**doc, "fit": {"key": "key2", "fresh": True, "status": "fresh"}}
+    got = A.result_of("inference", _locked("mean_difference"), _fit_of({"ridge": [SHRUNK]}),
+                      A.Read(200, other))
+    assert (got["refused"], got["refused_kind"]) == (A.NO_TABLE, "not_served")
+    assert json.dumps(SHRUNK["estimate"]) not in json.dumps(got)
+
+
+def test_a_locked_fit_with_a_coefficient_table_keeps_its_row_and_a_shrunk_one_beside_it_is_left():
+    """Both ways: the linear model's row of `x` is the estimate, alone or beside ridge, whose
+    shrunk row the results serve no effect for (and the stage, fitting the linear model, refuses
+    nothing); the record takes the linear model's row only, and the rows the results serve agree."""
+    fresh = {"key": "e1", "fresh": True, "status": "fresh"}
+    alone = A.result_of("inference", _locked("mean_difference"), _fit_of({"linear": [LOG_ODDS]}),
+                        A.Read(200, _served_for([{"family": "linear", "effect": [LOG_ODDS],
+                                                  "refusal": None}], fresh)))
+    assert (alone.get("refused"), alone["source"]) == (None, "fits")
+    assert alone["estimates"] == _reported({"linear": [LOG_ODDS]})
+    doc = _served_for([{"family": "linear", "effect": [LOG_ODDS], "refusal": None},
+                       {"family": "ridge", "effect": None, "refusal": None}], fresh)
+    both = A.result_of("inference", _locked("mean_difference"),
+                       _fit_of({"linear": [LOG_ODDS], "ridge": [SHRUNK]}), A.Read(200, doc))
+    assert (both.get("refused"), both["estimates"]) == (None, _reported({"linear": [LOG_ODDS]}))
+    assert validate_result(both)
+
+
 def test_a_lock_whose_plan_declares_no_estimand_reports_no_estimate():
     no_estimand = [*_locked("odds_ratio")[:3], _rec(4, 4, {"kind": "lock_plan", "plan": {},
                                                             "digest": "d"})]

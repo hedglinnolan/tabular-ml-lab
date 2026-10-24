@@ -104,7 +104,11 @@ measure's scale (``estimand.measure_facts``), never the fit's coefficients read 
   number: on a ratio scale each row's ``ratio`` columns (exp of the coefficient and of its
   interval's ends), on a difference scale the coefficient itself. They stand after a change made
   after the lock, which the fit record does not follow; where the results serve the locked plan,
-  rows they serve otherwise leave the numbers not known.
+  rows they serve otherwise leave the numbers not known. They are the rows of the families that
+  give a coefficient table (``stages.effects.has_coefficient_table``) only: a penalized family's
+  shrunk rows are no estimate of the effect (the ruling of 2026-10-23), so where no family of the
+  locked fit has a table the result is refused, none served, in the effects stage's own words as
+  ``GET …/results`` serves them for that fit (:func:`no_table_why`).
 
 The fit's coefficient rows themselves stay its attempt's (``Attempt.effects``).
 
@@ -298,6 +302,7 @@ def no_marginal_why(words: str, family: str) -> str:
 UNBOUNDED = "The risk ratio's upper limit is unbounded (``rr_unbounded``)."
 NO_INTERVAL = "The results serve no interval for this contrast."
 NO_RATIO = "The fit serves no ratio for this row."
+NO_TABLE = "No family of the locked fit has a coefficient table, so the app reported no effect."
 # The served columns of each scale: a coefficient row's (``models.artifacts.Coefficient``), and a
 # marginal contrast's by its measure (``stages.effects.MarginalContrast``).
 ROW_COLUMNS = {"difference": ("estimate", "ci_low", "ci_high"),
@@ -1316,10 +1321,13 @@ def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
 def fit_estimates(effects: Mapping[str, Any], scale: str) -> list[dict[str, Any]]:
     """Each family's exposure rows as a conditional measure reports them, on ``scale``
     (:data:`ROW_COLUMNS`): a ratio's ``ratio`` columns, a difference's coefficient itself
-    (``record.Estimate``)."""
+    (``record.Estimate``). Only a family that gives a coefficient table (:func:`has_table`) has
+    any: a penalized family's shrunk rows are no estimate of the effect."""
     cols = ROW_COLUMNS[scale]
     out = []
     for family, rows in effects.items():
+        if not has_table(family):
+            continue
         for row in rows or ():
             est, low, high = (row.get(k) for k in cols)
             out.append({"family": str(family), "feature": row.get("feature"), "setting": None,
@@ -1327,6 +1335,35 @@ def fit_estimates(effects: Mapping[str, Any], scale: str) -> list[dict[str, Any]
                         "why": NO_RATIO if est is None and row.get("estimate") is not None
                         else None})
     return out
+
+
+def has_table(family: Any) -> bool:
+    """Whether ``family`` gives a coefficient table under inference, as the effects stage reads it
+    (``stages.effects.has_coefficient_table``), so its fit's rows of the exposure are an estimate
+    of the effect: a penalized family's shrunk rows are not, nor are those of a family the engine
+    does not register."""
+    import turbotab.core.models  # noqa: F401 - registers the families
+    from turbotab.core.models.base import get_family
+    from turbotab.core.stages.effects import has_coefficient_table
+
+    try:
+        return has_coefficient_table(get_family(str(family)))
+    except KeyError:
+        return False
+
+
+def no_table_why(doc: Mapping[str, Any], fit: Mapping[str, Any],
+                 families: Mapping[str, Any]) -> str:
+    """Why the locked fit ``fit``, none of whose ``families`` has a coefficient table, reports no
+    effect: the effects stage's own refusal, as ``GET …/results`` (``doc``) serves it in their
+    slots for that fit's key; else, where the results serve another fit, :data:`NO_TABLE`."""
+    if (doc.get("fit") or {}).get("key") == fit.get("fit_key"):
+        for f in doc.get("families") or []:
+            refusal = f.get("refusal") if isinstance(f, Mapping) else None
+            if f.get("family") in families and isinstance(refusal, Mapping) \
+                    and refusal.get("message"):
+                return str(refusal["message"])
+    return NO_TABLE
 
 
 def marginal_estimates(doc: Mapping[str, Any], exposure: Any, measure: str, words: str
@@ -1428,6 +1465,9 @@ def _estimate_of(base: dict[str, Any], records: Sequence[Mapping[str, Any]],
         withheld = fit.get("withheld")
         return {**out, "refused": str(withheld or "The locked fit serves no exposure rows."),
                 "refused_kind": "not_known" if withheld else "not_served"}
+    if not any(has_table(f) for f in effects):
+        # The ruling of 2026-10-23: a family with no coefficient table reports no effect.
+        return {**out, "refused": no_table_why(doc, fit, effects), "refused_kind": "not_served"}
     rows = fit_estimates(effects, facts["scale"])
     if unserved is None:
         shown = fit_estimates({f.get("family"): f.get("effect") for f in doc.get("families") or []
