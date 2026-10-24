@@ -25,8 +25,11 @@ It records no declaration (each open declaration line stays as the app sets it),
 the first family fitted. **The random path** (:class:`Random`, seeded by
 ``numpy.random.default_rng``) answers the same questions, readings and findings with an option drawn
 uniformly from those the driver offers that record something by themselves (a field of one's own is
-never invented), answers each open declaration line once the same way before Fit, and declares
-final a family drawn from those fitted. Where an answer or a fit is refused, either takes a way
+never invented), but the adjustment question, which it answers through its answers option with
+each column that option takes drawn in or out (a confounder's answers or a cause of neither's,
+:data:`CONFOUNDER`, :data:`NEITHER`; one draw a column, in the option's order), so its plans vary
+the set column by column as the sweep does; it answers each open declaration line once the same
+way before Fit, and declares final a family drawn from those fitted. Where an answer or a fit is refused, either takes a way
 forward the refusal offers (the first, or one drawn); where an answer is refused with none, it takes
 another option (the next offered, or another drawn), never another of the card's answers. Where
 none is left, an answer fails, or a question waits on stages that failed, the walk stops with what
@@ -72,6 +75,13 @@ PROMPT_VERSION = "arms-1"
 # The tag each answer carries (record version 2's ``Tag``): the marker of the vocabulary the
 # question's answer rests on, as the dry run tags its scripted analyst's (``dry_run.MARKER_OF``).
 DEFAULT_MARKER = "design"
+# A column adjusted for, by the adjustment card's three questions (``options.ADJUSTMENT_ASKED``):
+# it causes the exposure, it causes the outcome, and it is not after the exposure; and one left
+# out, a cause of neither and not after it (``estimand.derive``: the criterion leaves it out).
+# The random path draws each column's adjustment answers from these two (:meth:`Random.answer`),
+# and the sweep toggles a plan's (``sweep.toggled``).
+CONFOUNDER = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+NEITHER = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
 
 
 # ── the card's question ──────────────────────────────────────────────────────
@@ -894,11 +904,32 @@ class Random(Default):
             return fixed
         if key == "roles":
             return super().answer(key, q, read)
+        if key == "adjustment":
+            drawn = self.adjustment(q)
+            if drawn is not None:
+                return drawn
         options = offered(q)
         if not options:
             return super().answer(key, q, read)  # a question answered only with fields
         pick = self.pick(options)
         return [str(pick["id"])], [], f"drawn at random from the {len(options)} options offered"
+
+    def adjustment(self, q: Mapping[str, Any]) -> tuple[list[str], list[str], str] | None:
+        """The adjustment question answered through its answers option (the module docstring):
+        each column the option takes, in its order, drawn in (a confounder's answers,
+        :data:`CONFOUNDER`) or out (a cause of neither's, :data:`NEITHER`), one draw of the
+        generator a column; None where the option takes no column."""
+        from research.swarm.options import ADJUSTMENT_ASKED
+
+        option = next((o for o in q.get("options") or [] if o.get("id") == "answers"), None)
+        columns = [str(c) for c in (option or {}).get("columns") or []]
+        if not columns:
+            return None
+        drawn = [bool(self.rng.integers(2)) for _ in columns]
+        sets = [f"{c}={','.join((CONFOUNDER if d else NEITHER)[k] for k in ADJUSTMENT_ASKED)}"
+                for c, d in zip(columns, drawn)]
+        return ["answers"], sets, (f"each of the {len(columns)} columns the adjustment question "
+                                   f"asks about drawn in or out at random ({sum(drawn)} in)")
 
     def declarations(self, q: Mapping[str, Any]) -> list[tuple[list[str], list[str], str]]:
         from research.swarm import declarations as decl

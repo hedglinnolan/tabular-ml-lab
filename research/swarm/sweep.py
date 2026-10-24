@@ -30,24 +30,43 @@ question the revisit opens again, a finding's acts as its line offers them,
 ``declarations.compose`` for a line), never a hand list; an option that records nothing by
 itself (a field of one's own, its ``needs``) is listed, answered by the crash sweep with values
 the card states or the sweep builds where it has them (below), and left unreached around a named
-plan. **Readings with one true
+plan, but for the adjustment's answers option under Estimate. **The adjustment's answers,
+toggled**: around every Estimate plan, the crash sweep's and each named one's, the answers
+option of the adjustment question is answered once per column of the plan's answers in force:
+every column its adjustment records still in force answer, merged by column as the engine merges
+them, for the exposure, each one the question asks (:func:`adjustment_in_force`, read from the
+template), so a column the plan answered in an earlier record than its latest is among them,
+and each column the option offers (its ``columns``, as the driver composes them: on the copy, the
+columns the revisit left unanswered) that the plan's record of the question answers. Each is
+the plan's answers in force with that one column toggled, in (a confounder's answers) where the
+engine's criterion reads the plan's answers as leaving it out of the primary model and out (a
+cause of neither's) where they adjust for it, every other column as the plan's answers in force
+have it, all posted together as the decision it composes, so the columns the revisit withdrew
+are answered again (:func:`toggled`, ``answers@toggle:<column>:<in|out>``); so a column the roles
+do not call a covariate (a confounder or a collider the default roles call an exposure) is swept
+too. **Readings with one true
 answer** (a column's code or amount, its units: each ``confirm_reading`` but a role's, and each
 ``set_column_unit``, in force) are graded against the dataset's declared readings, not swept
 (:func:`graded`). Under Predict the validation scheme is the sweep's own (below), so its line is
 not swept; the crash sweep answers and fits its options all the same.
 
-**The revisit** reverts the decision's record. Where the engine refuses that because a recorded
-answer reads a column the revisit would leave on a reading nobody settled (``role_unconfirmed``,
-whose words name that answer: the models answer, the exclusion rules or the combining answer,
-:data:`READERS`), the sweep takes the way those words name (the orchestrator's ruling of
-2026-10-23): it withdraws that answer first (reverts its record in force), revisits the decision,
-answers the option, and answers each answer withdrawn again as the plan had it, in the order of
-the plan's log (so where the log answers one decision twice, the plan's latest answer is again the
-one in force), then previews and fits as for any option; each answer withdrawn and answered again
-is recorded (``withdrawn``, in the order withdrawn, in the listing and the refit). Where that way
-is itself refused (the withdrawing revert, the revisit after it, or the answer again), the refusal
-is recorded with the engine's reason and the option counts visited and refused; at the listing,
-the decision's revisit itself does (:data:`REVISIT`), never unlisted.
+**The revisit** reverts the decision's record. Where the engine refuses that and names an answer
+to withdraw first, the sweep takes the way it names (the orchestrator's ruling of 2026-10-23):
+where a recorded answer reads a column the revisit would leave on a reading nobody settled
+(``role_unconfirmed``, whose words name that answer: the models answer, the exclusion rules or the
+combining answer, :data:`READERS`), that answer; where the split is drawn and the decision changes
+what a row is (``sealed``, "Withdraw the split first, then draw it again", :data:`SEALED_REFUSAL`),
+the split, by the revert of its record its way forward names. It withdraws that answer first
+(reverts its record in force), revisits the decision, answers the option, and answers each answer
+withdrawn again as the plan had it, in the order of the plan's log (so where the log answers one
+decision twice, the plan's latest answer is again the one in force; a split answered again is the
+draw drawn again), then previews and fits as for any option; each answer withdrawn and answered
+again is recorded (``withdrawn``, in the order withdrawn, in the listing and the refit). Where that
+way is itself refused (the withdrawing revert, the revisit after it, or the answer again), the
+refusal is recorded with the engine's reason and the option counts visited and refused; at the
+listing, the decision's revisit itself does (:data:`REVISIT`), never unlisted. A refusal that
+names no answer to withdraw (another code, or ``sealed`` with no revert among its ways) leaves the
+decision unlisted, in the engine's words.
 
 **Each refit** answers the option on its copy (a question, a finding or a reading by its id after
 the revisit, ``driver.chosen``; a declaration's option as its line composed it, which is what the
@@ -82,7 +101,8 @@ failed, or a stage or fit error the engine did not type (the driver's typing, ``
 whether the walk met it waiting, it stopped at a limit of its own with a stage of its copy in
 error that was not before the option, or the fit was done and an estimate stage was in error
 after it); ``unreached``, an option that records nothing by itself
-and that has no value of the crash sweep's (around a named plan, every such option), one whose
+and that has no value of the crash sweep's (around a named plan, every such option but the
+adjustment's answers option, toggled under Estimate where the plan answered it), one whose
 fields as the crash sweep answered them the driver does not take, a path that stopped at a
 limit of the walk's or the revisit's own with no stage failed (its reason in its words: no engine
 defect), a fit made whose record the server had not served :data:`RECORD_WAIT` seconds after
@@ -98,7 +118,9 @@ primary score against the plan's (``assemble.signed_change`` over the two fit re
 n_test/n_train read from the facts of the split its folds were drawn by): paired over the same
 folds, or unpaired where the decision changes the analyzed rows; material where its corrected
 interval excludes zero and its size is at least half the plan's own interval half-width
-(:data:`HALF`). Under Estimate the shift of each estimate against the plan's, material where it is
+(:data:`HALF`); a refit scored as the plan in every one of the same folds is not material, its
+change zero though with no spread it has no interval (:func:`unchanged_of`). Under Estimate the
+shift of each estimate against the plan's, material where it is
 at least half the plan's interval half-width. A decision's refused share and the refusals' codes
 sit beside its materiality (:func:`decisions_of`), the sweep's own, kept apart from any analyst's.
 Which decisions are material for the pilot's scoring is ``prereg.json``'s to fix and
@@ -135,11 +157,19 @@ only the refits that answer them, which supersede each such option's unreached l
 (:func:`passed`) when every decision of the plan was swept (``only``, said in the report, is
 none), every option of each was visited (a decision whose options could not be listed, or that
 offered none though the plan answered it, was not: :func:`unlisted_of`) and no engine defect was
-met, on the engine commit it ran on; the report names the table it ran on by its SHA-256, which
+met, on one engine from its start to its end: **the engine is recorded** (:func:`engine_version`:
+the commit, the ``turbotab/`` tree, whether a tracked file under it is modified) as each run of
+the sweep starts (``progress.jsonl``' ``engine`` lines, ``engine_starts`` in the report) and as it
+ends (the report's ``commit``, ``engine_tree`` and ``engine_modified``), and a report where any
+start's tree or modified files are not the end's, or that holds work of a run that recorded no
+start, is refused (``engine_changed``, in words, and said in its ``.md``): it does not pass, and
+a sweep around a named plan exits as not done (:func:`engine_changed`; a commit that leaves the
+tree as it was is the same engine). The report names the table it ran on by its SHA-256, which
 the launcher holds to the dataset's manifest, and counts the options it left unreached, each with
 why (``unreached``; the summary line of ``crash.md`` beside complete and passed).
 
-**Options that take fields of their own** (:class:`Fields`, the crash sweep only): each is
+**Options that take fields of their own** (:class:`Fields`, the crash sweep only, but for the
+adjustment's toggles above, ``toggle``, around every Estimate plan): each is
 answered with values the dataset's card states where it states them, else with one value built
 from the table or the plan, each value's source in its refit (``answered_with``: ``card`` or
 ``built``, in words) and the report (``fielded``), and each answer previewed, answered (the
@@ -157,7 +187,8 @@ percentile (:data:`RANGE_PERCENTILES`); an eligibility range on the table's age 
 engine's adult age (``plausibility.ADULT_AGE``) in the column's unit; a level rule excluding the
 rarest level of the first categorical predictor; and an adjustment set of one's own, each
 covariate the roles name among the columns the plan's adjustment answers, answered as a
-confounder of the declared exposure (:data:`CONFOUNDER`). No built value is ever on the outcome
+confounder of the declared exposure (:data:`CONFOUNDER`), beside the toggles of every column the
+question offers (above). No built value is ever on the outcome
 or the declared exposure (:meth:`Fields.fixed`; the plan's adjustment answers neither,
 ``estimand.asked_covariates``). An option with nothing to answer it from stays unreached, with
 why.
@@ -217,6 +248,13 @@ READER_WORDS = re.compile(r"The recorded (?P<what>.+?) reads `(?P<column>[^`]+)`
 READERS = {"models answer": ("select_models",),
            "exclusion rules": ("set_exclusions", "set_sensitivity"),
            "combining answer": ("set_aggregation",)}
+# A revisit the engine refuses because the split is drawn and the decision changes what a row is
+# (``seal._sealed_refusal``: "Withdraw the split first, then draw it again"): its code, and the
+# kind of record its way forward withdraws, a revert of the split's record (``seal._reseal_exit``).
+# The sweep takes that way (the module docstring): the split withdrawn first, and drawn again as
+# the plan had it.
+SEALED_REFUSAL = "sealed"
+SPLIT_KINDS = ("set_split",)
 WITHDRAWN_AT_MOST = 4  # the most answers one revisit withdraws before the sweep says it stopped
 
 
@@ -240,6 +278,37 @@ def engine_version() -> dict[str, Any]:
             "engine_modified": bool(status)}
 
 
+ENGINE_KEYS = ("engine_tree", "engine_modified")  # what is the engine: its tree, and whether
+# tracked files under it differ from it (the freeze's, ``launcher.crash_passed``); a commit that
+# leaves the tree as it was is the same engine.
+
+
+def engine_words(engine: Mapping[str, Any]) -> str:
+    """An engine as the report names it: ``engine tree <tree> (commit <commit>)``, and whether
+    tracked files under it were modified."""
+    return (f"engine tree {engine.get('engine_tree')} (commit {engine.get('commit')})"
+            + (", its tracked files modified" if engine.get("engine_modified") else ""))
+
+
+def engine_changed(starts: Sequence[Mapping[str, Any]], end: Mapping[str, Any], *,
+                   unrecorded: bool = False) -> str | None:
+    """Why a sweep's results are not of one engine (the module docstring), or None: a run of it
+    (``starts``, each run's engine as it started, the first run's first) started on another
+    engine than the one it ended on (``end``, :data:`ENGINE_KEYS`), or it holds work of a run
+    that recorded no engine when it started (``unrecorded``), or none is recorded."""
+    if unrecorded or not starts:
+        return ("The sweep holds work of a run that recorded no engine when it started, so the "
+                "engine that work ran on is not known to be the one it ended on: the report is "
+                "refused, not passed.")
+    for start in starts:
+        if any(start.get(k) != end.get(k) for k in ENGINE_KEYS):
+            return (f"The engine changed while the sweep ran: a run of it started on "
+                    f"{engine_words(start)} at {start.get('at')}, and it ended on "
+                    f"{engine_words(end)}: its results are not of one engine, so the report is "
+                    f"refused, not passed.")
+    return None
+
+
 # ── the log ──────────────────────────────────────────────────────────────────
 
 
@@ -256,6 +325,21 @@ def live(view: Mapping[str, Any]) -> list[Any]:
     records = records_of(view)
     cancelled = D.reverted(records)
     return [r for r in records if r.id not in cancelled and r.decision.kind != "revert"]
+
+
+def adjustment_in_force(view: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """The plan's adjustment answers in force on the log ``view`` serves: every live
+    ``set_adjustment`` record's answers as the engine folds them (``decisions.fold``: each
+    covariate's answer kept under its column, a later record's replacing an earlier's), those
+    given for the exposure its estimand names (``estimand.current_answers``), for each column the
+    adjustment question asks (``estimand.asked_covariates``, the columns a ``set_adjustment`` may
+    answer); in the order the plan first answered them, each without its exposure."""
+    from turbotab.core import decisions as D, estimand as E
+
+    state = D.fold(records_of(view))
+    asked = set(E.asked_covariates(state))
+    return {str(c): a.model_dump(mode="json", exclude={"exposure"})
+            for c, a in E.current_answers(state).items() if c in asked}
 
 
 def plan_digest(view: Mapping[str, Any]) -> str:
@@ -424,10 +508,11 @@ HANDLING_WORDS = {"exclude": "leaves out a row it cannot confirm",
 RANGE_PERCENTILES = (1, 99)  # a range of one's own built from the table: these percentiles
 # A covariate adjusted for, by the adjustment card's three questions (``options.ADJUSTMENT_ASKED``):
 # it causes the exposure, it causes the outcome, and it is not after the exposure; and one left
-# out, a cause of neither and not after it (``estimand.derive``: the criterion leaves it out).
-CONFOUNDER = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
-NEITHER = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+# out, a cause of neither and not after it (``estimand.derive``: the criterion leaves it out). The
+# random path draws its adjustment answers from the same two (``arms.CONFOUNDER``).
+CONFOUNDER, NEITHER = arms.CONFOUNDER, arms.NEITHER
 NOTHING = "It records nothing by itself: "  # an option that takes fields, left unreached
+TOGGLE = "toggle"  # the source of an adjustment answer toggled one column at a time (``toggled``)
 
 
 @dataclass(frozen=True)
@@ -482,16 +567,68 @@ def card_rules(card: Mapping[str, Any] | None) -> tuple[list[CardRule], list[dic
 class Fielded:
     """An option that takes fields of its own, answered: the refit's option (``<option>@<source>:
     <what>``), the options named and their ``--set`` fields as the driver's ``answer`` takes them
-    (``options.resolve``), where the values came from (``card`` or ``built``) and in words."""
+    (``options.resolve``), where the values came from (``card``, ``built`` or ``toggle``) and in
+    words; an answer composed whole (``decision``: the plan's adjustment answers in force with one
+    column toggled, :func:`toggled`) is posted as composed, its ids naming the option it
+    answers."""
 
     option: str
     ids: list[str]
     sets: list[str]
     source: str
     words: str
+    decision: dict[str, Any] | None = None
 
     def json(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
+
+
+def toggled(point: Point, option: Mapping[str, Any], effect: str = "total",
+            in_force: Mapping[str, Any] | None = None) -> list[Fielded]:
+    """Around an Estimate plan (the module docstring), the adjustment question's answers option
+    answered once per column of the plan's answers: each of ``in_force`` (the plan's answers in
+    force, merged over its records, :func:`adjustment_in_force`), then each ``option`` offers
+    (its ``columns``, as the driver composes them) that the plan's record of the question
+    (``point``'s, its latest) answers, each with its answer in force where it has one, else its
+    record's. Each is the plan's answers with that column toggled, in (a confounder's answers,
+    :data:`CONFOUNDER`) where the plan's answers leave it out of the primary model by the
+    engine's criterion (``estimand.derive`` under the plan's ``effect``) and out (a cause of
+    neither's, :data:`NEITHER`) where they adjust for it, every other of those columns answered
+    as the plan's answers have it, in that order; none where the plan's record holds no answers.
+    Each is posted as composed (:class:`Fielded`'s ``decision``): the engine keeps each answer
+    under its column, so the columns the revisit withdrew are answered again with the rest."""
+    from turbotab.core.estimand import derive
+
+    if (point.kind, point.key) != ("question", "adjustment"):
+        return []
+    record = dict((point.decision or {}).get("answers") or {})
+    exposure = (point.decision or {}).get("exposure")
+    if not record or not exposure:
+        return []
+    given = {str(c): a for c, a in (in_force or {}).items()}
+    offered = [str(c) for c in option.get("columns") or []]
+    plan = {c: given[c] if c in given else record[c]
+            for c in dict.fromkeys([*given, *offered]) if c in given or c in record}
+    out = []
+    for column in plan:
+        if derive(plan[column], effect).adjusted:
+            way, answer = "out", NEITHER
+            said = (f"a cause of neither `{exposure}` nor the outcome, and not after "
+                    f"`{exposure}`")
+        else:
+            way, answer = "in", CONFOUNDER
+            said = (f"a confounder of `{exposure}` (it causes it, it causes the outcome, and it "
+                    f"is not after it)")
+        decision = {"kind": "set_adjustment", "exposure": exposure,
+                    "answers": {c: (dict(answer) if c == column else dict(a))
+                                for c, a in plan.items()}}
+        oid = str(option.get("id"))
+        out.append(Fielded(f"{oid}@{TOGGLE}:{column}:{way}", [oid], [], TOGGLE,
+                           f"the plan's adjustment answers with `{column}` toggled {way}: "
+                           f"answered as {said}, every other column as the plan's answers in "
+                           f"force have it",
+                           decision))
+    return out
 
 
 def rule_answer(rules: Sequence[tuple[CardRule, str | None]]) -> tuple[list[str], list[str]]:
@@ -557,8 +694,11 @@ class Fields:
     docstring): the dataset's card (its eligibility rules, its held-out cut-point), the table as
     its file holds it (``frame``), and the plan's own answers, read from the template: its roles,
     the columns its readings or the engine read as codes (``codes``), each column's unit
-    (``units``) and the profile's reading of each column (``profile``: its ``dtype`` and
-    ``n_unique``; else read off the table)."""
+    (``units``), the profile's reading of each column (``profile``: its ``dtype`` and
+    ``n_unique``; else read off the table) and, under Estimate, the effect its estimand names
+    (``effect``, total unless it names a direct one: what the adjustment's toggles read the plan's
+    answers under, :func:`toggled`) and the plan's adjustment answers in force (``adjustment``,
+    :func:`adjustment_in_force`: what the toggles toggle)."""
 
     question: arms.Question
     card: Mapping[str, Any] | None = None
@@ -567,6 +707,8 @@ class Fields:
     codes: set[str] = field(default_factory=set)
     profile: dict[str, dict[str, Any]] = field(default_factory=dict)
     units: dict[str, str] = field(default_factory=dict)
+    effect: str = "total"
+    adjustment: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def of_template(cls, session: Any, question: arms.Question, dataset: str | None,
@@ -592,7 +734,9 @@ class Fields:
             card = arms.card_of(dataset)
         return cls(question, card=card, frame=table_frame(data),
                    roles={str(k): str(v) for k, v in (state.get("roles") or {}).items()},
-                   codes=codes, profile=profile, units=units)
+                   codes=codes, profile=profile, units=units,
+                   effect=str((state.get("estimand") or {}).get("effect") or "total"),
+                   adjustment=adjustment_in_force(view))
 
     # the table, as the plan reads it
 
@@ -1150,13 +1294,38 @@ def predict_change(after: Mapping[str, Any], before: Mapping[str, Any],
     return A.signed_change(after, before, splits)
 
 
-def material_predict(change: Mapping[str, Any]) -> bool | None:
+def material_predict(change: Mapping[str, Any], unchanged: bool = False) -> bool | None:
     """§7 under Predict: the corrected interval excludes zero and the change is at least half the
-    plan's own interval half-width (:data:`HALF`); None where the change has no number."""
+    plan's own interval half-width (:data:`HALF`); not material where the refit scored as the plan
+    on every one of the same folds (``unchanged``, :func:`unchanged_of`: the change is zero, though
+    with no spread it has no interval); None where the change has no number otherwise."""
     diff, half = change.get("difference"), change.get("half_width")
+    if diff is None and unchanged:
+        return False
     if diff is None or half is None or change.get("excludes_zero") is None:
         return None
     return bool(change["excludes_zero"]) and abs(float(diff)) >= HALF * float(half)
+
+
+def fold_scores_of(families: Mapping[str, Any] | None, family: Any, metric: Any) -> Any:
+    """A family's fold scores of ``metric`` in a fit's scores by family (the fit record's
+    ``scores``, which ``Refit.scores`` keeps as its ``families``), or None."""
+    return ((((families or {}).get(family) or {}).get(metric)) or {}).get("folds")
+
+
+def unchanged_of(change: Mapping[str, Any], after: Mapping[str, Any] | None,
+                 before: Mapping[str, Any] | None) -> bool:
+    """Whether a refit whose ``change`` has no number scored as the plan in every fold: paired
+    (the same folds, one digest) and every fold's score the plan's but for float64's rounding
+    (``signed.same_scores``), its family's and metric's scores read from ``after`` (the refit's
+    scores by family) and ``before`` (the plan's)."""
+    from research.swarm.signed import same_scores
+
+    if change.get("difference") is not None or not change.get("paired"):
+        return False
+    family, metric = change.get("family"), change.get("metric")
+    return same_scores(fold_scores_of(after, family, metric),
+                       fold_scores_of(before, family, metric))
 
 
 def estimate_shift(after: Sequence[Mapping[str, Any]], before: Sequence[Mapping[str, Any]]
@@ -1202,7 +1371,8 @@ def materiality(refit: Refit, plan: Refit, purpose: str) -> None:
         refit.change, refit.change_why = predict_change(refit.record, plan.record, refit.split,
                                                         plan.split)
         for c in refit.change:
-            c["material"] = material_predict(c)
+            c["material"] = material_predict(c, unchanged_of(c, refit.record.get("scores"),
+                                                             plan.record.get("scores")))
     else:
         if refit.estimates is None or plan.estimates is None:
             refit.change_why = refit.estimate_why or plan.estimate_why
@@ -1266,9 +1436,11 @@ def unlisted_of(points: Sequence[Point], offered: Mapping[str, Mapping[str, Any]
 
 def passed(report: Mapping[str, Any]) -> bool:
     """Whether the crash sweep passed (the module docstring): every decision of the plan swept
-    (no ``only``), every option visited, no engine defect met."""
+    (no ``only``), every option visited, no engine defect met, on one engine from its start to its
+    end (``engine_changed`` None, the report saying so)."""
     return bool(report.get("complete") and not report.get("defects")
-                and "only" in report and report["only"] is None)
+                and "only" in report and report["only"] is None
+                and "engine_changed" in report and report["engine_changed"] is None)
 
 
 def timed_of(refit: Refit) -> float | None:
@@ -1389,6 +1561,10 @@ class Sweep:
         # the template once one is met; and each decision's refits this run plans, by id.
         self.fields: Fields | None = None
         self.planned: dict[str, list[str]] = {}
+        # The engine each run of the sweep started on (``progress.jsonl``' ``engine`` lines, the
+        # first run's first), and whether the progress holds work of a run that recorded none.
+        self.engines: list[dict[str, Any]] = []
+        self.unrecorded = False
         self._read_progress()
 
     # progress
@@ -1403,6 +1579,12 @@ class Sweep:
                 entry = json.loads(line)
             except ValueError:
                 continue  # a line an interruption cut
+            if "engine" in entry:
+                self.engines.append(dict(entry["engine"]))
+                continue
+            if not self.engines and any(k in entry for k in ("template", "refit", "offered",
+                                                             "defect")):
+                self.unrecorded = True  # work of a run that recorded no engine as it started
             if "template" in entry:
                 self.base = entry["template"]
             elif "refit" in entry:
@@ -1603,14 +1785,52 @@ class Sweep:
                 "column") == column], withdrawn
         return list(arms.reading_ways(q).get((reading, column)) or []), withdrawn
 
+    @staticmethod
+    def _withdrawal(session: Any, point: Point, said: Any
+                    ) -> tuple[str, str | None, Any] | str | None:
+        """The answer the engine's refusal ``said`` of ``point``'s revisit names to withdraw first
+        (the module docstring), as ``(what, column, record)``: the latest record in force of the
+        answer whose words name the column it reads (``role_unconfirmed``, :data:`READERS`), or
+        the split's record the way forward reverts (``sealed``, :data:`SPLIT_KINDS`); words where
+        the refusal names one the log does not hold in force; None where it names none."""
+        message = str(said.message or "")
+        if said.kind != "refused":
+            return None
+        if said.code == READER_REFUSAL:
+            named = READER_WORDS.search(message)
+            kinds = READERS.get(named.group("what")) if named else None
+            if kinds is None:
+                return None
+            what = named.group("what")
+            reader = next((r for r in reversed(live(session.view())) if r.decision.kind in kinds
+                           and r.id != point.record), None)
+            if reader is None:
+                return f"The log holds no record of the {what} in force."
+            return what, named.group("column"), reader
+        if said.code == SEALED_REFUSAL:
+            ways = [str((e.get("decision") or {}).get("decision_id")) for e in said.exits
+                    if (e.get("decision") or {}).get("kind") == "revert"
+                    and (e.get("decision") or {}).get("decision_id")]
+            if not ways:
+                return None
+            split = next((r for r in live(session.view()) if r.id in ways
+                          and r.decision.kind in SPLIT_KINDS and r.id != point.record), None)
+            if split is None:
+                return (f"Its way forward withdraws record {ways[0]}, which the log does not "
+                        f"hold in force as a split.")
+            return "split", None, split
+        return None
+
     def _revisit(self, session: Any, point: Point) -> list[dict[str, Any]]:
-        """``point``'s record reverted (the revisit), each answer the engine names as reading a
-        column the revisit would leave on a reading nobody settled withdrawn first (:data:`READERS`,
-        the module docstring); the answers withdrawn, in the order withdrawn, each with its record,
-        its decision as the plan had it and what its revert said. A revisit refused otherwise, or
-        naming an answer the log does not hold in force, stops in its words (:class:`arms.Stuck`);
-        once an answer is withdrawn, a refusal on the way stops classed (:class:`arms.Met`, at
-        ``revisit``), as does a revert of the answer named that is refused or fails."""
+        """``point``'s record reverted (the revisit), each answer the engine names to withdraw
+        first withdrawn first (:meth:`_withdrawal`, the module docstring): an answer that reads a
+        column the revisit would leave on a reading nobody settled (:data:`READERS`), or the
+        split a decision that changes what a row is waits on (:data:`SEALED_REFUSAL`); the answers
+        withdrawn, in the order withdrawn, each with its record, its decision as the plan had it
+        and what its revert said. A revisit refused otherwise, or naming an answer the log does
+        not hold in force, stops in its words (:class:`arms.Stuck`); once an answer is withdrawn,
+        a refusal on the way stops classed (:class:`arms.Met`, at ``revisit``), as does a revert
+        of the answer named that is refused or fails."""
         withdrawn: list[dict[str, Any]] = []
 
         def stop(words: str, said: Any) -> Exception:
@@ -1624,22 +1844,18 @@ class Sweep:
         said = session.revisit(str(point.record), f"The sweep revisits {point.id}.")
         while not said.ok:
             words = f"Revisiting {point.id} was {said.kind}: {said.code}: {said.message}"
-            named = READER_WORDS.search(str(said.message or "")) \
-                if said.kind == "refused" and said.code == READER_REFUSAL else None
-            kinds = READERS.get(named.group("what")) if named else None
-            if kinds is None:
+            named = self._withdrawal(session, point, said)
+            if named is None:
                 raise stop(words, said)
-            what = named.group("what")
-            reader = next((r for r in reversed(live(session.view())) if r.decision.kind in kinds
-                           and r.id != point.record), None)
-            if reader is None:
-                raise stop(f"{words} The log holds no record of the {what} in force.", said)
+            if isinstance(named, str):
+                raise stop(f"{words} {named}", said)
+            what, column, reader = named
             if len(withdrawn) >= WITHDRAWN_AT_MOST:
                 raise stop(f"{words} The sweep withdrew {len(withdrawn)} answers first already.",
                            said)
             took = session.revisit(reader.id, f"The sweep withdraws the plan's {what} first, as "
                                               f"the engine asks, to revisit {point.id}.")
-            withdrawn.append({"what": what, "column": named.group("column"), "seq": reader.seq,
+            withdrawn.append({"what": what, "column": column, "seq": reader.seq,
                               "record": reader.id,
                               "decision": reader.decision.model_dump(mode="json"),
                               "reverted": said_json(took)})
@@ -1692,7 +1908,9 @@ class Sweep:
         if fielded is None:
             refit = Refit(point.id, str(option.get("id")), dict(option.get("decision") or {}))
         else:
-            refit = Refit(point.id, fielded.option, None, answered_with=fielded.json())
+            refit = Refit(point.id, fielded.option,
+                          None if fielded.decision is None else dict(fielded.decision),
+                          answered_with=fielded.json())
         started = time.monotonic()
         errors = len(session.errors)
         before: set[tuple[str, Any]] | None = None
@@ -1700,7 +1918,8 @@ class Sweep:
         try:
             refit.project = self._copy(session)
             before = self._errored(session)
-            policy = self._named(session, option)
+            composed = fielded is not None and fielded.decision is not None
+            policy = self._named(session, {"decision": fielded.decision} if composed else option)
             if point.kind != "declaration":
                 options, withdrawn = self._listed(session, point, policy)
                 refit.withdrawn = withdrawn
@@ -1789,10 +2008,11 @@ class Sweep:
               preview: bool = False, fielded: Fielded | None = None) -> Any:
         """The option previewed or answered as the driver does: a question's, a finding's or a
         reading's by its id (an option that takes fields of its own by the ids and fields it was
-        answered with, ``fielded``); a declaration's by the decision its line composed, which is
-        what the driver's ``answer`` posts for it (``declarations.resolve`` with no field set)."""
-        if point.kind == "declaration":
-            decision = dict(option["decision"])
+        answered with, ``fielded``, or as the decision it composed, a toggle's); a declaration's by
+        the decision its line composed, which is what the driver's ``answer`` posts for it
+        (``declarations.resolve`` with no field set)."""
+        if point.kind == "declaration" or (fielded is not None and fielded.decision is not None):
+            decision = dict(option["decision"] if fielded is None else fielded.decision)
             return session.preview_of(decision) if preview else session.decide(decision, reason)
         ids, sets = ([str(option["id"])], []) if fielded is None else (fielded.ids, fielded.sets)
         if preview:
@@ -1966,6 +2186,10 @@ class Sweep:
 
     def run(self, session: Any, build: Callable[[Any], str]) -> dict[str, Any]:
         started = time.monotonic()
+        # The engine this run starts on, kept before any work (the report holds it to the end's).
+        start = {**engine_version(), "at": now()}
+        self.engines.append(start)
+        self._write({"engine": start})
         self.template(session, build)
         plan = self.plan_refit(session)
         for point in self.points:
@@ -2002,7 +2226,10 @@ class Sweep:
         """``point``'s refits, in the order of its options: each option that records something by
         itself, refitted as listed; each that takes fields of its own, under the crash sweep,
         answered with each value :class:`Fields` gives it (each its own refit, named by its
-        source), else unreached with why, as every such option is around a named plan; and the
+        source), else unreached with why, as every such option is around a named plan; under
+        Estimate, around every plan, the adjustment's answers option also answered once per
+        column of the plan's answers in force, toggled with the plan's other answers fixed
+        (:func:`toggled`, :attr:`Fields.adjustment`); and the
         card's whole population after them (:meth:`Fields.population`). Each with its id
         (``point=option``), the option as offered and, for an option's fields, what answers it."""
         out: list[dict[str, Any]] = []
@@ -2013,13 +2240,20 @@ class Sweep:
             if not takes_fields(option):
                 out.append(bare)
                 continue
+            toggles: list[Fielded] = []
+            if self.question.purpose == "inference" and (point.kind, point.key) == (
+                    "question", "adjustment"):
+                fields = fields or self._fields(session)
+                toggles = toggled(point, option, fields.effect, fields.adjustment)
             if not self.crash:
-                out.append(bare | {"why": f"{NOTHING}it takes {needs_of(option)}."})
+                out += [{"id": f"{point.id}={a.option}", "option": a.option, "offered": option,
+                         "fielded": a} for a in toggles] or [
+                    bare | {"why": f"{NOTHING}it takes {needs_of(option)}."}]
                 continue
             fields = fields or self._fields(session)
             answers, why = fields.answers(point, option)
             out += [{"id": f"{point.id}={a.option}", "option": a.option, "offered": option,
-                     "fielded": a} for a in answers] or [bare | {"why": why}]
+                     "fielded": a} for a in [*answers, *toggles]] or [bare | {"why": why}]
         if self.crash and any(takes_fields(o) for o in listed.get("options") or []):
             fields = fields or self._fields(session)
             offered = [str(o.get("id")) for o in listed.get("options") or []]
@@ -2091,7 +2325,8 @@ class Sweep:
                               for w in withdrawn],
                 "ways": list(policy.taken) if policy is not None else [],
                 "options": [{"id": o.get("id"), "label": o.get("label"),
-                             "decision": o.get("decision"), "needs": o.get("needs")}
+                             "decision": o.get("decision"), "needs": o.get("needs"),
+                             **({"columns": list(o["columns"])} if o.get("columns") else {})}
                             for o in options]}
 
     def spent(self) -> float:
@@ -2128,9 +2363,12 @@ class Sweep:
                      if rid not in self.done]
         unlisted = unlisted_of(self.points, self.offered)
         unvisited += [u["point"] for u in unlisted]
+        end = engine_version()  # the engine as the sweep ends, held to each run's start
         return {
             "dataset": self.dataset, "plan": self.plan, "purpose": self.question.purpose,
-            **engine_version(), "written": now(), "seconds": round(seconds, 1),
+            **end, "engine_starts": [dict(e) for e in self.engines],
+            "engine_changed": engine_changed(self.engines, end, unrecorded=self.unrecorded),
+            "written": now(), "seconds": round(seconds, 1),
             "template": {k: (self.base or {}).get(k) for k in ("project", "digest", "seq")},
             "scoring": (self.base or {}).get("scoring"),
             "baseline": plan.json(),
@@ -2214,13 +2452,17 @@ def table_md(report: Mapping[str, Any]) -> str:
         lines.append(f"| {d['point']} | {d['options']} | {c['scored']} | {c['refused']} | "
                      f"{c['failed']} | {c['unreached']} | {c['duplicate']} | {share} | "
                      f"{d['material']} |")
+    if report.get("engine_changed"):
+        lines += ["", "## The engine changed while the sweep ran", "",
+                  str(report["engine_changed"])]
     if report.get("stopped"):
         lines += ["", "## Stopped at the compute cap", "", str(report["stopped"]["why"])]
     withdrawn = [o for o in report.get("offered") or [] if o.get("withdrawn")]
     if withdrawn:
         lines += ["", "## Answers withdrawn first to revisit a decision, as the engine asks", ""]
-        lines += [f"- `{o['point']}`: " + ", ".join(f"the {w['what']} (record {w['seq']}), which "
-                                                    f"reads `{w['column']}`"
+        lines += [f"- `{o['point']}`: " + ", ".join(f"the {w['what']} (record {w['seq']})"
+                                                    + (f", which reads `{w['column']}`"
+                                                       if w.get("column") else "")
                                                     for w in o["withdrawn"])
                   + ("; refused on the way" if o.get("refused") else
                      "; answered again after each option, as the plan had them")
@@ -2360,7 +2602,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "crash":
         report = crash(args.dataset, args.out, log=log)
         sys.stdout.write(json.dumps({k: report[k] for k in ("dataset", "passed", "complete",
-                                                            "fit_seconds")}
+                                                            "fit_seconds", "engine_changed")}
                                     | {"unreached": len(report["unreached"]),
                                        "defects": len(report["defects"])}) + "\n")
         return 0 if report["passed"] else 1
@@ -2374,8 +2616,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     report = sweep_plan(args.dataset, args.bundle, args.name, out, data=args.data, log=log,
                         cap=cap, spent=spent)
     sys.stdout.write(json.dumps({k: report[k] for k in ("dataset", "plan", "complete",
-                                                        "stopped")}) + "\n")
-    return 0 if report["complete"] else 1
+                                                        "stopped", "engine_changed")}) + "\n")
+    return 0 if report["complete"] and report["engine_changed"] is None else 1
 
 
 if __name__ == "__main__":

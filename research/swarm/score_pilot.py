@@ -27,6 +27,13 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
 
 **What it applies,** each rule in prereg.json's own numbers:
 
+* first, the engine each record was made on (:func:`engine_refusal`): a record whose engine
+  commit's ``turbotab/`` tree is not the frozen one (the crash sweeps', ``prereg_fill.
+  frozen_engine``), or whose ``engine_modified`` is not False, is refused, listed with why
+  (``refused_records``), and scored nowhere (its replay is no plan's); with no crash fill the
+  frozen engine is not known, and every record is refused so. Its tokens were spent all the
+  same: they count against the budget in early stopping, where its run is still one to do, and
+  in no model's cost per useful result, which is of the runs on the frozen engine;
 * the regression checks on every run (:func:`regression_checks`);
 * each replay judged only as its record's plan (:func:`paired`: its run, dataset, bundle and
   reading the record's; a replay with no record, or one of two of a run, judges nothing), on the
@@ -41,7 +48,9 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
   none, unjudged where the record cannot say;
 * the unit per model and fixture (:func:`unit`);
 * materiality on every sweep with prereg.json's margins (:func:`sweep_verdicts`), beside the
-  sweep's own verdict, each disagreement listed, never silently; a decision none of whose refits
+  sweep's own verdict, each disagreement listed, never silently; a refit scored as the plan in
+  every one of the same folds not material (its change zero, though with no spread it has no
+  interval: ``sweep.unchanged_of``); a decision none of whose refits
   is read counted apart, as not read, with why, and a dataset whose sweeps prereg.json's rule
   read no refit of holding no material set (the measurement fixture's k rule reads the q-values
   the sweep's estimates carry); and the runs whose final plans the sweeps go around, by when each
@@ -366,8 +375,14 @@ def point_of(kind: str, body: Mapping[str, Any]) -> str | None:
     return f"question:{key}" if key else None
 
 
-def predict_material(change: Mapping[str, Any], half: float) -> bool | None:
+def predict_material(change: Mapping[str, Any], half: float, unchanged: bool = False
+                     ) -> bool | None:
+    """prereg.json's Predict rule on one family's change; not material where the refit scored as
+    the plan in every one of the same folds (``unchanged``, ``sweep.unchanged_of``: the change is
+    zero, though with no spread it has no interval); None where it has no number otherwise."""
     diff, width, excludes = (change.get(k) for k in ("difference", "half_width", "excludes_zero"))
+    if diff is None and unchanged:
+        return False
     if diff is None or width is None or excludes is None:
         return None
     return bool(excludes) and abs(float(diff)) >= half * float(width)
@@ -424,7 +439,12 @@ def sweep_verdicts(sweep: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[
                 len(after ^ before) >= int(measure["k"])
             why = why_a or why_b
         elif prediction:
-            verdict = _any(predict_material(c, half) for c in r.get("change") or [])
+            from research.swarm.sweep import unchanged_of
+
+            after = (r.get("scores") or {}).get("families")
+            before = (base.get("scores") or {}).get("families")
+            verdict = _any(predict_material(c, half, unchanged_of(c, after, before))
+                           for c in r.get("change") or [])
         else:
             verdict = _any(estimate_material(c, half) for c in r.get("change") or [])
         if verdict is None and why is None:
@@ -628,11 +648,16 @@ def persona_rule(recs: Sequence[Any], reach: Mapping[str, float | None],
 
 
 def early_stopping(units: Mapping[str, Mapping[str, Any]], recs: Sequence[Any],
-                   prereg: Mapping[str, Any], budget_fresh: float | None) -> dict[str, Any]:
+                   prereg: Mapping[str, Any], budget_fresh: float | None,
+                   refused: Sequence[Any] = ()) -> dict[str, Any]:
     """prereg.json's early stopping: each model whose unit on the Estimate fixture (``units``) is
     outside once it has a record there under every persona it runs (a run that ended, one stuck
     before its export and so with no plan included); and the spend projected over the remaining
-    scheduled runs, against ``budget_fresh``."""
+    scheduled runs, against ``budget_fresh``. ``recs`` are the records scored, ``refused`` those
+    refused for their engine (:func:`engine_refusal`): a refused run's tokens were spent, so they
+    are in the spend (``spent``, and apart in ``refused_fresh``) and in its model's mean per run,
+    each record's once, and the run is still to do, since it is none of the pilot's runs (no
+    persona has run by it, and its scheduled run stays among the ``remaining``)."""
     estimate = prereg["datasets"]["estimate_fixture"]
     stopped = []
     for m in _agents(prereg):
@@ -650,7 +675,9 @@ def early_stopping(units: Mapping[str, Mapping[str, Any]], recs: Sequence[Any],
     why = None
     for m in _agents(prereg):
         mine = [r for r in recs if model_of(r, prereg) == m]
-        fresh = [r.run.spend.fresh for r in mine if r.run.spend is not None]
+        fresh = [r.run.spend.fresh for r in [*mine, *(r for r in refused
+                                                     if model_of(r, prereg) == m)]
+                 if r.run.spend is not None]
         spent += sum(fresh)
         remaining[m] = max(0, scheduled[m] - len(mine))
         means[m] = float(np.mean(fresh)) if fresh else None
@@ -663,19 +690,51 @@ def early_stopping(units: Mapping[str, Mapping[str, Any]], recs: Sequence[Any],
     stop = None if projected is None or budget_fresh is None else projected > budget_fresh
     if budget_fresh is None and why is None:
         why = "No budget in fresh tokens was given."
-    return {"stopped": stopped, "spent": spent, "remaining": remaining,
+    refused_fresh = [r.run.spend.fresh for r in refused if r.run.spend is not None]
+    return {"stopped": stopped, "spent": spent, "refused_fresh": float(sum(refused_fresh)),
+            "refused_runs": len(refused), "remaining": remaining,
             "mean_fresh_per_run": means, "projected": projected, "budget": budget_fresh,
             "stop_waves": stop, "why": why}
+
+
+NO_FROZEN_ENGINE = ("prereg.json holds no crash fill, so the frozen engine a record must be made "
+                    "on is not known.")
+
+
+def engine_refusal(rec: Any, frozen: Mapping[str, Any] | None) -> str | None:
+    """Why ``rec`` is refused for the engine it was made on (the module docstring): not the
+    frozen one (``prereg_fill.record_engine_why``: its commit's ``turbotab/`` tree another than
+    the crash sweeps', or tracked files modified, or not known to be unmodified), or no frozen
+    engine known (:data:`NO_FROZEN_ENGINE`); None where it was made on the frozen engine."""
+    if frozen is None:
+        return NO_FROZEN_ENGINE
+    return P.record_engine_why(rec, frozen)[1]
 
 
 def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
           sweeps: Sequence[Mapping[str, Any]], prereg: Mapping[str, Any], *,
           referee: Sequence[Mapping[str, Any]] = (), classes: Mapping[str, str] | None = None,
           failed: Sequence[str] = (), budget_fresh: float | None = None) -> dict[str, Any]:
-    """prereg.json applied to the pilot (the module docstring): every number, as data."""
+    """prereg.json applied to the pilot (the module docstring): every number, as data. A record
+    not made on the frozen engine is refused before anything is scored (:func:`engine_refusal`),
+    listed with why (``refused_records``), and scored nowhere; only its spend counts, against the
+    budget (:func:`early_stopping`)."""
     from research.swarm import checks
 
     classes = classes or {}
+    frozen = P.frozen_engine(prereg)
+    refused_records, kept, refused = [], [], []
+    for rec in records:
+        why = engine_refusal(rec, frozen)
+        if why is None:
+            kept.append(rec)
+        else:
+            refused.append(rec)
+            refused_records.append({"run": rec.run.id, "dataset": rec.dataset.id,
+                                    "engine_commit": rec.run.engine_commit,
+                                    "engine_modified": rec.run.engine_modified, "why": why})
+    records = kept
+    refused_runs = {r["run"]: r["why"] for r in refused_records}
     by_run = {r.run.id: r for r in records}
 
     def judged_by_record(rec: Any) -> dict[str, Any] | None:
@@ -710,7 +769,9 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
             plans.append({"run": run, "dataset": given[0].get("dataset"),
                           "kind": fixture_of(prereg, given[0].get("dataset")),
                           "verdict": "invalid", "model": None, "persona": None,
-                          "why": "No record of this run is given, so its replay is no plan's."})
+                          "why": (f"The record of this run is refused: {refused_runs[run]}"
+                                  if run in refused_runs else
+                                  "No record of this run is given, so its replay is no plan's.")})
             continue
         s = judged_by_record(rec) or plan_of(rec, given)
         s.update(model=model_of(rec, prereg), persona=rec.run.persona)
@@ -798,11 +859,13 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
                    "generators_sha256": prereg.get("generators_sha256")},
         "regression": {"failed_schema": list(failed),
                        "runs": {r.run.id: regression_checks(r) for r in records}},
+        "refused_records": refused_records,
         "plans": plans,
         "models": models,
         "decision": decision(models, prereg),
         "persona": persona_rule(records, reach, prereg),
-        "early_stopping": early_stopping(estimate_units, records, prereg, budget_fresh),
+        "early_stopping": early_stopping(estimate_units, records, prereg, budget_fresh,
+                                         refused),
         "sweeps": swept,
         "named_plans": named_plans(records, prereg),
         "material": {d: (sorted(u) if u is not None else None) for d, u in union.items()},
@@ -880,6 +943,11 @@ def report_md(report: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
         lines.append(f"| {m} | {v['estimate_unit'] or 'none'} | {_n(v['faithful'])} | "
                      f"{_n(v['exported'])} | {_n(v['acceptable'])} | "
                      f"{_n(v['cost_per_useful'])} |")
+    if report.get("refused_records"):
+        lines += ["", "## Records refused", "",
+                  f"{len(report['refused_records'])} record(s) are not known to be made on the "
+                  f"frozen engine, so none of them is scored:", ""]
+        lines += [f"- {r['run']}: {r['why']}" for r in report["refused_records"]]
     lines += ["", "## The plans", "",
               "| Run | Model | Fixture | Verdict | Mean bias | Covered | Regret | Why |",
               "|---|---|---|---|---|---|---|---|"]
@@ -918,7 +986,10 @@ def report_md(report: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
     e = report["early_stopping"]
     lines += ["", "## Early stopping", "",
               f"Stopped: {', '.join(e['stopped']) or 'none'}. Spent {_n(e['spent'])} fresh "
-              f"tokens; projected {_n(e['projected'])} against a budget of {_n(e['budget'])}: "
+              f"tokens"
+              + (f", {_n(e['refused_fresh'])} of them on {e['refused_runs']} record(s) refused "
+                 f"for their engine" if e.get("refused_runs") else "")
+              + f"; projected {_n(e['projected'])} against a budget of {_n(e['budget'])}: "
               + ("the waves stop." if e["stop_waves"] else "the waves go on."
                  if e["stop_waves"] is False else f"not judged ({e['why']})"), ""]
     f = report["false_alarms"]
