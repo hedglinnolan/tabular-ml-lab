@@ -3,8 +3,9 @@ journey; §3.6).
 
 A manuscript bundle states a finished analysis: its methods are the record's sentences as they
 stand, its tables the declared result. So the export refuses — HTTP 409, never a partial bundle —
-while anything it would report is not settled yet, and the refusal names each thing missing, with
-a way forward for each (BLUEPRINT §3's refusal shape):
+while anything it would report is not settled yet, and the refusal names each thing missing, each
+with its ways forward (BLUEPRINT §3's refusal shape): at least one, except for a stage's refusal in
+words that offers none, which is said with none (computing it again would refuse again):
 
 * **an input file changed** since TurboTab read it: no record could name the data the results
   came from (its bytes no longer match the fingerprint recorded when it was read);
@@ -49,6 +50,9 @@ PLAN_QUESTIONS = ("open_seal",)
 STAGE_NAMES = {"cohort": "The participant flow", "design": "The model matrix",
                "fit": "The fit", "effects": "Table 2 (the declared models)",
                "calibration": "The regression calibration (the declared secondary analysis)"}
+# The stages the bundle does not report that are named, where one waits on them, by the answer they
+# compute, as the app names that answer (``voice``'s subject of its slot): the split.
+ANSWER_STAGES = ("split",)
 OPEN = ("open", "waiting")
 
 
@@ -102,7 +106,16 @@ def _listed(items: list[str]) -> str:
 
 
 def _stage_name(stage: str) -> str:
-    return STAGE_NAMES.get(stage, f"The {stage} stage")
+    """What the refusal calls ``stage``: :data:`STAGE_NAMES`, else for one of
+    :data:`ANSWER_STAGES` the app's name for the answer it computes, else the engine's name."""
+    if stage in STAGE_NAMES:
+        return STAGE_NAMES[stage]
+    if stage in ANSWER_STAGES:
+        from turbotab.core.voice import _SLOT_SUBJECT
+
+        subject = _SLOT_SUBJECT[stage]
+        return subject[:1].upper() + subject[1:]
+    return f"The {stage} stage"
 
 
 def _refused(stage: str, refused: Any, said: set[tuple[str, str, str]]) -> Missing | None:

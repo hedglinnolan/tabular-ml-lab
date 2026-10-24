@@ -423,19 +423,23 @@ def test_a_stage_that_refused_in_words_is_reported_as_its_refusal(tmp_path):
     assert way["label"] == add["label"]
     assert d.parse_decision(way["decision"]).models == ["ridge", "linear"]
 
-    # Waited on: the split refused (a stage the bundle does not report), and the fit and Table 2
-    # each serve its refusal; the model matrix refused, and the fit and Table 2 serve its own.
+    # Waited on, as the graph serves it (``graph.Engine._status``: a stage whose first failed
+    # dependency refused serves that refusal): the split refused, a stage the bundle does not
+    # report; the model matrix waits on it, the fit and Table 2 on the model matrix, and each
+    # serves the split's refusal, so the model matrix names the split, as the app names that
+    # answer ("the split"), once. Then the model matrix refused, and the fit and Table 2 serve
+    # its own.
     held = {"label": "Hold out a share of the rows", "decision": None}
     split = Refused(stage="split", code="seal_refused", message="No analyzed row would be held out.",
                     exits=[held])
     waited = _source(log.records(), statuses={
-        "cohort": fresh, "design": fresh,
-        "fit": status("error", "Needs 'split', which failed.", split),
-        "effects": status("error", "Needs 'split', which failed.", split)})
+        "cohort": fresh, "design": status("error", "Needs 'split', which failed.", split),
+        "fit": status("error", "Needs 'design', which failed.", split),
+        "effects": status("error", "Needs 'design', which failed.", split)})
     [found] = gate.missing(waited)
     assert (found.code, found.exits) == ("seal_refused", [held])
-    assert found.message == ("The fit waits on the split stage, which was refused, so its result "
-                             "cannot be reported: No analyzed row would be held out.")
+    assert found.message == ("The model matrix waits on the split, which was refused, so its "
+                             "result cannot be reported: No analyzed row would be held out.")
     matrix = Refused(stage="design", code="no_predictors", message="No column is a predictor.")
     upstream = _source(log.records(), statuses={
         "cohort": fresh, "design": status("error", "ValueError: No column is a predictor.", matrix),
