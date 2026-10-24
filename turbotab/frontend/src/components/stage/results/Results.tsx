@@ -13,7 +13,7 @@ import {
   type SplitArtifact,
   type SubstitutionArtifact,
 } from "../../../api/m1-stage-types";
-import { useCancelJob, useDecide, usePressFit, useQuest } from "../../../api/queries";
+import { useCancelJob, useDecide, useModels, usePressFit, useQuest } from "../../../api/queries";
 import type { ProjectView, Refusal, StageStatus } from "../../../api/schema";
 import { RefusalNote } from "../../record/Refusal";
 import { StaleVeil, type VeilState } from "../../../motion/StaleVeil";
@@ -32,7 +32,7 @@ import {
 import { glyphOf, sealPhase } from "../seal/phase";
 import { SaveMenu } from "../save/SaveMenu";
 import { Rich } from "../text";
-import { Coefficients } from "./Coefficients";
+import { Coefficients, declaredTables, forestCaption } from "./Coefficients";
 import { Comparison } from "./Comparison";
 import { Curves } from "./Curves";
 import {
@@ -150,6 +150,8 @@ export function Results({ pid, view, data }: Props) {
   const fit = data.fit.artifact;
   const decide = useDecide(pid);
   const cancel = useCancelJob(pid);
+  // What each family declares it gives under inference: a shrunk table's note says why (GET /models).
+  const families = useModels();
   const [pending, setPending] = useState<{ donor: string; recipient: string } | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   // A refused pair answers with the server's ways forward (a nutrient's unit, a part of a total),
@@ -185,6 +187,7 @@ export function Results({ pid, view, data }: Props) {
     .filter((m) => m.coefficients && m.coefficients.length)
     .sort((a, b) => Number(hasCi(b)) - Number(hasCi(a)))
     .map((m) => ({ model: m, coefficients: exposureCoefficients(m.coefficients!, view.state.roles) }));
+  const tables = declaredTables(families.data);
   const sub = data.substitution.artifact;
   const subStatus = view.stages.substitution;
   const subBusy = subStatus?.status === "running" || subStatus?.status === "queued";
@@ -265,18 +268,13 @@ export function Results({ pid, view, data }: Props) {
                 build={() =>
                   forestFigure(linear[0]!.coefficients, view.state.purpose === "inference", {
                     title: `${linear[0]!.model.label}: coefficients of the exposures`,
-                    caption:
-                      view.state.purpose === "inference"
-                        ? linear[0]!.model.inference?.refused
-                          ? `Squares: estimates. ${linear[0]!.model.inference.caption}`
-                          : `Squares: estimates; lines: ${linear[0]!.model.inference?.caption ?? "95% confidence intervals."}`
-                        : "Squares: estimates of the fitted prediction model, not interpreted as effects.",
+                    caption: forestCaption(linear[0]!.model, view.state.purpose, tables[linear[0]!.model.family]),
                     provenance: plain(recorded),
                   })
                 }
               />
             </header>
-            <Coefficients models={linear} purpose={view.state.purpose} target={target} />
+            <Coefficients models={linear} purpose={view.state.purpose} target={target} tables={tables} />
           </section>
         </StaleVeil>
       ) : null}

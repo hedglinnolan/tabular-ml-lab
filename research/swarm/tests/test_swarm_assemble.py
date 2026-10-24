@@ -1210,6 +1210,156 @@ def test_a_conditional_measure_is_the_locked_fits_row_on_its_scale(measure, rati
     assert (differ["refused"], differ["refused_kind"]) == (A.rows_differ_why(4), "not_known")
 
 
+# The ruling of 2026-10-23 on the shrunk effect: ridge declares a shrunk table with no intervals
+# (``ridge.py``), so its fit's row of the exposure is no estimate of the effect; the effects stage
+# refuses where no chosen family has a coefficient table, in the words its construction gives
+# (``stages.effects.no_table_refusal``, the linear model offered first).
+SHRUNK = {"feature": "x", "estimate": 0.42, "ci_low": None, "ci_high": None, "p": None}
+NO_TABLE_WORDS = ("None of the chosen model families has a coefficient table, so there is no "
+                  "effect to report; choose the linear model.")
+NO_TABLE_REFUSAL = {"stage": "effects", "code": "no_coefficient_table", "message": NO_TABLE_WORDS,
+                    "exits": [{"label": "Add Linear model, which has a coefficient table",
+                               "decision": {"kind": "select_models",
+                                            "models": ["ridge", "linear"]}}]}
+
+
+def _fit_of(effects: dict[str, Any]) -> list[dict[str, Any]]:
+    return [{**_locked_fit()[0], "effects": effects}]
+
+
+def _served_for(families: list[dict[str, Any]], effects_stage: dict[str, Any]) -> dict[str, Any]:
+    """GET …/results for the locked fit's key: ``families`` as served, the effects stage as
+    ``effects_stage`` serves its status."""
+    return {**_results("mean_difference"), "effects": effects_stage,
+            "families": [{"label": None, "sequence": [], "marginal": None, "e_values": [], **f}
+                         for f in families]}
+
+
+def test_a_locked_fit_whose_families_have_no_coefficient_table_is_refused_in_the_engines_words():
+    """Ridge alone, locked: its fit's shrunk row of `x` is no estimate. The results serve none for
+    it and, in its place, the effects stage's refusal; the record takes no estimate from the fit's
+    row and is refused in the stage's words, none served. Where the results serve another fit (a
+    change of models after the lock), the stage's words for it are not the locked fit's, and the
+    refusal says only that no family of the locked fit has a table."""
+    refused_stage = {"key": None, "fresh": False, "status": "error"}
+    doc = _served_for([{"family": "ridge", "effect": None, "refusal": NO_TABLE_REFUSAL}],
+                      refused_stage)
+    got = A.result_of("inference", _locked("mean_difference"), _fit_of({"ridge": [SHRUNK]}),
+                      A.Read(200, doc))
+    assert (got["refused"], got["refused_kind"], got.get("estimates")) == (
+        NO_TABLE_WORDS, "not_served", None)
+    assert got["attempt"] == "fit1" and validate_result(got)
+    other = {**doc, "fit": {"key": "key2", "fresh": True, "status": "fresh"}}
+    got = A.result_of("inference", _locked("mean_difference"), _fit_of({"ridge": [SHRUNK]}),
+                      A.Read(200, other))
+    assert (got["refused"], got["refused_kind"]) == (A.NO_TABLE, "not_served")
+    assert json.dumps(SHRUNK["estimate"]) not in json.dumps(got)
+
+
+def test_a_locked_fit_with_a_coefficient_table_keeps_its_row_and_a_shrunk_one_beside_it_is_left():
+    """Both ways: the linear model's row of `x` is the estimate, alone or beside ridge, whose
+    shrunk row the results serve no effect for (and the stage, fitting the linear model, refuses
+    nothing); the record takes the linear model's row only, and the rows the results serve agree."""
+    fresh = {"key": "e1", "fresh": True, "status": "fresh"}
+    alone = A.result_of("inference", _locked("mean_difference"), _fit_of({"linear": [LOG_ODDS]}),
+                        A.Read(200, _served_for([{"family": "linear", "effect": [LOG_ODDS],
+                                                  "refusal": None}], fresh)))
+    assert (alone.get("refused"), alone["source"]) == (None, "fits")
+    assert alone["estimates"] == _reported({"linear": [LOG_ODDS]})
+    doc = _served_for([{"family": "linear", "effect": [LOG_ODDS], "refusal": None},
+                       {"family": "ridge", "effect": None, "refusal": None}], fresh)
+    both = A.result_of("inference", _locked("mean_difference"),
+                       _fit_of({"linear": [LOG_ODDS], "ridge": [SHRUNK]}), A.Read(200, doc))
+    assert (both.get("refused"), both["estimates"]) == (None, _reported({"linear": [LOG_ODDS]}))
+    assert validate_result(both)
+
+
+def test_a_locked_fit_whose_families_report_no_coefficients_is_refused_in_the_engines_words():
+    """The random forest alone, locked: it reports no coefficients, so the fit record serves no
+    family's rows of `x` (``effects`` empty, as ``GET …/fits`` serves a family with none), and the
+    effects stage refuses as it does for ridge, no chosen family having a coefficient table. The
+    record is refused in the stage's words as the results serve them in its slot, none served.
+    Both ways: where the route's gate withheld the rows, its reason still wins and the numbers are
+    not known; where a family of the fit has a coefficient table and the fit serves no rows, the
+    record says only that, since the stage gives no refusal for it."""
+    forest = {**NO_TABLE_REFUSAL, "exits": [{"label": "Add Linear model, which has a coefficient "
+                                                      "table",
+                                             "decision": {"kind": "select_models",
+                                                          "models": ["random_forest", "linear"]}}]}
+    refused_stage = {"key": None, "fresh": False, "status": "error"}
+    doc = _served_for([{"family": "random_forest", "effect": None, "refusal": forest}],
+                      refused_stage)
+    lock = [{**_locked_fit()[0], "families": ["random_forest"], "effects": {}}]
+    got = A.result_of("inference", _locked("mean_difference"), lock, A.Read(200, doc))
+    assert (got["refused"], got["refused_kind"], got.get("estimates")) == (
+        NO_TABLE_WORDS, "not_served", None)
+    assert validate_result(got)
+    withheld = [{**lock[0], "withheld": "The plan is not locked."}]
+    got = A.result_of("inference", _locked("mean_difference"), withheld, A.Read(200, doc))
+    assert (got["refused"], got["refused_kind"]) == ("The plan is not locked.", "not_known")
+    tabled = [{**lock[0], "families": ["linear"]}]
+    got = A.result_of("inference", _locked("mean_difference"), tabled, A.Read(200, doc))
+    assert (got["refused"], got["refused_kind"]) == ("The locked fit serves no exposure rows.",
+                                                     "not_served")
+
+
+@pytest.fixture(scope="module")
+def walking_locks() -> dict[str, dict[str, Any]]:
+    """The walking table's short Estimate journeys, ridge alone, the random forest alone and the
+    linear model alone, each locked by Fit, as the server serves them
+    (``test_results_no_coefficient_table_api``)."""
+    from turbotab.server.tests.test_results_no_coefficient_table_api import _locked_journey
+
+    return {"ridge": _locked_journey(["ridge"]), "random_forest": _locked_journey(["random_forest"]),
+            "linear": _locked_journey(["linear"])}
+
+
+def test_on_the_served_journeys_a_ridge_lock_is_refused_and_a_linear_lock_is_least_squares(
+        walking_locks):
+    """End to end on the server's own documents: ridge alone, locked, is refused, none served, in
+    the effects stage's words as its status serves them, which are those its construction gives;
+    the linear model alone is its row of `walks_daily`, statsmodels' least squares with HC3
+    intervals on the 120 complete cases (``_ols_hc3``)."""
+    from turbotab.server.tests.test_results_no_coefficient_table_api import _ols_hc3
+
+    def result(name: str) -> dict[str, Any]:
+        j = walking_locks[name]
+        return A.result_of("inference", j["view"]["decisions"], j["fits"],
+                           A.Read(200, j["results"]))
+
+    stage = walking_locks["ridge"]["view"]["stages"]["effects"]["refusal"]
+    got = result("ridge")
+    assert (got["refused"], got["refused_kind"], got.get("estimates")) == (
+        stage["message"], "not_served", None)
+    assert stage["message"] == NO_TABLE_WORDS and validate_result(got)
+    got = result("linear")
+    truth = _ols_hc3()
+    assert got.get("refused") is None and got["source"] == "fits" and validate_result(got)
+    [e] = got["estimates"]
+    assert (e["family"], e["feature"], e["why"]) == ("linear", "walks_daily", None)
+    assert (e["estimate"], e["ci_low"], e["ci_high"]) == pytest.approx(
+        (truth["estimate"], truth["ci_low"], truth["ci_high"]), rel=1e-9)
+
+
+def test_on_the_served_journey_a_random_forest_lock_is_refused_in_the_effects_stages_words(
+        walking_locks):
+    """The random forest alone, locked, end to end: its fit record serves no family's rows, the
+    effects stage refuses (no chosen family has a coefficient table), the results serve that
+    refusal in the family's slot, and the record is refused in those words, none served."""
+    j = walking_locks["random_forest"]
+    status = j["view"]["stages"]["effects"]
+    assert status["status"] == "error" and status["refusal"]["code"] == "no_coefficient_table"
+    [record] = [f for f in j["fits"] if f.get("locked")]
+    assert record["families"] == ["random_forest"] and not any(record["effects"].values())
+    [slot] = j["results"]["families"]
+    assert (slot["family"], slot["effect"], slot["refusal"]) == (
+        "random_forest", None, status["refusal"])
+    got = A.result_of("inference", j["view"]["decisions"], j["fits"], A.Read(200, j["results"]))
+    assert (got["refused"], got["refused_kind"], got.get("estimates")) == (
+        status["refusal"]["message"], "not_served", None)
+    assert status["refusal"]["message"] == NO_TABLE_WORDS and validate_result(got)
+
+
 def test_a_lock_whose_plan_declares_no_estimand_reports_no_estimate():
     no_estimand = [*_locked("odds_ratio")[:3], _rec(4, 4, {"kind": "lock_plan", "plan": {},
                                                             "digest": "d"})]

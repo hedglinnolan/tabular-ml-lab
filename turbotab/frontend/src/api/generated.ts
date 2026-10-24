@@ -4869,6 +4869,7 @@ export interface components {
             effect: {
                 [key: string]: unknown;
             }[] | null;
+            refusal: components["schemas"]["Refused"] | null;
             /**
              * Sequence
              * @default []

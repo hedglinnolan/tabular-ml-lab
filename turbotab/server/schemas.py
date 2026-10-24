@@ -31,7 +31,7 @@ from turbotab.core.decisions import (  # noqa: F401 - re-exported contract model
     Role,
     Task,
 )
-from turbotab.core.graph import StageStatus, StatusName  # noqa: F401
+from turbotab.core.graph import Refused, StageStatus, StatusName  # noqa: F401
 from turbotab.core.interview import InterviewStep  # noqa: F401
 # A finding routes to a question the Router asks, so its route is typed by the Router's keys and
 # widens exactly when the interview does (the teaching also covers the repairs and seal cards).
@@ -200,8 +200,13 @@ class ResultFamily(Model):
     intervals: dict[str, Any] | None = None
     calibration: dict[str, Any] | None = None
     # Estimate: the fit's rows of the exposure, and the effects stage's sequence fits, marginal
-    # contrast and E-values.
+    # contrast and E-values. A family whose fit gives no coefficient table (a penalized family's
+    # shrunk rows, a family with no coefficients: ``stages.effects.has_coefficient_table``) serves
+    # no rows; ``refusal`` is then the effects stage's own refusal for it (``no_coefficient_table``:
+    # its words and ways forward) where the stage gives one, which it does when no chosen family
+    # has a table.
     effect: list[dict[str, Any]] | None = None
+    refusal: Refused | None = None
     sequence: list[dict[str, Any]] = []
     marginal: dict[str, Any] | None = None
     e_values: list[ResultEValue] = []
