@@ -27,7 +27,9 @@ one of its candidates uniformly:
 * ``preview`` an option of the open question, of a declaration line or of a finding;
 * ``fit``: press Fit;
 * ``stale``: send an id no longer good, a decision already reverted (revisited again) or an
-  option id an earlier ask offered and this one does not (answered).
+  option id an earlier ask offered and this one does not (answered); the kind is drawn first,
+  uniformly among those offered, then an id of that kind (:func:`stale_of`), so the reverted
+  kind is not lost among the many options earlier asks offered.
 
 An option that takes values of its own takes them from the crash sweep's ``sweep.Fields`` where it
 builds them (the first it builds), and is otherwise skipped and counted (``skipped``, with why;
@@ -49,11 +51,14 @@ times at most.
 
 1. an HTTP 500, the driver's own failure (``driver_failed``, a server it could not read or reach),
    or a stage or fit error the engine did not type as a refusal (:func:`failures_of`; every stage
-   of the project as the walk ends, :func:`stages_of`; a question that waited on one);
+   of the project after each press of Fit and each read of the results, with the round it was
+   met in, and as the walk ends, :func:`stages_of`; a question that waited on one);
 2. a refusal with no code or no words (:func:`wordless_of`);
 3. a dead end: a way forward that records something which, taken (the next command after its
-   refusal that records something answers it), is refused again with the same code
-   (:func:`dead_ends_of`);
+   refusal that records something answers it), is refused again with the same code, or, where
+   the refusal was of a press of Fit, the seal or the export, is recorded and the next of that
+   command is refused again with the same code (:func:`dead_ends_of`; so a walk the export's or
+   the seal's tries end, each way taken and refused again alike, is a defect);
 4. a fit record whose plan's digest is not the log's: the decision log (``decisions.jsonl``, read
    with the engine's own reader) refolded offline as it stood when the fit completed (the records
    appended by the record's time, the longest prefix whose records in force are those it names)
@@ -115,6 +120,11 @@ CARDS = (*arms.FIXED, "estimand")
 # The commands that record something (a press of Fit records the lock, or a press), so the first
 # of them after a refusal is the one that took its way forward or did not (:func:`dead_ends_of`).
 RECORDING = ("answer", "revisit", "seal", "fit")
+# The commands the walk gives again once a way forward from their refusal is recorded (Fit as
+# ``arms.fit_through`` presses it, the seal as ``arms.seal_through`` asks it, the export), so a
+# way recorded is a dead end where the next of them is refused with the same code.
+RETRIED = ("fit", "seal", "export")
+STALE = ("reverted", "option")  # the kinds of stale id, drawn first (:func:`stale_of`)
 # Where a stop came from a command the transcript holds (``arms.walk``'s answers, the walker's
 # own, a press of Fit, the export), so its refusal is read there, not again from the stop.
 COMMANDED = ("walk", "walker", "fit", "export")
@@ -133,6 +143,17 @@ def rounds_of(rng: Any) -> int:
 
 def draw(rng: Any, items: Sequence[Any]) -> Any:
     return items[int(rng.integers(len(items)))]
+
+
+def stale_of(rng: Any, candidates: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
+    """A stale id drawn from ``candidates`` (``offered_actions``' ``stale``): its kind uniformly
+    among the kinds of :data:`STALE` offered, then one of that kind uniformly; so a decision
+    already reverted, which the driver's ``revisit`` posts to the server, is sent as often as an
+    option id an earlier ask offered, which the driver's own resolver refuses, however many of
+    each are offered."""
+    kinds = [k for k in STALE if any(c.get("kind") == k for c in candidates)]
+    kind = draw(rng, kinds)
+    return draw(rng, [c for c in candidates if c.get("kind") == kind])
 
 
 def stamp() -> dict[str, Any]:
@@ -198,16 +219,40 @@ def entry_of(argv: Sequence[str], code: int, payload: Mapping[str, Any], *, n: i
 
 class Walked(arms.Driven):
     """A run of the driver's own (``arms.Driven``) that keeps every command it ran, with what it
-    said (:func:`entry_of`), in ``transcript``; with the driver's ``revisit``."""
+    said (:func:`entry_of`), in ``transcript``; and after each press of Fit and each read of the
+    results, the project's stages in error (:func:`stages_of`, one view read), each kept once in
+    ``met`` with where the walk was (``at``: ``forward``, a round's number, ``end``) and the
+    command it followed, since a later refit computes the stage again at another key and the
+    project's view as the walk ends no longer holds it; with the driver's ``revisit``."""
 
     def __init__(self, runs: Path):
         super().__init__(runs)
         self.transcript: list[dict[str, Any]] = []
+        self.met: list[dict[str, Any]] = []
+        self.at: Any = "forward"
 
     def command(self, *argv: str) -> tuple[int, dict[str, Any]]:
         code, payload = super().command(*argv)
         self.transcript.append(entry_of(argv, code, payload, n=len(self.transcript)))
         return code, payload
+
+    def held(self) -> None:
+        """The stages in error now, each not met before (its defect, stage and key) kept."""
+        seen = {(d.get("defect"), d.get("stage"), d.get("key")) for d in self.met}
+        after = self.transcript[-1]["n"] if self.transcript else None
+        for d in stages_of(self.view()):
+            if (d.get("defect"), d.get("stage"), d.get("key")) not in seen:
+                self.met.append(d | {"round": self.at, "after": after})
+
+    def fit(self) -> arms.Said:
+        said = super().fit()
+        self.held()
+        return said
+
+    def results(self) -> arms.Said:
+        said = super().results()
+        self.held()
+        return said
 
     def use(self, pid: str) -> None:
         """A run has one project (``sweep.Fields.of_template`` names it): nothing to do."""
@@ -366,7 +411,11 @@ def wordless_of(transcript: Sequence[Mapping[str, Any]],
 def dead_ends_of(transcript: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """(3) Each way forward that records something which, taken, is refused again with the same
     code: a refusal whose ways have ids and decisions, and the next command after it that records
-    something (:data:`RECORDING`) an answer naming one of them, refused with the refusal's code."""
+    something (:data:`RECORDING`) an answer naming one of them (the way taken), which is refused
+    with the refusal's code; or, where the refusal was of a command the walk gives again
+    (:data:`RETRIED`: a press of Fit, the seal, the export), the way recorded and the next of that
+    command after it refused with the refusal's code. Each keeps the refusal, the way taken and
+    the request refused again."""
     out = []
     for i, e in enumerate(transcript):
         if e.get("kind") != "refused":
@@ -374,14 +423,20 @@ def dead_ends_of(transcript: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]
         ways = {str(w["id"]) for w in e.get("exits") or [] if w.get("id") and w.get("decision")}
         if not ways:
             continue
-        taken = next((f for f in transcript[i + 1:] if f.get("command") in RECORDING), None)
+        j, taken = next(((j, f) for j, f in enumerate(transcript[i + 1:], start=i + 1)
+                         if f.get("command") in RECORDING), (len(transcript), None))
         if taken is None or taken.get("command") != "answer" or not taken.get("ids") \
                 or taken["ids"][0] not in ways:
             continue
-        if taken.get("kind") == "refused" and taken.get("code") == e.get("code"):
+        again: Mapping[str, Any] | None = taken
+        if taken.get("kind") == "ok" and e.get("command") in RETRIED:
+            again = next((g for g in transcript[j + 1:] if g.get("command") == e.get("command")),
+                         None)
+        if again is not None and again.get("kind") == "refused" \
+                and again.get("code") == e.get("code"):
             out.append({"defect": "dead_end", "command": e.get("command"), "code": e.get("code"),
-                        "way": taken["ids"][0], "words": taken.get("message"),
-                        "refused": dict(e), "request": dict(taken)})
+                        "way": taken["ids"][0], "words": again.get("message"),
+                        "refused": dict(e), "taken": dict(taken), "request": dict(again)})
     return out
 
 
@@ -523,11 +578,13 @@ def _key(d: Mapping[str, Any]) -> str:
 
 def classed(walk: Mapping[str, Any]) -> tuple[str, list[dict[str, Any]]]:
     """The walk's class and its defects (the module docstring), from what it kept: its
-    ``transcript``, its ``stops``, the stages in error as it ended (``stages``, :func:`stages_of`),
-    its fit records held to the log (``checks``), what the second seal and the revisit after it
-    said (``after_seal``), and whether the export was given (``reached``)."""
+    ``transcript``, its ``stops``, the stages in error met after each press of Fit and each read
+    of the results (``stages_met``, :class:`Walked`) and as it ended (``stages``,
+    :func:`stages_of`), its fit records held to the log (``checks``), what the second seal and the
+    revisit after it said (``after_seal``), and whether the export was given (``reached``). A
+    defect met more than once is kept as first met."""
     transcript, stops = walk.get("transcript") or [], walk.get("stops") or []
-    stages = list(walk.get("stages") or [])
+    stages = [*(walk.get("stages_met") or []), *(walk.get("stages") or [])]
     said = {d.get("stage") for d in stages if d.get("defect") == "stage_failed"}
     for s in stops:
         d = s.get("detail") or {}
@@ -537,7 +594,10 @@ def classed(walk: Mapping[str, Any]) -> tuple[str, list[dict[str, Any]]]:
     found = [*failures_of(transcript), *stages, *wordless_of(transcript, stops),
              *dead_ends_of(transcript), *digest_defects(walk.get("checks") or []),
              *sealed_defects(walk.get("after_seal") or [])]
-    defects = list({_key(d): d for d in found}.values())
+    first: dict[str, dict[str, Any]] = {}
+    for d in found:
+        first.setdefault(_key(d), d)
+    defects = list(first.values())
     kind = "defect" if defects else "clean" if walk.get("reached") else "refused"
     return kind, defects
 
@@ -598,6 +658,7 @@ class Walker:
     # the rounds
 
     def round(self, n: int) -> None:
+        self.session.at = n
         q = self.session.ask()
         view = self.session.view()
         seen = {i for e in self.session.transcript[:-1] for i in (e.get("asked") or {}).get(
@@ -616,7 +677,9 @@ class Walker:
             act["id"] = pick["id"]
             self.after(self.session.revisit(pick["id"], f"{reason}."), act)
         elif action == "stale":
-            pick = draw(self.rng, offers[action])
+            act["stale_offered"] = {k: sum(1 for c in offers[action] if c["kind"] == k)
+                                    for k in STALE}
+            pick = stale_of(self.rng, offers[action])
             act.update(id=pick["id"], stale=pick["kind"])
             said = self.session.revisit(pick["id"], f"{reason}: a decision already reverted.") \
                 if pick["kind"] == "reverted" else self.session.answer(
@@ -715,6 +778,7 @@ class Walker:
                                                self.rng, self.reason)
 
     def end(self) -> None:
+        self.session.at = "end"
         q = self.settle()
         if self.policy.question.purpose == "prediction" \
                 or (q.get("question") or {}).get("key") == "open_seal":
@@ -733,7 +797,9 @@ class Walker:
 
     def exported(self) -> None:
         """The export; refused with ways forward that record something, one drawn is taken, the
-        walk goes on and the export is asked again (:data:`EXPORT_TRIES`)."""
+        walk goes on and the export is asked again (:data:`EXPORT_TRIES`); once a way is
+        recorded, the export refused again with the same code is a dead end
+        (:func:`dead_ends_of`), and the walk a defect however it ends."""
         for n in range(1, EXPORT_TRIES + 1):
             said = self.session.export()
             act: dict[str, Any] = {"what": "export", "try": n, **arms.said_fields(said)}
@@ -776,7 +842,8 @@ def walk_one(dataset: str, seed: int, out: Path, *, data: Path | None = None,
         "engine": {"start": stamp()},
         "data": {"path": str(table), "sha256": hashlib.sha256(table.read_bytes()).hexdigest()},
         "run": None, "rounds": rounds_of(rng), "actions": [], "end": [], "after_seal": [],
-        "stops": [], "skipped": [], "stages": [], "checks": [], "reached": False}
+        "stops": [], "skipped": [], "stages_met": [], "stages": [], "checks": [],
+        "reached": False}
     session = Walked(out / "runs")
     policy = arms.Random(question, int(seed))
     walker = Walker(session, policy, rng, walk, LazyFields(session, question, dataset, table))
@@ -812,6 +879,7 @@ def walk_one(dataset: str, seed: int, out: Path, *, data: Path | None = None,
         except (OSError, ValueError):
             log = []
     walk["steps"] = [s.json() for s in walker.steps]
+    walk["stages_met"] = session.met
     walk["transcript"] = session.transcript
     walk["engine"]["end"] = stamp()
     walk["seconds"] = round(time.monotonic() - started, 1)
@@ -869,7 +937,8 @@ def report_of(dataset: str, purpose: str, seeds: Sequence[int], walks: Sequence[
         "seconds": round(float(seconds), 1),
         "walks": [summary_of(w) for w in walks], "classes": classes,
         "defects": [{"seed": w["seed"], **{k: d.get(k) for k in (
-            "defect", "command", "stage", "code", "what", "record", "way", "words", "path")}}
+            "defect", "command", "stage", "round", "code", "what", "record", "way", "words",
+            "path")}}
             for w in walks for d in w.get("defects") or []],
         "skipped": [{"seed": w["seed"], **s} for w in walks for s in w.get("skipped") or []],
         "noted": [{"seed": w["seed"], **n} for w in walks for n in noted_of(
@@ -912,6 +981,7 @@ def walk_md(report: Mapping[str, Any]) -> str:
         lines += [f"- seed {d['seed']}, `{d['defect']}`"
                   + (f" ({d['command']})" if d.get("command") else "")
                   + (f" at the {d['stage']} stage" if d.get("stage") else "")
+                  + (f" (met in round {d['round']})" if isinstance(d.get("round"), int) else "")
                   + (f", `{d['code']}`" if d.get("code") else "")
                   + f": {str(d.get('words'))[:300]} ({d.get('path')})" for d in report["defects"]]
     if report.get("noted"):

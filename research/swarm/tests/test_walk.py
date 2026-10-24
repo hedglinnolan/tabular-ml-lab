@@ -173,6 +173,81 @@ def test_a_refusal_whose_ways_record_nothing_or_are_not_taken_is_no_dead_end():
     assert walk.dead_ends_of(t) == []
 
 
+SELECT = way("x-sel", {"kind": "select_models", "models": ["linear"]}, "Fit another family")
+TRIAGE = way("x-tri", {"kind": "confirm_sweep"}, "Confirm the triage")
+FRESH_FIT = {"pressed": {}, "fit": {"status": "fresh", "key": "k2"}}
+EXPORTED = {"exported": {"path": "export.zip", "bytes": 10, "files": []}}
+
+
+def fit_refused(code="too_few_rows", exits=(FILL,)):
+    return {"pressed": {}, "fit": {"status": "error"},
+            **refused(code, "The answers leave 3 of 60 rows.", exits, by="engine", status=None)}
+
+
+def retried(command):
+    """A refusal of ``command`` (a press of Fit, the seal or the export) with a way that records
+    something; the way taken and recorded, the walk going on as the walker's does (for the export,
+    the ask, Fit and the results); and the command given again, ``(exit, payload)`` left to the
+    caller."""
+    if command == "export":
+        return [(argv("export", wait="240"), 1, refused("result_failed", "Table 2 failed.",
+                                                        [SELECT])),
+                (argv("answer", "x-sel", reason="r", marker="design"), 0, ok("select_models")),
+                (argv("ask", wait="90"), 0, {"question": {"key": "models", "status": "settled"},
+                                             "fit_reached": True}),
+                (argv("fit", wait="240"), 0, FRESH_FIT),
+                (argv("results", wait="240"), 0, {"results": {}})], argv("export", wait="240")
+    if command == "fit":
+        return [(argv("fit", wait="240"), 1, fit_refused()),
+                (argv("answer", "x-fill", reason="r", marker="design"), 0, ok("set_missing")),
+                (argv("ask", wait="90"), 0, {"question": None, "fit_reached": True})], \
+            argv("fit", wait="240")
+    return [(argv("seal", "linear", reason="r"), 1, refused("triage_open", "Open noticings.",
+                                                            [TRIAGE])),
+            (argv("answer", "x-tri", reason="r", marker="design"), 0, ok("confirm_sweep"))], \
+        argv("seal", "linear", reason="r")
+
+
+AGAIN = {"export": (1, refused("result_failed", "Table 2 failed again.", [SELECT])),
+         "fit": (1, fit_refused()),
+         "seal": (1, refused("triage_open", "Open noticings again.", [TRIAGE]))}
+GIVEN = {"export": (0, EXPORTED), "fit": (0, FRESH_FIT), "seal": (0, ok("open_seal"))}
+OTHER = {"export": (1, refused("fit_not_fresh", "Not yet.")),
+         "fit": (1, fit_refused("separation", ())),
+         "seal": (1, refused("fit_not_fresh", "Not yet."))}
+
+
+@pytest.mark.parametrize("command", ["export", "fit", "seal"])
+def test_a_fit_seal_or_export_refused_again_after_its_way_is_taken_is_a_dead_end(command):
+    """The motivating shape: a typed refusal whose way forward, taken and recorded, leaves the
+    command it refused refused again with the same code."""
+    before, again = retried(command)
+    t = entries(*before, (again, *AGAIN[command]))
+    found = walk.dead_ends_of(t)
+    assert [(d["defect"], d["command"], d["code"], d["refused"]["n"], d["taken"]["n"],
+             d["request"]["n"]) for d in found] == [
+        ("dead_end", command, t[0]["code"], 0, 1, len(t) - 1)]
+    assert found[0]["way"] == t[1]["ids"][0] and found[0]["words"] == t[-1]["message"]
+    # The walk's limit on its tries (the export's, the seal's) stops it, and it is a defect.
+    stop = {"by": "walk", "kind": "stuck", "words": "Refused each time.", "detail": None}
+    assert walk.classed(record(transcript=t, stops=[stop]))[0] == "defect"
+
+
+@pytest.mark.parametrize("command", ["export", "fit", "seal"])
+@pytest.mark.parametrize("then", ["given", "another_code", "way_not_taken"])
+def test_a_fit_seal_or_export_given_after_its_way_or_without_it_is_no_dead_end(command, then):
+    """Silent where the way works (the command given again), where the command is refused again
+    for another reason, and where the way was not taken (a revisit recorded first, so the later
+    answer of the way and the refusal again are not that refusal's)."""
+    before, again = retried(command)
+    if then == "way_not_taken":
+        before = [before[0], (argv("revisit", "r2", reason="r"), 0, ok("revert")), *before[1:]]
+    t = entries(*before, (again, *{"given": GIVEN, "another_code": OTHER}.get(
+        then, AGAIN)[command]))
+    assert walk.dead_ends_of(t) == []
+    assert walk.classed(record(transcript=t, reached=True))[0] == "clean"
+
+
 # ── (4) the plan's digest, refolded from the log ─────────────────────────────
 
 
@@ -353,6 +428,59 @@ def test_a_stop_on_a_stage_the_engine_did_not_type_is_a_defect_once():
     assert [(d["defect"], d["stage"]) for d in defects] == [("stage_failed", "shelf")]
 
 
+class Viewed(walk.Walked):
+    """A run of the driver's own whose project is the view the test sets (``current``)."""
+
+    current: dict = {}
+
+    def view(self):
+        return self.current
+
+
+def canned(self, *argv):
+    """The driver's answer to each command as the walker gives it: Fit made fresh, the results."""
+    return 0, FRESH_FIT if argv[0] == "fit" else {"results": {}, "stages": {"fit": "fresh"}}
+
+
+FRESH = {"stages": {"working": {"status": "fresh", "key": "w1"},
+                    "fit": {"status": "fresh", "key": "f2"},
+                    "effects": {"status": "fresh", "key": "e2"}}}
+
+
+@pytest.mark.parametrize("middle, defect", [
+    (stage_view(effects=("ValueError: no coefficient table", None)), True),
+    (stage_view(cohort=("ValueError: The answers leave 3 of 60 rows.", REFUSAL)), False),
+], ids=["untyped_in_round_1", "typed_in_round_1"])
+def test_a_stage_in_error_met_mid_walk_is_held_though_the_final_view_is_fresh(
+        tmp_path, monkeypatch, middle, defect):
+    """The stages are held after each press of Fit and each read of the results, each with the
+    round it was met in: an untyped error in round 1, gone from the final view once a later round
+    refits, is still a defect; a typed refusal there is not."""
+    monkeypatch.setattr(arms.Driven, "command", canned)
+    session = Viewed(tmp_path)
+    session.run = RID
+    w = record(actions=[], skipped=[])
+    walker = walk.Walker(session, arms.Random(arms.Question("y", "inference"), 1),
+                         walk.walker_rng(1), w, None)
+    session.at, session.current = 1, middle
+    assert walker.fitted().ok
+    session.at, session.current = "end", FRESH
+    assert walker.fitted().ok
+    assert walk.stages_of(session.view()) == []
+    w.update(transcript=session.transcript, stages=walk.stages_of(session.view()),
+             stages_met=session.met, reached=True)
+    kind, defects = walk.classed(w)
+    if defect:
+        assert kind == "defect" and [(d["defect"], d["stage"], d["round"]) for d in defects] == [
+            ("stage_failed", "effects", 1)]
+        report = walk.report_of("d", "inference", [1], [{**summary(1, kind=kind),
+                                                         "defects": defects}], ENGINE, 1.0)
+        assert report["defects"][0]["round"] == 1 and report["passed"] is False
+        assert "at the effects stage (met in round 1)" in walk.walk_md(report)
+    else:
+        assert kind == "clean" and defects == [] and session.met == []
+
+
 # ── the actions offered, and the draws ───────────────────────────────────────
 
 
@@ -419,6 +547,28 @@ def test_the_rounds_and_each_draw_are_numpys_at_the_walkers_seed():
     mine = np.random.default_rng([walk.STREAM, 5])
     mine.integers(2, 5)
     assert drawn == [names[int(mine.integers(3))] for _ in range(30)]
+
+
+def test_a_stale_ids_kind_is_drawn_first_so_a_reverted_decision_is_sent():
+    """Two decisions reverted beside 54 options an earlier ask offered (the smoke run's counts):
+    the kind is drawn uniformly among those offered, then an id of that kind, each from numpy's
+    generator at the walker's seed, drawn here; so both kinds are sent, the reverted about half
+    the time and not about 2 times in 56."""
+    stale = [{"kind": "reverted", "id": f"r{i}"} for i in range(2)] + [
+        {"kind": "option", "id": f"o{i}"} for i in range(54)]
+    rng = walk.walker_rng(7)
+    drawn = [walk.stale_of(rng, stale)["id"] for _ in range(40)]
+    mine = np.random.default_rng([walk.STREAM, 7])
+    expected = []
+    for _ in range(40):
+        kind = ["reverted", "option"][int(mine.integers(2))]
+        ids = [c["id"] for c in stale if c["kind"] == kind]
+        expected.append(ids[int(mine.integers(len(ids)))])
+    assert drawn == expected
+    kinds = [i[0] for i in drawn]
+    assert 0 < kinds.count("r") < 40 and kinds.count("r") > 40 * 2 / 56 * 3
+    only = [c for c in stale if c["kind"] == "option"]
+    assert {walk.stale_of(walk.walker_rng(7), only)["kind"] for _ in range(5)} == {"option"}
 
 
 def test_an_option_that_needs_values_takes_them_from_fields_or_is_skipped_and_counted():
