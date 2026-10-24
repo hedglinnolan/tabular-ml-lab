@@ -2394,51 +2394,118 @@ def _forms_each_fit(decision: Any, ctx: Any) -> None:
             raise d.Refusal(refused.code, f"`{column}`: {refused.message}", exits=exits) from None
 
 
-def _n_effective(ctx: Any, state: Any) -> tuple[float | None, bool]:
-    """The effective sample size the rule reads, and whether the context reads rows at all (the
-    server's does): the fresh form card's (read on the analyzed rows' outcome); else read here
-    from the outcome on the analyzed rows, once those rows are known (a fresh cohort or split)
-    and the task is (answered, else the target stage's detected task). ``(None, True)`` while the
-    rows are being read: never the whole table's rows in their place, nor a task left unread."""
+def _n_effective(ctx: Any, state: Any) -> tuple[float | None, str | None]:
+    """The effective sample size the rule reads, and, where it reads none in a context that reads
+    rows (the server's), why (:data:`UNREAD`): the fresh form card's (read on the analyzed rows'
+    outcome); else read here from the outcome on the analyzed rows, once those rows are known (a
+    fresh cohort or split) and the task is (answered, else the target stage's detected task).
+    Never the whole table's rows in place of rows being read, nor a task left unread. ``(None,
+    None)`` where the context reads no rows."""
     from turbotab.core.decisions import _ctx
     from turbotab.core.sequence import artifact
 
     card = artifact(ctx, "forms") or {}
     if card.get("n_effective") is not None:
-        return float(card["n_effective"]), True
+        return float(card["n_effective"]), None
     target = getattr(state, "target", None)
     store_fn, analyzed = _ctx(ctx, "store"), _ctx(ctx, "analyzed")
     if not callable(store_fn):
-        return None, False
+        return None, None
+    if not target:
+        return None, "outcome"
     task = getattr(state, "task", None) or _task_of_ctx(ctx)
+    if task is None:
+        # Not answered: being read while the target stage detects it, else left to the user.
+        return None, "reading" if _stage_reading(ctx, "target_info") == "reading" else "task"
     rows = None
     try:
         rows = analyzed() if callable(analyzed) else None
     except Exception:  # noqa: BLE001 - rows that cannot be read are not known yet
         rows = None
-    if not target or task is None or rows is None:
-        return None, True
+    if rows is None:
+        counting = _stage_reading(ctx, "cohort")
+        return None, counting if counting in NOT_COUNTED else "reading"
     try:
         store = store_fn()
         if store is None or target not in store.columns:
-            return None, True
+            return None, "reading"
         raw = store.materialize([target], rows)[target]
     except Exception:  # noqa: BLE001 - rows that cannot be read are not known yet
-        return None, True
-    return effective_n(task, raw, getattr(state, "event", None)), True
+        return None, "reading"
+    n_eff = effective_n(task, raw, getattr(state, "event", None))
+    return n_eff, None if n_eff is not None else "none"
 
 
-def _rows_not_read(column: str, spec: Mapping[str, Any]) -> Any:
-    """The rule cannot be applied while the analyzed rows (or the outcome's task) are being read:
-    refused for now, with the spline at a k the user gives as the way forward."""
+# Why the rule reads no effective sample size where the context reads rows (:func:`_n_effective`):
+# "outcome", none is answered; "task", the outcome's task is neither answered nor being detected;
+# "none", the analyzed rows' outcome gives none (no value recorded, or a yes/no outcome's event
+# level unanswered); "failed", "stopped" or "blocked", the analyzed rows are not being counted for
+# the answers as they stand (:data:`NOT_COUNTED`); "reading", the task, the analyzed rows or the
+# table are being read for the answers given.
+UNREAD = ("outcome", "task", "none", "failed", "stopped", "blocked", "reading")
+NOT_COUNTED = {"failed": "the step that counts them failed",
+               "stopped": "the step that counts them was stopped",
+               "blocked": "the step that counts them waits on an earlier answer"}
+# What only a later answer changes (the answers' order, never their timing): under prediction the
+# rule's default stands there, said so; everywhere else, and always under inference, it waits.
+UNANSWERED = ("outcome", "task", "none")
+
+
+def _stage_reading(ctx: Any, stage: str) -> str:
+    """``stage`` as the context states it: "fresh"; "failed", "stopped" or "blocked" (its work
+    for the current answers does not run: it failed, was stopped by request, or waits on an answer
+    not given); else "reading" (queued, running or about to start, and wherever the context states
+    no stages)."""
+    from turbotab.core.decisions import _ctx
+
+    fn = _ctx(ctx, "stage")
+    if not callable(fn):
+        return "reading"
+    try:
+        found = fn(stage)
+    except Exception:  # noqa: BLE001 - a stage that cannot be read is taken as being read
+        return "reading"
+    if found is None:
+        return "reading"
+    get = found.get if isinstance(found, Mapping) else (lambda k, s=found: getattr(s, k, None))
+    status = get("status")
+    if status == "fresh":
+        return "fresh"
+    if status == "error":
+        return "failed"
+    if status == "blocked":
+        return "blocked"
+    return "stopped" if get("cancelled") else "reading"
+
+
+def _rows_not_read(column: str, spec: Mapping[str, Any], why: str = "reading",
+                   target: str | None = None) -> Any:
+    """The rule cannot be applied while what it reads is not read for the answers given
+    (:data:`UNREAD`, ``why``): refused for now, in words that say what it waits for, with the
+    spline at a k the user gives as the way forward."""
     from turbotab.core.decisions import Refusal, SetExposureForm
 
     base = {k: v for k, v in spec.items() if k not in ("knots", "knots_rule", "n_effective")}
+    rule = "k by Harrell's rule reads the effective sample size of the analyzed rows"
+    again = f"declare `{column}`'s spline again, or give its k."
+    if why == "outcome":
+        text = f"{rule}' outcome, and no outcome is chosen yet; choose it, then {again}"
+    elif why == "task":
+        text = (f"{rule}, which the outcome's task decides, and the task of `{target}` is not "
+                f"answered yet; answer it, then {again}")
+    elif why == "none":
+        text = (f"{rule}, and their outcome gives none (no value of it is recorded on them, or "
+                f"its event level is not answered yet); give `{column}`'s spline its k, or "
+                f"declare it again once it gives one.")
+    elif why in NOT_COUNTED:
+        text = (f"{rule}, and they are not being counted for the answers as they stand "
+                f"({NOT_COUNTED[why]}); give `{column}`'s spline its k, or declare it again once "
+                f"they are counted.")
+    else:
+        text = (f"{rule}, and they are being read for the answers just given; declare "
+                f"`{column}`'s spline again in a moment, or give its k.")
     return Refusal(
-        "not_yet",
-        f"k by Harrell's rule reads the effective sample size of the analyzed rows, and they are "
-        f"being read for the answers just given; declare `{column}`'s spline again in a moment, or "
-        f"give its k.",
+        "not_yet", text,
         exits=[{"label": f"A spline of `{column}` with {k} knots, k given",
                 "decision": SetExposureForm(column=column, **{**base, "knots": k})}
                for k in KNOT_CHOICES])
@@ -2447,8 +2514,12 @@ def _rows_not_read(column: str, spec: Mapping[str, Any]) -> Any:
 def complete_spec(column: str, spec: Any, ctx: Any) -> dict[str, Any]:
     """A declaration as it is recorded: k by Harrell's rule when a spline gives none (the rule and
     the effective sample size it read kept with it), and the scale and the estimand's unit it was
-    declared on. Under inference, while the context reads rows but they are not read yet, the
-    rule waits (refused ``not_yet``) rather than state a k it did not compute."""
+    declared on. While the context reads rows but has not read them for the answers given (the
+    ruling of 2026-10-23), the rule waits (refused ``not_yet``) rather than state a k it did not
+    compute, under either purpose, so the k never hangs on how soon after an answer the spline is
+    declared. Where only a later answer gives it a size (:data:`UNANSWERED`: no outcome, its task
+    or event not answered), it waits under inference and states its default under prediction (or
+    before the purpose is answered), said so."""
     state = _state(ctx)
     out = dict(spec)
     if state is None:
@@ -2456,9 +2527,10 @@ def complete_spec(column: str, spec: Any, ctx: Any) -> dict[str, Any]:
     form = out.get("form")
     if form in SPLINE_FORMS and (out.get("knots") is None or out.get("knots_rule") == "harrell"):
         # The rule's k, read here on the analyzed rows (a client's own k is kept, without the rule).
-        n_eff, reads_rows = _n_effective(ctx, state)
-        if n_eff is None and reads_rows and getattr(state, "purpose", None) == "inference":
-            raise _rows_not_read(column, out)
+        n_eff, why = _n_effective(ctx, state)
+        if why is not None and (getattr(state, "purpose", None) == "inference"
+                                or why not in UNANSWERED):
+            raise _rows_not_read(column, out, why, getattr(state, "target", None))
         out.update(knots=knots_by_rule(n_eff), knots_rule="harrell", n_effective=n_eff)
     elif form not in SPLINE_FORMS:
         out.update(knots_rule=None, n_effective=None)
