@@ -32,13 +32,19 @@ itself (a field of one's own, its ``needs``) is listed, answered by the crash sw
 the card states or the sweep builds where it has them (below), and left unreached around a named
 plan, but for the adjustment's answers option under Estimate. **The adjustment's answers,
 toggled**: around every Estimate plan, the crash sweep's and each named one's, the answers
-option of the adjustment question is answered once per column it offers (its ``columns``, as the
-driver composes them) that the plan's record of the question answers: the plan's answers with that
-one column toggled, in (a confounder's answers) where the engine's criterion reads the plan's
-answers as leaving it out of the primary model and out (a cause of neither's) where they adjust
-for it, every other column as the plan answered it (:func:`toggled`, ``answers@toggle:<column>:
-<in|out>``, posted as the decision it composes), so a column the roles do not call a covariate
-(a confounder or a collider the default roles call an exposure) is swept too. **Readings with one true
+option of the adjustment question is answered once per column of the plan's answers in force:
+every column its adjustment records still in force answer, merged by column as the engine merges
+them, for the exposure, each one the question asks (:func:`adjustment_in_force`, read from the
+template), so a column the plan answered in an earlier record than its latest is among them,
+and each column the option offers (its ``columns``, as the driver composes them: on the copy, the
+columns the revisit left unanswered) that the plan's record of the question answers. Each is
+the plan's answers in force with that one column toggled, in (a confounder's answers) where the
+engine's criterion reads the plan's answers as leaving it out of the primary model and out (a
+cause of neither's) where they adjust for it, every other column as the plan's answers in force
+have it, all posted together as the decision it composes, so the columns the revisit withdrew
+are answered again (:func:`toggled`, ``answers@toggle:<column>:<in|out>``); so a column the roles
+do not call a covariate (a confounder or a collider the default roles call an exposure) is swept
+too. **Readings with one true
 answer** (a column's code or amount, its units: each ``confirm_reading`` but a role's, and each
 ``set_column_unit``, in force) are graded against the dataset's declared readings, not swept
 (:func:`graded`). Under Predict the validation scheme is the sweep's own (below), so its line is
@@ -321,6 +327,21 @@ def live(view: Mapping[str, Any]) -> list[Any]:
     return [r for r in records if r.id not in cancelled and r.decision.kind != "revert"]
 
 
+def adjustment_in_force(view: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """The plan's adjustment answers in force on the log ``view`` serves: every live
+    ``set_adjustment`` record's answers as the engine folds them (``decisions.fold``: each
+    covariate's answer kept under its column, a later record's replacing an earlier's), those
+    given for the exposure its estimand names (``estimand.current_answers``), for each column the
+    adjustment question asks (``estimand.asked_covariates``, the columns a ``set_adjustment`` may
+    answer); in the order the plan first answered them, each without its exposure."""
+    from turbotab.core import decisions as D, estimand as E
+
+    state = D.fold(records_of(view))
+    asked = set(E.asked_covariates(state))
+    return {str(c): a.model_dump(mode="json", exclude={"exposure"})
+            for c, a in E.current_answers(state).items() if c in asked}
+
+
 def plan_digest(view: Mapping[str, Any]) -> str:
     """The plan's digest of the log as served, folded (``plan_lock.digest(plan_of(state))``, the
     digest each fit record carries)."""
@@ -547,8 +568,9 @@ class Fielded:
     """An option that takes fields of its own, answered: the refit's option (``<option>@<source>:
     <what>``), the options named and their ``--set`` fields as the driver's ``answer`` takes them
     (``options.resolve``), where the values came from (``card``, ``built`` or ``toggle``) and in
-    words; an answer composed whole (``decision``: the plan's adjustment answers with one column
-    toggled, :func:`toggled`) is posted as composed, its ids naming the option it answers."""
+    words; an answer composed whole (``decision``: the plan's adjustment answers in force with one
+    column toggled, :func:`toggled`) is posted as composed, its ids naming the option it
+    answers."""
 
     option: str
     ids: list[str]
@@ -561,27 +583,34 @@ class Fielded:
         return dataclasses.asdict(self)
 
 
-def toggled(point: Point, option: Mapping[str, Any], effect: str = "total") -> list[Fielded]:
+def toggled(point: Point, option: Mapping[str, Any], effect: str = "total",
+            in_force: Mapping[str, Any] | None = None) -> list[Fielded]:
     """Around an Estimate plan (the module docstring), the adjustment question's answers option
-    answered once per column it offers (``option``'s ``columns``, as the driver composes them)
-    that the plan's record of the question answers: the plan's answers with that column toggled,
-    in (a confounder's answers, :data:`CONFOUNDER`) where the plan's answers leave it out of the
-    primary model by the engine's criterion (``estimand.derive`` under the plan's ``effect``) and
-    out (a cause of neither's, :data:`NEITHER`) where they adjust for it, every other column
-    answered as the plan answered it, in the plan's order; none where the plan's record holds no
-    answers. Each is posted as composed (:class:`Fielded`'s ``decision``)."""
+    answered once per column of the plan's answers: each of ``in_force`` (the plan's answers in
+    force, merged over its records, :func:`adjustment_in_force`), then each ``option`` offers
+    (its ``columns``, as the driver composes them) that the plan's record of the question
+    (``point``'s, its latest) answers, each with its answer in force where it has one, else its
+    record's. Each is the plan's answers with that column toggled, in (a confounder's answers,
+    :data:`CONFOUNDER`) where the plan's answers leave it out of the primary model by the
+    engine's criterion (``estimand.derive`` under the plan's ``effect``) and out (a cause of
+    neither's, :data:`NEITHER`) where they adjust for it, every other of those columns answered
+    as the plan's answers have it, in that order; none where the plan's record holds no answers.
+    Each is posted as composed (:class:`Fielded`'s ``decision``): the engine keeps each answer
+    under its column, so the columns the revisit withdrew are answered again with the rest."""
     from turbotab.core.estimand import derive
 
     if (point.kind, point.key) != ("question", "adjustment"):
         return []
-    plan = dict((point.decision or {}).get("answers") or {})
+    record = dict((point.decision or {}).get("answers") or {})
     exposure = (point.decision or {}).get("exposure")
-    if not plan or not exposure:
+    if not record or not exposure:
         return []
+    given = {str(c): a for c, a in (in_force or {}).items()}
+    offered = [str(c) for c in option.get("columns") or []]
+    plan = {c: given[c] if c in given else record[c]
+            for c in dict.fromkeys([*given, *offered]) if c in given or c in record}
     out = []
-    for column in [str(c) for c in option.get("columns") or []]:
-        if column not in plan:
-            continue
+    for column in plan:
         if derive(plan[column], effect).adjusted:
             way, answer = "out", NEITHER
             said = (f"a cause of neither `{exposure}` nor the outcome, and not after "
@@ -596,7 +625,8 @@ def toggled(point: Point, option: Mapping[str, Any], effect: str = "total") -> l
         oid = str(option.get("id"))
         out.append(Fielded(f"{oid}@{TOGGLE}:{column}:{way}", [oid], [], TOGGLE,
                            f"the plan's adjustment answers with `{column}` toggled {way}: "
-                           f"answered as {said}, every other column as the plan answered it",
+                           f"answered as {said}, every other column as the plan's answers in "
+                           f"force have it",
                            decision))
     return out
 
@@ -667,7 +697,8 @@ class Fields:
     (``units``), the profile's reading of each column (``profile``: its ``dtype`` and
     ``n_unique``; else read off the table) and, under Estimate, the effect its estimand names
     (``effect``, total unless it names a direct one: what the adjustment's toggles read the plan's
-    answers under, :func:`toggled`)."""
+    answers under, :func:`toggled`) and the plan's adjustment answers in force (``adjustment``,
+    :func:`adjustment_in_force`: what the toggles toggle)."""
 
     question: arms.Question
     card: Mapping[str, Any] | None = None
@@ -677,6 +708,7 @@ class Fields:
     profile: dict[str, dict[str, Any]] = field(default_factory=dict)
     units: dict[str, str] = field(default_factory=dict)
     effect: str = "total"
+    adjustment: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def of_template(cls, session: Any, question: arms.Question, dataset: str | None,
@@ -703,7 +735,8 @@ class Fields:
         return cls(question, card=card, frame=table_frame(data),
                    roles={str(k): str(v) for k, v in (state.get("roles") or {}).items()},
                    codes=codes, profile=profile, units=units,
-                   effect=str((state.get("estimand") or {}).get("effect") or "total"))
+                   effect=str((state.get("estimand") or {}).get("effect") or "total"),
+                   adjustment=adjustment_in_force(view))
 
     # the table, as the plan reads it
 
@@ -2195,7 +2228,8 @@ class Sweep:
         answered with each value :class:`Fields` gives it (each its own refit, named by its
         source), else unreached with why, as every such option is around a named plan; under
         Estimate, around every plan, the adjustment's answers option also answered once per
-        column it offers, toggled with the plan's other answers fixed (:func:`toggled`); and the
+        column of the plan's answers in force, toggled with the plan's other answers fixed
+        (:func:`toggled`, :attr:`Fields.adjustment`); and the
         card's whole population after them (:meth:`Fields.population`). Each with its id
         (``point=option``), the option as offered and, for an option's fields, what answers it."""
         out: list[dict[str, Any]] = []
@@ -2210,7 +2244,7 @@ class Sweep:
             if self.question.purpose == "inference" and (point.kind, point.key) == (
                     "question", "adjustment"):
                 fields = fields or self._fields(session)
-                toggles = toggled(point, option, fields.effect)
+                toggles = toggled(point, option, fields.effect, fields.adjustment)
             if not self.crash:
                 out += [{"id": f"{point.id}={a.option}", "option": a.option, "offered": option,
                          "fielded": a} for a in toggles] or [

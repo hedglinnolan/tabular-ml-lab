@@ -29,10 +29,13 @@ or the declared exposure, and the crash sweep's answer of one, named by its sour
 the unreached line of a report finished before. A revisit refused because the split is drawn
 (``sealed``) taken through the way its refusal names, both splits withdrawn and drawn again in the
 plan's order on a log built here and folded, visited and refused where that way is refused, and
-unlisted where it names none. Around an Estimate plan, named or the crash sweep's, each column
-the adjustment question offers toggled in or out by the modified disjunctive cause criterion with
-the plan's other answers fixed, previewed and posted as composed, and none under Predict, for
-another question or without the plan's answers. The engine recorded as the sweep starts and ends:
+unlisted where it names none or none that is a split in force. Around an Estimate plan, named or
+the crash sweep's, each column of the plan's adjustment answers in force (its records merged by
+column on a log built here and folded by the engine, a column of an earlier record than its
+latest among them) and each the question offers that the plan answered, toggled in or out by the
+modified disjunctive cause criterion with the plan's other answers in force fixed, previewed and
+posted as composed; none under Predict, for another question or without the plan's answers, and
+none of a column the plan never answered or the question no longer takes. The engine recorded as the sweep starts and ends:
 one engine (a commit that leaves the tree as it was among them) can pass, another tree or
 modified files at the end refuse the report in words, as does a resumed run on another engine
 or progress holding work of a run that recorded none. A refit scored as the plan in every fold
@@ -1444,13 +1447,14 @@ class Sealed(Walked):
     ``seal._decision_a_waits_for_a_reseal`` holds it, reverting the grain is refused ``sealed``
     while a split is in force, its one way forward the revert of the latest split in force
     (``seal._reseal_exit``: "Re-draw: withdraw the folds, change this, then draw them again");
-    ``refuse`` ``"withdraw"`` refuses that revert, ``"no_way"`` offers none. Each post is a
+    ``refuse`` ``"withdraw"`` refuses that revert, ``"no_way"`` offers none; ``names`` makes the
+    way forward revert that record instead (one that is not a split in force). Each post is a
     record of the log, so what a refit leaves in force is the fold of what it posted; while the
     grain is reverted the ask opens the grain question, else Fit is reached."""
 
-    def __init__(self, refuse=None):
+    def __init__(self, refuse=None, names=None):
         super().__init__([])
-        self.refuse, self.calls = refuse, []
+        self.refuse, self.names, self.calls = refuse, names, []
         self.template = [(6, GRAIN_ONE), (7, SPLIT_A), (8, SPLIT_B)]
         self.log = list(self.template)
 
@@ -1476,7 +1480,8 @@ class Sealed(Walked):
                 exits = [{"id": "x-redraw",
                           "label": "Re-draw: withdraw the folds, change this, then draw them "
                                    "again",
-                          "decision": {"kind": "revert", "decision_id": self._splits()[-1].id}}]
+                          "decision": {"kind": "revert",
+                                       "decision_id": self.names or self._splits()[-1].id}}]
             return arms.Said("refused", {}, by="server", code="sealed", message=SEALED_WORDS,
                              exits=exits)
         if record in ("r7", "r8") and self.refuse == "withdraw":
@@ -1572,6 +1577,38 @@ def test_a_sealed_revisit_that_names_no_withdrawal_is_unlisted_and_withdraws_not
     assert unlisted["point"] == GRAIN.id and "sealed" in unlisted["why"]
     assert SEALED_WORDS in unlisted["why"]
     assert [c for c in session.calls if c[0] == "revisit" and c[1] != "r6"] == []
+    assert report["complete"] is False and W.passed(report) is False
+
+
+@pytest.mark.parametrize("names", ["r99", "r6", "r5", "r4"],
+                         ids=["no_record", "the_grain_itself", "a_split_reverted",
+                              "another_answer_in_force"])
+def test_a_sealed_way_forward_that_names_no_split_in_force_is_unlisted_and_withdraws_nothing(
+        tmp_path, names):
+    """The guard's other side, where the refusal ``sealed`` does name a revert: of a record the
+    log does not hold (r99), of the grain's own record (r6), of a split no longer in force (r5, a
+    draw a later revert withdrew), or of an answer in force that is no split (r4, the purpose),
+    none of them a split in force. The sweep withdraws nothing,
+    and the decision is unlisted in the engine's words and in those that say why no way was
+    taken."""
+    session = Sealed(names=names)
+    if names == "r5":  # an earlier draw, withdrawn in the plan's own log
+        session.template = [(5, SPLIT_A), (6, GRAIN_ONE), (7, SPLIT_A), (8, SPLIT_B),
+                            (9, {"kind": "revert", "decision_id": "r5"})]
+        session.log = list(session.template)
+        assert "r5" not in {r.id for r in session._splits()}
+    if names == "r4":  # an answer in force that is no split
+        session.template = [(4, {"kind": "set_purpose", "purpose": "prediction"}),
+                            (6, GRAIN_ONE), (7, SPLIT_A), (8, SPLIT_B)]
+        session.log = list(session.template)
+        assert "r4" in {r.id for r in W.live(session.view())}
+    report, refits = swept_sealed(tmp_path, session)
+    (unlisted,) = report["unlisted"]
+    assert unlisted["point"] == GRAIN.id and SEALED_WORDS in unlisted["why"]
+    assert unlisted["why"].endswith(f"Its way forward withdraws record {names}, which the log "
+                                    f"does not hold in force as a split.")
+    assert [c for c in session.calls if c[0] == "revisit" and c[1] != "r6"] == []
+    assert [c for c in session.calls if c[0] in ("decide", "answer")] == []
     assert report["complete"] is False and W.passed(report) is False
 
 
@@ -2325,6 +2362,124 @@ def test_a_toggle_is_previewed_and_posted_as_the_decision_it_composed(tmp_path, 
     assert posted == ([("preview_of", decision)] if crash else []) + [("decide", decision)]
     assert refit["answered"][0]["answer"] == rid and refit["answered"][0]["kind"] == "ok"
     assert {f["refit"] for f in report["fielded"]} >= {rid}
+
+
+# The plan answered the adjustment over two records (the group taps): age, pain and height
+# first, then height again and chol. Each is in force by column, height by its later answer.
+CRITERION = tuple(CONFOUNDER)
+OVER_TWO = [(1, {"kind": "set_purpose", "purpose": "inference"}),
+            (2, {"kind": "set_target", "column": "sbp"}),
+            (3, {"kind": "set_roles", "roles": {"age": "covariate", "pain": "exposure",
+                                                "height": "covariate", "chol": "covariate",
+                                                "walks": "exposure"}}),
+            (4, {"kind": "set_estimand", "exposure": "walks", "measure": "mean_difference"}),
+            (5, {"kind": "set_adjustment", "exposure": "walks",
+                 "answers": {"age": CONFOUNDER, "pain": UNKNOWN, "height": CONFOUNDER}}),
+            (6, {"kind": "set_adjustment", "exposure": "walks",
+                 "answers": {"height": NEITHER, "chol": NEITHER}})]
+LATEST = W.Point("question", "adjustment", 6, "r6", OVER_TWO[-1][1])
+
+
+def criterion(answers):
+    return {c: {k: a[k] for k in CRITERION} for c, a in answers.items()}
+
+
+def test_the_plans_adjustment_answers_in_force_are_its_records_merged_by_column():
+    """P2: the answers in force are every live set_adjustment record's, by column, as the engine
+    folds them: age and pain from the earlier record, height by the later one's answer, chol
+    from the later one, in the order first answered. By construction, the silent sides: the later
+    record withdrawn leaves height at its earlier answer and chol unanswered; a column whose role
+    a later answer leaves out of the model (excluded) is not one the question takes; and answers
+    given for another exposure than the one the estimand now names are none in force."""
+    got = W.adjustment_in_force(view_at(OVER_TWO))
+    assert list(got) == ["age", "pain", "height", "chol"]
+    assert criterion(got) == {"age": CONFOUNDER, "pain": UNKNOWN, "height": NEITHER,
+                              "chol": NEITHER}
+    assert all("exposure" not in a for a in got.values())
+    reverted = W.adjustment_in_force(view_at([*OVER_TWO, (7, {"kind": "revert",
+                                                              "decision_id": "r6"})]))
+    assert criterion(reverted) == {"age": CONFOUNDER, "pain": UNKNOWN, "height": CONFOUNDER}
+    roles = {**OVER_TWO[2][1]["roles"], "chol": "excluded"}
+    left_out = W.adjustment_in_force(view_at([*OVER_TWO, (7, {"kind": "set_roles",
+                                                              "roles": roles})]))
+    assert list(left_out) == ["age", "pain", "height"]
+    other = W.adjustment_in_force(view_at([*OVER_TWO, (7, {
+        "kind": "set_estimand", "exposure": "pain", "measure": "mean_difference"})]))
+    assert other == {}
+
+
+class OnTemplate(Walked):
+    """The template's log: :data:`OVER_TWO`."""
+
+    def __init__(self):
+        super().__init__([])
+
+    def view(self):
+        return {**view_at(OVER_TWO), "stages": self.stages, "state": {}}
+
+
+def test_the_template_gives_the_toggles_the_plans_answers_in_force():
+    fields = W.Fields.of_template(OnTemplate(), ESTIMATE_Q, None, None, "p0")
+    assert fields.adjustment == W.adjustment_in_force(view_at(OVER_TWO))
+    assert list(fields.adjustment) == ["age", "pain", "height", "chol"]
+
+
+@pytest.mark.parametrize("crash", [False, True], ids=["named_plan", "crash"])
+def test_a_column_the_plan_answered_in_an_earlier_record_is_toggled_too(tmp_path, crash):
+    """P2, fires: the plan's latest adjustment record answers height and chol, an earlier one age
+    and pain; the reopened question's answers option offers the columns the revisit withdrew
+    (height and chol). Each of the four is toggled, age and pain among them, each composed of
+    the plan's answers in force with that one column flipped by the engine's criterion, the
+    other three as in force (height by its later answer), so the revisit's withdrawn columns are
+    answered again with the rest. Silent: a column the option offers that the plan never answered
+    (bmi), and one the latest record answers that the question no longer takes (gone, in neither
+    the answers in force nor the option's columns), are neither toggled nor answered."""
+    from turbotab.core.estimand import derive
+
+    in_force = W.adjustment_in_force(view_at(OVER_TWO))
+    latest = W.Point("question", "adjustment", 6, "r6", {
+        **LATEST.decision, "answers": {**LATEST.decision["answers"], "gone": NEITHER}})
+    sweep = toggling_sweep(tmp_path, crash=crash)
+    sweep.fields = W.Fields(ESTIMATE_Q, roles=OVER_TWO[2][1]["roles"], adjustment=in_force)
+    reopened = {**ANSWERS, "columns": ["height", "chol", "bmi"]}
+    listed = {"point": latest.id, "why": None, "options": [reopened]}
+    planned = {p["id"]: p for p in sweep._planned(object(), latest, listed)}
+    toggles = {k.split("=", 1)[1]: p["fielded"] for k, p in planned.items() if "@toggle:" in k}
+    expected = {"age": "out", "pain": "in", "height": "in", "chol": "in"}
+    assert list(toggles) == [f"answers@toggle:{c}:{w}" for c, w in expected.items()]
+    for column, way in expected.items():
+        fielded = toggles[f"answers@toggle:{column}:{way}"]
+        answers = fielded.decision["answers"]
+        assert list(answers) == ["age", "pain", "height", "chol"]
+        assert fielded.decision["exposure"] == "walks"
+        assert answers[column] == (CONFOUNDER if way == "in" else NEITHER)
+        assert {c: a for c, a in answers.items() if c != column} == {
+            c: a for c, a in in_force.items() if c != column}
+        flipped = {c: derive(a).adjusted for c, a in answers.items()}
+        assert flipped == {c: derive(a).adjusted != (c == column) for c, a in in_force.items()}
+    assert not [k for k in planned if "bmi" in k or "gone" in k]
+
+
+def test_a_toggle_of_an_earlier_records_column_is_posted_as_composed(tmp_path):
+    """The refit of a column the plan answered before its latest record posts the plan's answers
+    in force with that column flipped (age, out), as composed: the revisit withdrew the latest
+    record, and the engine keeps each answer under its column, so the four columns it posts are
+    the plan's in force but age."""
+    in_force = W.adjustment_in_force(view_at(OVER_TWO))
+    sweep = toggling_sweep(tmp_path, crash=False)
+    sweep.base = {**sweep.base, "seq": 6, "points": [LATEST.json()]}
+    sweep.fields = W.Fields(ESTIMATE_Q, roles=OVER_TWO[2][1]["roles"], adjustment=in_force)
+    session = Adjusting()
+    sweep.done[W.PLAN] = W.Refit(W.PLAN, None, None, kind="scored",
+                                 digest=W.plan_digest(session.view()))
+    report = sweep.run(session, lambda s: "p0")
+    rid = f"{LATEST.id}=answers@toggle:age:out"
+    refit = {r["id"]: r for r in report["refits"]}[rid]
+    decision = {"kind": "set_adjustment", "exposure": "walks",
+                "answers": {**in_force, "age": NEITHER}}
+    assert refit["decision"] == decision and refit["answered_with"]["decision"] == decision
+    assert [c for c in session.calls if c[0] == "decide" and c[1] == decision] == [
+        ("decide", decision)]
 
 
 def test_a_cut_point_of_ones_own_is_the_cards_held_out_rows_and_else_unreached():

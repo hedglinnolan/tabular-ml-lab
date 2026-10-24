@@ -8,8 +8,9 @@ of its fold scores, the change is refused, and each guard is tested both ways. A
 folds of different sizes (103 or 101 rows in five folds, once or repeated, paired and unpaired)
 changes by the difference of the pooled MSEs numpy computes over every out-of-fold prediction,
 its interval from each fold's size numpy counts on the engine's own split; a weighted mean that
-is not the pooled score the fit serves is refused. Two fits scored the same in every fold are the
-same scores, both ways."""
+is not the pooled score the fit serves is refused, as is one with a fold unscored (paired and
+unpaired, in each place the guard stands). Two fits scored the same in every fold are the same
+scores, both ways."""
 from __future__ import annotations
 
 import math
@@ -465,6 +466,59 @@ def test_a_size_weighted_mean_that_is_not_the_pooled_score_the_fit_serves_is_ref
                        after_split=facts)
         assert got["why"] is None
         assert got["difference"] == pytest.approx(after_np - before_np, rel=1e-10)
+
+
+def test_a_pooled_mse_on_folds_of_different_sizes_with_a_fold_unscored_is_refused():
+    """The guard both ways, at each of its three places. 103 rows in five folds (21, 21, 21, 20
+    and 20 rows): with one fold's score missing the size-weighted mean of the others is not the
+    pooled score, so the change is refused in those words, paired and unpaired, served the
+    pooled score or not (``change``), and so are ``paired`` and ``unpaired`` given the folds'
+    weights directly; a weight given for another count of fold scores is refused as that.
+    Silent: the same fits with every fold scored give the difference of the two pooled MSEs
+    numpy computes over every out-of-fold prediction, in each of the three places."""
+    fits, facts, _ = regression_fits(103)
+    (after, after_np), (before, before_np) = fits["linear"], fits["mean"]
+    other, other_facts, _ = regression_fits(101, seed=9)
+    (other_before, other_np) = other["mean"]
+    sizes, share = sizes_by_numpy(103, 5, 1)
+    _, other_share = sizes_by_numpy(101, 5, 1)
+    assert sorted(sizes.tolist()) == [20, 20, 21, 21, 21]
+    holed = {**after, "folds": [*after["folds"][:2], float("nan"), *after["folds"][3:]]}
+    for bad in (holed, {k: v for k, v in holed.items() if k != "estimate"}):
+        assert "estimate" not in bad or math.isfinite(bad["estimate"])
+        paired = S.change(bad, before, same_folds=True, higher_is_better=False, metric="mse",
+                          after_split=facts)
+        unpaired = S.change(bad, other_before, same_folds=False, higher_is_better=False,
+                            metric="mse", after_split=facts, before_split=other_facts)
+        for got in (paired, unpaired):
+            assert got["difference"] is None and got["why"] == S.WEIGHTED_UNSCORED, got
+    weights = sizes.tolist()
+    for a, b in ((holed["folds"], before["folds"]), (after["folds"], holed["folds"])):
+        assert S.paired(a, b, share, weights=weights) == {"why": S.WEIGHTED_UNSCORED}
+    assert S.unpaired(holed["folds"], other_before["folds"], share, other_share,
+                      weights=(weights, None)) == {"why": S.WEIGHTED_UNSCORED}
+    assert S.unpaired(after["folds"], holed["folds"], share, share,
+                      weights=(None, weights)) == {"why": S.WEIGHTED_UNSCORED}
+    short = weights[:4]
+    assert S.paired(after["folds"], before["folds"], share, weights=short) == {
+        "why": "4 weights are given for 5 fold scores."}
+    assert S.unpaired(after["folds"], other_before["folds"], share, other_share,
+                      weights=(short, None)) == {"why": "4 weights are given for 5 fold scores."}
+    # Silent: every fold scored.
+    got = S.change(after, before, same_folds=True, higher_is_better=False, metric="mse",
+                   after_split=facts)
+    assert got["why"] is None
+    assert got["difference"] == pytest.approx(after_np - before_np, rel=1e-10)
+    got = S.change(after, other_before, same_folds=False, higher_is_better=False, metric="mse",
+                   after_split=facts, before_split=other_facts)
+    assert got["why"] is None
+    assert got["difference"] == pytest.approx(after_np - other_np, rel=1e-10)
+    got = S.paired(after["folds"], before["folds"], share, weights=weights)
+    assert got["difference"] == pytest.approx(after_np - before_np, rel=1e-10)
+    other_weights = sizes_by_numpy(101, 5, 1)[0].tolist()
+    got = S.unpaired(after["folds"], other_before["folds"], share, other_share,
+                     weights=(weights, other_weights))
+    assert got["difference"] == pytest.approx(after_np - other_np, rel=1e-10)
 
 
 def test_a_pooled_score_that_is_no_mean_of_its_folds_is_refused():

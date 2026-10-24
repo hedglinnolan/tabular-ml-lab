@@ -36,8 +36,9 @@ the folds), which is the pooled score: the difference of the two weighted means 
 weighted mean of the differences), with the corrected variance on the fold scores as for any
 change, (1/J + n_test/n_train)·s². A weighted mean that is not the pooled score the fit serves
 (``estimate``, where it serves one) to :data:`AGREES` of it has no number, and says so: the folds
-were weighted by sizes that are not theirs. A pooled score that is no weighted mean of the fold
-scores (the RMSE, R²) has none either.
+were weighted by sizes that are not theirs. Nor has one with a fold holding no score
+(:data:`WEIGHTED_UNSCORED`), the other folds' weighted mean not being the pooled score. A pooled
+score that is no weighted mean of the fold scores (the RMSE, R²) has none either.
 
 The change is signed on the metric's own scale (``difference``: after less before), and
 ``better`` says whether the later fit scored better, by the metric's direction (a loss is better
@@ -80,6 +81,13 @@ ROUNDING = 8
 AGREES = 1e-9
 WEIGHTED_UNSCORED = ("A fold holds no score, so the size-weighted mean of the fold scores is not "
                      "the pooled score.")
+
+
+def _miscounted(weights: Sequence[float], scores: Sequence[Any]) -> str:
+    """Why weights given for another count of fold scores weight none of them."""
+    n, j = len(weights), len(scores)
+    return (f"{n} weight{'' if n == 1 else 's'} {'is' if n == 1 else 'are'} given for {j} fold "
+            f"score{'' if j == 1 else 's'}.")
 
 
 def _finite(values: Sequence[Any]) -> list[float]:
@@ -203,7 +211,9 @@ def paired(after: Sequence[Any], before: Sequence[Any], share: float, *,
         return {"why": f"The two fits hold {len(after)} and {len(before)} fold scores, so they "
                        f"are not the same folds."}
     pairs = [(float(a), float(b)) for a, b in zip(after, before) if _finite([a]) and _finite([b])]
-    if weights is not None and (len(pairs) != len(after) or len(weights) != len(after)):
+    if weights is not None and len(weights) != len(after):
+        return {"why": _miscounted(weights, after)}
+    if weights is not None and len(pairs) != len(after):
         return {"why": WEIGHTED_UNSCORED}
     d = [a - b for a, b in pairs]
     if len(d) < 2:
@@ -237,7 +247,9 @@ def unpaired(after: Sequence[Any], before: Sequence[Any], share_after: float,
     if len(a) < 2 or len(b) < 2:
         return {"why": "An arm holds fewer than two fold scores."}
     for scores, kept, w in ((after, a, weights[0]), (before, b, weights[1])):
-        if w is not None and (len(kept) != len(scores) or len(w) != len(scores)):
+        if w is not None and len(w) != len(scores):
+            return {"why": _miscounted(w, scores)}
+        if w is not None and len(kept) != len(scores):
             return {"why": WEIGHTED_UNSCORED}
     if _no_spread(a, a) and _no_spread(b, b):
         return {"why": f"Each fit scored the same in every fold ({a[0]:.4g} and {b[0]:.4g}), so "

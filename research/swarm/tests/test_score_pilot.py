@@ -9,7 +9,8 @@ rule both ways.
   The replay command refuses a bundle that is not the record's export, and a replay names the
   engine it ran on. A record made on another engine tree, with tracked files modified or not
   known to be unmodified is refused with why and scored nowhere, one on the frozen engine is
-  scored, and with no crash fill every record is refused.
+  scored, and with no crash fill every record is refused. A refused record's spend still counts
+  against the budget, its run still to do, and a kept record's counts once.
 * A replay on the Estimate fixture: a mean bias built just inside b0 passes and just outside fails;
   a coverage count at each end of the band passes and one beside it fails; a refused draw makes a
   refused plan, and draws other than the pre-registered ones are refused as invalid. A replay
@@ -860,6 +861,43 @@ def test_the_projected_spend_stops_the_waves_past_the_budget_and_not_below(prere
     assert got["projected"] == projected and got["stop_waves"] is True
     assert S.early_stopping({}, recs, prereg, projected)["stop_waves"] is False
     assert S.early_stopping({}, recs[:2], prereg, projected)["projected"] is None
+
+
+def test_a_refused_records_spend_counts_against_the_budget_and_its_run_is_still_to_do(filled):
+    """A run on another engine still spent its tokens. Fires: haiku, sonnet and opus at 1,000
+    fresh tokens each, and a haiku run of 400,000 refused for its engine (tracked files
+    modified), against a budget of 200,000: the spend is 403,000, past the budget, so the waves
+    stop; the refused run is still one of haiku's to do, and haiku's mean per run is over both of
+    its runs. Silent: without the refused run the same three project under the budget and the
+    waves go on; a kept run's spend counts once. The refused run's tokens are in no model's cost
+    per useful result. Every number from construction: the schedule's runs per model times its
+    mean, plus what was spent."""
+    runs = {m: sum(len(s["personas"]) * len(s["datasets"]) * s["runs"]
+                   for s in filled["models"]["schedule"] if s["model"] == m)
+            for m in filled["models"]["keys"]}
+    kept = [record(run="h1", fresh=1000), record(run="s1", model="claude-sonnet-5-5", fresh=1000),
+            record(run="o1", model="claude-opus-5-5", fresh=1000)]
+    refused = record(run="h2", fresh=400_000, modified=True, minute=1)
+    report = S.score([*kept, refused], [], [], filled, budget_fresh=200_000)
+    assert [r["run"] for r in report["refused_records"]] == ["h2"]
+    e = report["early_stopping"]
+    assert e["spent"] == 403_000 and (e["refused_fresh"], e["refused_runs"]) == (400_000, 1)
+    assert e["remaining"] == {"haiku": runs["haiku"] - 1, "sonnet": runs["sonnet"] - 1,
+                              "opus": runs["opus"] - 1}
+    assert e["mean_fresh_per_run"]["haiku"] == (1000 + 400_000) / 2
+    projected = 403_000 + (runs["haiku"] - 1) * 200_500 + (runs["sonnet"] - 1) * 1000 + (
+        runs["opus"] - 1) * 1000
+    assert e["projected"] == projected and e["stop_waves"] is True
+    assert report["models"]["haiku"]["cost"]["fresh"] == 1000.0  # the kept run's alone
+    text = S.report_md(report, filled)
+    assert ("Spent 4.03e+05 fresh tokens, 4e+05 of them on 1 record(s) refused for their "
+            "engine;") in text
+    alone = S.score(kept, [], [], filled, budget_fresh=200_000)["early_stopping"]
+    assert alone["spent"] == 3000 and (alone["refused_fresh"], alone["refused_runs"]) == (0, 0)
+    assert alone["projected"] == sum(runs.values()) * 1000 and alone["stop_waves"] is False
+    assert alone["remaining"]["haiku"] == runs["haiku"] - 1
+    direct = S.early_stopping({}, kept, filled, 200_000)
+    assert direct["spent"] == 3000 and direct == alone
 
 
 def test_regression_checks_name_a_decision_with_no_reason_and_pass_a_whole_record():
