@@ -27,14 +27,15 @@ hashed here with hashlib.
 * A spline whose k the server set by Harrell's rule, on a fresh draw (:func:`replay.rule_verdict`,
   k by the rule as RMS states it): the record left k to the rule, so under either purpose another
   size is replayed at the rule's k on it, the record's k or another, the message stating both
-  draws' k and size; the same size is kept; no size read, or no live record, is refused. Under
-  inference the size is read on the rows as the log ends; under prediction on the rows as they
-  stood at the record (:func:`replay.size_at_record`: pandas' size on the state folded up to the
-  spline, over the rows whose size as the log ends is the engine's, the engine's own where no later
-  record writes what it is read on), the message saying so; where that size is not traced, a
-  later record changed what it is read under, or the record holds the rule's default k with no
-  size read, the rebuild is refused under prediction, even where the size as the log ends is the
-  record's.
+  draws' k and size; the same size is kept; no size read, or another size with no live record,
+  is refused. Under inference the size is read on the rows as the log ends; under prediction on
+  the rows as they stood at the record (:func:`replay.size_at_record`: pandas' size on the state
+  folded up to the spline, over the rows whose size as the log ends is the engine's, the engine's
+  own where no later record writes what it is read on), the message saying so; where that size is
+  not traced or a later record changed what it is read under, the rebuild is refused under
+  prediction, even where the size as the log ends is the record's. A record of the rule's default
+  k with no size read is kept on every draw under prediction (the ruling of 2026-10-23), whatever
+  the rule reads there, and refilled at the rule's k under inference.
   The later records that write what the rows are read under (:func:`replay.later_records`, read
   on the state folded up to the record before each: an exclusion, a revert of one recorded before
   the spline, the outcome's task or event answered, but not the models answer, a withdrawn
@@ -556,8 +557,9 @@ def test_another_size_is_replayed_at_the_rules_k_on_it_the_records_or_another():
 def test_a_draw_whose_rule_reads_no_size_or_a_spline_no_live_record_gives_is_refused():
     """Right or refused: where the rule reads no effective sample size on this draw it gives no k,
     and the record's k and size are the recorded draw's, so the rebuild is refused; so is a
-    standing spline no live record gives its column, which has no record to replay at the rule's
-    k."""
+    standing spline no live record gives its column where the rule reads another size, since it
+    has no record to replay at the rule's k. Where the rule reads the size it states, that spline
+    is replayed as recorded."""
     verdict, said = replay.rule_verdict(rule_read(117.0, None))
     assert verdict == "refused"
     assert said == (
@@ -574,6 +576,8 @@ def test_a_draw_whose_rule_reads_no_size_or_a_spline_no_live_record_gives_is_ref
         "an effective sample size of 117 on the recorded draw, and on this draw the rule reads 95 "
         "(k = 4) on the rows as the log ends. No live record gives `age` this spline, so none is "
         "replayed at the rule's k on this draw, and the rebuild is refused.")
+    same = dataclasses.replace(rule_read(117.0, 117.0), seq=None, kind=None)
+    assert replay.rule_verdict(same) == ("kept", None)
 
 
 def test_a_message_names_each_later_record_that_changed_the_size_the_rule_reads():
@@ -685,29 +689,38 @@ def test_under_prediction_the_size_at_the_record_is_kept_or_replayed_at_the_rule
         "kept", None)
 
 
-def test_under_prediction_a_record_of_the_rules_default_k_is_refused_where_the_rule_gives_another():
-    """B2, pending the orchestrator's ruling (right or refused): a spline declared under
-    prediction before any size was read holds the rule's default, k = 4 with no size read, and
-    the engine keeps that k whatever the rows. On a draw whose rule gives another k at the record
-    (117, k = 5) the rebuild is refused, since which k it replays is not ruled; where the rule
-    gives 4 (85) the fit is the same either way, and the record is kept, as it is where the draw
-    reads no size either. Under inference, where the engine asks the form question again, each is
-    replayed at the rule's k (above)."""
+def test_under_prediction_a_record_of_the_rules_default_k_is_kept_on_every_draw():
+    """B2, the orchestrator's ruling of 2026-10-23: a spline declared under prediction before any
+    size was read holds the rule's default, k = 4 with no size read, and the engine keeps the k a
+    spline is declared with, so it fits the record's k on any draw for these answers: the record,
+    the plan's own history, is replayed as recorded on every fresh draw, its k and sentence
+    unchanged, its size not read again. So it is kept where the rule gives another k at the record
+    (117, k = 5) and where it gives the same (85, k = 4), where the draw reads no size, where the
+    size at the record is not read (a later record named as one that can change it), and where a
+    later record changed what a size is read under. Under inference, where the engine asks the
+    form question again, a size read on this draw is still replayed at the rule's k on it, the
+    record's k or another."""
     held = {"purpose": "prediction", "at_record": True}
-    verdict, said = replay.rule_verdict(rule_read(None, 117.0, knots=4, **held))
-    assert harrell(117) == 5 and verdict == "refused"
-    assert said == (
-        "Record 4 (set_exposure_form) gives `age` a spline whose k is Harrell's rule on the "
-        "analyzed rows: k = 4 with no effective sample size read on the recorded draw, and on "
-        "this draw the rule reads 117 (k = 5) on the rows as they stood at that record. Under "
-        "prediction the engine keeps the k a spline is declared with, here the rule's default, "
-        "declared before any size was read, and the rule gives another k on this draw, so the "
-        "rebuild is refused.")
-    assert harrell(85) == 4
-    assert replay.rule_verdict(rule_read(None, 85.0, knots=4, **held)) == ("kept", None)
-    assert replay.rule_verdict(rule_read(None, None, knots=4, **held)) == ("kept", None)
+    assert harrell(117) == 5 and harrell(85) == 4
+    for read in (117.0, 85.0, None):
+        assert replay.rule_verdict(rule_read(None, read, knots=4, **held)) == ("kept", None), read
+    untraced = rule_read(None, 117.0, knots=4, later=((16, "set_exclusions"), (17, "set_grain")),
+                         traced=False, purpose="prediction")
+    assert replay.rule_verdict(untraced) == ("kept", None)
+    changed = rule_read(None, 117.0, knots=4, later=((15, "set_task"),),
+                        inputs=("the task from binary to regression",), purpose="prediction")
+    assert replay.rule_verdict(changed) == ("kept", None)
+    # Under inference the same records are refilled at the rule's k on this draw's size.
     for read in (117.0, 85.0):
-        assert replay.rule_verdict(rule_read(None, read, knots=4))[0] == "refilled"
+        verdict, said = replay.rule_verdict(rule_read(None, read, knots=4))
+        assert verdict == "refilled", read
+        assert said == (
+            f"Record 4 (set_exposure_form) gives `age` a spline whose k is Harrell's rule on the "
+            f"analyzed rows: k = 4 with no effective sample size read on the recorded draw, and on "
+            f"this draw the rule reads {read:,.0f} (k = {harrell(read)}) on the rows as the log "
+            f"ends. Its k was left to the rule, so the record is replayed at the rule's k on this "
+            f"draw, stating k = {harrell(read)} on an effective sample size of {read:,.0f} in "
+            f"place of k = 4 with no effective sample size read.")
 
 
 # A yes/no outcome beside ``age`` and ``bmi``, no cell blank, for the rule's size step by step

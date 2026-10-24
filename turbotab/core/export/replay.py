@@ -51,14 +51,15 @@ rebuild finished:
   Harrell's rule records the effective sample size the rule read on the analyzed rows when it was
   declared, and the k it gave. The analyst who gave no k left it to the rule, a plan to apply the
   rule, so the replay applies it to the new draw, under inference and prediction alike, on the
-  rows the engine reads it on. Under inference the engine asks the form question again where the
-  analyzed rows' size is not the one the record states (``exposure_form.rule_stale``), so the rule
-  is read on the rows as the log ends; under prediction it reads the rule when the spline is
-  declared and keeps that k whatever a later record does to the rows, so the rule is read on the
-  rows as they stood at the spline's record (:func:`size_at_record`). Before the rebuild's result
-  stages are waited for, once the stages the rule reads are computed, the rule is read again as
-  the engine records it (:func:`rule_forms`) on the new draw's rows, and ruled
-  (:func:`rule_verdict`):
+  rows the engine reads it on (under prediction, a record of the rule's default k, declared
+  before any size was read, is the exception below). Under inference the engine asks the form
+  question again where the analyzed rows' size is not the one the record states
+  (``exposure_form.rule_stale``), so the rule is read on the rows as the log ends; under
+  prediction it reads the rule when the spline is declared and keeps that k whatever a later
+  record does to the rows, so the rule is read on the rows as they stood at the spline's record
+  (:func:`size_at_record`). Before the rebuild's result stages are waited for, once the stages
+  the rule reads are computed, the rule is read again as the engine records it
+  (:func:`rule_forms`) on the new draw's rows, and ruled (:func:`rule_verdict`):
   - where it reads the size the record states (to within ``exposure_form.rule_stale``'s 1e-9),
     or neither reads one, the record is replayed as recorded;
   - where it reads another size, the record is replayed at the k the rule gives on it (the
@@ -77,13 +78,20 @@ rebuild finished:
     whose step changed one, and each change from the record to the log's end. Under prediction,
     where the size is read at the record, any such change refuses the rebuild;
   - a draw on which the rule reads no size is refused, since the rule gives no k there and the
-    record's are the recorded draw's, and so is a standing spline no live record gives its column;
+    record's are the recorded draw's, and so is a standing spline no live record gives its column
+    where the rule reads another size than the spline states (with no record, none is replayed at
+    the rule's k); where it reads the spline's own size, the spline is replayed as recorded;
   - under prediction, a spline whose size at its record is not read on this draw (below) is
-    refused, and so is a record of the rule's default k, declared before any size was read
-    (``exposure_form.rule_words``: "no effective sample size was read"), where the rule gives
-    another k on this draw: the engine keeps that default whatever the rows, and whether a fresh
-    draw replays it or the rule's k there is not ruled. Where the rule gives the default's k, the
-    record is replayed as recorded, the fit the same either way.
+    refused;
+  - under prediction, a record of the rule's default k, declared before any size was read
+    (``exposure_form.rule_words``: "no effective sample size was read"), is replayed as recorded
+    on every fresh draw, its k and sentence unchanged, whatever the rule reads there and whatever
+    a later record changed, none of the refusals above applying to it (the ruling of
+    2026-10-23): the engine keeps the k a spline is declared with, and that declaration read no
+    size, so it fits the record's k on any draw for these answers; the record is the plan's own
+    history, and its size is not read again. Under inference such a record is ruled as any
+    other, so another size is replayed at the rule's k, as the engine asks the form question
+    again.
   A spline whose k the analyst gave is replayed as recorded, whatever the rows.
   Under inference a refusal, and a refilled record's message, says the size was read on the rows
   as the log ends, and names each later record whose own step changed that size on the new draw
@@ -1053,21 +1061,24 @@ def rule_verdict(r: RuleRead) -> tuple[str, str | None]:
     another size, the record replayed at the rule's k on it (``r.k``, the record's or another)
     stating that size; ``("refused", …)`` where a later record changed what the size is read under
     (``r.inputs``), where the rule reads no size, and where no live record gives the column the
-    spline. Under prediction (``r.purpose``, with a live record) the size is the one at the
-    record (``r.at_record``): where it is not read there, the spline is refused, and so is a
-    record of the rule's default k, declared before any size was read, where the rule gives
-    another k on this draw (where it gives the same, the record is kept: the fit is the same)."""
+    spline and the rule reads another size than it states. Under prediction (``r.purpose``, with a
+    live record) the size is the one at the record (``r.at_record``): where it is not read there,
+    the spline is refused; and a record of the rule's default k, declared before any size was
+    read (``r.said`` None), is kept on every draw, whatever the rule reads there and whatever a
+    later record changed, since the engine fits the k a spline is declared with (the ruling of
+    2026-10-23)."""
     from turbotab.core.methods import exposure_form as ef
     from turbotab.core.voice import listing
 
     given = {"form": "spline", "knots_rule": "harrell", "n_effective": r.said}
     other = r.read is None and r.said is not None
     predicting = r.purpose == "prediction" and r.seq is not None
+    if predicting and r.said is None:
+        # The rule's default k, declared before any size was read: the engine fits it on any draw.
+        return "kept", None
     stale = other or ef.rule_stale(given, {"n_effective": r.read})
     if (r.at_record or not predicting) and not stale:
         return "kept", None
-    if predicting and r.at_record and r.said is None and r.read is not None and r.k == r.knots:
-        return "kept", None  # the rule's default k, and the rule's on this draw: the same fit
     where = f"Record {r.seq} ({r.kind})" if r.seq is not None else "The plan"
     before = (f"k = {r.knots} on an effective sample size of {_size(r.said)}"
               if r.said is not None else f"k = {r.knots} with no effective sample size read")
@@ -1102,11 +1113,6 @@ def rule_verdict(r: RuleRead) -> tuple[str, str | None]:
     if r.seq is None:
         return "refused", (f"{said} No live record gives `{r.column}` this spline, so none is "
                            f"replayed at the rule's k on this draw, and the rebuild is refused.")
-    if predicting and r.said is None:
-        return "refused", (f"{said} Under prediction the engine keeps the k a spline is declared "
-                           f"with, here the rule's default, declared before any size was read, "
-                           f"and the rule gives another k on this draw, so the rebuild is "
-                           f"refused.")
     if predicting:
         return "refilled", (f"{said} Its k was left to the rule, which the engine reads under "
                             f"prediction when the spline is declared, so the record is replayed "
