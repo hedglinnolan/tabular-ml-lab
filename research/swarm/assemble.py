@@ -108,7 +108,9 @@ measure's scale (``estimand.measure_facts``), never the fit's coefficients read 
   give a coefficient table (``stages.effects.has_coefficient_table``) only: a penalized family's
   shrunk rows are no estimate of the effect (the ruling of 2026-10-23), so where no family of the
   locked fit has a table the result is refused, none served, in the effects stage's own words as
-  ``GET …/results`` serves them for that fit (:func:`no_table_why`).
+  ``GET …/results`` serves them for that fit (:func:`no_table_why`); so is a fit none of whose
+  families reports coefficients (the random forest), which serves no rows, unless the route's
+  gate withheld them, whose reason stands first.
 
 The fit's coefficient rows themselves stay its attempt's (``Attempt.effects``).
 
@@ -156,7 +158,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Collection, Mapping, Sequence
 
 from pydantic import ValidationError
 
@@ -1353,10 +1355,11 @@ def has_table(family: Any) -> bool:
 
 
 def no_table_why(doc: Mapping[str, Any], fit: Mapping[str, Any],
-                 families: Mapping[str, Any]) -> str:
-    """Why the locked fit ``fit``, none of whose ``families`` has a coefficient table, reports no
-    effect: the effects stage's own refusal, as ``GET …/results`` (``doc``) serves it in their
-    slots for that fit's key; else, where the results serve another fit, :data:`NO_TABLE`."""
+                 families: Collection[Any]) -> str:
+    """Why the locked fit ``fit``, none of whose ``families`` (the names of those with rows of the
+    exposure, else of every family it fit) has a coefficient table, reports no effect: the effects
+    stage's own refusal, as ``GET …/results`` (``doc``) serves it in their slots for that fit's
+    key; else, where the results serve another fit, :data:`NO_TABLE`."""
     if (doc.get("fit") or {}).get("key") == fit.get("fit_key"):
         for f in doc.get("families") or []:
             refusal = f.get("refusal") if isinstance(f, Mapping) else None
@@ -1463,8 +1466,16 @@ def _estimate_of(base: dict[str, Any], records: Sequence[Mapping[str, Any]],
     if not effects:
         # Withheld by the route's gate now: what was served during the run is not known.
         withheld = fit.get("withheld")
-        return {**out, "refused": str(withheld or "The locked fit serves no exposure rows."),
-                "refused_kind": "not_known" if withheld else "not_served"}
+        if withheld:
+            return {**out, "refused": str(withheld), "refused_kind": "not_known"}
+        families = [str(f) for f in fit.get("families") or ()]
+        if families and not any(has_table(f) for f in families):
+            # No family of the fit has a coefficient table (one that reports no coefficients,
+            # the random forest, has none): the effects stage's refusal, as for a shrunk row.
+            return {**out, "refused": no_table_why(doc, fit, families),
+                    "refused_kind": "not_served"}
+        return {**out, "refused": "The locked fit serves no exposure rows.",
+                "refused_kind": "not_served"}
     if not any(has_table(f) for f in effects):
         # The ruling of 2026-10-23: a family with no coefficient table reports no effect.
         return {**out, "refused": no_table_why(doc, fit, effects), "refused_kind": "not_served"}

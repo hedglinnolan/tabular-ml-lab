@@ -11,7 +11,9 @@ rule's replay writes (``test_replay_spline_rule.walking_bp`` at its seed: 150 ro
   refusal, as the stage's status serves it (its code, words and ways forward); the words are the
   ones the refusal's construction gives (``stages.effects.no_table_refusal``: the linear model is
   the first family offered). None of the ridge fit's coefficients, as the fit route serves them,
-  appears anywhere in the families served.
+  appears anywhere in the families served. The fit's row of ``walks_daily``, with no standard
+  error, lies strictly between zero and statsmodels' least squares on the same rows: the
+  shrinkage the frontend's note names from the table ridge declares (GET /models).
 * **the linear model alone.** Its effect is unchanged: the rows of ``walks_daily`` adjusted for
   ``chronic_pain`` and ``age`` (the walking table's declared truth: a confounder and a cause of the
   outcome; ``age`` a straight line), whose estimate is statsmodels' least squares on the 120
@@ -148,6 +150,15 @@ def test_a_family_with_no_coefficient_table_serves_the_effects_stages_refusal_no
     [ridge_fit] = [m for m in got["fit"]["models"] if m["family"] == "ridge"]
     shrunk = [r["estimate"] for r in ridge_fit["coefficients"] or [] if r["feature"] == EXPOSURE]
     assert len(shrunk) == 1 and shrunk[0] is not None and ridge_fit["inference"] is None
+    # The frontend's note says why, from what GET /models serves of ridge's declared table: its
+    # penalty shrinks the coefficients toward zero, as here against statsmodels' least squares on
+    # the same rows (strictly between zero and it), with no standard error.
+    from turbotab.server.routes.models import list_models
+
+    declared = {f.key: f.inference_table for f in list_models()}
+    assert declared["ridge"] == "shrunk_no_intervals" and declared["linear"] == "intervals"
+    assert 0 < shrunk[0] / _ols_hc3()["estimate"] < 1
+    assert all(r["se"] is None for r in ridge_fit["coefficients"] if r["feature"] == EXPOSURE)
     # ...and the results serve none of them: the effects stage's refusal in their place.
     family = _family(document, "ridge")
     assert family["effect"] is None

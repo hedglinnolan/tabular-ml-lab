@@ -1274,13 +1274,44 @@ def test_a_locked_fit_with_a_coefficient_table_keeps_its_row_and_a_shrunk_one_be
     assert validate_result(both)
 
 
+def test_a_locked_fit_whose_families_report_no_coefficients_is_refused_in_the_engines_words():
+    """The random forest alone, locked: it reports no coefficients, so the fit record serves no
+    family's rows of `x` (``effects`` empty, as ``GET …/fits`` serves a family with none), and the
+    effects stage refuses as it does for ridge, no chosen family having a coefficient table. The
+    record is refused in the stage's words as the results serve them in its slot, none served.
+    Both ways: where the route's gate withheld the rows, its reason still wins and the numbers are
+    not known; where a family of the fit has a coefficient table and the fit serves no rows, the
+    record says only that, since the stage gives no refusal for it."""
+    forest = {**NO_TABLE_REFUSAL, "exits": [{"label": "Add Linear model, which has a coefficient "
+                                                      "table",
+                                             "decision": {"kind": "select_models",
+                                                          "models": ["random_forest", "linear"]}}]}
+    refused_stage = {"key": None, "fresh": False, "status": "error"}
+    doc = _served_for([{"family": "random_forest", "effect": None, "refusal": forest}],
+                      refused_stage)
+    lock = [{**_locked_fit()[0], "families": ["random_forest"], "effects": {}}]
+    got = A.result_of("inference", _locked("mean_difference"), lock, A.Read(200, doc))
+    assert (got["refused"], got["refused_kind"], got.get("estimates")) == (
+        NO_TABLE_WORDS, "not_served", None)
+    assert validate_result(got)
+    withheld = [{**lock[0], "withheld": "The plan is not locked."}]
+    got = A.result_of("inference", _locked("mean_difference"), withheld, A.Read(200, doc))
+    assert (got["refused"], got["refused_kind"]) == ("The plan is not locked.", "not_known")
+    tabled = [{**lock[0], "families": ["linear"]}]
+    got = A.result_of("inference", _locked("mean_difference"), tabled, A.Read(200, doc))
+    assert (got["refused"], got["refused_kind"]) == ("The locked fit serves no exposure rows.",
+                                                     "not_served")
+
+
 @pytest.fixture(scope="module")
 def walking_locks() -> dict[str, dict[str, Any]]:
-    """The walking table's short Estimate journeys, ridge alone and the linear model alone, each
-    locked by Fit, as the server serves them (``test_results_no_coefficient_table_api``)."""
+    """The walking table's short Estimate journeys, ridge alone, the random forest alone and the
+    linear model alone, each locked by Fit, as the server serves them
+    (``test_results_no_coefficient_table_api``)."""
     from turbotab.server.tests.test_results_no_coefficient_table_api import _locked_journey
 
-    return {"ridge": _locked_journey(["ridge"]), "linear": _locked_journey(["linear"])}
+    return {"ridge": _locked_journey(["ridge"]), "random_forest": _locked_journey(["random_forest"]),
+            "linear": _locked_journey(["linear"])}
 
 
 def test_on_the_served_journeys_a_ridge_lock_is_refused_and_a_linear_lock_is_least_squares(
@@ -1308,6 +1339,25 @@ def test_on_the_served_journeys_a_ridge_lock_is_refused_and_a_linear_lock_is_lea
     assert (e["family"], e["feature"], e["why"]) == ("linear", "walks_daily", None)
     assert (e["estimate"], e["ci_low"], e["ci_high"]) == pytest.approx(
         (truth["estimate"], truth["ci_low"], truth["ci_high"]), rel=1e-9)
+
+
+def test_on_the_served_journey_a_random_forest_lock_is_refused_in_the_effects_stages_words(
+        walking_locks):
+    """The random forest alone, locked, end to end: its fit record serves no family's rows, the
+    effects stage refuses (no chosen family has a coefficient table), the results serve that
+    refusal in the family's slot, and the record is refused in those words, none served."""
+    j = walking_locks["random_forest"]
+    status = j["view"]["stages"]["effects"]
+    assert status["status"] == "error" and status["refusal"]["code"] == "no_coefficient_table"
+    [record] = [f for f in j["fits"] if f.get("locked")]
+    assert record["families"] == ["random_forest"] and not any(record["effects"].values())
+    [slot] = j["results"]["families"]
+    assert (slot["family"], slot["effect"], slot["refusal"]) == (
+        "random_forest", None, status["refusal"])
+    got = A.result_of("inference", j["view"]["decisions"], j["fits"], A.Read(200, j["results"]))
+    assert (got["refused"], got["refused_kind"], got.get("estimates")) == (
+        status["refusal"]["message"], "not_served", None)
+    assert status["refusal"]["message"] == NO_TABLE_WORDS and validate_result(got)
 
 
 def test_a_lock_whose_plan_declares_no_estimand_reports_no_estimate():
