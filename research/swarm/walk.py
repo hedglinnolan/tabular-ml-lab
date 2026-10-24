@@ -31,6 +31,13 @@ one of its candidates uniformly:
   uniformly among those offered, then an id of that kind (:func:`stale_of`), so the reverted
   kind is not lost among the many options earlier asks offered.
 
+Before the end of the path a decision is reverted only by a round's revisit or undo (the
+driver's ``answer`` refuses a revert, ``driver.guard_kind``), and a stale id is sent only in a round
+that draws ``stale``; so a walk would seldom send a decision already reverted, the one kind of
+stale id the driver posts to the engine (an option id stops at the driver's own resolver). Where
+the log holds one after the drawn rounds and no round sent one, one round more sends one, drawn
+among them (:meth:`Walker.owed`); a walk that reverted nothing is given no round more.
+
 An option that takes values of its own takes them from the crash sweep's ``sweep.Fields`` where it
 builds them (the first it builds), and is otherwise skipped and counted (``skipped``, with why;
 :func:`answer_of`). Where the walker's own answer or revisit is refused with ways forward that
@@ -70,10 +77,14 @@ times at most.
 Else it is ``clean`` where it reached the export and the export was given, and ``refused`` where it
 stopped short (``stops``, each by whom and in its words): a refusal in words that left it no way on
 (the engine's, the server's or the driver's), or a limit of the walk's own. A fault in the walker's
-own code ends that walk too, kept as the walker's (``by: walker``): evidence neither way, so a report
-holding one does not pass. A refusal is expected, never a defect, when it is typed and worded and
-its way forward works, or it has none and its words say why. That no held-out row is read before the seal is not checked: the driver cannot observe it,
-and a known deferred exception exists (Harrell's rule under prediction reads every cohort row).
+own code, in the walk or after it (the run's stop, the fit records held to the log, the class, the
+defects' files; :func:`guarded`), ends that walk and not the run: it is kept as the walker's
+(``by: walker``; ``at``, the step it came in), and the walk is written and not walked again; a
+walk the oracle could not class is kept ``refused``, with no defect. It is evidence neither way, so
+a report holding one does not pass. A refusal is expected, never a defect, when it is typed and
+worded and its way forward works, or it has none and its words say why. That no held-out row is
+read before the seal is not checked: the driver cannot observe it, and a known deferred exception
+exists (Harrell's rule under prediction reads every cohort row).
 
 **Each defect keeps its reproduction** (``defects/<dataset>-<seed>-<n>.json``): the seed, the
 walk's actions and steps, the decision log as it stood, the request that failed (its command line
@@ -107,7 +118,7 @@ from research.swarm import arms, sweep
 
 REPO = Path(__file__).resolve().parents[2]
 STREAM = 1  # the walker's own draws: numpy's generator at (STREAM, seed), apart from the arm's
-ROUNDS = (2, 4)  # the fewest and the most rounds of offered actions after the first Fit
+ROUNDS = (2, 4)  # the fewest and the most rounds drawn after the first Fit (one more may be owed)
 ACTIONS = ("revisit", "undo", "finding", "declaration", "preview", "fit", "stale")
 CLASSES = ("clean", "refused", "defect")
 EXPORT_TRIES = 3
@@ -679,13 +690,7 @@ class Walker:
         elif action == "stale":
             act["stale_offered"] = {k: sum(1 for c in offers[action] if c["kind"] == k)
                                     for k in STALE}
-            pick = stale_of(self.rng, offers[action])
-            act.update(id=pick["id"], stale=pick["kind"])
-            said = self.session.revisit(pick["id"], f"{reason}: a decision already reverted.") \
-                if pick["kind"] == "reverted" else self.session.answer(
-                    [pick["id"]], [], f"{reason}: an option an earlier ask offered.")
-            act["accepted"] = said.ok
-            self.after(said, act)
+            self.stale(stale_of(self.rng, offers[action]), act, reason)
         else:
             got = self.answered(offers[action], act, view)
             if got is None:
@@ -697,6 +702,33 @@ class Walker:
                 self.check(said)
             else:
                 self.after(self.session.answer(ids, sets, f"{reason}."), act)
+
+    def stale(self, pick: Mapping[str, Any], act: dict[str, Any], reason: str) -> None:
+        """The stale id ``pick`` sent: a decision already reverted revisited again (the driver's
+        ``revisit``, which posts it to the server), an option an earlier ask offered answered."""
+        act.update(id=pick["id"], stale=pick["kind"])
+        said = self.session.revisit(pick["id"], f"{reason}: a decision already reverted.") \
+            if pick["kind"] == "reverted" else self.session.answer(
+                [pick["id"]], [], f"{reason}: an option an earlier ask offered.")
+        act["accepted"] = said.ok
+        self.after(said, act)
+
+    def owed(self, n: int) -> None:
+        """Round ``n``, after the drawn rounds, where the log holds a decision already reverted
+        and no round sent one: one of them drawn and sent (:meth:`stale`), so each walk that
+        reverts something sends the engine a decision already reverted; else no round, and no
+        command."""
+        if any(a.get("stale") == "reverted" for a in self.walk["actions"]):
+            return
+        reverted = [c for c in offered_actions({}, self.session.view())["stale"]
+                    if c["kind"] == "reverted"]
+        if not reverted:
+            return
+        self.session.at = n
+        act: dict[str, Any] = {"round": n, "action": "stale", "owed": True,
+                               "stale_offered": {"reverted": len(reverted)}}
+        self.walk["actions"].append(act)
+        self.stale(draw(self.rng, reverted), act, f"{self.reason}: round {n}, stale, owed")
 
     def answered(self, candidates: Sequence[Mapping[str, Any]], act: dict[str, Any],
                  view: Mapping[str, Any]) -> tuple[list[str], list[str]] | None:
@@ -855,24 +887,24 @@ def walk_one(dataset: str, seed: int, out: Path, *, data: Path | None = None,
             walker.forward()
             for n in range(1, walk["rounds"] + 1):
                 walker.round(n)
+            walker.owed(walk["rounds"] + 1)
             walker.end()
         except arms.Stuck as exc:
             walk["stops"].append(stop_of(exc))
         except Exception as exc:  # noqa: BLE001 - a fault of the walker's own: kept, in its words
-            walk["stops"].append({"by": "walker", "kind": "error",
-                                  "words": f"{type(exc).__name__}: {str(exc)[:600]}",
-                                  "detail": None})
+            walk["stops"].append(fault_of(exc, "walk"))
         if session.run is not None:
             try:
                 walk["stages"] = stages_of(session.view())
             except Exception as exc:  # noqa: BLE001 - the project could not be read: said
                 walk["stages_unread"] = f"{type(exc).__name__}: {str(exc)[:300]}"
     finally:
-        session.stop()
+        guarded(walk, "stop", session.stop)
     log: list[Any] = []
-    if session.run is not None:
-        folder = session.project_folder()
-        walk["checks"] = digest_checks(folder / "decisions.jsonl", folder / "fits.jsonl")
+    folder = guarded(walk, "folder", session.project_folder) if session.run is not None else None
+    if folder is not None:
+        walk["checks"] = guarded(walk, "checks", digest_checks, folder / "decisions.jsonl",
+                                 folder / "fits.jsonl", default=[])
         try:
             log = [json.loads(x) for x in (folder / "decisions.jsonl").read_text(
                 "utf-8").splitlines() if x.strip()]
@@ -883,23 +915,54 @@ def walk_one(dataset: str, seed: int, out: Path, *, data: Path | None = None,
     walk["transcript"] = session.transcript
     walk["engine"]["end"] = stamp()
     walk["seconds"] = round(time.monotonic() - started, 1)
-    walk["class"], walk["defects"] = classed(walk)
+    walk["class"], walk["defects"] = guarded(walk, "class", classed, walk,
+                                             default=("refused", []))
+    guarded(walk, "defects", defects_written, walk, out, log,
+            str(session.runs / str(session.run)) if session.run else None)
+    return walk
+
+
+def fault_of(exc: BaseException, at: str) -> dict[str, Any]:
+    """A fault of the walker's own code, kept as a stop (``by: walker``) in its words, with the
+    step it came in (``at``: ``walk``, or a step after the walk)."""
+    return {"by": "walker", "kind": "error", "words": f"{type(exc).__name__}: {str(exc)[:600]}",
+            "detail": {"at": at}}
+
+
+def guarded(walk: dict[str, Any], at: str, call: Callable[..., Any], *args: Any,
+            default: Any = None) -> Any:
+    """``call(*args)``; where it raises, ``default``, the fault kept in ``walk``'s stops as the
+    walker's own (:func:`fault_of`), so it ends that walk and not the run."""
+    try:
+        return call(*args)
+    except Exception as exc:  # noqa: BLE001 - a fault of the walker's own: kept, in its words
+        walk["stops"].append(fault_of(exc, at))
+        return default
+
+
+def defects_written(walk: dict[str, Any], out: Path, log: Sequence[Any], run: str | None) -> None:
+    """Each defect's reproduction written under ``out/defects`` (the module docstring), the defect
+    naming its file; one whose file could not be written names none (``path`` None), the fault
+    raised."""
+    dataset, seed = walk["dataset"], walk["seed"]
     folder = out / "defects"
     for n, d in enumerate(walk["defects"], start=1):
-        folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{dataset}-{seed}-{n}.json"
         d["path"] = str(path)
-        path.write_text(json.dumps({
-            "dataset": dataset, "seed": int(seed), "defect": d, "words": d.get("words"),
-            "request": d.get("request"), "actions": walk["actions"], "end": walk["end"],
-            "steps": walk["steps"], "log": log, "data": walk["data"],
-            "run": str(session.runs / str(session.run)) if session.run else None,
-            "engine": walk["engine"],
-            "reproduce": f"python -m research.swarm.walk --dataset {dataset} --seeds {seed} --out "
-                         f"<a new folder> walks the same seed; the run's folder keeps its "
-                         f"commands and its project."}, indent=1, ensure_ascii=False,
-            default=str) + "\n", "utf-8")
-    return walk
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({
+                "dataset": dataset, "seed": int(seed), "defect": d, "words": d.get("words"),
+                "request": d.get("request"), "actions": walk["actions"], "end": walk["end"],
+                "steps": walk["steps"], "log": list(log), "data": walk["data"], "run": run,
+                "engine": walk["engine"],
+                "reproduce": f"python -m research.swarm.walk --dataset {dataset} --seeds {seed} "
+                             f"--out <a new folder> walks the same seed; the run's folder keeps "
+                             f"its commands and its project."}, indent=1, ensure_ascii=False,
+                default=str) + "\n", "utf-8")
+        except BaseException:
+            d["path"] = None
+            raise
 
 
 # ── the report ───────────────────────────────────────────────────────────────

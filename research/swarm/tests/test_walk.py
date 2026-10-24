@@ -2,8 +2,10 @@
 on transcripts, logs and views built here, both ways for each of its five defects; the actions it
 offers and draws at a seed; the end of the path's second seal and revisit after it, accepted by a
 stub (the real engine cannot be made to accept them) and refused; the report refused where its
-engines differ; a run that skips a seed already reported; and, slow, one walk through the driver's
-own commands on a small dataset that is not one of the pilot's six
+engines differ; a run that skips a seed already reported; whole walks on a server modeled here
+(:class:`Served`): the round owed where a decision is reverted and no round sent one, and a fault of
+the walker's own after the walk, which ends only that walk; and, slow, one walk through the
+driver's own commands on a small dataset that is not one of the pilot's six
 (``clinical_readmission_predict``, 480 rows), whose second seal and revisit after it the engine and
 the driver refuse.
 
@@ -13,10 +15,12 @@ with its ``by``, ``status``, ``code``, ``message`` and ``exits``; ``recorded``; 
 ``error``, ``refusal``); a decision log appended here with the engine's own log
 (``decisions.DecisionLog``) and a fit record written from it, its digest the SHA-256 of the plan's
 canonical JSON computed here with hashlib; each draw from numpy's generator at the walker's seed,
-drawn here."""
+drawn here; the modeled server's log the engine's own, and its refusal of a revert of a decision
+already reverted the engine's (``decisions._check_revert``)."""
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -106,6 +110,23 @@ def test_a_stage_in_error_the_engine_did_not_type_is_a_defect_and_a_typed_one_is
     assert walk.stages_of(stage_view(cohort=("ValueError: refused", REFUSAL))) == []
 
 
+@pytest.mark.parametrize("upstream, said", [
+    (("ValueError: no coefficient table", None), ["effects"]),
+    (("ValueError: The answers leave 3 of 60 rows.", REFUSAL), []),
+    (None, ["fit"])], ids=["upstream_failed", "upstream_refused", "upstream_not_in_error"])
+def test_a_stage_that_only_names_a_failed_upstream_is_not_said_again(upstream, said):
+    """A stage whose error only names one upstream ("Needs 'effects', which failed.") is not said
+    again where that upstream is in error, untyped (said once, for itself) or a typed refusal (no
+    defect); where the stage it names is not in error, its error is its own, and a defect."""
+    view = stage_view(fit=("Needs 'effects', which failed.", None),
+                      **({"effects": upstream} if upstream else {}))
+    assert [d["stage"] for d in walk.stages_of(view) if d["defect"] == "stage_failed"] == said
+    # Words that only begin as the upstream's are the stage's own.
+    view = stage_view(fit=("Needs 'effects', which failed. KeyError: 'b'", None),
+                      effects=("ValueError: no coefficient table", None))
+    assert [d["stage"] for d in walk.stages_of(view)] == ["fit", "effects"]
+
+
 # ── (2) a refusal with no code or no words ───────────────────────────────────
 
 
@@ -130,6 +151,26 @@ def test_a_stop_or_a_stage_refusal_with_no_words_is_a_defect():
     assert walk.wordless_of([], worded) == []
     view = stage_view(cohort=("ValueError: x", {**REFUSAL, "message": ""}))
     assert [d["defect"] for d in walk.stages_of(view)] == ["wordless"]
+
+
+# Where a stop's refusal came from a command the transcript holds, as the code names it: an answer
+# of the arm's walk (``arms.met_answer``, "walk"), the walker's own command (``Walker.check``'s
+# default, "walker"), a press of Fit and the export (``Walker.check``'s and the stops of
+# ``Walker.settle`` and ``Walker.exported``). A stage's refusal (``arms.met_stages``, "stage") is
+# no command's.
+@pytest.mark.parametrize("at, said", [
+    ("walk", False), ("walker", False), ("fit", False), ("export", False), ("stage", True),
+    (None, True)])
+def test_a_wordless_stop_is_said_once_where_its_command_is_in_the_transcript(at, said):
+    """A stop's refusal with no words is said from the stop only where no command of the
+    transcript said it; where it came from a command the transcript holds, that command's entry
+    says it, once."""
+    stop = {"by": "engine", "kind": "refused", "words": "stopped",
+            "detail": {"kind": "refused", "code": "too_few_rows", "message": None, "at": at}}
+    assert bool(walk.wordless_of([], [stop])) is said
+    t = entries((argv("answer", "impute", reason="r"), 1, refused("too_few_rows", None)))
+    found = walk.wordless_of(t, [stop])
+    assert [d["command"] for d in found] == ["answer", *([None] if said else [])]
 
 
 # ── (3) a dead end ───────────────────────────────────────────────────────────
@@ -157,6 +198,22 @@ def test_a_way_forward_that_works_or_is_refused_for_another_reason_is_no_dead_en
         (argv("answer", "single", reason="r"), 1, refused("single_fill", "No.", [FILL, DROP])),
         (argv("answer", "x-fill", reason="r"), *taken))
     assert walk.dead_ends_of(t) == []
+
+
+@pytest.mark.parametrize("answered, dead_end", [
+    ("x-fill", True), ("x-drop", True), ("single", False), ("x-other", False)],
+    ids=["its_first_way", "its_second_way", "the_answer_again", "an_id_none_of_its_ways"])
+def test_an_answer_that_is_none_of_the_ways_refused_again_is_no_dead_end(answered, dead_end):
+    """Rule 3's "the way was taken", both ways: after a refusal whose ways record something, the
+    next command that records something is an answer refused again with the same code; it is a
+    dead end where that answer names one of the refusal's ways, and none where it names another
+    id (the answer refused given again, or an id that is none of its ways): no way was taken."""
+    t = entries(
+        (argv("answer", "single", reason="r"), 1, refused("single_fill", "No.", [FILL, DROP])),
+        (argv("answer", answered, reason="r"), 1, refused("single_fill", "No again.", [FILL])))
+    found = walk.dead_ends_of(t)
+    assert [(d["code"], d["way"]) for d in found] == ([("single_fill", answered)] if dead_end
+                                                      else [])
 
 
 def test_a_refusal_whose_ways_record_nothing_or_are_not_taken_is_no_dead_end():
@@ -234,14 +291,18 @@ def test_a_fit_seal_or_export_refused_again_after_its_way_is_taken_is_a_dead_end
 
 
 @pytest.mark.parametrize("command", ["export", "fit", "seal"])
-@pytest.mark.parametrize("then", ["given", "another_code", "way_not_taken"])
+@pytest.mark.parametrize("then", ["given", "another_code", "way_not_taken", "another_answer"])
 def test_a_fit_seal_or_export_given_after_its_way_or_without_it_is_no_dead_end(command, then):
     """Silent where the way works (the command given again), where the command is refused again
-    for another reason, and where the way was not taken (a revisit recorded first, so the later
-    answer of the way and the refusal again are not that refusal's)."""
+    for another reason, and where the way was not taken: a revisit recorded first, so the later
+    answer of the way and the refusal again are not that refusal's; or an answer recorded in its
+    place that is none of the refusal's ways, the command then refused again with the same code."""
     before, again = retried(command)
     if then == "way_not_taken":
         before = [before[0], (argv("revisit", "r2", reason="r"), 0, ok("revert")), *before[1:]]
+    if then == "another_answer":
+        before = [before[0], (argv("answer", "x-other", reason="r", marker="design"), 0,
+                              ok("set_missing")), *before[2:]]
     t = entries(*before, (again, *{"given": GIVEN, "another_code": OTHER}.get(
         then, AGAIN)[command]))
     assert walk.dead_ends_of(t) == []
@@ -426,6 +487,34 @@ def test_a_stop_on_a_stage_the_engine_did_not_type_is_a_defect_once():
         ("stage_failed", "shelf")]
     kind, defects = walk.classed(record(stops=[stop]))
     assert [(d["defect"], d["stage"]) for d in defects] == [("stage_failed", "shelf")]
+
+
+def test_a_defect_met_again_is_kept_once_as_first_met_and_another_beside_it():
+    """A stage's error met in round 1 (after command 4), again in round 3 at another key (after
+    command 9) and in the view as the walk ends is kept once, as first met: its round and the
+    command it followed, which the report's words give. Another stage's error, met in round 2, and
+    the same command's failure given twice (two requests) are each kept beside it."""
+    words = "ValueError: no coefficient table"
+    met = [{"defect": "stage_failed", "stage": "effects", "key": "e1", "words": words, "round": 1,
+            "after": 4},
+           {"defect": "stage_failed", "stage": "shelf", "key": "s1", "words": "RuntimeError: x",
+            "round": 2, "after": 6},
+           {"defect": "stage_failed", "stage": "effects", "key": "e3", "words": words, "round": 3,
+            "after": 9}]
+    final = [{"defect": "stage_failed", "stage": "effects", "key": "e3", "words": words}]
+    failing = entries(*[(argv("answer", "impute", reason="r"), 1,
+                         refused("http_500", "x", status=500))] * 2)
+    kind, defects = walk.classed(record(stages_met=met, stages=final, transcript=failing))
+    assert kind == "defect"
+    assert [(d["defect"], d.get("stage"), d.get("round"), d.get("after"),
+             (d.get("request") or {}).get("n")) for d in defects] == [
+        ("failed", None, None, None, 0), ("failed", None, None, None, 1),
+        ("stage_failed", "effects", 1, 4, None), ("stage_failed", "shelf", 2, 6, None)]
+    report = walk.report_of("d", "inference", [1], [{**summary(1, kind=kind),
+                                                     "defects": defects}], ENGINE, 1.0)
+    text = walk.walk_md(report)
+    assert "at the effects stage (met in round 1)" in text and "(met in round 3)" not in text
+    assert "at the shelf stage (met in round 2)" in text
 
 
 class Viewed(walk.Walked):
@@ -669,6 +758,219 @@ def test_the_seeds_read_as_a_range_or_one():
         walk.seeds_of("3-1")
 
 
+# ── whole walks on a server modeled here ─────────────────────────────────────
+
+
+class Served(walk.Walked):
+    """A run of the driver's own whose server is modeled here (``serve``, in place of
+    ``driver.main``; the fixture ``served``), each command answered as the driver prints it. The
+    log is the engine's own (``decisions.DecisionLog``): the card's outcome and goal, then
+    ``revisitable`` decisions a revisit may take. Every ask finds Fit reached and nothing open; the
+    first offers ``options`` option ids that no later ask offers, so each is a stale id of the
+    option kind. A revisit records a revert and the decision answered again (as the walk answers
+    its question again), or, where the decision is already reverted, is refused as the engine
+    refuses it (``decisions._check_revert``: its code, words and way forward); an answer of a way
+    forward kept from the last refusal records it, and any other id is refused by the driver
+    (``not_offered``); Fit is made fresh, the results read and the export given."""
+
+    revisitable, options = 3, 0
+
+    def serve(self, *argv):
+        from turbotab.core import decisions as D
+
+        command = argv[0]
+        ids = list(itertools.takewhile(lambda a: not a.startswith("--"), argv[3:]))
+        if command == "start":
+            self.runs.mkdir(parents=True, exist_ok=True)
+            self.log, self.kept, self.asks = D.DecisionLog(self.runs / "decisions.jsonl"), [], 0
+            for d in ({"kind": "set_target", "column": "y"},
+                      {"kind": "set_purpose", "purpose": "inference"}):
+                self.log.append(d)
+            for _ in range(self.revisitable):
+                self.log.append({"kind": "set_missing", "strategy": "complete_case"})
+            return 0, {"started": {"run": RID}}
+        if command == "ask":
+            self.asks += 1
+            options = [{"id": f"o{i}", "label": f"Option {i}", "decision": {
+                "kind": "set_missing", "strategy": "complete_case"}}
+                for i in range(self.options if self.asks == 1 else 0)]
+            return 0, {"question": None, "fit_reached": True, "options": options,
+                       "also_open": []}
+        if command == "revisit":
+            return self.revisited(ids[0])
+        if command == "answer":
+            way = next((w for w in self.kept if w["id"] == ids[0]), None)
+            if way is None:
+                return 1, refused("not_offered", f"No option {ids[0]} is offered now.",
+                                  by="driver", status=None)
+            r = self.log.append(way["decision"])
+            self.kept = []
+            return 0, ok(r.decision.kind, r.id, r.seq)
+        canned = {"fit": FRESH_FIT, "results": {"results": {}}, "export": EXPORTED,
+                  "stop": {"stopped": {"run": RID}}}
+        assert command in canned, f"the walk gave {command}, which this server does not model"
+        return 0, canned[command]
+
+    def revisited(self, record):
+        from turbotab.core import decisions as D
+
+        records = self.log.records()
+        target = next(r for r in records if r.id == record)
+        try:
+            D._check_revert(records, D.Revert(decision_id=record))
+        except D.Refusal as exc:
+            self.kept = [{"id": f"x-{i}", **e} for i, e in enumerate(exc.exits)]
+            return 1, refused(exc.code, exc.message, self.kept)
+        r = self.log.append({"kind": "revert", "decision_id": record})
+        if target.decision.kind != "revert":
+            self.log.append(target.decision.model_dump(mode="json"))
+        self.kept = []
+        return 0, ok("revert", r.id, r.seq)
+
+    def view(self):
+        return {"decisions": [r.model_dump(mode="json") for r in self.log.records()],
+                "stages": {"fit": {"status": "fresh", "key": "f1"}}}
+
+    def project_folder(self):
+        return self.runs
+
+
+QUESTION = arms.Question("y", "inference")
+
+
+@pytest.fixture
+def served(tmp_path, monkeypatch):
+    """The walker's run is :class:`Served`, the engine stamped as :data:`ENGINE`; the table."""
+    monkeypatch.setattr(arms.Driven, "command", lambda self, *argv: self.serve(*argv))
+    monkeypatch.setattr(walk, "Walked", Served)
+    monkeypatch.setattr(walk, "stamp", lambda: {**ENGINE, "at": "now"})
+    table = tmp_path / "t.csv"
+    table.write_text("y,x\n1,2\n0,3\n", "utf-8")
+    return table
+
+
+def faulty(where, monkeypatch, out):
+    """A fault of the walker's own planted after the walk, at ``where``; its exception's name."""
+    def fault(*a, **k):
+        raise RuntimeError(f"a fault of the walker's, at {where}")
+
+    if where == "checks":
+        monkeypatch.setattr(walk, "digest_checks", fault)
+    elif where == "class":
+        monkeypatch.setattr(walk, "classed", fault)
+    elif where == "stop":
+        monkeypatch.setattr(Served, "stop", fault)
+    elif where == "defects":  # a defect found, and its folder cannot be made: a file holds its name
+        monkeypatch.setattr(walk, "classed", lambda w: ("defect", [{"defect": "failed",
+                                                                     "words": "Words."}]))
+        out.mkdir(parents=True)
+        (out / "defects").write_text("a file, not a folder", "utf-8")
+        return "FileExistsError"
+    return "RuntimeError"
+
+
+@pytest.mark.parametrize("where", ["checks", "class", "defects", "stop", None])
+def test_a_fault_in_a_walks_tail_ends_only_that_walk_kept_as_the_walkers(served, tmp_path,
+                                                                          monkeypatch, where):
+    """I3: a fault of the walker's own after the walk (its run's stop, the fit records held to the
+    log, the class, the defects' files) ends only that walk: it is kept as the walker's own fault,
+    in its words, and written; the run goes on to the next seed, the report holding it does not
+    pass, and a run again walks neither seed again. With no fault planted, none is kept and the
+    report passes."""
+    out = tmp_path / "out"
+    name = faulty(where, monkeypatch, out) if where else None
+    calls = []
+
+    def walker(*a, **k):
+        calls.append(a[1])
+        return walk.walk_one(*a, **k)
+
+    report = walk.run("d", [5, 6], out, walker=walker, purpose="inference", data=served,
+                      question=QUESTION)
+    assert calls == [5, 6] and report["complete"] is True
+    for seed in (5, 6):
+        w = json.loads((out / "walks" / f"d-{seed}.json").read_text("utf-8"))
+        assert w["class"] in walk.CLASSES and w["reached"] is True
+        faults = [(s["kind"], s["words"].split(":")[0], (s.get("detail") or {}).get("at"))
+                  for s in w["stops"] if s["by"] == "walker"]
+        assert faults == ([("error", name, where)] if where else [])
+        if where == "defects":
+            assert w["class"] == "defect" and [d.get("path") for d in w["defects"]] == [None]
+        if where == "class":
+            assert (w["class"], w["defects"]) == ("refused", [])
+    assert report["walker_errors"] == ([5, 6] if where else [])
+    assert report["passed"] is (where is None)
+    walk.run("d", [5, 6], out, walker=walker, purpose="inference", data=served,
+             question=QUESTION)
+    assert calls == [5, 6]
+
+
+def started(served, tmp_path):
+    session = Served(tmp_path / "runs")
+    session.start(served, budget_fits=1, budget_seconds=1.0, model="m")
+    w = record(actions=[], skipped=[], end=[])
+    return session, w, walk.Walker(session, arms.Random(QUESTION, 1), walk.walker_rng(1), w, None)
+
+
+def test_a_round_more_sends_a_decision_already_reverted_where_no_round_sent_one(served,
+                                                                                tmp_path):
+    """I1, by construction: one decision of the log reverted (a revisit recorded here) and no
+    round having sent one, the round after the drawn rounds sends that decision, through the
+    driver's revisit, to the server, which refuses it as the engine does, with a way forward that
+    is taken and recorded. Once one is sent, no round more is given; with nothing reverted, none,
+    and no command is sent."""
+    session, w, walker = started(served, tmp_path)
+    target = session.log.records()[2].id  # the first decision a revisit may take
+    assert session.revisit(target, "r").ok
+    before = len(session.transcript)
+    walker.owed(4)
+    assert [(a["round"], a["action"], a["stale"], a["owed"], a["id"]) for a in w["actions"]] == [
+        (4, "stale", "reverted", True, target)]
+    sent = session.transcript[before]
+    assert (sent["command"], sent["ids"], sent["kind"], sent["by"]) == (
+        "revisit", [target], "refused", "server")
+    assert w["actions"][0]["accepted"] is False and w["actions"][0]["way"]["kind"] == "ok"
+    n = len(session.transcript)
+    walker.owed(5)
+    assert len(session.transcript) == n and len(w["actions"]) == 1
+
+    session, w, walker = started(served, tmp_path / "none")
+    n = len(session.transcript)
+    walker.owed(3)
+    assert len(session.transcript) == n and w["actions"] == []
+
+
+def test_each_walk_whose_rounds_revert_a_decision_sends_one_already_reverted(served, tmp_path,
+                                                                             monkeypatch):
+    """I1 over seeds 1-40 on the server modeled here (three decisions a revisit may take, two option
+    ids an earlier ask offered): a walk sends a decision already reverted exactly where its drawn
+    rounds recorded a revert (a revisit or an undo, each recorded here); where none of them sent
+    one, the round after them does, through the driver's revisit, refused by the server; a walk
+    whose rounds reverted nothing, or sent one, is given no round more. Each case is met at these
+    seeds."""
+    monkeypatch.setattr(Served, "options", 2)
+    cases = {"owed": 0, "sent": 0, "none": 0}
+    for seed in range(1, 41):
+        w = walk.walk_one("d", seed, tmp_path / str(seed), data=served, question=QUESTION)
+        drawn = [a for a in w["actions"] if a["round"] <= w["rounds"]]
+        more = [a for a in w["actions"] if a["round"] > w["rounds"]]
+        reverted = any(a["action"] in ("revisit", "undo") and a["said"]["kind"] == "ok"
+                       for a in drawn)
+        sent = any(a.get("stale") == "reverted" for a in drawn)
+        assert any(a.get("stale") == "reverted" for a in w["actions"]) is reverted, seed
+        if reverted and not sent:
+            assert [(a["round"], a["action"], a["stale"], a["owed"]) for a in more] == [
+                (w["rounds"] + 1, "stale", "reverted", True)], seed
+            assert (more[0]["said"]["kind"], more[0]["said"]["by"]) == ("refused", "server")
+            assert any(e["command"] == "revisit" and e["ids"] == [more[0]["id"]]
+                       and e["by"] == "server" for e in w["transcript"])
+        else:
+            assert more == [], seed
+        cases["owed" if reverted and not sent else "sent" if sent else "none"] += 1
+        assert w["class"] == "clean", seed
+    assert all(cases.values()), cases
+
+
 # ── one walk through the driver, to its end ──────────────────────────────────
 
 
@@ -677,7 +979,14 @@ def test_a_walk_runs_through_the_driver_to_its_end_and_the_second_seal_is_refuse
     report = walk.run("clinical_readmission_predict", [3], tmp_path)
     w = json.loads((tmp_path / "walks" / "clinical_readmission_predict-3.json").read_text("utf-8"))
     assert w["class"] in ("clean", "refused", "defect") and report["walks"][0]["class"] == w["class"]
-    assert 2 <= w["rounds"] <= 4 and len(w["actions"]) <= w["rounds"]
+    assert 2 <= w["rounds"] <= 4
+    drawn = [a for a in w["actions"] if a["round"] <= w["rounds"]]
+    assert len(drawn) <= w["rounds"] and all(a.get("owed") for a in w["actions"][len(drawn):])
+    if any(a["action"] in ("revisit", "undo") and (a.get("said") or {}).get("kind") == "ok"
+           for a in drawn):
+        # A decision already reverted is sent, and reaches the server past the driver.
+        sent = [a for a in w["actions"] if a.get("stale") == "reverted"]
+        assert sent and (sent[0]["said"]["kind"], sent[0]["said"]["by"]) == ("refused", "server")
     assert w["engine"]["start"]["engine_tree"] == w["engine"]["end"]["engine_tree"]
     commands = [e["command"] for e in w["transcript"]]
     assert commands[0] == "start" and commands.count("fit") >= 1
