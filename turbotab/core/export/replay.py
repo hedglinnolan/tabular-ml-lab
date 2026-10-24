@@ -50,33 +50,43 @@ rebuild finished:
 * **A spline's k on a fresh draw** (:func:`fresh_splines`): a spline whose k the server set by
   Harrell's rule records the effective sample size the rule read on the analyzed rows when it was
   declared, and the k it gave. The analyst who gave no k left it to the rule, a plan to apply the
-  rule, so the replay applies it to the new draw, under inference and prediction alike. Before
-  the rebuild's result stages are waited for, once the stages the rule reads are computed, the
-  rule is read again as the engine records it (:func:`rule_forms`), on the new draw's rows as the
-  log ends, and ruled (:func:`rule_verdict`):
+  rule, so the replay applies it to the new draw, under inference and prediction alike, on the
+  rows the engine reads it on. Under inference the engine asks the form question again where the
+  analyzed rows' size is not the one the record states (``exposure_form.rule_stale``), so the rule
+  is read on the rows as the log ends; under prediction it reads the rule when the spline is
+  declared and keeps that k whatever a later record does to the rows, so the rule is read on the
+  rows as they stood at the spline's record (:func:`size_at_record`). Before the rebuild's result
+  stages are waited for, once the stages the rule reads are computed, the rule is read again as
+  the engine records it (:func:`rule_forms`) on the new draw's rows, and ruled
+  (:func:`rule_verdict`):
   - where it reads the size the record states (to within ``exposure_form.rule_stale``'s 1e-9),
     or neither reads one, the record is replayed as recorded;
   - where it reads another size, the record is replayed at the k the rule gives on it (the
     record's or another) stating that size, its sentence (which the methods text quotes) authored
     again as the log authors one, and the report's messages give both draws' k and size
     (:func:`refilled_line`; refused where the record's own sentence is not the one the log authors
-    for it now). Under inference the engine asks the form question again where the analyzed rows'
-    size is not the one the record states (``exposure_form.rule_stale``), and the size refilled is
-    the one it reads, so the form stands; under prediction the engine keeps the record's k, the
-    rule's on this draw. A plan lock recorded after it holds the plan the records before it give
-    with the refilled spline, and that plan's SHA-256, which its sentence quotes
-    (:func:`relocked_line`; refused where its plan is not the one its records give now);
+    for it now), so under inference the form stands, and under prediction the k is the one the
+    engine keeps for these answers on this draw. A plan lock recorded after it holds the plan the
+    records before it give with the refilled spline, and that plan's SHA-256, which its sentence
+    quotes (:func:`relocked_line`; refused where its plan is not the one its records give now);
   - another size is refused where a later record changed what the size is read under
     (:func:`input_changes`): the outcome, its scale, its task (answered, else the one the target
     stage detects) and its event as the log ends against those at the spline's record. The
     record's size and its sentence's words are read under those at the record, so the size the
     rule reads under later ones is not replayed in them; the refusal names each later record
-    whose step changed one, and each change from the record to the log's end;
+    whose step changed one, and each change from the record to the log's end. Under prediction,
+    where the size is read at the record, any such change refuses the rebuild;
   - a draw on which the rule reads no size is refused, since the rule gives no k there and the
-    record's are the recorded draw's, and so is a standing spline no live record gives its column.
+    record's are the recorded draw's, and so is a standing spline no live record gives its column;
+  - under prediction, a spline whose size at its record is not read on this draw (below) is
+    refused, and so is a record of the rule's default k, declared before any size was read
+    (``exposure_form.rule_words``: "no effective sample size was read"), where the rule gives
+    another k on this draw: the engine keeps that default whatever the rows, and whether a fresh
+    draw replays it or the rule's k there is not ruled. Where the rule gives the default's k, the
+    record is replayed as recorded, the fit the same either way.
   A spline whose k the analyst gave is replayed as recorded, whatever the rows.
-  A refusal, and a refilled record's message, says the size was read on the rows as the log ends,
-  and names each later record whose own step changed that size on the new draw
+  Under inference a refusal, and a refilled record's message, says the size was read on the rows
+  as the log ends, and names each later record whose own step changed that size on the new draw
   (:func:`later_changes`): the rule's size read on the state folded up to the spline's record and
   up to each later record whose step writes what those rows or their outcome are read under (an
   exclusion, the missing-values answer, a confirmed reading, an answered task or event; what a
@@ -84,7 +94,11 @@ rebuild finished:
   every state over the same rows; none where the size at the spline's record is the one as the
   log ends. Where the sizes cannot be read that way (a later record writes the task or the
   outcome, or the table the rows are read from), each such later record is named as one that can
-  change them. A form's cut points and knot
+  change them. Under prediction the size at the spline's record is the first of those sizes
+  (the size as the log ends where no later record writes what it is read on), and the message
+  says it was read on the rows as they stood at that record, naming no later record; where the
+  sizes cannot be read that way it is not read, and the refusal says the size was read as the
+  log ends and names each later record as one that can change it. A form's cut points and knot
   places are not in its record: the form step learns them on the rows the fit reads, and declared
   categories' cut points are the analyst's.
 * **The findings rule on a fresh draw** (:func:`findings_rule`): a record tied to a finding by its
@@ -668,13 +682,15 @@ class RuleRead:
     """A standing spline whose k the server set by Harrell's rule, read again on a fresh draw
     (:func:`rule_forms`): the record that gives the column its form (its ``seq`` and ``kind``;
     None when no live record does), the k and the effective sample size it states, the rule's k
-    and size on this draw's rows as the log ends (``read`` None where the rule reads none), and
-    the later records to name beside that size, as (seq, kind): where ``inputs`` holds what a
-    later record changed of what the size is read under (:func:`input_changes`, each change from
-    the record to the log's end), the records whose step changed it; else (:func:`later_changes`)
-    ``traced``, those whose own step changed the size the rule reads on this draw, or each later
-    record that writes what those rows are read under (:func:`later_records`), the size not read
-    step by step."""
+    and size on this draw's rows (``read`` None where the rule reads none), and the later records
+    to name beside that size, as (seq, kind): where ``inputs`` holds what a later record changed
+    of what the size is read under (:func:`input_changes`, each change from the record to the
+    log's end), the records whose step changed it; else (:func:`later_changes`) ``traced``, those
+    whose own step changed the size the rule reads on this draw, or each later record that writes
+    what those rows are read under (:func:`later_records`), the size not read step by step. The
+    rows are those as the log ends, or, where ``at_record``, those as they stood at the record
+    (:func:`size_at_record`), where the engine reads the rule under prediction (``purpose``, the
+    log's), no later record named."""
 
     column: str
     seq: int | None
@@ -686,6 +702,8 @@ class RuleRead:
     later: tuple[tuple[int, str], ...] = ()
     traced: bool = True
     inputs: tuple[str, ...] = ()
+    purpose: str | None = None
+    at_record: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -864,6 +882,41 @@ def later_changes(records: Sequence[Any], seq: int, reads: set[str], store: Any,
     answered task is read by the task as the log ends, ``task``), or where one writes a slot in
     ``table`` (what the working table is built from, read as the log ends) other than a confirmed
     reading of columns no state's flow reads (:func:`_rewrites`)."""
+    later, sizes = _sizes_along(records, seq, reads, store, task, read, table=table,
+                                sealed=sealed)
+    if not later:
+        return (), True
+    if sizes is None:
+        return later, False
+    if _same_size(sizes[0], sizes[-1]):
+        return (), True
+    return tuple(x for x, a, b in zip(later, sizes, sizes[1:]) if not _same_size(a, b)), True
+
+
+def size_at_record(records: Sequence[Any], seq: int, reads: set[str], store: Any,
+                   task: str | None, read: float | None, *, table: set[str] = frozenset(),
+                   sealed: Any | None = None) -> tuple[float | None, bool]:
+    """The rule's size on this draw on the rows as they stood at the spline recorded at ``seq``,
+    where the engine reads it under prediction (``exposure_form.complete_spec`` when the spline
+    is declared), and whether it was read: ``read`` (the engine's, as the log ends) where no later
+    record writes what it is read on (:func:`later_records`); else the size on the state folded
+    up to ``seq`` over the rows whose size as the log ends is ``read``, as :func:`later_changes`
+    reads the sizes step by step; ``(None, False)`` where they are not traced that way."""
+    later, sizes = _sizes_along(records, seq, reads, store, task, read, table=table,
+                                sealed=sealed)
+    if not later:
+        return read, True
+    return (sizes[0], True) if sizes is not None else (None, False)
+
+
+def _sizes_along(records: Sequence[Any], seq: int, reads: set[str], store: Any,
+                 task: str | None, read: float | None, *, table: set[str] = frozenset(),
+                 sealed: Any | None = None
+                 ) -> tuple[tuple[tuple[int, str], ...], list[float | None] | None]:
+    """The later records (:func:`later_records`) and the rule's size on the state folded up to
+    ``seq`` and then up to each in turn, over the rows whose last size is ``read``
+    (:func:`later_changes`); None for the sizes where they are not traced, ``[read]`` where no
+    later record writes what the size is read on."""
     import numpy as np
 
     from turbotab.core.decisions import fold
@@ -871,37 +924,33 @@ def later_changes(records: Sequence[Any], seq: int, reads: set[str], store: Any,
     steps = _later(records, seq, reads)
     later = tuple((s.record.seq, s.record.decision.kind) for s in steps)
     if not later:
-        return (), True
+        return (), [read]
     rewritten: set[str] = set()
     for s in steps:
         if s.written & {"task", "target"}:
-            return later, False
+            return later, None
         if s.written & set(table):
             columns = _rewrites(s.decision)
             if columns is None:
-                return later, False
+                return later, None
             rewritten |= columns
     base = [r for r in records if r.seq <= seq]
     try:
         states = [fold(base), *(s.state for s in steps)]
         ingest = _ingest_of(store)
         if rewritten & set().union(*(_flow_columns(s, ingest) for s in states)):
-            return later, False
+            return later, None
         pools: list[Any] = [None]
         if sealed is not None and len(sealed):
             pools.append(np.setdiff1d(np.arange(int(store.n_rows), dtype=np.int64),
                                       np.asarray(sealed, dtype=np.int64)))
         for rows in pools:
             sizes = rule_sizes(store, states, task, rows)
-            if not _same_size(sizes[-1], read):
-                continue
-            if _same_size(sizes[0], sizes[-1]):
-                return (), True
-            return tuple(x for x, a, b in zip(later, sizes, sizes[1:])
-                         if not _same_size(a, b)), True
+            if _same_size(sizes[-1], read):
+                return later, sizes
     except Exception:  # noqa: BLE001 - a state whose rows cannot be read here: not traced
         pass
-    return later, False
+    return later, None
 
 
 def _by_rule(spec: Any) -> dict[str, Any] | None:
@@ -920,10 +969,12 @@ def rule_forms(service: Any, pid: str) -> list[RuleRead]:
     """Each standing spline of the project ``pid`` whose k the server set by Harrell's rule
     (``knots_rule`` "harrell"), read again: the rule as the engine records it now
     (``exposure_form.complete_spec`` under the project's decision context, on the rows as the log
-    ends), beside the k and size the record states (module docstring), and what a later record
-    changed of what that size is read under (:func:`input_changes`; the task detected read from
-    the target stage, as the sentence's facts read it). The caller waits for :data:`RULE_STAGES`
-    first."""
+    ends; under prediction, where the engine reads it when the spline is declared, on the rows as
+    they stood at its record, :func:`size_at_record`, its k ``exposure_form.knots_by_rule``'s on
+    that size), beside the k and size the record states (module docstring), and what a later
+    record changed of what that size is read under (:func:`input_changes`; the task detected read
+    from the target stage, as the sentence's facts read it). The caller waits for
+    :data:`RULE_STAGES` first."""
     from turbotab.core.decisions import Refusal, reverted
     from turbotab.core.methods import exposure_form as ef
 
@@ -940,7 +991,13 @@ def rule_forms(service: Any, pid: str) -> list[RuleRead]:
     info = ctx.artifact("target_info") if callable(ctx.artifact) else None
     detected = ((info.get("column"), info.get("detected_task") or info.get("task"))
                 if isinstance(info, dict) else (None, None))
+    purpose = getattr(ctx.state, "purpose", None)
+
+    def sealed() -> Any:
+        return ctx.sealed() if callable(ctx.sealed) else None
+
     walked: dict[int, tuple[tuple[tuple[int, str], ...], bool, tuple[str, ...]]] = {}
+    at: dict[int, tuple[tuple[str, ...], tuple[tuple[int, str], ...], float | None, bool]] = {}
     out: list[RuleRead] = []
     for column, spec in ef.current_forms(ctx.state).items():
         given = _by_rule(spec)
@@ -955,41 +1012,67 @@ def rule_forms(service: Any, pid: str) -> list[RuleRead]:
             or (r.decision.kind == "set_forms" and column in r.decision.forms))]
         record = last[-1] if last else None
         read, said = again.get("n_effective"), given.get("n_effective")
+        k = again.get("knots") if read is not None else None
         later: tuple[tuple[tuple[int, str], ...], bool, tuple[str, ...]] = ((), True, ())
-        if record is not None and not _same_size(said, read):  # a size a sentence will state
+        at_record = False
+        if record is not None and purpose == "prediction":
+            # The engine reads the rule when the spline is declared and keeps that k whatever the
+            # rows later, so the size is the one on the rows as they stood at its record.
+            if record.seq not in at:
+                changed, inputs = input_changes(records, record.seq, reads, detected)
+                if inputs:
+                    at[record.seq] = (inputs, changed, None, False)
+                else:
+                    size, traced = size_at_record(records, record.seq, reads, ctx.store(),
+                                                  ctx.task, read, table=table, sealed=sealed())
+                    at[record.seq] = ((), () if traced else later_records(
+                        records, record.seq, reads), size, traced)
+            inputs, named, size, at_record = at[record.seq]
+            later = (named, at_record or bool(inputs), inputs)
+            if at_record:
+                read, k = size, (ef.knots_by_rule(size) if size is not None else None)
+        elif record is not None and not _same_size(said, read):  # a size a sentence will state
             if record.seq not in walked:
                 changed, inputs = input_changes(records, record.seq, reads, detected)
                 walked[record.seq] = ((changed, True, inputs) if inputs else (*later_changes(
                     records, record.seq, reads, ctx.store(), ctx.task, read, table=table,
-                    sealed=ctx.sealed() if callable(ctx.sealed) else None), ()))
+                    sealed=sealed()), ()))
             later = walked[record.seq]
         out.append(RuleRead(
             column=column, seq=record.seq if record else None,
             kind=record.decision.kind if record else None, knots=given.get("knots"),
-            said=said, k=again.get("knots") if read is not None else None,
-            read=read, later=later[0], traced=later[1], inputs=later[2]))
+            said=said, k=k, read=read, later=later[0], traced=later[1], inputs=later[2],
+            purpose=purpose, at_record=at_record))
     return out
 
 
 def rule_verdict(r: RuleRead) -> tuple[str, str | None]:
-    """What a fresh draw does with the spline ``r`` (module docstring), and its sentence, alike
-    under either purpose, since the record left k to the rule: ``("kept", None)`` where the rule
-    reads the size the record states (``exposure_form.rule_stale``), or neither states one;
-    ``("refilled", …)`` where it reads another size, the record replayed at the rule's k on it
-    (``r.k``, the record's or another) stating that size; ``("refused", …)`` where a later record
-    changed what the size is read under (``r.inputs``), where the rule reads no size, and where no
-    live record gives the column the spline."""
+    """What a fresh draw does with the spline ``r`` (module docstring), and its sentence, since the
+    record left k to the rule: ``("kept", None)`` where the rule reads the size the record states
+    (``exposure_form.rule_stale``), or neither states one; ``("refilled", …)`` where it reads
+    another size, the record replayed at the rule's k on it (``r.k``, the record's or another)
+    stating that size; ``("refused", …)`` where a later record changed what the size is read under
+    (``r.inputs``), where the rule reads no size, and where no live record gives the column the
+    spline. Under prediction (``r.purpose``, with a live record) the size is the one at the
+    record (``r.at_record``): where it is not read there, the spline is refused, and so is a
+    record of the rule's default k, declared before any size was read, where the rule gives
+    another k on this draw (where it gives the same, the record is kept: the fit is the same)."""
     from turbotab.core.methods import exposure_form as ef
     from turbotab.core.voice import listing
 
     given = {"form": "spline", "knots_rule": "harrell", "n_effective": r.said}
     other = r.read is None and r.said is not None
-    if not other and not ef.rule_stale(given, {"n_effective": r.read}):
+    predicting = r.purpose == "prediction" and r.seq is not None
+    stale = other or ef.rule_stale(given, {"n_effective": r.read})
+    if (r.at_record or not predicting) and not stale:
         return "kept", None
+    if predicting and r.at_record and r.said is None and r.read is not None and r.k == r.knots:
+        return "kept", None  # the rule's default k, and the rule's on this draw: the same fit
     where = f"Record {r.seq} ({r.kind})" if r.seq is not None else "The plan"
     before = (f"k = {r.knots} on an effective sample size of {_size(r.said)}"
               if r.said is not None else f"k = {r.knots} with no effective sample size read")
     now = f"{_size(r.read)} (k = {r.k})" if r.read is not None else "no effective sample size"
+    rows = "as they stood at that record" if r.at_record else "as the log ends"
     after = ""
     if r.later:
         named = listing([f"{seq} ({kind})" for seq, kind in r.later], limit=len(r.later),
@@ -1000,13 +1083,18 @@ def rule_verdict(r: RuleRead) -> tuple[str, str | None]:
                  "which can change the size it reads")
         after = f", after {'record' if len(r.later) == 1 else 'records'} {named}, {which}"
     said = (f"{where} gives `{r.column}` a spline whose k is Harrell's rule on the analyzed rows: "
-            f"{before} on the recorded draw, and on this draw the rule reads {now} on the rows as "
-            f"the log ends{after}.")
+            f"{before} on the recorded draw, and on this draw the rule reads {now} on the rows "
+            f"{rows}{after}.")
     if r.inputs:
         return "refused", (f"{said} The record's size and sentence are read under the outcome, its "
                            f"scale, task and event as they stood when it was recorded, so a size "
                            f"read under later ones is not replayed in it, and the rebuild is "
                            f"refused.")
+    if predicting and not r.at_record:
+        return "refused", (f"{said} Under prediction the engine reads the rule when the spline is "
+                           f"declared and keeps that k, and the size on the rows as they stood "
+                           f"at that record is not read on this draw where a later record can "
+                           f"change it, so the rebuild is refused.")
     if r.read is None or r.k is None:
         return "refused", (f"{said} With no size read, the rule gives no k on this draw, and the "
                            f"record's k and size are the recorded draw's, so the rebuild is "
@@ -1014,6 +1102,17 @@ def rule_verdict(r: RuleRead) -> tuple[str, str | None]:
     if r.seq is None:
         return "refused", (f"{said} No live record gives `{r.column}` this spline, so none is "
                            f"replayed at the rule's k on this draw, and the rebuild is refused.")
+    if predicting and r.said is None:
+        return "refused", (f"{said} Under prediction the engine keeps the k a spline is declared "
+                           f"with, here the rule's default, declared before any size was read, "
+                           f"and the rule gives another k on this draw, so the rebuild is "
+                           f"refused.")
+    if predicting:
+        return "refilled", (f"{said} Its k was left to the rule, which the engine reads under "
+                            f"prediction when the spline is declared, so the record is replayed "
+                            f"at the rule's k on this draw's rows as they stood then, stating "
+                            f"k = {r.k} on an effective sample size of {_size(r.read)} in place "
+                            f"of {before}.")
     return "refilled", (f"{said} Its k was left to the rule, so the record is replayed at the "
                         f"rule's k on this draw, stating k = {r.k} on an effective sample size of "
                         f"{_size(r.read)} in place of {before}.")
@@ -1492,5 +1591,5 @@ __all__ = ["CUT_KINDS", "Cut", "EstimateCheck", "FINDING_KINDS", "FreshDraw", "F
            "findings_inputs", "findings_rule", "fresh_findings", "fresh_splines", "fresh_table",
            "join_lines", "later_changes", "later_records", "live_record", "load_bundle",
            "log_lines", "main", "refilled_line", "refuse_live_opening", "relocked_line",
-           "rule_forms", "rule_sizes", "rule_verdict", "run", "summary", "truncate",
-           "verify_inputs", "write_draw"]
+           "rule_forms", "rule_sizes", "rule_verdict", "run", "size_at_record", "summary",
+           "truncate", "verify_inputs", "write_draw"]

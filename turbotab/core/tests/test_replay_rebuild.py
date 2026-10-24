@@ -27,7 +27,14 @@ hashed here with hashlib.
 * A spline whose k the server set by Harrell's rule, on a fresh draw (:func:`replay.rule_verdict`,
   k by the rule as RMS states it): the record left k to the rule, so under either purpose another
   size is replayed at the rule's k on it, the record's k or another, the message stating both
-  draws' k and size; the same size is kept; no size read, or no live record, is refused.
+  draws' k and size; the same size is kept; no size read, or no live record, is refused. Under
+  inference the size is read on the rows as the log ends; under prediction on the rows as they
+  stood at the record (:func:`replay.size_at_record`: pandas' size on the state folded up to the
+  spline, over the rows whose size as the log ends is the engine's, the engine's own where no later
+  record writes what it is read on), the message saying so; where that size is not traced, a
+  later record changed what it is read under, or the record holds the rule's default k with no
+  size read, the rebuild is refused under prediction, even where the size as the log ends is the
+  record's.
   The later records that write what the rows are read under (:func:`replay.later_records`, read
   on the state folded up to the record before each: an exclusion, a revert of one recorded before
   the spline, the outcome's task or event answered, but not the models answer, a withdrawn
@@ -489,13 +496,16 @@ def harrell(n: float) -> int:
 
 
 def rule_read(said: float | None, read: float | None, *, knots: int | None = None,
-              later: tuple = (), inputs: tuple = ()) -> "replay.RuleRead":
+              later: tuple = (), inputs: tuple = (), purpose: str = "inference",
+              at_record: bool = False, traced: bool = True) -> "replay.RuleRead":
     """The age spline of record 4 as :func:`replay.rule_forms` reads it: the record's k (the
-    rule's on ``said``, else the one given) and size, and the rule's k and size on this draw."""
+    rule's on ``said``, else the one given) and size, and the rule's k and size on this draw,
+    under ``purpose`` (inference, read as the log ends, unless given), read at the record where
+    ``at_record``."""
     return replay.RuleRead(column="age", seq=4, kind="set_exposure_form",
                            knots=knots if knots is not None else harrell(said), said=said,
                            k=harrell(read) if read is not None else None, read=read, later=later,
-                           inputs=inputs)
+                           traced=traced, inputs=inputs, purpose=purpose, at_record=at_record)
 
 
 def refilled_words(said: float | None, knots: int, read: float) -> str:
@@ -510,11 +520,13 @@ def refilled_words(said: float | None, knots: int, read: float) -> str:
 
 def test_another_size_is_replayed_at_the_rules_k_on_it_the_records_or_another():
     """The record left k to Harrell's rule, a plan to apply the rule (the ruling of 2026-10-23),
-    so another size on a fresh draw is replayed at the rule's k on it, under either purpose (the
-    verdict reads none): the record's k (117 to 114, k = 5 on both) or another (117 to 95, k = 4;
-    400 to 95 under inference's complete cases), the message stating the record's k and size and
-    this draw's. The same size, to within 1e-9 of it, is replayed as recorded, and so is a record
-    of the rule's default k where neither draw reads a size."""
+    so another size on a fresh draw is replayed at the rule's k on it, here as inference reads it,
+    on the rows as the log ends (under prediction, at the record, below): the record's k (117 to
+    114, k = 5 on both) or another (117 to 95, k = 4; 400 to 95 under complete cases), the message
+    stating the record's k and size and this draw's. The same size, to within 1e-9 of it, is
+    replayed as recorded, and so is a record of the rule's default k where neither draw reads a
+    size; one that read none is replayed at the rule's k on this draw's size, as the engine asks
+    the form question again under inference (``exposure_form.rule_stale``)."""
     assert replay.rule_verdict(rule_read(117.0, 117.0)) == ("kept", None)
     assert replay.rule_verdict(rule_read(400.0, 400.0 + 1e-8)) == ("kept", None)
     assert replay.rule_verdict(rule_read(None, None, knots=4)) == ("kept", None)
@@ -592,9 +604,10 @@ def test_a_message_names_each_later_record_that_changed_the_size_the_rule_reads(
 def test_a_size_read_under_what_a_later_record_changed_is_refused_naming_it():
     """AR-V1: the record's size and sentence are read under the outcome, its scale, task and event
     at its record, so where a later record changed one of them (``inputs``, from
-    :func:`replay.input_changes`) another size is refused under either purpose (the verdict reads
-    none), at the record's k or another, naming the record and what it changed; with nothing
-    changed, the same sizes are refilled (above)."""
+    :func:`replay.input_changes`) another size is refused under either purpose, at the record's k
+    or another, naming the record and what it changed (under prediction even the record's own
+    size as the log ends, since the size at the record is not read there); with nothing changed,
+    the same sizes are refilled (above)."""
     assert harrell(400) == harrell(117) and harrell(95) != harrell(117)
     for read in (400.0, 95.0):
         task = rule_read(117.0, read, later=((15, "set_task"),),
@@ -615,10 +628,86 @@ def test_a_size_read_under_what_a_later_record_changed_is_refused_naming_it():
             "(set_event), which changed what the size is read under: the outcome from `y` to "
             "`ln_y` and the outcome's scale from none to log. The record's size"
             ) in replay.rule_verdict(two)[1]
+    for read in (400.0, 95.0, 117.0):
+        verdict, said = replay.rule_verdict(dataclasses.replace(
+            rule_read(117.0, read, later=((15, "set_task"),),
+                      inputs=("the task from binary to regression",)), purpose="prediction"))
+        assert verdict == "refused" and said.endswith(
+            "after record 15 (set_task), which changed what the size is read under: the task "
+            "from binary to regression. The record's size and sentence are read under the "
+            "outcome, its scale, task and event as they stood when it was recorded, so a size "
+            "read under later ones is not replayed in it, and the rebuild is refused."), said
     # The same sizes with nothing changed: refilled, as above; the same size, kept.
     assert replay.rule_verdict(rule_read(117.0, 114.0))[0] == "refilled"
     assert replay.rule_verdict(rule_read(117.0, 95.0))[0] == "refilled"
     assert replay.rule_verdict(rule_read(117.0, 117.0, inputs=task.inputs)) == ("kept", None)
+
+
+def test_under_prediction_the_size_at_the_record_is_kept_or_replayed_at_the_rules_k():
+    """B1: under prediction the engine reads the rule when the spline is declared and keeps that
+    k, so the size is the rule's on the rows as they stood at the record (``at_record``): the
+    record's own size is kept, another replayed at the rule's k on it (the record's, 117 to 110,
+    or another, 117 to 95), the message saying where it was read and naming no later record. Where
+    the size at the record is not read (``at_record`` False, the later records named as ones that
+    can change it), the rebuild is refused, even where the size as the log ends is the
+    record's."""
+    held = {"purpose": "prediction", "at_record": True}
+    assert replay.rule_verdict(rule_read(117.0, 117.0, **held)) == ("kept", None)
+    for read in (110.0, 95.0):
+        verdict, said = replay.rule_verdict(rule_read(117.0, read, **held))
+        assert verdict == "refilled"
+        assert said == (
+            f"Record 4 (set_exposure_form) gives `age` a spline whose k is Harrell's rule on the "
+            f"analyzed rows: k = 5 on an effective sample size of 117 on the recorded draw, and on "
+            f"this draw the rule reads {read:,.0f} (k = {harrell(read)}) on the rows as they stood "
+            f"at that record. Its k was left to the rule, which the engine reads under prediction "
+            f"when the spline is declared, so the record is replayed at the rule's k on this "
+            f"draw's rows as they stood then, stating k = {harrell(read)} on an effective sample "
+            f"size of {read:,.0f} in place of k = 5 on an effective sample size of 117.")
+    assert harrell(110) == 5 and harrell(95) == 4
+    later = ((16, "set_exclusions"), (17, "set_grain"))
+    for read in (96.0, 117.0):
+        verdict, said = replay.rule_verdict(rule_read(117.0, read, later=later, traced=False,
+                                                      purpose="prediction"))
+        assert verdict == "refused"
+        assert said == (
+            f"Record 4 (set_exposure_form) gives `age` a spline whose k is Harrell's rule on the "
+            f"analyzed rows: k = 5 on an effective sample size of 117 on the recorded draw, and on "
+            f"this draw the rule reads {read:,.0f} (k = {harrell(read)}) on the rows as the log "
+            f"ends, after records 16 (set_exclusions) and 17 (set_grain), which can change the "
+            f"size it reads. Under prediction the engine reads the rule when the spline is "
+            f"declared and keeps that k, and the size on the rows as they stood at that record "
+            f"is not read on this draw where a later record can change it, so the rebuild is "
+            f"refused.")
+    # Under inference the same reads are those as the log ends: kept where the size is the
+    # record's.
+    assert replay.rule_verdict(rule_read(117.0, 117.0, later=later, traced=False)) == (
+        "kept", None)
+
+
+def test_under_prediction_a_record_of_the_rules_default_k_is_refused_where_the_rule_gives_another():
+    """B2, pending the orchestrator's ruling (right or refused): a spline declared under
+    prediction before any size was read holds the rule's default, k = 4 with no size read, and
+    the engine keeps that k whatever the rows. On a draw whose rule gives another k at the record
+    (117, k = 5) the rebuild is refused, since which k it replays is not ruled; where the rule
+    gives 4 (85) the fit is the same either way, and the record is kept, as it is where the draw
+    reads no size either. Under inference, where the engine asks the form question again, each is
+    replayed at the rule's k (above)."""
+    held = {"purpose": "prediction", "at_record": True}
+    verdict, said = replay.rule_verdict(rule_read(None, 117.0, knots=4, **held))
+    assert harrell(117) == 5 and verdict == "refused"
+    assert said == (
+        "Record 4 (set_exposure_form) gives `age` a spline whose k is Harrell's rule on the "
+        "analyzed rows: k = 4 with no effective sample size read on the recorded draw, and on "
+        "this draw the rule reads 117 (k = 5) on the rows as they stood at that record. Under "
+        "prediction the engine keeps the k a spline is declared with, here the rule's default, "
+        "declared before any size was read, and the rule gives another k on this draw, so the "
+        "rebuild is refused.")
+    assert harrell(85) == 4
+    assert replay.rule_verdict(rule_read(None, 85.0, knots=4, **held)) == ("kept", None)
+    assert replay.rule_verdict(rule_read(None, None, knots=4, **held)) == ("kept", None)
+    for read in (117.0, 85.0):
+        assert replay.rule_verdict(rule_read(None, read, knots=4))[0] == "refilled"
 
 
 # A yes/no outcome beside ``age`` and ``bmi``, no cell blank, for the rule's size step by step
@@ -735,6 +824,39 @@ def test_the_steps_are_read_on_the_rows_whose_size_is_the_engines(ages, tmp_path
     assert replay.later_changes(aged, 4, reads, store, "binary",
                                 events_or_not(frame[frame["age"] >= FIFTY]), table=table) == (
         (*later, (7, "confirm_readings")), False)
+
+
+def test_the_size_at_the_record_is_read_on_the_state_folded_up_to_it(ages, tmp_path):
+    """B1: under prediction the rule's size at the spline's record (4), before the exclusion of
+    the rows under 50 recorded after it: pandas' smaller of the events and the non-events on every
+    row, where the size as the log ends is the engine's over every row, and on every row not held
+    out where it is the engine's over those; with no later record, the engine's size as the log
+    ends itself. Where the sizes are not traced (a later grain answer rewrites the table read, or
+    neither set of rows gives the engine's size as the log ends) it is not read."""
+    frame, store = ages
+    reads, table = _slots()
+    records = [r for r, _ in replay.log_lines(_log(tmp_path, [*SPLINE_THEN, FIFTY_AND_OVER]))]
+    end = events_or_not(frame[frame["age"] >= FIFTY])
+    assert end != events_or_not(frame)
+    assert replay.size_at_record(records, 4, reads, store, "binary", end, table=table) == (
+        events_or_not(frame), True)
+    held = np.arange(0, len(frame), 5)
+    pool = frame.drop(index=held)
+    training = events_or_not(pool[pool["age"] >= FIFTY])
+    assert events_or_not(pool) != events_or_not(frame)
+    assert replay.size_at_record(records, 4, reads, store, "binary", training, table=table,
+                                 sealed=held) == (events_or_not(pool), True)
+    alone = [r for r, _ in replay.log_lines(_log(tmp_path, SPLINE_THEN[:4], "alone.jsonl"))]
+    assert replay.later_records(alone, 4, reads) == ()
+    assert replay.size_at_record(alone, 4, reads, store, "binary", 123.0, table=table) == (
+        123.0, True)
+    assert replay.size_at_record(records, 4, reads, store, "binary", training + 1, table=table,
+                                 sealed=held) == (None, False)
+    grained = [r for r, _ in replay.log_lines(_log(tmp_path, [
+        *SPLINE_THEN, FIFTY_AND_OVER, {"kind": "set_grain", "grain": "one_row_per_unit"}],
+        "grain.jsonl"))]
+    assert replay.size_at_record(grained, 4, reads, store, "binary", end, table=table) == (
+        None, False)
 
 
 def test_the_later_records_are_those_that_write_what_the_rows_are_read_under(tmp_path):
