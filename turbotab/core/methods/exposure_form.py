@@ -125,6 +125,10 @@ def _quantile(values: np.ndarray, p: Sequence[float]) -> np.ndarray:
 # ``Hmisc::rcspline.eval`` stops below this many values: the fewest a spline's knots can be placed on.
 SPLINE_MIN_VALUES = 6
 SPLINE_TOO_FEW = "spline_too_few_values"  # its fit-time refusal's code (SWARM_PLAN §8)
+# … and where fewer than this many distinct knots can be placed ("fewer than 3 unique knots"): the
+# values too heavily tied, as a fill's value repeated over a fold's blank rows can leave them.
+SPLINE_MIN_KNOTS = 3
+SPLINE_TOO_TIED = "spline_too_tied"  # its fit-time refusal's code
 
 
 def more_rows(column: str | None = None, *, above_zero: bool = False) -> str:
@@ -190,6 +194,43 @@ def _too_few(n: int, column: str | None, *, rows: int | None = None,
     return StageRefusal(SPLINE_TOO_FEW, message, exits=exits)
 
 
+def _too_tied(values: np.ndarray, column: str | None, *, rows: int | None = None,
+              above_zero: bool = False) -> Any:
+    """The refusal of a spline whose ``values`` (the finite ones its knots are placed on: of the
+    ``rows`` it is fit on, where given; its values above zero where ``above_zero``) are too heavily
+    tied for :data:`SPLINE_MIN_KNOTS` distinct knots, as ``rcspline.eval`` stops. It says what it
+    counted: the values, how many are distinct and how many share the commonest value; where every
+    row gives one it does not call them recorded, as a single fill before the form step gives a
+    blank row its value. Its ways forward enter the column in a form that places no knots: a
+    straight line, or categories at cut points declared from outside these data."""
+    from turbotab.core.graph import StageRefusal
+
+    named = f"`{column}`" if column else "the column"
+    n = int(len(values))
+    _, counts = np.unique(values, return_counts=True)
+    distinct, most = int(len(counts)), int(counts.max()) if len(counts) else 0
+    if above_zero:
+        of = (f"A spline of `{column}` among its values above zero" if column
+              else "A spline among the column's values above zero")
+        counted = f"its {n:,} values above zero take"
+    else:
+        of = f"A spline of `{column}`" if column else "A spline"
+        if rows and n == rows:
+            counted = f"its {n:,} values, one from each row it is fit on, take"
+        elif rows:
+            counted = f"the {n:,} of the {rows:,} rows it is fit on that record it take"
+        else:
+            counted = f"its {n:,} values take"
+    message = (f"{of} needs at least {SPLINE_MIN_KNOTS} distinct knots, and its values are too "
+               f"heavily tied to place them: {counted} {distinct:,} distinct values, {most:,} of "
+               f"them the same value.")
+    exits = [{"label": f"Enter {named} as a straight line, which places no knots",
+              "decision": None},
+             {"label": f"Enter {named} in categories at cut points declared from outside these "
+                       f"data", "decision": None}]
+    return StageRefusal(SPLINE_TOO_TIED, message, exits=exits)
+
+
 def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIED,
               column: str | None = None, rows: int | None = None,
               above_zero: bool = False) -> tuple[np.ndarray, list[str]]:
@@ -200,10 +241,14 @@ def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIE
     fit-time refusal, ``graph.StageRefusal``, coded :data:`SPLINE_TOO_FEW`, so the record classes
     it as refused, not a crash; it names ``column``, the spline's, where given, and says what it
     counted: of the ``rows`` the values come from, where given, one from each or those that
-    record it, or the values above zero where ``above_zero``), or fewer than 3 distinct knots.
+    record it, or the values above zero where ``above_zero``), or fewer than
+    :data:`SPLINE_MIN_KNOTS` distinct knots (the values too heavily tied: a fit-time refusal
+    coded :data:`SPLINE_TOO_TIED`, saying in the same way what it counted, how many of the values
+    are distinct and how many share one value, :func:`_too_tied`).
     """
     xx = np.asarray(x, dtype=float)
     xx = xx[np.isfinite(xx)]
+    values = xx  # every value the knots are placed on, before a tie at an end sets one aside
     n = len(xx)
     nk = int(n_knots)
     if n < SPLINE_MIN_VALUES:
@@ -258,9 +303,8 @@ def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIE
                         mid = (first + last) / 2.0 if last is not None else float(np.median(xx))
                         knots = np.sort(np.array([first, mid, last if last is not None
                                                   else float(_quantile(xx, [1.0 - outer])[0])]))
-                    if len(np.unique(knots)) < 3:
-                        raise ValueError("Fewer than 3 distinct knots can be placed: the values "
-                                         "are too heavily tied.")
+                    if len(np.unique(knots)) < SPLINE_MIN_KNOTS:
+                        raise _too_tied(values, column, rows=rows, above_zero=above_zero)
                     notes.append(f"the usual percentiles gave fewer than {nke} distinct knots, so "
                                  f"they were spread over {2 * nke} percentiles instead")
             knots = np.array(knots, dtype=float)
@@ -275,9 +319,8 @@ def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIE
         knots = np.concatenate([[first] if first is not None else [], knots,
                                 [last] if last is not None else []])
     knots = np.unique(np.asarray(knots, dtype=float))
-    if len(knots) < 3:
-        raise ValueError("Fewer than 3 distinct knots can be placed: the values are too heavily "
-                         "tied for a spline.")
+    if len(knots) < SPLINE_MIN_KNOTS:
+        raise _too_tied(values, column, rows=rows, above_zero=above_zero)
     return knots, notes
 
 
@@ -2222,6 +2265,22 @@ def _values_of(ctx: Any, column: str) -> np.ndarray | None:
         return None
 
 
+def _analyzed_values(ctx: Any, column: str) -> np.ndarray | None:
+    """``column``'s values on the analyzed rows, once the context knows them (None where it reads
+    no rows, or has not read them for the answers given: never every row of the table in their
+    place)."""
+    from turbotab.core.decisions import _ctx
+
+    analyzed = _ctx(ctx, "analyzed")
+    if not callable(analyzed):
+        return None
+    try:
+        rows = analyzed()
+    except Exception:  # noqa: BLE001 - rows that cannot be read are not known yet
+        return None
+    return None if rows is None else _values_of(ctx, column)
+
+
 def _form_kind_fits(decision: Any, ctx: Any) -> None:
     """Cut points belong to categories (and categories need them); a mass at zero's form and the
     consumers-only domain need zeros and no negative values; a data-derived cut point searches a
@@ -2536,7 +2595,49 @@ def complete_spec(column: str, spec: Any, ctx: Any) -> dict[str, Any]:
         out.update(knots_rule=None, n_effective=None)
     out["scale"] = transform_signature(state, column)
     out["unit"] = scale_words(state, column)
+    _knots_place_on_the_analyzed_rows(column, out, state, ctx)
     return out
+
+
+def _knots_place_on_the_analyzed_rows(column: str, spec: Mapping[str, Any], state: Any,
+                                      ctx: Any) -> None:
+    """A spline whose knots its values cannot place is refused when it is declared, where the
+    values the coefficient table places them on are known then: under inference the table is fit
+    on every analyzed row, and a column every analyzed row records, which reaches the form step as
+    recorded (no scale, normalization, batch adjustment or energy model before it: its transform
+    signature is ``"raw"``) and over every analyzed row (no consumers-only domain), gives the form
+    step exactly its recorded values there. Too heavily tied for :data:`SPLINE_MIN_KNOTS` distinct
+    knots (:func:`rcs_knots`), it is refused in the words the fit would refuse in
+    (:func:`_too_tied`), coded :data:`SPLINE_TOO_TIED`, its straight line one tap away (the
+    verifier's M1 on the swarm's C1). Elsewhere the fit decides: a step before the form can break
+    the tie (a residual on energy) or make it (a fill over a fold's blanks, as on the plasma
+    panel's ``mz_0126``), and a fold's rows are not the analyzed rows."""
+    from turbotab.core.decisions import Refusal, SetExposureForm
+    from turbotab.core.graph import StageRefusal
+
+    form = spec.get("form")
+    if form not in SPLINE_FORMS or getattr(state, "purpose", None) != "inference":
+        return
+    if spec.get("domain") == "consumers" or column in domain_columns(state):
+        return
+    if spec.get("scale", transform_signature(state, column)) != "raw":
+        return
+    values = _analyzed_values(ctx, column)
+    if values is None or not len(values) or not np.isfinite(values).all():
+        return
+    k = int(spec.get("knots") or DEFAULT_KNOTS)
+    try:
+        if form == "zero_spline":
+            rcs_knots(values[values > 0], k, column=column, above_zero=True)
+        else:
+            rcs_knots(values, k, column=column, rows=len(values))
+    except StageRefusal as refused:
+        if refused.code != SPLINE_TOO_TIED:
+            return  # the fit says why it cannot place them
+        line = SetExposureForm(column=column, form="linear")
+        exits = [{"label": e["label"], "decision": line if i == 0 else e.get("decision")}
+                 for i, e in enumerate(refused.exits)]
+        raise Refusal(refused.code, refused.message, exits=exits) from None
 
 
 def _form_records_its_scale(decision: Any, ctx: Any) -> Any:
@@ -2853,7 +2954,8 @@ __all__ = [
     "FORMS", "code_reading", "firth_design", "firth_lr_test", "form_candidates", "form_plan",
     "joint_test_name", "rule_stale", "standing_forms",
     "FORMS_READS", "FRACTIED", "Form", "HARRELL_LARGE", "HARRELL_SMALL", "KNOT_CHOICES",
-    "KNOT_PERCENTILES", "MASS_AT_ZERO", "QUINTILES", "SHARE_REALLOCATION", "SPLINE_MIN_VALUES",
+    "KNOT_PERCENTILES", "MASS_AT_ZERO", "QUINTILES", "SHARE_REALLOCATION", "SPLINE_MIN_KNOTS",
+    "SPLINE_MIN_VALUES",
     "TREND_LABEL",
     "adjusted_forms", "boundaries_words", "category_names", "complete_spec", "current_forms",
     "describe", "design_forms", "domain_columns", "effective_n", "estimand_unit",

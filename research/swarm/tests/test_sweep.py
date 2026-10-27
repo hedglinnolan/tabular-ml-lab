@@ -548,11 +548,12 @@ def test_material_needs_both_the_interval_and_half_the_plans_half_width(case, pa
 # ── the crash sweep's report: what was not visited, what was swept ───────────
 
 
-def a_sweep(tmp_path, *, only=None):
+def a_sweep(tmp_path, *, only=None, **kw):
     """A sweep around a plan with no decision, its start recorded on the engine as it is (a
-    report read without a run of it would hold no start, and pass nothing)."""
+    report read without a run of it would hold no start, and pass nothing); ``kw``, the sweep's
+    other settings (its refit wait, say)."""
     sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
-        target="y", purpose="prediction"), crash=True, plan="default", only=only)
+        target="y", purpose="prediction"), crash=True, plan="default", only=only, **kw)
     sweep.base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False},
                   "points": [], "skipped": []}
     sweep.engines.append({**W.engine_version(), "at": W.now()})
@@ -629,12 +630,12 @@ def served_engines(monkeypatch, *engines):
                                                           else left[0]))
 
 
-def ran(tmp_path, monkeypatch, *engines, folder="sweep"):
+def ran(tmp_path, monkeypatch, *engines, folder="sweep", **kw):
     """A sweep around a plan with no decision, its plan already scored, run once with the engine
-    read as ``engines`` serve it: its report."""
+    read as ``engines`` serve it (``kw``, the sweep's other settings): its report."""
     served_engines(monkeypatch, *engines)
     sweep = W.Sweep(tmp_path / folder, dataset="tiny", question=arms.Question(
-        target="y", purpose="prediction"), crash=True, plan="default")
+        target="y", purpose="prediction"), crash=True, plan="default", **kw)
     if sweep.base is None:  # the template and the plan's refit as a run would have kept them
         sweep.base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False},
                       "points": [], "skipped": []}
@@ -1823,6 +1824,113 @@ def test_after_an_option_a_reading_the_ask_card_asks_itself_is_answered_as_the_d
     assert ["x-1"] in session.answered and refit.ways == []
 
 
+SEALED_WORDS = ("The cross-validation folds are drawn, and changing which way round the table is "
+                "changes what a row is: the folds name rows as they were. Withdraw the split "
+                "first, then draw it again.")
+QC_ROWS = {"kind": "apply_repair", "finding_id": "pooled_qc__sample_type", "option": "exclude",
+           "params": {"column": "sample_type", "levels": ["pooled_qc"]}}
+
+
+class Resealed(Walked):
+    """The plasma panel's crash sweep at ``question:lens=metabolomics`` as crash2 met it: the
+    lens reopens the orientation question, each of whose answers that engine refused as the folds
+    are drawn (``sealed``, its one way forward a revert of the split neither the plan nor the
+    option names); from the ask after that refusal the pooled-QC finding is open beside it, and
+    its repair, "Exclude the QC rows", is refused as the split is drawn (``rows_after_the_seal``),
+    its one way forward a label that records nothing. Nothing either refusal leaves is recorded,
+    so each ask is the same. The seal now accepts `sample_major` on an unanswered orientation
+    (``turbotab/core/tests/test_orientation_kept_after_the_seal.py``); this session keeps the
+    refusal, so the walk's own guard is pinned on the sequence that looped."""
+
+    def __init__(self):
+        from research.swarm.tests.test_arms import ask, opt
+
+        super().__init__([])
+        self.q = ask("orientation",
+                     [opt("sample_major", {"kind": "set_orientation", "orientation": "sample_major"}),
+                      opt("feature_major", {"kind": "set_orientation",
+                                            "orientation": "feature_major"})])
+        self.line = {"source": "finding", "key": "pooled_qc__sample_type",
+                     "options": [{"id": "x-qc", "label": "Exclude the QC rows", "decision": QC_ROWS},
+                                 {"id": "x-keep", "label": "Keep them, recorded",
+                                  "decision": {"kind": "dismiss_finding",
+                                               "finding_id": "pooled_qc__sample_type"}}]}
+        self.shown = False
+
+    def ask(self):
+        return {**self.q, "also_open": [self.line]} if self.shown else dict(self.q)
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.answered.append(list(ids))
+        self.shown = True
+        if list(ids) == ["x-qc"]:
+            return arms.Said("refused", {}, by="server", code="rows_after_the_seal",
+                             message="Excluding them now would draw it again.",
+                             exits=[{"id": None, "label": "Keep the rows as they are",
+                                     "decision": None}])
+        return arms.Said("refused", {}, by="server", code="sealed", message=SEALED_WORDS,
+                         exits=[{"id": "x-redraw", "label": "Re-draw: withdraw the folds",
+                                 "decision": {"kind": "revert", "decision_id": "r18"}}])
+
+
+def test_a_finding_act_refused_with_nothing_recorded_since_is_not_answered_again(tmp_path):
+    """C3: around the plasma panel's default plan, ``question:lens=metabolomics`` was left
+    unreached ("never reached Fit in 300 answers"): its walk answered the pooled-QC finding's
+    refused repair 298 times, nothing recorded between. A way the engine refused is not answered
+    again until an answer is recorded, so the walk returns to the orientation question (the
+    table's layout, which the default path answers as written, ``arms.FIXED``), refused again
+    with no way forward the plan or the option names: the refit is refused in the session's
+    words, the repair answered once."""
+    session = Resealed()
+    refit = walked_refit(tmp_path, session)
+    assert session.answered[1:] == [["sample_major"], ["x-qc"], ["sample_major"]]
+    assert refit.kind == "refused"
+    assert refit.why == ("The orientation answer was refused with no way forward: sealed: "
+                         + SEALED_WORDS)
+    r = refit.refused
+    assert (r["at"], r["question"], r["code"], r["message"]) == ("walk", "orientation", "sealed",
+                                                                 SEALED_WORDS)
+    assert r["answered"] == ["sample_major"]
+    assert refit.ways == []  # the revert neither the plan nor the option names is not taken
+
+
+class RetriedAfter(Walked):
+    """The ask card asks two readings, ``x-r1`` first; ``x-r1`` is refused until ``x-r2`` is
+    recorded, and once both are, Fit is reached."""
+
+    def __init__(self):
+        super().__init__([])
+        self.recorded = set()
+
+    def ask(self):
+        if {"x-r1", "x-r2"} <= self.recorded:
+            return {"question": None, "fit_reached": True}
+        exits = [{"id": i, "label": i, "decision": {"kind": "confirm_reading",
+                                                    "reading": "code_or_count", "column": c,
+                                                    "value": "amount"}}
+                 for i, c in (("x-r1", "a"), ("x-r2", "b")) if i not in self.recorded]
+        return {"question": {"key": "models", "status": "open"}, "options": [],
+                "readings": {"exits": exits}}
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.answered.append(list(ids))
+        if list(ids) == ["x-r1"] and "x-r2" not in self.recorded:
+            return arms.Said("refused", {}, by="server", code="reading_first",
+                             message="Read `b` first.", exits=[])
+        self.recorded.add(str(ids[0]))
+        return arms.Said("ok", {})
+
+
+def test_a_way_refused_is_answered_again_once_an_answer_is_recorded_after_it(tmp_path):
+    """The guard stays silent where the state moved: ``x-r1``, refused, is left out while nothing
+    is recorded, the other reading is answered, and then ``x-r1`` is answered again and
+    recorded."""
+    session = RetriedAfter()
+    walked_refit(tmp_path, session)
+    assert session.answered[1:] == [["x-r1"], ["x-r2"], ["x-r1"]]
+    assert session.recorded == {"x-r1", "x-r2"}
+
+
 def test_a_named_way_needs_every_field_the_way_records():
     assert W.names_way({"kind": "set_missing", "strategy": "impute", "m": 20},
                        {"kind": "set_missing", "strategy": "impute"}) is True
@@ -2707,3 +2815,110 @@ def test_a_server_refusal_at_a_fielded_preview_goes_on_to_the_answer_and_is_clas
         assert summary["refused_share"] == 0.5 and summary["refused_codes"] == {
             "rule_refused": 1}
     assert {"refit": rid, "why": None} not in report["unreached"]
+
+
+# ── the refit's wait, set for a run on the command line (--refit-wait) ───────
+
+AN_HOUR = 3600.0  # the crash sweep's refit wait where the command names none
+
+
+def crash_called(monkeypatch, argv):
+    """The keyword arguments ``python -m research.swarm.sweep crash`` gives :func:`crash` for
+    ``argv``, the sweep itself stood in for."""
+    given = {}
+
+    def crash(dataset, out, **kw):
+        given.update(kw, dataset=dataset)
+        return {"dataset": dataset, "passed": True, "complete": True, "fit_seconds": None,
+                "engine_changed": None, "unreached": [], "defects": []}
+
+    monkeypatch.setattr(W, "crash", crash)
+    assert W.main(["crash", "--dataset", "tiny", "--out", "o", *argv]) == 0
+    return given
+
+
+@pytest.mark.parametrize("argv, wait", [([], AN_HOUR), (["--refit-wait", "7200"], 7200.0),
+                                        (["--refit-wait", "90.5"], 90.5)],
+                         ids=["default", "two_hours", "a_fraction"])
+def test_the_crash_sweeps_refit_wait_is_the_commands_and_an_hour_where_it_names_none(
+        monkeypatch, argv, wait):
+    assert crash_called(monkeypatch, argv)["refit_wait"] == wait
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "nan", "inf", "soon"])
+def test_a_refit_wait_that_is_no_positive_number_of_seconds_is_refused_in_words(
+        monkeypatch, capsys, value):
+    with pytest.raises(SystemExit) as stopped:
+        crash_called(monkeypatch, ["--refit-wait", value])
+    assert stopped.value.code == 2
+    assert f"--refit-wait: {value!r} is not a positive number of seconds" in capsys.readouterr().err
+
+
+def test_the_crash_sweep_runs_under_the_wait_it_is_given(tmp_path, monkeypatch):
+    class Built(Exception):
+        pass
+
+    given = {}
+
+    def sweep(*args, **kw):
+        given.update(kw)
+        raise Built
+
+    monkeypatch.setattr(W, "Sweep", sweep)
+    table = tmp_path / "t.csv"
+    table.write_text("y\n1\n", "utf-8")
+    with pytest.raises(Built):
+        W.crash("tiny", tmp_path / "out", data=table, refit_wait=90.0,
+                question=arms.Question(target="y", purpose="prediction"))
+    assert given["refit_wait"] == 90.0
+
+
+def pressed_under(tmp_path, monkeypatch, fit, wait, **kw):
+    clock = Clock()
+    monkeypatch.setattr(W, "time", clock)
+    session = Pressed(clock, fit, **kw)
+    sweep = a_sweep(tmp_path, refit_wait=wait)
+    refit = sweep.refit(session, POINT, OPTION, [], W.Refit(W.PLAN, None, None, kind="scored"))
+    return session, refit
+
+
+def test_a_refit_past_the_wait_its_sweep_was_given_is_cancelled_in_that_waits_words(
+        tmp_path, monkeypatch):
+    """A sweep given 90 s: the press of Fit waits 90 s, and the fit still running then, the refit
+    is cancelled, unreached in words that say 90 s, and its cancel records the 90 s."""
+    session, refit = pressed_under(tmp_path, monkeypatch, RUNNING, 90.0, stages=IN_FLIGHT)
+    assert session.waits == [("fit", 90.0)] and session.cancels == ["c1"]
+    assert refit.kind == "unreached" and refit.cancelled["after"] == 90.0
+    assert refit.why.startswith("The fit was running 90 s after the sweep pressed Fit, as long as "
+                                "it waits for a refit (still computing: fit running, effects "
+                                "queued).")
+
+
+def test_a_fitted_refit_waits_the_rest_of_its_sweeps_wait_for_the_other_stages(
+        tmp_path, monkeypatch):
+    """Fresh 1.5 s after the press, the copy's other stages are waited for the rest of the 90 s
+    (88.5 s); not idle then, the refit is cancelled in words that say 90 s."""
+    stages = {**FIT_FRESH, "effects": {"status": "running", "key": "e1", "job_id": "j2"}}
+    session, refit = pressed_under(tmp_path, monkeypatch, FRESH, 90.0, stages=stages,
+                                   idle=[False])
+    assert session.waits == [("fit", 90.0), ("idle", 88.5)]
+    assert refit.kind == "unreached"
+    assert refit.why.startswith("The fit was done, but 90 s after the sweep pressed Fit, as long "
+                                "as it waits for a refit, its other stages were not")
+
+
+def test_a_refit_done_within_its_sweeps_wait_is_not_cancelled(tmp_path, monkeypatch):
+    session, refit = pressed_under(tmp_path, monkeypatch, FRESH, 90.0, stages=FIT_FRESH)
+    assert session.waits == [("fit", 90.0), ("idle", 88.5)] and session.cancels == []
+    assert refit.cancelled is None and refit.kind == "scored"
+
+
+@pytest.mark.parametrize("kw, wait", [({}, AN_HOUR), ({"refit_wait": 90.0}, 90.0)],
+                         ids=["default", "given"])
+def test_the_report_and_each_runs_start_say_the_refit_wait_it_ran_under(tmp_path, monkeypatch,
+                                                                        kw, wait):
+    report = ran(tmp_path, monkeypatch, ENGINE_1, ENGINE_1, **kw)
+    assert report["refit_wait"] == wait
+    (start,) = report["engine_starts"]
+    assert start["refit_wait"] == wait
+    assert f"Each refit waited at most {wait:g} s from its press of Fit." in W.table_md(report)
