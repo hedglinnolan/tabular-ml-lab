@@ -326,9 +326,11 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
     secondary model, the scales' uncorrected coefficient, the effects' declared models, the
     modification stage's product terms' table, whose copies ``interaction.impute_with_products``
     draws), are each one version past the base commit's, so none serves an artifact cached from
-    copies drawn the old way."""
+    copies drawn the old way; and one more since, when their coefficient tables came to be fit on
+    scaled columns and to refuse a dependency by row, and the Cox fit, which the Cox draw makes,
+    to bound its linear predictor's SD (the tail tables package)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (33, 17, 15, 8, 6, 8, 3)
+    assert tuple(versions[s] for s in stages) == (34, 18, 16, 9, 7, 9, 4)

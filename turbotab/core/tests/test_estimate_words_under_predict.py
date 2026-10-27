@@ -299,11 +299,14 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     by the profile's slope, and when SMC-FCS came to draw its outcome model on the identified,
     unit-scaled design (the Sullivan 2021 crash sweep); and the design again when its feature-wise
     model step came to test an energy-adjusted study factor under the energy step's name and to
-    refuse one in a declared form, which re-keys the fit and every stage after the design."""
+    refuse one in a declared form, which re-keys the fit and every stage after the design; and
+    the fit again when its coefficient tables came to be fit on scaled columns and to refuse a
+    dependency by row, and the Cox fit to bound its linear predictor's SD (the tail tables
+    package)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 33, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 34, 21)
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:
