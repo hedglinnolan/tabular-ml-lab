@@ -35,11 +35,15 @@ measure their uncertainty (:func:`_no_spare_rows`). The mixed model's and the GE
 them in the same words (``repeated``). The proportional-odds model's table is refused at the same
 count, its cut-points among its coefficients, in its own words (``ordinal``): its cut-points are
 shared by every row, so its likelihood there can have a unique maximum, and the words say only
-that the rows are no more than its coefficients. A table whose fit gives some coefficient no
-finite, positive standard error, or its t interval no finite, positive degrees of freedom, is
-refused in words that name each and what the fit could not compute (:func:`no_interval`; every
-family's table that makes Wald or t rows here, in ``repeated``, ``survival``, ``ordinal`` and
-``survey``), rather than served with the estimate beside no interval.
+that the rows are no more than its coefficients. A least-squares, logistic, multinomial or
+proportional-odds table, and the mixed model's and the GEE's, whose model matrix has columns
+dependent to working precision is refused next, with no estimate, in words that name them
+(:func:`dependent_refusal`), before a fit whose numbers for them would be rounding. A table whose
+fit gives some coefficient no finite, positive standard error, or its t interval no finite,
+positive degrees of freedom, is refused in words that name each and what the fit could not
+compute (:func:`no_interval`; every family's table that makes Wald or t rows here, in
+``repeated``, ``survival``, ``ordinal`` and ``survey``), rather than served with the estimate
+beside no interval.
 
 And on the outcome's own scale (AUDIT_REPORT §5 WP8: ME-07): every table says what one unit of an
 input does, in words that name the outcome (:class:`Outcome`). A least-squares row is a difference
@@ -952,6 +956,33 @@ def _no_spare_rows(task: str, n_rows: int, n_coefficients: int, clusters: Cluste
     return InferenceTable([], info, [reason])
 
 
+DEPENDENT_EXITS = (
+    {"label": "Leave one of the dependent columns out of the model", "decision": None},)
+
+
+def dependent_refusal(matrix: pd.DataFrame, estimator: str, clusters: Clusters, *,
+                      beside: str = "the intercept") -> InferenceTable | None:
+    """The table refused with no estimate where the model matrix's columns, with ``beside`` (the
+    intercept, or a constant where cut-points take its place), are dependent to working precision
+    (``repeated.dependencies``), in words that name the columns in a dependency
+    (``repeated.dependency_words``); None where they are not. There the coefficients in a
+    dependency have no unique estimate, and a fit's numbers for them, and whether its information
+    comes out singular, are rounding: a pseudo-inverse serves arbitrary values with intervals, an
+    inversion fails or serves standard errors of 10⁷. Decided before the fit, so the case is
+    refused whatever the rounding. The way forward: leave a dependent column out."""
+    from turbotab.core.models.repeated import dependency_words
+
+    said = dependency_words(matrix, beside=beside)
+    if said is None:
+        return None
+    what, leave = said
+    reason = (f"On these {len(matrix):,} rows the model matrix is singular: {what}. No estimate, "
+              f"interval or p-value is reported; {leave}.")
+    info = _info(estimator, "none", f"No coefficients: {reason}", clusters, refused=reason,
+                 exits=[dict(e) for e in DEPENDENT_EXITS])
+    return InferenceTable([], info, [reason])
+
+
 def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
            clusters: Clusters) -> InferenceTable:
     import statsmodels.api as sm
@@ -962,7 +993,8 @@ def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | Non
     # The fits are handed the indexed frame, so which rows they saw stays checkable.
     exog = sm.add_constant(matrix.astype(float), has_constant="add")
     names = ["(intercept)" if c == "const" else str(c) for c in exog.columns]
-    refused = _no_spare_rows(task, len(exog), exog.shape[1], clusters)
+    refused = (_no_spare_rows(task, len(exog), exog.shape[1], clusters)
+               or dependent_refusal(matrix, ESTIMATORS.get(task, MULTINOMIAL), clusters))
     if refused is not None:
         return refused
     if task == "regression":

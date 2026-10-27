@@ -358,7 +358,8 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
     than its coefficients, the cut-points among them, refused with no estimate
     (``inference._no_spare_rows``), in words that say only that its rows are no more than its
     coefficients: the cut-points are shared by every row, so the likelihood there can still have a
-    unique maximum."""
+    unique maximum. Where the columns and a constant (which the cut-points hold) are dependent,
+    refused with no estimate in words that name them (``inference.dependent_refusal``)."""
     from turbotab.core.models.inference import (
         InferenceTable,
         _info,
@@ -366,6 +367,7 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
         _refused,
         _t_rows,
         _z_rows,
+        dependent_refusal,
         floor_refusal,
         format_p,
         no_interval,
@@ -383,6 +385,9 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
                                estimator=estimator, intercept=False, cut_points=K - 1)
         if spare is not None:
             return spare
+        dependent = dependent_refusal(matrix, estimator, clusters, beside="a constant")
+        if dependent is not None:
+            return dependent
     model = ProportionalOddsRegression().fit(X, codes)
     K = len(model.classes_)
     names_levels = list(levels) if levels is not None and len(levels) == K else \

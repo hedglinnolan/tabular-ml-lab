@@ -714,7 +714,12 @@ def build_graph() -> Graph:
             # (``repeated.singular_refusal``), where it ended the stage with a LinAlgError; and
             # in-fold backward elimination by AIC fits on the identified columns, edf their rank
             # (``variable_selection.identified``), so a category coded by every level selects as
-            # one coded by all but one.
+            # one coded by all but one. Its repair round 2: the mixed model's REML fit factors
+            # QᵀH⁻¹Q from the within-unit deviations, so large units no longer end the fit at the
+            # grid's top, and its table is refused where REML's ratio of the variances lies past
+            # the search (``repeated.beyond_words``); and a least-squares, logistic, multinomial or
+            # proportional-odds table on dependent columns is refused, with no estimate, in words
+            # that name them (``inference.dependent_refusal``).
             Stage("fit", 33, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),

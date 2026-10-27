@@ -26,8 +26,12 @@ Two families, each a plug-in on the shelf:
 The REML fit is computed here in closed form for one variance component (each unit's rows share
 an intercept): with ``V_g = σ²_e I + σ²_u J``, every quantity, the Satterthwaite df's information
 among them, is a sum over units of each unit's sums of the columns of Q, the design's orthonormal
-basis from one QR factorization, so a fit costs that factorization and a few passes over the
-units whatever their sizes, and the design's condition number is not squared. The GEE estimates
+basis from one QR factorization, and of the triangle of a second, of Q's and the outcome's
+within-unit deviations, so a fit costs those factorizations and a few passes over the units
+whatever their sizes, the design's condition number is not squared, and at a large ratio of the
+variances the directions a unit's rows share are not left to the rounding of differences near 1.
+γ = σ²_u/σ²_e is searched up to :data:`GAMMA_GRID`'s top; where REML's likelihood still rises
+there, the table is refused (:func:`beyond_words`). The GEE estimates
 are statsmodels' (``statsmodels.genmod.generalized_estimating_equations.GEE``); only the
 variance is computed here.
 
@@ -100,7 +104,10 @@ class _Sums:
     ``X = QT`` (a Householder QR factorization, Q's columns orthonormal, T upper triangular),
     every REML quantity below is a function of these. ``XᵀX`` is never formed, so the design's
     condition number is not squared: a design whose columns are nearly, not exactly, dependent
-    (:func:`dependent`) is factored to working precision."""
+    (:func:`dependent`) is factored to working precision. Nor is ``QᵀH⁻¹Q`` formed as ``I`` less
+    the units' sums, which at a large γ leaves the directions a unit's rows share (its smallest
+    eigenvalue, 1/(1 + γ m_g)) to the rounding of numbers near 1: each fit (:func:`_at`) factors
+    the within-unit part's triangle ``R`` with each unit's sums of Q and y appended."""
 
     T: np.ndarray  # (P, P): X = QT
     logT: float  # log |det T|: log|XᵀH⁻¹X| = 2 logT + log|QᵀH⁻¹Q|
@@ -111,6 +118,10 @@ class _Sums:
     m: np.ndarray  # (G,): each unit's row count
     N: int
     P: int
+    # (P + 1, P + 1): the upper triangle of a QR factorization of [Q y] less each unit's means,
+    # so ``RᵀR`` holds the within-unit cross-products of Q's columns and y, computed from the
+    # deviations themselves.
+    R: np.ndarray
 
 
 # A column whose share of the dependencies' directions (the null space of the scaled design) is
@@ -154,8 +165,10 @@ def _sums(X: np.ndarray, y: np.ndarray, codes: np.ndarray) -> _Sums:
     m = np.bincount(codes, minlength=G).astype(float)
     with np.errstate(divide="ignore"):
         logT = float(np.log(np.abs(np.diag(T))).sum())
+    per_row = np.divide(1.0, m, out=np.zeros_like(m), where=m > 0)
+    within = np.column_stack([Q, y]) - (np.column_stack([S, t]) * per_row[:, None])[codes]
     return _Sums(T=T, logT=logT, z=Q.T @ y, yty=float(y @ y), S=S, t=t, m=m, N=len(y),
-                 P=X.shape[1])
+                 P=X.shape[1], R=np.linalg.qr(within, mode="r"))
 
 
 def _between(s: _Sums, weight: np.ndarray) -> np.ndarray:
@@ -170,26 +183,34 @@ class _At:
     root: np.ndarray  # the lower Cholesky factor of K = QᵀH⁻¹Q
     w: np.ndarray  # the GLS coefficients on Q: Tβ
     beta: np.ndarray
-    rss: float  # (y − Xβ)ᵀH⁻¹(y − Xβ), as computed (rounding can leave it at or below zero)
+    rss: float  # (y − Xβ)ᵀH⁻¹(y − Xβ)
     logH: float  # Σ log(1 + m_g γ) = log|H|
     logA: float  # log|XᵀH⁻¹X|
 
 
 def _at(gamma: float, s: _Sums) -> _At:
-    """The GLS fit at γ: ``K = QᵀH⁻¹Q = I − Σ_g c_g b_g b_gᵀ`` with ``c_g = γ/(1 + m_g γ)`` (since
-    ``H_g⁻¹ = I − c_g J``), whose eigenvalues lie in [1/(1 + γ max m_g), 1], so it is factored to
-    working precision whatever the design's condition; ``Tβ = K⁻¹QᵀH⁻¹y``; the residual sum of
-    squares ``yᵀH⁻¹y − (Tβ)ᵀQᵀH⁻¹y``; and ``log|XᵀH⁻¹X| = 2 log|det T| + log|K|``."""
-    from scipy.linalg import cho_solve, solve_triangular
+    """The GLS fit at γ, from one QR factorization of at most P + 1 + G rows. Since
+    ``H_g⁻¹ = I − c_g J`` with ``c_g = γ/(1 + m_g γ)``, ``[Q y]ᵀH⁻¹[Q y]`` is the within-unit
+    cross-products plus ``Σ_g d_g (b_g, t_g)(b_g, t_g)ᵀ``, with
+    ``d_g = 1/(m_g(1 + m_g γ)) = 1/m_g − c_g``: the Gram matrix of the within-unit triangle ``R``
+    (:class:`_Sums`) stacked on the rows ``√d_g (b_g, t_g)``. That stack's triangle
+    ``[[U, g], [0, ρ]]`` gives ``K = QᵀH⁻¹Q = UᵀU``, whose eigenvalues lie in
+    [1/(1 + γ max m_g), 1], to working precision whatever γ and the units' sizes; ``Tβ = U⁻¹g``;
+    the residual sum of squares ``ρ²``, never below zero; and
+    ``log|XᵀH⁻¹X| = 2 log|det T| + log|K|``. Forming K as ``I − Σ_g c_g b_g b_gᵀ`` left its
+    smallest eigenvalue, some 10⁻¹³ at γ = 10⁸ on units of 50,000 rows, to the rounding of a
+    difference of numbers near 1, and the factorization failed."""
+    from scipy.linalg import solve_triangular
 
-    c = gamma / (1.0 + s.m * gamma)
-    K = np.eye(s.P) - _between(s, c)
-    K = (K + K.T) / 2
-    b = s.z - s.S.T @ (c * s.t)
-    yHy = s.yty - float(c @ (s.t ** 2))
-    root = np.linalg.cholesky(K)
-    w = cho_solve((root, True), b)
-    return _At(root=root, w=w, beta=solve_triangular(s.T, w), rss=yHy - float(w @ b),
+    has = s.m > 0  # a code no row has adds nothing (its sums are zero), and no row here
+    m = s.m[has]
+    rows = np.sqrt(1.0 / (m * (1.0 + m * gamma)))[:, None] * np.column_stack([s.S, s.t])[has]
+    full = np.linalg.qr(np.vstack([s.R, rows]), mode="r")
+    upper, g, rho = full[:s.P, :s.P], full[:s.P, s.P], float(full[s.P, s.P])
+    sign = np.where(np.diag(upper) < 0, -1.0, 1.0)
+    root = (upper * sign[:, None]).T
+    w = solve_triangular(upper, g)
+    return _At(root=root, w=w, beta=solve_triangular(s.T, w), rss=rho ** 2,
                logH=float(np.log1p(s.m * gamma).sum()),
                logA=2.0 * s.logT + 2.0 * float(np.log(np.diag(root)).sum()))
 
@@ -222,13 +243,38 @@ def _slope_at_zero(s: _Sums) -> float:
     return s.N - lever - (s.N - s.P) * float(r @ r) / rss
 
 
+def _slope(gamma: float, s: _Sums) -> float:
+    """The profile's derivative in log γ at γ > 0 (:func:`_profile`), in closed form:
+    ``γ[Σ_g m_g/(1 + m_g γ) − Σ_g b_gᵀK⁻¹b_g/(1 + m_g γ)² − (N − P) Σ_g r_g²/((1 + m_g γ)² RSS)]``,
+    with ``r_g`` the sum of unit g's GLS residuals and ``b_g`` its sums of Q's columns: since
+    ``dc_g/dγ = 1/(1 + m_g γ)²``, ``dK/dγ = −Σ_g b_g b_gᵀ/(1 + m_g γ)²`` and, β being optimal
+    (the envelope theorem), ``dRSS/dγ = −Σ_g r_g²/(1 + m_g γ)²``. As γ grows it tends to the
+    units, less the design's directions that units share, less N − P times the share of the RSS
+    between units: below zero where the outcome barely varies within a unit beyond what the
+    predictors explain."""
+    from scipy.linalg import solve_triangular
+
+    at = _at(gamma, s)
+    one = 1.0 + s.m * gamma
+    lever = (solve_triangular(at.root, s.S.T, lower=True) ** 2).sum(axis=0)
+    slope = float((s.m / one).sum() - (lever / one ** 2).sum())
+    if at.rss > 0:  # else the rows are fit exactly at every γ: the RSS term (clipped) is fixed
+        r = s.t - s.S @ at.w
+        slope -= (s.N - s.P) * float((r ** 2 / one ** 2).sum()) / at.rss
+    return gamma * slope
+
+
 def _best_gamma(s: _Sums) -> float:
+    """γ̂, REML's σ̂²_u/σ̂²_e: 0 at the boundary, and ∞ where the profile is lowest at the grid's
+    top and still falls there (:func:`_slope`), REML's ratio lying beyond what is searched."""
     from scipy.optimize import minimize_scalar
 
     values = [(_profile(g, s), g) for g in GAMMA_GRID]
     best, gamma = min(values)
     at_zero = _profile(0.0, s)
     i = GAMMA_GRID.index(gamma)
+    if i == len(GAMMA_GRID) - 1 and _slope(gamma, s) < 0:
+        return math.inf
     if i == 0 and at_zero <= best:
         # The profile is lowest toward γ = 0. Where it rises from γ = 0 the minimum is the
         # boundary itself, and its derivative there says so: comparing the profile at 0 with a
@@ -259,6 +305,9 @@ class RandomInterceptFit:
     loglik: float  # the REML log-likelihood (no constant)
     boundary: bool  # σ̂²_u = 0: the units add nothing; the fit is least squares
     n_units: int
+    # REML's γ̂ lies beyond the grid's top (:func:`_best_gamma`): the fit is the GLS one there, its
+    # variances not REML's, and no df are computed
+    beyond: bool = False
 
     @property
     def icc(self) -> float:
@@ -277,8 +326,11 @@ def fit_random_intercept(X: np.ndarray, y: np.ndarray, codes: np.ndarray, *,
     the negative Hessian of :func:`reml_loglik` in θ = (σ²_u, σ²_e), in closed form
     (:func:`satterthwaite_df`; the df are the same in any parameterization at the optimum). At the
     boundary σ̂²_u = 0 the between-unit variance is held at zero, and the df are N − P. Where the
-    design's columns are dependent (:func:`dependent`) REML has no fit, and
-    :class:`DependentColumns` says the model matrix is singular.
+    profile still falls at the grid's top (``beyond``, :func:`_best_gamma`), REML's γ̂ lies past
+    what is searched: the fit is the GLS one at the top, whose fixed effects the larger γ̂ barely
+    moves but whose variances are not REML's, and no df are computed (a table refuses it,
+    :func:`mixed_table`). Where the design's columns are dependent (:func:`dependent`) REML has
+    no fit, and :class:`DependentColumns` says the model matrix is singular.
     """
     from scipy.linalg import cho_solve, solve_triangular
 
@@ -292,6 +344,9 @@ def fit_random_intercept(X: np.ndarray, y: np.ndarray, codes: np.ndarray, *,
         raise DependentColumns("the model matrix is singular")
     s = _sums(X, y, codes)
     gamma = _best_gamma(s)
+    beyond = math.isinf(gamma)
+    if beyond:
+        gamma = GAMMA_GRID[-1]
     at = _at(gamma, s)
     sigma2_e = max(at.rss, 0.0) / (s.N - s.P)
     sigma2_u = gamma * sigma2_e
@@ -300,10 +355,10 @@ def fit_random_intercept(X: np.ndarray, y: np.ndarray, codes: np.ndarray, *,
     cov = (cov + cov.T) / 2
     boundary = gamma == 0.0
     df = (satterthwaite_df(s, at, sigma2_u, sigma2_e, inverse_T, cov, boundary)
-          if satterthwaite else None)
+          if satterthwaite and not beyond else None)
     return RandomInterceptFit(beta=at.beta, cov=cov, sigma2_u=sigma2_u, sigma2_e=sigma2_e, df=df,
                               loglik=reml_loglik(sigma2_u, sigma2_e, s) if sigma2_e > 0 else float("nan"),
-                              boundary=boundary, n_units=len(s.m))
+                              boundary=boundary, n_units=len(s.m), beyond=beyond)
 
 
 def satterthwaite_df(s: _Sums, at: _At, sigma2_u: float, sigma2_e: float, inverse_T: np.ndarray,
@@ -313,9 +368,11 @@ def satterthwaite_df(s: _Sums, at: _At, sigma2_u: float, sigma2_e: float, invers
     ``P = V⁻¹ − V⁻¹XCXᵀV⁻¹``, ``V_u = blockdiag(J)`` and ``V_e = I`` (Harville 1977), in closed
     form: each unit's V has eigenvalue ``λ_g = σ²_e + m_g σ²_u`` on its rows' mean and σ²_e on the
     rest, so every trace and quadratic form is a sum over units of Q's and the residuals' unit sums,
-    with Q's within-unit cross-products ``W = I − Σ_g b_g b_gᵀ/m_g`` and the within-unit residual
-    sum of squares. Taking the Hessian by differences of the log-likelihood instead lost it to
-    rounding near the boundary, where its curvature in σ²_u is of the size of the rounding."""
+    with Q's within-unit cross-products ``W`` (``I − Σ_g b_g b_gᵀ/m_g``) and the within-unit
+    residual sum of squares, both from the within-unit triangle (:class:`_Sums`), not as those
+    differences, which on large units leave a direction the units share to rounding. Taking the
+    Hessian by differences of the log-likelihood instead lost it to rounding near the boundary,
+    where its curvature in σ²_u is of the size of the rounding."""
     P = s.P
     if boundary:
         # σ²_u held at zero: only σ²_e varies, C = σ²_e(XᵀX)⁻¹ is proportional to it and
@@ -328,7 +385,7 @@ def satterthwaite_df(s: _Sums, at: _At, sigma2_u: float, sigma2_e: float, invers
     # 1/m_g, and 0 for a code no row has (whose sums are zero; it adds nothing below)
     per_row = np.divide(1.0, s.m, out=np.zeros_like(s.m), where=s.m > 0)
     C = sigma2_e * cho_solve((at.root, True), np.eye(P))  # (QᵀV⁻¹Q)⁻¹
-    W = np.eye(P) - _between(s, per_row)
+    W = s.R[:P, :P].T @ s.R[:P, :P]
     # QᵀV⁻¹V_kV⁻¹Q and QᵀV⁻¹V_kV⁻¹V_lV⁻¹Q
     M = {"u": _between(s, 1.0 / lam ** 2),
          "e": W / sigma2_e ** 2 + _between(s, per_row / lam ** 2)}
@@ -341,7 +398,7 @@ def satterthwaite_df(s: _Sums, at: _At, sigma2_u: float, sigma2_e: float, invers
     # The residuals: r_g their sum on unit g, and Py = V⁻¹r. Then yᵀPV_kV⁻¹V_lPy, and
     # QᵀV⁻¹V_kPy, which for V_e follows from the GLS equations QᵀV⁻¹r = 0 as −γ times V_u's.
     r = s.t - s.S @ at.w
-    within = at.rss - float((r ** 2 * per_row / (1.0 + s.m * gamma)).sum())
+    within = float(np.sum((s.R @ np.append(-at.w, 1.0)) ** 2))
     q = {("u", "u"): float((s.m * r ** 2 / lam ** 3).sum()), ("u", "e"): float((r ** 2 / lam ** 3).sum()),
          ("e", "e"): within / sigma2_e ** 3 + float((r ** 2 * per_row / lam ** 3).sum())}
     v = {"u": s.S.T @ (r / lam ** 2)}
@@ -437,7 +494,11 @@ class RandomInterceptRegressor(RegressorMixin, BaseEstimator):
     ``units``: each row's unit label, indexed by row id (set by the fit stage). Without units that
     repeat, the fit is ordinary least squares, which is what the model reduces to. Where units
     repeat and the model matrix's columns are dependent, REML has no fit, and the fit is refused
-    in words that name them (:func:`singular_refusal`).
+    in words that name them (:func:`singular_refusal`). Where REML's ratio of the variances lies
+    past the search's top (``RandomInterceptFit.beyond``) the fixed effects are the GLS fit's at
+    the top, where a unit's mean carries 1/(1 + m_g 10⁸) of the weight it has at γ = 0, so a larger
+    ratio barely moves them (on balanced units with unit-level columns, not at all): the
+    prediction is served, and only the table, whose intervals rest on the variances, is refused.
     """
 
     def __init__(self, units: Any = None):
@@ -572,29 +633,44 @@ def _singular(matrix: pd.DataFrame) -> str | None:
         return None
 
 
-def singular_words(matrix: pd.DataFrame) -> str:
-    """Why REML has no fit on ``matrix`` (its columns without the intercept), where its columns,
-    with the intercept, are dependent to working precision (:func:`dependent`), and REML needs
-    every coefficient identified, since its likelihood holds ``log|XᵀV⁻¹X|``. The columns named
-    are those in a dependency and the count is the dependencies' (:func:`dependencies`); no
-    condition number is quoted, since at an exact dependency the one computed is rounding."""
+def dependency_words(matrix: pd.DataFrame, *, beside: str = "the intercept"
+                     ) -> tuple[str, str] | None:
+    """What is dependent in ``matrix`` (its columns without the intercept) with the intercept beside
+    it, to working precision (:func:`dependencies`), and how to undo it; None where nothing is.
+    The columns named are those in a dependency and the count is the dependencies'; no condition
+    number is quoted, since at an exact dependency the one computed is rounding. ``beside`` names
+    the constant the columns are combined with (the intercept, or, for a model whose cut-points
+    take its place, a constant)."""
     from turbotab.core.models.inference import _terms
 
     X = np.column_stack([np.ones(len(matrix)), matrix.to_numpy(dtype=float)])
     count, columns = dependencies(X)
+    if count == 0:
+        return None
     named = [str(matrix.columns[j - 1]) for j in columns if j > 0]
     ways = "" if count <= 1 else f", in {count:,} ways,"
     if len(named) == 1:
-        what = (f"{_terms(named)} is a fixed combination of the other columns and the intercept, "
-                f"so its coefficient is not identified")
+        what = (f"{_terms(named)} is a fixed combination of the other columns and {beside}, so "
+                f"its coefficient is not identified")
     elif named:
-        what = (f"{_terms(named)} are{ways} fixed combinations of the other columns and the "
-                f"intercept, so their coefficients are not identified")
+        what = (f"{_terms(named)} are{ways} fixed combinations of the other columns and "
+                f"{beside}, so their coefficients are not identified")
     else:
-        what = ("its columns and the intercept are dependent, so their coefficients are not "
-                "identified")
+        what = (f"its columns and {beside} are dependent, so their coefficients are not "
+                f"identified")
     leave = ("leave one of the dependent columns out" if count <= 1 else
              f"leave out one dependent column for each of the {count:,} ways")
+    return what, leave
+
+
+def singular_words(matrix: pd.DataFrame) -> str:
+    """Why REML has no fit on ``matrix`` (its columns without the intercept), where its columns,
+    with the intercept, are dependent to working precision (:func:`dependent`), and REML needs
+    every coefficient identified, since its likelihood holds ``log|XᵀV⁻¹X|``: in the words of
+    :func:`dependency_words`."""
+    what, leave = dependency_words(matrix) or (
+        "its columns and the intercept are dependent, so their coefficients are not identified",
+        "leave one of the dependent columns out")
     return (f"On these {len(matrix):,} rows the model matrix is singular: {what}. The "
             f"random-intercept mixed model is fit by REML, which needs every coefficient "
             f"identified, so it is not fit; {leave}.")
@@ -609,16 +685,39 @@ def singular_refusal(matrix: pd.DataFrame) -> Any:
         {"label": "Leave one of the dependent columns out of the model", "decision": None}])
 
 
+def beyond_words(column: str, n_units: int) -> str:
+    """Why the mixed model's table is refused where REML's γ̂ lies beyond the grid's top
+    (:func:`_best_gamma`): its intervals rest on the two variances, which the fit there does not
+    estimate."""
+    top = GAMMA_GRID[-1]
+    return (f"The random-intercept model's REML likelihood by `{column}` on these {n_units:,} "
+            f"units is still rising where the between-unit variance is {top:,.0f} times the "
+            f"within-unit variance, the most the fit searches: within a `{column}` unit the "
+            f"outcome varies so little beyond what the predictors explain that REML puts the "
+            f"within-unit SD below {1 / math.sqrt(top):.3g} times the between-unit SD. The fit "
+            f"does not estimate variances that far apart, so no interval or p-value is reported.")
+
+
+def beyond_exits(column: str) -> tuple[dict[str, Any], ...]:
+    return ({"label": f"Combine each `{column}`'s rows into one (the unit question, before the "
+                      f"seal)", "decision": None},
+            {"label": "Use the linear model", "decision": {"kind": "select_models",
+                                                           "models": ["linear"]}})
+
+
 def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
     """The random-intercept model's coefficient table on the matrix the model saw, by the
     clusters :func:`~turbotab.core.models.inference.resolve_clusters` read from the rows; on no
     more rows than its coefficients, refused with no estimate, before any other refusal that
-    would keep one (``inference._no_spare_rows``). Refused, its estimates kept, where the matrix
-    is nearly singular (the linear family's concern), where REML has no fit (:func:`dependent`),
-    and where the fit gives some coefficient no standard error or Satterthwaite degrees of
-    freedom (``inference.no_interval``)."""
+    would keep one (``inference._no_spare_rows``); where its columns are dependent, refused with no
+    estimate in words that name them (``inference.dependent_refusal``), REML having no fit there
+    (:func:`dependent`). Refused, its estimates kept, where the matrix is nearly singular (the
+    linear family's concern), where REML's ratio of the variances lies beyond what the fit
+    searches (:func:`beyond_words`), and where the fit gives some coefficient no standard error or
+    Satterthwaite degrees of freedom (``inference.no_interval``)."""
     from turbotab.core.models.inference import (FEW_CLUSTERS, InferenceTable, _info,
-                                                _no_spare_rows, _refused, _t_rows, no_interval)
+                                                _no_spare_rows, _refused, _t_rows,
+                                                dependent_refusal, no_interval)
 
     exog, names = _design(matrix)
     X = exog.to_numpy(dtype=float)
@@ -630,6 +729,9 @@ def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
     ols = np.linalg.lstsq(X, y, rcond=None)[0]
     if not clusters.clustered or clusters.n_clusters < 2:
         return _no_units(names, ols, estimator, clusters, "a random intercept")
+    dependent = dependent_refusal(matrix, estimator, clusters)
+    if dependent is not None:
+        return dependent
     singular = _singular(matrix)
     if singular:
         return _refused(names, ols, estimator, clusters, singular, ())
@@ -643,6 +745,9 @@ def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
     se = np.sqrt(np.clip(np.diag(fit.cov), 0, None))
     G = fit.n_units
     column = clusters.column
+    if fit.beyond:
+        return _refused(names, fit.beta, estimator, clusters, beyond_words(column, G),
+                        beyond_exits(column))
     reason = no_interval(names, se, fit.df, fit=f"The random-intercept model's REML fit by "
                                                 f"`{column}` on these {G:,} units",
                          df_kind="Satterthwaite")
@@ -672,9 +777,11 @@ def gee_table(matrix: pd.DataFrame, y: Any, clusters: Any, task: str,
     """The GEE's coefficient table: statsmodels' estimates, CR2 (BRL) intervals with Bell–McCaffrey
     degrees of freedom on its whitened working model, refused below the unit floor; on no more rows
     than its coefficients, refused with no estimate, before any other refusal that would keep one
-    (``inference._no_spare_rows``)."""
+    (``inference._no_spare_rows``), and so where its columns are dependent
+    (``inference.dependent_refusal``)."""
     from turbotab.core.models.inference import (_and, _clustered, _named, _no_spare_rows, _refused,
-                                                floor_refusal, separated_columns)
+                                                dependent_refusal, floor_refusal,
+                                                separated_columns)
 
     exog, names = _design(matrix)
     X = exog.to_numpy(dtype=float)
@@ -692,6 +799,9 @@ def gee_table(matrix: pd.DataFrame, y: Any, clusters: Any, task: str,
     start = np.linalg.lstsq(X, y, rcond=None)[0]
     if not clusters.clustered or clusters.n_clusters < 2:
         return _no_units(names, start, estimator, clusters, "an exchangeable working correlation")
+    dependent = dependent_refusal(matrix, estimator, clusters)
+    if dependent is not None:
+        return dependent
     singular = _singular(matrix)
     if singular:
         return _refused(names, start, estimator, clusters, singular, ())
