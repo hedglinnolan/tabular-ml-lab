@@ -125,3 +125,101 @@ def test_choosing_it_where_a_column_has_the_role_is_not_refused_for_it(roles):
 def test_with_no_roles_answered_yet_the_models_answer_is_not_refused_for_it():
     state = d.ProjectState(target="glucose", task="regression", purpose="inference")
     d.validate(d.SelectModels(models=["featurewise"]), {"state": state, "task": "regression"})
+
+
+# ── under an energy adjustment: the study factor enters under the energy step's name ─────────
+# The energy step replaces an adjusted nutrient (the residual method's `sugar_adj`, a density's
+# `sugar_per_kcal`, a partition's `kcal_from_protein_g`), and the family tests that column: it is
+# the study factor as the model holds it. Each estimate is least squares' on columns NumPy builds
+# from the raw ones, by each method's definition: the residual `sugar − b(kcal − mean kcal)`, b
+# the slope of `sugar` on `kcal`; the density `sugar / kcal`; the partition `4 × protein_g` (the
+# general Atwater factor for protein, kcal per gram) beside the rest of the energy.
+
+
+def _intake(n: int = 200, seed: int = 0) -> tuple[pd.DataFrame, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    kcal = rng.normal(2000, 300, n)
+    frame = pd.DataFrame({"sugar": 0.03 * kcal + rng.normal(0, 10, n), "kcal": kcal,
+                          "age": rng.normal(50, 10, n),
+                          "group": rng.choice(["a", "b", "c"], n)})
+    frame["protein_g"] = 0.02 * kcal + rng.normal(0, 10, n)
+    y = (0.5 * frame["sugar"] + 0.3 * frame["protein_g"] + 0.1 * frame["age"]
+         + rng.normal(0, 5, n)).to_numpy()
+    return frame, y
+
+
+def _fit(frame: pd.DataFrame, y: np.ndarray, roles: dict[str, str], energy: dict | None) -> object:
+    from turbotab.core.models.pipeline import DesignSpec, build_pipeline
+
+    predictors = list(roles)
+    categorical = [c for c in predictors if frame[c].dtype == object]
+    spec = DesignSpec(predictors=predictors, inputs=predictors, categorical=categorical,
+                      numeric=[c for c in predictors if c not in categorical], energy=energy,
+                      impute=False, roles=dict(roles))
+    pipeline = build_pipeline(spec, fw.FEATUREWISE, "regression", "inference", len(frame),
+                              len(predictors))
+    pipeline.fit(frame[predictors], y)
+    return fw.FEATUREWISE.inference(pipeline, frame[predictors], y, task="regression",
+                                    clusters=None)
+
+
+def _least_squares(y: np.ndarray, *columns: np.ndarray) -> np.ndarray:
+    design = np.column_stack([np.ones(len(y)), *columns])
+    return np.linalg.lstsq(design, y, rcond=None)[0]
+
+
+SUGAR = {"sugar": "exposure", "kcal": "energy", "age": "covariate"}
+
+
+def _residual(frame: pd.DataFrame) -> np.ndarray:
+    kcal, sugar = frame["kcal"].to_numpy(), frame["sugar"].to_numpy()
+    slope = np.polyfit(kcal, sugar, 1)[0]
+    return sugar - slope * (kcal - kcal.mean())
+
+
+@pytest.mark.parametrize("method,roles,tested,columns", [
+    ("residual", SUGAR, "sugar_adj", lambda f: [_residual(f), f["kcal"], f["age"]]),
+    ("residual_energy_dropped", SUGAR, "sugar_adj", lambda f: [_residual(f), f["age"]]),
+    ("density", SUGAR, "sugar_per_kcal", lambda f: [f["sugar"] / f["kcal"], f["age"]]),
+    ("density_multivariate", SUGAR, "sugar_per_kcal",
+     lambda f: [f["sugar"] / f["kcal"], f["kcal"], f["age"]]),
+    ("partition", {"protein_g": "exposure", "kcal": "energy", "age": "covariate"},
+     "kcal_from_protein_g",
+     lambda f: [4 * f["protein_g"], f["kcal"] - 4 * f["protein_g"], f["age"]]),
+], ids=["residual", "residual_energy_dropped", "density", "density_multivariate", "partition"])
+def test_an_energy_adjusted_study_factor_is_tested_under_the_energy_steps_name(method, roles,
+                                                                                 tested, columns):
+    """The tested column first among ``columns``, the adjustment columns after it."""
+    frame, y = _intake()
+    nutrient = next(c for c, r in roles.items() if r == "exposure")
+    table = _fit(frame, y, roles, {"method": method, "energy_column": "kcal",
+                                   "nutrients": [nutrient]})
+    assert [r["feature"] for r in table.rows] == [tested]
+    beta = _least_squares(y, *[np.asarray(c, dtype=float) for c in columns(frame)])
+    assert table.rows[0]["estimate"] == pytest.approx(beta[1], rel=1e-9)
+
+
+def test_the_residual_methods_estimate_is_the_nutrients_in_the_standard_model():
+    """Frisch–Waugh: with `kcal` in the model, `sugar_adj` (sugar less a multiple of kcal) carries
+    the coefficient `sugar` carries beside `kcal`, as the energy step's sources say."""
+    frame, y = _intake()
+    adjusted = _fit(frame, y, SUGAR, {"method": "residual", "energy_column": "kcal",
+                                      "nutrients": ["sugar"]})
+    standard = _fit(frame, y, SUGAR, {"method": "standard", "energy_column": "kcal",
+                                      "nutrients": ["sugar"]})
+    assert [r["feature"] for r in standard.rows] == ["sugar"]
+    beta = _least_squares(y, frame["sugar"], frame["kcal"], frame["age"])
+    assert standard.rows[0]["estimate"] == pytest.approx(beta[1], rel=1e-9)
+    assert adjusted.rows[0]["estimate"] == pytest.approx(beta[1], rel=1e-9)
+
+
+def test_a_coded_study_factor_beside_an_energy_adjustment_is_still_refused():
+    """`group` has the role, enters as its indicators, and is no nutrient the energy step adjusts."""
+    frame, y = _intake()
+    with pytest.raises(StageRefusal) as refused:
+        _fit(frame, y, {"group": "exposure", "sugar": "covariate", "kcal": "energy",
+                        "age": "covariate"},
+             {"method": "residual", "energy_column": "kcal", "nutrients": ["sugar"]})
+    assert refused.value.code == "featurewise_no_study_factor"
+    assert str(refused.value) == (f"{WORDS}; `group` has that role, but the model matrix holds no "
+                                  f"column of that name.")

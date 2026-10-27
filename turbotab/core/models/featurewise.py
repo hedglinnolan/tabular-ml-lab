@@ -133,6 +133,23 @@ def split_columns(columns: Sequence[str], features: Sequence[str] | None) -> tup
     return tested, adjust
 
 
+def energy_names(columns: Sequence[str], spec: Any) -> list[str]:
+    """``columns`` as the model matrix holds them after the design's energy step: a nutrient it
+    adjusts under the name it gives it (the residual methods' ``{column}_adj``, the densities'
+    ``{column}_per_{energy}``, a partition's ``kcal_from_{column}``), any other column as it is.
+    Tested under its raw name, an adjusted study factor matched no column, and the fit refused
+    it as no study factor to test (the swarm's C2 repair)."""
+    from turbotab.core.methods.energy import _form, _matrix_name
+
+    adjustment = spec.energy_adjustment()
+    if adjustment is None:
+        return [str(c) for c in columns]
+    E = adjustment.energy_column
+    form = _form(adjustment.method, bool(E and E in spec.predictors))
+    adjusted = list(adjustment.nutrients or []) if form not in ("none", "standard") else []
+    return [_matrix_name(str(c), form, adjusted, E) for c in columns]
+
+
 def event_indicator(y: Any) -> tuple[np.ndarray, Any, Any]:
     """(0/1 event indicator, event level, other level) of a two-level outcome: 1 where the outcome
     is 1 when it is coded 0/1 (the fit stage codes the named event 1; the other level is then
@@ -382,9 +399,11 @@ class FeatureWise(FamilyBase):
 
     def build_for(self, spec: Any, task: Task, purpose: Purpose | None, n_rows: int,
                   n_features: int) -> Any:
-        """The model step for this design: the exposures are tested, everything else adjusts."""
+        """The model step for this design: the exposures are tested, everything else adjusts. An
+        exposure the energy step adjusts is tested under the name that step gives it
+        (:func:`energy_names`), the column the model matrix holds for it."""
         exposures = [c for c in spec.predictors if spec.roles.get(c) == "exposure"]
-        return FeatureWiseTests(task=task, features=exposures)
+        return FeatureWiseTests(task=task, features=energy_names(exposures, spec))
 
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         if task == "binary":
@@ -468,4 +487,4 @@ def _register() -> None:
 _register()
 
 __all__ = ["CR2_MAX_FEATURES", "FDR", "FEATUREWISE", "FeatureWise", "FeatureWiseTests", "bh_adjust",
-           "classical_tests", "event_indicator", "featurewise_table", "split_columns"]
+           "classical_tests", "energy_names", "event_indicator", "featurewise_table", "split_columns"]
