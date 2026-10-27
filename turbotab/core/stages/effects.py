@@ -503,7 +503,7 @@ def spline_terms(fitted: Any, features: Sequence[str]) -> tuple[str, list[str]] 
 
 def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classes: Any,
                  clusters: Any, outcome: Any, survey: Any, levels: Any, event: Any,
-                 features: Sequence[str]) -> Any:
+                 features: Sequence[str], model: Any = None) -> Any:
     """The family's inference table on ``matrix`` (every analyzed row), as the fit stage computes
     it for the primary: design-based under ``survey`` for the families that have a design-based
     estimator (the stage blocks the others before they get here). None for a family whose table
@@ -512,7 +512,15 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
     The table is the family's own ``inference``, handed a pipeline whose one step is the model
     step as the matrix's fit leaves it (its classes, its ordered levels, its tested columns), so
     the model matrix it reads is ``matrix`` itself; it is given the outcome, the rows and the
-    design where its ``inference`` takes them, and told the rows when it does not say them."""
+    design where its ``inference`` takes them, and told the rows when it does not say them (a
+    table refused with no estimate says only how many rows it was handed).
+
+    ``model``: the fitted model step the matrix came from. Where it names the columns it tests (a
+    feature-wise step's study factors, as the roles answer named them and as the matrix holds
+    them, and those in a declared form), the table tests those and refuses as the fit's does: a
+    study factor in a form other than one straight-line column, or none the matrix holds, is
+    refused, never each of its columns tested as a study factor of its own (the orchestrator's
+    ruling (a) on the swarm's tail)."""
     import inspect
 
     from sklearn.pipeline import Pipeline
@@ -521,9 +529,18 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
 
     if not refits_on_matrix(family):
         return None
+    tested = [f for f in features if f in matrix.columns]
+    own = getattr(model, "features", None)
+    forms = getattr(model, "forms", None)
+    if own is not None:
+        # The step's study factors among the columns asked for; where it holds a form, or none of
+        # them is a column here, its own list, so the refusal names them as the fit's does.
+        tested = [f for f in tested if f in {str(c) for c in own}]
+        if forms or not tested:
+            tested = [str(c) for c in own]
     step = _MatrixStep(classes=list(classes) if classes is not None else [],
-                       levels=list(levels) if levels is not None else None,
-                       features=[f for f in features if f in matrix.columns])
+                       levels=list(levels) if levels is not None else None, features=tested,
+                       named=getattr(model, "named", None), forms=forms)
     takes = inspect.signature(family.inference).parameters
     given = {"outcome": outcome, "rows": "all", "survey": survey, "event": event}
     kw = {k: v for k, v in given.items() if k in takes}
@@ -532,19 +549,27 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
                          f"the surveyed population.")
     table = family.inference(Pipeline([("model", step)]), matrix, y, task=task,
                              clusters=clusters, **kw)
-    return table if "rows" in takes else _on_rows(table, len(matrix), "all")
+    # A table that says its rows itself (a refused one with no estimate says only how many it was
+    # handed) is told none, as the fit stage tells it none.
+    if "rows" in takes or table.info.get("n_rows") is not None:
+        return table
+    return _on_rows(table, len(matrix), "all")
 
 
 class _MatrixStep:
     """A model step as the fit of a model matrix leaves it, for :func:`matrix_table`: what a
     family's ``inference`` reads off its fitted step (``classes_``, an ordered outcome's
-    ``level_names_``, the tested columns' ``features``), and nothing to transform."""
+    ``level_names_``, the tested columns' ``features``, as the roles answer named them
+    (``named``), and those in a declared form (``forms``)), and nothing to transform."""
 
     def __init__(self, *, classes: list[Any], levels: list[Any] | None,
-                 features: list[str]) -> None:
+                 features: list[str], named: Sequence[str] | None = None,
+                 forms: Mapping[str, Any] | None = None) -> None:
         self.classes_ = classes
         self.level_names_ = levels
         self.features = features
+        self.named = list(named) if named is not None else None
+        self.forms = dict(forms) if forms else None
 
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         return {}
@@ -868,7 +893,8 @@ class _Run:
                 # with the spline's nonlinear terms left out (pooled like every other model).
                 subsets["straight"] = [c for c in M.columns if c not in set(curve[1])]
             kw = dict(task=self.task, classes=classes, clusters=self.clusters, outcome=self.outcome,
-                      survey=design, levels=self.levels, event=self.state.event, features=feats)
+                      survey=design, levels=self.levels, event=self.state.event, features=feats,
+                      model=fitted[-1])
             for name, cols in subsets.items():
                 per_copy.setdefault(name, []).append(self._table(
                     lambda _c=cols: self._with_relative(
@@ -1015,7 +1041,7 @@ class _Run:
                                for f in est.primary_features(M3.columns, e, predictors)}]
             kw3 = dict(task=self.task, classes=classes3, clusters=self.clusters3,
                        outcome=self.outcome, survey=design, levels=self.levels,
-                       event=self.state.event, features=feats3)
+                       event=self.state.event, features=feats3, model=fitted3[-1])
             per_copy.setdefault("model_3", []).append(self._table(
                 lambda: self._with_relative(family, fitted3, M3, self.y3,
                                             matrix_table(family, M3, self.y3, **kw3), kw3),

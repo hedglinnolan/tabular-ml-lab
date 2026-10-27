@@ -65,7 +65,8 @@ OMICS = ("genomics", "metabolomics")
 PLS_DA_ABSENT = ("PLS-DA is not offered: customary in metabolomics, it is sound only with nested "
                  "cross-validation and permutation tests, and VIP > 1 ranks features without "
                  "testing them.")
-# Its refusal where it has nothing to test, at the models answer or at the fit (the swarm's C2).
+# Its refusal where it has nothing to test, at the models answer, or of its table at the fit (the
+# swarm's C2; the table's, not the fit's, by the orchestrator's ruling (b) on the swarm's tail).
 NO_STUDY_FACTOR = "featurewise_no_study_factor"
 NO_STUDY_FACTOR_WORDS = ("No study factor to test: feature-wise regression tests the columns with "
                          "the role of what you study, one at a time, adjusted for the rest")
@@ -99,27 +100,26 @@ def _who(named: Sequence[str], features: Sequence[str]) -> list[str]:
             for n, f in zip(named, features)]
 
 
-def no_study_factor(features: Sequence[str] | None, named: Sequence[str] | None = None) -> Any:
-    """The fit's refusal (``graph.StageRefusal``) where the model matrix holds no column to test:
-    no column has the role of what you study (``features`` empty), or none of those that have it
-    is a column of the matrix by its name (a category enters as its indicators). ``named``: the
-    columns the roles answer gave the role, beside ``features``, the names the matrix holds them
-    under (an energy step's), so the words give the role to the column that has it."""
-    from turbotab.core.graph import StageRefusal
+def no_study_factor(features: Sequence[str] | None,
+                    named: Sequence[str] | None = None) -> tuple[str, list[dict[str, Any]]]:
+    """The table's refusal (its reason and ways forward) where the model matrix holds no column to
+    test: no column has the role of what you study (``features`` empty), or none of those that
+    have it is a column of the matrix by its name (a category enters as its indicators).
+    ``named``: the columns the roles answer gave the role, beside ``features``, the names the
+    matrix holds them under (an energy step's), so the words give the role to the column that has
+    it. The table is refused, not the fit, as :func:`formed_study_factor`'s is: every other family
+    chosen beside it is fit and shown (the orchestrator's ruling (b) on the swarm's tail)."""
     from turbotab.core.voice import listing
 
     sought = [str(f) for f in features or []]
     if not sought:
-        return StageRefusal(NO_STUDY_FACTOR, f"{NO_STUDY_FACTOR_WORDS}; no column has that role.",
-                            exits=[ROLES_WAY, ANOTHER_FAMILY])
+        return (f"{NO_STUDY_FACTOR_WORDS}; no column has that role.",
+                [dict(ROLES_WAY), dict(ANOTHER_FAMILY)])
     raw = [str(n) for n in named] if named is not None and len(named) == len(sought) else sought
     one = len(sought) == 1
-    return StageRefusal(
-        NO_STUDY_FACTOR,
-        f"{NO_STUDY_FACTOR_WORDS}; {listing(_who(raw, sought), ticked=False)} "
-        f"{'has' if one else 'have'} that role, but the model matrix holds no column of "
-        f"{'that name' if one else 'their names'}.",
-        exits=[ANOTHER_FAMILY])
+    return (f"{NO_STUDY_FACTOR_WORDS}; {listing(_who(raw, sought), ticked=False)} "
+            f"{'has' if one else 'have'} that role, but the model matrix holds no column of "
+            f"{'that name' if one else 'their names'}.", [dict(ANOTHER_FAMILY)])
 
 
 def formed_study_factor(forms: Mapping[str, Any], named: Sequence[str],
@@ -284,22 +284,22 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     the columns the roles answer gave the role, beside ``features`` (the names the matrix holds
     them under), for the words of a refusal; ``forms``: the study factors whose declared form is
     not a straight line, by their ``named`` column, for which no table is made
-    (:func:`formed_study_factor`)."""
+    (:func:`formed_study_factor`). Where the matrix holds no study factor the table is refused the
+    same way (:func:`no_study_factor`). A refused table with no test records the rows it was
+    handed (``n_rows``), so no stage adds that it was estimated from them: nothing was."""
     from turbotab.core.models.inference import (INDEPENDENT, InferenceTable, _info, floor_refusal,
                                                 format_p)
 
     clusters = INDEPENDENT if clusters is None else clusters
     estimator = "feature-wise least squares"
-    if forms:
-        sought = list(features or [])
-        reason, exits = formed_study_factor(forms, list(named) if named is not None else sought,
-                                            sought)
-        info = _info(estimator, "none", f"No tests: {reason}", clusters, refused=reason,
-                     exits=exits)
-        return InferenceTable([], info, [reason])
     tested, adjust = split_columns(list(matrix.columns), features)
-    if not tested:
-        raise no_study_factor(features, named)
+    if forms or not tested:
+        sought = list(features or [])
+        reason, exits = (formed_study_factor(forms, list(named) if named is not None else sought,
+                                             sought) if forms else no_study_factor(features, named))
+        info = _info(estimator, "none", f"No tests: {reason}", clusters, refused=reason,
+                     exits=exits, n_rows=int(len(matrix)))
+        return InferenceTable([], info, [reason])
     values = matrix.to_numpy(dtype=float, na_value=np.nan)
     if not np.isfinite(values).all():
         raise ValueError("The model matrix has missing values; feature-wise tests need complete "
@@ -548,9 +548,10 @@ FEATUREWISE = register_family(FeatureWise())
 def _has_a_study_factor(decision: Any, ctx: Any) -> None:
     """The models answer that chooses feature-wise regression where no column has the role of what
     you study, once the roles are answered: it would have nothing to test, so it is refused here
-    in the words the fit would refuse in (:func:`no_study_factor`), its ways forward the roles
-    question and the other families chosen beside it. A role not yet confirmed counts: the fit
-    reads the roles as they stand when it is pressed, and refuses there where none is left."""
+    in the words the fit refuses its table in (:func:`no_study_factor`), its ways forward the
+    roles question and the other families chosen beside it. A role not yet confirmed counts: the
+    fit reads the roles as they stand when it is pressed, and refuses the table there where none
+    is left."""
     from turbotab.core import decisions as d
 
     if FEATUREWISE.key not in (decision.models or []):
