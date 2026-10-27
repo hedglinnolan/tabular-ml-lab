@@ -35,15 +35,21 @@ measure their uncertainty (:func:`_no_spare_rows`). The mixed model's and the GE
 them in the same words (``repeated``). The proportional-odds model's table is refused at the same
 count, its cut-points among its coefficients, in its own words (``ordinal``): its cut-points are
 shared by every row, so its likelihood there can have a unique maximum, and the words say only
-that the rows are no more than its coefficients. A least-squares, logistic, multinomial or
-proportional-odds table, and the mixed model's and the GEE's, whose model matrix has columns
-dependent to working precision is refused next, with no estimate, in words that name them
-(:func:`dependent_refusal`), before a fit whose numbers for them would be rounding. A table whose
-fit gives some coefficient no finite, positive standard error, or its t interval no finite,
-positive degrees of freedom, is refused in words that name each and what the fit could not
-compute (:func:`no_interval`; every family's table that makes Wald or t rows here, in
-``repeated``, ``survival``, ``ordinal`` and ``survey``), rather than served with the estimate
-beside no interval.
+that the rows are no more than its coefficients. Every table of a family whose linear predictor
+is Xβ (least squares, logistic, Firth, multinomial, proportional odds, Cox, the GEE, and the
+survey tables) is fit on its columns scaled to a root mean square of one and scaled back, so no
+column's unit moves another's numbers (:func:`by_identified`; the mixed model's REML factors the
+design by QR, which already leaves them unmoved). In each of them, and the mixed model's, where
+the model matrix's columns are dependent to working precision, a coefficient in no dependency is
+reported as the fit with the aliased columns left out gives it, as R's ``lm`` does, and each one
+in a dependency is refused by row, with no estimate, in words that name the dependency's
+columns; the whole table is refused, with no estimate, only where a column its caller names as
+studied (``study``), or every coefficient, is in one (:func:`dependent_refusal`'s words), before
+a fit whose numbers for them would be rounding. A table whose fit gives some coefficient no finite,
+positive standard error, or its t interval no finite, positive degrees of freedom, is refused in
+words that name each and what the fit could not compute (:func:`no_interval`; every family's
+table that makes Wald or t rows here, in ``repeated``, ``survival``, ``ordinal`` and ``survey``),
+rather than served with the estimate beside no interval.
 
 And on the outcome's own scale (AUDIT_REPORT §5 WP8: ME-07): every table says what one unit of an
 input does, in words that name the outcome (:class:`Outcome`). A least-squares row is a difference
@@ -58,7 +64,7 @@ import math
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Iterator, Literal, Mapping, Sequence
+from typing import Any, Callable, Iterator, Literal, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -394,8 +400,25 @@ def _size_blocks(codes: np.ndarray, P: int) -> list[np.ndarray]:
     return out
 
 
+def scaled_inverse(A: np.ndarray) -> np.ndarray:
+    """The pseudo-inverse of a symmetric positive semi-definite matrix (an information, or XᵀX),
+    taken on its rows and columns scaled to a unit diagonal and scaled back:
+    ``D⁻¹ (D⁻¹ A D⁻¹)⁺ D⁻¹``, with ``D`` the root of its diagonal. Where it is invertible this is
+    its inverse; but a pseudo-inverse of ``A`` itself drops every direction below 10⁻¹⁵ of its
+    largest eigenvalue, so a column in units 10⁷ or more times another's (a date in epoch seconds
+    beside a standard-normal column) had its partner's variance cut to rounding. A zero diagonal
+    entry is left at one."""
+    A = np.asarray(A, dtype=float)
+    d = np.sqrt(np.clip(np.diag(A), 0, None))
+    d = np.where((d > 0) & np.isfinite(d), d, 1.0)
+    inner = np.linalg.pinv(A / np.outer(d, d))
+    return (inner + inner.T) / 2 / np.outer(d, d)
+
+
 def bread_of(X: np.ndarray) -> np.ndarray:
-    return np.linalg.pinv(X.T @ X)
+    """``(XᵀX)⁻¹``, a pseudo-inverse where singular, on the column-scaled design
+    (:func:`scaled_inverse`)."""
+    return scaled_inverse(X.T @ X)
 
 
 def logistic_working(X: np.ndarray, y: np.ndarray, mu: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -518,7 +541,7 @@ def firth_fit(X: np.ndarray, y: np.ndarray, *, fixed: dict[int, float] | None = 
     converged = False
     it = 0
     for it in range(1, max_iter + 1):
-        inv = np.linalg.pinv(info)
+        inv = scaled_inverse(info)
         h = w * np.einsum("ij,jk,ik->i", X, inv, X)
         score = X.T @ (y - mu + h * (0.5 - mu))
         delta = np.zeros(P)
@@ -537,7 +560,7 @@ def firth_fit(X: np.ndarray, y: np.ndarray, *, fixed: dict[int, float] | None = 
             delta /= 2.0
         beta = trial
         mu, w, info, ll = parts
-    return FirthFit(beta=beta, loglik=float(ll), cov=np.linalg.pinv(info), iterations=it,
+    return FirthFit(beta=beta, loglik=float(ll), cov=scaled_inverse(info), iterations=it,
                     converged=converged)
 
 
@@ -625,6 +648,11 @@ class InferenceTable:
     # (``stages.modeling.relative_refit``). Rubin's rules withhold their pooled intervals
     # (:func:`pooled_firth`); never serialized.
     infinite: list[str] = field(default_factory=list)
+    # The rows refused by row because their coefficients lie in a dependency of the model
+    # matrix's columns (:func:`by_identified`), and the words that say so (also the first
+    # concern); never serialized.
+    unidentified: list[str] = field(default_factory=list)
+    dependency: str | None = None
 
 
 def _clean(value: Any) -> float | None:
@@ -894,15 +922,17 @@ def _on_rows(table: InferenceTable, n: int, rows: Rows | None) -> InferenceTable
 
 def inference_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
                     clusters: Clusters = INDEPENDENT, *, outcome: Outcome | None = None,
-                    rows: Rows | None = None) -> InferenceTable:
+                    rows: Rows | None = None,
+                    study: Sequence[str] | None = None) -> InferenceTable:
     """The inference coefficient table for the linear family on the model matrix it saw.
 
     ``outcome`` names the outcome and its levels for the scale's words; ``rows`` says whether
-    the matrix holds every analyzed row (inference, BLUEPRINT §12 ruling 3) or the training rows.
-    A table refused with no estimate (:func:`_no_spare_rows`) is put on no scale and says only
-    how many rows it was handed.
+    the matrix holds every analyzed row (inference, BLUEPRINT §12 ruling 3) or the training rows;
+    ``study`` names the matrix's columns for what is studied, whose coefficient not being
+    identified refuses the whole table (:func:`by_identified`). A table refused with no estimate
+    (:func:`_no_spare_rows`) is put on no scale and says only how many rows it was handed.
     """
-    table = _table(task, matrix, y, classes, clusters)
+    table = _table(task, matrix, y, classes, clusters, study=study)
     if not table.rows:
         table.info.update(n_rows=int(len(matrix)), rows=rows)
         return table
@@ -960,43 +990,247 @@ DEPENDENT_EXITS = (
     {"label": "Leave one of the dependent columns out of the model", "decision": None},)
 
 
-def dependent_refusal(matrix: pd.DataFrame, estimator: str, clusters: Clusters, *,
-                      beside: str = "the intercept") -> InferenceTable | None:
-    """The table refused with no estimate where the model matrix's columns, with ``beside`` (the
-    intercept, or a constant where cut-points take its place), are dependent to working precision
-    (``repeated.dependencies``), in words that name the columns in a dependency
-    (``repeated.dependency_words``); None where they are not. There the coefficients in a
-    dependency have no unique estimate, and a fit's numbers for them, and whether its information
-    comes out singular, are rounding: a pseudo-inverse serves arbitrary values with intervals, an
-    inversion fails or serves standard errors of 10⁷. Decided before the fit, so the case is
-    refused whatever the rounding. The way forward: leave a dependent column out."""
+def dependency_reason(matrix: pd.DataFrame, *, beside: str = "the intercept") -> str | None:
+    """Why a table on ``matrix`` (its columns, with ``beside``, the intercept or a constant where
+    cut-points or a baseline hazard take its place, dependent to working precision:
+    ``repeated.dependency_words``) reports no coefficient at all; None where they are not
+    dependent."""
     from turbotab.core.models.repeated import dependency_words
 
     said = dependency_words(matrix, beside=beside)
     if said is None:
         return None
     what, leave = said
-    reason = (f"On these {len(matrix):,} rows the model matrix is singular: {what}. No estimate, "
-              f"interval or p-value is reported; {leave}.")
+    return (f"On these {len(matrix):,} rows the model matrix is singular: {what}. No estimate, "
+            f"interval or p-value is reported; {leave}.")
+
+
+def dependent_refusal(matrix: pd.DataFrame, estimator: str, clusters: Clusters, *,
+                      beside: str = "the intercept") -> InferenceTable | None:
+    """The table refused with no estimate where the model matrix's columns, with ``beside``, are
+    dependent to working precision, in words that name the columns in a dependency
+    (:func:`dependency_reason`); None where they are not. :func:`by_identified` refuses so where
+    what is studied is in a dependency, or every coefficient is."""
+    reason = dependency_reason(matrix, beside=beside)
+    return None if reason is None else _nothing(estimator, clusters, reason)
+
+
+def _nothing(estimator: str, clusters: Clusters, reason: str) -> InferenceTable:
+    """A table with no coefficient, refused for a dependency in ``reason``'s words."""
     info = _info(estimator, "none", f"No coefficients: {reason}", clusters, refused=reason,
                  exits=[dict(e) for e in DEPENDENT_EXITS])
     return InferenceTable([], info, [reason])
 
 
-def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
-           clusters: Clusters) -> InferenceTable:
-    import statsmodels.api as sm
+# How a table's rows follow the model matrix's columns (:func:`by_identified`): "intercept", in
+# blocks of the intercept and then every column (one block per level against the reference for a
+# multinomial model); "cuts", every column and then the cut-points; "columns", every column alone
+# (a Cox model, whose baseline hazard is its constant).
+Layout = Literal["intercept", "cuts", "columns"]
+CONSTANT_ROWS = {"intercept": "the intercept", "cuts": "the cut-points"}
 
+
+def column_scales(values: np.ndarray) -> np.ndarray:
+    """Each column's root mean square (1 where it is zero or not finite): a table's model is fit
+    with each column divided by it and its coefficients scaled back (:func:`by_identified`), an
+    identity in exact arithmetic that keeps a fit's numbers on columns of every unit at working
+    precision. statsmodels' least squares, logistic and multinomial fits, and every covariance
+    inverted from an unscaled information, served wrong estimates or standard errors once some
+    column's unit was 10⁵ or more times another's."""
+    values = np.asarray(values, dtype=float)
+    if values.size == 0:
+        return np.ones(values.shape[1] if values.ndim == 2 else 0)
+    with np.errstate(invalid="ignore", over="ignore"):
+        rms = np.sqrt(np.mean(values ** 2, axis=0))
+    return np.where(np.isfinite(rms) & (rms > 0), rms, 1.0)
+
+
+def _row_columns(table: InferenceTable, layout: Layout, columns: Sequence[str]
+                 ) -> list[str | None]:
+    """The model-matrix column each of ``table``'s rows is the coefficient of (None: the
+    intercept, or a cut-point), as ``layout`` orders them."""
+    P = len(columns)
+    n = len(table.rows)
+    if layout == "intercept":
+        block = [None, *columns]
+        if n % len(block):
+            raise ValueError(f"{n} rows are not blocks of the intercept and {P} columns.")
+        return block * (n // len(block))
+    if layout == "cuts":
+        return [*columns, *([None] * (n - P))]
+    return list(columns)
+
+
+def _unscaled(table: InferenceTable, layout: Layout, columns: Sequence[str],
+              scale: Mapping[str, float]) -> InferenceTable:
+    """``table``, fit on the columns divided by ``scale`` (:func:`column_scales`), on the
+    columns' own units: each coefficient's estimate, standard error and interval divided by its
+    column's scale (its df and p-value unchanged), and the covariance by both."""
+    if not table.rows:
+        return table
+    factor = np.array([1.0 if c is None else float(scale[c])
+                       for c in _row_columns(table, layout, columns)])
+    for row, f in zip(table.rows, factor):
+        for key in ("estimate", "se", "ci_low", "ci_high"):
+            if row.get(key) is not None:
+                row[key] = _clean(row[key] / f)
+    if table.cov is not None:
+        table.cov = np.asarray(table.cov, dtype=float) / np.outer(factor, factor)
+    return table
+
+
+def _by_row_reason(n_rows: int, named: Sequence[str], constant: str | None, count: int,
+                   beside: str, left_out: Sequence[str]) -> str:
+    """Why the coefficients in a dependency (``named``, and ``constant``, the intercept or the
+    cut-points, where the constant is in one) are refused by row, while the others are reported
+    from the fit with ``left_out`` left out (:func:`by_identified`)."""
+    one = len(named) == 1
+    ways = "" if count <= 1 else f", in {count:,} ways,"
+    what = (f"{_terms(named)} {'is' if one else 'are'}{ways} "
+            f"{'a fixed combination' if one else 'fixed combinations'} of the other columns and "
+            f"{beside}, so {'its coefficient is' if one else 'their coefficients are'} not "
+            f"identified")
+    if constant:
+        what += f", nor {'is' if constant == 'the intercept' else 'are'} {constant}"
+    leave = ("leave one of the dependent columns out" if count <= 1 else
+             f"leave out one dependent column for each of the {count:,} ways")
+    unreported = [*(_term(n) for n in named[:NAMED]), *([constant] if constant else [])]
+    rest = len(named) - min(len(named), NAMED)
+    listed = (f"{', '.join(unreported)} and {rest:,} more coefficient{'s' if rest != 1 else ''}"
+              if rest else unreported[0] if len(unreported) == 1 else
+              f"{', '.join(unreported[:-1])} and {unreported[-1]}")
+    return (f"On these {n_rows:,} rows the model matrix is singular: {what}. No estimate, interval "
+            f"or p-value is reported for {listed}; the other coefficients, which these rows "
+            f"identify, are estimated with {_terms(list(left_out))} left out. To report every "
+            f"coefficient, {leave}.")
+
+
+def by_identified(matrix: pd.DataFrame, build: Callable[[pd.DataFrame], InferenceTable], *,
+                  layout: Layout, refuse: Callable[[str], InferenceTable],
+                  beside: str = "the intercept", rows: np.ndarray | None = None,
+                  study: Sequence[str] | None = None, scaled: bool = True) -> InferenceTable:
+    """A coefficient table of a family whose linear predictor is Xβ, from ``build`` (its table on
+    a model matrix whose columns are not dependent), on ``matrix``.
+
+    The model is fit on the columns scaled to a root mean square of one, and its rows scaled back
+    (:func:`column_scales`, :func:`_unscaled`): a column's unit then changes its own coefficient
+    and standard error by the unit's factor and leaves every other row as it is, to working
+    precision, whatever the units. ``scaled`` False hands ``build`` the columns as they are, for a
+    fit that is already invariant to them (the mixed model's REML, which factors the design by
+    QR).
+
+    Where the columns, with ``beside`` (the intercept, or a constant where cut-points or a
+    baseline hazard take its place), are dependent on the rows ``rows`` marks (every row where
+    None) to working precision (``repeated.basis``), a coefficient whose column is in no
+    dependency is estimable: its estimate and standard error are those of the fit with each
+    dependent column that is a combination of those kept before it left out, as R's ``lm`` and
+    ``glm`` report it, whichever such columns are left out. Each coefficient in a dependency (the
+    intercept or the cut-points too, where the constant is in one) is refused by row, with no
+    estimate, interval or p-value (:attr:`InferenceTable.unidentified`), in words that name the
+    columns of the dependencies and count them, which are the table's first concern. The whole
+    table is refused, with no coefficient, in ``refuse``'s table (:func:`dependency_reason`'s
+    words), where a column of ``study`` (what is studied) is in a dependency, where no coefficient
+    is estimable, or where working precision cannot tell which columns to keep."""
+    from turbotab.core.models.repeated import basis
+
+    columns = [str(c) for c in matrix.columns]
+    values = matrix.to_numpy(dtype=float)
+    on = values if rows is None else values[np.asarray(rows)]
+    factors = column_scales(on) if scaled else np.ones(len(columns))
+    scale = dict(zip(columns, factors))
+    count, dependent, kept = basis(np.column_stack([np.ones(len(on)), on]))
+    where = {c: j for j, c in enumerate(columns)}
+
+    def fit(names: Sequence[str]) -> InferenceTable:
+        at = [where[c] for c in names]
+        part = matrix.iloc[:, at].astype(float)
+        part = part / factors[at] if at else part
+        return _unscaled(build(part), layout, names, scale)
+
+    if count == 0:
+        return fit(columns)
+    named = [columns[j - 1] for j in dependent if j > 0]
+    constant = CONSTANT_ROWS.get(layout) if 0 in set(dependent.tolist()) else None
+    estimable = [c for c in columns if c not in set(named)]
+    has_constant = layout in CONSTANT_ROWS and constant is None
+    if (kept is None or set(study or ()) & set(named) or not (estimable or has_constant)):
+        frame = pd.DataFrame(on, columns=columns)
+        return refuse(dependency_reason(frame, beside=beside) or "")
+    keep = [columns[j - 1] for j in kept if j > 0]
+    table = fit(keep)
+    left_out = [c for c in columns if c not in set(keep)]
+    reason = _by_row_reason(len(on), named, constant, count, beside, left_out)
+    table.concerns.insert(0, reason)
+    table.dependency = reason
+    if not table.rows:
+        return table
+    return _expanded(table, layout, keep, columns, set(named), constant is not None)
+
+
+def _expanded(table: InferenceTable, layout: Layout, keep: Sequence[str], columns: Sequence[str],
+              named: set[str], constant: bool) -> InferenceTable:
+    """``table`` (fit on the columns ``keep``) with a row for every one of ``columns``: a column in
+    a dependency (``named``), and the intercept or the cut-points where the constant is in one,
+    refused by row with no estimate, interval or p-value, the covariance not a number in its row
+    and column."""
+    source = _row_columns(table, layout, keep)
+    template = dict.fromkeys(table.rows[0])
+
+    def refused(label: str) -> dict[str, Any]:
+        table.unidentified.append(label)
+        return {**template, "feature": label}
+
+    out: list[tuple[dict[str, Any], int | None]] = []
+    if layout == "intercept":
+        size = 1 + len(keep)
+        for b in range(len(table.rows) // size):
+            head = table.rows[b * size]
+            suffix = str(head["feature"])[len("(intercept)"):]
+            out.append((refused(str(head["feature"])), None) if constant else (head, b * size))
+            for c in columns:
+                at = b * size + 1 + list(keep).index(c) if c in keep else None
+                out.append((refused(f"{c}{suffix}"), None) if c in named or at is None else
+                           (table.rows[at], at))
+    else:
+        for c in columns:
+            at = list(keep).index(c) if c in keep else None
+            out.append((refused(c), None) if c in named or at is None else (table.rows[at], at))
+        for i, c in enumerate(source):
+            if c is None:
+                row = table.rows[i]
+                out.append((refused(str(row["feature"])), None) if constant else (row, i))
+    if table.cov is not None:
+        cov = np.full((len(out), len(out)), np.nan)
+        served = [k for k, (_, at) in enumerate(out) if at is not None]
+        at = [out[k][1] for k in served]
+        cov[np.ix_(served, served)] = np.asarray(table.cov, dtype=float)[np.ix_(at, at)]
+        table.cov = cov
+    table.rows = [row for row, _ in out]
+    return table
+
+
+def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
+           clusters: Clusters, *, study: Sequence[str] | None = None) -> InferenceTable:
     if clusters.clustered and len(clusters.codes) != len(matrix):
         raise ValueError(f"The clusters cover {len(clusters.codes):,} rows but the model matrix has "
                          f"{len(matrix):,}.")
+    estimator = ESTIMATORS.get(task, MULTINOMIAL)
+    spare = _no_spare_rows(task, len(matrix), matrix.shape[1] + 1, clusters)
+    if spare is not None:
+        return spare
+    return by_identified(matrix, lambda m: _fitted(task, m, y, classes, clusters),
+                         layout="intercept", study=study,
+                         refuse=lambda reason: _nothing(estimator, clusters, reason))
+
+
+def _fitted(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
+            clusters: Clusters) -> InferenceTable:
+    """The linear family's table on a model matrix whose columns are not dependent."""
+    import statsmodels.api as sm
+
     # The fits are handed the indexed frame, so which rows they saw stays checkable.
     exog = sm.add_constant(matrix.astype(float), has_constant="add")
     names = ["(intercept)" if c == "const" else str(c) for c in exog.columns]
-    refused = (_no_spare_rows(task, len(exog), exog.shape[1], clusters)
-               or dependent_refusal(matrix, ESTIMATORS.get(task, MULTINOMIAL), clusters))
-    if refused is not None:
-        return refused
     if task == "regression":
         return _least_squares(names, exog, np.asarray(y, dtype=float), clusters)
     if task == "binary":
@@ -1323,7 +1557,8 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
 __all__ = [
     "COMPLETE_CASES", "Clusters", "FEW_CLUSTERS", "FIRTH", "FirthFit", "INDEPENDENT",
     "InferenceTable", "Outcome", "POOLED_FIRTH_CAPTION", "PooledFirth", "Rows", "Scale", "WITHHELD",
-    "bread_of", "cluster_columns", "copies_words", "cr2", "logistic_working",
+    "bread_of", "by_identified", "cluster_columns", "column_scales", "copies_words", "cr2",
+    "dependency_reason", "dependent_refusal", "logistic_working", "scaled_inverse",
     "multinomial_working", "firth_fit", "firth_profile", "floor_refusal", "for_pooling",
     "no_interval",
     "format_p", "heteroskedasticity_concern", "pooled_firth", "pooling", "separation_concern",

@@ -59,12 +59,15 @@ import numpy as np
 import pandas as pd
 
 from turbotab.core.models.inference import (
+    DEPENDENT_EXITS,
     InferenceTable,
     _and,
     _named,
     _row,
     _t_rows,
+    by_identified,
     no_interval,
+    scaled_inverse,
     separated_columns,
 )
 
@@ -510,7 +513,7 @@ def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray
     u = np.zeros((design.n_rows, scores.shape[1]))
     u[domain.at] = scores
     var = total_variance(u, design, domain.mask(design))
-    B = np.linalg.pinv(information) if bread is None else bread
+    B = scaled_inverse(information) if bread is None else bread
     V = B @ var.meat @ B
     V = (V + V.T) / 2
     se = np.sqrt(np.clip(np.diag(V), 0, None))
@@ -535,14 +538,38 @@ def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray
                           concerns, cov=V)
 
 
+SURVEY_ESTIMATORS = {"regression": "survey-weighted least squares",
+                     "binary": "survey-weighted logistic regression (pseudo-maximum likelihood)"}
+SURVEY_MULTINOMIAL = "survey-weighted multinomial logistic regression (pseudo-maximum likelihood)"
+
+
 def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
-                 design: SurveyDesign) -> InferenceTable:
+                 design: SurveyDesign, *, study: Sequence[str] | None = None) -> InferenceTable:
     """The design-based coefficient table for the linear family on the matrix it saw.
 
     ``matrix`` holds the analysis rows (indexed by row id) and ``y`` their outcome. The domain is
     those of them in the design with a positive weight; every other design row contributes a
-    score of zero.
+    score of zero. Fit on its columns scaled and scaled back; where the columns and the intercept
+    are dependent on the domain's rows, on the columns that identify the coefficients in no
+    dependency, each one in a dependency refused by row, and the whole table where ``study`` (the
+    columns of what is studied) is in one (``inference.by_identified``).
     """
+    names = ["(intercept)", *(str(c) for c in matrix.columns)]
+    domain = domain_of(matrix.index, design)
+    estimator = SURVEY_ESTIMATORS.get(task, SURVEY_MULTINOMIAL)
+    if domain.n <= len(names):
+        return _refused(names, None, estimator, design, domain.n,
+                        f"Only {domain.n:,} analysis rows carry a positive weight and a place in "
+                        f"the design, too few for {len(names)} coefficients.")
+    return by_identified(matrix, lambda m: _survey_table(task, m, y, classes, design),
+                         layout="intercept", rows=domain.keep, study=study,
+                         refuse=lambda reason: _refused(names, None, estimator, design, domain.n,
+                                                        reason, DEPENDENT_EXITS))
+
+
+def _survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
+                  design: SurveyDesign) -> InferenceTable:
+    """:func:`survey_table` on columns that are not dependent on the domain's rows."""
     import statsmodels.api as sm
 
     exog = sm.add_constant(matrix.astype(float), has_constant="add")
@@ -551,13 +578,7 @@ def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any]
     X = exog.to_numpy(dtype=float)[domain.keep]
     yv = np.asarray(y)[domain.keep]
     w = domain.weight
-    estimator = {"regression": "survey-weighted least squares",
-                 "binary": "survey-weighted logistic regression (pseudo-maximum likelihood)"}.get(
-        task, "survey-weighted multinomial logistic regression (pseudo-maximum likelihood)")
-    if domain.n <= X.shape[1]:
-        return _refused(names, None, estimator, design, domain.n,
-                        f"Only {domain.n:,} analysis rows carry a positive weight and a place in "
-                        f"the design, too few for {X.shape[1]} coefficients.")
+    estimator = SURVEY_ESTIMATORS.get(task, SURVEY_MULTINOMIAL)
     labels = names
     if task == "regression":
         fit = weighted_least_squares(X, yv.astype(float), w)
@@ -780,7 +801,7 @@ def design_fit(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] |
                              "weighted log-odds is infinite.")
         fit = weighted_logistic(X, event, domain.weight)
         link = "logit"
-    bread = np.linalg.pinv(fit.information)
+    bread = scaled_inverse(fit.information)
     return DesignFit(beta=fit.estimate, influence=fit.scores @ bread, domain=domain, design=design,
                      link=link)
 

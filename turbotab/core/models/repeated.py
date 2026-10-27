@@ -140,11 +140,49 @@ def dependencies(X: np.ndarray) -> tuple[int, np.ndarray]:
     or zero."""
     if X.shape[1] == 0:
         return 0, np.arange(0)
+    _, vt, null = _spectrum(X)
+    weight = np.sqrt((vt[null] ** 2).sum(axis=0))
+    return int(null.sum()), np.flatnonzero(weight > IN_DEPENDENCY)
+
+
+def _spectrum(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The singular values and right singular vectors of ``X`` with every column scaled to unit
+    length, and which of them are dependencies (:func:`dependencies`' rule). With fewer rows than
+    columns, each direction beyond the rows' count is one (a singular value of zero)."""
+    N, P = X.shape
     norms = np.linalg.norm(X, axis=0)
-    _, s, vt = np.linalg.svd(X / np.where(norms > 0, norms, 1.0), full_matrices=False)
-    null = vt[s <= s[0] * max(X.shape) * np.finfo(float).eps] if s[0] > 0 else vt
-    weight = np.sqrt((null ** 2).sum(axis=0))
-    return len(null), np.flatnonzero(weight > IN_DEPENDENCY)
+    _, s, vt = np.linalg.svd(X / np.where(norms > 0, norms, 1.0), full_matrices=N < P)
+    s = np.concatenate([s, np.zeros(P - len(s))])
+    null = s <= s[0] * max(X.shape) * np.finfo(float).eps if s[0] > 0 else np.ones(P, bool)
+    return s, vt, null
+
+
+def basis(X: np.ndarray) -> tuple[int, np.ndarray, list[int] | None]:
+    """The design's dependencies and the columns in any (:func:`dependencies`), and the columns a
+    fit on it keeps: every column in no dependency, and of those in one each that is not, to the
+    same working precision, a combination of the columns kept before it, so a copy's first column
+    is kept and the copy left out, as R's ``lm`` leaves out an aliased column. A coefficient in no
+    dependency has the same estimate and standard error whichever of them a fit keeps; one in a
+    dependency has none. The kept columns are None where they do not number P less the
+    dependencies, where working precision cannot tell which to keep."""
+    P = X.shape[1]
+    if P == 0:
+        return 0, np.arange(0), []
+    s, vt, null = _spectrum(X)
+    count = int(null.sum())
+    columns = np.flatnonzero(np.sqrt((vt[null] ** 2).sum(axis=0)) > IN_DEPENDENCY)
+    if count == 0:
+        return 0, columns, list(range(P))
+    # The scaled design is U·(s Vᵀ) with U's columns orthonormal, so any of its columns have the
+    # singular values of the same columns of s Vᵀ (P × P): no pass over the rows.
+    tol = s[0] * max(X.shape) * np.finfo(float).eps
+    small = s[:, None] * vt
+    kept = [j for j in range(P) if j not in set(columns.tolist())]
+    for j in columns:
+        trial = sorted([*kept, int(j)])
+        if np.linalg.svd(small[:, trial], compute_uv=False)[-1] > tol:
+            kept = trial
+    return count, columns, kept if len(kept) == P - count else None
 
 
 def dependent(X: np.ndarray) -> bool:
@@ -705,33 +743,49 @@ def beyond_exits(column: str) -> tuple[dict[str, Any], ...]:
                                                            "models": ["linear"]}})
 
 
-def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
+MIXED_ESTIMATOR = "random-intercept linear mixed model (REML)"
+
+
+def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any, *,
+                study: Sequence[str] | None = None) -> Any:
     """The random-intercept model's coefficient table on the matrix the model saw, by the
     clusters :func:`~turbotab.core.models.inference.resolve_clusters` read from the rows; on no
     more rows than its coefficients, refused with no estimate, before any other refusal that
-    would keep one (``inference._no_spare_rows``); where its columns are dependent, refused with no
-    estimate in words that name them (``inference.dependent_refusal``), REML having no fit there
-    (:func:`dependent`). Refused, its estimates kept, where the matrix is nearly singular (the
-    linear family's concern), where REML's ratio of the variances lies beyond what the fit
-    searches (:func:`beyond_words`), and where the fit gives some coefficient no standard error or
-    Satterthwaite degrees of freedom (``inference.no_interval``)."""
-    from turbotab.core.models.inference import (FEW_CLUSTERS, InferenceTable, _info,
-                                                _no_spare_rows, _refused, _t_rows,
-                                                dependent_refusal, no_interval)
+    would keep one (``inference._no_spare_rows``). Fit on its columns scaled and scaled back, and
+    where its columns are dependent, REML having no fit on them (:func:`dependent`), on the
+    columns that identify the coefficients in no dependency, each one in a dependency refused by
+    row, before any other refusal: the whole table where ``study`` is in one
+    (``inference.by_identified``). Refused, its estimates kept, where no unit repeats, where the
+    matrix is nearly singular (the linear family's concern), where REML's ratio of the variances
+    lies beyond what the fit searches (:func:`beyond_words`), and where the fit gives some
+    coefficient no standard error or Satterthwaite degrees of freedom
+    (``inference.no_interval``)."""
+    from turbotab.core.models.inference import _no_spare_rows, _nothing, by_identified
+
+    spare = _no_spare_rows("regression", len(matrix), matrix.shape[1] + 1, clusters,
+                           estimator=MIXED_ESTIMATOR)
+    if spare is not None:
+        return spare
+    # Its columns are not scaled: REML factors the design by QR, whose triangle carries a column's
+    # unit, so the fit is already invariant to it (to 10⁻¹⁰ with a date in epoch seconds), and
+    # scaling would only round γ̂ again, which the profile on 50,000-row units fixes to some 10⁻⁶.
+    return by_identified(matrix, lambda m: _mixed_table(m, y, clusters), layout="intercept",
+                         study=study, scaled=False,
+                         refuse=lambda reason: _nothing(MIXED_ESTIMATOR, clusters, reason))
+
+
+def _mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
+    """:func:`mixed_table` on columns that are not dependent."""
+    from turbotab.core.models.inference import (FEW_CLUSTERS, InferenceTable, _info, _refused,
+                                                _t_rows, no_interval)
 
     exog, names = _design(matrix)
     X = exog.to_numpy(dtype=float)
     y = np.asarray(y, dtype=float)
-    estimator = "random-intercept linear mixed model (REML)"
-    spare = _no_spare_rows("regression", len(X), X.shape[1], clusters, estimator=estimator)
-    if spare is not None:
-        return spare
+    estimator = MIXED_ESTIMATOR
     ols = np.linalg.lstsq(X, y, rcond=None)[0]
     if not clusters.clustered or clusters.n_clusters < 2:
         return _no_units(names, ols, estimator, clusters, "a random intercept")
-    dependent = dependent_refusal(matrix, estimator, clusters)
-    if dependent is not None:
-        return dependent
     singular = _singular(matrix)
     if singular:
         return _refused(names, ols, estimator, clusters, singular, ())
@@ -773,18 +827,17 @@ def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
 
 
 def gee_table(matrix: pd.DataFrame, y: Any, clusters: Any, task: str,
-              classes: Sequence[Any] | None = None) -> Any:
+              classes: Sequence[Any] | None = None, *,
+              study: Sequence[str] | None = None) -> Any:
     """The GEE's coefficient table: statsmodels' estimates, CR2 (BRL) intervals with Bell–McCaffrey
     degrees of freedom on its whitened working model, refused below the unit floor; on no more rows
     than its coefficients, refused with no estimate, before any other refusal that would keep one
-    (``inference._no_spare_rows``), and so where its columns are dependent
-    (``inference.dependent_refusal``)."""
-    from turbotab.core.models.inference import (_and, _clustered, _named, _no_spare_rows, _refused,
-                                                dependent_refusal, floor_refusal,
-                                                separated_columns)
+    (``inference._no_spare_rows``). Fit on its columns scaled and scaled back, and where its
+    columns are dependent, on the columns that identify the coefficients in no dependency, each
+    one in a dependency refused by row, before any other refusal: the whole table where ``study``
+    is in one (``inference.by_identified``)."""
+    from turbotab.core.models.inference import _no_spare_rows, _nothing, by_identified
 
-    exog, names = _design(matrix)
-    X = exog.to_numpy(dtype=float)
     if task == "binary":
         if classes is None or len(classes) != 2:
             raise ValueError("A binary outcome needs exactly two classes.")
@@ -793,15 +846,25 @@ def gee_table(matrix: pd.DataFrame, y: Any, clusters: Any, task: str,
         y = np.asarray(y, dtype=float)
     estimator = ("GEE, exchangeable working correlation" +
                  (" (logit link)" if task == "binary" else " (identity link)"))
-    spare = _no_spare_rows(task, len(X), X.shape[1], clusters, estimator=estimator)
+    spare = _no_spare_rows(task, len(matrix), matrix.shape[1] + 1, clusters, estimator=estimator)
     if spare is not None:
         return spare
+    return by_identified(matrix, lambda m: _gee_table(m, y, clusters, task, estimator),
+                         layout="intercept", study=study,
+                         refuse=lambda reason: _nothing(estimator, clusters, reason))
+
+
+def _gee_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any, task: str,
+               estimator: str) -> Any:
+    """:func:`gee_table` on columns that are not dependent, ``y`` coded 0/1 for a binary outcome."""
+    from turbotab.core.models.inference import (_and, _clustered, _named, _refused, floor_refusal,
+                                                separated_columns)
+
+    exog, names = _design(matrix)
+    X = exog.to_numpy(dtype=float)
     start = np.linalg.lstsq(X, y, rcond=None)[0]
     if not clusters.clustered or clusters.n_clusters < 2:
         return _no_units(names, start, estimator, clusters, "an exchangeable working correlation")
-    dependent = dependent_refusal(matrix, estimator, clusters)
-    if dependent is not None:
-        return dependent
     singular = _singular(matrix)
     if singular:
         return _refused(names, start, estimator, clusters, singular, ())
