@@ -14,9 +14,11 @@ building, drawn on their own rows in the closed vocabulary (BLUEPRINT §11 rule 
 | ``set_multiplicity``  | relationship: each test's threshold against its rank (flat, or BH's line)|
 | ``set_exposure_form`` | relationship: the exposure against the terms the model sees, a frame per |
 |                       | term · distribution with the knots or cut points marked · lineage; a     |
-|                       | consumers-only domain adds the row flow of whom the estimate is about    |
+|                       | consumers-only domain adds the row flow of whom the estimate is about;   |
+|                       | none for a column the model does not hold, and the note says why         |
 | ``set_forms``         | the declared exposure's form, as ``set_exposure_form`` draws it, on the  |
-|                       | state the whole one-tap answer leaves (wave 2b integration)              |
+|                       | state the whole one-tap answer leaves (wave 2b integration), among the   |
+|                       | columns the model holds                                                  |
 | ``set_modification``  | distribution of the modifier with the strata the effect is reported at   |
 |                       | marked (wave 2b integration; outcome-blind)                              |
 | ``set_clusters``      | distribution of the rows per group, captioned with what the fit does by  |
@@ -825,10 +827,27 @@ def form_terms(design: Design, facts: Mapping[str, Any],
     return [(facts["name"], x)]
 
 
+def not_in_the_model(columns: Sequence[str], state: Any) -> str:
+    """Why a form of ``columns`` draws nothing: the model ``state`` builds does not hold them. The
+    adjustment answers are named when they leave every one out of the primary model (under
+    inference: ``estimand.adjustment_left_out``); the further-adjusted model may still hold one,
+    so the sentence is of the primary model alone."""
+    from turbotab.core.estimand import adjustment_left_out
+
+    forms = agree(columns, "its form changes", "their forms change")
+    if set(columns) <= set(adjustment_left_out(state)):
+        return (f"The adjustment answers leave {names(columns)} out of the primary model, so "
+                f"{forms} nothing that model sees.")
+    return (f"{names(columns)} {agree(columns, 'is', 'are')} not among the model's predictors, so "
+            f"{forms} nothing the model sees.")
+
+
 def exposure_form_views(decision: Any, ctx: PreviewContext, after: Any = None,
                         answer: Any = None) -> list[Any]:
     """``after``: the state the answer leaves when ``decision`` is one column of a larger answer
-    (``answer``, a ``set_forms``); else the state ``decision`` leaves."""
+    (``answer``, a ``set_forms``); else the state ``decision`` leaves. A column the model does not
+    hold under ``after`` draws nothing; the note names it, with the answer's other such columns
+    (:func:`not_in_the_model`)."""
     from turbotab.core.methods.exposure_form import KNOT_PERCENTILES, domain_columns
 
     ids = pool(ctx)
@@ -846,6 +865,13 @@ def exposure_form_views(decision: Any, ctx: PreviewContext, after: Any = None,
         then_ids = np.asarray(ids)[np.isfinite(own) & (own > 0)]
     then = fit_design(ctx, after, then_ids)
     if then is None:
+        return []
+    # A form shapes only a column the model holds (``design_forms``: the present predictors): one
+    # the answers leave out has no terms to draw, and the note says why.
+    held = set(then.spec.predictors) & set(then.spec.inputs)
+    if decision.column not in held:
+        named = list(answer.forms) if answer is not None else [decision.column]
+        ctx.read["note"] = not_in_the_model([c for c in named if c not in held], after)
         return []
     now = fit_design(ctx, ctx.state, ids)
     facts = form_facts(then, decision.column)
@@ -986,21 +1012,26 @@ def exposure_form_views(decision: Any, ctx: PreviewContext, after: Any = None,
 
 
 def forms_views(decision: Any, ctx: PreviewContext) -> list[Any]:
-    """The form question's one-tap answer: the declared exposure's form (else the first column the
-    answer gives a curve, else its first column), drawn as ``set_exposure_form`` draws it, on the
-    state the whole answer leaves."""
+    """The form question's one-tap answer: among the columns the model holds under the whole
+    answer, the declared exposure's form (else the first column the answer gives a curve, else its
+    first column), drawn as ``set_exposure_form`` draws it, on the state the whole answer leaves.
+    When the model holds none of them, nothing is drawn and the note says so."""
     from turbotab.core import estimand as est
     from turbotab.core.decisions import SetExposureForm
+    from turbotab.core.models.pipeline import model_predictors
 
     forms = dict(decision.forms or {})
     if not forms:
         return []
+    after = after_state(decision, ctx)
     spec = est.current_estimand(ctx.state)
     exposure = getattr(spec, "exposure", None) if spec is not None else None
-    column = exposure if exposure in forms else next(
-        (c for c, f in forms.items() if f.form != "linear"), next(iter(forms)))
+    held = set(model_predictors(after))
+    among = [c for c in forms if c in held] or list(forms)
+    column = exposure if exposure in among else next(
+        (c for c in among if forms[c].form != "linear"), among[0])
     one = SetExposureForm(column=column, **forms[column].model_dump())
-    return exposure_form_views(one, ctx, after=after_state(decision, ctx), answer=decision)
+    return exposure_form_views(one, ctx, after=after, answer=decision)
 
 
 # ── set_modification (FORM, MODELING_SEQUENCE §1 row 7; wave 2b integration) ──
