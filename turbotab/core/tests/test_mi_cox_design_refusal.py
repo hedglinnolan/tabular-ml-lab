@@ -11,9 +11,10 @@ likelihood has no maximum, naming no column: false of the researcher's model.
 
 Now the words name the stratum by its own value and its column, say that the imputation's model is
 the one that fails, and name the sample answer as the way that leaves the design out; the stage
-offers complete cases. Both ways forward run on this table (tested here), and the same table with
-stratum 107's deaths kept imputes. Where the ordering runs along an analysis term (no woman dies),
-the words name that term and the stage offers to leave its input out, which runs.
+offers complete cases and that answer. Both ways forward run on this table (tested here), and the
+same table with stratum 107's deaths kept imputes. Where the ordering runs along an analysis term
+(no woman dies), the words name that term and the stage offers to leave its input out, which runs,
+and not complete cases, on which no woman dies either.
 
 **Truth.** By construction: every death of stratum 107 (or of the women) is set to no death, so at
 every death time the rows with the event have that indicator's lowest value among the rows at risk.
@@ -84,7 +85,8 @@ def _fitted(model: dict, estimator: str, method: str) -> None:
 
 def test_a_stratum_with_no_death_is_refused_in_the_imputation_model_s_words(tmp_path):
     """The words name stratum 107 of `SDMVSTRA` and say the analysis model has a maximum on the
-    copy; the stage offers complete cases and no leave-out (no input is to blame). At the base
+    copy; the stage offers complete cases and the sample answer, and no leave-out (no input is to
+    blame). At the base
     commit: "The Cox model's coefficients cannot be drawn ... has no maximum on a completed copy of
     the data: ... one fixed combination of its columns ...\""""
     model = _table(_mortality("stratum"), tmp_path)
@@ -99,7 +101,12 @@ def test_a_stratum_with_no_death_is_refused_in_the_imputation_model_s_words(tmp_
         "that fails: without the survey design's terms, its partial likelihood has a maximum on "
         "the same copy. Estimating for these participants instead (the sample-only attestation) "
         "leaves the survey design out of the imputation model.")
-    assert [e["label"] for e in inf["exits"]] == [COMPLETE_CASES]
+    # The sample answer the words name is offered as a way forward (the orchestrator's ruling (d)
+    # on the swarm's tail), beside complete cases; both run (below).
+    assert inf["exits"] == [inf["exits"][0], {
+        "label": "Estimate for these participants instead: record the sample-only attestation",
+        "decision": {"kind": "set_survey", "estimand": "sample"}}]
+    assert inf["exits"][0]["label"] == COMPLETE_CASES
 
 
 def test_both_ways_forward_run_on_the_refused_table(tmp_path):
@@ -147,9 +154,9 @@ def test_a_design_term_is_named_by_its_variable_s_own_column_and_value():
 
 def test_an_analysis_term_with_no_death_is_named_and_its_input_may_leave(tmp_path):
     """No woman dies: the analysis model's own term for `female` orders the risk sets, so the
-    words are the analysis model's, naming that term, and the stage offers to leave `female` out
-    beside complete cases. Leaving it out imputes. At the base commit no term was named and only
-    complete cases were offered."""
+    words are the analysis model's, naming that term, and the stage offers to leave `female` out.
+    Leaving it out imputes. At the base commit no term was named and only complete cases were
+    offered."""
     frame = _mortality("women")
     inf = _table(frame, tmp_path / "mi")["inference"]
     assert inf["refused"] == (
@@ -159,7 +166,9 @@ def test_an_analysis_term_with_no_death_is_named_and_its_input_may_leave(tmp_pat
         "have the lowest `female_1.0` of the rows at risk (as when a group has no events), so its "
         "hazard ratio runs to zero.")
     exits = {e["label"]: e["decision"] for e in inf["exits"]}
-    assert list(exits) == [COMPLETE_CASES, "Leave `female` out"]
+    # Complete cases are not offered: no woman dies on them either, so the analysis table there
+    # has no maximum (the orchestrator's ruling (d); test_mi_cox_refusal_names_the_reference_stratum).
+    assert list(exits) == ["Leave `female` out"]
     assert exits["Leave `female` out"]["drop_columns"] == ["female"]
     left = MissingSpec(strategy="multiple_imputation", m=20, drop_columns=["female"])
     _fitted(_table(frame, tmp_path / "left", missing=left), "survey-weighted Cox",
