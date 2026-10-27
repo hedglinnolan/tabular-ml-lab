@@ -7,8 +7,9 @@ two days' energy intakes beside both, a column constant on the rows).
 REML's likelihood holds ``log|XᵀV⁻¹X|``, which a matrix with dependent columns sends to −∞, and its
 estimates are not unique there, so the random-intercept fit has none. Dependence is decided at
 working precision on the column-scaled design (``repeated.dependencies``), not by LAPACK's
-factorization of ``XᵀV⁻¹X``, whose pivot at an exact dependency is rounding of either sign. The
-refusal names every column in a dependency (its weight in the null space's directions) and counts
+factorization of ``XᵀV⁻¹X``, whose pivot at an exact dependency is rounding of either sign; and
+the fit factors the design by QR rather than forming ``XᵀV⁻¹X``, so where the columns are nearly,
+not exactly, dependent it runs. The refusal names every column in a dependency (its weight in the null space's directions) and counts
 the dependencies, and quotes no condition number, which at an exact dependency is rounding. Truth
 from construction: a column twice another, a column of ones beside the intercept, and two
 indicators that sum to one; each column of the dependency is a fixed combination of the others and
@@ -121,6 +122,42 @@ def test_a_nearly_dependent_matrix_is_not_refused():
     X = np.column_stack([np.ones(N), x, near])
     reml = sm.MixedLM(y, X, groups=units.to_numpy()).fit(reml=True)
     np.testing.assert_allclose([model.intercept_, *model.coef_], reml.fe_params, rtol=1e-3)
+
+
+@pytest.mark.parametrize("noise", [1e-8, 1e-12])
+def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
+    """Between the two rules: `x` beside `x` plus noise of SD 10⁻⁸ or 10⁻¹² (a scaled condition
+    number near 2 × 10⁸ or 2 × 10¹²) has no dependency to working precision, and the fit runs. On
+    the base, which factored ``XᵀV⁻¹X``, whose condition number is the design's squared, past
+    float64's 10¹⁶, it ended in a ``LinAlgError`` and then in a refusal that called the columns
+    dependent. Truth: REML depends on the design's span alone, and ``[1, x, near − x]`` spans what
+    ``[1, x, near]`` does (``near − x`` is computed exactly, by Sterbenz's lemma), so γ̂ and the
+    fitted values are the dense profile's minimum on that well-conditioned design. The fit is
+    REML's exactly on a design within rounding of this one (a Householder QR is backward stable),
+    so it is as close as the condition number allows: γ̂ and the fitted values (against the
+    largest of them) to 10⁻⁷ at 10⁻⁸ and 10⁻³ at 10⁻¹²."""
+    from scipy.optimize import minimize_scalar
+
+    from turbotab.core.models.repeated import dependencies
+    from turbotab.core.tests.test_no_standard_error_refusal import _dense_profile
+
+    x, units, y = _rows()
+    codes = units.to_numpy()
+    near = x + np.random.default_rng(9).normal(scale=noise, size=N)
+    frame = pd.DataFrame({"x": x, "near": near})
+    assert dependencies(np.column_stack([np.ones(N), x, near]))[0] == 0
+    model = RandomInterceptRegressor(units=units).fit(frame, y)
+    d = near - x
+    span = np.column_stack([np.ones(N), x, d / np.linalg.norm(d)])
+    found = minimize_scalar(lambda z: _dense_profile(span, y, codes, float(np.exp(z))),
+                            bounds=(-10.0, 5.0), method="bounded", options={"xatol": 1e-10})
+    gamma = float(np.exp(found.x))
+    Hi = np.linalg.inv(np.eye(N) + gamma * (codes[:, None] == codes[None, :]))
+    fitted = span @ np.linalg.solve(span.T @ Hi @ span, span.T @ Hi @ y)
+    tol = 1e-7 if noise > 1e-10 else 1e-3
+    assert model.sigma2_u_ / model.sigma2_e_ == pytest.approx(gamma, rel=tol)
+    np.testing.assert_allclose(model.predict(frame), fitted, rtol=0,
+                               atol=tol * float(np.abs(fitted).max()))
 
 
 def _with_a_recoding() -> pd.DataFrame:

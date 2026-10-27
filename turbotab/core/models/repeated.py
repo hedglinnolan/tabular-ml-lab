@@ -24,8 +24,10 @@ Two families, each a plug-in on the shelf:
   the linear family's cluster-robust intervals keep.
 
 The REML fit is computed here in closed form for one variance component (each unit's rows share
-an intercept): with ``V_g = σ²_e I + σ²_u J``, every quantity is a sum over units of each unit's
-column sums, so a fit costs a few passes over the units whatever their sizes. The GEE estimates
+an intercept): with ``V_g = σ²_e I + σ²_u J``, every quantity, the Satterthwaite df's information
+among them, is a sum over units of each unit's sums of the columns of Q, the design's orthonormal
+basis from one QR factorization, so a fit costs that factorization and a few passes over the
+units whatever their sizes, and the design's condition number is not squared. The GEE estimates
 are statsmodels' (``statsmodels.genmod.generalized_estimating_equations.GEE``); only the
 variance is computed here.
 
@@ -57,7 +59,6 @@ from turbotab.core.models.base import (
 # The REML profile over γ = σ²_u / σ²_e is searched on this log10 grid, then refined by Brent's
 # method around the best grid point; γ = 0 (no between-unit variance) is checked on its own.
 GAMMA_GRID = tuple(10.0 ** k for k in range(-8, 9))
-HESSIAN_STEP = 1e-4  # central differences of the REML log-likelihood, in log variance units
 FEW_UNITS_MIXED = 5  # below this, a between-unit variance is barely estimable: the shelf says so
 EPV_RULE = 10
 
@@ -95,12 +96,17 @@ def _matrix(X: Any) -> tuple[np.ndarray, list[str], Any]:
 
 @dataclass(frozen=True)
 class _Sums:
-    """Each unit's sufficient statistics: what every REML quantity below is a function of."""
+    """Each unit's sufficient statistics on an orthonormal basis of the design's columns: with
+    ``X = QT`` (a Householder QR factorization, Q's columns orthonormal, T upper triangular),
+    every REML quantity below is a function of these. ``XᵀX`` is never formed, so the design's
+    condition number is not squared: a design whose columns are nearly, not exactly, dependent
+    (:func:`dependent`) is factored to working precision."""
 
-    XtX: np.ndarray  # (P, P)
-    Xty: np.ndarray  # (P,)
+    T: np.ndarray  # (P, P): X = QT
+    logT: float  # log |det T|: log|XᵀH⁻¹X| = 2 logT + log|QᵀH⁻¹Q|
+    z: np.ndarray  # (P,): Qᵀy
     yty: float
-    S: np.ndarray  # (G, P): each unit's column sums
+    S: np.ndarray  # (G, P): each unit's sums of Q's columns
     t: np.ndarray  # (G,): each unit's outcome sum
     m: np.ndarray  # (G,): each unit's row count
     N: int
@@ -118,9 +124,9 @@ def dependencies(X: np.ndarray) -> tuple[int, np.ndarray]:
     is a dependency of its own), a singular value at most the largest times max(N, P) machine
     epsilons (``numpy.linalg.matrix_rank``'s rule) is a dependency, and its right singular vectors
     span them: a column with weight in that span (:data:`IN_DEPENDENCY`) is a fixed combination of
-    the others. REML has no fit where there is one (``log|XᵀV⁻¹X|`` is −∞); asking LAPACK's
-    factorization of ``XᵀV⁻¹X`` instead lets rounding decide, the pivot an exact dependency
-    leaves being a few ulps of either sign, or zero."""
+    the others. REML has no fit where there is one (``log|XᵀV⁻¹X|`` is −∞); a factorization of the
+    design would let rounding decide instead, the pivot an exact dependency leaves being a few ulps,
+    or zero."""
     if X.shape[1] == 0:
         return 0, np.arange(0)
     norms = np.linalg.norm(X, axis=0)
@@ -135,55 +141,82 @@ def dependent(X: np.ndarray) -> bool:
     return dependencies(X)[0] > 0
 
 
+class DependentColumns(np.linalg.LinAlgError):
+    """REML has no fit: the design's columns are dependent to working precision (:func:`dependent`)."""
+
+
 def _sums(X: np.ndarray, y: np.ndarray, codes: np.ndarray) -> _Sums:
     G = int(codes.max()) + 1
+    Q, T = np.linalg.qr(X)
     S = np.zeros((G, X.shape[1]))
-    np.add.at(S, codes, X)
+    np.add.at(S, codes, Q)
     t = np.bincount(codes, weights=y, minlength=G)
     m = np.bincount(codes, minlength=G).astype(float)
-    return _Sums(XtX=X.T @ X, Xty=X.T @ y, yty=float(y @ y), S=S, t=t, m=m, N=len(y), P=X.shape[1])
+    with np.errstate(divide="ignore"):
+        logT = float(np.log(np.abs(np.diag(T))).sum())
+    return _Sums(T=T, logT=logT, z=Q.T @ y, yty=float(y @ y), S=S, t=t, m=m, N=len(y),
+                 P=X.shape[1])
 
 
-def _at(gamma: float, s: _Sums) -> tuple[np.ndarray, np.ndarray, float, float, float]:
-    """For γ = σ²_u/σ²_e and ``H_g = I + γJ``: ``A = XᵀH⁻¹X``, the GLS ``β``, the residual sum of
-    squares ``(y − Xβ)ᵀH⁻¹(y − Xβ)``, ``Σ log(1 + m_g γ)`` and ``log |A|``."""
-    c = gamma / (1.0 + s.m * gamma)  # H_g⁻¹ = I − c_g J
-    A = s.XtX - (s.S * c[:, None]).T @ s.S
-    b = s.Xty - s.S.T @ (c * s.t)
+def _between(s: _Sums, weight: np.ndarray) -> np.ndarray:
+    """``Σ_g weight_g b_g b_gᵀ``, with ``b_g`` unit g's sums of Q's columns."""
+    return (s.S * weight[:, None]).T @ s.S
+
+
+@dataclass(frozen=True)
+class _At:
+    """The GLS fit at one γ = σ²_u/σ²_e, ``H_g = I + γJ``, on the basis Q (:class:`_Sums`)."""
+
+    root: np.ndarray  # the lower Cholesky factor of K = QᵀH⁻¹Q
+    w: np.ndarray  # the GLS coefficients on Q: Tβ
+    beta: np.ndarray
+    rss: float  # (y − Xβ)ᵀH⁻¹(y − Xβ), as computed (rounding can leave it at or below zero)
+    logH: float  # Σ log(1 + m_g γ) = log|H|
+    logA: float  # log|XᵀH⁻¹X|
+
+
+def _at(gamma: float, s: _Sums) -> _At:
+    """The GLS fit at γ: ``K = QᵀH⁻¹Q = I − Σ_g c_g b_g b_gᵀ`` with ``c_g = γ/(1 + m_g γ)`` (since
+    ``H_g⁻¹ = I − c_g J``), whose eigenvalues lie in [1/(1 + γ max m_g), 1], so it is factored to
+    working precision whatever the design's condition; ``Tβ = K⁻¹QᵀH⁻¹y``; the residual sum of
+    squares ``yᵀH⁻¹y − (Tβ)ᵀQᵀH⁻¹y``; and ``log|XᵀH⁻¹X| = 2 log|det T| + log|K|``."""
+    from scipy.linalg import cho_solve, solve_triangular
+
+    c = gamma / (1.0 + s.m * gamma)
+    K = np.eye(s.P) - _between(s, c)
+    K = (K + K.T) / 2
+    b = s.z - s.S.T @ (c * s.t)
     yHy = s.yty - float(c @ (s.t ** 2))
-    A = (A + A.T) / 2
-    beta = np.linalg.solve(A, b)
-    rss = max(yHy - float(beta @ b), 1e-300)
-    sign, logdet = np.linalg.slogdet(A)
-    if sign <= 0:
-        raise np.linalg.LinAlgError("the model matrix is singular")
-    return A, beta, rss, float(np.log1p(s.m * gamma).sum()), float(logdet)
+    root = np.linalg.cholesky(K)
+    w = cho_solve((root, True), b)
+    return _At(root=root, w=w, beta=solve_triangular(s.T, w), rss=yHy - float(w @ b),
+               logH=float(np.log1p(s.m * gamma).sum()),
+               logA=2.0 * s.logT + 2.0 * float(np.log(np.diag(root)).sum()))
 
 
 def _profile(gamma: float, s: _Sums) -> float:
     """−2 × the REML log-likelihood with σ²_e profiled out, up to a constant."""
-    _, _, rss, logH, logA = _at(gamma, s)
+    at = _at(gamma, s)
     nu = s.N - s.P
-    return nu * math.log(rss / nu) + logH + logA
+    return nu * math.log(max(at.rss, 1e-300) / nu) + at.logH + at.logA
 
 
 def reml_loglik(sigma2_u: float, sigma2_e: float, s: _Sums) -> float:
     """The REML log-likelihood ``−½[log|V| + log|XᵀV⁻¹X| + rᵀV⁻¹r]`` (no constant), with
     ``V = σ²_e H(γ)``: ``−½[(N − P) log σ²_e + Σ log(1 + m_g γ) + log|A| + RSS/σ²_e]``."""
-    gamma = sigma2_u / sigma2_e
-    _, _, rss, logH, logA = _at(gamma, s)
-    return -0.5 * ((s.N - s.P) * math.log(sigma2_e) + logH + logA + rss / sigma2_e)
+    at = _at(sigma2_u / sigma2_e, s)
+    return -0.5 * ((s.N - s.P) * math.log(sigma2_e) + at.logH + at.logA + at.rss / sigma2_e)
 
 
 def _slope_at_zero(s: _Sums) -> float:
     """The profile's derivative in γ at γ = 0 (:func:`_profile`), in closed form:
     ``N − tr((XᵀX)⁻¹ SᵀS) − (N − P) Σ_g r_g² / RSS``, with ``r_g`` the sum of unit g's
     least-squares residuals. At γ = 0, ``d log(1 + m_g γ)/dγ = m_g``, ``dA/dγ = −SᵀS`` and, β being
-    optimal (the envelope theorem), ``dRSS/dγ = −Σ_g r_g²``."""
-    beta = np.linalg.solve(s.XtX, s.Xty)
-    rss = s.yty - float(beta @ s.Xty)
-    r = s.t - s.S @ beta
-    lever = float(np.trace(np.linalg.solve(s.XtX, s.S.T @ s.S)))
+    optimal (the envelope theorem), ``dRSS/dγ = −Σ_g r_g²``. On Q the least-squares coefficients
+    are ``Qᵀy`` and ``tr((XᵀX)⁻¹SᵀS)`` is the sum of the squares of Q's unit sums."""
+    rss = s.yty - float(s.z @ s.z)
+    r = s.t - s.S @ s.z
+    lever = float((s.S ** 2).sum())
     if rss <= 0:  # the rows are fit exactly at every γ: the profile's RSS term (clipped) is fixed
         return s.N - lever
     return s.N - lever - (s.N - s.P) * float(r @ r) / rss
@@ -238,79 +271,99 @@ def fit_random_intercept(X: np.ndarray, y: np.ndarray, codes: np.ndarray, *,
     """REML for ``y = Xβ + u_g + e``, ``u_g ~ N(0, σ²_u)``, ``e ~ N(0, σ²_e)``.
 
     γ = σ²_u/σ²_e is found by minimizing the profile (:func:`_profile`); then σ̂²_e = RSS/(N − P)
-    and ``C = σ̂²_e A⁻¹``. With ``satterthwaite``, each coefficient's df are
-    ``2 f² / (∇fᵀ 𝒜 ∇f)`` with ``f = C_jj``; ``∇f`` is analytic (``∂C/∂θ_k = C XᵀV⁻¹(∂V/∂θ_k)V⁻¹X
-    C``) and ``𝒜`` is the inverse of the negative Hessian of :func:`reml_loglik`, by central
-    differences in log σ² (the df are the same in any parameterization at the optimum). At the
+    (zero where the rows are fit exactly) and ``C = σ̂²_e A⁻¹``. With ``satterthwaite``, each
+    coefficient's df are ``2 f² / (∇fᵀ 𝒜 ∇f)`` with ``f = C_jj``; ``∇f`` is analytic
+    (``∂C/∂θ_k = C XᵀV⁻¹(∂V/∂θ_k)V⁻¹X C``) and ``𝒜`` is the inverse of the observed information,
+    the negative Hessian of :func:`reml_loglik` in θ = (σ²_u, σ²_e), in closed form
+    (:func:`satterthwaite_df`; the df are the same in any parameterization at the optimum). At the
     boundary σ̂²_u = 0 the between-unit variance is held at zero, and the df are N − P. Where the
-    design's columns are dependent (:func:`dependent`) REML has no fit, and ``LinAlgError`` says
-    the model matrix is singular.
+    design's columns are dependent (:func:`dependent`) REML has no fit, and
+    :class:`DependentColumns` says the model matrix is singular.
     """
+    from scipy.linalg import cho_solve, solve_triangular
+
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
     codes = np.asarray(codes, dtype=np.int64)
-    s = _sums(X, y, codes)
-    if s.N <= s.P:
-        raise ValueError(f"{s.N:,} rows for {s.P:,} coefficients: the model cannot be fit.")
+    N, P = X.shape
+    if N <= P:
+        raise ValueError(f"{N:,} rows for {P:,} coefficients: the model cannot be fit.")
     if dependent(X):
-        raise np.linalg.LinAlgError("the model matrix is singular")
+        raise DependentColumns("the model matrix is singular")
+    s = _sums(X, y, codes)
     gamma = _best_gamma(s)
-    A, beta, rss, _, _ = _at(gamma, s)
-    sigma2_e = rss / (s.N - s.P)
+    at = _at(gamma, s)
+    sigma2_e = max(at.rss, 0.0) / (s.N - s.P)
     sigma2_u = gamma * sigma2_e
-    cov = sigma2_e * np.linalg.inv(A)
+    inverse_T = solve_triangular(s.T, np.eye(P))
+    cov = sigma2_e * inverse_T @ cho_solve((at.root, True), np.eye(P)) @ inverse_T.T
     cov = (cov + cov.T) / 2
     boundary = gamma == 0.0
-    df = satterthwaite_df(s, sigma2_u, sigma2_e, cov, boundary) if satterthwaite else None
-    return RandomInterceptFit(beta=beta, cov=cov, sigma2_u=sigma2_u, sigma2_e=sigma2_e, df=df,
+    df = (satterthwaite_df(s, at, sigma2_u, sigma2_e, inverse_T, cov, boundary)
+          if satterthwaite else None)
+    return RandomInterceptFit(beta=at.beta, cov=cov, sigma2_u=sigma2_u, sigma2_e=sigma2_e, df=df,
                               loglik=reml_loglik(sigma2_u, sigma2_e, s) if sigma2_e > 0 else float("nan"),
                               boundary=boundary, n_units=len(s.m))
 
 
-def satterthwaite_df(s: _Sums, sigma2_u: float, sigma2_e: float, cov: np.ndarray,
-                     boundary: bool) -> np.ndarray:
-    """Each coefficient's Satterthwaite df (see :func:`fit_random_intercept`)."""
-    denom = sigma2_e + s.m * sigma2_u
-    c = sigma2_u / denom
-    a = s.S / denom[:, None]  # X_gᵀ V_g⁻¹ 1
-    G_u = a.T @ a  # Σ X_gᵀV_g⁻¹ J V_g⁻¹X_g
-    G_e = (s.XtX - (s.S * (2 * c - c * c * s.m)[:, None]).T @ s.S) / sigma2_e ** 2  # Σ X_gᵀV_g⁻²X_g
-    dC_u = cov @ G_u @ cov
-    dC_e = cov @ G_e @ cov
-    f = np.diag(cov)
+def satterthwaite_df(s: _Sums, at: _At, sigma2_u: float, sigma2_e: float, inverse_T: np.ndarray,
+                     cov: np.ndarray, boundary: bool) -> np.ndarray:
+    """Each coefficient's Satterthwaite df (see :func:`fit_random_intercept`), from the observed
+    REML information in θ = (σ²_u, σ²_e), ``I_kl = yᵀPV_kPV_lPy − ½ tr(PV_kPV_l)`` with
+    ``P = V⁻¹ − V⁻¹XCXᵀV⁻¹``, ``V_u = blockdiag(J)`` and ``V_e = I`` (Harville 1977), in closed
+    form: each unit's V has eigenvalue ``λ_g = σ²_e + m_g σ²_u`` on its rows' mean and σ²_e on the
+    rest, so every trace and quadratic form is a sum over units of Q's and the residuals' unit sums,
+    with Q's within-unit cross-products ``W = I − Σ_g b_g b_gᵀ/m_g`` and the within-unit residual
+    sum of squares. Taking the Hessian by differences of the log-likelihood instead lost it to
+    rounding near the boundary, where its curvature in σ²_u is of the size of the rounding."""
+    P = s.P
     if boundary:
-        # σ²_u held at zero: only σ²_e varies, and −ℓ'' = (N − P)/(2σ⁴) at its estimate.
-        var_e = 2.0 * sigma2_e ** 2 / (s.N - s.P)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            return 2.0 * f ** 2 / (np.diag(dC_e) ** 2 * var_e)
-    theta = np.array([sigma2_u, sigma2_e])
-    H = _hessian(lambda phi: reml_loglik(math.exp(phi[0]), math.exp(phi[1]), s), np.log(theta))
-    info = -H
+        # σ²_u held at zero: only σ²_e varies, C = σ²_e(XᵀX)⁻¹ is proportional to it and
+        # −ℓ'' = (N − P)/(2σ⁴), so ν = 2C²/((C/σ²_e)² · 2σ⁴/(N − P)) = N − P.
+        return np.full(P, float(s.N - s.P))
+    from scipy.linalg import cho_solve
+
+    gamma = sigma2_u / sigma2_e
+    lam = sigma2_e + s.m * sigma2_u
+    # 1/m_g, and 0 for a code no row has (whose sums are zero; it adds nothing below)
+    per_row = np.divide(1.0, s.m, out=np.zeros_like(s.m), where=s.m > 0)
+    C = sigma2_e * cho_solve((at.root, True), np.eye(P))  # (QᵀV⁻¹Q)⁻¹
+    W = np.eye(P) - _between(s, per_row)
+    # QᵀV⁻¹V_kV⁻¹Q and QᵀV⁻¹V_kV⁻¹V_lV⁻¹Q
+    M = {"u": _between(s, 1.0 / lam ** 2),
+         "e": W / sigma2_e ** 2 + _between(s, per_row / lam ** 2)}
+    MM = {("u", "u"): _between(s, s.m / lam ** 3), ("u", "e"): _between(s, 1.0 / lam ** 3),
+          ("e", "e"): W / sigma2_e ** 3 + _between(s, per_row / lam ** 3)}
+    # tr(V⁻¹V_kV⁻¹V_l), over the units that have rows
+    units = int((s.m > 0).sum())
+    VV = {("u", "u"): float((s.m ** 2 / lam ** 2).sum()), ("u", "e"): float((s.m / lam ** 2).sum()),
+          ("e", "e"): (s.N - units) / sigma2_e ** 2 + float((1.0 / lam[s.m > 0] ** 2).sum())}
+    # The residuals: r_g their sum on unit g, and Py = V⁻¹r. Then yᵀPV_kV⁻¹V_lPy, and
+    # QᵀV⁻¹V_kPy, which for V_e follows from the GLS equations QᵀV⁻¹r = 0 as −γ times V_u's.
+    r = s.t - s.S @ at.w
+    within = at.rss - float((r ** 2 * per_row / (1.0 + s.m * gamma)).sum())
+    q = {("u", "u"): float((s.m * r ** 2 / lam ** 3).sum()), ("u", "e"): float((r ** 2 / lam ** 3).sum()),
+         ("e", "e"): within / sigma2_e ** 3 + float((r ** 2 * per_row / lam ** 3).sum())}
+    v = {"u": s.S.T @ (r / lam ** 2)}
+    v["e"] = -gamma * v["u"]
+    info = np.zeros((2, 2))
+    for i, k in enumerate("ue"):
+        for j, l in enumerate("ue"):
+            pair = (k, l) if (k, l) in VV else (l, k)
+            trace = (VV[pair] - 2.0 * float(np.sum(C * MM[pair]))
+                     + float(np.sum((C @ M[k]) * (C @ M[l]).T)))
+            info[i, j] = q[pair] - float(v[k] @ C @ v[l]) - 0.5 * trace
     try:
         A = np.linalg.inv(info)
-    except np.linalg.LinAlgError:
-        A = np.linalg.pinv(info)
-    grad = np.stack([np.diag(dC_u), np.diag(dC_e)], axis=1) * theta[None, :]  # ∂f/∂ log θ
+    except np.linalg.LinAlgError:  # no curvature in some direction: no df to give
+        return np.full(P, np.nan)
+    # ∂C/∂θ_k = C XᵀV⁻¹V_kV⁻¹X C, mapped from Q's basis to X's by T⁻¹.
+    grad = np.stack([np.einsum("jk,kl,jl->j", inverse_T, C @ M[k] @ C, inverse_T) for k in "ue"],
+                    axis=1)
+    f = np.diag(cov)
     var_f = np.einsum("ja,ab,jb->j", grad, A, grad)
     with np.errstate(divide="ignore", invalid="ignore"):
         return np.where(var_f > 0, 2.0 * f ** 2 / var_f, np.nan)
-
-
-def _hessian(fn: Any, x: np.ndarray, h: float = HESSIAN_STEP) -> np.ndarray:
-    """The Hessian of ``fn`` at ``x`` by central differences."""
-    k = len(x)
-    H = np.zeros((k, k))
-    f0 = fn(x)
-    for i in range(k):
-        e_i = np.zeros(k)
-        e_i[i] = h
-        H[i, i] = (fn(x + e_i) - 2 * f0 + fn(x - e_i)) / h ** 2
-        for j in range(i + 1, k):
-            e_j = np.zeros(k)
-            e_j[j] = h
-            H[i, j] = H[j, i] = (fn(x + e_i + e_j) - fn(x + e_i - e_j) - fn(x - e_i + e_j)
-                                 + fn(x - e_i - e_j)) / (4 * h * h)
-    return H
 
 
 # ── GEE: statsmodels' estimates, the WP2 CR2 engine for the variance ──────────
@@ -398,7 +451,7 @@ class RandomInterceptRegressor(RegressorMixin, BaseEstimator):
         if repeats(codes):
             try:
                 fit = fit_random_intercept(design, y, codes, satterthwaite=False)
-            except np.linalg.LinAlgError:  # dependent columns (``dependent``), or XᵀV⁻¹X singular
+            except DependentColumns:
                 raise singular_refusal(pd.DataFrame(M, columns=names)) from None
             beta, self.sigma2_u_, self.sigma2_e_ = fit.beta, fit.sigma2_u, fit.sigma2_e
         else:
@@ -520,8 +573,8 @@ def _singular(matrix: pd.DataFrame) -> str | None:
 
 
 def singular_words(matrix: pd.DataFrame) -> str:
-    """Why REML has no fit on ``matrix`` (its columns without the intercept), where ``XᵀV⁻¹X`` is
-    singular to working precision: the columns, with the intercept, are dependent, and REML needs
+    """Why REML has no fit on ``matrix`` (its columns without the intercept), where its columns,
+    with the intercept, are dependent to working precision (:func:`dependent`), and REML needs
     every coefficient identified, since its likelihood holds ``log|XᵀV⁻¹X|``. The columns named
     are those in a dependency and the count is the dependencies' (:func:`dependencies`); no
     condition number is quoted, since at an exact dependency the one computed is rounding."""
@@ -585,7 +638,7 @@ def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
                          f"has {len(y):,}.")
     try:
         fit = fit_random_intercept(X, y, clusters.codes)
-    except np.linalg.LinAlgError:  # dependent columns the concern did not name (``dependent``)
+    except DependentColumns:  # dependent columns the concern did not name (``dependent``)
         return _refused(names, ols, estimator, clusters, singular_words(matrix), ())
     se = np.sqrt(np.clip(np.diag(fit.cov), 0, None))
     G = fit.n_units

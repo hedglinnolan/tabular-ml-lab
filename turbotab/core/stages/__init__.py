@@ -707,11 +707,14 @@ def build_graph() -> Graph:
             # fit 33 (the swarm fixes, package A, 2026-10-27): a table whose fit gives some
             # coefficient no finite, positive standard error (or degrees of freedom) is refused in
             # words (``inference.no_interval``), not served with the estimate and no interval; the
-            # mixed model's REML boundary is decided by the profile's slope at zero; and its fit on
-            # dependent columns is refused, typed (``repeated.singular_refusal``), where it ended
-            # the stage with a LinAlgError; and in-fold backward elimination by AIC fits on the
-            # identified columns, edf their rank (``variable_selection.identified``), so a category
-            # coded by every level selects as one coded by all but one.
+            # mixed model's REML boundary is decided by the profile's slope at zero, its
+            # Satterthwaite df take the REML information in closed form (near the boundary they
+            # rested on rounding), it factors the design by QR, so nearly dependent columns are
+            # fit, and its fit on dependent columns is refused, typed
+            # (``repeated.singular_refusal``), where it ended the stage with a LinAlgError; and
+            # in-fold backward elimination by AIC fits on the identified columns, edf their rank
+            # (``variable_selection.identified``), so a category coded by every level selects as
+            # one coded by all but one.
             Stage("fit", 33, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),

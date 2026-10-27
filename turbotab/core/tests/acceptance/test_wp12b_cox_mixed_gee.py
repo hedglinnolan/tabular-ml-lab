@@ -801,8 +801,8 @@ def test_4_satterthwaite_df_are_the_definition_on_an_unbalanced_design():
     (∇C_jjᵀ 𝒜 ∇C_jj)``, with 𝒜 the inverse of the negative Hessian of the REML log-likelihood in
     the variance parameters and ∇C_jj the gradient of ``(XᵀV⁻¹X)⁻¹_jj`` in them. Reference: both
     computed from the dense definition (:func:`_dense_reml`) by finite differences in (σ²_u, σ²_e)
-    themselves, where the engine differentiates analytically and takes the Hessian in log σ² (ν is
-    the same in any parameterization at the optimum). To 10⁻³ relative."""
+    themselves, where the engine differentiates analytically and computes the information in
+    closed form (``repeated.satterthwaite_df``). To 10⁻³ relative."""
     X, y, codes = _unbalanced()
     fit = fit_random_intercept(X, y, codes)
     dense = _dense_reml(X, y, codes)

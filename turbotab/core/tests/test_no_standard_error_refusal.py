@@ -14,7 +14,8 @@ freedom, the table is refused in words that say what could not be computed
 (``inference.no_interval``), not served with the estimate and no interval. It runs in the
 least-squares (HC3), cluster-robust (CR2), logistic, multinomial, proportional-odds, Cox, GEE,
 mixed-model and design-based tables; it is tested here on the four whose construction below is
-exact on every platform (HC3, CR2, the mixed model and the design-based table).
+exact on every platform (HC3, CR2, the mixed model and the design-based table), and on the rest,
+from covariances constructed directly, in ``test_no_standard_error_guards.py``.
 
 Truth for the boundary: statsmodels OLS, which a random-intercept REML fit at σ̂²_u = 0 equals
 (the estimates, the standard errors, and N − P degrees of freedom); offline, lme4 2.0.6 with
@@ -22,9 +23,9 @@ lmerTest 3.2.1 on the same four constructions gave θ̂ = 0 (``isSingular`` TRUE
 and standard errors of ``lm``, and Satterthwaite df 96, 116, 132 and 202, each N − P (R is not on
 CI). The slope's closed form is checked against central differences of the REML profile written
 out with dense matrices. Truth for the guard: an outcome with no variation (y ≡ 0) leaves every
-residual exactly zero, so the HC3, CR2 and design-based covariances are exactly zero and the REML
-residual variance sits at its floor, where the Satterthwaite df are 0/0; IEEE arithmetic gives
-these alike on every platform. An ordinary outcome leaves each table unrefused.
+residual exactly zero, so the HC3, CR2 and design-based covariances are exactly zero, and so is
+the REML residual variance, and with it the mixed model's covariance; IEEE arithmetic gives these
+alike on every platform. An ordinary outcome leaves each table unrefused.
 """
 from __future__ import annotations
 
@@ -166,9 +167,8 @@ WORDS = {
                       f"standard error, so no interval or p-value is reported."),
     "cluster-robust": (f"The cluster-robust (CR2) covariance by `pid` gives {TERMS} no finite, "
                        f"positive standard error, so no interval or p-value is reported."),
-    "mixed": (f"The random-intercept model's REML fit by `pid` on these {G} units gives {TERMS} a "
-              f"standard error but no finite, positive Satterthwaite degrees of freedom, so no "
-              f"interval or p-value is reported."),
+    "mixed": (f"The random-intercept model's REML fit by `pid` on these {G} units gives {TERMS} no "
+              f"finite, positive standard error, so no interval or p-value is reported."),
     "design-based": (f"The design-based (Taylor-linearized) covariance gives {TERMS} no finite, "
                      f"positive standard error, so no interval or p-value is reported."),
 }
@@ -177,10 +177,11 @@ WORDS = {
 @pytest.mark.parametrize("table", list(TABLES))
 def test_a_fit_that_gives_no_standard_error_is_refused_in_words(table):
     """y ≡ 0: every residual is exactly zero. The HC3, CR2 and design-based covariances are
-    exactly zero, and the mixed model's residual variance sits at its floor, where the
-    Satterthwaite df are 0/0. The
-    table is refused in words, keeping each estimate (zero) with no interval; on the base it was
-    served unrefused, each estimate beside no interval."""
+    exactly zero, and so is the mixed model's residual variance, and with it its covariance (where
+    it was held at a floor of 10⁻³⁰⁰, which left each coefficient a standard error near 10⁻¹⁵²
+    and, by underflow, no Satterthwaite df). The table is refused in words, keeping each estimate
+    (zero) with no interval; on the base it was served unrefused, each estimate beside no
+    interval."""
     matrix, codes, clusters = _rows()
     with np.errstate(divide="ignore", invalid="ignore", under="ignore"):
         result = TABLES[table](matrix, np.zeros(N), clusters)

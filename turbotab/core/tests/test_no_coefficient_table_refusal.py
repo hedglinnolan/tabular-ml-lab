@@ -217,7 +217,13 @@ def test_a_way_forward_taken_is_fit(tmp_path, key, answers):
     assert len(tables) == 3
     for inference, rows in tables:
         if answers.get("units") and inference["refused"] is not None:
-            assert isinstance(inference["refused"], str) and inference["refused"]
+            # Only no_interval's words for this fit: a standard error or degrees of freedom it
+            # could not compute (which of the two can differ by platform), not any refusal.
+            words = inference["refused"]
+            assert words.startswith(f"The random-intercept model's REML fit by `pid` on these "
+                                    f"{answers['units']} units gives ")
+            assert "no finite, positive " in words
+            assert words.endswith(", so no interval or p-value is reported.")
             assert all(r["ci_low"] is None and r["ci_high"] is None for r in rows)
             continue
         assert inference["refused"] is None
