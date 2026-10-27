@@ -806,8 +806,8 @@ def build_graph() -> Graph:
             # no chosen family that has one, sensitivity is refused typed under either goal, and
             # its, effects' and secondary's ways forward leave out a table that rests on
             # cluster-robust intervals below the unit floor.
-            # sensitivity 17, calibration 15, secondary 8, scales 6, effects 8: as fit 33 (each
-            # draws its own SMC-FCS copies).
+            # sensitivity 17, calibration 15, secondary 8, scales 6, effects 8, modification 3: as
+            # fit 33 (each draws its own SMC-FCS copies).
             Stage("sensitivity", 17, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
@@ -942,7 +942,8 @@ def build_graph() -> Graph:
             # modification: each declared effect modifier or second exposure, against a single
             # reference on both scales (Knol & VanderWeele 2012); an estimate stage.
             # modification 2: as sensitivity 16 above (the product terms' table).
-            Stage("modification", 2, ("working", "design", "split", "target_info"),
+            # modification 3: as fit 33 (its copies, drawn by interaction.impute_with_products).
+            Stage("modification", 3, ("working", "design", "split", "target_info"),
                   MODIFICATION_READS, modification_stage, heavy=True,
                   requires=("modifications", "models", "purpose"),
                   label="Estimating the declared effect modification", serves=ESTIMATE),

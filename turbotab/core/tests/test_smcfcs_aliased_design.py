@@ -251,14 +251,80 @@ def test_a_large_unit_s_drawn_variance_is_its_posterior_variance():
     assert np.all(np.abs(draws.mean(axis=0) - beta) < 4 * np.sqrt(expected / 4000))
 
 
+def _numpy_draw(M: np.ndarray, y: np.ndarray, rng: np.random.Generator
+                ) -> tuple[np.ndarray, float, np.ndarray]:
+    """smcfcs's lm draw written out with NumPy alone: β̂ and the residual sum of squares by least
+    squares, σ*² = σ̂² df/χ²(df) with df = n − p, then β* = β̂ + σ* L z with L the lower Cholesky
+    factor of (XᵀX)⁻¹ and z standard normal, from the generator in that order (R's smcfcs draws
+    the variance first, then the coefficients given it). Returns β*, σ*² and each coefficient's
+    posterior standard deviation given σ*², σ*·√[(XᵀX)⁻¹]ⱼⱼ."""
+    X = np.column_stack([np.ones(len(y)), M])
+    n, p = X.shape
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    df = n - p
+    new = float(np.sum((y - X @ beta) ** 2)) / df * df / rng.chisquare(df)
+    inv = np.linalg.inv(X.T @ X)
+    star = beta + np.sqrt(new) * (np.linalg.cholesky(inv) @ rng.standard_normal(p))
+    return star, new, np.sqrt(new * np.diag(inv))
+
+
+def _unit_scale(seed: int, n: int = 400) -> tuple[np.ndarray, np.ndarray, int | None]:
+    """Columns on a unit scale (two correlated numbers, a third, an indicator) and a linear
+    outcome; no aliased column."""
+    rng = np.random.default_rng(seed)
+    z = rng.normal(size=(n, 3))
+    M = np.column_stack([z[:, 0], 0.5 * z[:, 0] + z[:, 1], z[:, 2],
+                         (rng.random(n) < 0.3).astype(float)])
+    return M, 1.0 + M @ np.array([0.5, -0.3, 0.2, 0.4]) + rng.normal(size=n), None
+
+
+def _kcal_scale(seed: int, n: int = 400, aliased: bool = False
+                ) -> tuple[np.ndarray, np.ndarray, int | None]:
+    """A code's indicators, an energy in kcal and a number (:func:`_columns` at ``unit=1.0``),
+    with the column constant on every row kept (``aliased``) or left out."""
+    M, at, rng = _columns(seed, n, "constant", unit=1.0)
+    if not aliased:
+        M, at = np.delete(M, at, axis=1), None
+    return M, _outcome("linear", M, rng).y, at
+
+
+@pytest.mark.parametrize("design", ["unit scale", "kcal scale", "kcal scale, a column aliased"])
+@pytest.mark.parametrize("seed", range(6))
+def test_the_linear_draw_is_numpy_s_posterior_draw_from_the_same_generator(design, seed):
+    """Per seed, not only in distribution: the outcome model's β* and σ*² are those NumPy computes
+    (:func:`_numpy_draw`: least squares, the inverse of XᵀX and its Cholesky factor) from the same
+    generator state, the chi-square first and the normals after it. On the design with an aliased
+    column the reference is the draw on the design without it, that coefficient zero (R's ``lm``
+    leaves it out). The coefficients agree to 1e−9 of each one's posterior standard deviation
+    (2e−12 at most on macOS's LAPACK at kcal scale, where the condition number of X is 1.5e4) and
+    σ*² to 1e−12 of itself. Drawing the normals before the chi-square is a valid posterior draw
+    too, but a different one for every seed: on these cases it moves the coefficients by a median
+    of 1.1 posterior standard deviations, which this test fails on and the distributional tests
+    above do not. At the base commit the kcal-scale draws failed it too (the absolute jitter beside
+    (XᵀX)⁺, and on the aliased design a coefficient drawn on the aliased column)."""
+    if design == "unit scale":
+        M, y, at = _unit_scale(seed)
+    else:
+        M, y, at = _kcal_scale(seed, aliased=design.endswith("aliased"))
+    got = _draw_outcome(M, Outcome("linear", y=y), np.random.default_rng(50 + seed))
+    kept = M if at is None else np.delete(M, at, axis=1)
+    star, new, sd = _numpy_draw(kept, y, np.random.default_rng(50 + seed))
+    beta = got.beta if at is None else np.delete(got.beta, at + 1)  # β₀ leads
+    if at is not None:
+        assert got.beta[at + 1] == 0.0
+    assert np.max(np.abs(beta - star) / sd) < 1e-9
+    assert got.sigma2 == pytest.approx(new, rel=1e-12)
+
+
 def test_every_stage_that_draws_smcfcs_copies_computes_again():
     """The stages whose artifacts pool SMC-FCS copies, each of which draws its own (the fit's
     coefficient table, the sensitivity analyses, the calibration's uncorrected estimate, the
-    secondary model, the scales' uncorrected coefficient, the effects' declared models), are each
-    one version past the base commit's, so none serves an artifact cached from copies drawn the old
-    way."""
+    secondary model, the scales' uncorrected coefficient, the effects' declared models, the
+    modification stage's product terms' table, whose copies ``interaction.impute_with_products``
+    draws), are each one version past the base commit's, so none serves an artifact cached from
+    copies drawn the old way."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects")
-    assert tuple(versions[s] for s in stages) == (33, 17, 15, 8, 6, 8)
+    stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
+    assert tuple(versions[s] for s in stages) == (33, 17, 15, 8, 6, 8, 3)
