@@ -303,7 +303,8 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     fit again when feature-wise regression with no study factor came to refuse its table rather
     than the fit, and SMC-FCS's Cox refusal to name the reference stratum and offer only the ways
     forward that run (the swarm's tail, T2), with the effects stage, whose feature-wise tables came
-    to refuse a formed study factor."""
+    to refuse a formed study factor, and a category the estimand names, and whose family sentence
+    came to count the tests feature-wise regression runs."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}

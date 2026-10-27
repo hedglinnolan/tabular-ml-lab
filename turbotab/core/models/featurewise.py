@@ -158,13 +158,23 @@ def indicator_columns(columns: Sequence[str], tested: Sequence[str],
                       predictors: Sequence[str] | None) -> dict[str, list[str]]:
     """Each study factor that enters the model matrix as indicators of its levels (``categories``,
     by its column), with the columns of ``columns`` that carry it, none of them tested: the rule
-    the effects stage reads an exposure's columns by (``estimand.primary_features``, a longer
-    predictor's columns its own)."""
+    the effects stage reads an exposure's columns by (``estimand.primary_features``), a longer
+    predictor's columns its own, its spline terms among them. ``primary_features`` reads a longer
+    predictor's name with a spline term's primes on it, so it gives `grp_age'` beside `grp_age` to
+    `grp`; an indicator never carries a prime, so the name is read here without them (the
+    verifier's T2V2-4)."""
     from turbotab.core.estimand import primary_features
 
     mine = {str(c) for c in tested}
-    return {str(c): [f for f in primary_features(columns, str(c), predictors or ()) if f not in mine]
-            for c in categories or []}
+    found = {}
+    for c in categories or []:
+        c = str(c)
+        longer = [str(p) for p in predictors or () if str(p) != c and str(p).startswith(f"{c}_")]
+        found[c] = [f for f in primary_features(columns, c, predictors or ())
+                    if f not in mine and not any(f.rstrip("'") == p
+                                                 or f.rstrip("'").startswith(f"{p}_")
+                                                 for p in longer)]
+    return found
 
 
 def not_tested(entered: Mapping[str, Sequence[str]] | None, adjust: Sequence[str]) -> str | None:
