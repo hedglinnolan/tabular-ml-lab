@@ -74,12 +74,31 @@ def test_the_reference_stratum_with_no_death_is_named(psus, tmp_path):
 
 
 def test_the_sample_answer_the_refusal_offers_runs(tmp_path):
+    """The exit as offered: the decision model accepts it under the population answer it is
+    offered beside, and the fit under the survey answer it records imputes."""
+    from turbotab.core import decisions as d
+    from turbotab.core.decisions import FollowUpSpec
+    from turbotab.core.tests.acceptance.test_ms4_survey_across_families import survey_stages
+    from turbotab.core.tests.test_mi_cox_design_refusal import KEEP, ROLES
+
     frame = _reference_quiet(3)
     inf = _table(frame, tmp_path / "mi")["inference"]
     assert [e["label"] for e in inf["exits"]] == [COMPLETE_CASES, SAMPLE_EXIT]
     assert inf["exits"][1]["decision"] == SAMPLE["decision"]
-    _fitted(_table(frame, tmp_path / "sample", estimand="sample"), "Cox proportional hazards",
-            "multiple_imputation")
+    population = survey_stages(
+        frame[KEEP], tmp_path / "state", target="mortstat", task="time_to_event", roles=ROLES,
+        models=["cox"], analyzed=np.flatnonzero(frame["eligible"].to_numpy() == 1), event="1",
+        survey={"estimand": "population", "weight": "WTMEC2YR", "strata": "SDMVSTRA",
+                "psu": "SDMVPSU"}, follow_up=FollowUpSpec(time_column="permth_exm"),
+        missing=MissingSpec(strategy="multiple_imputation", m=20))["state"]
+    taken = d.validate(inf["exits"][1]["decision"], {"state": population, "task": "time_to_event"})
+    answer = taken.model_dump(mode="json", exclude={"kind", "goal"})
+    out = survey_stages(frame[KEEP], tmp_path / "sample", target="mortstat",
+                        task="time_to_event", roles=ROLES, models=["cox"], survey=answer,
+                        analyzed=np.flatnonzero(frame["eligible"].to_numpy() == 1), event="1",
+                        follow_up=FollowUpSpec(time_column="permth_exm"),
+                        missing=MissingSpec(strategy="multiple_imputation", m=20))
+    _fitted(out["fit"].data["models"][0], "Cox proportional hazards", "multiple_imputation")
     # and complete cases, offered, give the survey-weighted table on the rows with kcal recorded
     _fitted(_table(frame, tmp_path / "cc", complete=True,
                    missing=MissingSpec(strategy="complete_case")),
