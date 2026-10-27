@@ -198,22 +198,26 @@ class Linear(FamilyBase):
         return self.inference(pipeline, X, y, task=task, clusters=as_clusters(groups)).rows
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
-                  outcome: Any = None, rows: Any = None, survey: Any = None) -> Any:
+                  outcome: Any = None, rows: Any = None, survey: Any = None,
+                  study: Any = None) -> Any:
         """The inference table (:class:`~turbotab.core.models.inference.InferenceTable`): rows,
         how their intervals were made, and the concerns to state, on the matrix the model saw.
 
         ``outcome`` (:class:`~turbotab.core.models.inference.Outcome`) names the outcome and its
-        levels for the odds or relative-risk ratios; ``rows`` says which rows ``X`` holds. With
+        levels for the odds or relative-risk ratios; ``rows`` says which rows ``X`` holds;
+        ``study`` the model matrix's columns of what is studied, without which a dependency among
+        the columns refuses the whole table (``inference.by_identified``). With
         ``survey`` (a :class:`~turbotab.core.models.survey.SurveyDesign`, the "surveyed population"
         answer) the table is design-based: weighted, with Taylor-linearized intervals over the
         design's strata and PSUs, ``X``'s rows its domain (audit §5 WP10)."""
         classes = list(getattr(pipeline[-1], "classes_", [])) or None
         return self.inference_matrix(model_matrix(pipeline, X), y, task=task, classes=classes,
-                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey)
+                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey,
+                                     study=study)
 
     def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task, classes: Any,
                          clusters: Any, outcome: Any = None, rows: Any = None,
-                         survey: Any = None) -> Any:
+                         survey: Any = None, study: Any = None) -> Any:
         """The inference table on a given model matrix (the all-components contrasts and a
         quintile trend test refit on one): design-based under ``survey`` (WP10), model-based or
         robust otherwise
@@ -221,10 +225,11 @@ class Linear(FamilyBase):
         from turbotab.core.models.inference import _on_rows, _on_scale, inference_table
 
         if survey is None:
-            return inference_table(task, matrix, y, classes, clusters, outcome=outcome, rows=rows)
+            return inference_table(task, matrix, y, classes, clusters, outcome=outcome, rows=rows,
+                                   study=study)
         from turbotab.core.models.survey import survey_table
 
-        table = survey_table(task, matrix, y, classes, survey)
+        table = survey_table(task, matrix, y, classes, survey, study=study)
         if table.rows:  # a blocked or refused design leaves no rows to put on a scale
             table = _on_scale(table, task, classes, outcome)
         n_domain = (table.info.get("survey") or {}).get("n_domain")

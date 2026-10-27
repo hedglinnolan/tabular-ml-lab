@@ -552,7 +552,7 @@ def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any]
     score of zero. Fit on its columns scaled and scaled back; where the columns and the intercept
     are dependent on the domain's rows, on the columns that identify the coefficients in no
     dependency, each one in a dependency refused by row, and the whole table where ``study`` (the
-    columns of what is studied) is in one (``inference.by_identified``).
+    columns of what is studied) is in one or is None (``inference.by_identified``).
     """
     names = ["(intercept)", *(str(c) for c in matrix.columns)]
     domain = domain_of(matrix.index, design)

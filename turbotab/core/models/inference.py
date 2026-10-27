@@ -36,16 +36,21 @@ them in the same words (``repeated``). The proportional-odds model's table is re
 count, its cut-points among its coefficients, in its own words (``ordinal``): its cut-points are
 shared by every row, so its likelihood there can have a unique maximum, and the words say only
 that the rows are no more than its coefficients. Every table of a family whose linear predictor
-is Xβ (least squares, logistic, Firth, multinomial, proportional odds, Cox, the GEE, and the
-survey tables) is fit on its columns scaled to a root mean square of one and scaled back, so no
-column's unit moves another's numbers (:func:`by_identified`; the mixed model's REML factors the
-design by QR, which already leaves them unmoved). In each of them, and the mixed model's, where
-the model matrix's columns are dependent to working precision, a coefficient in no dependency is
-reported as the fit with the aliased columns left out gives it, as R's ``lm`` does, and each one
-in a dependency is refused by row, with no estimate, in words that name the dependency's
-columns; the whole table is refused, with no estimate, only where a column its caller names as
-studied (``study``), or every coefficient, is in one (:func:`dependent_refusal`'s words), before
-a fit whose numbers for them would be rounding. A table whose fit gives some coefficient no finite,
+is Xβ (least squares, logistic, Firth, multinomial, proportional odds, and the survey tables) is
+fit on its columns centered at their means and scaled to an SD of one, its slopes scaled back and
+its intercept or cut-points mapped back to the columns' own origin, so no column's unit or origin
+moves another's numbers (:func:`by_identified`); the Cox model's and the GEE's are scaled and not
+centered (the Cox fit centers its columns itself, and both refuse a column nearly constant
+beside the intercept in their near-singular concern's words), and the mixed model's REML factors
+the design by QR, which already leaves the numbers unmoved. A logistic or multinomial fit that
+does not converge is refused with no estimate (:func:`not_converged`). In each of them, and the
+mixed model's, where the model matrix's columns are dependent to working precision and the caller
+names what is studied (``study``), a coefficient in no dependency is reported as the fit with the
+aliased columns left out gives it, as R's ``lm`` does, and each one in a dependency is refused by
+row, with no estimate, in words that name the dependency's columns; the whole table is refused,
+with no estimate, where a column named as studied, or every coefficient, is in one, or where the
+caller names nothing studied (:func:`dependent_refusal`'s words), before a fit whose numbers for
+them would be rounding. A table whose fit gives some coefficient no finite,
 positive standard error, or its t interval no finite, positive degrees of freedom, is refused in
 words that name each and what the fit could not compute (:func:`no_interval`; every family's
 table that makes Wald or t rows here, in ``repeated``, ``survival``, ``ordinal`` and ``survey``),
@@ -323,12 +328,24 @@ def cr2(X: np.ndarray, e: np.ndarray, codes: np.ndarray, bread: np.ndarray,
     ``V = B (Σ_g X_gᵀ A_g e_g e_gᵀ A_g X_g) B``. ``H_gg`` has rank at most P, so ``A_g`` is
     applied through the eigenvectors of its P-dimensional part: no ``n_g × n_g`` matrix is formed.
 
-    The degrees of freedom for coefficient j: with ``p_g = A_g X_g B e_j`` and the working model's
-    residual-maker ``I − H``, the variance estimate is ``Σ_g (u_gᵀ ε)²`` with ``u_g = (I − H) p_g``;
+    The degrees of freedom for coefficient j (:func:`_bell_mccaffrey`, for any linear combination
+    of the coefficients): with ``p_g = A_g X_g B e_j`` and the working model's residual-maker
+    ``I − H``, the variance estimate is ``Σ_g (u_gᵀ ε)²`` with ``u_g = (I − H) p_g``;
     Satterthwaite's ν = tr(Ω)² / tr(Ω²) for ``Ω_gh = u_gᵀu_h = δ_gh |p_g|² − w_gᵀ B w_h``,
     ``w_g = X_gᵀ p_g``. ``adjust=False`` gives CR0 (``A_g = I``), for checks. The df are None
     when computing them would cost more than :data:`BM_BUDGET` (the caller then uses t(G − 1)).
     """
+    V, AX, blocks = _cr2_parts(X, e, codes, bread, adjust=adjust)
+    P = np.asarray(X).shape[1]
+    if not _bm_affordable(blocks, P):
+        return V, None
+    return V, _bell_mccaffrey(AX, np.asarray(X, dtype=float), bread, blocks)
+
+
+def _cr2_parts(X: np.ndarray, e: np.ndarray, codes: np.ndarray, bread: np.ndarray, *,
+               adjust: bool = True) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
+    """:func:`cr2`'s covariance, with what its Bell–McCaffrey df are computed from: ``A_g X_g``
+    for every cluster (N × P) and the clusters' rows in blocks (:func:`_size_blocks`)."""
     X = np.asarray(X, dtype=float)
     e = np.asarray(e, dtype=float)
     N, P = X.shape
@@ -349,15 +366,30 @@ def cr2(X: np.ndarray, e: np.ndarray, codes: np.ndarray, bread: np.ndarray,
         s = np.einsum("kmp,km->kp", AX[block], e[block])
         meat += s.T @ s
     V = bread @ meat @ bread
+    return (V + V.T) / 2, AX, blocks
+
+
+def _bm_affordable(blocks: Sequence[np.ndarray], P: int, contrasts: int | None = None) -> bool:
+    """Whether the Bell–McCaffrey df of ``contrasts`` linear combinations (P where None) cost no
+    more than :data:`BM_BUDGET`."""
     G = sum(len(b) for b in blocks)
-    if G * P ** 3 > BM_BUDGET:
-        return (V + V.T) / 2, None
+    return G * P ** 2 * (P if contrasts is None else contrasts) <= BM_BUDGET
+
+
+def _bell_mccaffrey(AX: np.ndarray, X: np.ndarray, bread: np.ndarray, blocks: Sequence[np.ndarray],
+                    contrasts: np.ndarray | None = None) -> np.ndarray:
+    """The Bell–McCaffrey df (:func:`cr2`) of each coefficient, or of each column of
+    ``contrasts`` (P × Q), a linear combination of them: the df depend only on the combination,
+    so a coefficient's are the same in any parameterization that holds it."""
+    P = X.shape[1]
     # Pass 2: the Satterthwaite pieces, a slice of coefficients at a time (S_j is P × P each).
-    T = AX @ bread  # row i, column j: p_g's entry for coefficient j
-    df = np.full(P, np.nan)
-    width = max(1, min(P, _BATCH // max(1, P * P)))
-    for j0 in range(0, P, width):
-        cols = slice(j0, min(P, j0 + width))
+    # T's row i, column j: p_g's entry for coefficient (or combination) j.
+    T = AX @ bread if contrasts is None else AX @ (bread @ np.asarray(contrasts, dtype=float))
+    Q = T.shape[1]
+    df = np.full(Q, np.nan)
+    width = max(1, min(Q, _BATCH // max(1, P * P)))
+    for j0 in range(0, Q, width):
+        cols = slice(j0, min(Q, j0 + width))
         J = cols.stop - cols.start
         sum_d = np.zeros(J)
         sum_k = np.zeros(J)
@@ -381,7 +413,7 @@ def cr2(X: np.ndarray, e: np.ndarray, codes: np.ndarray, bread: np.ndarray,
         denominator = sum_dd - 2.0 * sum_dk + tr_k2
         with np.errstate(divide="ignore", invalid="ignore"):
             df[cols] = np.where(denominator > 0, numerator / denominator, np.nan)
-    return (V + V.T) / 2, df
+    return df
 
 
 def _size_blocks(codes: np.ndarray, P: int) -> list[np.ndarray]:
@@ -653,6 +685,12 @@ class InferenceTable:
     # concern); never serialized.
     unidentified: list[str] = field(default_factory=list)
     dependency: str | None = None
+    # A linear combination ``c`` of the coefficients, at its estimate, as a row's fields (``se``,
+    # ``df``, ``ci_low``, ``ci_high``, ``p``, and ``infinite`` where separation is checked), for a
+    # table whose rows do not follow from its covariance and one df: CR2's Bell–McCaffrey df,
+    # Firth's profile intervals, a multinomial table's covariance not kept. :func:`by_identified`
+    # reads it for an intercept or cut-points on centered columns and drops it; never serialized.
+    contrast: Callable[[np.ndarray, float], dict[str, Any]] | None = None
 
 
 def _clean(value: Any) -> float | None:
@@ -752,11 +790,15 @@ def _cluster_caption(clusters: Clusters, bell_mccaffrey: bool = True) -> str:
 
 def _clustered(names: Sequence[str], est: np.ndarray, estimator: str, X: np.ndarray, e: np.ndarray,
                codes: np.ndarray, clusters: Clusters) -> InferenceTable:
-    """The CR2 table of a working linear model (``X``, ``e``), rows clustered by ``codes``."""
-    V, df = cr2(X, e, codes, bread_of(X))
-    exact = df is not None
-    if df is None:
-        df = np.full(len(est), float(clusters.n_clusters - 1))
+    """The CR2 table of a working linear model (``X``, ``e``), rows clustered by ``codes``; a
+    linear combination of its coefficients gets its own Bell–McCaffrey df
+    (:attr:`InferenceTable.contrast`)."""
+    X = np.asarray(X, dtype=float)
+    bread = bread_of(X)
+    V, AX, blocks = _cr2_parts(X, e, codes, bread)
+    exact = _bm_affordable(blocks, X.shape[1])
+    df = (_bell_mccaffrey(AX, X, bread, blocks) if exact else
+          np.full(len(est), float(clusters.n_clusters - 1)))
     se = np.sqrt(np.clip(np.diag(V), 0, None))
     reason = no_interval(names, se, df, fit=f"The cluster-robust (CR2) covariance by "
                                             f"`{clusters.column}`",
@@ -764,8 +806,15 @@ def _clustered(names: Sequence[str], est: np.ndarray, estimator: str, X: np.ndar
     if reason:
         return _refused(names, est, estimator, clusters, reason, ())
     rows = _t_rows(names, est, se, df)
-    return InferenceTable(rows, _info(estimator, "CR2", _cluster_caption(clusters, exact), clusters),
-                          _cluster_concerns(clusters), cov=V)
+    table = InferenceTable(rows, _info(estimator, "CR2", _cluster_caption(clusters, exact),
+                                       clusters), _cluster_concerns(clusters), cov=V)
+    if exact:
+        def contrast(c: np.ndarray, estimate: float) -> dict[str, Any]:
+            nu = _bell_mccaffrey(AX, X, bread, blocks, np.asarray(c, dtype=float)[:, None])[0]
+            return combination_row(estimate, math.sqrt(max(float(c @ V @ c), 0.0)), nu)
+
+        table.contrast = contrast
+    return table
 
 
 def _cluster_concerns(clusters: Clusters) -> list[str]:
@@ -1031,12 +1080,13 @@ CONSTANT_ROWS = {"intercept": "the intercept", "cuts": "the cut-points"}
 
 
 def column_scales(values: np.ndarray) -> np.ndarray:
-    """Each column's root mean square (1 where it is zero or not finite): a table's model is fit
-    with each column divided by it and its coefficients scaled back (:func:`by_identified`), an
-    identity in exact arithmetic that keeps a fit's numbers on columns of every unit at working
-    precision. statsmodels' least squares, logistic and multinomial fits, and every covariance
-    inverted from an unscaled information, served wrong estimates or standard errors once some
-    column's unit was 10⁵ or more times another's."""
+    """Each column's root mean square (1 where it is zero or not finite), of the columns centered
+    at their means where :func:`by_identified` centers them (their SDs): a table's model is fit
+    with each column divided by it and its coefficients scaled back, an identity in exact
+    arithmetic that keeps a fit's numbers on columns of every unit at working precision.
+    statsmodels' least squares, logistic and multinomial fits, and every covariance inverted from
+    an unscaled information, served wrong estimates or standard errors once some column's unit was
+    10⁵ or more times another's."""
     values = np.asarray(values, dtype=float)
     if values.size == 0:
         return np.ones(values.shape[1] if values.ndim == 2 else 0)
@@ -1108,16 +1158,23 @@ def _by_row_reason(n_rows: int, named: Sequence[str], constant: str | None, coun
 def by_identified(matrix: pd.DataFrame, build: Callable[[pd.DataFrame], InferenceTable], *,
                   layout: Layout, refuse: Callable[[str], InferenceTable],
                   beside: str = "the intercept", rows: np.ndarray | None = None,
-                  study: Sequence[str] | None = None, scaled: bool = True) -> InferenceTable:
+                  study: Sequence[str] | None = None, scaled: bool = True,
+                  centered: bool = True) -> InferenceTable:
     """A coefficient table of a family whose linear predictor is Xβ, from ``build`` (its table on
     a model matrix whose columns are not dependent), on ``matrix``.
 
-    The model is fit on the columns scaled to a root mean square of one, and its rows scaled back
-    (:func:`column_scales`, :func:`_unscaled`): a column's unit then changes its own coefficient
-    and standard error by the unit's factor and leaves every other row as it is, to working
-    precision, whatever the units. ``scaled`` False hands ``build`` the columns as they are, for a
-    fit that is already invariant to them (the mixed model's REML, which factors the design by
-    QR).
+    The model is fit on the columns centered at their means and scaled to an SD of one, and its
+    rows mapped back (:func:`_recentered`, :func:`_unscaled`): a column's unit then changes its
+    own coefficient and standard error by the unit's factor and leaves every other row as it is,
+    and its origin moves only the intercept (or the cut-points), to working precision, whatever
+    the units and origins. Scaled alone, a date in epoch seconds spanning a day stayed within 10⁻⁵
+    of a constant, so nearly a copy of the intercept, and the logistic and multinomial fits on it
+    stopped short of their maximum. ``centered`` False scales the columns to a root mean square of
+    one without centering them, for a fit whose own checks read the columns' origin (the GEE's
+    and the Cox model's near-singular concern; the Cox fit centers its columns itself), and
+    ``scaled`` False hands ``build`` the columns as they are, for a fit that is already invariant
+    to them (the mixed model's REML, which factors the design by QR). A layout with no constant
+    (``"columns"``) is never centered.
 
     Where the columns, with ``beside`` (the intercept, or a constant where cut-points or a
     baseline hazard take its place), are dependent on the rows ``rows`` marks (every row where
@@ -1127,16 +1184,21 @@ def by_identified(matrix: pd.DataFrame, build: Callable[[pd.DataFrame], Inferenc
     ``glm`` report it, whichever such columns are left out. Each coefficient in a dependency (the
     intercept or the cut-points too, where the constant is in one) is refused by row, with no
     estimate, interval or p-value (:attr:`InferenceTable.unidentified`), in words that name the
-    columns of the dependencies and count them, which are the table's first concern. The whole
-    table is refused, with no coefficient, in ``refuse``'s table (:func:`dependency_reason`'s
-    words), where a column of ``study`` (what is studied) is in a dependency, where no coefficient
-    is estimable, or where working precision cannot tell which columns to keep."""
+    columns of the dependencies and count them, which are the table's first concern. That holds
+    where the caller names what is studied (``study``, the columns of the study factor). The
+    whole table is refused, with no coefficient, in ``refuse``'s table
+    (:func:`dependency_reason`'s words), where a column of ``study`` is in a dependency, where the
+    caller names nothing studied (``study`` None: whether what it reads is estimable is not
+    known here), where no coefficient is estimable, or where working precision cannot tell which
+    columns to keep."""
     from turbotab.core.models.repeated import basis
 
     columns = [str(c) for c in matrix.columns]
     values = matrix.to_numpy(dtype=float)
     on = values if rows is None else values[np.asarray(rows)]
-    factors = column_scales(on) if scaled else np.ones(len(columns))
+    shift = (column_means(on) if scaled and centered and layout in CONSTANT_ROWS
+             else np.zeros(len(columns)))
+    factors = column_scales(on - shift) if scaled else np.ones(len(columns))
     scale = dict(zip(columns, factors))
     count, dependent, kept = basis(np.column_stack([np.ones(len(on)), on]))
     where = {c: j for j, c in enumerate(columns)}
@@ -1144,8 +1206,9 @@ def by_identified(matrix: pd.DataFrame, build: Callable[[pd.DataFrame], Inferenc
     def fit(names: Sequence[str]) -> InferenceTable:
         at = [where[c] for c in names]
         part = matrix.iloc[:, at].astype(float)
-        part = part / factors[at] if at else part
-        return _unscaled(build(part), layout, names, scale)
+        part = (part - shift[at]) / factors[at] if at else part
+        table = _recentered(build(part), layout, names, shift[at] / factors[at])
+        return _unscaled(table, layout, names, scale)
 
     if count == 0:
         return fit(columns)
@@ -1153,7 +1216,8 @@ def by_identified(matrix: pd.DataFrame, build: Callable[[pd.DataFrame], Inferenc
     constant = CONSTANT_ROWS.get(layout) if 0 in set(dependent.tolist()) else None
     estimable = [c for c in columns if c not in set(named)]
     has_constant = layout in CONSTANT_ROWS and constant is None
-    if (kept is None or set(study or ()) & set(named) or not (estimable or has_constant)):
+    if (kept is None or study is None or set(study) & set(named)
+            or not (estimable or has_constant)):
         frame = pd.DataFrame(on, columns=columns)
         return refuse(dependency_reason(frame, beside=beside) or "")
     keep = [columns[j - 1] for j in kept if j > 0]
@@ -1165,6 +1229,89 @@ def by_identified(matrix: pd.DataFrame, build: Callable[[pd.DataFrame], Inferenc
     if not table.rows:
         return table
     return _expanded(table, layout, keep, columns, set(named), constant is not None)
+
+
+def column_means(values: np.ndarray) -> np.ndarray:
+    """Each column's mean (0 where it is not finite), the origin :func:`by_identified` centers a
+    column at."""
+    values = np.asarray(values, dtype=float)
+    if values.size == 0:
+        return np.zeros(values.shape[1] if values.ndim == 2 else 0)
+    with np.errstate(invalid="ignore", over="ignore"):
+        mean = np.mean(values, axis=0)
+    return np.where(np.isfinite(mean), mean, 0.0)
+
+
+def combination_row(estimate: float, se: float | None, df: float | None = None
+                    ) -> dict[str, Any]:
+    """The fields of a row for one linear combination of a table's coefficients at ``estimate``
+    with standard error ``se``: its interval and p-value on t(``df``), or on the normal where
+    ``df`` is None (:func:`_t_rows`, :func:`_z_rows`)."""
+    se = math.nan if se is None else float(se)
+    row = (_z_rows(["c"], [estimate], [se]) if df is None else
+           _t_rows(["c"], [estimate], [se], [float(df)]))[0]
+    return {k: row[k] for k in ("se", "df", "ci_low", "ci_high", "p")}
+
+
+def _recentered(table: InferenceTable, layout: Layout, columns: Sequence[str],
+                origin: np.ndarray) -> InferenceTable:
+    """``table``, fit on ``columns`` each less its ``origin`` (in the units the fit saw), with its
+    intercept (each class's, for a multinomial model) or its cut-points those of the columns as
+    they were. A slope does not move with its column's origin; the intercept, the linear predictor
+    where every column is zero, moves by ``−Σ_j γ_j o_j``, and each cut-point, compared with
+    ``−Xβ``, by ``+Σ_j γ_j o_j``. Each such row's estimate is that combination ``c`` of the fit's
+    coefficients. A table whose rows follow from its covariance and one df gives the rest: where
+    the row had a standard error it is ``√(cᵀVc)``, and where it had an interval it is on the
+    row's own df (the same for every row of such a table) or the normal. A table whose rows do
+    not (CR2's Bell–McCaffrey df, which are the combination's own; Firth's profile interval and
+    separation check; a multinomial table's covariance, not kept) gives the row's fields itself
+    (:attr:`InferenceTable.contrast`), at every origin, and is then rid of it. The covariance
+    becomes ``A V Aᵀ`` for the map ``A`` from the fit's coefficients to the rows."""
+    contrast, table.contrast = table.contrast, None
+    origin = np.asarray(origin, dtype=float)
+    if not table.rows or layout not in CONSTANT_ROWS or not (np.any(origin) or contrast):
+        return table
+    n, P = len(table.rows), len(columns)
+    roles = _row_columns(table, layout, columns)
+    A = np.eye(n)
+    if layout == "intercept":
+        size = 1 + P
+        for b in range(n // size):
+            A[b * size, b * size + 1:(b + 1) * size] = -origin
+    else:
+        A[P:, :P] = origin
+    est = np.array([np.nan if r.get("estimate") is None else r["estimate"] for r in table.rows],
+                   dtype=float)
+    V = None if table.cov is None else np.asarray(table.cov, dtype=float)
+    for r, role in enumerate(roles):
+        if role is not None:
+            continue
+        c = A[r]
+        used = c != 0
+        b = float(c[used] @ est[used])
+        row = table.rows[r]
+        row["estimate"] = _clean(b)
+        if contrast is not None:
+            fields = contrast(c, b)
+        elif row.get("se") is not None:
+            if V is None:
+                raise ValueError(f"The row {row['feature']!r} has a standard error but its table "
+                                 f"no covariance to move it to the columns' origin.")
+            fields = combination_row(b, math.sqrt(max(float(c @ V @ c), 0.0)), row.get("df"))
+            if all(row.get(k) is None for k in ("ci_low", "ci_high", "p")):
+                fields = {"se": fields["se"]}
+        else:
+            fields = {}
+        infinite = fields.pop("infinite", None)
+        row.update(fields)
+        if infinite is not None:
+            label = str(row["feature"])
+            table.infinite = [f for f in table.infinite if f != label]
+            if infinite:
+                table.infinite.insert(0, label)
+    if V is not None:
+        table.cov = A @ V @ A.T
+    return table
 
 
 def _expanded(table: InferenceTable, layout: Layout, keep: Sequence[str], columns: Sequence[str],
@@ -1241,6 +1388,21 @@ def _fitted(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | No
     return _multinomial(names, exog, np.asarray(y), list(classes or []), clusters)
 
 
+# The Newton steps statsmodels' logistic and multinomial fits take before they stop
+# (:func:`not_converged`).
+MAX_NEWTON = 200
+
+
+def not_converged(model: str) -> str:
+    """Why a logistic or multinomial table whose maximum-likelihood fit stopped before converging
+    reports no estimate: its numbers are where the steps stopped, not the maximum's. Before the
+    columns were centered, a date in epoch seconds spanning a day stopped the logistic fit there
+    and served `x`'s log-odds as 59.05 (R's ``glm``: 1.06)."""
+    steps = f"{MAX_NEWTON:,} Newton step{'s' if MAX_NEWTON != 1 else ''}"
+    return (f"The {model} model's maximum-likelihood fit did not converge in {steps}, so no "
+            f"estimate, interval or p-value is reported.")
+
+
 def _least_squares(names: list[str], exog: pd.DataFrame, y: np.ndarray,
                    clusters: Clusters) -> InferenceTable:
     import statsmodels.api as sm
@@ -1291,9 +1453,12 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
         table = _firth_table(names, X, y, clusters, separated)
         table.infinite = [names[j] for j in found]  # the intercept too, where it is infinite
         return table
-    fit = sm.Logit(y, exog).fit(disp=0, maxiter=200)
+    fit = sm.Logit(y, exog).fit(disp=0, maxiter=MAX_NEWTON)
     est = np.asarray(fit.params, dtype=float)
     estimator = "logistic regression (maximum likelihood)"
+    if not fit.mle_retvals.get("converged", False):
+        return _refused(names, np.full(len(names), np.nan), estimator, clusters,
+                        not_converged("logistic"), ())
     refusal = floor_refusal(clusters, task="binary")
     if refusal:
         return _refused(names, est, estimator, clusters, *refusal)
@@ -1324,7 +1489,21 @@ def separation_concern(separated: Sequence[str]) -> str:
 
 def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clusters,
                  separated: list[str]) -> InferenceTable:
+    """Firth's table (:func:`_firth_rows`), whose intercept's row, the profile and separation
+    check of a linear combination where the columns were centered, it gives through
+    :attr:`InferenceTable.contrast` (:func:`firth_combination`), so no profile is computed for an
+    intercept the centering moves."""
     fit = firth_fit(X, y)
+    table = _firth_rows(names, X, y, clusters, separated, fit)
+    refused = table.info.get("refused") is not None
+    profile = not refused and not _POOLING.get()
+    table.contrast = lambda c, b: firth_combination(X, y, fit, c, profile=profile,
+                                                    se=not refused)
+    return table
+
+
+def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clusters,
+                separated: list[str], fit: FirthFit) -> InferenceTable:
     est = fit.beta
     estimator = FIRTH
     verb = "separates" if len(separated) == 1 else "separate"
@@ -1354,12 +1533,55 @@ def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clust
                                           **extra), concerns)
     rows = []
     for j, name in enumerate(names):
+        if name == "(intercept)":  # its profile is :func:`firth_combination`'s (:func:`_firth_table`)
+            rows.append(_row(name, est[j], se[j]))
+            continue
         low, high, p = firth_profile(X, y, fit, j)
         rows.append(_row(name, est[j], se[j], None, low, high, p))
     caption = ("95% profile penalized-likelihood intervals of a Firth-penalized logistic regression, "
                "because the maximum-likelihood estimate does not exist; p-values from penalized "
                "likelihood-ratio tests.")
     return InferenceTable(rows, _info(estimator, "profile", caption, clusters, **extra), concerns)
+
+
+def firth_combination(X: np.ndarray, y: np.ndarray, fit: FirthFit, c: np.ndarray, *,
+                      profile: bool = True, se: bool = True) -> dict[str, Any]:
+    """A linear combination ``cᵀβ`` of a Firth fit's coefficients as a row's fields: whether its
+    maximum-likelihood value is infinite (:func:`separated_columns`), with ``se`` its standard
+    error from the information, and with ``profile`` its profile penalized-likelihood interval and
+    likelihood-ratio p-value (:func:`firth_profile`). Each is computed on the design
+    reparametrized so that ``cᵀβ`` is its first coefficient, ``X [c/|c|², N]`` with ``N`` an
+    orthonormal basis of the directions orthogonal to ``c`` (``β = c/|c|² δ₀ + N δ``): Firth's
+    penalty, ½ log|I(β)|, moves by a constant under a linear reparametrization, so the profile is
+    the same, and the design keeps the conditioning of ``X``'s. A combination that is one
+    coefficient is that coefficient's row on ``X`` itself, its separation the fit's own reading."""
+    c = np.asarray(c, dtype=float)
+    out: dict[str, Any] = {}
+    nonzero = np.flatnonzero(c)
+    if len(nonzero) == 1 and c[nonzero[0]] == 1.0:
+        j = int(nonzero[0])
+        if se:
+            out["se"] = _clean(math.sqrt(max(float(fit.cov[j, j]), 0.0)))
+        if profile:
+            low, high, p = firth_profile(X, y, fit, j)
+            out.update(df=None, ci_low=None if low is None else _clean(low),
+                       ci_high=None if high is None else _clean(high), p=_clean(p))
+        return out
+    _, _, vt = np.linalg.svd(c[None, :])
+    T = np.vstack([c, vt[1:]])  # δ = T β
+    inverse = np.column_stack([c / float(c @ c), vt[1:].T])
+    Xd = np.asarray(X, dtype=float) @ inverse
+    out["infinite"] = 0 in separated_columns(Xd, y)
+    if se:
+        out["se"] = _clean(math.sqrt(max(float(c @ fit.cov @ c), 0.0)))
+    if profile:
+        delta = T @ fit.beta
+        moved = FirthFit(beta=delta, loglik=float(_firth_parts(Xd, y, delta)[3]),
+                         cov=T @ fit.cov @ T.T, iterations=fit.iterations, converged=fit.converged)
+        low, high, p = firth_profile(Xd, y, moved, 0)
+        out.update(df=None, ci_low=None if low is None else _clean(low),
+                   ci_high=None if high is None else _clean(high), p=_clean(p))
+    return out
 
 
 # What each completed copy's Firth table says it holds (:func:`for_pooling`), and so what the
@@ -1531,12 +1753,15 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
 
     X = exog.to_numpy(dtype=float)
     codes = pd.Categorical(y, categories=classes).codes
-    fit = sm.MNLogit(codes, exog).fit(disp=0, maxiter=200)
+    fit = sm.MNLogit(codes, exog).fit(disp=0, maxiter=MAX_NEWTON)
     B = np.asarray(fit.params, dtype=float)  # (P, K − 1), against the first class
     q = B.shape[1]
     labels = [f"{n} [{classes[k + 1] if classes else k + 1}]" for k in range(q) for n in names]
     est = B.ravel(order="F")  # class by class: the order of every vector below
     estimator = "multinomial logistic regression (maximum likelihood)"
+    if not fit.mle_retvals.get("converged", False):
+        return _refused(labels, np.full(len(labels), np.nan), estimator, clusters,
+                        not_converged("multinomial"), ())
     refusal = floor_refusal(clusters, task="multiclass")
     if refusal:
         return _refused(labels, est, estimator, clusters, *refusal)
@@ -1548,10 +1773,14 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
     if reason:
         return _refused(labels, est, estimator, clusters, reason, ())
     concerns = [clusters.note] if clusters.note else []
-    return InferenceTable(_z_rows(labels, est, se),
-                          _info(estimator, "model",
-                                "95% Wald intervals from the multinomial model's information.",
-                                clusters), concerns)
+    table = InferenceTable(_z_rows(labels, est, se),
+                           _info(estimator, "model",
+                                 "95% Wald intervals from the multinomial model's information.",
+                                 clusters), concerns)
+    # statsmodels orders the covariance class by class, as ``est``; the table keeps none.
+    C = np.asarray(fit.cov_params(), dtype=float)
+    table.contrast = lambda c, b: combination_row(b, math.sqrt(max(float(c @ C @ c), 0.0)))
+    return table
 
 
 __all__ = [

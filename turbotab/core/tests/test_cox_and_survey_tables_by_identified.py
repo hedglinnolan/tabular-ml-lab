@@ -1,6 +1,7 @@
-"""The Cox and survey coefficient tables on dependent columns serve the coefficients the rows
-identify and refuse by row each one in a dependency, in words that name exactly the dependency's
-columns (``inference.by_identified``), as the linear family's tables do.
+"""The Cox and survey coefficient tables on dependent columns, where the caller names what is
+studied (`x`, here), serve the coefficients the rows identify and refuse by row each one in a
+dependency, in words that name exactly the dependency's columns (``inference.by_identified``), as
+the linear family's tables do.
 
 On the base the survey least-squares and logistic tables served min-norm numbers with intervals
 for coefficients that are not identified (the intercept 0.2105 and a constant column 0.4210, of
@@ -30,6 +31,7 @@ from turbotab.core.models.survey import SurveyDesign, survey_table
 from turbotab.core.models.survival import cox_table, survey_cox_table, survival_outcome
 
 N = 300
+STUDIED = ["x"]  # in no dependency of any construction below
 
 
 def _data():
@@ -85,7 +87,7 @@ def test_the_cox_table_refuses_the_dependency_by_row_and_reports_the_rest_as_phr
     x, w, t, event, *_ = _data()
     matrix, named, _, left = _case(kind)
     y = survival_outcome(event, t)
-    table = cox_table(matrix, y, INDEPENDENT)
+    table = cox_table(matrix, y, INDEPENDENT, study=STUDIED)
     assert table.info["refused"] is None
     assert table.unidentified == named
     assert table.concerns[0] == _words(named, False, left, "a constant", None)
@@ -123,7 +125,7 @@ def test_the_survey_tables_refuse_the_dependency_by_row(task, kind):
     *_, design, yr, yb, _ = _data()
     matrix, named, constant, left = _case(kind)
     y, classes = (yr, None) if task == "regression" else (yb, [0, 1])
-    table = survey_table(task, matrix, y, classes, design)
+    table = survey_table(task, matrix, y, classes, design, study=STUDIED)
     assert table.info["refused"] is None
     assert table.unidentified == (["(intercept)"] if constant else []) + named
     assert table.concerns[0] == _words(named, constant, left, "the intercept", "the intercept")
@@ -160,8 +162,8 @@ def test_the_survey_ordinal_and_cox_tables_follow_the_same_rule():
     x, w, t, event, idx, design, _, _, yo = _data()
     matrix, named, _, left = _case("a copy")
     y = survival_outcome(event, t)
-    for build in (lambda m: survey_ordinal_table(m, yo, [0, 1, 2], design),
-                  lambda m: survey_cox_table(m, y, design)):
+    for build in (lambda m: survey_ordinal_table(m, yo, [0, 1, 2], design, study=STUDIED),
+                  lambda m: survey_cox_table(m, y, design, study=STUDIED)):
         table = build(matrix)
         reference = {r["feature"]: r for r in build(matrix.drop(columns=[left])).rows}
         assert table.info["refused"] is None
@@ -170,3 +172,31 @@ def test_the_survey_ordinal_and_cox_tables_follow_the_same_rule():
         rows = {r["feature"]: r for r in table.rows}
         for key in ("estimate", "se", "ci_low", "ci_high"):
             assert rows["x"][key] == pytest.approx(reference["x"][key], rel=1e-8)
+
+
+@pytest.mark.parametrize("family", ["Cox", "survey least squares", "survey logistic",
+                                    "survey proportional odds", "survey Cox"])
+def test_with_nothing_named_studied_a_dependency_refuses_the_table_whole(family):
+    """The guard's other side: where the caller names nothing studied, the copy `w2` = 2`w`
+    refuses the whole table, with no coefficient, in the dependency's words (the survey ones keep
+    a row per column, each with no estimate); `x`, named as studied, keeps it served by row."""
+    x, w, t, event, idx, design, yr, yb, yo = _data()
+    matrix, *_ = _case("a copy")
+    y = survival_outcome(event, t)
+    build = {"Cox": lambda m, **k: cox_table(m, y, INDEPENDENT, **k),
+             "survey least squares": lambda m, **k: survey_table("regression", m, yr, None,
+                                                                 design, **k),
+             "survey logistic": lambda m, **k: survey_table("binary", m, yb, [0, 1], design, **k),
+             "survey proportional odds": lambda m, **k: survey_ordinal_table(m, yo, [0, 1, 2],
+                                                                             design, **k),
+             "survey Cox": lambda m, **k: survey_cox_table(m, y, design, **k)}[family]
+    beside = "the intercept" if family in ("survey least squares", "survey logistic") else \
+        "a constant"
+    table = build(matrix)
+    assert table.info["refused"] == (
+        f"On these {N} rows the model matrix is singular: `w` and `w2` are fixed combinations of "
+        f"the other columns and {beside}, so their coefficients are not identified. No estimate, "
+        f"interval or p-value is reported; leave one of the dependent columns out.")
+    assert all(r["estimate"] is None for r in table.rows)
+    served = build(matrix, study=STUDIED)
+    assert served.info["refused"] is None and served.unidentified == ["w", "w2"]

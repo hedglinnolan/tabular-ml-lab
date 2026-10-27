@@ -365,7 +365,7 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
     unique maximum. Fit on its columns scaled and scaled back; where the columns and a constant
     (which the cut-points hold) are dependent, on the columns that identify the coefficients in
     no dependency, each one in a dependency refused by row (the cut-points too, where the
-    constant is in one), and the whole table where ``study`` is in one
+    constant is in one), and the whole table where ``study`` is in one or is None
     (``inference.by_identified``)."""
     from turbotab.core.models.inference import _no_spare_rows, _nothing, by_identified
 
@@ -482,7 +482,7 @@ def survey_ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | N
     """The design-based proportional-odds table (:func:`_survey_ordinal_table`), fit on its
     columns scaled and scaled back, and where the columns and a constant are dependent on the
     domain's rows, on the columns that identify the coefficients in no dependency, each one in a
-    dependency refused by row, the whole table where ``study`` is in one
+    dependency refused by row, the whole table where ``study`` is in one or is None
     (``inference.by_identified``)."""
     from turbotab.core.models.inference import DEPENDENT_EXITS, by_identified
     from turbotab.core.models.survey import _refused, domain_of
@@ -665,31 +665,34 @@ class ProportionalOdds(FamilyBase):
         return self.inference(pipeline, X, y, task=task, clusters=as_clusters(groups)).rows
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
-                  outcome: Any = None, rows: Any = None, survey: Any = None) -> Any:
+                  outcome: Any = None, rows: Any = None, survey: Any = None,
+                  study: Any = None) -> Any:
         """The proportional-odds table on the matrix the model saw, on the cumulative odds-ratio
-        scale (WP8): ``outcome`` names the outcome, ``rows`` says which rows ``X`` holds. With
+        scale (WP8): ``outcome`` names the outcome, ``rows`` says which rows ``X`` holds,
+        ``study`` the model matrix's columns of what is studied (``inference.by_identified``). With
         ``survey`` (the "surveyed population" answer's design) it is design-based
         (:func:`survey_ordinal_table`)."""
         from turbotab.core.models.linear import model_matrix
 
         levels = getattr(pipeline[-1], "level_names_", None)
         return self.inference_matrix(model_matrix(pipeline, X), y, task=task, classes=levels,
-                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey)
+                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey,
+                                     study=study)
 
     def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task,
                          classes: Sequence[Any] | None, clusters: Any, outcome: Any = None,
-                         rows: Any = None, survey: Any = None) -> Any:
+                         rows: Any = None, survey: Any = None, study: Any = None) -> Any:
         """The inference table on a given model matrix (the quintile trend test's refit),
         design-based under ``survey``."""
         from turbotab.core.models.inference import _on_rows
 
         if survey is None:
-            table = ordinal_table(matrix, y, classes, clusters)
+            table = ordinal_table(matrix, y, classes, clusters, study=study)
             if not table.rows:  # refused with no estimate: on no scale, its rows said
                 table.info.update(n_rows=int(len(matrix)), rows=rows)
                 return table
             return _on_rows(on_cumulative_scale(table, outcome, classes), len(matrix), rows)
-        table = survey_ordinal_table(matrix, y, classes, survey)
+        table = survey_ordinal_table(matrix, y, classes, survey, study=study)
         if table.rows:
             table = on_cumulative_scale(table, outcome, classes)
         n_domain = (table.info.get("survey") or {}).get("n_domain")

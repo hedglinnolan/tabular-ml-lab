@@ -1,8 +1,10 @@
 """A least-squares, logistic, multinomial, proportional-odds, mixed-model or GEE table on a model
-matrix whose columns are dependent serves the coefficients its rows identify and refuses by row
-each one in a dependency, in words that name the dependency's columns and count them
-(``inference.by_identified``); the whole table is refused, with no estimate, only where a column
-its caller names as studied is in a dependency, or no coefficient is identified.
+matrix whose columns are dependent, where its caller names what is studied, serves the
+coefficients its rows identify and refuses by row each one in a dependency, in words that name
+the dependency's columns and count them (``inference.by_identified``); the whole table is refused,
+with no estimate, where a column named as studied is in a dependency, where no coefficient is
+identified, and where the caller names nothing studied (the fit stage's tables until it names
+the study factor's columns: whether what it reads is estimable is not known to the table).
 
 There the coefficients in a dependency have no unique estimate, and what a fit made of them was
 rounding: the least-squares table served pseudo-inverse values with intervals beside a concern that
@@ -35,6 +37,8 @@ from turbotab.core.models.inference import INDEPENDENT, Clusters, inference_tabl
 from turbotab.core.models.ordinal import ordinal_table
 
 N = 240
+# What the by-row tests name as studied: `v` is in no dependency of any construction below.
+STUDIED = ["v"]
 
 
 def _rows() -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
@@ -157,7 +161,7 @@ def test_dependent_columns_are_refused_by_row_and_the_others_are_statsmodels(tas
     the words, the table's first concern, name the dependency's columns and not `v`, in no
     dependency. On the base each table was refused whole, with no rows."""
     matrix = _matrix(kind)
-    table = _table(task, matrix)
+    table = _table(task, matrix, study=STUDIED)
     _, _, left = DEPENDENCY[kind]
     assert table.info["refused"] is None
     assert table.info["estimator"] == ESTIMATORS[task]
@@ -186,7 +190,7 @@ def test_with_rows_that_repeat_the_others_are_the_table_without_the_aliased_colu
     standard error, df and interval; on the base the table was refused whole."""
     matrix = _matrix(kind)
     _, _, left = DEPENDENCY[kind]
-    table = _table(task, matrix, _clustered())
+    table = _table(task, matrix, _clustered(), study=STUDIED)
     reference = {r["feature"]: r for r in _table(task, matrix.drop(columns=[left]),
                                                  _clustered()).rows}
     assert table.info["refused"] is None
@@ -211,8 +215,8 @@ def test_the_mixed_and_gee_tables_follow_the_same_rule(family, kind):
 
     y = _rows()[2]["regression"]
     _, _, left = DEPENDENCY[kind]
-    build = ((lambda m: mixed_table(m, y, _clustered())) if family == "mixed" else
-             (lambda m: gee_table(m, y, _clustered(), "regression")))
+    build = ((lambda m: mixed_table(m, y, _clustered(), study=STUDIED)) if family == "mixed"
+             else (lambda m: gee_table(m, y, _clustered(), "regression", study=STUDIED)))
     table = build(_matrix(kind))
     reference = {r["feature"]: r for r in build(_matrix(kind).drop(columns=[left])).rows}
     assert table.info["refused"] is None
@@ -239,8 +243,8 @@ def test_with_no_unit_that_repeats_the_dependency_is_decided_first(family):
     x, w = rng.normal(size=(2, n))
     matrix = pd.DataFrame({"x": x, "w": w, "w2": 2 * w})
     y = 1 + 0.5 * x + 0.3 * w + rng.normal(size=n)
-    table = (mixed_table(matrix, y, INDEPENDENT) if family == "mixed" else
-             gee_table(matrix, y, INDEPENDENT, "regression"))
+    table = (mixed_table(matrix, y, INDEPENDENT, study=["x"]) if family == "mixed" else
+             gee_table(matrix, y, INDEPENDENT, "regression", study=["x"]))
     assert table.info["refused"].startswith("No identifier repeats in these rows")
     rows = {r["feature"]: r for r in table.rows}
     assert rows["w"]["estimate"] is None and rows["w2"]["estimate"] is None
@@ -257,7 +261,7 @@ def test_two_dependencies_are_counted():
     and the intercept with them; only `v` is reported."""
     x, v, ys = _rows()
     matrix = pd.DataFrame({"x": x, "v": v, "x_twice": 2 * x, "one": np.ones(N)})
-    table = inference_table("regression", matrix, ys["regression"], None)
+    table = inference_table("regression", matrix, ys["regression"], None, study=STUDIED)
     assert table.info["refused"] is None
     assert table.concerns[0] == (
         f"On these {N} rows the model matrix is singular: `x`, `x_twice` and `one` are, in 2 ways, "
@@ -287,6 +291,28 @@ def test_what_is_studied_in_a_dependency_refuses_the_whole_table(task):
     served = _table(task, _matrix("a copy"), study=["v"])
     assert served.info["refused"] is None
     assert any(r.startswith("x") for r in served.unidentified)
+
+
+@pytest.mark.parametrize("task", TASKS)
+def test_a_caller_that_names_nothing_studied_has_a_dependency_refused_whole(task):
+    """The guard both ways. With no ``study`` (the fit stage, the effects and sensitivity refits,
+    until they name the study factor's columns), a dependency that holds only `x` and its copy
+    refuses the table with no coefficient, in the dependency's words, as the base refused every
+    dependency, so a reader of the exposure's row never finds it missing from a served table;
+    named as studied, `v` keeps the table served by row (the silent side). An independent design
+    with no ``study`` is served (``test_independent_columns_are_fit_at_statsmodels_estimates``)."""
+    beside = "a constant" if task == "ordinal" else "the intercept"
+    table = _table(task, _matrix("a copy"))
+    assert table.rows == []
+    assert table.info["refused"] == (
+        f"On these {N} rows the model matrix is singular: `x` and `x_twice` are fixed "
+        f"combinations of the other columns and {beside}, so their coefficients are not "
+        f"identified. No estimate, interval or p-value is reported; leave one of the dependent "
+        f"columns out.")
+    assert [e["label"] for e in table.info["exits"]] == [
+        "Leave one of the dependent columns out of the model"]
+    served = _table(task, _matrix("a copy"), study=STUDIED)
+    assert served.info["refused"] is None and served.rows
 
 
 def test_a_design_with_no_identified_coefficient_is_refused_whole():
@@ -337,14 +363,20 @@ def test_a_nearly_dependent_column_is_not_refused():
     np.testing.assert_allclose([r["estimate"] for r in table.rows], ols.params, rtol=1e-6)
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "The fit stage names no study factor to the table (stages/modeling.py _inference_table passes "
+    "no study=), so a dependency refuses the whole table (inference.by_identified); this is the "
+    "ruling's by-row table once the stage passes the exposure's model-matrix columns, and XPASSes "
+    "then (T1V-1, the integrator's wiring)."))
 def test_through_the_fit_stage_the_linear_tables_are_served_by_row(tmp_path):
     """The real split, shelf, design and fit stages under inference, one row per participant: a
-    4-level `educ` beside its own 2-level recoding `educ2` (its level 2 is `educ`'s 3 and 4). The
-    least-squares and logistic tables refuse by row `educ_3`, `educ_4` and `educ2_2`, in words
-    naming them and not `educ_2` or `age`, and report the intercept, `educ_2` and `age` at
-    statsmodels' fit with `educ2_2` left out; no concern calls the matrix nearly singular. On the
-    base both tables were refused whole, with no coefficient (before package A the least-squares
-    table was served with intervals for all three)."""
+    4-level `educ` beside its own 2-level recoding `educ2` (its level 2 is `educ`'s 3 and 4), `age`
+    studied. The least-squares and logistic tables refuse by row `educ_3`, `educ_4` and `educ2_2`,
+    in words naming them and not `educ_2` or `age`, and report the intercept, `educ_2` and `age`
+    at statsmodels' fit with `educ2_2` left out; no concern calls the matrix nearly singular. On
+    the base both tables were refused whole, with no coefficient (before package A the
+    least-squares table was served with intervals for all three), and they are refused so while
+    the stage names nothing studied."""
     from turbotab.core.decisions import GrainSpec, ProjectState, SplitSpec
     from turbotab.core.tests.acceptance.test_wp12b_cox_mixed_gee import _stages
 

@@ -64,8 +64,8 @@ LOOSE_TOL = 1e-10  # after MAX_ITER steps, still accepted as converged below thi
 DIVERGED = claims.value("survival.monotone_likelihood", "diverged")
 # An eigenvalue of the information (on standardized columns) below this share of its largest is
 # where a monotone likelihood shows itself: far out along a direction that orders the risk sets the
-# information there decays like exp(−|β|), and the Newton decrement can fall below TOL before any
-# coefficient passes DIVERGED. Such a fit is checked for an ordering (:func:`_ordering`).
+# information there decays like exp(−|β|), and the Newton decrement can fall below TOL before the
+# linear predictor's SD passes DIVERGED. Such a fit is checked for an ordering (:func:`_ordering`).
 FLAT = claims.value("survival.monotone_likelihood", "flat")
 # Below this share the information is numerically singular at the estimate, so its pseudo-inverse is
 # no variance: the fit is not converged even when no ordering is found.
@@ -576,8 +576,8 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any, *,
     its columns scaled and scaled back. Where its columns and a constant (which the baseline
     hazard absorbs) are dependent, it is fit on the columns that identify the coefficients in no
     dependency, each one in a dependency refused by row, and the whole table refused where
-    ``study`` is in one (``inference.by_identified``), before the near-singular concern, whose
-    condition number at an exact dependency is rounding."""
+    ``study`` is in one or is None (``inference.by_identified``), before the near-singular
+    concern, whose condition number at an exact dependency is rounding."""
     from turbotab.core.models.inference import _nothing, by_identified
 
     return by_identified(matrix, lambda m: _cox_table(m, y, clusters), layout="columns",
@@ -674,7 +674,8 @@ def survey_cox_table(matrix: pd.DataFrame, y: np.ndarray, design: Any, *,
     """The design-based Cox table (:func:`_survey_cox_table`), fit on its columns scaled and
     scaled back; where the columns and a constant are dependent on the domain's rows, on the
     columns that identify the coefficients in no dependency, each one in a dependency refused by
-    row, and the whole table where ``study`` is in one (``inference.by_identified``)."""
+    row, and the whole table where ``study`` is in one or is None
+    (``inference.by_identified``)."""
     from turbotab.core.models.inference import DEPENDENT_EXITS, by_identified
     from turbotab.core.models.survey import _refused, domain_of
 
@@ -809,27 +810,30 @@ class Cox(FamilyBase):
         return coefficient_rows([str(f) for f in model.feature_names_in_], model.coef_)
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
-                  outcome: Any = None, rows: Any = None, survey: Any = None) -> Any:
+                  outcome: Any = None, rows: Any = None, survey: Any = None,
+                  study: Any = None) -> Any:
         """The Cox table on the hazard-ratio scale (WP8's ``_on_scale``: each row's hazard ratio
         and its interval, drawn on a log axis, the event named), and the rows it was fit on. With
         ``survey`` (a :class:`~turbotab.core.models.survey.SurveyDesign`, the "surveyed
-        population" answer) the table is design-based (:func:`survey_cox_table`)."""
+        population" answer) the table is design-based (:func:`survey_cox_table`); ``study`` names
+        the model matrix's columns of what is studied (``inference.by_identified``)."""
         from turbotab.core.models.linear import model_matrix
 
         return self.inference_matrix(model_matrix(pipeline, X), y, task=task, classes=[0, 1],
-                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey)
+                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey,
+                                     study=study)
 
     def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task, classes: Any,
                          clusters: Any, outcome: Any = None, rows: Any = None,
-                         survey: Any = None) -> Any:
+                         survey: Any = None, study: Any = None) -> Any:
         """The Cox table on a given model matrix (a quintile trend test's refit), design-based
         under ``survey``, on the hazard-ratio scale either way."""
         from turbotab.core.models.inference import _on_rows, _on_scale
 
         if survey is None:
-            table = cox_table(matrix, y, clusters)
+            table = cox_table(matrix, y, clusters, study=study)
             return _on_rows(_on_scale(table, "time_to_event", [0, 1], outcome), len(matrix), rows)
-        table = survey_cox_table(matrix, y, survey)
+        table = survey_cox_table(matrix, y, survey, study=study)
         if table.rows:
             table = _on_scale(table, "time_to_event", [0, 1], outcome)
         n_domain = (table.info.get("survey") or {}).get("n_domain")

@@ -736,16 +736,19 @@ def build_graph() -> Graph:
             # (``methods.smcfcs``). A fit cached before it, its copies drawn the old way, is
             # computed again.
             # fit 34 (the tail tables package, 2026-10-27): every coefficient table of a family
-            # whose linear predictor is Xβ is fit on its columns scaled to a root mean square of
-            # one and scaled back, where a column 10⁵ or more times another's unit served wrong
-            # estimates or standard errors; on dependent columns it serves the coefficients the
-            # rows identify, at the fit with the aliased columns left out, and refuses each one in
-            # a dependency by row, where it refused the whole table (and the survey tables served
-            # min-norm numbers, the Cox table the near-singular concern's words); and the Cox fit
-            # bounds the linear predictor's SD rather than each coefficient, so nearly collinear
-            # columns reach the maximum R's coxph finds (``inference.by_identified``,
-            # ``survival._spread``). The specification curve, which re-keys after the fit, keeps
-            # a departure's estimate where its design is dependent and what is studied is not.
+            # whose linear predictor is Xβ is fit on its columns scaled (and, but for the Cox
+            # model's and the GEE's, centered, its intercept or cut-points mapped back), where a
+            # column 10⁵ or more times another's unit, or a date in epoch seconds, served wrong
+            # estimates or standard errors; a logistic or multinomial fit that does not converge
+            # is refused; on dependent columns a table refuses the whole table in the
+            # dependency's words, as the fit stage names no study factor (and the survey tables
+            # served min-norm numbers, the Cox table the near-singular concern's words), and the
+            # mixed model is fit on the columns that identify the rest, where it refused the
+            # stage; and the Cox fit bounds the linear predictor's SD rather than each
+            # coefficient, so nearly collinear columns reach the maximum R's coxph finds
+            # (``inference.by_identified``, ``survival._spread``). The specification curve, which
+            # re-keys after the fit and names what it studies, keeps a departure's estimate where
+            # its design is dependent and what is studied is not.
             Stage("fit", 34, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
