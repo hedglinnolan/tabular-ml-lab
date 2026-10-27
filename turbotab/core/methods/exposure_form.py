@@ -2595,7 +2595,19 @@ def complete_spec(column: str, spec: Any, ctx: Any) -> dict[str, Any]:
         out.update(knots_rule=None, n_effective=None)
     out["scale"] = transform_signature(state, column)
     out["unit"] = scale_words(state, column)
-    _knots_place_on_the_analyzed_rows(column, out, state, ctx)
+    return out
+
+
+def _declared_spec(column: str, spec: Any, ctx: Any) -> dict[str, Any]:
+    """A declaration completed (:func:`complete_spec`) and checked as it is recorded: a spline
+    whose knots the analyzed rows cannot place is refused here
+    (:func:`_knots_place_on_the_analyzed_rows`), not in the rule's reading, so a reading of the
+    rule (the replay's, ``export.replay.rule_forms``) states the size it reads on such a draw and
+    the fit refuses the spline in its own words (the verifier's T2-C-V2)."""
+    out = complete_spec(column, spec, ctx)
+    state = _state(ctx)
+    if state is not None:
+        _knots_place_on_the_analyzed_rows(column, out, state, ctx)
     return out
 
 
@@ -2641,7 +2653,7 @@ def _knots_place_on_the_analyzed_rows(column: str, spec: Mapping[str, Any], stat
 
 
 def _form_records_its_scale(decision: Any, ctx: Any) -> Any:
-    fields = complete_spec(decision.column, decision.model_dump(exclude={"kind", "column"}), ctx)
+    fields = _declared_spec(decision.column, decision.model_dump(exclude={"kind", "column"}), ctx)
     return decision.model_copy(update=fields)
 
 
@@ -2651,7 +2663,7 @@ def _forms_record_their_scale(decision: Any, ctx: Any) -> Any:
     forms = {}
     for c, s in decision.forms.items():
         try:
-            forms[c] = ExposureFormSpec(**complete_spec(c, s.model_dump(), ctx))
+            forms[c] = ExposureFormSpec(**_declared_spec(c, s.model_dump(), ctx))
         except Refusal as refused:
             # The one-tap answer's way forward keeps the other columns' forms (as its validator's).
             exits = []
