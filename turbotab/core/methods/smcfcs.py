@@ -533,6 +533,8 @@ def _has_maximum(M: np.ndarray, out: Outcome, columns: Sequence[int], rows: np.n
         return False
     X = np.asarray(M, dtype=float)[rows][:, list(columns)]
     kept = [j - 1 for j in identified_columns(np.column_stack([np.ones(len(X)), X])) if j > 0]
+    if not kept:
+        return True  # no coefficient to have a maximum for
     entry = None if out.entry is None else np.asarray(out.entry, dtype=float)[rows]
     fit = cox_fit(np.ascontiguousarray(X[:, kept]),
                   survival_outcome(event, np.asarray(out.time, dtype=float)[rows], entry))
