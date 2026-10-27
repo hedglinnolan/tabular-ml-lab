@@ -1357,15 +1357,18 @@ def state_at_opening(records: Sequence[Any]) -> ProjectState | None:
     return decisions.fold([r for r in records if r.seq <= opened.seq])
 
 
-def read_as_now(then: Any, now: Any) -> Any:
-    """``then`` with each Decision A slot it leaves unanswered set to ``now``'s answer, where that
-    answer is what the unanswered slot reads as (:data:`UNANSWERED_READS_AS`): it changes no row,
-    so the fit is the same, though the engine keys an unanswered slot apart from every answer
-    (``graph.key_value``) and every project's keys stay as they are. ``then`` itself where no
-    slot is read so."""
-    update = {slot: value for slot, value in UNANSWERED_READS_AS.items()
-              if getattr(then, slot, None) is None and getattr(now, slot, None) == value}
-    return then.model_copy(update=update) if update else then
+def same_fit_readings(state: Any) -> list[Any]:
+    """``state`` and each state that reads every Decision A slot as it does but answers it the
+    other way: a slot unanswered, or answered with what an unanswered one reads as
+    (:data:`UNANSWERED_READS_AS`), set to the other of the two. The two give the same rows, so the
+    same fit, though the engine keys an unanswered slot apart from every answer
+    (``graph.key_value``) and every project's keys stay as they are. ``[state]`` where it answers
+    no such slot so."""
+    readings = [state]
+    for slot, value in UNANSWERED_READS_AS.items():
+        if decision_a_value(state, slot) == value:
+            readings = [r.model_copy(update={slot: alt}) for r in readings for alt in (None, value)]
+    return readings
 
 
 def keys_for(graph: Any, state: ProjectState, fingerprint: str) -> dict[str, str | None]:
@@ -1375,6 +1378,20 @@ def keys_for(graph: Any, state: ProjectState, fingerprint: str) -> dict[str, str
     from turbotab.core.graph import stage_keys
 
     return stage_keys(graph.order(), state.model_dump(mode="json"), fingerprint)
+
+
+def fit_keys(graph: Any, state: ProjectState, fingerprint: str) -> frozenset[str]:
+    """The keys of the fit ``state``'s answers give, the one rule every comparison with the fit
+    the seal was opened on or the plan locked on reads (:func:`changed_after_seal`, and the fits
+    list's opened and locked fits, ``ProjectService._opened_draw`` and ``_locked_fit``; the
+    orchestrator's ruling (c) on the swarm's tail): the key of each of its readings with the same
+    rows and the same fit (:func:`same_fit_readings`), a Decision A slot left unanswered or
+    answered with what it reads as, whatever is answered later. So a fit recorded while keeping
+    the table as it is stood, after the opening, is the opened fit whether that answer stands or
+    was reverted since (the verifier's T2-C-V3), and a fit served after reverting that answer,
+    recorded before the opening or the lock, is the opened or the locked fit (T2V-1)."""
+    keys = {keys_for(graph, same, fingerprint).get("fit") for same in same_fit_readings(state)}
+    return frozenset(k for k in keys if k is not None)
 
 
 def slots_read_by(graph: Any, stage: str) -> set[str]:
@@ -1458,22 +1475,16 @@ def post_seal_changes(records: Sequence[Any], slots: set[str]) -> list[str]:
 def changed_after_seal(graph: Any, records: Sequence[Any], fingerprint: str, served_key: str | None) -> bool:
     """Whether the fit served (``served_key``) differs from the fit the seal was opened on: the fit
     the answers at the opening key, or the same fit keyed with a Decision A slot they left
-    unanswered read as the answer now recorded, where that is what it read as
-    (:func:`read_as_now`). Keeping the table as it is after an opening with the orientation
-    unanswered changes no row, so neither the opened fit nor the fit served after that answer
-    changed after the opening (the verifier's B3s: the Results said one had, its held-out scores
-    the opening's)."""
+    unanswered read as the answer it reads as, or one they answered so read as unanswered
+    (:func:`fit_keys`). Keeping the table as it is changes no row, so neither the opened fit nor a
+    fit served after that answer, or after its revert, changed after the opening, whichever side
+    of the opening it was recorded on (the verifier's B3s: the Results said one had, its held-out
+    scores the opening's; T2-C-V3: a fit recorded while the answer stood, read after its revert;
+    and T2V-1: the answer recorded before the opening and reverted after it)."""
     then = state_at_opening(records)
     if then is None or served_key is None:
         return False
-    opened = {keys_for(graph, then, fingerprint).get("fit")}
-    try:
-        same = read_as_now(then, decisions.fold(records))
-    except Refusal:
-        same = then
-    if same is not then:
-        opened.add(keys_for(graph, same, fingerprint).get("fit"))
-    return served_key not in opened
+    return served_key not in fit_keys(graph, then, fingerprint)
 
 
 def post_seal_sentence(text: str | None, state_before: Any) -> str | None:
@@ -2585,7 +2596,7 @@ __all__ = [
     "keys_for",
     "measure", "open_seal_views", "r2_se", "time_order",
     "first_opening", "opening", "plan", "post_seal_changes", "post_seal_sentence",
-    "read_as_now", "read_sealed_scores", "reported_result",
+    "fit_keys", "same_fit_readings", "read_sealed_scores", "reported_result",
     "read_times", "seal_inputs", "sealed_scores_frame", "serve_fit", "slots_read_by",
     "split_offer", "split_writer", "state_at_opening", "unsettled_on_the_draw",
 ]

@@ -8,8 +8,11 @@ the role of what you study (``FeatureWise.build_for``), so it had nothing to tes
 engine knows that when the models are chosen (no column holds the role), the models answer is
 refused there, its ways forward the roles question and the other families chosen; where it learns
 it only at the fit (no column of the model matrix bears a study factor's name: a category enters
-as its indicators), the fit and the effects stage refuse in the same words, coded. The guard stays
-silent on a study factor the matrix holds, whose estimate is least squares' (NumPy's ``lstsq``).
+as its indicators), feature-wise regression's table is refused in the same words at the fit and
+the effects stage, and every family chosen beside it is fit (the orchestrator's ruling (b) on the
+swarm's tail: the fit stage refused for them all; ``test_featurewise_table_refusals_at_the_stages``
+runs the stages). The guard stays silent on a study factor the matrix holds, whose estimate is
+least squares' (NumPy's ``lstsq``).
 """
 from __future__ import annotations
 
@@ -19,8 +22,6 @@ import pytest
 
 import turbotab.core.models  # noqa: F401 - registers the families
 from turbotab.core import decisions as d
-from turbotab.core.graph import StageRefusal
-from turbotab.core.jobs import failure_of
 from turbotab.core.models import featurewise as fw
 
 WORDS = ("No study factor to test: feature-wise regression tests the columns with the role of what "
@@ -39,37 +40,39 @@ def _matrix(n: int = 40, seed: int = 3) -> tuple[pd.DataFrame, np.ndarray]:
 
 
 # ── at the fit: the model matrix holds no study factor ───────────────────────
+# The table is refused, not the fit (the orchestrator's ruling (b) on the swarm's tail): no row,
+# so no number; the words its reason, its caption's (with no rows it was estimated from) and its
+# first concern; its ways forward; and the rows it was handed.
 
 
-def test_no_column_with_the_role_is_a_typed_refusal_at_the_fit():
+def _refused(table, words: str, labels: list[str], n_rows: int) -> None:
+    assert table.rows == []
+    assert table.info["refused"] == words
+    assert table.info["caption"] == f"No tests: {words}"
+    assert [e["label"] for e in table.info["exits"]] == labels
+    assert table.info["n_rows"] == n_rows
+    assert table.concerns[0] == words
+
+
+def test_no_column_with_the_role_refuses_the_table_at_the_fit():
     frame, y = _matrix()
-    with pytest.raises(StageRefusal) as refused:
-        fw.featurewise_table(frame[["age"]], y, "regression", [])
-    exc = refused.value
-    assert isinstance(exc, ValueError) and exc.code == "featurewise_no_study_factor"
-    assert str(exc) == f"{WORDS}; no column has that role."
-    assert [e["label"] for e in exc.exits] == [ROLES_WAY, ANOTHER]
-    shown, refusal = failure_of(exc)
-    assert shown == f"ValueError: {WORDS}; no column has that role."
-    assert refusal is not None and refusal["code"] == "featurewise_no_study_factor"
+    table = fw.featurewise_table(frame[["age"]], y, "regression", [])
+    _refused(table, f"{WORDS}; no column has that role.", [ROLES_WAY, ANOTHER], len(frame))
 
 
 def test_a_study_factor_the_matrix_holds_no_column_of_is_refused_in_the_same_words():
     """`DBQ700` with the role, entered as its indicators: no column bears its name."""
     frame, y = _matrix()
-    with pytest.raises(StageRefusal) as refused:
-        fw.featurewise_table(frame[["age", "DBQ700_2", "DBQ700_3"]], y, "regression", ["DBQ700"])
-    assert refused.value.code == "featurewise_no_study_factor"
-    assert str(refused.value) == (f"{WORDS}; `DBQ700` has that role, but the model matrix holds no "
-                                  f"column of that name.")
-    assert [e["label"] for e in refused.value.exits] == [ANOTHER]
+    table = fw.featurewise_table(frame[["age", "DBQ700_2", "DBQ700_3"]], y, "regression",
+                                 ["DBQ700"])
+    _refused(table, (f"{WORDS}; `DBQ700` has that role, but the model matrix holds no column of "
+                     f"that name."), [ANOTHER], len(frame))
 
 
-def test_the_model_step_refuses_the_same_way():
+def test_the_model_step_refuses_its_table_the_same_way_and_is_fit():
     frame, y = _matrix()
-    with pytest.raises(StageRefusal) as refused:
-        fw.FeatureWiseTests(task="regression", features=[]).fit(frame[["age"]], y)
-    assert refused.value.code == "featurewise_no_study_factor"
+    step = fw.FeatureWiseTests(task="regression", features=[]).fit(frame[["age"]], y)
+    _refused(step.table_, f"{WORDS}; no column has that role.", [ROLES_WAY, ANOTHER], len(frame))
 
 
 def test_the_fit_stays_silent_on_a_study_factor_the_matrix_holds():
@@ -216,10 +219,8 @@ def test_the_residual_methods_estimate_is_the_nutrients_in_the_standard_model():
 def test_a_coded_study_factor_beside_an_energy_adjustment_is_still_refused():
     """`group` has the role, enters as its indicators, and is no nutrient the energy step adjusts."""
     frame, y = _intake()
-    with pytest.raises(StageRefusal) as refused:
-        _fit(frame, y, {"group": "exposure", "sugar": "covariate", "kcal": "energy",
-                        "age": "covariate"},
-             {"method": "residual", "energy_column": "kcal", "nutrients": ["sugar"]})
-    assert refused.value.code == "featurewise_no_study_factor"
-    assert str(refused.value) == (f"{WORDS}; `group` has that role, but the model matrix holds no "
-                                  f"column of that name.")
+    table = _fit(frame, y, {"group": "exposure", "sugar": "covariate", "kcal": "energy",
+                            "age": "covariate"},
+                 {"method": "residual", "energy_column": "kcal", "nutrients": ["sugar"]})
+    _refused(table, f"{WORDS}; `group` has that role, but the model matrix holds no column of that "
+                    f"name.", [ANOTHER], len(frame))

@@ -65,7 +65,8 @@ OMICS = ("genomics", "metabolomics")
 PLS_DA_ABSENT = ("PLS-DA is not offered: customary in metabolomics, it is sound only with nested "
                  "cross-validation and permutation tests, and VIP > 1 ranks features without "
                  "testing them.")
-# Its refusal where it has nothing to test, at the models answer or at the fit (the swarm's C2).
+# Its refusal where it has nothing to test, at the models answer, or of its table at the fit (the
+# swarm's C2; the table's, not the fit's, by the orchestrator's ruling (b) on the swarm's tail).
 NO_STUDY_FACTOR = "featurewise_no_study_factor"
 NO_STUDY_FACTOR_WORDS = ("No study factor to test: feature-wise regression tests the columns with "
                          "the role of what you study, one at a time, adjusted for the rest")
@@ -99,27 +100,26 @@ def _who(named: Sequence[str], features: Sequence[str]) -> list[str]:
             for n, f in zip(named, features)]
 
 
-def no_study_factor(features: Sequence[str] | None, named: Sequence[str] | None = None) -> Any:
-    """The fit's refusal (``graph.StageRefusal``) where the model matrix holds no column to test:
-    no column has the role of what you study (``features`` empty), or none of those that have it
-    is a column of the matrix by its name (a category enters as its indicators). ``named``: the
-    columns the roles answer gave the role, beside ``features``, the names the matrix holds them
-    under (an energy step's), so the words give the role to the column that has it."""
-    from turbotab.core.graph import StageRefusal
+def no_study_factor(features: Sequence[str] | None,
+                    named: Sequence[str] | None = None) -> tuple[str, list[dict[str, Any]]]:
+    """The table's refusal (its reason and ways forward) where the model matrix holds no column to
+    test: no column has the role of what you study (``features`` empty), or none of those that
+    have it is a column of the matrix by its name (a category enters as its indicators).
+    ``named``: the columns the roles answer gave the role, beside ``features``, the names the
+    matrix holds them under (an energy step's), so the words give the role to the column that has
+    it. The table is refused, not the fit, as :func:`formed_study_factor`'s is: every other family
+    chosen beside it is fit and shown (the orchestrator's ruling (b) on the swarm's tail)."""
     from turbotab.core.voice import listing
 
     sought = [str(f) for f in features or []]
     if not sought:
-        return StageRefusal(NO_STUDY_FACTOR, f"{NO_STUDY_FACTOR_WORDS}; no column has that role.",
-                            exits=[ROLES_WAY, ANOTHER_FAMILY])
+        return (f"{NO_STUDY_FACTOR_WORDS}; no column has that role.",
+                [dict(ROLES_WAY), dict(ANOTHER_FAMILY)])
     raw = [str(n) for n in named] if named is not None and len(named) == len(sought) else sought
     one = len(sought) == 1
-    return StageRefusal(
-        NO_STUDY_FACTOR,
-        f"{NO_STUDY_FACTOR_WORDS}; {listing(_who(raw, sought), ticked=False)} "
-        f"{'has' if one else 'have'} that role, but the model matrix holds no column of "
-        f"{'that name' if one else 'their names'}.",
-        exits=[ANOTHER_FAMILY])
+    return (f"{NO_STUDY_FACTOR_WORDS}; {listing(_who(raw, sought), ticked=False)} "
+            f"{'has' if one else 'have'} that role, but the model matrix holds no column of "
+            f"{'that name' if one else 'their names'}.", [dict(ANOTHER_FAMILY)])
 
 
 def formed_study_factor(forms: Mapping[str, Any], named: Sequence[str],
@@ -151,6 +151,55 @@ def formed_study_factor(forms: Mapping[str, Any], named: Sequence[str],
               "decision": SetExposureForm(column=c, form="linear").model_dump(mode="json")}
              for c, _, _ in formed]
     return f"{FORMED_WORDS}; {said}.", [*exits, dict(ANOTHER_FAMILY)]
+
+
+def indicator_columns(columns: Sequence[str], tested: Sequence[str],
+                      categories: Sequence[str] | None,
+                      predictors: Sequence[str] | None) -> dict[str, list[str]]:
+    """Each study factor that enters the model matrix as indicators of its levels (``categories``,
+    by its column), with the columns of ``columns`` that carry it, none of them tested: the rule
+    the effects stage reads an exposure's columns by (``estimand.primary_features``), a longer
+    predictor's columns its own, its spline terms among them. ``primary_features`` reads a longer
+    predictor's name with a spline term's primes on it, so it gives `grp_age'` beside `grp_age` to
+    `grp`; an indicator never carries a prime, so the name is read here without them (the
+    verifier's T2V2-4)."""
+    from turbotab.core.estimand import primary_features
+
+    mine = {str(c) for c in tested}
+    found = {}
+    for c in categories or []:
+        c = str(c)
+        longer = [str(p) for p in predictors or () if str(p) != c and str(p).startswith(f"{c}_")]
+        found[c] = [f for f in primary_features(columns, c, predictors or ())
+                    if f not in mine and not any(f.rstrip("'") == p
+                                                 or f.rstrip("'").startswith(f"{p}_")
+                                                 for p in longer)]
+    return found
+
+
+def not_tested(entered: Mapping[str, Sequence[str]] | None, adjust: Sequence[str]) -> str | None:
+    """The sentence a table adds where a study factor enters the model matrix as indicators of its
+    levels (``entered``: by its column, the columns that carry it), so is not tested: its
+    indicators are among the adjustment columns (``adjust``) of each test. None where the matrix
+    holds none of them (an unadjusted model of another study factor)."""
+    from turbotab.core.voice import listing
+
+    held = set(adjust)
+    present = [(c, sum(1 for f in cols if f in held)) for c, cols in (entered or {}).items()]
+    present = [(c, k) for c, k in present if k]
+    if not present:
+        return None
+    if len(present) == 1:
+        (column, k), = present
+        where = (f"its {k:,} indicators are" if k != 1 else "its indicator is")
+        return (f"`{column}` also has the role of what you study, but enters the model matrix as "
+                f"indicators of its levels, not one column, so it is not tested: {where} among "
+                f"the adjustment columns.")
+    counts = listing([f"{k:,} of `{c}`" for c, k in present], limit=len(present), ticked=False)
+    return (f"{listing([c for c, _ in present], limit=len(present))} also have the role of what "
+            f"you study, but each enters the model matrix as indicators of its levels, not one "
+            f"column, so {'neither' if len(present) == 2 else 'none'} is tested: their indicators "
+            f"({counts}) are among the adjustment columns.")
 
 
 def bh_adjust(p: Sequence[float]) -> np.ndarray:
@@ -279,27 +328,31 @@ def _clean(x: float) -> float | None:
 def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequence[str] | None,
                       clusters: Any = None, event: str | None = None, *,
                       named: Sequence[str] | None = None,
-                      forms: Mapping[str, Any] | None = None) -> Any:
+                      forms: Mapping[str, Any] | None = None,
+                      entered: Mapping[str, Sequence[str]] | None = None) -> Any:
     """The feature-wise inference table (an ``InferenceTable``) on the model matrix. ``named``:
     the columns the roles answer gave the role, beside ``features`` (the names the matrix holds
     them under), for the words of a refusal; ``forms``: the study factors whose declared form is
     not a straight line, by their ``named`` column, for which no table is made
-    (:func:`formed_study_factor`)."""
+    (:func:`formed_study_factor`). Where the matrix holds no study factor the table is refused the
+    same way (:func:`no_study_factor`). A refused table with no test records the rows it was
+    handed (``n_rows``), so no stage adds that it was estimated from them: nothing was.
+    ``entered``: the study factors that enter the matrix as indicators of their levels, each with
+    the columns that carry it (:func:`indicator_columns`); those it holds are adjustment columns,
+    and the caption says so (:func:`not_tested`, the verifier's T2V-3)."""
     from turbotab.core.models.inference import (INDEPENDENT, InferenceTable, _info, floor_refusal,
                                                 format_p)
 
     clusters = INDEPENDENT if clusters is None else clusters
     estimator = "feature-wise least squares"
-    if forms:
-        sought = list(features or [])
-        reason, exits = formed_study_factor(forms, list(named) if named is not None else sought,
-                                            sought)
-        info = _info(estimator, "none", f"No tests: {reason}", clusters, refused=reason,
-                     exits=exits)
-        return InferenceTable([], info, [reason])
     tested, adjust = split_columns(list(matrix.columns), features)
-    if not tested:
-        raise no_study_factor(features, named)
+    if forms or not tested:
+        sought = list(features or [])
+        reason, exits = (formed_study_factor(forms, list(named) if named is not None else sought,
+                                             sought) if forms else no_study_factor(features, named))
+        info = _info(estimator, "none", f"No tests: {reason}", clusters, refused=reason,
+                     exits=exits, n_rows=int(len(matrix)))
+        return InferenceTable([], info, [reason])
     values = matrix.to_numpy(dtype=float, na_value=np.nan)
     if not np.isfinite(values).all():
         raise ValueError("The model matrix has missing values; feature-wise tests need complete "
@@ -353,8 +406,9 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
         reason, exits = refusal
         rows = [{"feature": f, "estimate": _clean(b), "ci_low": None, "ci_high": None, "p": None,
                  "se": None, "df": None, "q": None} for f, b in zip(tested, est)]
-        info = _info(estimator, "none", f"No intervals: {reason}", clusters, refused=reason,
-                     exits=[dict(e) for e in exits])
+        said = not_tested(entered, adjust)
+        info = _info(estimator, "none", f"No intervals: {reason}" + (f" {said}" if said else ""),
+                     clusters, refused=reason, exits=[dict(e) for e in exits])
         return InferenceTable(rows, info, [reason, *concerns])
     p, low, high = _p_and_ci(est, se, df)
     q = bh_adjust(p)
@@ -377,6 +431,9 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
         covariance = "model"
     caption = (f"Each of {m:,} study factors tested on its own {adjusted}; the estimate is {estimand}. "
                f"95% intervals {how}. Benjamini–Hochberg q < {FDR:g}: {found:,} of {m:,}.")
+    said = not_tested(entered, adjust)
+    if said:
+        caption = f"{caption} {said}"
     smallest = np.nanmin(q) if np.isfinite(q).any() else float("nan")
     if found == 0 and np.isfinite(smallest):
         concerns.append(f"No study factor passes the false-discovery threshold (smallest q = "
@@ -413,26 +470,38 @@ class FeatureWiseTests(BaseEstimator):
 
     ``features``: the study factors as the model matrix holds them; ``named``: the same, as the
     roles answer named them; ``forms``: those whose declared form is not a straight line, by
-    their ``named`` column, whose table is refused (:func:`formed_study_factor`)."""
+    their ``named`` column, whose table is refused (:func:`formed_study_factor`); ``categories``:
+    those that enter the matrix as indicators of their levels, with the design's ``predictors``
+    to tell their columns (``entered_``, :func:`indicator_columns`)."""
 
-    # A step pickled before ``named`` and ``forms`` reads them as given none.
+    # A step pickled before ``named``, ``forms`` and ``categories`` reads them as given none.
     named: Sequence[str] | None = None
     forms: Mapping[str, Any] | None = None
+    categories: Sequence[str] | None = None
+    predictors: Sequence[str] | None = None
+    entered_: Mapping[str, Sequence[str]] | None = None
 
     def __init__(self, task: str = "regression", features: Sequence[str] | None = None,
-                 named: Sequence[str] | None = None, forms: Mapping[str, Any] | None = None):
+                 named: Sequence[str] | None = None, forms: Mapping[str, Any] | None = None,
+                 categories: Sequence[str] | None = None,
+                 predictors: Sequence[str] | None = None):
         self.task = task
         self.features = features
         self.named = named
         self.forms = forms
+        self.categories = categories
+        self.predictors = predictors
 
     def fit(self, X: pd.DataFrame, y: Any) -> "FeatureWiseTests":
         frame = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X)
         self.feature_names_in_ = np.asarray([str(c) for c in frame.columns], dtype=object)
         self.n_features_in_ = frame.shape[1]
         self.tested_, self.adjust_ = split_columns(list(frame.columns), self.features)
+        self.entered_ = (indicator_columns(self.feature_names_in_.tolist(), self.tested_,
+                                           self.categories, self.predictors)
+                         if self.categories else None)
         self.table_ = featurewise_table(frame, y, self.task, self.features, named=self.named,
-                                        forms=self.forms)
+                                        forms=self.forms, entered=self.entered_)
         if self.task == "binary":
             _, event, other = event_indicator(y)
             self.classes_ = np.asarray([0 if other is None else other, event], dtype=object)
@@ -453,7 +522,8 @@ class FeatureWise(FamilyBase):
         "Holds the false-discovery rate across thousands of features (Benjamini–Hochberg).",
     )
     cautions = (
-        "Each estimate ignores the other study factors: one separate question per feature.",
+        "Each estimate ignores the other study factors it tests: one separate question per "
+        "feature; a study factor that is a category is adjusted for, not tested.",
         "Tests only: it makes no predictions and has no cross-validated score.",
         "Intervals assume equal residual variance; robust ones fail at the thresholds it tests.",
     )
@@ -487,15 +557,21 @@ class FeatureWise(FamilyBase):
         """The model step for this design: the exposures are tested, everything else adjusts. An
         exposure the energy step adjusts is tested under the name that step gives it
         (:func:`energy_names`), the column the model matrix holds for it; where one's declared
-        form is not a straight line the table is refused (:func:`formed_study_factor`)."""
+        form is not a straight line the table is refused (:func:`formed_study_factor`). One that is
+        a category enters as indicators of its levels (the shared steps' levels or one-hot step),
+        so is not tested, and its table says so (:func:`not_tested`)."""
         from turbotab.core.methods.exposure_form import _form_of
 
         exposures = [c for c in spec.predictors if spec.roles.get(c) == "exposure"]
         declared = getattr(spec, "exposure_forms", None) or {}
         forms = {c: declared[c] for c in exposures
                  if c in declared and _form_of(declared[c])[0] != "linear"}
+        coded = set(spec.categorical or []) | set(getattr(spec, "levels", None) or [])
+        categories = [c for c in exposures if c in coded and c not in forms]
         return FeatureWiseTests(task=task, features=energy_names(exposures, spec),
-                                named=exposures, forms=forms or None)
+                                named=exposures, forms=forms or None,
+                                categories=categories or None,
+                                predictors=list(spec.predictors) if categories else None)
 
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         if task == "binary":
@@ -526,7 +602,8 @@ class FeatureWise(FamilyBase):
         return featurewise_table(self._matrix(pipeline, X), y, task,
                                  getattr(model, "features", None), clusters, event,
                                  named=getattr(model, "named", None),
-                                 forms=getattr(model, "forms", None))
+                                 forms=getattr(model, "forms", None),
+                                 entered=getattr(model, "entered_", None))
 
     def assess(self, s: Situation) -> Assessment:
         if s.purpose != "inference":
@@ -538,8 +615,9 @@ class FeatureWise(FamilyBase):
             # AUDIT_REPORT ME-18: PLS-DA is not on the shelf, and the one line says why.
             pls = (PLS_DA_ABSENT,) if "metabolomics" in lenses else ()
             return Assessment(3.5, "good", pls)
-        return Assessment(2.0, "fair", ("Each study factor is adjusted for the covariates but not for the "
-                                        "other study factors: a separate question for each.",))
+        return Assessment(2.0, "fair", ("Each study factor it tests is adjusted for the covariates but not "
+                                        "for the other study factors it tests: a separate question "
+                                        "for each.",))
 
 
 FEATUREWISE = register_family(FeatureWise())
@@ -548,9 +626,10 @@ FEATUREWISE = register_family(FeatureWise())
 def _has_a_study_factor(decision: Any, ctx: Any) -> None:
     """The models answer that chooses feature-wise regression where no column has the role of what
     you study, once the roles are answered: it would have nothing to test, so it is refused here
-    in the words the fit would refuse in (:func:`no_study_factor`), its ways forward the roles
-    question and the other families chosen beside it. A role not yet confirmed counts: the fit
-    reads the roles as they stand when it is pressed, and refuses there where none is left."""
+    in the words the fit refuses its table in (:func:`no_study_factor`), its ways forward the
+    roles question and the other families chosen beside it. A role not yet confirmed counts: the
+    fit reads the roles as they stand when it is pressed, and refuses the table there where none
+    is left."""
     from turbotab.core import decisions as d
 
     if FEATUREWISE.key not in (decision.models or []):
@@ -582,4 +661,5 @@ _register()
 
 __all__ = ["CR2_MAX_FEATURES", "FDR", "FEATUREWISE", "FORMED_STUDY_FACTOR", "FeatureWise",
            "FeatureWiseTests", "bh_adjust", "classical_tests", "energy_names", "event_indicator",
-           "featurewise_table", "formed_study_factor", "no_study_factor", "split_columns"]
+           "featurewise_table", "formed_study_factor", "indicator_columns", "no_study_factor",
+           "not_tested", "split_columns"]

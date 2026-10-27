@@ -1545,9 +1545,15 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
                 exits.append({"label": f"Say how the zeros of `{zeros[0]}` are read: values below a "
                                        f"detection limit, or true zeros", "decision": None})
             else:
-                exits.append({"label": "Complete cases, with their assumption stated",
-                              "decision": {**answer, "kind": "set_missing",
-                                           "strategy": "complete_case"}})
+                # Complete cases, where the analysis model has a maximum on them: a refusal that
+                # found it has none there (no woman dies, on the complete cases too) offers none.
+                if getattr(exc, "complete_cases", None) is not False:
+                    exits.append({"label": "Complete cases, with their assumption stated",
+                                  "decision": {**answer, "kind": "set_missing",
+                                               "strategy": "complete_case"}})
+                # The refusal's own ways forward: the sample answer, where the survey design's
+                # terms are what makes the imputation's model fail (``smcfcs._cox_refusal``).
+                exits.extend(dict(e) for e in getattr(exc, "exits", None) or [])
                 # A column with too few values to impute from can be left out, and the copies drawn
                 # without it (where complete cases on it would leave too few rows, the only way).
                 left = [c for c in _leavable(state, getattr(exc, "columns", None) or [])

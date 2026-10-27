@@ -793,8 +793,9 @@ def test_a_records_gate_is_the_stage_routes_read_for_its_own_goal_outcome_and_pl
     def gate(rec, *, purpose, locked=None, press=None, lock=None, question=None,
              locked_key=None):
         state = SimpleNamespace(purpose=purpose, plan_locked=locked, target="bmi")
+        locked_keys = frozenset() if locked_key is None else frozenset({locked_key})
         return ProjectService._record_gate(SimpleNamespace(replay=False), rec, state, question,
-                                           press, lock, locked_key)
+                                           press, lock, locked_keys)
 
     def reason(found):
         return None if found is None else found["reason"]
@@ -949,17 +950,18 @@ def test_a_records_held_out_scores_are_served_only_on_the_rows_the_opening_opene
                          press=None, families=["linear"], seconds=1.0, workers=2,
                          primary_metric="mse", folds=None, seed=0, held_out=held_out)
 
-    opened_fit, opened = {"n_holdout": 150, "holdout_sealed": False}, (24, "rows-a", "k")
+    opened_fit, opened = {"n_holdout": 150, "holdout_sealed": False}, (24, "rows-a",
+                                                                       frozenset({"k"}))
     assert _held_out_why(record(), opened_fit, opened, "hba1c") is None
     # Computed before the opening (it is not among its records): the opened fit's own, the
     # current fit's, and no other's.
     before = record(key="k0", decisions=(1, 2))
-    assert _held_out_why(before, opened_fit, (24, "rows-a", "k0"), "hba1c") is None
+    assert _held_out_why(before, opened_fit, (24, "rows-a", frozenset({"k0"})), "hba1c") is None
     assert _held_out_why(before, opened_fit, opened, "hba1c", current="k0") is None
     assert _held_out_why(before, opened_fit, opened, "hba1c", current="k") == (
         "This fit was computed before the opening at decision #24, which opened another fit's "
         "held-out scores, so this fit's are not served.")
-    assert _held_out_why(before, opened_fit, (24, "rows-a", None), "hba1c").startswith(
+    assert _held_out_why(before, opened_fit, (24, "rows-a", frozenset()), "hba1c").startswith(
         "This fit was computed before the opening at decision #24")
     assert _held_out_why(record(key="k2"), opened_fit, opened, "hba1c", current="k") is None
     # A record whose fit is no longer kept: whether it is the opened fit, from the keys alone.
@@ -978,7 +980,7 @@ def test_a_records_held_out_scores_are_served_only_on_the_rows_the_opening_opene
         "served only on the rows the opening in force opened.")
     assert _held_out_why(record(held_out=None), opened_fit, opened, "hba1c").startswith(
         "The held-out rows this fit was scored on")
-    assert _held_out_why(record(), opened_fit, (24, None, "k"), "hba1c").startswith(
+    assert _held_out_why(record(), opened_fit, (24, None, frozenset({"k"})), "hba1c").startswith(
         "The held-out rows this fit was scored on")
     assert _held_out_why(record(held_out="rows-b"), opened_fit, opened, "hba1c") == (
         "This fit was scored on other held-out rows than those the opening at decision #24 "

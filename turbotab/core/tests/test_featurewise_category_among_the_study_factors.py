@@ -1,0 +1,346 @@
+"""A category among feature-wise regression's study factors (the verifier's T2V-3 on the swarm's
+tail).
+
+Feature-wise regression tests each study factor that the model matrix holds as one column of its
+name, adjusted for every other column but the other study factors tested (``split_columns``). A
+category enters the matrix as indicators of its levels, not one column, so it is not tested, and
+its indicators are among the adjustment columns of each test. The fit stage's table has always
+done so, saying nothing of it; the effects stage tested each indicator as a study factor of its
+own, so its Model 2 row for `fiber` (adjusted for `grp`'s indicators one at a time, beside the
+others tested) was not the fit's. Now both stages test the fit's study factors, and say which one
+is not tested and where its indicators went.
+
+The construction: ``estimand_fixtures.cohort`` (400 rows) with a category `grp` (levels a, b, c;
+the one-hot step drops the first level, so `grp_b` and `grp_c` enter) shifting `glucose`. The
+truth is statsmodels' least squares on the design written out here, with its classical standard
+error (the family's, ``classical_tests``):
+
+* the exposure family {`fiber`, `grp`}: the fit's row for `fiber` and the effects stage's Model 2
+  row are each that of glucose ~ fiber + the Model 2 covariates + `grp`'s indicators, the
+  unadjusted one that of glucose ~ fiber + `grp`'s indicators, Model 3's beside `bmi`; no row is
+  `grp`'s or an indicator's, and each caption names `grp` and its 2 indicators;
+* silent where the matrix holds no indicator of it: `fiber` the one study factor of the estimand,
+  `grp` another column with that role, the unadjusted model holds `fiber` alone, so its caption
+  says nothing of `grp`, and Model 2's does;
+* silent for a family of numeric study factors: each is tested without the other, its caption
+  pinned whole, its false-discovery count statsmodels' Benjamini–Hochberg, the family's sentence
+  the estimand's own.
+
+Repair round 2 (the verifier's T2V2-1, T2V2-3 and T2V2-4):
+
+* the estimand `grp` beside `fiber`: feature-wise regression has no test of `grp`, so each declared
+  model's table is refused in the fit's words, naming `grp`, where it tested `fiber` in its place;
+* the family {`fiber`, `grp`}: its multiplicity sentence counts the 1 test feature-wise regression
+  runs (Benjamini–Hochberg over 1, so q = p) and names `grp` as adjusted for, not tested; each
+  method's words are pinned whole, with two tested and with one;
+* a covariate `grp_age` in a spline beside `grp`: its terms `grp_age'` and `grp_age''` are not
+  counted among `grp`'s indicators, which are the one-hot step's 2.
+"""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import pytest
+import statsmodels.api as sm
+from statsmodels.stats.multitest import multipletests
+
+import turbotab.core.models  # noqa: F401 - registers the families
+from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+N = 400
+ROLES = {"pid": "identifier", "age": "covariate", "sex": "covariate", "smoking": "covariate",
+         "activity": "covariate", "bmi": "covariate", "fiber": "exposure"}
+MODEL_2 = ["sex_male", "age", "smoking", "activity"]  # the confounders and the precision column
+MODEL_3 = [*MODEL_2, "bmi"]  # beside the column of unknown timing
+GRP = ["grp_b", "grp_c"]
+NOT_TESTED = ("`grp` also has the role of what you study, but enters the model matrix as "
+              "indicators of its levels, not one column, so it is not tested: its 2 indicators "
+              "are among the adjustment columns.")
+
+
+def _frame(**extra) -> pd.DataFrame:
+    frame = ef.cohort(N, seed=7)
+    rng = np.random.default_rng(11)
+    frame["grp"] = rng.choice(["a", "b", "c"], N)
+    frame["glucose"] = frame["glucose"] + np.where(frame["grp"] == "c", 3.0, 0.0)
+    for column, values in extra.items():
+        frame[column] = values
+    return frame
+
+
+def _design(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    X = pd.DataFrame({"(intercept)": np.ones(len(frame))}, index=frame.index)
+    for c in columns:
+        if c == "sex_male":
+            X[c] = (frame["sex"] == "male").astype(float)
+        elif c in GRP:
+            X[c] = (frame["grp"] == c[-1]).astype(float)
+        else:
+            X[c] = frame[c].astype(float)
+    return X
+
+
+def _ols(frame: pd.DataFrame, tested: str, adjust: list[str]) -> tuple[float, float, float]:
+    """(estimate, classical standard error, p) of ``tested`` in glucose ~ tested + adjust."""
+    fit = sm.OLS(frame["glucose"].to_numpy(float), _design(frame, [tested, *adjust])).fit()
+    return float(fit.params[tested]), float(fit.bse[tested]), float(fit.pvalues[tested])
+
+
+def _fit_model(out: dict) -> dict:
+    return next(m for m in out["fit_raw"]["models"] if m["family"] == "featurewise")
+
+
+def _sequence(out: dict) -> dict:
+    index = next(i for i, f in enumerate(out["effects"]["families"])
+                 if f["family"] == "featurewise")
+    return ef.sequence(out["effects"], index)
+
+
+def _only(rows: list[dict], key: str = "feature") -> dict:
+    (row,) = rows
+    assert row[key] == "fiber"
+    return row
+
+
+def _matches(row: dict, truth: tuple[float, float, float]) -> None:
+    assert row["estimate"] == pytest.approx(truth[0], rel=1e-9)
+    assert row["se"] == pytest.approx(truth[1], rel=1e-9)
+
+
+@pytest.fixture(scope="module")
+def family(tmp_path_factory):
+    frame = _frame()
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  roles={**ROLES, "grp": "exposure"}, models=["linear", "featurewise"],
+                  family=True, multiplicity="fdr_bh")
+    return frame, ef.run(frame, tmp_path_factory.mktemp("family"), st)
+
+
+def test_a_category_in_the_family_is_adjusted_for_not_tested_at_the_fit_and_the_effects_stage(
+        family):
+    frame, out = family
+    fit = _only(_fit_model(out)["coefficients"])
+    _matches(fit, _ols(frame, "fiber", [*MODEL_2, *GRP]))
+    sequence = _sequence(out)
+    model_2 = _only(sequence["model_2"]["effects"])
+    assert (model_2["estimate"], model_2["se"]) == (fit["estimate"], fit["se"])
+    _matches(_only(sequence["crude"]["effects"]), _ols(frame, "fiber", GRP))
+    _matches(_only(sequence["model_3"]["effects"]), _ols(frame, "fiber", [*MODEL_3, *GRP]))
+    caption = _fit_model(out)["inference"]["caption"]
+    assert caption.startswith("Each of 1 study factors tested on its own with 6 adjustment columns;")
+    assert NOT_TESTED in caption
+    for key, n_adjust in (("crude", 2), ("model_2", 6), ("model_3", 7)):
+        said = sequence[key]["inference"]["caption"]
+        assert said.startswith(f"Each of 1 study factors tested on its own with {n_adjust} "
+                               f"adjustment columns;"), key
+        assert NOT_TESTED in said, key
+
+
+def test_a_category_beside_the_estimands_one_study_factor_is_named_where_the_model_holds_it(
+        tmp_path):
+    frame = _frame()
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  roles={**ROLES, "grp": "exposure"}, models=["linear", "featurewise"])
+    out = ef.run(frame, tmp_path, st)
+    assert NOT_TESTED in _fit_model(out)["inference"]["caption"]
+    sequence = _sequence(out)
+    crude = sequence["crude"]
+    _matches(_only(crude["effects"]), _ols(frame, "fiber", []))
+    assert crude["inference"]["caption"].startswith(
+        "Each of 1 study factors tested on its own with no adjustment columns;")
+    assert "`grp`" not in crude["inference"]["caption"]  # silent: the model holds no indicator of it
+    _matches(_only(sequence["model_2"]["effects"]), _ols(frame, "fiber", [*MODEL_2, *GRP]))
+    assert NOT_TESTED in sequence["model_2"]["inference"]["caption"]
+
+
+def test_a_family_of_numeric_study_factors_tests_each_without_the_other(tmp_path):
+    rng = np.random.default_rng(5)
+    frame = _frame(sugar=rng.normal(50, 10, N))
+    frame["glucose"] = frame["glucose"] + 0.2 * frame["sugar"]
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  roles={**ROLES, "sugar": "exposure"}, models=["linear", "featurewise"],
+                  family=True, multiplicity="fdr_bh")
+    out = ef.run(frame, tmp_path, st)
+    model = _fit_model(out)
+    rows = {r["feature"]: r for r in model["coefficients"]}
+    assert set(rows) == {"fiber", "sugar"}
+    truth = {x: _ols(frame, x, MODEL_2) for x in rows}
+    for x, row in rows.items():
+        _matches(row, truth[x])
+    found = int(multipletests([truth["fiber"][2], truth["sugar"][2]], method="fdr_bh")[1]
+                .__lt__(0.05).sum())
+    df = N - (1 + len(MODEL_2)) - 1
+    assert model["inference"]["caption"] == (
+        f"Each of 2 study factors tested on its own with {len(MODEL_2)} adjustment columns; the "
+        f"estimate is the change in the outcome per unit of each study factor, adjusted for them. "
+        f"95% intervals from each test's own residual variance (classical least squares, exact "
+        f"under the null for normal errors), on t({df}). Benjamini–Hochberg q < 0.05: {found} of "
+        f"2. Estimated from all {N} analyzed rows.")
+    model_2 = {r["feature"]: r for r in _sequence(out)["model_2"]["effects"]}
+    for x in rows:
+        assert (model_2[x]["estimate"], model_2[x]["se"]) == (rows[x]["estimate"], rows[x]["se"])
+    # silent: no member is a category, so the family's sentence is the estimand's, byte for byte
+    assert out["effects"]["multiplicity"] == (
+        "2 exposures were tested, each in turn; Benjamini–Hochberg q-values control the "
+        "false-discovery rate across all 2 (Benjamini & Hochberg 1995, J R Stat Soc B 57:289), and "
+        "every member is shown, significant or not.")
+
+
+def test_the_table_counts_each_categorys_indicators_and_no_longer_predictors_columns():
+    """On a matrix written out by hand: `g` (3 levels) and `h` (2) are categories with the role,
+    `g_size` a covariate whose name begins with `g`'s, so its column is its own, not `g`'s
+    (``estimand.primary_features``). The one test of `x` is least squares on every other column."""
+    from turbotab.core.models import featurewise as fw
+
+    rng = np.random.default_rng(3)
+    n = 120
+    g = rng.choice(["a", "b", "c"], n)
+    h = rng.choice(["n", "y"], n)
+    matrix = pd.DataFrame({"x": rng.normal(size=n), "g_size": rng.normal(size=n),
+                           "g_b": (g == "b").astype(float), "g_c": (g == "c").astype(float),
+                           "h_y": (h == "y").astype(float)})
+    y = 1.0 + 0.5 * matrix["x"] + matrix["g_c"] + rng.normal(size=n)
+    columns = list(matrix.columns)
+    entered = fw.indicator_columns(columns, ["x"], ["g", "h"], ["x", "g_size", "g", "h"])
+    assert entered == {"g": ["g_b", "g_c"], "h": ["h_y"]}
+    table = fw.featurewise_table(matrix, y, "regression", ["x", "g", "h"], entered=entered)
+    (row,) = table.rows
+    fit = sm.OLS(y.to_numpy(), sm.add_constant(matrix)).fit()
+    assert row["estimate"] == pytest.approx(float(fit.params["x"]), rel=1e-9)
+    assert row["se"] == pytest.approx(float(fit.bse["x"]), rel=1e-9)
+    assert table.info["caption"].endswith(
+        "`g` and `h` also have the role of what you study, but each enters the model matrix as "
+        "indicators of its levels, not one column, so neither is tested: their indicators (2 of "
+        "`g` and 1 of `h`) are among the adjustment columns.")
+    alone = fw.featurewise_table(matrix, y, "regression", ["x", "h"], entered={"h": ["h_y"]})
+    assert alone.info["caption"].endswith(
+        "`h` also has the role of what you study, but enters the model matrix as indicators of its "
+        "levels, not one column, so it is not tested: its indicator is among the adjustment "
+        "columns.")
+    plain = fw.featurewise_table(matrix, y, "regression", ["x"])
+    assert plain.info["caption"].endswith("Benjamini–Hochberg q < 0.05: 1 of 1.")  # silent
+
+
+# ── repair round 2 (the verifier's T2V2-1, T2V2-3 and T2V2-4) ──
+
+GRP_ALONE = ("No study factor to test: feature-wise regression tests the columns with the role of "
+             "what you study, one at a time, adjusted for the rest; `grp` has that role, but the "
+             "model matrix holds no column of that name.")
+
+
+def test_a_category_estimand_beside_a_numeric_study_factor_refuses_each_feature_wise_table(
+        tmp_path):
+    """The estimand is `grp`, a category; `fiber` also has the role. Feature-wise regression tests
+    `fiber` and adjusts for `grp`'s indicators, so it has no test of the estimand's study factor:
+    each declared model's table is refused in the fit's words, naming `grp` as the roles answer
+    named it, with no row of `fiber` served as an effect or an adjustment term. The other family is
+    fit and shows `grp`'s indicators, as it did."""
+    frame = _frame()
+    st = ef.state(target="glucose", task="regression", measure="mean_difference", exposure="grp",
+                  roles={**ROLES, "grp": "exposure"}, models=["linear", "featurewise"])
+    out = ef.run(frame, tmp_path, st)
+    sequence = _sequence(out)
+    assert set(sequence) == {"crude", "model_2", "model_3"}
+    for key, model in sequence.items():
+        assert model["effects"] is None, key
+        assert model["inference"]["refused"] == GRP_ALONE, key
+        assert model["inference"]["caption"] == f"No tests: {GRP_ALONE}", key
+    family = next(f for f in out["effects"]["families"] if f["family"] == "featurewise")
+    assert family["appendix"] == []
+    linear = ef.sequence(out["effects"], 0)
+    assert out["effects"]["families"][0]["family"] == "linear"
+    model_2 = {r["feature"]: r for r in linear["model_2"]["effects"]}
+    assert set(model_2) == set(GRP)
+    fit = sm.OLS(frame["glucose"].to_numpy(float),
+                 _design(frame, ["fiber", *MODEL_2, *GRP])).fit()
+    for c in GRP:
+        assert model_2[c]["estimate"] == pytest.approx(float(fit.params[c]), rel=1e-9)
+
+
+BH_ONE = ("Feature-wise regression tested 1 of the 2 exposures (`fiber`); Benjamini–Hochberg "
+          "q-values control the false-discovery rate across that 1 test (Benjamini & Hochberg "
+          "1995, J R Stat Soc B 57:289), and every exposure tested is shown, significant or not. "
+          "`grp` is a category: in each feature-wise model it enters as indicators of its levels, "
+          "not one column, so it is adjusted for in each test, not tested.")
+
+
+def test_the_familys_multiplicity_counts_the_tests_feature_wise_regression_runs(tmp_path):
+    """The family {`fiber`, `grp`} under feature-wise regression alone: 1 test, of `fiber`, its
+    Benjamini–Hochberg count over that 1 (the caption's 1 of 1), and `grp` named as adjusted for,
+    not tested, where the sentence said 2 were tested and every member shown."""
+    frame = _frame()
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  roles={**ROLES, "grp": "exposure"}, models=["featurewise"], family=True,
+                  multiplicity="fdr_bh")
+    out = ef.run(frame, tmp_path, st)
+    effects = out["effects"]
+    assert effects["multiplicity"] == BH_ONE
+    assert effects["methods"].endswith(f" {BH_ONE}")
+    (row,) = ef.sequence(effects, 0)["model_2"]["effects"]
+    assert row["feature"] == "fiber" and row["q"] == pytest.approx(row["p"], rel=1e-12)  # m = 1
+
+
+def test_the_familys_multiplicity_words_for_each_method():
+    """Each method's sentence where a category among the members is adjusted for, not tested,
+    with two tested and with one; with none adjusted for, the estimand's own sentence."""
+    from turbotab.core import decisions as d, estimand as est
+    from turbotab.core.stages.effects import family_multiplicity_statement as said
+
+    roles = {**ROLES, "grp": "exposure", "arm": "exposure", "sugar": "exposure"}
+    st = ef.state(target="glucose", task="regression", measure="mean_difference", roles=roles,
+                  models=["featurewise"], family=True, multiplicity="fdr_bh")
+    spec = st.estimand
+    members = ["fiber", "sugar", "grp", "arm"]
+    assert said(st, spec, members, []) == est.multiplicity_statement(st, spec, 4)  # silent
+    assert said(st, spec, members, ["grp", "arm"]) == (
+        "Feature-wise regression tested 2 of the 4 exposures (`fiber` and `sugar`), each in turn; "
+        "Benjamini–Hochberg q-values control the false-discovery rate across all 2 (Benjamini & "
+        "Hochberg 1995, J R Stat Soc B 57:289), and every exposure tested is shown, significant or "
+        "not. `grp` and `arm` are categories: in each feature-wise model they enter as indicators "
+        "of their levels, not one column, so they are adjusted for in each test, not tested.")
+    stated = st.model_copy(update={"estimand": spec.model_copy(
+        update={"multiplicity": "count_stated"})})
+    assert said(stated, stated.estimand, ["fiber", "grp"], ["grp"]) == (
+        "Feature-wise regression tested 1 of the 2 exposures (`fiber`); p-values are not adjusted "
+        "for multiplicity, and that 1 test is stated (customary for a few declared nutrient "
+        "hypotheses, Rothman 1990, Epidemiology 1:43), with every exposure tested shown. `grp` is "
+        "a category: in each feature-wise model it enters as indicators of its levels, not one "
+        "column, so it is adjusted for in each test, not tested.")
+    omics = stated.model_copy(update={"lens": ["metabolomics"]})
+    assert said(omics, omics.estimand, ["fiber", "grp"], ["grp"]).split(" `grp` is")[0].endswith(
+        "with every exposure tested shown. It was kept for an omics family as recorded: the field "
+        "expects false-discovery control.")
+    bare = st.model_copy(update={"multiplicity": d.MultiplicitySpec(method="none",
+                                                                     acknowledged=True)})
+    assert said(bare, spec, ["fiber", "sugar", "grp"], ["grp"]) == (
+        "Feature-wise regression tested 2 of the 3 exposures (`fiber` and `sugar`), each in turn, "
+        "with no multiplicity control, recorded as a limitation: at p < 0.05 about 0 would pass "
+        "by chance alone; every exposure tested is shown. `grp` is a category: in each "
+        "feature-wise model it enters as indicators of its levels, not one column, so it is "
+        "adjusted for in each test, not tested.")
+
+
+def test_a_longer_predictors_spline_terms_are_not_a_categorys_indicators(tmp_path):
+    """`grp` (3 levels, 2 indicators) beside a covariate `grp_age` declared a 4-knot spline, whose
+    terms `grp_age'` and `grp_age''` begin with `grp`'s name: they are `grp_age`'s, so the caption
+    counts `grp`'s 2 indicators, as the one-hot step made them; the hand-written `g_size` case
+    above stays silent."""
+    from turbotab.core import decisions as d
+    from turbotab.core.models import featurewise as fw
+
+    columns = ["fiber", "sex_male", "grp_b", "grp_c", "grp_age", "grp_age'", "grp_age''"]
+    assert fw.indicator_columns(columns, ["fiber"], ["grp"], ["fiber", "sex", "grp", "grp_age"]) \
+        == {"grp": ["grp_b", "grp_c"]}
+    frame = _frame().rename(columns={"age": "grp_age"})
+    roles = {("grp_age" if c == "age" else c): r for c, r in ROLES.items()}
+    answers = {("grp_age" if c == "age" else c): a for c, a in ef.ANSWERS.items()}
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  roles={**roles, "grp": "exposure"}, answers=answers,
+                  models=["linear", "featurewise"], family=True, multiplicity="fdr_bh",
+                  exposure_forms={"grp_age": d.ExposureFormSpec(form="spline", knots=4)})
+    out = ef.run(frame, tmp_path, st)
+    caption = _fit_model(out)["inference"]["caption"]
+    assert caption.startswith("Each of 1 study factors tested on its own with 8 adjustment columns;")
+    assert NOT_TESTED in caption
+    for key, model in _sequence(out).items():
+        assert NOT_TESTED in model["inference"]["caption"], key

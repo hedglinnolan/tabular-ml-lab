@@ -503,7 +503,8 @@ def spline_terms(fitted: Any, features: Sequence[str]) -> tuple[str, list[str]] 
 
 def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classes: Any,
                  clusters: Any, outcome: Any, survey: Any, levels: Any, event: Any,
-                 features: Sequence[str]) -> Any:
+                 features: Sequence[str], model: Any = None,
+                 exposures: Sequence[str] | None = None) -> Any:
     """The family's inference table on ``matrix`` (every analyzed row), as the fit stage computes
     it for the primary: design-based under ``survey`` for the families that have a design-based
     estimator (the stage blocks the others before they get here). None for a family whose table
@@ -512,7 +513,21 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
     The table is the family's own ``inference``, handed a pipeline whose one step is the model
     step as the matrix's fit leaves it (its classes, its ordered levels, its tested columns), so
     the model matrix it reads is ``matrix`` itself; it is given the outcome, the rows and the
-    design where its ``inference`` takes them, and told the rows when it does not say them."""
+    design where its ``inference`` takes them, and told the rows when it does not say them (a
+    table refused with no estimate says only how many rows it was handed).
+
+    ``model``: the fitted model step the matrix came from. Where it names the columns it tests (a
+    feature-wise step's study factors, as the roles answer named them and as the matrix holds
+    them, and those in a declared form), the table tests those and refuses as the fit's does: a
+    study factor in a form other than one straight-line column, or none the matrix holds, is
+    refused, never each of its columns tested as a study factor of its own (the orchestrator's
+    ruling (a) on the swarm's tail); one that enters as indicators of its levels (a category, the
+    step's ``entered_``) is not tested, and the table says so where ``matrix`` holds them (the
+    verifier's T2V-3). Where none of the estimand's columns (``features``) is one the step tests
+    (the estimand's study factor a category beside a numeric one), the table is refused as the
+    fit's is where the matrix holds no study factor, naming the estimand's ``exposures`` as the
+    roles answer named them, never the step's other study factor tested in their place (the
+    verifier's T2V2-1)."""
     import inspect
 
     from sklearn.pipeline import Pipeline
@@ -521,9 +536,30 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
 
     if not refits_on_matrix(family):
         return None
+    tested = [f for f in features if f in matrix.columns]
+    own = getattr(model, "features", None)
+    forms = getattr(model, "forms", None)
+    named = getattr(model, "named", None)
+    if own is not None:
+        own = [str(c) for c in own]
+        named = [str(c) for c in named] if named is not None and len(named) == len(own) else own
+        if forms:
+            # A study factor in a declared form: the step's own list, so the refusal names the
+            # formed one as the fit's does.
+            tested = own
+        else:
+            # The step's study factors among the columns asked for; where none is (a category
+            # enters as its indicators), the estimand's own, which the matrix holds no column of,
+            # so the table is refused naming them.
+            tested = [f for f in tested if f in set(own)]
+            if not tested:
+                wanted = {str(e) for e in exposures or []}
+                pairs = [(f, n) for f, n in zip(own, named) if n in wanted]
+                tested = [f for f, _ in pairs] or sorted(wanted)
+                named = [n for _, n in pairs] or sorted(wanted)
     step = _MatrixStep(classes=list(classes) if classes is not None else [],
-                       levels=list(levels) if levels is not None else None,
-                       features=[f for f in features if f in matrix.columns])
+                       levels=list(levels) if levels is not None else None, features=tested,
+                       named=named, forms=forms, entered=getattr(model, "entered_", None))
     takes = inspect.signature(family.inference).parameters
     given = {"outcome": outcome, "rows": "all", "survey": survey, "event": event}
     kw = {k: v for k, v in given.items() if k in takes}
@@ -532,19 +568,30 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
                          f"the surveyed population.")
     table = family.inference(Pipeline([("model", step)]), matrix, y, task=task,
                              clusters=clusters, **kw)
-    return table if "rows" in takes else _on_rows(table, len(matrix), "all")
+    # A table that says its rows itself (a refused one with no estimate says only how many it was
+    # handed) is told none, as the fit stage tells it none.
+    if "rows" in takes or table.info.get("n_rows") is not None:
+        return table
+    return _on_rows(table, len(matrix), "all")
 
 
 class _MatrixStep:
     """A model step as the fit of a model matrix leaves it, for :func:`matrix_table`: what a
     family's ``inference`` reads off its fitted step (``classes_``, an ordered outcome's
-    ``level_names_``, the tested columns' ``features``), and nothing to transform."""
+    ``level_names_``, the tested columns' ``features``, as the roles answer named them
+    (``named``), those in a declared form (``forms``), and those that enter as indicators of their
+    levels with the columns that carry them (``entered_``)), and nothing to transform."""
 
     def __init__(self, *, classes: list[Any], levels: list[Any] | None,
-                 features: list[str]) -> None:
+                 features: list[str], named: Sequence[str] | None = None,
+                 forms: Mapping[str, Any] | None = None,
+                 entered: Mapping[str, Sequence[str]] | None = None) -> None:
         self.classes_ = classes
         self.level_names_ = levels
         self.features = features
+        self.named = list(named) if named is not None else None
+        self.forms = dict(forms) if forms else None
+        self.entered_ = {str(k): list(v) for k, v in entered.items()} if entered else None
 
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         return {}
@@ -727,7 +774,9 @@ def effects_stage(ctx: StageContext) -> Bundle:
         measure_label=est.MEASURE_WORDS.get(str(spec_e.measure)), scale=facts["scale"],
         conditioning=facts["conditioning"], collapsible=facts["collapsible"],
         rows=f"all {len(frame):,} analyzed rows", appendix_title=APPENDIX_TITLE,
-        multiplicity=est.multiplicity_statement(state, spec_e, len(exposures)) if family_spec else None,
+        multiplicity=(family_multiplicity_statement(state, spec_e, exposures,
+                                                    getattr(run, "untested", None) or [])
+                      if family_spec else None),
         model_1=ModelOne(**card) if card is not None else None,
         families=out, methods="")
     artifact.methods = methods_sentence(state, artifact)
@@ -746,6 +795,51 @@ def split_units(frame: pd.DataFrame, grouped_by: str | None, train: Any) -> pd.S
     if len(pd.unique(trained)) == len(trained):
         return None
     return pd.Series(labels, index=frame.index)
+
+
+def family_multiplicity_statement(state: Any, spec: Any, exposures: Sequence[str],
+                                  untested: Sequence[str]) -> str:
+    """The exposure family's multiplicity sentence (``estimand.multiplicity_statement``) as this
+    stage ran it. ``untested``: the members feature-wise regression does not test, each a category
+    that enters its models as indicators of its levels and is adjusted for (the step's
+    ``entered_``). With none, the estimand's own sentence; with some, the count is of the members
+    it tests, and the sentence names the others as adjusted for, not tested (the verifier's
+    T2V2-3), where it said every member was tested and shown."""
+    from turbotab.core import estimand as est
+    from turbotab.core.voice import listing
+
+    if not untested:
+        return est.multiplicity_statement(state, spec, len(exposures))
+    held = {str(c) for c in untested}
+    tested = [str(e) for e in exposures if str(e) not in held]
+    n, one = len(tested), len(tested) == 1
+    head = (f"Feature-wise regression tested {n:,} of the {len(exposures):,} exposures "
+            f"({listing(tested)})" + ("" if one else ", each in turn"))
+    method, _ = est.family_multiplicity(state)
+    if method == "none":
+        said = (f"{head}, with no multiplicity control, recorded as a limitation: at p < 0.05 about "
+                f"{0.05 * n:,.0f} would pass by chance alone; every exposure tested is shown.")
+    elif method == "fdr_bh":
+        said = (f"{head}; Benjamini–Hochberg q-values control the false-discovery rate across "
+                f"{'that 1 test' if one else f'all {n:,}'} ({est.BENJAMINI_HOCHBERG}), and every "
+                f"exposure tested is shown, significant or not.")
+    else:
+        kept = (" It was kept for an omics family as recorded: the field expects false-discovery "
+                "control." if est.omics_family(state) else
+                " It was kept for this many tests as recorded."
+                if est.unadjusted_blocked(state, n) else "")
+        said = (f"{head}; p-values are not adjusted for multiplicity, and "
+                f"{'that 1 test is' if one else f'all {n:,} tests are'} stated (customary for a few "
+                f"declared nutrient hypotheses, {est.ROTHMAN}), with every exposure tested "
+                f"shown.{kept}")
+    others = [str(c) for c in untested]
+    if len(others) == 1:
+        return (f"{said} {listing(others)} is a category: in each feature-wise model it enters as "
+                f"indicators of its levels, not one column, so it is adjusted for in each test, "
+                f"not tested.")
+    return (f"{said} {listing(others)} are categories: in each feature-wise model they enter as "
+            f"indicators of their levels, not one column, so they are adjusted for in each test, "
+            f"not tested.")
 
 
 def _first_sentence(text: str) -> str:
@@ -868,7 +962,8 @@ class _Run:
                 # with the spline's nonlinear terms left out (pooled like every other model).
                 subsets["straight"] = [c for c in M.columns if c not in set(curve[1])]
             kw = dict(task=self.task, classes=classes, clusters=self.clusters, outcome=self.outcome,
-                      survey=design, levels=self.levels, event=self.state.event, features=feats)
+                      survey=design, levels=self.levels, event=self.state.event, features=feats,
+                      model=fitted[-1], exposures=self.exposures)
             for name, cols in subsets.items():
                 per_copy.setdefault(name, []).append(self._table(
                     lambda _c=cols: self._with_relative(
@@ -938,6 +1033,13 @@ class _Run:
         out = EffectsFamily(family=family.key, label=family.label, sequence=sequence,
                             appendix=appendix, concerns=concerns)
         primary = next((s for s in sequence if s.key == "model_2"), None)
+        if tests_only(family) and first and primary is not None and primary.effects:
+            # The members its tests leave out: each a category whose indicators the primary's
+            # matrix holds and adjusts for (the family's multiplicity sentence counts the others).
+            held = set(first["matrix"].columns)
+            self.untested = [c for c, cols in (getattr(first["fitted"][-1], "entered_", None)
+                                               or {}).items()
+                             if c in self.exposures and any(f in held for f in cols)]
         if supported and first:
             # Each analysis beside the estimates is reported, or says why it could not be: one
             # that fails never takes the declared models down with it (as the fit stage's tables).
@@ -1015,7 +1117,8 @@ class _Run:
                                for f in est.primary_features(M3.columns, e, predictors)}]
             kw3 = dict(task=self.task, classes=classes3, clusters=self.clusters3,
                        outcome=self.outcome, survey=design, levels=self.levels,
-                       event=self.state.event, features=feats3)
+                       event=self.state.event, features=feats3, model=fitted3[-1],
+                       exposures=self.exposures)
             per_copy.setdefault("model_3", []).append(self._table(
                 lambda: self._with_relative(family, fitted3, M3, self.y3,
                                             matrix_table(family, M3, self.y3, **kw3), kw3),

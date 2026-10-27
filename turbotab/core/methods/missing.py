@@ -1122,32 +1122,56 @@ WITHOUT_THE_DESIGN = ("Estimating for these participants instead (the sample-onl
                       "leaves the survey design out of the imputation model.")
 
 
-def design_term_words(survey_design: Any) -> Callable[[str, Any], tuple[str, str | None]]:
+class DesignWords:
     """How a refusal names a survey design's term of the substantive model (:class:`_DesignTerms`),
     by its design variable and level, and the rows an indicator marks: a stratum's indicator by
     the stratum's own value and the strata column ("the indicator of stratum 107 of `SDMVSTRA`",
-    "stratum 107"), a PSU's by the PSU column, the weight by the weight column."""
-    own = {_stratum_level(code): value
-           for code, value in enumerate(getattr(survey_design, "stratum_labels", ()) or ())}
+    "stratum 107"), a PSU's by the PSU column, the weight by the weight column (calling it); and
+    the design's groups as places, a stratum with its column ("stratum 101 of `SDMVSTRA`") and a
+    PSU through the stratum that holds it ("one PSU of stratum 103 of `SDMVSTRA`"):
+    :meth:`place`, :meth:`psus`."""
 
-    def of(column: str | None, before: str = " of ") -> str:
+    def __init__(self, survey_design: Any):
+        self.design = survey_design
+        self.own = {_stratum_level(code): value
+                    for code, value in enumerate(getattr(survey_design, "stratum_labels", ()) or ())}
+
+    def _of(self, column: str | None, before: str = " of ") -> str:
         return f"{before}`{column}`" if column else ""
 
-    def words(variable: str, level: Any) -> tuple[str, str | None]:
+    def __call__(self, variable: str, level: Any) -> tuple[str, str | None]:
+        strata = self.design.strata_column
         if level == "unplaced":
             return "the indicator of the rows the survey design cannot place", "those rows"
         if variable == "__stratum":
-            if level not in own:  # a design built without its strata's own values
-                return (f"the indicator of one stratum{of(survey_design.strata_column)}",
-                        "that stratum")
-            return (f"the indicator of stratum {own[level]}{of(survey_design.strata_column)}",
-                    f"stratum {own[level]}")
+            if level not in self.own:  # a design built without its strata's own values
+                return f"the indicator of one stratum{self._of(strata)}", "that stratum"
+            return (f"the indicator of stratum {self.own[level]}{self._of(strata)}",
+                    f"stratum {self.own[level]}")
         if variable == "__psu":
-            return (f"an indicator of the PSUs{of(survey_design.psu_column)} within their strata",
-                    "those PSUs")
-        return f"the survey weight{of(survey_design.weight_column, ' ')}", None
+            return (f"an indicator of the PSUs{self._of(self.design.psu_column)} within their "
+                    f"strata", "those PSUs")
+        return f"the survey weight{self._of(self.design.weight_column, ' ')}", None
 
-    return words
+    def place(self, level: Any) -> str:
+        """A stratum's rows as a place: by its own value and the strata column."""
+        if level == "unplaced":
+            return "the rows the survey design cannot place"
+        if level not in self.own:
+            return f"one stratum{self._of(self.design.strata_column)}"
+        return f"stratum {self.own[level]}{self._of(self.design.strata_column)}"
+
+    def psus(self, k: int, level: Any | None) -> str:
+        """``k`` PSUs of a stratum (``level``; None: the design has one stratum), through it."""
+        some = "one PSU" if k == 1 else f"{k:,} PSUs"
+        if level is None:
+            return f"{some}{self._of(self.design.psu_column)}"
+        return f"{some} of {self.place(level)}"
+
+
+def design_term_words(survey_design: Any) -> DesignWords:
+    """How a refusal names a survey design's terms and groups (:class:`DesignWords`)."""
+    return DesignWords(survey_design)
 
 
 def binary01(y: Any) -> np.ndarray:
@@ -1177,6 +1201,9 @@ class _DesignTerms:
         self.parts: list[tuple[str, Any]] = []
         self.n = len(data)
         self.words = words
+        # each row's stratum and PSU-within-stratum level, for the groups a refusal counts (quiet)
+        self.levels = {c: data[c].astype(object).to_numpy() for c in ("__stratum", "__psu")
+                       if c in columns and c in data.columns}
         for c in columns:
             if c not in data.columns:
                 continue
@@ -1224,7 +1251,10 @@ class _DesignTerms:
         return self._encode(raw)[:, self.keep]
 
     def named(self) -> list[Any]:
-        """The kept terms in order, as a refusal names them (``smcfcs.Term``)."""
+        """The kept terms in order, as a refusal names them (``smcfcs.Term``): each with the words
+        for drawing the copies without the design and the way forward that does it, the sample
+        answer (:data:`SAMPLE_WAY`), the design variable it is made of and its place in the
+        design's own order (a stratum's code: its own values sorted)."""
         from turbotab.core.methods.smcfcs import Term
 
         out = []
@@ -1233,8 +1263,67 @@ class _DesignTerms:
             level = None if isinstance(part, tuple) else part
             label, group = (self.words(variable, level) if self.words is not None
                             else ("a term of the survey design", None))
-            out.append(Term(label, design=True, group=group, leave_out=WITHOUT_THE_DESIGN))
+            out.append(Term(label, design=True, group=group, leave_out=WITHOUT_THE_DESIGN,
+                            way=sample_way(), level=DESIGN_LEVELS.get(variable),
+                            order=(list(DESIGN_LEVELS).index(variable)
+                                   if variable in DESIGN_LEVELS else len(DESIGN_LEVELS),
+                                   *_level_order(level))))
         return out
+
+    def quiet(self, event: np.ndarray) -> list[str]:
+        """The survey design's groups none of whose rows has the event (``event``: one value per
+        row of the data), counted directly on every row, as a refusal names them
+        (:class:`DesignWords`): each stratum, the reference among them (its first level, which no
+        indicator marks), in the strata's own order; then, in each stratum some row of which has
+        the event, how many of its PSUs none does, through that stratum. Rows the design cannot
+        place are no group of it. None where the words name no places."""
+        event = np.asarray(event, dtype=bool)
+        if not isinstance(self.words, DesignWords) or len(event) != self.n:
+            return []
+        strata = self.levels.get("__stratum")
+        psus = self.levels.get("__psu")
+        out: list[str] = []
+        quiet: set[Any] = set()
+        if strata is not None:
+            for level in sorted(pd.unique(strata), key=_level_order):
+                if level != "unplaced" and not event[strata == level].any():
+                    out.append(self.words.place(level))
+                    quiet.add(level)
+        if psus is not None:
+            within = strata if strata is not None else np.full(self.n, None, dtype=object)
+            for level in sorted(pd.unique(within), key=_level_order):
+                if level in quiet or level == "unplaced":
+                    continue
+                rows = within == level
+                k = sum(1 for p in pd.unique(psus[rows])
+                        if p != "unplaced" and not event[rows & (psus == p)].any())
+                if k:
+                    out.append(self.words.psus(k, level))
+        return out
+
+
+# The survey design's variables among the substantive model's terms, as ``smcfcs.Term.level``
+# names them, in the order a refusal lists their terms.
+DESIGN_LEVELS = {"__stratum": "stratum", "__psu": "psu"}
+
+
+def _level_order(level: Any) -> tuple[int, int]:
+    """A design level's place in the design's own order: a stratum's or a PSU's code (the levels
+    ``design_variables`` writes, "stratum 3", "psu 2"), the rows the design cannot place after
+    every other; any other value first."""
+    if level == "unplaced":
+        return (1, 0)
+    words = str(level).split()
+    return (0, int(words[-1])) if len(words) == 2 and words[-1].isdigit() else (0, -1)
+
+
+def sample_way() -> dict[str, Any]:
+    """The way forward :data:`WITHOUT_THE_DESIGN` names, as an exit: the sample answer, whose
+    imputation model holds no design term (``stages.modeling._missing_for_table`` passes the
+    design to the imputation only under the population answer)."""
+    from turbotab.core.models.survey import SAMPLE_EXIT
+
+    return {"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}}
 
 
 def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any],
@@ -1308,7 +1397,8 @@ def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any],
         outcome = Outcome("logistic", y=binary01(y))
     else:
         outcome = Outcome("linear", y=np.asarray(y, dtype=float))
-    return Substantive(outcome=outcome, design=matrix, refresh=refresh, terms=named)
+    return Substantive(outcome=outcome, design=matrix, refresh=refresh, terms=named,
+                       quiet=terms.quiet if terms is not None else None)
 
 
 @dataclass
@@ -2091,7 +2181,7 @@ __all__ = [
     "energy_identity", "fixed_forms", "imputation_plan", "logged_columns", "mi_sentence",
     "nonlinear_terms", "supplied_copies", "carry_within_units", "time_invariance_ask",
     "time_invariant_columns", "MI_EXIT_LABEL", "MI_LABEL", "M_WORDS", "engine_substantive",
-    "design_term_words", "WITHOUT_THE_DESIGN",
+    "DesignWords", "design_term_words", "sample_way", "WITHOUT_THE_DESIGN",
     "BELOW_DETECTION_LABELS", "BelowDetection", "BelowDetectionFill", "COMPLETE_CASE_ASSUMPTION",
     "EnergyAwareImputer", "INDICATOR_CAUTION", "LEFT_CENSORED", "METHODS", "MI_ASSUMPTION",
     "MissingMethod", "ROW_LOSS_SHARE", "RULE", "SINGLE_FILL_CAUTION", "ZEROS", "below_detection_options",

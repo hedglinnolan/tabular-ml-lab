@@ -165,13 +165,20 @@ class Term:
     is made from, which leaving out of the analysis drops. ``design``: a survey design's term, which
     the imputation's model holds and the analysis model does not (``missing.engine_substantive``).
     ``group``: the rows a design indicator marks, in words ("stratum 107"). ``leave_out``: for a
-    design term, the sentence that says how the copies are drawn without it."""
+    design term, the sentence that says how the copies are drawn without it, and ``way`` the way
+    forward that does it, an exit (``{label, decision}``) the stage offers. ``level``: the design
+    variable a design term is made of ("stratum", "psu"; None for the weight), and ``order`` its
+    place in the design's own order (a stratum's code, its own values sorted), so a refusal lists
+    several in that order."""
 
     label: str
     column: str | None = None
     design: bool = False
     group: str | None = None
     leave_out: str | None = None
+    way: Mapping[str, Any] | None = None
+    level: str | None = None
+    order: tuple[int, ...] | None = None
 
 
 @dataclass
@@ -183,12 +190,15 @@ class Substantive:
     input row). ``refresh(raw)``, when given, refits what the design learns from all the rows
     (an energy residual's line) on the current completed data, once per iteration. ``terms()``,
     when given, names the columns of the design's last matrix, in order (:class:`Term`), so a
-    refusal of the outcome draw names them (:func:`_cox_refusal`)."""
+    refusal of the outcome draw names them (:func:`_cox_refusal`). ``quiet(event)``, when given,
+    names the survey design's groups none of whose rows has the event (``event``: one value per
+    row), counted on every row, the reference stratum among them, as that refusal names them."""
 
     outcome: Outcome
     design: Callable[[pd.DataFrame], np.ndarray]
     refresh: Callable[[pd.DataFrame], None] | None = None
     terms: Callable[[], Sequence[Term]] | None = None
+    quiet: Callable[[np.ndarray], Sequence[str]] | None = None
 
 
 @dataclass
@@ -404,25 +414,33 @@ def _failing(fit: Any, X: np.ndarray) -> tuple[list[int], bool | None]:
 
 
 def _cox_refusal(M: np.ndarray, out: Outcome, fit: Any, kept: Sequence[int],
-                 terms: Sequence[Term]) -> ImputationRefused:
+                 terms: Sequence[Term], quiet: Callable[[np.ndarray], Sequence[str]] | None = None,
+                 complete: np.ndarray | None = None) -> ImputationRefused:
     """The refusal of a Cox fit of the substantive model that did not converge (``fit``, on the
     columns ``kept`` of the design ``M``), naming the design's columns by ``terms``.
 
     Where the model holds a survey design's terms (``Term.design``) and the analysis model's own
     terms, fit alone to the same completed copy, converge, the model that fails is the
-    imputation's, not the analysis model: the words name the design terms the fit fails along,
-    say so, and end with the terms' own words for drawing the copies without them
-    (``Term.leave_out``); ``design_terms`` holds those terms' labels, and ``columns`` is unset,
-    since leaving an input out would not help. Otherwise the analysis model's own terms fail on
-    the copy, and the words name them as the analysis table's
+    imputation's, not the analysis model: the words name the design terms the fit fails along
+    (several in the design's own order, ``Term.order``), say so, and end with the terms' own words
+    for drawing the copies without them (``Term.leave_out``); ``exits`` holds the ways forward
+    those words name (``Term.way``: the sample answer), ``design_terms`` those terms' labels, and
+    ``columns`` is unset, since leaving an input out would not help. Where the words name no
+    stratum by its own indicator (several terms, or a PSU's indicator), they name the design's
+    groups no row with the event is in, counted on every row (``quiet``: the reference stratum,
+    which no indicator marks, among them; the verifier's T2-B-V4-1). Otherwise the analysis
+    model's own terms fail on the copy, and the words name them as the analysis table's
     :func:`~turbotab.core.models.survival.no_maximum` does (:func:`_failing`, else every term), and
     ``columns`` holds the inputs the terms it fails along are made from (none where it names every
-    term), which the stage offers to leave out (``stages.modeling._missing_for_table``)."""
+    term), which the stage offers to leave out (``stages.modeling._missing_for_table``). Either
+    way ``complete`` (the rows every imputed variable records) gives ``complete_cases``
+    (:func:`_complete_cases`)."""
     from turbotab.core.models.survival import cox_fit, survival_outcome
 
     kept = list(kept)
     design = [j for j in kept if terms[j].design]
     own = [j for j in kept if not terms[j].design]
+    analysis = list(own)
     if design and own:
         alone = cox_fit(np.ascontiguousarray(M[:, own]),
                         survival_outcome(out.event, out.time, out.entry))
@@ -433,19 +451,25 @@ def _cox_refusal(M: np.ndarray, out: Outcome, fit: Any, kept: Sequence[int],
     ordered = fit.ordering is not None
     if design:
         named = [j for j in along if terms[j].design] or design
+        listed = sorted(named, key=lambda j: (terms[j].order is None, terms[j].order or ()))
         one = len(named) == 1
+        groups = list(quiet(np.asarray(out.event, dtype=float) > 0.5)) if quiet is not None else []
+        counted = f" (no row of {_listed(groups)} has the event)" if groups else ""
         if ordered and along == named and one:
             t = terms[named[0]]
-            example = ("" if t.group is None else f" (as when every row with the event is in "
-                       f"{t.group})" if up else f" (as when no row of {t.group} has the event)")
+            if counted and t.level != "stratum":
+                example = counted  # its own group's words name no stratum: the count does
+            else:
+                example = ("" if t.group is None else f" (as when every row with the event is in "
+                           f"{t.group})" if up else f" (as when no row of {t.group} has the event)")
             how = (f"at every event time the rows with the event have the "
                    f"{'highest' if up else 'lowest'} value of it among the rows at risk{example}, "
                    f"so its hazard ratio runs to {'infinity' if up else 'zero'}")
         elif ordered:
             which = "them" if along == named else _listed([terms[j].label for j in along])
             how = (f"at every event time the rows with the event have the highest value of one "
-                   f"fixed combination of {which} among the rows at risk, so their hazard ratios "
-                   f"run to zero or infinity")
+                   f"fixed combination of {which} among the rows at risk{counted}, so their "
+                   f"hazard ratios run to zero or infinity")
         else:
             how = (f"the Newton fit of its partial likelihood found no stable maximum for "
                    f"{'it' if one else 'them'}")
@@ -453,12 +477,16 @@ def _cox_refusal(M: np.ndarray, out: Outcome, fit: Any, kept: Sequence[int],
         refused = ImputationRefused(
             f"The Cox model the imputations are drawn from has no maximum on a completed copy of "
             f"the data, so its coefficients cannot be drawn: to carry the survey design into the "
-            f"copies, it holds {_listed([terms[j].label for j in named])} beside the analysis "
+            f"copies, it holds {_listed([terms[j].label for j in listed])} beside the analysis "
             f"model's terms, and {how}. The analysis model itself is not the one that fails: "
             f"without the survey design's terms, its partial likelihood has a maximum on the same "
             f"copy.{ways}")
-        refused.design_terms = [terms[j].label for j in named]
-        return refused
+        refused.design_terms = [terms[j].label for j in listed]
+        # the ways forward those words name, as the stage offers them (the sample answer)
+        offered = {str(terms[j].way.get("label")): dict(terms[j].way) for j in listed
+                   if terms[j].way is not None}
+        refused.exits = list(offered.values())
+        return _complete_cases(refused, M, out, analysis, complete)
     labels = _listed([terms[j].label for j in along or kept])
     if ordered and len(along) == 1:
         why = (f"its partial likelihood has no maximum for {labels} on a completed copy of the "
@@ -477,7 +505,40 @@ def _cox_refusal(M: np.ndarray, out: Outcome, fit: Any, kept: Sequence[int],
                                 f"compatible with it, since {why}.")
     # what leaving out would let the imputation run without: the inputs of the terms that fail
     refused.columns = list(dict.fromkeys(terms[j].column for j in along if terms[j].column))
+    return _complete_cases(refused, M, out, analysis, complete)
+
+
+def _complete_cases(refused: ImputationRefused, M: np.ndarray, out: Outcome,
+                    columns: Sequence[int], complete: np.ndarray | None) -> ImputationRefused:
+    """``refused`` with ``complete_cases``, where the rows every imputed variable records are known
+    (``complete``): whether the analysis model's own terms (``columns`` of ``M``) have a maximum
+    on those rows alone, so the stage offers complete cases only where they give a table (the
+    orchestrator's ruling (d) on the swarm's tail: no woman dies, and complete cases reached the
+    analysis table's own refusal)."""
+    if complete is not None:
+        refused.complete_cases = _has_maximum(M, out, columns, complete)
     return refused
+
+
+def _has_maximum(M: np.ndarray, out: Outcome, columns: Sequence[int], rows: np.ndarray) -> bool:
+    """Whether the Cox model on the design's ``columns`` has a maximum on ``rows`` alone: its
+    partial likelihood's fit converges there (``survival.cox_fit``), a column constant or aliased
+    on those rows left out as :func:`_draw_outcome` leaves one out. With no row with the event
+    among them there is none."""
+    from turbotab.core.models.survival import cox_fit, survival_outcome
+
+    rows = np.asarray(rows, dtype=bool)
+    event = np.asarray(out.event, dtype=float)[rows]
+    if not (event > 0.5).any():
+        return False
+    X = np.asarray(M, dtype=float)[rows][:, list(columns)]
+    kept = [j - 1 for j in identified_columns(np.column_stack([np.ones(len(X)), X])) if j > 0]
+    if not kept:
+        return True  # no coefficient to have a maximum for
+    entry = None if out.entry is None else np.asarray(out.entry, dtype=float)[rows]
+    fit = cox_fit(np.ascontiguousarray(X[:, kept]),
+                  survival_outcome(event, np.asarray(out.time, dtype=float)[rows], entry))
+    return bool(fit.converged)
 
 
 def _cox_draw(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
@@ -547,12 +608,15 @@ def _draw_on(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
 
 
 def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator,
-                  terms: Callable[[], Sequence[Term]] | None = None) -> _Fit:
+                  terms: Callable[[], Sequence[Term]] | None = None,
+                  quiet: Callable[[np.ndarray], Sequence[str]] | None = None,
+                  complete: np.ndarray | None = None) -> _Fit:
     """The substantive model's parameters drawn on its design ``M`` (no intercept column).
 
     A Cox fit that does not converge is refused (:func:`_cox_draw`); where ``terms`` (the
     substantive model's ``terms``) names every column of ``M``, in words that name them
-    (:func:`_cox_refusal`), else in words that name none.
+    (:func:`_cox_refusal`, with the substantive model's ``quiet`` and the complete rows,
+    ``complete``), else in words that name none.
 
     An aliased column (:func:`identified_columns`: R's ``lm`` reports its coefficient NA) is left
     out of the fit and its coefficient drawn as zero. The model without it is the same model (the
@@ -575,7 +639,7 @@ def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator,
         named = list(terms()) if terms is not None else []
         if len(named) != M.shape[1]:
             raise
-        raise _cox_refusal(M, out, exc.fit, columns, named) from None
+        raise _cox_refusal(M, out, exc.fit, columns, named, quiet, complete) from None
     beta = np.zeros(M.shape[1] + (0 if out.kind == "cox" else 1))
     beta[columns if out.kind == "cox" else kept] = fit.beta
     fit.beta = beta
@@ -1092,7 +1156,10 @@ class _Chain:
 
     def _outcome(self) -> _Fit:
         M = np.asarray(self.sub.design(self.raw_frame()), dtype=float)
-        return _draw_outcome(M, self.sub.outcome, self.rng, self.sub.terms)
+        # the complete cases: the rows every imputed variable records
+        complete = np.logical_and.reduce([self.recorded[v] for v in self.vars], initial=True)
+        return _draw_outcome(M, self.sub.outcome, self.rng, self.sub.terms, self.sub.quiet,
+                             np.broadcast_to(complete, (self.n,)))
 
     def _covariate_draw(self, name: str, var: Variable, X: np.ndarray, y: np.ndarray
                         ) -> tuple[np.ndarray, float | None]:

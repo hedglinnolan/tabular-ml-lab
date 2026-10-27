@@ -28,7 +28,6 @@ import pytest
 import statsmodels.api as sm
 
 import turbotab.core.models  # noqa: F401 - registers the families
-from turbotab.core.graph import StageRefusal
 from turbotab.core.models import featurewise as fw
 from turbotab.core.models.pipeline import DesignSpec, build_pipeline
 
@@ -205,18 +204,15 @@ def test_a_study_factor_the_matrix_holds_no_column_of_is_named_as_the_roles_answ
     """Under an energy adjustment the column sought is the energy step's (`sugar_adj`); the role is
     `sugar`'s, and the words say so."""
     frame, y = _intake()
-    with pytest.raises(StageRefusal) as refused:
-        fw.featurewise_table(frame[["kcal", "age"]], y, "regression", ["sugar_adj"],
-                             named=["sugar"])
-    assert refused.value.code == "featurewise_no_study_factor"
-    assert str(refused.value) == (f"{NO_FACTOR}; `sugar` (entered as `sugar_adj` by the energy "
-                                  f"adjustment) has that role, but the model matrix holds no "
-                                  f"column of that name.")
+    table = fw.featurewise_table(frame[["kcal", "age"]], y, "regression", ["sugar_adj"],
+                                 named=["sugar"])
+    _refused(table, (f"{NO_FACTOR}; `sugar` (entered as `sugar_adj` by the energy adjustment) has "
+                     f"that role, but the model matrix holds no column of that name."), [ANOTHER])
 
 
 def test_without_an_energy_adjustment_the_words_are_as_they_were():
     frame, y = _intake()
-    with pytest.raises(StageRefusal) as refused:
-        fw.featurewise_table(frame[["kcal", "age"]], y, "regression", ["sugar"], named=["sugar"])
-    assert str(refused.value) == (f"{NO_FACTOR}; `sugar` has that role, but the model matrix holds "
-                                  f"no column of that name.")
+    table = fw.featurewise_table(frame[["kcal", "age"]], y, "regression", ["sugar"],
+                                 named=["sugar"])
+    _refused(table, (f"{NO_FACTOR}; `sugar` has that role, but the model matrix holds no column of "
+                     f"that name."), [ANOTHER])
