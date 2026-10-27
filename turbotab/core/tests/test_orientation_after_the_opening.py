@@ -89,6 +89,30 @@ def test_reverting_the_kept_layout_after_the_opening_is_no_change_either():
     assert (changed, post, at["current"]) == (False, [], True)
 
 
+def test_a_fit_recorded_while_the_kept_layout_stood_is_the_opened_fit_after_its_revert():
+    """Keep, Fit, then revert the keep (the verifier's T2-C-V3): the fit recorded while the keep
+    stood is the opening's state with the orientation read as `sample_major`, the same rows and
+    the same fit, so it did not change after the opening, read before the revert or after it. The
+    fit served after the revert is the opening's own."""
+    graph = build_graph()
+    kept = [*opened(), record(8, KEEP, "keep", post=True)]
+    recorded = served(graph, kept)  # the fits list's record of the fit made while the keep stood
+    reverted = [*kept, record(9, d.Revert(decision_id="keep"), "back", post=True)]
+    opened_key = seal.keys_for(graph, seal.state_at_opening(reverted), FINGERPRINT)["fit"]
+    assert served(graph, reverted) == opened_key != recorded  # the engine keys the two apart
+    assert seal.changed_after_seal(graph, kept, FINGERPRINT, recorded) is False
+    assert seal.changed_after_seal(graph, reverted, FINGERPRINT, recorded) is False
+    assert seal.fit_keys(graph, seal.state_at_opening(reverted), FINGERPRINT) == {opened_key,
+                                                                                 recorded}
+    # A fit recorded after an exclusion beside the kept layout is still a change, after the
+    # revert of the keep as before it.
+    excluded = [*kept, record(9, EXCLUDE, "exclude", post=True)]
+    changed_fit = served(graph, excluded)
+    back = [*excluded, record(10, d.Revert(decision_id="keep"), "back", post=True)]
+    assert seal.changed_after_seal(graph, excluded, FINGERPRINT, changed_fit) is True
+    assert seal.changed_after_seal(graph, back, FINGERPRINT, changed_fit) is True
+
+
 @pytest.mark.parametrize("kept", [True, False], ids=["beside the kept layout", "alone"])
 def test_an_exclusion_after_the_opening_is_still_a_change_to_the_fit(kept):
     graph = build_graph()
