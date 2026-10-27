@@ -520,7 +520,9 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
     them, and those in a declared form), the table tests those and refuses as the fit's does: a
     study factor in a form other than one straight-line column, or none the matrix holds, is
     refused, never each of its columns tested as a study factor of its own (the orchestrator's
-    ruling (a) on the swarm's tail)."""
+    ruling (a) on the swarm's tail); one that enters as indicators of its levels (a category, the
+    step's ``entered_``) is not tested, and the table says so where ``matrix`` holds them (the
+    verifier's T2V-3)."""
     import inspect
 
     from sklearn.pipeline import Pipeline
@@ -540,7 +542,8 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
             tested = [str(c) for c in own]
     step = _MatrixStep(classes=list(classes) if classes is not None else [],
                        levels=list(levels) if levels is not None else None, features=tested,
-                       named=getattr(model, "named", None), forms=forms)
+                       named=getattr(model, "named", None), forms=forms,
+                       entered=getattr(model, "entered_", None))
     takes = inspect.signature(family.inference).parameters
     given = {"outcome": outcome, "rows": "all", "survey": survey, "event": event}
     kw = {k: v for k, v in given.items() if k in takes}
@@ -560,16 +563,19 @@ class _MatrixStep:
     """A model step as the fit of a model matrix leaves it, for :func:`matrix_table`: what a
     family's ``inference`` reads off its fitted step (``classes_``, an ordered outcome's
     ``level_names_``, the tested columns' ``features``, as the roles answer named them
-    (``named``), and those in a declared form (``forms``)), and nothing to transform."""
+    (``named``), those in a declared form (``forms``), and those that enter as indicators of their
+    levels with the columns that carry them (``entered_``)), and nothing to transform."""
 
     def __init__(self, *, classes: list[Any], levels: list[Any] | None,
                  features: list[str], named: Sequence[str] | None = None,
-                 forms: Mapping[str, Any] | None = None) -> None:
+                 forms: Mapping[str, Any] | None = None,
+                 entered: Mapping[str, Sequence[str]] | None = None) -> None:
         self.classes_ = classes
         self.level_names_ = levels
         self.features = features
         self.named = list(named) if named is not None else None
         self.forms = dict(forms) if forms else None
+        self.entered_ = {str(k): list(v) for k, v in entered.items()} if entered else None
 
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         return {}

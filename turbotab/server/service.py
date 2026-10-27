@@ -2395,9 +2395,10 @@ class ProjectService:
     def _locked_fit(self, pid: str, records: list[Any], lock: Any) -> frozenset[str]:
         """E1: the fit the plan's lock in force was recorded on: its keys under the answers at the
         lock (``seal.fit_keys`` of the log folded through the lock's record, the engine's own rule,
-        with a Decision A slot they leave unanswered also read as the answer it reads as: the same
-        rows and the same fit, so keeping the table as it is after the lock leaves the locked fit
-        current); none with no lock, or when the log through it cannot be folded."""
+        with a Decision A slot they leave unanswered also read as the answer it reads as, and one
+        they answer so also read as unanswered: the same rows and the same fit, so keeping the
+        table as it is after the lock, or reverting that answer recorded before it, leaves the
+        locked fit current); none with no lock, or when the log through it cannot be folded."""
         if lock is None:
             return frozenset()
         try:

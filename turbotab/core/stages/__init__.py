@@ -737,7 +737,8 @@ def build_graph() -> Graph:
             # computed again.
             # fit 34 (the swarm's tail, T2, 2026-10-27): feature-wise regression with no study
             # factor in the model matrix refuses its table, not the fit, so every family beside it
-            # is fit; a refused feature-wise table's caption states no rows it was estimated from;
+            # is fit; a refused feature-wise table's caption states no rows it was estimated from,
+            # and its caption names a category among the study factors, adjusted for, not tested;
             # and SMC-FCS's Cox refusal names the strata with no event (the reference among them),
             # offers the sample answer it names, and offers complete cases only where the analysis
             # model has a maximum on them.
@@ -923,7 +924,8 @@ def build_graph() -> Graph:
             # refused, its estimates with its intervals).
             # effects 8: as sensitivity 17 above.
             # effects 9: as fit 34, and its feature-wise tables test the fit's study factors and
-            # refuse a formed one in the fit's words, where they tested a spline's columns each.
+            # refuse a formed one in the fit's words, where they tested a spline's columns each (or
+            # a category's indicators each, now adjusted for as at the fit, and named so).
             Stage("effects", 9, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),

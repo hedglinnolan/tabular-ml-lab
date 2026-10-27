@@ -12,7 +12,10 @@ the two give the same rows and the same fit, though the engine keys them apart. 
 * under Estimate, a fit made after keeping the table as it is after the plan's lock, or before
   the lock with the keep since reverted, is the fit the lock was recorded on
   (``ProjectService._locked_fit``, which gave one key), so the fits list marks it locked and its
-  record's gate serves it as the lock's.
+  record's gate serves it as the lock's;
+* the keep recorded before the opening or the lock and reverted after it leaves the served fit,
+  the orientation unanswered again, the opened or locked one (the verifier's T2V-1: ``fit_keys``
+  read the answers at the opening or the lock one way only, unanswered as `sample_major`).
 
 Each guard both ways: an exclusion recorded after the opening or the lock is still a change.
 """
@@ -144,3 +147,30 @@ def test_a_fit_made_after_an_exclusion_after_the_lock_is_not_the_locked_fit():
     excluded = [*estimate(), record(8, KEEP, "keep"), record(9, EXCLUDE, "x")]
     assert fit_of(excluded) not in locked(excluded)
     assert not locked(estimate()[:6])  # no lock, no locked fit
+
+
+def test_an_orientation_answered_before_the_lock_and_reverted_after_it_leaves_the_locked_fit():
+    """Keep the table as it is, lock the plan, then revert the keep (the verifier's T2V-1): the
+    answers at the lock hold `sample_major` and the served fit leaves the orientation unanswered,
+    the same rows and the same fit, so the served fit is the locked one; an exclusion after the
+    revert is not."""
+    base = estimate()
+    before = [*base[:6], record(7, KEEP, "keep"), record(8, base[6].decision, "lock")]
+    assert d.fold(before).orientation == "sample_major"
+    back = [*before, record(9, d.Revert(decision_id="keep"), "back")]
+    assert d.fold(back).orientation is None
+    assert fit_of(back) != fit_of(before)  # the engine keys the two apart
+    assert fit_of(back) in locked(back) and fit_of(before) in locked(back)
+    excluded = [*back, record(10, EXCLUDE, "x")]
+    assert fit_of(excluded) not in locked(excluded)
+
+
+def test_an_evicted_fit_after_reverting_an_orientation_answered_before_the_opening():
+    """The same at the opening, for a record whose fit artifact is no longer kept."""
+    base = opened()
+    kept = [*base[:5], record(6, KEEP, "keep"), *[r.model_copy(update={"seq": r.seq + 1})
+                                                  for r in base[5:]]]
+    back = [*kept, record(9, d.Revert(decision_id="keep"), "back", post=True)]
+    assert evicted(back, fit_of(back))["changed_after_seal"] is False
+    excluded = [*back, record(10, EXCLUDE, "x", post=True)]
+    assert evicted(excluded, fit_of(excluded))["changed_after_seal"] is True

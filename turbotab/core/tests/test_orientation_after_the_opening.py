@@ -12,8 +12,9 @@ post-seal decisions, and the reported result's note "from a fit changed after it
 post-seal and not an independent test", though the held-out scores were the opening's.
 
 The truth is the oriented stage's rule: the state at the opening, read with its unanswered
-orientation as the answer now recorded, keys the fit the answers now key (``seal.keys_for``, the
-engine's own rule), so the opened fit is the one served. Each comparison of the opened fit with
+orientation as `sample_major`, or with a `sample_major` it holds as unanswered, keys the fit the
+answers now key (``seal.keys_for``, the engine's own rule; ``seal.fit_keys``), so the opened fit
+is the one served. Each comparison of the opened fit with
 the served one reads it so: ``changed_after_seal``, for the fit served now and for the opened
 fit's own record in the fits list (keyed as the answers at the opening key it), and the post-seal
 decisions. A change recorded after the opening is still one: an exclusion, beside the kept layout
@@ -141,3 +142,32 @@ def test_an_orientation_answered_before_the_opening_is_read_as_answered():
     assert seal.state_at_opening(records).orientation == "sample_major"
     changed, post, at = results(graph, records)
     assert (changed, post, at["current"]) == (False, [], True)
+
+
+def test_an_orientation_answered_before_the_opening_and_reverted_after_it_is_no_change():
+    """Keep the table as it is before the opening, revert that answer after it (the verifier's
+    T2V-1): the state at the opening holds `sample_major`, the served fit leaves the orientation
+    unanswered, and the oriented stage turns the table only on `feature_major`, so the two are the
+    same rows and the same fit, though the engine keys them apart. The fit served after the revert
+    is the opened fit, and the reported result says so."""
+    graph = build_graph()
+    base = opened()
+    records = [*base[:5], record(5, KEEP, "keep"), *base[5:]]
+    records = [r.model_copy(update={"seq": i + 1}) for i, r in enumerate(records)]
+    reverted = [*records, record(9, d.Revert(decision_id="keep"), "back", post=True)]
+    assert seal.state_at_opening(reverted).orientation == "sample_major"
+    assert d.fold(reverted).orientation is None
+    opened_key = seal.keys_for(graph, seal.state_at_opening(reverted), FINGERPRINT)["fit"]
+    assert served(graph, reverted) != opened_key  # the engine keys the two apart
+    changed, post, at = results(graph, reverted)
+    assert (changed, post, at["current"]) == (False, [], True)
+    assert at["note"].endswith(": the reported result.")
+    assert seal.changed_after_seal(graph, reverted, FINGERPRINT, opened_key) is False
+    # An exclusion after the revert is still a change, as one beside the answer is.
+    excluded = [*reverted, record(10, EXCLUDE, "exclude", post=True)]
+    changed, post, at = results(graph, excluded)
+    assert (changed, post, at["current"]) == (True, ["exclude"], False)
+    assert at["note"].endswith("the held-out scores shown now are from a fit changed after it, "
+                               "so they are post-seal and not an independent test.")
+    standing = [*records, record(9, EXCLUDE, "exclude", post=True)]
+    assert results(graph, standing)[0] is True
