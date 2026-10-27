@@ -65,6 +65,9 @@ COLLINEAR_TOL = 1e-8  # a share below which a part is rounding (rounding leaves 
 # 1 − |cos| between copies, a column's part outside the others, a coding's shortfall from the
 # residual's largest correlation
 VIP_COMPONENTS = 2
+# R's lm.fit and glm.fit: a column whose part outside the columns before it, in a QR factorization
+# with pivoting, is below this share of its own length is aliased (its coefficient NA).
+ALIASED = 1e-7
 INFERENCE_ALPHA = 0.157  # Heinze et al. 2018: AIC's equivalent significance level
 SOURCES = {
     "ambroise": "Ambroise & McLachlan, PNAS 2002;99:6562",
@@ -151,11 +154,37 @@ def screening_keep(n: int, keep: int | None) -> int:
     return int(keep) if keep else max(1, int(n / math.log(max(n, 3))))
 
 
-def _ols(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, float, np.ndarray]:
-    """(β, residual sum of squares, (XᵀX)⁻¹) by least squares."""
-    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+def identified(X: np.ndarray) -> np.ndarray:
+    """The columns of ``X`` whose coefficients its rows identify, in order: a QR factorization with
+    column pivoting keeps each column the kept ones do not span to within :data:`ALIASED` of its
+    own length, as R's ``lm`` and ``glm`` keep them. Every column where none is aliased; a
+    category coded by every level beside the intercept loses one."""
+    from scipy.linalg import qr
+
+    if X.shape[1] == 0:
+        return np.arange(0)
+    _, R, piv = qr(X, mode="economic", pivoting=True)
+    lengths = np.linalg.norm(X[:, piv], axis=0)
+    kept = np.abs(np.diag(R)) > ALIASED * np.where(lengths > 0, lengths, 1.0)
+    rank = len(kept) if kept.all() else int(np.argmin(kept))
+    return np.sort(piv[:rank])
+
+
+def _ols(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, float, np.ndarray, int]:
+    """(β, residual sum of squares, (XᵀX)⁻¹, rank) by least squares on the identified columns
+    (:func:`identified`; an aliased column's coefficient is zero, NA in R): the residuals are the
+    rows' projection's, whatever the coding. Where columns are dependent, numpy's ``lstsq``
+    (LAPACK's divide-and-conquer SVD) can fail to converge: a 7,418-row fold of the NHANES glucose
+    sweep with every level of 26 categories beside the intercept did (2026-10-26)."""
+    from scipy.linalg import qr, solve_triangular
+
+    kept = identified(X)
+    beta = np.zeros(X.shape[1])
+    if len(kept):
+        Q, R = qr(X[:, kept], mode="economic")
+        beta[kept] = solve_triangular(R, Q.T @ y)
     rss = float(((y - X @ beta) ** 2).sum())
-    return beta, rss, np.linalg.pinv(X.T @ X)
+    return beta, rss, np.linalg.pinv(X.T @ X), len(kept)
 
 
 def _loglik(X: np.ndarray, y: np.ndarray) -> float | None:
@@ -197,7 +226,7 @@ def univariable_p(Z: np.ndarray, y: np.ndarray, task: str,
             if full is not None and null is not None:
                 out[t] = float(stats.chi2.sf(2.0 * (full - null), k))
             continue
-        beta, rss, inv = _ols(X, y)
+        beta, rss, inv, _ = _ols(X, y)
         df = n - k - 1
         if k == 1:
             s2 = rss / df
@@ -212,19 +241,23 @@ def univariable_p(Z: np.ndarray, y: np.ndarray, task: str,
 
 def aic(Z: np.ndarray, y: np.ndarray, task: str) -> float:
     """``extractAIC`` as ``MASS::stepAIC`` reads it: n·ln(RSS/n) + 2·edf for least squares;
-    −2·log-likelihood + 2·edf for a logistic regression. ``Z`` holds the intercept."""
-    n, k = Z.shape
+    −2·log-likelihood + 2·edf for a logistic regression. ``Z`` holds the intercept. As ``lm`` and
+    ``glm`` fit, the fit is on the identified columns (:func:`identified`) and edf is their number,
+    the rank: a category coded by every level counts as one coded by all but one, whose columns
+    span the same rows."""
+    n = Z.shape[0]
     if task == "binary":
         from turbotab.core.models.performance import logistic_fit
 
-        fitted = logistic_fit(Z, y)
+        kept = identified(Z)
+        fitted = logistic_fit(Z[:, kept], y)
         if fitted is None:
             return float("inf")
-        eta = Z @ fitted[0]
+        eta = Z[:, kept] @ fitted[0]
         loglik = float(np.sum(y * eta - np.logaddexp(0.0, eta)))
-        return -2.0 * loglik + 2.0 * k
-    _, rss, _ = _ols(Z, y)
-    return n * math.log(rss / n) + 2.0 * k if rss > 0 else float("-inf")
+        return -2.0 * loglik + 2.0 * len(kept)
+    _, rss, _, rank = _ols(Z, y)
+    return n * math.log(rss / n) + 2.0 * rank if rss > 0 else float("-inf")
 
 
 def backward_aic(Z: np.ndarray, y: np.ndarray, task: str,
@@ -710,7 +743,7 @@ def _fit_copy(task: str, X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.n
         from turbotab.core.models.performance import logistic_fit
 
         return logistic_fit(X, y)
-    beta, rss, inv = _ols(X, y)
+    beta, rss, inv, _ = _ols(X, y)
     n, k = X.shape
     return beta, rss / (n - k) * inv
 

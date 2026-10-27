@@ -709,7 +709,9 @@ def build_graph() -> Graph:
             # words (``inference.no_interval``), not served with the estimate and no interval; the
             # mixed model's REML boundary is decided by the profile's slope at zero; and its fit on
             # dependent columns is refused, typed (``repeated.singular_refusal``), where it ended
-            # the stage with a LinAlgError.
+            # the stage with a LinAlgError; and in-fold backward elimination by AIC fits on the
+            # identified columns, edf their rank (``variable_selection.identified``), so a category
+            # coded by every level selects as one coded by all but one.
             Stage("fit", 33, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
