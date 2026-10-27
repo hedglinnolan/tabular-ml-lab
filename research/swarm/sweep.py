@@ -1,7 +1,7 @@
 """The sweep and the crash sweep (SWARM_PLAN §6 "Mechanical arms" and "Order" step 1, §7 "Material, in
 the loss's units" and "Refused refits", §8 "The sweep's refits under the full pipeline").
 
-    python -m research.swarm.sweep crash --dataset <id> --out <dir>
+    python -m research.swarm.sweep crash --dataset <id> --out <dir> [--refit-wait <seconds>]
     python -m research.swarm.sweep plan  --dataset <id> --bundle <export.zip> --name <plan> --out <dir>
                                          [--data <file>] [--sweeps <dir>]
 
@@ -14,7 +14,9 @@ truncated log byte for byte and the stages it computed), so each starts from the
 and no lock, revisits its one decision, presses Fit (under Estimate that press records the refit's
 own lock, which no later change could withdraw once its estimate was shown) and is read. A copy is
 removed once read, but for one that met an engine defect, which is kept for its reproduction. A
-refit waits :data:`REFIT_WAIT` seconds from its press of Fit, for its fit to be done and then for
+refit waits the run's refit wait from its press of Fit (the crash sweep's ``--refit-wait``,
+:data:`REFIT_WAIT` seconds where it names none; the report says the wait each run ran under), for
+its fit to be done and then for
 every other stage of its copy to end; where that wait runs out, the sweep cancels the copy's fit
 through the server's Cancel (``POST …/fit/cancel``: every estimate stage's job stops), waits for
 its jobs to end (cancelling each job the copy still holds where it does not go idle), and removes
@@ -78,7 +80,9 @@ in its answer, or one the driver serves on the asks after it (the last refusal's
 default path would settle as a reading or a role); where none is named, the walk goes on as the
 default path does with no way forward (another option of the question, else a stop classed
 refused); the option's own refusal takes none. A reading or a role the ask card asks itself is no
-refusal's way, and the default path's policy answers it. The revisit's own walk, to the question
+refusal's way, and the default path's policy answers it. A way the walk answered (a reading, a
+role, a finding's act, a refusal's way) and the engine refused is not answered again until the
+walk records an answer: nothing recorded, the same answer meets the same refusal. The revisit's own walk, to the question
 it opens again, takes a refusal's way under the same rule. Refits are deduplicated by the
 plan's digest (``plan_lock.digest`` of the log as served, folded: the digest every fit record
 carries), so an option that leaves a plan already fitted is not fitted again (``duplicate_of``);
@@ -231,7 +235,10 @@ REFIT_WAIT = 3600.0
 # scored, for every other stage of its copy to end (the estimate stages the fit does not wait on
 # among them, read after it). Where it runs out first, the copy's fit is cancelled, its jobs waited
 # for and the copy removed, and the refit left unreached (``Sweep._cancel``): a fit left running
-# would hold the server's workers, and every later refit would wait behind it.
+# would hold the server's workers, and every later refit would wait behind it. This is the wait
+# where a run names none; the crash sweep's ``--refit-wait SECONDS`` sets it for that run
+# (``Sweep.refit_wait``), as for a dataset whose own plan's fit runs past an hour, and the report
+# says which wait each run ran under.
 # The server writes a fit's record on its recorder's thread after the fit's key turns fresh
 # (``service._fit_event``), so a read just after the fit can come before it: it is read again
 # every RECORD_POLL seconds, for RECORD_WAIT seconds at most, before the refit is left unreached.
@@ -1477,6 +1484,43 @@ def names_way(decision: Mapping[str, Any], way: Mapping[str, Any]) -> bool:
     return bool(way) and all(decision.get(k) == v for k, v in way.items())
 
 
+def refused_since_recorded(steps: Sequence[Any] | None) -> set[str]:
+    """The ways the walk answered (``arms.Step`` at ``way``: a reading, a role, a finding's act or
+    a refusal's way forward) that the engine refused since the walk's last answer it recorded:
+    with nothing recorded since, the same answer meets the same refusal again."""
+    out: set[str] = set()
+    for step in reversed(list(steps or [])):
+        if step.said == "ok":
+            break
+        if step.at == "way" and step.said == "refused":
+            out.update(str(c) for c in step.chosen)
+    return out
+
+
+def without_ways(q: Mapping[str, Any], ids: set[str]) -> dict[str, Any]:
+    """The ask ``q`` with the ways forward whose ids are ``ids`` left out, wherever it lists one
+    (``arms.ways_of``: the ask card's, the last refusal's, a quest line's and its items', and a
+    reading read from the data's), and each finding line's acts."""
+    def kept(holder: Mapping[str, Any], key: str) -> dict[str, Any]:
+        if holder.get(key) is None:
+            return dict(holder)
+        return {**holder, key: [w for w in holder[key] if str((w or {}).get("id")) not in ids]}
+
+    out = kept(q, "last_refusal_exits")
+    if isinstance(q.get("readings"), Mapping):
+        readings = kept(q["readings"], "exits")
+        if readings.get("read_from_data") is not None:
+            readings["read_from_data"] = [kept(s, "change") for s in readings["read_from_data"]]
+        out["readings"] = readings
+    if q.get("also_open") is not None:
+        lines = [kept(line, "options") for line in q["also_open"]]
+        for line in lines:
+            if line.get("items") is not None:
+                line["items"] = [kept(item, "options") for item in line["items"]]
+        out["also_open"] = lines
+    return out
+
+
 @dataclass
 class Named(arms.Default):
     """The default path's answers for the sweep's walks (the module docstring), but a refusal's
@@ -1487,10 +1531,15 @@ class Named(arms.Default):
     those the driver serves on the asks after it (``last_refusal_exits``), which the default path
     settles as a reading or a role (:meth:`settle`); a reading or a role the ask card asks itself
     is no refusal's way and is settled as the default path settles it. Each way taken is kept in
-    ``taken``, with who named it."""
+    ``taken``, with who named it. A way the walk answered and the engine refused is not answered
+    again while the walk has recorded nothing since (``steps``, the walk's own: the same answers
+    meet the same refusal, :func:`refused_since_recorded`), so a refused act is not answered over
+    and over until the walk's limit (the plasma panel's ``question:lens=metabolomics``, whose
+    walk answered one refused repair 298 times)."""
 
     names: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     taken: list[dict[str, Any]] = field(default_factory=list)
+    steps: list[Any] | None = None  # the walk's steps (``arms.walk``'s), where it is given them
 
     def named_by(self, e: Mapping[str, Any]) -> str | None:
         """Who names the way forward ``e`` (the plan or the option), or None."""
@@ -1514,7 +1563,11 @@ class Named(arms.Default):
 
     def settle(self, q: Mapping[str, Any]) -> tuple[str, str] | None:
         """The default path's settling of ``q`` with the last refusal's ways forward that neither
-        the plan nor the option names left out."""
+        the plan nor the option names left out, and each way refused since the walk last recorded
+        an answer."""
+        futile = refused_since_recorded(self.steps)
+        if futile:
+            q = without_ways(q, futile)
         kept = [e for e in q.get("last_refusal_exits") or [] if self.named_by(e) is not None]
         return super().settle({**q, "last_refusal_exits": kept})
 
@@ -1535,13 +1588,16 @@ class Sweep:
     ``data``: the table the plan was made from, named in each defect's reproduction. ``cap``: the
     dataset's compute cap in fit seconds (prereg.json's, for the sweeps around named plans), with
     ``spent`` the fit seconds the dataset's earlier sweeps spent; the sweep stops before a fit once
-    they are spent, and says so (``stopped``)."""
+    they are spent, and says so (``stopped``). ``refit_wait``: each refit's wait in seconds from
+    its press of Fit (:data:`REFIT_WAIT` where None), held for the run and said in its report."""
 
     def __init__(self, out: Path, *, dataset: str | None, question: arms.Question,
                  crash: bool, plan: str, only: Iterable[str] | None = None,
                  log: Callable[[str], None] | None = None, data: Path | None = None,
-                 cap: float | None = None, spent: float = 0.0):
+                 cap: float | None = None, spent: float = 0.0,
+                 refit_wait: float | None = None):
         self.out = Path(out).absolute()
+        self.refit_wait = float(REFIT_WAIT if refit_wait is None else refit_wait)
         self.cap, self.spent_before = (None if cap is None else float(cap)), float(spent)
         self.stopped: dict[str, Any] | None = None
         self.dataset, self.question, self.crash, self.plan = dataset, question, crash, plan
@@ -1668,19 +1724,19 @@ class Sweep:
 
     def _fit(self, session: Any, refit: Refit) -> None:
         """Fit pressed on the refit's copy and read (:func:`read_refit`) within the refit's wait,
-        :data:`REFIT_WAIT` seconds from the press: for the fit to be done and, where it is scored,
-        for every other stage of the copy to end, after which its estimate stages are read
-        (:meth:`_estimate_stages`). Where the wait runs out first, the copy's fit is cancelled and
-        the refit left unreached (:meth:`_cancel`)."""
+        the sweep's :attr:`refit_wait` seconds from the press: for the fit to be done and, where
+        it is scored, for every other stage of the copy to end, after which its estimate stages
+        are read (:meth:`_estimate_stages`). Where the wait runs out first, the copy's fit is
+        cancelled and the refit left unreached (:meth:`_cancel`)."""
         started = time.monotonic()
-        fit = session.fit(REFIT_WAIT)
+        fit = session.fit(self.refit_wait)
         read_refit(session, refit, fit, self.question.purpose)
         if ran_out(fit):
             self._cancel(session, refit, (fit.payload.get("fit") or {}).get("status"))
             return
         if refit.kind != "scored":
             return
-        if not session.idle(wait=max(0.0, REFIT_WAIT - (time.monotonic() - started))):
+        if not session.idle(wait=max(0.0, self.refit_wait - (time.monotonic() - started))):
             self._cancel(session, refit, None)
             return
         self._estimate_stages(session, refit)
@@ -1696,10 +1752,12 @@ class Sweep:
         busy = in_flight(session.view())
         errors = len(session.errors)
         done = session.cancel(str(refit.project))
-        refit.kind, refit.cancelled = "unreached", {"after": REFIT_WAIT, "waiting_on": busy, **done}
+        refit.kind, refit.cancelled = "unreached", {"after": self.refit_wait, "waiting_on": busy,
+                                                    **done}
         computing = (" (still computing: " + joined(f"{b['stage']} {b['status']}" for b in busy)
                      + ")" if busy else "")
-        waited = f"{REFIT_WAIT:g} s after the sweep pressed Fit, as long as it waits for a refit"
+        waited = (f"{self.refit_wait:g} s after the sweep pressed Fit, as long as it waits for a "
+                  f"refit")
         why = (f"The fit was {fit} {waited}{computing}." if fit is not None else
                f"The fit was done, but {waited}, its other stages were not{computing}.")
         why += " The sweep cancelled the copy's fit"
@@ -2079,6 +2137,7 @@ class Sweep:
                     refit.previews.append({"of": f"{p.id} (the plan's answer)",
                                            **said_json(seen)})
         steps: list[arms.Step] = []
+        policy.steps = steps  # a way refused is not answered again until one is recorded
         before = (lambda key, q: self._preview_reopened(session, refit, key, q)) if self.crash \
             else None
         try:
@@ -2186,8 +2245,9 @@ class Sweep:
 
     def run(self, session: Any, build: Callable[[Any], str]) -> dict[str, Any]:
         started = time.monotonic()
-        # The engine this run starts on, kept before any work (the report holds it to the end's).
-        start = {**engine_version(), "at": now()}
+        # The engine this run starts on, kept before any work (the report holds it to the end's),
+        # and the refit wait it runs under (a resumed sweep's runs may each have had their own).
+        start = {**engine_version(), "at": now(), "refit_wait": self.refit_wait}
         self.engines.append(start)
         self._write({"engine": start})
         self.template(session, build)
@@ -2368,6 +2428,7 @@ class Sweep:
             "dataset": self.dataset, "plan": self.plan, "purpose": self.question.purpose,
             **end, "engine_starts": [dict(e) for e in self.engines],
             "engine_changed": engine_changed(self.engines, end, unrecorded=self.unrecorded),
+            "refit_wait": self.refit_wait,  # this run's (each run's is on its start)
             "written": now(), "seconds": round(seconds, 1),
             "template": {k: (self.base or {}).get(k) for k in ("project", "digest", "seq")},
             "scoring": (self.base or {}).get("scoring"),
@@ -2443,7 +2504,9 @@ def table_md(report: Mapping[str, Any]) -> str:
              + (f"; passed: {report['passed']}" if "passed" in report else "")
              + (f"; unreached: {len(report['unreached'] or [])}" if "unreached" in report else "")
              + (f"; swept only {', '.join(report['only'])}" if report.get("only") is not None
-                else "") + ".", "",
+                else "") + "."
+             + (f" Each refit waited at most {report['refit_wait']:g} s from its press of Fit."
+                if report.get("refit_wait") is not None else ""), "",
              "| Decision | Options | Scored | Refused | Failed | Unreached | Duplicate | Refused "
              "share | Material |", "|---|---|---|---|---|---|---|---|---|"]
     for d in report.get("decisions") or []:
@@ -2490,18 +2553,20 @@ def table_md(report: Mapping[str, Any]) -> str:
 
 def crash(dataset: str, out: Path, *, only: Iterable[str] | None = None,
           data: Path | None = None, question: arms.Question | None = None,
-          log: Callable[[str], None] | None = None) -> dict[str, Any]:
+          log: Callable[[str], None] | None = None,
+          refit_wait: float | None = None) -> dict[str, Any]:
     """The crash sweep on ``dataset`` (the module docstring), into ``out``: ``crash.json`` and
     ``crash.md``. A test's small fixture gives ``data`` (a table in place of the one the dataset's
     manifest builds) and ``question`` (in place of its card's); ``only``: the decisions swept, by
-    point id."""
+    point id; ``refit_wait``: each refit's wait in seconds from its press of Fit
+    (:data:`REFIT_WAIT` where None), which the report records."""
     from research.swarm.dry_run import table_of
 
     out = Path(out).absolute()
     question = question or arms.Question.of_card(arms.card_of(dataset))
     table = Path(data).absolute() if data is not None else table_of(dataset, out / "data")
     sweep = Sweep(out, dataset=dataset, question=question, crash=True, plan="default",
-                  only=only, log=log, data=table)
+                  only=only, log=log, data=table, refit_wait=refit_wait)
     with arms.Local(out / "home") as session:
         report = sweep.run(session, default_build(sweep.policy, table))
         session.use(str(sweep.base["project"]))
@@ -2578,6 +2643,17 @@ def sweep_plan(dataset: str, bundle: Path, name: str, out: Path, *, data: Path |
     return report
 
 
+def wait_of(text: str) -> float:
+    """A command line's number of seconds: a positive finite number, else refused in words."""
+    try:
+        value = float(text)
+    except ValueError:
+        value = math.nan
+    if not (math.isfinite(value) and value > 0):
+        raise argparse.ArgumentTypeError(f"{text!r} is not a positive number of seconds")
+    return value
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m research.swarm.sweep",
                                      description=__doc__.split("\n\n")[0])
@@ -2585,6 +2661,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     p = sub.add_parser("crash", help="the crash sweep around the default plan (SWARM_PLAN §6)")
     p.add_argument("--dataset", required=True)
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--refit-wait", type=wait_of, default=REFIT_WAIT, metavar="SECONDS",
+                   help=f"how long each refit waits from its press of Fit before it is "
+                        f"cancelled and left unreached (default {REFIT_WAIT:g})")
     p = sub.add_parser("plan", help="the sweep around a named final plan")
     p.add_argument("--dataset", required=True)
     p.add_argument("--bundle", type=Path, required=True)
@@ -2600,7 +2679,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.flush()
 
     if args.command == "crash":
-        report = crash(args.dataset, args.out, log=log)
+        report = crash(args.dataset, args.out, log=log, refit_wait=args.refit_wait)
         sys.stdout.write(json.dumps({k: report[k] for k in ("dataset", "passed", "complete",
                                                             "fit_seconds", "engine_changed")}
                                     | {"unreached": len(report["unreached"]),
