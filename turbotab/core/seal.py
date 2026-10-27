@@ -1562,6 +1562,18 @@ DECISION_A: dict[str, tuple[str, str]] = {
     "join_files": ("joins", "the files joined to the table"),
 }
 DECISION_A_SLOTS = tuple(slot for slot, _ in DECISION_A.values())
+# What an unanswered Decision A slot reads as, where that is an answer's value: the table as it
+# is, which the oriented stage turns only on `feature_major` (``stages.working.oriented_stage``)
+# and the sequence offers as "Keep the table as it is". Answering it so changes no row (the
+# swarm's C3: the metabolomics lens asked it after the draw, and the seal refused it as a change).
+UNANSWERED_READS_AS: dict[str, str] = {"orientation": "sample_major"}
+
+
+def decision_a_value(state: Any, slot: str) -> Any:
+    """``slot``'s value under ``state`` as it decides what a row is: the answer, else what the
+    unanswered slot reads as (:data:`UNANSWERED_READS_AS`)."""
+    value = getattr(state, slot, None)
+    return UNANSWERED_READS_AS.get(slot) if value is None else value
 
 
 def _cross_validation_only(state: Any) -> bool:
@@ -1644,8 +1656,8 @@ def _decision_a_waits_for_a_reseal(decision: Any, ctx: Any) -> None:
         return
     slot, what = DECISION_A[decision.kind]
     value = decisions._SLOT_VALUE[decision.kind](decision)
-    if getattr(state, slot, None) == value:
-        return  # the same answer again changes nothing
+    if decision_a_value(state, slot) == value:
+        return  # the same answer again changes nothing, nor the one an unanswered slot reads as
     raise _sealed_refusal(what, _records(ctx), state, ctx)
 
 
@@ -1983,7 +1995,7 @@ def _revert_keeps_the_seal(decision: Revert, ctx: Any) -> None:
     if after.split is None:
         return  # this revert withdraws the seal: the re-seal path
     for kind, (slot, what) in DECISION_A.items():
-        if getattr(now, slot) != getattr(after, slot):
+        if decision_a_value(now, slot) != decision_a_value(after, slot):
             raise _sealed_refusal(what, records, now, ctx)
     if holds_rows_out(now) and now.split == after.split:
         clause = _redrawn_by(now, after, ctx)
@@ -2279,7 +2291,7 @@ def _membership_change(then: Any, after: Any, ctx: Any) -> str | None:
     if clause is not None:
         return clause
     for slot, what in DECISION_A.values():
-        if getattr(then, slot) != getattr(after, slot):
+        if decision_a_value(then, slot) != decision_a_value(after, slot):
             return f"changing {what} would draw them again"
     clause = _redrawn_by(then, after, ctx)
     if clause is None:

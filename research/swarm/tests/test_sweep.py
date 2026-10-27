@@ -1832,13 +1832,15 @@ QC_ROWS = {"kind": "apply_repair", "finding_id": "pooled_qc__sample_type", "opti
 
 
 class Resealed(Walked):
-    """The plasma panel's crash sweep at ``question:lens=metabolomics`` (crash2's progress): the
-    lens reopens the orientation question, each of whose answers the engine refuses as the folds
+    """The plasma panel's crash sweep at ``question:lens=metabolomics`` as crash2 met it: the
+    lens reopens the orientation question, each of whose answers that engine refused as the folds
     are drawn (``sealed``, its one way forward a revert of the split neither the plan nor the
     option names); from the ask after that refusal the pooled-QC finding is open beside it, and
     its repair, "Exclude the QC rows", is refused as the split is drawn (``rows_after_the_seal``),
     its one way forward a label that records nothing. Nothing either refusal leaves is recorded,
-    so each ask is the same."""
+    so each ask is the same. The seal now accepts `sample_major` on an unanswered orientation
+    (``turbotab/core/tests/test_orientation_kept_after_the_seal.py``); this session keeps the
+    refusal, so the walk's own guard is pinned on the sequence that looped."""
 
     def __init__(self):
         from research.swarm.tests.test_arms import ask, opt
@@ -1877,7 +1879,7 @@ def test_a_finding_act_refused_with_nothing_recorded_since_is_not_answered_again
     refused repair 298 times, nothing recorded between. A way the engine refused is not answered
     again until an answer is recorded, so the walk returns to the orientation question (the
     table's layout, which the default path answers as written, ``arms.FIXED``), refused again
-    with no way forward the plan or the option names: the refit is refused in the engine's
+    with no way forward the plan or the option names: the refit is refused in the session's
     words, the repair answered once."""
     session = Resealed()
     refit = walked_refit(tmp_path, session)
