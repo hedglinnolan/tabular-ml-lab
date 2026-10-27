@@ -107,6 +107,21 @@ class _Sums:
     P: int
 
 
+def dependent(X: np.ndarray) -> bool:
+    """Whether the design's columns are dependent to working precision: its smallest singular
+    value, with every column scaled to unit length (so units do not count), at most the largest
+    times max(N, P) machine epsilons (``numpy.linalg.matrix_rank``'s rule). REML has no fit there
+    (``log|XᵀV⁻¹X|`` is −∞), and asking LAPACK's factorization of ``XᵀV⁻¹X`` instead lets
+    rounding decide: the pivot an exact dependency leaves is a few ulps of either sign, or zero."""
+    if X.shape[1] == 0:
+        return False
+    norms = np.linalg.norm(X, axis=0)
+    if np.any(norms == 0):
+        return True
+    s = np.linalg.svd(X / norms, compute_uv=False)
+    return bool(s[-1] <= s[0] * max(X.shape) * np.finfo(float).eps)
+
+
 def _sums(X: np.ndarray, y: np.ndarray, codes: np.ndarray) -> _Sums:
     G = int(codes.max()) + 1
     S = np.zeros((G, X.shape[1]))
@@ -147,6 +162,20 @@ def reml_loglik(sigma2_u: float, sigma2_e: float, s: _Sums) -> float:
     return -0.5 * ((s.N - s.P) * math.log(sigma2_e) + logH + logA + rss / sigma2_e)
 
 
+def _slope_at_zero(s: _Sums) -> float:
+    """The profile's derivative in γ at γ = 0 (:func:`_profile`), in closed form:
+    ``N − tr((XᵀX)⁻¹ SᵀS) − (N − P) Σ_g r_g² / RSS``, with ``r_g`` the sum of unit g's
+    least-squares residuals. At γ = 0, ``d log(1 + m_g γ)/dγ = m_g``, ``dA/dγ = −SᵀS`` and, β being
+    optimal (the envelope theorem), ``dRSS/dγ = −Σ_g r_g²``."""
+    beta = np.linalg.solve(s.XtX, s.Xty)
+    rss = s.yty - float(beta @ s.Xty)
+    r = s.t - s.S @ beta
+    lever = float(np.trace(np.linalg.solve(s.XtX, s.S.T @ s.S)))
+    if rss <= 0:  # the rows are fit exactly at every γ: the profile's RSS term (clipped) is fixed
+        return s.N - lever
+    return s.N - lever - (s.N - s.P) * float(r @ r) / rss
+
+
 def _best_gamma(s: _Sums) -> float:
     from scipy.optimize import minimize_scalar
 
@@ -155,8 +184,13 @@ def _best_gamma(s: _Sums) -> float:
     at_zero = _profile(0.0, s)
     i = GAMMA_GRID.index(gamma)
     if i == 0 and at_zero <= best:
-        # The profile still falls toward γ = 0: refine on [0, the first grid point], where the
-        # minimum may be at the boundary itself.
+        # The profile is lowest toward γ = 0. Where it rises from γ = 0 the minimum is the
+        # boundary itself, and its derivative there says so: comparing the profile at 0 with a
+        # bounded search's point a few 10⁻¹³ from it compares two numbers that differ by less
+        # than their rounding, so which way that fell depended on the arithmetic.
+        if _slope_at_zero(s) >= 0:
+            return 0.0
+        # It falls from γ = 0: refine on [0, the first grid point].
         found = minimize_scalar(lambda g: _profile(g, s), bounds=(0.0, GAMMA_GRID[1]),
                                 method="bounded", options={"xatol": 1e-14})
         return 0.0 if at_zero <= found.fun else float(found.x)
@@ -195,7 +229,9 @@ def fit_random_intercept(X: np.ndarray, y: np.ndarray, codes: np.ndarray, *,
     ``2 f² / (∇fᵀ 𝒜 ∇f)`` with ``f = C_jj``; ``∇f`` is analytic (``∂C/∂θ_k = C XᵀV⁻¹(∂V/∂θ_k)V⁻¹X
     C``) and ``𝒜`` is the inverse of the negative Hessian of :func:`reml_loglik`, by central
     differences in log σ² (the df are the same in any parameterization at the optimum). At the
-    boundary σ̂²_u = 0 the between-unit variance is held at zero, and the df are N − P.
+    boundary σ̂²_u = 0 the between-unit variance is held at zero, and the df are N − P. Where the
+    design's columns are dependent (:func:`dependent`) REML has no fit, and ``LinAlgError`` says
+    the model matrix is singular.
     """
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -203,6 +239,8 @@ def fit_random_intercept(X: np.ndarray, y: np.ndarray, codes: np.ndarray, *,
     s = _sums(X, y, codes)
     if s.N <= s.P:
         raise ValueError(f"{s.N:,} rows for {s.P:,} coefficients: the model cannot be fit.")
+    if dependent(X):
+        raise np.linalg.LinAlgError("the model matrix is singular")
     gamma = _best_gamma(s)
     A, beta, rss, _, _ = _at(gamma, s)
     sigma2_e = rss / (s.N - s.P)
@@ -331,7 +369,9 @@ class RandomInterceptRegressor(RegressorMixin, BaseEstimator):
     """A random-intercept linear mixed model (REML); predicts from the fixed effects alone.
 
     ``units``: each row's unit label, indexed by row id (set by the fit stage). Without units that
-    repeat, the fit is ordinary least squares, which is what the model reduces to.
+    repeat, the fit is ordinary least squares, which is what the model reduces to. Where units
+    repeat and the model matrix's columns are dependent, REML has no fit, and the fit is refused
+    in words that name them (:func:`singular_refusal`).
     """
 
     def __init__(self, units: Any = None):
@@ -343,7 +383,10 @@ class RandomInterceptRegressor(RegressorMixin, BaseEstimator):
         design = np.column_stack([np.ones(len(y)), M])
         codes = unit_codes(self.units, index, len(y))
         if repeats(codes):
-            fit = fit_random_intercept(design, y, codes, satterthwaite=False)
+            try:
+                fit = fit_random_intercept(design, y, codes, satterthwaite=False)
+            except np.linalg.LinAlgError:  # dependent columns (``dependent``), or XᵀV⁻¹X singular
+                raise singular_refusal(pd.DataFrame(M, columns=names)) from None
             beta, self.sigma2_u_, self.sigma2_e_ = fit.beta, fit.sigma2_u, fit.sigma2_e
         else:
             beta = np.linalg.lstsq(design, y, rcond=None)[0]
@@ -463,13 +506,52 @@ def _singular(matrix: pd.DataFrame) -> str | None:
         return None
 
 
+def singular_words(matrix: pd.DataFrame) -> str:
+    """Why REML has no fit on ``matrix`` (its columns without the intercept), where ``XᵀV⁻¹X`` is
+    singular to working precision: the columns, with the intercept, are dependent, and REML needs
+    every coefficient identified, since its likelihood holds ``log|XᵀV⁻¹X|``. The columns named
+    are those in the dependency (Belsley's proportions, ``linear.dependent_columns``); no
+    condition number is quoted, since at an exact dependency the one computed is rounding."""
+    from turbotab.core.models.inference import _terms
+    from turbotab.core.models.linear import dependent_columns
+
+    try:
+        named = dependent_columns(matrix)
+    except Exception:  # noqa: BLE001 - a diagnostic that cannot run names no column
+        named = []
+    if len(named) == 1:
+        what = (f"{_terms(named)} is a fixed combination of the other columns and the intercept, "
+                f"so its coefficient is not identified")
+    elif named:
+        what = (f"{_terms(named)} are fixed combinations of the other columns and the intercept, "
+                f"so their coefficients are not identified")
+    else:
+        what = ("its columns and the intercept are dependent, so their coefficients are not "
+                "identified")
+    return (f"On these {len(matrix):,} rows the model matrix is singular: {what}. The "
+            f"random-intercept mixed model is fit by REML, which needs every coefficient "
+            f"identified, so it is not fit; leave one of the dependent columns out.")
+
+
+def singular_refusal(matrix: pd.DataFrame) -> Any:
+    """The mixed model's fit refused where REML has none (:func:`singular_words`), typed as a
+    fit-time refusal (SWARM_PLAN §8)."""
+    from turbotab.core.graph import StageRefusal
+
+    return StageRefusal("singular_model_matrix", singular_words(matrix), exits=[
+        {"label": "Leave one of the dependent columns out of the model", "decision": None}])
+
+
 def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
     """The random-intercept model's coefficient table on the matrix the model saw, by the
     clusters :func:`~turbotab.core.models.inference.resolve_clusters` read from the rows; on no
     more rows than its coefficients, refused with no estimate, before any other refusal that
-    would keep one (``inference._no_spare_rows``)."""
+    would keep one (``inference._no_spare_rows``). Refused, its estimates kept, where the matrix
+    is nearly singular (the linear family's concern), where REML has no fit (:func:`dependent`),
+    and where the fit gives some coefficient no standard error or Satterthwaite degrees of
+    freedom (``inference.no_interval``)."""
     from turbotab.core.models.inference import (FEW_CLUSTERS, InferenceTable, _info,
-                                                _no_spare_rows, _refused, _t_rows)
+                                                _no_spare_rows, _refused, _t_rows, no_interval)
 
     exog, names = _design(matrix)
     X = exog.to_numpy(dtype=float)
@@ -487,11 +569,19 @@ def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any) -> Any:
     if len(clusters.codes) != len(y):
         raise ValueError(f"The clusters cover {len(clusters.codes):,} rows but the model matrix "
                          f"has {len(y):,}.")
-    fit = fit_random_intercept(X, y, clusters.codes)
+    try:
+        fit = fit_random_intercept(X, y, clusters.codes)
+    except np.linalg.LinAlgError:  # dependent columns the concern did not name (``dependent``)
+        return _refused(names, ols, estimator, clusters, singular_words(matrix), ())
     se = np.sqrt(np.clip(np.diag(fit.cov), 0, None))
-    rows = _t_rows(names, fit.beta, se, fit.df)
     G = fit.n_units
     column = clusters.column
+    reason = no_interval(names, se, fit.df, fit=f"The random-intercept model's REML fit by "
+                                                f"`{column}` on these {G:,} units",
+                         df_kind="Satterthwaite")
+    if reason:
+        return _refused(names, fit.beta, estimator, clusters, reason, ())
+    rows = _t_rows(names, fit.beta, se, fit.df)
     missing = (f", {clusters.n_missing:,} rows with no `{column}` counted as units of their own"
                if clusters.n_missing else "")
     caption = (f"95% intervals from a random-intercept model by `{column}` fit by REML, G = {G:,} "
@@ -553,6 +643,8 @@ def gee_table(matrix: pd.DataFrame, y: Any, clusters: Any, task: str,
         return _refused(names, fit.beta, estimator, clusters, *refusal)
     W, r = gee_working(X, y, fit.mu, clusters.codes, fit.alpha, task)
     table = _clustered(names, fit.beta, estimator, W, r, clusters.codes, clusters)
+    if table.info["refused"]:  # no standard error from its sandwich (``inference.no_interval``)
+        return table
     table.info["caption"] = (table.info["caption"].rstrip(".") +
                              f"; exchangeable working correlation {fit.alpha:.2f}.")
     if not fit.converged:

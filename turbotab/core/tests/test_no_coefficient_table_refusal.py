@@ -201,7 +201,11 @@ def test_a_way_forward_taken_is_fit(tmp_path, key, answers):
     copies) and under the surveyed population (over the design), the mixed model and GEE on the
     100 units of 3 rows (by those 100 units), and the mixed model on 5 units of 60 rows, below the
     unit floor, where it is the only one offered. Model 2's table and both of the secondary
-    stage's are fit, with an interval for `fiber`, not refused."""
+    stage's are fit, with an interval for `fiber` that holds its estimate. On the 5 units this pins
+    the claim, not the platform: there REML's between-unit variance is at its boundary, and float64
+    on CI's Linux runner once left `fiber` with no degrees of freedom (2026-10-23), so the table is
+    either fit with that interval or refused in words that say what the fit could not compute
+    (``inference.no_interval``), never served with the estimate and no interval."""
     effects = _run(tmp_path / "effects", ["elastic_net", key], secondary=False, **answers)
     assert [f["family"] for f in effects["families"]] == [key]
     model_2 = ef.sequence(effects)["model_2"]
@@ -212,6 +216,10 @@ def test_a_way_forward_taken_is_fit(tmp_path, key, answers):
               *[(fit["inference"], fit["coefficients"]) for fit in family["fits"]]]
     assert len(tables) == 3
     for inference, rows in tables:
+        if answers.get("units") and inference["refused"] is not None:
+            assert isinstance(inference["refused"], str) and inference["refused"]
+            assert all(r["ci_low"] is None and r["ci_high"] is None for r in rows)
+            continue
         assert inference["refused"] is None
         if answers.get("repeated") or answers.get("units"):
             assert f"G = {answers.get('units') or UNITS} " in inference["caption"]
