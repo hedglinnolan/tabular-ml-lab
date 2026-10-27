@@ -53,7 +53,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Callable, Literal, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -1098,7 +1098,7 @@ def design_variables(survey_design: Any, index: pd.Index) -> tuple[pd.DataFrame,
     weight = np.where(placed, survey_design.weight[p], np.nan)
     weight = np.where(np.isfinite(weight), weight, np.nanmedian(weight) if np.isfinite(weight).any() else 1.0)
     frame = pd.DataFrame({
-        "__stratum": [f"stratum {s}" if ok else "unplaced" for s, ok in zip(stratum, placed)],
+        "__stratum": [_stratum_level(s) if ok else "unplaced" for s, ok in zip(stratum, placed)],
         "__psu": [f"psu {int(r)}" if ok else "unplaced" for r, ok in zip(rank, placed)],
         "__weight": weight}, index=index)
     names = {"strata": survey_design.strata_column, "psu": survey_design.psu_column,
@@ -1108,6 +1108,46 @@ def design_variables(survey_design: Any, index: pd.Index) -> tuple[pd.DataFrame,
     if frame["__psu"].nunique() < 2:
         frame = frame.drop(columns=["__psu"])
     return frame, names
+
+
+def _stratum_level(code: Any) -> str:
+    """A stratum's level among the design variables (:func:`design_variables`), by its code."""
+    return f"stratum {int(code)}"
+
+
+# The words a refusal ends with where the survey design's terms make the imputation's model fail
+# (``smcfcs._cox_refusal``): the sample answer is drawn without the design (``stages.modeling.
+# _missing_for_table`` passes it to the imputation only under the population answer).
+WITHOUT_THE_DESIGN = ("Estimating for these participants instead (the sample-only attestation) "
+                      "leaves the survey design out of the imputation model.")
+
+
+def design_term_words(survey_design: Any) -> Callable[[str, Any], tuple[str, str | None]]:
+    """How a refusal names a survey design's term of the substantive model (:class:`_DesignTerms`),
+    by its design variable and level, and the rows an indicator marks: a stratum's indicator by
+    the stratum's own value and the strata column ("the indicator of stratum 107 of `SDMVSTRA`",
+    "stratum 107"), a PSU's by the PSU column, the weight by the weight column."""
+    own = {_stratum_level(code): value
+           for code, value in enumerate(getattr(survey_design, "stratum_labels", ()) or ())}
+
+    def of(column: str | None, before: str = " of ") -> str:
+        return f"{before}`{column}`" if column else ""
+
+    def words(variable: str, level: Any) -> tuple[str, str | None]:
+        if level == "unplaced":
+            return "the indicator of the rows the survey design cannot place", "those rows"
+        if variable == "__stratum":
+            if level not in own:  # a design built without its strata's own values
+                return (f"the indicator of one stratum{of(survey_design.strata_column)}",
+                        "that stratum")
+            return (f"the indicator of stratum {own[level]}{of(survey_design.strata_column)}",
+                    f"stratum {own[level]}")
+        if variable == "__psu":
+            return (f"an indicator of the PSUs{of(survey_design.psu_column)} within their strata",
+                    "those PSUs")
+        return f"the survey weight{of(survey_design.weight_column, ' ')}", None
+
+    return words
 
 
 def binary01(y: Any) -> np.ndarray:
@@ -1128,11 +1168,15 @@ class _DesignTerms:
     """The survey design's columns as terms of the imputation's substantive model: each stratum and
     each PSU-within-stratum level but the first as an indicator, the weight standardized, all
     encoded on the levels and the moments of every analyzed row (complete columns, so the encoding
-    is fixed), with any term the others and an intercept already span left out."""
+    is fixed), with any term the others and an intercept already span left out. ``words``
+    (:func:`design_term_words`) names a term by its design variable and level for a refusal
+    (:meth:`named`)."""
 
-    def __init__(self, data: pd.DataFrame, columns: Sequence[str]):
+    def __init__(self, data: pd.DataFrame, columns: Sequence[str],
+                 words: Callable[[str, Any], tuple[str, str | None]] | None = None):
         self.parts: list[tuple[str, Any]] = []
         self.n = len(data)
+        self.words = words
         for c in columns:
             if c not in data.columns:
                 continue
@@ -1179,16 +1223,30 @@ class _DesignTerms:
             self.select(analysis if len(raw) == self.n else np.zeros((len(raw), 0)), raw)
         return self._encode(raw)[:, self.keep]
 
+    def named(self) -> list[Any]:
+        """The kept terms in order, as a refusal names them (``smcfcs.Term``)."""
+        from turbotab.core.methods.smcfcs import Term
+
+        out = []
+        for j in self.keep or []:
+            variable, part = self.parts[j]
+            level = None if isinstance(part, tuple) else part
+            label, group = (self.words(variable, level) if self.words is not None
+                            else ("a term of the survey design", None))
+            out.append(Term(label, design=True, group=group, leave_out=WITHOUT_THE_DESIGN))
+        return out
+
 
 def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any],
-                       design: tuple[pd.DataFrame, Sequence[str]] | None = None) -> Any:
+                       design: tuple[Any, ...] | None = None) -> Any:
     """The analysis model as SMC-FCS reads it: the design is the pipeline's own shared steps
     (normalization, energy adjustment, the form with fixed knots, levels, one-hot), refit on the
     current completed rows once per iteration (the energy residual's line is re-estimated, as in
     each copy) and row-local once fit; the outcome model is the task's (linear, logistic, Cox).
 
-    ``design``: (the imputation data, its survey-design columns). The design's strata, PSUs and
-    weight then enter the substantive model too, beside the analysis model's terms (MS2 repair).
+    ``design``: (the imputation data, its survey-design columns[, how a refusal names their terms:
+    :func:`design_term_words`]). The design's strata, PSUs and weight then enter the substantive
+    model too, beside the analysis model's terms (MS2 repair).
     SMC-FCS assumes an auxiliary variable of the covariate models is independent of the outcome
     given the substantive model's covariates (Bartlett et al. 2015, §5.3; ``smcfcs``'s
     documentation: auxiliary variables are "assumed to be conditionally independent of the outcome
@@ -1196,10 +1254,14 @@ def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any],
     term, so with the design in the covariate models only, an outcome that differs by stratum
     makes that assumption false and biased the pooled design-based estimates (z −0.06 over 40
     replicates, about 7 Monte Carlo SE). An imputation model at least as general as the analysis
-    model is the congenial direction (Meng 1994; Reiter, Raghunathan & Kinney 2006)."""
+    model is the congenial direction (Meng 1994; Reiter, Raghunathan & Kinney 2006).
+
+    ``terms`` names the design's columns for a refusal of the outcome draw (``smcfcs.Term``): each
+    of the pipeline's output columns by its name, made from the longest input it is named after
+    (itself, ``female`` of ``female_1.0``), then the design's terms (:meth:`_DesignTerms.named`)."""
     from sklearn.base import clone
 
-    from turbotab.core.methods.smcfcs import Outcome, Substantive
+    from turbotab.core.methods.smcfcs import Outcome, Substantive, Term
     from turbotab.core.models.pipeline import shared_steps, transformer
 
     steps = []
@@ -1220,8 +1282,21 @@ def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any],
     def matrix(raw: pd.DataFrame) -> np.ndarray:
         if "T" not in holder:
             refresh(raw)
-        M = np.asarray(holder["T"].transform(raw[inputs]), dtype=float)
+        out = holder["T"].transform(raw[inputs])
+        holder["names"] = getattr(out, "columns", None)
+        M = np.asarray(out, dtype=float)
         return M if terms is None else np.column_stack([M, terms(raw, M)])
+
+    by_length = sorted(inputs, key=len, reverse=True)
+
+    def named() -> list[Any]:
+        names = holder.get("names")
+        if names is None:
+            return []  # no names: the refusal names no column
+        own = [Term(f"`{c}`", column=next((i for i in by_length if str(c) == i
+                                           or str(c).startswith(f"{i}_")), None))
+               for c in names]
+        return own + (terms.named() if terms is not None else [])
 
     kind = SUBSTANTIVE[task]
     if kind == "cox":
@@ -1233,7 +1308,7 @@ def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any],
         outcome = Outcome("logistic", y=binary01(y))
     else:
         outcome = Outcome("linear", y=np.asarray(y, dtype=float))
-    return Substantive(outcome=outcome, design=matrix, refresh=refresh)
+    return Substantive(outcome=outcome, design=matrix, refresh=refresh, terms=named)
 
 
 @dataclass
@@ -1358,7 +1433,8 @@ def imputation_plan(spec: Any, X: pd.DataFrame, y: Any, task: str, *, survey: An
             design = {**names, "columns": list(frame.columns)}
     forms = fixed_forms(spec, X)
     substantive = (engine_substantive(spec, task, y, forms,
-                                      design=(data, design["columns"]) if design else None)
+                                      design=(data, design["columns"], design_term_words(survey))
+                                      if design else None)
                    if smc else None)
     blank = np.zeros(len(X), dtype=bool)
     for c in impute:
@@ -2015,6 +2091,7 @@ __all__ = [
     "energy_identity", "fixed_forms", "imputation_plan", "logged_columns", "mi_sentence",
     "nonlinear_terms", "supplied_copies", "carry_within_units", "time_invariance_ask",
     "time_invariant_columns", "MI_EXIT_LABEL", "MI_LABEL", "M_WORDS", "engine_substantive",
+    "design_term_words", "WITHOUT_THE_DESIGN",
     "BELOW_DETECTION_LABELS", "BelowDetection", "BelowDetectionFill", "COMPLETE_CASE_ASSUMPTION",
     "EnergyAwareImputer", "INDICATOR_CAUTION", "LEFT_CENSORED", "METHODS", "MI_ASSUMPTION",
     "MissingMethod", "ROW_LOSS_SHARE", "RULE", "SINGLE_FILL_CAUTION", "ZEROS", "below_detection_options",

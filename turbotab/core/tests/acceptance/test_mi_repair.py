@@ -1041,7 +1041,9 @@ def test_8_the_cox_draws_baseline_hazard_is_basehaz_of_the_efron_fit_at_the_draw
     draw and takes ``survival::basehaz(ymod, centered = FALSE)``: the Efron-corrected cumulative
     hazard at the drawn coefficients. With yearly follow-up (heavy ties) the engine's draw's H₀ at
     each row's time (less H₀ at its entry, with delayed entry) equals R's to 1e-10; Breslow's,
-    which the engine used before, differs by more than 5% here (the verifier: up to 5.2%)."""
+    which the engine used before, differs by more than 5% here (the verifier: up to 5.2%). The draw
+    holds H₀ of the linear predictor less its largest value (``fit.shift``), so R's is
+    ``fit.H`` e^(−shift)."""
     from turbotab.core.methods.smcfcs import Outcome as SMOutcome
     from turbotab.core.methods.smcfcs import _cox_draw, breslow
 
@@ -1066,7 +1068,7 @@ write.csv(data.frame(H = H0(dat$t) - H0(dat$s)), "H.csv", row.names = FALSE)
 """, data=pd.DataFrame({"s": start, "t": t, "d": d_, "x": x, "z": z}),
                    beta=pd.DataFrame({"beta": fit.beta}))
     H = pd.read_csv(folder / "H.csv")["H"].to_numpy()
-    np.testing.assert_allclose(fit.H, H, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(fit.H * np.exp(-fit.shift), H, rtol=1e-10, atol=1e-12)
     old = breslow(M @ fit.beta, t, d_, start)
     B = old(t) - old(start)
     assert float(np.max(np.abs(B - H) / np.where(H > 0, H, 1.0))) > 0.05

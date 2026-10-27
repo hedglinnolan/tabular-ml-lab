@@ -720,6 +720,16 @@ def build_graph() -> Graph:
             # the search (``repeated.beyond_words``); and a least-squares, logistic, multinomial or
             # proportional-odds table on dependent columns is refused, with no estimate, in words
             # that name them (``inference.dependent_refusal``).
+            # fit 33 (the Sullivan 2021 crash sweep, B1): SMC-FCS draws its outcome model with an
+            # aliased column left out, as R's lm leaves it, the linear model from the QR
+            # decomposition of the design scaled to unit-length columns, the logistic from that of
+            # its weighted design and the Cox from the Cholesky factor of its information on
+            # standardized columns, where the factor of a pseudo-inverse beside an absolute jitter
+            # raised on an aliased or ill-conditioned design and inflated a large-unit
+            # coefficient's drawn variance; the Cox baseline hazard is taken at the linear
+            # predictor less its largest value, and a Cox fit that did not converge is refused
+            # (``methods.smcfcs``). A fit cached before it, its copies drawn the old way, is
+            # computed again.
             Stage("fit", 33, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
@@ -818,6 +828,8 @@ def build_graph() -> Graph:
             # cluster-robust intervals below the unit floor.
             # sensitivity 17, calibration 15, secondary 8, effects 8, scales 6, modification 3 (the
             # swarm fixes, package A, 2026-10-27): as fit 33.
+            # sensitivity 17, calibration 15, secondary 8, scales 6, effects 8, modification 3: as
+            # fit 33 (each draws its own SMC-FCS copies).
             Stage("sensitivity", 17, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
@@ -955,6 +967,7 @@ def build_graph() -> Graph:
             # reference on both scales (Knol & VanderWeele 2012); an estimate stage.
             # modification 2: as sensitivity 16 above (the product terms' table).
             # modification 3: as sensitivity 17 above.
+            # modification 3: as fit 33 (its copies, drawn by interaction.impute_with_products).
             Stage("modification", 3, ("working", "design", "split", "target_info"),
                   MODIFICATION_READS, modification_stage, heavy=True,
                   requires=("modifications", "models", "purpose"),

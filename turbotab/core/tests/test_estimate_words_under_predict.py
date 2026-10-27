@@ -296,7 +296,8 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     them only under inference, where the fit draws the copies; the fit again when a table on no
     more rows than its coefficients came to be refused, and again when a table whose fit gives a
     coefficient no standard error came to be refused and the mixed model's boundary to be decided
-    by the profile's slope."""
+    by the profile's slope, and when SMC-FCS came to draw its outcome model on the identified,
+    unit-scaled design (the Sullivan 2021 crash sweep)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}

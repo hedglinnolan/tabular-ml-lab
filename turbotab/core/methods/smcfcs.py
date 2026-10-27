@@ -20,8 +20,13 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
 * ``"smcfcs"`` — Bartlett et al.'s algorithm as R's ``smcfcs`` (2.0.2) runs it
   (``smcfcs:::smcfcs.core``): the outcome is never a predictor in a covariate model; each
   variable's covariate model is fit to every row with its current values and its parameters drawn;
-  the substantive model is fit to the current completed data and its parameters drawn; then a
-  binary or categorical variable is drawn directly from p(x | z) f(y | x, z), and a number by
+  the substantive model is fit to the current completed data and its parameters drawn (an aliased
+  column of its design left out and its coefficient zero, as R's ``lm`` leaves it:
+  :func:`_draw_outcome`; a Cox model whose fit does not converge refused: :func:`_cox_draw`, in
+  words that name the terms that fail and whether they are the analysis model's or the survey
+  design's: :func:`_cox_refusal`);
+  then a binary or categorical variable is drawn directly from
+  p(x | z) f(y | x, z), and a number by
   rejection sampling: a candidate from its covariate model is kept with probability
   f(y | x*, z)/max_x f(y | x, z) — exp(−(y − η)²/2σ²) for a linear outcome, p^y(1 − p)^(1 − y) for a
   logistic one, and for a Cox model exp(−H₀(t)e^η) when censored and H₀(t)e^η exp(1 − H₀(t)e^η) for an
@@ -107,6 +112,11 @@ FIRST_TRIES = 24  # smcfcs's vectorized first tries (``j`` from 1 while below ``
 BATCH_ROWS = 4_000  # rows of candidates sent through the design at once
 OTHER_FLOOR = 1e-6  # "other" kept at least this share of total energy above zero (log scale)
 START_SHARE = 0.5  # a row's blank sources that start beyond its total start at this share of the room
+# A design whose columns, each scaled to unit length, have a Gram matrix with every eigenvalue
+# above this has no aliased column: each column's part outside the span of the others is then at
+# least 1e−4 of its length (the square root), a thousand times R's ``lm`` tolerance (1e−7), and
+# far above the rounding of the eigenvalue itself. Below it, R's rule decides column by column.
+NO_ALIAS_EIGENVALUE = 1e-8
 
 
 @dataclass(frozen=True)
@@ -146,6 +156,24 @@ class Outcome:
     entry: np.ndarray | None = None
 
 
+@dataclass(frozen=True)
+class Term:
+    """One column of the substantive model's design as a refusal names it (``Substantive.terms``).
+
+    ``label``: the words for it (the analysis table's name in backticks, or a design term's
+    description, "the indicator of stratum 107 of `SDMVSTRA`"). ``column``: the analysis input it
+    is made from, which leaving out of the analysis drops. ``design``: a survey design's term, which
+    the imputation's model holds and the analysis model does not (``missing.engine_substantive``).
+    ``group``: the rows a design indicator marks, in words ("stratum 107"). ``leave_out``: for a
+    design term, the sentence that says how the copies are drawn without it."""
+
+    label: str
+    column: str | None = None
+    design: bool = False
+    group: str | None = None
+    leave_out: str | None = None
+
+
 @dataclass
 class Substantive:
     """The analysis model the imputations must be compatible with.
@@ -153,11 +181,14 @@ class Substantive:
     ``design(raw)`` maps raw rows (the data frame's columns, every value filled) to the model
     matrix without an intercept; it must be row-local (each output row depends only on its own
     input row). ``refresh(raw)``, when given, refits what the design learns from all the rows
-    (an energy residual's line) on the current completed data, once per iteration."""
+    (an energy residual's line) on the current completed data, once per iteration. ``terms()``,
+    when given, names the columns of the design's last matrix, in order (:class:`Term`), so a
+    refusal of the outcome draw names them (:func:`_cox_refusal`)."""
 
     outcome: Outcome
     design: Callable[[pd.DataFrame], np.ndarray]
     refresh: Callable[[pd.DataFrame], None] | None = None
+    terms: Callable[[], Sequence[Term]] | None = None
 
 
 @dataclass
@@ -166,32 +197,54 @@ class _Fit:
 
     beta: np.ndarray
     sigma2: float | None = None  # linear
-    H: np.ndarray | None = None  # cox: H₀(time) − H₀(entry) per row
+    # cox: the cumulative baseline hazard of the linear predictor less ``shift``, H₀(t)e^shift, at
+    # each row's time less at its entry; the hazard of a row is H e^(η − shift) (:func:`_eta`)
+    H: np.ndarray | None = None
+    shift: float = 0.0  # cox: the largest linear predictor over the rows the model is fit to
 
 
 # ── the outcome model ────────────────────────────────────────────────────────
 
 
 def _linear_draw(M: np.ndarray, y: np.ndarray, rng: np.random.Generator) -> _Fit:
-    """smcfcs's lm draw: σ*² = σ̂² df/χ²(df), β* ~ N(β̂, σ*²(XᵀX)⁻¹), X = [1, M]."""
+    """smcfcs's lm draw: σ*² = σ̂² df/χ²(df), β* ~ N(β̂, σ*²(XᵀX)⁻¹), X = [1, M], every column
+    of which is identified (:func:`_draw_outcome` leaves an aliased one out), so df = n − p.
+
+    β* = β̂ + σ* L z with L the lower Cholesky factor of (XᵀX)⁻¹, taken without forming XᵀX or its
+    inverse: with Xs = XD⁻¹ (each column scaled to unit length, D the lengths) and R the triangle of
+    the QR decomposition of Xs's columns in reverse order (P the reversal, diag R > 0), PRᵀRP =
+    XsᵀXs, so (XsᵀXs)⁻¹ = (PR⁻¹P)(PR⁻¹P)ᵀ with PR⁻¹P lower triangular, and L = D⁻¹PR⁻¹P; β̂ comes
+    from the same decomposition. Its rounding grows with the condition number of Xs, not of its
+    square. Before, σ* L was the Cholesky factor of σ*²((XᵀX)⁺ + 1e−12 I), the same draw in exact
+    arithmetic but for that jitter on the diagonal, which was absolute: it inflated the drawn variance
+    of a coefficient whose column is on a large scale (income in dollars over 10,000 rows: 5
+    times), and it did not cover the rounding of (XᵀX)⁺ where the Sullivan 2021 sweep's model
+    further adjusted for 12 covariates (kcal beside indicators, a recorded two-day mean beside its
+    two days, near-collinear spline terms) raised "Matrix is not positive definite": the condition
+    number of XᵀX was 1.6e13, and the inverse of even the scaled design's cross-products was
+    indefinite by rounding at a condition number of 4e9."""
+    from scipy.linalg import solve_triangular
+
     X = np.column_stack([np.ones(len(y)), M])
-    XtX = X.T @ X
-    inv = np.linalg.pinv(XtX)
-    beta = inv @ (X.T @ y)
-    resid = y - X @ beta
-    df = max(len(y) - np.linalg.matrix_rank(XtX), 1)
+    n, p = X.shape
+    length = np.linalg.norm(X, axis=0)
+    length[length == 0] = 1.0
+    Q, R = np.linalg.qr((X / length)[:, ::-1])
+    sign = np.where(np.diag(R) < 0, -1.0, 1.0)
+    Q, R = Q * sign, R * sign[:, None]
+    beta = solve_triangular(R, Q.T @ y)[::-1]
+    resid = y - (X / length) @ beta
+    df = max(n - p, 1)
     sigma2 = float(resid @ resid) / df
     new = sigma2 * df / rng.chisquare(df)
-    root = np.linalg.cholesky(new * inv + np.eye(len(inv)) * 1e-12 * max(new, 1e-300))
-    return _Fit(beta=beta + root @ rng.standard_normal(len(beta)), sigma2=new)
+    star = beta + math.sqrt(new) * (_root_of_inverse(R) @ rng.standard_normal(p))
+    return _Fit(beta=star / length, sigma2=new)
 
 
-def _logistic_mle(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Maximum likelihood by Newton with step-halving (a ridge of 1e-8 per row keeps a separated
-    fit finite): (β̂, the inverse information)."""
+def _logistic_mle(X: np.ndarray, y: np.ndarray, penalty: np.ndarray) -> np.ndarray:
+    """β̂ by Newton with step-halving, ``penalty`` the ridge on each coefficient of ``X``'s columns
+    (it keeps a separated fit finite)."""
     p = X.shape[1]
-    penalty = np.full(p, 1e-8 * len(y))
-    penalty[0] = 0.0
     beta = np.zeros(p)
 
     def loglik(b: np.ndarray) -> float:
@@ -213,16 +266,45 @@ def _logistic_mle(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]
         beta, ll = trial, new
         if float(np.max(np.abs(step))) < 1e-10:
             break
-    mu = _expit(X @ beta)
-    H = (X * (mu * (1 - mu))[:, None]).T @ X + np.diag(penalty)
-    return beta, np.linalg.pinv(H)
+    return beta
+
+
+def _root_of_inverse(R: np.ndarray) -> np.ndarray:
+    """L, lower triangular with a positive diagonal and L Lᵀ = (P Rᵀ R P)⁻¹, from R upper triangular
+    with a positive diagonal (P the reversal of the columns): (PRᵀRP)⁻¹ = (PR⁻¹P)(PR⁻¹P)ᵀ with
+    PR⁻¹P lower triangular, so L = PR⁻¹P, taken without inverting PRᵀRP."""
+    from scipy.linalg import solve_triangular
+
+    return solve_triangular(R, np.eye(len(R)))[::-1, ::-1]
 
 
 def _logistic_draw(M: np.ndarray, y: np.ndarray, rng: np.random.Generator) -> _Fit:
+    """smcfcs's glm draw: β* ~ N(β̂, I(β̂)⁻¹), X = [1, M], every column of which is identified
+    (:func:`_draw_outcome`), I = XᵀWX + Λ the information at the maximum, W the fitted p(1 − p) and
+    Λ a ridge of 1e−8 per row on each coefficient but β₀ (it keeps a separated fit finite).
+
+    As the linear draw (:func:`_linear_draw`): with Xs = XD⁻¹ (each column scaled to unit length)
+    the fit is made on Xs, its ridge D⁻¹ΛD⁻¹ the same ridge on the coefficients of X, and with R the
+    triangle of the QR decomposition of [W^½Xs; (D⁻¹ΛD⁻¹)^½] with its columns in reverse order
+    (diag R > 0), the lower Cholesky factor of I⁻¹ is D⁻¹PR⁻¹P. Before, it was the Cholesky factor
+    of I⁺ + 1e−12 I: the jitter, absolute, inflated a large-unit coefficient's drawn variance
+    (income in dollars over 10,000 rows: 1.9 times its inverse information), and the pseudo-inverse
+    of a design's ill-conditioned information was indefinite by rounding (kcal × 1,000 beside a
+    code's indicators and its near recode: "Matrix is not positive definite")."""
     X = np.column_stack([np.ones(len(y)), M])
-    beta, V = _logistic_mle(X, y)
-    root = np.linalg.cholesky(V + np.eye(len(V)) * 1e-12)
-    return _Fit(beta=beta + root @ rng.standard_normal(len(beta)))
+    p = X.shape[1]
+    length = np.linalg.norm(X, axis=0)
+    length[length == 0] = 1.0
+    Xs = X / length
+    penalty = np.full(p, 1e-8 * len(y)) / (length * length)
+    penalty[0] = 0.0
+    beta = _logistic_mle(Xs, y, penalty)
+    mu = _expit(Xs @ beta)
+    weighted = np.vstack([Xs * np.sqrt(mu * (1 - mu))[:, None], np.diag(np.sqrt(penalty))])
+    R = np.linalg.qr(weighted[:, ::-1], mode="r")
+    R = R * np.where(np.diag(R) < 0, -1.0, 1.0)[:, None]
+    star = beta + _root_of_inverse(R) @ rng.standard_normal(p)
+    return _Fit(beta=star / length)
 
 
 def breslow(eta: np.ndarray, time: np.ndarray, event: np.ndarray, entry: np.ndarray
@@ -279,21 +361,184 @@ def efron(eta: np.ndarray, time: np.ndarray, event: np.ndarray, entry: np.ndarra
     return H0
 
 
+class _NoMaximum(ImputationRefused):
+    """A Cox fit of the substantive model that did not converge (:func:`_cox_draw`), ``fit`` on the
+    columns it was given. Its words name no column: they are the refusal's where the design's
+    columns are not named (:func:`_draw_outcome`)."""
+
+    def __init__(self, fit: Any):
+        if fit.ordering is not None:
+            why = ("its partial likelihood has no maximum on a completed copy of the data: at every "
+                   "event time the rows with the event have the highest value of one fixed "
+                   "combination of its columns among the rows at risk, so its hazard ratios run "
+                   "to zero or infinity")
+        else:
+            why = ("the Newton fit of its partial likelihood to a completed copy of the data found "
+                   "no stable maximum")
+        super().__init__(f"The Cox model's coefficients cannot be drawn for the imputations "
+                         f"compatible with it, since {why}.")
+        self.fit = fit
+
+
+def _listed(items: Sequence[str]) -> str:
+    """"a", "a and b", "a, b and c"."""
+    items = list(items)
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _failing(fit: Any, X: np.ndarray) -> tuple[list[int], bool | None]:
+    """The columns of ``X`` a Cox fit that did not converge fails along, as the analysis table's
+    :func:`~turbotab.core.models.survival.no_maximum` takes them: along its ordering (each column
+    whose weight in it is above 1e−6 of the largest), with which way it runs where that is one
+    column (True: the rows with the event have its highest value); else the columns whose
+    coefficient is past :data:`~turbotab.core.models.survival.DIVERGED` of their SDs (none: [])."""
+    from turbotab.core.models.survival import DIVERGED
+
+    d = fit.ordering
+    if d is not None:
+        weight = np.abs(d) / np.abs(d).max()
+        at = [i for i, w in enumerate(weight) if w > 1e-6]
+        return at, (bool(d[at[0]] > 0) if len(at) == 1 else None)
+    sd = X.std(axis=0)
+    return [i for i, (b, s) in enumerate(zip(fit.beta, sd)) if abs(b * s) > DIVERGED], None
+
+
+def _cox_refusal(M: np.ndarray, out: Outcome, fit: Any, kept: Sequence[int],
+                 terms: Sequence[Term]) -> ImputationRefused:
+    """The refusal of a Cox fit of the substantive model that did not converge (``fit``, on the
+    columns ``kept`` of the design ``M``), naming the design's columns by ``terms``.
+
+    Where the model holds a survey design's terms (``Term.design``) and the analysis model's own
+    terms, fit alone to the same completed copy, converge, the model that fails is the
+    imputation's, not the analysis model: the words name the design terms the fit fails along,
+    say so, and end with the terms' own words for drawing the copies without them
+    (``Term.leave_out``); ``design_terms`` holds those terms' labels, and ``columns`` is unset,
+    since leaving an input out would not help. Otherwise the analysis model's own terms fail on
+    the copy, and the words name them as the analysis table's
+    :func:`~turbotab.core.models.survival.no_maximum` does (:func:`_failing`, else every term), and
+    ``columns`` holds the inputs the terms it fails along are made from (none where it names every
+    term), which the stage offers to leave out (``stages.modeling._missing_for_table``)."""
+    from turbotab.core.models.survival import cox_fit, survival_outcome
+
+    kept = list(kept)
+    design = [j for j in kept if terms[j].design]
+    own = [j for j in kept if not terms[j].design]
+    if design and own:
+        alone = cox_fit(np.ascontiguousarray(M[:, own]),
+                        survival_outcome(out.event, out.time, out.entry))
+        if not alone.converged:
+            fit, kept, design = alone, own, []
+    at, up = _failing(fit, M[:, kept])
+    along = [kept[i] for i in at]
+    ordered = fit.ordering is not None
+    if design:
+        named = [j for j in along if terms[j].design] or design
+        one = len(named) == 1
+        if ordered and along == named and one:
+            t = terms[named[0]]
+            example = ("" if t.group is None else f" (as when every row with the event is in "
+                       f"{t.group})" if up else f" (as when no row of {t.group} has the event)")
+            how = (f"at every event time the rows with the event have the "
+                   f"{'highest' if up else 'lowest'} value of it among the rows at risk{example}, "
+                   f"so its hazard ratio runs to {'infinity' if up else 'zero'}")
+        elif ordered:
+            which = "them" if along == named else _listed([terms[j].label for j in along])
+            how = (f"at every event time the rows with the event have the highest value of one "
+                   f"fixed combination of {which} among the rows at risk, so their hazard ratios "
+                   f"run to zero or infinity")
+        else:
+            how = (f"the Newton fit of its partial likelihood found no stable maximum for "
+                   f"{'it' if one else 'them'}")
+        ways = "".join(f" {w}" for w in dict.fromkeys(terms[j].leave_out for j in named) if w)
+        refused = ImputationRefused(
+            f"The Cox model the imputations are drawn from has no maximum on a completed copy of "
+            f"the data, so its coefficients cannot be drawn: to carry the survey design into the "
+            f"copies, it holds {_listed([terms[j].label for j in named])} beside the analysis "
+            f"model's terms, and {how}. The analysis model itself is not the one that fails: "
+            f"without the survey design's terms, its partial likelihood has a maximum on the same "
+            f"copy.{ways}")
+        refused.design_terms = [terms[j].label for j in named]
+        return refused
+    labels = _listed([terms[j].label for j in along or kept])
+    if ordered and len(along) == 1:
+        why = (f"its partial likelihood has no maximum for {labels} on a completed copy of the "
+               f"data: at every event time the rows with the event have the "
+               f"{'highest' if up else 'lowest'} {labels} of the rows at risk (as when a group has "
+               f"no events), so its hazard ratio runs to {'infinity' if up else 'zero'}")
+    elif ordered:
+        why = (f"its partial likelihood has no maximum for {labels} on a completed copy of the "
+               f"data: at every event time the rows with the event have the highest value of one "
+               f"fixed combination of them among the rows at risk, so their hazard ratios run to "
+               f"zero or infinity")
+    else:
+        why = (f"the Newton fit of its partial likelihood to a completed copy of the data found no "
+               f"stable maximum for {labels}")
+    refused = ImputationRefused(f"The Cox model's coefficients cannot be drawn for the imputations "
+                                f"compatible with it, since {why}.")
+    # what leaving out would let the imputation run without: the inputs of the terms that fail
+    refused.columns = list(dict.fromkeys(terms[j].column for j in along if terms[j].column))
+    return refused
+
+
 def _cox_draw(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
     """smcfcs's coxph draw: β* ~ N(β̂, I⁻¹) from the partial likelihood (Efron ties; delayed entry),
     then the Efron-corrected H₀ at β* (:func:`efron`, as smcfcs's ``basehaz`` of the fit holding
-    β*) at each row's own times."""
-    from turbotab.core.models.survival import cox_fit, survival_outcome
+    β*) at each row's own times.
+
+    The factor is taken as the linear and logistic draws take theirs: on the columns standardized
+    as :func:`~turbotab.core.models.survival.cox_fit` fits them (Z = (M − mean)/SD, every column
+    identified: :func:`_draw_outcome`), with L the lower Cholesky factor of PIP (I the information
+    at β̂ on Z, P the reversal), the lower Cholesky factor of I⁻¹ is PL⁻ᵀP, and β* = (SD β̂ + PL⁻ᵀP z)
+    / SD. Before, it was the Cholesky factor of cox_fit's covariance (the pseudo-inverse of I mapped
+    to M's units) plus 1e−12 I, whose absolute jitter inflated a large-unit coefficient's drawn
+    variance (income in dollars over 10,000 rows: 2.7 times its inverse information).
+
+    H₀ is taken at η − max η over the rows (``_Fit.shift``) and each row's hazard as H e^(η − shift):
+    the same product, but at η itself e^(−max η) overflowed where every η was below −709 (a column
+    on a large offset with a negative coefficient, 100,000 plus a standard normal at −0.2 per unit;
+    or a column near a combination of the intercept and the others, drawn far out along it).
+
+    A fit that did not converge (cox_fit: a monotone likelihood, a coefficient past its divergence
+    bound, or an information singular at the estimate) has no maximum to center the draw on, and the
+    draw is refused (:class:`_NoMaximum`), in words that name the design's columns where the
+    substantive model names them (:func:`_cox_refusal`)."""
+    from turbotab.core.models.survival import _score_info, cox_fit, survival_outcome
 
     y = survival_outcome(out.event, out.time, out.entry)
     fit = cox_fit(M, y)
-    root = np.linalg.cholesky(fit.cov + np.eye(len(fit.cov)) * 1e-12)
-    beta = fit.beta + root @ rng.standard_normal(len(fit.beta))
-    H0 = efron(M @ beta, out.time, out.event, out.entry)
-    return _Fit(beta=beta, H=H0(out.time) - H0(out.entry))
+    if not fit.converged:
+        raise _NoMaximum(fit)
+    sd = M.std(axis=0)
+    sd[sd == 0] = 1.0
+    info = _score_info((M - M.mean(axis=0)) / sd, y, fit.beta * sd)[2]
+    L = np.linalg.cholesky(info[::-1, ::-1])
+    beta = (fit.beta * sd + _root_of_inverse(L.T) @ rng.standard_normal(len(sd))) / sd
+    eta = M @ beta
+    shift = float(eta.max())
+    H0 = efron(eta - shift, out.time, out.event, out.entry)
+    return _Fit(beta=beta, H=H0(out.time) - H0(out.entry), shift=shift)
 
 
-def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
+def identified_columns(X: np.ndarray) -> list[int]:
+    """The columns of the design ``X`` (the intercept first) whose coefficients R's ``lm`` reports:
+    a column whose part outside the span of the kept columns before it is below 1e−7 of its length
+    is aliased and left out (R's ``qr`` rule, :func:`~turbotab.core.models.effects.column_basis`).
+    ``glm`` leaves the same columns out, and ``coxph``, which centers its columns, leaves out a
+    column constant on every row as aliased with its baseline hazard. One eigenvalue problem first:
+    where the scaled Gram matrix shows that no column can be aliased (:data:`NO_ALIAS_EIGENVALUE`),
+    every column is kept without the column-by-column pass."""
+    from turbotab.core.models.effects import column_basis
+
+    X = np.asarray(X, dtype=float)
+    norms = np.linalg.norm(X, axis=0)
+    if X.shape[0] >= X.shape[1] and np.all(norms > 0):
+        scaled = X / norms
+        if float(np.linalg.eigvalsh(scaled.T @ scaled)[0]) > NO_ALIAS_EIGENVALUE:
+            return list(range(X.shape[1]))
+    return column_basis(X)
+
+
+def _draw_on(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
     if out.kind == "linear":
         return _linear_draw(M, np.asarray(out.y, dtype=float), rng)
     if out.kind == "logistic":
@@ -301,9 +546,45 @@ def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit
     return _cox_draw(M, out, rng)
 
 
+def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator,
+                  terms: Callable[[], Sequence[Term]] | None = None) -> _Fit:
+    """The substantive model's parameters drawn on its design ``M`` (no intercept column).
+
+    A Cox fit that does not converge is refused (:func:`_cox_draw`); where ``terms`` (the
+    substantive model's ``terms``) names every column of ``M``, in words that name them
+    (:func:`_cox_refusal`), else in words that name none.
+
+    An aliased column (:func:`identified_columns`: R's ``lm`` reports its coefficient NA) is left
+    out of the fit and its coefficient drawn as zero. The model without it is the same model (the
+    same column space, so the same linear predictor for every row while the column stays aliased),
+    and the draw on the kept columns is that model's posterior draw: the same random numbers, in
+    the same order, as on a design that never held the column. With the column in, (XᵀX)⁺ was
+    indefinite to rounding and the linear draw's Cholesky factor failed: the Sullivan 2021 sweep's
+    model further adjusted for `race5` beside `RIDRETH3`'s indicators (a recode of them), and its
+    exclusion that left one level of `RIAGENDR` (a column constant on every analyzed row). The Cox
+    draw's coefficients along the aliased direction could overflow its baseline hazard, and the
+    logistic draw put a coefficient on the column."""
+    kept = identified_columns(np.column_stack([np.ones(len(M)), M]))
+    columns = [j - 1 for j in kept if j > 0]
+    try:
+        if len(kept) == M.shape[1] + 1:
+            return _draw_on(M, out, rng)
+        # row-major, as a design built without the column is: BLAS and LAPACK round by the layout
+        fit = _draw_on(np.ascontiguousarray(M[:, columns]), out, rng)
+    except _NoMaximum as exc:
+        named = list(terms()) if terms is not None else []
+        if len(named) != M.shape[1]:
+            raise
+        raise _cox_refusal(M, out, exc.fit, columns, named) from None
+    beta = np.zeros(M.shape[1] + (0 if out.kind == "cox" else 1))
+    beta[columns if out.kind == "cox" else kept] = fit.beta
+    fit.beta = beta
+    return fit
+
+
 def _eta(fit: _Fit, M: np.ndarray, kind: str) -> np.ndarray:
     if kind == "cox":
-        return M @ fit.beta
+        return M @ fit.beta - fit.shift  # the scale of fit.H (``_Fit``)
     return fit.beta[0] + M @ fit.beta[1:]
 
 
@@ -811,7 +1092,7 @@ class _Chain:
 
     def _outcome(self) -> _Fit:
         M = np.asarray(self.sub.design(self.raw_frame()), dtype=float)
-        return _draw_outcome(M, self.sub.outcome, self.rng)
+        return _draw_outcome(M, self.sub.outcome, self.rng, self.sub.terms)
 
     def _covariate_draw(self, name: str, var: Variable, X: np.ndarray, y: np.ndarray
                         ) -> tuple[np.ndarray, float | None]:
@@ -1118,4 +1399,4 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
 
 
 __all__ = ["FIRST_TRIES", "Identity", "Mode", "Outcome", "RJLIMIT", "START_SHARE", "Substantive",
-           "Variable", "breslow", "efron", "impute", "outcome_logdensity"]
+           "Term", "Variable", "breslow", "efron", "impute", "outcome_logdensity"]
