@@ -25,8 +25,9 @@ The aliased constructions put an energy on a scale of millions (kcal × 1,000) b
 indicators; there the linear draw raised on most seeds at the base commit (numpy's LAPACK on
 macOS). Whether float64 tips one seed into the failure differs by platform, so the tests pin the
 claim (the draw is the draw without the column), not that a seed raised. The guard's silent side
-is drawn at the scale the sweep met (kcal), where the near-aliased design's draw ran at the base
-commit too.
+is drawn at the scale the sweep met (kcal), where the near-aliased design's linear and logistic
+draws ran at the base commit too; the Cox model's fit does not converge on it, and its draw is
+refused (``test_smcfcs_logistic_cox_draw``).
 
 **The linear draw on a design no column of which is aliased.** With `race5` left out, the sweep's
 further-adjusted design was full rank by R's rule, and its draw still raised: (XᵀX)⁺ at a condition
@@ -161,14 +162,17 @@ def test_the_draw_on_an_aliased_design_is_the_draw_without_the_column(kind, alia
         np.testing.assert_array_equal(with_it.H, without.H)
 
 
-@pytest.mark.parametrize("kind", ["linear", "logistic", "cox"])
-def test_a_design_with_no_aliased_column_is_drawn_whole(kind):
+@pytest.mark.parametrize("kind", ["linear", "logistic"])
+@pytest.mark.parametrize("seed", range(20))
+def test_a_design_with_no_aliased_column_is_drawn_whole(kind, seed):
     """The guard is silent where no column is aliased: with the recode moved off the span by 1e−5
-    of its length, every coefficient is drawn (none is zero), from the whole design."""
+    of its length, every coefficient is drawn (none is zero, each finite), from the whole design,
+    on every generator seed. The Cox model's own fit does not converge on this design, and its
+    draw is refused (``test_smcfcs_logistic_cox_draw``)."""
     M, _, rng = _columns(1, 300, "near", unit=1.0)
-    fit = _draw_outcome(M, _outcome(kind, M, rng), np.random.default_rng(7))
-    assert len(fit.beta) == M.shape[1] + (0 if kind == "cox" else 1)
-    assert np.all(fit.beta != 0.0)
+    fit = _draw_outcome(M, _outcome(kind, M, rng), np.random.default_rng(seed))
+    assert len(fit.beta) == M.shape[1] + 1
+    assert np.all(fit.beta != 0.0) and np.all(np.isfinite(fit.beta))
 
 
 def test_smcfcs_imputes_with_an_aliased_column_as_it_does_without_it():

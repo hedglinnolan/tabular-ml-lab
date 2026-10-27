@@ -22,7 +22,8 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
   variable's covariate model is fit to every row with its current values and its parameters drawn;
   the substantive model is fit to the current completed data and its parameters drawn (an aliased
   column of its design left out and its coefficient zero, as R's ``lm`` leaves it:
-  :func:`_draw_outcome`); then a binary or categorical variable is drawn directly from
+  :func:`_draw_outcome`; a Cox model whose fit does not converge refused: :func:`_cox_draw`);
+  then a binary or categorical variable is drawn directly from
   p(x | z) f(y | x, z), and a number by
   rejection sampling: a candidate from its covariate model is kept with probability
   f(y | x*, z)/max_x f(y | x, z) — exp(−(y − η)²/2σ²) for a linear outcome, p^y(1 − p)^(1 − y) for a
@@ -173,7 +174,10 @@ class _Fit:
 
     beta: np.ndarray
     sigma2: float | None = None  # linear
-    H: np.ndarray | None = None  # cox: H₀(time) − H₀(entry) per row
+    # cox: the cumulative baseline hazard of the linear predictor less ``shift``, H₀(t)e^shift, at
+    # each row's time less at its entry; the hazard of a row is H e^(η − shift) (:func:`_eta`)
+    H: np.ndarray | None = None
+    shift: float = 0.0  # cox: the largest linear predictor over the rows the model is fit to
 
 
 # ── the outcome model ────────────────────────────────────────────────────────
@@ -210,17 +214,14 @@ def _linear_draw(M: np.ndarray, y: np.ndarray, rng: np.random.Generator) -> _Fit
     df = max(n - p, 1)
     sigma2 = float(resid @ resid) / df
     new = sigma2 * df / rng.chisquare(df)
-    root = solve_triangular(R, np.eye(p))[::-1, ::-1]  # P R⁻¹ P: lower triangular
-    star = beta + math.sqrt(new) * (root @ rng.standard_normal(p))
+    star = beta + math.sqrt(new) * (_root_of_inverse(R) @ rng.standard_normal(p))
     return _Fit(beta=star / length, sigma2=new)
 
 
-def _logistic_mle(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Maximum likelihood by Newton with step-halving (a ridge of 1e-8 per row keeps a separated
-    fit finite): (β̂, the inverse information)."""
+def _logistic_mle(X: np.ndarray, y: np.ndarray, penalty: np.ndarray) -> np.ndarray:
+    """β̂ by Newton with step-halving, ``penalty`` the ridge on each coefficient of ``X``'s columns
+    (it keeps a separated fit finite)."""
     p = X.shape[1]
-    penalty = np.full(p, 1e-8 * len(y))
-    penalty[0] = 0.0
     beta = np.zeros(p)
 
     def loglik(b: np.ndarray) -> float:
@@ -242,16 +243,45 @@ def _logistic_mle(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]
         beta, ll = trial, new
         if float(np.max(np.abs(step))) < 1e-10:
             break
-    mu = _expit(X @ beta)
-    H = (X * (mu * (1 - mu))[:, None]).T @ X + np.diag(penalty)
-    return beta, np.linalg.pinv(H)
+    return beta
+
+
+def _root_of_inverse(R: np.ndarray) -> np.ndarray:
+    """L, lower triangular with a positive diagonal and L Lᵀ = (P Rᵀ R P)⁻¹, from R upper triangular
+    with a positive diagonal (P the reversal of the columns): (PRᵀRP)⁻¹ = (PR⁻¹P)(PR⁻¹P)ᵀ with
+    PR⁻¹P lower triangular, so L = PR⁻¹P, taken without inverting PRᵀRP."""
+    from scipy.linalg import solve_triangular
+
+    return solve_triangular(R, np.eye(len(R)))[::-1, ::-1]
 
 
 def _logistic_draw(M: np.ndarray, y: np.ndarray, rng: np.random.Generator) -> _Fit:
+    """smcfcs's glm draw: β* ~ N(β̂, I(β̂)⁻¹), X = [1, M], every column of which is identified
+    (:func:`_draw_outcome`), I = XᵀWX + Λ the information at the maximum, W the fitted p(1 − p) and
+    Λ a ridge of 1e−8 per row on each coefficient but β₀ (it keeps a separated fit finite).
+
+    As the linear draw (:func:`_linear_draw`): with Xs = XD⁻¹ (each column scaled to unit length)
+    the fit is made on Xs, its ridge D⁻¹ΛD⁻¹ the same ridge on the coefficients of X, and with R the
+    triangle of the QR decomposition of [W^½Xs; (D⁻¹ΛD⁻¹)^½] with its columns in reverse order
+    (diag R > 0), the lower Cholesky factor of I⁻¹ is D⁻¹PR⁻¹P. Before, it was the Cholesky factor
+    of I⁺ + 1e−12 I: the jitter, absolute, inflated a large-unit coefficient's drawn variance
+    (income in dollars over 10,000 rows: 1.9 times its inverse information), and the pseudo-inverse
+    of a design's ill-conditioned information was indefinite by rounding (kcal × 1,000 beside a
+    code's indicators and its near recode: "Matrix is not positive definite")."""
     X = np.column_stack([np.ones(len(y)), M])
-    beta, V = _logistic_mle(X, y)
-    root = np.linalg.cholesky(V + np.eye(len(V)) * 1e-12)
-    return _Fit(beta=beta + root @ rng.standard_normal(len(beta)))
+    p = X.shape[1]
+    length = np.linalg.norm(X, axis=0)
+    length[length == 0] = 1.0
+    Xs = X / length
+    penalty = np.full(p, 1e-8 * len(y)) / (length * length)
+    penalty[0] = 0.0
+    beta = _logistic_mle(Xs, y, penalty)
+    mu = _expit(Xs @ beta)
+    weighted = np.vstack([Xs * np.sqrt(mu * (1 - mu))[:, None], np.diag(np.sqrt(penalty))])
+    R = np.linalg.qr(weighted[:, ::-1], mode="r")
+    R = R * np.where(np.diag(R) < 0, -1.0, 1.0)[:, None]
+    star = beta + _root_of_inverse(R) @ rng.standard_normal(p)
+    return _Fit(beta=star / length)
 
 
 def breslow(eta: np.ndarray, time: np.ndarray, event: np.ndarray, entry: np.ndarray
@@ -311,15 +341,48 @@ def efron(eta: np.ndarray, time: np.ndarray, event: np.ndarray, entry: np.ndarra
 def _cox_draw(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
     """smcfcs's coxph draw: β* ~ N(β̂, I⁻¹) from the partial likelihood (Efron ties; delayed entry),
     then the Efron-corrected H₀ at β* (:func:`efron`, as smcfcs's ``basehaz`` of the fit holding
-    β*) at each row's own times."""
-    from turbotab.core.models.survival import cox_fit, survival_outcome
+    β*) at each row's own times.
+
+    The factor is taken as the linear and logistic draws take theirs: on the columns standardized
+    as :func:`~turbotab.core.models.survival.cox_fit` fits them (Z = (M − mean)/SD, every column
+    identified: :func:`_draw_outcome`), with L the lower Cholesky factor of PIP (I the information
+    at β̂ on Z, P the reversal), the lower Cholesky factor of I⁻¹ is PL⁻ᵀP, and β* = (SD β̂ + PL⁻ᵀP z)
+    / SD. Before, it was the Cholesky factor of cox_fit's covariance (the pseudo-inverse of I mapped
+    to M's units) plus 1e−12 I, whose absolute jitter inflated a large-unit coefficient's drawn
+    variance (income in dollars over 10,000 rows: 2.7 times its inverse information).
+
+    H₀ is taken at η − max η over the rows (``_Fit.shift``) and each row's hazard as H e^(η − shift):
+    the same product, but at η itself e^(−max η) overflowed where every η was below −709 (a column
+    on a large offset with a negative coefficient, 100,000 plus a standard normal at −0.2 per unit;
+    or a column near a combination of the intercept and the others, drawn far out along it).
+
+    A fit that did not converge (cox_fit: a monotone likelihood, a coefficient past its divergence
+    bound, or an information singular at the estimate) has no maximum to center the draw on, and the
+    draw is refused, as the analysis model's own Cox table refuses it."""
+    from turbotab.core.models.survival import _score_info, cox_fit, survival_outcome
 
     y = survival_outcome(out.event, out.time, out.entry)
     fit = cox_fit(M, y)
-    root = np.linalg.cholesky(fit.cov + np.eye(len(fit.cov)) * 1e-12)
-    beta = fit.beta + root @ rng.standard_normal(len(fit.beta))
-    H0 = efron(M @ beta, out.time, out.event, out.entry)
-    return _Fit(beta=beta, H=H0(out.time) - H0(out.entry))
+    if not fit.converged:
+        if fit.ordering is not None:
+            why = ("its partial likelihood has no maximum on a completed copy of the data: at every "
+                   "event time the rows with the event have the highest value of one fixed "
+                   "combination of its columns among the rows at risk, so its hazard ratios run "
+                   "to zero or infinity")
+        else:
+            why = ("the Newton fit of its partial likelihood to a completed copy of the data found "
+                   "no stable maximum")
+        raise ImputationRefused(f"The Cox model's coefficients cannot be drawn for the imputations "
+                                f"compatible with it, since {why}.")
+    sd = M.std(axis=0)
+    sd[sd == 0] = 1.0
+    info = _score_info((M - M.mean(axis=0)) / sd, y, fit.beta * sd)[2]
+    L = np.linalg.cholesky(info[::-1, ::-1])
+    beta = (fit.beta * sd + _root_of_inverse(L.T) @ rng.standard_normal(len(sd))) / sd
+    eta = M @ beta
+    shift = float(eta.max())
+    H0 = efron(eta - shift, out.time, out.event, out.entry)
+    return _Fit(beta=beta, H=H0(out.time) - H0(out.entry), shift=shift)
 
 
 def identified_columns(X: np.ndarray) -> list[int]:
@@ -376,7 +439,7 @@ def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit
 
 def _eta(fit: _Fit, M: np.ndarray, kind: str) -> np.ndarray:
     if kind == "cox":
-        return M @ fit.beta
+        return M @ fit.beta - fit.shift  # the scale of fit.H (``_Fit``)
     return fit.beta[0] + M @ fit.beta[1:]
 
 

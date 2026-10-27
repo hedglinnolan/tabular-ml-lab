@@ -705,11 +705,15 @@ def build_graph() -> Graph:
             # so a fit cached before it is computed again rather than served with estimates on
             # those rows.
             # fit 33 (the Sullivan 2021 crash sweep, B1): SMC-FCS draws its outcome model with an
-            # aliased column left out, as R's lm leaves it, and the linear model from the QR
-            # decomposition of the design scaled to unit-length columns, where the factor of
-            # σ*²(XᵀX)⁺ beside an absolute jitter raised on an aliased or ill-conditioned design
-            # and inflated a large-unit coefficient's drawn variance (``methods.smcfcs``); a fit
-            # cached before it, its copies drawn the old way, is computed again.
+            # aliased column left out, as R's lm leaves it, the linear model from the QR
+            # decomposition of the design scaled to unit-length columns, the logistic from that of
+            # its weighted design and the Cox from the Cholesky factor of its information on
+            # standardized columns, where the factor of a pseudo-inverse beside an absolute jitter
+            # raised on an aliased or ill-conditioned design and inflated a large-unit
+            # coefficient's drawn variance; the Cox baseline hazard is taken at the linear
+            # predictor less its largest value, and a Cox fit that did not converge is refused
+            # (``methods.smcfcs``). A fit cached before it, its copies drawn the old way, is
+            # computed again.
             Stage("fit", 33, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
