@@ -1357,6 +1357,17 @@ def state_at_opening(records: Sequence[Any]) -> ProjectState | None:
     return decisions.fold([r for r in records if r.seq <= opened.seq])
 
 
+def read_as_now(then: Any, now: Any) -> Any:
+    """``then`` with each Decision A slot it leaves unanswered set to ``now``'s answer, where that
+    answer is what the unanswered slot reads as (:data:`UNANSWERED_READS_AS`): it changes no row,
+    so the fit is the same, though the engine keys an unanswered slot apart from every answer
+    (``graph.key_value``) and every project's keys stay as they are. ``then`` itself where no
+    slot is read so."""
+    update = {slot: value for slot, value in UNANSWERED_READS_AS.items()
+              if getattr(then, slot, None) is None and getattr(now, slot, None) == value}
+    return then.model_copy(update=update) if update else then
+
+
 def keys_for(graph: Any, state: ProjectState, fingerprint: str) -> dict[str, str | None]:
     """Every stage's key under ``state``, by the engine's own rule (``graph.stage_keys``, which
     ``Engine._compute_keys`` reads): each slot is keyed by its view, so a noticing dismissed or
@@ -1382,7 +1393,10 @@ def post_seal_changes(records: Sequence[Any], slots: set[str]) -> list[str]:
       goal is prediction, BEATS_PREDICT §9 ruling 5), or a revert of one; it shapes nothing;
     * a noticing set aside: a dismissal or a deferral (or a revert of one) that leaves each of
       ``slots`` as the engine keys it (``graph.key_value``: only an applied repair changes data),
-      so it withdrew no applied repair.
+      so it withdrew no applied repair;
+    * an answer that leaves a Decision A slot reading as it did (or a revert of one): keeping the
+      table as it is on an unanswered orientation, which reads so (:func:`decision_a_value`), so
+      it changes no row.
 
     A live record superseded since is still listed, though what it wrote may read now as it did at
     the opening (the goal changed and changed back lists both answers): it is a change made after
@@ -1409,6 +1423,12 @@ def post_seal_changes(records: Sequence[Any], slots: set[str]) -> list[str]:
             return None
         return {slot: key_value(slot, values.get(slot)) for slot in slots}
 
+    def reads_as(upto: int, slot: str) -> tuple[bool, Any]:
+        try:
+            return True, decision_a_value(decisions.fold(ordered[:upto]), slot)
+        except Refusal:
+            return False, None
+
     out = []
     for i, record in enumerate(ordered):
         if not getattr(record, "post_seal", False) or record.id in cancelled or record.seq <= since:
@@ -1425,16 +1445,35 @@ def post_seal_changes(records: Sequence[Any], slots: set[str]) -> list[str]:
             before = keyed(i)
             if before is not None and before == keyed(i + 1):
                 continue
+        slot = decisions.SLOTS.get(answer.decision.kind)
+        if slot in UNANSWERED_READS_AS:
+            before_read, before = reads_as(i, slot)
+            after_read, after = reads_as(i + 1, slot)
+            if before_read and after_read and before == after:
+                continue
         out.append(record.id)
     return out
 
 
 def changed_after_seal(graph: Any, records: Sequence[Any], fingerprint: str, served_key: str | None) -> bool:
-    """Whether the fit served (``served_key``) differs from the fit the seal was opened on."""
+    """Whether the fit served (``served_key``) differs from the fit the seal was opened on: the fit
+    the answers at the opening key, or the same fit keyed with a Decision A slot they left
+    unanswered read as the answer now recorded, where that is what it read as
+    (:func:`read_as_now`). Keeping the table as it is after an opening with the orientation
+    unanswered changes no row, so neither the opened fit nor the fit served after that answer
+    changed after the opening (the verifier's B3s: the Results said one had, its held-out scores
+    the opening's)."""
     then = state_at_opening(records)
     if then is None or served_key is None:
         return False
-    return keys_for(graph, then, fingerprint).get("fit") != served_key
+    opened = {keys_for(graph, then, fingerprint).get("fit")}
+    try:
+        same = read_as_now(then, decisions.fold(records))
+    except Refusal:
+        same = then
+    if same is not then:
+        opened.add(keys_for(graph, same, fingerprint).get("fit"))
+    return served_key not in opened
 
 
 def post_seal_sentence(text: str | None, state_before: Any) -> str | None:
@@ -2546,7 +2585,7 @@ __all__ = [
     "keys_for",
     "measure", "open_seal_views", "r2_se", "time_order",
     "first_opening", "opening", "plan", "post_seal_changes", "post_seal_sentence",
-    "read_sealed_scores", "reported_result",
+    "read_as_now", "read_sealed_scores", "reported_result",
     "read_times", "seal_inputs", "sealed_scores_frame", "serve_fit", "slots_read_by",
     "split_offer", "split_writer", "state_at_opening", "unsettled_on_the_draw",
 ]
