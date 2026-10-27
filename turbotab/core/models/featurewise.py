@@ -65,6 +65,32 @@ OMICS = ("genomics", "metabolomics")
 PLS_DA_ABSENT = ("PLS-DA is not offered: customary in metabolomics, it is sound only with nested "
                  "cross-validation and permutation tests, and VIP > 1 ranks features without "
                  "testing them.")
+# Its refusal where it has nothing to test, at the models answer or at the fit (the swarm's C2).
+NO_STUDY_FACTOR = "featurewise_no_study_factor"
+NO_STUDY_FACTOR_WORDS = ("No study factor to test: feature-wise regression tests the columns with "
+                         "the role of what you study, one at a time, adjusted for the rest")
+ROLES_WAY = {"label": "Give the columns you study the role of what you study (the roles "
+                      "question)", "decision": None}
+ANOTHER_FAMILY = {"label": "Choose another model family", "decision": None}
+
+
+def no_study_factor(features: Sequence[str] | None) -> Any:
+    """The fit's refusal (``graph.StageRefusal``) where the model matrix holds no column to test:
+    no column has the role of what you study (``features`` empty), or none of those that have it
+    is a column of the matrix by its name (a category enters as its indicators)."""
+    from turbotab.core.graph import StageRefusal
+    from turbotab.core.voice import listing
+
+    named = [str(f) for f in features or []]
+    if not named:
+        return StageRefusal(NO_STUDY_FACTOR, f"{NO_STUDY_FACTOR_WORDS}; no column has that role.",
+                            exits=[ROLES_WAY, ANOTHER_FAMILY])
+    one = len(named) == 1
+    return StageRefusal(
+        NO_STUDY_FACTOR,
+        f"{NO_STUDY_FACTOR_WORDS}; {listing(named)} {'has' if one else 'have'} that role, but the "
+        f"model matrix holds no column of {'that name' if one else 'their names'}.",
+        exits=[ANOTHER_FAMILY])
 
 
 def bh_adjust(p: Sequence[float]) -> np.ndarray:
@@ -182,8 +208,7 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     clusters = INDEPENDENT if clusters is None else clusters
     tested, adjust = split_columns(list(matrix.columns), features)
     if not tested:
-        raise ValueError("No study factor to test: feature-wise regression tests the columns with the "
-                         "role of what you study, one at a time, adjusted for the rest.")
+        raise no_study_factor(features)
     values = matrix.to_numpy(dtype=float, na_value=np.nan)
     if not np.isfinite(values).all():
         raise ValueError("The model matrix has missing values; feature-wise tests need complete "
@@ -405,6 +430,42 @@ class FeatureWise(FamilyBase):
 
 
 FEATUREWISE = register_family(FeatureWise())
+
+
+def _has_a_study_factor(decision: Any, ctx: Any) -> None:
+    """The models answer that chooses feature-wise regression where no column has the role of what
+    you study, once the roles are answered: it would have nothing to test, so it is refused here
+    in the words the fit would refuse in (:func:`no_study_factor`), its ways forward the roles
+    question and the other families chosen beside it. A role not yet confirmed counts: the fit
+    reads the roles as they stand when it is pressed, and refuses there where none is left."""
+    from turbotab.core import decisions as d
+
+    if FEATUREWISE.key not in (decision.models or []):
+        return
+    state = d._state(ctx)
+    if state is None or getattr(state, "roles", None) is None:
+        return
+    target = getattr(state, "target", None)
+    roles = [r for c, r in state.roles.items() if c != target]
+    roles += [getattr(sc, "role", None) for sc in getattr(state, "scales", None) or []]
+    if "exposure" in roles:
+        return
+    others = [m for m in decision.models if m != FEATUREWISE.key]
+    keep = ({"label": (f"Fit the other {'family' if len(others) == 1 else 'families'} chosen, "
+                       f"without feature-wise regression"),
+             "decision": decision.model_copy(update={"models": others})}
+            if others else ANOTHER_FAMILY)
+    raise d.Refusal(NO_STUDY_FACTOR, f"{NO_STUDY_FACTOR_WORDS}; no column has that role.",
+                    exits=[ROLES_WAY, keep])
+
+
+def _register() -> None:
+    from turbotab.core.decisions import register_validator
+
+    register_validator("select_models", _has_a_study_factor)
+
+
+_register()
 
 __all__ = ["CR2_MAX_FEATURES", "FDR", "FEATUREWISE", "FeatureWise", "FeatureWiseTests", "bh_adjust",
            "classical_tests", "event_indicator", "featurewise_table", "split_columns"]
