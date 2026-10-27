@@ -22,7 +22,9 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
   variable's covariate model is fit to every row with its current values and its parameters drawn;
   the substantive model is fit to the current completed data and its parameters drawn (an aliased
   column of its design left out and its coefficient zero, as R's ``lm`` leaves it:
-  :func:`_draw_outcome`; a Cox model whose fit does not converge refused: :func:`_cox_draw`);
+  :func:`_draw_outcome`; a Cox model whose fit does not converge refused: :func:`_cox_draw`, in
+  words that name the terms that fail and whether they are the analysis model's or the survey
+  design's: :func:`_cox_refusal`);
   then a binary or categorical variable is drawn directly from
   p(x | z) f(y | x, z), and a number by
   rejection sampling: a candidate from its covariate model is kept with probability
@@ -154,6 +156,24 @@ class Outcome:
     entry: np.ndarray | None = None
 
 
+@dataclass(frozen=True)
+class Term:
+    """One column of the substantive model's design as a refusal names it (``Substantive.terms``).
+
+    ``label``: the words for it (the analysis table's name in backticks, or a design term's
+    description, "the indicator of stratum 107 of `SDMVSTRA`"). ``column``: the analysis input it
+    is made from, which leaving out of the analysis drops. ``design``: a survey design's term, which
+    the imputation's model holds and the analysis model does not (``missing.engine_substantive``).
+    ``group``: the rows a design indicator marks, in words ("stratum 107"). ``leave_out``: for a
+    design term, the sentence that says how the copies are drawn without it."""
+
+    label: str
+    column: str | None = None
+    design: bool = False
+    group: str | None = None
+    leave_out: str | None = None
+
+
 @dataclass
 class Substantive:
     """The analysis model the imputations must be compatible with.
@@ -161,11 +181,14 @@ class Substantive:
     ``design(raw)`` maps raw rows (the data frame's columns, every value filled) to the model
     matrix without an intercept; it must be row-local (each output row depends only on its own
     input row). ``refresh(raw)``, when given, refits what the design learns from all the rows
-    (an energy residual's line) on the current completed data, once per iteration."""
+    (an energy residual's line) on the current completed data, once per iteration. ``terms()``,
+    when given, names the columns of the design's last matrix, in order (:class:`Term`), so a
+    refusal of the outcome draw names them (:func:`_cox_refusal`)."""
 
     outcome: Outcome
     design: Callable[[pd.DataFrame], np.ndarray]
     refresh: Callable[[pd.DataFrame], None] | None = None
+    terms: Callable[[], Sequence[Term]] | None = None
 
 
 @dataclass
@@ -338,6 +361,125 @@ def efron(eta: np.ndarray, time: np.ndarray, event: np.ndarray, entry: np.ndarra
     return H0
 
 
+class _NoMaximum(ImputationRefused):
+    """A Cox fit of the substantive model that did not converge (:func:`_cox_draw`), ``fit`` on the
+    columns it was given. Its words name no column: they are the refusal's where the design's
+    columns are not named (:func:`_draw_outcome`)."""
+
+    def __init__(self, fit: Any):
+        if fit.ordering is not None:
+            why = ("its partial likelihood has no maximum on a completed copy of the data: at every "
+                   "event time the rows with the event have the highest value of one fixed "
+                   "combination of its columns among the rows at risk, so its hazard ratios run "
+                   "to zero or infinity")
+        else:
+            why = ("the Newton fit of its partial likelihood to a completed copy of the data found "
+                   "no stable maximum")
+        super().__init__(f"The Cox model's coefficients cannot be drawn for the imputations "
+                         f"compatible with it, since {why}.")
+        self.fit = fit
+
+
+def _listed(items: Sequence[str]) -> str:
+    """"a", "a and b", "a, b and c"."""
+    items = list(items)
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _failing(fit: Any, X: np.ndarray) -> tuple[list[int], bool | None]:
+    """The columns of ``X`` a Cox fit that did not converge fails along, as the analysis table's
+    :func:`~turbotab.core.models.survival.no_maximum` takes them: along its ordering (each column
+    whose weight in it is above 1e−6 of the largest), with which way it runs where that is one
+    column (True: the rows with the event have its highest value); else the columns whose
+    coefficient is past :data:`~turbotab.core.models.survival.DIVERGED` of their SDs (none: [])."""
+    from turbotab.core.models.survival import DIVERGED
+
+    d = fit.ordering
+    if d is not None:
+        weight = np.abs(d) / np.abs(d).max()
+        at = [i for i, w in enumerate(weight) if w > 1e-6]
+        return at, (bool(d[at[0]] > 0) if len(at) == 1 else None)
+    sd = X.std(axis=0)
+    return [i for i, (b, s) in enumerate(zip(fit.beta, sd)) if abs(b * s) > DIVERGED], None
+
+
+def _cox_refusal(M: np.ndarray, out: Outcome, fit: Any, kept: Sequence[int],
+                 terms: Sequence[Term]) -> ImputationRefused:
+    """The refusal of a Cox fit of the substantive model that did not converge (``fit``, on the
+    columns ``kept`` of the design ``M``), naming the design's columns by ``terms``.
+
+    Where the model holds a survey design's terms (``Term.design``) and the analysis model's own
+    terms, fit alone to the same completed copy, converge, the model that fails is the
+    imputation's, not the analysis model: the words name the design terms the fit fails along,
+    say so, and end with the terms' own words for drawing the copies without them
+    (``Term.leave_out``); ``design_terms`` holds those terms' labels, and ``columns`` is unset,
+    since leaving an input out would not help. Otherwise the analysis model's own terms fail on
+    the copy, and the words name them as the analysis table's
+    :func:`~turbotab.core.models.survival.no_maximum` does (:func:`_failing`, else every term), and
+    ``columns`` holds the inputs the terms it fails along are made from (none where it names every
+    term), which the stage offers to leave out (``stages.modeling._missing_for_table``)."""
+    from turbotab.core.models.survival import cox_fit, survival_outcome
+
+    kept = list(kept)
+    design = [j for j in kept if terms[j].design]
+    own = [j for j in kept if not terms[j].design]
+    if design and own:
+        alone = cox_fit(np.ascontiguousarray(M[:, own]),
+                        survival_outcome(out.event, out.time, out.entry))
+        if not alone.converged:
+            fit, kept, design = alone, own, []
+    at, up = _failing(fit, M[:, kept])
+    along = [kept[i] for i in at]
+    ordered = fit.ordering is not None
+    if design:
+        named = [j for j in along if terms[j].design] or design
+        one = len(named) == 1
+        if ordered and along == named and one:
+            t = terms[named[0]]
+            example = ("" if t.group is None else f" (as when every row with the event is in "
+                       f"{t.group})" if up else f" (as when no row of {t.group} has the event)")
+            how = (f"at every event time the rows with the event have the "
+                   f"{'highest' if up else 'lowest'} value of it among the rows at risk{example}, "
+                   f"so its hazard ratio runs to {'infinity' if up else 'zero'}")
+        elif ordered:
+            which = "them" if along == named else _listed([terms[j].label for j in along])
+            how = (f"at every event time the rows with the event have the highest value of one "
+                   f"fixed combination of {which} among the rows at risk, so their hazard ratios "
+                   f"run to zero or infinity")
+        else:
+            how = (f"the Newton fit of its partial likelihood found no stable maximum for "
+                   f"{'it' if one else 'them'}")
+        ways = "".join(f" {w}" for w in dict.fromkeys(terms[j].leave_out for j in named) if w)
+        refused = ImputationRefused(
+            f"The Cox model the imputations are drawn from has no maximum on a completed copy of "
+            f"the data, so its coefficients cannot be drawn: to carry the survey design into the "
+            f"copies, it holds {_listed([terms[j].label for j in named])} beside the analysis "
+            f"model's terms, and {how}. The analysis model itself is not the one that fails: "
+            f"without the survey design's terms, its partial likelihood has a maximum on the same "
+            f"copy.{ways}")
+        refused.design_terms = [terms[j].label for j in named]
+        return refused
+    labels = _listed([terms[j].label for j in along or kept])
+    if ordered and len(along) == 1:
+        why = (f"its partial likelihood has no maximum for {labels} on a completed copy of the "
+               f"data: at every event time the rows with the event have the "
+               f"{'highest' if up else 'lowest'} {labels} of the rows at risk (as when a group has "
+               f"no events), so its hazard ratio runs to {'infinity' if up else 'zero'}")
+    elif ordered:
+        why = (f"its partial likelihood has no maximum for {labels} on a completed copy of the "
+               f"data: at every event time the rows with the event have the highest value of one "
+               f"fixed combination of them among the rows at risk, so their hazard ratios run to "
+               f"zero or infinity")
+    else:
+        why = (f"the Newton fit of its partial likelihood to a completed copy of the data found no "
+               f"stable maximum for {labels}")
+    refused = ImputationRefused(f"The Cox model's coefficients cannot be drawn for the imputations "
+                                f"compatible with it, since {why}.")
+    # what leaving out would let the imputation run without: the inputs of the terms that fail
+    refused.columns = list(dict.fromkeys(terms[j].column for j in along if terms[j].column))
+    return refused
+
+
 def _cox_draw(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
     """smcfcs's coxph draw: β* ~ N(β̂, I⁻¹) from the partial likelihood (Efron ties; delayed entry),
     then the Efron-corrected H₀ at β* (:func:`efron`, as smcfcs's ``basehaz`` of the fit holding
@@ -358,22 +500,14 @@ def _cox_draw(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
 
     A fit that did not converge (cox_fit: a monotone likelihood, a coefficient past its divergence
     bound, or an information singular at the estimate) has no maximum to center the draw on, and the
-    draw is refused, as the analysis model's own Cox table refuses it."""
+    draw is refused (:class:`_NoMaximum`), in words that name the design's columns where the
+    substantive model names them (:func:`_cox_refusal`)."""
     from turbotab.core.models.survival import _score_info, cox_fit, survival_outcome
 
     y = survival_outcome(out.event, out.time, out.entry)
     fit = cox_fit(M, y)
     if not fit.converged:
-        if fit.ordering is not None:
-            why = ("its partial likelihood has no maximum on a completed copy of the data: at every "
-                   "event time the rows with the event have the highest value of one fixed "
-                   "combination of its columns among the rows at risk, so its hazard ratios run "
-                   "to zero or infinity")
-        else:
-            why = ("the Newton fit of its partial likelihood to a completed copy of the data found "
-                   "no stable maximum")
-        raise ImputationRefused(f"The Cox model's coefficients cannot be drawn for the imputations "
-                                f"compatible with it, since {why}.")
+        raise _NoMaximum(fit)
     sd = M.std(axis=0)
     sd[sd == 0] = 1.0
     info = _score_info((M - M.mean(axis=0)) / sd, y, fit.beta * sd)[2]
@@ -412,8 +546,13 @@ def _draw_on(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
     return _cox_draw(M, out, rng)
 
 
-def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
+def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator,
+                  terms: Callable[[], Sequence[Term]] | None = None) -> _Fit:
     """The substantive model's parameters drawn on its design ``M`` (no intercept column).
+
+    A Cox fit that does not converge is refused (:func:`_cox_draw`); where ``terms`` (the
+    substantive model's ``terms``) names every column of ``M``, in words that name them
+    (:func:`_cox_refusal`), else in words that name none.
 
     An aliased column (:func:`identified_columns`: R's ``lm`` reports its coefficient NA) is left
     out of the fit and its coefficient drawn as zero. The model without it is the same model (the
@@ -426,11 +565,17 @@ def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit
     draw's coefficients along the aliased direction could overflow its baseline hazard, and the
     logistic draw put a coefficient on the column."""
     kept = identified_columns(np.column_stack([np.ones(len(M)), M]))
-    if len(kept) == M.shape[1] + 1:
-        return _draw_on(M, out, rng)
     columns = [j - 1 for j in kept if j > 0]
-    # row-major, as a design built without the column is: BLAS and LAPACK round by the layout
-    fit = _draw_on(np.ascontiguousarray(M[:, columns]), out, rng)
+    try:
+        if len(kept) == M.shape[1] + 1:
+            return _draw_on(M, out, rng)
+        # row-major, as a design built without the column is: BLAS and LAPACK round by the layout
+        fit = _draw_on(np.ascontiguousarray(M[:, columns]), out, rng)
+    except _NoMaximum as exc:
+        named = list(terms()) if terms is not None else []
+        if len(named) != M.shape[1]:
+            raise
+        raise _cox_refusal(M, out, exc.fit, columns, named) from None
     beta = np.zeros(M.shape[1] + (0 if out.kind == "cox" else 1))
     beta[columns if out.kind == "cox" else kept] = fit.beta
     fit.beta = beta
@@ -947,7 +1092,7 @@ class _Chain:
 
     def _outcome(self) -> _Fit:
         M = np.asarray(self.sub.design(self.raw_frame()), dtype=float)
-        return _draw_outcome(M, self.sub.outcome, self.rng)
+        return _draw_outcome(M, self.sub.outcome, self.rng, self.sub.terms)
 
     def _covariate_draw(self, name: str, var: Variable, X: np.ndarray, y: np.ndarray
                         ) -> tuple[np.ndarray, float | None]:
@@ -1254,4 +1399,4 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
 
 
 __all__ = ["FIRST_TRIES", "Identity", "Mode", "Outcome", "RJLIMIT", "START_SHARE", "Substantive",
-           "Variable", "breslow", "efron", "impute", "outcome_logdensity"]
+           "Term", "Variable", "breslow", "efron", "impute", "outcome_logdensity"]

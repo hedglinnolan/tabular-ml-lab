@@ -30,7 +30,9 @@ reference hazard is Efron's sum written out here at η less its mean.
 partial likelihood has none (a group with no events: a monotone likelihood) the draw is refused in
 those words; on the near-alias construction the engine's Cox fit stops at its first Newton step (a
 coefficient 939 standard deviations out against its bound of 20) and the draw is refused as a fit
-that found no stable maximum, as the analysis model's own Cox table refuses it.
+that found no stable maximum, as the analysis model's own Cox table refuses it. These are the words
+where the design's columns are not named; named, the words name the terms that fail
+(``test_smcfcs_cox_refusal``).
 """
 from __future__ import annotations
 
