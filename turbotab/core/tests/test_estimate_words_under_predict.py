@@ -294,11 +294,13 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     (fewer comparison repeats from 5,000 training units); the design again when its impute line
     came to state the imputations the coefficient table draws, and again when it came to state
     them only under inference, where the fit draws the copies; the fit again when a table on no
-    more rows than its coefficients came to be refused."""
+    more rows than its coefficients came to be refused, and again when a table whose fit gives a
+    coefficient no standard error came to be refused and the mixed model's boundary to be decided
+    by the profile's slope."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (34, 32, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (34, 33, 21)
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:
