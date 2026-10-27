@@ -20,8 +20,10 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
 * ``"smcfcs"`` — Bartlett et al.'s algorithm as R's ``smcfcs`` (2.0.2) runs it
   (``smcfcs:::smcfcs.core``): the outcome is never a predictor in a covariate model; each
   variable's covariate model is fit to every row with its current values and its parameters drawn;
-  the substantive model is fit to the current completed data and its parameters drawn; then a
-  binary or categorical variable is drawn directly from p(x | z) f(y | x, z), and a number by
+  the substantive model is fit to the current completed data and its parameters drawn (an aliased
+  column of its design left out and its coefficient zero, as R's ``lm`` leaves it:
+  :func:`_draw_outcome`); then a binary or categorical variable is drawn directly from
+  p(x | z) f(y | x, z), and a number by
   rejection sampling: a candidate from its covariate model is kept with probability
   f(y | x*, z)/max_x f(y | x, z) — exp(−(y − η)²/2σ²) for a linear outcome, p^y(1 − p)^(1 − y) for a
   logistic one, and for a Cox model exp(−H₀(t)e^η) when censored and H₀(t)e^η exp(1 − H₀(t)e^η) for an
@@ -107,6 +109,11 @@ FIRST_TRIES = 24  # smcfcs's vectorized first tries (``j`` from 1 while below ``
 BATCH_ROWS = 4_000  # rows of candidates sent through the design at once
 OTHER_FLOOR = 1e-6  # "other" kept at least this share of total energy above zero (log scale)
 START_SHARE = 0.5  # a row's blank sources that start beyond its total start at this share of the room
+# A design whose columns, each scaled to unit length, have a Gram matrix with every eigenvalue
+# above this has no aliased column: each column's part outside the span of the others is then at
+# least 1e−4 of its length (the square root), a thousand times R's ``lm`` tolerance (1e−7), and
+# far above the rounding of the eigenvalue itself. Below it, R's rule decides column by column.
+NO_ALIAS_EIGENVALUE = 1e-8
 
 
 @dataclass(frozen=True)
@@ -173,17 +180,39 @@ class _Fit:
 
 
 def _linear_draw(M: np.ndarray, y: np.ndarray, rng: np.random.Generator) -> _Fit:
-    """smcfcs's lm draw: σ*² = σ̂² df/χ²(df), β* ~ N(β̂, σ*²(XᵀX)⁻¹), X = [1, M]."""
+    """smcfcs's lm draw: σ*² = σ̂² df/χ²(df), β* ~ N(β̂, σ*²(XᵀX)⁻¹), X = [1, M], every column
+    of which is identified (:func:`_draw_outcome` leaves an aliased one out), so df = n − p.
+
+    β* = β̂ + σ* L z with L the lower Cholesky factor of (XᵀX)⁻¹, taken without forming XᵀX or its
+    inverse: with Xs = XD⁻¹ (each column scaled to unit length, D the lengths) and R the triangle of
+    the QR decomposition of Xs's columns in reverse order (P the reversal, diag R > 0), PRᵀRP =
+    XsᵀXs, so (XsᵀXs)⁻¹ = (PR⁻¹P)(PR⁻¹P)ᵀ with PR⁻¹P lower triangular, and L = D⁻¹PR⁻¹P; β̂ comes
+    from the same decomposition. Its rounding grows with the condition number of Xs, not of its
+    square. Before, σ* L was the Cholesky factor of σ*²((XᵀX)⁺ + 1e−12 I), the same draw in exact
+    arithmetic but for that jitter on the diagonal, which was absolute: it inflated the drawn variance
+    of a coefficient whose column is on a large scale (income in dollars over 10,000 rows: 5
+    times), and it did not cover the rounding of (XᵀX)⁺ where the Sullivan 2021 sweep's model
+    further adjusted for 12 covariates (kcal beside indicators, a recorded two-day mean beside its
+    two days, near-collinear spline terms) raised "Matrix is not positive definite": the condition
+    number of XᵀX was 1.6e13, and the inverse of even the scaled design's cross-products was
+    indefinite by rounding at a condition number of 4e9."""
+    from scipy.linalg import solve_triangular
+
     X = np.column_stack([np.ones(len(y)), M])
-    XtX = X.T @ X
-    inv = np.linalg.pinv(XtX)
-    beta = inv @ (X.T @ y)
-    resid = y - X @ beta
-    df = max(len(y) - np.linalg.matrix_rank(XtX), 1)
+    n, p = X.shape
+    length = np.linalg.norm(X, axis=0)
+    length[length == 0] = 1.0
+    Q, R = np.linalg.qr((X / length)[:, ::-1])
+    sign = np.where(np.diag(R) < 0, -1.0, 1.0)
+    Q, R = Q * sign, R * sign[:, None]
+    beta = solve_triangular(R, Q.T @ y)[::-1]
+    resid = y - (X / length) @ beta
+    df = max(n - p, 1)
     sigma2 = float(resid @ resid) / df
     new = sigma2 * df / rng.chisquare(df)
-    root = np.linalg.cholesky(new * inv + np.eye(len(inv)) * 1e-12 * max(new, 1e-300))
-    return _Fit(beta=beta + root @ rng.standard_normal(len(beta)), sigma2=new)
+    root = solve_triangular(R, np.eye(p))[::-1, ::-1]  # P R⁻¹ P: lower triangular
+    star = beta + math.sqrt(new) * (root @ rng.standard_normal(p))
+    return _Fit(beta=star / length, sigma2=new)
 
 
 def _logistic_mle(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -293,12 +322,56 @@ def _cox_draw(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
     return _Fit(beta=beta, H=H0(out.time) - H0(out.entry))
 
 
-def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
+def identified_columns(X: np.ndarray) -> list[int]:
+    """The columns of the design ``X`` (the intercept first) whose coefficients R's ``lm`` reports:
+    a column whose part outside the span of the kept columns before it is below 1e−7 of its length
+    is aliased and left out (R's ``qr`` rule, :func:`~turbotab.core.models.effects.column_basis`).
+    ``glm`` leaves the same columns out, and ``coxph``, which centers its columns, leaves out a
+    column constant on every row as aliased with its baseline hazard. One eigenvalue problem first:
+    where the scaled Gram matrix shows that no column can be aliased (:data:`NO_ALIAS_EIGENVALUE`),
+    every column is kept without the column-by-column pass."""
+    from turbotab.core.models.effects import column_basis
+
+    X = np.asarray(X, dtype=float)
+    norms = np.linalg.norm(X, axis=0)
+    if X.shape[0] >= X.shape[1] and np.all(norms > 0):
+        scaled = X / norms
+        if float(np.linalg.eigvalsh(scaled.T @ scaled)[0]) > NO_ALIAS_EIGENVALUE:
+            return list(range(X.shape[1]))
+    return column_basis(X)
+
+
+def _draw_on(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
     if out.kind == "linear":
         return _linear_draw(M, np.asarray(out.y, dtype=float), rng)
     if out.kind == "logistic":
         return _logistic_draw(M, np.asarray(out.y, dtype=float), rng)
     return _cox_draw(M, out, rng)
+
+
+def _draw_outcome(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
+    """The substantive model's parameters drawn on its design ``M`` (no intercept column).
+
+    An aliased column (:func:`identified_columns`: R's ``lm`` reports its coefficient NA) is left
+    out of the fit and its coefficient drawn as zero. The model without it is the same model (the
+    same column space, so the same linear predictor for every row while the column stays aliased),
+    and the draw on the kept columns is that model's posterior draw: the same random numbers, in
+    the same order, as on a design that never held the column. With the column in, (XᵀX)⁺ was
+    indefinite to rounding and the linear draw's Cholesky factor failed: the Sullivan 2021 sweep's
+    model further adjusted for `race5` beside `RIDRETH3`'s indicators (a recode of them), and its
+    exclusion that left one level of `RIAGENDR` (a column constant on every analyzed row). The Cox
+    draw's coefficients along the aliased direction could overflow its baseline hazard, and the
+    logistic draw put a coefficient on the column."""
+    kept = identified_columns(np.column_stack([np.ones(len(M)), M]))
+    if len(kept) == M.shape[1] + 1:
+        return _draw_on(M, out, rng)
+    columns = [j - 1 for j in kept if j > 0]
+    # row-major, as a design built without the column is: BLAS and LAPACK round by the layout
+    fit = _draw_on(np.ascontiguousarray(M[:, columns]), out, rng)
+    beta = np.zeros(M.shape[1] + (0 if out.kind == "cox" else 1))
+    beta[columns if out.kind == "cox" else kept] = fit.beta
+    fit.beta = beta
+    return fit
 
 
 def _eta(fit: _Fit, M: np.ndarray, kind: str) -> np.ndarray:

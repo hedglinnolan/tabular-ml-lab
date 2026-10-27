@@ -704,7 +704,13 @@ def build_graph() -> Graph:
             # (``inference._no_spare_rows``; the linear, mixed, GEE and proportional-odds tables),
             # so a fit cached before it is computed again rather than served with estimates on
             # those rows.
-            Stage("fit", 32, ("working", "design", "split", "target_info", "cohort"),
+            # fit 33 (the Sullivan 2021 crash sweep, B1): SMC-FCS draws its outcome model with an
+            # aliased column left out, as R's lm leaves it, and the linear model from the QR
+            # decomposition of the design scaled to unit-length columns, where the factor of
+            # σ*²(XᵀX)⁺ beside an absolute jitter raised on an aliased or ill-conditioned design
+            # and inflated a large-unit coefficient's drawn variance (``methods.smcfcs``); a fit
+            # cached before it, its copies drawn the old way, is computed again.
+            Stage("fit", 33, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -800,7 +806,9 @@ def build_graph() -> Graph:
             # no chosen family that has one, sensitivity is refused typed under either goal, and
             # its, effects' and secondary's ways forward leave out a table that rests on
             # cluster-robust intervals below the unit floor.
-            Stage("sensitivity", 16, ("working", "design", "split", "target_info"),
+            # sensitivity 17, calibration 15, secondary 8, scales 6, effects 8: as fit 33 (each
+            # draws its own SMC-FCS copies).
+            Stage("sensitivity", 17, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
@@ -823,7 +831,7 @@ def build_graph() -> Graph:
             # calibration 13 (resume integration 2): both calibration 12s (this one and the engine
             # residue's, beside sensitivity 15 above).
             # calibration 14: as sensitivity 16 above (its uncorrected estimate's table).
-            Stage("calibration", 14,
+            Stage("calibration", 15,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models", "purpose"),
@@ -832,7 +840,7 @@ def build_graph() -> Graph:
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
             # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
             # secondary 7: as sensitivity 16 above.
-            Stage("secondary", 7, ("working", "design", "split", "target_info"),
+            Stage("secondary", 8, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -849,7 +857,7 @@ def build_graph() -> Graph:
             # scales 4 (wave 1b repairs integrated): each copy's correction fit as the fit fits a
             # copy (REPAIR-MI's copy_pipeline: no median fill inside a copy).
             # scales 5: as sensitivity 16 above (the uncorrected coefficient's table).
-            Stage("scales", 5, ("working", "design", "split", "target_info", "cohort"),
+            Stage("scales", 6, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models", "purpose"),
                   label="Estimating each scale's reliability", serves=ESTIMATE),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
@@ -876,7 +884,7 @@ def build_graph() -> Graph:
             # by and whose it is, and the methods text names the surveyed population's.
             # effects 7: as sensitivity 16 above (Model 3 on no more rows than its coefficients is
             # refused, its estimates with its intervals).
-            Stage("effects", 7, ("working", "design", "split", "target_info"),
+            Stage("effects", 8, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",
