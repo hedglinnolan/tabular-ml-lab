@@ -358,7 +358,8 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
     than its coefficients, the cut-points among them, refused with no estimate
     (``inference._no_spare_rows``), in words that say only that its rows are no more than its
     coefficients: the cut-points are shared by every row, so the likelihood there can still have a
-    unique maximum."""
+    unique maximum. Where the columns and a constant (which the cut-points hold) are dependent,
+    refused with no estimate in words that name them (``inference.dependent_refusal``)."""
     from turbotab.core.models.inference import (
         InferenceTable,
         _info,
@@ -366,8 +367,10 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
         _refused,
         _t_rows,
         _z_rows,
+        dependent_refusal,
         floor_refusal,
         format_p,
+        no_interval,
     )
 
     X = matrix.to_numpy(dtype=float)
@@ -382,6 +385,9 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
                                estimator=estimator, intercept=False, cut_points=K - 1)
         if spare is not None:
             return spare
+        dependent = dependent_refusal(matrix, estimator, clusters, beside="a constant")
+        if dependent is not None:
+            return dependent
     model = ProportionalOddsRegression().fit(X, codes)
     K = len(model.classes_)
     names_levels = list(levels) if levels is not None and len(levels) == K else \
@@ -410,6 +416,11 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
         V = (G / (G - 1.0)) * bread @ (summed.T @ summed) @ bread
         V = (V + V.T) / 2.0
         se = np.sqrt(np.clip(np.diag(V), 0, None))
+        reason = no_interval(names, se, fit=f"The cluster-robust sandwich by `{clusters.column}`")
+        if reason:
+            table = _refused(names, est, estimator, clusters, reason, ())
+            table.concerns.extend(concerns)
+            return table
         rows = _t_rows(names, est, se, np.full(len(est), float(G - 1)))
         caption = (f"95% intervals cluster-robust by `{clusters.column}` (sandwich over G = {G:,} "
                    f"units with the G/(G − 1) correction, Stata's vce(cluster)), on t({G - 1:,}). "
@@ -420,6 +431,11 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
                         "assumes independent rows.")
         return InferenceTable(rows, info, concerns, cov=V)
     se = np.sqrt(np.clip(np.diag(bread), 0, None))
+    reason = no_interval(names, se, fit="The proportional-odds model's information")
+    if reason:
+        table = _refused(names, est, estimator, clusters, reason, ())
+        table.concerns.extend(concerns)
+        return table
     rows = _z_rows(names, est, se)
     caption = f"95% Wald intervals from the model's information. {scale}"
     info = _info(estimator, "model", caption, clusters)

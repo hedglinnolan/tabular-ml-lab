@@ -35,7 +35,15 @@ measure their uncertainty (:func:`_no_spare_rows`). The mixed model's and the GE
 them in the same words (``repeated``). The proportional-odds model's table is refused at the same
 count, its cut-points among its coefficients, in its own words (``ordinal``): its cut-points are
 shared by every row, so its likelihood there can have a unique maximum, and the words say only
-that the rows are no more than its coefficients.
+that the rows are no more than its coefficients. A least-squares, logistic, multinomial or
+proportional-odds table, and the mixed model's and the GEE's, whose model matrix has columns
+dependent to working precision is refused next, with no estimate, in words that name them
+(:func:`dependent_refusal`), before a fit whose numbers for them would be rounding. A table whose
+fit gives some coefficient no finite, positive standard error, or its t interval no finite,
+positive degrees of freedom, is refused in words that name each and what the fit could not
+compute (:func:`no_interval`; every family's table that makes Wald or t rows here, in
+``repeated``, ``survival``, ``ordinal`` and ``survey``), rather than served with the estimate
+beside no interval.
 
 And on the outcome's own scale (AUDIT_REPORT §5 WP8: ME-07): every table says what one unit of an
 input does, in words that name the outcome (:class:`Outcome`). A least-squares row is a difference
@@ -76,6 +84,7 @@ _EIG_FLOOR = 1e-10  # 1 − λ below this is a zero eigenvalue of I − H_gg: ps
 # Set while each completed copy's table is made for Rubin's rules (:func:`for_pooling`).
 _POOLING: ContextVar[bool] = ContextVar("inference_pooling", default=False)
 FIRTH = "Firth-penalized logistic regression"
+NAMED = 6  # the coefficients a refusal for want of a standard error names (:func:`no_interval`)
 
 # CR1: the cluster sandwich with the G/(G − 1) correction, on t(G − 1), for a model with no
 # working linear form here (the proportional-odds family, ``turbotab/core/models/ordinal.py``).
@@ -658,6 +667,44 @@ def _z_rows(names: Sequence[str], est: np.ndarray, se: np.ndarray) -> list[dict[
     return rows
 
 
+def no_interval(names: Sequence[str], se: Any, df: Any = None, *, fit: str,
+                df_kind: str | None = None) -> str | None:
+    """Why a table reports no interval where some coefficient's standard error does not come out
+    finite and positive (a covariance that is non-finite, unavailable or singular in its
+    direction), or, for t intervals (``df`` given), its degrees of freedom do not; None where every
+    one does. :func:`_t_rows` and :func:`_z_rows` give such a row its estimate and no interval, and
+    a number is right or it is refused: the table builder refuses the whole table in these words
+    rather than serve the estimate beside a missing interval. ``fit`` names what was computed (the
+    covariance, or the fit); ``df_kind`` the degrees of freedom (Satterthwaite, Bell–McCaffrey)."""
+    se = np.asarray(se, dtype=float)
+    usable = np.isfinite(se) & (se > 0)
+    no_se = [str(n) for n, ok in zip(names, usable) if not ok]
+    no_df: list[str] = []
+    if df is not None:
+        df = np.asarray(df, dtype=float)
+        no_df = [str(n) for n, ok, v in zip(names, usable, df)
+                 if ok and not (np.isfinite(v) and v > 0)]
+    if not no_se and not no_df:
+        return None
+    parts = []
+    if no_se:
+        parts.append(f"{_terms(no_se)} no finite, positive standard error")
+    if no_df:
+        kind = f"{df_kind} " if df_kind else ""
+        parts.append(f"{_terms(no_df)} a standard error but no finite, positive {kind}degrees of "
+                     f"freedom")
+    return f"{fit} gives {', and '.join(parts)}, so no interval or p-value is reported."
+
+
+def _terms(names: Sequence[str]) -> str:
+    """The coefficients named, the first :data:`NAMED` of them where there are more."""
+    listed = [_term(n) for n in names[:NAMED]]
+    rest = len(names) - len(listed)
+    if rest:
+        return f"{', '.join(listed)} and {rest:,} more coefficient{'s' if rest != 1 else ''}"
+    return listed[0] if len(listed) == 1 else f"{', '.join(listed[:-1])} and {listed[-1]}"
+
+
 def _info(estimator: str, covariance: Covariance, caption: str, clusters: Clusters,
           **extra: Any) -> dict[str, Any]:
     return {"estimator": estimator, "covariance": covariance, "caption": caption,
@@ -682,7 +729,13 @@ def _clustered(names: Sequence[str], est: np.ndarray, estimator: str, X: np.ndar
     exact = df is not None
     if df is None:
         df = np.full(len(est), float(clusters.n_clusters - 1))
-    rows = _t_rows(names, est, np.sqrt(np.clip(np.diag(V), 0, None)), df)
+    se = np.sqrt(np.clip(np.diag(V), 0, None))
+    reason = no_interval(names, se, df, fit=f"The cluster-robust (CR2) covariance by "
+                                            f"`{clusters.column}`",
+                         df_kind="Bell–McCaffrey" if exact else None)
+    if reason:
+        return _refused(names, est, estimator, clusters, reason, ())
+    rows = _t_rows(names, est, se, df)
     return InferenceTable(rows, _info(estimator, "CR2", _cluster_caption(clusters, exact), clusters),
                           _cluster_concerns(clusters), cov=V)
 
@@ -903,6 +956,33 @@ def _no_spare_rows(task: str, n_rows: int, n_coefficients: int, clusters: Cluste
     return InferenceTable([], info, [reason])
 
 
+DEPENDENT_EXITS = (
+    {"label": "Leave one of the dependent columns out of the model", "decision": None},)
+
+
+def dependent_refusal(matrix: pd.DataFrame, estimator: str, clusters: Clusters, *,
+                      beside: str = "the intercept") -> InferenceTable | None:
+    """The table refused with no estimate where the model matrix's columns, with ``beside`` (the
+    intercept, or a constant where cut-points take its place), are dependent to working precision
+    (``repeated.dependencies``), in words that name the columns in a dependency
+    (``repeated.dependency_words``); None where they are not. There the coefficients in a
+    dependency have no unique estimate, and a fit's numbers for them, and whether its information
+    comes out singular, are rounding: a pseudo-inverse serves arbitrary values with intervals, an
+    inversion fails or serves standard errors of 10⁷. Decided before the fit, so the case is
+    refused whatever the rounding. The way forward: leave a dependent column out."""
+    from turbotab.core.models.repeated import dependency_words
+
+    said = dependency_words(matrix, beside=beside)
+    if said is None:
+        return None
+    what, leave = said
+    reason = (f"On these {len(matrix):,} rows the model matrix is singular: {what}. No estimate, "
+              f"interval or p-value is reported; {leave}.")
+    info = _info(estimator, "none", f"No coefficients: {reason}", clusters, refused=reason,
+                 exits=[dict(e) for e in DEPENDENT_EXITS])
+    return InferenceTable([], info, [reason])
+
+
 def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
            clusters: Clusters) -> InferenceTable:
     import statsmodels.api as sm
@@ -913,7 +993,8 @@ def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | Non
     # The fits are handed the indexed frame, so which rows they saw stays checkable.
     exog = sm.add_constant(matrix.astype(float), has_constant="add")
     names = ["(intercept)" if c == "const" else str(c) for c in exog.columns]
-    refused = _no_spare_rows(task, len(exog), exog.shape[1], clusters)
+    refused = (_no_spare_rows(task, len(exog), exog.shape[1], clusters)
+               or dependent_refusal(matrix, ESTIMATORS.get(task, MULTINOMIAL), clusters))
     if refused is not None:
         return refused
     if task == "regression":
@@ -943,6 +1024,9 @@ def _least_squares(names: list[str], exog: pd.DataFrame, y: np.ndarray,
     hc3 = fit.get_robustcov_results(cov_type="HC3", use_t=True)
     se = np.asarray(hc3.bse, dtype=float)
     dof = float(hc3.df_resid)
+    reason = no_interval(names, se, fit="The least-squares fit's HC3 covariance")
+    if reason:
+        return _refused(names, est, estimator, clusters, reason, ())
     rows = _t_rows(names, est, se, np.full(len(est), dof))
     concerns = [clusters.note] if clusters.note else []
     hetero = heteroskedasticity_concern(np.asarray(fit.resid, float), X, names,
@@ -982,7 +1066,11 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     if clusters.clustered:
         Xw, ew = logistic_working(X, y, np.asarray(fit.predict(X), dtype=float))
         return _clustered(names, est, estimator, Xw, ew, clusters.codes, clusters)
-    rows = _z_rows(names, est, np.asarray(fit.bse, dtype=float))
+    se = np.asarray(fit.bse, dtype=float)
+    reason = no_interval(names, se, fit="The logistic model's information")
+    if reason:
+        return _refused(names, est, estimator, clusters, reason, ())
+    rows = _z_rows(names, est, se)
     concerns = [clusters.note] if clusters.note else []
     return InferenceTable(rows, _info(estimator, "model",
                                       "95% Wald intervals from the logistic model's information.",
@@ -1222,6 +1310,9 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
         Xw, ew = multinomial_working(X, codes, np.asarray(fit.predict(X), dtype=float))
         return _clustered(labels, est, estimator, Xw, ew, np.repeat(clusters.codes, q), clusters)
     se = np.asarray(fit.bse, dtype=float).ravel(order="F")
+    reason = no_interval(labels, se, fit="The multinomial model's information")
+    if reason:
+        return _refused(labels, est, estimator, clusters, reason, ())
     concerns = [clusters.note] if clusters.note else []
     return InferenceTable(_z_rows(labels, est, se),
                           _info(estimator, "model",
@@ -1234,6 +1325,7 @@ __all__ = [
     "InferenceTable", "Outcome", "POOLED_FIRTH_CAPTION", "PooledFirth", "Rows", "Scale", "WITHHELD",
     "bread_of", "cluster_columns", "copies_words", "cr2", "logistic_working",
     "multinomial_working", "firth_fit", "firth_profile", "floor_refusal", "for_pooling",
+    "no_interval",
     "format_p", "heteroskedasticity_concern", "pooled_firth", "pooling", "separation_concern",
     "inference_table", "min_clusters", "resolve_clusters", "separated_columns", "withheld_reason",
 ]

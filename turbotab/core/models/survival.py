@@ -560,7 +560,8 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
     from scipy import stats
 
     from turbotab.core.models.inference import (FEW_CLUSTERS, InferenceTable, _info, _refused,
-                                                _row, _z_rows, floor_refusal, format_p)
+                                                _row, _z_rows, floor_refusal, format_p,
+                                                no_interval)
     from turbotab.core.models.linear import collinearity_concern
 
     names = [str(c) for c in matrix.columns]
@@ -589,12 +590,13 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
         np.add.at(by_unit, clusters.codes, U)
         V = fit.cov @ (by_unit.T @ by_unit) @ fit.cov
         se = np.sqrt(np.clip(np.diag(V), 0, None))
+        reason = no_interval(names, se, fit=f"The Lin–Wei cluster-robust sandwich by "
+                                            f"`{clusters.column}`")
+        if reason:
+            return _refused(names, fit.beta, estimator, clusters, reason, ())
         q = float(stats.t.ppf(0.975, G - 1))
         rows = []
         for name, b, s in zip(names, fit.beta, se):
-            if not (np.isfinite(s) and s > 0):
-                rows.append(_row(name, b, None))
-                continue
             rows.append(_row(name, b, s, float(G - 1), b - q * s, b + q * s,
                              float(2.0 * stats.t.sf(abs(b / s), G - 1))))
         missing = (f", {clusters.n_missing:,} rows with no `{clusters.column}` counted as units of "
@@ -611,7 +613,11 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
         covariance = "CR0"
         cov = V
     else:
-        rows = _z_rows(names, fit.beta, np.sqrt(np.clip(np.diag(fit.cov), 0, None)))
+        se = np.sqrt(np.clip(np.diag(fit.cov), 0, None))
+        reason = no_interval(names, se, fit="The Cox partial likelihood's information")
+        if reason:
+            return _refused(names, fit.beta, estimator, clusters, reason, ())
+        rows = _z_rows(names, fit.beta, se)
         caption = "95% Wald intervals from the Cox partial likelihood's information (Efron ties)."
         covariance = "model"
         cov = fit.cov

@@ -64,6 +64,7 @@ from turbotab.core.models.inference import (
     _named,
     _row,
     _t_rows,
+    no_interval,
     separated_columns,
 )
 
@@ -523,6 +524,9 @@ def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray
                         f"freedom are left for an interval.",
                         [{"label": SAMPLE_EXIT,
                           "decision": {"kind": "set_survey", "estimand": "sample"}}])
+    reason = no_interval(labels, se, fit="The design-based (Taylor-linearized) covariance")
+    if reason:
+        return _refused(labels, estimate, estimator, design, domain.n, reason)
     rows = _t_rows(labels, estimate, se, np.full(len(estimate), float(var.df)))
     concerns = _concerns(design, var, domain.n, len(estimate), domain.left)
     if not converged:
