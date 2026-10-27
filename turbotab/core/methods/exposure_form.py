@@ -2265,6 +2265,22 @@ def _values_of(ctx: Any, column: str) -> np.ndarray | None:
         return None
 
 
+def _analyzed_values(ctx: Any, column: str) -> np.ndarray | None:
+    """``column``'s values on the analyzed rows, once the context knows them (None where it reads
+    no rows, or has not read them for the answers given: never every row of the table in their
+    place)."""
+    from turbotab.core.decisions import _ctx
+
+    analyzed = _ctx(ctx, "analyzed")
+    if not callable(analyzed):
+        return None
+    try:
+        rows = analyzed()
+    except Exception:  # noqa: BLE001 - rows that cannot be read are not known yet
+        return None
+    return None if rows is None else _values_of(ctx, column)
+
+
 def _form_kind_fits(decision: Any, ctx: Any) -> None:
     """Cut points belong to categories (and categories need them); a mass at zero's form and the
     consumers-only domain need zeros and no negative values; a data-derived cut point searches a
@@ -2579,7 +2595,49 @@ def complete_spec(column: str, spec: Any, ctx: Any) -> dict[str, Any]:
         out.update(knots_rule=None, n_effective=None)
     out["scale"] = transform_signature(state, column)
     out["unit"] = scale_words(state, column)
+    _knots_place_on_the_analyzed_rows(column, out, state, ctx)
     return out
+
+
+def _knots_place_on_the_analyzed_rows(column: str, spec: Mapping[str, Any], state: Any,
+                                      ctx: Any) -> None:
+    """A spline whose knots its values cannot place is refused when it is declared, where the
+    values the coefficient table places them on are known then: under inference the table is fit
+    on every analyzed row, and a column every analyzed row records, which reaches the form step as
+    recorded (no scale, normalization, batch adjustment or energy model before it: its transform
+    signature is ``"raw"``) and over every analyzed row (no consumers-only domain), gives the form
+    step exactly its recorded values there. Too heavily tied for :data:`SPLINE_MIN_KNOTS` distinct
+    knots (:func:`rcs_knots`), it is refused in the words the fit would refuse in
+    (:func:`_too_tied`), coded :data:`SPLINE_TOO_TIED`, its straight line one tap away (the
+    verifier's M1 on the swarm's C1). Elsewhere the fit decides: a step before the form can break
+    the tie (a residual on energy) or make it (a fill over a fold's blanks, as on the plasma
+    panel's ``mz_0126``), and a fold's rows are not the analyzed rows."""
+    from turbotab.core.decisions import Refusal, SetExposureForm
+    from turbotab.core.graph import StageRefusal
+
+    form = spec.get("form")
+    if form not in SPLINE_FORMS or getattr(state, "purpose", None) != "inference":
+        return
+    if spec.get("domain") == "consumers" or column in domain_columns(state):
+        return
+    if spec.get("scale", transform_signature(state, column)) != "raw":
+        return
+    values = _analyzed_values(ctx, column)
+    if values is None or not len(values) or not np.isfinite(values).all():
+        return
+    k = int(spec.get("knots") or DEFAULT_KNOTS)
+    try:
+        if form == "zero_spline":
+            rcs_knots(values[values > 0], k, column=column, above_zero=True)
+        else:
+            rcs_knots(values, k, column=column, rows=len(values))
+    except StageRefusal as refused:
+        if refused.code != SPLINE_TOO_TIED:
+            return  # the fit says why it cannot place them
+        line = SetExposureForm(column=column, form="linear")
+        exits = [{"label": e["label"], "decision": line if i == 0 else e.get("decision")}
+                 for i, e in enumerate(refused.exits)]
+        raise Refusal(refused.code, refused.message, exits=exits) from None
 
 
 def _form_records_its_scale(decision: Any, ctx: Any) -> Any:
