@@ -743,7 +743,12 @@ def build_graph() -> Graph:
             # and SMC-FCS's Cox refusal names the strata with no event (the reference among them),
             # offers the sample answer it names, and offers complete cases only where the analysis
             # model has a maximum on them.
-            Stage("fit", 34, ("working", "design", "split", "target_info", "cohort"),
+            # fit 35 (the swarm's tail, T3, 2026-10-27): beside a refused feature-wise table, or
+            # one whose rows carry no p-value, a model's methods paragraph states no test, count of
+            # tests or Benjamini–Hochberg adjustment, and says the table was refused in its own
+            # words (``methods.omics.featurewise_untested``), where it said 0 features were tested,
+            # so a fit cached before it is computed again.
+            Stage("fit", 35, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),

@@ -2237,6 +2237,9 @@ def methods_paragraph(state: Any, steps: Sequence[str], family: Any, split: Mapp
       below detection are drawn within each imputation, a single fill says so;
     * ``inference``: the table's record, whose clustering an inference run states in place of
       folds it does not have;
+    * ``table``: a family that tests each feature: its rows and its ``refused`` reason; a refused
+      table, or one whose rows carry no p-value, is said to be, with no test or multiplicity
+      adjustment stated (:func:`featurewise_details`);
     * ``figure``: whether the batch figure ComBat serves exists (:func:`batch.batch_figure`);
       "ComBat was used for visualization only" is said only then."""
     from turbotab.core.methods import qc_drift
@@ -2290,7 +2293,8 @@ def fit_methods(state: Any, family: Any, steps: Sequence[str], split: Mapping[st
     if not set(choices) & set(CHAIN_CONTRACTS):
         return None
     info = model.get("inference") or {}
-    table = {"rows": model.get("coefficients") or []} if tests_each_feature(family) else None
+    table = ({"rows": model.get("coefficients") or [], "refused": info.get("refused")}
+             if tests_each_feature(family) else None)
     return methods_paragraph(state, steps, family, split, working, table, censored=censored,
                              missing=info.get("missing"), inference=info, figure=figure)
 
@@ -2441,7 +2445,13 @@ def detection_details(state: Any, method: str | None, *, censored: Mapping[str, 
 
 
 def featurewise_details(table: Mapping[str, Any], method: str) -> str:
+    """The feature-wise tests' sentence: the features tested, each in its own model, and the
+    multiplicity ``method`` across them. ``table``: the coefficient ``rows`` and the table's
+    ``refused`` reason. A table refused, or with no row carrying a p-value, ran no test and no
+    adjustment, so its sentence says neither (:func:`featurewise_untested`)."""
     rows = [r for r in table.get("rows") or [] if r.get("p") is not None]
+    if table.get("refused") or not rows:
+        return featurewise_untested(table)
     m = len(rows)
     found = sum(1 for r in rows if r.get("q") is not None and r["q"] < 0.05)
     if method == "bh":
@@ -2453,6 +2463,21 @@ def featurewise_details(table: Mapping[str, Any], method: str) -> str:
                 f"covariates; unadjusted p-values, {m:,} tests ({ROTHMAN}).")
     return (f"Each of the {m:,} features was tested in its own linear model with the covariates; no "
             f"multiplicity control, recorded as a limitation.")
+
+
+def featurewise_untested(table: Mapping[str, Any]) -> str:
+    """The sentence of a feature-wise table that reports no test (the verifier's T2V-2): no test,
+    count of tests or multiplicity adjustment ran, so none is stated. A refused table is said to
+    be, in the words of its own ``refused`` reason; one that still gives estimates (no intervals:
+    too few clusters, or more features than cluster-robust tests are computed for) is said to give
+    them alone. A table with no refusal and no p-value says only that it holds none."""
+    reason = str(table.get("refused") or "").strip()
+    if not reason:
+        return "The feature-wise table holds no p-value, so no feature-wise test is reported."
+    if any(r.get("estimate") is not None for r in table.get("rows") or []):
+        return (f"The feature-wise table gives estimates alone: its tests and intervals were "
+                f"refused. {reason}")
+    return f"The feature-wise table was refused. {reason}"
 
 
 def _register() -> None:
