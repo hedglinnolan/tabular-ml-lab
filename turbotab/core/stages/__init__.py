@@ -612,7 +612,12 @@ def build_graph() -> Graph:
             # the fill serves the fit and no copy is drawn, and the feature-wise line names no
             # cross-validated score, so a design cached before is computed again rather than
             # served with a count the fit never drew.
-            Stage("design", 34, ("working", "split", "target_info"),
+            # design 35 (the swarm's C2, the verifier's B1 and B3): the feature-wise model step the
+            # design builds tests a study factor the energy step adjusts under that step's name,
+            # and refuses one whose declared form is not a straight line; the fit and every stage
+            # after the design clone its pipelines, so a design cached before is computed again
+            # rather than served, and with it every stage keyed on it (the fit's table among them).
+            Stage("design", 35, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection", "survey"),

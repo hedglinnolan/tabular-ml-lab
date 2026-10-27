@@ -294,11 +294,13 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     (fewer comparison repeats from 5,000 training units); the design again when its impute line
     came to state the imputations the coefficient table draws, and again when it came to state
     them only under inference, where the fit draws the copies; the fit again when a table on no
-    more rows than its coefficients came to be refused."""
+    more rows than its coefficients came to be refused; and the design again when its feature-wise
+    model step came to test an energy-adjusted study factor under the energy step's name and to
+    refuse one in a declared form, which re-keys the fit and every stage after the design."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (34, 32, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 32, 21)
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:
