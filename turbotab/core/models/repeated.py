@@ -107,19 +107,32 @@ class _Sums:
     P: int
 
 
-def dependent(X: np.ndarray) -> bool:
-    """Whether the design's columns are dependent to working precision: its smallest singular
-    value, with every column scaled to unit length (so units do not count), at most the largest
-    times max(N, P) machine epsilons (``numpy.linalg.matrix_rank``'s rule). REML has no fit there
-    (``log|XᵀV⁻¹X|`` is −∞), and asking LAPACK's factorization of ``XᵀV⁻¹X`` instead lets
-    rounding decide: the pivot an exact dependency leaves is a few ulps of either sign, or zero."""
+# A column whose share of the dependencies' directions (the null space of the scaled design) is
+# above this is in one of them; a column in none has a share of rounding, some 10⁻¹³.
+IN_DEPENDENCY = 1e-6
+
+
+def dependencies(X: np.ndarray) -> tuple[int, np.ndarray]:
+    """How many dependencies the design's columns have to working precision, and the columns in
+    any of them. With every column scaled to unit length (so units do not count; a column of zeros
+    is a dependency of its own), a singular value at most the largest times max(N, P) machine
+    epsilons (``numpy.linalg.matrix_rank``'s rule) is a dependency, and its right singular vectors
+    span them: a column with weight in that span (:data:`IN_DEPENDENCY`) is a fixed combination of
+    the others. REML has no fit where there is one (``log|XᵀV⁻¹X|`` is −∞); asking LAPACK's
+    factorization of ``XᵀV⁻¹X`` instead lets rounding decide, the pivot an exact dependency
+    leaves being a few ulps of either sign, or zero."""
     if X.shape[1] == 0:
-        return False
+        return 0, np.arange(0)
     norms = np.linalg.norm(X, axis=0)
-    if np.any(norms == 0):
-        return True
-    s = np.linalg.svd(X / norms, compute_uv=False)
-    return bool(s[-1] <= s[0] * max(X.shape) * np.finfo(float).eps)
+    _, s, vt = np.linalg.svd(X / np.where(norms > 0, norms, 1.0), full_matrices=False)
+    null = vt[s <= s[0] * max(X.shape) * np.finfo(float).eps] if s[0] > 0 else vt
+    weight = np.sqrt((null ** 2).sum(axis=0))
+    return len(null), np.flatnonzero(weight > IN_DEPENDENCY)
+
+
+def dependent(X: np.ndarray) -> bool:
+    """Whether the design's columns are dependent to working precision (:func:`dependencies`)."""
+    return dependencies(X)[0] > 0
 
 
 def _sums(X: np.ndarray, y: np.ndarray, codes: np.ndarray) -> _Sums:
@@ -510,27 +523,28 @@ def singular_words(matrix: pd.DataFrame) -> str:
     """Why REML has no fit on ``matrix`` (its columns without the intercept), where ``XᵀV⁻¹X`` is
     singular to working precision: the columns, with the intercept, are dependent, and REML needs
     every coefficient identified, since its likelihood holds ``log|XᵀV⁻¹X|``. The columns named
-    are those in the dependency (Belsley's proportions, ``linear.dependent_columns``); no
+    are those in a dependency and the count is the dependencies' (:func:`dependencies`); no
     condition number is quoted, since at an exact dependency the one computed is rounding."""
     from turbotab.core.models.inference import _terms
-    from turbotab.core.models.linear import dependent_columns
 
-    try:
-        named = dependent_columns(matrix)
-    except Exception:  # noqa: BLE001 - a diagnostic that cannot run names no column
-        named = []
+    X = np.column_stack([np.ones(len(matrix)), matrix.to_numpy(dtype=float)])
+    count, columns = dependencies(X)
+    named = [str(matrix.columns[j - 1]) for j in columns if j > 0]
+    ways = "" if count <= 1 else f", in {count:,} ways,"
     if len(named) == 1:
         what = (f"{_terms(named)} is a fixed combination of the other columns and the intercept, "
                 f"so its coefficient is not identified")
     elif named:
-        what = (f"{_terms(named)} are fixed combinations of the other columns and the intercept, "
-                f"so their coefficients are not identified")
+        what = (f"{_terms(named)} are{ways} fixed combinations of the other columns and the "
+                f"intercept, so their coefficients are not identified")
     else:
         what = ("its columns and the intercept are dependent, so their coefficients are not "
                 "identified")
+    leave = ("leave one of the dependent columns out" if count <= 1 else
+             f"leave out one dependent column for each of the {count:,} ways")
     return (f"On these {len(matrix):,} rows the model matrix is singular: {what}. The "
             f"random-intercept mixed model is fit by REML, which needs every coefficient "
-            f"identified, so it is not fit; leave one of the dependent columns out.")
+            f"identified, so it is not fit; {leave}.")
 
 
 def singular_refusal(matrix: pd.DataFrame) -> Any:

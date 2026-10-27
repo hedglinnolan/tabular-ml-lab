@@ -57,11 +57,12 @@ def model_matrix(pipeline: Any, X: pd.DataFrame) -> pd.DataFrame:
     return matrix
 
 
-def _belsley(matrix: pd.DataFrame) -> tuple[float, list[str]] | None:
-    """The scaled condition number of the model matrix with its intercept (Belsley): the intercept
-    and every column, each scaled to unit length, so units do not count; and the columns the
-    dependency on its smallest singular value involves, most involved first (the intercept left
-    out). None where the rows with every value do not exceed the columns, or there is no column."""
+def collinearity_concern(matrix: pd.DataFrame) -> str | None:
+    """A plain concern when the model matrix (with its intercept) is nearly singular, else None.
+
+    The scaled condition number (Belsley): the intercept and every column, each scaled to unit
+    length, so units do not count. The columns named are those the near-dependency involves.
+    """
     values = matrix.to_numpy(dtype=float, na_value=np.nan)
     values = values[np.isfinite(values).all(axis=1)]
     if values.shape[0] <= values.shape[1] or values.shape[1] == 0:
@@ -71,6 +72,8 @@ def _belsley(matrix: pd.DataFrame) -> tuple[float, list[str]] | None:
     norms[norms == 0] = 1.0
     _, s, vt = np.linalg.svd(X / norms, full_matrices=False)
     condition = float(s[0] / s[-1]) if s[-1] > 0 else float("inf")
+    if condition < NEAR_SINGULAR:
+        return None
     # Belsley's variance-decomposition proportions: the share of each coefficient's variance that
     # comes from the smallest singular value. Above one half, the column is in the dependency.
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -78,29 +81,7 @@ def _belsley(matrix: pd.DataFrame) -> tuple[float, list[str]] | None:
         proportion = phi[:, -1] / phi.sum(axis=1)
     names = ["the intercept", *[str(c) for c in matrix.columns]]
     order = np.argsort(-np.nan_to_num(proportion))
-    return condition, [names[j] for j in order
-                       if proportion[j] >= 0.5 and names[j] != "the intercept"]
-
-
-def dependent_columns(matrix: pd.DataFrame) -> list[str]:
-    """The model matrix's columns in the dependency on its smallest singular value (Belsley's
-    proportions, :func:`_belsley`), most involved first; none where none is."""
-    found = _belsley(matrix)
-    return found[1] if found is not None else []
-
-
-def collinearity_concern(matrix: pd.DataFrame) -> str | None:
-    """A plain concern when the model matrix (with its intercept) is nearly singular, else None.
-
-    The scaled condition number (Belsley): the intercept and every column, each scaled to unit
-    length, so units do not count. The columns named are those the near-dependency involves.
-    """
-    found = _belsley(matrix)
-    if found is None:
-        return None
-    condition, involved = found
-    if condition < NEAR_SINGULAR:
-        return None
+    involved = [names[j] for j in order if proportion[j] >= 0.5 and names[j] != "the intercept"]
     columns = involved[:6] or [str(c) for c in matrix.columns][:5]
     listed = columns[0] if len(columns) == 1 else f"{', '.join(columns[:-1])} and {columns[-1]}"
     size = "too large to compute" if not np.isfinite(condition) else f"{condition:,.0f}"

@@ -1,16 +1,20 @@
 """The mixed model's fit on a model matrix whose columns are dependent is refused in words, typed as
 a fit-time refusal (SWARM_PLAN §8), where it ended the fit stage and the effects stage with
 ``LinAlgError: the model matrix is singular`` or ``LinAlgError: Singular matrix`` (the Sullivan 2021
-walks, seeds 35, 36 and 39: a 5-level education code beside its own 4-level recoding, the sex
-column constant on the rows).
+walks, seeds 35, 36 and 39: a 5-level education code beside its own 4-level recoding, the mean of
+two days' energy intakes beside both, a column constant on the rows).
 
 REML's likelihood holds ``log|XᵀV⁻¹X|``, which a matrix with dependent columns sends to −∞, and its
-estimates are not unique there, so the random-intercept fit has none: the refusal names the
-columns in the dependency (Belsley's proportions, ``linear.dependent_columns``) and quotes no
-condition number, which at an exact dependency is rounding. Truth from construction: a column
-twice another, a column of ones beside the intercept, and two indicators that sum to one; each
-column of the dependency is a fixed combination of the others and the intercept. A matrix of
-independent columns fits as before, at the REML estimate (statsmodels ``MixedLM``)."""
+estimates are not unique there, so the random-intercept fit has none. Dependence is decided at
+working precision on the column-scaled design (``repeated.dependencies``), not by LAPACK's
+factorization of ``XᵀV⁻¹X``, whose pivot at an exact dependency is rounding of either sign. The
+refusal names every column in a dependency (its weight in the null space's directions) and counts
+the dependencies, and quotes no condition number, which at an exact dependency is rounding. Truth
+from construction: a column twice another, a column of ones beside the intercept, and two
+indicators that sum to one; each column of the dependency is a fixed combination of the others and
+the intercept. A matrix of independent columns fits as before, at the REML estimate (statsmodels
+``MixedLM``).
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -65,6 +69,23 @@ def test_dependent_columns_refuse_the_mixed_fit_in_words(kind):
     assert refusal is not None and refusal["code"] == "singular_model_matrix"
     assert [e["label"] for e in refusal["exits"]] == [
         "Leave one of the dependent columns out of the model"]
+
+
+def test_two_dependencies_are_counted_and_an_independent_column_is_not_named():
+    """`x_twice` is twice `x` and `one` is the intercept's copy: two dependencies, every column in
+    one of them named and `z`, in none, not named (an independent column's weight in the
+    dependencies' directions is rounding)."""
+    x, units, y = _rows()
+    z = np.random.default_rng(5).normal(size=N)
+    X = pd.DataFrame({"x": x, "z": z, "x_twice": 2 * x, "one": np.ones(N)})
+    with pytest.raises(StageRefusal) as refused:
+        RandomInterceptRegressor(units=units).fit(X, y)
+    assert refused.value.message == (
+        f"On these {N} rows the model matrix is singular: `x`, `x_twice` and `one` are, in 2 ways, "
+        f"fixed combinations of the other columns and the intercept, so their coefficients are not "
+        f"identified. The random-intercept mixed model is fit by REML, which needs every "
+        f"coefficient identified, so it is not fit; leave out one dependent column for each of the "
+        f"2 ways.")
 
 
 def test_independent_columns_fit_at_the_reml_estimate():
