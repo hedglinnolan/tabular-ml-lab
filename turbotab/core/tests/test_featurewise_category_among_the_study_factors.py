@@ -188,8 +188,9 @@ def test_a_family_of_numeric_study_factors_tests_each_without_the_other(tmp_path
 
 def test_the_table_counts_each_categorys_indicators_and_no_longer_predictors_columns():
     """On a matrix written out by hand: `g` (3 levels) and `h` (2) are categories with the role,
-    `g_size` a covariate whose name begins with `g`'s, so its column is its own, not `g`'s
-    (``estimand.primary_features``). The one test of `x` is least squares on every other column."""
+    their indicators as a one-hot step encodes them (``featurewise.category_columns`` reads them
+    off the fitted encoder), `g_size` a covariate whose name begins with `g`'s and is no indicator
+    of it. The one test of `x` is least squares on every other column."""
     from turbotab.core.models import featurewise as fw
 
     rng = np.random.default_rng(3)
@@ -200,9 +201,7 @@ def test_the_table_counts_each_categorys_indicators_and_no_longer_predictors_col
                            "g_b": (g == "b").astype(float), "g_c": (g == "c").astype(float),
                            "h_y": (h == "y").astype(float)})
     y = 1.0 + 0.5 * matrix["x"] + matrix["g_c"] + rng.normal(size=n)
-    columns = list(matrix.columns)
-    entered = fw.indicator_columns(columns, ["x"], ["g", "h"], ["x", "g_size", "g", "h"])
-    assert entered == {"g": ["g_b", "g_c"], "h": ["h_y"]}
+    entered = {"g": ["g_b", "g_c"], "h": ["h_y"]}
     table = fw.featurewise_table(matrix, y, "regression", ["x", "g", "h"], entered=entered)
     (row,) = table.rows
     fit = sm.OLS(y.to_numpy(), sm.add_constant(matrix)).fit()
@@ -323,14 +322,10 @@ def test_the_familys_multiplicity_words_for_each_method():
 def test_a_longer_predictors_spline_terms_are_not_a_categorys_indicators(tmp_path):
     """`grp` (3 levels, 2 indicators) beside a covariate `grp_age` declared a 4-knot spline, whose
     terms `grp_age'` and `grp_age''` begin with `grp`'s name: they are `grp_age`'s, so the caption
-    counts `grp`'s 2 indicators, as the one-hot step made them; the hand-written `g_size` case
-    above stays silent."""
+    counts `grp`'s 2 indicators, as the one-hot step made them (T4a reads them off its encoder,
+    ``featurewise.category_columns``, where T2 read them by name)."""
     from turbotab.core import decisions as d
-    from turbotab.core.models import featurewise as fw
 
-    columns = ["fiber", "sex_male", "grp_b", "grp_c", "grp_age", "grp_age'", "grp_age''"]
-    assert fw.indicator_columns(columns, ["fiber"], ["grp"], ["fiber", "sex", "grp", "grp_age"]) \
-        == {"grp": ["grp_b", "grp_c"]}
     frame = _frame().rename(columns={"age": "grp_age"})
     roles = {("grp_age" if c == "age" else c): r for c, r in ROLES.items()}
     answers = {("grp_age" if c == "age" else c): a for c, a in ef.ANSWERS.items()}

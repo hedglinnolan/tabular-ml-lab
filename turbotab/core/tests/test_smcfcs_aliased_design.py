@@ -334,4 +334,4 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (36, 19, 17, 10, 8, 10, 4)
+    assert tuple(versions[s] for s in stages) == (37, 20, 17, 11, 8, 11, 4)

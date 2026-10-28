@@ -306,15 +306,21 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     to refuse a formed study factor, and a category the estimand names, and whose family sentence
     came to count the tests feature-wise regression runs; and the fit again when a model's methods
     paragraph beside a refused feature-wise table came to say it was refused rather than that 0
-    features were tested (T3); and the fit and the stages that refit its tables again, when its
-    coefficient tables came to be fit on scaled columns and to refuse a dependency by row, and the
-    Cox fit to bound its linear predictor's SD (the tail tables package, merged after T2 and T3)."""
+    features were tested (T3); and the fit again when a feature-wise study factor with nothing left
+    after the covariates came to be refused by row and the detection sentence beside a refused
+    table to claim no interval, with the effects stage, whose family sentence came to count the
+    tests its feature-wise table made and whose models came to name the category they adjust for
+    (T4a), and the sensitivity and secondary stages, which refit the feature-wise table, and the
+    proposals stage, whose estimand card came to say what feature-wise regression would test of a
+    family (T4a's repair); and, where the tail tables and T4a both moved a stage, one
+    past both at their merge."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 36, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 37, 21)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
-            versions["secondary"], versions["scales"]) == (10, 19, 17, 10, 8)
+            versions["secondary"], versions["scales"]) == (11, 20, 17, 11, 8)
+    assert versions["proposals"] == 21
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:

@@ -2236,7 +2236,8 @@ def methods_paragraph(state: Any, steps: Sequence[str], family: Any, split: Mapp
     * ``missing``: the inference table's missing-data record: under multiple imputation the values
       below detection are drawn within each imputation, a single fill says so;
     * ``inference``: the table's record, whose clustering an inference run states in place of
-      folds it does not have;
+      folds it does not have, and which, with ``table``, says whether the table holds an interval
+      a single fill could narrow (:func:`detection_details`);
     * ``table``: a family that tests each feature: its rows and its ``refused`` reason; a refused
       table, or one whose rows carry no p-value, is said to be, with no test or multiplicity
       adjustment stated (:func:`featurewise_details`);
@@ -2262,7 +2263,8 @@ def methods_paragraph(state: Any, steps: Sequence[str], family: Any, split: Mapp
         details.append(normalization_details(norm["method"]))
     if "detection_limit" in choices:
         said = detection_details(state, choices["detection_limit"], censored=censored,
-                                 purpose=purpose, missing=missing, steps=steps)
+                                 purpose=purpose, missing=missing, steps=steps, table=table,
+                                 inference=inference)
         if said:
             details.append(said)
     validation = (split or {}).get("validation")
@@ -2392,11 +2394,19 @@ def normalization_details(method: str) -> str:
 
 def detection_details(state: Any, method: str | None, *, censored: Mapping[str, Any] | None = None,
                       purpose: str = "prediction", missing: Mapping[str, Any] | None = None,
-                      steps: Sequence[str] | None = None) -> str | None:
+                      steps: Sequence[str] | None = None, table: Mapping[str, Any] | None = None,
+                      inference: Mapping[str, Any] | None = None) -> str | None:
     """The sentence for values below detection: the features the design's detect step fills
     (``censored``, after the QC filters; the answer's own columns when no design is at hand), and
     how, by purpose. Under inference with multiple imputation they are drawn below the limit within
     each imputation; filled once, the sentence says it is a single fill recorded as a limitation.
+    Where the table records no such answer (``missing``: refused, or blocked by the answer, as a
+    feature-wise table under multiple imputation is), the sentence states the answer recorded and
+    that the table was not estimated from it, with no claim of an interval (the orchestrator's
+    ruling (5) on the swarm's tail). A single fill the table records claims its intervals too
+    narrow only where the table holds one (``table``, ``inference``: :func:`_holds_interval`); one
+    beside a table that gives estimates alone (refused with them, as cluster-robust tests beyond
+    those TurboTab computes are, or below the cluster floor) claims none (the verifier's V4a-1).
     "After normalization and before the log" is said only where the design's steps put the fill
     there (``steps``)."""
     if censored is not None:
@@ -2415,10 +2425,19 @@ def detection_details(state: Any, method: str | None, *, censored: Mapping[str, 
     where = " after normalization and before the log" if between else ""
     rows = "the training fold" if purpose == "prediction" else "the analyzed rows"
     record = dict(missing or {})
-    if getattr(getattr(state, "missing", None), "strategy", None) == "complete_case":
+    strategy = getattr(getattr(state, "missing", None), "strategy", None)
+    if strategy == "complete_case":
         # Complete cases leave a row with any blank before the design, so nothing is filled.
         return (f"Rows with a value below detection in any of {what} were left out (complete "
                 f"cases).")
+    if purpose == "inference" and strategy == "multiple_imputation" \
+            and record.get("method") != "multiple_imputation":
+        # The answer is multiple imputation, but the table holds no record of it: it was refused
+        # (a feature-wise table is not pooled over the copies), so no estimate or interval rests
+        # on a fill or a draw, and none is claimed (the orchestrator's ruling (5)).
+        return (f"The missing-values answer is multiple imputation, which draws the values below "
+                f"detection in {what} below the limit within each copy; the table was not "
+                f"estimated from the copies, so no estimate or interval rests on them.")
     if purpose == "inference" and record.get("method") == "multiple_imputation":
         m = int(record.get("m") or 0)
         if method == "half_minimum":  # filled before the chained equations (``imputation_frame``)
@@ -2439,9 +2458,30 @@ def detection_details(state: Any, method: str | None, *, censored: Mapping[str, 
         how = (f"its expected value below the limit under a left-censored normal fitted to {scale} "
                f"on {rows} ({LUBIN})")
     said = f"Values below detection in {what} were filled{where}, each by {how}."
-    if purpose == "inference":
+    limitation = (", recorded as a limitation"
+                  if getattr(getattr(state, "missing", None), "acknowledged", False) else "")
+    if purpose == "inference" and strategy == "impute" and record.get("method") != "single_fill":
+        # A single fill the table holds no record of: it was blocked or refused, so it holds no
+        # interval to call too narrow (the orchestrator's ruling (5)).
+        said += (f" A single fill{limitation}; the table was not estimated from it, so no "
+                 f"interval rests on it.")
+    elif purpose == "inference" and not _holds_interval(table, inference):
+        # The table was estimated from the fill but holds no interval to call too narrow.
+        said += f" A single fill{limitation}; the table reports no interval."
+    elif purpose == "inference":
         said += " A single fill, recorded as a limitation: its intervals are too narrow."
     return said
+
+
+def _holds_interval(table: Mapping[str, Any] | None, inference: Mapping[str, Any] | None) -> bool:
+    """Whether the table holds an interval: its record (``inference``) neither refused nor of no
+    covariance, and, where its rows are at hand (``table``: a feature-wise family's), one of them
+    with an interval. Without a record, as before: an interval is assumed."""
+    info = dict(inference or {})
+    if info.get("refused") or (table or {}).get("refused") or info.get("covariance") == "none":
+        return False
+    rows = (table or {}).get("rows")
+    return rows is None or any(r.get("ci_low") is not None for r in rows)
 
 
 def featurewise_details(table: Mapping[str, Any], method: str) -> str:

@@ -262,6 +262,10 @@ EFFECTS_READS = ("adjustment", "estimand", "multiplicity", "model_sequence", "di
                  "repeat_kind", "unit")
 LABELS = {"crude": "Unadjusted", "model_1": "Model 1", "model_2": "Model 2 (primary)",
           "model_3": "Model 3"}
+# The unadjusted model where it holds a category's indicators (feature-wise regression adjusts
+# for a category among the study factors in each of its models, the unadjusted one too): no
+# covariate, but not unadjusted (the verifier's T2V3-4).
+CRUDE_HOLDING = "Without covariates"
 STRAIGHT_LINE = "the straight-line estimate beside the curve"
 # The fit-time refusal (SWARM_PLAN §8) of Model 3 under complete cases with no row recording every
 # column it adds (``_Run._no_rows_three``).
@@ -464,6 +468,30 @@ def matrix_sources(fitted: Any, inputs: Sequence[str]) -> dict[str, tuple[set[st
     return out
 
 
+def exposure_columns(fitted: Any, columns: Sequence[str], exposures: Sequence[str],
+                     predictors: Sequence[str]) -> list[str]:
+    """The model-matrix columns of ``columns``, in their order, that carry the exposures' effects:
+    a category's indicators as its own encoding made them (``featurewise.category_columns``), any
+    other exposure's columns by ``estimand.primary_features``, and never a column another
+    category's encoding made (the orchestrator's ruling (3) on the swarm's tail): a fixed-effects
+    grouping `grp_site` beside the category `grp` begins with `grp`'s name, and its intercepts
+    were read as `grp`'s indicators, so the unadjusted model held them and the linear family
+    showed them as `grp`'s effects."""
+    from turbotab.core import estimand as est
+    from turbotab.core.models.featurewise import category_columns
+
+    owned = category_columns(fitted)
+    names = [str(c) for c in columns]
+    mine: set[str] = set()
+    for e in (str(x) for x in exposures):
+        if e in owned:
+            mine |= set(owned[e])
+            continue
+        others = {f for c, cols in owned.items() if c != e for f in cols}
+        mine |= {f for f in est.primary_features(names, e, predictors) if f not in others}
+    return [c for c in names if c in mine]
+
+
 def energy_outputs(fitted: Any) -> set[str]:
     """The adjusted-lane columns the energy model made of total energy and the other energy
     sources (kept energy, ``kcal_from_<source>``, ``kcal_from_other``): the terms that enter with
@@ -504,7 +532,8 @@ def spline_terms(fitted: Any, features: Sequence[str]) -> tuple[str, list[str]] 
 def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classes: Any,
                  clusters: Any, outcome: Any, survey: Any, levels: Any, event: Any,
                  features: Sequence[str], model: Any = None,
-                 exposures: Sequence[str] | None = None) -> Any:
+                 exposures: Sequence[str] | None = None,
+                 entered: Mapping[str, Sequence[str]] | None = None) -> Any:
     """The family's inference table on ``matrix`` (every analyzed row), as the fit stage computes
     it for the primary: design-based under ``survey`` for the families that have a design-based
     estimator (the stage blocks the others before they get here). None for a family whose table
@@ -521,9 +550,11 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
     them, and those in a declared form), the table tests those and refuses as the fit's does: a
     study factor in a form other than one straight-line column, or none the matrix holds, is
     refused, never each of its columns tested as a study factor of its own (the orchestrator's
-    ruling (a) on the swarm's tail); one that enters as indicators of its levels (a category, the
-    step's ``entered_``) is not tested, and the table says so where ``matrix`` holds them (the
-    verifier's T2V-3). Where none of the estimand's columns (``features``) is one the step tests
+    ruling (a) on the swarm's tail); one that enters as indicators of its levels (a category:
+    ``entered``, its columns as the fitted pipeline's encoder made them,
+    ``featurewise.category_columns``; else the step's ``entered_``) is not tested, and the table
+    says so where ``matrix`` holds them (the verifier's T2V-3). Where none of the estimand's
+    columns (``features``) is one the step tests
     (the estimand's study factor a category beside a numeric one), the table is refused as the
     fit's is where the matrix holds no study factor, naming the estimand's ``exposures`` as the
     roles answer named them, never the step's other study factor tested in their place (the
@@ -559,7 +590,8 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
                 named = [n for _, n in pairs] or sorted(wanted)
     step = _MatrixStep(classes=list(classes) if classes is not None else [],
                        levels=list(levels) if levels is not None else None, features=tested,
-                       named=named, forms=forms, entered=getattr(model, "entered_", None))
+                       named=named, forms=forms,
+                       entered=entered if entered is not None else getattr(model, "entered_", None))
     takes = inspect.signature(family.inference).parameters
     given = {"outcome": outcome, "rows": "all", "survey": survey, "event": event}
     kw = {k: v for k, v in given.items() if k in takes}
@@ -769,13 +801,16 @@ def effects_stage(ctx: StageContext) -> Bundle:
         out.append(run.family_block(family, build_pipeline))
     card = est.model_sequence_card(state)
     family_spec = bool(spec_e.family)
+    # The family's multiplicity sentence counts the members its feature-wise table tested, and
+    # claims no test where it tested none (the orchestrator's ruling (1) on the swarm's tail), of
+    # Model 2 where another model tested other members (the verifier's V4a-2).
+    primary, others = (run.family_tests(families, out) if family_spec else None) or (None, [])
     artifact = EffectsArtifact(
         purpose="inference", exposure=key, exposures=exposures, measure=str(spec_e.measure),
         measure_label=est.MEASURE_WORDS.get(str(spec_e.measure)), scale=facts["scale"],
         conditioning=facts["conditioning"], collapsible=facts["collapsible"],
         rows=f"all {len(frame):,} analyzed rows", appendix_title=APPENDIX_TITLE,
-        multiplicity=(family_multiplicity_statement(state, spec_e, exposures,
-                                                    getattr(run, "untested", None) or [])
+        multiplicity=(est.sequence_multiplicity_statement(state, spec_e, primary, others)
                       if family_spec else None),
         model_1=ModelOne(**card) if card is not None else None,
         families=out, methods="")
@@ -799,47 +834,17 @@ def split_units(frame: pd.DataFrame, grouped_by: str | None, train: Any) -> pd.S
 
 def family_multiplicity_statement(state: Any, spec: Any, exposures: Sequence[str],
                                   untested: Sequence[str]) -> str:
-    """The exposure family's multiplicity sentence (``estimand.multiplicity_statement``) as this
-    stage ran it. ``untested``: the members feature-wise regression does not test, each a category
-    that enters its models as indicators of its levels and is adjusted for (the step's
-    ``entered_``). With none, the estimand's own sentence; with some, the count is of the members
-    it tests, and the sentence names the others as adjusted for, not tested (the verifier's
-    T2V2-3), where it said every member was tested and shown."""
+    """The exposure family's multiplicity sentence where feature-wise regression tested every
+    member but ``untested``, each a category that enters its models as indicators of its levels
+    and is adjusted for (the verifier's T2V2-3): ``estimand.tested_multiplicity_statement``, which
+    the stage serves from what its feature-wise table tested (:meth:`_Run.family_tests`). With
+    none untested, the estimand's own sentence."""
     from turbotab.core import estimand as est
-    from turbotab.core.voice import listing
 
-    if not untested:
-        return est.multiplicity_statement(state, spec, len(exposures))
     held = {str(c) for c in untested}
-    tested = [str(e) for e in exposures if str(e) not in held]
-    n, one = len(tested), len(tested) == 1
-    head = (f"Feature-wise regression tested {n:,} of the {len(exposures):,} exposures "
-            f"({listing(tested)})" + ("" if one else ", each in turn"))
-    method, _ = est.family_multiplicity(state)
-    if method == "none":
-        said = (f"{head}, with no multiplicity control, recorded as a limitation: at p < 0.05 about "
-                f"{0.05 * n:,.0f} would pass by chance alone; every exposure tested is shown.")
-    elif method == "fdr_bh":
-        said = (f"{head}; Benjamini–Hochberg q-values control the false-discovery rate across "
-                f"{'that 1 test' if one else f'all {n:,}'} ({est.BENJAMINI_HOCHBERG}), and every "
-                f"exposure tested is shown, significant or not.")
-    else:
-        kept = (" It was kept for an omics family as recorded: the field expects false-discovery "
-                "control." if est.omics_family(state) else
-                " It was kept for this many tests as recorded."
-                if est.unadjusted_blocked(state, n) else "")
-        said = (f"{head}; p-values are not adjusted for multiplicity, and "
-                f"{'that 1 test is' if one else f'all {n:,} tests are'} stated (customary for a few "
-                f"declared nutrient hypotheses, {est.ROTHMAN}), with every exposure tested "
-                f"shown.{kept}")
-    others = [str(c) for c in untested]
-    if len(others) == 1:
-        return (f"{said} {listing(others)} is a category: in each feature-wise model it enters as "
-                f"indicators of its levels, not one column, so it is adjusted for in each test, "
-                f"not tested.")
-    return (f"{said} {listing(others)} are categories: in each feature-wise model they enter as "
-            f"indicators of their levels, not one column, so they are adjusted for in each test, "
-            f"not tested.")
+    members = [str(e) for e in exposures]
+    return est.tested_multiplicity_statement(state, spec, est.FamilyTests(
+        members, [e for e in members if e not in held], [e for e in members if e in held], [], []))
 
 
 def _first_sentence(text: str) -> str:
@@ -853,6 +858,42 @@ class _Run:
 
     def __init__(self, **kw: Any) -> None:
         self.__dict__.update(kw)
+
+    def family_tests(self, families: Sequence[Any], blocks: Sequence[Mapping[str, Any]]) -> Any:
+        """``(primary, others)``: the exposure family's tests as the feature-wise family's models
+        ran them (``estimand.family_tests``), Model 2's and, by its label, each other model's whose
+        table was made (one that could not be fit made none): its rows, the categories it adjusts
+        for, and its refusal, or why it could not be fit, where it tested none. None where no
+        family chosen tests each member in turn."""
+        from turbotab.core import estimand as est
+
+        def read(fit: Mapping[str, Any]) -> Any:
+            info = fit.get("inference") or {}
+            refused = info.get("refused") or next(iter(fit.get("concerns") or []), None)
+            return est.family_tests(fit.get("effects") or [], self.exposures,
+                                    self._predictors(), refused=refused,
+                                    categories=getattr(self, "untested", None) or [])
+
+        for family, block in zip(families, blocks):
+            if not tests_only(family):
+                continue
+            sequence = block.get("sequence") or []
+            primary = next((s for s in sequence if s.get("key") == "model_2"), None)
+            if primary is None:
+                return est.family_tests([], self.exposures, refused="no model could be fit"), []
+            others = [(self._named(s), read(s)) for s in sequence
+                      if s.get("key") != "model_2" and s.get("inference") is not None]
+            return read(primary), others
+        return None
+
+    @staticmethod
+    def _named(fit: Mapping[str, Any]) -> str:
+        """A model of the sequence as a sentence names it: "The unadjusted model" ("The model
+        without the covariates" where it holds a category's indicators), "Model 1", "Model 3"."""
+        if fit.get("key") == "crude":
+            return ("The model without the covariates" if fit.get("adjusted_for")
+                    else UNFIT_WORDS["crude"])
+        return LABELS[str(fit.get("key"))]
 
     # the copies the models are fit in: the completed copies under multiple imputation
     @staticmethod
@@ -888,6 +929,7 @@ class _Run:
         from turbotab.core import estimand as est
         from turbotab.core.methods.missing import copy_pipeline
         from turbotab.core.models.effects import split_rows
+        from turbotab.core.models.featurewise import category_columns
         from turbotab.core.models.linear import model_matrix
         from turbotab.core.models.survey import blocked, has_design_estimator, no_design_estimator
         from turbotab.core.stages.modeling import _inference_table, with_units
@@ -908,7 +950,7 @@ class _Run:
         units = (pd.Series(self.clusters.codes, index=self.frame.index)
                  if self.clusters is not None and self.clusters.clustered else None)
         pipeline = self.pipelines[family.key]
-        predictors = list(est.predictor_roles(self.state))
+        predictors = self._predictors()
         allowed_one = set(self.model_one or [])
         energy_named = bool(allowed_one & set(est.energy_terms_columns(self.state)))
         per_copy: dict[str, list[Any]] = {}
@@ -944,9 +986,12 @@ class _Run:
                 continue
             M = model_matrix(fitted, X)
             sources = matrix_sources(fitted, self.spec.inputs)
-            feats = [c for c in M.columns
-                     if c in {f for e in self.exposures
-                              for f in est.primary_features(M.columns, e, predictors)}]
+            feats = exposure_columns(fitted, M.columns, self.exposures, predictors)
+            # A category the feature-wise step adjusts for, not tests: its columns as its own
+            # encoding made them (the orchestrator's ruling (3)), named in each model that holds
+            # them (``adjusted_for``) and handed to its tables (``entered``).
+            entered = (category_columns(fitted, getattr(fitted[-1], "categories", None) or [])
+                       if tests_only(family) else {})
             energy = energy_outputs(fitted)
 
             def in_model_one(c: str) -> bool:
@@ -963,7 +1008,7 @@ class _Run:
                 subsets["straight"] = [c for c in M.columns if c not in set(curve[1])]
             kw = dict(task=self.task, classes=classes, clusters=self.clusters, outcome=self.outcome,
                       survey=design, levels=self.levels, event=self.state.event, features=feats,
-                      model=fitted[-1], exposures=self.exposures)
+                      model=fitted[-1], exposures=self.exposures, entered=entered)
             for name, cols in subsets.items():
                 per_copy.setdefault(name, []).append(self._table(
                     lambda _c=cols: self._with_relative(
@@ -971,11 +1016,24 @@ class _Run:
                         kw), name, failures, pooled=imputed is not None))
             if k == 0:
                 features = feats
-                first = {"fitted": fitted, "matrix": M, "sources": sources, "classes": classes}
+                first = {"fitted": fitted, "matrix": M, "sources": sources, "classes": classes,
+                         "entered": entered}
+
+                def holding(cols: Sequence[str]) -> list[str]:
+                    # The categories whose indicators a model holds, each adjusted for in it.
+                    return [c for c, ind in entered.items() if set(ind) & set(cols)]
+
+                def adjusting(cols: Sequence[str]) -> list[str]:
+                    # Each column a model adjusts for, once: a category beside the estimand's
+                    # study factor is among the columns its indicators come from, and among
+                    # those it holds (the verifier's V4a-5).
+                    return list(dict.fromkeys([*self._raw(cols, feats, sources), *holding(cols)]))
+
                 lineage.update(dict.fromkeys(subsets, sources))
-                adjusted_for = {"crude": [], "model_2": self._raw(M.columns, feats, sources)}
+                adjusted_for = {"crude": holding(subsets["crude"]),
+                                "model_2": adjusting(M.columns)}
                 if "model_1" in subsets:
-                    adjusted_for["model_1"] = self._raw(subsets["model_1"], feats, sources)
+                    adjusted_for["model_1"] = adjusting(subsets["model_1"])
         comparison = None
         if self.spec3 is not None and supported:
             comparison = self._model_three(family, build_pipeline, per_copy, failures, predictors,
@@ -988,6 +1046,7 @@ class _Run:
                             f"refit: the unadjusted model and Model 1 are refit for least squares, "
                             f"logistic, proportional-odds, Cox, feature-wise, mixed and GEE models.")
         sequence, appendix = [], []
+        categories = set((first.get("entered") or {}) if first else {})
         for name in ("crude", "model_1", "model_2", "model_3"):
             tables = per_copy.get(name)
             if not tables:
@@ -1002,9 +1061,11 @@ class _Run:
                 # column's time-invariance under clustered imputation, MI repair): its exits stand
                 # beside the reason, so the question carries its answers (BLUEPRINT §14.2).
                 held = (missing is not None and name == "model_3" and bool(missing.refusal))
+                # No test was made, so no category is said to be adjusted for in it.
+                adjusted = [c for c in adjusted_for.get(name, []) if c not in categories]
                 sequence.append(SequenceFit(
-                    key=name, label=LABELS[name], adjusted_for=adjusted_for.get(name, []),
-                    note=self._note(name), n_rows=n_model, effects=None,
+                    key=name, label=self._label(name, adjusted), adjusted_for=adjusted,
+                    note=self._note(name, adjusted), n_rows=n_model, effects=None,
                     inference=self._held(missing) if held else None,
                     concerns=[f"It could not be fit: {failures.get(name, 'no table')}"]))
                 continue
@@ -1012,12 +1073,21 @@ class _Run:
                 missing.record(table)
             table = self._multiplicity(family, table)
             rows = table.rows or []
-            mine = {f for e in self.exposures
-                    for f in est.primary_features([r["feature"] for r in rows], e, predictors)}
+            # The exposures' rows: the matrix columns that carry them (``exposure_columns``), and
+            # any row beside the matrix's (an energy model's average relative effect) by its name.
+            names = [str(r["feature"]) for r in rows]
+            matrix_columns = {str(c) for c in first["matrix"].columns} if first else set()
+            mine = ({f for f in names if f in set(features)}
+                    | {f for e in self.exposures for f in est.primary_features(
+                        [n for n in names if n not in matrix_columns], e, predictors)})
             shown, terms = split_rows(rows, mine)
+            # A category is adjusted for only in a table that estimates something: a refused one
+            # made no estimate and no adjustment (the orchestrator's ruling (1)).
+            adjusted = [c for c in adjusted_for.get(name, [])
+                        if c not in categories or any(r.get("estimate") is not None for r in rows)]
             fit = SequenceFit(
-                key=name, label=LABELS[name], adjusted_for=adjusted_for.get(name, []),
-                note=self._note(name), n_rows=int(table.info.get("n_rows") or n_model),
+                key=name, label=self._label(name, adjusted), adjusted_for=adjusted,
+                note=self._note(name, adjusted), n_rows=int(table.info.get("n_rows") or n_model),
                 effects=shown if table.rows else None,
                 inference=table.info, concerns=list(table.concerns))
             if name == "model_3" and comparison is not None:
@@ -1029,16 +1099,16 @@ class _Run:
                     f"Model 3 differs from it by {self._listing(self.extra)} alone.")
             sequence.append(fit)
             if terms:
-                appendix.append(AppendixModel(key=name, label=LABELS[name], terms=terms))
+                appendix.append(AppendixModel(key=name, label=fit.label, terms=terms))
         out = EffectsFamily(family=family.key, label=family.label, sequence=sequence,
                             appendix=appendix, concerns=concerns)
         primary = next((s for s in sequence if s.key == "model_2"), None)
         if tests_only(family) and first and primary is not None and primary.effects:
             # The members its tests leave out: each a category whose indicators the primary's
-            # matrix holds and adjusts for (the family's multiplicity sentence counts the others).
+            # matrix holds and adjusts for, as its own encoding made them (the family's
+            # multiplicity sentence counts the others).
             held = set(first["matrix"].columns)
-            self.untested = [c for c, cols in (getattr(first["fitted"][-1], "entered_", None)
-                                               or {}).items()
+            self.untested = [c for c, cols in first["entered"].items()
                              if c in self.exposures and any(f in held for f in cols)]
         if supported and first:
             # Each analysis beside the estimates is reported, or says why it could not be: one
@@ -1084,8 +1154,8 @@ class _Run:
         Outside multiple imputation (any other missing-values answer: ``rows3``) Model 3 is fit
         on the rows that record every column it adds; with no analyzed row recording them all it
         has no row to be fit on: refused before any fit (:meth:`_no_rows_three`)."""
-        from turbotab.core import estimand as est
         from turbotab.core.methods.missing import copy_pipeline
+        from turbotab.core.models.featurewise import category_columns
         from turbotab.core.models.linear import model_matrix
         from turbotab.core.stages.modeling import with_units
 
@@ -1112,13 +1182,13 @@ class _Run:
                 fitted3[-1].level_names_ = list(self.levels)
             classes3 = list(getattr(fitted3[-1], "classes_", [])) or None
             M3 = model_matrix(fitted3, X3)
-            feats3 = [c for c in M3.columns
-                      if c in {f for e in self.exposures
-                               for f in est.primary_features(M3.columns, e, predictors)}]
+            feats3 = exposure_columns(fitted3, M3.columns, self.exposures, predictors)
             kw3 = dict(task=self.task, classes=classes3, clusters=self.clusters3,
                        outcome=self.outcome, survey=design, levels=self.levels,
                        event=self.state.event, features=feats3, model=fitted3[-1],
-                       exposures=self.exposures)
+                       exposures=self.exposures,
+                       entered=(category_columns(fitted3, getattr(fitted3[-1], "categories", None)
+                                                 or []) if tests_only(family) else {}))
             per_copy.setdefault("model_3", []).append(self._table(
                 lambda: self._with_relative(family, fitted3, M3, self.y3,
                                             matrix_table(family, M3, self.y3, **kw3), kw3),
@@ -1266,9 +1336,30 @@ class _Run:
             out.append(scale or c)
         return list(dict.fromkeys(out))
 
-    def _note(self, name: str) -> str | None:
+    def _predictors(self) -> list[str]:
+        """The predictors whose names a column's may begin with: the settled ones with a role, and
+        every predictor of the design (a grouping given its own intercepts among them), so that a
+        longer one's columns are its own (``estimand.primary_features``)."""
+        from turbotab.core import estimand as est
+
+        return list(dict.fromkeys([*est.predictor_roles(self.state),
+                                   *(str(c) for c in self.spec.predictors)]))
+
+    @staticmethod
+    def _label(name: str, adjusted: Sequence[str] = ()) -> str:
+        """A model's label: the unadjusted model is "Without covariates" where it holds a
+        category's indicators (``adjusted``), which it adjusts for."""
+        return CRUDE_HOLDING if name == "crude" and adjusted else LABELS[name]
+
+    def _note(self, name: str, adjusted: Sequence[str] = ()) -> str | None:
         from turbotab.core.voice import listing
 
+        if name == "crude" and adjusted:
+            one = len(adjusted) == 1
+            return (f"STROBE 16a's estimate without the covariates; the indicators of "
+                    f"{listing(list(adjusted))}, {'a category' if one else 'categories'} among the "
+                    f"study factors, are in it, as in each feature-wise model: adjusted for, not "
+                    f"tested.")
         if name == "crude":
             return "STROBE 16a's unadjusted estimate: no other column in the model."
         if name == "model_1":
@@ -1930,16 +2021,94 @@ def _robustness_name(lines: Sequence[Sensitivity]) -> str | None:
 UNFIT_WORDS = {"crude": "The unadjusted model", "model_1": "Model 1"}
 
 
+def _estimates(fit: Any) -> bool:
+    """Whether a model of the sequence reports an estimate (a row with a number)."""
+    return bool(fit.effects) and any(r.estimate is not None for r in fit.effects)
+
+
+def _without_the_primary(artifact: EffectsArtifact, fam: Any, two: Any, whose: str,
+                         why: str) -> str:
+    """The methods text where Model 2, the primary, reports no estimate and another model does (a
+    study factor with nothing left once the covariates are projected out is estimated without
+    them): the models that report it, and Model 2's refusal and each other model's in their own
+    words (the verifier's V4a-2), where it said that no estimate was reported; the family's
+    multiplicity sentence follows it (:func:`methods_sentence`)."""
+    from turbotab.core.voice import listing
+
+    def added(fit: Any) -> str:
+        return listing([c for c in fit.adjusted_for if c not in two.adjusted_for])
+
+    def said(reason: str) -> str:
+        return reason if reason.rstrip().endswith(".") else f"{reason}."
+
+    named = []
+    for s in fam.sequence:
+        if not _estimates(s):
+            continue
+        if s.key == "crude":
+            named.append(f"the model without the covariates, adjusted for "
+                         f"{listing(s.adjusted_for)} alone" if s.adjusted_for else
+                         "the unadjusted model")
+        elif s.key == "model_1":
+            named.append(f"Model 1, adjusted for "
+                         f"{listing(s.adjusted_for) if s.adjusted_for else 'nothing besides it'}")
+        else:
+            named.append(f"Model 3, further adjusted for {added(s)}")
+    text = (f"The estimate of {whose} is reported from {named[0]} alone, fit on {artifact.rows}."
+            if len(named) == 1 else
+            f"The estimate of {whose} is reported from these models alone, fit on "
+            f"{artifact.rows}: {'; '.join(named)}.")
+    text += (f" Model 2, the primary, adjusted for "
+             f"{listing(two.adjusted_for, limit=8) if two.adjusted_for else 'nothing besides it'}, "
+             f"reports none: {said(why)}")
+    for s in fam.sequence:
+        if s.key == "model_2" or _estimates(s):
+            continue
+        whom = (f"Model 3, further adjusted for {added(s)}," if s.key == "model_3"
+                else UNFIT_WORDS[s.key])
+        refused = s.inference.refused if s.inference is not None else None
+        text += (f" {whom} reports none: {said(refused)}" if refused else
+                 f" {whom} could not be fit and is not reported.")
+    return text
+
+
+def _reporting(fam: Any) -> set[str]:
+    """The models of ``fam``'s sequence that report an estimate."""
+    return {s.key for s in fam.sequence if _estimates(s)}
+
+
 def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
     """The methods text this stage writes, from what it fitted: the sequence, the display rule, the
-    marginal standardization, the diagnostics and their responses, and the sensitivity analyses."""
-    from turbotab.core.models.effects import COOK, WESTREICH
-    from turbotab.core.voice import listing, tick
+    marginal standardization, the diagnostics and their responses, and the sensitivity analyses,
+    then the family's multiplicity sentence. It describes the first family chosen; where another
+    family reports an estimate from a model the first reports none from (the linear model's Model
+    2 singular where feature-wise regression tests `fiber` in it), each family's text is said
+    under its name (the verifier's V4a2-1)."""
+    from turbotab.core.models import get_family
 
     if not artifact.families:
         return artifact.methods
+    head, *rest = artifact.families
+    if not any(_reporting(f) - _reporting(head) for f in rest):
+        text, follows = _family_methods(artifact, head)
+        return f"{text} {artifact.multiplicity}" if follows and artifact.multiplicity else text
+    task = str(getattr(state, "task", None) or "regression")
+    parts = []
+    for fam in artifact.families:
+        text, _ = _family_methods(artifact, fam)
+        parts.append(f"Under {_named(get_family(fam.family), task)}, {text[0].lower()}{text[1:]}")
+    text = " ".join(parts)
+    return f"{text} {artifact.multiplicity}" if artifact.multiplicity else text
+
+
+def _family_methods(artifact: EffectsArtifact, fam: Any) -> tuple[str, bool]:
+    """``(text, follows)``: the methods text of one family's sequence (:func:`methods_sentence`),
+    and whether the family's multiplicity sentence follows it (not where no model of the family
+    reports an estimate)."""
+    from turbotab.core.models.effects import COOK, WESTREICH
+    from turbotab.core.voice import listing, tick
+
     whose = ("each exposure" if artifact.exposure == "*" else tick(artifact.exposure))
-    fam = artifact.families[0]
     # The models reported: one declared but not fit (Model 3 held by its own imputation's question,
     # say) is said apart, never listed among them.
     keys = [s.key for s in fam.sequence if s.effects]
@@ -1948,10 +2117,14 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
         why = ((two.inference.refused if two is not None and two.inference is not None else None)
                or (two.concerns[0] if two is not None and two.concerns else None)
                or "no model could be fit")
-        return f"No estimate of {whose} is reported: {why}"
+        if two is not None and any(_estimates(s) for s in fam.sequence):
+            return _without_the_primary(artifact, fam, two, whose, why), True
+        return f"No estimate of {whose} is reported: {why}", False
     seq = []
     if "crude" in keys:
-        seq.append("unadjusted")
+        crude = next(s for s in fam.sequence if s.key == "crude")
+        seq.append(f"without the covariates, adjusted for {listing(crude.adjusted_for)} alone"
+                   if crude.adjusted_for else "unadjusted")
     if "model_1" in keys:
         one = next(s for s in fam.sequence if s.key == "model_1")
         seq.append(f"Model 1, adjusted for {listing(one.adjusted_for) if one.adjusted_for else 'nothing besides it'}")
@@ -2041,9 +2214,7 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
         e = lines[0].e_value
         text += " " + sensitivity_clause(lines[0].methods, names, of=of,
                                          sd_basis=e.sd_basis if e is not None else None)
-    if artifact.multiplicity:
-        text += " " + artifact.multiplicity
-    return text
+    return text, True
 
 
 def _p(p: float) -> str:

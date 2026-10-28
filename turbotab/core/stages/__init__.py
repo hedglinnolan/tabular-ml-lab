@@ -464,7 +464,13 @@ def build_graph() -> Graph:
             # proposals 20 (LEASH): the adjustment card's guesses cover clinical measurements,
             # medications and lifestyle under the exposure-outcome pairing, in blocks of the same
             # guess, with a multi-select answer; the grouping question's card shows each guess.
-            Stage("proposals", 20, ("working", "roles"),
+            # proposals 21 (the swarm's tail, T4a, 2026-10-27): the estimand card's family option
+            # says what feature-wise regression would test (a member recorded as codes, or a text
+            # column by the table's column summaries, adjusted for, not tested; none where a
+            # member's declared form refuses the table or every member is a category), in its
+            # consequence and in each multiplicity option, where it said every member is shown;
+            # the options count no test where a member's type is not known.
+            Stage("proposals", 21, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
@@ -749,29 +755,40 @@ def build_graph() -> Graph:
             # words (``methods.omics.featurewise_untested``), where it said 0 features were tested,
             # so a fit cached before it is computed again.
             # fit 34 on the tail tables branch (2026-10-27), from the same base as T2's 34: every
-            # coefficient table of a family whose linear predictor is Xβ is fit on its columns scaled (and, but for the Cox
-            # model's, centered, its intercept or cut-points mapped back), where a column 10⁵ or
-            # more times another's unit, or a date in epoch seconds, served wrong estimates or
-            # standard errors; a logistic or multinomial fit that does not converge is refused;
-            # on columns dependent at R's tolerance (10⁻⁷ of a centered column's length,
-            # ``repeated.aliased``) a table refuses the whole table in the dependency's words, as
-            # the fit stage names no study factor (and the survey tables served min-norm numbers,
-            # the Cox table the near-singular concern's words, and nearly dependent columns
-            # served standard errors whose rounding was the condition number squared), and the
-            # mixed model is fit on the columns that identify the rest, where it refused the
-            # stage; the HC3, CR2, logistic, multinomial, survey and proportional-odds standard
-            # errors come from a QR of the design (``inference.qr_frame``); the near-singular
-            # concern reads the columns centered, so the Cox, mixed and GEE tables serve a column
-            # far from its origin, where they refused it, and a refused GEE logit table keeps no
-            # least-squares estimate; and the Cox fit bounds the linear predictor's SD rather
-            # than each coefficient, so nearly collinear columns reach the maximum R's coxph
-            # finds (``inference.by_identified``, ``survival._spread``). The specification
-            # curve, which re-keys after the fit and names what it studies, keeps a departure's
-            # estimate where its design is dependent and what is studied is not.
-            # fit 36, sensitivity 19, calibration 17, secondary 10, scales 8, effects 10 (the merge of the
-            # tail tables with T2 and T3, 2026-10-27): both sides moved each of these, so the merged
-            # engine takes a number neither side served.
-            Stage("fit", 36, ("working", "design", "split", "target_info", "cohort"),
+            # coefficient table of a family whose linear predictor is Xβ is fit on its columns
+            # scaled (and, but for the Cox model's, centered, its intercept or cut-points mapped
+            # back), where a column 10⁵ or more times another's unit, or a date in epoch seconds,
+            # served wrong estimates or standard errors; a logistic or multinomial fit that does not
+            # converge is refused; on columns dependent at R's tolerance (10⁻⁷ of a centered
+            # column's length, ``repeated.aliased``) a table refuses the whole table in the
+            # dependency's words, as the fit stage names no study factor (and the survey tables
+            # served min-norm numbers, the Cox table the near-singular concern's words, and nearly
+            # dependent columns served standard errors whose rounding was the condition number
+            # squared), and the mixed model is fit on the columns that identify the rest, where it
+            # refused the stage; the HC3, CR2, logistic, multinomial, survey and proportional-odds
+            # standard errors come from a QR of the design (``inference.qr_frame``); the near-
+            # singular concern reads the columns centered, so the Cox, mixed and GEE tables serve a
+            # column far from its origin, where they refused it, and a refused GEE logit table keeps
+            # no least-squares estimate; and the Cox fit bounds the linear predictor's SD rather
+            # than each coefficient, so nearly collinear columns reach the maximum R's coxph finds
+            # (``inference.by_identified``, ``survival._spread``). The specification curve, which
+            # re-keys after the fit and names what it studies, keeps a departure's estimate where
+            # its design is dependent and what is studied is not.
+            # fit 36, sensitivity 19, calibration 17, secondary 10, scales 8, effects 10 (the merge
+            # of the tail tables with T2 and T3, 2026-10-27): both sides moved each of these, so the
+            # merged engine takes a number neither side served.
+            # fit 36 (the swarm's tail, T4a, 2026-10-27): a feature-wise study factor with nothing
+            # left once the covariates are projected out is refused by row as not estimable given
+            # them, naming them, and the caption counts only the study factors tested (the whole
+            # table refused where none is left); a category's indicators are read off its own
+            # encoder, never its name; and beside a table refused under multiple imputation (or a
+            # single fill), or one that holds no interval, the values-below-detection sentence
+            # states the answer and claims no interval, where it said a single fill's intervals were
+            # too narrow.
+            # fit 37, sensitivity 20, secondary 11, effects 11 (the merge of T4a after the tail
+            # tables, 2026-10-27): both sides moved each of these, so the merged engine takes a
+            # number neither side served.
+            Stage("fit", 37, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -874,7 +891,10 @@ def build_graph() -> Graph:
             # sensitivity 18, calibration 16, secondary 9, scales 7: as fit 34 (each refits the
             # feature-wise table and draws its own SMC-FCS copies), and as the tail tables' fit 34;
             # modification 4 (the tail tables package): as its fit 34. Each one more at the merge.
-            Stage("sensitivity", 19, ("working", "design", "split", "target_info"),
+            # sensitivity 19, secondary 10 (the swarm's tail, T4a): as fit 36 (each refits the
+            # feature-wise table, which refuses by row a study factor with nothing left once the
+            # covariates are projected out, and reads a category's indicators off its encoder).
+            Stage("sensitivity", 20, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
@@ -906,7 +926,8 @@ def build_graph() -> Graph:
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
             # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
             # secondary 7: as sensitivity 16 above.
-            Stage("secondary", 10, ("working", "design", "split", "target_info"),
+            # secondary 10: as sensitivity 19 above.
+            Stage("secondary", 11, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -959,7 +980,18 @@ def build_graph() -> Graph:
             # estimand's study factor is such a category, its tables are refused, where they tested
             # another study factor in its place; and the family's multiplicity sentence counts the
             # members feature-wise regression tests and names a category it adjusts for.
-            Stage("effects", 10, ("working", "design", "split", "target_info"),
+            # effects 10 (the swarm's tail, T4a): as fit 36, and the family's multiplicity sentence
+            # counts the members its feature-wise table tested, claiming no test or method where
+            # the table tested none (its refusal's words instead), said of Model 2 where another
+            # model tested other members, which it names; the methods text says which model
+            # reports an estimate where Model 2 reports none, and says each family's sequence
+            # under its name where another reports from a model the first reports none from (the
+            # linear model's Model 2 singular beside feature-wise tests); each feature-wise model
+            # names the category whose indicators it holds as adjusted for, once (the unadjusted
+            # one "Without covariates"); and an exposure's columns are its own encoding's, never
+            # another predictor's (a longer one's spline terms, a fixed-effects grouping's
+            # intercepts).
+            Stage("effects", 11, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",
