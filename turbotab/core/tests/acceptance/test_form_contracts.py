@@ -75,8 +75,7 @@ RELATION_TESTS = {
         REPAIR + "test_r3_through_the_server_the_reading_is_asked_first_and_codes_enter_as_"
                  "indicators",
     ("functional_form", "separation-plr"):
-        REPAIR + "test_r5_under_separation_the_test_of_association_is_a_penalized_likelihood_"
-                 "ratio_test",
+        REPAIR + "test_r5_under_separation_no_test_of_the_splines_form_is_reported",
     **{(key, "stratum-estimable"):
        REPAIR + "test_r4_such_a_modifier_is_refused_at_declaration_with_its_way_forward"
        for key in ("effect_modification", "interaction")},
@@ -84,8 +83,8 @@ RELATION_TESTS = {
        REPAIR + "test_r6_a_withdrawal_after_the_estimates_keeps_the_test_in_the_family"
        for key in ("effect_modification", "interaction")},
     **{(key, "separation-profile"):
-       REPAIR + "test_r5_under_separation_the_modification_reports_profile_intervals_and_a_lr_"
-                "test" for key in ("effect_modification", "interaction")},
+       REPAIR + "test_r5_under_separation_the_modification_reports_penalized_estimates_alone"
+       for key in ("effect_modification", "interaction")},
 }
 KEYS = ("exposure_transform", "functional_form", "effect_modification", "interaction")
 

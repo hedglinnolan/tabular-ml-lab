@@ -1050,13 +1050,17 @@ POOLED_SEPARATION = register(Claim(
     parts=(
         Part("wald_not_certified", grade="judgment", basis=Basis(reason=(
             "The orchestrator's ruling on the slow-fit audit's F3 (2026-10-23): a number is "
-            "right or refused. The unpooled table cites Heinze & Schemper (2002, Stat Med "
-            "21:2409) for profile penalized-likelihood intervals and likelihood-ratio p-values "
-            "under separation in place of Wald ones (models/inference.py), and reports those. "
-            "Rubin's rules (Rubin 1987) pool an estimate and its variance, so the pooled interval "
-            "of a separated coefficient would be the Wald interval that citation sets aside. The "
-            "paper is not in the citation registry and its author did not read it for this "
-            "claim, which rests on the module's own citation: graded by judgment."))),
+            "right or refused. The module cites Heinze & Schemper (2002, Stat Med 21:2409) for "
+            "Firth's estimates under separation, and they advise profile penalized-likelihood "
+            "intervals and likelihood-ratio p-values in place of Wald ones; the unpooled table "
+            "reports neither (models/inference.py, the methods lead's ruling of 2026-10-28): held "
+            "at a value the penalized likelihood can have more than one maximum where the data "
+            "separate, and the fit cannot certify that it found the highest, so it reports "
+            "Firth's estimates alone. Rubin's rules (Rubin 1987) pool an estimate and its "
+            "variance, so the pooled interval of a separated coefficient would be the Wald "
+            "interval that citation sets aside. The paper is not in the citation registry and "
+            "its author did not read it for this claim, which rests on the module's own "
+            "citation: graded by judgment."))),
         Part("any_copy", grade="judgment", basis=Basis(reason=(
             "A coefficient is withheld where the linear program finds it infinite in at least one "
             "copy, since its pooled interval then rests on that copy's Firth estimate: a separated "

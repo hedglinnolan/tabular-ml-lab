@@ -446,8 +446,8 @@ class ModificationFit(_Model):
     additive: list[Quantity] = []  # difference scale: the difference of differences
     heterogeneity: Heterogeneity | None = None
     pooled: str | None = None  # how the copies were pooled
-    # a logistic model the data separate: Firth's penalized likelihood, profile intervals and a
-    # penalized likelihood-ratio heterogeneity test, the RERI without an interval
+    # a logistic model the data separate: Firth's penalized estimates alone, with no interval,
+    # p-value or heterogeneity test (``inference.separated_profile_words``)
     penalized: bool = False
     concerns: list[str] = []
 
@@ -893,19 +893,18 @@ def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame,
         table = matrix_table(family, M, y, task=task, classes=classes, clusters=clusters,
                              outcome=outcome, survey=design, levels=levels, event=state.event,
                              features=[])
-        if table is not None and not table.info.get("refused") and table.cov is None and \
-                table.info.get("covariance") == "profile":
-            # A logistic model the data separate (a Firth-penalized table): every quantity with
-            # its profile penalized-likelihood interval, the heterogeneity test by the penalized
-            # likelihood-ratio test (the FORM repair: under separation the declared tests run).
+        if table is not None and getattr(table, "profile_refusal", None) is not None:
+            # A logistic model the data separate (a Firth-penalized table on independent rows, at
+            # its maximum): every quantity by its penalized estimate alone, with no interval,
+            # p-value or heterogeneity test, as the table refuses its own (V5c2-1).
             if len(copies) > 1:
                 raise NotEstimable(
-                    "the data separate the outcome, and a Firth-penalized fit gives profile "
-                    "intervals, not the covariance Rubin's rules and D1 pool across imputed "
-                    "copies; complete cases, or a modifier the data do not separate, are "
+                    "the data separate the outcome, and a Firth-penalized fit there reports its "
+                    "estimates alone, with no covariance for Rubin's rules and D1 to pool across "
+                    "imputed copies; complete cases, or a modifier the data do not separate, are "
                     "estimable")
-            return _firth_family(family, M, y, classes, lay, measure, ratio, task, len(frame),
-                                 concerns, table), lay
+            return _firth_family(family, lay, measure, ratio, task, len(frame), concerns,
+                                 table), lay
         if table is None or table.info.get("refused") or table.cov is None:
             raise NotEstimable((table.info.get("refused") if table is not None else None)
                                or "the model gave no covariance to test the product terms on")
@@ -956,93 +955,62 @@ def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame,
     return fit, lay
 
 
-def firth_contrast(X: np.ndarray, y: np.ndarray, c: np.ndarray, full: Any
-                   ) -> dict[str, float | None]:
-    """c'β of a Firth-penalized logistic fit with its profile penalized-likelihood interval and
-    likelihood-ratio p-value: the design reparametrized so that c'β is one coefficient
-    (θ = Tβ, T the identity with c in the row of c's largest entry; the penalty
-    ½ log |I| moves by the constant log |det T|, so the profile is unchanged), then profiled as
-    each coefficient of the table is (``models.inference.firth_profile``)."""
-    from turbotab.core.models.inference import firth_fit, firth_profile
+def _firth_family(family: Any, lay: _Layout, measure: str, ratio: bool, task: str, n_rows: int,
+                  concerns: list[str], table: Any) -> ModificationFit:
+    """Every quantity of a logistic model the data separate (Firth's penalized likelihood), each by
+    its penalized estimate alone: each effect, combination and ratio of odds ratios, and the
+    RERI, from the table's own coefficients (the penalized maximum, which ``inference.at_maximum``
+    certified), a contrast on its rows (a row refused by row gives the quantities that read it no
+    estimate). No interval, p-value or heterogeneity test is reported: held at a value the
+    penalized likelihood can then have more than one maximum, and the fit cannot certify that it
+    found the highest (``inference.separated_profile_words``, the table's refusal, which the
+    concerns quote)."""
+    from turbotab.core.models.inference import SEVERAL_MAXIMA
 
-    c = np.asarray(c, dtype=float)
-    j = int(np.argmax(np.abs(c)))
-    T = np.eye(len(c))
-    T[j, :] = c
-    Xr = np.asarray(X, dtype=float) @ np.linalg.inv(T)
-    fit = firth_fit(Xr, y, start=T @ np.asarray(full.beta, dtype=float))
-    low, high, p = firth_profile(Xr, y, fit, j)
-    return {"estimate": float(fit.beta[j]), "variance": None, "se": None, "ci_low": low,
-            "ci_high": high, "p": p}
-
-
-def _firth_family(family: Any, M: pd.DataFrame, y: Any, classes: Any, lay: _Layout, measure: str,
-                  ratio: bool, task: str, n_rows: int, concerns: list[str], table: Any
-                  ) -> ModificationFit:
-    """Every quantity of a separated logistic model (Firth's penalized likelihood): each effect,
-    combination and ratio of odds ratios with its profile interval; the heterogeneity test by the
-    penalized likelihood-ratio test; the RERI's point estimate, its delta-method interval needing
-    a Wald covariance a penalized fit does not give."""
-    from turbotab.core.methods.exposure_form import FIRTH_PLR, firth_design, firth_lr_test
-    from turbotab.core.models.inference import firth_fit, format_p
-
-    found = firth_design(M, y, classes)
-    if found is None:
-        raise NotEstimable("the separated outcome's model could not be laid out again")
-    names, X, event = found
-    fit = firth_fit(X, event)
+    names = [str(r["feature"]) for r in table.rows]
+    beta = np.array([np.nan if r["estimate"] is None else r["estimate"] for r in table.rows],
+                    dtype=float)
     x = contrast_vectors(names, lay.a_values, lay.m_values, lay.products)
     ref0 = x[f"a0|{lay.reference}"]
     strata = list(lay.m_values)
     others = [s for s in strata if s != lay.reference]
-    f = (lambda t: None if t is None or not math.isfinite(t) else
-         (math.exp(t) if ratio else float(t)))
+
+    def value(c: np.ndarray) -> float:
+        used = c != 0
+        return float(c[used] @ beta[used])
+
+    def f(t: float, exp: bool = ratio) -> float | None:
+        return None if not math.isfinite(t) else (math.exp(t) if exp else float(t))
 
     def q(c: np.ndarray, stratum: str, a: str | None = None) -> Quantity:
-        got = firth_contrast(X, event, c, fit)
-        return Quantity(stratum=stratum, a=a, estimate=f(got["estimate"]), ci_low=f(got["ci_low"]),
-                        ci_high=f(got["ci_high"]), p=got["p"])
+        return Quantity(stratum=stratum, a=a, estimate=f(value(c)), ci_low=None, ci_high=None,
+                        p=None)
 
     effects = [q(x[f"a1|{s}"] - x[f"a0|{s}"], s) for s in strata]
     joint = ([q(x[f"a1|{lay.reference}"] - ref0, lay.reference, "a1")]
              + [q(x[f"{a}|{s}"] - ref0, s, a) for s in others for a in ("a0", "a1")])
     c10 = x[f"a1|{lay.reference}"] - ref0
     mult, reri_rows = [], []
-    beta = np.asarray(fit.beta, dtype=float)
     for s in others:
         c01, c11 = x[f"a0|{s}"] - ref0, x[f"a1|{s}"] - ref0
         mult.append(q(c11 - c10 - c01, s))
-        point = math.exp(float(c11 @ beta)) - math.exp(float(c10 @ beta)) \
-            - math.exp(float(c01 @ beta)) + 1.0
-        reri_rows.append(Quantity(stratum=s, estimate=point if math.isfinite(point) else None,
-                                  ci_low=None, ci_high=None, p=None))
-    where = {n: i for i, n in enumerate(names)}
-    idx = [where[p[2]] for p in lay.products if p[2] in where]
-    het = firth_lr_test(X, event, idx, fit)
-    k = len(idx)
-    heterogeneity = None if het is None else Heterogeneity(
-        statistic=het["statistic"], df_num=het["df_num"], df_den=None, distribution="chi2",
-        p=het["p"], caption=(f"Penalized likelihood-ratio test that the {k} product term"
-                             f"{'s are' if k > 1 else ' is'} zero ({FIRTH_PLR}): "
-                             f"χ²({het['df_num']}) = {het['statistic']:.2f}, p = "
-                             f"{format_p(het['p'])}."))
+        point = math.exp(value(c11)) - math.exp(value(c10)) - math.exp(value(c01)) + 1.0 \
+            if ratio else math.nan
+        reri_rows.append(Quantity(stratum=s, estimate=f(point, exp=False), ci_low=None,
+                                  ci_high=None, p=None))
     words = list(concerns)
     words += [c for c in table.concerns if c not in words]
-    words.append("The data separate the outcome, so the model is Firth's penalized logistic "
-                 "regression: each odds ratio and ratio of odds ratios carries a profile "
-                 "penalized-likelihood interval and the heterogeneity test is a penalized "
-                 "likelihood-ratio test; the RERI is reported without an interval, its delta-method "
-                 "interval needing a Wald covariance the penalized fit does not give.")
-    if not fit.converged:
-        words.append("Firth's penalized fit stopped before converging; treat these numbers with "
-                      "care.")
+    words.append(f"The data separate the outcome, so the model is Firth's penalized logistic "
+                 f"regression: each odds ratio, ratio of odds ratios and RERI is its penalized "
+                 f"estimate alone, and no interval, p-value or heterogeneity test is reported, "
+                 f"since with a coefficient held at a value {SEVERAL_MAXIMA}.")
     if task == "binary":
         words.append(f"The RERI is computed from odds ratios: {RARE}.")
     return ModificationFit(family=family.key, label=family.label, measure=measure,
                            scale="ratio" if ratio else "difference", n_rows=n_rows,
-                           effects=effects, joint=joint, multiplicative=mult, reri=reri_rows,
-                           heterogeneity=heterogeneity, pooled=None, concerns=words,
-                           penalized=True)
+                           effects=effects, joint=joint, multiplicative=mult if ratio else [],
+                           reri=reri_rows if ratio else [], heterogeneity=None, pooled=None,
+                           concerns=words, penalized=True)
 
 
 def combination_df(info: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]) -> float | None:
@@ -1208,12 +1176,10 @@ def sentence(state: Any, r: ModificationResult, *, task: str | None = None,
                 f"against a single reference ({a} at {_number(r.low)}, {m} at {r.reference})")
     if ratio and fit.penalized:
         scales = (f"; the data separate the outcome, so the model is Firth's penalized logistic "
-                  f"regression (Heinze & Schemper 2002), each {measure} with its profile "
-                  f"penalized-likelihood interval; interaction on the additive scale as the "
-                  f"relative excess risk due to interaction (RERI), its point estimate only (its "
-                  f"delta-method interval needs a Wald covariance the penalized fit does not "
-                  f"give), and on the multiplicative scale as the ratio of {measure}s with its "
-                  f"profile interval ({KNOL})")
+                  f"regression (Heinze & Schemper 2002), each {measure} its penalized estimate "
+                  f"alone, with no interval or p-value; interaction on the additive scale as the "
+                  f"relative excess risk due to interaction (RERI) and on the multiplicative "
+                  f"scale as the ratio of {measure}s ({KNOL}), each its penalized estimate alone")
     elif ratio:
         scales = (f"; interaction on the additive scale as the relative excess risk due to "
                   f"interaction (RERI) with a delta-method interval ({HOSMER}) and on the "
@@ -1229,9 +1195,9 @@ def sentence(state: Any, r: ModificationResult, *, task: str | None = None,
                     f"({_listing(r.second_adjusted_for) or 'none beyond them'})")
     n_products = (fit.heterogeneity.df_num
                   if fit is not None and fit.heterogeneity is not None else None)
-    test = "penalized likelihood-ratio test" if fit.penalized else "Wald test"
-    het = (f"; the heterogeneity test is the {test} that the {n_products} product term"
-           f"{'s are' if (n_products or 0) > 1 else ' is'} zero" if n_products else "")
+    het = (f"; the heterogeneity test is the Wald test that the {n_products} product term"
+           f"{'s are' if (n_products or 0) > 1 else ' is'} zero" if n_products else
+           "; no heterogeneity test is reported" if fit.penalized else "")
     pooled = f"; {fit.pooled[0].lower()}{fit.pooled[1:]}" if fit is not None and fit.pooled else ""
     return f"{head}{scales}, {adjusted}{het}{pooled}."
 
@@ -1453,13 +1419,16 @@ def _register_contracts() -> None:
                  "a modifier withdrawn after the estimates were seen",
                  "it is no longer estimated and still counted in the family the record states",
                  by=f"{me}:family_count"),
-        relation("separation-profile", "implies", "profile intervals and a penalized "
-                 "likelihood-ratio heterogeneity test", "a logistic model the data separate, but "
-                 "not completely (every cut that separates them has some row on it)",
-                 "each effect, combination and ratio of odds ratios carries its profile "
-                 "penalized-likelihood interval, the heterogeneity test is the penalized "
-                 "likelihood-ratio test, the RERI is given without an interval",
-                 by=f"{me}:firth_contrast"),
+        relation("separation-profile", "disables", "profile intervals and a penalized "
+                 "likelihood-ratio heterogeneity test", "a logistic model the data separate",
+                 "fit once on independent rows (complete cases), each effect, combination, ratio "
+                 "of odds ratios and RERI is Firth's penalized estimate alone, with no interval or "
+                 "p-value, and no heterogeneity test is reported: with a coefficient held at a "
+                 "value the penalized likelihood can have more than one maximum, and the fit "
+                 "cannot certify that it found the highest; under multiple imputation, where an "
+                 "imputed copy separates, the modification is not estimable, in words that say "
+                 "why: the penalized estimates have no covariance for Rubin's rules and D1 to "
+                 "pool", by=f"{me}:_firth_family"),
     )
     register_contract(MethodContract(
         key="effect_modification", package=PACKAGE,
@@ -1525,7 +1494,7 @@ _register()
 __all__ = [
     "HOSMER", "KNOL", "MODIFICATION_READS", "ModificationArtifact", "ModificationFit",
     "ModificationResult", "NotEstimable", "POST_HOC", "adjusted_sets", "bound_exposure",
-    "complete_modifications", "contrast_vectors", "declared", "family_count", "firth_contrast",
+    "complete_modifications", "contrast_vectors", "declared", "family_count",
     "impute_with_products", "layout", "linear_combination", "measures", "missing_answers",
     "modification_answer", "modification_followup", "modification_gate", "modification_stage",
     "pool_measures", "reri", "second_covariates", "sentence", "strata_problems",

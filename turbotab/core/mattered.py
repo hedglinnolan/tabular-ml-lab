@@ -28,9 +28,9 @@ The methods sentence names these alternatives as the engine derived them
 the declared exposure, the fit stage's own table. Each specification is refit by
 ``spec_curve.linear_fitter`` on the table's own columns (complete cases on each specification's
 columns), as the fit would fit the plan that specification is: its intervals HC3 (for a yes/no
-outcome Wald, or Firth's profile interval where a column separates the outcome), or CR2 by the
-unit its own rows repeat in, or design-based under the surveyed population (below), so they need
-not be the primary's, and the methods sentence names each kind where the fit gives it. The primary
+outcome Wald; where a column separates the outcome Firth's fit reports no interval, so that
+specification is not estimated), or CR2 by the unit its own rows repeat in, or design-based
+under the surveyed population (below), so they need not be the primary's, and the methods sentence names each kind where the fit gives it. The primary
 specification must reproduce the reported estimate (its estimate and interval within
 :data:`AGREEMENT` of its standard error, on the same rows); otherwise no specification is shown and
 the curve is refused, since the others would not be fitted as the primary is. That refusal quotes
@@ -153,16 +153,14 @@ KIND_WORDS: tuple[tuple[str, str], ...] = (
 # The estimator every specification is refitted by (``spec_curve.linear_fitter``), by the task.
 ESTIMATOR_WORDS = {"regression": "least squares", "binary": "logistic regression"}
 # Each interval the refit gives a specification, by its ``covariance`` (``models.inference``), and
-# where the fit gives it: on rows that repeat within a unit CR2 by it (a separated logistic model
-# there reports none, so that specification is not estimated), else HC3, or for a yes/no outcome
-# Wald, or Firth's profile interval where a column separates the outcome. Under a survey design
-# every one is design-based instead (``design``), which the design's own sentence says.
+# where the fit gives it: on rows that repeat within a unit CR2 by it, else HC3, or for a yes/no
+# outcome Wald. A separated logistic model reports no interval (Firth's estimates alone), so that
+# specification is not estimated. Under a survey design every one is design-based instead
+# (``design``), which the design's own sentence says.
 INTERVAL_WORDS = {
     "HC3": "heteroskedasticity-robust (HC3) where they do not repeat within a unit",
     "model": ("the logistic model's Wald interval where they do not repeat within a unit and no "
               "column separates the outcome"),
-    "profile": ("the profile penalized-likelihood interval of Firth's logistic regression where a "
-                "column separates the outcome"),
     "CR2": "cluster-robust (CR2) by the unit where they repeat within one",
 }
 

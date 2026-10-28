@@ -177,7 +177,11 @@ def test_a_firth_fit_short_of_its_maximum_is_refused(monkeypatch):
     *_, yf, f = _data()
     matrix = _matrix().assign(f=f)
     served = inference_table("binary", matrix, yf, [0, 1], INDEPENDENT, study=["x4"])
-    assert served.info["refused"] is None and served.info["estimator"] == I.FIRTH
+    # The silent side: at its maximum the table serves its estimates, refusing only the profile
+    # (the data separate, T5d).
+    assert served.info["estimator"] == I.FIRTH
+    assert served.info["refused"].startswith("`f` separates the outcome: a cut on it")
+    assert all(r["estimate"] is not None for r in served.rows)
     seen = {}
     real = I.firth_fit
 

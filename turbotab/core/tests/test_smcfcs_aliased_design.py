@@ -333,10 +333,11 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
     read on the centered design and an iterative fit's table to be served only at its maximum
     (T5a); and one more but the modification stage's, when each table came to be told the study
     factor's columns, so a dependency among the covariates is refused by row (T5b); and one more
-    when a Firth table on completely separated rows came to report its estimates alone (T5c), each
-    one past both at its merge."""
+    when a Firth table on completely separated rows came to report its estimates alone (T5c); and
+    one more when it came to report them alone wherever the data separate and an iterative fit's
+    distance from its maximum came to read its score (T5d), each one past both at its merge."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (40, 23, 20, 14, 11, 14, 6)
+    assert tuple(versions[s] for s in stages) == (41, 24, 21, 15, 12, 15, 7)

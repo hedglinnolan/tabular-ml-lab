@@ -29,8 +29,9 @@ exits. ``crossing="one_at_a_time"`` asks for (1) and (2) only, the customary sen
 
 **Each specification is fitted as the primary is** (:mod:`turbotab.core.models.inference`): least
 squares with HC3 intervals on t(n − p) for a numeric outcome, logistic regression with Wald
-intervals for a yes/no one (Firth's fit, with profile intervals, where a column separates the
-outcome), CR2 intervals with Bell–McCaffrey degrees of freedom when the rows repeat within a unit.
+intervals for a yes/no one (where a column separates the outcome, Firth's fit reports its
+estimates alone, no interval, so that specification is not estimated, its reason said), CR2
+intervals with Bell–McCaffrey degrees of freedom when the rows repeat within a unit.
 The estimate is the exposure's coefficient: a difference in the mean outcome per unit of the
 exposure, or a difference in log-odds. A specification's rows are those its rule keeps with every
 column it reads present; its n is said beside it.

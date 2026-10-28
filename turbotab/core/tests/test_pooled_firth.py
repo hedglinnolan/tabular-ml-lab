@@ -5,7 +5,8 @@
 Rubin's rules read each completed copy's estimate and standard error and make the interval and
 p-value themselves (``imputation.pool_rows``), so a Firth copy computes no profile, nor do its form
 tests' refits (the companion quintiles beside a declared spline, the trend), and the pooled
-estimates and standard errors are the ones today's profiled copies pool to. The pooled numbers are
+estimates are the ones the copies' own tables pool to (a table not pooled serves its estimates
+alone where the data separate, T5d), the standard errors Firth's. The pooled numbers are
 Wald intervals on t from Firth's standard errors, and the table says so; a coefficient that
 separates the outcome in any copy keeps its estimate alone, its standard error, degrees of freedom
 and fraction of missing information withheld with its interval and p-value (with them the
@@ -94,8 +95,9 @@ def separated() -> dict[str, Any]:
         mp.setattr(I, "firth_profile", counting)
         out = _pooled(frame, y)
         out["profiles"] = calls["n"]
-        # Today's per-copy work, for the comparison: each copy's table made as an unpooled table
-        # is (every coefficient profiled), then pooled by Rubin's rules.
+        # For the comparison, each copy's table made as an unpooled table is (the base profiled
+        # every coefficient there; since T5d none, the data separating), then pooled by Rubin's
+        # rules.
         calls["n"] = 0
         full = [_inference_table(LINEAR, f, X_k, y, task="binary", clusters=I.INDEPENDENT,
                                  outcome=I.Outcome(name="y"), rows="all")
@@ -160,23 +162,23 @@ def _rubin(q: list[float], u: list[float]) -> dict[str, float]:
 
 def test_under_imputation_no_copy_profiles_and_the_pooled_estimates_and_errors_hold(separated):
     """Each copy's Firth table is made for Rubin's rules, so ``firth_profile`` is never called
-    (today's per-copy tables call it for every coefficient of every copy), and Rubin's rules over
-    the copies give the estimates and standard errors today's profiled tables pool to, to 1e-12;
-    both are Firth's estimate and Rubin's total variance, recomputed by scipy and numpy. The
-    table reports them, but for `x`'s standard error, which is withheld (it separates)."""
+    (the base's per-copy tables called it for every coefficient of every copy; since T5d a table
+    not pooled calls it for none, the data separating), and Rubin's rules over the copies give the
+    estimates the copies' own tables pool to, to 1e-12, and the standard errors Rubin's total
+    variance gives: Firth's estimate and Rubin's total variance, recomputed by scipy and numpy.
+    The table reports them, but for `x`'s standard error, which is withheld (it separates)."""
     m = separated["imputations"].m
     assert m >= 20 and all(t.info["estimator"] == "Firth-penalized logistic regression"
                             for t in separated["tables"])
     assert separated["profiles"] == 0
-    assert separated["full_profiles"] == 3 * m  # the base's work: three coefficients a copy
+    assert separated["full_profiles"] == 0  # the base profiled three coefficients a copy
     rubin = {r["feature"]: r for r in pool_rows([t.rows for t in separated["tables"]])}
     for name in ("(intercept)", "x", "z"):
         ours, base = rubin[name], separated["full"][name]
         assert ours["estimate"] == pytest.approx(base["estimate"], rel=1e-12, abs=1e-12), name
-        assert ours["se"] == pytest.approx(base["se"], rel=1e-12, abs=1e-12), name
         shown = separated["rows"][name]
         assert shown["estimate"] == pytest.approx(base["estimate"], rel=1e-12, abs=1e-12), name
-        assert shown["se"] == (None if name == "x" else pytest.approx(base["se"], rel=1e-12)), name
+        assert shown["se"] == (None if name == "x" else pytest.approx(ours["se"], rel=1e-12)), name
     frames = separated["imputations"].frames
     for j, name in enumerate(("(intercept)", "x", "z")):
         truth = _rubin_by_hand(frames, separated["y"], j)
@@ -184,15 +186,17 @@ def test_under_imputation_no_copy_profiles_and_the_pooled_estimates_and_errors_h
         assert rubin[name]["se"] == pytest.approx(truth["se"], rel=1e-5), name
 
 
-def test_a_table_not_pooled_keeps_its_profile_intervals(separated):
-    """Outside the pooling (complete cases, or any one table) the Firth table is as before: each
-    coefficient's profile interval and likelihood-ratio p-value, and the caption that says so."""
+def test_a_table_not_pooled_serves_its_estimates_alone(separated):
+    """Outside the pooling (complete cases, or any one table) the Firth table on separated rows
+    serves its penalized estimates alone, refusing every profile interval and p-value in words
+    that name `x`, which separates (T5d, V5c2-1: held at a value the penalized likelihood can then
+    have more than one maximum; before, it served each coefficient's profile interval)."""
     for table in separated["full_tables"][:3]:
-        assert all(r["ci_low"] is not None and r["p"] is not None for r in table.rows
-                   if r["feature"] != "x")
-        x = next(r for r in table.rows if r["feature"] == "x")
-        assert x["ci_low"] is not None and x["ci_low"] < x["estimate"] and x["p"] is not None
-        assert "95% profile penalized-likelihood intervals" in table.info["caption"]
+        assert table.info["refused"].startswith("`x` separates the outcome: a cut on it puts "
+                                                "every row on its outcome's side")
+        assert all(r["estimate"] is not None and r["ci_low"] is None and r["p"] is None
+                   for r in table.rows)
+        assert "profile penalized-likelihood intervals" not in table.info["caption"]
 
 
 # ── F3: the pooled table's words, and the separated coefficient withheld ─────
@@ -224,7 +228,8 @@ def test_a_coefficient_separated_in_the_copies_keeps_its_pooled_estimate_and_wit
                     f"pooled standard error, interval and p-value are not reported, only its "
                     f"estimate: {CARD} (Heinze & Schemper 2002). To report it, read `x` another "
                     f"way or combine its sparse levels, or analyze complete cases, where one table "
-                    f"is fit and none is pooled.")
+                    f"is fit and none is pooled; where the complete cases separate the outcome "
+                    f"too, that table reports no standard error, interval or p-value either.")
     # The copies' own concern says the table reports Firth's fit; the pooled one replaces it.
     assert I.separation_concern(["x"]) in separated["tables"][0].concerns
     assert I.separation_concern(["x"]) not in separated["table"].concerns
@@ -414,7 +419,9 @@ def test_an_intercept_infinite_in_the_copies_keeps_its_estimate_and_withholds_it
         f"{CARD} (Heinze & Schemper 2002). The standard error, interval and p-value of the "
         f"intercept are withheld too: its maximum-likelihood value is infinite in every one of "
         f"the {m} imputed copies. To report them, read `g` another way or combine its sparse "
-        f"levels, or analyze complete cases, where one table is fit and none is pooled.")
+        f"levels, or analyze complete cases, where one table is fit and none is pooled; where "
+        f"the complete cases separate the outcome too, that table reports no standard error, "
+        f"interval or p-value either.")
 
 
 def test_the_way_forward_names_the_column_a_separated_indicator_comes_from(categorical):
@@ -789,7 +796,8 @@ def test_a_companion_quintile_separated_in_the_copies_keeps_its_estimate_alone(c
         f"{q5['estimate']:+.4g}. It separates the outcome in every one of the {m} imputed copies, "
         f"so its statistic, interval and p-value are not reported, only its estimate: {CARD} "
         f"(Heinze & Schemper 2002). To report them, analyze complete cases, where one table is "
-        f"fit and none is pooled.")
+        f"fit and none is pooled; where the complete cases separate the outcome too, that table "
+        f"reports no standard error, interval or p-value either.")
 
 
 def test_a_companion_quintile_no_copy_separates_keeps_rubins_wald_interval_on_t(companion):
