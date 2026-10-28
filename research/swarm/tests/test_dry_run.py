@@ -11,6 +11,7 @@ import pytest
 
 from research.swarm import checks as C
 from research.swarm import dry_run as D
+from research.swarm import prereg_fill
 from research.swarm.record import validate
 
 DRYRUN = D.OUT
@@ -45,8 +46,9 @@ def test_each_runs_table_is_rebuilt_to_its_manifests_sha256(tmp_path, run, monke
         D.table_of(dataset, tmp_path / "again")
 
 
-PILOT = ("bang2009", "sullivan2021", "nhanes_glucose_predict", "inpatient_readmission_predict",
-         "walking_bp_estimate", "plasma_panel_estimate")
+# The pilot's datasets (``prereg_fill.PILOT``), and Bang 2009, deferred to the next wave
+# (2026-10-28), whose intake stays: each table is held to its manifest.
+PILOT = (*prereg_fill.PILOT, "bang2009")
 
 
 @pytest.mark.parametrize("dataset", PILOT)

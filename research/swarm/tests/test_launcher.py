@@ -165,7 +165,7 @@ BUDGET = {"fits": 10, "seconds": 72.0, "slowest_fit": 7.2}
 
 class Prereg:
     """prereg_fill as the launcher calls it, here: ``load`` gives ``prereg``, ``ready`` says
-    ``why`` (None: the trio may start); each call kept."""
+    ``why`` (None: the dataset may launch); each call kept, with the dataset it was asked of."""
 
     def __init__(self, prereg, why=None):
         self.prereg, self.why, self.calls = prereg, why, []
@@ -174,8 +174,8 @@ class Prereg:
         self.calls.append(("load", path))
         return self.prereg
 
-    def ready(self, prereg, engine=None, *, margins=True):
-        self.calls.append(("ready", prereg))
+    def ready(self, prereg, engine=None, *, dataset=None, margins=True):
+        self.calls.append(("ready", prereg, dataset))
         return self.why
 
 
@@ -228,7 +228,8 @@ def test_a_launch_starts_the_run_the_driver_names_with_prereg_jsons_budget(tmp_p
                                                                            monkeypatch, prereg):
     fake = prereg()
     given, out = started(tmp_path, monkeypatch)
-    assert fake.calls == [("load", None), ("ready", fake.prereg)]  # asked before the start
+    # Asked of this dataset before the start (the staged pre-registration, 2026-10-28).
+    assert fake.calls == [("load", None), ("ready", fake.prereg, PILOT)]
     (argv,) = given
     assert argv == ["start", "--data", str(out["data"]), "--budget-fits", "10",
                     "--budget-seconds", "72", "--model", "claude-haiku-5-5", "--prompt-version",
@@ -289,7 +290,7 @@ def test_the_committed_pre_registration_gates_the_launch_in_prereg_fills_words(t
     launcher refuses in the words ``ready`` gives for the file as committed."""
     P = pytest.importorskip("research.swarm.prereg_fill")
     monkeypatch.setattr(L, "engine_now", lambda: dict(ENGINE))
-    why = P.ready(P.load(), dict(ENGINE))
+    why = P.ready(P.load(), dict(ENGINE), dataset=PILOT)
     given, out = started(tmp_path, monkeypatch)
     if why is None:  # pragma: no cover - a pre-registration filled and ready on this engine
         assert isinstance(out, dict) and given

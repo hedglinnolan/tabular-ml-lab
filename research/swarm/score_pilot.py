@@ -47,7 +47,12 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
   (:func:`result_refusal`): a refused plan where the run reported no result or the engine served
   none, unjudged where the record cannot say;
 * the unit per model and fixture (:func:`unit`);
-* materiality on every sweep with prereg.json's margins (:func:`sweep_verdicts`), beside the
+* materiality on every sweep with prereg.json's margins (:func:`sweep_verdicts`), but a sweep
+  not run on the frozen engine (:func:`sweep_refusal`: its report says the engine changed while
+  it ran, or does not say, or it ended on another ``turbotab/`` tree than the crash sweeps', or
+  with tracked files modified or not known to be unmodified; with no crash fill the frozen engine
+  is not known), which is refused, listed with why naming its tree and the frozen one
+  (``refused_sweeps``), and read for nothing; beside the
   sweep's own verdict, each disagreement listed, never silently; a refit scored as the plan in
   every one of the same folds not material (its change zero, though with no spread it has no
   interval: ``sweep.unchanged_of``); a decision none of whose refits
@@ -417,11 +422,51 @@ def rule_of(sweep: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
     return "Predict rule" if sweep.get("purpose") == "prediction" else "Estimate rule"
 
 
+NO_FROZEN_SWEEP = ("prereg.json holds no crash fill, so the frozen engine a sweep must run on is "
+                   "not known.")
+
+
+def sweep_refusal(sweep: Mapping[str, Any], frozen: Mapping[str, Any] | None) -> str | None:
+    """Why ``sweep`` (a sweep's report, ``sweep.json`` or ``crash.json``) is refused for the engine
+    it ran on, in words naming its ``turbotab/`` tree and the frozen one: its report says the
+    engine changed while it ran (``sweep.engine_changed``, its words), or does not say whether it
+    did, or it ended on another tree than the crash sweeps' (``prereg_fill.frozen_engine``), or
+    with tracked files modified or not known to be unmodified; with no crash fill the frozen
+    engine is not known (:data:`NO_FROZEN_SWEEP`). None where it ran on the frozen engine from its
+    start to its end."""
+    if frozen is None:
+        return NO_FROZEN_SWEEP
+    tree, modified = sweep.get("engine_tree"), sweep.get("engine_modified")
+    state = ("no file modified" if modified is False else
+             "tracked files modified" if modified else "not known to be unmodified")
+    on = f"The sweep ran on engine tree {tree} ({state})"
+    want = (f"the frozen engine the crash sweeps passed on is tree {frozen['engine_tree']} with no "
+            f"file modified")
+    if "engine_changed" not in sweep:
+        return (f"{on}, and its report does not say whether the engine changed while it ran; "
+                f"{want}.")
+    if sweep["engine_changed"]:
+        return (f"{on}, and its report says the engine changed while it ran: "
+                f"{str(sweep['engine_changed']).rstrip('.')}; {want}.")
+    if tree != frozen["engine_tree"] or modified is not False:
+        return f"{on}; {want}."
+    return None
+
+
 def sweep_verdicts(sweep: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[str, Any]:
     """prereg.json's materiality on each scored refit of ``sweep`` and on each decision, beside
     the sweep's own, every disagreement listed; each decision none of whose refits is read
     counted apart, as not read, with why; and whether the rule read any refit at all
-    (``applied``), with why where it read none."""
+    (``applied``), with why where it read none. A sweep not run on the frozen engine
+    (:func:`sweep_refusal`) is refused, its why in ``refused``, and nothing of it is read."""
+    refused = sweep_refusal(sweep, P.frozen_engine(prereg))
+    if refused is not None:
+        return {"dataset": sweep.get("dataset"), "plan": sweep.get("plan"),
+                "purpose": sweep.get("purpose"), "rule": rule_of(sweep, prereg),
+                "refused": refused, "engine_tree": sweep.get("engine_tree"), "points": [],
+                "refits": [], "decisions": [], "applied": False, "not_applied": refused,
+                "material": [], "not_read": [], "disagreements": [],
+                "decision_disagreements": [], "fit_seconds": None}
     half = float(prereg["material"]["half"])
     measure = prereg["material"]["measurement"]
     measurement = sweep.get("dataset") == prereg["datasets"]["measurement_fixture"]
@@ -472,7 +517,8 @@ def sweep_verdicts(sweep: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[
         not_applied = " ".join(dict.fromkeys(str(x["why"]) for x in refits if x["why"])) or \
             "The sweep holds no scored refit."
     return {"dataset": sweep.get("dataset"), "plan": sweep.get("plan"),
-            "purpose": sweep.get("purpose"), "rule": rule_of(sweep, prereg), "points": points,
+            "purpose": sweep.get("purpose"), "rule": rule_of(sweep, prereg), "refused": None,
+            "engine_tree": sweep.get("engine_tree"), "points": points,
             "refits": refits, "decisions": decisions, "applied": applied,
             "not_applied": not_applied,
             "material": sorted(str(d["point"]) for d in decisions if d["prereg"]),
@@ -785,7 +831,12 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
                 "verdict": "unscored", "why": "No replay of this plan is given."})
                 | {"model": model_of(rec, prereg), "persona": rec.run.persona})
     verdict_of = {p["run"]: p for p in plans}
+    # A sweep not run on the frozen engine is refused (:func:`sweep_refusal`), listed with why,
+    # and read for nothing.
     swept = [sweep_verdicts(s, prereg) for s in sweeps]
+    refused_sweeps = [{k: s[k] for k in ("dataset", "plan", "engine_tree")} | {"why": s["refused"]}
+                      for s in swept if s["refused"]]
+    swept = [s for s in swept if not s["refused"]]
     # A dataset's material decisions: the union over its sweeps; none where prereg.json's rule
     # read no refit of any of them, so no decision there is counted material or not.
     union: dict[str, set[str] | None] = {}
@@ -867,6 +918,7 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
         "early_stopping": early_stopping(estimate_units, records, prereg, budget_fresh,
                                          refused),
         "sweeps": swept,
+        "refused_sweeps": refused_sweeps,
         "named_plans": named_plans(records, prereg),
         "material": {d: (sorted(u) if u is not None else None) for d, u in union.items()},
         "material_unread": unread,
@@ -972,6 +1024,12 @@ def report_md(report: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
                                          f"prereg.json {_read(x['prereg'])})"
                                          for x in s["disagreements"][:10])
                         if s["disagreements"] else "") + ".")
+    if report.get("refused_sweeps"):
+        lines += ["", "## Sweeps refused", "",
+                  f"{len(report['refused_sweeps'])} sweep(s) are not known to have run on the "
+                  f"frozen engine, so none of them is read:", ""]
+        lines += [f"- {s['dataset']} around the {s['plan']} plan: {s['why']}"
+                  for s in report["refused_sweeps"]]
     persona = report["persona"]
     lines += ["", "## The personas", ""]
     for p, v in persona.items():

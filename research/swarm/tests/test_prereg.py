@@ -26,6 +26,12 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
   hand from §6's named plans, the Predict fixture's default plan; the trio refused without them,
   on a report that did not pass, across two engine trees, and on a report whose table is not the
   one its dataset's manifest names (another table's SHA-256, or none).
+* The staged pre-registration (the orchestrator's ruling of 2026-10-28): a crash fill of any
+  pilot datasets adds to what is filled, each entry with when it was filled; a dataset with its
+  own budget may launch while another without one is refused in words; r0 missing refuses the
+  Predict fixture only; a report on another tree, or the engine now on another, refuses; a fill
+  after a graded run on that dataset (a launch of it) refuses, and one on another dataset does
+  not; the compute cap waits for every pilot dataset. Bang 2009 is no pilot dataset.
 """
 from __future__ import annotations
 
@@ -344,7 +350,7 @@ def _result_refused() -> dict:
 
 @pytest.mark.parametrize("record,replay,named", [
     (lambda: default_record(analyst_model="claude-haiku-5-5"), None, "default path"),
-    (lambda: default_record() | {"dataset": default_record()["dataset"] | {"id": "bang2009"}},
+    (lambda: default_record() | {"dataset": default_record()["dataset"] | {"id": "sullivan2021"}},
      None, "default path"),
     (lambda: default_record("elastic_net"), None, "boosted_trees"),
     (default_record, lambda p, d: default_replay(p, d, run="run_other"), "run_other"),
@@ -501,8 +507,14 @@ def test_the_committed_prereg_is_what_the_generators_give_and_a_changed_margin_i
     assert P.check(changed) == ["estimate_fixture"]
 
 
-def test_the_schedule_is_sections_six_45_runs_and_names_its_swept_plans(prereg):
-    assert prereg["models"]["runs"] == 18 + 18 + 6 + 3
+def test_the_schedule_is_sections_six_39_runs_on_five_datasets_and_names_its_swept_plans(prereg):
+    """R1 (the owner and the orchestrator, 2026-10-28): Bang 2009 leaves the pilot, so Haiku and
+    Sonnet each run three personas on five datasets (15 runs each), beside the six Haiku
+    replicates and the three Opus runs on the Estimate fixture."""
+    assert "bang2009" not in P.PILOT and len(P.PILOT) == 5
+    assert prereg["datasets"]["pilot"] == list(P.PILOT)
+    assert prereg["models"]["runs"] == 3 * 5 + 3 * 5 + 6 + 3
+    assert "bang2009" not in prereg["sweeps"]["plans"]
     plans = prereg["sweeps"]["plans"]
     assert [(p["model"], p["persona"]) for p in plans[P.ESTIMATE_FIXTURE]] == [
         ("haiku", "conventional"), ("sonnet", "conventional"), ("opus", "conventional"),
@@ -562,8 +574,8 @@ def test_the_crash_fill_sets_each_budget_the_cap_and_the_default_plans_final_fam
     estimate = crash_["fit_budget"][P.ESTIMATE_FIXTURE]
     assert estimate == launcher.budget_of({"fit_seconds": {"max": 20.25}}, 11)
     assert estimate["seconds"] == math.ceil(11 * 20.25)
-    # Five named plans on the Estimate fixture at its 100 s, two on each of five others at 30 s.
-    assert crash_["compute_cap"]["seconds"] == 5 * 100.0 + 5 * 2 * 30.0
+    # Five named plans on the Estimate fixture at its 100 s, two on each of four others at 30 s.
+    assert crash_["compute_cap"]["seconds"] == 5 * 100.0 + 4 * 2 * 30.0
     r0 = filled["predict_fixture"]["r0"]
     assert (r0["final"], r0["value"]) == ("boosted_trees", None)
     assert "not been measured" in r0["why"]
@@ -578,17 +590,20 @@ def test_the_trio_is_refused_without_the_crash_sweeps_fields_or_r0(prereg):
     assert "engine tree" in P.ready(measured(prereg), other, margins=False)
 
 
-def test_the_fill_refuses_a_missing_report_one_that_did_not_pass_and_two_engine_trees(prereg):
+def test_the_fill_refuses_a_dataset_off_the_pilot_one_that_did_not_pass_and_two_engine_trees(
+        prereg):
+    """Bang 2009, deferred, is no pilot dataset: its crash sweep fills nothing. (No report at all
+    is refused too; a subset of the pilot's is filled, below.)"""
+    with pytest.raises(P.Refused, match="bang2009 is not one of the pilot's datasets"):
+        P.fill(prereg, {"bang2009": crash("bang2009")}, engine=ENGINE)
+    with pytest.raises(P.Refused, match="No crash sweep report"):
+        P.fill(prereg, {}, engine=ENGINE)
     given = reports(["elastic_net"])
-    del given["sullivan2021"]
-    with pytest.raises(P.Refused, match="sullivan2021"):
+    given["nhanes_glucose_predict"]["defects"] = [{"refit": "x"}]
+    with pytest.raises(P.Refused, match="nhanes_glucose_predict.*defect"):
         P.fill(prereg, given, engine=ENGINE)
     given = reports(["elastic_net"])
-    given["bang2009"]["defects"] = [{"refit": "x"}]
-    with pytest.raises(P.Refused, match="bang2009.*defect"):
-        P.fill(prereg, given, engine=ENGINE)
-    given = reports(["elastic_net"])
-    given["bang2009"]["engine_tree"] = "t9"
+    given["nhanes_glucose_predict"]["engine_tree"] = "t9"
     with pytest.raises(P.Refused):
         P.fill(prereg, given, engine={**ENGINE, "engine_tree": "t9"})
 
@@ -598,15 +613,16 @@ def test_the_fill_refuses_a_report_whose_table_is_not_the_manifests(prereg):
     table (here sullivan2021's, its manifest's SHA-256), or names no table's SHA-256, does not."""
     assert P.check(P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)) == []
     other = table_of("sullivan2021")
-    assert other["sha256"] != table_of("bang2009")["sha256"]  # the construction: another table
+    glucose = "nhanes_glucose_predict"
+    assert other["sha256"] != table_of(glucose)["sha256"]  # the construction: another table
     for data in (other, {"path": other["path"], "sha256": None}, None):
         given = reports(["boosted_trees", "elastic_net"])
-        given["bang2009"]["data"] = data
-        with pytest.raises(P.Refused, match="bang2009: .*not the manifest's"):
+        given[glucose]["data"] = data
+        with pytest.raises(P.Refused, match=f"{glucose}: .*not the manifest's"):
             P.fill(prereg, given, engine=ENGINE)
     given = reports(["boosted_trees", "elastic_net"])
-    del given["bang2009"]["data"]
-    with pytest.raises(P.Refused, match="bang2009: .*not the manifest's"):
+    del given[glucose]["data"]
+    with pytest.raises(P.Refused, match=f"{glucose}: .*not the manifest's"):
         P.fill(prereg, given, engine=ENGINE)
 
 
@@ -627,3 +643,148 @@ def test_the_committed_file_parses_as_json_with_no_number_but_its_own():
     """Every number the file holds is a JSON number (no NaN or infinity a reader cannot parse)."""
     text = P.PREREG.read_text("utf-8")
     json.loads(text, parse_constant=lambda c: pytest.fail(f"prereg.json holds {c}"))
+
+
+# ── the staged pre-registration (R2, 2026-10-28) ─────────────────────────────
+
+ESTIMATE, SULLIVAN, GLUCOSE = P.ESTIMATE_FIXTURE, "sullivan2021", "nhanes_glucose_predict"
+
+
+def only(*datasets: str) -> dict[str, dict]:
+    """:func:`reports`' crash reports of ``datasets`` alone (the Predict fixture's default plan
+    declaring the ruling's family)."""
+    given = reports(["boosted_trees", "elastic_net"])
+    return {d: given[d] for d in datasets}
+
+
+def launched(folder, run: str, dataset: str):
+    """A launch file as the launcher writes one (``launcher.launch``): its run and dataset."""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{run}.json").write_text(json.dumps({"run": run, "dataset": {"id": dataset},
+                                                    "design": 2}), "utf-8")
+    return folder
+
+
+def test_a_dataset_with_its_own_budget_launches_while_another_without_one_is_refused(prereg):
+    """Only the Estimate fixture's crash sweep is filled: it may launch (its budget the launcher's
+    rule over its own report), and Sullivan, whose sweep is not filled, is refused in words naming
+    it; the pilot whole is not filled, and Bang 2009 is no pilot dataset."""
+    from research.swarm import launcher
+
+    staged = P.fill(prereg, only(ESTIMATE), engine=ENGINE)
+    assert P.ready(staged, ENGINE, dataset=ESTIMATE) is None  # its margins recomputed too
+    assert staged["filled"]["fit_budget"] == {
+        ESTIMATE: launcher.budget_of({"fit_seconds": {"max": 20.25}}, 11)}
+    why = P.ready(staged, ENGINE, dataset=SULLIVAN, margins=False)
+    assert why == (f"prereg.json holds no fit budget for {SULLIVAN}: fill it from its own crash "
+                   f"sweep (python -m research.swarm.prereg_fill crash …).")
+    assert "no fit budget for" in P.ready(staged, ENGINE, margins=False)
+    assert "bang2009 is not one of the pilot's datasets" in P.ready(
+        staged, ENGINE, dataset="bang2009", margins=False)
+    assert staged["filled"]["compute_cap"] is None  # needed only before the sweep step
+
+
+def test_r0_missing_refuses_the_predict_fixture_only(prereg):
+    """With every pilot dataset's crash sweep filled and r0 not yet measured, the Predict fixture
+    is refused for its r0 and every other dataset may launch; the pilot whole waits for r0, and
+    once r0 is measured nothing stops either."""
+    crashed = P.fill(prereg, only(*P.PILOT), engine=ENGINE)
+    assert crashed["filled"]["compute_cap"] is not None
+    for d in P.PILOT:
+        why = P.ready(crashed, ENGINE, dataset=d, margins=False)
+        if d == P.PREDICT_FIXTURE:
+            assert why.startswith("prereg.json holds no r0: ")
+        else:
+            assert why is None, d
+    assert P.ready(crashed, ENGINE, margins=False).startswith("prereg.json holds no r0")
+    filled = measured(prereg)
+    assert P.ready(filled, ENGINE, dataset=P.PREDICT_FIXTURE, margins=False) is None
+    assert P.ready(filled, ENGINE, margins=False) is None
+
+
+def test_a_crash_fill_adds_to_what_is_filled_with_when_each_was_filled(prereg):
+    """Two fills, each of its datasets: the second keeps the first's entries and when they were
+    filled; a fill of a dataset again replaces its own entry alone; r0 stays through a fill of
+    another dataset and is cleared by the Predict fixture's; the compute cap is the hand sum once
+    the fifth dataset is in (five plans at 100 s on the Estimate fixture, two at 30 s on each of
+    the four others)."""
+    first = P.fill(prereg, only(ESTIMATE), engine=ENGINE, at="2026-10-28T10:00:00+00:00")
+    second = P.fill(first, only(SULLIVAN, GLUCOSE), engine=ENGINE, at="2026-10-30T09:00:00+00:00")
+    held = second["filled"]["reports"]
+    assert set(held) == {ESTIMATE, SULLIVAN, GLUCOSE}
+    assert held[ESTIMATE] == first["filled"]["reports"][ESTIMATE]
+    assert held[ESTIMATE]["filled_at"] == "2026-10-28T10:00:00+00:00"
+    assert held[SULLIVAN]["filled_at"] == held[GLUCOSE]["filled_at"] == "2026-10-30T09:00:00+00:00"
+    assert set(second["filled"]["fit_budget"]) == {ESTIMATE, SULLIVAN, GLUCOSE}
+    again = P.fill(second, only(SULLIVAN), engine=ENGINE, at="2026-10-31T09:00:00+00:00")
+    assert again["filled"]["reports"][GLUCOSE] == held[GLUCOSE]
+    assert again["filled"]["reports"][SULLIVAN]["filled_at"] == "2026-10-31T09:00:00+00:00"
+    assert P.check(again) == []
+    filled = measured(prereg)
+    kept = P.fill(filled, only(SULLIVAN), engine=ENGINE)
+    assert kept["filled"]["r0"] == filled["filled"]["r0"] and kept["filled"]["r0"]["filled_at"]
+    assert kept["predict_fixture"]["r0"]["value"] == filled["predict_fixture"]["r0"]["value"]
+    cleared = P.fill(filled, only(P.PREDICT_FIXTURE), engine=ENGINE)
+    assert cleared["filled"]["r0"] is None and cleared["predict_fixture"]["r0"]["value"] is None
+    whole = P.fill(again, only(P.PREDICT_FIXTURE, P.MEASUREMENT_FIXTURE), engine=ENGINE)
+    assert whole["filled"]["compute_cap"]["seconds"] == 5 * 100.0 + 4 * 2 * 30.0
+
+
+def test_a_report_on_another_tree_refuses_and_so_does_the_engine_now_on_another(prereg):
+    staged = P.fill(prereg, only(ESTIMATE), engine=ENGINE)
+    other = {**ENGINE, "engine_tree": "t1"}
+    moved = only(SULLIVAN)
+    moved[SULLIVAN]["engine_tree"] = "t1"
+    with pytest.raises(P.Refused, match="different engine trees: .*on t0.*on t1|on t1.*on t0"):
+        P.fill(staged, moved, engine=other)
+    why = P.ready(staged, other, dataset=ESTIMATE, margins=False)
+    assert "engine now is t1" in why
+    assert "with modified files" in P.ready(staged, {**ENGINE, "engine_modified": True},
+                                            dataset=ESTIMATE, margins=False)
+    assert P.ready(staged, ENGINE, dataset=ESTIMATE, margins=False) is None
+
+
+def test_a_fill_after_a_graded_run_on_that_dataset_refuses_and_on_another_does_not(prereg,
+                                                                                   tmp_path):
+    """A launch of Sullivan (a graded run) freezes Sullivan's fill: a crash fill of it is refused,
+    naming the run; a fill of the Estimate fixture beside it is not. A launch on the Predict
+    fixture refuses its r0 fill the same way; with no launch, r0 is filled."""
+    launches = launched(tmp_path / "launches", "run_01-" + "a" * 32, SULLIVAN)
+    assert P.graded_runs(SULLIVAN, launches) == ["run_01-" + "a" * 32]
+    assert P.graded_runs(ESTIMATE, launches) == []
+    with pytest.raises(P.Refused, match=f"{SULLIVAN} has 1 graded run.*run_01-a+.*not filled"):
+        P.fill(prereg, only(SULLIVAN), engine=ENGINE, launches=launches)
+    with pytest.raises(P.Refused, match=f"{SULLIVAN} has 1 graded run"):
+        P.fill(prereg, only(ESTIMATE, SULLIVAN), engine=ENGINE, launches=launches)
+    assert ESTIMATE in P.fill(prereg, only(ESTIMATE), engine=ENGINE,
+                              launches=launches)["filled"]["reports"]
+    crashed = P.fill(prereg, only(*P.PILOT), engine=ENGINE, launches=tmp_path / "none")
+    data = default_record()
+    launched(launches, "run_02-" + "b" * 32, P.PREDICT_FIXTURE)
+    with pytest.raises(P.Refused, match=f"{P.PREDICT_FIXTURE} has 1 graded run"):
+        P.fill_r0(crashed, data, default_replay(crashed, data), launches=launches)
+    got = P.fill_r0(crashed, data, default_replay(crashed, data), launches=tmp_path / "none")
+    assert got["predict_fixture"]["r0"]["value"] is not None
+
+
+def test_the_commands_fill_one_dataset_and_say_whether_it_may_launch(prereg, tmp_path, capsys,
+                                                                     monkeypatch):
+    """``prereg_fill crash`` takes one dataset's report, and ``ready --dataset`` says that dataset
+    may launch and another may not, in ``ready``'s words."""
+    from research.swarm import launcher
+
+    monkeypatch.setattr(launcher, "engine_now", lambda: dict(ENGINE))
+    path = P.write(prereg, tmp_path / "prereg.json")
+    (tmp_path / "crash.json").write_text(json.dumps(only(ESTIMATE)[ESTIMATE]), "utf-8")
+    assert P.main(["--prereg", str(path), "crash", str(tmp_path / "crash.json")]) == 0
+    printed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert printed["datasets"] == [ESTIMATE] and printed["ready"][ESTIMATE] is None
+    assert printed["ready"][SULLIVAN].startswith("prereg.json holds no fit budget for")
+    written = P.load(path)
+    assert written["filled"]["reports"][ESTIMATE]["sha256"] == P._sha256(tmp_path / "crash.json")
+    assert P.main(["--prereg", str(path), "ready", "--dataset", ESTIMATE]) == 0
+    assert json.loads(capsys.readouterr().out) == {"dataset": ESTIMATE, "ready": True,
+                                                   "why": None}
+    assert P.main(["--prereg", str(path), "ready", "--dataset", SULLIVAN]) == 1
+    said = json.loads(capsys.readouterr().out)
+    assert said["why"] == P.ready(written, ENGINE, dataset=SULLIVAN, margins=False)

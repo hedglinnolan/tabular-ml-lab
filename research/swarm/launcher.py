@@ -6,11 +6,12 @@ command reads it.
                                       --model M --persona P [--effort E] --prompt-version V
                                       [--prereg FILE] [--runs DIR] [--launches DIR] [--scripted]
 
-**The pre-registration must be ready** (``research/swarm/prereg_fill.py``): before each launch the
-launcher reads ``prereg.json`` (``prereg_fill.load``) and asks ``prereg_fill.ready`` whether the
-trio may start (every pilot dataset's fit budget and the sweeps' compute cap filled from the crash
-sweeps, r0 measured, all on the engine now, the margins still the generators'); where it says why
-not, the dataset is not launched, in its words.
+**The pre-registration must be ready for the dataset** (``research/swarm/prereg_fill.py``, staged
+by dataset): before each launch the launcher reads ``prereg.json`` (``prereg_fill.load``) and asks
+``prereg_fill.ready`` whether that dataset may launch (a pilot dataset, its own fit budget filled
+from its own crash sweep, on the Predict fixture r0 measured, every report filled and the engine
+now on one tree with no file modified, the margins still the generators'); where it says why not,
+the dataset is not launched, in its words.
 
 **The crash sweep must have passed** (``research/swarm/sweep.py``, :func:`crash_passed`): its report
 is the dataset's, on the table the dataset's manifest names (its SHA-256), it swept every decision
@@ -232,7 +233,7 @@ def launch(dataset: str, crash: Path, *, model: str, persona: str | None,
     from research.swarm import prereg_fill
 
     prereg = prereg_fill.load() if prereg is None else prereg
-    why = prereg_fill.ready(prereg)
+    why = prereg_fill.ready(prereg, dataset=dataset)
     if why is not None:
         raise Refused(f"{dataset} is not launched: {why}")
     report = _json(crash)

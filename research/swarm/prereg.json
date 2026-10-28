@@ -1,11 +1,10 @@
 {
  "about": "SWARM_PLAN §7's pre-registration, written by `python -m research.swarm.prereg_fill` from research/swarm/generators.py and, in its filled section, from package 3's crash sweep reports and the inputs its commands record; applied by research/swarm/score_pilot.py. Never edited by hand: `--check` fails where it is not what the generators give.",
- "version": 1,
- "plan": "docs/turbotab-next/plans/SWARM_PLAN.md, version 5.1, §6 and §7",
+ "version": 2,
+ "plan": "docs/turbotab-next/plans/SWARM_PLAN.md, version 5.2, §6 and §7",
  "generators_sha256": "44961b14aece823eeefc559d54a78445340275f555cae2cfb8304770dba15b25",
  "datasets": {
   "pilot": [
-   "bang2009",
    "sullivan2021",
    "nhanes_glucose_predict",
    "inpatient_readmission_predict",
@@ -39,7 +38,6 @@
      "explorer"
     ],
     "datasets": [
-     "bang2009",
      "sullivan2021",
      "nhanes_glucose_predict",
      "inpatient_readmission_predict",
@@ -56,7 +54,6 @@
      "explorer"
     ],
     "datasets": [
-     "bang2009",
      "sullivan2021",
      "nhanes_glucose_predict",
      "inpatient_readmission_predict",
@@ -90,7 +87,7 @@
     "reference": true
    }
   ],
-  "runs": 45
+  "runs": 39
  },
  "regression_checks": {
   "checks": [
@@ -226,7 +223,7 @@
     "by": "the orchestrator, the methods lead",
     "date": "2026-10-23",
     "review": "for the owner to review",
-    "words": "The default path on the Predict fixture declares boosted_trees final, which has no generator class, so r0 is measured: half the default plan's mean Brier regret against the generator's oracle over the pre-registered replay draws (seeds 1001-1100) on the pre-registered evaluation rows (seed 2001 x 20,000), computed by score_pilot's own replay producer after the crash fill and before the trio, so r0 and every plan's regret come from the same draws, rows and scorer. The linear class's value stays in prereg.json as a reference, labeled so."
+    "words": "The default path on the Predict fixture declares boosted_trees final, which has no generator class, so r0 is measured: half the default plan's mean Brier regret against the generator's oracle over the pre-registered replay draws (seeds 1001-1100) on the pre-registered evaluation rows (seed 2001 x 20,000), computed by score_pilot's own replay producer after the Predict fixture's crash fill and before its first graded run (staged, 2026-10-28), so r0 and every plan's regret come from the same draws, rows and scorer. The linear class's value stays in prereg.json as a reference, labeled so."
    }
   },
   "rule": "A plan is within the margin where its mean Brier regret against the true risk over the draws (its predictions on the evaluation rows) is less than r0, half the default plan's mean regret on the same draws and rows."
@@ -466,18 +463,6 @@
  },
  "sweeps": {
   "plans": {
-   "bang2009": [
-    {
-     "model": "haiku",
-     "persona": "conventional",
-     "run": "first started"
-    },
-    {
-     "model": "sonnet",
-     "persona": "conventional",
-     "run": "first started"
-    }
-   ],
    "sullivan2021": [
     {
      "model": "haiku",
