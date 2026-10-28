@@ -748,7 +748,14 @@ def build_graph() -> Graph:
             # tests or Benjamini–Hochberg adjustment, and says the table was refused in its own
             # words (``methods.omics.featurewise_untested``), where it said 0 features were tested,
             # so a fit cached before it is computed again.
-            Stage("fit", 35, ("working", "design", "split", "target_info", "cohort"),
+            # fit 36 (the swarm's tail, T4a, 2026-10-27): a feature-wise study factor with nothing
+            # left once the covariates are projected out is refused by row as not estimable given
+            # them, naming them, and the caption counts only the study factors tested (the whole
+            # table refused where none is left); a category's indicators are read off its own
+            # encoder, never its name; and beside a table refused under multiple imputation (or
+            # a single fill), the values-below-detection sentence states the answer and claims no
+            # interval, where it said a single fill's intervals were too narrow.
+            Stage("fit", 36, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -935,7 +942,13 @@ def build_graph() -> Graph:
             # estimand's study factor is such a category, its tables are refused, where they tested
             # another study factor in its place; and the family's multiplicity sentence counts the
             # members feature-wise regression tests and names a category it adjusts for.
-            Stage("effects", 9, ("working", "design", "split", "target_info"),
+            # effects 10 (the swarm's tail, T4a): as fit 36, and the family's multiplicity sentence
+            # counts the members its feature-wise table tested, claiming no test or method where
+            # the table tested none (its refusal's words instead); each feature-wise model names
+            # the category whose indicators it holds as adjusted for (the unadjusted one "Without
+            # covariates"); and an exposure's columns are its own encoding's, never another
+            # predictor's (a longer one's spline terms, a fixed-effects grouping's intercepts).
+            Stage("effects", 10, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",

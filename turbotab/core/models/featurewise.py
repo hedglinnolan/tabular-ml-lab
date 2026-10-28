@@ -40,6 +40,7 @@ its table and no cross-validated score.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -73,6 +74,10 @@ NO_STUDY_FACTOR_WORDS = ("No study factor to test: feature-wise regression tests
 ROLES_WAY = {"label": "Give the columns you study the role of what you study (the roles "
                       "question)", "decision": None}
 ANOTHER_FAMILY = {"label": "Choose another model family", "decision": None}
+# … and its way forward where a study factor has nothing left once the covariates are projected
+# out (:func:`not_estimable`): what each test adjusts for is the adjustment answers'.
+ADJUSTMENT_WAY = {"label": "Revisit what each test adjusts for (the adjustment question)",
+                  "decision": None}
 
 
 # … and its table's refusal where a study factor's declared form enters it as other than one
@@ -153,28 +158,63 @@ def formed_study_factor(forms: Mapping[str, Any], named: Sequence[str],
     return f"{FORMED_WORDS}; {said}.", [*exits, dict(ANOTHER_FAMILY)]
 
 
-def indicator_columns(columns: Sequence[str], tested: Sequence[str],
-                      categories: Sequence[str] | None,
-                      predictors: Sequence[str] | None) -> dict[str, list[str]]:
-    """Each study factor that enters the model matrix as indicators of its levels (``categories``,
-    by its column), with the columns of ``columns`` that carry it, none of them tested: the rule
-    the effects stage reads an exposure's columns by (``estimand.primary_features``), a longer
-    predictor's columns its own, its spline terms among them. ``primary_features`` reads a longer
-    predictor's name with a spline term's primes on it, so it gives `grp_age'` beside `grp_age` to
-    `grp`; an indicator never carries a prime, so the name is read here without them (the
-    verifier's T2V2-4)."""
-    from turbotab.core.estimand import primary_features
-
-    mine = {str(c) for c in tested}
-    found = {}
-    for c in categories or []:
-        c = str(c)
-        longer = [str(p) for p in predictors or () if str(p) != c and str(p).startswith(f"{c}_")]
-        found[c] = [f for f in primary_features(columns, c, predictors or ())
-                    if f not in mine and not any(f.rstrip("'") == p
-                                                 or f.rstrip("'").startswith(f"{p}_")
-                                                 for p in longer)]
+def category_columns(pipeline: Any, categories: Sequence[str] | None = None
+                     ) -> dict[str, list[str]]:
+    """Each category among ``categories`` (every one the pipeline encodes when None) with the
+    model-matrix columns its own encoding made of it, read from the fitted encoder, never from a
+    name (the orchestrator's ruling (3) on the swarm's tail): the levels step's indicators (blanks a
+    level of their own, ``MissingLevelEncoder``), or the one-hot step's, its levels in order with
+    the first dropped where the coding drops it. A name-prefix rule gave `grp` the intercepts of a
+    fixed-effects grouping `grp_site` and the spline terms of a covariate `grp_age`; the encoder
+    gives each its own. A category the pipeline does not encode is not listed."""
+    steps = dict(getattr(pipeline, "named_steps", None) or {})
+    wanted = None if categories is None else {str(c) for c in categories}
+    found: dict[str, list[str]] = {}
+    levels = steps.get("levels")
+    for column in (getattr(levels, "levels_", None) or {}):
+        if wanted is None or str(column) in wanted:
+            found[str(column)] = [str(name) for name, _ in levels._outputs(column)]
+    onehot = steps.get("onehot")
+    encoder = (getattr(onehot, "named_transformers_", {}) or {}).get("onehot") if onehot else None
+    if encoder is not None and hasattr(encoder, "categories_"):
+        names = [str(n) for n in encoder.get_feature_names_out()]
+        drops = getattr(encoder, "drop_idx_", None)
+        counts = [len(levels_i) - (0 if drops is None or drops[i] is None else 1)
+                  for i, levels_i in enumerate(encoder.categories_)]
+        if sum(counts) != len(names):
+            raise ValueError("The one-hot step's columns do not follow its levels, so a category's "
+                             "indicators cannot be read from it.")
+        at = 0
+        for column, k in zip((str(c) for c in encoder.feature_names_in_), counts):
+            if wanted is None or column in wanted:
+                found[column] = names[at:at + k]
+            at += k
     return found
+
+
+def nothing_left(X: np.ndarray, Q: np.ndarray) -> np.ndarray:
+    """For each column of ``X``, whether nothing of it is left once ``span(Q)`` is projected out
+    (a constant, or a combination of the adjustment columns): its residual sum of squares at most
+    1e-12 of its own, the tolerance :func:`classical_tests` holds a regressor to."""
+    resid = X - Q @ (Q.T @ X)
+    return np.sum(resid ** 2, axis=0) <= 1e-12 * np.maximum(np.sum(X ** 2, axis=0), 1e-300)
+
+
+def not_estimable(named: Sequence[str], features: Sequence[str], adjust: Sequence[str]) -> str:
+    """The sentence of the study factors with nothing left once the adjustment columns
+    (``adjust``) are projected out (:func:`nothing_left`): not estimable given the covariates, so
+    not tested, each named as the roles answer named it (``named`` beside ``features``, the
+    matrix's names), the adjustment columns named too (the orchestrator's ruling (4))."""
+    from turbotab.core.voice import listing
+
+    one = len(named) == 1
+    k = len(adjust)
+    span = (f"the {k:,} adjustment column{'s' if k != 1 else ''} ({listing(list(adjust), limit=6)}) "
+            f"{'is' if k == 1 else 'are'} projected out" if k else "the intercept is projected out")
+    return (f"{listing(_who(named, features), limit=len(named), ticked=False)} "
+            f"{'is' if one else 'are'} not estimable given the covariates: nothing of "
+            f"{'it' if one else 'each'} is left once {span}, so {'it is not' if one else 'none is'} "
+            f"tested.")
 
 
 def not_tested(entered: Mapping[str, Sequence[str]] | None, adjust: Sequence[str]) -> str | None:
@@ -200,6 +240,20 @@ def not_tested(entered: Mapping[str, Sequence[str]] | None, adjust: Sequence[str
             f"you study, but each enters the model matrix as indicators of its levels, not one "
             f"column, so {'neither' if len(present) == 2 else 'none'} is tested: their indicators "
             f"({counts}) are among the adjustment columns.")
+
+
+_NOT_TESTED_SAID = re.compile(r"((?:`[^`]+`(?:, | and )?)+) also ha(?:s|ve) the role of what you "
+                              r"study, but (?:each )?enters the model matrix as indicators of its "
+                              r"levels")
+
+
+def categories_said(caption: str) -> list[str]:
+    """The study factors a table's caption says enter the model matrix as indicators of their
+    levels, so are not tested (the sentence :func:`not_tested` writes), in its order: what the
+    fit's artifact entry records of them, read back where only that entry is at hand (the served
+    fit's family sentence, ``estimand.annotate_fit``)."""
+    found = _NOT_TESTED_SAID.search(str(caption or ""))
+    return re.findall(r"`([^`]+)`", found.group(1)) if found else []
 
 
 def bh_adjust(p: Sequence[float]) -> np.ndarray:
@@ -338,8 +392,12 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     same way (:func:`no_study_factor`). A refused table with no test records the rows it was
     handed (``n_rows``), so no stage adds that it was estimated from them: nothing was.
     ``entered``: the study factors that enter the matrix as indicators of their levels, each with
-    the columns that carry it (:func:`indicator_columns`); those it holds are adjustment columns,
-    and the caption says so (:func:`not_tested`, the verifier's T2V-3)."""
+    the columns its own encoding made of it (:func:`category_columns`); those it holds are
+    adjustment columns, and the caption says so (:func:`not_tested`, the verifier's T2V-3). A study
+    factor with nothing left once the adjustment columns are projected out is not estimable given
+    them (:func:`not_estimable`): its row holds no number and the caption counts only the study
+    factors tested, and where none is left to test the table is refused, naming each (the
+    orchestrator's ruling (4))."""
     from turbotab.core.models.inference import (INDEPENDENT, InferenceTable, _info, floor_refusal,
                                                 format_p)
 
@@ -384,6 +442,7 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     est = np.full(m, np.nan)
     se = np.full(m, np.nan)
     df = np.full(m, df_resid)
+    flat = np.zeros(m, dtype=bool)  # a study factor with nothing left once Z is projected out
     if refusal is None and df_resid < 1:
         refusal = (f"{n:,} rows leave no residual degrees of freedom after {Q.shape[1]:,} adjustment "
                    f"columns, so no test can be made.", ())
@@ -393,6 +452,7 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
             block = slice(lo, lo + step)
             if refusal is not None and df_resid < 1:
                 break  # no residual degrees of freedom: nothing can be estimated
+            flat[block] = nothing_left(X[:, block], Q)
             if binary:
                 est[block], se[block] = classical_tests(X[:, block], g, Q, df_resid,
                                                         response_is_matrix=True)
@@ -400,7 +460,12 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
                 est[block], se[block] = classical_tests(yv, X[:, block], Q, df_resid,
                                                         response_is_matrix=False)
     else:
+        flat = nothing_left(X, Q)
         est, se, df = _cr2_tests(X, g if binary else yv, Z, clusters.codes, binary)
+    # No estimate of a study factor with nothing left (a copy of the covariates' span): the
+    # numbers a fit gives it are rounding error, and under the limma design its "difference" is 0
+    # with no variance. It is not estimable given the covariates (the orchestrator's ruling (4)).
+    est, se = np.where(flat, np.nan, est), np.where(flat, np.nan, se)
     concerns = [clusters.note] if clusters.note else []
     if refusal is not None:
         reason, exits = refusal
@@ -410,9 +475,20 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
         info = _info(estimator, "none", f"No intervals: {reason}" + (f" {said}" if said else ""),
                      clusters, refused=reason, exits=[dict(e) for e in exits])
         return InferenceTable(rows, info, [reason, *concerns])
+    who = dict(zip([str(f) for f in features or []],
+                   [str(c) for c in named] if named is not None
+                   and len(named) == len(features or []) else [str(f) for f in features or []]))
+    left = [f for f, none in zip(tested, flat) if none]
+    unestimable = (not_estimable([who.get(f, f) for f in left], left, adjust) if left else None)
+    if left and len(left) == m:
+        # Nothing to test: the table is refused, naming each study factor and the covariates.
+        info = _info(estimator, "none", f"No tests: {unestimable}", clusters, refused=unestimable,
+                     exits=[dict(ADJUSTMENT_WAY), dict(ANOTHER_FAMILY)], n_rows=int(n))
+        return InferenceTable([], info, [unestimable, *concerns])
     p, low, high = _p_and_ci(est, se, df)
     q = bh_adjust(p)
     found = int(np.sum(q < FDR))
+    m = m - len(left)  # the tests made: a study factor not estimable is not one of them
     rows = [{"feature": f, "estimate": _clean(b), "ci_low": _clean(a), "ci_high": _clean(c),
              "p": _clean(pv), "se": _clean(s), "df": _clean(d), "q": _clean(qv)}
             for f, b, a, c, pv, s, d, qv in zip(tested, est, low, high, p, se, df, q)]
@@ -431,6 +507,8 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
         covariance = "model"
     caption = (f"Each of {m:,} study factors tested on its own {adjusted}; the estimate is {estimand}. "
                f"95% intervals {how}. Benjamini–Hochberg q < {FDR:g}: {found:,} of {m:,}.")
+    if unestimable:
+        caption = f"{caption} {unestimable}"
     said = not_tested(entered, adjust)
     if said:
         caption = f"{caption} {said}"
@@ -471,37 +549,33 @@ class FeatureWiseTests(BaseEstimator):
     ``features``: the study factors as the model matrix holds them; ``named``: the same, as the
     roles answer named them; ``forms``: those whose declared form is not a straight line, by
     their ``named`` column, whose table is refused (:func:`formed_study_factor`); ``categories``:
-    those that enter the matrix as indicators of their levels, with the design's ``predictors``
-    to tell their columns (``entered_``, :func:`indicator_columns`)."""
+    those that enter the matrix as indicators of their levels. Their columns are the encoder's,
+    which this step does not see: the family reads them off the fitted pipeline
+    (:meth:`FeatureWise.inference`, :func:`category_columns`), and a step that holds them already
+    (the effects stage's, ``entered_``) hands them on."""
 
     # A step pickled before ``named``, ``forms`` and ``categories`` reads them as given none.
     named: Sequence[str] | None = None
     forms: Mapping[str, Any] | None = None
     categories: Sequence[str] | None = None
-    predictors: Sequence[str] | None = None
     entered_: Mapping[str, Sequence[str]] | None = None
 
     def __init__(self, task: str = "regression", features: Sequence[str] | None = None,
                  named: Sequence[str] | None = None, forms: Mapping[str, Any] | None = None,
-                 categories: Sequence[str] | None = None,
-                 predictors: Sequence[str] | None = None):
+                 categories: Sequence[str] | None = None):
         self.task = task
         self.features = features
         self.named = named
         self.forms = forms
         self.categories = categories
-        self.predictors = predictors
 
     def fit(self, X: pd.DataFrame, y: Any) -> "FeatureWiseTests":
         frame = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X)
         self.feature_names_in_ = np.asarray([str(c) for c in frame.columns], dtype=object)
         self.n_features_in_ = frame.shape[1]
         self.tested_, self.adjust_ = split_columns(list(frame.columns), self.features)
-        self.entered_ = (indicator_columns(self.feature_names_in_.tolist(), self.tested_,
-                                           self.categories, self.predictors)
-                         if self.categories else None)
         self.table_ = featurewise_table(frame, y, self.task, self.features, named=self.named,
-                                        forms=self.forms, entered=self.entered_)
+                                        forms=self.forms)
         if self.task == "binary":
             _, event, other = event_indicator(y)
             self.classes_ = np.asarray([0 if other is None else other, event], dtype=object)
@@ -570,8 +644,7 @@ class FeatureWise(FamilyBase):
         categories = [c for c in exposures if c in coded and c not in forms]
         return FeatureWiseTests(task=task, features=energy_names(exposures, spec),
                                 named=exposures, forms=forms or None,
-                                categories=categories or None,
-                                predictors=list(spec.predictors) if categories else None)
+                                categories=categories or None)
 
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         if task == "binary":
@@ -597,13 +670,18 @@ class FeatureWise(FamilyBase):
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
                   event: str | None = None) -> Any:
-        """The feature-wise table on the matrix the model step saw, clustered when rows repeat."""
+        """The feature-wise table on the matrix the model step saw, clustered when rows repeat. A
+        study factor that is a category enters with the columns the pipeline's own encoder made of
+        it (:func:`category_columns`); a pipeline of the model step alone (the effects stage's, on
+        a matrix) hands them on from the step (``entered_``)."""
         model = pipeline[-1]
+        entered = getattr(model, "entered_", None)
+        if len(getattr(pipeline, "steps", None) or ()) > 1 and getattr(model, "categories", None):
+            entered = category_columns(pipeline, model.categories)
         return featurewise_table(self._matrix(pipeline, X), y, task,
                                  getattr(model, "features", None), clusters, event,
                                  named=getattr(model, "named", None),
-                                 forms=getattr(model, "forms", None),
-                                 entered=getattr(model, "entered_", None))
+                                 forms=getattr(model, "forms", None), entered=entered)
 
     def assess(self, s: Situation) -> Assessment:
         if s.purpose != "inference":
@@ -660,6 +738,6 @@ def _register() -> None:
 _register()
 
 __all__ = ["CR2_MAX_FEATURES", "FDR", "FEATUREWISE", "FORMED_STUDY_FACTOR", "FeatureWise",
-           "FeatureWiseTests", "bh_adjust", "classical_tests", "energy_names", "event_indicator",
-           "featurewise_table", "formed_study_factor", "indicator_columns", "no_study_factor",
-           "not_tested", "split_columns"]
+           "FeatureWiseTests", "bh_adjust", "categories_said", "category_columns", "classical_tests",
+           "energy_names", "event_indicator", "featurewise_table", "formed_study_factor",
+           "no_study_factor", "not_estimable", "not_tested", "nothing_left", "split_columns"]

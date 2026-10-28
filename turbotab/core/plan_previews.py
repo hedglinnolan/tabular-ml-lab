@@ -700,14 +700,68 @@ def model_sequence_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 ALPHA = 0.05
 
 
+def planned_tests(ctx: PreviewContext, state: Any, family: Sequence[str]) -> Any:
+    """``(tests, exits)``: the members of the exposure family the feature-wise table would test
+    under ``state``, and the ways forward of its refusal where it would test none. The family's
+    step is built as the fit builds it (``FeatureWise.build_for``) on the design spec the column
+    summaries give (``pipeline.design_spec`` on the columns' types, no value read): a member that
+    enters as one column is tested; a category (text, or recorded as codes) enters as indicators
+    of its levels, adjusted for, not tested; a member in a declared form other than a straight
+    line refuses the table, as does a family with no member to test, in the refusal's own words
+    (``estimand.FamilyTests``). A column the design's filters drop on the rows (an omics QC
+    filter) is not known here. None where the spec cannot be read (a reading the fit asks first,
+    or no predictor yet)."""
+    from turbotab.core import estimand as est
+    from turbotab.core.models.featurewise import (FEATUREWISE, formed_study_factor,
+                                                  no_study_factor)
+    from turbotab.core.models.pipeline import (design_spec, input_columns, model_predictors,
+                                               modeling_frame)
+
+    store = ctx.datastore
+    if asks_first(ctx, state, offer=False) is not None:
+        return None
+    predictors = model_predictors(state)
+    if not predictors:
+        return None
+    available = set(store.columns)
+    columns = [c for c in dict.fromkeys(input_columns(predictors, state.energy_adjustment))
+               if c in available]
+    try:
+        # The columns' types alone: a frame of no row, read as every stage reads the table.
+        empty = modeling_frame(store, columns, np.asarray([], dtype=np.int64))
+        spec = design_spec(state, empty, predictors,
+                           column_info={c.name: c for c in store.info().columns})
+    except Exception:  # noqa: BLE001 - the preview then counts every member, as before
+        return None
+    step = FEATUREWISE.build_for(spec, getattr(state, "task", None) or "regression", "inference",
+                                 0, len(spec.inputs))
+    members = [str(c) for c in family]
+    named = [str(c) for c in step.named or []]
+    features = [str(c) for c in step.features or []]
+    if step.forms:
+        reason, exits = formed_study_factor(step.forms, named, features)
+        return est.FamilyTests(members, [], [], [], [], refused=reason), exits
+    held = {str(c) for c in step.categories or []}
+    tested = [n for n in named if n not in held]
+    if not tested:
+        reason, exits = no_study_factor(features, named)
+        return est.FamilyTests(members, [], [], [], [], refused=reason), exits
+    return est.FamilyTests(members, [m for m in members if m in tested],
+                           [m for m in members if m in held], [],
+                           [m for m in members if m not in tested and m not in held]), []
+
+
 def multiplicity_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     """The threshold each of the family's tests is held to, by its rank among the p-values: flat at
-    0.05 unadjusted (the count stated, or none), or Benjamini–Hochberg's line i × q / m. The family
-    is every settled exposure, each tested in turn (``estimand.family_exposures``, the effects
-    stage's and the feature-wise fit's). Drawn without the p-values: the method is chosen before
-    they are seen (Gelman & Loken 2013, forking paths)."""
+    0.05 unadjusted (the count stated, or none), or Benjamini–Hochberg's line i × q / m. The tests
+    are those the feature-wise table would make (:func:`planned_tests`, the effects stage's and
+    the feature-wise fit's): a category among the members is adjusted for, not tested, and where
+    the table would test none no threshold is drawn and the refusal is said (the orchestrator's
+    ruling (1) on the swarm's tail); before the rows are drawn, every settled exposure
+    (``estimand.family_exposures``). Drawn without the p-values: the method is chosen before they
+    are seen (Gelman & Loken 2013, forking paths)."""
     from turbotab.core import estimand as est
-    from turbotab.core.voice import question_name
+    from turbotab.core.voice import listing, question_name
 
     after = after_state(decision, ctx)
     purpose = getattr(after, "purpose", None)
@@ -719,12 +773,37 @@ def multiplicity_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                             f"changes nothing; it applies under inference, which "
                             f"{question_name('purpose')} settles.")
         return []
-    m = len(est.family_exposures(after))
+    family = est.family_exposures(after)
+    m = len(family)
     if m < 2:
         ctx.read["note"] = (f"With {fmt_count(m)} study factor{'' if m == 1 else 's'} there is no "
                             f"family of tests to adjust: the method applies to two or more, which "
                             f"{question_name('roles')} settle.")
         return []
+    planned = planned_tests(ctx, after, family)
+    tests, exits = planned if planned is not None else (None, [])
+    if tests is not None and not tests.tested:
+        # No test would be made: no threshold is drawn, and the refusal says why in its own words,
+        # with its ways forward that record an answer (a straight line for a formed member).
+        ctx.caution = Caution(
+            text=f"No multiplicity method would apply: {tests.refused}",
+            exits=[CautionExit(label=str(e["label"]), decision=dict(e["decision"]))
+                   for e in exits if e.get("decision")])
+        ctx.read["note"] = (f"Feature-wise regression would test none of the {fmt_count(m)} study "
+                            f"factors, so there is no threshold to draw.")
+        return []
+    untested = ""
+    if tests is not None and not tests.all_tested:
+        m = len(tests.tested)
+        if tests.categories:
+            one = len(tests.categories) == 1
+            untested += (f" {listing(tests.categories)} {'is a category' if one else 'are categories'}"
+                         f", adjusted for in each test, not tested.")
+        if tests.absent:
+            one = len(tests.absent) == 1
+            untested += (f" {listing(tests.absent)} {'has' if one else 'have'} no column of "
+                         f"{'its' if one else 'their'} name in the model matrix, so "
+                         f"{'it is' if one else 'none is'} tested.")
     ranks = np.arange(1, m + 1, dtype=float)
     keep = np.unique(np.linspace(0, m - 1, min(m, POINTS)).round().astype(int))
 
@@ -735,16 +814,17 @@ def multiplicity_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
     now = (est.family_multiplicity(ctx.state)[0] if est.current_estimand(ctx.state) is not None
            else None)
+    tests_word = "test" if m == 1 else "tests"
     if decision.method == "bh":
-        text = (f"{fmt_count(m)} tests: the i-th smallest p must fall below i × 0.05 / {m:,}; "
-                f"the smallest below {fmt_value(ALPHA / m)}.")
+        text = (f"{fmt_count(m)} {tests_word}: the i-th smallest p must fall below i × 0.05 / "
+                f"{m:,}; the smallest below {fmt_value(ALPHA / m)}.")
     elif decision.method == "stated_count":
-        text = (f"{fmt_count(m)} tests, each held to 0.05; the count is stated beside every "
+        text = (f"{fmt_count(m)} {tests_word}, each held to 0.05; the count is stated beside every "
                 f"p-value.")
     else:
-        text = f"{fmt_count(m)} tests, each held to 0.05, with no adjustment."
+        text = f"{fmt_count(m)} {tests_word}, each held to 0.05, with no adjustment."
     ctx.read["note"] = ("Drawn without the p-values: the method is declared before the results "
-                        "are seen.")
+                        "are seen." + untested)
     ctx.read["multiplicity"] = {"m": m}
     population_block(ctx, after, decision)  # no test at all where the fit blocks it (§4)
     return [RelationshipView(

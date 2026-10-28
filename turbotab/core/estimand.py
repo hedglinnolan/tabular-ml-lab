@@ -1164,6 +1164,115 @@ def multiplicity_statement(state: Any, spec: Any, n: int) -> str:
             f"hypotheses, {ROTHMAN}), with every member shown.{kept}")
 
 
+@dataclass
+class FamilyTests:
+    """What the feature-wise table tested of an exposure family (the orchestrator's ruling (1) on
+    the swarm's tail): the members it ``tested`` (a row with a p-value), and each other member by
+    why not: a category whose indicators each test adjusts for (``categories``), a row with no
+    estimate given the covariates (``unestimable``), or no column of its name in the model matrix
+    (``absent``). ``refused``: the table's reason where it tested none, in its own words."""
+
+    exposures: list[str]
+    tested: list[str]
+    categories: list[str]
+    unestimable: list[str]
+    absent: list[str]
+    refused: str | None = None
+
+    @property
+    def all_tested(self) -> bool:
+        return len(self.tested) == len(self.exposures)
+
+
+def family_tests(rows: Sequence[Mapping[str, Any]] | None, exposures: Sequence[str],
+                 predictors: Sequence[str] = (), *, refused: str | None = None,
+                 categories: Sequence[str] = ()) -> FamilyTests:
+    """The family's tests as the feature-wise table's ``rows`` hold them, each member's row read by
+    :func:`primary_features` (its energy step's name among them). ``categories``: the members the
+    table says enter as indicators of their levels; ``refused``: the table's refusal, kept only
+    where no member was tested."""
+    members = [str(e) for e in exposures]
+    names = [str(r.get("feature")) for r in rows or []]
+    tested, cats, unestimable, absent = [], [], [], []
+    held = {str(c) for c in categories}
+    for e in members:
+        mine = set(primary_features(names, e, predictors))
+        own = [r for r in rows or [] if str(r.get("feature")) in mine]
+        if any(r.get("p") is not None for r in own):
+            tested.append(e)
+        elif e in held:
+            cats.append(e)
+        elif own:
+            unestimable.append(e)
+        else:
+            absent.append(e)
+    return FamilyTests(members, tested, cats, unestimable, absent,
+                       refused=(refused or None) if not tested else None)
+
+
+def _untested_words(tests: FamilyTests) -> list[str]:
+    """One sentence for each kind of member the table did not test, saying why."""
+    from turbotab.core.voice import listing
+
+    said = []
+    for group, one, many in (
+            (tests.categories,
+             "{x} is a category: in each feature-wise model it enters as indicators of its levels, "
+             "not one column, so it is adjusted for in each test, not tested.",
+             "{x} are categories: in each feature-wise model they enter as indicators of their "
+             "levels, not one column, so they are adjusted for in each test, not tested."),
+            (tests.unestimable,
+             "{x} is not estimable given the covariates: nothing of it is left once they are "
+             "projected out, so it is not tested.",
+             "{x} are not estimable given the covariates: nothing of each is left once they are "
+             "projected out, so none is tested."),
+            (tests.absent,
+             "{x} has no column of its name in the model matrix, so it is not tested.",
+             "{x} have no column of their names in the model matrix, so none is tested.")):
+        if group:
+            said.append((one if len(group) == 1 else many).format(x=listing(group)))
+    return said
+
+
+def tested_multiplicity_statement(state: Any, spec: Any, tests: FamilyTests | None) -> str:
+    """The family's multiplicity sentence as its feature-wise table ran it (the orchestrator's
+    ruling (1)): with every member tested, or no feature-wise table to read (``tests`` None), the
+    estimand's own (:func:`multiplicity_statement`), byte for byte; with some, the count is of the
+    members tested and the others are named with why; with none, no test or multiplicity method
+    is claimed, and the table's refusal says why in its own words."""
+    if tests is None or tests.all_tested:
+        n = len(tests.exposures) if tests is not None else len(exposures_of(state, spec))
+        return multiplicity_statement(state, spec, n)
+    from turbotab.core.voice import listing
+
+    n, tested = len(tests.exposures), tests.tested
+    if not tested:
+        why = tests.refused or " ".join(_untested_words(tests))
+        return (f"Feature-wise regression tested none of the {n:,} exposures, so no multiplicity "
+                f"method was applied: {why}")
+    k, one = len(tested), len(tested) == 1
+    head = (f"Feature-wise regression tested {k:,} of the {n:,} exposures "
+            f"({listing(tested)})" + ("" if one else ", each in turn"))
+    method, _ = family_multiplicity(state)
+    if method == "none":
+        said = (f"{head}, with no multiplicity control, recorded as a limitation: at p < 0.05 about "
+                f"{0.05 * k:,.0f} would pass by chance alone; every exposure tested is shown.")
+    elif method == "fdr_bh":
+        said = (f"{head}; Benjamini–Hochberg q-values control the false-discovery rate across "
+                f"{'that 1 test' if one else f'all {k:,}'} ({BENJAMINI_HOCHBERG}), and every "
+                f"exposure tested is shown, significant or not.")
+    else:
+        kept = (" It was kept for an omics family as recorded: the field expects false-discovery "
+                "control." if omics_family(state) else
+                " It was kept for this many tests as recorded."
+                if unadjusted_blocked(state, k) else "")
+        said = (f"{head}; p-values are not adjusted for multiplicity, and "
+                f"{'that 1 test is' if one else f'all {k:,} tests are'} stated (customary for a few "
+                f"declared nutrient hypotheses, {ROTHMAN}), with every exposure tested "
+                f"shown.{kept}")
+    return " ".join([said, *_untested_words(tests)])
+
+
 def _option_words(state: Any, exposure: Any,
                   nested: Mapping[str, str] | None = None) -> str | None:
     """The substitution option's consequence (Q-b): the swap as every surface words it, within the
@@ -1179,6 +1288,42 @@ def _option_words(state: Any, exposure: Any,
         if len(text.split()) <= BUDGETS["option_consequence"]:
             return text
     return None
+
+
+def family_consequence(state: Any, family: Sequence[str]) -> str:
+    """The family option's consequence on the estimand card, before any model is fit (the
+    orchestrator's ruling (1)): feature-wise regression tests each member that enters the model as
+    one column, adjusted for the covariates and not for the other members it tests, and a category
+    enters each test as indicators of its levels, adjusted for, not tested: the members the
+    answers record as codes are named (the card has no column's values, so a text column is not
+    known for one here). Where a member's declared form is not a straight line, the table is
+    refused, so the consequence claims no test and gives the refusal in its own words
+    (``models.featurewise.formed_study_factor``)."""
+    from turbotab.core.methods.exposure_form import _form_of, current_forms
+    from turbotab.core.models.featurewise import formed_study_factor
+    from turbotab.core.readings import confirmation
+    from turbotab.core.voice import listing
+
+    members = [str(c) for c in family]
+    forms = {c: f for c, f in current_forms(state).items()
+             if c in members and _form_of(f)[0] != "linear"}
+    if forms:
+        reason, _ = formed_study_factor(forms, list(forms), list(forms))
+        return (f"None of the {len(members):,} study factors would be tested as their forms stand "
+                f"(the feature-wise family): {reason}")
+    coded = [c for c in members if confirmation(state, "code_or_count", c) == "code"]
+    said = (f"Each of the {len(members):,} study factors that enters the model as one column is "
+            f"tested in turn, adjusted for the covariates but not for the other study factors "
+            f"tested, with its multiplicity method; every one tested is shown (the feature-wise "
+            f"family).")
+    if coded:
+        one = len(coded) == 1
+        return (f"{said} {listing(coded)} {'is' if one else 'are'} recorded as "
+                f"{'a category' if one else 'categories'}: {'it enters' if one else 'they enter'} "
+                f"each test as indicators of {'its' if one else 'their'} levels, adjusted for, not "
+                f"tested, as any category among them would.")
+    return (f"{said} A category among them enters each test as indicators of its levels: it is "
+            f"adjusted for, not tested.")
 
 
 def estimand_card(state: Any, task: str | None, prevalence: float | None = None, *,
@@ -1223,10 +1368,7 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None,
         "family": ({"n": len(family), "energy_contrast": family_contrast_applies(state),
                     "measures": measures_offered(task, family=True),
                     "multiplicity": multiplicity_question(state, len(family)),
-                    "consequence": (f"Each of the {len(family):,} study factors is reported in turn, "
-                                    f"adjusted for the covariates but not for the other study factors, "
-                                    f"with its multiplicity method; every member is shown (the "
-                                    f"feature-wise family).")}
+                    "consequence": family_consequence(state, family)}
                    if len(family) >= 2 and fitted_measures(task, family=True) else None),
         "effects": [
             {"effect": "total", "label": "Total effect",
@@ -1250,11 +1392,15 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None,
 
 
 def caption(state: Any, task: str | None = None, *,
-            nested: Mapping[str, str] | None = None) -> str | None:
+            nested: Mapping[str, str] | None = None,
+            tests: FamilyTests | None = None) -> str | None:
     """The sentence the inference table is captioned with, worded from the declared estimand: which
     effect of which exposure, on what scale, conditional on what, and what was left out and why.
     ``nested``: the values' reading of the parts inside their totals (:func:`values_nesting`), as
-    the design reads it for Table 2; None where no table is at hand."""
+    the design reads it for Table 2; None where no table is at hand. ``tests``: an exposure
+    family's tests as its feature-wise table ran them (:func:`family_tests`), so the count of
+    tests is of the members tested, and none is claimed where none was (the orchestrator's ruling
+    (1)); None, every member's."""
     spec = current_estimand(state)
     if spec is None or _get(state, "purpose") != "inference":
         return None
@@ -1269,10 +1415,15 @@ def caption(state: Any, task: str | None = None, *,
         scale = (f"as the {MEASURE_WORDS[measure]}" if measure == "exposure_mean_difference"
                  else f"as a {MEASURE_WORDS.get(measure, measure)} per unit of each")
         method = MULTIPLICITY_WORDS[family_multiplicity(state)[0]]
+        k = len(family) if tests is None or tests.all_tested else len(tests.tested)
+        shown = (f"every member shown, with {method} ({k:,} tests)" if k == len(family) else
+                 f"every one tested shown, with {method} ({k:,} test{'s' if k != 1 else ''} of "
+                 f"the {len(family):,})" if k else
+                 "none tested, so with no multiplicity method applied")
         text = (f"The {effect} effect of each of the {len(family):,} exposures "
                 f"({_listing(family, limit=3)}) on {_tick(target)}, one at a time"
                 + (f" ({what})" if what else "")
-                + f", {scale}, every member shown, with {method} ({len(family):,} tests)")
+                + f", {scale}, {shown}")
     else:
         exposure = _get(spec, "exposure")
         # FORM: the unit on the exposure's final scale (``exposure_form.estimand_unit``), a stale
@@ -1344,7 +1495,10 @@ def primary_features(fitted_features: Iterable[str], exposure: str,
     and the spline or quintile terms the form made of either (a spline's ``x'``, ``x''`` as ``rms``
     labels them, ``methods.exposure_form.spline_names``; a quintile's ``x_Q2``). A name that begins
     with the exposure's but belongs to a longer predictor of ``predictors`` (``fat_sat`` beside the
-    exposure ``fat``) is that predictor's, not the exposure's."""
+    exposure ``fat``) is that predictor's, not the exposure's, its spline terms among them
+    (``fat_sat'`` is ``fat_sat``'s, read without its primes: the verifier's T2V3-2). Where the
+    fitted encoder is at hand, a category's columns are its own encoding's
+    (``models.featurewise.category_columns``), never a name's."""
     exposure = str(exposure)
     longer = [str(p) for p in predictors if str(p) != exposure and str(p).startswith(f"{exposure}_")]
     out = []
@@ -1354,7 +1508,7 @@ def primary_features(fitted_features: Iterable[str], exposure: str,
         if not (base.rstrip("'") == exposure or base.startswith(f"{exposure}_")
                 or base.startswith(f"{exposure}[")):
             continue
-        if any(base == p or base.startswith(f"{p}_") for p in longer):
+        if any(base.rstrip("'") == p or base.startswith(f"{p}_") for p in longer):
             continue
         out.append(name)
     return out
@@ -1659,37 +1813,88 @@ def annotate_fit(artifact: Any, state: Any, *, nested: Mapping[str, str] | None 
     if spec is None:
         return artifact
     exposures = exposures_of(state, spec)
-    predictors = list(predictor_roles(state))
+    # A grouping given its own intercepts is in every model beside the predictors with a role, so
+    # its intercepts' names (`grp_site_s2`) are its own, never a category `grp`'s.
+    fe = fixed_effects_column(state)
+    predictors = [*predictor_roles(state), *([fe] if fe else [])]
+    family = bool(_get(spec, "family"))
     out = dict(artifact)
     features: set[str] = set()
     models = []
+    tests = None
     for m in out.get("models") or []:
         m = dict(m)
         rows = m.get("coefficients")
+        each = _estimates_each_in_turn(str(m.get("family")))
+        if family and each and tests is None:
+            tests = _fit_family_tests(m, exposures, predictors)
         if rows:
             mine = {f for e in exposures
                     for f in primary_features([r.get("feature") for r in rows], e, predictors)}
+            if each and not family and not mine:
+                # The orchestrator's ruling (2): the table tests another study factor, none of the
+                # estimand's (a category enters as its indicators), so it is refused as the
+                # effects stage refuses it, never shown with that test as an adjustment term.
+                m = _no_test_of_the_estimand(m, exposures)
+                models.append(m)
+                continue
             features |= mine
             shown, appendix = split_rows(rows, mine)
             m["coefficients"], m["adjustment_terms"] = shown, appendix
         models.append(m)
     out["models"] = models
-    family = bool(_get(spec, "family"))
     out["estimand"] = {
         "exposure": exposure_key(spec), "effect": _get(spec, "effect"),
         "measure": _get(spec, "measure"),
-        "contrast": _get(spec, "contrast"), "caption": caption(state, out.get("task"), nested=nested),
+        "contrast": _get(spec, "contrast"),
+        "caption": caption(state, out.get("task"), nested=nested, tests=tests),
         "adjusted": [c for c, d in derived_roles(state).items() if d.adjusted],
         "left_out": {c: d.role for c, d in derived_roles(state).items() if not d.adjusted},
         "secondary": secondary_columns(state),
         "features": sorted(features),
         "appendix": APPENDIX_TITLE,
-        "multiplicity": multiplicity_statement(state, spec, len(exposures)) if family else None,
+        "multiplicity": tested_multiplicity_statement(state, spec, tests) if family else None,
     }
     from turbotab.core.time_varying import fit_note  # V2 causal row
 
     out["estimand"]["time_varying"] = fit_note(state)
     return out
+
+
+COULD_NOT_COMPUTE = "The coefficient table could not be computed"  # ``modeling._tests_only``'s
+
+
+def _fit_family_tests(model: Mapping[str, Any], exposures: Sequence[str],
+                      predictors: Sequence[str]) -> FamilyTests:
+    """An exposure family's tests as the fit's feature-wise table (its artifact entry, ``model``)
+    ran them: its rows, its refusal (or why it could not be computed), and the members its caption
+    says enter as indicators of their levels (``models.featurewise.categories_said``: the fit's
+    entry records them in no other field)."""
+    from turbotab.core.models.featurewise import categories_said
+
+    info = model.get("inference") or {}
+    refused = info.get("refused") or next(
+        (str(c) for c in model.get("concerns") or [] if str(c).startswith(COULD_NOT_COMPUTE)), None)
+    return family_tests(model.get("coefficients") or [], exposures, predictors, refused=refused,
+                        categories=categories_said(str(info.get("caption") or "")))
+
+
+def _no_test_of_the_estimand(model: dict[str, Any], exposures: Sequence[str]) -> dict[str, Any]:
+    """The fit's feature-wise entry, served where its table tests none of the estimand's columns
+    (the orchestrator's ruling (2)): refused in the words the fit and the effects stage refuse a
+    table that holds no column of the study factor's name (``featurewise.no_study_factor``), with
+    no row shown as an effect or an adjustment term, and none of the table's own concerns, which
+    are of the other study factor's test; the entry's first concern, that the family makes no
+    predictions, stays."""
+    from turbotab.core.models.featurewise import no_study_factor
+
+    reason, exits = no_study_factor(list(exposures), list(exposures))
+    info = dict(model.get("inference") or {})
+    info.update(covariance="none", caption=f"No tests: {reason}", refused=reason, exits=exits,
+                missing=None)
+    kept = [c for c in (model.get("concerns") or [])[:1] if not str(c).startswith(COULD_NOT_COMPUTE)]
+    return {**model, "coefficients": [], "adjustment_terms": [], "inference": info,
+            "concerns": [*kept, reason]}
 
 
 # ── refusals ─────────────────────────────────────────────────────────────────

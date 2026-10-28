@@ -306,13 +306,17 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     to refuse a formed study factor, and a category the estimand names, and whose family sentence
     came to count the tests feature-wise regression runs; and the fit again when a model's methods
     paragraph beside a refused feature-wise table came to say it was refused rather than that 0
-    features were tested (T3)."""
+    features were tested (T3); and the fit again when a feature-wise study factor with nothing left
+    after the covariates came to be refused by row and the detection sentence beside a refused
+    table to claim no interval, with the effects stage, whose family sentence came to count the
+    tests its feature-wise table made and whose models came to name the category they adjust for
+    (T4a)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 35, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 36, 21)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
-            versions["secondary"], versions["scales"]) == (9, 18, 16, 9, 7)
+            versions["secondary"], versions["scales"]) == (10, 18, 16, 9, 7)
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:

@@ -2397,8 +2397,11 @@ def detection_details(state: Any, method: str | None, *, censored: Mapping[str, 
     (``censored``, after the QC filters; the answer's own columns when no design is at hand), and
     how, by purpose. Under inference with multiple imputation they are drawn below the limit within
     each imputation; filled once, the sentence says it is a single fill recorded as a limitation.
-    "After normalization and before the log" is said only where the design's steps put the fill
-    there (``steps``)."""
+    Where the table records no such answer (``missing``: refused, or blocked by the answer, as a
+    feature-wise table under multiple imputation is), the sentence states the answer recorded and
+    that the table was not estimated from it, with no claim of an interval (the orchestrator's
+    ruling (5) on the swarm's tail). "After normalization and before the log" is said only where
+    the design's steps put the fill there (``steps``)."""
     if censored is not None:
         n = len(censored.get("columns") or [])
     else:
@@ -2415,10 +2418,19 @@ def detection_details(state: Any, method: str | None, *, censored: Mapping[str, 
     where = " after normalization and before the log" if between else ""
     rows = "the training fold" if purpose == "prediction" else "the analyzed rows"
     record = dict(missing or {})
-    if getattr(getattr(state, "missing", None), "strategy", None) == "complete_case":
+    strategy = getattr(getattr(state, "missing", None), "strategy", None)
+    if strategy == "complete_case":
         # Complete cases leave a row with any blank before the design, so nothing is filled.
         return (f"Rows with a value below detection in any of {what} were left out (complete "
                 f"cases).")
+    if purpose == "inference" and strategy == "multiple_imputation" \
+            and record.get("method") != "multiple_imputation":
+        # The answer is multiple imputation, but the table holds no record of it: it was refused
+        # (a feature-wise table is not pooled over the copies), so no estimate or interval rests
+        # on a fill or a draw, and none is claimed (the orchestrator's ruling (5)).
+        return (f"The missing-values answer is multiple imputation, which draws the values below "
+                f"detection in {what} below the limit within each copy; the table was not "
+                f"estimated from the copies, so no estimate or interval rests on them.")
     if purpose == "inference" and record.get("method") == "multiple_imputation":
         m = int(record.get("m") or 0)
         if method == "half_minimum":  # filled before the chained equations (``imputation_frame``)
@@ -2439,7 +2451,13 @@ def detection_details(state: Any, method: str | None, *, censored: Mapping[str, 
         how = (f"its expected value below the limit under a left-censored normal fitted to {scale} "
                f"on {rows} ({LUBIN})")
     said = f"Values below detection in {what} were filled{where}, each by {how}."
-    if purpose == "inference":
+    if purpose == "inference" and strategy == "impute" and record.get("method") != "single_fill":
+        # A single fill the table holds no record of: it was blocked or refused, so it holds no
+        # interval to call too narrow (the orchestrator's ruling (5)).
+        said += (" A single fill" + (", recorded as a limitation" if getattr(
+            getattr(state, "missing", None), "acknowledged", False) else "") +
+                 "; the table was not estimated from it, so no interval rests on it.")
+    elif purpose == "inference":
         said += " A single fill, recorded as a limitation: its intervals are too narrow."
     return said
 
