@@ -2168,18 +2168,18 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
         return artifact.methods
     head, *rest = artifact.families
     if all(_reporting(f) == _reporting(head) for f in rest):
-        text, follows = _family_methods(artifact, head)
+        text, follows = _family_sentence(artifact, head)
         return f"{text} {artifact.multiplicity}" if follows and artifact.multiplicity else text
     task = str(getattr(state, "task", None) or "regression")
     parts = []
     for fam in artifact.families:
-        text, _ = _family_methods(artifact, fam)
+        text, _ = _family_sentence(artifact, fam)
         parts.append(f"Under {_named(get_family(fam.family), task)}, {text[0].lower()}{text[1:]}")
     text = " ".join(parts)
     return f"{text} {artifact.multiplicity}" if artifact.multiplicity else text
 
 
-def _family_methods(artifact: EffectsArtifact, fam: Any) -> tuple[str, bool]:
+def _family_sentence(artifact: EffectsArtifact, fam: Any) -> tuple[str, bool]:
     """``(text, follows)``: the methods text of one family's sequence (:func:`methods_sentence`),
     and whether the family's multiplicity sentence follows it (not where no model of the family
     reports an estimate)."""
