@@ -30,18 +30,32 @@ def preview(drive: Any, body: dict[str, Any]) -> Any:
     return when_reached(lambda: drive.c.post(f"/api/projects/{drive.pid}/preview", json=body))
 
 
-def settle_reads(drive: Any, body: dict[str, Any], rounds: int = 4) -> None:
+def on_the_rows(drive: Any, body: dict[str, Any]) -> Any:
+    """``body`` previewed once the rows a form's preview draws on are computed for the answers as
+    they stand: the cohort and the split, which read the confirmed readings (``stages.ROLE_READS``),
+    so a reading recorded here computes both again. Until they are, the preview draws on no rows
+    (``plan_previews.pool``) and so asks nothing, whatever the fit would ask."""
+    wait_for(drive.c, drive.pid, {"cohort": "fresh", "split": "fresh"}, timeout=240)
+    return preview(drive, body)
+
+
+def settle_reads(drive: Any, body: dict[str, Any], rounds: int = 4) -> list[tuple[str, str]]:
     """The readings ``body``'s preview asks first, answered from the fixture's truth and recorded,
     as a user who knows the table answers the ask: a refusal's (the answer's own validators), or
-    the fit's ask on the preview's caution (``plan_previews.asks_first``)."""
+    the fit's ask on the preview's caution (``plan_previews.asks_first``). Each round previews on
+    the rows (:func:`on_the_rows`), so a round that sees no ask is one whose fit asks nothing.
+    Returns the readings the caution asked, in the order asked."""
     post = lambda d: drive.c.post(f"/api/projects/{drive.pid}/decisions", json=d)  # noqa: E731
+    said: list[tuple[str, str]] = []
     for _ in range(rounds):
-        response = answer_refusal(post, preview(drive, body), drive.truth,
-                                  lambda: preview(drive, body))
+        response = answer_refusal(post, on_the_rows(drive, body), drive.truth,
+                                  lambda: on_the_rows(drive, body))
         assert response.status_code == 200, response.text[:600]
         caution = response.json().get("caution") or {}
-        if not asked(caution.get("exits") or []):
-            return
+        readings = asked(caution.get("exits") or [])
+        if not readings:
+            return said
+        said += readings
         for decision in answers({"exits": caution["exits"]}, drive.truth):
             r = post(decision)
             assert r.status_code == 200, (decision, r.text[:600])
@@ -67,8 +81,11 @@ def test_a_form_previewed_for_a_column_the_answers_leave_out_is_a_typed_preview(
     drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "standard",
                                        "energy_column": "kcal", "nutrients": ["sugar"]})
     assert drive.reach("form", timeout=240)["status"] == "open"  # the form question, as asked
-    for body in (LEFT_OUT, MIXED):
-        settle_reads(drive, body)
+    # Unanswered, `cycle_begin_year`'s reading (codes or an amount) is among those the fit asks for
+    # before it computes (BLUEPRINT §14: the design stage asks first), so the left-out form's
+    # preview carries that ask; once they are answered, the caution below is gone.
+    assert ("code_or_count", "cycle_begin_year") in settle_reads(drive, LEFT_OUT)
+    settle_reads(drive, MIXED)
     wait_for(client, drive.pid, {"cohort": "fresh", "split": "fresh"}, timeout=240)
     recorded = len(drive.view()["decisions"])
 
