@@ -464,7 +464,11 @@ def build_graph() -> Graph:
             # proposals 20 (LEASH): the adjustment card's guesses cover clinical measurements,
             # medications and lifestyle under the exposure-outcome pairing, in blocks of the same
             # guess, with a multi-select answer; the grouping question's card shows each guess.
-            Stage("proposals", 20, ("working", "roles"),
+            # proposals 21 (the swarm's tail, T4a, 2026-10-27): the estimand card's family option
+            # says what feature-wise regression would test (a member recorded as codes adjusted
+            # for, not tested; none where a member's declared form refuses the table), in its
+            # consequence and in each multiplicity option, where it said every member is shown.
+            Stage("proposals", 21, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
@@ -753,8 +757,9 @@ def build_graph() -> Graph:
             # them, naming them, and the caption counts only the study factors tested (the whole
             # table refused where none is left); a category's indicators are read off its own
             # encoder, never its name; and beside a table refused under multiple imputation (or
-            # a single fill), the values-below-detection sentence states the answer and claims no
-            # interval, where it said a single fill's intervals were too narrow.
+            # a single fill), or one that holds no interval, the values-below-detection sentence
+            # states the answer and claims no interval, where it said a single fill's intervals
+            # were too narrow.
             Stage("fit", 36, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
@@ -857,7 +862,10 @@ def build_graph() -> Graph:
             # fit 33 (each draws its own SMC-FCS copies).
             # sensitivity 18, calibration 16, secondary 9, scales 7: as fit 34 (each refits the
             # feature-wise table and draws its own SMC-FCS copies).
-            Stage("sensitivity", 18, ("working", "design", "split", "target_info"),
+            # sensitivity 19, secondary 10 (the swarm's tail, T4a): as fit 36 (each refits the
+            # feature-wise table, which refuses by row a study factor with nothing left once the
+            # covariates are projected out, and reads a category's indicators off its encoder).
+            Stage("sensitivity", 19, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
@@ -889,7 +897,8 @@ def build_graph() -> Graph:
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
             # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
             # secondary 7: as sensitivity 16 above.
-            Stage("secondary", 9, ("working", "design", "split", "target_info"),
+            # secondary 10: as sensitivity 19 above.
+            Stage("secondary", 10, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -944,10 +953,13 @@ def build_graph() -> Graph:
             # members feature-wise regression tests and names a category it adjusts for.
             # effects 10 (the swarm's tail, T4a): as fit 36, and the family's multiplicity sentence
             # counts the members its feature-wise table tested, claiming no test or method where
-            # the table tested none (its refusal's words instead); each feature-wise model names
-            # the category whose indicators it holds as adjusted for (the unadjusted one "Without
-            # covariates"); and an exposure's columns are its own encoding's, never another
-            # predictor's (a longer one's spline terms, a fixed-effects grouping's intercepts).
+            # the table tested none (its refusal's words instead), said of Model 2 where another
+            # model tested other members, which it names; the methods text says which model
+            # reports an estimate where Model 2 reports none; each feature-wise model names the
+            # category whose indicators it holds as adjusted for, once (the unadjusted one
+            # "Without covariates"); and an exposure's columns are its own encoding's, never
+            # another predictor's (a longer one's spline terms, a fixed-effects grouping's
+            # intercepts).
             Stage("effects", 10, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),

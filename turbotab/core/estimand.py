@@ -1103,14 +1103,48 @@ def unadjusted_blocked(state: Any, n: int) -> bool:
     return multiplicity_rung("stated_count", n, omics_family(state)) == "block_and_record"
 
 
-def multiplicity_question(state: Any, n: int) -> dict[str, Any]:
+def multiplicity_question(state: Any, n: int, *,
+                          family: Sequence[str] | None = None) -> dict[str, Any]:
     """The family's multiplicity method, each option labeled customary and sound (BLUEPRINT north
     star 5), soundest first: Benjamini–Hochberg always; unadjusted p-values with the count stated
     are customary for a few declared nutrient hypotheses (Rothman 1990) and unsound for an omics
     family (``METABOLOMICS_PACK §08``: "per-feature testing with multiple-testing correction is
-    expected, and its absence is a fatal flaw in review"), where they are blocked and recorded."""
+    expected, and its absence is a fatal flaw in review"), where they are blocked and recorded.
+
+    ``n``: the family's members, by which the unadjusted rung is read, as the multiplicity answer
+    reads it (``methods.omics._multiplicity_leash``). ``family``: its members, so that each count of
+    tests is of those feature-wise regression would test (:func:`card_tests`, the verifier's
+    V4a-3): a member recorded as codes is named as adjusted for, not tested, and where a member's
+    declared form refuses the table no test is counted; ``n_tests`` is that count. Without it,
+    every member is counted."""
+    from turbotab.core.voice import listing
+
     omics = omics_family(state)
     blocked = unadjusted_blocked(state, n)
+    tested, coded, formed = (card_tests(state, family) if family is not None
+                             else (None, [], None))
+    k = n if tested is None else len(tested)
+    one = len(coded) == 1
+    after = (f"; {listing(coded)} {'is' if one else 'are'} recorded as "
+             f"{'a category' if one else 'categories'}, adjusted for, not tested"
+             if coded else "")
+    if formed is not None or not k:
+        # No test would be made: no option counts one, and each says why.
+        after = (f"; as their forms stand, none of the {n:,} study factors would be tested"
+                 if formed is not None else
+                 f"{after}, so none of the {n:,} study factors would be tested")
+        among, shown = "among the tests", "every member tested is still shown"
+        chance = "at p < 0.05 about one test in twenty passes by chance alone"
+        in_view = "every test"
+        across = f"across the tests made{after}"
+    else:
+        tests = f"{k:,} test{'' if k == 1 else 's'}"
+        among = f"among the {tests}"
+        shown = "every member tested is still shown" if coded else "every member is still shown"
+        chance = (f"{tests} at p < 0.05 give{'s' if k == 1 else ''} about {0.05 * k:,.0f} false "
+                  f"positives by chance alone")
+        in_view = "the 1 test" if k == 1 else f"all {tests}"
+        across = f"across {'that 1 test' if k == 1 else f'all {k:,} of them'}{after}"
     options = [
         {"key": "fdr_bh", "label": MULTIPLICITY_WORDS["fdr_bh"].capitalize(),
          "customary": {"field": "metabolomics and genomics",
@@ -1118,31 +1152,30 @@ def multiplicity_question(state: Any, n: int) -> dict[str, Any]:
                                "field's standard",
                        "source": METABOLOMICS_PACK},
          "sound": {"purpose": "inference", "verdict": "sound",
-                   "reason": f"controls the expected share of false discoveries among the {n:,} "
-                             f"tests ({BENJAMINI_HOCHBERG}), and every member is still shown"}},
+                   "reason": f"controls the expected share of false discoveries {among} "
+                             f"({BENJAMINI_HOCHBERG}), and {shown}{after}"}},
         {"key": "count_stated", "label": MULTIPLICITY_WORDS["count_stated"].capitalize(),
          "customary": {"field": "nutritional epidemiology",
                        "text": "a few declared nutrient hypotheses are reported without adjustment",
                        "source": ROTHMAN},
          "sound": ({"purpose": "inference", "verdict": "unsound",
-                    "reason": f"{n:,} tests at p < 0.05 give about {0.05 * n:,.0f} false positives "
-                              f"by chance alone; the omics field treats an unadjusted table as a "
-                              f"fatal flaw ({METABOLOMICS_PACK})"} if omics else
+                    "reason": f"{chance}; the omics field treats an unadjusted table as a fatal "
+                              f"flaw ({METABOLOMICS_PACK}){after}"} if omics else
                    {"purpose": "inference", "verdict": "unsound",
-                    "reason": f"{n:,} tests at p < 0.05 give about {0.05 * n:,.0f} false positives "
-                              f"by chance alone; the count stated is customary for a few declared "
-                              f"hypotheses, not {n:,}"} if blocked else
+                    "reason": f"{chance}; the count stated is customary for a few declared "
+                              f"hypotheses, not {n:,}{after}"} if blocked else
                    {"purpose": "inference", "verdict": "conditional",
-                    "reason": f"sound for a few hypotheses each declared on its own, read with all "
-                              f"{n:,} tests in view (STROBE item 20: \"multiplicity of analyses\")"})},
+                    "reason": f"sound for a few hypotheses each declared on its own, read with "
+                              f"{in_view} in view (STROBE item 20: \"multiplicity of "
+                              f"analyses\"){after}"})},
     ]
     customary_first = "fdr_bh" if omics or blocked else "count_stated"
     tension = (None if omics or blocked else
                f"For a few declared nutrient hypotheses the field reports unadjusted p-values with "
                f"the count stated ({ROTHMAN}); Benjamini–Hochberg controls the false-discovery rate "
-               f"across all {n:,} of them.")
+               f"{across}.")
     return {"question": "multiplicity", "options": options, "customary_first": customary_first,
-            "tension": tension, "n_tests": n}
+            "tension": tension, "n_tests": k}
 
 
 def multiplicity_statement(state: Any, spec: Any, n: int) -> str:
@@ -1273,6 +1306,40 @@ def tested_multiplicity_statement(state: Any, spec: Any, tests: FamilyTests | No
     return " ".join([said, *_untested_words(tests)])
 
 
+def sequence_multiplicity_statement(state: Any, spec: Any, primary: FamilyTests | None,
+                                    others: Sequence[tuple[str, FamilyTests]] = ()) -> str:
+    """The family's multiplicity sentence beside a declared sequence of feature-wise models (the
+    effects stage's Table 2): Model 2's, the primary's (:func:`tested_multiplicity_statement`),
+    byte for byte, where each other model whose table was made (``others``: its label, "The
+    unadjusted model", with its tests) tested the members the primary did. Where one tested
+    others (a member with nothing left once the covariates are projected out is tested without
+    them), the sentence is said of Model 2, and each such model's tests are named with the method
+    its own table applies across them, so no sentence says a member was tested in none where the
+    unadjusted model tested it (the verifier's V4a-2)."""
+    said = tested_multiplicity_statement(state, spec, primary)
+    differ = [(label, t) for label, t in others
+              if primary is not None and set(t.tested) != set(primary.tested)]
+    if not differ:
+        return said
+    from turbotab.core.voice import listing
+
+    method, _ = family_multiplicity(state)
+    parts = [f"In Model 2, the primary, {said[:1].lower()}{said[1:]}"]
+    for label, tests in differ:
+        n, k = len(tests.exposures), len(tests.tested)
+        if not k:
+            why = tests.refused or " ".join(_untested_words(tests))
+            parts.append(f"{label} tested none of them: {why}")
+            continue
+        which = f"each of the {n:,} exposures" if k == n else f"{k:,} of the {n:,} exposures"
+        how = ((f"with Benjamini–Hochberg q-values across "
+                f"{'that 1 test' if k == 1 else f'its {k:,} tests'}") if method == "fdr_bh" else
+               "with no multiplicity control" if method == "none" else
+               "with p-values not adjusted for multiplicity")
+        parts.append(f"{label} tested {which} ({listing(tests.tested)}), {how}.")
+    return " ".join(parts)
+
+
 def _option_words(state: Any, exposure: Any,
                   nested: Mapping[str, str] | None = None) -> str | None:
     """The substitution option's consequence (Q-b): the swap as every surface words it, within the
@@ -1290,6 +1357,28 @@ def _option_words(state: Any, exposure: Any,
     return None
 
 
+def card_tests(state: Any, family: Sequence[str]) -> tuple[list[str], list[str], str | None]:
+    """``(tested, coded, refused)``: what the estimand card knows, before any model is fit, of the
+    tests feature-wise regression would make of ``family`` (the orchestrator's ruling (1)): the
+    members it would test (each not recorded as codes), those the answers record as codes (each a
+    category, adjusted for, not tested), and, where a member's declared form is not a straight
+    line, the table's refusal in its own words (``models.featurewise.formed_study_factor``), so
+    none would be tested. The card has no column's values, so a text column is not known for a
+    category here, and is counted among the tested."""
+    from turbotab.core.methods.exposure_form import _form_of, current_forms
+    from turbotab.core.models.featurewise import formed_study_factor
+    from turbotab.core.readings import confirmation
+
+    members = [str(c) for c in family]
+    forms = {c: f for c, f in current_forms(state).items()
+             if c in members and _form_of(f)[0] != "linear"}
+    if forms:
+        reason, _ = formed_study_factor(forms, list(forms), list(forms))
+        return [], [], reason
+    coded = [c for c in members if confirmation(state, "code_or_count", c) == "code"]
+    return [c for c in members if c not in coded], coded, None
+
+
 def family_consequence(state: Any, family: Sequence[str]) -> str:
     """The family option's consequence on the estimand card, before any model is fit (the
     orchestrator's ruling (1)): feature-wise regression tests each member that enters the model as
@@ -1299,19 +1388,13 @@ def family_consequence(state: Any, family: Sequence[str]) -> str:
     known for one here). Where a member's declared form is not a straight line, the table is
     refused, so the consequence claims no test and gives the refusal in its own words
     (``models.featurewise.formed_study_factor``)."""
-    from turbotab.core.methods.exposure_form import _form_of, current_forms
-    from turbotab.core.models.featurewise import formed_study_factor
-    from turbotab.core.readings import confirmation
     from turbotab.core.voice import listing
 
     members = [str(c) for c in family]
-    forms = {c: f for c, f in current_forms(state).items()
-             if c in members and _form_of(f)[0] != "linear"}
-    if forms:
-        reason, _ = formed_study_factor(forms, list(forms), list(forms))
+    _, coded, reason = card_tests(state, members)
+    if reason is not None:
         return (f"None of the {len(members):,} study factors would be tested as their forms stand "
                 f"(the feature-wise family): {reason}")
-    coded = [c for c in members if confirmation(state, "code_or_count", c) == "code"]
     said = (f"Each of the {len(members):,} study factors that enters the model as one column is "
             f"tested in turn, adjusted for the covariates but not for the other study factors "
             f"tested, with its multiplicity method; every one tested is shown (the feature-wise "
@@ -1367,7 +1450,7 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None,
         # 2): offered with two or more exposures, as an omics table's features are.
         "family": ({"n": len(family), "energy_contrast": family_contrast_applies(state),
                     "measures": measures_offered(task, family=True),
-                    "multiplicity": multiplicity_question(state, len(family)),
+                    "multiplicity": multiplicity_question(state, len(family), family=family),
                     "consequence": family_consequence(state, family)}
                    if len(family) >= 2 and fitted_measures(task, family=True) else None),
         "effects": [

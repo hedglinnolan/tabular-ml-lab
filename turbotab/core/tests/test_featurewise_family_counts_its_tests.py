@@ -33,6 +33,14 @@ least squares on the design written out.
   row as not estimable given them, naming them, alone and beside a tested `fiber`.
 * (5) values below detection under multiple imputation, the table refused: the sentence states
   the answer and no interval.
+
+The repair round (the verifier's V4a-1 … V4a-5): a recorded single fill beside a table that holds
+no interval (chain 3 with 244 features, cluster-robust tests beyond what TurboTab computes) claims
+none, and keeps "its intervals are too narrow" beside CR2 intervals; where `fib` is estimable only
+without the covariates, the unadjusted model's estimate (statsmodels') is said to be reported and
+the family's sentence is said of Model 2, naming the unadjusted model's tests; the card's
+multiplicity options count no test where a member is formed and leave out a member recorded as
+codes, the numeric family's pinned; a category beside a numeric estimand is named once.
 """
 from __future__ import annotations
 
@@ -509,7 +517,9 @@ def test_a_sole_study_factor_with_nothing_left_is_refused_naming_the_covariates(
 
 def test_a_study_factor_with_nothing_left_beside_a_tested_one_is_counted_out(tmp_path):
     """{`fiber`, `fib`}: `fiber` is tested (statsmodels' estimate), `fib`'s row holds no number,
-    the caption counts 1 test and names `fib`, and the family's sentence counts 1 test."""
+    the caption counts 1 test and names `fib`, and the family's sentence counts 1 test: at the fit,
+    beside its one table, as it stands; at the effects stage, of Model 2, the unadjusted model's 2
+    tests named beside it (the verifier's V4a-2), where it counted 1 test unscoped."""
     frame = _frame()
     frame["fib"] = 2 * frame["activity"] + 1
     out = ef.run(frame, tmp_path, _family({"fiber": "exposure", "fib": "exposure"},
@@ -523,11 +533,15 @@ def test_a_study_factor_with_nothing_left_beside_a_tested_one_is_counted_out(tmp
     assert caption.startswith("Each of 1 study factors tested on its own with 4 adjustment "
                               "columns;")
     assert "Benjamini–Hochberg q < 0.05: 1 of 1. " + FIB in caption
-    said = out["effects"]["multiplicity"]
+    said = out["fit"]["estimand"]["multiplicity"]
     assert said.startswith("Feature-wise regression tested 1 of the 2 exposures (`fiber`);")
     assert said.endswith("`fib` is not estimable given the covariates: nothing of it is left once "
                          "they are projected out, so it is not tested.")
-    assert out["fit"]["estimand"]["multiplicity"] == said
+    crude = {r["feature"]: r for r in _sequence(out)["crude"]["effects"]}
+    assert all(crude[c]["p"] is not None for c in ("fiber", "fib"))  # the unadjusted model's 2
+    assert out["effects"]["multiplicity"] == (
+        f"In Model 2, the primary, f{said[1:]} The unadjusted model tested each of the 2 "
+        f"exposures (`fiber` and `fib`), with Benjamini–Hochberg q-values across its 2 tests.")
 
 
 @pytest.mark.parametrize("task", ["regression", "binary"])
@@ -656,3 +670,267 @@ def test_the_fits_methods_paragraph_beside_a_table_refused_under_multiple_imputa
         assert "intervals are too narrow" not in methods
     finally:
         run.close()
+
+
+# ── the repair round (the verifier's V4a-1 … V4a-5) ──────────────────────────
+
+FIB_THREE = ("`fib` is not estimable given the covariates: nothing of it is left once the 5 "
+             "adjustment columns (`sex_male`, `age`, `smoking`, `activity` and `bmi`) are "
+             "projected out, so it is not tested.")
+FIB_PAIR = ("`fib` and `fib2` are not estimable given the covariates: nothing of each is left once "
+            "the 4 adjustment columns (`sex_male`, `age`, `smoking` and `activity`) are projected "
+            "out, so none is tested.")
+
+
+def _fib_frame() -> pd.DataFrame:
+    """`fib` = 2 × `activity` + 1 and `fib2` = `age` / 2 + `activity`: each in the span of Model 2's
+    covariates, so nothing of it is left once they are projected out, but each a column of its own
+    without them."""
+    frame = _frame()
+    frame["fib"] = 2 * frame["activity"] + 1
+    frame["fib2"] = 0.5 * frame["age"] + frame["activity"]
+    return frame
+
+
+def _unadjusted(frame: pd.DataFrame, tested: str) -> tuple[float, float]:
+    """(estimate, p) of ``tested`` in statsmodels' glucose ~ tested, the classical t-test."""
+    fit = sm.OLS(frame["glucose"].to_numpy(float), _design(frame, [tested])).fit()
+    return float(fit.params[tested]), float(fit.pvalues[tested])
+
+
+def test_a_sole_study_factor_estimable_only_without_the_covariates_is_reported_from_that_model(
+        tmp_path):
+    """The verifier's V4a-2: `fib`, the one study factor, is estimated by the unadjusted model
+    (statsmodels' glucose ~ `fib`), and Model 2 and Model 3 are refused as not estimable given
+    their covariates. The methods text said "No estimate of `fib` is reported"; now it says the
+    unadjusted model reports it and each adjusted model reports none, in its refusal's words."""
+    frame = _fib_frame()
+    out = ef.run(frame, tmp_path, _state({"fib": "exposure"}, ["featurewise"], exposure="fib",
+                                         amounts=FIB_AMOUNTS))
+    sequence = _sequence(out)
+    (row,) = sequence["crude"]["effects"]
+    estimate, p = _unadjusted(frame, "fib")
+    assert row["estimate"] == pytest.approx(estimate, rel=1e-9)
+    assert row["p"] == pytest.approx(p, rel=1e-6)
+    assert sequence["model_2"]["effects"] is None  # the premise: refused by row
+    assert sequence["model_2"]["inference"]["refused"] == FIB
+    assert sequence["model_3"]["inference"]["refused"] == FIB_THREE
+    assert out["effects"]["methods"] == (
+        f"The estimate of `fib` is reported from the unadjusted model alone, fit on all 400 "
+        f"analyzed rows. Model 2, the primary, adjusted for `age`, `sex`, `smoking` and "
+        f"`activity`, reports none: {FIB} Model 3, further adjusted for `bmi`, reports none: "
+        f"{FIB_THREE}")
+
+
+def test_a_family_estimable_only_without_the_covariates_names_the_unadjusted_models_tests(
+        tmp_path):
+    """{`fib`, `fib2`}: the unadjusted model tests both (statsmodels' estimates and p-values, and
+    Benjamini–Hochberg q-values across the 2 by statsmodels' ``multipletests``), and Model 2 tests
+    neither. The family's sentence said feature-wise regression tested none of the 2, and the
+    methods text "No estimate of each exposure is reported"; now the sentence is of Model 2 and
+    names the unadjusted model's 2 tests. The fit's sentence, beside its one table (Model 2's
+    adjustment), still says none was tested."""
+    from statsmodels.stats.multitest import multipletests
+
+    frame = _fib_frame()
+    out = ef.run(frame, tmp_path, _family({"fib": "exposure", "fib2": "exposure"},
+                                           ["featurewise"],
+                                           amounts={**FIB_AMOUNTS,
+                                                    "code_or_count:fib2": "amount"}))
+    sequence = _sequence(out)
+    rows = {r["feature"]: r for r in sequence["crude"]["effects"]}
+    truth = {c: _unadjusted(frame, c) for c in ("fib", "fib2")}
+    q = multipletests([truth["fib"][1], truth["fib2"][1]], method="fdr_bh")[1]
+    for c, q_c in zip(("fib", "fib2"), q):
+        assert rows[c]["estimate"] == pytest.approx(truth[c][0], rel=1e-9)
+        assert rows[c]["p"] == pytest.approx(truth[c][1], rel=1e-6)
+        assert rows[c]["q"] == pytest.approx(q_c, rel=1e-6)
+    assert sequence["model_2"]["inference"]["refused"] == FIB_PAIR  # the premise
+    said = out["effects"]["multiplicity"]
+    assert said == (f"In Model 2, the primary, feature-wise regression tested none of the 2 "
+                    f"exposures, so no multiplicity method was applied: {FIB_PAIR} The unadjusted "
+                    f"model tested each of the 2 exposures (`fib` and `fib2`), with "
+                    f"Benjamini–Hochberg q-values across its 2 tests.")
+    methods = out["effects"]["methods"]
+    assert methods.startswith("The estimate of each exposure is reported from the unadjusted "
+                              "model alone, fit on all 400 analyzed rows. Model 2, the primary, "
+                              f"adjusted for `age`, `sex`, `smoking` and `activity`, reports "
+                              f"none: {FIB_PAIR}")
+    assert methods.endswith(f" {said}")
+    assert out["fit"]["estimand"]["multiplicity"] == f"{NONE_OF_TWO}{FIB_PAIR}"
+
+
+def test_a_recorded_single_fill_beside_a_table_with_no_interval_claims_none():
+    """The verifier's V4a-1, on records written out: a single fill the table records, beside a
+    table that holds no interval (refused with its estimates, its covariance "none", or no row with
+    one), claims no interval; beside a table whose rows carry intervals it keeps "its intervals are
+    too narrow"."""
+    from turbotab.core.decisions import MissingSpec, ProjectState
+    from turbotab.core.methods import omics
+
+    state = ProjectState(lens=["metabolomics"], purpose="inference", missing=MissingSpec(
+        strategy="impute", below_detection="censoring_aware", censored_columns=["mz_1", "mz_2"],
+        acknowledged=True))
+    filled = ("Values below detection in 2 features were filled after normalization and before the "
+              "log, each by its expected value below the limit under a left-censored normal fitted "
+              "to the feature's logarithm on the analyzed rows (Lubin et al. 2004).")
+    capped = "`participant_id` repeats, and cluster-robust intervals for 244 separate tests ..."
+    bare = [{"feature": "mz_1", "estimate": 0.2, "ci_low": None, "ci_high": None, "p": None}]
+    held = [{"feature": "mz_1", "estimate": 0.2, "ci_low": 0.1, "ci_high": 0.3, "p": 0.01}]
+
+    def said(table, inference):
+        return omics.detection_details(state, "censoring_aware",
+                                       censored={"method": "censoring_aware",
+                                                 "columns": ["mz_1", "mz_2"]},
+                                       purpose="inference", missing={"method": "single_fill"},
+                                       steps=["normalize", "detect", "log", "model"], table=table,
+                                       inference=inference)
+
+    none = f"{filled} A single fill, recorded as a limitation; the table reports no interval."
+    assert said({"rows": bare, "refused": capped}, {"covariance": "none", "refused": capped}) == none
+    assert said(None, {"covariance": "none"}) == none
+    assert said({"rows": bare, "refused": None}, {"covariance": "classical"}) == none
+    narrow = f"{filled} A single fill, recorded as a limitation: its intervals are too narrow."
+    assert said({"rows": held, "refused": None}, {"covariance": "CR2"}) == narrow  # silent
+    assert said(None, {"covariance": "classical"}) == narrow
+    assert said(None, None) == narrow
+
+
+@pytest.mark.parametrize("features", [260, 120])
+def test_the_fits_methods_paragraph_under_a_single_fill_claims_an_interval_only_where_one_is(
+        tmp_path, features):
+    """Chain 3's inference twin under the single fill the multiple-imputation refusal offers: with
+    260 features, 244 after the QC filters, and the samples repeating, cluster-robust intervals are
+    beyond what TurboTab computes, so the table gives estimates alone, and the paragraph said "A
+    single fill, recorded as a limitation: its intervals are too narrow" beside it; now it claims
+    no interval. With 120 features the table holds its CR2 intervals, and the sentence stays."""
+    from turbotab.core.decisions import ProjectState, Refusal, SetMissing, validate
+    from turbotab.core.methods import qc_drift as Q
+    from turbotab.core.tests.acceptance.omics_chains import metabolomics_run
+    from turbotab.core.tests.acceptance.test_ms7_chains import ctx_of, data
+    from turbotab.core.tests.graph_runner import GraphRun
+
+    frame, _ = metabolomics_run(p=features)
+    path = tmp_path / "run.csv"
+    frame.to_csv(path, index=False)
+    run = GraphRun(path, tmp_path / "project")
+    try:
+        base = {"lens": ["metabolomics"], "target": "case", "purpose": "inference",
+                "task": "binary", "event": "1",
+                "grain": {"grain": "repeated", "id_column": "participant_id"}, "unit": "row",
+                "repeat_kind": {"repeat_kind": "repeats"}}
+        roles = {c: "exposure" for c in frame.columns if c.startswith("mz_")}
+        roles.update({"participant_id": "identifier", "sample_id": "excluded",
+                      "injection_order": "excluded", "batch": "excluded",
+                      "sample_type": "excluded"})
+        out = run.run(ProjectState.model_validate({**base, "roles": roles}), upto=["findings"])
+        findings = {f["id"]: f for f in data(out["findings"])["findings"]}
+        qc = next(o for o in findings[Q.FINDING]["repairs"] if o["key"] == "qc_rlsc_lc")
+        scale = next(o for o in findings["omics_scale"]["repairs"] if o["key"] == "pqn_log2")
+        applied = ProjectState.model_validate({**base, "roles": roles, "findings": {
+            Q.FINDING: {"action": "applied", "option": "qc_rlsc_lc",
+                        "params": qc["decision"]["params"]},
+            "omics_scale": {"action": "applied", "option": "pqn_log2",
+                            "params": scale["decision"]["params"]}}})
+        with pytest.raises(Refusal) as refused:
+            validate(SetMissing(strategy="multiple_imputation"), ctx_of(applied, frame, out))
+        drawn = refused.value.exits[0]["decision"]
+        slots = {**applied.model_dump(exclude_none=True),
+                 "missing": {k: v for k, v in drawn.items() if k != "kind"},
+                 "split": {"holdout": 0.0, "folds": 5, "seed": 0, "validation": "kfold"},
+                 "models": ["featurewise"]}
+        out = run.run(ProjectState.model_validate(slots), upto=["fit"])
+        once = data(out["fit"])["models"][0]["inference"]["exits"][1]["decision"]
+        slots["missing"] = {k: v for k, v in once.items() if k != "kind"}
+        out = run.run(ProjectState.model_validate(slots), upto=["fit"])
+        model = data(out["fit"])["models"][0]
+        info, rows = model["inference"], model["coefficients"]
+        assert (info["missing"] or {}).get("method") == "single_fill"  # the premise: recorded
+        methods = model["methods"]
+        if features == 260:
+            assert info["covariance"] == "none" and info["refused"].startswith(
+                "`participant_id` repeats, and cluster-robust intervals for 244 separate tests")
+            assert rows and not any(r["ci_low"] is not None for r in rows)  # estimates alone
+            assert ("A single fill, recorded as a limitation; the table reports no interval. "
+                    in methods)
+            assert "its intervals are too narrow" not in methods
+        else:
+            assert info["covariance"] == "CR2" and all(r["ci_low"] is not None for r in rows)
+            assert "A single fill, recorded as a limitation: its intervals are too narrow." \
+                in methods
+    finally:
+        run.close()
+
+
+CARD_BH = ("controls the expected share of false discoveries among the 2 tests (Benjamini & "
+           "Hochberg 1995, J R Stat Soc B 57:289), and every member is still shown")
+CARD_STATED = ("sound for a few hypotheses each declared on its own, read with all 2 tests in view "
+               "(STROBE item 20: \"multiplicity of analyses\")")
+CARD_TENSION = ("For a few declared nutrient hypotheses the field reports unadjusted p-values with "
+                "the count stated (Rothman 1990, Epidemiology 1:43); Benjamini–Hochberg controls "
+                "the false-discovery rate across all 2 of them.")
+
+
+def test_the_cards_multiplicity_question_counts_the_tests_the_family_would_make():
+    """The verifier's V4a-3: beside the consequence that says none, or fewer, would be tested, the
+    card's multiplicity options said "among the 2 tests" and "every member is still shown". With
+    `fiber` in a declared spline no test would be made, so no option counts any; with `arm`
+    recorded as codes, 1 test would be made, and `arm` is named as adjusted for, not tested. The
+    numeric family's options are as they were, byte for byte."""
+    from turbotab.core import estimand as est
+
+    def question(**kw):
+        family = est.estimand_card(_family({"fiber": "exposure", "arm": "exposure"},
+                                           ["featurewise"], **kw), "regression")["family"]
+        q = family["multiplicity"]
+        return q, {o["key"]: o["sound"]["reason"] for o in q["options"]}
+
+    plain, reasons = question()
+    assert (reasons, plain["tension"], plain["n_tests"]) == (
+        {"fdr_bh": CARD_BH, "count_stated": CARD_STATED}, CARD_TENSION, 2)  # silent
+    formed, reasons = question(exposure_forms={"fiber": d.ExposureFormSpec(form="spline",
+                                                                           knots=4)})
+    after = "; as their forms stand, none of the 2 study factors would be tested"
+    assert reasons == {
+        "fdr_bh": (f"controls the expected share of false discoveries among the tests ({BH}), "
+                   f"and every member tested is still shown{after}"),
+        "count_stated": ("sound for a few hypotheses each declared on its own, read with every "
+                         "test in view (STROBE item 20: \"multiplicity of analyses\")" + after)}
+    assert formed["tension"] == (
+        "For a few declared nutrient hypotheses the field reports unadjusted p-values with the "
+        "count stated (Rothman 1990, Epidemiology 1:43); Benjamini–Hochberg controls the "
+        f"false-discovery rate across the tests made{after}.")
+    assert formed["n_tests"] == 0
+    coded, reasons = question(amounts={**ef.AMOUNTS, "code_or_count:arm": "code"})
+    named = "; `arm` is recorded as a category, adjusted for, not tested"
+    assert reasons == {
+        "fdr_bh": (f"controls the expected share of false discoveries among the 1 test ({BH}), "
+                   f"and every member tested is still shown{named}"),
+        "count_stated": ("sound for a few hypotheses each declared on its own, read with the 1 "
+                         "test in view (STROBE item 20: \"multiplicity of analyses\")" + named)}
+    assert coded["tension"] == (
+        "For a few declared nutrient hypotheses the field reports unadjusted p-values with the "
+        "count stated (Rothman 1990, Epidemiology 1:43); Benjamini–Hochberg controls the "
+        f"false-discovery rate across that 1 test{named}.")
+    assert coded["n_tests"] == 1
+    for q in (formed, coded):
+        for text in [q["tension"], *(o["sound"]["reason"] for o in q["options"])]:
+            assert "2 tests" not in text and "every member is still shown" not in text
+
+
+def test_a_category_study_factor_beside_a_numeric_estimand_is_named_once(tmp_path):
+    """The verifier's V4a-5: the estimand `fiber`, `grp` a category study factor beside it. Each
+    adjusted model holds `grp`'s indicators, and its list named `grp` twice ("`activity`, `grp`
+    and `grp`"); now once, and Model 2's estimate is statsmodels' glucose ~ fiber + the covariates
+    + `grp`'s indicators."""
+    frame = _frame()
+    out = ef.run(frame, tmp_path, _state({"fiber": "exposure", "grp": "exposure"},
+                                         ["featurewise"]))
+    sequence = _sequence(out)
+    assert sequence["model_2"]["adjusted_for"] == ["age", "sex", "smoking", "activity", "grp"]
+    assert sequence["model_3"]["adjusted_for"] == ["age", "sex", "smoking", "activity", "grp",
+                                                   "bmi"]
+    (row,) = sequence["model_2"]["effects"]
+    assert row["estimate"] == pytest.approx(_ols(frame, "fiber", [*MODEL_2, *GRP])[0], rel=1e-9)
+    assert ("Model 2, the primary, adjusted for `age`, `sex`, `smoking`, `activity` and `grp`; "
+            in out["effects"]["methods"])
