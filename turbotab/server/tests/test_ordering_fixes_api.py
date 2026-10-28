@@ -234,6 +234,28 @@ def test_the_survey_question_is_asked_under_predict_where_a_design_reads(client)
     assert step(drive, "survey")["status"] == "answered"
 
 
+def quiet(drive: Drive, timeout: float = 60.0) -> None:
+    """Wait until the engine runs no stage of ``drive``'s project and no completion is scheduled
+    for it. A stage reads fresh once its artifact is on disk (``graph.Engine._has``), which its job
+    writes before the engine finishes its run (a heavy stage's worker process, before the runner
+    reports it done); that finish is the stage event that schedules a completion
+    (``Service._stage_event``), and the completion reads the log as it stands then. So statuses
+    that all read settled (``settle``) do not yet say that no completion is still to come; the
+    engine's own runs say it."""
+    service = drive.c.app.state.service
+    project = service.engine._project(drive.pid)
+    end = time.monotonic() + timeout
+    while True:
+        with project.lock:  # a run's finish publishes its event under this lock
+            running = sorted(project.runs)
+        if not running and drive.pid not in service._scheduled:
+            with project.lock:  # a completion that recorded an answer started that answer's runs
+                if not project.runs:
+                    return
+        assert time.monotonic() < end, f"still running {running}, or a completion scheduled"
+        time.sleep(0.05)
+
+
 def clinical_until(client: Any, key: str, *, roles: bool = True) -> Drive:
     """The clinical journey (30-day readmission), answered in order up to ``key``."""
     path = SAMPLES / "clinical_risk.csv"
@@ -340,13 +362,11 @@ def test_reading_the_project_records_nothing(client):
     # Every role confirmed, written to the log the way another process would: no answer was posted
     # here and no stage was recomputed, so nothing has asked for the completion. A stage still
     # computing for the earlier answers would ask for it when it lands (as an answer does), so the
-    # project is let settle first, with no completion still scheduled.
+    # project is let settle first, with no stage's run still finishing and no completion still
+    # scheduled (``quiet``).
     service = client.app.state.service
     settle(drive)
-    end = time.monotonic() + 60
-    while drive.pid in service._scheduled:
-        assert time.monotonic() < end, "a completion stayed scheduled"
-        time.sleep(0.05)
+    quiet(drive)
     service.log(drive.pid).append(parse_decision({"kind": "confirm_readings", "items": items}))
     for _ in range(3):
         view = drive.view()
