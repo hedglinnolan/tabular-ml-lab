@@ -39,11 +39,15 @@ jobs:
       matrix:
         include:
           # Test time on a developer machine (CI takes about 2.5 times as long): about 260 s
-          # each, but the last at 100 s; test_modeling.py alone took 360 s, so it is split.
+          # each, but the last at 100 s; test_modeling.py alone took 360 s, so it is split. The
+          # core files are split by the letter after test_: as one shard they ran 21 minutes on CI
+          # on 10-27 and passed the 25-minute limit on 10-28.
           - shard: server
             paths: turbotab/server
-          - shard: core
-            paths: turbotab/core --ignore=turbotab/core/tests/acceptance --ignore=turbotab/core/tests/test_modeling.py
+          - shard: core, a to h
+            paths: turbotab/core --ignore=turbotab/core/tests/acceptance --ignore-glob='turbotab/core/tests/test_[i-z]*'
+          - shard: core, i to z
+            paths: turbotab/core --ignore=turbotab/core/tests/acceptance --ignore=turbotab/core/tests/test_modeling.py --ignore-glob='turbotab/core/tests/test_[!i-z]*'
           - shard: models, the leakage and cross-validation guarantees
             paths: turbotab/core/tests/test_modeling.py -k "fitted_step_sees_only or independent_cross_validate"
           - shard: models, the rest

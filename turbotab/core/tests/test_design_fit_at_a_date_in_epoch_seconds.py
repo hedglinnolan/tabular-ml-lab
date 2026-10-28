@@ -51,7 +51,14 @@ def test_a_date_in_epoch_seconds_gives_the_slopes_and_influence_of_the_date_at_i
     assert a.beta[0] == pytest.approx(b.beta[0] - b.beta[3] * M, rel=1e-6)
     np.testing.assert_allclose(a.influence[:, 1:], b.influence[:, 1:], rtol=1e-7,
                                atol=1e-9 * np.abs(b.influence[:, 1:]).max())
-    np.testing.assert_allclose(a.mean(epoch)[0], b.mean(origin)[0], rtol=1e-9)
+    # The mean at the epoch date is X @ β in seconds, where β_t·t (about 3.5e4) and the intercept
+    # cancel to leave about 1: a dot product's rounding is within γ_4·Σ_j|β_j x_ij| (Higham), and
+    # the intercept's mapping back adds at most 2u·|β_t·m|, so 8u·Σ_j|β_j x_ij| = 4·eps·Σ bounds
+    # it (6.2e-11 here). CI's Linux runner differed by 8.5e-12 on a mean of -0.004, past rtol
+    # 1e-9 alone; the base, which cut the date, moved the slopes by up to 2.4%.
+    terms = np.abs(np.column_stack([np.ones(N), epoch.to_numpy()]) * a.beta).sum(axis=1)
+    np.testing.assert_allclose(a.mean(epoch)[0], b.mean(origin)[0], rtol=1e-9,
+                               atol=4 * np.finfo(float).eps * terms.max())
     # and the fit at the origin is statsmodels' weighted fit, its influence the bread times the
     # row's weighted score
     X = sm.add_constant(origin.to_numpy())
