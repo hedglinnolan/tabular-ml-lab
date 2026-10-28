@@ -542,8 +542,38 @@
   "rule": "Beyond the default plan (whose fits the crash sweep paid), each dataset's sweeps are around the plans named here, chosen by when their runs started, never by their results."
  },
  "filled": {
-  "reports": {},
-  "fit_budget": null,
+  "reports": {
+   "sullivan2021": {
+    "commit": "9c1c0c7c448a2348ad46533496ee4fe993a7ace9",
+    "engine_tree": "523fcc2a14e181803573766883fd4d22566c2afe",
+    "fits": 42,
+    "total_seconds": 5032.469,
+    "slowest_fit": 302.994,
+    "sha256": "08e51c13b326e90d3c8242900428f03c84ca38cd43f76c92b230d7fb5620df28",
+    "filled_at": "2026-10-28T21:26:03+00:00"
+   },
+   "walking_bp_estimate": {
+    "commit": "9c1c0c7c448a2348ad46533496ee4fe993a7ace9",
+    "engine_tree": "523fcc2a14e181803573766883fd4d22566c2afe",
+    "fits": 28,
+    "total_seconds": 33.555,
+    "slowest_fit": 15.153,
+    "sha256": "937a9cf414eda155893ebe37e2e27e5f2966272c0856d3f255d9979af844a969",
+    "filled_at": "2026-10-28T21:26:03+00:00"
+   }
+  },
+  "fit_budget": {
+   "sullivan2021": {
+    "fits": 42,
+    "seconds": 12726.0,
+    "slowest_fit": 302.994
+   },
+   "walking_bp_estimate": {
+    "fits": 28,
+    "seconds": 425.0,
+    "slowest_fit": 15.153
+   }
+  },
   "compute_cap": null,
   "default_plan": null,
   "r0": null,
