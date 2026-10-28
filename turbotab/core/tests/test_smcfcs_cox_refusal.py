@@ -164,12 +164,17 @@ def test_an_ordering_along_an_analysis_column_beside_the_design_terms_names_the_
 @pytest.mark.parametrize("seed", range(5))
 def test_a_fit_with_no_stable_maximum_names_columns_of_the_near_alias(seed):
     """The near-alias construction (:func:`aliased._columns`: a code's five indicators, an energy,
-    a number, and the code's recode 1e−5 of its length off their span), its columns named: the
-    engine's Cox fit stops with a coefficient past its divergence bound. The refusal names columns,
-    each one of the near-aliased set (the indicators and the recode, never the energy or the
-    number), and ``columns`` holds their inputs. Which of them passes the bound first is the
-    solver's, so it is not pinned. At the base commit the words named no column."""
-    M, _, rng = aliased._columns(1, 300, "near", unit=1.0)
+    a number, and the code's recode off their span, here by 1e−6 of its length,
+    ``test_smcfcs_logistic_cox_draw.near_columns``), its columns named: the information at the
+    engine's Cox estimate is singular to working precision, its coefficients along the near-alias
+    past their divergence bound. The refusal names columns, each one of the near-aliased set (the
+    indicators and the recode, never the energy or the number), and ``columns`` holds their
+    inputs. Which of them it names is the solver's, so it is not pinned. At 1e−5 the likelihood
+    has a maximum, which the fit now finds (``survival._spread``), so the construction moved
+    closer to the span. Before package B the words named no column."""
+    from turbotab.core.tests.test_smcfcs_logistic_cox_draw import near_columns
+
+    M, rng = near_columns(1, 300, 1e-6)
     out = aliased._outcome("cox", M, rng)
     names = [*[Term(f"`code_{k}`", column="code") for k in range(1, 6)],
              Term("`energy`", column="energy"), Term("`number`", column="number"),

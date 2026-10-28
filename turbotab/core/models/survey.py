@@ -59,12 +59,15 @@ import numpy as np
 import pandas as pd
 
 from turbotab.core.models.inference import (
+    DEPENDENT_EXITS,
     InferenceTable,
     _and,
     _named,
     _row,
     _t_rows,
+    by_identified,
     no_interval,
+    scaled_inverse,
     separated_columns,
 )
 
@@ -501,17 +504,24 @@ def _concerns(design: SurveyDesign, var: DesignVariance, n_domain: int, n_coef: 
 
 def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray,
                  information: np.ndarray, design: SurveyDesign, domain: Domain, estimator: str,
-                 *, converged: bool = True, bread: np.ndarray | None = None) -> InferenceTable:
+                 *, converged: bool = True, bread: np.ndarray | None = None,
+                 carry: np.ndarray | None = None) -> InferenceTable:
     """The design-based table of an M-estimator fit on the domain's rows.
 
     ``scores`` are the kept rows' weighted scores ``w_i s_i(β̂)`` (domain rows × P), ``information``
     the weighted information ``Σ w_i I_i(β̂)`` (or ``bread``, its inverse, when the fit has it). The
-    covariance is the sandwich over the design (module docstring); the intervals are on t(d)."""
+    covariance is the sandwich over the design (module docstring); the intervals are on t(d).
+    Where ``carry`` is given, the scores and the information are on coefficients ``θ`` with
+    ``β = carry · θ`` (the QR of the working design, :func:`_on_qr`), and the sandwich on θ is
+    carried to β, ``carry · V_θ · carryᵀ``: on θ the information is well conditioned, where on β
+    its inverse had the rounding of the design's condition number squared."""
     u = np.zeros((design.n_rows, scores.shape[1]))
     u[domain.at] = scores
     var = total_variance(u, design, domain.mask(design))
-    B = np.linalg.pinv(information) if bread is None else bread
+    B = scaled_inverse(information) if bread is None else bread
     V = B @ var.meat @ B
+    if carry is not None:
+        V = carry @ V @ carry.T
     V = (V + V.T) / 2
     se = np.sqrt(np.clip(np.diag(V), 0, None))
     if var.df < 1:
@@ -535,14 +545,38 @@ def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray
                           concerns, cov=V)
 
 
+SURVEY_ESTIMATORS = {"regression": "survey-weighted least squares",
+                     "binary": "survey-weighted logistic regression (pseudo-maximum likelihood)"}
+SURVEY_MULTINOMIAL = "survey-weighted multinomial logistic regression (pseudo-maximum likelihood)"
+
+
 def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
-                 design: SurveyDesign) -> InferenceTable:
+                 design: SurveyDesign, *, study: Sequence[str] | None = None) -> InferenceTable:
     """The design-based coefficient table for the linear family on the matrix it saw.
 
     ``matrix`` holds the analysis rows (indexed by row id) and ``y`` their outcome. The domain is
     those of them in the design with a positive weight; every other design row contributes a
-    score of zero.
+    score of zero. Fit on its columns scaled and scaled back; where the columns and the intercept
+    are dependent on the domain's rows, on the columns that identify the coefficients in no
+    dependency, each one in a dependency refused by row, and the whole table where ``study`` (the
+    columns of what is studied) is in one or is None (``inference.by_identified``).
     """
+    names = ["(intercept)", *(str(c) for c in matrix.columns)]
+    domain = domain_of(matrix.index, design)
+    estimator = SURVEY_ESTIMATORS.get(task, SURVEY_MULTINOMIAL)
+    if domain.n <= len(names):
+        return _refused(names, None, estimator, design, domain.n,
+                        f"Only {domain.n:,} analysis rows carry a positive weight and a place in "
+                        f"the design, too few for {len(names)} coefficients.")
+    return by_identified(matrix, lambda m: _survey_table(task, m, y, classes, design),
+                         layout="intercept", rows=domain.keep, study=study,
+                         refuse=lambda reason: _refused(names, None, estimator, design, domain.n,
+                                                        reason, DEPENDENT_EXITS))
+
+
+def _survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
+                  design: SurveyDesign) -> InferenceTable:
+    """:func:`survey_table` on columns that are not dependent on the domain's rows."""
     import statsmodels.api as sm
 
     exog = sm.add_constant(matrix.astype(float), has_constant="add")
@@ -551,13 +585,7 @@ def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any]
     X = exog.to_numpy(dtype=float)[domain.keep]
     yv = np.asarray(y)[domain.keep]
     w = domain.weight
-    estimator = {"regression": "survey-weighted least squares",
-                 "binary": "survey-weighted logistic regression (pseudo-maximum likelihood)"}.get(
-        task, "survey-weighted multinomial logistic regression (pseudo-maximum likelihood)")
-    if domain.n <= X.shape[1]:
-        return _refused(names, None, estimator, design, domain.n,
-                        f"Only {domain.n:,} analysis rows carry a positive weight and a place in "
-                        f"the design, too few for {X.shape[1]} coefficients.")
+    estimator = SURVEY_ESTIMATORS.get(task, SURVEY_MULTINOMIAL)
     labels = names
     if task == "regression":
         fit = weighted_least_squares(X, yv.astype(float), w)
@@ -584,8 +612,49 @@ def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any]
         q = K - 1
         labels = [f"{n} [{levels[k + 1]}]" for k in range(q) for n in names]
         fit = weighted_multinomial(X, codes, K, w)
-    return design_table(labels, fit.estimate, fit.scores, fit.information, design, domain,
-                        estimator, converged=fit.converged)
+    working = _working(task, X, fit.estimate, w,
+                       codes if task not in ("regression", "binary") else None)
+    scores, information, carry = _on_qr(working, fit)
+    return design_table(labels, fit.estimate, scores, information, design, domain,
+                        estimator, converged=fit.converged, carry=carry)
+
+
+def _working(task: str, X: np.ndarray, estimate: np.ndarray, w: np.ndarray,
+             codes: np.ndarray | None) -> np.ndarray:
+    """The weighted fit's working design at its estimate, whose ``WᵀW`` is its weighted
+    information (:class:`WeightedFit`): ``√w·X`` for least squares, ``√(w μ(1 − μ))·X`` for the
+    logistic model, and, for any other outcome (a multinomial model, of ``codes`` 0 to K − 1),
+    the multinomial working design (``inference.multinomial_working``) with each row's q rows
+    times ``√w``."""
+    from turbotab.core.models.inference import multinomial_working
+
+    if task == "regression":
+        return X * np.sqrt(w)[:, None]
+    if task == "binary":
+        mu = 0.5 * (1.0 + np.tanh(0.5 * (X @ estimate)))
+        return X * np.sqrt(w * mu * (1.0 - mu))[:, None]
+    P = X.shape[1]
+    B = np.asarray(estimate, dtype=float).reshape(-1, P).T  # (P, q), class by class
+    probs = _softmax(X @ B)
+    Xw, _ = multinomial_working(X, np.asarray(codes), probs)
+    return Xw * np.repeat(np.sqrt(w), B.shape[1])[:, None]
+
+
+def _on_qr(working: np.ndarray, fit: WeightedFit
+           ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """The weighted scores and information on ``θ = Rβ`` for the QR ``working = QR``
+    (``inference.qr_frame``), and ``R⁻¹``, which carries θ's covariance to β
+    (:func:`design_table`): the information on θ is ``QᵀQ = I`` and the scores are
+    ``scores · R⁻¹``, so the sandwich's rounding is the working design's condition number, not
+    its square (beside ``x + 10⁻⁶·d``, `x2`'s standard error was off by up to 4·10⁻³). The fit's
+    own scores and information, and no carry, where R is singular."""
+    from turbotab.core.models.inference import qr_frame
+
+    frame = qr_frame(working)
+    if frame is None:
+        return fit.scores, fit.information, None
+    Rinv = frame[1]
+    return fit.scores @ Rinv, np.eye(Rinv.shape[0]), Rinv
 
 
 def design_df(design: SurveyDesign, domain_ids: Sequence[int]) -> int:
@@ -780,7 +849,7 @@ def design_fit(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] |
                              "weighted log-odds is infinite.")
         fit = weighted_logistic(X, event, domain.weight)
         link = "logit"
-    bread = np.linalg.pinv(fit.information)
+    bread = scaled_inverse(fit.information)
     return DesignFit(beta=fit.estimate, influence=fit.scores @ bread, domain=domain, design=design,
                      link=link)
 

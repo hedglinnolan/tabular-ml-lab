@@ -352,42 +352,81 @@ def _cr1_concerns(clusters: Any, model: str, covariance: str) -> list[str]:
     return out
 
 
-def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, clusters: Any) -> Any:
+ESTIMATOR = "proportional-odds (cumulative logit) model, maximum likelihood"
+
+
+def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, clusters: Any, *,
+                  study: Sequence[str] | None = None) -> Any:
     """The proportional-odds inference table on the model matrix: coefficients (log cumulative
     odds ratios), then the cut-points; intervals as the module docstring says. On no more rows
     than its coefficients, the cut-points among them, refused with no estimate
     (``inference._no_spare_rows``), in words that say only that its rows are no more than its
     coefficients: the cut-points are shared by every row, so the likelihood there can still have a
-    unique maximum. Where the columns and a constant (which the cut-points hold) are dependent,
-    refused with no estimate in words that name them (``inference.dependent_refusal``)."""
+    unique maximum. Fit on its columns scaled and scaled back; where the columns and a constant
+    (which the cut-points hold) are dependent, on the columns that identify the coefficients in
+    no dependency, each one in a dependency refused by row (the cut-points too, where the
+    constant is in one), and the whole table where ``study`` is in one or is None
+    (``inference.by_identified``)."""
+    from turbotab.core.models.inference import _no_spare_rows, _nothing, by_identified
+
+    codes = np.asarray(y).astype(np.int64)
+    if clusters.clustered and len(clusters.codes) != len(matrix):
+        raise ValueError(f"The clusters cover {len(clusters.codes):,} rows but the model matrix has "
+                         f"{len(matrix):,}.")
+    K = len(np.unique(codes))  # the levels the fit sees, as its ``classes_`` will be
+    if K < 2:  # one level: the fit says why it cannot be fit
+        return _ordinal_table(matrix, codes, levels, clusters)
+    spare = _no_spare_rows("ordinal", len(matrix), matrix.shape[1] + K - 1, clusters,
+                           estimator=ESTIMATOR, intercept=False, cut_points=K - 1)
+    if spare is not None:
+        return spare
+    return by_identified(matrix, lambda m: _ordinal_table(m, codes, levels, clusters),
+                         layout="cuts", beside="a constant", study=study,
+                         refuse=lambda reason: _nothing(ESTIMATOR, clusters, reason))
+
+
+def on_qr(model: ProportionalOddsRegression, X: np.ndarray, codes: np.ndarray, w: np.ndarray
+          ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The fit's observed information and each row's score over ``(θ, cut-points)`` with
+    ``θ = Rβ`` for the QR ``X = QR`` (``inference.qr_frame``), evaluated on Q at the same linear
+    predictor, and the map that carries a covariance on them to ``(β, cut-points)``:
+    ``blockdiag(R⁻¹, I)``. On Q the information is well conditioned, where on X its inverse had
+    the rounding of the design's condition number squared (beside ``x + 10⁻⁶·d``, `x2`'s standard
+    error was off by 3·10⁻⁴). On X itself, with the identity map, where R is singular. ``codes``
+    are the fit's own (0 to K − 1 over its ``classes_``)."""
+    from turbotab.core.models.inference import qr_frame
+
+    q = len(model.thresholds_)
+    P = X.shape[1]
+    frame = qr_frame(X) if P else None
+    if frame is None:
+        _, _, _, scores = loglik_gradient_hessian(model.coef_, model.thresholds_, X, codes, w)
+        return model.information_, scores, np.eye(P + q)
+    Q, Rinv = frame
+    _, _, H, scores = loglik_gradient_hessian(Q.T @ (X @ model.coef_), model.thresholds_, Q,
+                                              codes, w)
+    carry = np.eye(P + q)
+    carry[:P, :P] = Rinv
+    return -H, scores, carry
+
+
+def _ordinal_table(matrix: pd.DataFrame, codes: np.ndarray, levels: Sequence[Any] | None,
+                   clusters: Any) -> Any:
+    """:func:`ordinal_table` on columns that are not dependent."""
     from turbotab.core.models.inference import (
         InferenceTable,
         _info,
-        _no_spare_rows,
         _refused,
         _t_rows,
         _z_rows,
-        dependent_refusal,
         floor_refusal,
         format_p,
         no_interval,
+        scaled_inverse,
     )
 
     X = matrix.to_numpy(dtype=float)
-    codes = np.asarray(y).astype(np.int64)
-    if clusters.clustered and len(clusters.codes) != len(X):
-        raise ValueError(f"The clusters cover {len(clusters.codes):,} rows but the model matrix has "
-                         f"{len(X):,}.")
-    estimator = "proportional-odds (cumulative logit) model, maximum likelihood"
-    K = len(np.unique(codes))  # the levels the fit sees, as its ``classes_`` will be
-    if K >= 2:  # one level: the fit says why it cannot be fit
-        spare = _no_spare_rows("ordinal", len(X), X.shape[1] + K - 1, clusters,
-                               estimator=estimator, intercept=False, cut_points=K - 1)
-        if spare is not None:
-            return spare
-        dependent = dependent_refusal(matrix, estimator, clusters, beside="a constant")
-        if dependent is not None:
-            return dependent
+    estimator = ESTIMATOR
     model = ProportionalOddsRegression().fit(X, codes)
     K = len(model.classes_)
     names_levels = list(levels) if levels is not None and len(levels) == K else \
@@ -406,14 +445,14 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
         table = _refused(names, est, estimator, clusters, *refusal)
         table.concerns.extend(concerns)
         return table
-    bread = np.linalg.pinv(model.information_)
+    inner = np.searchsorted(model.classes_, codes).astype(np.int64)
+    information, scores, carry = on_qr(model, X, inner, np.ones(len(codes)))
+    bread = scaled_inverse(information)
     if clusters.clustered:
-        _, _, _, scores = loglik_gradient_hessian(model.coef_, model.thresholds_, X, codes,
-                                                  np.ones(len(codes)))
         G = clusters.n_clusters
         summed = np.zeros((G, scores.shape[1]))
         np.add.at(summed, clusters.codes, scores)
-        V = (G / (G - 1.0)) * bread @ (summed.T @ summed) @ bread
+        V = carry @ ((G / (G - 1.0)) * bread @ (summed.T @ summed) @ bread) @ carry.T
         V = (V + V.T) / 2.0
         se = np.sqrt(np.clip(np.diag(V), 0, None))
         reason = no_interval(names, se, fit=f"The cluster-robust sandwich by `{clusters.column}`")
@@ -430,6 +469,8 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
         concerns.append("The proportional-odds check (Brant) is not computed when rows repeat: it "
                         "assumes independent rows.")
         return InferenceTable(rows, info, concerns, cov=V)
+    bread = carry @ bread @ carry.T
+    bread = (bread + bread.T) / 2.0
     se = np.sqrt(np.clip(np.diag(bread), 0, None))
     reason = no_interval(names, se, fit="The proportional-odds model's information")
     if reason:
@@ -464,7 +505,29 @@ _SURVEY_TOL = 1e-14  # the Newton decrement at which the weighted fit stops (svy
 
 
 def survey_ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None,
-                         design: Any) -> Any:
+                         design: Any, *, study: Sequence[str] | None = None) -> Any:
+    """The design-based proportional-odds table (:func:`_survey_ordinal_table`), fit on its
+    columns scaled and scaled back, and where the columns and a constant are dependent on the
+    domain's rows, on the columns that identify the coefficients in no dependency, each one in a
+    dependency refused by row, the whole table where ``study`` is in one or is None
+    (``inference.by_identified``)."""
+    from turbotab.core.models.inference import DEPENDENT_EXITS, by_identified
+    from turbotab.core.models.survey import _refused, domain_of
+
+    features = [str(c) for c in matrix.columns]
+    domain = domain_of(matrix.index, design)
+    codes = np.asarray(y).astype(np.int64)[domain.keep]
+    K = len(np.unique(codes)) if len(codes) else 0
+    if K < 2 or domain.n <= matrix.shape[1] + K - 1:
+        return _survey_ordinal_table(matrix, y, levels, design)
+    return by_identified(matrix, lambda m: _survey_ordinal_table(m, y, levels, design),
+                         layout="cuts", beside="a constant", rows=domain.keep, study=study,
+                         refuse=lambda reason: _refused(features, None, SURVEY_ESTIMATOR, design,
+                                                        domain.n, reason, DEPENDENT_EXITS))
+
+
+def _survey_ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None,
+                          design: Any) -> Any:
     """The design-based proportional-odds table over a survey design (MODELING_SEQUENCE §0 ruling
     6; MS4).
 
@@ -501,10 +564,10 @@ def survey_ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | N
     names = features + cut_names(level_names)
     est = np.concatenate([model.coef_, model.thresholds_])
     inner = np.searchsorted(model.classes_, codes).astype(np.int64)
-    _, _, _, scores = loglik_gradient_hessian(model.coef_, model.thresholds_, X, inner,
-                                              domain.weight)
-    table = design_table(names, est, scores * domain.weight[:, None], model.information_,
-                         design, domain, estimator, converged=bool(model.converged_))
+    information, scores, carry = on_qr(model, X, inner, domain.weight)
+    table = design_table(names, est, scores * domain.weight[:, None], information,
+                         design, domain, estimator, converged=bool(model.converged_),
+                         carry=carry)
     if table.info.get("refused"):
         return table
     table.info["caption"] += (" Coefficients are log cumulative odds ratios: exp(β) multiplies the "
@@ -629,31 +692,34 @@ class ProportionalOdds(FamilyBase):
         return self.inference(pipeline, X, y, task=task, clusters=as_clusters(groups)).rows
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
-                  outcome: Any = None, rows: Any = None, survey: Any = None) -> Any:
+                  outcome: Any = None, rows: Any = None, survey: Any = None,
+                  study: Any = None) -> Any:
         """The proportional-odds table on the matrix the model saw, on the cumulative odds-ratio
-        scale (WP8): ``outcome`` names the outcome, ``rows`` says which rows ``X`` holds. With
+        scale (WP8): ``outcome`` names the outcome, ``rows`` says which rows ``X`` holds,
+        ``study`` the model matrix's columns of what is studied (``inference.by_identified``). With
         ``survey`` (the "surveyed population" answer's design) it is design-based
         (:func:`survey_ordinal_table`)."""
         from turbotab.core.models.linear import model_matrix
 
         levels = getattr(pipeline[-1], "level_names_", None)
         return self.inference_matrix(model_matrix(pipeline, X), y, task=task, classes=levels,
-                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey)
+                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey,
+                                     study=study)
 
     def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task,
                          classes: Sequence[Any] | None, clusters: Any, outcome: Any = None,
-                         rows: Any = None, survey: Any = None) -> Any:
+                         rows: Any = None, survey: Any = None, study: Any = None) -> Any:
         """The inference table on a given model matrix (the quintile trend test's refit),
         design-based under ``survey``."""
         from turbotab.core.models.inference import _on_rows
 
         if survey is None:
-            table = ordinal_table(matrix, y, classes, clusters)
+            table = ordinal_table(matrix, y, classes, clusters, study=study)
             if not table.rows:  # refused with no estimate: on no scale, its rows said
                 table.info.update(n_rows=int(len(matrix)), rows=rows)
                 return table
             return _on_rows(on_cumulative_scale(table, outcome, classes), len(matrix), rows)
-        table = survey_ordinal_table(matrix, y, classes, survey)
+        table = survey_ordinal_table(matrix, y, classes, survey, study=study)
         if table.rows:
             table = on_cumulative_scale(table, outcome, classes)
         n_domain = (table.info.get("survey") or {}).get("n_domain")

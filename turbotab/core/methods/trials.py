@@ -1317,11 +1317,19 @@ def _cluster_codes(frame: pd.DataFrame, spec: TrialSpec, idx: pd.Index) -> np.nd
     return pd.factorize(frame.loc[idx, spec.cluster].map(_label))[0].astype(np.int64)
 
 
-def _mixed(d: _Design, y: np.ndarray, codes: np.ndarray, arms: list[str]
+def _mixed(d: _Design, y: np.ndarray, codes: np.ndarray, arms: list[str], column: str = "cluster"
            ) -> tuple[list[Contrast], list[ArmEstimate], Any, KenwardRoger]:
-    from turbotab.core.models.repeated import fit_random_intercept
+    """The mixed model's contrasts and arm means with Kenward–Roger intervals; refused where
+    REML's ratio of the variances lies past the fit's search (``RandomInterceptFit.beyond``), as
+    the mixed model's coefficient table refuses it (``repeated.beyond_words``): the fit there is
+    the GLS one at the search's top, whose variances, which the Kenward–Roger intervals rest on,
+    are not REML's."""
+    from turbotab.core.models.repeated import beyond_words, fit_random_intercept
 
     fit = fit_random_intercept(d.X, y, codes, satterthwaite=False)
+    if fit.beyond:
+        raise TrialRefused(beyond_words(column, fit.n_units), (GEE_EXIT, DESCRIBE_OUTCOMES_EXIT),
+                           term="REML's variance ratio past the search")
     kr = kenward_roger(d.X, codes, fit.sigma2_u, fit.sigma2_e, fit.cov)
     contrasts = []
     for k, j in enumerate(d.arm_columns):
@@ -1729,7 +1737,7 @@ def estimate(frame: pd.DataFrame, spec: TrialSpec, *, analysis_set: str = "itt",
                     "outcome; a yes/no outcome is analyzed by the estimating equations with a "
                     "corrected sandwich.", (GEE_EXIT,),
                     term="Kenward–Roger for a binary outcome")
-            contrasts, estimates, mfit, _kr = _mixed(d, y, codes, arms)
+            contrasts, estimates, mfit, _kr = _mixed(d, y, codes, arms, str(spec.cluster))
             estimator = "linear mixed model, a random intercept per cluster (REML)"
             interval = "t on the Kenward–Roger degrees of freedom, with its adjusted covariance"
             icc, icc_source = mfit.icc, "the mixed model's variance components"

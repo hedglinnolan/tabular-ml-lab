@@ -287,16 +287,39 @@ def test_a_cox_model_with_no_maximum_is_refused_in_words():
         "columns among the rows at risk, so its hazard ratios run to zero or infinity.")
 
 
+def near_columns(seed: int, n: int, share: float) -> tuple[np.ndarray, np.random.Generator]:
+    """:func:`aliased._columns`' near-alias design with its recode moved off the span of the
+    other columns by ``share`` of its length (1e−5 there), and the generator after it."""
+    rng = np.random.default_rng(seed)
+    code = rng.integers(0, aliased.LEVELS, n)
+    indicators = np.column_stack([(code == k).astype(float) for k in range(1, aliased.LEVELS)])
+    base = np.column_stack([indicators, rng.normal(2000.0, 900.0, n), rng.normal(size=n)])
+    extra = aliased.RECODE[code]
+    span = np.column_stack([np.ones(n), base])
+    noise = rng.normal(size=n)
+    noise -= span @ np.linalg.lstsq(span, noise, rcond=None)[0]
+    extra = extra + noise * (share * np.linalg.norm(extra) / np.linalg.norm(noise))
+    return np.column_stack([base, extra]), rng
+
+
 @pytest.mark.parametrize("seed", range(20))
-def test_the_cox_draw_on_the_near_alias_design_is_refused_for_its_fit(seed):
-    """The near-alias construction (:func:`aliased._columns`, its recode 1e−5 off the span of the
-    code's indicators) with its own survival outcome: no column is aliased (R's lm keeps all), but
-    the engine's Cox fit stops at its first Newton step, a standardized coefficient past its bound
-    of 20 (at 939), and reports no convergence. The draw is refused as a fit
-    that found no stable maximum, on every generator seed, never an untyped error. At the base
-    commit the draw went on from that step's estimate, and raised OverflowError on 6 of these 20
-    seeds (e^(−max η), every η below −709)."""
+def test_the_cox_draw_on_the_near_alias_design_is_refused_only_without_a_stable_maximum(seed):
+    """The near-alias construction with its own survival outcome: no column is aliased (R's lm
+    keeps all). With the recode 1e−5 of its length off the others' span (:func:`aliased._columns`)
+    the Cox likelihood has a maximum, whose standardized coefficients run to some 350 along the
+    near-alias at a linear predictor of SD 0.9 (R's ``coxph`` converges to it, survival 3.8.6), so
+    the draw is made, every coefficient finite, on every generator seed; on the tail ruling's base
+    the fit stopped at its first Newton step, a coefficient past its bound of 20, and the draw was
+    refused. With the recode 1e−6 of its length off the span the information at the estimate is
+    singular to working precision (its smallest eigenvalue some 10⁻¹³ of its largest), so the draw
+    is refused as a fit that found no stable maximum, never an untyped error. Before package B the
+    draw went on from the first step's estimate, and raised OverflowError on 6 of these 20 seeds
+    (e^(−max η), every η below −709)."""
     M, _, rng = aliased._columns(1, 300, "near", unit=1.0)
+    out = aliased._outcome("cox", M, rng)
+    drawn = _draw_outcome(M, out, np.random.default_rng(seed))
+    assert np.all(np.isfinite(drawn.beta)) and np.all(np.isfinite(drawn.H))
+    M, rng = near_columns(1, 300, 1e-6)
     out = aliased._outcome("cox", M, rng)
     with pytest.raises(ImputationRefused) as refused:
         _draw_outcome(M, out, np.random.default_rng(seed))

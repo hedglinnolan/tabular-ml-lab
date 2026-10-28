@@ -748,7 +748,30 @@ def build_graph() -> Graph:
             # tests or Benjamini–Hochberg adjustment, and says the table was refused in its own
             # words (``methods.omics.featurewise_untested``), where it said 0 features were tested,
             # so a fit cached before it is computed again.
-            Stage("fit", 35, ("working", "design", "split", "target_info", "cohort"),
+            # fit 34 on the tail tables branch (2026-10-27), from the same base as T2's 34: every
+            # coefficient table of a family whose linear predictor is Xβ is fit on its columns scaled (and, but for the Cox
+            # model's, centered, its intercept or cut-points mapped back), where a column 10⁵ or
+            # more times another's unit, or a date in epoch seconds, served wrong estimates or
+            # standard errors; a logistic or multinomial fit that does not converge is refused;
+            # on columns dependent at R's tolerance (10⁻⁷ of a centered column's length,
+            # ``repeated.aliased``) a table refuses the whole table in the dependency's words, as
+            # the fit stage names no study factor (and the survey tables served min-norm numbers,
+            # the Cox table the near-singular concern's words, and nearly dependent columns
+            # served standard errors whose rounding was the condition number squared), and the
+            # mixed model is fit on the columns that identify the rest, where it refused the
+            # stage; the HC3, CR2, logistic, multinomial, survey and proportional-odds standard
+            # errors come from a QR of the design (``inference.qr_frame``); the near-singular
+            # concern reads the columns centered, so the Cox, mixed and GEE tables serve a column
+            # far from its origin, where they refused it, and a refused GEE logit table keeps no
+            # least-squares estimate; and the Cox fit bounds the linear predictor's SD rather
+            # than each coefficient, so nearly collinear columns reach the maximum R's coxph
+            # finds (``inference.by_identified``, ``survival._spread``). The specification
+            # curve, which re-keys after the fit and names what it studies, keeps a departure's
+            # estimate where its design is dependent and what is studied is not.
+            # fit 36, sensitivity 19, calibration 17, secondary 10, scales 8, effects 10 (the merge of the
+            # tail tables with T2 and T3, 2026-10-27): both sides moved each of these, so the merged
+            # engine takes a number neither side served.
+            Stage("fit", 36, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -849,8 +872,9 @@ def build_graph() -> Graph:
             # sensitivity 17, calibration 15, secondary 8, scales 6, effects 8, modification 3: as
             # fit 33 (each draws its own SMC-FCS copies).
             # sensitivity 18, calibration 16, secondary 9, scales 7: as fit 34 (each refits the
-            # feature-wise table and draws its own SMC-FCS copies).
-            Stage("sensitivity", 18, ("working", "design", "split", "target_info"),
+            # feature-wise table and draws its own SMC-FCS copies), and as the tail tables' fit 34;
+            # modification 4 (the tail tables package): as its fit 34. Each one more at the merge.
+            Stage("sensitivity", 19, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
@@ -873,7 +897,7 @@ def build_graph() -> Graph:
             # calibration 13 (resume integration 2): both calibration 12s (this one and the engine
             # residue's, beside sensitivity 15 above).
             # calibration 14: as sensitivity 16 above (its uncorrected estimate's table).
-            Stage("calibration", 16,
+            Stage("calibration", 17,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models", "purpose"),
@@ -882,7 +906,7 @@ def build_graph() -> Graph:
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
             # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
             # secondary 7: as sensitivity 16 above.
-            Stage("secondary", 9, ("working", "design", "split", "target_info"),
+            Stage("secondary", 10, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -901,7 +925,7 @@ def build_graph() -> Graph:
             # scales 5: as sensitivity 16 above (the uncorrected coefficient's table).
             # scales 6: as sensitivity 17 above.
             # scales 7: as sensitivity 18 above.
-            Stage("scales", 7, ("working", "design", "split", "target_info", "cohort"),
+            Stage("scales", 8, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models", "purpose"),
                   label="Estimating each scale's reliability", serves=ESTIMATE),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
@@ -935,7 +959,7 @@ def build_graph() -> Graph:
             # estimand's study factor is such a category, its tables are refused, where they tested
             # another study factor in its place; and the family's multiplicity sentence counts the
             # members feature-wise regression tests and names a category it adjusts for.
-            Stage("effects", 9, ("working", "design", "split", "target_info"),
+            Stage("effects", 10, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",
@@ -995,7 +1019,7 @@ def build_graph() -> Graph:
             # modification 2: as sensitivity 16 above (the product terms' table).
             # modification 3: as sensitivity 17 above.
             # modification 3: as fit 33 (its copies, drawn by interaction.impute_with_products).
-            Stage("modification", 3, ("working", "design", "split", "target_info"),
+            Stage("modification", 4, ("working", "design", "split", "target_info"),
                   MODIFICATION_READS, modification_stage, heavy=True,
                   requires=("modifications", "models", "purpose"),
                   label="Estimating the declared effect modification", serves=ESTIMATE),

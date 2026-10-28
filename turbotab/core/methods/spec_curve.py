@@ -508,8 +508,11 @@ def linear_fitter(frame: pd.DataFrame, *, outcome: str, exposure: str,
         if n <= X.shape[1] + 1:
             return SpecFit(math.nan, None, None, n, refused=f"only {n} rows with every column "
                                                              f"present, too few to fit")
+        # What is studied is named, so a design whose dependency holds it refuses the table in
+        # its words (``inference.by_identified``); one that holds only other columns refuses
+        # those rows and keeps `x`'s, at the fit with the aliased columns left out.
         if design is not None:
-            table = S.survey_table(task, X, y, classes, design)
+            table = S.survey_table(task, X, y, classes, design, study=[x])
         else:
             clusters = I.INDEPENDENT
             if unit is not None:
@@ -518,11 +521,12 @@ def linear_fitter(frame: pd.DataFrame, *, outcome: str, exposure: str,
                 if len(uniq) < n:
                     clusters = I.Clusters(column=unit_name or "unit", codes=codes.astype(np.int64),
                                           n_clusters=int(len(uniq)))
-            table = I.inference_table(task, X, y, classes, clusters)
-        row = next(r for r in table.rows if r["feature"] == x)
+            table = I.inference_table(task, X, y, classes, clusters, study=[x])
+        row = next((r for r in table.rows if r["feature"] == x), None)
         refused = table.info.get("refused")
-        if refused or row["ci_low"] is None:
-            return SpecFit(math.nan if row["estimate"] is None else row["estimate"], None, None, n,
+        if refused or row is None or row["ci_low"] is None:
+            estimate = None if row is None else row["estimate"]
+            return SpecFit(math.nan if estimate is None else estimate, None, None, n,
                            estimator=table.info.get("estimator", ""),
                            refused=refused or "no interval could be computed")
         return SpecFit(float(row["estimate"]), row["ci_low"], row["ci_high"], n, se=row["se"],

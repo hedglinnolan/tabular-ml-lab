@@ -33,7 +33,7 @@ score counting one half.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
@@ -58,13 +58,14 @@ MAX_ITER = 60
 TOL = 1e-18
 LOOSE_TOL = 1e-10  # after MAX_ITER steps, still accepted as converged below this
 # The monotone-likelihood refusal's three numbers are its claim's
-# (``survival.monotone_likelihood``). |β_j| · SD(x_j) beyond this: a log hazard ratio this large per
-# SD is an infinite one.
+# (``survival.monotone_likelihood``). The linear predictor's SD beyond this (:func:`_spread`; for
+# one column |β_j| · SD(x_j)): a log hazard ratio this large per SD of the risk score is an
+# infinite one.
 DIVERGED = claims.value("survival.monotone_likelihood", "diverged")
 # An eigenvalue of the information (on standardized columns) below this share of its largest is
 # where a monotone likelihood shows itself: far out along a direction that orders the risk sets the
-# information there decays like exp(−|β|), and the Newton decrement can fall below TOL before any
-# coefficient passes DIVERGED. Such a fit is checked for an ordering (:func:`_ordering`).
+# information there decays like exp(−|β|), and the Newton decrement can fall below TOL before the
+# linear predictor's SD passes DIVERGED. Such a fit is checked for an ordering (:func:`_ordering`).
 FLAT = claims.value("survival.monotone_likelihood", "flat")
 # Below this share the information is numerically singular at the estimate, so its pseudo-inverse is
 # no variance: the fit is not converged even when no ordering is found.
@@ -306,16 +307,27 @@ class CoxFit:
     ordering: np.ndarray | None = None
 
 
+def _spread(Z: np.ndarray, beta: np.ndarray) -> float:
+    """The SD of the linear predictor ``Zβ`` over the rows, on the centered, standardized columns
+    ``Z`` (:func:`cox_fit`): one column's |β_j| · SD(x_j), and for several the size of the log
+    hazard ratio between rows one SD of the risk score apart."""
+    return float(np.std(Z @ beta)) if len(Z) else 0.0
+
+
 def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: float = TOL,
             weights: np.ndarray | None = None) -> CoxFit:
     """Maximize Efron's partial likelihood by Newton–Raphson, halving a step that lowers it.
 
     The columns are centered and scaled for the iterations (the coefficients are mapped back), so
     the Newton decrement convergence test does not depend on their units. Not converged when the
-    decrement stays above ``tol``, a coefficient runs past :data:`DIVERGED` SDs, a column or a
-    flat direction of the information orders the risk sets (``ordering``: monotone likelihood,
-    the estimate is infinite; the decrement can pass ``tol`` first, since the information decays
-    along that direction as fast as the score), or the information is singular at the estimate.
+    decrement stays above ``tol``, the linear predictor's SD runs past :data:`DIVERGED`
+    (:func:`_spread`), a column or a flat direction of the information orders the risk sets
+    (``ordering``: monotone likelihood, the estimate is infinite; the decrement can pass ``tol``
+    first, since the information decays along that direction as fast as the score), or the
+    information is singular at the estimate. The bound is on the linear predictor, not on each
+    coefficient: two nearly collinear columns can have coefficients of 40 SDs and opposite signs
+    at a finite maximum, whose linear predictor varies by about one SD, and R's ``coxph`` fits
+    them, where a bound on each coefficient stopped the fit after its first Newton step.
 
     ``weights`` (case weights, positive) fit Binder's pseudo-likelihood, each row weighted in every
     risk set and Efron's tied slots by their time's mean weight (:func:`_risk`), as R's ``coxph``
@@ -352,11 +364,11 @@ def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: floa
             step /= 2.0
         beta = trial
         ll, U, info, _ = parts
-        if np.any(np.abs(beta) > DIVERGED):
+        if _spread(Z, beta) > DIVERGED:
             break
     else:
         converged = float(U @ np.linalg.lstsq(info, U, rcond=None)[0]) < max(tol, LOOSE_TOL)
-    converged = converged and not np.any(np.abs(beta) > DIVERGED)
+    converged = converged and not _spread(Z, beta) > DIVERGED
     ordering = None
     if live.any():
         lam, vec = np.linalg.eigh(info[np.ix_(live, live)])
@@ -555,8 +567,26 @@ def no_maximum(names: list[str], X: np.ndarray, fit: CoxFit, likelihood: str = "
                      "decision": None},)
 
 
-def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
-    """The Cox model's coefficient table (log hazard ratios) on the matrix the model saw."""
+ESTIMATOR = "Cox proportional hazards (partial likelihood, Efron ties)"
+
+
+def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any, *,
+              study: Sequence[str] | None = None) -> Any:
+    """The Cox model's coefficient table (log hazard ratios) on the matrix the model saw, fit on
+    its columns scaled and scaled back. Where its columns and a constant (which the baseline
+    hazard absorbs) are dependent, it is fit on the columns that identify the coefficients in no
+    dependency, each one in a dependency refused by row, and the whole table refused where
+    ``study`` is in one or is None (``inference.by_identified``), before the near-singular
+    concern, whose condition number at an exact dependency is rounding."""
+    from turbotab.core.models.inference import _nothing, by_identified
+
+    return by_identified(matrix, lambda m: _cox_table(m, y, clusters), layout="columns",
+                         beside="a constant", study=study,
+                         refuse=lambda reason: _nothing(ESTIMATOR, clusters, reason))
+
+
+def _cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
+    """:func:`cox_table` on columns that are not dependent."""
     from scipy import stats
 
     from turbotab.core.models.inference import (FEW_CLUSTERS, InferenceTable, _info, _refused,
@@ -567,7 +597,7 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
     names = [str(c) for c in matrix.columns]
     X = matrix.to_numpy(dtype=float)
     y = np.asarray(y)
-    estimator = "Cox proportional hazards (partial likelihood, Efron ties)"
+    estimator = ESTIMATOR
     # The scale (log hazard ratios, each hazard ratio exp(estimate)) is declared by the family's
     # ``inference`` through ``inference._on_scale``, as every inference table's is (WP8).
     try:
@@ -639,7 +669,29 @@ SURVEY_ESTIMATOR = ("survey-weighted Cox proportional hazards (Binder's pseudo-l
                     "ties)")
 
 
-def survey_cox_table(matrix: pd.DataFrame, y: np.ndarray, design: Any) -> Any:
+def survey_cox_table(matrix: pd.DataFrame, y: np.ndarray, design: Any, *,
+                     study: Sequence[str] | None = None) -> Any:
+    """The design-based Cox table (:func:`_survey_cox_table`), fit on its columns scaled and
+    scaled back; where the columns and a constant are dependent on the domain's rows, on the
+    columns that identify the coefficients in no dependency, each one in a dependency refused by
+    row, and the whole table where ``study`` is in one or is None
+    (``inference.by_identified``)."""
+    from turbotab.core.models.inference import DEPENDENT_EXITS, by_identified
+    from turbotab.core.models.survey import _refused, domain_of
+
+    names = [str(c) for c in matrix.columns]
+    domain = domain_of(matrix.index, design)
+    yy = np.asarray(y)[domain.keep]
+    n_events = int(np.sum(yy["event"])) if len(yy) else 0
+    if n_events == 0 or domain.n <= matrix.shape[1]:
+        return _survey_cox_table(matrix, y, design)
+    return by_identified(matrix, lambda m: _survey_cox_table(m, y, design), layout="columns",
+                         beside="a constant", rows=domain.keep, study=study,
+                         refuse=lambda reason: _refused(names, None, SURVEY_ESTIMATOR, design,
+                                                        domain.n, reason, DEPENDENT_EXITS))
+
+
+def _survey_cox_table(matrix: pd.DataFrame, y: np.ndarray, design: Any) -> Any:
     """The design-based Cox table over a survey design (MODELING_SEQUENCE §0 ruling 6; MS4).
 
     Binder (1992, *Int Stat Rev* 60:249): the population's partial-likelihood score is estimated
@@ -758,27 +810,30 @@ class Cox(FamilyBase):
         return coefficient_rows([str(f) for f in model.feature_names_in_], model.coef_)
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
-                  outcome: Any = None, rows: Any = None, survey: Any = None) -> Any:
+                  outcome: Any = None, rows: Any = None, survey: Any = None,
+                  study: Any = None) -> Any:
         """The Cox table on the hazard-ratio scale (WP8's ``_on_scale``: each row's hazard ratio
         and its interval, drawn on a log axis, the event named), and the rows it was fit on. With
         ``survey`` (a :class:`~turbotab.core.models.survey.SurveyDesign`, the "surveyed
-        population" answer) the table is design-based (:func:`survey_cox_table`)."""
+        population" answer) the table is design-based (:func:`survey_cox_table`); ``study`` names
+        the model matrix's columns of what is studied (``inference.by_identified``)."""
         from turbotab.core.models.linear import model_matrix
 
         return self.inference_matrix(model_matrix(pipeline, X), y, task=task, classes=[0, 1],
-                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey)
+                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey,
+                                     study=study)
 
     def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task, classes: Any,
                          clusters: Any, outcome: Any = None, rows: Any = None,
-                         survey: Any = None) -> Any:
+                         survey: Any = None, study: Any = None) -> Any:
         """The Cox table on a given model matrix (a quintile trend test's refit), design-based
         under ``survey``, on the hazard-ratio scale either way."""
         from turbotab.core.models.inference import _on_rows, _on_scale
 
         if survey is None:
-            table = cox_table(matrix, y, clusters)
+            table = cox_table(matrix, y, clusters, study=study)
             return _on_rows(_on_scale(table, "time_to_event", [0, 1], outcome), len(matrix), rows)
-        table = survey_cox_table(matrix, y, survey)
+        table = survey_cox_table(matrix, y, survey, study=study)
         if table.rows:
             table = _on_scale(table, "time_to_event", [0, 1], outcome)
         n_domain = (table.info.get("survey") or {}).get("n_domain")
