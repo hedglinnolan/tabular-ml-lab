@@ -737,18 +737,24 @@ def build_graph() -> Graph:
             # computed again.
             # fit 34 (the tail tables package, 2026-10-27): every coefficient table of a family
             # whose linear predictor is Xβ is fit on its columns scaled (and, but for the Cox
-            # model's and the GEE's, centered, its intercept or cut-points mapped back), where a
-            # column 10⁵ or more times another's unit, or a date in epoch seconds, served wrong
-            # estimates or standard errors; a logistic or multinomial fit that does not converge
-            # is refused; on dependent columns a table refuses the whole table in the
-            # dependency's words, as the fit stage names no study factor (and the survey tables
-            # served min-norm numbers, the Cox table the near-singular concern's words), and the
+            # model's, centered, its intercept or cut-points mapped back), where a column 10⁵ or
+            # more times another's unit, or a date in epoch seconds, served wrong estimates or
+            # standard errors; a logistic or multinomial fit that does not converge is refused;
+            # on columns dependent at R's tolerance (10⁻⁷ of a centered column's length,
+            # ``repeated.aliased``) a table refuses the whole table in the dependency's words, as
+            # the fit stage names no study factor (and the survey tables served min-norm numbers,
+            # the Cox table the near-singular concern's words, and nearly dependent columns
+            # served standard errors whose rounding was the condition number squared), and the
             # mixed model is fit on the columns that identify the rest, where it refused the
-            # stage; and the Cox fit bounds the linear predictor's SD rather than each
-            # coefficient, so nearly collinear columns reach the maximum R's coxph finds
-            # (``inference.by_identified``, ``survival._spread``). The specification curve, which
-            # re-keys after the fit and names what it studies, keeps a departure's estimate where
-            # its design is dependent and what is studied is not.
+            # stage; the HC3, CR2, logistic, multinomial, survey and proportional-odds standard
+            # errors come from a QR of the design (``inference.qr_frame``); the near-singular
+            # concern reads the columns centered, so the Cox, mixed and GEE tables serve a column
+            # far from its origin, where they refused it, and a refused GEE logit table keeps no
+            # least-squares estimate; and the Cox fit bounds the linear predictor's SD rather
+            # than each coefficient, so nearly collinear columns reach the maximum R's coxph
+            # finds (``inference.by_identified``, ``survival._spread``). The specification
+            # curve, which re-keys after the fit and names what it studies, keeps a departure's
+            # estimate where its design is dependent and what is studied is not.
             Stage("fit", 34, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),

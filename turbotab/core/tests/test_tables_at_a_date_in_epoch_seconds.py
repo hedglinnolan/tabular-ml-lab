@@ -19,9 +19,9 @@ Truth from construction: the date is the affine map ``t = T0 + span·s`` of ``s`
 the intercept moved by ``−b_s·T0/span`` (each cut-point by ``+b_s·T0/span``); the table on
 ``(x, s)`` is anchored at statsmodels (OLS with HC3, Logit, MNLogit, OrderedModel), whose
 covariance gives the moved intercept's standard error, and its CR2 df are the Bell–McCaffrey df of
-the moved combination, written out densely from their definition below. The families whose own
-near-singular concern reads the columns' origin (the GEE, the Cox model, the mixed model) refuse
-such a date, which also holds the claim (right, or refused).
+the moved combination, written out densely from their definition below. The GEE, Cox and mixed
+tables refused such a date until their near-singular concern read the columns centered, as each is
+fit (T1V2-1, 2026-10-27): they are now right there too.
 """
 from __future__ import annotations
 
@@ -89,14 +89,6 @@ def _tables():
     }
 
 
-# The families that center their columns, and so are right at every origin; the rest read the
-# columns' origin in their near-singular concern and refuse a date this close to a constant.
-CENTERED = ("least squares (HC3)", "least squares (CR2)", "logistic", "logistic (CR2)",
-            "multinomial", "multinomial (CR2)", "proportional odds", "proportional odds (CR1)",
-            "survey least squares", "survey logistic", "survey multinomial",
-            "survey proportional odds")
-
-
 def _frames(span: float) -> tuple[pd.DataFrame, pd.DataFrame]:
     x, s, *_ = _data()
     index = pd.RangeIndex(N)
@@ -120,16 +112,13 @@ def test_each_table_is_the_affine_map_of_the_date_in_its_own_units_or_refused(fa
     """`x`'s rows are the table's on ``(x, s)``, every field; the date's estimate, standard error
     and interval are its rows' on ``s`` divided by the span, its df and p-value the same; the
     intercept's (or each cut-point's) estimate is moved by the date's coefficient times its origin.
-    A family that does not center refuses, with nothing served as an interval."""
+    The GEE, Cox and mixed tables were refused here as nearly singular before their concern read
+    the columns centered (T1V2-1)."""
     span_s = SPANS[span]
     build = _tables()[family]
     epoch, plain = _frames(span_s)
     table, reference = build(epoch), build(plain)
     assert reference.info["refused"] is None
-    if family not in CENTERED:
-        assert table.info["refused"] is not None
-        assert all(r.get("ci_low") is None and r.get("p") is None for r in table.rows)
-        return
     assert table.info["refused"] is None, table.info["refused"]
     ref = {r["feature"]: r for r in reference.rows}
     slope = {}  # the date's coefficient on `s`, per class

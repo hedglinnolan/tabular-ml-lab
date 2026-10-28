@@ -185,6 +185,78 @@ def basis(X: np.ndarray) -> tuple[int, np.ndarray, list[int] | None]:
     return count, columns, kept if len(kept) == P - count else None
 
 
+@dataclass(frozen=True)
+class Aliased:
+    """What :func:`aliased` finds in ``[1, values]`` (column 0 the constant, column j the j-th of
+    ``values``)."""
+
+    count: int  # the dependencies: the columns set aside as aliased
+    columns: np.ndarray  # every column in a dependency, sorted
+    kept: list[int]  # the columns a fit keeps, in order
+    exact: bool  # every aliased column is a combination of those before it to working precision
+
+
+def aliased(values: np.ndarray) -> Aliased:
+    """Which columns of ``[1, values]`` a coefficient table sets aside as aliased, and which are in
+    a dependency, at R's tolerance (``effects.ALIAS_TOL``, ``lm``'s ``qr(x, tol = 1e-07)``) on the
+    columns centered at their means (the intercept left alone, and first).
+
+    Each column in turn is aliased where its part outside the span of the columns kept before it
+    is under the tolerance times its own length (R's limited pivoting, ``effects.column_basis``),
+    centered so that a column far from its origin is not a near copy of the intercept. Its
+    dependency is the column less its least-squares fit on the kept columns, which these rows
+    cannot tell from zero at that precision; carried back to the columns as they stand, each
+    scaled to unit length (a constant column's dependency then holds the intercept), these
+    directions span the dependencies, and a column with weight in that span above
+    :data:`IN_DEPENDENCY` is in one, as :func:`dependencies` names an exact one. A coefficient in
+    none has, to that precision, the same estimate whichever of the dependent columns a fit
+    leaves out. ``exact`` where every aliased column's part was at most max(N, P) machine epsilons
+    of its length (:func:`dependencies`' rule), a dependency to working precision: at R's
+    tolerance alone, `x` beside ``x + 10⁻⁹·d`` is not one, and a fit keeping both served standard
+    errors whose rounding was the design's condition number squared (+2.6 times `v`'s HC3 one)."""
+    from turbotab.core.models.effects import ALIAS_TOL
+
+    values = np.asarray(values, dtype=float)
+    N, P = values.shape
+    with np.errstate(invalid="ignore", over="ignore"):
+        mean = np.mean(values, axis=0) if N else np.zeros(P)
+    mean = np.where(np.isfinite(mean), mean, 0.0)
+    design = np.column_stack([np.ones(N), values - mean])
+    floor = max(N, P + 1) * np.finfo(float).eps
+    kept: list[int] = []
+    Q = np.zeros((N, 0))
+    exact = True
+    for j in range(P + 1):
+        x = design[:, j]
+        length = float(np.linalg.norm(x))
+        if length > 0.0:
+            r = x - Q @ (Q.T @ x)
+            r = r - Q @ (Q.T @ r)
+            rest = float(np.linalg.norm(r))
+            if rest > ALIAS_TOL * length:
+                kept.append(j)
+                Q = np.column_stack([Q, r / rest])
+                continue
+            exact = exact and rest <= floor * length
+    out = [j for j in range(P + 1) if j not in set(kept)]
+    if not out:
+        return Aliased(0, np.arange(0), kept, True)
+    # Each aliased column's direction n (design @ n ≈ 0) on the centered columns, then on the
+    # columns as they stand, ``[1, values] = design · M`` with ``M`` moving the means into the
+    # intercept, so a direction n there is ``M⁻¹``'s image: its constant entry less mean · n.
+    fit = np.linalg.lstsq(design[:, kept], design[:, out], rcond=None)[0]
+    null = np.zeros((P + 1, len(out)))
+    null[out, np.arange(len(out))] = 1.0
+    null[kept] = -fit
+    null[0] -= mean @ null[1:]
+    stood = np.column_stack([np.ones(N), values])
+    norms = np.linalg.norm(stood, axis=0)
+    basis_ = np.linalg.qr(null * np.where(norms > 0, norms, 1.0)[:, None])[0]
+    weight = np.sqrt((basis_ ** 2).sum(axis=1))
+    columns = np.array(sorted({*np.flatnonzero(weight > IN_DEPENDENCY).tolist(), *out}))
+    return Aliased(len(out), columns, kept, exact)
+
+
 def dependent(X: np.ndarray) -> bool:
     """Whether the design's columns are dependent to working precision (:func:`dependencies`)."""
     return dependencies(X)[0] > 0
@@ -763,14 +835,15 @@ def mixed_table(matrix: pd.DataFrame, y: Any, clusters: Any, *,
     """The random-intercept model's coefficient table on the matrix the model saw, by the
     clusters :func:`~turbotab.core.models.inference.resolve_clusters` read from the rows; on no
     more rows than its coefficients, refused with no estimate, before any other refusal that
-    would keep one (``inference._no_spare_rows``). Fit on its columns scaled and scaled back, and
-    where its columns are dependent, REML having no fit on them (:func:`dependent`), on the
+    would keep one (``inference._no_spare_rows``). Fit on its columns as they are (REML's QR is
+    unmoved by a column's unit or origin), and where its columns are dependent at R's tolerance
+    (:func:`aliased`), REML having no fit on an exact dependency (:func:`dependent`), on the
     columns that identify the coefficients in no dependency, each one in a dependency refused by
     row, before any other refusal: the whole table where ``study`` is in one or is None
     (``inference.by_identified``). Refused, its estimates kept, where no unit repeats, where the
-    matrix is nearly singular (the linear family's concern), where REML's ratio of the variances
-    lies beyond what the fit searches (:func:`beyond_words`), and where the fit gives some
-    coefficient no standard error or Satterthwaite degrees of freedom
+    matrix is nearly singular (the linear family's concern, on the columns centered), where
+    REML's ratio of the variances lies beyond what the fit searches (:func:`beyond_words`), and
+    where the fit gives some coefficient no standard error or Satterthwaite degrees of freedom
     (``inference.no_interval``)."""
     from turbotab.core.models.inference import _no_spare_rows, _nothing, by_identified
 
@@ -849,11 +922,14 @@ def gee_table(matrix: pd.DataFrame, y: Any, clusters: Any, task: str,
     """The GEE's coefficient table: statsmodels' estimates, CR2 (BRL) intervals with Bell–McCaffrey
     degrees of freedom on its whitened working model, refused below the unit floor; on no more rows
     than its coefficients, refused with no estimate, before any other refusal that would keep one
-    (``inference._no_spare_rows``). Fit on its columns scaled and scaled back (not centered: its
-    near-singular concern reads their origin), and where its columns are dependent, on the
-    columns that identify the coefficients in no dependency, each one in a dependency refused by
-    row, before any other refusal: the whole table where ``study`` is in one or is None
-    (``inference.by_identified``)."""
+    (``inference._no_spare_rows``). Fit on its columns centered and scaled, its slopes scaled back
+    and its intercept mapped back to the columns' origin, and where its columns are dependent, on
+    the columns that identify the coefficients in no dependency, each one in a dependency refused
+    by row, before any other refusal: the whole table where ``study`` is in one or is None
+    (``inference.by_identified``). Refused where no unit repeats, where the matrix is nearly
+    singular (the linear family's concern) and where a column separates a binary outcome, before
+    the fit: the identity link's table keeps the least-squares estimates (its own where no unit
+    repeats), and the logit link's keeps none (least squares on a 0/1 outcome is no log-odds)."""
     from turbotab.core.models.inference import _no_spare_rows, _nothing, by_identified
 
     if task == "binary":
@@ -867,10 +943,8 @@ def gee_table(matrix: pd.DataFrame, y: Any, clusters: Any, task: str,
     spare = _no_spare_rows(task, len(matrix), matrix.shape[1] + 1, clusters, estimator=estimator)
     if spare is not None:
         return spare
-    # Scaled but not centered: its near-singular concern reads the columns' origin, and refuses
-    # a column nearly constant beside the intercept (a date in epoch seconds) before the fit.
     return by_identified(matrix, lambda m: _gee_table(m, y, clusters, task, estimator),
-                         layout="intercept", study=study, centered=False,
+                         layout="intercept", study=study,
                          refuse=lambda reason: _nothing(estimator, clusters, reason))
 
 
@@ -882,7 +956,11 @@ def _gee_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any, task: str,
 
     exog, names = _design(matrix)
     X = exog.to_numpy(dtype=float)
-    start = np.linalg.lstsq(X, y, rcond=None)[0]
+    # What a refusal before the fit keeps: the identity link's least-squares estimates (its own
+    # where no unit repeats); on a 0/1 outcome least squares is no log-odds, so the logit link's
+    # table keeps none, where it kept them and called them log-odds.
+    start = (np.linalg.lstsq(X, y, rcond=None)[0] if task == "regression" else
+             np.full(X.shape[1], np.nan))
     if not clusters.clustered or clusters.n_clusters < 2:
         return _no_units(names, start, estimator, clusters, "an exchangeable working correlation")
     singular = _singular(matrix)

@@ -36,21 +36,29 @@ them in the same words (``repeated``). The proportional-odds model's table is re
 count, its cut-points among its coefficients, in its own words (``ordinal``): its cut-points are
 shared by every row, so its likelihood there can have a unique maximum, and the words say only
 that the rows are no more than its coefficients. Every table of a family whose linear predictor
-is Xβ (least squares, logistic, Firth, multinomial, proportional odds, and the survey tables) is
-fit on its columns centered at their means and scaled to an SD of one, its slopes scaled back and
-its intercept or cut-points mapped back to the columns' own origin, so no column's unit or origin
-moves another's numbers (:func:`by_identified`); the Cox model's and the GEE's are scaled and not
-centered (the Cox fit centers its columns itself, and both refuse a column nearly constant
-beside the intercept in their near-singular concern's words), and the mixed model's REML factors
-the design by QR, which already leaves the numbers unmoved. A logistic or multinomial fit that
-does not converge is refused with no estimate (:func:`not_converged`). In each of them, and the
-mixed model's, where the model matrix's columns are dependent to working precision and the caller
-names what is studied (``study``), a coefficient in no dependency is reported as the fit with the
-aliased columns left out gives it, as R's ``lm`` does, and each one in a dependency is refused by
-row, with no estimate, in words that name the dependency's columns; the whole table is refused,
-with no estimate, where a column named as studied, or every coefficient, is in one, or where the
-caller names nothing studied (:func:`dependent_refusal`'s words), before a fit whose numbers for
-them would be rounding. A table whose fit gives some coefficient no finite,
+is Xβ (least squares, logistic, Firth, multinomial, proportional odds, the GEE, and the survey
+tables) is fit on its columns centered at their means and scaled to an SD of one, its slopes
+scaled back and its intercept or cut-points mapped back to the columns' own origin, so no
+column's unit or origin moves another's numbers (:func:`by_identified`); the Cox model's are
+scaled and not centered (the Cox fit centers its columns itself), and the mixed model's REML
+factors the design by QR, which already leaves the numbers unmoved. The near-singular concern the
+GEE, Cox and mixed tables refuse in reads the columns centered too
+(``linear.collinearity_concern``). A logistic or multinomial fit that does not converge is
+refused with no estimate
+(:func:`not_converged`). In each of them, and the mixed model's, where the model matrix's columns
+are dependent at R's tolerance on the centered columns (``repeated.aliased``: a column whose part
+outside the span of those before it is under 10⁻⁷ of its length is aliased, as ``lm`` aliases it)
+and the caller names what is studied (``study``), a coefficient in no dependency is reported as
+the fit with the aliased columns left out gives it, as R's ``lm`` does, and each one in a
+dependency is refused by row, with no estimate, in words that name the dependency's columns; the
+whole table is refused, with no estimate, where a column named as studied, or every coefficient,
+is in one, or where the caller names nothing studied (:func:`dependency_reason`'s words), before
+a fit whose numbers for them would be rounding. The least-squares tables' HC3 and CR2 standard
+errors, the CR2 ones of the logistic, multinomial and GEE working models, and the logistic,
+multinomial and survey tables' inverse information are taken from the QR of the design or the
+working design (:func:`qr_frame`), whose rounding is its condition number, not from ``XᵀX``,
+whose rounding is that squared; the proportional-odds tables evaluate their information on the
+QR's Q (``ordinal.on_qr``). A table whose fit gives some coefficient no finite,
 positive standard error, or its t interval no finite, positive degrees of freedom, is refused in
 words that name each and what the fit could not compute (:func:`no_interval`; every family's
 table that makes Wald or t rows here, in ``repeated``, ``survival``, ``ordinal`` and ``survey``),
@@ -453,6 +461,51 @@ def bread_of(X: np.ndarray) -> np.ndarray:
     return scaled_inverse(X.T @ X)
 
 
+def qr_frame(X: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """The design's QR as ``(Q, R⁻¹)``, ``X = QR`` with Q's columns orthonormal; None where R has a
+    zero on its diagonal (the columns dependent). A covariance computed on Q, whose condition
+    number is one, and carried to the coefficients by ``R⁻¹ · R⁻ᵀ`` has rounding of the design's
+    condition number, where one from ``XᵀX`` has rounding of its square: beside ``x + 10⁻⁹·d``,
+    statsmodels' HC3 leverages ``diag(X(XᵀX)⁻¹Xᵀ)`` put `v`'s HC3 standard error off by 2.6 times,
+    and the pseudo-inverse of ``XᵀX`` dropped the near-null direction from CR2's (−1.3·10⁻³)."""
+    from scipy.linalg import solve_triangular
+
+    X = np.asarray(X, dtype=float)
+    Q, R = np.linalg.qr(X)
+    if not np.all(np.isfinite(R)) or np.any(np.diag(R) == 0):
+        return None
+    return Q, solve_triangular(R, np.eye(R.shape[0]))
+
+
+def gram_inverse(W: np.ndarray) -> np.ndarray | None:
+    """``(WᵀW)⁻¹`` from W's QR (:func:`qr_frame`), ``R⁻¹R⁻ᵀ``, whose rounding is W's condition
+    number, not its square; None where R is singular. With W a model's working design
+    (:func:`logistic_working`, :func:`multinomial_working`), ``WᵀW`` is its information."""
+    frame = qr_frame(W)
+    if frame is None:
+        return None
+    Rinv = frame[1]
+    V = Rinv @ Rinv.T
+    return (V + V.T) / 2
+
+
+def hc3_covariance(X: np.ndarray, e: np.ndarray) -> np.ndarray:
+    """HC3's covariance (MacKinnon & White 1985), ``(XᵀX)⁻¹ Xᵀ diag(e²/(1 − h)²) X (XᵀX)⁻¹``,
+    from the design's QR (:func:`qr_frame`): the leverages are the rows' squared lengths in Q, and
+    the meat is taken on Q and carried by ``R⁻¹``; NaN throughout where R is singular."""
+    X = np.asarray(X, dtype=float)
+    e = np.asarray(e, dtype=float)
+    frame = qr_frame(X)
+    if frame is None:
+        return np.full((X.shape[1], X.shape[1]), np.nan)
+    Q, Rinv = frame
+    h = np.einsum("ij,ij->i", Q, Q)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        w = (e / (1.0 - h)) ** 2
+        V = Rinv @ ((Q * w[:, None]).T @ Q) @ Rinv.T
+    return (V + V.T) / 2
+
+
 def logistic_working(X: np.ndarray, y: np.ndarray, mu: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """A logistic fit's working linear model at its estimate: ``W^½ X`` and the Pearson residuals
     ``(y − μ)/√w`` (w = μ(1 − μ)). Its ``(XᵀX)⁻¹`` is the inverse information, and its meat is the
@@ -794,10 +847,19 @@ def _clustered(names: Sequence[str], est: np.ndarray, estimator: str, X: np.ndar
     linear combination of its coefficients gets its own Bell–McCaffrey df
     (:attr:`InferenceTable.contrast`)."""
     X = np.asarray(X, dtype=float)
-    bread = bread_of(X)
-    V, AX, blocks = _cr2_parts(X, e, codes, bread)
-    exact = _bm_affordable(blocks, X.shape[1])
-    df = (_bell_mccaffrey(AX, X, bread, blocks) if exact else
+    P = X.shape[1]
+    frame = qr_frame(X)
+    if frame is None:  # dependent columns: the pseudo-inverse's covariance, as before
+        bread, carry, Z = bread_of(X), np.eye(P), X
+    else:  # on Q, carried to the coefficients by R⁻¹ (:func:`qr_frame`)
+        Z, carry = frame
+        bread = np.eye(P)
+    V, AX, blocks = _cr2_parts(Z, e, codes, bread)
+    V = carry @ V @ carry.T
+    V = (V + V.T) / 2
+    exact = _bm_affordable(blocks, P)
+    # A coefficient's df are those of its combination on Z's coefficients (``carry``'s row).
+    df = (_bell_mccaffrey(AX, Z, bread, blocks, carry.T) if exact else
           np.full(len(est), float(clusters.n_clusters - 1)))
     se = np.sqrt(np.clip(np.diag(V), 0, None))
     reason = no_interval(names, se, df, fit=f"The cluster-robust (CR2) covariance by "
@@ -810,7 +872,8 @@ def _clustered(names: Sequence[str], est: np.ndarray, estimator: str, X: np.ndar
                                        clusters), _cluster_concerns(clusters), cov=V)
     if exact:
         def contrast(c: np.ndarray, estimate: float) -> dict[str, Any]:
-            nu = _bell_mccaffrey(AX, X, bread, blocks, np.asarray(c, dtype=float)[:, None])[0]
+            nu = _bell_mccaffrey(AX, Z, bread, blocks,
+                                 (carry.T @ np.asarray(c, dtype=float))[:, None])[0]
             return combination_row(estimate, math.sqrt(max(float(c @ V @ c), 0.0)), nu)
 
         table.contrast = contrast
@@ -1039,29 +1102,45 @@ DEPENDENT_EXITS = (
     {"label": "Leave one of the dependent columns out of the model", "decision": None},)
 
 
-def dependency_reason(matrix: pd.DataFrame, *, beside: str = "the intercept") -> str | None:
-    """Why a table on ``matrix`` (its columns, with ``beside``, the intercept or a constant where
-    cut-points or a baseline hazard take its place, dependent to working precision:
-    ``repeated.dependency_words``) reports no coefficient at all; None where they are not
-    dependent."""
-    from turbotab.core.models.repeated import dependency_words
+def singular_lead(n_rows: int, exact: bool) -> str:
+    """How a refusal for a dependency opens: the model matrix singular on these rows, to working
+    precision where ``exact``, else to within R's tolerance (``repeated.aliased``), whose share is
+    said from ``effects.ALIAS_TOL``."""
+    from turbotab.core.models.effects import ALIAS_TOL
 
-    said = dependency_words(matrix, beside=beside)
-    if said is None:
-        return None
-    what, leave = said
-    return (f"On these {len(matrix):,} rows the model matrix is singular: {what}. No estimate, "
-            f"interval or p-value is reported; {leave}.")
+    lead = f"On these {n_rows:,} rows the model matrix is singular"
+    if exact:
+        return lead
+    return (f"{lead} to within 1 part in {round(1 / ALIAS_TOL):,} of a column's variation about "
+            f"its mean (the tolerance of R's `lm`)")
 
 
-def dependent_refusal(matrix: pd.DataFrame, estimator: str, clusters: Clusters, *,
-                      beside: str = "the intercept") -> InferenceTable | None:
-    """The table refused with no estimate where the model matrix's columns, with ``beside``, are
-    dependent to working precision, in words that name the columns in a dependency
-    (:func:`dependency_reason`); None where they are not. :func:`by_identified` refuses so where
-    what is studied is in a dependency, or every coefficient is."""
-    reason = dependency_reason(matrix, beside=beside)
-    return None if reason is None else _nothing(estimator, clusters, reason)
+def dependency_what(named: Sequence[str], count: int, beside: str, exact: bool = True) -> str:
+    """What is dependent: the columns ``named`` (those in a dependency, :func:`_terms`), in
+    ``count`` ways, with ``beside`` (the intercept, or a constant where cut-points or a baseline
+    hazard take its place), so their coefficients are not identified; to R's tolerance, not at
+    it, where the dependencies are not ``exact`` (:func:`singular_lead`)."""
+    one = len(named) == 1
+    ways = "" if count <= 1 else f", in {count:,} ways,"
+    at = "" if exact else " to that precision"
+    after = "" if exact else " at it"
+    if not named:
+        return (f"its columns and {beside} are dependent{at}, so their coefficients are not "
+                f"identified{after}")
+    return (f"{_terms(named)} {'is' if one else 'are'}{ways} "
+            f"{'a fixed combination' if one else 'fixed combinations'} of the other columns and "
+            f"{beside}{at}, so {'its coefficient is' if one else 'their coefficients are'} not "
+            f"identified{after}")
+
+
+def dependency_reason(n_rows: int, named: Sequence[str], count: int, *,
+                      beside: str = "the intercept", exact: bool = True) -> str:
+    """Why a table whose columns ``named`` are, ``count`` ways, dependent with ``beside`` on its
+    ``n_rows`` rows (``repeated.aliased``) reports no coefficient at all."""
+    leave = ("leave one of the dependent columns out" if count <= 1 else
+             f"leave out one dependent column for each of the {count:,} ways")
+    return (f"{singular_lead(n_rows, exact)}: {dependency_what(named, count, beside, exact)}. No "
+            f"estimate, interval or p-value is reported; {leave}.")
 
 
 def _nothing(estimator: str, clusters: Clusters, reason: str) -> InferenceTable:
@@ -1130,16 +1209,12 @@ def _unscaled(table: InferenceTable, layout: Layout, columns: Sequence[str],
 
 
 def _by_row_reason(n_rows: int, named: Sequence[str], constant: str | None, count: int,
-                   beside: str, left_out: Sequence[str]) -> str:
+                   beside: str, left_out: Sequence[str], exact: bool = True) -> str:
     """Why the coefficients in a dependency (``named``, and ``constant``, the intercept or the
     cut-points, where the constant is in one) are refused by row, while the others are reported
-    from the fit with ``left_out`` left out (:func:`by_identified`)."""
-    one = len(named) == 1
-    ways = "" if count <= 1 else f", in {count:,} ways,"
-    what = (f"{_terms(named)} {'is' if one else 'are'}{ways} "
-            f"{'a fixed combination' if one else 'fixed combinations'} of the other columns and "
-            f"{beside}, so {'its coefficient is' if one else 'their coefficients are'} not "
-            f"identified")
+    from the fit with ``left_out`` left out (:func:`by_identified`); at R's tolerance where the
+    dependencies are not ``exact`` (:func:`singular_lead`)."""
+    what = dependency_what(named, count, beside, exact)
     if constant:
         what += f", nor {'is' if constant == 'the intercept' else 'are'} {constant}"
     leave = ("leave one of the dependent columns out" if count <= 1 else
@@ -1149,7 +1224,7 @@ def _by_row_reason(n_rows: int, named: Sequence[str], constant: str | None, coun
     listed = (f"{', '.join(unreported)} and {rest:,} more coefficient{'s' if rest != 1 else ''}"
               if rest else unreported[0] if len(unreported) == 1 else
               f"{', '.join(unreported[:-1])} and {unreported[-1]}")
-    return (f"On these {n_rows:,} rows the model matrix is singular: {what}. No estimate, interval "
+    return (f"{singular_lead(n_rows, exact)}: {what}. No estimate, interval "
             f"or p-value is reported for {listed}; the other coefficients, which these rows "
             f"identify, are estimated with {_terms(list(left_out))} left out. To report every "
             f"coefficient, {leave}.")
@@ -1158,8 +1233,7 @@ def _by_row_reason(n_rows: int, named: Sequence[str], constant: str | None, coun
 def by_identified(matrix: pd.DataFrame, build: Callable[[pd.DataFrame], InferenceTable], *,
                   layout: Layout, refuse: Callable[[str], InferenceTable],
                   beside: str = "the intercept", rows: np.ndarray | None = None,
-                  study: Sequence[str] | None = None, scaled: bool = True,
-                  centered: bool = True) -> InferenceTable:
+                  study: Sequence[str] | None = None, scaled: bool = True) -> InferenceTable:
     """A coefficient table of a family whose linear predictor is Xβ, from ``build`` (its table on
     a model matrix whose columns are not dependent), on ``matrix``.
 
@@ -1169,38 +1243,37 @@ def by_identified(matrix: pd.DataFrame, build: Callable[[pd.DataFrame], Inferenc
     and its origin moves only the intercept (or the cut-points), to working precision, whatever
     the units and origins. Scaled alone, a date in epoch seconds spanning a day stayed within 10⁻⁵
     of a constant, so nearly a copy of the intercept, and the logistic and multinomial fits on it
-    stopped short of their maximum. ``centered`` False scales the columns to a root mean square of
-    one without centering them, for a fit whose own checks read the columns' origin (the GEE's
-    and the Cox model's near-singular concern; the Cox fit centers its columns itself), and
-    ``scaled`` False hands ``build`` the columns as they are, for a fit that is already invariant
-    to them (the mixed model's REML, which factors the design by QR). A layout with no constant
-    (``"columns"``) is never centered.
+    stopped short of their maximum. ``scaled`` False hands ``build`` the columns as they are, for
+    a fit that is already invariant to them (the mixed model's REML, which factors the design by
+    QR). A layout with no constant (``"columns"``, the Cox model, whose fit centers its columns
+    itself) is scaled to a root mean square of one and not centered.
 
     Where the columns, with ``beside`` (the intercept, or a constant where cut-points or a
     baseline hazard take its place), are dependent on the rows ``rows`` marks (every row where
-    None) to working precision (``repeated.basis``), a coefficient whose column is in no
-    dependency is estimable: its estimate and standard error are those of the fit with each
-    dependent column that is a combination of those kept before it left out, as R's ``lm`` and
-    ``glm`` report it, whichever such columns are left out. Each coefficient in a dependency (the
-    intercept or the cut-points too, where the constant is in one) is refused by row, with no
-    estimate, interval or p-value (:attr:`InferenceTable.unidentified`), in words that name the
-    columns of the dependencies and count them, which are the table's first concern. That holds
-    where the caller names what is studied (``study``, the columns of the study factor). The
-    whole table is refused, with no coefficient, in ``refuse``'s table
-    (:func:`dependency_reason`'s words), where a column of ``study`` is in a dependency, where the
-    caller names nothing studied (``study`` None: whether what it reads is estimable is not
-    known here), where no coefficient is estimable, or where working precision cannot tell which
-    columns to keep."""
-    from turbotab.core.models.repeated import basis
+    None) at R's tolerance on the centered columns (``repeated.aliased``: a column whose part
+    outside the span of the intercept and the columns kept before it is under 10⁻⁷ of its
+    length), a coefficient whose column is in no dependency is estimable: its estimate and
+    standard error are those of the fit with each aliased column left out, as R's ``lm`` and
+    ``glm`` report it, whichever such columns are left out, to that precision. Each coefficient
+    in a dependency (the intercept or the cut-points too, where the constant is in one) is
+    refused by row, with no estimate, interval or p-value (:attr:`InferenceTable.unidentified`),
+    in words that name the columns of the dependencies and count them, which are the table's
+    first concern, and say R's tolerance where a dependency is not one to working precision
+    (:func:`singular_lead`). That holds where the caller names what is studied (``study``, the
+    columns of the study factor). The whole table is refused, with no coefficient, in
+    ``refuse``'s table (:func:`dependency_reason`'s words), where a column of ``study`` is in a
+    dependency, where the caller names nothing studied (``study`` None: whether what it reads is
+    estimable is not known here), or where no coefficient is estimable."""
+    from turbotab.core.models.repeated import aliased
 
     columns = [str(c) for c in matrix.columns]
     values = matrix.to_numpy(dtype=float)
     on = values if rows is None else values[np.asarray(rows)]
-    shift = (column_means(on) if scaled and centered and layout in CONSTANT_ROWS
+    shift = (column_means(on) if scaled and layout in CONSTANT_ROWS
              else np.zeros(len(columns)))
     factors = column_scales(on - shift) if scaled else np.ones(len(columns))
     scale = dict(zip(columns, factors))
-    count, dependent, kept = basis(np.column_stack([np.ones(len(on)), on]))
+    found = aliased(on)
     where = {c: j for j, c in enumerate(columns)}
 
     def fit(names: Sequence[str]) -> InferenceTable:
@@ -1210,20 +1283,20 @@ def by_identified(matrix: pd.DataFrame, build: Callable[[pd.DataFrame], Inferenc
         table = _recentered(build(part), layout, names, shift[at] / factors[at])
         return _unscaled(table, layout, names, scale)
 
-    if count == 0:
+    if found.count == 0:
         return fit(columns)
+    count, dependent = found.count, found.columns
     named = [columns[j - 1] for j in dependent if j > 0]
     constant = CONSTANT_ROWS.get(layout) if 0 in set(dependent.tolist()) else None
     estimable = [c for c in columns if c not in set(named)]
     has_constant = layout in CONSTANT_ROWS and constant is None
-    if (kept is None or study is None or set(study) & set(named)
-            or not (estimable or has_constant)):
-        frame = pd.DataFrame(on, columns=columns)
-        return refuse(dependency_reason(frame, beside=beside) or "")
-    keep = [columns[j - 1] for j in kept if j > 0]
+    if study is None or set(study) & set(named) or not (estimable or has_constant):
+        return refuse(dependency_reason(len(on), named, count, beside=beside,
+                                        exact=found.exact))
+    keep = [columns[j - 1] for j in found.kept if j > 0]
     table = fit(keep)
     left_out = [c for c in columns if c not in set(keep)]
-    reason = _by_row_reason(len(on), named, constant, count, beside, left_out)
+    reason = _by_row_reason(len(on), named, constant, count, beside, left_out, found.exact)
     table.concerns.insert(0, reason)
     table.dependency = reason
     if not table.rows:
@@ -1417,9 +1490,11 @@ def _least_squares(names: list[str], exog: pd.DataFrame, y: np.ndarray,
     if clusters.clustered:
         return _clustered(names, est, estimator, X, np.asarray(fit.resid, dtype=float),
                           clusters.codes, clusters)
-    hc3 = fit.get_robustcov_results(cov_type="HC3", use_t=True)
-    se = np.asarray(hc3.bse, dtype=float)
-    dof = float(hc3.df_resid)
+    # HC3 from the design's QR, not statsmodels' leverages from (XᵀX)⁻¹ (:func:`hc3_covariance`).
+    cov = hc3_covariance(X, np.asarray(fit.resid, dtype=float))
+    with np.errstate(invalid="ignore"):
+        se = np.sqrt(np.diag(cov))
+    dof = float(fit.df_resid)
     reason = no_interval(names, se, fit="The least-squares fit's HC3 covariance")
     if reason:
         return _refused(names, est, estimator, clusters, reason, ())
@@ -1430,8 +1505,7 @@ def _least_squares(names: list[str], exog: pd.DataFrame, y: np.ndarray,
     if hetero:
         concerns.append(hetero)
     caption = f"95% intervals from HC3 heteroskedasticity-robust standard errors, on t({dof:,.0f})."
-    return InferenceTable(rows, _info(estimator, "HC3", caption, clusters), concerns,
-                          cov=np.asarray(hc3.cov_params(), dtype=float))
+    return InferenceTable(rows, _info(estimator, "HC3", caption, clusters), concerns, cov=cov)
 
 
 def _named(names: Sequence[str], idx: Sequence[int]) -> list[str]:
@@ -1462,10 +1536,14 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     refusal = floor_refusal(clusters, task="binary")
     if refusal:
         return _refused(names, est, estimator, clusters, *refusal)
+    Xw, ew = logistic_working(X, y, np.asarray(fit.predict(X), dtype=float))
     if clusters.clustered:
-        Xw, ew = logistic_working(X, y, np.asarray(fit.predict(X), dtype=float))
         return _clustered(names, est, estimator, Xw, ew, clusters.codes, clusters)
-    se = np.asarray(fit.bse, dtype=float)
+    # The inverse information from the working design's QR (:func:`gram_inverse`), not
+    # statsmodels' inverse of the Hessian, whose rounding is the design's condition number squared.
+    cov = gram_inverse(Xw)
+    cov = np.asarray(fit.cov_params(), dtype=float) if cov is None else cov
+    se = np.sqrt(np.clip(np.diag(cov), 0, None))
     reason = no_interval(names, se, fit="The logistic model's information")
     if reason:
         return _refused(names, est, estimator, clusters, reason, ())
@@ -1473,8 +1551,7 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     concerns = [clusters.note] if clusters.note else []
     return InferenceTable(rows, _info(estimator, "model",
                                       "95% Wald intervals from the logistic model's information.",
-                                      clusters), concerns,
-                          cov=np.asarray(fit.cov_params(), dtype=float))
+                                      clusters), concerns, cov=cov)
 
 
 def separation_concern(separated: Sequence[str]) -> str:
@@ -1765,10 +1842,14 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
     refusal = floor_refusal(clusters, task="multiclass")
     if refusal:
         return _refused(labels, est, estimator, clusters, *refusal)
+    Xw, ew = multinomial_working(X, codes, np.asarray(fit.predict(X), dtype=float))
     if clusters.clustered:
-        Xw, ew = multinomial_working(X, codes, np.asarray(fit.predict(X), dtype=float))
         return _clustered(labels, est, estimator, Xw, ew, np.repeat(clusters.codes, q), clusters)
-    se = np.asarray(fit.bse, dtype=float).ravel(order="F")
+    # The inverse information from the working design's QR (:func:`gram_inverse`), class by class
+    # as ``est``, not statsmodels' inverse of the Hessian.
+    C = gram_inverse(Xw)
+    C = np.asarray(fit.cov_params(), dtype=float) if C is None else C
+    se = np.sqrt(np.clip(np.diag(C), 0, None))
     reason = no_interval(labels, se, fit="The multinomial model's information")
     if reason:
         return _refused(labels, est, estimator, clusters, reason, ())
@@ -1777,8 +1858,7 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
                            _info(estimator, "model",
                                  "95% Wald intervals from the multinomial model's information.",
                                  clusters), concerns)
-    # statsmodels orders the covariance class by class, as ``est``; the table keeps none.
-    C = np.asarray(fit.cov_params(), dtype=float)
+    # The covariance is ordered class by class, as ``est``; the table keeps none.
     table.contrast = lambda c, b: combination_row(b, math.sqrt(max(float(c @ C @ c), 0.0)))
     return table
 
@@ -1787,7 +1867,8 @@ __all__ = [
     "COMPLETE_CASES", "Clusters", "FEW_CLUSTERS", "FIRTH", "FirthFit", "INDEPENDENT",
     "InferenceTable", "Outcome", "POOLED_FIRTH_CAPTION", "PooledFirth", "Rows", "Scale", "WITHHELD",
     "bread_of", "by_identified", "cluster_columns", "column_scales", "copies_words", "cr2",
-    "dependency_reason", "dependent_refusal", "logistic_working", "scaled_inverse",
+    "gram_inverse", "hc3_covariance", "qr_frame",
+    "dependency_reason", "logistic_working", "scaled_inverse",
     "multinomial_working", "firth_fit", "firth_profile", "floor_refusal", "for_pooling",
     "no_interval",
     "format_p", "heteroskedasticity_concern", "pooled_firth", "pooling", "separation_concern",

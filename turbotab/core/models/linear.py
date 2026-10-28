@@ -39,8 +39,9 @@ METHODS_LABELS = {
     "multiclass": "multinomial logistic regression",
     "ordinal": "multinomial logistic regression, which ignores the levels' order",
 }
-# Belsley, Kuh & Welsch (1980): the condition number of the design matrix with its intercept, each
-# column scaled to unit length. Above 30 is the usual "moderate" mark; 1,000 is far past "strong"
+# Belsley, Kuh & Welsch (1980): the condition number of the design matrix, each column scaled to
+# unit length (here centered first, as the tables are fit: :func:`collinearity_concern`). Above 30
+# is the usual "moderate" mark; 1,000 is far past "strong"
 # and means some columns are close to an exact linear combination of others (shares that sum to
 # 100%, a total beside all of its parts), so their separate coefficients are not identified.
 NEAR_SINGULAR = 1_000.0
@@ -58,16 +59,24 @@ def model_matrix(pipeline: Any, X: pd.DataFrame) -> pd.DataFrame:
 
 
 def collinearity_concern(matrix: pd.DataFrame) -> str | None:
-    """A plain concern when the model matrix (with its intercept) is nearly singular, else None.
+    """A plain concern when the model matrix is nearly singular, else None.
 
-    The scaled condition number (Belsley): the intercept and every column, each scaled to unit
-    length, so units do not count. The columns named are those the near-dependency involves.
+    The scaled condition number (Belsley) of its columns centered at their means, each scaled to
+    unit length, so neither units nor origins count: every coefficient table is fit on its columns
+    centered (``inference.by_identified``; the Cox fit centers its own, and REML's QR is
+    unmoved by an origin), the intercept or the baseline hazard taking their origin, and the
+    intercept, orthogonal to centered columns, changes no condition number. Read beside the
+    intercept as they stood (Belsley's own diagnostic), a column about a mean a thousand SDs from
+    zero was nearly a copy of the intercept (a condition number of 1,973), and the Cox, mixed and
+    GEE tables were refused in words that called it alone "close to a fixed combination of each
+    other", though its slope is unmoved by its origin and each fit was right there. The columns
+    named are those the near-dependency involves.
     """
     values = matrix.to_numpy(dtype=float, na_value=np.nan)
     values = values[np.isfinite(values).all(axis=1)]
     if values.shape[0] <= values.shape[1] or values.shape[1] == 0:
         return None
-    X = np.column_stack([np.ones(len(values)), values])
+    X = values - values.mean(axis=0)
     norms = np.linalg.norm(X, axis=0)
     norms[norms == 0] = 1.0
     _, s, vt = np.linalg.svd(X / norms, full_matrices=False)
@@ -79,12 +88,16 @@ def collinearity_concern(matrix: pd.DataFrame) -> str | None:
     with np.errstate(divide="ignore", invalid="ignore"):
         phi = (vt.T ** 2) / np.where(s > 0, s, np.finfo(float).tiny) ** 2
         proportion = phi[:, -1] / phi.sum(axis=1)
-    names = ["the intercept", *[str(c) for c in matrix.columns]]
+    names = [str(c) for c in matrix.columns]
     order = np.argsort(-np.nan_to_num(proportion))
-    involved = [names[j] for j in order if proportion[j] >= 0.5 and names[j] != "the intercept"]
-    columns = involved[:6] or [str(c) for c in matrix.columns][:5]
-    listed = columns[0] if len(columns) == 1 else f"{', '.join(columns[:-1])} and {columns[-1]}"
+    involved = [names[j] for j in order if proportion[j] >= 0.5]
+    columns = involved[:6] or names[:5]
     size = "too large to compute" if not np.isfinite(condition) else f"{condition:,.0f}"
+    if len(columns) == 1:
+        return (f"The model matrix is nearly singular (scaled condition number {size}): "
+                f"{columns[0]} is close to a fixed combination of the other columns, so its "
+                f"coefficient is not well identified; leave it out.")
+    listed = f"{', '.join(columns[:-1])} and {columns[-1]}"
     return (f"The model matrix is nearly singular (scaled condition number {size}): {listed} are "
             f"close to a fixed combination of each other, so their separate coefficients are not "
             f"identified; leave one of them out.")

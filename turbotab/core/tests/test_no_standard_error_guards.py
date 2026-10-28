@@ -6,9 +6,12 @@ Lin–Wei tables, and GEE's (its early return past the CR2 table, ``repeated.gee
 
 Where it fires, the covariance is constructed directly, so the case is exact on every platform
 (no rounding, and no NaN handed to LAPACK, whose handling of one differs between builds): one
-coefficient's entries in the logistic, multinomial and Cox covariances set to zero, the
-proportional-odds model's information set to zero (whose pseudo-inverse, the table's bread, is
-then exactly zero), and GEE's working residuals set to zero (so its sandwich's meat is). A zero
+coefficient's entries in the logistic, multinomial and Cox covariances set to zero (the first two
+where the tables take them, the inverse information from the working design's QR,
+``inference.gram_inverse``, which they read in place of statsmodels' since T1V2-2), the
+proportional-odds model's information set to zero where the table takes it (``ordinal.on_qr``;
+its pseudo-inverse, the table's bread, is then exactly zero), and GEE's working residuals set to
+zero (so its sandwich's meat is). A zero
 row and column of a bread leave that coefficient's sandwich variance exactly zero too. Each table
 is refused in words that name what has no standard error and what the fit could not compute, and
 keeps every estimate, as the unaltered fit's table reports it, with no interval. Where it stays
@@ -21,9 +24,8 @@ import dataclasses
 import numpy as np
 import pandas as pd
 import pytest
-import statsmodels.api as sm
 
-from turbotab.core.models import ordinal, repeated, survival
+from turbotab.core.models import inference, ordinal, repeated, survival
 from turbotab.core.models.inference import INDEPENDENT, Clusters, inference_table
 
 G, M = 40, 5  # 40 units: above the unit floor and the few-units count
@@ -59,28 +61,25 @@ def _without_variance(cov: np.ndarray, j: int) -> np.ndarray:
     return cov
 
 
-def _statsmodels(monkeypatch: pytest.MonkeyPatch, model: type, j: int) -> None:
-    """``model``'s fit, with coefficient ``j`` (in statsmodels' order) left no variance."""
-    fit = model.fit
+def _information(monkeypatch: pytest.MonkeyPatch, j: int) -> None:
+    """The inverse information the logistic and multinomial tables take
+    (``inference.gram_inverse``), with coefficient ``j`` (class by class) left no variance."""
+    inverse = inference.gram_inverse
 
-    def altered(self, *args, **kwargs):
-        result = fit(self, *args, **kwargs)
-        inner = result._results  # the results the wrapper reads (its own attributes are copies)
-        inner.normalized_cov_params = _without_variance(inner.normalized_cov_params, j)
-        return result
+    def altered(*args, **kwargs):
+        return _without_variance(inverse(*args, **kwargs), j)
 
-    monkeypatch.setattr(model, "fit", altered)
+    monkeypatch.setattr(inference, "gram_inverse", altered)
 
 
 def _ordinal(monkeypatch: pytest.MonkeyPatch) -> None:
-    fit = ordinal.ProportionalOddsRegression.fit
+    on_qr = ordinal.on_qr
 
-    def altered(self, *args, **kwargs):
-        fit(self, *args, **kwargs)
-        self.information_ = np.zeros_like(self.information_)
-        return self
+    def altered(*args, **kwargs):
+        information, scores, carry = on_qr(*args, **kwargs)
+        return np.zeros_like(information), scores, carry
 
-    monkeypatch.setattr(ordinal.ProportionalOddsRegression, "fit", altered)
+    monkeypatch.setattr(ordinal, "on_qr", altered)
 
 
 def _cox(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -107,10 +106,10 @@ CUTS = "`(cut-point 0 | 1)` and `(cut-point 1 | 2)`"
 # name: (outcome, the table, how its covariance is left without a variance, the words)
 CASES = {
     "logistic": ("binary", lambda m, y: inference_table("binary", m, y, [0, 1]),
-                 lambda mp: _statsmodels(mp, sm.Logit, 2),
+                 lambda mp: _information(mp, 2),
                  f"The logistic model's information gives `z` {END}"),
     "multinomial": ("multiclass", lambda m, y: inference_table("multiclass", m, y, [0, 1, 2]),
-                    lambda mp: _statsmodels(mp, sm.MNLogit, 2),
+                    lambda mp: _information(mp, 2),
                     f"The multinomial model's information gives `z [1]` {END}"),
     "proportional odds": ("ordinal", lambda m, y: ordinal.ordinal_table(m, y, [0, 1, 2],
                                                                         INDEPENDENT),

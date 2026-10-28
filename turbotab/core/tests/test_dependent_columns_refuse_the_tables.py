@@ -14,8 +14,10 @@ or of ones ended the logistic table with ``LinAlgError: Singular matrix``. Packa
 such table whole, with no estimate; the tail ruling of 2026-10-27 serves a coefficient in no
 dependency at the fit with the aliased columns left out, as R's ``lm`` and ``glm`` report it, so a
 specification curve's departure that leaves a covariate constant keeps what is studied.
-Dependence is decided at working precision on the column-scaled design (``repeated.basis``, the
-mixed model's rule).
+Dependence is decided at R's tolerance on the centered columns (``repeated.aliased``: a column
+whose part outside the span of the intercept and the columns before it is under 10⁻⁷ of its
+length is aliased, as ``lm`` aliases it); every construction below is exact, so its words are
+those of a singular matrix (the near case: ``test_tables_alias_at_r_tolerance.py``).
 
 Truth from construction: a column twice another, a column of ones or of zeros beside the intercept,
 two indicators that sum to one, and an indicator that is the sum of two others. A coefficient in no
@@ -352,8 +354,9 @@ def test_independent_columns_in_the_proportional_odds_table_are_not_refused():
 
 
 def test_a_nearly_dependent_column_is_not_refused():
-    """The rule is working precision, not a near-dependency: `x` beside `x` plus noise of SD 10⁻⁴
-    (a scaled condition number near 10⁴) is fit by least squares, at statsmodels' estimates."""
+    """The rule is R's tolerance, not a near-dependency: `x` beside `x` plus noise of SD 10⁻⁴
+    (its part outside `x`'s span some 10⁻⁴ of its length, past 10⁻⁷; a scaled condition number
+    near 10⁴) is fit by least squares, at statsmodels' estimates."""
     x, v, ys = _rows()
     near = x + np.random.default_rng(3).normal(scale=1e-4, size=N)
     matrix = pd.DataFrame({"x": x, "v": v, "near": near})

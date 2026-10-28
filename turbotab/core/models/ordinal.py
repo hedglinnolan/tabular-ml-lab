@@ -385,6 +385,31 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
                          refuse=lambda reason: _nothing(ESTIMATOR, clusters, reason))
 
 
+def on_qr(model: ProportionalOddsRegression, X: np.ndarray, codes: np.ndarray, w: np.ndarray
+          ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The fit's observed information and each row's score over ``(θ, cut-points)`` with
+    ``θ = Rβ`` for the QR ``X = QR`` (``inference.qr_frame``), evaluated on Q at the same linear
+    predictor, and the map that carries a covariance on them to ``(β, cut-points)``:
+    ``blockdiag(R⁻¹, I)``. On Q the information is well conditioned, where on X its inverse had
+    the rounding of the design's condition number squared (beside ``x + 10⁻⁶·d``, `x2`'s standard
+    error was off by 3·10⁻⁴). On X itself, with the identity map, where R is singular. ``codes``
+    are the fit's own (0 to K − 1 over its ``classes_``)."""
+    from turbotab.core.models.inference import qr_frame
+
+    q = len(model.thresholds_)
+    P = X.shape[1]
+    frame = qr_frame(X) if P else None
+    if frame is None:
+        _, _, _, scores = loglik_gradient_hessian(model.coef_, model.thresholds_, X, codes, w)
+        return model.information_, scores, np.eye(P + q)
+    Q, Rinv = frame
+    _, _, H, scores = loglik_gradient_hessian(Q.T @ (X @ model.coef_), model.thresholds_, Q,
+                                              codes, w)
+    carry = np.eye(P + q)
+    carry[:P, :P] = Rinv
+    return -H, scores, carry
+
+
 def _ordinal_table(matrix: pd.DataFrame, codes: np.ndarray, levels: Sequence[Any] | None,
                    clusters: Any) -> Any:
     """:func:`ordinal_table` on columns that are not dependent."""
@@ -420,14 +445,14 @@ def _ordinal_table(matrix: pd.DataFrame, codes: np.ndarray, levels: Sequence[Any
         table = _refused(names, est, estimator, clusters, *refusal)
         table.concerns.extend(concerns)
         return table
-    bread = scaled_inverse(model.information_)
+    inner = np.searchsorted(model.classes_, codes).astype(np.int64)
+    information, scores, carry = on_qr(model, X, inner, np.ones(len(codes)))
+    bread = scaled_inverse(information)
     if clusters.clustered:
-        _, _, _, scores = loglik_gradient_hessian(model.coef_, model.thresholds_, X, codes,
-                                                  np.ones(len(codes)))
         G = clusters.n_clusters
         summed = np.zeros((G, scores.shape[1]))
         np.add.at(summed, clusters.codes, scores)
-        V = (G / (G - 1.0)) * bread @ (summed.T @ summed) @ bread
+        V = carry @ ((G / (G - 1.0)) * bread @ (summed.T @ summed) @ bread) @ carry.T
         V = (V + V.T) / 2.0
         se = np.sqrt(np.clip(np.diag(V), 0, None))
         reason = no_interval(names, se, fit=f"The cluster-robust sandwich by `{clusters.column}`")
@@ -444,6 +469,8 @@ def _ordinal_table(matrix: pd.DataFrame, codes: np.ndarray, levels: Sequence[Any
         concerns.append("The proportional-odds check (Brant) is not computed when rows repeat: it "
                         "assumes independent rows.")
         return InferenceTable(rows, info, concerns, cov=V)
+    bread = carry @ bread @ carry.T
+    bread = (bread + bread.T) / 2.0
     se = np.sqrt(np.clip(np.diag(bread), 0, None))
     reason = no_interval(names, se, fit="The proportional-odds model's information")
     if reason:
@@ -537,10 +564,10 @@ def _survey_ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | 
     names = features + cut_names(level_names)
     est = np.concatenate([model.coef_, model.thresholds_])
     inner = np.searchsorted(model.classes_, codes).astype(np.int64)
-    _, _, _, scores = loglik_gradient_hessian(model.coef_, model.thresholds_, X, inner,
-                                              domain.weight)
-    table = design_table(names, est, scores * domain.weight[:, None], model.information_,
-                         design, domain, estimator, converged=bool(model.converged_))
+    information, scores, carry = on_qr(model, X, inner, domain.weight)
+    table = design_table(names, est, scores * domain.weight[:, None], information,
+                         design, domain, estimator, converged=bool(model.converged_),
+                         carry=carry)
     if table.info.get("refused"):
         return table
     table.info["caption"] += (" Coefficients are log cumulative odds ratios: exp(β) multiplies the "
