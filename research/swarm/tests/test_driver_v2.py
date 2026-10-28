@@ -493,3 +493,157 @@ def test_start_takes_the_model_and_a_persona_of_the_three():
     with pytest.raises(SystemExit):
         p.parse_args([*base, "--persona", "bold"])
     assert driver.PERSONAS == ("conventional", "skeptical", "explorer")
+
+
+# ── a way forward the driver offers works as offered (P7 a) ─────────────────
+
+
+def engine_refusal_body(tmp_path: Path) -> dict[str, Any]:
+    """The engine's own refusal of a second revert of one decision (``decisions._check_revert``),
+    as the server serves it (``Refusal.to_dict``): ``already_reverted``, its way forward a revert
+    of the earlier revert."""
+    from turbotab.core.decisions import DecisionLog, Refusal, Revert, SetTarget
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    target = log.append(SetTarget(column="y"))
+    undo = log.append(Revert(decision_id=target.id))
+    try:
+        log.append(Revert(decision_id=target.id))
+    except Refusal as exc:
+        return {"body": exc.to_dict(), "target": target.id, "undo": undo.id}
+    raise AssertionError("the engine took a second revert of one decision")
+
+
+def test_a_revert_way_forward_names_the_command_that_takes_it_and_that_command_does(
+        tmp_path, monkeypatch):
+    """P7 (a): the engine's ``already_reverted`` refusal offers "Undo the earlier revert instead",
+    a revert. The driver's ``answer`` refuses every revert (``guard_kind``: not_this_way), so the
+    way is listed with no id ``answer`` could take, and with the command that takes it, ``revisit
+    <the earlier revert>``; that command posts exactly the way's decision. A way ``answer`` takes
+    keeps its id and names no command."""
+    fake_run(tmp_path, monkeypatch)
+    served = engine_refusal_body(tmp_path / "engine")
+    view = {**VIEW, "decisions": [{"id": served["target"]}, {"id": served["undo"]}]}
+    monkeypatch.setattr(driver, "view_of", lambda run, client: view)
+    monkeypatch.setattr(driver, "guard_budget", lambda *a, **k: None)
+    sent: list[dict[str, Any]] = []
+
+    def post(run, client, decision, note):
+        sent.append(decision)
+        if decision == {"kind": "revert", "decision_id": served["target"]}:
+            return driver.Response(409, json.dumps(served["body"]).encode(), {})
+        return driver.Response(200, json.dumps({"decisions": [{"id": "r9", "seq": 9,
+                                                               "decision": decision}],
+                                                "interview": []}).encode(), {})
+
+    monkeypatch.setattr(driver, "post_decision", post)
+    code, payload = run_main(["revisit", "--run", RID, served["target"], "--reason", "again"])
+    assert code == 1 and payload["refused"]["code"] == "already_reverted"
+    (way,) = payload["refused"]["exits"]
+    undo = {"kind": "revert", "decision_id": served["undo"]}
+    assert way == {"id": None, "label": served["body"]["error"]["exits"][0]["label"],
+                   "decision": undo, "command": f"revisit {served['undo']}"}
+    # The command it names, as written, posts the way's decision and is recorded.
+    words = way["command"].split()
+    code, payload = run_main([words[0], "--run", RID, *words[1:], "--reason", "the way forward"])
+    assert code == 0 and sent[-1] == undo and payload["recorded"]["decision"] == undo
+    # The other way: a way forward ``answer`` takes keeps its id, and names no command.
+    keep = {"kind": "set_missing", "strategy": "complete_case"}
+    (other,) = driver.opts.exits([{"label": "Keep complete cases", "decision": keep}])
+    assert other["id"] == driver.opts.exit_id(keep) and "command" not in other
+
+
+@pytest.mark.parametrize("decision, command", [
+    ({"kind": "revert", "decision_id": "r4"}, "revisit r4"),
+    ({"kind": "open_seal", "family": "linear"}, "seal linear"),
+    ({"kind": "lock_plan"}, "fit"),
+    ({"kind": "reseal"}, None),
+    ({"kind": "open_seal"}, None),  # a way that names no family names no command
+])
+def test_each_way_forward_answer_refuses_has_no_id_and_names_its_own_command(decision, command):
+    """Every kind the driver records only through a command of its own (``NOT_THIS_WAY``) is
+    listed with no id; each with what that command needs names it, and a re-seal, which a run never
+    records, names none. ``answer`` refuses each such decision, and takes the rest."""
+    (way,) = driver.opts.exits([{"label": "a way", "decision": decision}])
+    assert way["id"] is None and way.get("command") == command
+    assert set(driver.opts.OWN_COMMAND) | set(driver.opts.NEVER_RECORDED) == set(
+        driver.NOT_THIS_WAY)
+    with pytest.raises(driver.DriverError):
+        driver.guard_kind(decision)
+
+
+# ── a refused effect shows the engine's own words (P7 b) ────────────────────
+
+
+def effects_refusal() -> dict[str, Any]:
+    """An effects stage's typed refusal as its status serves it, its code and its multiple
+    imputation label the engine's own (``stages.effects.NO_ROWS_THREE``, ``methods.missing.
+    MI_LABEL``); its words constructed here, so they are known to be passed through."""
+    from turbotab.core.methods.missing import MI_LABEL
+    from turbotab.core.stages.effects import NO_ROWS_THREE
+
+    return {"stage": "effects", "code": NO_ROWS_THREE,
+            "message": "Constructed: Model 3 adds x3 and no analyzed row records it.",
+            "exits": [{"label": "Leave x3 out of Model 3", "decision": None},
+                      {"label": MI_LABEL, "decision": {"kind": "set_missing",
+                                                       "strategy": "multiple_imputation"}}]}
+
+
+def inference_view(effects: dict[str, Any]) -> dict[str, Any]:
+    return {"state": {"purpose": "inference", "target": "y", "plan_locked": True,
+                      "seal_opened": None},
+            "stages": {"fit": {"key": "k1", "status": "fresh"}, "effects": effects,
+                       "mattered": {"key": "m1", "status": "fresh"}},
+            "decisions": []}
+
+
+REFUSED_EFFECTS = {"key": "e1", "status": "error", "error": "StageRefusal: constructed"}
+
+
+@pytest.mark.parametrize("effects", [REFUSED_EFFECTS, {"key": "e1", "status": "fresh"}],
+                         ids=["refused", "fresh"])
+def test_results_carry_the_effects_stages_refusal_in_its_own_words(tmp_path, monkeypatch,
+                                                                   effects):
+    fake_run(tmp_path, monkeypatch)
+    refusal = effects_refusal()
+    status = {**effects, "refusal": refusal} if effects["status"] == "error" else dict(effects)
+    monkeypatch.setattr(driver, "view_of", lambda run, client: inference_view(status))
+    monkeypatch.setattr(driver, "keep_markers", lambda run, client, command: None)
+    served = {"purpose": "inference", "effects": {"key": "e1", "status": effects["status"]},
+              "families": [{"family": "linear", "effect": None, "refusal": None}]}
+    monkeypatch.setattr(driver.Client, "get", lambda self, path, **q: driver.Response(
+        200, json.dumps(served if path.endswith("/results") else {"rows": []}).encode(), {}))
+    code, payload = run_main(["results", "--run", RID, "--wait", "0"])
+    assert code == 0 and payload["results"] == served
+    if effects["status"] == "fresh":
+        assert "effects_failed" not in payload
+        return
+    (failed,) = payload["effects_failed"]
+    assert (failed["stage"], failed["kind"]) == ("effects", "refused")
+    assert failed["refusal"]["message"] == refusal["message"]  # passed through, not retyped
+    assert failed["refusal"]["code"] == refusal["code"]
+    assert [e["decision"] for e in failed["refusal"]["exits"]] == [
+        e["decision"] for e in refusal["exits"]]
+
+
+@pytest.mark.parametrize("effects", [REFUSED_EFFECTS, {"key": "e1", "status": "fresh"}],
+                         ids=["refused", "fresh"])
+def test_ask_carries_the_effects_stages_refusal_and_its_ways_forward_by_id(tmp_path, monkeypatch,
+                                                                           effects):
+    fake_run(tmp_path, monkeypatch)
+    run = driver.Run.load(RID)
+    refusal = effects_refusal()
+    status = {**effects, "refusal": refusal} if effects["status"] == "error" else dict(effects)
+    view = inference_view(status)
+    monkeypatch.setattr(driver, "wait_open", lambda run, client, wait: (view, None))
+    monkeypatch.setattr(driver, "quest_lines", lambda run, client: ([], {"pressed": True}))
+    q = driver.the_question(run, driver.Client(9), 0)
+    if effects["status"] == "fresh":
+        assert "effects_failed" not in q and q["_ways"] == []
+        return
+    (failed,) = q["effects_failed"]
+    assert failed["refusal"]["message"] == refusal["message"]
+    mi = refusal["exits"][1]["decision"]
+    assert [w["decision"] for w in q["_ways"] if w["id"]] == [mi]
+    assert driver.opts.resolve(q["_composed"], [driver.opts.exit_id(mi)], [], q["_ways"]) == mi

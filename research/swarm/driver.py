@@ -55,7 +55,11 @@ the multiplicity and the sensitivity analyses; ``quest.DECLARATIONS``) is listed
 engine's own definitions, and ``preview`` and ``answer`` take them by id like a question's. A fit
 the engine refused in words (its stage status's typed ``refusal``) is said with its code and its
 ways forward, which ``answer`` takes by id; a fit that failed with an error the engine did not type
-as a refusal is said as it failed.
+as a refusal is said as it failed. So is the effects stage once it stopped, in ``ask`` and
+``results`` (``effects_failed``), since the results serve no words for a stage in error. A way
+forward whose decision the driver records only through a command of its own (a revert, the
+opening of the held-out rows), which ``answer`` refuses, is listed with no id and with the command
+that records it (``options.exits``: ``revisit <decision id>``, ``seal <family>``).
 
 **The analyst's tags** (SWARM_PLAN §2, §4): ``preview`` and ``answer`` take a reason; ``answer``
 takes a marker of the controlled vocabulary (``research/swarm/vocabulary.py``) and may name the
@@ -739,6 +743,10 @@ def the_question(run: Run, client: Client, wait: float) -> dict[str, Any]:
     if failed:
         out["fit_failed"] = failed
         ways += [w for f in failed for w in (f["refusal"] or {}).get("exits") or []]
+    effects = failures(view, ["effects"])
+    if effects:  # the effects stage stopped (under Estimate): its own words and ways forward
+        out["effects_failed"] = effects
+        ways += [w for f in effects for w in (f["refusal"] or {}).get("exits") or []]
     kept = run.kept_exits()
     if kept:
         out["last_refusal_exits"] = kept
@@ -1561,6 +1569,9 @@ def cmd_results(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | No
     out: dict[str, Any] = {"results": r.json(),
                            "stages": {s: (stages.get(s) or {}).get("status")
                                       for s in ("fit", "effects", "mattered") if s in stages}}
+    effects = failures(view, ["effects"])
+    if effects:  # the results serve no words for a stage that stopped: its status's, as served
+        out["effects_failed"] = effects
     state = view.get("state") or {}
     if state.get("purpose") == "inference" and state.get("plan_locked"):
         m = client.get(f"/projects/{run.project}/mattered")
