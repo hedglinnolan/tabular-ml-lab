@@ -753,7 +753,8 @@ SURVIVAL_MONOTONE_LIKELIHOOD = register(Claim(
     decision="cox_table.intervals",
     verdict="refused",
     params={
-        "diverged": Param(20, unit="standard deviations of the column",
+        "diverged": Param(20, unit=("standard deviations of the linear predictor (for one "
+                                    "column, of the column)"),
                           constant="turbotab.core.models.survival:DIVERGED"),
         "flat": Param(1e-8, unit="share of the information's largest eigenvalue",
                       constant="turbotab.core.models.survival:FLAT"),

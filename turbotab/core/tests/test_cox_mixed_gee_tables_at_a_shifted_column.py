@@ -142,4 +142,4 @@ def test_the_concern_reads_no_origin_and_names_a_near_copy_in_its_own_condition_
     assert collinearity_concern(pair) == (
         f"The model matrix is nearly singular (scaled condition number {s[0] / s[-1]:,.0f}): x1 "
         f"and x2 are close to a fixed combination of each other, so their separate coefficients "
-        f"are not identified; leave one of them out.")
+        f"are not well determined; leave one of them out.")

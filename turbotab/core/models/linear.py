@@ -43,7 +43,8 @@ METHODS_LABELS = {
 # unit length (here centered first, as the tables are fit: :func:`collinearity_concern`). Above 30
 # is the usual "moderate" mark; 1,000 is far past "strong"
 # and means some columns are close to an exact linear combination of others (shares that sum to
-# 100%, a total beside all of its parts), so their separate coefficients are not identified.
+# 100%, a total beside all of its parts), so their separate coefficients are not well determined
+# (not aliased, they are identified: ``repeated.aliased``).
 NEAR_SINGULAR = 1_000.0
 
 
@@ -72,11 +73,18 @@ def collinearity_concern(matrix: pd.DataFrame) -> str | None:
     other", though its slope is unmoved by its origin and each fit was right there. The columns
     named are those the near-dependency involves.
     """
+    from turbotab.core.models.repeated import peaks
+
     values = matrix.to_numpy(dtype=float, na_value=np.nan)
     values = values[np.isfinite(values).all(axis=1)]
     if values.shape[0] <= values.shape[1] or values.shape[1] == 0:
         return None
     X = values - values.mean(axis=0)
+    # A column whose squares would overflow or underflow is first taken over its largest absolute
+    # value (``repeated.peaks``): at 10²⁰⁰ its length was infinite and the condition number "too
+    # large to compute" for a column of independent noise.
+    peak = peaks(X)
+    X = X / np.where((peak > 1e150) | (peak < 1e-150), peak, 1.0)
     norms = np.linalg.norm(X, axis=0)
     norms[norms == 0] = 1.0
     _, s, vt = np.linalg.svd(X / norms, full_matrices=False)
@@ -98,9 +106,11 @@ def collinearity_concern(matrix: pd.DataFrame) -> str | None:
                 f"{columns[0]} is close to a fixed combination of the other columns, so its "
                 f"coefficient is not well identified; leave it out.")
     listed = f"{', '.join(columns[:-1])} and {columns[-1]}"
+    # Not "not identified": at R's tolerance these rows identify each of them (they are not
+    # aliased, ``repeated.aliased``); their separate coefficients are only poorly determined.
     return (f"The model matrix is nearly singular (scaled condition number {size}): {listed} are "
             f"close to a fixed combination of each other, so their separate coefficients are not "
-            f"identified; leave one of them out.")
+            f"well determined; leave one of them out.")
 
 
 def as_clusters(groups: Any) -> Any:

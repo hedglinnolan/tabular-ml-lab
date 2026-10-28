@@ -312,14 +312,17 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     tests its feature-wise table made and whose models came to name the category they adjust for
     (T4a), and the sensitivity and secondary stages, which refit the feature-wise table, and the
     proposals stage, whose estimand card came to say what feature-wise regression would test of a
-    family (T4a's repair); and, where the tail tables and T4a both moved a stage, one
-    past both at their merge."""
+    family (T4a's repair); and the fit and the stages that refit its tables again when a
+    dependency's columns came to be read on the centered design, an iterative fit's table to be
+    served only at its maximum, a coefficient on a row of leverage one to have no HC3 standard
+    error and a separated multinomial or proportional-odds table to be refused (T5a); and, where
+    two branches both moved a stage, one past both at their merge."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 37, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 38, 21)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
-            versions["secondary"], versions["scales"]) == (11, 20, 17, 11, 8)
+            versions["secondary"], versions["scales"]) == (12, 21, 18, 12, 9)
     assert versions["proposals"] == 21
 
 

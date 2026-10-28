@@ -129,6 +129,19 @@ class _Sums:
 IN_DEPENDENCY = 1e-6
 
 
+def peaks(X: np.ndarray) -> np.ndarray:
+    """Each column's largest absolute value (1 where it is zero or not finite): a column divided by
+    it has entries at most one in size, so its squared length neither overflows nor underflows.
+    Unnormalized, a column of 10²⁰⁰'s squared length was infinite and one of 10⁻²⁰⁰'s zero, and
+    either read as a dependency of its own."""
+    X = np.asarray(X, dtype=float)
+    if X.size == 0:
+        return np.ones(X.shape[1] if X.ndim == 2 else 0)
+    with np.errstate(invalid="ignore"):
+        peak = np.max(np.abs(X), axis=0)
+    return np.where(np.isfinite(peak) & (peak > 0), peak, 1.0)
+
+
 def dependencies(X: np.ndarray) -> tuple[int, np.ndarray]:
     """How many dependencies the design's columns have to working precision, and the columns in
     any of them. With every column scaled to unit length (so units do not count; a column of zeros
@@ -150,6 +163,7 @@ def _spectrum(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     length, and which of them are dependencies (:func:`dependencies`' rule). With fewer rows than
     columns, each direction beyond the rows' count is one (a singular value of zero)."""
     N, P = X.shape
+    X = X / peaks(X)
     norms = np.linalg.norm(X, axis=0)
     _, s, vt = np.linalg.svd(X / np.where(norms > 0, norms, 1.0), full_matrices=N < P)
     s = np.concatenate([s, np.zeros(P - len(s))])
@@ -205,23 +219,42 @@ def aliased(values: np.ndarray) -> Aliased:
     is under the tolerance times its own length (R's limited pivoting, ``effects.column_basis``),
     centered so that a column far from its origin is not a near copy of the intercept. Its
     dependency is the column less its least-squares fit on the kept columns, which these rows
-    cannot tell from zero at that precision; carried back to the columns as they stand, each
-    scaled to unit length (a constant column's dependency then holds the intercept), these
-    directions span the dependencies, and a column with weight in that span above
-    :data:`IN_DEPENDENCY` is in one, as :func:`dependencies` names an exact one. A coefficient in
-    none has, to that precision, the same estimate whichever of the dependent columns a fit
-    leaves out. ``exact`` where every aliased column's part was at most max(N, P) machine epsilons
+    cannot tell from zero at that precision. Which columns are in a dependency is read on the same
+    centered columns, each scaled to unit length: these directions span the dependencies, and a
+    column with weight in that span above :data:`IN_DEPENDENCY` is in one, as
+    :func:`dependencies` names an exact one. A coefficient in none has, to that precision, the
+    same estimate whichever of the dependent columns a fit leaves out. Read on the columns as they
+    stood, a column's weight grew with its mean over its SD: beside ``x`` and ``x + 2·10⁻⁸·d``, a
+    year (a mean 1,400 SDs from zero) was named in their dependency though R's ``lm`` and the
+    fit leaving out the near copy serve it, and beside ``x + 10⁶``, `x` was left out of it.
+
+    The intercept (the constant, where cut-points or a baseline take its place) is a coefficient
+    of the columns as they stand, ``β₀ = α₀ − Σ μ_j β_j`` on the centered fit's ``α₀`` and slopes
+    (the sum over the dependency's columns, the others' share of the directions being rounding),
+    and is in a dependency where that combination's weight in the directions, on the same unit
+    scale, is above :data:`IN_DEPENDENCY`: beside a shifted copy ``x + M``, or a constant column
+    (whose part about its mean is nothing: its unit is its own length, and its dependency is with
+    the intercept wherever its mean is not zero), and not beside a near copy, whose means nearly
+    cancel. ``exact`` where every aliased column's part was at most max(N, P) machine epsilons
     of its length (:func:`dependencies`' rule), a dependency to working precision: at R's
     tolerance alone, `x` beside ``x + 10⁻⁹·d`` is not one, and a fit keeping both served standard
-    errors whose rounding was the design's condition number squared (+2.6 times `v`'s HC3 one)."""
+    errors whose rounding was the design's condition number squared (+2.6 times `v`'s HC3 one).
+    Each column is taken over its largest absolute value first (:func:`peaks`), so no length
+    overflows or underflows."""
     from turbotab.core.models.effects import ALIAS_TOL
 
     values = np.asarray(values, dtype=float)
     N, P = values.shape
+    if N == 0:
+        return Aliased(P + 1, np.arange(P + 1), [], True)
+    peak = peaks(values)
+    unit = values / peak
     with np.errstate(invalid="ignore", over="ignore"):
-        mean = np.mean(values, axis=0) if N else np.zeros(P)
+        mean = np.mean(unit, axis=0)
     mean = np.where(np.isfinite(mean), mean, 0.0)
-    design = np.column_stack([np.ones(N), values - mean])
+    about = unit - mean
+    spread = peaks(about)
+    design = np.column_stack([np.ones(N), about / spread])
     floor = max(N, P + 1) * np.finfo(float).eps
     kept: list[int] = []
     Q = np.zeros((N, 0))
@@ -241,19 +274,34 @@ def aliased(values: np.ndarray) -> Aliased:
     out = [j for j in range(P + 1) if j not in set(kept)]
     if not out:
         return Aliased(0, np.arange(0), kept, True)
-    # Each aliased column's direction n (design @ n ≈ 0) on the centered columns, then on the
-    # columns as they stand, ``[1, values] = design · M`` with ``M`` moving the means into the
-    # intercept, so a direction n there is ``M⁻¹``'s image: its constant entry less mean · n.
+    # Each aliased column's direction n (design @ n ≈ 0) on the centered columns, each scaled to
+    # unit length (a column with no part about its mean keeps its own entry), and an orthonormal
+    # basis of their span: a slope's weight is its row's length.
     fit = np.linalg.lstsq(design[:, kept], design[:, out], rcond=None)[0]
     null = np.zeros((P + 1, len(out)))
     null[out, np.arange(len(out))] = 1.0
     null[kept] = -fit
-    null[0] -= mean @ null[1:]
-    stood = np.column_stack([np.ones(N), values])
-    norms = np.linalg.norm(stood, axis=0)
-    basis_ = np.linalg.qr(null * np.where(norms > 0, norms, 1.0)[:, None])[0]
+    lengths = np.linalg.norm(design, axis=0)
+    flat = lengths == 0
+    basis_ = np.linalg.qr(null * np.where(flat, 1.0, lengths)[:, None])[0]
     weight = np.sqrt((basis_ ** 2).sum(axis=1))
-    columns = np.array(sorted({*np.flatnonzero(weight > IN_DEPENDENCY).tolist(), *out}))
+    slopes = sorted({*(j for j in np.flatnonzero(weight > IN_DEPENDENCY).tolist() if j > 0),
+                     *(j for j in out if j > 0)})
+    # The intercept as it stands is ``β₀ = α₀ − Σ μ_j β_j``; on the unit scale (α₀ times √N, β_j
+    # times its column's length about its mean), the combination ``(1, −f)`` with ``f_j`` the
+    # column's mean over its root mean square about it, and for a column with none the sign of
+    # its mean (its length is then its mean's). Its weight is that combination's share of the
+    # directions, over the dependency's columns.
+    at = np.asarray(slopes, dtype=int)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        f = np.where(flat[at], np.sign(mean[at - 1]),
+                     mean[at - 1] / spread[at - 1] * np.sqrt(N) / np.where(flat[at], 1.0,
+                                                                            lengths[at]))
+    f = np.where(np.isfinite(f), f, 0.0)
+    combination = basis_[0] - f @ basis_[at]
+    constant = (0 in out or float(np.linalg.norm(combination)) > IN_DEPENDENCY
+                * math.sqrt(1.0 + float(f @ f)))
+    columns = np.array(([0] if constant else []) + slopes, dtype=int)
     return Aliased(len(out), columns, kept, exact)
 
 

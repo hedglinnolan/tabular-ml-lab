@@ -69,6 +69,9 @@ from turbotab.core.models.inference import (
     no_interval,
     scaled_inverse,
     separated_columns,
+    separated_multinomial,
+    separation_exits,
+    separation_words,
 )
 
 # NCHS Data Presentation Standards, via the Analytic Guidelines 2011–2016 §3.3.3: estimates on
@@ -282,9 +285,41 @@ def weighted_least_squares(X: np.ndarray, y: np.ndarray, w: np.ndarray) -> Weigh
     return WeightedFit(beta, X * (w * resid)[:, None], X.T @ (X * w[:, None]))
 
 
+def _newton(working: np.ndarray, score: np.ndarray) -> tuple[np.ndarray, float]:
+    """The Newton step ``(WᵀW)⁻¹ s`` and its decrement from the QR of the working design ``W``
+    (``inference._newton_step``), whose rounding is W's condition number. From a least-squares
+    solve on the information ``WᵀW``, whose condition number is that squared, beside
+    ``x + 1.1·10⁻⁷·d`` (an information of condition number 10¹⁴) the solve dropped the near
+    pair's direction, the decrement passed its tolerance 0.57 standard errors from the maximum,
+    and the survey multinomial table served the study factor's log-odds at −0.1200 against the
+    maximum's −0.1177."""
+    from turbotab.core.models.inference import _newton_step
+
+    return _newton_step(np.linalg.qr(working, mode="r"), score)
+
+
+def _at_floor(decrement: float, least: float, w: np.ndarray) -> bool:
+    """Whether a weighted Newton fit is at rounding's floor: its decrement, on the weights scaled
+    to sum to the rows' count (so it does not grow with the population's size), is at most
+    ``inference.SHORT_OF_MAXIMUM`` squared and did not fall below ``least``, the least it had
+    reached. Its steps are Newton's on the likelihood's own Hessian (the logistic and multinomial
+    information), so the decrement's root is the step's length in standard errors to second
+    order and the fit is then within that share of one of its maximum. A decrement that still
+    falls, however slowly, is not rounding's and the fit keeps stepping: a stop where it fell by
+    less than half in a step stopped a fit whose steps were cut to a quarter (a test's) 5·10⁻⁵ of
+    a standard error from its maximum, where the tolerance takes it to 10⁻⁹."""
+    from turbotab.core.models.inference import SHORT_OF_MAXIMUM
+
+    total = float(np.sum(w))
+    scaled = decrement * len(w) / total if total > 0 else decrement
+    return scaled <= SHORT_OF_MAXIMUM ** 2 and decrement >= least
+
+
 def weighted_logistic(X: np.ndarray, y: np.ndarray, w: np.ndarray) -> WeightedFit:
     """Newton–Raphson on the weighted log-likelihood ``Σ w_i {y_i η_i − log(1 + e^η_i)}``, steps
-    halved until it does not fall; converged when the Newton decrement is below the tolerance."""
+    halved until it does not fall; converged when the Newton decrement is below the tolerance, or
+    at rounding's floor within ``inference.SHORT_OF_MAXIMUM`` of a standard error of the maximum
+    (:func:`_at_floor`). Each step from the QR of the working design (:func:`_newton`)."""
     P = X.shape[1]
     beta = np.zeros(P)
 
@@ -294,14 +329,16 @@ def weighted_logistic(X: np.ndarray, y: np.ndarray, w: np.ndarray) -> WeightedFi
 
     current = loglik(beta)
     converged = False
+    least = np.inf
     for _ in range(_NEWTON_MAX):
         mu = 0.5 * (1.0 + np.tanh(0.5 * (X @ beta)))
         score = X.T @ (w * (y - mu))
-        info = X.T @ (X * (w * mu * (1.0 - mu))[:, None])
-        step = np.linalg.lstsq(info, score, rcond=None)[0]
-        if float(score @ step) < _NEWTON_TOL ** 2 * max(1.0, float(np.sum(w))):
+        step, decrement = _newton(X * np.sqrt(w * mu * (1.0 - mu))[:, None], score)
+        if decrement < _NEWTON_TOL ** 2 * max(1.0, float(np.sum(w))) or _at_floor(
+                decrement, least, w):
             converged = True
             break
+        least = min(least, decrement)
         for _half in range(40):
             trial = beta + step
             value = loglik(trial)
@@ -325,7 +362,10 @@ def _softmax(eta: np.ndarray) -> np.ndarray:
 def weighted_multinomial(X: np.ndarray, codes: np.ndarray, K: int, w: np.ndarray) -> WeightedFit:
     """Newton–Raphson for the weighted multinomial logit against class 0. Coefficients are ordered
     class by class (each class's P together), as :func:`~turbotab.core.models.inference.
-    multinomial_working` orders them."""
+    multinomial_working` orders them. Each step from the QR of the working design (:func:`_newton`),
+    converged as :func:`weighted_logistic` is."""
+    from turbotab.core.models.inference import multinomial_working
+
     n, P = X.shape
     q = K - 1
     Y = (codes[:, None] == np.arange(1, K)[None, :]).astype(float)
@@ -336,9 +376,14 @@ def weighted_multinomial(X: np.ndarray, codes: np.ndarray, K: int, w: np.ndarray
         full = np.column_stack([np.zeros(n), eta])
         return float(np.sum(w * (np.sum(Y * eta, axis=1) - np.logaddexp.reduce(full, axis=1))))
 
+    def scores(b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        probs = _softmax(X @ b)
+        rows = np.einsum("ia,ip->iap", (Y - probs[:, 1:]), X).reshape(n, q * P)  # class-major
+        return rows, probs
+
     def parts(b: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        pi = _softmax(X @ b)[:, 1:]
-        score_rows = np.einsum("ia,ip->iap", (Y - pi), X).reshape(n, q * P)  # class-major
+        score_rows, probs = scores(b)
+        pi = probs[:, 1:]
         info = np.zeros((q * P, q * P))
         for a in range(q):  # block (a, b) = Σ_i w_i W_i[a, b] x_i x_iᵀ, W_i = diag π_i − π_i π_iᵀ
             for b in range(a, q):
@@ -350,13 +395,17 @@ def weighted_multinomial(X: np.ndarray, codes: np.ndarray, K: int, w: np.ndarray
 
     current = loglik(B)
     converged = False
+    least = np.inf
     for _ in range(_NEWTON_MAX):
-        rows, info, _ = parts(B)
+        rows, probs = scores(B)
         score = (rows * w[:, None]).sum(axis=0)
-        step = np.linalg.lstsq(info, score, rcond=None)[0]
-        if float(score @ step) < _NEWTON_TOL ** 2 * max(1.0, float(np.sum(w))):
+        working = multinomial_working(X, codes, probs)[0]
+        step, decrement = _newton(working * np.repeat(np.sqrt(w), q)[:, None], score)
+        if decrement < _NEWTON_TOL ** 2 * max(1.0, float(np.sum(w))) or _at_floor(
+                decrement, least, w):
             converged = True
             break
+        least = min(least, decrement)
         for _half in range(40):
             trial = B + step.reshape(q, P).T
             value = loglik(trial)
@@ -505,7 +554,8 @@ def _concerns(design: SurveyDesign, var: DesignVariance, n_domain: int, n_coef: 
 def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray,
                  information: np.ndarray, design: SurveyDesign, domain: Domain, estimator: str,
                  *, converged: bool = True, bread: np.ndarray | None = None,
-                 carry: np.ndarray | None = None) -> InferenceTable:
+                 carry: np.ndarray | None = None, fit: str | None = None,
+                 steps: int | None = None) -> InferenceTable:
     """The design-based table of an M-estimator fit on the domain's rows.
 
     ``scores`` are the kept rows' weighted scores ``w_i s_i(β̂)`` (domain rows × P), ``information``
@@ -514,7 +564,26 @@ def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray
     Where ``carry`` is given, the scores and the information are on coefficients ``θ`` with
     ``β = carry · θ`` (the QR of the working design, :func:`_on_qr`), and the sandwich on θ is
     carried to β, ``carry · V_θ · carryᵀ``: on θ the information is well conditioned, where on β
-    its inverse had the rounding of the design's condition number squared."""
+    its inverse had the rounding of the design's condition number squared.
+
+    An iterative fit (``fit`` names it, and ``steps`` its Newton steps) is served only at its
+    maximum (``inference.at_maximum``): converged, and within ``inference.SHORT_OF_MAXIMUM`` of a
+    standard error of it by the Newton step from its estimate, ``√(sᵀI⁻¹s)`` for the total of the
+    weighted scores and the weighted information (on θ where ``carry`` is given), the weights
+    scaled to sum to the domain's rows so the distance does not grow with the population's size;
+    else it is refused with no estimate. Served where it had not converged, beside
+    ``x + 1.3·10⁻⁷·d`` such a table carried only "treat these numbers with care"."""
+    from turbotab.core.models.inference import at_maximum, information_distance
+
+    if fit is not None or not converged:
+        total = float(np.sum(domain.weight))
+        share = domain.n / total if total > 0 else 1.0
+        distance = (information_distance(np.asarray(scores).sum(axis=0), information)
+                    * np.sqrt(share) if bread is None else 0.0)
+        short = at_maximum(fit or "the weighted fit", float(distance), converged=converged,
+                           steps=steps)
+        if short:
+            return _refused(labels, None, estimator, design, domain.n, short)
     u = np.zeros((design.n_rows, scores.shape[1]))
     u[domain.at] = scores
     var = total_variance(u, design, domain.mask(design))
@@ -539,8 +608,6 @@ def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray
         return _refused(labels, estimate, estimator, design, domain.n, reason)
     rows = _t_rows(labels, estimate, se, np.full(len(estimate), float(var.df)))
     concerns = _concerns(design, var, domain.n, len(estimate), domain.left)
-    if not converged:
-        concerns.append("The weighted fit stopped before converging; treat these numbers with care.")
     return InferenceTable(rows, _info(estimator, _caption(design, var), design, var, domain.n),
                           concerns, cov=V)
 
@@ -548,6 +615,9 @@ def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray
 SURVEY_ESTIMATORS = {"regression": "survey-weighted least squares",
                      "binary": "survey-weighted logistic regression (pseudo-maximum likelihood)"}
 SURVEY_MULTINOMIAL = "survey-weighted multinomial logistic regression (pseudo-maximum likelihood)"
+# How a refusal names an iterative weighted fit that is not at its maximum (``design_table``).
+SURVEY_FITS = {"binary": "the survey-weighted logistic fit",
+               "multiclass": "the survey-weighted multinomial fit"}
 
 
 def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
@@ -611,12 +681,22 @@ def _survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any
         K = len(levels)
         q = K - 1
         labels = [f"{n} [{levels[k + 1]}]" for k in range(q) for n in names]
+        # As the binary table runs its separation check: a single row's indicator in one class
+        # was served at a log-odds of −34.5 (SE 1.0), where the maximum is at minus infinity.
+        found = separated_multinomial(X, codes, K)
+        if found:
+            separated = _named(names, found)
+            return _refused(labels, None, estimator, design, domain.n,
+                            separation_words(separated, "classes", " among the weighted rows"),
+                            separation_exits(separated))
         fit = weighted_multinomial(X, codes, K, w)
     working = _working(task, X, fit.estimate, w,
                        codes if task not in ("regression", "binary") else None)
     scores, information, carry = _on_qr(working, fit)
+    iterative = SURVEY_FITS.get(task, SURVEY_FITS["multiclass"]) if task != "regression" else None
     return design_table(labels, fit.estimate, scores, information, design, domain,
-                        estimator, converged=fit.converged, carry=carry)
+                        estimator, converged=fit.converged, carry=carry, fit=iterative,
+                        steps=_NEWTON_MAX)
 
 
 def _working(task: str, X: np.ndarray, estimate: np.ndarray, w: np.ndarray,
@@ -825,13 +905,29 @@ class DesignFit:
 def design_fit(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
                design: SurveyDesign) -> DesignFit:
     """The fit :func:`survey_table` makes, kept for a curve. Raises ValueError, saying why, where
-    the table would be refused."""
+    the table would be refused.
+
+    As the table is (``inference.by_identified``), it is fit on the columns centered at their
+    means over the domain's rows and scaled to an SD of one, ``Z = [1, (x − m)/s]``, and mapped
+    back, ``β = Aγ`` with ``β_j = γ_j/s_j`` and ``β₀ = γ₀ − Σ γ_j m_j/s_j``, each row's influence
+    by the same map (``ψ_β = Aψ_γ``), its bread from the QR of the working design
+    (``inference.gram_inverse``). Fit on the columns as they stood, a date in epoch seconds
+    spanning a day was cut from the least-squares fit as nearly a copy of the intercept (its slope
+    0, the others' moved by up to 2.4% on the verifier's rows), and the logistic fit stopped at
+    zero."""
     import statsmodels.api as sm
+
+    from turbotab.core.models.inference import column_means, column_scales, gram_inverse
 
     if task not in ("regression", "binary"):
         raise ValueError("A design-based curve follows a numeric or a yes/no outcome.")
-    exog = sm.add_constant(matrix.astype(float), has_constant="add")
     domain = domain_of(matrix.index, design)
+    values = matrix.to_numpy(dtype=float)
+    on = values[domain.keep]
+    shift = column_means(on)
+    factors = column_scales(on - shift)
+    exog = sm.add_constant(pd.DataFrame((values - shift) / factors, index=matrix.index),
+                           has_constant="add")
     X = exog.to_numpy(dtype=float)[domain.keep]
     yv = np.asarray(y)[domain.keep]
     if domain.n <= X.shape[1]:
@@ -849,9 +945,17 @@ def design_fit(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] |
                              "weighted log-odds is infinite.")
         fit = weighted_logistic(X, event, domain.weight)
         link = "logit"
-    bread = scaled_inverse(fit.information)
-    return DesignFit(beta=fit.estimate, influence=fit.scores @ bread, domain=domain, design=design,
-                     link=link)
+        if not fit.converged:
+            raise ValueError(f"The weighted logistic fit did not converge in {_NEWTON_MAX:,} "
+                             f"Newton steps.")
+    working = _working(task, X, fit.estimate, domain.weight, None)
+    bread = gram_inverse(working)
+    bread = scaled_inverse(fit.information) if bread is None else bread
+    A = np.eye(X.shape[1])
+    A[0, 1:] = -shift / factors
+    A[1:, 1:] = np.diag(1.0 / factors)
+    return DesignFit(beta=A @ fit.estimate, influence=fit.scores @ bread @ A.T, domain=domain,
+                     design=design, link=link)
 
 
 def design_curve(fit: DesignFit, matrix_of: Callable[[pd.DataFrame], pd.DataFrame],
