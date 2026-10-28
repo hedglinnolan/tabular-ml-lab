@@ -1421,11 +1421,11 @@ def test_under_estimate_a_lock_whose_fit_the_engine_refused_is_refused_none_serv
     fresh, so a fit the engine refuses in words leaves a lock no fit record is marked with. Where
     the fit stage is refused in words, the plan in force is the lock's and no fit record is of that
     plan (a record of an earlier plan beside it or none), the engine made no fit for the plan it
-    locked: the result is refused in the engine's words, none served (SWARM_PLAN §7's refused
-    plan). Both ways, it stays not known: with no fit stage served (the default), a fit that failed
-    in no words, one not failed now, a plan changed after the lock or a log that does not read,
-    and a fit record of the lock's plan (at the stage's key, with the lock's digest, or with the
-    lock in force)."""
+    locked: under a conditional measure (the mean difference; a marginal one is below) the result
+    is refused in the engine's words, none served (SWARM_PLAN §7's refused plan). Both ways, it
+    stays not known: with no fit stage served (the default), a fit that failed in no words, one
+    not failed now, a plan changed after the lock or a log that does not read, and a fit record
+    of the lock's plan (at the stage's key, with the lock's digest, or with the lock in force)."""
     log = _locked("mean_difference")
     lock = log[3]
     earlier = {"id": "fit0", "fit_key": "key0", "plan_digest": "d0", "decisions": [1, 2, 3],
@@ -1456,6 +1456,59 @@ def test_under_estimate_a_lock_whose_fit_the_engine_refused_is_refused_none_serv
                     {**earlier, "plan_digest": lock["decision"]["digest"]},
                     {**earlier, "decisions": [1, 2, 3, 4]}):
         assert kind(fits=[of_plan]) == not_known, of_plan
+
+
+FIT_ONLY = "Words only the fit refuses in, constructed for this test."
+
+
+@pytest.mark.parametrize("measure", ["risk_difference", "risk_ratio"])
+def test_under_a_marginal_measure_a_refused_fit_is_none_served_only_where_no_risk_is(measure):
+    """V2-1: a marginal measure's number is the effects stage's standardization as GET …/results
+    serves it, and the effects stage does not wait on the fit (``stages.build_graph``), so a fit
+    the engine refused in its own words (``graph.Refused`` of the fit stage) can leave the lock's
+    marginal risks served all the same. Both ways. Where the results serve a number of the measure
+    (the lock's, the effects stage current; an earlier artifact the route serves in place of a
+    failed one), or cannot say (the route fails, its numbers withheld, the effects stage neither
+    current nor failed), the result stays not known. Where they serve none (the effects stage
+    failed too, with nothing in its place; current with its standardization refused; current
+    with no family standardized), the result is refused in the fit's words, none served."""
+    from turbotab.core.graph import Refused, StageStatus
+
+    own = StageStatus(stage="fit", status="error", key="key9",
+                      refusal=Refused(stage="fit", code="constructed", message=FIT_ONLY)
+                      ).model_dump(mode="json")
+    log = _locked(measure)
+    failed_fit = {"key": None, "fresh": False, "status": "error"}
+    served = {**_results(measure), "fit": failed_fit}
+
+    def kind(doc: Any, stage: Any = own) -> tuple[str, str]:
+        got = A.result_of("inference", log, [], doc, fit_stage=stage)
+        assert (got["attempt"], got["lock"], got.get("estimates")) == (None, 4, None)
+        assert validate_result(got)
+        return got["refused"], got["refused_kind"]
+
+    not_known = (A.no_locked_fit(4), "not_known")
+    none_served = (A.fit_refused_why(4, FIT_ONLY), "not_served")
+    assert kind(A.Read(200, served)) == not_known
+    earlier = {**served, "effects": {"key": "e0", "fresh": False, "status": "error"}}
+    assert kind(A.Read(200, earlier)) == not_known
+    assert kind(A.Read(500, {"error": {"code": "internal", "message": "boom"}})) == not_known
+    assert kind(A.Read(200, {**served, "withheld": "A question the estimates rest on is open."})
+                ) == not_known
+    for status in ("running", "queued", "stale", "idle", "blocked"):
+        unread = {**served, "families": [], "effects": {"key": None, "fresh": False,
+                                                        "status": status}}
+        assert kind(A.Read(200, unread)) == not_known, status
+    both = {**served, "families": [], "effects": {"key": None, "fresh": False, "status": "error"}}
+    assert kind(A.Read(200, both)) == none_served
+    assert kind(A.Read(200, both), stage=fit_failed()) == (A.fit_refused_why(4, NO_ROWS),
+                                                           "not_served")
+    words = "The marginal risks are not pooled over multiple imputations here."
+    refused = {**_results(measure, contrasts=[], refused=words), "fit": failed_fit}
+    assert kind(A.Read(200, refused)) == none_served
+    unstandardized = {**served, "families": [{**served["families"][0], "marginal": None}]}
+    assert kind(A.Read(200, unstandardized)) == none_served
+    assert kind(A.Read(200, both), stage=fit_failed(words=None)) == not_known
 
 
 def test_a_lock_whose_plan_declares_no_estimand_reports_no_estimate():

@@ -91,8 +91,12 @@ exception is a fit the engine refused (:func:`fit_refused_at_lock`): Fit records
 the fit runs, so a fit refused in words leaves a lock no record is marked with. Where the fit
 stage, as ``GET /projects/{pid}`` serves it, is refused in words, the plan in force is the lock's
 and no fit record is of that plan, the engine made no fit for the plan it locked, and the result
-is refused in the engine's words, none served. A fit that failed in no words (a crash) is no
-refusal, and its result stays not known.
+is refused in the engine's words, none served, unless the estimand's measure is marginal. A
+marginal measure's number is the effects stage's, which does not wait on the fit, so there the
+result is none served only where ``GET …/results`` serves no number of it either (the effects
+stage failed too, or serves no standardization: :func:`serves_no_marginal`); where it serves one,
+or cannot say, the result stays not known. A fit that failed in no words (a crash) is no refusal,
+and its result stays not known.
 
 Its numbers are the ones the app reports for the estimand the lock's plan declares, on that
 measure's scale (``estimand.measure_facts``), never the fit's coefficients read on another:
@@ -1296,12 +1300,14 @@ def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
     (``refused_kind``): ``not_reported``, the run reported none (the seal never opened, the plan
     never locked, no goal, no estimand in the lock's plan); ``not_served``, the engine served none
     (the opening recorded no held-out scores and its fit serves none; the engine refused the fit
-    of the locked plan, :func:`fit_refused_at_lock`; the locked fit serves no exposure rows and
+    of the locked plan, :func:`fit_refused_at_lock`, and under a marginal measure the results serve
+    no number of it either, :func:`serves_no_marginal`; the locked fit serves no exposure rows and
     withholds none; the effects stage served no marginal risk for any family); ``not_known``, the
     record cannot say what the run reported (no fit record, or several, is marked the one the lock
-    was recorded on, and the engine did not refuse that fit; the route withholds the locked fit's
-    rows now; the opening recorded no scores while its fit serves held-out scores; the results no
-    longer serve the locked plan's marginal risks). ``fit_stage``: the fit stage's status as
+    was recorded on, and the engine did not refuse that fit, or under a marginal measure the
+    results serve a number of it or cannot say; the route withholds the locked fit's rows now; the
+    opening recorded no scores while its fit serves held-out scores; the results no longer serve
+    the locked plan's marginal risks). ``fit_stage``: the fit stage's status as
     ``GET /projects/{pid}`` serves it; without it a lock no record is marked with is not known.
     Under Estimate the numbers are the estimand's measure's (the module docstring)."""
     base: dict[str, Any] = {"purpose": purpose, "attempt": None, "plan_digest": None,
@@ -1466,7 +1472,8 @@ def fit_refused_at_lock(stage: Mapping[str, Any] | None, lock: Mapping[str, Any]
     reads only the plan's answers), and no fit record is of that plan, as the server's gate reads
     one (``ProjectService._record_gate``): none at the stage's key, none whose plan's digest is the
     lock's, none with the lock among its records in force. A fit that failed in no words (a
-    crash), or is not failed now, leaves this not known."""
+    crash), or is not failed now, leaves this not known. Under a marginal measure the result is
+    none served only where the results serve no number of it either (:func:`serves_no_marginal`)."""
     if not isinstance(stage, Mapping) or stage.get("status") != "error":
         return None
     refusal = stage.get("refusal")
@@ -1479,6 +1486,34 @@ def fit_refused_at_lock(stage: Mapping[str, Any] | None, lock: Mapping[str, Any]
            or lock["seq"] in (a.get("decisions") or ()) for a in attempts):
         return None
     return fit_refused_why(lock["seq"], str(words))
+
+
+def serves_no_marginal(results: Read, lock: Mapping[str, Any]) -> bool:
+    """Whether ``GET …/results`` (``results``) serves no number of the measure the plan ``lock``
+    recorded declares, where that measure is marginal, so that a fit the engine refused for that
+    plan leaves the result none served (:func:`fit_refused_at_lock`): a marginal measure's number
+    is the effects stage's standardization, and the effects stage does not wait on the fit
+    (``stages.build_graph``), so it can serve the lock's marginal risks with no fit made. The
+    results serve none where they are read, withhold nothing, the effects stage they serve is
+    current or failed, and no family's standardization holds a number (:func:`marginal_estimates`,
+    over the current artifact or an earlier one the route serves in place of a failed one).
+    Otherwise (served, or not known) False. True where the plan declares no marginal measure (a
+    conditional measure's number is the fit's own row)."""
+    from turbotab.core.estimand import MARGINAL, MEASURE_WORDS
+
+    estimand = (lock["decision"].get("plan") or {}).get("estimand")
+    measure = estimand.get("measure") if isinstance(estimand, Mapping) else None
+    if measure not in MARGINAL:
+        return True
+    doc = results.body if results.ok and isinstance(results.body, Mapping) else None
+    if doc is None or doc.get("withheld"):
+        return False
+    effects = doc.get("effects") or {}
+    if not (effects.get("fresh") or effects.get("status") == "error"):
+        return False
+    rows = marginal_estimates(doc, estimand.get("exposure"), str(measure),
+                              MEASURE_WORDS[str(measure)])
+    return not any(r["estimate"] is not None for r in rows)
 
 
 def _estimate_of(base: dict[str, Any], records: Sequence[Mapping[str, Any]],
@@ -1496,7 +1531,7 @@ def _estimate_of(base: dict[str, Any], records: Sequence[Mapping[str, Any]],
     held = [a for a in attempts if a.get("locked")]
     if not held:
         refused = fit_refused_at_lock(fit_stage, lock, records, attempts)
-        if refused is not None:
+        if refused is not None and serves_no_marginal(results, lock):
             return {**out, "refused": refused, "refused_kind": "not_served"}
         return {**out, "refused": no_locked_fit(lock["seq"]), "refused_kind": "not_known"}
     if len(held) > 1:

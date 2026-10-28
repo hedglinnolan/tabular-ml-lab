@@ -18,8 +18,9 @@ rule both ways.
   reported number the bundle does not hold once unjudged; an exported record whose run reported
   no result is a refused plan in its model's refusal rate, given a replay or not, and so is a run
   never exported whose engine served no result (the random arm's ridge draw under Estimate, or a
-  fit the engine refused in words once Fit locked the plan), an analyst's alike; a run never
-  exported that reported none, or whose record cannot say (its fit crashed), is no plan.
+  fit the engine refused in words once Fit locked the plan, under a marginal measure with no risk
+  served either), an analyst's alike; a run never exported that reported none, or whose record
+  cannot say (its fit crashed; the results serve the lock's risk difference), is no plan.
 * On the Predict fixture: a regret below r0 passes, above fails, and with no r0 the plan is not
   judged. On the measurement fixture: a discovery set built with one false and one missed feature
   gives its proportion and power, an effect error built at 0.1 away from zero gives 0.1.
@@ -325,15 +326,19 @@ def test_a_run_never_exported_whose_fit_the_engine_refused_at_its_lock_is_a_refu
     record assembles it (``assemble.result_of`` on the locked log with no fit record and the fit
     stage refused, as ``GET /projects/{pid}`` serves it) is a refused plan in the plans and in its
     model's refusal rate, an analyst's alike. Both ways: the same run whose fit failed in no words
-    (a crash) is no plan, its result not known."""
+    (a crash) is no plan, its result not known. V2-1: under a marginal measure (the risk
+    difference), whose number the effects stage serves without waiting on the fit, the same run
+    is a refused plan only where the results serve no risk difference either (the effects stage
+    failed too); where they serve the lock's 0.10 it is no plan, its result not known."""
     from research.swarm import assemble as A
-    from research.swarm.tests.test_swarm_assemble import NO_ROWS, _locked, fit_failed
+    from research.swarm.tests.test_swarm_assemble import NO_ROWS, _locked, _results, fit_failed
 
-    def stuck(run: str, model: str, words: str | None) -> Any:
+    def stuck(run: str, model: str, words: str | None, measure: str = "mean_difference",
+              results: Any = None) -> Any:
         data = record(run=run, model=model, persona=None, exported=False).model_dump(
             mode="json", by_alias=True)
-        data["result"] = A.result_of("inference", _locked("mean_difference"), [],
-                                     A.Read(200, {}), fit_stage=fit_failed(words=words))
+        data["result"] = A.result_of("inference", _locked(measure), [],
+                                     A.Read(200, results or {}), fit_stage=fit_failed(words=words))
         return validate(data)
 
     for run, model, family in (("random", "mechanical-random-6", "mechanical-random"),
@@ -349,6 +354,19 @@ def test_a_run_never_exported_whose_fit_the_engine_refused_at_its_lock_is_a_refu
     report = S.score([crashed], [], [], filled)
     assert report["plans"] == []
     assert report["models"]["mechanical-random"]["refusals"]["plans"] == 0
+    failed = {"key": None, "fresh": False, "status": "error"}
+    risk = {**_results("risk_difference"), "fit": failed}
+    neither = {**risk, "families": [], "effects": failed}
+    marginal = stuck("served", "mechanical-random-8", NO_ROWS, "risk_difference", risk)
+    assert marginal.result.refused_kind == "not_known"
+    report = S.score([marginal], [], [], filled)
+    assert report["plans"] == []
+    assert report["models"]["mechanical-random"]["refusals"]["plans"] == 0
+    report = S.score([stuck("none", "mechanical-random-9", NO_ROWS, "risk_difference", neither)],
+                     [], [], filled)
+    [plan] = report["plans"]
+    assert (plan["run"], plan["verdict"]) == ("none", "refused")
+    assert "none served" in plan["why"] and NO_ROWS in plan["why"]
 
 
 # ── a replay judged only as its record's plan, on the pre-registered draws, rows and engine ──

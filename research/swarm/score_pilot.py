@@ -47,8 +47,9 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
   (:func:`result_refusal`): a refused plan where the run reported no result or the engine served
   none, unjudged where the record cannot say. A run whose export was refused is no plan, except
   where its engine served no result (:func:`unexported_refusal`, as under Estimate for a family
-  with no coefficient table, or for a fit the engine refused once the plan was locked): that is a
-  refused plan, the mechanical arms' and the analysts' alike;
+  with no coefficient table, or for a fit the engine refused once the plan was locked, where under
+  a marginal measure the results serve no number either): that is a refused plan, the mechanical
+  arms' and the analysts' alike;
 * the unit per model and fixture (:func:`unit`);
 * materiality on every sweep with prereg.json's margins (:func:`sweep_verdicts`), but a sweep
   not run on the frozen engine (:func:`sweep_refusal`: its report says the engine changed while
@@ -170,9 +171,12 @@ def unexported_refusal(rec: Any) -> bool:
     (``not_served``): under Estimate a family with no coefficient table, whose effects stage
     refuses, so its export is refused and the run stops there (the random arm's draw of one,
     ``arms.run_arm``), or a fit the engine refused in words once Fit had locked the plan
-    (``assemble.fit_refused_at_lock``), after which the arm stops with no export. A run never
-    exported that reported no result (stuck before its lock or its opening, ``not_reported``) or
-    whose record cannot say (``not_known``: its fit crashed, say) is no plan."""
+    (``assemble.fit_refused_at_lock``), after which the arm stops with no export, where under a
+    marginal measure the results serve no number of it either (``assemble.serves_no_marginal``:
+    the effects stage can serve one with no fit made). A run never exported that reported no
+    result (stuck before its lock or its opening, ``not_reported``) or whose record cannot say
+    (``not_known``: its fit crashed, say, or the results serve the lock's marginal risks) is no
+    plan."""
     return not rec.export.sha256 and rec.result.refused_kind == "not_served"
 
 
