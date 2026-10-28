@@ -1970,8 +1970,10 @@ def _p_words(row: Mapping[str, Any]) -> str:
 
 
 def _refit(family: Any, matrix: pd.DataFrame, y: Any, *, pipeline: Any, task: str, clusters: Any,
-           outcome: Any, survey: Any) -> Any:
-    """The family's inference table on ``matrix``, with the table's outcome and design."""
+           outcome: Any, survey: Any, study: Sequence[str]) -> Any:
+    """The family's inference table on ``matrix``, with the table's outcome and design, told that
+    the columns it is read for (``study``) are studied, so a dependency among the others is
+    refused by row and one that holds them refuses the whole refit (``inference.by_identified``)."""
     import inspect
 
     refit = family.inference_matrix
@@ -1979,7 +1981,8 @@ def _refit(family: Any, matrix: pd.DataFrame, y: Any, *, pipeline: Any, task: st
         return None
     classes = list(getattr(pipeline[-1], "classes_", [])) or None
     accepts = inspect.signature(refit).parameters
-    extra = {name: value for name, value in (("outcome", outcome), ("survey", survey))
+    extra = {name: value for name, value in (("outcome", outcome), ("survey", survey),
+                                             ("study", list(study)))
              if value is not None and name in accepts}
     if survey is not None and "survey" not in extra:
         return None  # a refit without the design beside a design-based table would mislead
@@ -2004,7 +2007,7 @@ def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.D
     kept = matrix.drop(columns=indicators)
     kept.insert(at, score_name, step.scores(column, raw))
     table = _refit(family, kept, y, pipeline=pipeline, task=task, clusters=clusters,
-                   outcome=outcome, survey=survey)
+                   outcome=outcome, survey=survey, study=[score_name])
     if table is None:
         return None
     row = next((r for r in table.rows if str(r["feature"]) == score_name), None)
@@ -2072,7 +2075,7 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
               "and intervals are design-based, over the survey design." if survey is not None
               else "")
     table = _refit(family, kept, y, pipeline=pipeline, task=task, clusters=clusters,
-                   outcome=outcome, survey=survey)
+                   outcome=outcome, survey=survey, study=indicators)
     if table is None:
         return [], [f"The quintiles beside `{column}`'s spline could not be refit."]
     by = {str(r["feature"]): r for r in table.rows}
@@ -2097,7 +2100,7 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
     scored.insert(at, score_name, np.where(group < 0, np.nan,
                                            medians[np.clip(group, 0, QUINTILES - 1)]))
     trend_table = _refit(family, scored, y, pipeline=pipeline, task=task, clusters=clusters,
-                         outcome=outcome, survey=survey)
+                         outcome=outcome, survey=survey, study=[score_name])
     row = next((r for r in (trend_table.rows if trend_table is not None else [])
                 if str(r["feature"]) == score_name), None)
     if _readable(row):

@@ -1401,7 +1401,9 @@ def card_tests(state: Any, family: Sequence[str],
     (``models.featurewise.formed_study_factor``), so none would be tested. A member's type is
     known from its answer (codes, or amounts) or from ``columns``; where one is not known (the
     card given no column summaries, a text column a category), ``tested`` is None, the count of
-    tests not known here (the verifier's V4a2-2)."""
+    tests not known here (the verifier's V4a2-2). So is a member whose codes-or-amounts answer the
+    fit waits for and nobody has recorded (:func:`_awaiting_codes`: whole numbers, which may be
+    codes for categories or amounts), whatever its type (the verifier's T5bV-2)."""
     from turbotab.core.methods.exposure_form import _form_of, current_forms
     from turbotab.core.models.featurewise import formed_study_factor
     from turbotab.core.readings import confirmation
@@ -1414,12 +1416,39 @@ def card_tests(state: Any, family: Sequence[str],
         return CardTests([], [], [], reason)
     answers = {c: confirmation(state, "code_or_count", c) for c in members}
     types = _column_types(columns)
+    waiting = _awaiting_codes(state, [c for c in members if answers[c] not in ("code", "amount")],
+                              columns)
     coded = [c for c in members if answers[c] == "code"]
-    text = [c for c in members if c not in coded and answers[c] != "amount"
+    text = [c for c in members if c not in coded and answers[c] != "amount" and c not in waiting
             and c in types and types[c] not in NUMBER_TYPES]
-    known = all(answers[c] in ("code", "amount") or c in types for c in members)
+    known = all(answers[c] in ("code", "amount") or (c in types and c not in waiting)
+                for c in members)
     tested = [c for c in members if c not in coded and c not in text]
     return CardTests(tested if known else None, coded, text, None)
+
+
+def _awaiting_codes(state: Any, members: Sequence[str], columns: Sequence[Any] | None) -> set[str]:
+    """The ``members`` whose codes-or-amounts reading the fit asks before it runs and nobody has
+    answered (``readings.predictors_or_ask``, :func:`readings.unsettled_codes`), by the values'
+    facts each column summary in ``columns`` carries (``readings.whole_facts``, as the proposals
+    stage hands them from the store), else its type and distinct count (an integer column). A
+    column the energy answer computes with, or a declared scale's item, is not asked, as the fit
+    does not ask it."""
+    from turbotab.core.readings import energy_plan, scale_items, unsettled_codes, whole_facts
+
+    left, amounts = energy_plan(state, members)
+    asked = [c for c in members if c not in left | amounts | scale_items(state)]
+    if not asked or not columns:
+        return set()
+    info: dict[str, Any] = {}
+    for c in columns:
+        name = c.get("name") if isinstance(c, Mapping) else getattr(c, "name", None)
+        if name is not None:
+            info[str(name)] = c
+    facts = {c: dict(info[c]) for c in asked if isinstance(info.get(c), Mapping)
+             and ("whole" in info[c] or "text_numbers" in info[c])}
+    facts.update(whole_facts([c for c in asked if c not in facts], info))
+    return {r.column for r in unsettled_codes(state, asked, facts)}
 
 
 def category_words(coded: Sequence[str], text: Sequence[str]) -> str:

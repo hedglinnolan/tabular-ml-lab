@@ -1010,6 +1010,9 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     se = boot.se()
 
     # ── the uncorrected estimate beside it: the primary's, on every participant it analyzes ──
+    # Its table is read for the calibrated columns, so it is told they are studied: a dependency
+    # among the other columns is refused by row, one that holds them refuses the table whole
+    # (``inference.by_identified``).
     tables = []
     for _, matrix, _ in results:
         m_rows = matrix.copy()
@@ -1017,14 +1020,15 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         if population:
             from turbotab.core.models.survey import survey_table
 
-            table = survey_table(task, m_rows, y_all[persons], classes, survey.design)
+            table = survey_table(task, m_rows, y_all[persons], classes, survey.design,
+                                 study=features)
         else:
             cl = INDEPENDENT
             if clustered:
                 codes = np.asarray(clusters.codes)[persons]
                 cl = Clusters(column=clusters.column, codes=codes,
                               n_clusters=int(len(np.unique(codes))))
-            table = inference_table(task, m_rows, y_all[persons], classes, cl)
+            table = inference_table(task, m_rows, y_all[persons], classes, cl, study=features)
         tables.append(table.rows)
     if len(tables) > 1:
         from turbotab.core.methods.imputation import pool_rows

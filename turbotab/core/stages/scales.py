@@ -438,9 +438,13 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
                                         reliability=S.retest_source(W[:, i], retests[s.name])))
             else:
                 sources.append(S.Source("calibration_substudy", reference=references[s.name]))
+        # The table is read for the scores' rows, so it is told they are studied: a dependency
+        # among the covariates is refused by row, one that holds a score refuses the table whole
+        # (``inference.by_identified``).
         table = family.inference_matrix(matrix, y, task=task,
                                         classes=list(getattr(fitted[-1], "classes_", [])) or None,
-                                        clusters=clusters, outcome=outcome)
+                                        clusters=clusters, outcome=outcome,
+                                        study=[s.name for s in specs])
         if not table.rows:
             # The uncorrected table is refused with no estimate (on no more rows than its
             # coefficients: ``inference._no_spare_rows``); the correction refits that model on
