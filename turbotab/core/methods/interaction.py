@@ -1454,7 +1454,8 @@ def _register_contracts() -> None:
                  "it is no longer estimated and still counted in the family the record states",
                  by=f"{me}:family_count"),
         relation("separation-profile", "implies", "profile intervals and a penalized "
-                 "likelihood-ratio heterogeneity test", "a logistic model the data separate",
+                 "likelihood-ratio heterogeneity test", "a logistic model the data separate, but "
+                 "not completely (every cut that separates them has some row on it)",
                  "each effect, combination and ratio of odds ratios carries its profile "
                  "penalized-likelihood interval, the heterogeneity test is the penalized "
                  "likelihood-ratio test, the RERI is given without an interval",

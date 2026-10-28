@@ -189,6 +189,30 @@ def _stopping_room(profile: Callable[[float], float], z: float) -> float:
                                                        + 1e-10 / 3)
 
 
+def _turn_sensitivity(span: np.ndarray, y: np.ndarray, codes: np.ndarray, z: float) -> float:
+    """How fast the dense profile's slope in log γ at ``z`` changes as the span's last column
+    turns off the span, at the fastest (CI-T2): the norm of its gradient in that column, projected
+    off the span, by central differences (10⁻⁵ in the column, 10⁻⁴ in log γ). Over the profile's
+    curvature it is how far the minimum moves, in log γ, per radian the column turns."""
+    from turbotab.core.tests.test_no_standard_error_refusal import _dense_profile
+
+    Q = np.linalg.qr(span)[0]
+
+    def slope(S: np.ndarray) -> float:
+        return (_dense_profile(S, y, codes, math.exp(z + 1e-4))
+                - _dense_profile(S, y, codes, math.exp(z - 1e-4))) / 2e-4
+
+    gradient = np.empty(len(y))
+    for k in range(len(y)):
+        off = -(Q @ Q[k])
+        off[k] += 1.0  # the k-th unit vector, projected off the span
+        up, down = span.copy(), span.copy()
+        up[:, -1] += 1e-5 * off
+        down[:, -1] -= 1e-5 * off
+        gradient[k] = (slope(up) - slope(down)) / 2e-5
+    return float(np.linalg.norm(gradient))
+
+
 @pytest.mark.parametrize("noise", [1e-8, 1e-12])
 def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
     """Between the two rules: `x` beside `x` plus noise of SD 10⁻⁸ or 10⁻¹² (a scaled condition
@@ -202,20 +226,25 @@ def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
     so it is as close as the condition number allows: at 10⁻¹², to 10⁻³ (the condition number
     times the unit roundoff, 2·10⁻⁴).
 
-    At 10⁻⁸ that rounding (1.9·10⁸ × 1.1·10⁻¹⁶ = 2·10⁻⁸ on the direction of `near − x`) moves the
-    engine's profile by a slope of 4.6·10⁻⁹ in log γ against the dense one, so its minimum by
-    4·10⁻¹⁰ (that slope over the curvature, 12.3), and what bounds γ̂ is how flat both profiles
-    are where their rounding (about 7·10⁻¹⁴ on values near 45) hides their rise: each minimizer
-    stops within :func:`_stopping_room` of its profile's minimum, 1.6·10⁻⁷ for the dense profile
-    and 1.5·10⁻⁷ for the engine's here, with Brent's 7·10⁻⁹ each, measured on the platform the
-    test runs on and summed (with that shift) into γ̂'s relative tolerance, 3.2·10⁻⁷ here. CI's Linux
-    runner had γ̂ 1.29·10⁻⁷ from its reference, which was itself 1.06·10⁻⁷ from this machine's,
-    where 10⁻⁷ was asked. The fitted values move by 1.5·10⁻² of their largest per unit of log γ
-    and by 5.6·10⁻⁹ over designs within rounding of this one, together under 1.1·10⁻⁸, so they
-    keep 10⁻⁷."""
+    At 10⁻⁸ γ̂'s tolerance comes from the reference and the design alone, never from the engine's
+    own profile (V5c-2). A Householder QR factors exactly a design whose columns are each within
+    about the unit roundoff u of the design's (Higham 2002, Theorem 19.4, whose constant, m·n, is
+    a worst case far above what is seen), so the span the engine fits is turned off the true one
+    by at most κ√P·u, κ the condition number of ``[1, x, near]`` with its columns scaled to unit
+    length: 1.9·10⁸ × √3 × 1.1·10⁻¹⁶ = 3.7·10⁻⁸ radians here. The dense profile's minimum moves
+    by at most 0.40 in log γ per radian of such a turn (:func:`_turn_sensitivity` over the
+    curvature, 12.3), so by 1.5·10⁻⁸. Each minimizer stops within :func:`_stopping_room` of its
+    profile's minimum: how flat the profile is where its rounding (about 7·10⁻¹⁴ on values near
+    45) hides its rise, and Brent's tolerance. Both profiles evaluate one function by
+    backward-stable factorizations of well-scaled matrices, so the dense profile's room, measured
+    on the platform the test runs on (1.7·10⁻⁷ here), stands for both: γ̂'s relative tolerance
+    is twice that room plus the turn, 3.5·10⁻⁷ here. CI's Linux runner had γ̂ 1.29·10⁻⁷ from its
+    reference, where 10⁻⁷ was asked. Added to the engine's profile, a tilt of 4·10⁻⁵ γ moves γ̂
+    by 4.2·10⁻⁶, and a ripple of 10⁻¹² of its value by 7.2·10⁻⁷; each fails here. The fitted
+    values move by 1.5·10⁻² of their largest per unit of log γ and by 5.6·10⁻⁹ over designs within
+    rounding of this one, together under 1.1·10⁻⁸, so they keep 10⁻⁷."""
     from scipy.optimize import minimize_scalar
 
-    from turbotab.core.models import repeated
     from turbotab.core.models.repeated import dependencies
     from turbotab.core.tests.test_no_standard_error_refusal import _dense_profile
 
@@ -238,17 +267,12 @@ def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
     Hi = np.linalg.inv(np.eye(N) + gamma * (codes[:, None] == codes[None, :]))
     fitted = span @ np.linalg.solve(span.T @ Hi @ span, span.T @ Hi @ y)
     if noise > 1e-10:
-        sums = repeated._sums(design, y, codes)
-
-        def engine(z: float) -> float:
-            return repeated._profile(math.exp(z), sums)
-
         z = float(found.x)
-        grid = z + np.linspace(-1e-4, 1e-4, 41)
-        apart = np.array([engine(t) - dense(t) for t in grid])
         curvature = (dense(z + 1e-3) - 2.0 * dense(z) + dense(z - 1e-3)) / 1e-6
-        shift = abs(float(np.polyfit(grid - z, apart, 1)[0])) / curvature
-        gamma_tol = _stopping_room(dense, z) + _stopping_room(engine, z) + shift
+        kappa = float(np.linalg.cond(design / np.linalg.norm(design, axis=0)))
+        turn = kappa * math.sqrt(design.shape[1]) * np.finfo(float).eps / 2
+        gamma_tol = (2.0 * _stopping_room(dense, z)
+                     + turn * _turn_sensitivity(span, y, codes, z) / curvature)
         fitted_tol = 1e-7
     else:
         gamma_tol = fitted_tol = 1e-3

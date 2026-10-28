@@ -26,7 +26,8 @@ Under inference the linear family's coefficient table is made here, in four part
   *Biometrika* 80:27) with profile penalized-likelihood intervals and likelihood-ratio p-values
   (Heinze & Schemper 2002, *Stat Med* 21:2409), whose estimates are finite. Where the
   separation is complete (:func:`completely_separated`: some direction puts every row strictly on
-  its own side), the table reports the penalized estimates alone, in words that say why
+  its own side), the table reports the penalized estimates alone, in words that name the columns
+  that do the separating (:func:`complete_separators`) and say why
   (:func:`complete_separation_words`): with a coefficient held at a value the penalized
   likelihood can have more than one maximum, and its profile cannot be certified. The survey
   multinomial and the proportional-odds tables run the same linear programs on their own
@@ -702,21 +703,13 @@ def _boxed(X: np.ndarray) -> np.ndarray | None:
     return Xs
 
 
-def completely_separated(X: np.ndarray, y: np.ndarray) -> bool:
-    """Whether some direction β puts every row strictly on its own side, ``s_i x_iᵀβ > 0`` for
-    every row (complete separation, Albert & Anderson 1984, *Biometrika* 71:1), not only
-    ``s_i x_iᵀβ ≥ 0`` with some row strict (quasi-complete separation), on
-    :func:`separated_columns`' boxed design: one linear program maximizes the least margin t,
-    ``s_i x_iᵀβ ≥ t`` for every row with β boxed in [−1, 1] and t in [0, 1], and the direction it
-    returns is checked again on the rows (its least margin above 10⁻⁶) before it is believed.
-    False where the rows do not exceed the columns or the design is rank-deficient
-    (:func:`_boxed`)."""
+def _strict(Xs: np.ndarray, s: np.ndarray) -> bool:
+    """Whether some direction on the boxed columns ``Xs`` puts every row strictly on its own side:
+    one linear program maximizes the least margin t, ``s_i x_iᵀβ ≥ t`` for every row with β boxed
+    in [−1, 1] and t in [0, 1], and the direction it returns is checked again on the rows (its
+    least margin above 10⁻⁶) before it is believed."""
     from scipy.optimize import linprog
 
-    Xs = _boxed(X)
-    if Xs is None:
-        return False
-    s = np.where(np.asarray(y, dtype=float) > 0.5, 1.0, -1.0)
     n, P = Xs.shape
     least = np.zeros(P + 1)
     least[P] = -1.0
@@ -728,17 +721,73 @@ def completely_separated(X: np.ndarray, y: np.ndarray) -> bool:
     return bool((s * (Xs @ beta)).min() > 1e-6)
 
 
-def complete_separation_words(separated: Sequence[str]) -> str:
-    """Why a Firth table on completely separated rows (:func:`completely_separated`) reports its
-    penalized estimates alone: with a coefficient held at a value the penalized likelihood can
+def completely_separated(X: np.ndarray, y: np.ndarray) -> bool:
+    """Whether some direction β puts every row strictly on its own side, ``s_i x_iᵀβ > 0`` for
+    every row (complete separation, Albert & Anderson 1984, *Biometrika* 71:1), not only
+    ``s_i x_iᵀβ ≥ 0`` with some row strict (quasi-complete separation), on
+    :func:`separated_columns`' boxed design (:func:`_strict`). False where the rows do not exceed
+    the columns or the design is rank-deficient (:func:`_boxed`)."""
+    Xs = _boxed(X)
+    return Xs is not None and _strict(Xs, np.where(np.asarray(y, dtype=float) > 0.5, 1.0, -1.0))
+
+
+def complete_separators(X: np.ndarray, y: np.ndarray) -> list[int]:
+    """Under complete separation (:func:`completely_separated`), the columns of a strictly
+    separating direction none of which can be left out; [] where the separation is not complete.
+
+    Every coefficient then moves along some separating direction, so :func:`separated_columns`
+    names every column, the outcome model's covariates among them; these are the columns that do
+    the separating. One linear program finds the least ``Σ|β_j|`` over the non-constant columns
+    with ``s_i x_iᵀβ ≥ 1`` on every row (a constant column, the intercept, is free), and the
+    columns it leaves at zero are dropped; then each column it kept, the least weighted first,
+    is dropped where the others (with the constant columns) still put every row strictly on its
+    own side (:func:`_strict`). Every set kept is one :func:`_strict` found strict on the rows."""
+    from scipy.optimize import linprog
+
+    Xs = _boxed(X)
+    if Xs is None:
+        return []
+    s = np.where(np.asarray(y, dtype=float) > 0.5, 1.0, -1.0)
+    if not _strict(Xs, s):
+        return []
+    n, P = Xs.shape
+    constant = [j for j in range(P) if np.ptp(Xs[:, j]) == 0.0]
+    cost = np.array([0.0 if j in constant else 1.0 for j in range(P)])
+    margins = s[:, None] * Xs
+    # β = β⁺ − β⁻, both at least zero: Σ cost·(β⁺ + β⁻) least, with every margin at least one.
+    result = linprog(np.concatenate([cost, cost]), A_ub=-np.hstack([margins, -margins]),
+                     b_ub=-np.ones(n), bounds=[(0.0, None)] * (2 * P), method="highs")
+    others = [j for j in range(P) if j not in constant]
+    weight = dict.fromkeys(others, 1.0)
+    keep = list(others)
+    if result.status == 0 and result.x is not None:
+        beta = result.x[:P] - result.x[P:]
+        weight = {j: abs(float(beta[j])) for j in others}
+        support = [j for j in others if weight[j] > 1e-9]
+        if _strict(Xs[:, sorted(constant + support)], s):
+            keep = support
+    for j in sorted(keep, key=lambda k: weight[k]):
+        rest = [k for k in keep if k != j]
+        if rest and _strict(Xs[:, sorted(constant + rest)], s):
+            keep = rest
+    return sorted(keep)
+
+
+def complete_separation_words(separating: Sequence[str]) -> str:
+    """Why a Firth table on completely separated rows (:func:`completely_separated`) reports no
+    profile interval or p-value, naming the columns that do the separating
+    (:func:`complete_separators`): with a coefficient held at a value the penalized likelihood can
     have more than one maximum there, and the profile's fits cannot certify that they found the
-    highest, so a bound could be found inside the interval and a p-value overstated."""
-    verb = "separates" if len(separated) == 1 else "separate"
-    return (f"{_and(separated)} {verb} the outcome completely: some combination of the columns "
-            f"puts every row of each outcome on its own side. With a coefficient held at a value, "
-            f"Firth's penalized likelihood can then have more than one maximum, and the fit cannot "
-            f"certify that it found the highest, so no profile interval or p-value is reported, "
-            f"only each coefficient's penalized estimate.")
+    highest, so a bound could be found inside the interval and a p-value overstated. It is the
+    table's refusal, which other surfaces quote where no estimate is reported either, so it says
+    nothing of the estimates; the table's concern says that it reports Firth's fit."""
+    one = len(separating) == 1
+    cut = "a cut on it" if one else "a cut on a combination of them"
+    return (f"{_and(separating)} {'separates' if one else 'separate'} the outcome completely: "
+            f"{cut} puts every row of each outcome on its own side. With a coefficient held at a "
+            f"value, Firth's penalized likelihood can then have more than one maximum, and the "
+            f"fit cannot certify that it found the highest, so no profile interval or p-value is "
+            f"reported.")
 
 
 def separated_multinomial(X: np.ndarray, codes: np.ndarray, K: int) -> list[int]:
@@ -2098,12 +2147,14 @@ def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Cluste
         rows = [_row(name, est[j], se[j]) for j, name in enumerate(names)]
         return InferenceTable(rows, _info(estimator, "profile", POOLED_FIRTH_CAPTION, clusters,
                                           **extra), concerns)
-    if completely_separated(X, y):
+    separating = complete_separators(X, y)
+    if separating:
         # Held at a value the penalized likelihood can have several maxima, and the warm-started
         # profile stopped on a lower one: beside `xs` = sign(y)·(0.3 + |d|) on 120 rows its upper
         # bound was served at 16.53, where the ratio is 3.02 (the bound is near 19.4; T5aV2-1).
-        table = _refused(names, est, estimator, clusters, complete_separation_words(separated),
-                         separation_exits(separated))
+        named = _named(names, separating) or separated
+        table = _refused(names, est, estimator, clusters, complete_separation_words(named),
+                         separation_exits(named))
         table.info.update(extra)
         table.concerns.insert(0, concern)
         return table
