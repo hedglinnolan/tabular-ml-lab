@@ -39,7 +39,7 @@ from turbotab.core.models.inference import (
 )
 from turbotab.core.models.survey import survey_table
 from turbotab.core.tests.test_iterative_tables_served_at_their_maximum import N, _data
-from turbotab.core.tests.test_firth_profile_under_complete_separation import WORDS
+from turbotab.core.tests.test_firth_serves_its_estimates_alone_under_separation import words
 
 # brglm2's AS_mean fit on _separated(seed): (estimates, standard errors) of the intercept, x1, xs
 # and x4.
@@ -67,14 +67,15 @@ def test_a_completely_separated_firth_table_serves_brglm2s_maximum(seed):
     """Each coefficient within 10⁻⁷ of a standard error of brglm2's (the share claimed is 10⁻⁴),
     and the fit's standard error to 10⁻⁷: the decrement falls to 0.52 to 0.72 of itself a step
     here, and at ac3d66da the floor stop served these tables 2.5·10⁻⁴ to 5.9·10⁻⁴ of a standard
-    error off. The separation is complete, so the table reports the estimates alone, no profile
-    interval or p-value (``inference.complete_separation_words``, T5aV2-1), and the standard error
-    is read off the fit, whose information the table no longer reports."""
+    error off. The data separate, so the table reports the estimates alone, no profile interval or
+    p-value, in words that name every separated column (``inference.separated_profile_words``:
+    under complete separation, every column; T5aV2-1, V5c2-1), and the standard error is read off
+    the fit, whose information the table no longer reports."""
     rows = _separated(seed)
     table = inference_table("binary", rows[["x1", "xs", "x4"]], rows["y"].to_numpy(), [0, 1],
                             INDEPENDENT, study=["x1"])
     assert table.info["estimator"] == I.FIRTH
-    assert table.info["refused"] == WORDS
+    assert table.info["refused"] == words(["x1", "xs", "x4"])
     want, se = BRGLM2[seed]
     served = {r["feature"]: r for r in table.rows}
     for j, name in enumerate(["(intercept)", "x1", "xs", "x4"]):

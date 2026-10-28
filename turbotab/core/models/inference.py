@@ -23,13 +23,16 @@ Under inference the linear family's coefficient table is made here, in four part
 * **Separation** in a logistic model is found by linear programming (Konis 2007, *Linear
   programming algorithms for detecting separated data in binary logistic regression models*,
   DPhil thesis, Oxford), named, and the table becomes Firth's penalized likelihood (Firth 1993,
-  *Biometrika* 80:27) with profile penalized-likelihood intervals and likelihood-ratio p-values
-  (Heinze & Schemper 2002, *Stat Med* 21:2409), whose estimates are finite. Where the
-  separation is complete (:func:`completely_separated`: some direction puts every row strictly on
-  its own side), the table reports the penalized estimates alone, in words that name the columns
-  that do the separating (:func:`complete_separators`) and say why
-  (:func:`complete_separation_words`): with a coefficient held at a value the penalized
-  likelihood can have more than one maximum, and its profile cannot be certified. The survey
+  *Biometrika* 80:27), whose estimates are finite (Heinze & Schemper 2002, *Stat Med* 21:2409).
+  It reports those estimates alone, complete separation or quasi-complete, in words that name the
+  separated columns (the cone :func:`separated_columns` finds, all of which left out ends the
+  separation) and say why (:func:`separated_profile_words`): with a coefficient held at a value
+  the penalized likelihood can then have more than one maximum, and the fit cannot certify that
+  it found the highest, so no profile interval or likelihood-ratio p-value is reported. Every
+  Firth profile quantity is refused on separated rows in typed words, whoever asks
+  (:class:`FirthProfileSeparated`: :func:`firth_profile`, a combination's
+  :func:`firth_combination`, the form tests' ``exposure_form.firth_lr_test``); on rows nothing
+  separates :func:`firth_profile` computes the profile. The survey
   multinomial and the proportional-odds tables run the same linear programs on their own
   likelihoods (:func:`separated_multinomial`, :func:`separated_ordinal`) and refuse a separated
   table, naming the separating column. Under multiple
@@ -57,13 +60,14 @@ GEE, Cox and mixed tables refuse in reads the columns centered too
 odds, Firth, and their survey forms) is served only at its maximum: a fit that does not converge,
 or whose Newton step from its estimate would move a coefficient by more than
 :data:`SHORT_OF_MAXIMUM` of a standard error, is refused with no estimate (:func:`not_converged`,
-:func:`at_maximum`), and a Firth profile that cannot be computed is refused in its own words
-(:class:`FirthProfileFailed`). In each of them, and the mixed model's, where the model matrix's
-columns are dependent at R's tolerance on the centered columns (``repeated.aliased``: a column
-whose part outside the span of those before it is under 10⁻⁷ of its length is aliased, as ``lm``
-aliases it; which columns are in its dependency is read on the same centered columns, each
-scaled to unit length) and the caller names what is studied (``study``), a coefficient in no dependency is reported as
-the fit with the aliased columns left out gives it, as R's ``lm`` does, and each one in a
+:func:`at_maximum`), that distance taken from the fit's score and its working design's QR
+(:func:`newton_distance`, :func:`firth_distance`), and a Firth profile that cannot be computed is
+refused in its own words (:class:`FirthProfileFailed`). In each of them, and the mixed model's,
+where the model matrix's columns are dependent at R's tolerance on the centered columns
+(``repeated.aliased``: a column whose part outside the span of those before it is under 10⁻⁷ of
+its length is aliased, as ``lm`` aliases it; which columns are in its dependency is read on the
+same centered columns, each scaled to unit length) and the caller names what is studied
+(``study``), a coefficient in no dependency is reported as the fit with the aliased columns left out gives it, as R's ``lm`` does, and each one in a
 dependency is refused by row, with no estimate, in words that name the dependency's columns; the
 whole table is refused, with no estimate, where a column named as studied, or every coefficient,
 is in one, or where the caller names nothing studied (:func:`dependency_reason`'s words), before
@@ -378,7 +382,19 @@ def _cr2_parts(X: np.ndarray, e: np.ndarray, codes: np.ndarray, bread: np.ndarra
     for block in blocks:
         Xg = X[block]  # (k, m, P)
         if adjust:
-            Q, R = np.linalg.qr(Xg)  # X_g = Q R, Q with orthonormal columns
+            lengths = np.linalg.norm(Xg, axis=2)  # (k, m)
+            graded = lengths.min(axis=1) < np.finfo(float).eps * lengths.max(axis=1)
+            if graded.any():
+                # A cluster with a row under rounding's share of its longest is factored longest
+                # row first, Q put back in order: Householder is then accurate row by row
+                # (:func:`qr_frame`), where a short row among the first keeps rounding in its Q.
+                order = np.argsort(-lengths, axis=1, kind="stable")
+                order[~graded] = np.arange(Xg.shape[1])
+                Q_sorted, R = np.linalg.qr(np.take_along_axis(Xg, order[:, :, None], axis=1))
+                Q = np.empty_like(Q_sorted)
+                Q[np.arange(len(order))[:, None], order] = Q_sorted
+            else:
+                Q, R = np.linalg.qr(Xg)  # X_g = Q R, Q with orthonormal columns
             Bg = R @ bread @ np.swapaxes(R, 1, 2)
             lam, Z = np.linalg.eigh((Bg + np.swapaxes(Bg, 1, 2)) / 2)
             gap = 1.0 - lam
@@ -481,11 +497,29 @@ def qr_frame(X: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
     number is one, and carried to the coefficients by ``R⁻¹ · R⁻ᵀ`` has rounding of the design's
     condition number, where one from ``XᵀX`` has rounding of its square: beside ``x + 10⁻⁹·d``,
     statsmodels' HC3 leverages ``diag(X(XᵀX)⁻¹Xᵀ)`` put `v`'s HC3 standard error off by 2.6 times,
-    and the pseudo-inverse of ``XᵀX`` dropped the near-null direction from CR2's (−1.3·10⁻³)."""
+    and the pseudo-inverse of ``XᵀX`` dropped the near-null direction from CR2's (−1.3·10⁻³).
+
+    Where some row's length is under rounding's share of the longest's (a working design whose
+    weight rounds to zero on a row: a fitted probability of 0 or 1), the rows are factored longest
+    first and Q put back in their order: Householder's QR is accurate row by row on rows so sorted
+    (Powell & Reid 1969; Cox & Higham 1998, *BIT* 38:24), where a short row among the first ones
+    keeps its row of Q at rounding, 10⁻¹⁷, not at its own scale. Times that row's Pearson residual,
+    divided by the root of its weight, that rounding made the logistic CR2 standard errors beside
+    one outlying row first in the data (its fitted probability 1.0, no event) 10¹³¹ and more,
+    where they are 0.06 to 0.30 (CR2's QR of each cluster sorts its rows so too,
+    :func:`_cr2_parts`). Other designs are factored as they come."""
     from scipy.linalg import solve_triangular
 
     X = np.asarray(X, dtype=float)
-    Q, R = np.linalg.qr(X)
+    lengths = np.linalg.norm(X, axis=1) if X.size else np.zeros(len(X))
+    if len(lengths) and np.isfinite(lengths).all() and \
+            lengths.min() < np.finfo(float).eps * lengths.max():
+        order = np.argsort(-lengths, kind="stable")
+        Q_sorted, R = np.linalg.qr(X[order])
+        Q = np.empty_like(Q_sorted)
+        Q[order] = Q_sorted
+    else:
+        Q, R = np.linalg.qr(X)
     if not np.all(np.isfinite(R)) or np.any(np.diag(R) == 0):
         return None
     return Q, solve_triangular(R, np.eye(R.shape[0]))
@@ -604,7 +638,7 @@ def multinomial_working(X: np.ndarray, outcome: np.ndarray, probs: np.ndarray) -
 # ── separation and Firth ─────────────────────────────────────────────────────
 
 
-def separated_columns(X: np.ndarray, y: np.ndarray) -> list[int]:
+def separated_columns(X: np.ndarray, y: np.ndarray, *, first: bool = False) -> list[int]:
     """Indices of the coefficients whose maximum-likelihood estimate is infinite; [] when none.
 
     Konis (2007): the data are separated when some β ≠ 0 has ``s_i x_iᵀβ ≥ 0`` for every row
@@ -614,7 +648,10 @@ def separated_columns(X: np.ndarray, y: np.ndarray) -> list[int]:
     moves it (one linear program each way). Every direction a solver returns is checked again on
     the rows before it is believed. With a rank-deficient design, directions with ``Xβ = 0`` make
     the per-coefficient reading undefined, so nothing is reported (the collinearity concern says
-    why the table cannot be computed).
+    why the table cannot be computed). The cone is convex, so one separating direction moves every
+    coefficient named, and none other: with all the named columns left out (the intercept kept,
+    and both outcomes present), no direction separates what is left. With ``first``, only whether
+    any is infinite is asked: the first one found alone.
     """
     from scipy.optimize import linprog
 
@@ -649,6 +686,8 @@ def separated_columns(X: np.ndarray, y: np.ndarray) -> list[int]:
             if beta is not None and sign * beta[j] > 1e-6:
                 infinite.append(j)
                 break
+        if first and infinite:
+            break
     return infinite
 
 
@@ -703,91 +742,33 @@ def _boxed(X: np.ndarray) -> np.ndarray | None:
     return Xs
 
 
-def _strict(Xs: np.ndarray, s: np.ndarray) -> bool:
-    """Whether some direction on the boxed columns ``Xs`` puts every row strictly on its own side:
-    one linear program maximizes the least margin t, ``s_i x_iᵀβ ≥ t`` for every row with β boxed
-    in [−1, 1] and t in [0, 1], and the direction it returns is checked again on the rows (its
-    least margin above 10⁻⁶) before it is believed."""
-    from scipy.optimize import linprog
-
-    n, P = Xs.shape
-    least = np.zeros(P + 1)
-    least[P] = -1.0
-    result = linprog(least, A_ub=np.column_stack([-(s[:, None] * Xs), np.ones(n)]),
-                     b_ub=np.zeros(n), bounds=[(-1.0, 1.0)] * P + [(0.0, 1.0)], method="highs")
-    if result.status != 0 or result.x is None:
-        return False
-    beta = np.where(np.abs(result.x[:P]) < 1e-9, 0.0, result.x[:P])
-    return bool((s * (Xs @ beta)).min() > 1e-6)
+# Why a Firth profile quantity is not reported where the data separate (:func:`separated_columns`,
+# complete or quasi-complete): held at a value, the penalized likelihood there can have more than
+# one maximum, and a warm-started fit can stop on a lower one, so a bound is found inside the
+# interval and a p-value overstated. Under complete separation `xs`'s upper bound beside
+# ``sign(y)·(0.3 + |d|)`` was served at 16.53, where a point held there has a ratio of 3.02
+# (T5aV2-1); with one row of the other outcome tied to the row nearest the cut (quasi-complete) at
+# 19.04, where it has 3.28 (V5c2-1), each under χ²₁(0.95) = 3.84. A multi-start certification is a
+# feature for later; until then nothing profiled is served on separated rows.
+SEVERAL_MAXIMA = ("Firth's penalized likelihood can then have more than one maximum, and the fit "
+                  "cannot certify that it found the highest")
 
 
-def completely_separated(X: np.ndarray, y: np.ndarray) -> bool:
-    """Whether some direction β puts every row strictly on its own side, ``s_i x_iᵀβ > 0`` for
-    every row (complete separation, Albert & Anderson 1984, *Biometrika* 71:1), not only
-    ``s_i x_iᵀβ ≥ 0`` with some row strict (quasi-complete separation), on
-    :func:`separated_columns`' boxed design (:func:`_strict`). False where the rows do not exceed
-    the columns or the design is rank-deficient (:func:`_boxed`)."""
-    Xs = _boxed(X)
-    return Xs is not None and _strict(Xs, np.where(np.asarray(y, dtype=float) > 0.5, 1.0, -1.0))
-
-
-def complete_separators(X: np.ndarray, y: np.ndarray) -> list[int]:
-    """Under complete separation (:func:`completely_separated`), the columns of a strictly
-    separating direction none of which can be left out; [] where the separation is not complete.
-
-    Every coefficient then moves along some separating direction, so :func:`separated_columns`
-    names every column, the outcome model's covariates among them; these are the columns that do
-    the separating. One linear program finds the least ``Σ|β_j|`` over the non-constant columns
-    with ``s_i x_iᵀβ ≥ 1`` on every row (a constant column, the intercept, is free), and the
-    columns it leaves at zero are dropped; then each column it kept, the least weighted first,
-    is dropped where the others (with the constant columns) still put every row strictly on its
-    own side (:func:`_strict`). Every set kept is one :func:`_strict` found strict on the rows."""
-    from scipy.optimize import linprog
-
-    Xs = _boxed(X)
-    if Xs is None:
-        return []
-    s = np.where(np.asarray(y, dtype=float) > 0.5, 1.0, -1.0)
-    if not _strict(Xs, s):
-        return []
-    n, P = Xs.shape
-    constant = [j for j in range(P) if np.ptp(Xs[:, j]) == 0.0]
-    cost = np.array([0.0 if j in constant else 1.0 for j in range(P)])
-    margins = s[:, None] * Xs
-    # β = β⁺ − β⁻, both at least zero: Σ cost·(β⁺ + β⁻) least, with every margin at least one.
-    result = linprog(np.concatenate([cost, cost]), A_ub=-np.hstack([margins, -margins]),
-                     b_ub=-np.ones(n), bounds=[(0.0, None)] * (2 * P), method="highs")
-    others = [j for j in range(P) if j not in constant]
-    weight = dict.fromkeys(others, 1.0)
-    keep = list(others)
-    if result.status == 0 and result.x is not None:
-        beta = result.x[:P] - result.x[P:]
-        weight = {j: abs(float(beta[j])) for j in others}
-        support = [j for j in others if weight[j] > 1e-9]
-        if _strict(Xs[:, sorted(constant + support)], s):
-            keep = support
-    for j in sorted(keep, key=lambda k: weight[k]):
-        rest = [k for k in keep if k != j]
-        if rest and _strict(Xs[:, sorted(constant + rest)], s):
-            keep = rest
-    return sorted(keep)
-
-
-def complete_separation_words(separating: Sequence[str]) -> str:
-    """Why a Firth table on completely separated rows (:func:`completely_separated`) reports no
-    profile interval or p-value, naming the columns that do the separating
-    (:func:`complete_separators`): with a coefficient held at a value the penalized likelihood can
-    have more than one maximum there, and the profile's fits cannot certify that they found the
-    highest, so a bound could be found inside the interval and a p-value overstated. It is the
-    table's refusal, which other surfaces quote where no estimate is reported either, so it says
-    nothing of the estimates; the table's concern says that it reports Firth's fit."""
-    one = len(separating) == 1
+def separated_profile_words(separated: Sequence[str], *,
+                            held: str = "a coefficient held at a value",
+                            unreported: str = "profile interval or p-value") -> str:
+    """Why a Firth table on rows the data separate reports its penalized estimates alone (or a test
+    on one, ``held`` and ``unreported`` its own words), naming the separated columns: the cone
+    :func:`separated_columns` finds, one direction of which moves every one of them, so a cut on
+    a combination of them puts every row on its outcome's side or on the cut, and all of which
+    left out ends the separation. It is the table's refusal, which other surfaces quote where no
+    estimate is reported either, so it says nothing of the estimates; the table's concern says
+    that it reports Firth's fit."""
+    one = len(separated) == 1
     cut = "a cut on it" if one else "a cut on a combination of them"
-    return (f"{_and(separating)} {'separates' if one else 'separate'} the outcome completely: "
-            f"{cut} puts every row of each outcome on its own side. With a coefficient held at a "
-            f"value, Firth's penalized likelihood can then have more than one maximum, and the "
-            f"fit cannot certify that it found the highest, so no profile interval or p-value is "
-            f"reported.")
+    return (f"{_and(separated)} {'separates' if one else 'separate'} the outcome: {cut} puts every "
+            f"row on its outcome's side or on the cut itself. With {held}, {SEVERAL_MAXIMA}, so no "
+            f"{unreported} is reported.")
 
 
 def separated_multinomial(X: np.ndarray, codes: np.ndarray, K: int) -> list[int]:
@@ -996,32 +977,55 @@ FIRTH_PROFILE_STEPS = 5_000
 class FirthProfileFailed(ValueError):
     """A Firth profile (:func:`firth_profile`, ``strict``) that could not be computed: a
     penalized fit along it did not converge, its bound could not be bracketed, or it ran past
-    :data:`FIRTH_PROFILE_STEPS`. Its message says which, in the words a table refuses in."""
+    :data:`FIRTH_PROFILE_STEPS`; or one refused because the data separate
+    (:class:`FirthProfileSeparated`). Its message says which, in the words a table refuses in."""
+
+
+class FirthProfileSeparated(FirthProfileFailed):
+    """A Firth profile quantity (an interval, a likelihood-ratio p-value or test) asked for on
+    rows the data separate (:func:`separated_columns`), refused whoever asks, strict or not: held
+    at a value the penalized likelihood can then have more than one maximum, and the fit cannot
+    certify that it found the highest (:data:`SEVERAL_MAXIMA`)."""
+
+
+def is_separated(X: np.ndarray, y: np.ndarray) -> bool:
+    """Whether the data separate the outcome (:func:`separated_columns` finds some coefficient
+    infinite), its linear programs stopped at the first one found."""
+    return bool(separated_columns(np.asarray(X, dtype=float), np.asarray(y, dtype=float),
+                                  first=True))
 
 
 def firth_profile(X: np.ndarray, y: np.ndarray, fit: FirthFit, j: int, *,
                   level: float = LEVEL, strict: bool = False, name: str | None = None
                   ) -> tuple[float | None, float | None, float]:
-    """Coefficient j's profile penalized-likelihood interval and likelihood-ratio p-value.
+    """Coefficient j's profile penalized-likelihood interval and likelihood-ratio p-value, on rows
+    nothing separates.
 
     The interval is every b with ``2 (l*(β̂) − max_{β: β_j = b} l*(β)) ≤ χ²₁(level)``
-    (Heinze & Schemper 2002); a bound that is not reached within a wide search is None. With
-    ``strict`` (a coefficient table's, whose coefficient ``name`` is), a profile that cannot be
-    computed raises :class:`FirthProfileFailed` in words that name it, rather than give a bound
-    or a p-value from a penalized fit that did not converge: one that did not, a bound the search
-    cannot bracket (whose solver raised an untyped ``ValueError``), or a profile past
+    (Heinze & Schemper 2002); a bound that is not reached within a wide search is None. On rows
+    the data separate (:func:`is_separated`) it raises :class:`FirthProfileSeparated`, strict or
+    not, in words that name the coefficient (``name``): held at a value the penalized likelihood
+    can then have more than one maximum, and the warm-started fits here can stop on a lower one.
+    With ``strict`` (a coefficient table's), a profile that cannot be computed raises
+    :class:`FirthProfileFailed` in words that name it, rather than give a bound or a p-value from
+    a penalized fit that did not converge: one that did not, a bound the search cannot bracket
+    (whose solver raised an untyped ``ValueError``), or a profile past
     :data:`FIRTH_PROFILE_STEPS` Newton steps.
     """
     from scipy.optimize import brentq
     from scipy.stats import chi2
 
+    term = _term(name) if name else "this coefficient"
+    reported = "so no interval or p-value is reported"
+    if is_separated(X, y):
+        raise FirthProfileSeparated(
+            f"Firth's profile of {term} is not computed: the data separate the outcome. With a "
+            f"coefficient held at a value, {SEVERAL_MAXIMA}, {reported}.")
     crit = 0.5 * float(chi2.ppf(level, 1))
     centre = float(fit.beta[j])
     warm = {"beta": fit.beta.copy()}
     spent = {"steps": 0}
-    profiled = (f"Firth's profile of {_term(name) if name else 'this coefficient'} could not be "
-                f"computed")
-    reported = "so no interval or p-value is reported"
+    profiled = f"Firth's profile of {term} could not be computed"
 
     def drop(b: float) -> float:
         profile = firth_fit(X, y, fixed={j: b}, start=warm["beta"])
@@ -1100,8 +1104,9 @@ class InferenceTable:
     rows: list[dict[str, Any]]
     info: dict[str, Any]
     concerns: list[str] = field(default_factory=list)
-    # The covariance the intervals rest on, over the rows in order (None when refused or when the
-    # intervals are not Wald: Firth's profile ones). Joint tests read it (WP12a: a spline's
+    # The covariance the intervals rest on, over the rows in order (None when refused, and in one
+    # completed copy's Firth table, whose rows hold an estimate and its standard error for Rubin's
+    # rules). Joint tests read it (WP12a: a spline's
     # nonlinearity, ``turbotab/core/methods/exposure_form.py``); it is never serialized.
     cov: Any = None
     # The rows whose maximum-likelihood value the linear program finds infinite on this table's
@@ -1122,9 +1127,14 @@ class InferenceTable:
     # A linear combination ``c`` of the coefficients, at its estimate, as a row's fields (``se``,
     # ``df``, ``ci_low``, ``ci_high``, ``p``, and ``infinite`` where separation is checked), for a
     # table whose rows do not follow from its covariance and one df: CR2's Bell–McCaffrey df,
-    # Firth's profile intervals, a multinomial table's covariance not kept. :func:`by_identified`
+    # Firth's separation check, a multinomial table's covariance not kept. :func:`by_identified`
     # reads it for an intercept or cut-points on centered columns and drops it; never serialized.
     contrast: Callable[[np.ndarray, float], dict[str, Any]] | None = None
+    # A Firth table on rows the data separate, on independent rows and at its penalized maximum,
+    # whose estimates are served and every profile interval and p-value refused: the words it
+    # refuses them in (its ``info["refused"]``, :func:`separated_profile_words`). A caller that
+    # reads its estimates (the modification's Firth family) reads it; never serialized.
+    profile_refusal: str | None = None
 
 
 def _clean(value: Any) -> float | None:
@@ -1726,8 +1736,8 @@ def _recentered(table: InferenceTable, layout: Layout, columns: Sequence[str],
     coefficients. A table whose rows follow from its covariance and one df gives the rest: where
     the row had a standard error it is ``√(cᵀVc)``, and where it had an interval it is on the
     row's own df (the same for every row of such a table) or the normal. A table whose rows do
-    not (CR2's Bell–McCaffrey df, which are the combination's own; Firth's profile interval and
-    separation check; a multinomial table's covariance, not kept) gives the row's fields itself
+    not (CR2's Bell–McCaffrey df, which are the combination's own; Firth's separation check; a
+    multinomial table's covariance, not kept) gives the row's fields itself
     (:attr:`InferenceTable.contrast`), at every origin, and is then rid of it. The covariance
     becomes ``A V Aᵀ`` for the map ``A`` from the fit's coefficients to the rows."""
     contrast, table.contrast = table.contrast, None
@@ -1887,29 +1897,35 @@ def not_converged(model: str) -> str:
 SHORT_OF_MAXIMUM = 1e-4
 
 
-def newton_distance(working: np.ndarray, residual: np.ndarray) -> float:
+def newton_distance(working: np.ndarray, score: np.ndarray) -> float:
     """How far a fit is from its maximum, in standard errors: ``√(sᵀ I⁻¹ s)`` for the score ``s``
-    and the information ``I`` at its estimate, with ``working`` its working design (``WᵀW = I``)
-    and ``residual`` its working residual (``Wᵀr = s``: :func:`logistic_working`,
-    :func:`multinomial_working`). By Cauchy–Schwarz no coefficient, nor any combination of them,
-    is moved by the Newton step from there by more than this many of its standard errors, and the
-    step moves some combination by exactly that many. Taken from the QR of the working design
-    (``W = QR``, so the distance is ``|Qᵀr|``), whose rounding is its condition number, where an
-    inverse of the information has that squared: the survey multinomial fit beside
-    ``x + 1.1·10⁻⁷·d``, whose steps came from a least-squares solve on an information of
-    condition number 10¹⁴, declared convergence where this distance was 0.57 and served the study
-    factor's log-odds at −0.1200 against the maximum's −0.1177. Infinite where the working design
-    is singular or not finite."""
+    and the information ``I`` at its estimate, with ``working`` its working design (``WᵀW = I``:
+    :func:`logistic_working`, :func:`multinomial_working`). By Cauchy–Schwarz no coefficient, nor
+    any combination of them, is moved by the Newton step from there by more than this many of its
+    standard errors, and the step moves some combination by exactly that many. Taken from the
+    triangle of the working design's QR (``W = QR``, so the distance is ``|R⁻ᵀs|``), whose rounding
+    is its condition number, where an inverse of the information has that squared: the survey
+    multinomial fit beside ``x + 1.1·10⁻⁷·d``, whose steps came from a least-squares solve on an
+    information of condition number 10¹⁴, declared convergence where this distance was 0.57 and
+    served the study factor's log-odds at −0.1200 against the maximum's −0.1177. The score is the
+    fit's own (``Xᵀ(y − μ)``, each class's ``Xᵀ(y_k − π_k)``), never ``Qᵀr`` for the working
+    residual ``r``, which divides each row by the root of its weight: where a fitted probability
+    rounds to 0 or 1 that weight is zero, Householder's Q leaves the row at rounding, and a
+    converged logistic fit beside one outlying row (its fitted probability 1.0, no event) had its
+    table refused as 3.3·10¹³⁴ standard errors short of its maximum, where it is under 10⁻¹⁴ from
+    it (V5c2-2). Infinite where the working design is singular or not finite."""
+    from scipy.linalg import solve_triangular
+
     W = np.asarray(working, dtype=float)
-    r = np.asarray(residual, dtype=float)
+    s = np.asarray(score, dtype=float)
     if W.shape[1] == 0:
         return 0.0
-    if not (np.all(np.isfinite(W)) and np.all(np.isfinite(r))):
+    if not (np.all(np.isfinite(W)) and np.all(np.isfinite(s))):
         return math.inf
-    Q, R = np.linalg.qr(W)
-    if np.any(np.diag(R) == 0):
+    R = np.linalg.qr(W, mode="r")
+    if not np.all(np.isfinite(R)) or np.any(np.diag(R) == 0):
         return math.inf
-    return float(np.linalg.norm(Q.T @ r))
+    return float(np.linalg.norm(solve_triangular(R, s, trans="T")))
 
 
 def information_distance(score: np.ndarray, information: np.ndarray) -> float:
@@ -1925,7 +1941,18 @@ def information_distance(score: np.ndarray, information: np.ndarray) -> float:
 
 
 def _standard_errors(distance: float) -> str:
-    return f"{distance:,.0f}" if distance >= 1_000 else f"{distance:.2g}"
+    """A distance in standard errors as the words say it: to two figures below a thousand, written
+    out below a million, and above as a power of ten (2.9 × 10¹⁰¹), never as its every digit."""
+    if distance < 1_000:
+        return f"{distance:.2g}"
+    if distance < 999_999.5:
+        return f"{distance:,.0f}"
+    exponent = math.floor(math.log10(distance))
+    mantissa = distance / 10 ** exponent
+    if round(mantissa, 1) >= 10.0:
+        exponent, mantissa = exponent + 1, mantissa / 10
+    sup = str(exponent).translate(str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹"))
+    return f"{mantissa:.1f} × 10{sup}"
 
 
 def at_maximum(fit: str, distance: float, *, converged: bool = True,
@@ -2045,8 +2072,11 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     if not fit.mle_retvals.get("converged", False):
         return _refused(names, np.full(len(names), np.nan), estimator, clusters,
                         not_converged("logistic"), ())
-    Xw, ew = logistic_working(X, y, np.asarray(fit.predict(X), dtype=float))
-    short = at_maximum("the logistic model's maximum-likelihood fit", newton_distance(Xw, ew))
+    mu = np.asarray(fit.predict(X), dtype=float)
+    Xw, ew = logistic_working(X, y, mu)
+    # The distance reads the score, Xᵀ(y − μ), never the Pearson residual (:func:`newton_distance`).
+    short = at_maximum("the logistic model's maximum-likelihood fit",
+                       newton_distance(Xw, X.T @ (y - mu)))
     if short:
         return _refused(names, np.full(len(names), np.nan), estimator, clusters, short, ())
     refusal = floor_refusal(clusters, task="binary")
@@ -2081,41 +2111,55 @@ def separation_concern(separated: Sequence[str]) -> str:
 
 def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clusters,
                  separated: list[str]) -> InferenceTable:
-    """Firth's table (:func:`_firth_rows`), whose intercept's row, the profile and separation
-    check of a linear combination where the columns were centered, it gives through
-    :attr:`InferenceTable.contrast` (:func:`firth_combination`), so no profile is computed for an
-    intercept the centering moves. An intercept whose profile cannot be computed
-    (:class:`FirthProfileFailed`) is refused by row, with no estimate, the words a concern. A
-    table refused whole (on completely separated rows among them) gives its intercept's estimate
-    alone."""
+    """Firth's table (:func:`_firth_rows`), whose intercept's row, the separation check of a linear
+    combination where the columns were centered (and, in one completed copy's table made for
+    Rubin's rules, its standard error), it gives through :attr:`InferenceTable.contrast`
+    (:func:`firth_combination`, never its profile: the data separate). A table refused (its
+    profile on separated rows among the reasons) gives its intercept's estimate alone."""
     fit = firth_fit(X, y)
     table = _firth_rows(names, X, y, clusters, separated, fit)
     refused = table.info.get("refused") is not None
-    profile = not refused and not _POOLING.get()
 
     def contrast(c: np.ndarray, b: float) -> dict[str, Any]:
-        try:
-            return firth_combination(X, y, fit, c, profile=profile, se=not refused, strict=True)
-        except FirthProfileFailed as failed:
-            table.concerns.append(str(failed))
-            return dict.fromkeys(("estimate", "se", "df", "ci_low", "ci_high", "p"))
+        return firth_combination(X, y, fit, c, profile=False, se=not refused)
 
     table.contrast = contrast
     return table
 
 
 def firth_distance(X: np.ndarray, y: np.ndarray, beta: np.ndarray) -> float:
-    """:func:`newton_distance` for a Firth fit: its working design ``√w·X`` and residual
-    ``(y − μ + h (½ − μ))/√w``, whose product is the modified score."""
-    mu, w, Q, _, _ = _firth_parts(np.asarray(X, dtype=float), np.asarray(y, dtype=float), beta)
+    """:func:`newton_distance` for a Firth fit at ``beta``: ``|R⁻ᵀs|`` for its modified score
+    ``s = Xᵀ(y − μ + h (½ − μ))`` and the triangle of its weighted design's QR (``√w·X = QR``), as
+    :func:`_newton_step` takes its decrement, so no row's residual is divided by its weight. A row
+    whose fitted probability rounds to exactly 0 or 1 has weight zero and carries no information,
+    yet Householder's QR leaves its row of Q at rounding, not at zero: divided by
+    ``√max(w, 10⁻³⁰⁰)``, its residual beside ``xs = sign(y)·(10⁻⁴ + |d| − min|d|)`` had a table
+    whose fit had converged to 8.8·10⁻⁹ of a standard error from its maximum refused as up to
+    2.9·10¹⁰¹ of one short of it (V5c2-2). Infinite where the triangle is singular or the score
+    not finite."""
+    from scipy.linalg import solve_triangular
+
+    X = np.asarray(X, dtype=float)
+    y = np.asarray(y, dtype=float)
+    mu, _, Q, R, _ = _firth_parts(X, y, np.asarray(beta, dtype=float))
     h = np.einsum("ij,ij->i", Q, Q)
-    root = np.sqrt(np.clip(w, 1e-300, None))
-    return newton_distance(np.asarray(X, dtype=float) * root[:, None],
-                           (np.asarray(y, dtype=float) - mu + h * (0.5 - mu)) / root)
+    score = X.T @ (y - mu + h * (0.5 - mu))
+    if R.shape[0] == 0:
+        return 0.0
+    if not (np.all(np.isfinite(R)) and np.all(np.isfinite(score))) or np.any(np.diag(R) == 0):
+        return math.inf
+    return float(np.linalg.norm(solve_triangular(R, score, trans="T")))
 
 
 def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clusters,
                 separated: list[str], fit: FirthFit) -> InferenceTable:
+    """Firth's rows on rows the data separate (``separated``, the columns of the cone
+    :func:`separated_columns` finds): refused for want of independent rows or of enough units, or
+    with no estimate where the fit is not at its penalized maximum (:func:`at_maximum`); in one
+    completed copy's table made for Rubin's rules, each estimate with its standard error from the
+    information (:func:`for_pooling`); otherwise the penalized estimates alone, every profile
+    interval and p-value refused in :func:`separated_profile_words`' words with the separation's
+    exit (:attr:`InferenceTable.profile_refusal`)."""
     est = fit.beta
     estimator = FIRTH
     verb = "separates" if len(separated) == 1 else "separate"
@@ -2147,44 +2191,25 @@ def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Cluste
         rows = [_row(name, est[j], se[j]) for j, name in enumerate(names)]
         return InferenceTable(rows, _info(estimator, "profile", POOLED_FIRTH_CAPTION, clusters,
                                           **extra), concerns)
-    separating = complete_separators(X, y)
-    if separating:
-        # Held at a value the penalized likelihood can have several maxima, and the warm-started
-        # profile stopped on a lower one: beside `xs` = sign(y)·(0.3 + |d|) on 120 rows its upper
-        # bound was served at 16.53, where the ratio is 3.02 (the bound is near 19.4; T5aV2-1).
-        named = _named(names, separating) or separated
-        table = _refused(names, est, estimator, clusters, complete_separation_words(named),
-                         separation_exits(named))
-        table.info.update(extra)
-        table.concerns.insert(0, concern)
-        return table
-    rows = []
-    for j, name in enumerate(names):
-        if name == "(intercept)":  # its profile is :func:`firth_combination`'s (:func:`_firth_table`)
-            rows.append(_row(name, est[j], se[j]))
-            continue
-        try:
-            low, high, p = firth_profile(X, y, fit, j, strict=True, name=name)
-        except FirthProfileFailed as failed:
-            # A bound or p-value from an unconverged penalized fit is no number (T1V3-3).
-            table = _refused(names, est, estimator, clusters, str(failed), ())
-            table.info.update(extra)
-            table.concerns.insert(0, concern)
-            return table
-        rows.append(_row(name, est[j], se[j], None, low, high, p))
-    caption = ("95% profile penalized-likelihood intervals of a Firth-penalized logistic regression, "
-               "because the maximum-likelihood estimate does not exist; p-values from penalized "
-               "likelihood-ratio tests.")
-    return InferenceTable(rows, _info(estimator, "profile", caption, clusters, **extra), concerns)
+    # Held at a value the penalized likelihood can have several maxima where the data separate,
+    # and a warm-started profile can stop on a lower one (:data:`SEVERAL_MAXIMA`): the estimates
+    # alone, complete separation or quasi-complete (V5c2-1).
+    words = separated_profile_words(separated)
+    table = _refused(names, est, estimator, clusters, words, separation_exits(separated))
+    table.info.update(extra)
+    table.concerns.insert(0, concern)
+    table.profile_refusal = words
+    return table
 
 
 def firth_combination(X: np.ndarray, y: np.ndarray, fit: FirthFit, c: np.ndarray, *,
-                      profile: bool = True, se: bool = True, strict: bool = False
-                      ) -> dict[str, Any]:
+                      profile: bool = True, se: bool = True, strict: bool = False,
+                      name: str | None = None) -> dict[str, Any]:
     """A linear combination ``cᵀβ`` of a Firth fit's coefficients as a row's fields: whether its
     maximum-likelihood value is infinite (:func:`separated_columns`), with ``se`` its standard
     error from the information, and with ``profile`` its profile penalized-likelihood interval and
-    likelihood-ratio p-value (:func:`firth_profile`). Each is computed on the design
+    likelihood-ratio p-value (:func:`firth_profile`, ``strict`` and ``name`` passed on), which on
+    rows the data separate raises :class:`FirthProfileSeparated`. Each is computed on the design
     reparametrized so that ``cᵀβ`` is its first coefficient, ``X [c/|c|², N]`` with ``N`` an
     orthonormal basis of the directions orthogonal to ``c`` (``β = c/|c|² δ₀ + N δ``): Firth's
     penalty, ½ log|I(β)|, moves by a constant under a linear reparametrization, so the profile is
@@ -2198,8 +2223,7 @@ def firth_combination(X: np.ndarray, y: np.ndarray, fit: FirthFit, c: np.ndarray
         if se:
             out["se"] = _clean(math.sqrt(max(float(fit.cov[j, j]), 0.0)))
         if profile:
-            low, high, p = firth_profile(X, y, fit, j, strict=strict,
-                                         name="(intercept)" if strict and j == 0 else None)
+            low, high, p = firth_profile(X, y, fit, j, strict=strict, name=name)
             out.update(df=None, ci_low=None if low is None else _clean(low),
                        ci_high=None if high is None else _clean(high), p=_clean(p))
         return out
@@ -2214,8 +2238,7 @@ def firth_combination(X: np.ndarray, y: np.ndarray, fit: FirthFit, c: np.ndarray
         delta = T @ fit.beta
         moved = FirthFit(beta=delta, loglik=float(_firth_parts(Xd, y, delta)[4]),
                          cov=T @ fit.cov @ T.T, iterations=fit.iterations, converged=fit.converged)
-        low, high, p = firth_profile(Xd, y, moved, 0, strict=strict,
-                                     name="(intercept)" if strict else None)
+        low, high, p = firth_profile(Xd, y, moved, 0, strict=strict, name=name)
         out.update(df=None, ci_low=None if low is None else _clean(low),
                    ci_high=None if high is None else _clean(high), p=_clean(p))
     return out
@@ -2399,8 +2422,12 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
     if not fit.mle_retvals.get("converged", False):
         return _refused(labels, np.full(len(labels), np.nan), estimator, clusters,
                         not_converged("multinomial"), ())
-    Xw, ew = multinomial_working(X, codes, np.asarray(fit.predict(X), dtype=float))
-    short = at_maximum("the multinomial model's maximum-likelihood fit", newton_distance(Xw, ew))
+    probs = np.asarray(fit.predict(X), dtype=float)
+    Xw, ew = multinomial_working(X, codes, probs)
+    # Each class's score, Xᵀ(y_k − π_k), class by class as ``est`` (:func:`newton_distance`).
+    onehot = (np.asarray(codes)[:, None] == np.arange(1, q + 1)[None, :]).astype(float)
+    score = ((onehot - probs[:, 1:]).T @ X).ravel()
+    short = at_maximum("the multinomial model's maximum-likelihood fit", newton_distance(Xw, score))
     if short:
         return _refused(labels, np.full(len(labels), np.nan), estimator, clusters, short, ())
     refusal = floor_refusal(clusters, task="multiclass")
@@ -2427,7 +2454,8 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
 
 
 __all__ = [
-    "COMPLETE_CASES", "Clusters", "FEW_CLUSTERS", "FIRTH", "FirthFit", "INDEPENDENT",
+    "COMPLETE_CASES", "Clusters", "FEW_CLUSTERS", "FIRTH", "FirthFit", "FirthProfileSeparated",
+    "INDEPENDENT",
     "InferenceTable", "Outcome", "POOLED_FIRTH_CAPTION", "PooledFirth", "Rows", "Scale", "WITHHELD",
     "bread_of", "by_identified", "cluster_columns", "column_scales", "copies_words", "cr2",
     "gram_inverse", "hc3_covariance", "qr_frame",
@@ -2435,5 +2463,6 @@ __all__ = [
     "multinomial_working", "firth_fit", "firth_profile", "floor_refusal", "for_pooling",
     "no_interval",
     "format_p", "heteroskedasticity_concern", "pooled_firth", "pooling", "separation_concern",
-    "inference_table", "min_clusters", "resolve_clusters", "separated_columns", "withheld_reason",
+    "inference_table", "is_separated", "min_clusters", "resolve_clusters", "separated_columns",
+    "separated_profile_words", "withheld_reason",
 ]

@@ -20,10 +20,12 @@ package FORM (MODELING_SEQUENCE §1 rows 5 and 7, §2, §4; BLUEPRINT §14–§1
 4. **Effect modification on strata that cannot carry an effect** is refused or said plainly:
    never an overflow's text, never a sentence with an empty contrast or a difference of differences
    for an odds ratio; the family names the test it could not compute.
-5. **Separation** (Firth's penalized likelihood): the spline's test of association and the
-   modification's heterogeneity test are penalized likelihood-ratio tests, each effect a profile
-   interval (against R: the penalized likelihood written out and maximized by ``optim`` with its
-   exact gradient, cross-checked by ``brglm2``; the profile by ``uniroot``).
+5. **Separation** (Firth's penalized likelihood): each estimate is the penalized maximum (against
+   R: the penalized likelihood written out and maximized by ``optim`` with its exact gradient,
+   cross-checked by ``brglm2``), and, since T5d, no profile interval, penalized likelihood-ratio
+   test of the spline's form or heterogeneity test is reported (held at a value the penalized
+   likelihood can then have more than one maximum, and the fit cannot certify the highest;
+   before, the repair round served them).
 6. **A modifier withdrawn after the estimates were seen** still counts in the family.
 
 Expected values come from an independent path: pandas and NumPy counts, Harrell's rule as his text
@@ -811,9 +813,10 @@ def test_r3_through_the_server_the_reading_is_asked_first_and_codes_enter_as_ind
 
 # The penalized log-likelihood l(β) + ½ log |XᵀWX| (Firth 1993) and its exact gradient, the
 # modified score Xᵀ(y − μ + h(½ − μ)) (Heinze & Schemper 2002), written out in R and maximized by
-# BFGS with every coefficient free, or some held at given values (the restricted fits of a
-# likelihood-ratio test and of a profile); ``brglm2``'s mean bias reduction (Kosmidis & Firth
-# 2009, which for a logistic model is Firth's) checks the free maximum.
+# BFGS with every coefficient free (the held fits of a likelihood-ratio test and of a profile,
+# which the engine no longer serves on separated rows, are kept for the reference's other
+# readers); ``brglm2``'s mean bias reduction (Kosmidis & Firth 2009, which for a logistic model is
+# Firth's) checks the free maximum.
 FIRTH_R = """
 pl <- function(beta) {
   eta <- drop(X %*% beta); w <- plogis(eta) * plogis(-eta)
@@ -883,49 +886,38 @@ def _separated_fit(frame: pd.DataFrame, folder: Path, k: int) -> Any:
 
 @needs_r
 @pytest.mark.parametrize("k", [3, 4])
-def test_r5_under_separation_the_test_of_association_is_a_penalized_likelihood_ratio_test(
-        k, tmp_path):
-    """Before: "The spline tests for `x` need a Wald covariance, which this table (profile) does
-    not give", and no test of association. Expected: the overall and nonlinearity tests are
-    2(l*(β̂) − l*(β̃)) on χ²(q), β̃ the fit with the spline's (or its nonlinear) terms held at
-    zero, l* the full design's penalized log-likelihood (as the table's own p-values are), to
-    1e-6 against R written out; the free fit agrees with brglm2's."""
+def test_r5_under_separation_no_test_of_the_splines_form_is_reported(k, tmp_path):
+    """Before the repair round: "The spline tests for `x` need a Wald covariance, which this table
+    (profile) does not give"; after it, penalized likelihood-ratio tests. Since T5d (V5c2-1): the
+    data separate (`s`), so the table reports its penalized estimates alone, refused for every
+    interval and p-value in words that name `s`, and no test of `x`'s form is reported, nor the
+    Wald-covariance words. Each estimate is the penalized maximum to 1e-6 against R written out
+    (the spline basis Hmisc's, at Hmisc's own knots for k, Harrell's placement, which the fit
+    states it follows), the free fit brglm2's."""
     frame = _separated_cohort()
     model = _separated_fit(frame, tmp_path / "e", k).data["models"][0]
-    assert model["inference"]["covariance"] == "profile" and "s" in model["inference"]["separated"]
-    tests = {t["test"]: t for t in model["exposure_tests"] if t["column"] == "x"}
+    inference = model["inference"]
+    assert inference["covariance"] == "none" and inference["separated"] == ["s"]
+    assert inference["refused"].startswith("`s` separates the outcome: a cut on it puts every row")
+    assert [t for t in model["exposure_tests"] if t["column"] == "x"] == []
+    assert not any("need a Wald covariance" in c for c in model.get("concerns") or [])
     rows = {r["feature"]: r for r in [*(model.get("coefficients") or []),
                                       *(model.get("adjustment_terms") or [])]}
-    knots = tests["overall"]["knots"]
-    assert len(knots) == k
     found = run_r(FIRTH_R + f"""
 d <- read.csv(frame_csv)
-B <- Hmisc::rcspline.eval(d$x, knots = c({", ".join(repr(float(v)) for v in knots)}),
-                          inclx = TRUE)
+B <- Hmisc::rcspline.eval(d$x, nk = {k}, inclx = TRUE)
 X <- cbind(1, B, d$z, d$s); y <- d$b
 colnames(X) <- paste0("c", seq_len(ncol(X)))
-k <- {k}
 top <- fit()
 bg <- glm(y ~ X - 1, family = binomial, method = brglm2::brglmFit, type = "AS_mean",
           control = list(epsilon = 1e-12, maxit = 500))
-out(list(overall = 2 * (top$value - fit(2:k, rep(0, k - 1), top$beta)$value),
-         nonlinear = 2 * (top$value - fit(3:k, rep(0, k - 2), top$beta)$value),
-         beta = top$beta, brglm = unname(coef(bg))))
+out(list(beta = top$beta, brglm = unname(coef(bg))))
 """, {"frame": frame}, tmp_path / "r")
     assert np.allclose(found["beta"], found["brglm"], rtol=0, atol=1e-6)
     names = ["(intercept)", *ef.spline_names("x", k), "z", "s"]
     for name, b in zip(names, found["beta"]):
         assert rows[name]["estimate"] == pytest.approx(b, abs=1e-6), name
-    from scipy import stats
-
-    for kind, q in (("overall", k - 1), ("nonlinear", k - 2)):
-        ours = tests[kind]
-        assert (ours["distribution"], ours["df_num"], ours["df_den"]) == ("chi2", q, None)
-        assert ours["statistic"] == pytest.approx(found[kind], rel=1e-6, abs=1e-8)
-        assert ours["p"] == pytest.approx(stats.chi2.sf(found[kind], q), rel=1e-5, abs=1e-12)
-    assert tests["overall"]["caption"].startswith(
-        "The test of association: Penalized likelihood-ratio test that all ")
-    assert not any("need a Wald covariance" in c for c in model.get("concerns") or [])
+        assert rows[name]["ci_low"] is None and rows[name]["p"] is None, name
 
 
 @pytest.fixture(scope="module")
@@ -947,14 +939,15 @@ def separated_modification(tmp_path_factory) -> dict[str, Any]:
 
 
 @needs_r
-def test_r5_under_separation_the_modification_reports_profile_intervals_and_a_lr_test(
+def test_r5_under_separation_the_modification_reports_penalized_estimates_alone(
         separated_modification, tmp_path):
-    """Before: "It could not be fit: the model gave no covariance to test the product terms on",
-    while the family counted the test. Expected: the effect within each sex (each a single
-    coefficient once sex's reference is chosen: female, then male, in R) with its profile
-    penalized-likelihood interval and p-value; the heterogeneity test the penalized
-    likelihood-ratio test of the product term; the RERI's point estimate from R's coefficients,
-    with no interval; the sentence says each."""
+    """Before the repair round: "It could not be fit: the model gave no covariance to test the
+    product terms on"; after it, profile intervals and a penalized likelihood-ratio heterogeneity
+    test. Since T5d (V5c2-1): the data separate (`s`), so each effect within a sex (each a single
+    coefficient once sex's reference is chosen: female, then male, in R), each combination and
+    ratio of odds ratios, and the RERI, is Firth's penalized estimate alone, from R's maximum, with
+    no interval or p-value, and no heterogeneity test is reported; the sentence says so, and the
+    family names the test it could not compute."""
     frame = separated_modification["frame"]
     found = run_r(FIRTH_R + """
 d <- read.csv(frame_csv)
@@ -964,10 +957,7 @@ for (ref in c("female", "male")) {
   d$sx <- relevel(factor(d$sex), ref = ref)
   X <- model.matrix(~ fiber * sx + age + smoking + activity + s, data = d)
   top <- fit()
-  j <- which(colnames(X) == "fiber")
-  inter <- grep("^fiber:sx", colnames(X))
-  res[[ref]] <- list(ci = profile_ci(j, top), beta = setNames(as.list(top$beta), colnames(X)),
-                     het = 2 * (top$value - fit(inter, 0, top$beta)$value))
+  res[[ref]] <- list(beta = setNames(as.list(top$beta), colnames(X)))
 }
 out(res)
 """, {"frame": frame}, tmp_path)
@@ -980,40 +970,41 @@ out(res)
     delta = a1 - a0
     effects = {q["stratum"]: q for q in fit["effects"]}
     for stratum in ("female", "male"):
-        low, high, p = found[stratum]["ci"]
         b = found[stratum]["beta"]["fiber"]
-        q = effects[stratum]
-        assert q["estimate"] == pytest.approx(math.exp(delta * b), rel=1e-5), stratum
-        assert q["ci_low"] == pytest.approx(math.exp(delta * low), rel=1e-4), stratum
-        assert q["ci_high"] == pytest.approx(math.exp(delta * high), rel=1e-4), stratum
-        assert q["p"] == pytest.approx(p, rel=1e-3, abs=1e-10), stratum
-    het = fit["heterogeneity"]
-    assert (het["distribution"], het["df_num"]) == ("chi2", 1)
-    assert het["statistic"] == pytest.approx(found["female"]["het"], rel=1e-5, abs=1e-8)
-    assert het["statistic"] == pytest.approx(found["male"]["het"], rel=1e-5, abs=1e-8)
+        assert effects[stratum]["estimate"] == pytest.approx(math.exp(delta * b), rel=1e-5), \
+            stratum
+    for q in [*fit["effects"], *fit["joint"], *fit["multiplicative"], *fit["reri"]]:
+        assert q["estimate"] is not None and (q["ci_low"], q["ci_high"], q["p"]) == (
+            None, None, None), q
+    assert fit["heterogeneity"] is None
     b = found["female"]["beta"]
     L10 = delta * b["fiber"]
     L01 = b["sxmale"] + b["fiber:sxmale"] * a0
     L11 = L10 + b["sxmale"] + b["fiber:sxmale"] * a1
+    (mult,) = fit["multiplicative"]
+    assert mult["estimate"] == pytest.approx(math.exp(L11 - L10 - L01), rel=1e-5)
     (reri,) = fit["reri"]
     assert reri["estimate"] == pytest.approx(math.exp(L11) - math.exp(L10) - math.exp(L01) + 1,
                                              rel=1e-5)
-    assert (reri["ci_low"], reri["ci_high"]) == (None, None)
-    assert "the heterogeneity test is the penalized likelihood-ratio test that the 1 product " \
-           "term is zero" in result["sentence"]
-    assert "its point estimate only" in result["sentence"]
-    assert "delta-method interval (Hosmer" not in result["sentence"]
+    assert any(c.startswith("`s` separates the outcome: a cut on it") for c in fit["concerns"])
+    assert "each odds ratio its penalized estimate alone, with no interval or p-value" in \
+        result["sentence"]
+    assert "heterogeneity test is the" not in result["sentence"]
+    assert result["sentence"].endswith("; no heterogeneity test is reported.")
+    assert "profile" not in result["sentence"]
     count = separated_modification["out"]["family_count"]
-    assert count["n_tests"] == 2 and count["not_computed"] == []
+    assert count["n_tests"] == 2 and count["not_computed"] == ["sex"]
 
 
 @needs_r
 def test_r5_under_multiple_imputation_the_penalized_tests_are_pooled_by_d2_as_mitml_pools_them(
         tmp_path):
-    """Each imputed copy's penalized likelihood-ratio test has no covariance for D1, so the
-    copies' χ² statistics are pooled by D2 (Li, Meng, Raghunathan & Rubin 1991), against
-    ``mitml``'s own D2 (``mitml:::.D2``, which ``testModels(method = "D2")`` runs), and the MI
-    pooling of the form tests takes it where D1 cannot run (never dropping the test)."""
+    """Copies whose χ² statistics come with no covariance for D1 are pooled by D2 (Li, Meng,
+    Raghunathan & Rubin 1991), against ``mitml``'s own D2 (``mitml:::.D2``, which
+    ``testModels(method = "D2")`` runs), and the MI pooling of the form tests takes it where D1
+    cannot run (never dropping the test). Since T5d no separated copy gives such a statistic (its
+    penalized likelihood-ratio test is refused), so the pooling is checked on statistics drawn
+    here, on tables with no covariance."""
     from scipy import stats
 
     from turbotab.core.stages.modeling import _pool_form_tests

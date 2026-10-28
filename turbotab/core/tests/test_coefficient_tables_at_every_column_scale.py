@@ -110,8 +110,10 @@ def test_rescaling_a_column_moves_only_its_own_row(family, factor):
 @pytest.mark.parametrize("factor", FACTORS)
 def test_the_firth_table_moves_only_the_rescaled_row(factor):
     """A group with no events separates the outcome, so the table is Firth's: `x2` in units
-    ``factor`` times its own divides its estimate, standard error and profile interval by
-    ``factor`` and leaves the separated group's row, and every other, as it is."""
+    ``factor`` times its own divides its estimate by ``factor`` and leaves the separated group's
+    row, and every other, as it is. The data separate, so each table serves its estimates alone,
+    refused for its intervals in the same words (T5d, V5c2-1; before, its profile intervals moved
+    with the estimates)."""
     (x1, x2, _), *_ = _data()
     rng = np.random.default_rng(11)
     group = (np.arange(N) % 10 == 0).astype(float)
@@ -123,11 +125,12 @@ def test_the_firth_table_moves_only_the_rescaled_row(factor):
 
     reference, table = build(1.0), build(factor)
     assert reference.info["separated"] == ["group"] and table.info["separated"] == ["group"]
+    assert table.info["refused"] == reference.info["refused"]
+    assert reference.info["refused"].startswith("`group` separates the outcome")
     for row, ref in zip(table.rows, reference.rows):
         f = factor if row["feature"] == "x2" else 1.0
-        for key in ("estimate", "se", "ci_low", "ci_high"):
-            assert row[key] * f == pytest.approx(ref[key], rel=1e-7), (row["feature"], key)
-        assert row["p"] == pytest.approx(ref["p"], rel=1e-7)
+        assert row["estimate"] * f == pytest.approx(ref["estimate"], rel=1e-7), row["feature"]
+        assert all(row[k] is None for k in ("se", "ci_low", "ci_high", "p")), row["feature"]
 
 
 def test_at_ordinary_scales_the_tables_are_statsmodels():

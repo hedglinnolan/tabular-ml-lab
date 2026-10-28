@@ -89,17 +89,29 @@ def test_across_the_band_each_iterative_table_is_right_or_refused(family):
     the certified share of a standard error, their standard errors to 10⁻⁴; within 60 s for every
     ε (the verifier timed one Firth table at 215 s on the base). On the base the survey
     multinomial tables served `x4 [1]` at −0.1200 against −0.1177 at 1.1·10⁻⁷, and the Firth
-    table raised the solver's ``ValueError`` at 10⁻⁴."""
+    table raised the solver's ``ValueError`` at 10⁻⁴. The Firth tables, on rows `f` separates,
+    serve their estimates alone (T5d, V5c2-1): each is refused for its intervals in the
+    separation's words and its `x4` estimate is checked against the reference's, the standard
+    error that scales the share the reference's information written out with numpy."""
     build = _families()[family]
-    x1, d, x4, *_ = _data()
+    x1, d, x4, *_, yf, f = _data()
     index = pd.RangeIndex(N)
     reference = build(pd.DataFrame({"x1": x1, "x2": d, "x4": x4}, index=index))
-    assert reference.info["refused"] is None, reference.info["refused"]
     want = {r["feature"]: r for r in reference.rows}
+    separation = reference.info["refused"] if family == "Firth" else None
+    if family == "Firth":
+        assert separation.startswith("`f` separates the outcome: a cut on it")
+        X = np.column_stack([np.ones(N), x1, d, x4, f])
+        mu = 1 / (1 + np.exp(-(X @ [want[n]["estimate"] for n in ("(intercept)", "x1", "x2", "x4",
+                                                                  "f")])))
+        se = np.sqrt(np.diag(np.linalg.inv(X.T @ (X * (mu * (1 - mu))[:, None]))))
+        want["x4"] = {**want["x4"], "se": float(se[3])}
+    else:
+        assert reference.info["refused"] is None, reference.info["refused"]
     started = time.monotonic()
     for eps in BAND:
         table = build(pd.DataFrame({"x1": x1, "x2": x1 + eps * d, "x4": x4}, index=index))
-        if table.info["refused"] is not None:
+        if table.info["refused"] is not None and table.info["refused"] != separation:
             assert isinstance(table.info["refused"], str) and table.info["refused"]
             assert all(r.get("ci_low") is None and r.get("p") is None for r in table.rows)
             continue
@@ -110,7 +122,10 @@ def test_across_the_band_each_iterative_table_is_right_or_refused(family):
             ref = want[row["feature"]]
             assert abs(row["estimate"] - ref["estimate"]) <= SHORT_OF_MAXIMUM * ref["se"] + 1e-9, (
                 eps, row["feature"], row["estimate"], ref["estimate"])
-            assert row["se"] == pytest.approx(ref["se"], rel=1e-4), (eps, row["feature"])
+            if separation is None:
+                assert row["se"] == pytest.approx(ref["se"], rel=1e-4), (eps, row["feature"])
+            else:
+                assert row["se"] is None and row["ci_low"] is None and row["p"] is None
     assert time.monotonic() - started < 60
 
 
@@ -131,12 +146,12 @@ def test_the_distance_is_the_score_in_the_informations_metric():
         return mu, score, info
 
     mu, score, info = parts(mle)
-    Xw, ew = I.logistic_working(X, yb, mu)
-    assert newton_distance(Xw, ew) < 1e-6
+    Xw, _ = I.logistic_working(X, yb, mu)
+    assert newton_distance(Xw, score) < 1e-6
     delta = np.array([0.01, -0.02, 0.015, 0.005])
     mu, score, info = parts(mle + delta)
-    Xw, ew = I.logistic_working(X, yb, mu)
-    distance = newton_distance(Xw, ew)
+    Xw, _ = I.logistic_working(X, yb, mu)
+    distance = newton_distance(Xw, score)
     assert distance == pytest.approx(math.sqrt(score @ np.linalg.solve(info, score)), rel=1e-9)
     assert distance == pytest.approx(math.sqrt(delta @ info @ delta), rel=5e-2)
 
@@ -206,9 +221,13 @@ def test_a_proportional_odds_fit_that_does_not_converge_is_refused_not_served_wi
 
 
 def _firth_fit():
-    x1, d, x4, *_, yf, f = _data()
+    """Firth's fit on rows nothing separates (`f` a covariate beside the unforced outcome), where
+    a profile is computed; on separated rows it is refused before any of this
+    (``test_firth_serves_its_estimates_alone_under_separation``)."""
+    x1, d, x4, _, yb, *_, f = _data()
     X = np.column_stack([np.ones(N), x1, d, x4, f])
-    return X, yf.astype(float), I.firth_fit(X, yf.astype(float))
+    assert I.separated_columns(X, yb.astype(float)) == []
+    return X, yb.astype(float), I.firth_fit(X, yb.astype(float))
 
 
 def test_a_firth_profile_that_cannot_bracket_its_bound_is_typed_and_strict_only():
@@ -236,20 +255,23 @@ def test_a_firth_profile_past_its_steps_is_typed(monkeypatch):
         I.firth_profile(X, y, fit, 3, strict=True, name="x4")
 
 
-def test_a_firth_table_whose_profile_fails_is_refused_in_its_words(monkeypatch):
-    """The table refuses in the profile's own words, keeping the estimates and the separation
-    concern; the ordinary Firth table is served with profile intervals (the silent side)."""
+def test_a_firth_table_profiles_nothing(monkeypatch):
+    """A Firth table is made only where the data separate, so it computes no profile, of a
+    coefficient or of its intercept (T5d, V5c2-1): with ``firth_profile`` raising, the table is the
+    same, its estimates kept, refused in the separation's words with the separation's concern
+    first. Before T5d it called the profile for every coefficient and refused in its words."""
     x1, d, x4, *_, yf, f = _data()
     matrix = pd.DataFrame({"x1": x1, "x2": d, "x4": x4, "f": f})
     table = inference_table("binary", matrix, yf, [0, 1], INDEPENDENT, study=["x4"])
-    assert table.info["refused"] is None and table.info["estimator"] == I.FIRTH
-    assert all(r["ci_low"] is not None for r in table.rows if r["feature"] != "f")
-    words = "Firth's profile of `x4` could not be computed (a test's words)."
+    assert table.info["estimator"] == I.FIRTH
+    assert table.info["refused"].startswith("`f` separates the outcome: a cut on it")
 
     def failing(*args, **kwargs):
-        raise FirthProfileFailed(words)
+        raise FirthProfileFailed("Firth's profile could not be computed (a test's words).")
 
     monkeypatch.setattr(I, "firth_profile", failing)
-    refused = inference_table("binary", matrix, yf, [0, 1], INDEPENDENT, study=["x4"])
-    assert refused.info["refused"] == words
-    assert refused.concerns[0].startswith("`f` separates the outcome")
+    again = inference_table("binary", matrix, yf, [0, 1], INDEPENDENT, study=["x4"])
+    assert again.info["refused"] == table.info["refused"]
+    assert [r["estimate"] for r in again.rows] == [r["estimate"] for r in table.rows]
+    assert all(r["estimate"] is not None for r in again.rows)
+    assert again.concerns[0].startswith("`f` separates the outcome")

@@ -666,14 +666,16 @@ def test_5_separation_is_named_and_firth_replaces_the_wald_row():
     assert wald_meaningless == 20
 
 
-def test_5_firth_equals_the_haldane_table_and_its_profile_interval_is_the_definition():
+def test_5_firth_equals_the_haldane_table_and_reports_no_profile_where_the_data_separate():
     """Firth's estimate for one binary covariate with an intercept is the log odds ratio of the
     2 × 2 table with ½ added to each cell: the Jeffreys penalty of a saturated two-group model is
-    ½ log μ(1 − μ) per group, so each group's fitted risk is (events + ½)/(n + 1). The profile
-    penalized-likelihood interval and likelihood-ratio p-value (Heinze & Schemper 2002) equal the
-    definition recomputed with a general-purpose optimizer."""
-    from scipy.optimize import brentq
-
+    ½ log μ(1 − μ) per group, so each group's fitted risk is (events + ½)/(n + 1). Beside `z` the
+    estimates are the penalized likelihood's maximum recomputed with a general-purpose optimizer;
+    the data separate (every row with `x` has the event), so no profile interval or p-value is
+    reported (T5d, V5c2-1: held at a value the penalized likelihood can then have more than one
+    maximum, and the fit cannot certify the highest). Before T5d the profile interval (Heinze &
+    Schemper 2002) was served here; where nothing separates it is still computed, and right
+    against a multi-start profile (``test_firth_serves_its_estimates_alone_under_separation``)."""
     import statsmodels.api as sm
 
     rng = np.random.default_rng(3)
@@ -688,17 +690,11 @@ def test_5_firth_equals_the_haldane_table_and_its_profile_interval_is_the_defini
     M = pd.DataFrame({"x": x, "z": z})
     table = inference_table("binary", M, y, [0, 1], INDEPENDENT)
     X = sm.add_constant(M).to_numpy()
-    beta, top = ref.firth_by_optimizer(X, y.astype(float))
-    crit = stats.chi2.ppf(0.95, 1) / 2
+    beta, _ = ref.firth_by_optimizer(X, y.astype(float))
+    assert table.info["refused"].startswith("`x` separates the outcome: a cut on it")
     for j, row in enumerate(table.rows):
-        def drop(b: float, j: int = j) -> float:
-            return top - ref.firth_by_optimizer(X, y.astype(float), fixed={j: b}, start=beta)[1]
-
-        low = brentq(lambda b: drop(b) - crit, beta[j] - 15, beta[j])
-        high = brentq(lambda b: drop(b) - crit, beta[j], beta[j] + 15)
-        assert row["ci_low"] == pytest.approx(low, abs=1e-5)
-        assert row["ci_high"] == pytest.approx(high, abs=1e-5)
-        assert row["p"] == pytest.approx(stats.chi2.sf(2 * drop(0.0), 1), rel=1e-4, abs=1e-12)
+        assert row["estimate"] == pytest.approx(beta[j], abs=1e-6), row["feature"]
+        assert all(row[k] is None for k in ("ci_low", "ci_high", "p")), row["feature"]
 
 
 def test_5_separation_does_not_fire_on_data_that_are_not_separated():
@@ -737,7 +733,8 @@ def test_5_separation_with_repeated_rows_keeps_the_firth_estimate_and_reports_no
 
 
 def test_5_the_fit_stage_reports_separation_on_its_model(tmp_path):
-    """Through the real stages: the separation concern and the Firth table reach the fit."""
+    """Through the real stages: the separation concern and the Firth table reach the fit, its
+    estimates alone (T5d: no profile interval or p-value where the data separate)."""
     M, y = _separated(1)
     frame = M.assign(event=np.where(y == 1, "yes", "no"))
     paths = mf.ingest_frame(frame, tmp_path)
@@ -747,10 +744,11 @@ def test_5_the_fit_stage_reports_separation_on_its_model(tmp_path):
     _, fit = _stages(st, paths, np.arange(len(frame)), ["exposed", "age"], task="binary")
     model = fit.data["models"][0]
     assert model["inference"]["separated"] == ["exposed"]
-    assert model["inference"]["covariance"] == "profile"
+    assert model["inference"]["covariance"] == "none"
+    assert model["inference"]["refused"].startswith("`exposed` separates the outcome: a cut on it")
     assert any("`exposed` separates the outcome" in c for c in model["concerns"])
     row = _row(model, "exposed")
-    assert row["ci_low"] is not None and row["ci_high"] is not None and row["ci_low"] > 0
+    assert row["ci_low"] is None and row["ci_high"] is None and 0 < row["estimate"] < 10
 
 
 # ── 6 · missing identifiers ──────────────────────────────────────────────────

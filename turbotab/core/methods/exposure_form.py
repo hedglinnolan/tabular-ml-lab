@@ -1683,21 +1683,28 @@ FIRTH_PLR = ("the penalized likelihood-ratio test of the Firth-penalized fit, th
 
 def firth_lr_test(X: np.ndarray, y: np.ndarray, idx: Sequence[int],
                   full: Any = None) -> dict[str, Any] | None:
-    """The penalized likelihood-ratio test that the coefficients ``idx`` are all zero, for a
-    logistic model the data separate (a Firth-penalized fit has no Wald covariance to test on,
-    its intervals being profile ones): ``2 (l*(β̂) − max_{β: β_idx = 0} l*(β))`` on χ²(q), with
-    ``l*`` the penalized log-likelihood ``l(β) + ½ log |I(β)|`` of the full design, as the table's
-    own per-coefficient p-values are (``models.inference.firth_profile``) and as logistf's
-    nested tests are."""
+    """The penalized likelihood-ratio test that the coefficients ``idx`` are all zero, of a
+    Firth-penalized fit on rows nothing separates: ``2 (l*(β̂) − max_{β: β_idx = 0} l*(β))`` on
+    χ²(q), with ``l*`` the penalized log-likelihood ``l(β) + ½ log |I(β)|`` of the full design, as
+    a profile's p-value is (``models.inference.firth_profile``) and as logistf's nested tests are.
+    On rows the data separate (``inference.is_separated``) it raises
+    ``inference.FirthProfileSeparated``: held at zero the penalized likelihood can then have more
+    than one maximum, and the restricted fit cannot certify that it found the highest, so the
+    statistic could be overstated."""
     from scipy import stats
 
-    from turbotab.core.models.inference import firth_fit
+    from turbotab.core.models.inference import (SEVERAL_MAXIMA, FirthProfileSeparated, firth_fit,
+                                                is_separated)
 
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
     idx = [int(j) for j in idx]
     if not idx:
         return None
+    if is_separated(X, y):
+        raise FirthProfileSeparated(
+            f"The penalized likelihood-ratio test is not computed: the data separate the outcome. "
+            f"With coefficients held at zero, {SEVERAL_MAXIMA}, so no test is reported.")
     fit = full if full is not None else firth_fit(X, y)
     start = np.array(fit.beta, dtype=float)
     start[idx] = 0.0
@@ -1712,8 +1719,9 @@ def firth_lr_test(X: np.ndarray, y: np.ndarray, idx: Sequence[int],
 
 def pooled_chi_square(statistics: Sequence[float], k: int) -> dict[str, Any] | None:
     """Li, Meng, Raghunathan & Rubin's (1991) D2: χ²(k) statistics, one per imputed copy, pooled
-    where the copies give no covariance for D1 (a penalized likelihood-ratio test under separation;
-    van Buuren, *Flexible Imputation of Missing Data*, 2nd ed., §5.3.4):
+    where the copies give no covariance for D1 (van Buuren, *Flexible Imputation of Missing Data*,
+    2nd ed., §5.3.4; a separated copy's penalized likelihood-ratio test is refused,
+    :func:`firth_lr_test`, so it gives none):
     ``r₂ = (1 + 1/m) var(√dₘ)``, ``D₂ = (d̄/k − (m + 1)/(m − 1) r₂) / (1 + r₂)`` on F(k, ν₂),
     ``ν₂ = k^(−3/m) (m − 1)(1 + 1/r₂)²``. None for fewer than two copies."""
     from scipy import stats
@@ -1745,7 +1753,8 @@ def firth_design(matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None
 
 
 def joint_test_name(result: Mapping[str, Any]) -> str:
-    """"Wald test", or the penalized likelihood-ratio test a separated logistic model takes."""
+    """"Wald test", or the penalized likelihood-ratio test of :func:`firth_lr_test` (a Firth fit on
+    rows nothing separates; on separated rows none is reported)."""
     return ("Penalized likelihood-ratio test" if result.get("basis") == FIRTH_PLR
             else "Wald test")
 
@@ -1819,9 +1828,13 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
     held: dict[str, Any] = {}
 
     def joint(chosen: Sequence[int]) -> dict[str, Any] | None:
-        """The joint test on the table's covariance; for a logistic model the data separate (a
-        Firth table, profile intervals and no Wald covariance), the penalized likelihood-ratio
-        test on the same design (the FORM repair: the test of association under separation)."""
+        """The joint test on the table's covariance. A Firth table (a logistic model the data
+        separate, in one completed copy made for Rubin's rules: no covariance; one not pooled is
+        refused before any test) asks the penalized likelihood-ratio test on the same design,
+        which is refused on separated rows (:func:`firth_lr_test`): None, and why is held for the
+        column's words (:func:`unreported`), as it is where a penalized fit did not converge."""
+        from turbotab.core.models.inference import FirthProfileSeparated
+
         result = wald_test(estimates, cov, chosen, info, rows)
         if result is not None or info.get("covariance") != "profile":
             return result
@@ -1844,11 +1857,31 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
             from turbotab.core.models.inference import firth_fit
 
             held["fit"] = firth_fit(design, event)
-        result = firth_lr_test(design, event, picked, held["fit"])
+        try:
+            result = firth_lr_test(design, event, picked, held["fit"])
+        except FirthProfileSeparated:
+            held["why"] = "separated"
+            return None
         if result is not None and not result.get("converged", True):
-            concerns.append("A penalized fit behind a likelihood-ratio test stopped before "
-                            "converging; treat that test with care.")
+            held["why"] = "unconverged"  # a statistic from where a fit stopped is no number
+            return None
         return result
+
+    def unreported(column: str) -> str | None:
+        """Why no penalized likelihood-ratio test of ``column``'s form is reported, where
+        :func:`joint` held a reason: the data separate (``inference.separated_profile_words``,
+        naming the table's separated columns), or a penalized fit did not converge."""
+        from turbotab.core.models.inference import separated_profile_words
+
+        why = held.pop("why", None)
+        what = f"penalized likelihood-ratio test of `{column}`'s form"
+        if why == "separated":
+            return separated_profile_words([str(c) for c in info.get("separated") or []],
+                                           held="coefficients held at zero", unreported=what)
+        if why == "unconverged":
+            return (f"A penalized fit behind the {what} did not converge, so that test is not "
+                    f"reported.")
+        return None
 
     plan = step._plan()
     for column, (form, _) in plan.items():
@@ -1868,7 +1901,10 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
                                              f"{'are' if len(nonlinear) > 1 else 'is'}")):
                 result = joint(chosen)
                 if result is None:
-                    if test_kind == "overall":
+                    why = unreported(column)
+                    if why is not None and why not in concerns:
+                        concerns.append(why)
+                    elif why is None and test_kind == "overall":
                         concerns.append(f"The spline tests for `{column}` need a Wald covariance, "
                                         f"which this table ({info.get('covariance')}) does not "
                                         f"give.")
@@ -1896,6 +1932,9 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
             # table's own covariance (pooled by D1 under multiple imputation).
             result = joint(idx)
             word = "quintile" if form == "quintiles" else "category"
+            why = unreported(column) if result is None else None
+            if why is not None:
+                concerns.append(why)
             if result is not None:
                 tests.append(_test(
                     column, form, "global", result,
@@ -2863,11 +2902,13 @@ def _register_contracts() -> None:
                       "column recorded as codes enters as indicators and takes no form",
                       rung="refused", exits=("confirm it holds amounts", "confirm it holds codes"),
                       enforced_by=f"{me}:_form_reads_a_settled_reading"),
-            _relation("separation-plr", "implies", "penalized likelihood-ratio tests",
+            _relation("separation-plr", "disables", "penalized likelihood-ratio tests",
                       "a logistic model the data separate (Firth's penalized likelihood)",
-                      "the test of association, the nonlinearity and the global tests are "
-                      "penalized likelihood-ratio tests on the full design, as the table's own "
-                      "p-values are", purposes=("inference",), enforced_by=f"{me}:firth_lr_test"),
+                      "no test of association, nonlinearity or global test is reported: with "
+                      "coefficients held at zero the penalized likelihood can have more than one "
+                      "maximum, and the fit cannot certify that it found the highest",
+                      purposes=("inference",),
+                      enforced_by=f"{me}:firth_lr_test"),
             _relation("no-silent-linear-refit", "disables", "a linear refit after the nonlinearity "
                       "test", "a non-significant nonlinearity test",
                       "the overall test stays the test of association; a switch is recorded "
