@@ -3,7 +3,7 @@
  * decision that produced it. A changed earlier answer veils each section until its stage
  * recomputes; nothing is deleted.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { isRefusalError } from "../../../api/client";
 import {
   substitutionDecision,
@@ -32,7 +32,7 @@ import {
 import { glyphOf, sealPhase } from "../seal/phase";
 import { SaveMenu } from "../save/SaveMenu";
 import { Rich } from "../text";
-import { Coefficients, declaredTables, forestCaption } from "./Coefficients";
+import { Coefficients, declaredTables, forestCaption, withoutTable, type DeclaredTable } from "./Coefficients";
 import { Comparison } from "./Comparison";
 import { Curves } from "./Curves";
 import {
@@ -146,12 +146,28 @@ export function FitHeld({ pid, status }: { pid: string; status: StageStatus | un
   );
 }
 
+type Tables = Record<string, DeclaredTable>;
+
+/**
+ * Each family's declared table under inference (``declaredTables``, from GET /models), for the
+ * sentences that read one: the coefficients' note and the saved forest's caption, of a family whose
+ * fit gives no coefficient table under inference (``withoutTable``). Asked for only when ``read``:
+ * otherwise no sentence reads a declaration, so ``children`` gets none and the Results ask the
+ * server nothing of the families.
+ */
+function DeclaredTables({ read, children }: { read: boolean; children: (tables: Tables) => ReactNode }) {
+  return read ? <AskedTables>{children}</AskedTables> : children({});
+}
+
+function AskedTables({ children }: { children: (tables: Tables) => ReactNode }) {
+  const families = useModels();
+  return children(declaredTables(families.data));
+}
+
 export function Results({ pid, view, data }: Props) {
   const fit = data.fit.artifact;
   const decide = useDecide(pid);
   const cancel = useCancelJob(pid);
-  // What each family declares it gives under inference: a shrunk table's note says why (GET /models).
-  const families = useModels();
   const [pending, setPending] = useState<{ donor: string; recipient: string } | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   // A refused pair answers with the server's ways forward (a nutrient's unit, a part of a total),
@@ -187,7 +203,8 @@ export function Results({ pid, view, data }: Props) {
     .filter((m) => m.coefficients && m.coefficients.length)
     .sort((a, b) => Number(hasCi(b)) - Number(hasCi(a)))
     .map((m) => ({ model: m, coefficients: exposureCoefficients(m.coefficients!, view.state.roles) }));
-  const tables = declaredTables(families.data);
+  // Only a family with no coefficient table under inference has a sentence that reads its declaration.
+  const declared = linear.some((l) => withoutTable(l.model, view.state.purpose));
   const sub = data.substitution.artifact;
   const subStatus = view.stages.substitution;
   const subBusy = subStatus?.status === "running" || subStatus?.status === "queued";
@@ -253,30 +270,34 @@ export function Results({ pid, view, data }: Props) {
       </StaleVeil>
 
       {linear.length ? (
-        <StaleVeil
-          state={data.fit.veil}
-          order={1}
-          label="Coefficients"
-          action={<StageRetry pid={pid} status={view.stages.fit} />}
-        >
-          <section className={s.section} data-purpose="coefficients">
-            <header className={s.sectionHead}>
-              <h3 className={s.kicker}>Coefficients of the exposures</h3>
-              <SaveMenu
-                title="Coefficients"
-                choices={null}
-                build={() =>
-                  forestFigure(linear[0]!.coefficients, view.state.purpose === "inference", {
-                    title: `${linear[0]!.model.label}: coefficients of the exposures`,
-                    caption: forestCaption(linear[0]!.model, view.state.purpose, tables[linear[0]!.model.family]),
-                    provenance: plain(recorded),
-                  })
-                }
-              />
-            </header>
-            <Coefficients models={linear} purpose={view.state.purpose} target={target} tables={tables} />
-          </section>
-        </StaleVeil>
+        <DeclaredTables read={declared}>
+          {(tables) => (
+            <StaleVeil
+              state={data.fit.veil}
+              order={1}
+              label="Coefficients"
+              action={<StageRetry pid={pid} status={view.stages.fit} />}
+            >
+              <section className={s.section} data-purpose="coefficients">
+                <header className={s.sectionHead}>
+                  <h3 className={s.kicker}>Coefficients of the exposures</h3>
+                  <SaveMenu
+                    title="Coefficients"
+                    choices={null}
+                    build={() =>
+                      forestFigure(linear[0]!.coefficients, view.state.purpose === "inference", {
+                        title: `${linear[0]!.model.label}: coefficients of the exposures`,
+                        caption: forestCaption(linear[0]!.model, view.state.purpose, tables[linear[0]!.model.family]),
+                        provenance: plain(recorded),
+                      })
+                    }
+                  />
+                </header>
+                <Coefficients models={linear} purpose={view.state.purpose} target={target} tables={tables} />
+              </section>
+            </StaleVeil>
+          )}
+        </DeclaredTables>
       ) : null}
 
       {sub ? (
