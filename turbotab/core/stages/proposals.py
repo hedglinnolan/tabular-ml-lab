@@ -1405,6 +1405,15 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
         from turbotab.core.estimand import values_nesting
 
         nested = values_nesting(state, store=store) if state.purpose == "inference" else None
+        # The values' whole-number facts of the exposure family's members, as the fit reads them
+        # (``readings.whole_facts``), so the estimand card knows a member whose codes-or-amounts
+        # answer the fit waits for (``estimand.card_tests``; the verifier's T5bV-2).
+        from turbotab.core.estimand import family_exposures
+        from turbotab.core.readings import whole_facts
+
+        members = (family_exposures(state)
+                   if state.purpose == "inference" and state.roles is not None else [])
+        facts = whole_facts(members, None, store) if len(members) >= 2 else {}
     ctx.progress(0.6, "Counting what each exclusion rule would remove")
     from turbotab.core.readings import settled_columns
 
@@ -1446,8 +1455,11 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
     share = (event_share(frame[target], state.event)
              if task == "binary" and target and target in frame.columns else None)
     # The table's column summaries, by whose types the family option knows a text member for a
-    # category, adjusted for, not tested (the verifier's V4a2-2).
-    out["estimand"] = estimand_card(state, task, prevalence=share, nested=nested, columns=columns)
+    # category, adjusted for, not tested (the verifier's V4a2-2), each member's with its values'
+    # whole-number facts.
+    summaries = [{**c, **facts[c["name"]]} if c.get("name") in facts else c for c in columns]
+    out["estimand"] = estimand_card(state, task, prevalence=share, nested=nested,
+                                    columns=summaries)
     out["adjustment"] = adjustment_card(state)
     # LEASH (the routing gate's leash note): the grouping question's card, every column it asks
     # about with the guess it shows and that guess's evidence (``estimand.grouping_card``).

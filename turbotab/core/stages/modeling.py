@@ -1774,7 +1774,7 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
                 return table, None, [], []
             row_sets.append(_energy_rows(table.rows, design, spec, family, fitted, X_k, y_k, task,
                                          clusters, outcome, survey, infinite=table.infinite,
-                                         studied=studied)
+                                         studied=studied, concerns=table.concerns)
                             if energy_rows else table.rows)
             found, worries = exposure_tests(family, fitted, X_k, y_k, task=task, clusters=clusters,
                                             table=table, outcome=outcome, survey=survey)
@@ -2528,7 +2528,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 coefficients = _energy_rows(coefficients, design, spec, family, table_fit, X_c, y_c,
                                             task, clusters, outcome,
                                             survey.design if survey is not None else None,
-                                            studied=studied)
+                                            studied=studied, concerns=concerns)
             done += 1
         concerns = _concerns(caught, len(sub_pairs) + own_pairs + 1) + concerns
         if states_collinearity(family):
@@ -2812,7 +2812,8 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
                  final: Any, X: Any, y: Any, task: str, clusters: Any,
                  outcome: Any = None, survey: Any = None,
                  infinite: list[str] | None = None,
-                 studied: Sequence[str] | None = None) -> list[dict[str, Any]]:
+                 studied: Sequence[str] | None = None,
+                 concerns: list[str] | None = None) -> list[dict[str, Any]]:
     """The coefficient rows with what each means (the design's ``terms``), and under the
     all-components model each nutrient's average relative effect beside them (audit ME-14):
     with the family's own intervals under inference, as a point estimate otherwise.
@@ -2823,7 +2824,10 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
     weights and Taylor-linearized intervals (WP10). ``infinite`` (a completed copy's table's, under
     multiple imputation) receives each relative effect its refit finds infinite
     (:func:`relative_refit`). Each refit is told the study factors' columns (``studied``, as the
-    table is: :func:`table_study`) and the energy columns are studied (:func:`relative_study`)."""
+    table is: :func:`table_study`) and the energy columns are studied (:func:`relative_study`).
+    Where a refit is refused whole (an energy column in a dependency), its nutrient's relative
+    effect is not reported, and ``concerns`` receives the words that say so
+    (:func:`relative_refusal`)."""
     terms = ((design.data or {}).get("terms") or {}) if isinstance(design, Bundle) else {}
     rows = [{**row, "meaning": terms[row["feature"]]} if row.get("feature") in terms else row
             for row in coefficients]
@@ -2838,6 +2842,7 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
     step = getattr(final, "named_steps", {}).get("energy")
     factors = dict(getattr(getattr(step, "pooled_", step), "factors_", {}) or {})
     table = None
+    refused: dict[str, str] = {}
     refit = family.inference_matrix
     if clusters is not None and refit is not None:
         classes = list(getattr(final[-1], "classes_", [])) or None
@@ -2850,7 +2855,7 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
         def refit_table(m: Any) -> Any:
             return refit(m, y, task=task, classes=classes, clusters=clusters, **extra)
 
-        table = relative_refit(matrix, refit_table, infinite)
+        table = relative_refit(matrix, refusals_noted(matrix, refit_table, refused), infinite)
     weights = None
     if survey is not None:
         # MS4: under the surveyed population the shares are the population's (survey-weighted).
@@ -2871,7 +2876,59 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
 
         logging.getLogger(__name__).exception("the average relative effects failed")
         extra = []
+    served = {str(r["feature"]) for r in extra}
+    said = relative_refusal([n for n in adj.nutrients if f"{n}_relative" not in served],
+                            refused, rows)
+    if said is not None and concerns is not None:
+        concerns.append(said)
     return rows + extra
+
+
+def refusals_noted(matrix: Any, refit: Any, refused: dict[str, str]) -> Any:
+    """``refit`` (a moved matrix's table, :func:`relative_refit`), noting in ``refused`` each
+    nutrient whose refit is refused whole, with the refusal's words: the nutrient whose energy
+    column the moved matrix left unchanged (``methods.energy.relative_effect_rows`` moves every
+    other one). An energy column of zeros is unchanged in each moved matrix too, and its nutrient
+    noted, which only names it where its own relative effect is not reported either."""
+    kcal = [str(c) for c in matrix.columns
+            if str(c).startswith("kcal_from_") and str(c) != "kcal_from_other"]
+
+    def table(moved: Any) -> Any:
+        found = refit(moved)
+        reason = (getattr(found, "info", None) or {}).get("refused")
+        if reason and not found.rows:
+            for c in kcal:
+                if np.array_equal(moved[c].to_numpy(dtype=float),
+                                  matrix[c].to_numpy(dtype=float), equal_nan=True):
+                    refused.setdefault(c.removeprefix("kcal_from_"), str(reason))
+        return found
+
+    return table
+
+
+def relative_refusal(nutrients: Sequence[str], refused: Mapping[str, str],
+                     rows: Sequence[Mapping[str, Any]]) -> str | None:
+    """The concern of a table whose average relative effects (``nutrients``' not reported) were
+    refused with their refits (``refused``, each nutrient's refusal: :func:`refusals_noted`), or
+    None where none was. Each combines the coefficient of every energy column
+    (``methods.energy.relative_effect_rows``), so where the table refuses an energy column's by row
+    (``rows``: in a dependency, ``inference.by_identified``) the words name it; where it refuses
+    none, they give the refit's own refusal."""
+    from turbotab.core.voice import listing
+
+    gone = [str(n) for n in nutrients if n in refused]
+    if not gone:
+        return None
+    lead = f"No average relative effect is reported for {listing(gone, limit=8)}"
+    held = [str(r["feature"]) for r in rows
+            if str(r["feature"]).startswith("kcal_from_") and r.get("estimate") is None]
+    if held:
+        one = len(held) == 1
+        return (f"{lead}: each combines the coefficients of every energy column, and "
+                f"{listing(held, limit=8)} {'is' if one else 'are'} in the dependency, so "
+                f"{'its coefficient is' if one else 'their coefficients are'} not identified.")
+    return (f"{lead}: the refit {'it' if len(gone) == 1 else 'each'} is read from was refused. "
+            f"{refused[gone[0]]}")
 
 
 def relative_refit(matrix: Any, refit: Any, infinite: list[str] | None = None) -> Any:

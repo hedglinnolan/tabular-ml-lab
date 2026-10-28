@@ -1014,7 +1014,9 @@ def test_where_one_familys_model_3_reports_and_anothers_is_refused_each_is_said_
     """V4a2-1's Model 3: {`fiber`, `fib3`}, `fib3` = `activity` + 2 × `bmi`, so only Model 3's
     matrix is singular (numpy). The linear model reports Models 1 and 2 and not Model 3;
     feature-wise regression's Model 3 tests `fiber` (statsmodels). The methods text said "Model 3
-    ... could not be fit and is not reported" of both; now of the linear model alone."""
+    ... could not be fit and is not reported" of both; now the linear model's Model 3 alone is
+    said to report none, in its refusal's words, the dependency of `activity`, `fib3` and `bmi`
+    (the verifier's T5bV-3: it was fit and its table refused, where it said "could not be fit")."""
     frame = _fib_frame()
     frame["fib3"] = frame["activity"] + 2 * frame["bmi"]
     out = ef.run(frame, tmp_path, _family({"fiber": "exposure", "fib3": "exposure"},
@@ -1023,13 +1025,18 @@ def test_where_one_familys_model_3_reports_and_anothers_is_refused_each_is_said_
     assert _rank_deficient(frame, ["fiber", "fib3", *MODEL_2, "bmi"])  # the premise
     assert not _rank_deficient(frame, ["fiber", "fib3", *MODEL_2])
     assert _sequence(out, "linear")["model_3"]["effects"] is None
+    three = ("On these 400 rows the model matrix is singular: `activity`, `fib3` and `bmi` are "
+             "fixed combinations of the other columns and the intercept, so their coefficients are "
+             "not identified. No estimate, interval or p-value is reported; leave one of the "
+             "dependent columns out.")
+    assert _sequence(out, "linear")["model_3"]["inference"]["refused"] == three
     rows = {r["feature"]: r for r in _sequence(out)["model_3"]["effects"]}
     assert rows["fiber"]["estimate"] == pytest.approx(
         _ols(frame, "fiber", [*MODEL_2, "bmi"])[0], rel=1e-9)
     methods = out["effects"]["methods"]
     linear, featurewise = methods.split(" Under the feature-wise regression, ")
     assert linear.startswith(f"Under the linear model, {SEQUENCE}. Model 3, further adjusted for "
-                             f"`bmi`, could not be fit and is not reported.{APART}")
+                             f"`bmi`, reports none: {three}{APART}")
     assert featurewise.startswith(f"{SEQUENCE}{MODEL_3}{APART}{BENCHMARKED} In Model 2, ")
     assert "could not be fit" not in featurewise
 

@@ -1337,13 +1337,16 @@ class _Run:
         """Under the all-components model, each nutrient's average relative effect (the
         substitution; Tomova et al. 2022) beside the model's coefficients, from this model's own
         matrix and table (``methods.energy.relative_effect_rows``), wherever the model holds two or
-        more energy sources; the unadjusted model holds one, so it has none."""
+        more energy sources; the unadjusted model holds one, so it has none. Where a refit is
+        refused whole (an energy column in a dependency), its relative effect is not reported, and
+        the table's concerns say so (``modeling.relative_refusal``)."""
         adj = self.spec.energy_adjustment()
         if (table is None or not table.rows or adj is None or adj.method != "all_components"
                 or not one_regression_on_matrix(family) or self.task == "multiclass"):
             return table
         from turbotab.core.methods.energy import relative_effect_rows
-        from turbotab.core.stages.modeling import relative_refit, relative_study
+        from turbotab.core.stages.modeling import (refusals_noted, relative_refit,
+                                                   relative_refusal, relative_study)
 
         step = getattr(fitted, "named_steps", {}).get("energy")
         factors = dict(getattr(getattr(step, "pooled_", step), "factors_", {}) or {})
@@ -1352,10 +1355,17 @@ class _Run:
         moved = {**kw, "study": relative_study(matrix.columns, kw.get("study"))}
         # A relative effect its refit finds infinite is named in this table's ``infinite``, so
         # its pooled interval is withheld as the fit's is (``modeling.relative_refit``).
+        refused: dict[str, str] = {}
         found = relative_effect_rows(
             matrix, list(adj.nutrients), factors,
-            table=relative_refit(matrix, lambda m: matrix_table(family, m, y, **moved),
-                                 table.infinite), coefficients=table.rows)
+            table=relative_refit(matrix, refusals_noted(
+                matrix, lambda m: matrix_table(family, m, y, **moved), refused), table.infinite),
+            coefficients=table.rows)
+        served = {str(r["feature"]) for r in found}
+        said = relative_refusal([n for n in adj.nutrients if f"{n}_relative" not in served],
+                                refused, table.rows)
+        if said is not None:
+            table.concerns.append(said)
         table.rows = [*table.rows, *found]
         return table
 
@@ -2092,9 +2102,6 @@ def _without_the_primary(artifact: EffectsArtifact, fam: Any, two: Any, whose: s
     def added(fit: Any) -> str:
         return listing([c for c in fit.adjusted_for if c not in two.adjusted_for])
 
-    def said(reason: str) -> str:
-        return reason if reason.rstrip().endswith(".") else f"{reason}."
-
     named = []
     for s in fam.sequence:
         if not _estimates(s):
@@ -2114,16 +2121,32 @@ def _without_the_primary(artifact: EffectsArtifact, fam: Any, two: Any, whose: s
             f"{artifact.rows}: {'; '.join(named)}.")
     text += (f" Model 2, the primary, adjusted for "
              f"{listing(two.adjusted_for, limit=8) if two.adjusted_for else 'nothing besides it'}, "
-             f"reports none: {said(why)}")
+             f"reports none: {_said(why)}")
     for s in fam.sequence:
         if s.key == "model_2" or _estimates(s):
             continue
         whom = (f"Model 3, further adjusted for {added(s)}," if s.key == "model_3"
                 else UNFIT_WORDS[s.key])
         refused = s.inference.refused if s.inference is not None else None
-        text += (f" {whom} reports none: {said(refused)}" if refused else
+        text += (f" {whom} reports none: {_said(refused)}" if refused else
                  f" {whom} could not be fit and is not reported.")
     return text
+
+
+def _fit_refused(fit: Any) -> str | None:
+    """The refusal of a model of the sequence that was fit and its table refused (for a
+    dependency of its columns, say: ``inference.by_identified``); None for one nothing was fit
+    for, whose table's estimator says "not fitted" (held by its own missing-values question:
+    ``survey.blocked``), or one with no table."""
+    info = fit.inference
+    if info is None or not info.refused or str(info.estimator).startswith("not fitted"):
+        return None
+    return str(info.refused)
+
+
+def _said(reason: str) -> str:
+    """``reason`` as a sentence of the methods text: ending in a full stop."""
+    return reason if reason.rstrip().endswith(".") else f"{reason}."
 
 
 def _reporting(fam: Any) -> set[str]:
@@ -2202,12 +2225,17 @@ def _family_methods(artifact: EffectsArtifact, fam: Any) -> tuple[str, bool]:
     for s in fam.sequence:
         if s.effects or s.key == "model_2":
             continue
+        # A model fit and its table refused (for a dependency of its columns, say) reports none,
+        # in the refusal's words, as where Model 2 reports none (:func:`_without_the_primary`;
+        # the verifier's T5bV-3); one nothing was fit for could not be fit.
+        refused = _fit_refused(s)
         if s.key == "model_3":
             added = [c for c in s.adjusted_for if c not in two.adjusted_for]
-            text += (f" Model 3, further adjusted for {listing(added)}, could not be fit and is not "
-                     f"reported.")
+            whom = f"Model 3, further adjusted for {listing(added)},"
         else:
-            text += f" {UNFIT_WORDS[s.key]} could not be fit and is not reported."
+            whom = UNFIT_WORDS[s.key]
+        text += (f" {whom} reports none: {_said(refused)}" if refused else
+                 f" {whom} could not be fit and is not reported.")
     text += (f" Only the exposure's estimates are shown as effects; every other coefficient is "
              f"listed apart as an adjustment term, not an effect estimate ({WESTREICH}).")
     survey = two.inference.survey if two.inference is not None else None

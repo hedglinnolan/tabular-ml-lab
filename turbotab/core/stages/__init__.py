@@ -473,7 +473,9 @@ def build_graph() -> Graph:
             # proposals 22 (the swarm's tail, T5b, 2026-10-28): the stage hands the estimand card
             # the table's column summaries, so the family option counts the tests from each
             # member's type (an ordinary numeric family's options count them again; a text member
-            # is counted out, where ``n_tests`` counted it).
+            # is counted out, where ``n_tests`` counted it), and a member whose codes-or-amounts
+            # answer the fit waits for is not counted until it is recorded (its values' whole-
+            # number facts handed to the card).
             Stage("proposals", 22, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", *WP17_READS),
@@ -796,7 +798,8 @@ def build_graph() -> Graph:
             # for an exposure's form tests or the average relative effects, is told the study
             # factor's model-matrix columns, so a dependency among the other columns is refused by
             # row and the study factor served (the whole table refused only where a study
-            # factor's column, or a declared form's term, is in one).
+            # factor's column, or a declared form's term, is in one); where the dependency holds
+            # an energy column, a concern says no average relative effect is reported.
             Stage("fit", 38, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
@@ -1003,9 +1006,11 @@ def build_graph() -> Graph:
             # one "Without covariates"); and an exposure's columns are its own encoding's, never
             # another predictor's (a longer one's spline terms, a fixed-effects grouping's
             # intercepts).
-            # effects 12 (T5b): as fit 38, each model's table told the exposure's columns; and the
-            # methods text says each family's sequence under its name wherever two families report
-            # from different models, whichever order they were chosen in.
+            # effects 12 (T5b): as fit 38, each model's table told the exposure's columns (and
+            # its concern where no average relative effect is reported); the methods text says
+            # each family's sequence under its name wherever two families report from different
+            # models, whichever order they were chosen in, and gives a later model's refusal in
+            # its words where that model was fit and its table refused.
             Stage("effects", 12, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
