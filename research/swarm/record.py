@@ -21,7 +21,9 @@ Version 2 (SWARM_PLAN §4, the build's package 1) adds the fields marked new. It
   (previewed, **with the preview's reason**, new, or fitted), its reason (the record's ``note``),
   **the analyst's tag at the decision: its marker and the alternative it rejected** (new,
   :class:`Tag`, from the driver's ``answer``), its phase, who recorded it and its materiality M;
-* ``attempts``: each fit's record as ``GET …/fits`` serves it, with its change from the fit before
+* ``attempts``: each fit's record as ``GET …/fits`` serves it (but a penalized family's coefficient
+  rows, which it serves among the fit's ``effects``, kept apart under ``penalized``: they are
+  shrunk by the penalty and estimate no effect), with its change from the fit before
   it both ways (the records that entered force and those that left it, each credited to the record
   that made the change: itself, the record that replaced it, or the revert that withdrew or
   restored it) and the reasons of the records credited; **the live markers at that fit** (new,
@@ -273,6 +275,34 @@ def _once(markers: list[Marker], where: str) -> None:
         raise ValueError(f"{where} lists a marker more than once")
 
 
+def has_table(family: Any) -> bool:
+    """Whether ``family`` gives a coefficient table under inference, as the effects stage reads it
+    (``stages.effects.has_coefficient_table``), so its fit's rows of the exposure are an estimate
+    of the effect: a penalized family's shrunk rows are not (the ridge, the elastic nets, Huber's),
+    nor are those of a family the engine does not register."""
+    import turbotab.core.models  # noqa: F401 - registers the families
+    from turbotab.core.models.base import get_family
+    from turbotab.core.stages.effects import has_coefficient_table
+
+    try:
+        return has_coefficient_table(get_family(str(family)))
+    except KeyError:
+        return False
+
+
+def split_effects(effects: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A fit's rows as ``GET …/fits`` serves them (its ``effects``: each family's coefficient rows,
+    or None where it reports none), split in two: the rows of each family that gives a coefficient
+    table (:func:`has_table`), and each other family's rows, which are shrunk by its penalty and
+    are no estimate of an effect (the ruling of 2026-10-23); a family with no rows stays with the
+    first, holding none."""
+    tabled: dict[str, Any] = {}
+    penalized: dict[str, Any] = {}
+    for family, rows in (effects or {}).items():
+        (penalized if rows and not has_table(family) else tabled)[str(family)] = rows
+    return tabled, penalized
+
+
 class Regime(_Strict):
     """The engine's readings, each its own number as served, and (version 2) each marker of the
     vocabulary it reads at the end of the run, live and post hoc."""
@@ -449,7 +479,13 @@ class Attempt(_Strict):
     holdout_why: str | None
     changed_after_seal: bool
     at_opening: dict[str, Any] | None
+    # Each family's rows of the fit that estimate an effect: those of a family with a coefficient
+    # table (:func:`has_table`). ``GET …/fits`` serves a penalized family's rows under its
+    # ``effects`` too; they are shrunk by the penalty and estimate no effect (the ruling of
+    # 2026-10-23), so the record keeps them under ``penalized``, never here (:func:`split_effects`,
+    # :meth:`_shrunk_rows_apart`), and no reader of ``effects`` reads one as an effect.
     effects: dict[str, list[dict[str, Any]] | None]
+    penalized: dict[str, list[dict[str, Any]]] = {}
     movement: list[dict[str, Any]]
     movement_why: str | None
     withheld: str | None
@@ -463,6 +499,24 @@ class Attempt(_Strict):
     # (:class:`SignedChange`), or why there is none (the first fit; no score served).
     change: list["SignedChange"] = []
     change_why: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _shrunk_rows_apart(cls, data: Any) -> Any:
+        """A penalized family's rows given under ``effects`` (as ``GET …/fits`` serves them, and
+        as a record assembled before 2026-10-28 holds them) are held under ``penalized``; a
+        family's rows given under both fail."""
+        if not isinstance(data, dict) or not isinstance(data.get("effects"), dict):
+            return data
+        tabled, shrunk = split_effects(data["effects"])
+        given = data.get("penalized") or {}
+        twice = sorted(set(shrunk) & set(given)) if isinstance(given, dict) else []
+        if twice:
+            raise ValueError(f"fit #{data.get('seq')} holds the rows of {', '.join(twice)} both "
+                             f"as effects and as a penalized family's")
+        if not shrunk:
+            return data
+        return {**data, "effects": tabled, "penalized": {**given, **shrunk}}
 
     @model_validator(mode="after")
     def _markers_or_why(self) -> "Attempt":
