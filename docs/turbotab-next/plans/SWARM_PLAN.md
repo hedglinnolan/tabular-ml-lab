@@ -195,7 +195,8 @@ Built for version 1 (`research/swarm/intake.py`). Version 2 of the intake adds:
    default plan's fit took 9,816 s on one core (2 h 44 min) in the orchestrator's timing run of
    2026-10-27, so its crash sweep cannot run in the daytime windows and an analyst would wait
    about four hours for each Fit (the ruling's estimate). It is first in line for the next wave
-   once its fit is faster (the post-pilot backlog, §11). Its intake, manifest, markers and notes
+   once its fit is faster (the post-pilot backlog, `docs/turbotab-next/INBOX.md`). Its intake,
+   manifest, markers and notes
    stay, and the glucose benchmark (item 3) still uses its published score. It is Predict,
    NHANES 1999–2004, 31,126 rows from its own intake. Its replication
    targets the logistic model's odds ratios, which the engine reaches; the points score's

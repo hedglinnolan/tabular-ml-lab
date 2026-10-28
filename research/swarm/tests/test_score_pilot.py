@@ -16,7 +16,10 @@ rule both ways.
   refused plan, and draws other than the pre-registered ones are refused as invalid. A replay
   refused as a whole (its run reported no result) is a refused plan with its words, one whose
   reported number the bundle does not hold once unjudged; an exported record whose run reported
-  no result is a refused plan in its model's refusal rate, given a replay or not.
+  no result is a refused plan in its model's refusal rate, given a replay or not, and so is a run
+  never exported whose engine served no result (the random arm's ridge draw under Estimate), an
+  analyst's alike; a run never exported that reported none, or whose record cannot say, is no
+  plan.
 * On the Predict fixture: a regret below r0 passes, above fails, and with no r0 the plan is not
   judged. On the measurement fixture: a discovery set built with one false and one missed feature
   gives its proportion and power, an effect error built at 0.1 away from zero gives 0.1.
@@ -96,7 +99,8 @@ def record(kind: str = "estimate", run: str = "run_01", model: str = "claude-hai
     """A constructed record, made on the frozen engine (:data:`ENGINE`'s commit, which the crash
     fill names, no file modified) unless ``commit`` and ``modified`` say otherwise; ``exported``
     False: the run stuck before its export, which the server refused after it (no bundle, so no
-    plan); ``result_refused``: the result's kind of none (``record.RefusedKind``), the run having
+    plan, unless its engine served no result: ``score_pilot.unexported_refusal``);
+    ``result_refused``: the result's kind of none (``record.RefusedKind``), the run having
     reported no estimate."""
     data = C.estimate_record() if kind == "estimate" else C.predict_record()
     data["run"].update(id=run, analyst_model=model, persona=persona,
@@ -262,6 +266,57 @@ def test_a_fixture_record_whose_result_was_refused_is_a_refused_plan_in_the_refu
     assert plans["whole"]["verdict"] == "unscored"
     stuck = record(run="stuck", exported=False, result_refused="not_reported")
     assert S.score([stuck], [], [], prereg)["plans"] == []  # no bundle, so no plan
+
+
+def unexported(run: str, model: str, kind: str) -> Any:
+    """A record of a run whose export the server refused after it, its result none of ``kind``:
+    under ``not_served`` as the random arm's Estimate draw of ridge alone leaves it (the fit made,
+    the effects stage refusing for no coefficient table, so the export refused in its words and
+    the walk stopped there, ``arms.run_arm``)."""
+    data = record(run=run, model=model, persona=None, exported=False,
+                  result_refused=kind).model_dump(mode="json", by_alias=True)
+    data["export"]["refused"] = {"code": "no_coefficient_table", "message": (
+        "Table 2 (the declared models) was refused, so its result cannot be reported: "
+        "constructed.")}
+    return validate(data)
+
+
+def test_a_run_never_exported_whose_engine_served_no_result_is_a_refused_plan(filled):
+    """SWARM_PLAN §7, "A refused plan counts as neither, and goes into the refusal rate", for every
+    arm and model alike: a run whose engine served no result and whose export was refused (the
+    random arm's ridge draw under Estimate) is a refused plan in the plans, counted as neither in
+    the unit, in choosing well and in its model's refusal rate, given a replay or not; an analyst's
+    run the same. Both ways: the linear draw beside it, exported with its estimate, is scored by
+    its replay as before; a run never exported that reported no result (stuck before its lock) or
+    whose record cannot say is still no plan."""
+    prereg = filled
+    ridge = unexported("ridge", "mechanical-random-3", "not_served")
+    linear = record(run="linear", model="mechanical-random-4", persona=None)
+    replay = estimate_replay(prereg, bias=0.0, covered=95, run="linear")
+    for given in ([replay], [replay, estimate_replay(prereg, bias=0.0, covered=95, run="ridge")]):
+        report = S.score([ridge, linear], given, [], prereg)
+        plans = {p["run"]: p for p in report["plans"]}
+        assert set(plans) == {"ridge", "linear"}
+        assert (plans["ridge"]["verdict"], plans["ridge"]["model"]) == ("refused",
+                                                                        "mechanical-random")
+        assert "none served" in plans["ridge"]["why"] and "constructed: not_served" in \
+            plans["ridge"]["why"]
+        assert plans["linear"]["verdict"] == "within"  # its replay's, as before
+        random = report["models"]["mechanical-random"]
+        assert (random["refusals"]["plans"], random["refusals"]["refused"],
+                random["refusals"]["share"]) == (2, 1, 0.5)
+        unit = random["units"]["estimate"]
+        assert (unit["plans"], unit["refused"], unit["judged"], unit["within"]) == (2, 1, 1, 1)
+        chose = report["choosing_well"]["estimate"]["mechanical-random"]
+        assert (chose["plans"], chose["within"], chose["refused"]) == (2, 1, 1)
+    analyst = unexported("haiku_ridge", "claude-haiku-5-5", "not_served")
+    report = S.score([analyst], [], [], prereg)
+    assert [(p["run"], p["verdict"]) for p in report["plans"]] == [("haiku_ridge", "refused")]
+    assert report["models"]["haiku"]["refusals"]["refused"] == 1
+    for kind in ("not_reported", "not_known"):
+        report = S.score([unexported("none", "mechanical-random-5", kind)], [], [], prereg)
+        assert report["plans"] == [], kind
+        assert report["models"]["mechanical-random"]["refusals"]["plans"] == 0, kind
 
 
 # ── a replay judged only as its record's plan, on the pre-registered draws, rows and engine ──

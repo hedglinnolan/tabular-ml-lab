@@ -75,6 +75,30 @@ def test_spend_is_refused_when_a_line_cannot_be_counted_once(tmp_path):
         A.spend(transcript(tmp_path / "t.jsonl", lines))
 
 
+def test_spend_reads_a_line_whose_strings_hold_a_line_separator_raw_and_refuses_one_not_json(
+        tmp_path):
+    """A JSON line ends at "\\n" alone: U+2028, U+2029 and U+0085 inside a string are written raw
+    (json.dumps with ensure_ascii=False, as Claude Code writes a transcript) and break no line, so
+    the transcript's spend is the one its counts give (:data:`FRESH`, :data:`CACHED`); a line that
+    is not JSON is still refused, and so is one that holds only U+2028, which is no JSON
+    whitespace."""
+    odd = "a b c\x85d"
+    lines = [{"type": "user", "message": {"role": "user", "content": f"the card {odd}"}},
+             *[{**x, "message": {**x["message"], "content": [{"type": "text", "text": odd}]}}
+               for x in TRANSCRIPT[1:]]]
+    path = tmp_path / "t.jsonl"
+    path.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in lines), "utf-8")
+    raw = path.read_text("utf-8")
+    assert all(c in raw for c in "  \x85") and raw.count("\n") == len(lines)
+    assert len(raw.splitlines()) > len(lines)  # Python alone breaks them
+    got = A.spend(path)
+    assert (got.fresh, got.cached, got.messages) == (FRESH, CACHED, 2)
+    for bad in ("{not json", " "):
+        path.write_text(raw + bad + "\n", "utf-8")
+        with pytest.raises(ValueError):
+            A.spend(path)
+
+
 # ── what a decision answers, and what was examined before it ─────────────────
 
 
@@ -2116,8 +2140,8 @@ def relock_e2e(tmp_path_factory) -> dict[str, Any]:
             assert ok, path.read_text("utf-8")[:2000]
             records = service.log(pid).records()
             return {"rec": validate(json.loads(path.read_text("utf-8"))),
-                    "locked_key": service._locked_fit(pid, records,
-                                                      plan_lock.current_lock(records)),
+                    "locked_keys": service._locked_fit(pid, records,
+                                                       plan_lock.current_lock(records)),
                     "fits": client.get(f"/api/projects/{pid}/fits").json()["records"],
                     "log": client.get(f"/api/projects/{pid}").json()["decisions"],
                     "results": client.get(f"/api/projects/{pid}/results").json()}
@@ -2140,7 +2164,8 @@ def _rows(fit: dict[str, Any]) -> dict[str, Any]:
 
 def test_under_estimate_a_rule_tried_and_undone_before_the_lock_leaves_the_locked_fit(relock_e2e):
     """E1: by construction the lock is on the drive's rule, fit 1's plan; the server's own rule
-    for the fit the lock was recorded on (``_locked_fit``) names the same key."""
+    for the fit the lock was recorded on (``_locked_fit``, the keys that fit is keyed by) names
+    its key, and not fit 2's."""
     e1 = relock_e2e["e1"]
     rules = [r for r in e1["log"] if r["decision"]["kind"] == "set_exclusions"]
     drives, tried, again = rules
@@ -2150,7 +2175,7 @@ def test_under_estimate_a_rule_tried_and_undone_before_the_lock_leaves_the_locke
     assert len(fits) == 2  # the drive's rule again made no new fit record
     locked, other = fits
     assert drives["seq"] in locked["decisions"] and tried["seq"] not in locked["decisions"]
-    assert locked["fit_key"] == e1["locked_key"]
+    assert locked["fit_key"] in e1["locked_keys"] and other["fit_key"] not in e1["locked_keys"]
     r = e1["rec"].result
     assert r.refused is None and (r.attempt, r.decisions) == (locked["id"], locked["decisions"])
     assert [e.model_dump() for e in r.estimates] == _reported(_rows(locked)) and r.estimates
@@ -2171,7 +2196,7 @@ def test_under_estimate_a_revert_after_the_lock_leaves_the_locked_fits_estimate(
     (fit 2's estimate under the lock's digest) is not passed by seal integrity."""
     e3 = relock_e2e["e3"]
     assert e3["log"][-1]["decision"]["kind"] == "revert" and e3["log"][-1]["after_estimates"]
-    locked = next(f for f in e3["fits"] if f["fit_key"] == e3["locked_key"])
+    [locked] = [f for f in e3["fits"] if f["fit_key"] in e3["locked_keys"]]  # the one it names
     other = next(f for f in e3["fits"] if f["id"] != locked["id"])
     assert _rows(other) and _rows(other) != _rows(locked)
     rec = e3["rec"]
@@ -2240,8 +2265,8 @@ def lone_e2e(tmp_path_factory) -> dict[str, Any]:
                                                                 "control": "null_decoy"}},
                                      client=client, corpus=folder / "decoy")
         records = client.app.state.service.log(pid).records()
-        locked_key = client.app.state.service._locked_fit(pid, records,
-                                                          plan_lock.current_lock(records))
+        locked_keys = client.app.state.service._locked_fit(pid, records,
+                                                           plan_lock.current_lock(records))
         served = {name: client.get(f"/api/projects/{pid}{route}").json() for name, route in (
             ("view", ""), ("fits", "/fits"), ("mattered", "/mattered"))}
         in_force = _server_in_force(client, pid)
@@ -2249,7 +2274,7 @@ def lone_e2e(tmp_path_factory) -> dict[str, Any]:
     assert decoy_ok, decoy.read_text("utf-8")[:2000]
     return {"rec": validate(json.loads(path.read_text("utf-8"))),
             "decoy": validate(json.loads(decoy.read_text("utf-8"))), "served": served,
-            "locked_key": locked_key, "in_force": in_force}
+            "locked_keys": locked_keys, "in_force": in_force}
 
 
 def test_on_the_server_a_run_that_previewed_only_its_own_answers_is_single_pass(lone_e2e):
@@ -2281,7 +2306,8 @@ def test_on_the_server_each_adjustment_group_is_credited_with_its_own_choices(lo
 def test_on_the_server_the_locked_fit_is_the_result_whatever_its_plans_digest(lone_e2e):
     """DRV-INT (DB's [next, engine] line): the lock's digest is no fit record's (the sensitivity
     answer came after the fit), but GET …/fits marks the fit the lock was recorded on, the one the
-    server's own rule names (``_locked_fit``, its key), and the result is that fit's estimate.
+    server's own rule names (``_locked_fit``, among its keys), and the result is that fit's
+    estimate.
     Before, the record could not identify it and the known answer and the decoy went unjudged.
     Now they are judged: the known answer 9.0 (constructed: no interval near it) fails, and the
     decoy check reads the served interval; seal integrity passes."""
@@ -2290,7 +2316,8 @@ def test_on_the_server_the_locked_fit_is_the_result_whatever_its_plans_digest(lo
     fits = served["fits"]["records"]
     assert all(f["plan_digest"] != lock["decision"]["digest"] for f in fits)
     [locked] = [f for f in fits if f["locked"]]
-    assert locked["fit_key"] == lone_e2e["locked_key"]  # the server's own rule names it
+    # the server's own rule names it, and no other fit record
+    assert [f["id"] for f in fits if f["fit_key"] in lone_e2e["locked_keys"]] == [locked["id"]]
     rows = {f: rows for f, rows in locked["effects"].items() if rows}
     assert any(row["estimate"] is not None for rs in rows.values() for row in rs)
     r = rec.result

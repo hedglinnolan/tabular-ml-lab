@@ -147,7 +147,8 @@ them at a fit scored on it (:func:`splits_by_folds`); a digest no snapshot read 
 **Spend** (:func:`spend`): the transcript's assistant lines, once per message id. A message
 streams as several lines with one id, the same input counts and a growing output count, so each
 count is the largest its lines give: fresh is input plus cache creation plus output, cached is
-cache reads.
+cache reads. A line ends at ``"\\n"`` alone, as JSON lines do, so a line separator a string
+holds raw (U+2028, U+2029, U+0085) ends no line; a line that is not JSON refuses the spend.
 """
 from __future__ import annotations
 
@@ -378,8 +379,11 @@ def spend(transcript: str | Path) -> R.Spend:
     fields = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens",
               "output_tokens")
     unnamed = 0
-    for line in Path(transcript).read_text("utf-8").splitlines():
-        if not line.strip():
+    # A JSON line ends at "\n" alone, as the transcript reader splits it (``transcript._lines``):
+    # not at what else str.splitlines breaks at (U+2028, U+2029, U+0085, which JSON leaves raw
+    # inside a string), and blank only where JSON's own whitespace.
+    for line in Path(transcript).read_bytes().decode("utf-8").split("\n"):
+        if not line.strip(" \t\r"):
             continue
         message = json.loads(line).get("message")
         if not isinstance(message, Mapping) or not isinstance(message.get("usage"), Mapping):

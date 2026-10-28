@@ -10,11 +10,18 @@ TurboTab, an analysis app, through a driver that prints JSON. Each entry is numb
   sent to it during the run, such as one from the session that started it ("The coordinator sent
   a message while you were working: ...");
 - `THE ANALYST`: what the analyst wrote;
-- `COMMAND`: a command it ran (each driver command's `--reason`, `--marker` and `--rejected` are
-  the analyst's own annotations of that decision);
+- `THE HARNESS, IN THE ANALYST'S PLACE`: what the harness wrote where the analyst's reply would
+  stand, not the analyst's words: an API error, such as a usage limit reached ("You've hit your
+  weekly limit"), stopped the analyst there; it did not stop on its own;
+- `COMMAND`: a command it ran, after its own description of it on a first line `Description: ...`
+  where it gave one, its words about the command (each driver command's `--reason`, `--marker`
+  and `--rejected` are the analyst's own annotations of that decision);
 - `OUTPUT`: what the command printed, the app's words and numbers (or the driver's, where a
   refusal says `"by": "driver"`); `OUTPUT, MARKED AN ERROR` where the command's result was marked
   an error.
+
+A part of an entry that the text does not show is said in brackets, naming its kind, such as
+`[an image block, not shown]`.
 
 The app's output is the only evidence of what happened. Judge only from the transcript: you know
 nothing else about the dataset, and you do not judge whether the result is right. You judge how the
