@@ -210,10 +210,10 @@
    ]
   },
   "r0": {
-   "final": null,
+   "final": "boosted_trees",
    "value": null,
    "default_regret": null,
-   "why": "No crash sweep of the Predict fixture has been filled in, so the default plan is not known; r0 is measured after it (python -m research.swarm.prereg_fill r0 …).",
+   "why": "The default plan's regret on the pre-registered draws has not been measured: replay its export (python -m research.swarm.score_pilot replay …) and fill it (python -m research.swarm.prereg_fill r0 …).",
    "reference": {
     "class": "linear",
     "value": 0.009418361832874013,
@@ -560,6 +560,15 @@
     "slowest_fit": 15.153,
     "sha256": "937a9cf414eda155893ebe37e2e27e5f2966272c0856d3f255d9979af844a969",
     "filled_at": "2026-10-28T21:26:03+00:00"
+   },
+   "inpatient_readmission_predict": {
+    "commit": "9c1c0c7c448a2348ad46533496ee4fe993a7ace9",
+    "engine_tree": "523fcc2a14e181803573766883fd4d22566c2afe",
+    "fits": 51,
+    "total_seconds": 14556.273,
+    "slowest_fit": 2213.207,
+    "sha256": "b8ef2513a5025a05b9dbc4b1201242b9892e53cd5082964553cecffd73880525",
+    "filled_at": "2026-10-28T22:37:46+00:00"
    }
   },
   "fit_budget": {
@@ -572,10 +581,152 @@
     "fits": 28,
     "seconds": 425.0,
     "slowest_fit": 15.153
+   },
+   "inpatient_readmission_predict": {
+    "fits": 51,
+    "seconds": 112874.0,
+    "slowest_fit": 2213.207
    }
   },
   "compute_cap": null,
-  "default_plan": null,
+  "default_plan": {
+   "dataset": "inpatient_readmission_predict",
+   "families": [
+    "boosted_trees",
+    "elastic_net"
+   ],
+   "decisions": [
+    {
+     "kind": "set_lens",
+     "lenses": [
+      "other"
+     ]
+    },
+    {
+     "kind": "apply_repair",
+     "finding_id": "binary_text__sex",
+     "option": "level",
+     "params": {
+      "column": "sex",
+      "one": "f",
+      "zero": "m",
+      "relabels": true
+     }
+    },
+    {
+     "kind": "set_grain",
+     "grain": "one_row_per_unit",
+     "id_column": null,
+     "acknowledged": false
+    },
+    {
+     "kind": "set_roles",
+     "roles": {
+      "encounter_id": "identifier",
+      "age": "covariate",
+      "sex": "covariate",
+      "charlson_index": "exposure",
+      "prior_admissions_12mo": "exposure",
+      "albumin_g_dl": "exposure",
+      "creatinine_mg_dl": "exposure",
+      "hemoglobin_g_dl": "exposure",
+      "sodium_mmol_l": "exposure",
+      "length_of_stay_days": "exposure"
+     },
+     "unconfirmed": [
+      "encounter_id",
+      "charlson_index",
+      "prior_admissions_12mo",
+      "albumin_g_dl",
+      "creatinine_mg_dl",
+      "hemoglobin_g_dl",
+      "sodium_mmol_l",
+      "length_of_stay_days"
+     ]
+    },
+    {
+     "kind": "set_exclusions",
+     "rules": []
+    },
+    {
+     "kind": "set_missing",
+     "strategy": "impute",
+     "drop_columns": [],
+     "categorical": "impute",
+     "indicators": false,
+     "m": 20,
+     "below_detection": null,
+     "censored_columns": [],
+     "acknowledged": false,
+     "reason": null,
+     "imputation_model": "compatible",
+     "imputation_levels": "clustered"
+    },
+    {
+     "kind": "set_split",
+     "holdout": 0.0,
+     "seed": 0,
+     "folds": 5,
+     "validation": "bootstrap",
+     "repeats": 10,
+     "n_boot": 500,
+     "cluster": null,
+     "nested_cv": false,
+     "cut_point": null,
+     "fold_order": null
+    },
+    {
+     "kind": "confirm_reading",
+     "reading": "code_or_count",
+     "column": "age",
+     "value": "amount"
+    },
+    {
+     "kind": "confirm_reading",
+     "reading": "code_or_count",
+     "column": "sodium_mmol_l",
+     "value": "amount"
+    },
+    {
+     "kind": "confirm_reading",
+     "reading": "code_or_count",
+     "column": "length_of_stay_days",
+     "value": "amount"
+    },
+    {
+     "kind": "confirm_reading",
+     "reading": "code_or_count",
+     "column": "charlson_index",
+     "value": "code"
+    },
+    {
+     "kind": "confirm_reading",
+     "reading": "code_or_count",
+     "column": "prior_admissions_12mo",
+     "value": "code"
+    },
+    {
+     "kind": "select_models",
+     "models": [
+      "boosted_trees",
+      "elastic_net"
+     ]
+    },
+    {
+     "kind": "set_purpose",
+     "purpose": "prediction"
+    },
+    {
+     "kind": "set_event",
+     "column": "readmit_30d",
+     "level": "1"
+    },
+    {
+     "kind": "set_target",
+     "column": "readmit_30d"
+    }
+   ]
+  },
   "r0": null,
   "relative_price": null
  }
