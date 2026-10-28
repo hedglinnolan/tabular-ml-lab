@@ -1738,9 +1738,13 @@ def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | Non
                           layout="intercept", study=study,
                           refuse=lambda reason: _nothing(estimator, clusters, reason))
     resting = table.leverage_one
-    if resting and (study is None or set(study) & set(resting)):
-        # As for a dependency (:func:`by_identified`): a studied coefficient refused by row, or
-        # nothing named as studied, refuses the whole table.
+    if resting and study is not None and set(study) & set(resting):
+        # A studied coefficient that rests on a row of leverage one refuses the whole table, as
+        # one in a dependency does (:func:`by_identified`). Unlike a dependency's, the other
+        # coefficients do not depend on which column a fit leaves out, so a caller that names
+        # nothing studied is served them, the resting rows refused by row: the effects stage's
+        # table beside a site held by one row serves the exposure, as its Cook's distance check
+        # reads that row.
         reason = leverage_words(table.leverage_rows, len(matrix), resting, whole=True)
         cols = [c for c in resting if c != "(intercept)"]
         exits = [{"label": f"Leave {_and(cols)} out, or merge its rare levels", "decision": None}

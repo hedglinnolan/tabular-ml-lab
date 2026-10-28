@@ -72,15 +72,20 @@ def test_a_single_rows_indicator_is_refused_by_row_and_the_rest_are_the_other_ro
 
 
 def test_a_studied_coefficient_on_a_row_of_leverage_one_refuses_the_table_whole():
+    """Studied, `one` refuses the whole table; with nothing named as studied (the effects stage's
+    tables) the others are served and `one` is refused by row, since no other coefficient depends
+    on it (unlike a dependency's, whose estimates depend on which column a fit leaves out)."""
     x, one, y = _lone()
     matrix = pd.DataFrame({"x": x, "one": one})
-    for study in (["one"], None):
-        table = inference_table("regression", matrix, y, None, INDEPENDENT, study=study)
-        assert table.rows == [] and table.info["refused"] == (
-            "1 of these 200 rows has leverage one: the fit passes through it exactly, and HC3 "
-            "divides its residual by one less its leverage, zero by zero, so `one` has no HC3 "
-            "standard error. No estimate, interval or p-value is reported.")
-        assert table.info["exits"][0]["label"] == "Leave `one` out, or merge its rare levels"
+    table = inference_table("regression", matrix, y, None, INDEPENDENT, study=["one"])
+    assert table.rows == [] and table.info["refused"] == (
+        "1 of these 200 rows has leverage one: the fit passes through it exactly, and HC3 "
+        "divides its residual by one less its leverage, zero by zero, so `one` has no HC3 "
+        "standard error. No estimate, interval or p-value is reported.")
+    assert table.info["exits"][0]["label"] == "Leave `one` out, or merge its rare levels"
+    unnamed = inference_table("regression", matrix, y, None, INDEPENDENT, study=None)
+    assert unnamed.info["refused"] is None and unnamed.leverage_one == ["one"]
+    assert {r["feature"]: r for r in unnamed.rows}["x"]["se"] is not None
 
 
 def test_a_single_row_as_the_reference_refuses_the_intercept_with_its_column():
