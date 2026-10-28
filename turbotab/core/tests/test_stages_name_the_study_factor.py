@@ -171,6 +171,27 @@ def test_the_exposures_form_tests_beside_a_covariates_dependency_are_those_witho
                 assert test[key] == pytest.approx(tests[None][name][key], rel=1e-9), (name, key)
 
 
+def test_a_confounder_in_a_declared_form_inside_a_dependency_refuses_the_table_whole(tmp_path):
+    """The guard's firing side for a declared form's terms (``effects.study_columns``): `age` in a
+    spline of 4 knots beside `age2`, whose straight-line term `age2` copies. The fit's form tests
+    read `age`'s terms from the table, so the table is refused whole in the dependency's words
+    (as on the base) rather than served with `age`'s straight-line term empty, where its test of
+    association would be missing beside a concern that the table gives no Wald covariance."""
+    frame = _frame("age2").drop(columns=["bmi"])
+    roles = {k: v for k, v in {**ef.ROLES, "age2": "covariate"}.items() if k != "bmi"}
+    answers = {k: v for k, v in {**ef.ANSWERS, "age2": ef.CONFOUNDER}.items() if k != "bmi"}
+    st = ef.state(target="glucose", task="regression", measure="mean_difference", roles=roles,
+                  answers=answers,
+                  exposure_forms={"age": d.ExposureFormSpec(form="spline", knots=4)})
+    [model] = ef.run(frame, tmp_path, st)["fit_raw"]["models"]
+    assert model["coefficients"] == [] and model["exposure_tests"] == []
+    assert model["inference"]["refused"] == (
+        "On these 400 rows the model matrix is singular: `age` and `age2` are fixed combinations "
+        "of the other columns and the intercept, so their coefficients are not identified. No "
+        "estimate, interval or p-value is reported; leave one of the dependent columns out.")
+    assert not any("Wald covariance" in c for c in model["concerns"])
+
+
 def _mattered(frame: pd.DataFrame, st: d.ProjectState, tmp_path: Path) -> dict[str, Any]:
     """The design, fit and what-mattered stages over these rows, as a worker runs them."""
     from turbotab.core.mattered import mattered_stage
