@@ -845,13 +845,18 @@ def firth_fit(X: np.ndarray, y: np.ndarray, *, fixed: dict[int, float] | None = 
     weighted fit), which is the exact gradient of the penalized log-likelihood, with steps capped
     at :data:`FIRTH_MAX_STEP` and halved until the penalized log-likelihood does not fall
     (logistf's algorithm). ``fixed`` holds coefficients at given values (the profile). Converged
-    when the Newton decrement ``Uᵀ I⁻¹ U`` (invariant to the columns' units) is below ``tol``², or,
-    where rounding keeps it from falling further (it falls by less than half in a step), at most
-    :data:`SHORT_OF_MAXIMUM` squared, the fit then within that share of a standard error of its
-    maximum (:func:`newton_distance`). The step, the decrement, the hat values and the penalty
-    are taken from the QR of the weighted design (:func:`_firth_parts`): from the information
-    itself, whose rounding is the design's condition number squared, the decrement beside
-    ``x + 3·10⁻⁷·d`` passed its tolerance far from the maximum, and the table served `v`'s
+    when the Newton decrement ``Uᵀ I⁻¹ U`` (invariant to the columns' units) is below ``tol``²,
+    and only then. The step is the Fisher information's, not the penalized log-likelihood's
+    Hessian, so near the maximum each step leaves a fixed share of the distance (its rate), and
+    the decrement understates the distance left by about ``1/(1 − rate)``: a stop where the
+    decrement fell by less than half in a step (read as rounding's floor) at most
+    :data:`SHORT_OF_MAXIMUM` squared served completely separated designs, whose decrement falls
+    to 0.52 to 0.72 of itself a step, up to 5.9·10⁻⁴ of a standard error from brglm2's maximum,
+    where this rule serves them within 6·10⁻⁸. A fit that rounding keeps above ``tol``² runs out
+    its steps and is refused, not converged. The step, the decrement, the hat values and the
+    penalty are taken from the QR of the weighted design (:func:`_firth_parts`): from the
+    information itself, whose rounding is the design's condition number squared, the decrement
+    beside ``x + 3·10⁻⁷·d`` passed its tolerance far from the maximum, and the table served `v`'s
     penalized log-odds as −5·10⁻⁶ against the maximum's −0.353.
     """
     X = np.asarray(X, dtype=float)
@@ -864,7 +869,6 @@ def firth_fit(X: np.ndarray, y: np.ndarray, *, fixed: dict[int, float] | None = 
         beta[j] = value
     mu, w, Q, R, ll = _firth_parts(X, y, beta)
     converged = False
-    previous = math.inf
     it = 0
     for it in range(1, max_iter + 1):
         h = np.einsum("ij,ij->i", Q, Q)
@@ -872,11 +876,9 @@ def firth_fit(X: np.ndarray, y: np.ndarray, *, fixed: dict[int, float] | None = 
         held = R if free.all() else np.linalg.qr((X * np.sqrt(w)[:, None])[:, free], mode="r")
         delta = np.zeros(P)
         delta[free], decrement = _newton_step(held, score[free])
-        if decrement < tol * tol or (decrement <= SHORT_OF_MAXIMUM ** 2
-                                     and decrement > previous / 2):
+        if decrement < tol * tol:
             converged = True
             break
-        previous = decrement
         biggest = float(np.abs(delta).max()) if P else 0.0
         if biggest > FIRTH_MAX_STEP:
             delta *= FIRTH_MAX_STEP / biggest

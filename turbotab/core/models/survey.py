@@ -298,16 +298,21 @@ def _newton(working: np.ndarray, score: np.ndarray) -> tuple[np.ndarray, float]:
     return _newton_step(np.linalg.qr(working, mode="r"), score)
 
 
-def _at_floor(decrement: float, previous: float, w: np.ndarray) -> bool:
-    """Whether a weighted Newton fit whose decrement has stopped falling (by less than half in a
-    step: rounding's floor) is at its maximum to ``inference.SHORT_OF_MAXIMUM`` of a standard
-    error, on the weights scaled to sum to the rows' count, so the decrement does not grow with
-    the population's size."""
+def _at_floor(decrement: float, least: float, w: np.ndarray) -> bool:
+    """Whether a weighted Newton fit is at rounding's floor: its decrement, on the weights scaled
+    to sum to the rows' count (so it does not grow with the population's size), is at most
+    ``inference.SHORT_OF_MAXIMUM`` squared and did not fall below ``least``, the least it had
+    reached. Its steps are Newton's on the likelihood's own Hessian (the logistic and multinomial
+    information), so the decrement's root is the step's length in standard errors to second
+    order and the fit is then within that share of one of its maximum. A decrement that still
+    falls, however slowly, is not rounding's and the fit keeps stepping: a stop where it fell by
+    less than half in a step stopped a fit whose steps were cut to a quarter (a test's) 5·10⁻⁵ of
+    a standard error from its maximum, where the tolerance takes it to 10⁻⁹."""
     from turbotab.core.models.inference import SHORT_OF_MAXIMUM
 
     total = float(np.sum(w))
     scaled = decrement * len(w) / total if total > 0 else decrement
-    return scaled <= SHORT_OF_MAXIMUM ** 2 and decrement > previous / 2
+    return scaled <= SHORT_OF_MAXIMUM ** 2 and decrement >= least
 
 
 def weighted_logistic(X: np.ndarray, y: np.ndarray, w: np.ndarray) -> WeightedFit:
@@ -324,16 +329,16 @@ def weighted_logistic(X: np.ndarray, y: np.ndarray, w: np.ndarray) -> WeightedFi
 
     current = loglik(beta)
     converged = False
-    previous = np.inf
+    least = np.inf
     for _ in range(_NEWTON_MAX):
         mu = 0.5 * (1.0 + np.tanh(0.5 * (X @ beta)))
         score = X.T @ (w * (y - mu))
         step, decrement = _newton(X * np.sqrt(w * mu * (1.0 - mu))[:, None], score)
         if decrement < _NEWTON_TOL ** 2 * max(1.0, float(np.sum(w))) or _at_floor(
-                decrement, previous, w):
+                decrement, least, w):
             converged = True
             break
-        previous = decrement
+        least = min(least, decrement)
         for _half in range(40):
             trial = beta + step
             value = loglik(trial)
@@ -390,17 +395,17 @@ def weighted_multinomial(X: np.ndarray, codes: np.ndarray, K: int, w: np.ndarray
 
     current = loglik(B)
     converged = False
-    previous = np.inf
+    least = np.inf
     for _ in range(_NEWTON_MAX):
         rows, probs = scores(B)
         score = (rows * w[:, None]).sum(axis=0)
         working = multinomial_working(X, codes, probs)[0]
         step, decrement = _newton(working * np.repeat(np.sqrt(w), q)[:, None], score)
         if decrement < _NEWTON_TOL ** 2 * max(1.0, float(np.sum(w))) or _at_floor(
-                decrement, previous, w):
+                decrement, least, w):
             converged = True
             break
-        previous = decrement
+        least = min(least, decrement)
         for _half in range(40):
             trial = B + step.reshape(q, P).T
             value = loglik(trial)
