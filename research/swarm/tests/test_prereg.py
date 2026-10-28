@@ -515,6 +515,22 @@ def test_the_schedule_is_sections_six_39_runs_on_five_datasets_and_names_its_swe
     assert prereg["datasets"]["pilot"] == list(P.PILOT)
     assert prereg["models"]["runs"] == 3 * 5 + 3 * 5 + 6 + 3
     assert "bang2009" not in prereg["sweeps"]["plans"]
+
+
+def test_the_plan_states_the_pilots_datasets_and_runs_as_prereg_json_holds_them(prereg):
+    """SWARM_PLAN §6's count of runs and of datasets is prereg.json's (the plan is prose, so this
+    holds it to the schedule the code writes)."""
+    import re
+
+    text = (P.REPO / "docs" / "turbotab-next" / "plans" / "SWARM_PLAN.md").read_text("utf-8")
+    words = {5: "five", 6: "six"}
+    runs = prereg["models"]["runs"]
+    assert f"**The pilot: {words[len(P.PILOT)]} datasets, {runs} agent runs.**" in text
+    assert f"**Agent runs** ({runs}):" in text
+    per = len(P.PERSONAS) * len(P.PILOT)
+    rows = re.findall(rf"\| (Haiku|Sonnet) 5\.5, high effort, each persona \| all "
+                      rf"{words[len(P.PILOT)]} \| (\d+) \|", text)
+    assert rows == [("Haiku", str(per)), ("Sonnet", str(per))]
     plans = prereg["sweeps"]["plans"]
     assert [(p["model"], p["persona"]) for p in plans[P.ESTIMATE_FIXTURE]] == [
         ("haiku", "conventional"), ("sonnet", "conventional"), ("opus", "conventional"),
