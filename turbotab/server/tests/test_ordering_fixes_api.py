@@ -371,6 +371,9 @@ def test_reading_the_project_records_nothing(client):
     for _ in range(3):
         view = drive.view()
         client.get(f"/api/projects/{drive.pid}/quest")
+    # A completion a read had started would record before this returns, on any schedule.
+    quiet(drive)
+    view = drive.view()
     assert view["state"]["roles"] is None
     assert next(s for s in view["interview"] if s["key"] == "roles")["status"] == "open"
     assert [r for r in service.log(drive.pid).records() if r.decision.kind == "set_roles"] == []
