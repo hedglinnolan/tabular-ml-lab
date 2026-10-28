@@ -175,7 +175,9 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
     is unanswered; an ordinal model's cut-points carry the declared ``levels`` (WP12a). Under
     inference ``missing`` (``stages.modeling.TableMissing``) is the missing-values answer on these
     rows: the table pooled over their own multiple imputations, held while a single fill or the
-    missing-indicator method is unrecorded, or carrying complete cases' assumption (WP7).
+    missing-indicator method is unrecorded, or carrying complete cases' assumption (WP7). The
+    table is told the study factors' columns (``effects.study_factors``), as the fit's is, so a
+    dependency among the other columns is refused by row and the study factor served.
 
     F15 (RECIPES §4.3): every refit here is fit at the split's ``seed`` (the recorded split's when
     None), with its rows' survey design under the population answer (``designs``,
@@ -187,6 +189,7 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
     from sklearn.base import clone
 
     from turbotab.core.models.inference import resolve_clusters
+    from turbotab.core.stages.effects import study_factors
     from turbotab.core.stages.modeling import _inference_table, fit_with, with_units
 
     if seed is None:
@@ -227,10 +230,11 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
                     outcome=outcome, survey=design, design=None, spec=spec, rows="all",
                     fit=lambda model, X_k: _with_levels(
                         refit(with_units(model, units), X_k, y), levels),
-                    energy_rows=False, models=chosen)
+                    energy_rows=False, models=chosen, studied=study_factors(state))
             else:
                 table = _inference_table(family, fitted, X, y, task=task, clusters=clusters,
-                                         outcome=outcome, rows="all", survey=design, models=chosen)
+                                         outcome=outcome, rows="all", survey=design, models=chosen,
+                                         studied=study_factors(state))
             if missing is not None:
                 missing.record(table)
             if survey is not None and survey.concern():

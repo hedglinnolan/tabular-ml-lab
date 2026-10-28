@@ -3,8 +3,9 @@ matrix whose columns are dependent, where its caller names what is studied, serv
 coefficients its rows identify and refuses by row each one in a dependency, in words that name
 the dependency's columns and count them (``inference.by_identified``); the whole table is refused,
 with no estimate, where a column named as studied is in a dependency, where no coefficient is
-identified, and where the caller names nothing studied (the fit stage's tables until it names
-the study factor's columns: whether what it reads is estimable is not known to the table).
+identified, and where the caller names nothing studied (whether what it reads is estimable is
+then not known to the table). The stages name the study factor's columns (``effects.study_columns``),
+so the fit's tables are served by row where only covariates are in a dependency.
 
 There the coefficients in a dependency have no unique estimate, and what a fit made of them was
 rounding: the least-squares table served pseudo-inverse values with intervals beside a concern that
@@ -297,11 +298,12 @@ def test_what_is_studied_in_a_dependency_refuses_the_whole_table(task):
 
 @pytest.mark.parametrize("task", TASKS)
 def test_a_caller_that_names_nothing_studied_has_a_dependency_refused_whole(task):
-    """The guard both ways. With no ``study`` (the fit stage, the effects and sensitivity refits,
-    until they name the study factor's columns), a dependency that holds only `x` and its copy
-    refuses the table with no coefficient, in the dependency's words, as the base refused every
-    dependency, so a reader of the exposure's row never finds it missing from a served table;
-    named as studied, `v` keeps the table served by row (the silent side). An independent design
+    """The guard both ways. With no ``study`` (a caller that names nothing studied: a stage where no
+    study factor is declared or the matrix holds none of its columns), a dependency that holds
+    only `x` and its copy refuses the table with no coefficient, in the dependency's words, as the
+    base refused every dependency, so a reader of the exposure's row never finds it missing from a
+    served table; named as studied, `v` keeps the table served by row (the silent side). An
+    independent design
     with no ``study`` is served (``test_independent_columns_are_fit_at_statsmodels_estimates``)."""
     beside = "a constant" if task == "ordinal" else "the intercept"
     table = _table(task, _matrix("a copy"))
@@ -366,11 +368,6 @@ def test_a_nearly_dependent_column_is_not_refused():
     np.testing.assert_allclose([r["estimate"] for r in table.rows], ols.params, rtol=1e-6)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "The fit stage names no study factor to the table (stages/modeling.py _inference_table passes "
-    "no study=), so a dependency refuses the whole table (inference.by_identified); this is the "
-    "ruling's by-row table once the stage passes the exposure's model-matrix columns, and XPASSes "
-    "then (T1V-1, the integrator's wiring)."))
 def test_through_the_fit_stage_the_linear_tables_are_served_by_row(tmp_path):
     """The real split, shelf, design and fit stages under inference, one row per participant: a
     4-level `educ` beside its own 2-level recoding `educ2` (its level 2 is `educ`'s 3 and 4), `age`
@@ -378,8 +375,8 @@ def test_through_the_fit_stage_the_linear_tables_are_served_by_row(tmp_path):
     in words naming them and not `educ_2` or `age`, and report the intercept, `educ_2` and `age`
     at statsmodels' fit with `educ2_2` left out; no concern calls the matrix nearly singular. On
     the base both tables were refused whole, with no coefficient (before package A the
-    least-squares table was served with intervals for all three), and they are refused so while
-    the stage names nothing studied."""
+    least-squares table was served with intervals for all three), as they were while the stage
+    named nothing studied (T1V-1; the stage now names `age`'s columns, ``effects.study_columns``)."""
     from turbotab.core.decisions import GrainSpec, ProjectState, SplitSpec
     from turbotab.core.tests.acceptance.test_wp12b_cox_mixed_gee import _stages
 

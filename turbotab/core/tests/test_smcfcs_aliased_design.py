@@ -329,9 +329,11 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
     copies drawn the old way; and one more since, when their coefficient tables came to be fit on
     scaled columns and to refuse a dependency by row, and the Cox fit, which the Cox draw makes,
     to bound its linear predictor's SD (the tail tables package), merged after T2 and T3, which moved
-    the same stages, so each is one past both."""
+    the same stages, so each is one past both; and one more but the modification stage's, when each
+    table came to be told the study factor's columns, so a dependency among the covariates is
+    refused by row (T5b)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (37, 20, 17, 11, 8, 11, 4)
+    assert tuple(versions[s] for s in stages) == (38, 21, 18, 12, 9, 12, 4)

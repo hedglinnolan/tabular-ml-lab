@@ -1445,7 +1445,9 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
 
     share = (event_share(frame[target], state.event)
              if task == "binary" and target and target in frame.columns else None)
-    out["estimand"] = estimand_card(state, task, prevalence=share, nested=nested)
+    # The table's column summaries, by whose types the family option knows a text member for a
+    # category, adjusted for, not tested (the verifier's V4a2-2).
+    out["estimand"] = estimand_card(state, task, prevalence=share, nested=nested, columns=columns)
     out["adjustment"] = adjustment_card(state)
     # LEASH (the routing gate's leash note): the grouping question's card, every column it asks
     # about with the guess it shows and that guess's evidence (``estimand.grouping_card``).

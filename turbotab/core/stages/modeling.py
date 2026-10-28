@@ -1334,24 +1334,63 @@ def _accepts(fn: Any, name: str) -> bool:
 
 def _inference_table(family: Any, pipeline: Any, X: Any, y: Any, *, task: str, clusters: Any,
                      outcome: Any, rows: str, survey: Any = None,
-                     models: Sequence[str] | None = None) -> Any:
+                     models: Sequence[str] | None = None,
+                     studied: Sequence[str] | None = None) -> Any:
     """``family.inference``, handing it the outcome's names, the rows it is estimated from and the
     survey design when it takes them (a family registered before WP8 or WP10 may not). Under the
     population answer a family with no design-based estimator is blocked and recorded
     (MODELING_SEQUENCE §4; ``models.survey.no_design_estimator``), its exits the family that has
-    one (``models``: the chosen families) and the sample-only attestation."""
+    one (``models``: the chosen families) and the sample-only attestation.
+
+    ``studied``: what the analysis studies, as raw columns (``effects.study_factors``). A family
+    that takes ``study`` is told their model-matrix columns (``effects.study_columns``), so a
+    dependency among the other columns is refused by row and the study factor served, and one
+    that holds a study factor's column refuses the whole table (``inference.by_identified``, the
+    orchestrator's ruling (1) on the swarm's tail); told none, a dependency refuses it whole."""
     if survey is not None and not _accepts(family.inference, "survey"):
         from turbotab.core.models.survey import no_design_estimator
 
         return no_design_estimator(family, task, models)
     extra = {name: value for name, value in (("outcome", outcome), ("rows", rows), ("survey", survey))
              if value is not None and _accepts(family.inference, name)}
+    study = (table_study(pipeline, X, studied)
+             if studied and _accepts(family.inference, "study") else None)
+    if study is not None:
+        extra["study"] = study
     table = family.inference(pipeline, X, y, task=task, clusters=clusters, **extra)
     if table.info.get("n_rows") is None and "rows" not in extra:
         from turbotab.core.models.inference import _on_rows
 
         table = _on_rows(table, len(X), rows)
     return table
+
+
+def table_study(pipeline: Any, X: Any, studied: Sequence[str] | None) -> list[str] | None:
+    """The model-matrix columns of the study factors ``studied`` (raw columns) in the matrix the
+    fitted ``pipeline`` makes of ``X`` (``effects.study_columns``; ``X``'s columns, the design's
+    inputs, are the predictors a longer column name may belong to); None where nothing is studied
+    or the matrix holds no column of it."""
+    from turbotab.core.stages.effects import study_columns
+
+    if not studied:
+        return None
+    columns = getattr(pipeline[-1], "feature_names_in_", None)
+    if columns is None:
+        from turbotab.core.models.linear import model_matrix
+
+        columns = model_matrix(pipeline, X).columns
+    return study_columns(pipeline, [str(c) for c in columns], studied,
+                         [str(c) for c in X.columns])
+
+
+def relative_study(columns: Sequence[str], study: Sequence[str] | None) -> list[str] | None:
+    """What a refit for the average relative effects (:func:`relative_refit`) is told is studied:
+    ``study`` and the energy columns (``kcal_from_…``), whose coefficients each relative effect
+    combines, so a dependency that holds one refuses the refit whole; None where ``study`` is."""
+    if study is None:
+        return None
+    kcal = [str(c) for c in columns if str(c).startswith("kcal_from_")]
+    return list(dict.fromkeys([*study, *kcal]))
 UNWEIGHTED_SCORES = ("Scores are unweighted: they describe these rows, not the population the survey "
                      "weights stand for.")
 # Under the population answer (MS4): the scores are about the fitting procedure on these rows, never
@@ -1686,7 +1725,8 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
                  outcome: Any, survey: Any, design: Any, spec: Any, rows: str,
                  fit: Any, cancelled: Any = None, energy_rows: bool = True,
                  collect: dict[str, Any] | None = None,
-                 models: Sequence[str] | None = None
+                 models: Sequence[str] | None = None,
+                 studied: Sequence[str] | None = None
                  ) -> tuple[Any, list[dict[str, Any]] | None, list[dict[str, Any]], list[str]]:
     """The family's inference table pooled over the completed copies (Rubin's rules), with its
     energy rows and exposure-form tests pooled beside it: (table, pooled rows, tests, concerns).
@@ -1707,7 +1747,8 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
     refit finds so (:func:`_pool_form_tests`). Its concerns leave out the Firth copies' own
     separation concern, which the pooled one replaces.
     ``collect``, when given, receives each copy's fit (``fits``) and table (``tables``).
-    ``models``: the chosen families, which a block's exit keeps (``_inference_table``)."""
+    ``models``: the chosen families, which a block's exit keeps, and ``studied`` what the analysis
+    studies, whose columns each copy's table is told (``_inference_table``)."""
     from turbotab.core.methods.exposure_form import exposure_tests
     from turbotab.core.methods.imputation import pool_rows, pooled_cov
     from turbotab.core.methods.missing import copy_template, mi_concerns, multiple_imputation_info
@@ -1727,12 +1768,13 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
         with for_pooling():
             table = _inference_table(family, fitted, X_k, y_k, task=task, clusters=clusters,
                                      outcome=outcome, rows=rows, survey=survey,
-                                     models=models)
+                                     models=models, studied=studied)
             if table.info.get("refused"):
                 table.info["missing"] = multiple_imputation_info(imputations, spec, len(y_k))
                 return table, None, [], []
             row_sets.append(_energy_rows(table.rows, design, spec, family, fitted, X_k, y_k, task,
-                                         clusters, outcome, survey, infinite=table.infinite)
+                                         clusters, outcome, survey, infinite=table.infinite,
+                                         studied=studied)
                             if energy_rows else table.rows)
             found, worries = exposure_tests(family, fitted, X_k, y_k, task=task, clusters=clusters,
                                             table=table, outcome=outcome, survey=survey)
@@ -2134,6 +2176,11 @@ def fit_stage(ctx: StageContext) -> Bundle:
     # Audit IN-22: under inference the coefficient table says its dietary intakes are measured with
     # error and not corrected here (methods/dietary_caveats.py; Freedman et al. 2011).
     error_line = _measurement_error_line(ctx, spec) if inference else None
+    # What the analysis studies, whose columns each table is told, so a dependency among the other
+    # columns is refused by row (the orchestrator's ruling (1) on the swarm's tail).
+    from turbotab.core.stages.effects import study_factors
+
+    studied = study_factors(state) if inference else None
 
     # F15 (RECIPES §4.3): the split's seed and, under the population answer, each row's stratum,
     # PSU and weight reach every fit; a tuned family's search reads them (its inner splits keep
@@ -2413,7 +2460,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                             clusters=copy_clusters if copy_clusters is not None else clusters,
                             outcome=outcome, survey=design_of, design=design,
                             spec=spec, rows="all", fit=fit_copy, cancelled=ctx.cancelled,
-                            collect=collected, models=state.models)
+                            collect=collected, models=state.models, studied=studied)
                         imputed_fits[key] = collected.get("fits") or []
                         imputed_tables[key] = [
                             {"names": [str(r["feature"]) for r in t.rows],
@@ -2429,7 +2476,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                         table = _inference_table(
                             family, table_fit, X_c, y_c, task=task, clusters=clusters,
                             outcome=outcome, rows="all" if on_all else "training",
-                            survey=design_of, models=state.models)
+                            survey=design_of, models=state.models, studied=studied)
                     if missing is not None:
                         missing.record(table)
                     coefficients, interval_info = table.rows, table.info
@@ -2480,7 +2527,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 # carry each imputation's, pooled with the coefficients.)
                 coefficients = _energy_rows(coefficients, design, spec, family, table_fit, X_c, y_c,
                                             task, clusters, outcome,
-                                            survey.design if survey is not None else None)
+                                            survey.design if survey is not None else None,
+                                            studied=studied)
             done += 1
         concerns = _concerns(caught, len(sub_pairs) + own_pairs + 1) + concerns
         if states_collinearity(family):
@@ -2763,7 +2811,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
 def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, family: Any,
                  final: Any, X: Any, y: Any, task: str, clusters: Any,
                  outcome: Any = None, survey: Any = None,
-                 infinite: list[str] | None = None) -> list[dict[str, Any]]:
+                 infinite: list[str] | None = None,
+                 studied: Sequence[str] | None = None) -> list[dict[str, Any]]:
     """The coefficient rows with what each means (the design's ``terms``), and under the
     all-components model each nutrient's average relative effect beside them (audit ME-14):
     with the family's own intervals under inference, as a point estimate otherwise.
@@ -2773,7 +2822,8 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
     and scale (odds or relative-risk ratios, named by ``outcome``), and under a survey design its
     weights and Taylor-linearized intervals (WP10). ``infinite`` (a completed copy's table's, under
     multiple imputation) receives each relative effect its refit finds infinite
-    (:func:`relative_refit`)."""
+    (:func:`relative_refit`). Each refit is told the study factors' columns (``studied``, as the
+    table is: :func:`table_study`) and the energy columns are studied (:func:`relative_study`)."""
     terms = ((design.data or {}).get("terms") or {}) if isinstance(design, Bundle) else {}
     rows = [{**row, "meaning": terms[row["feature"]]} if row.get("feature") in terms else row
             for row in coefficients]
@@ -2793,6 +2843,9 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
         classes = list(getattr(final[-1], "classes_", [])) or None
         extra = {name: value for name, value in (("outcome", outcome), ("survey", survey))
                  if value is not None and _accepts(refit, name)}
+        study = relative_study(matrix.columns, table_study(final, X, studied))
+        if study is not None and _accepts(refit, "study"):
+            extra["study"] = study
 
         def refit_table(m: Any) -> Any:
             return refit(m, y, task=task, classes=classes, clusters=clusters, **extra)

@@ -470,7 +470,11 @@ def build_graph() -> Graph:
             # member's declared form refuses the table or every member is a category), in its
             # consequence and in each multiplicity option, where it said every member is shown;
             # the options count no test where a member's type is not known.
-            Stage("proposals", 21, ("working", "roles"),
+            # proposals 22 (the swarm's tail, T5b, 2026-10-28): the stage hands the estimand card
+            # the table's column summaries, so the family option counts the tests from each
+            # member's type (an ordinary numeric family's options count them again; a text member
+            # is counted out, where ``n_tests`` counted it).
+            Stage("proposals", 22, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
@@ -788,7 +792,12 @@ def build_graph() -> Graph:
             # fit 37, sensitivity 20, secondary 11, effects 11 (the merge of T4a after the tail
             # tables, 2026-10-27): both sides moved each of these, so the merged engine takes a
             # number neither side served.
-            Stage("fit", 37, ("working", "design", "split", "target_info", "cohort"),
+            # fit 38 (the swarm's tail, T5b, 2026-10-28): each coefficient table, and each refit
+            # for an exposure's form tests or the average relative effects, is told the study
+            # factor's model-matrix columns, so a dependency among the other columns is refused by
+            # row and the study factor served (the whole table refused only where a study
+            # factor's column, or a declared form's term, is in one).
+            Stage("fit", 38, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -894,7 +903,10 @@ def build_graph() -> Graph:
             # sensitivity 19, secondary 10 (the swarm's tail, T4a): as fit 36 (each refits the
             # feature-wise table, which refuses by row a study factor with nothing left once the
             # covariates are projected out, and reads a category's indicators off its encoder).
-            Stage("sensitivity", 20, ("working", "design", "split", "target_info"),
+            # sensitivity 21, calibration 18, secondary 12, scales 9 (T5b): as fit 38, each refit's
+            # table (the calibration's uncorrected estimate's, the scales' uncorrected
+            # coefficient's) told the columns it is read for.
+            Stage("sensitivity", 21, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
@@ -917,7 +929,7 @@ def build_graph() -> Graph:
             # calibration 13 (resume integration 2): both calibration 12s (this one and the engine
             # residue's, beside sensitivity 15 above).
             # calibration 14: as sensitivity 16 above (its uncorrected estimate's table).
-            Stage("calibration", 17,
+            Stage("calibration", 18,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models", "purpose"),
@@ -927,7 +939,7 @@ def build_graph() -> Graph:
             # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
             # secondary 7: as sensitivity 16 above.
             # secondary 10: as sensitivity 19 above.
-            Stage("secondary", 11, ("working", "design", "split", "target_info"),
+            Stage("secondary", 12, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -946,7 +958,7 @@ def build_graph() -> Graph:
             # scales 5: as sensitivity 16 above (the uncorrected coefficient's table).
             # scales 6: as sensitivity 17 above.
             # scales 7: as sensitivity 18 above.
-            Stage("scales", 8, ("working", "design", "split", "target_info", "cohort"),
+            Stage("scales", 9, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models", "purpose"),
                   label="Estimating each scale's reliability", serves=ESTIMATE),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
@@ -991,7 +1003,10 @@ def build_graph() -> Graph:
             # one "Without covariates"); and an exposure's columns are its own encoding's, never
             # another predictor's (a longer one's spline terms, a fixed-effects grouping's
             # intercepts).
-            Stage("effects", 11, ("working", "design", "split", "target_info"),
+            # effects 12 (T5b): as fit 38, each model's table told the exposure's columns; and the
+            # methods text says each family's sequence under its name wherever two families report
+            # from different models, whichever order they were chosen in.
+            Stage("effects", 12, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",

@@ -492,6 +492,45 @@ def exposure_columns(fitted: Any, columns: Sequence[str], exposures: Sequence[st
     return [c for c in names if c in mine]
 
 
+def study_factors(state: Any) -> list[str]:
+    """What the analysis studies, as raw columns: the declared estimand's exposures (each member of
+    an exposure family), the columns the served fit shows as effects (``estimand.annotate_fit``);
+    with no estimand declared, each predictor with the role of what you study."""
+    from turbotab.core import estimand as est
+
+    spec = est.current_estimand(state)
+    if spec is not None:
+        return [str(c) for c in est.exposures_of(state, spec)]
+    return [c for c, r in est.predictor_roles(state).items() if r == "exposure"]
+
+
+def study_columns(fitted: Any, columns: Sequence[str], studied: Sequence[str],
+                  predictors: Sequence[str]) -> list[str] | None:
+    """The model-matrix columns of ``columns``, in their order, a coefficient table is told are
+    studied (``inference.by_identified``'s ``study``, the orchestrator's ruling (1) on the swarm's
+    tail): the study factors' (``studied``, raw columns; :func:`exposure_columns`), and the terms
+    of each column in a declared form, whose tests the fit stage reads from the same table
+    (``exposure_form.exposure_tests``), so that a dependency among them refuses the whole table
+    rather than leave a test to read a row with no number. A dependency among the other columns
+    is then refused by row, the study factor served. None where the matrix holds no column of a
+    study factor (none declared, or one the matrix does not hold): what the table is read for is
+    not known, and a dependency refuses the whole table."""
+    from turbotab.core.methods.exposure_form import form_step
+
+    names = [str(c) for c in columns]
+    mine = set(exposure_columns(fitted, names, studied, predictors)) if studied else set()
+    if not mine:
+        return None
+    step = form_step(fitted)
+    if step is not None:
+        for column in step._plan():
+            try:
+                mine |= {str(o) for o in step._outputs(column)}
+            except KeyError:  # a form of a column the step was not fit on: it makes no terms
+                continue
+    return [c for c in names if c in mine]
+
+
 def energy_outputs(fitted: Any) -> set[str]:
     """The adjusted-lane columns the energy model made of total energy and the other energy
     sources (kept energy, ``kcal_from_<source>``, ``kcal_from_other``): the terms that enter with
@@ -533,7 +572,8 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
                  clusters: Any, outcome: Any, survey: Any, levels: Any, event: Any,
                  features: Sequence[str], model: Any = None,
                  exposures: Sequence[str] | None = None,
-                 entered: Mapping[str, Sequence[str]] | None = None) -> Any:
+                 entered: Mapping[str, Sequence[str]] | None = None,
+                 study: Sequence[str] | None = None) -> Any:
     """The family's inference table on ``matrix`` (every analyzed row), as the fit stage computes
     it for the primary: design-based under ``survey`` for the families that have a design-based
     estimator (the stage blocks the others before they get here). None for a family whose table
@@ -543,7 +583,11 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
     step as the matrix's fit leaves it (its classes, its ordered levels, its tested columns), so
     the model matrix it reads is ``matrix`` itself; it is given the outcome, the rows and the
     design where its ``inference`` takes them, and told the rows when it does not say them (a
-    table refused with no estimate says only how many rows it was handed).
+    table refused with no estimate says only how many rows it was handed). It is told the columns
+    of ``matrix`` that are studied (``study``, else ``features``; :func:`study_columns`), so a
+    dependency among the others is refused by row and the study factor served; where none of
+    them is in ``matrix``, it is told none, and a dependency refuses the whole table
+    (``inference.by_identified``).
 
     ``model``: the fitted model step the matrix came from. Where it names the columns it tests (a
     feature-wise step's study factors, as the roles answer named them and as the matrix holds
@@ -593,7 +637,10 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
                        named=named, forms=forms,
                        entered=entered if entered is not None else getattr(model, "entered_", None))
     takes = inspect.signature(family.inference).parameters
-    given = {"outcome": outcome, "rows": "all", "survey": survey, "event": event}
+    held = set(str(c) for c in matrix.columns)
+    studied = [str(c) for c in (study if study is not None else features) if str(c) in held]
+    given = {"outcome": outcome, "rows": "all", "survey": survey, "event": event,
+             "study": studied or None}
     kw = {k: v for k, v in given.items() if k in takes}
     if survey is not None and "survey" not in takes:
         raise ValueError(f"{family.label} has no design-based estimator, so it has no table over "
@@ -975,8 +1022,8 @@ class _Run:
             if not supported:
                 table = self._table(lambda: _inference_table(
                     family, fitted, X, self.y, task=self.task, clusters=self.clusters,
-                    outcome=self.outcome, rows="all", survey=design), "model_2", failures,
-                    pooled=imputed is not None)
+                    outcome=self.outcome, rows="all", survey=design,
+                    studied=self.exposures), "model_2", failures, pooled=imputed is not None)
                 per_copy.setdefault("model_2", []).append(table)
                 if k == 0 and table is not None:
                     features = sorted({f for e in self.exposures for f in est.primary_features(
@@ -1006,9 +1053,12 @@ class _Run:
                 # The curve's straight-line estimate, for its sensitivity analysis: the same model
                 # with the spline's nonlinear terms left out (pooled like every other model).
                 subsets["straight"] = [c for c in M.columns if c not in set(curve[1])]
+            # What each model's table is told is studied: the exposures' columns and a declared
+            # form's terms, as the fit's table is told (``study_columns``).
             kw = dict(task=self.task, classes=classes, clusters=self.clusters, outcome=self.outcome,
                       survey=design, levels=self.levels, event=self.state.event, features=feats,
-                      model=fitted[-1], exposures=self.exposures, entered=entered)
+                      model=fitted[-1], exposures=self.exposures, entered=entered,
+                      study=study_columns(fitted, M.columns, self.exposures, predictors))
             for name, cols in subsets.items():
                 per_copy.setdefault(name, []).append(self._table(
                     lambda _c=cols: self._with_relative(
@@ -1187,6 +1237,7 @@ class _Run:
                        outcome=self.outcome, survey=design, levels=self.levels,
                        event=self.state.event, features=feats3, model=fitted3[-1],
                        exposures=self.exposures,
+                       study=study_columns(fitted3, M3.columns, self.exposures, predictors),
                        entered=(category_columns(fitted3, getattr(fitted3[-1], "categories", None)
                                                  or []) if tests_only(family) else {}))
             per_copy.setdefault("model_3", []).append(self._table(
@@ -1292,15 +1343,18 @@ class _Run:
                 or not one_regression_on_matrix(family) or self.task == "multiclass"):
             return table
         from turbotab.core.methods.energy import relative_effect_rows
-        from turbotab.core.stages.modeling import relative_refit
+        from turbotab.core.stages.modeling import relative_refit, relative_study
 
         step = getattr(fitted, "named_steps", {}).get("energy")
         factors = dict(getattr(getattr(step, "pooled_", step), "factors_", {}) or {})
+        # Each refit is read for the energy columns' coefficients, so it is told they are studied
+        # beside the exposure's (``modeling.relative_study``).
+        moved = {**kw, "study": relative_study(matrix.columns, kw.get("study"))}
         # A relative effect its refit finds infinite is named in this table's ``infinite``, so
         # its pooled interval is withheld as the fit's is (``modeling.relative_refit``).
         found = relative_effect_rows(
             matrix, list(adj.nutrients), factors,
-            table=relative_refit(matrix, lambda m: matrix_table(family, m, y, **kw),
+            table=relative_refit(matrix, lambda m: matrix_table(family, m, y, **moved),
                                  table.infinite), coefficients=table.rows)
         table.rows = [*table.rows, *found]
         return table
@@ -2080,16 +2134,17 @@ def _reporting(fam: Any) -> set[str]:
 def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
     """The methods text this stage writes, from what it fitted: the sequence, the display rule, the
     marginal standardization, the diagnostics and their responses, and the sensitivity analyses,
-    then the family's multiplicity sentence. It describes the first family chosen; where another
-    family reports an estimate from a model the first reports none from (the linear model's Model
-    2 singular where feature-wise regression tests `fiber` in it), each family's text is said
-    under its name (the verifier's V4a2-1)."""
+    then the family's multiplicity sentence. Where every chosen family reports an estimate from
+    the same models, it describes the first family chosen; where any two report from different
+    models (the linear model's Model 2 singular where feature-wise regression tests `fiber` in
+    it), each family's text is said under its name, whichever order they were chosen in (the
+    verifier's V4a2-1 and V4a3-2)."""
     from turbotab.core.models import get_family
 
     if not artifact.families:
         return artifact.methods
     head, *rest = artifact.families
-    if not any(_reporting(f) - _reporting(head) for f in rest):
+    if all(_reporting(f) == _reporting(head) for f in rest):
         text, follows = _family_methods(artifact, head)
         return f"{text} {artifact.multiplicity}" if follows and artifact.multiplicity else text
     task = str(getattr(state, "task", None) or "regression")

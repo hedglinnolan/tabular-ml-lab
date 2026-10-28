@@ -11,7 +11,10 @@ reported across a declared sequence of models fit on all 400 analyzed rows", and
 stage refused because "The linear model reports no single coefficient of `fiber`", offering to
 declare the columns' scales. A table whose caller names nothing studied now refuses any
 dependency whole (``inference.by_identified``), as the base did; by row it is served only where
-the caller names what is studied (the specification curve does).
+the caller names what is studied (the specification curve does, and since T5b every stage,
+``effects.study_columns``), and only where no column named so is in the dependency: here
+`fiber` is, so the table is refused whole (the covariate's case:
+``test_stages_name_the_study_factor``).
 
 Truth from construction: `fiber2` is twice `fiber`, so they and nothing else are the dependency,
 beside the intercept; the words are written out from that.
@@ -65,13 +68,19 @@ def _through_the_stages(tmp_path: Path, target: str, task: str, measure: str,
 def test_the_exposure_in_a_dependency_is_refused_in_its_words_at_every_stage(
         tmp_path, target, task, measure, event):
     """The fit's table has no coefficient and is refused in the dependency's words; the effects
-    methods sentence says no estimate of `fiber` is reported, in those words; the mattered stage
-    refuses in them, its way forward to leave a dependent column out. On the first round the fit
-    table served the covariates by row and both sentences said otherwise."""
+    methods sentence says Model 2, the primary, reports no estimate of `fiber`, in those words,
+    and that the unadjusted model alone reports it (T4a's V4a-2 sentence, merged after this test
+    was written: the base's assertion that it began "No estimate of `fiber` is reported" was
+    stale there); the mattered stage refuses in them, its way forward to leave a dependent column
+    out. On the first round the fit table served the covariates by row and both sentences said
+    otherwise."""
     out = _through_the_stages(tmp_path, target, task, measure, event)
     assert out["fit"]["inference"]["refused"] == WORDS
     assert out["fit"]["coefficients"] == []
-    assert out["effects"]["methods"].startswith(f"No estimate of `fiber` is reported: {WORDS}")
+    assert out["effects"]["methods"] == (
+        f"The estimate of `fiber` is reported from the unadjusted model alone, fit on all {N} "
+        f"analyzed rows. Model 2, the primary, adjusted for `age`, `sex`, `smoking`, `activity` "
+        f"and `fiber2`, reports none: {WORDS}")
     refused = out["mattered"]["refused"]
     assert WORDS in refused["message"]
     assert [e["label"] for e in refused["exits"]] == [LEAVE]

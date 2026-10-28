@@ -1035,15 +1035,15 @@ def test_where_one_familys_model_3_reports_and_anothers_is_refused_each_is_said_
 
 
 def test_where_every_family_reports_the_same_models_the_methods_text_is_as_it_was(tmp_path):
-    """Silent, byte for byte: {`fiber`, `fib`} under feature-wise regression alone and with the
-    linear model after it (the first family reports in every model the other does), and the
-    numeric family {`fiber`, `sugar`} under [linear, feature-wise]."""
-    frame = _fib_frame()
-    for models in (["featurewise"], ["featurewise", "linear"]):
-        out = ef.run(frame, tmp_path / "-".join(models),
-                     _family({"fiber": "exposure", "fib": "exposure"}, models,
-                             amounts=FIB_AMOUNTS))
-        assert out["effects"]["methods"] == f"T{FIB_FEATUREWISE[1:]}", models
+    """Silent, byte for byte: {`fiber`, `fib`} under feature-wise regression alone, and the
+    numeric family {`fiber`, `sugar`} under [linear, feature-wise]. (With the linear model after
+    feature-wise regression, {`fiber`, `fib`} reports from fewer models under the linear model,
+    so each family is said by name: the verifier's V4a3-2,
+    ``test_effects_methods_names_each_family``.)"""
+    out = ef.run(_fib_frame(), tmp_path / "featurewise",
+                 _family({"fiber": "exposure", "fib": "exposure"}, ["featurewise"],
+                         amounts=FIB_AMOUNTS))
+    assert out["effects"]["methods"] == f"T{FIB_FEATUREWISE[1:]}"
     out = ef.run(_frame(), tmp_path / "numeric", _family({"fiber": "exposure", "sugar": "exposure"},
                                                          ["linear", "featurewise"]))
     assert out["effects"]["methods"] == (
