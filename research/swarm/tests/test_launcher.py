@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 
 import pytest
 
@@ -248,6 +249,37 @@ def test_a_launch_starts_the_run_the_driver_names_with_prereg_jsons_budget(tmp_p
     assert meta["persona"] == "skeptical" and meta["design"] == 2
     # Under the corpus, where no analyst's command opens a file (the driver's seal).
     assert driver.unread(L.LAUNCHES / "run_01-x.json")
+
+
+def test_the_default_start_hands_the_driver_its_command_line_word_by_word_in_the_runs_home(
+        tmp_path, monkeypatch, prereg):
+    # The launcher's own start, the one a real launch uses (no ``start`` given): the first real
+    # launch (2026-10-28) handed the driver its command line as one list, which its parser refused.
+    prereg()
+    crash = tmp_path / "crash.json"
+    crash.write_text(json.dumps(report(dataset=PILOT, data={"path": "t.csv",
+                                                            "sha256": PILOT_TABLE})))
+    monkeypatch.setattr(L, "engine_now", lambda: dict(ENGINE))
+    data = tmp_path / "walking_bp.csv"
+    data.write_text("x,y\n1,0\n")
+    runs = tmp_path / "runs"
+    seen: list[tuple[list, str | None]] = []
+
+    def main(argv, out):
+        seen.append((list(argv), os.environ.get(driver.RUNS_ENV)))
+        driver.build_parser().parse_args(argv)  # a start command line the driver reads
+        out(json.dumps({"started": {"run": driver.new_run_id(runs)}}))
+        return 0
+
+    monkeypatch.setattr(driver, "main", main)
+    out = L.launch(PILOT, crash, model="claude-opus-5-5", persona="conventional",
+                   prompt_version="pilot-1", effort="high", runs=runs,
+                   launches=tmp_path / "launches", data=data)
+    ((argv, home),) = seen
+    assert all(isinstance(word, str) for word in argv)
+    assert argv[:3] == ["start", "--data", str(data)] and "--scripted" not in argv
+    assert home == str(runs.absolute())  # the runs home the launch names
+    assert out["run"].rsplit("-", 1)[0] == "run_01"
 
 
 def test_prereg_json_not_ready_refuses_the_launch_in_its_words(tmp_path, monkeypatch, prereg):

@@ -295,7 +295,10 @@ def launch(dataset: str, crash: Path, *, model: str, persona: str | None,
     if start is None:
         from research.swarm.arms import Driven
 
-        start = Driven(Path(runs)).command
+        driven = Driven(Path(runs))
+
+        def start(argv: Sequence[str]) -> tuple[int, dict[str, Any]]:
+            return driven.command(*argv)  # the command line word by word, as the driver reads it
     argv = ["start", "--data", str(data), "--budget-fits", str(budget["fits"]),
             "--budget-seconds", f"{budget['seconds']:g}", "--model", model,
             "--prompt-version", prompt_version]
