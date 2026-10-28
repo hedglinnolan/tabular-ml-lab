@@ -3,7 +3,7 @@ path's and the random path's answers on asks built here, the walk on a session t
 asks (and what stops it, classed by what the engine said), a local session's posts keeping a
 refusal's ways forward until an answer is recorded as the driver's do, a copy's fit cancelled
 through the server's Cancel and, only where the copy stays busy, each job it holds, and, slow,
-each path through the driver's own commands on a small dataset that is not one of the pilot's six
+each path through the driver's own commands on a small dataset that is not one of the pilot's
 (``clinical_readmission_predict``, 480 rows) to a record that validates.
 
 Known truth: the event level from the card's own words; each default from what the ask offers in

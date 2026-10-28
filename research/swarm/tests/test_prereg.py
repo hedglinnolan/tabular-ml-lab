@@ -13,8 +13,8 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
   record that is not the default path's exported plan with its final family on the frozen engine
   (a crash sweep's commit, or git's tree of turbotab/ at its commit the crash sweeps'), and a
   replay that is not that export on the Predict fixture on those draws and rows on the frozen
-  engine, or one refused on a draw; the trio waits for it, and for one measured on the frozen
-  engine. A crash sweep whose default plan declares another final than the ruling's family is
+  engine, or one refused on a draw; the Predict fixture's launch waits for it, and for one
+  measured on the frozen engine. A crash sweep whose default plan declares another final than the ruling's family is
   refused, naming both. Its reference, half the additive straight-line class's regret, is
   statsmodels' maximum-likelihood logistic fit on the generator's rows against the true risk.
 * k (the orchestrator's ruling of 2026-10-23): statsmodels' t-tests and Benjamini-Hochberg on the
@@ -23,7 +23,7 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
 * The graded menus: outcome-protected ComBat graded the engine's refusal, the covariate a choice.
 * The committed prereg.json is what the generators give, and a changed margin is named.
 * The crash sweep's fields: the fit budget the launcher's own rule gives, the compute cap summed by
-  hand from §6's named plans, the Predict fixture's default plan; the trio refused without them,
+  hand from §6's named plans, the Predict fixture's default plan; the pilot refused without them,
   on a report that did not pass, across two engine trees, and on a report whose table is not the
   one its dataset's manifest names (another table's SHA-256, or none).
 * The staged pre-registration (the orchestrator's ruling of 2026-10-28): a crash fill of any
@@ -419,10 +419,10 @@ def test_the_r0_fill_takes_a_record_whose_commit_has_the_crash_sweeps_engine_tre
         P.fill_r0(crashed, data, default_replay(crashed, data, engine=engine))
 
 
-def test_the_trio_is_refused_where_r0_was_measured_on_another_engine(prereg):
+def test_the_pilot_is_refused_where_r0_was_measured_on_another_engine(prereg):
     """ready() reads the engine r0 was measured on: a filled r0 whose record's tree or replay's
-    tree is not the crash sweeps', or with a file modified, holds the trio; the measured one does
-    not."""
+    tree is not the crash sweeps', or with a file modified, holds the pilot whole and the Predict
+    fixture; the measured one does not."""
     filled = measured(prereg)
     assert P.ready(filled, ENGINE, margins=False) is None
     entry = filled["filled"]["r0"]
@@ -598,7 +598,7 @@ def test_the_crash_fill_sets_each_budget_the_cap_and_the_default_plans_final_fam
     assert P.check(filled) == []
 
 
-def test_the_trio_is_refused_without_the_crash_sweeps_fields_or_r0(prereg):
+def test_the_pilot_is_refused_without_the_crash_sweeps_fields_or_r0(prereg):
     assert "no fit budget" in P.ready(prereg, ENGINE, margins=False)
     boosted = P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
     assert "no r0" in P.ready(boosted, ENGINE, margins=False)

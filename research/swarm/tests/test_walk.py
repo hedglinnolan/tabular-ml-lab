@@ -5,7 +5,7 @@ stub (the real engine cannot be made to accept them) and refused; the report ref
 engines differ; a run that skips a seed already reported; whole walks on a server modeled here
 (:class:`Served`): the round owed where a decision is reverted and no round sent one, and a fault of
 the walker's own after the walk, which ends only that walk; and, slow, one walk through the
-driver's own commands on a small dataset that is not one of the pilot's six
+driver's own commands on a small dataset that is not one of the pilot's
 (``clinical_readmission_predict``, 480 rows), whose second seal and revisit after it the engine and
 the driver refuse.
 
