@@ -24,6 +24,9 @@ predictions.
 """
 from __future__ import annotations
 
+import math
+from typing import Callable
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -170,6 +173,22 @@ def test_a_nearly_dependent_matrix_is_not_refused():
     np.testing.assert_allclose([model.intercept_, *model.coef_], reml.fe_params, rtol=1e-3)
 
 
+def _stopping_room(profile: Callable[[float], float], z: float) -> float:
+    """How far in log γ a minimizer of the computed ``profile`` can stop from its minimum near
+    ``z`` for rounding alone (CI-T2): it cannot tell apart points where the profile is within twice
+    its rounding δ of its least value, so ``|Δz| ≤ 2√(δ/f'')``, with δ the profile's largest
+    departure from a quadratic over z ± 2·10⁻⁶ (81 points) and f'' its curvature (by differences
+    10⁻³ apart); and Brent's bounded search stops within ``2(√ε_mach |z| + xatol/3)`` of where it
+    brackets (scipy's ``_minimize_scalar_bounded``, xatol 10⁻¹⁰ here and in the fit)."""
+    grid = z + np.linspace(-2e-6, 2e-6, 81)
+    values = np.array([profile(t) for t in grid])
+    delta = float(np.abs(values - np.polyval(np.polyfit(grid - z, values, 2), grid - z)).max())
+    h = 1e-3
+    curvature = (profile(z + h) - 2.0 * profile(z) + profile(z - h)) / h ** 2
+    return 2.0 * math.sqrt(delta / curvature) + 2.0 * (math.sqrt(np.finfo(float).eps) * abs(z)
+                                                       + 1e-10 / 3)
+
+
 @pytest.mark.parametrize("noise", [1e-8, 1e-12])
 def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
     """Between the two rules: `x` beside `x` plus noise of SD 10⁻⁸ or 10⁻¹² (a scaled condition
@@ -180,10 +199,23 @@ def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
     ``[1, x, near]`` does (``near − x`` is computed exactly, by Sterbenz's lemma), so γ̂ and the
     fitted values are the dense profile's minimum on that well-conditioned design. The fit is
     REML's exactly on a design within rounding of this one (a Householder QR is backward stable),
-    so it is as close as the condition number allows: γ̂ and the fitted values (against the
-    largest of them) to 10⁻⁷ at 10⁻⁸ and 10⁻³ at 10⁻¹²."""
+    so it is as close as the condition number allows: at 10⁻¹², to 10⁻³ (the condition number
+    times the unit roundoff, 2·10⁻⁴).
+
+    At 10⁻⁸ that rounding (1.9·10⁸ × 1.1·10⁻¹⁶ = 2·10⁻⁸ on the direction of `near − x`) moves the
+    engine's profile by a slope of 4.6·10⁻⁹ in log γ against the dense one, so its minimum by
+    4·10⁻¹⁰ (that slope over the curvature, 12.3), and what bounds γ̂ is how flat both profiles
+    are where their rounding (about 7·10⁻¹⁴ on values near 45) hides their rise: each minimizer
+    stops within :func:`_stopping_room` of its profile's minimum, 1.6·10⁻⁷ for the dense profile
+    and 1.5·10⁻⁷ for the engine's here, with Brent's 7·10⁻⁹ each, measured on the platform the
+    test runs on and summed (with that shift) into γ̂'s relative tolerance, 3.2·10⁻⁷ here. CI's Linux
+    runner had γ̂ 1.29·10⁻⁷ from its reference, which was itself 1.06·10⁻⁷ from this machine's,
+    where 10⁻⁷ was asked. The fitted values move by 1.5·10⁻² of their largest per unit of log γ
+    and by 5.6·10⁻⁹ over designs within rounding of this one, together under 1.1·10⁻⁸, so they
+    keep 10⁻⁷."""
     from scipy.optimize import minimize_scalar
 
+    from turbotab.core.models import repeated
     from turbotab.core.models.repeated import dependencies
     from turbotab.core.tests.test_no_standard_error_refusal import _dense_profile
 
@@ -191,19 +223,38 @@ def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
     codes = units.to_numpy()
     near = x + np.random.default_rng(9).normal(scale=noise, size=N)
     frame = pd.DataFrame({"x": x, "near": near})
-    assert dependencies(np.column_stack([np.ones(N), x, near]))[0] == 0
+    design = np.column_stack([np.ones(N), x, near])
+    assert dependencies(design)[0] == 0
     model = RandomInterceptRegressor(units=units).fit(frame, y)
     d = near - x
     span = np.column_stack([np.ones(N), x, d / np.linalg.norm(d)])
-    found = minimize_scalar(lambda z: _dense_profile(span, y, codes, float(np.exp(z))),
-                            bounds=(-10.0, 5.0), method="bounded", options={"xatol": 1e-10})
+
+    def dense(z: float) -> float:
+        return _dense_profile(span, y, codes, float(np.exp(z)))
+
+    found = minimize_scalar(dense, bounds=(-10.0, 5.0), method="bounded",
+                            options={"xatol": 1e-10})
     gamma = float(np.exp(found.x))
     Hi = np.linalg.inv(np.eye(N) + gamma * (codes[:, None] == codes[None, :]))
     fitted = span @ np.linalg.solve(span.T @ Hi @ span, span.T @ Hi @ y)
-    tol = 1e-7 if noise > 1e-10 else 1e-3
-    assert model.sigma2_u_ / model.sigma2_e_ == pytest.approx(gamma, rel=tol)
+    if noise > 1e-10:
+        sums = repeated._sums(design, y, codes)
+
+        def engine(z: float) -> float:
+            return repeated._profile(math.exp(z), sums)
+
+        z = float(found.x)
+        grid = z + np.linspace(-1e-4, 1e-4, 41)
+        apart = np.array([engine(t) - dense(t) for t in grid])
+        curvature = (dense(z + 1e-3) - 2.0 * dense(z) + dense(z - 1e-3)) / 1e-6
+        shift = abs(float(np.polyfit(grid - z, apart, 1)[0])) / curvature
+        gamma_tol = _stopping_room(dense, z) + _stopping_room(engine, z) + shift
+        fitted_tol = 1e-7
+    else:
+        gamma_tol = fitted_tol = 1e-3
+    assert model.sigma2_u_ / model.sigma2_e_ == pytest.approx(gamma, rel=gamma_tol)
     np.testing.assert_allclose(model.predict(frame), fitted, rtol=0,
-                               atol=tol * float(np.abs(fitted).max()))
+                               atol=fitted_tol * float(np.abs(fitted).max()))
 
 
 def _with_a_recoding() -> pd.DataFrame:
