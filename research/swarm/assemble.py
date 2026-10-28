@@ -86,7 +86,13 @@ record ``GET …/fits`` marks so (``locked``: its key is the one the answers at 
 server's own rule, whatever its plan's digest, which differs when an answer the fit does not read
 came between the fit and the press). Where no record, or more than one, is marked, the result is
 refused and says so, as a result the record cannot know (``refused_kind``), never as one the run
-did not report; it is never the last fit before the lock, nor a fit matched by its digest.
+did not report; it is never the last fit before the lock, nor a fit matched by its digest. The one
+exception is a fit the engine refused (:func:`fit_refused_at_lock`): Fit records the lock before
+the fit runs, so a fit refused in words leaves a lock no record is marked with. Where the fit
+stage, as ``GET /projects/{pid}`` serves it, is refused in words, the plan in force is the lock's
+and no fit record is of that plan, the engine made no fit for the plan it locked, and the result
+is refused in the engine's words, none served. A fit that failed in no words (a crash) is no
+refusal, and its result stays not known.
 
 Its numbers are the ones the app reports for the estimand the lock's plan declares, on that
 measure's scale (``estimand.measure_facts``), never the fit's coefficients read on another:
@@ -320,6 +326,11 @@ CONTRAST_COLUMNS = {"risk_difference": ("rd", "rd_low", "rd_high"),
 def no_locked_fit(lock: int) -> str:
     return (f"No fit record is marked as the fit the lock at record #{lock} was recorded on, so "
             f"that fit is not known from the fit records.")
+
+
+def fit_refused_why(lock: int, words: str) -> str:
+    return (f"The engine refused the fit of the plan locked at record #{lock}, and no fit record "
+            f"is of that plan: {words}")
 
 
 def locked_twice(lock: int, ids: Sequence[str]) -> str:
@@ -1279,17 +1290,20 @@ def _last(records: Sequence[Mapping[str, Any]], kind: str) -> Mapping[str, Any] 
 
 
 def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
-              attempts: Sequence[Mapping[str, Any]], results: Read) -> dict[str, Any]:
+              attempts: Sequence[Mapping[str, Any]], results: Read,
+              fit_stage: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The reported result, once (:class:`record.Result`), or why there is none, with its kind
     (``refused_kind``): ``not_reported``, the run reported none (the seal never opened, the plan
     never locked, no goal, no estimand in the lock's plan); ``not_served``, the engine served none
-    (the opening recorded no held-out scores and its fit serves none; the locked fit serves no
-    exposure rows and withholds none; the effects stage served no marginal risk for any family);
-    ``not_known``, the record cannot say what the run reported (no fit record, or several, is
-    marked the one the lock was recorded on; the route withholds the locked fit's rows now; the
-    opening recorded no scores while its fit serves held-out scores; the results no longer serve
-    the locked plan's marginal risks). Under Estimate the numbers are the estimand's measure's
-    (the module docstring)."""
+    (the opening recorded no held-out scores and its fit serves none; the engine refused the fit
+    of the locked plan, :func:`fit_refused_at_lock`; the locked fit serves no exposure rows and
+    withholds none; the effects stage served no marginal risk for any family); ``not_known``, the
+    record cannot say what the run reported (no fit record, or several, is marked the one the lock
+    was recorded on, and the engine did not refuse that fit; the route withholds the locked fit's
+    rows now; the opening recorded no scores while its fit serves held-out scores; the results no
+    longer serve the locked plan's marginal risks). ``fit_stage``: the fit stage's status as
+    ``GET /projects/{pid}`` serves it; without it a lock no record is marked with is not known.
+    Under Estimate the numbers are the estimand's measure's (the module docstring)."""
     base: dict[str, Any] = {"purpose": purpose, "attempt": None, "plan_digest": None,
                             "decisions": None}
     if purpose == "prediction":
@@ -1327,7 +1341,7 @@ def result_of(purpose: str | None, records: Sequence[Mapping[str, Any]],
                        refused_kind="not_known" if served else "not_served")
         return out
     if purpose == "inference":
-        return _estimate_of(base, records, attempts, results)
+        return _estimate_of(base, records, attempts, results, fit_stage)
     return {**base, "refused": "No goal was declared.", "refused_kind": "not_reported"}
 
 
@@ -1406,21 +1420,12 @@ def serves_lock(doc: Mapping[str, Any], fit: Mapping[str, Any], lock: Mapping[st
     none it leaves, or None where it does (the module docstring): its numbers withheld now; the
     plan in force not the lock's (``plan_lock.plan_changed``, over the log as served); its fit not
     the locked fit, or not current; its effects stage not current."""
-    from turbotab.core import decisions as D, plan_lock
-
     seq = lock["seq"]
     if doc.get("withheld"):
         return str(doc["withheld"]), "not_known"
-    log = Prefixes(records).log
-    held = next((r for r in log or () if r.seq == seq), None)
-    try:
-        state = D.fold(log) if held is not None else None
-    except D.Refusal:
-        state = None
-    if state is None:
-        return unread_log_why(seq), "not_known"
-    if plan_lock.plan_changed(held.decision, state):
-        return plan_changed_why(seq), "not_known"
+    changed = plan_since(lock, records)
+    if changed is not None:
+        return changed, "not_known"
     served, effects = doc.get("fit") or {}, doc.get("effects") or {}
     if not (served.get("key") and served.get("key") == fit.get("fit_key") and served.get("fresh")
             and effects.get("fresh")):
@@ -1428,8 +1433,57 @@ def serves_lock(doc: Mapping[str, Any], fit: Mapping[str, Any], lock: Mapping[st
     return None
 
 
+def plan_since(lock: Mapping[str, Any], records: Sequence[Mapping[str, Any]]) -> str | None:
+    """Why the plan in force is not known to be the one ``lock`` recorded, or None where it is:
+    the log as served does not read as the server's, or the plan was changed after the lock
+    (``plan_lock.plan_changed``, the server's own rule)."""
+    from turbotab.core import decisions as D, plan_lock
+
+    seq = lock["seq"]
+    log = Prefixes(records).log
+    held = next((r for r in log or () if r.seq == seq), None)
+    try:
+        state = D.fold(log) if held is not None else None
+    except D.Refusal:
+        state = None
+    if state is None:
+        return unread_log_why(seq)
+    if plan_lock.plan_changed(held.decision, state):
+        return plan_changed_why(seq)
+    return None
+
+
+def fit_refused_at_lock(stage: Mapping[str, Any] | None, lock: Mapping[str, Any],
+                        records: Sequence[Mapping[str, Any]],
+                        attempts: Sequence[Mapping[str, Any]]) -> str | None:
+    """Why the engine made no fit for the plan ``lock`` recorded, in the engine's own words, or
+    None where that is not known (the module docstring). Fit records the lock before the fit runs
+    (``ProjectService.press_fit``), and a fit is recorded only once its key is fresh, so a fit the
+    engine refuses leaves a lock that no fit record is marked with. It is the lock's fit that was
+    refused where the fit stage now (``stage``, as ``GET /projects/{pid}`` serves it) is refused
+    in words (``status`` ``error`` with a ``refusal``: its own, or a stage's it waits on), the plan
+    in force is the lock's (:func:`plan_since`), so the fit now is the lock's (an estimate stage
+    reads only the plan's answers), and no fit record is of that plan, as the server's gate reads
+    one (``ProjectService._record_gate``): none at the stage's key, none whose plan's digest is the
+    lock's, none with the lock among its records in force. A fit that failed in no words (a
+    crash), or is not failed now, leaves this not known."""
+    if not isinstance(stage, Mapping) or stage.get("status") != "error":
+        return None
+    refusal = stage.get("refusal")
+    words = refusal.get("message") if isinstance(refusal, Mapping) else None
+    key = stage.get("key")
+    if not words or not key or plan_since(lock, records) is not None:
+        return None
+    digest = lock["decision"].get("digest")
+    if any(a.get("fit_key") == key or a.get("plan_digest") == digest
+           or lock["seq"] in (a.get("decisions") or ()) for a in attempts):
+        return None
+    return fit_refused_why(lock["seq"], str(words))
+
+
 def _estimate_of(base: dict[str, Any], records: Sequence[Mapping[str, Any]],
-                 attempts: Sequence[Mapping[str, Any]], results: Read) -> dict[str, Any]:
+                 attempts: Sequence[Mapping[str, Any]], results: Read,
+                 fit_stage: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """:func:`result_of` under Estimate (the module docstring)."""
     from turbotab.core.estimand import MARGINAL, MEASURE_WORDS, measure_facts
 
@@ -1441,6 +1495,9 @@ def _estimate_of(base: dict[str, Any], records: Sequence[Mapping[str, Any]],
     out = {**base, "lock": lock["seq"], "plan_digest": digest}
     held = [a for a in attempts if a.get("locked")]
     if not held:
+        refused = fit_refused_at_lock(fit_stage, lock, records, attempts)
+        if refused is not None:
+            return {**out, "refused": refused, "refused_kind": "not_served"}
         return {**out, "refused": no_locked_fit(lock["seq"]), "refused_kind": "not_known"}
     if len(held) > 1:
         return {**out, "refused": locked_twice(lock["seq"], [a["id"] for a in held]),
@@ -1726,7 +1783,8 @@ def build(served: Served, run: RunDir, meta: Mapping[str, Any]) -> dict[str, Any
     attempts = attempts_of(fit_records, records, run.markers)
     log = served.analyst_log.body
     export, provenance = export_of(served, run.commands)
-    result = result_of(purpose, records, attempts, served.results)
+    result = result_of(purpose, records, attempts, served.results,
+                       fit_stage=(view.get("stages") or {}).get("fit"))
     regime = regime_of(state, served.stages)
     regime["markers"] = M.live(view, served_reader(served)) + M.post_hoc(result, attempts)
     return {

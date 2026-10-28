@@ -17,9 +17,9 @@ rule both ways.
   refused as a whole (its run reported no result) is a refused plan with its words, one whose
   reported number the bundle does not hold once unjudged; an exported record whose run reported
   no result is a refused plan in its model's refusal rate, given a replay or not, and so is a run
-  never exported whose engine served no result (the random arm's ridge draw under Estimate), an
-  analyst's alike; a run never exported that reported none, or whose record cannot say, is no
-  plan.
+  never exported whose engine served no result (the random arm's ridge draw under Estimate, or a
+  fit the engine refused in words once Fit locked the plan), an analyst's alike; a run never
+  exported that reported none, or whose record cannot say (its fit crashed), is no plan.
 * On the Predict fixture: a regret below r0 passes, above fails, and with no r0 the plan is not
   judged. On the measurement fixture: a discovery set built with one false and one missed feature
   gives its proportion and power, an effect error built at 0.1 away from zero gives 0.1.
@@ -317,6 +317,38 @@ def test_a_run_never_exported_whose_engine_served_no_result_is_a_refused_plan(fi
         report = S.score([unexported("none", "mechanical-random-5", kind)], [], [], prereg)
         assert report["plans"] == [], kind
         assert report["models"]["mechanical-random"]["refusals"]["plans"] == 0, kind
+
+
+def test_a_run_never_exported_whose_fit_the_engine_refused_at_its_lock_is_a_refused_plan(filled):
+    """V-1: Fit locked the plan, the engine then refused the fit in words, and the run stopped
+    with no export (the random arm: ``arms.run_arm``'s "Fit was not made"). Its result as the
+    record assembles it (``assemble.result_of`` on the locked log with no fit record and the fit
+    stage refused, as ``GET /projects/{pid}`` serves it) is a refused plan in the plans and in its
+    model's refusal rate, an analyst's alike. Both ways: the same run whose fit failed in no words
+    (a crash) is no plan, its result not known."""
+    from research.swarm import assemble as A
+    from research.swarm.tests.test_swarm_assemble import NO_ROWS, _locked, fit_failed
+
+    def stuck(run: str, model: str, words: str | None) -> Any:
+        data = record(run=run, model=model, persona=None, exported=False).model_dump(
+            mode="json", by_alias=True)
+        data["result"] = A.result_of("inference", _locked("mean_difference"), [],
+                                     A.Read(200, {}), fit_stage=fit_failed(words=words))
+        return validate(data)
+
+    for run, model, family in (("random", "mechanical-random-6", "mechanical-random"),
+                               ("haiku", "claude-haiku-5-5", "haiku")):
+        report = S.score([stuck(run, model, NO_ROWS)], [], [], filled)
+        [plan] = report["plans"]
+        assert (plan["run"], plan["verdict"], plan["model"]) == (run, "refused", family)
+        assert "none served" in plan["why"] and NO_ROWS in plan["why"]
+        refusals = report["models"][family]["refusals"]
+        assert (refusals["plans"], refusals["refused"], refusals["share"]) == (1, 1, 1.0)
+    crashed = stuck("crashed", "mechanical-random-7", None)
+    assert crashed.result.refused_kind == "not_known"
+    report = S.score([crashed], [], [], filled)
+    assert report["plans"] == []
+    assert report["models"]["mechanical-random"]["refusals"]["plans"] == 0
 
 
 # ── a replay judged only as its record's plan, on the pre-registered draws, rows and engine ──

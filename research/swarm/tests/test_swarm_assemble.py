@@ -1028,9 +1028,10 @@ def test_under_estimate_the_result_is_the_locked_fit_whatever_its_plans_digest()
 
 
 def test_under_estimate_a_lock_no_fit_record_is_marked_with_is_refused():
-    """No fit record is marked as the one the lock was recorded on (that fit never completed, say):
-    the result is refused, never the fit whose plan's digest is the lock's, nor the last fit before
-    the lock; nor where two are marked."""
+    """No fit record is marked as the one the lock was recorded on (that fit never completed, say,
+    and no refusal of it is served: a fit the engine refused is none served, below): the result is
+    refused, never the fit whose plan's digest is the lock's, nor the last fit before the lock;
+    nor where two are marked."""
     unmarked = [{**f, "locked": False} for f in TRIED_FITS]
     got = A.result_of("inference", TRIED, unmarked, A.Read(200, {}))
     assert (got["attempt"], got["lock"], got["plan_digest"], got.get("estimates")) == (
@@ -1399,6 +1400,64 @@ def test_on_the_served_journey_a_random_forest_lock_is_refused_in_the_effects_st
     assert status["refusal"]["message"] == NO_TABLE_WORDS and validate_result(got)
 
 
+NO_ROWS = ("There are no analyzed rows to build the models on; the row flow says which answers "
+           "removed them.")
+
+
+def fit_failed(key: str = "key9", words: str | None = NO_ROWS) -> dict[str, Any]:
+    """The fit stage's status as ``GET /projects/{pid}`` serves it (the engine's own
+    ``graph.StageStatus``), failed at ``key``: refused in ``words`` where they are given, as the
+    design stage it waits on refused (``graph.Refused``, the stage that refused named), else a
+    failure in no words (a crash)."""
+    from turbotab.core.graph import Refused, StageStatus
+
+    refusal = Refused(stage="design", code="no_rows", message=words) if words else None
+    return StageStatus(stage="fit", status="error", key=key, error="Needs 'design', which failed.",
+                       refusal=refusal).model_dump(mode="json")
+
+
+def test_under_estimate_a_lock_whose_fit_the_engine_refused_is_refused_none_served():
+    """V-1: Fit records the lock before the fit runs, and a fit is recorded only once its key is
+    fresh, so a fit the engine refuses in words leaves a lock no fit record is marked with. Where
+    the fit stage is refused in words, the plan in force is the lock's and no fit record is of that
+    plan (a record of an earlier plan beside it or none), the engine made no fit for the plan it
+    locked: the result is refused in the engine's words, none served (SWARM_PLAN §7's refused
+    plan). Both ways, it stays not known: with no fit stage served (the default), a fit that failed
+    in no words, one not failed now, a plan changed after the lock or a log that does not read,
+    and a fit record of the lock's plan (at the stage's key, with the lock's digest, or with the
+    lock in force)."""
+    log = _locked("mean_difference")
+    lock = log[3]
+    earlier = {"id": "fit0", "fit_key": "key0", "plan_digest": "d0", "decisions": [1, 2, 3],
+               "effects": {"linear": [dict(LOG_ODDS)]}, "withheld": None, "locked": False}
+    for fits in ([], [earlier]):
+        got = A.result_of("inference", log, fits, A.Read(200, {}), fit_stage=fit_failed())
+        assert (got["refused"], got["refused_kind"]) == (A.fit_refused_why(4, NO_ROWS),
+                                                         "not_served")
+        assert NO_ROWS in got["refused"] and "#4" in got["refused"]
+        assert (got["attempt"], got["lock"], got.get("estimates")) == (None, 4, None)
+        assert validate_result(got)
+
+    def kind(stage: Any = fit_failed(), records: Any = log, fits: Any = ()) -> tuple[str, str]:
+        got = A.result_of("inference", records, list(fits), A.Read(200, {}), fit_stage=stage)
+        return got["refused"], got["refused_kind"]
+
+    not_known = (A.no_locked_fit(4), "not_known")
+    assert A.result_of("inference", log, [], A.Read(200, {}))["refused_kind"] == "not_known"
+    assert kind(stage=None) == not_known
+    assert kind(stage=fit_failed(words=None)) == not_known
+    for status in ("running", "queued", "fresh", "stale", "idle", "blocked"):
+        assert kind(stage={**fit_failed(), "status": status}) == not_known, status
+    rules = {"kind": "set_exclusions", "rules": [{"column": "x", "low": 0, "high": 9,
+                                                  "reason": "range"}]}
+    assert kind(records=_locked("mean_difference", rules)) == not_known
+    assert kind(records=TRIED) == (A.no_locked_fit(5), "not_known")  # its log does not fold
+    for of_plan in ({**earlier, "fit_key": "key9"},
+                    {**earlier, "plan_digest": lock["decision"]["digest"]},
+                    {**earlier, "decisions": [1, 2, 3, 4]}):
+        assert kind(fits=[of_plan]) == not_known, of_plan
+
+
 def test_a_lock_whose_plan_declares_no_estimand_reports_no_estimate():
     no_estimand = [*_locked("odds_ratio")[:3], _rec(4, 4, {"kind": "lock_plan", "plan": {},
                                                             "digest": "d"})]
@@ -1579,6 +1638,28 @@ def test_a_route_that_fails_to_serve_leaves_a_failed_run_not_an_empty_record(tmp
     assert not ok and path == tmp_path / "failed" / "failed" / "r1.json"
     assert json.loads(path.read_text("utf-8"))["assembled"]["unreadable"].startswith(
         f"{name} could not be read (HTTP 500)")
+
+
+def test_the_record_reads_the_fit_stage_the_project_serves_where_no_fit_is_locked(tmp_path):
+    """V-1 through the assembly: the project served with the locked log, its fit stage refused in
+    words (``GET /projects/{pid}``'s ``stages``) and no fit record, as a run left whose fit the
+    engine refused after Fit locked the plan: the record validates, its result refused in the
+    engine's words, none served. Both ways: the same project with its fit stage not failed leaves
+    the result not known."""
+    run = _run_dir(tmp_path / "runs" / "r1", started="2026-10-18T10:00:00+00:00")
+    log = _locked("mean_difference")
+    fresh = {**fit_failed(), "status": "fresh", "fresh": True, "error": None, "refusal": None}
+    for stage, kind in ((fit_failed(), "not_served"), (fresh, "not_known")):
+        project = {"decisions": log, "state": {"purpose": "inference"}, "stages": {"fit": stage},
+                   "summary": {"source_name": "table.csv"}}
+        path, ok = A.assemble(run, meta=META, client=FakeClient({**_served_routes(),
+                                                                 "/p1": project}),
+                              corpus=tmp_path / kind, mattered_wait=0)
+        raw = json.loads(path.read_text("utf-8"))
+        assert ok, raw
+        result = validate(raw).result
+        assert (result.refused_kind, result.lock, result.attempt) == (kind, 4, None)
+        assert (result.refused == A.fit_refused_why(4, NO_ROWS)) is (kind == "not_served")
 
 
 # ── end to end ───────────────────────────────────────────────────────────────
