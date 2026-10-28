@@ -225,6 +225,40 @@ def test_a_line_that_is_not_json_is_refused_naming_its_number(tmp_path):
     assert "line 2" in json.loads(printed[0])["refused"] and not (tmp_path / "t.txt").exists()
 
 
+# Characters Python's str.splitlines breaks a line at but JSON lines do not: JSON leaves U+2028,
+# U+2029 and U+0085 raw inside a string (json.dumps with ensure_ascii=False, as the driver prints
+# its JSON) and writes U+000C escaped, as \f; a JSON line ends at "\n" alone.
+ODD = "a b c\x85d\x0ce"
+
+
+def test_a_line_break_python_reads_inside_a_json_string_is_kept_and_breaks_no_line(tmp_path):
+    """A transcript whose valid lines hold U+2028, U+2029 and U+0085 raw and U+000C escaped inside
+    their strings is extracted with each kept where it stood, and its lines are numbered by "\\n"
+    alone: a line after them that is not JSON is refused under its own number, and so is a line
+    that holds only U+2028, which is no JSON whitespace."""
+    lines = [line("user", f"Run run_01. The card: {ODD}"),
+             line("assistant", [{"type": "text", "text": ODD}], message={"id": "m1"}),
+             line("assistant", [{"type": "tool_use", "id": "t1", "name": "Bash",
+                                 "input": {"command": f"echo '{ODD}'"}}], message={"id": "m1"}),
+             line("user", [{"type": "tool_result", "tool_use_id": "t1", "content": ODD}])]
+    path = tmp_path / "agent.jsonl"
+    path.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in lines), "utf-8")
+    raw = path.read_text("utf-8")
+    assert all(c in raw for c in "  \x85") and "\x0c" not in raw and "\\f" in raw
+    assert raw.count("\n") == 4 and len(raw.splitlines()) > 4  # Python alone breaks them
+    expected = (f"[1] TO THE ANALYST\nRun run_01. The card: {ODD}\n\n[2] THE ANALYST\n{ODD}\n\n"
+                f"[3] COMMAND\necho '{ODD}'\n\n[4] OUTPUT\n{ODD}\n")
+    assert T.extract(path) == expected
+    out, printed = tmp_path / "t.txt", []
+    assert T.main([str(path), "--out", str(out)], out=printed.append) == 0
+    assert out.read_bytes().decode("utf-8") == expected
+    assert json.loads(printed[0]) == {"written": str(out), "entries": 4}
+    for bad, n in (("{not json", 5), (" ", 5), ("\n{not json", 6)):
+        path.write_text(raw + bad + "\n", "utf-8")
+        with pytest.raises(T.Unread, match=f"line {n} is not JSON"):
+            T.extract(path)
+
+
 # ── the reader's role ────────────────────────────────────────────────────────
 
 

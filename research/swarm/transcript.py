@@ -34,8 +34,10 @@ background command's notice (its ``prompt``).
 No thinking, no harness context on :data:`HARNESS_CONTEXT`'s list (the same for every run, or
 about the session rather than the analysis: the model's name and the account's email address
 among it), no record of the session, no command's description, and no usage, id, time or model. A block that a
-later line of the same message repeats is written once. A line that is not JSON is refused
-(:class:`Unread`), naming its number, and nothing is written.
+later line of the same message repeats is written once. A line ends at ``"\\n"`` alone, as JSON
+lines do, so a line separator a string holds raw (U+2028, U+2029, U+0085) is kept in its text and
+ends no line. A line that is not JSON is refused (:class:`Unread`), naming its number so counted,
+and nothing is written.
 """
 from __future__ import annotations
 
@@ -80,8 +82,10 @@ class Unread(ValueError):
 
 
 def _lines(path: Path) -> Iterator[dict[str, Any]]:
-    for n, text in enumerate(Path(path).read_text("utf-8").splitlines(), start=1):
-        if not text.strip():
+    # A JSON line ends at "\n" alone: not at what else str.splitlines breaks at (U+2028, U+2029,
+    # U+0085, which JSON leaves raw inside a string), and blank only where JSON's own whitespace.
+    for n, text in enumerate(Path(path).read_bytes().decode("utf-8").split("\n"), start=1):
+        if not text.strip(" \t\r"):
             continue
         try:
             item = json.loads(text)

@@ -36,8 +36,10 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
   the prices and the plain write go through while the generators give what prereg.json holds,
   and each is refused, naming the part and the run, once a rule has changed (§7's unit's
   minimum, which the unit's part alone states); with no graded run the changed rule is written.
+  With a graded run and no prereg.json, the plain write writes none; with none, it writes one.
   A launch kept in a repository's main checkout refuses a fill made in a worktree of it
-  (``git worktree add``), as in the main checkout.
+  (``git worktree add``), as in the main checkout; where git cannot place that folder (a ``.git``
+  file naming no repository), the plain write is refused in the launcher's words.
 """
 from __future__ import annotations
 
@@ -903,6 +905,55 @@ def test_a_launch_in_one_checkout_refuses_a_fill_made_in_another_of_the_same_rep
         with pytest.raises(P.Refused, match=f"{SULLIVAN} has 1 graded run.*{RUN}"):
             P.fill(prereg, only(SULLIVAN), engine=ENGINE)
     assert ESTIMATE in P.fill(prereg, only(ESTIMATE), engine=ENGINE)["filled"]["reports"]
+
+
+def test_with_a_graded_run_and_no_prereg_json_the_plain_write_refuses_and_writes_none(
+        tmp_path, monkeypatch, capsys, once):
+    """The plain write reads the graded runs where the launcher keeps them (here the test's). With
+    a launch of the Estimate fixture and no prereg.json, it is refused, naming the run, and no
+    file is written; with an empty launches folder, it writes prereg.json, what the generators
+    give with nothing filled."""
+    path = tmp_path / "prereg.json"
+    monkeypatch.setattr(P, "GRADED", launched(tmp_path / "launches", RUN, ESTIMATE))
+    assert P.main(["--prereg", str(path)]) == 1
+    assert json.loads(capsys.readouterr().out) == {"refused": (
+        f"There is no prereg.json, and the pilot has 1 graded run already ({RUN}): its margins "
+        f"and rules are fixed before the first graded run, so none is written now.")}
+    assert not path.exists()
+    # The other way: with no graded run, one is written.
+    (tmp_path / "empty").mkdir()
+    monkeypatch.setattr(P, "GRADED", tmp_path / "empty")
+    assert P.main(["--prereg", str(path)]) == 0
+    assert capsys.readouterr().out == f"wrote {path}\n"
+    written = P.load(path)
+    assert written["filled"] == P.EMPTY_FILLED and P.check(written) == []
+
+
+def test_the_plain_write_is_refused_where_git_cannot_place_the_launches_and_not_where_it_can(
+        tmp_path, monkeypatch, capsys, once):
+    """With no launches folder named, the plain write reads the one the main checkout keeps
+    (``launcher.launches_of``). In a checkout whose ``.git`` file names no repository, git cannot
+    place it: the write is refused in the launcher's words and no file is written. In a worktree
+    of a repository whose main checkout holds no launch, prereg.json is written."""
+    from research.swarm import launcher as L
+
+    monkeypatch.setattr(P, "GRADED", None)  # the launcher's folder, not the tests' empty one
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    (broken / ".git").write_text(f"gitdir: {tmp_path / 'nowhere'}\n", "utf-8")
+    monkeypatch.setattr(L, "REPO", broken)
+    path = tmp_path / "prereg.json"
+    assert P.main(["--prereg", str(path)]) == 1
+    assert json.loads(capsys.readouterr().out) == {"refused": (
+        f"git cannot tell which checkout is the main one for {broken.resolve()} (its .git is a "
+        f"file git does not follow), so the launches every checkout shares cannot be found.")}
+    assert not path.exists()
+    # The other way: a worktree whose main checkout git places, with no launch there.
+    main, other = checkouts(tmp_path)
+    monkeypatch.setattr(L, "REPO", other)
+    assert not L.launches_of(other).exists()
+    assert P.main(["--prereg", str(path)]) == 0
+    assert capsys.readouterr().out == f"wrote {path}\n" and P.check(P.load(path)) == []
 
 
 def test_the_commands_fill_one_dataset_and_say_whether_it_may_launch(prereg, tmp_path, capsys,
