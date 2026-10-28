@@ -331,9 +331,10 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
     to bound its linear predictor's SD (the tail tables package), merged after T2 and T3, which moved
     the same stages, so each is one past both; and one more when a dependency's columns came to be
     read on the centered design and an iterative fit's table to be served only at its maximum
-    (T5a)."""
+    (T5a); and one more when a Firth table on completely separated rows came to report its
+    estimates alone (T5c)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (38, 21, 18, 12, 9, 12, 5)
+    assert tuple(versions[s] for s in stages) == (39, 22, 19, 13, 10, 13, 6)

@@ -24,7 +24,11 @@ Under inference the linear family's coefficient table is made here, in four part
   programming algorithms for detecting separated data in binary logistic regression models*,
   DPhil thesis, Oxford), named, and the table becomes Firth's penalized likelihood (Firth 1993,
   *Biometrika* 80:27) with profile penalized-likelihood intervals and likelihood-ratio p-values
-  (Heinze & Schemper 2002, *Stat Med* 21:2409), whose estimates are finite. The survey
+  (Heinze & Schemper 2002, *Stat Med* 21:2409), whose estimates are finite. Where the
+  separation is complete (:func:`completely_separated`: some direction puts every row strictly on
+  its own side), the table reports the penalized estimates alone, in words that say why
+  (:func:`complete_separation_words`): with a coefficient held at a value the penalized
+  likelihood can have more than one maximum, and its profile cannot be certified. The survey
   multinomial and the proportional-odds tables run the same linear programs on their own
   likelihoods (:func:`separated_multinomial`, :func:`separated_ordinal`) and refuse a separated
   table, naming the separating column. Under multiple
@@ -696,6 +700,45 @@ def _boxed(X: np.ndarray) -> np.ndarray | None:
     if n <= P or np.linalg.matrix_rank(Xs) < P:
         return None
     return Xs
+
+
+def completely_separated(X: np.ndarray, y: np.ndarray) -> bool:
+    """Whether some direction β puts every row strictly on its own side, ``s_i x_iᵀβ > 0`` for
+    every row (complete separation, Albert & Anderson 1984, *Biometrika* 71:1), not only
+    ``s_i x_iᵀβ ≥ 0`` with some row strict (quasi-complete separation), on
+    :func:`separated_columns`' boxed design: one linear program maximizes the least margin t,
+    ``s_i x_iᵀβ ≥ t`` for every row with β boxed in [−1, 1] and t in [0, 1], and the direction it
+    returns is checked again on the rows (its least margin above 10⁻⁶) before it is believed.
+    False where the rows do not exceed the columns or the design is rank-deficient
+    (:func:`_boxed`)."""
+    from scipy.optimize import linprog
+
+    Xs = _boxed(X)
+    if Xs is None:
+        return False
+    s = np.where(np.asarray(y, dtype=float) > 0.5, 1.0, -1.0)
+    n, P = Xs.shape
+    least = np.zeros(P + 1)
+    least[P] = -1.0
+    result = linprog(least, A_ub=np.column_stack([-(s[:, None] * Xs), np.ones(n)]),
+                     b_ub=np.zeros(n), bounds=[(-1.0, 1.0)] * P + [(0.0, 1.0)], method="highs")
+    if result.status != 0 or result.x is None:
+        return False
+    beta = np.where(np.abs(result.x[:P]) < 1e-9, 0.0, result.x[:P])
+    return bool((s * (Xs @ beta)).min() > 1e-6)
+
+
+def complete_separation_words(separated: Sequence[str]) -> str:
+    """Why a Firth table on completely separated rows (:func:`completely_separated`) reports its
+    penalized estimates alone: with a coefficient held at a value the penalized likelihood can
+    have more than one maximum there, and the profile's fits cannot certify that they found the
+    highest, so a bound could be found inside the interval and a p-value overstated."""
+    verb = "separates" if len(separated) == 1 else "separate"
+    return (f"{_and(separated)} {verb} the outcome completely: some combination of the columns "
+            f"puts every row of each outcome on its own side. With a coefficient held at a value, "
+            f"Firth's penalized likelihood can then have more than one maximum, and the fit cannot "
+            f"certify that it found the highest, so no profile interval or p-value is reported, "
+            f"only each coefficient's penalized estimate.")
 
 
 def separated_multinomial(X: np.ndarray, codes: np.ndarray, K: int) -> list[int]:
@@ -1993,7 +2036,9 @@ def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clust
     check of a linear combination where the columns were centered, it gives through
     :attr:`InferenceTable.contrast` (:func:`firth_combination`), so no profile is computed for an
     intercept the centering moves. An intercept whose profile cannot be computed
-    (:class:`FirthProfileFailed`) is refused by row, with no estimate, the words a concern."""
+    (:class:`FirthProfileFailed`) is refused by row, with no estimate, the words a concern. A
+    table refused whole (on completely separated rows among them) gives its intercept's estimate
+    alone."""
     fit = firth_fit(X, y)
     table = _firth_rows(names, X, y, clusters, separated, fit)
     refused = table.info.get("refused") is not None
@@ -2053,6 +2098,15 @@ def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Cluste
         rows = [_row(name, est[j], se[j]) for j, name in enumerate(names)]
         return InferenceTable(rows, _info(estimator, "profile", POOLED_FIRTH_CAPTION, clusters,
                                           **extra), concerns)
+    if completely_separated(X, y):
+        # Held at a value the penalized likelihood can have several maxima, and the warm-started
+        # profile stopped on a lower one: beside `xs` = sign(y)·(0.3 + |d|) on 120 rows its upper
+        # bound was served at 16.53, where the ratio is 3.02 (the bound is near 19.4; T5aV2-1).
+        table = _refused(names, est, estimator, clusters, complete_separation_words(separated),
+                         separation_exits(separated))
+        table.info.update(extra)
+        table.concerns.insert(0, concern)
+        return table
     rows = []
     for j, name in enumerate(names):
         if name == "(intercept)":  # its profile is :func:`firth_combination`'s (:func:`_firth_table`)
