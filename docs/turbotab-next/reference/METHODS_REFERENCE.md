@@ -2097,7 +2097,7 @@ None declared.
 
 **Methods sentence:**
 
-- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses.
+- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses, then the family's multiplicity sentence. It describes the first family chosen; where another family reports an estimate from a model the first reports none from (the linear model's Model 2 singular where feature-wise regression tests `fiber` in it), each family's text is said under its name (the verifier's V4a2-1).
 
 **Relations:**
 
@@ -2894,7 +2894,7 @@ None declared.
 
 **Methods sentence:**
 
-- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses.
+- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses, then the family's multiplicity sentence. It describes the first family chosen; where another family reports an estimate from a model the first reports none from (the linear model's Model 2 singular where feature-wise regression tests `fiber` in it), each family's text is said under its name (the verifier's V4a2-1).
 
 **Relations:**
 
@@ -2942,7 +2942,7 @@ None declared.
 
 **Methods sentence:**
 
-- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses.
+- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses, then the family's multiplicity sentence. It describes the first family chosen; where another family reports an estimate from a model the first reports none from (the linear model's Model 2 singular where feature-wise regression tests `fiber` in it), each family's text is said under its name (the verifier's V4a2-1).
 
 **Relations:**
 
@@ -3061,7 +3061,7 @@ None declared.
 
 **Methods sentence:**
 
-- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses.
+- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses, then the family's multiplicity sentence. It describes the first family chosen; where another family reports an estimate from a model the first reports none from (the linear model's Model 2 singular where feature-wise regression tests `fiber` in it), each family's text is said under its name (the verifier's V4a2-1).
 
 **Relations:**
 
@@ -3151,7 +3151,7 @@ None declared.
 
 **Methods sentence:**
 
-- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses.
+- Written by `turbotab.core.stages.effects:methods_sentence`: The methods text this stage writes, from what it fitted: the sequence, the display rule, the marginal standardization, the diagnostics and their responses, and the sensitivity analyses, then the family's multiplicity sentence. It describes the first family chosen; where another family reports an estimate from a model the first reports none from (the linear model's Model 2 singular where feature-wise regression tests `fiber` in it), each family's text is said under its name (the verifier's V4a2-1).
 
 **Relations:**
 
