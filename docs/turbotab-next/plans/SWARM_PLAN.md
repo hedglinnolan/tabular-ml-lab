@@ -363,14 +363,17 @@ Written in `research/swarm/prereg.json` by `research/swarm/prereg_fill.py` and a
 orchestrator's ruling of 2026-10-28), so a dataset whose crash sweep has passed need not wait
 for the slowest one's:
 - every rule and margin the generators give (b₀, the coverage band, k, the r₀ rule, the prices'
-  rule, the materiality rules) is written before the first graded run, as before;
+  rule, the materiality rules) is written before the first graded run, as before, and never
+  rewritten after it: once the pilot has a graded run, every fill and write is refused where the
+  generators no longer give what `prereg.json` holds;
 - a dataset launches once its own fit budget is filled from its own passed crash sweep, and every
   report filled and the engine now share one `turbotab/` tree, with no file modified;
 - r₀'s value is filled before any run on the Predict fixture;
 - the sweeps' compute cap, which needs every dataset's crash sweep, before the pilot's sweep step;
 - each fill is mechanical (a crash sweep's fits and seconds; r₀ from the default path's replay),
   reads no graded run, is recorded with when it was filled, and is refused for a dataset that
-  already has a graded run.
+  already has a graded run (a launch of it, read from the main checkout's launches, which the
+  launcher writes and every checkout reads).
 
 **Regression checks** on every run (they hold by construction): seal integrity, schema validity, a
 reason on every preview and decision.

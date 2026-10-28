@@ -90,8 +90,9 @@ run's record reads them from ``commands.jsonl``, so their source is the driver.
 ``answer``, ``revisit``, ``fit``, ``results``, ``seal``, ``export``, ``want`` or ``account``
 runs (:data:`ANALYST_COMMANDS`), opening anything a run
 is judged against (a dataset's declared answers and its manifest under ``research/datasets/``, the
-corpus records and their materiality under ``research/corpus/``, the fixtures' declared truths, the
-decoy's generator, the glucose benchmark) or importing a module that holds or builds them
+corpus records and their materiality under ``research/corpus/``, the launches with their known
+answers in the main checkout's, which every checkout shares (``launcher.LAUNCHES``), the fixtures'
+declared truths, the decoy's generator, the glucose benchmark) or importing a module that holds or builds them
 (:data:`UNREAD_MODULES`), by
 an import statement or by ``importlib``, is refused, so nothing it prints can come from them. The
 driver itself imports none of those modules, so none is loaded before a command runs.
@@ -123,6 +124,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from research.swarm import declarations as decl
+from research.swarm import launcher
 from research.swarm import options as opts
 from research.swarm import vocabulary as V
 
@@ -180,9 +182,12 @@ class DriverError(Exception):
 UNREAD_MODULES = ("turbotab.core.tests.truths", "research.swarm.intake", "research.swarm.decoys",
                   "research.swarm.record", "research.swarm.assemble", "research.swarm.checks",
                   "research.swarm.referee", "research.swarm.benchmark")
-# The dry run's folder holds corpus-shaped records with known answers for three pilot datasets.
+# The dry run's folder holds corpus-shaped records with known answers for three pilot datasets;
+# the launches, each with its run's known answer, are the main checkout's, whichever checkout
+# this is (``launcher.LAUNCHES``, None where git cannot say which that is).
 UNREAD_FOLDERS = (REPO / "research" / "datasets", REPO / "research" / "corpus",
-                  REPO / "research" / "swarm" / "dryrun")
+                  REPO / "research" / "swarm" / "dryrun") + (
+    (launcher.LAUNCHES,) if launcher.LAUNCHES is not None else ())
 UNREAD_FILES = (REPO / "turbotab" / "core" / "tests" / "truths.py",
                 REPO / "research" / "swarm" / "decoys.py", REPO / "research" / "swarm" / "intake.py",
                 REPO / "research" / "swarm" / "benchmark.py")

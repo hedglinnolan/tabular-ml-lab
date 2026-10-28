@@ -143,6 +143,8 @@ build needs, you are told before the rest runs (SWARM_PLAN §6).
   `Bash(scripts/py -m research.swarm.driver:*)` in `.claude/settings.local.json`, local only.
 - **The pilot's launcher:**
   - it writes each known answer as `{feature, family?, measure, value}` or `{null: true}`;
+  - it writes each launch to the main checkout's `research/corpus/launches`, whichever checkout
+    it runs in, and `prereg_fill` reads the graded runs there from any checkout;
   - `start` names each run itself (`run_NN` plus a secret part), so no label tells an analyst it
     is on a decoy;
   - the fit budget is set from the first runs' measured fit times (§6).

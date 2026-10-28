@@ -5,7 +5,8 @@ both ways, the fit budget from its measured fits by hand, the pre-registration g
 both ways (``prereg_fill.ready`` asked before each, here a stand-in, and package 6b's own where it
 is on the tree) with the fit budget prereg.json holds, and the start command line the launcher
 hands the driver: no label of its own, the run named by the driver, the known answer written where
-no analyst's command reads it."""
+no analyst's command reads it, in the launches folder every checkout shares (the main checkout's,
+the first ``git worktree list`` names), with no command-line option to write it elsewhere."""
 from __future__ import annotations
 
 import json
@@ -297,3 +298,45 @@ def test_the_committed_pre_registration_gates_the_launch_in_prereg_fills_words(t
     else:
         assert isinstance(out, L.Refused) and str(out) == f"{PILOT} is not launched: {why}"
         assert given == []
+
+
+# ── the launches every checkout shares ───────────────────────────────────────
+
+
+def test_the_launches_are_the_main_checkouts_whichever_checkout_reads_them():
+    """The launches folder is research/corpus/launches in the main checkout, the first worktree
+    ``git worktree list`` names, from this checkout whichever it is; the driver's seal covers it
+    there too."""
+    import subprocess
+    from pathlib import Path
+
+    out = subprocess.run(["git", "-C", str(L.REPO), "worktree", "list", "--porcelain"],
+                         capture_output=True, text=True, timeout=60)
+    if out.returncode != 0:
+        pytest.skip("not run from a git checkout")
+    main = Path(out.stdout.splitlines()[0].split(" ", 1)[1]).resolve()
+    assert L.LAUNCHES == L.launches_of() == main / "research" / "corpus" / "launches"
+    assert driver.unread(L.LAUNCHES / "run_01-x.json")
+
+
+def test_a_worktree_whose_main_checkout_git_cannot_name_reads_no_launches(tmp_path):
+    """A folder whose ``.git`` is a file git cannot follow (a worktree it cannot place) has no
+    launches folder it can be sure every checkout shares, so it is refused; a folder in no git
+    repository is its own only checkout."""
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    (broken / ".git").write_text("gitdir: /nowhere/.git/worktrees/x\n", "utf-8")
+    with pytest.raises(L.Refused, match="cannot tell which checkout is the main one"):
+        L.launches_of(broken)
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert L.launches_of(plain) == plain.resolve() / "research" / "corpus" / "launches"
+
+
+def test_the_launchers_command_line_takes_no_launches_folder_of_its_own(tmp_path, capsys):
+    """A launch from the command line is written where every checkout reads the graded runs; no
+    option writes it elsewhere."""
+    with pytest.raises(SystemExit):
+        L.main(["--dataset", PILOT, "--crash", str(tmp_path / "crash.json"), "--model", "m",
+                "--prompt-version", "p", "--launches", str(tmp_path)])
+    assert "--launches" in capsys.readouterr().err

@@ -32,12 +32,19 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
   Predict fixture only; a report on another tree, or the engine now on another, refuses; a fill
   after a graded run on that dataset (a launch of it) refuses, and one on another dataset does
   not; the compute cap waits for every pilot dataset. Bang 2009 is no pilot dataset.
+* The margins fixed at the first graded run: once the pilot has one, a crash fill, the r0 fill,
+  the prices and the plain write go through while the generators give what prereg.json holds,
+  and each is refused, naming the part and the run, once a rule has changed (§7's unit's
+  minimum, which the unit's part alone states); with no graded run the changed rule is written.
+  A launch kept in a repository's main checkout refuses a fill made in a worktree of it
+  (``git worktree add``), as in the main checkout.
 """
 from __future__ import annotations
 
 import copy
 import json
 import math
+import re
 
 import numpy as np
 import pytest
@@ -781,6 +788,121 @@ def test_a_fill_after_a_graded_run_on_that_dataset_refuses_and_on_another_does_n
         P.fill_r0(crashed, data, default_replay(crashed, data), launches=launches)
     got = P.fill_r0(crashed, data, default_replay(crashed, data), launches=tmp_path / "none")
     assert got["predict_fixture"]["r0"]["value"] is not None
+
+
+RUN = "run_01-" + "a" * 32
+PRICES = {"haiku": 1, "sonnet": 3, "opus": 5}
+# A fill refused after a graded run, once §7's unit's minimum (UNIT_MIN, which the unit's part
+# alone states, compute()) has changed since prereg.json was written: it names that part and RUN.
+FROZEN = (rf"prereg\.json's unit is no longer what the generators give, and the pilot has 1 "
+          rf"graded run already \({RUN}\): .*cannot be rewritten")
+
+
+@pytest.fixture
+def once(monkeypatch):
+    """The generators' slow analyses that every fill recomputes (b0's tuning run, the regret
+    classes, the latent oracle) each computed once in the test and handed back as fresh copies:
+    each reads only the generators' constants, which these tests leave as they are, so every fill
+    reads the values a fresh computation gives, and a test of many fills stays short."""
+    import functools
+
+    for owner, name in ((G, "b0_tuning"), (G, "readmission_regrets"), (P, "measurement_oracle")):
+        cached = functools.cache(getattr(owner, name))
+        monkeypatch.setattr(owner, name,
+                            lambda *a, _c=cached, **k: copy.deepcopy(_c(*a, **k)))
+
+
+def test_after_a_graded_run_a_fill_goes_through_while_the_rules_are_unchanged(prereg, tmp_path,
+                                                                              once):
+    """A launch of the Estimate fixture is a graded run. While the generators give what
+    prereg.json holds, a crash fill of another dataset, the r0 fill and the prices still go
+    through, and the Estimate fixture may launch."""
+    crashed = P.fill(prereg, only(*(d for d in P.PILOT if d != SULLIVAN)), engine=ENGINE,
+                     launches=tmp_path / "none")
+    launches = launched(tmp_path / "launches", RUN, ESTIMATE)
+    filled = P.fill(crashed, only(SULLIVAN), engine=ENGINE, launches=launches)
+    assert SULLIVAN in filled["filled"]["reports"]
+    data = default_record()
+    got = P.fill_r0(filled, data, default_replay(filled, data), launches=launches)
+    assert got["predict_fixture"]["r0"]["value"] is not None
+    priced = P.set_prices(got, PRICES, "the list prices", launches=launches)
+    assert priced["filled"]["relative_price"]["prices"] == {m: float(p) for m, p in PRICES.items()}
+    assert P.ready(priced, ENGINE, dataset=ESTIMATE, launches=launches) is None
+
+
+def test_after_a_graded_run_a_changed_rule_refuses_every_write_naming_the_part_and_the_run(
+        prereg, tmp_path, monkeypatch, capsys, once):
+    """Once the Estimate fixture has a graded run, a rule changed since prereg.json was written
+    refuses the crash fill of another dataset, the r0 fill, the prices and the plain write, each
+    naming the part that changed and the graded run, and leaves the file as it was; ``ready``
+    says the margins cannot be rewritten. With no graded run the changed rule is written again,
+    and ``ready`` says to write it before any graded run."""
+    crashed = P.fill(prereg, only(*P.PILOT), engine=ENGINE, launches=tmp_path / "none")
+    launches = launched(tmp_path / "launches", RUN, ESTIMATE)
+    monkeypatch.setattr(P, "UNIT_MIN", P.UNIT_MIN + 1)
+    with pytest.raises(P.Refused, match=FROZEN):
+        P.fill(crashed, only(SULLIVAN), engine=ENGINE, launches=launches)
+    data = default_record()
+    with pytest.raises(P.Refused, match=FROZEN):
+        P.fill_r0(crashed, data, default_replay(crashed, data), launches=launches)
+    with pytest.raises(P.Refused, match=FROZEN):
+        P.set_prices(crashed, PRICES, "the list prices", launches=launches)
+    assert re.search(FROZEN, P.ready(crashed, ENGINE, dataset=ESTIMATE, launches=launches))
+    # The plain write reads the graded runs where the launcher keeps them (here the test's).
+    monkeypatch.setattr(P, "GRADED", launches)
+    path = P.write(crashed, tmp_path / "prereg.json")
+    before = path.read_text("utf-8")
+    assert P.main(["--prereg", str(path)]) == 1
+    assert re.search(FROZEN, json.loads(capsys.readouterr().out)["refused"])
+    assert path.read_text("utf-8") == before
+    # The other way: with no graded run the changed rule is written.
+    none = tmp_path / "none"
+    again = P.fill(crashed, only(SULLIVAN), engine=ENGINE, launches=none)
+    assert again["unit"]["minimum"] == P.UNIT_MIN == 3
+    assert P.ready(crashed, ENGINE, dataset=ESTIMATE, launches=none) == (
+        "prereg.json's unit is no longer what the generators give: write it again before any "
+        "graded run.")
+
+
+def checkouts(tmp_path):
+    """Two checkouts of one repository: its main checkout (``git init``, one commit) and a
+    worktree added from it (``git worktree add``)."""
+    import subprocess
+
+    main, other = tmp_path / "main", tmp_path / "other"
+    main.mkdir()
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(main), "-c", "core.hooksPath=/dev/null", "-c",
+                        "commit.gpgsign=false", "-c", "user.name=test", "-c",
+                        "user.email=research@example.org", *args], check=True,
+                       capture_output=True, timeout=60)
+
+    git("init", "-q")
+    (main / "README").write_text("x\n", "utf-8")
+    git("add", "README")
+    git("commit", "-q", "-m", "x")
+    git("worktree", "add", "-q", "--detach", str(other))
+    return main.resolve(), other.resolve()
+
+
+def test_a_launch_in_one_checkout_refuses_a_fill_made_in_another_of_the_same_repository(
+        prereg, tmp_path, monkeypatch):
+    """Every checkout of the repository reads the launches its main checkout keeps: a launch of
+    Sullivan written there refuses a crash fill of Sullivan made in a worktree, as one made in the
+    main checkout; a dataset with no launch is filled in either."""
+    from research.swarm import launcher as L
+
+    main, other = checkouts(tmp_path)
+    shared = main / "research" / "corpus" / "launches"
+    assert L.launches_of(main) == L.launches_of(other) == shared
+    launched(shared, RUN, SULLIVAN)
+    monkeypatch.setattr(P, "GRADED", None)  # the launcher's folder, not the tests' empty one
+    for checkout in (main, other):
+        monkeypatch.setattr(L, "REPO", checkout)
+        with pytest.raises(P.Refused, match=f"{SULLIVAN} has 1 graded run.*{RUN}"):
+            P.fill(prereg, only(SULLIVAN), engine=ENGINE)
+    assert ESTIMATE in P.fill(prereg, only(ESTIMATE), engine=ENGINE)["filled"]["reports"]
 
 
 def test_the_commands_fill_one_dataset_and_say_whether_it_may_launch(prereg, tmp_path, capsys,

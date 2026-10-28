@@ -5,6 +5,10 @@ writes from the analyst subagent's JSONL file. An AI analyst worked one research
 TurboTab, an analysis app, through a driver that prints JSON. Each entry is numbered and headed:
 
 - `TO THE ANALYST`: what the analyst was told, its prompt first;
+- `TO THE ANALYST, FROM THE HARNESS`: what the harness showed the analyst while it worked, as it
+  was shown: a reminder, a background command's notice, a note that a file changed, or a message
+  sent to it during the run, such as one from the session that started it ("The coordinator sent
+  a message while you were working: ...");
 - `THE ANALYST`: what the analyst wrote;
 - `COMMAND`: a command it ran (each driver command's `--reason`, `--marker` and `--rejected` are
   the analyst's own annotations of that decision);

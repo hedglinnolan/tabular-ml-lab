@@ -3,6 +3,7 @@ script and applied by ``research/swarm/score_pilot.py``, never by the orchestrat
 hand.
 
     python -m research.swarm.prereg_fill            # write prereg.json from the generators
+                                                    # (never once a run is graded and they changed)
     python -m research.swarm.prereg_fill --check    # fail where prereg.json is not what they give
     python -m research.swarm.prereg_fill crash <crash.json> …   # any pilot datasets' reports
     python -m research.swarm.prereg_fill r0 --record <default.json> --replay <replay.json>
@@ -52,9 +53,10 @@ any pilot datasets, each passed: ``launcher.crash_passed``, on the engine now; t
 ruling of 2026-10-28, a staged pre-registration). Each fill is mechanical (a sweep's fits and
 seconds), reads no graded run, adds to what is filled without dropping an earlier dataset's, and
 is recorded with when it was filled (``filled_at``); every report filled is on one ``turbotab/``
-tree; and a fill for a dataset that already has a graded run (a launch of it, ``launcher.
-LAUNCHES``: :func:`graded_runs`) is refused, since what it fixes is fixed before that dataset's
-first graded run:
+tree; and a fill for a dataset that already has a graded run (a launch of it in the launches every
+checkout of the repository shares, the main checkout's, ``launcher.launches_of``:
+:func:`graded_runs`) is refused, since what it fixes is fixed before that dataset's first graded
+run:
 
 * **each dataset's fit budget**: as many fits as the crash sweep made there (every option of the
   default plan fitted once), and as many seconds as those fits take at its slowest fit
@@ -81,14 +83,22 @@ clears it, since it reads that crash sweep's default plan; a fill of another dat
 a fact rather than a choice, which the decision rule's "the cheaper" reads. The ``filled`` section
 holds these inputs, and ``--check`` reads them as held.
 
+**Fixed at the first graded run** (:func:`frozen_why`): every fill writes the margins and rules
+the generators give now, so once the pilot has a graded run (a launch of any dataset) the crash
+fill, the r0 fill, the prices and the plain write are each refused where the generators no longer
+give what prereg.json holds (:func:`check` not empty), naming the parts and the graded runs: the
+margins a graded run is scored against are never rewritten after it. While they give it, each
+goes through, and before any graded run a changed rule is written again.
+
 :func:`ready` with a dataset says why that dataset may not launch, or None: it is not a pilot
 dataset; its own fit budget is not filled from its own crash sweep; on the Predict fixture, r0 is
 not measured, or not on the crash sweeps' engine; the reports filled are not on one engine tree,
 or not on the engine now with no file modified; or the margins and rules (b0, the coverage band,
-k, the r0 rule, the prices' rule, the materiality rules) are no longer the generators'. With no
-dataset it says why the pilot is not filled whole, as its sweep step needs: every pilot dataset's
-fit budget, the sweeps' compute cap and r0, on the same terms. The launcher asks it of each
-dataset before each launch.
+k, the r0 rule, the prices' rule, the materiality rules) are no longer the generators' (to be
+written again before any graded run, and never after one). With no dataset it says why the pilot
+is not filled whole, as its sweep step needs: every pilot dataset's fit budget, the sweeps'
+compute cap and r0, on the same terms. The launcher asks it of each dataset before each
+launch.
 """
 from __future__ import annotations
 
@@ -677,18 +687,27 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# The launches folder a graded run is read from (``launcher.LAUNCHES``, where None); a test's
-# conftest points it at an empty folder of its own, so no test reads the pilot's launches.
+# The launches folder a graded run is read from (the one every checkout shares,
+# ``launcher.launches_of``, where None); a test's conftest points it at an empty folder of its own,
+# so no test reads the pilot's launches.
 GRADED: Path | None = None
 
 
-def graded_runs(dataset: str, launches: Path | None = None) -> list[str]:
-    """The graded runs ``dataset`` has: each launch the launcher wrote of it (``launches``, else
-    :data:`GRADED`, else ``launcher.LAUNCHES``: ``<run id>.json``, its ``dataset.id``), by run id.
-    Only which dataset each launch is of is read, never what its run did."""
+def graded_runs(dataset: str | None, launches: Path | None = None) -> list[str]:
+    """The graded runs ``dataset`` has (with None, the pilot's, of any dataset): each launch the
+    launcher wrote of it (``launches``, else :data:`GRADED`, else the launches every checkout of
+    the repository shares, ``launcher.launches_of``: ``<run id>.json``, its ``dataset.id``), by run
+    id; refused where that folder cannot be found. Only which dataset each launch is of is read,
+    never what its run did."""
     from research.swarm import launcher
 
-    folder = Path(launches if launches is not None else GRADED or launcher.LAUNCHES)
+    if launches is not None or GRADED is not None:
+        folder = Path(launches if launches is not None else GRADED)
+    else:
+        try:
+            folder = launcher.launches_of()
+        except launcher.Refused as exc:
+            raise Refused(str(exc)) from None
     out = []
     for path in sorted(folder.glob("*.json")) if folder.is_dir() else ():
         try:
@@ -696,15 +715,47 @@ def graded_runs(dataset: str, launches: Path | None = None) -> list[str]:
         except (OSError, ValueError):
             out.append(path.stem)  # a launch that cannot be read may be of any dataset
             continue
-        if not isinstance(launch, Mapping) or (launch.get("dataset") or {}).get("id") == dataset:
+        if dataset is None or not isinstance(launch, Mapping) \
+                or (launch.get("dataset") or {}).get("id") == dataset:
             out.append(str(launch.get("run") if isinstance(launch, Mapping) else path.stem))
     return out
 
 
+def _named(runs: Sequence[str]) -> str:
+    return f"{', '.join(runs[:3])}{', ...' if len(runs) > 3 else ''}"
+
+
 def graded_why(dataset: str, runs: Sequence[str]) -> str:
-    return (f"{dataset} has {len(runs)} graded run(s) already ({', '.join(runs[:3])}"
-            f"{', ...' if len(runs) > 3 else ''}): what its fill fixes is fixed before its first "
-            f"graded run, so it is not filled again.")
+    return (f"{dataset} has {len(runs)} graded run(s) already ({_named(runs)}): what its fill "
+            f"fixes is fixed before its first graded run, so it is not filled again.")
+
+
+def changed_why(changed: Sequence[str], runs: Sequence[str]) -> str:
+    """That prereg.json's parts ``changed`` are no longer what the generators give, and, where the
+    pilot has graded runs ``runs``, that they cannot be rewritten (:func:`frozen_why`)."""
+    out = (f"prereg.json's {', '.join(changed)} {'is' if len(changed) == 1 else 'are'} no longer "
+           f"what the generators give")
+    if not runs:
+        return out
+    return (out + f", and the pilot has {len(runs)} graded run{'' if len(runs) == 1 else 's'} "
+            f"already ({_named(runs)}): its margins and rules are fixed before the first graded "
+            f"run, so they cannot be rewritten")
+
+
+def frozen_why(prereg: Mapping[str, Any] | None, launches: Path | None = None) -> str | None:
+    """Why ``prereg`` (the file as it is held; None where there is none) may not be written again
+    (the module docstring): the pilot has a graded run (:func:`graded_runs` in ``launches``) and
+    the generators no longer give what it holds (:func:`check`), naming the parts and the runs;
+    None where no run is graded, or they give it."""
+    runs = graded_runs(None, launches)
+    if not runs:
+        return None
+    if prereg is None:
+        return (f"There is no prereg.json, and the pilot has {len(runs)} graded run"
+                f"{'' if len(runs) == 1 else 's'} already ({_named(runs)}): its margins and "
+                f"rules are fixed before the first graded run, so none is written now.")
+    changed = check(prereg)
+    return changed_why(changed, runs) + ", and nothing is written." if changed else None
 
 
 CAP_RULE = ("Per dataset, the plans named to sweep beyond the default times the crash sweep's own "
@@ -730,11 +781,12 @@ def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
     """``prereg`` with the crash sweep's fields filled from ``reports`` (dataset → its crash.json),
     any pilot datasets', each passed (``launcher.crash_passed`` on ``engine``) on the one engine
     tree every report filled is on, none of a dataset with a graded run (:func:`graded_runs` in
-    ``launches``), each recorded with when it was filled (``at``, else now), added to what is
-    filled (the module docstring); the compute cap once every pilot dataset's is filled; and,
-    where the Predict fixture's report is among them, its default plan set and r0's measure
-    cleared (:func:`fill_r0` reads that plan). ``paths`` names each report's file, for its
-    SHA-256."""
+    ``launches``), and none once a run is graded where the generators no longer give what
+    ``prereg`` holds (:func:`frozen_why`), each recorded with when it was filled (``at``, else
+    now), added to what is filled (the module docstring); the compute cap once every pilot
+    dataset's is filled; and, where the Predict fixture's report is among them, its default plan
+    set and r0's measure cleared (:func:`fill_r0` reads that plan). ``paths`` names each report's
+    file, for its SHA-256."""
     from research.swarm import launcher
 
     if not reports:
@@ -750,6 +802,9 @@ def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
         why = launcher.crash_passed(reports[d], d, engine)
         if why is not None:
             raise Refused(f"{d}: {why}")
+    why = frozen_why(prereg, launches)
+    if why is not None:
+        raise Refused(why)
     filled = dict(prereg.get("filled") or {})
     held = {d: dict(e) for d, e in (filled.get("reports") or {}).items() if d not in reports}
     trees = {d: e.get("engine_tree") for d, e in held.items()} | {
@@ -794,9 +849,10 @@ def fill_r0(prereg: Mapping[str, Any], record: Any, replay: Mapping[str, Any], *
     """``prereg`` with r0 measured (the module docstring): ``replay`` (``score_pilot.make_replay``'s
     shape) of ``record`` (a record's JSON, or the record), the default path's run on the Predict
     fixture, read by ``score_pilot.score_replay``, after the Predict fixture's crash fill and
-    before its first graded run (:func:`graded_runs` in ``launches``), recorded with when it was
-    filled (``at``, else now); each input checked, and refused with why where one fails.
-    ``paths``: the ``record`` and ``replay`` files, for their SHA-256."""
+    before its first graded run (:func:`graded_runs` in ``launches``), and not once a run is graded
+    where the generators no longer give what ``prereg`` holds (:func:`frozen_why`), recorded with
+    when it was filled (``at``, else now); each input checked, and refused with why where one
+    fails. ``paths``: the ``record`` and ``replay`` files, for their SHA-256."""
     from research.swarm import score_pilot as S
     from research.swarm.record import validate
 
@@ -809,6 +865,9 @@ def fill_r0(prereg: Mapping[str, Any], record: Any, replay: Mapping[str, Any], *
     runs = graded_runs(PREDICT_FIXTURE, launches)
     if runs:
         raise Refused(graded_why(PREDICT_FIXTURE, runs))
+    why = frozen_why(prereg, launches)
+    if why is not None:
+        raise Refused(why)
     final = (list(plan.get("families") or []) or [None])[0]
     if final != RULED_FINAL:
         raise Refused(ruled_final_why(final))
@@ -852,14 +911,19 @@ def fill_r0(prereg: Mapping[str, Any], record: Any, replay: Mapping[str, Any], *
     return build(filled | {"r0": entry})
 
 
-def set_prices(prereg: Mapping[str, Any], prices: Mapping[str, float], source: str
-               ) -> dict[str, Any]:
+def set_prices(prereg: Mapping[str, Any], prices: Mapping[str, float], source: str, *,
+               launches: Path | None = None) -> dict[str, Any]:
     """``prereg`` with each model's list price relative to the others' (a fact, not a choice:
-    set before the scoring, from ``source``), every model's, each above zero."""
+    set before the scoring, from ``source``), every model's, each above zero; not once a run is
+    graded (:func:`graded_runs` in ``launches``) where the generators no longer give what
+    ``prereg`` holds (:func:`frozen_why`)."""
     missing = [m for m in MODELS if m not in prices]
     if missing or any(not float(prices[m]) > 0 for m in MODELS) or set(prices) - set(MODELS):
         raise Refused(f"A relative price is given for each of {', '.join(MODELS)}, each above "
                       f"zero, and for no other model.")
+    why = frozen_why(prereg, launches)
+    if why is not None:
+        raise Refused(why)
     section = dict(prereg.get("filled") or {}) | {
         "relative_price": {"prices": {m: float(prices[m]) for m in MODELS},
                            "source": str(source)}}
@@ -867,11 +931,13 @@ def set_prices(prereg: Mapping[str, Any], prices: Mapping[str, float], source: s
 
 
 def ready(prereg: Mapping[str, Any], engine: Mapping[str, Any] | None = None, *,
-          dataset: str | None = None, margins: bool = True) -> str | None:
+          dataset: str | None = None, margins: bool = True, launches: Path | None = None
+          ) -> str | None:
     """Why ``dataset`` may not launch on ``prereg``, or with no dataset why the pilot is not
     filled whole, as its sweep step needs (the module docstring); None where nothing stops it.
     ``engine``: the engine now (``launcher.engine_now`` where None); ``margins``: also recompute
-    the margins."""
+    the margins, and where they changed, read the graded runs (:func:`graded_runs` in
+    ``launches``) to say whether they may be written again."""
     filled = prereg.get("filled") or {}
     budget = filled.get("fit_budget") or {}
     reports = filled.get("reports") or {}
@@ -915,8 +981,14 @@ def ready(prereg: Mapping[str, Any], engine: Mapping[str, Any] | None = None, *,
     if margins:
         changed = check(prereg)
         if changed:
-            return (f"prereg.json's {', '.join(changed)} are no longer what the generators give: "
-                    f"write it again before any graded run.")
+            try:
+                runs = graded_runs(None, launches)
+            except Refused as exc:
+                return f"{changed_why(changed, [])}: {exc}"
+            if runs:
+                return (changed_why(changed, runs) + ", and nothing launches until the generators "
+                        "give them again.")
+            return changed_why(changed, []) + ": write it again before any graded run."
     return None
 
 
@@ -1006,14 +1078,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         for k in changed:
             print(f"prereg.json's {k} is not what the generators give")
         return 1 if changed else 0
-    filled = load(args.prereg).get("filled") if args.prereg.exists() else None
-    print(f"wrote {write(build(filled), args.prereg)}")
+    held = load(args.prereg) if args.prereg.exists() else None
+    try:
+        why = frozen_why(held)
+    except Refused as exc:
+        why = str(exc)
+    if why is not None:
+        print(json.dumps({"refused": why}))
+        return 1
+    print(f"wrote {write(build((held or {}).get('filled')), args.prereg)}")
     return 0
 
 
-__all__ = ["PREREG", "RULED_FINAL", "Refused", "binomial_band", "build", "check", "compute",
-           "compute_cap_of", "default_plan_of", "engine_tree_of", "fill", "fill_r0",
-           "frozen_engine", "graded_menus", "graded_runs", "in_band", "k_ruling",
+__all__ = ["PREREG", "RULED_FINAL", "Refused", "binomial_band", "build", "changed_why", "check",
+           "compute", "compute_cap_of", "default_plan_of", "engine_tree_of", "fill", "fill_r0",
+           "frozen_engine", "frozen_why", "graded_menus", "graded_runs", "in_band", "k_ruling",
            "latent_discoveries", "load", "main", "measurement_oracle", "r0_of", "r0_ruling",
            "readiness", "ready", "record_engine_why", "replay_seeds", "ruled_final_why",
            "set_prices", "swept_plans", "write"]

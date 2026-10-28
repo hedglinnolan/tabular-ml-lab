@@ -29,7 +29,9 @@ transcript and the rubric. The root CLAUDE.md's rules apply; you build nothing a
 ## What you never read
 
 Only the rubric and the text file are yours to read. Never read the JSONL transcript itself, and
-never anything about the run's answer or how it is graded, nor any note the orchestrator wrote:
+never anything about the run's answer or how it is graded, nor any note the orchestrator wrote
+about the run (a message the analyst was sent while it worked is in the text file, as the analyst
+was shown it, and you read it there with the rest):
 
 - `research/swarm/prereg.json`, the pre-registration;
 - `research/swarm/generators.py`, the generators of the fixtures, and `research/swarm/decoys.py`;
