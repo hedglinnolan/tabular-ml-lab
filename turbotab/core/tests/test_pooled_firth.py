@@ -228,7 +228,8 @@ def test_a_coefficient_separated_in_the_copies_keeps_its_pooled_estimate_and_wit
                     f"pooled standard error, interval and p-value are not reported, only its "
                     f"estimate: {CARD} (Heinze & Schemper 2002). To report it, read `x` another "
                     f"way or combine its sparse levels, or analyze complete cases, where one table "
-                    f"is fit and none is pooled.")
+                    f"is fit and none is pooled; where the complete cases separate the outcome "
+                    f"too, that table reports no standard error, interval or p-value either.")
     # The copies' own concern says the table reports Firth's fit; the pooled one replaces it.
     assert I.separation_concern(["x"]) in separated["tables"][0].concerns
     assert I.separation_concern(["x"]) not in separated["table"].concerns
@@ -418,7 +419,9 @@ def test_an_intercept_infinite_in_the_copies_keeps_its_estimate_and_withholds_it
         f"{CARD} (Heinze & Schemper 2002). The standard error, interval and p-value of the "
         f"intercept are withheld too: its maximum-likelihood value is infinite in every one of "
         f"the {m} imputed copies. To report them, read `g` another way or combine its sparse "
-        f"levels, or analyze complete cases, where one table is fit and none is pooled.")
+        f"levels, or analyze complete cases, where one table is fit and none is pooled; where "
+        f"the complete cases separate the outcome too, that table reports no standard error, "
+        f"interval or p-value either.")
 
 
 def test_the_way_forward_names_the_column_a_separated_indicator_comes_from(categorical):
@@ -793,7 +796,8 @@ def test_a_companion_quintile_separated_in_the_copies_keeps_its_estimate_alone(c
         f"{q5['estimate']:+.4g}. It separates the outcome in every one of the {m} imputed copies, "
         f"so its statistic, interval and p-value are not reported, only its estimate: {CARD} "
         f"(Heinze & Schemper 2002). To report them, analyze complete cases, where one table is "
-        f"fit and none is pooled.")
+        f"fit and none is pooled; where the complete cases separate the outcome too, that table "
+        f"reports no standard error, interval or p-value either.")
 
 
 def test_a_companion_quintile_no_copy_separates_keeps_rubins_wald_interval_on_t(companion):

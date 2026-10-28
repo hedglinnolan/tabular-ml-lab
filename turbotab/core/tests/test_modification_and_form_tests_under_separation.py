@@ -55,13 +55,14 @@ def _cohort(separate: bool) -> pd.DataFrame:
     return frame
 
 
-def _modification(frame: pd.DataFrame, folder: Path) -> dict[str, Any]:
+def _modification(frame: pd.DataFrame, folder: Path, missing: Any = "complete_case"
+                  ) -> dict[str, Any]:
     from turbotab.core.stages.modeling import design_stage
 
     roles = {**est_f.ROLES, "s": "covariate"}
     st = est_f.state(target="dm", task="binary", event="yes", measure="odds_ratio", roles=roles,
                      answers={**est_f.ANSWERS, "s": est_f.CONFOUNDER},
-                     amounts={**est_f.AMOUNTS, "code_or_count:s": "amount"},
+                     amounts={**est_f.AMOUNTS, "code_or_count:s": "amount"}, missing=missing,
                      modifications={"sex": d.ModificationSpec(kind="effect_modification",
                                                               exposure="fiber")})
     paths = mf.ingest_frame(frame, folder)
@@ -250,3 +251,201 @@ def test_where_nothing_separates_the_splines_tests_are_wald_tests_as_statsmodels
         assert ours["statistic"] == pytest.approx(W, rel=1e-6), kind
         assert ours["p"] == pytest.approx(float(stats.chi2.sf(W, len(idx))), rel=1e-6), kind
     assert not any("separate" in c for c in model.get("concerns") or [])
+
+
+# ── the repair round (T5dV-2, T5dV-3, T5dV-6) ────────────────────────────────
+
+
+def test_where_the_complete_cases_separate_too_the_pooled_words_promise_them_no_interval(
+        tmp_path):
+    """T5dV-2. `s` blank on 30% of the rows, multiple imputation (20 copies asked): the pooled
+    table withholds `s`'s standard error, interval and p-value, and its way forward to complete
+    cases says that where they separate the outcome too, their table reports none of these
+    either. The complete cases of the same rows do separate (every row with `s` = 1 has the
+    event, by construction), and their table reports `s`'s estimate alone. On the base the words
+    offered complete cases as the way to report `s`'s interval."""
+    frame = _spline_cohort(True)
+    blank = frame.assign(s=frame["s"].astype(float))
+    blank.loc[np.random.default_rng(5).random(len(frame)) < 0.3, "s"] = np.nan
+    pooled = _spline_fit(blank, tmp_path / "mi",
+                         missing={"strategy": "multiple_imputation", "m": 20})
+    [said] = [c for c in pooled["concerns"] if c.startswith("`s` separates the outcome in ")]
+    assert said.endswith(
+        "To report it, read `s` another way or combine its sparse levels, or analyze complete "
+        "cases, where one table is fit and none is pooled; where the complete cases separate the "
+        "outcome too, that table reports no standard error, interval or p-value either.")
+    assert "Complete cases, with their assumption stated" in [
+        e["label"] for e in pooled["inference"]["exits"]]
+    complete = blank.dropna()
+    with_s = complete["s"] == 1
+    assert with_s.any() and (complete.loc[with_s, "b"] == 1).all()  # separated, by construction
+    cc = _spline_fit(complete, tmp_path / "cc")
+    assert cc["inference"]["refused"] == words(["s"])
+    [row] = [r for r in [*(cc.get("coefficients") or []), *(cc.get("adjustment_terms") or [])]
+             if r["feature"] == "s"]
+    assert row["estimate"] is not None
+    assert (row["se"], row["ci_low"], row["ci_high"], row["p"]) == (None, None, None, None)
+
+
+def _fiber_cohort() -> pd.DataFrame:
+    """The estimand fixtures' cohort, 400 rows, every row above `fiber`'s 80th percentile with the
+    event: its top quintile's maximum-likelihood log-odds is infinite."""
+    frame = est_f.cohort(400, seed=12)
+    frame.loc[frame["fiber"] > np.quantile(frame["fiber"], 0.8, method="linear"), "dm"] = "yes"
+    return frame
+
+
+def _fiber_fit(frame: pd.DataFrame, folder: Path, spec: d.ExposureFormSpec) -> dict:
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+
+    st = est_f.state(target="dm", task="binary", event="yes", measure="odds_ratio",
+                     exposure_forms={"fiber": spec})
+    paths = mf.ingest_frame(frame, folder)
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed)
+    info = mf.target_info(st.task, st.target)
+    design = design_stage(mf.context(st, {"split": split, "target_info": info}, paths))
+    return fit_stage(mf.context(st, {"design": design, "split": split, "target_info": info},
+                                paths)).data["models"][0]
+
+
+COVARIATES = ["sex_male", "age", "smoking", "activity"]
+
+
+def _covariates(frame: pd.DataFrame) -> np.ndarray:
+    return np.column_stack([(frame["sex"] == "male").to_numpy(float),
+                            frame[["age", "smoking", "activity"]].to_numpy(float)])
+
+
+def _quintiles(x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """R's type-7 quintile cut points, each value's group (right-closed, 0 the lowest) and each
+    group's median, with numpy."""
+    cuts = np.quantile(x, [0.2, 0.4, 0.6, 0.8], method="linear")
+    group = np.searchsorted(cuts, x, side="left")
+    return cuts, group, np.array([np.median(x[group == g]) for g in range(5)])
+
+
+def _trend_by_statsmodels(frame: pd.DataFrame) -> tuple[float, float]:
+    """The trend refit by statsmodels: the covariates and `fiber` scored by its quintile's median;
+    its coefficient and Wald p-value."""
+    from scipy import stats as st
+
+    x = frame["fiber"].to_numpy(float)
+    _, group, medians = _quintiles(x)
+    X = np.column_stack([np.ones(len(x)), _covariates(frame), medians[group]])
+    y = (frame["dm"] == "yes").to_numpy(float)
+    assert _cone(X, y) == []  # the scored refit is not separated
+    ml = sm.Logit(y, X).fit(disp=0)
+    b, se = float(ml.params[-1]), float(ml.bse[-1])
+    return b, float(2 * st.norm.sf(abs(b / se)))
+
+
+def test_a_quintile_trend_is_served_beside_a_firth_table_and_its_global_test_is_refused(
+        tmp_path):
+    """T5dV-3. `fiber` as quintiles, its top quintile separating the outcome: the table is Firth's,
+    its estimates alone, and the global test (a penalized likelihood-ratio test on the separated
+    rows) is refused in words that name `fiber_Q5`; the trend test, a maximum-likelihood refit
+    nothing separates, is served, its coefficient and p-value statsmodels' on the median-scored
+    design (to 10⁻⁶). On the base after T5d no test of `fiber`'s form was reported and no words
+    said why; before T5d the global test was a penalized likelihood-ratio test."""
+    frame = _fiber_cohort()
+    model = _fiber_fit(frame, tmp_path / "q", d.ExposureFormSpec(form="quintiles"))
+    assert model["inference"]["refused"] == words(["fiber_Q5"])
+    tests = {t["test"]: t for t in model["exposure_tests"] if t["column"] == "fiber"}
+    assert set(tests) == {"trend"}
+    assert words(["fiber_Q5"], held="coefficients held at zero",
+                 unreported="penalized likelihood-ratio test of `fiber`'s form") in model["concerns"]
+    b, p = _trend_by_statsmodels(frame)
+    trend = tests["trend"]
+    assert trend["estimate"] == pytest.approx(b, rel=1e-6)
+    assert trend["p"] == pytest.approx(p, rel=1e-6)
+    assert trend["caption"].startswith("The p for linear trend (customary) across quintiles of "
+                                       "`fiber`")
+    assert "95% Wald intervals from the logistic model's information" in trend["caption"]
+
+
+def test_where_nothing_separates_the_quintiles_global_test_is_the_wald_test(tmp_path):
+    """The silent side: the cohort as drawn (nothing separates), the global test is the Wald test
+    that the four indicators are zero, ``bᵀV⁻¹b`` on χ²(4) of statsmodels' fit (to 10⁻⁶), and
+    the trend is served; no concern speaks of separation."""
+    from scipy import stats as st
+
+    frame = est_f.cohort(400, seed=12)
+    model = _fiber_fit(frame, tmp_path / "plain", d.ExposureFormSpec(form="quintiles"))
+    assert model["inference"]["refused"] is None
+    tests = {t["test"]: t for t in model["exposure_tests"] if t["column"] == "fiber"}
+    assert set(tests) == {"global", "trend"}
+    _, group, _ = _quintiles(frame["fiber"].to_numpy(float))
+    X = np.column_stack([np.ones(len(frame)), _covariates(frame),
+                         *[(group == g).astype(float) for g in range(1, 5)]])
+    y = (frame["dm"] == "yes").to_numpy(float)
+    assert _cone(X, y) == []
+    ml = sm.Logit(y, X).fit(disp=0)
+    b, V = np.asarray(ml.params)[-4:], np.asarray(ml.cov_params())[-4:, -4:]
+    W = float(b @ np.linalg.solve(V, b))
+    assert tests["global"]["statistic"] == pytest.approx(W, rel=1e-6)
+    assert tests["global"]["p"] == pytest.approx(float(st.chi2.sf(W, 4)), rel=1e-6)
+    assert not any("separate" in c for c in model.get("concerns") or [])
+
+
+def test_companion_quintiles_on_a_separated_refit_are_said_to_be_firths_estimates_alone(
+        tmp_path):
+    """T5dV-6. `fiber` as a 4-knot spline: nothing separates the spline's table, but the companion
+    quintiles' refit is separated (its top quintile). Each companion quintile is Firth's penalized
+    estimate (the independent maximum's to 10⁻⁶), with no p-value or interval, its caption says it
+    is Firth's penalized estimate, and a concern carries the refit's refusal naming `fiber_Q5`;
+    the companion trend, a refit nothing separates, keeps statsmodels' coefficient and p-value.
+    On the base the quintiles were shown with no p-value and no word of why."""
+    frame = _fiber_cohort()
+    model = _fiber_fit(frame, tmp_path / "s", d.ExposureFormSpec(form="spline", knots=4))
+    assert model["inference"]["refused"] is None
+    tests = {t["test"]: t for t in model["exposure_tests"] if t["column"] == "fiber"}
+    x = frame["fiber"].to_numpy(float)
+    _, group, _ = _quintiles(x)
+    X = np.column_stack([np.ones(len(x)), _covariates(frame),
+                         *[(group == g).astype(float) for g in range(1, 5)]])
+    y = (frame["dm"] == "yes").to_numpy(float)
+    assert [j for j in _cone(X, y)] == [8]  # the top quintile's indicator alone
+    beta, _, se = _reference(X, y)
+    for g in range(2, 6):
+        q = tests[f"companion_q{g}"]
+        assert abs(q["estimate"] - beta[3 + g]) <= 1e-6 * se[3 + g], g
+        assert (q["p"], q["ci_low"], q["ci_high"]) == (None, None, None), g
+        assert q["caption"].startswith(
+            f"Beside the spline: quintile {g} of `fiber` against the lowest, Firth's penalized "
+            f"estimate {q['estimate']:+.4g}; "), q["caption"]
+    assert ("The quintiles beside `fiber`'s spline are Firth's penalized estimates alone: their "
+            "refit's maximum-likelihood estimate does not exist. " + words(["fiber_Q5"])
+            ) in model["concerns"]
+    b, p = _trend_by_statsmodels(frame)
+    trend = tests["companion_trend"]
+    assert trend["estimate"] == pytest.approx(b, rel=1e-6)
+    assert trend["p"] == pytest.approx(p, rel=1e-6)
+
+
+def test_under_multiple_imputation_a_separated_modification_is_not_estimable(tmp_path):
+    """T5dV-5. The modification's rows of :func:`_cohort` with every `s` row an event, `age` blank
+    on 15% of the rows, multiple imputation (20 copies asked): `s` is observed on every row, so
+    every imputed copy separates, and the modification is not estimable: no family is fit, the
+    family count names `sex`'s heterogeneity test as not computed, and the sentence says why,
+    that a Firth-penalized fit there has no covariance for Rubin's rules and D1 to pool. The
+    ``separation-profile`` relation now states this beside the complete cases' penalized
+    estimates alone (it said the estimates were served under any option)."""
+    frame = _cohort(True)
+    frame.loc[np.random.default_rng(31).random(len(frame)) < 0.15, "age"] = np.nan
+    out = _modification(frame, tmp_path, missing={"strategy": "multiple_imputation", "m": 20})
+    (result,) = out["modifications"]
+    assert not result["strata"] and not any(f.get("effects") for f in result["families"])
+    assert out["family_count"]["not_computed"] == ["sex"]
+    assert result["sentence"].endswith(
+        "the data separate the outcome, and a Firth-penalized fit there reports its estimates "
+        "alone, with no covariance for Rubin's rules and D1 to pool across imputed copies; "
+        "complete cases, or a modifier the data do not separate, are estimable.")
+    from turbotab.core import contracts as C
+
+    (relation,) = [r for r in C.contracts()["effect_modification"].relations
+                   if r.name == "separation-profile"]
+    assert relation.says.startswith("fit once on independent rows (complete cases), each effect")
+    assert relation.says.endswith(
+        "under multiple imputation, where an imputed copy separates, the modification is not "
+        "estimable, in words that say why: the penalized estimates have no covariance for "
+        "Rubin's rules and D1 to pool")

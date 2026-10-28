@@ -835,9 +835,13 @@ def build_graph() -> Graph:
             # column, and the form tests and the modification's quantities take no profile or
             # penalized likelihood-ratio test there (V5c2-1); an iterative fit's distance from its
             # maximum reads its score through its working design's QR, so a converged fit with a
-            # fitted probability that rounds to 0 or 1 is served (V5c2-2), and CR2 takes Q row by
-            # row where a row's weight rounds to zero (``inference.separated_profile_words``,
-            # ``inference.newton_distance``, ``inference.qr_frame``).
+            # fitted probability that rounds to 0 or 1 is served (V5c2-2), and CR2's meat reads
+            # each cluster's score, never Q's rows times a residual divided by a weight; beside a
+            # Firth table the trend's and the companion's refits are still tested, a clustered
+            # Firth fit short of its maximum gives no estimate, and the pooled words promise
+            # complete cases no interval they would refuse (T5d's repair round;
+            # ``inference.separated_profile_words``, ``inference.newton_distance``,
+            # ``inference._cr2_parts``).
             Stage("fit", 41, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),

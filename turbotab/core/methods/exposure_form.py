@@ -1808,6 +1808,10 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
     exposure scored by its quintile medians; declared categories their global test; a data-derived
     cut point its coefficient. The refits take the table's outcome and, under a surveyed
     population, its design (WP8, WP10), when the family's ``inference_matrix`` accepts them.
+    Beside a Firth table on rows the data separate, which reports its estimates alone, the
+    refits' tests (the trend's, the companion's) are still made, each refit read as it stands;
+    the joint tests and a cut point's are not, the joint tests' words naming the table's
+    separated columns (T5dV-3).
     """
     step = form_step(pipeline)
     if step is None or table is None:
@@ -1823,18 +1827,27 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
     if task == "multiclass" or (task == "ordinal" and not getattr(family, "ordered_levels", False)):
         return [], ["Tests of a study factor's form are not computed for a multinomial model: each "
                     "level has its own curve."]
-    if info.get("refused"):
+    # A Firth table on separated rows refused for its profile alone (``InferenceTable.
+    # profile_refusal``: its estimates served) still gives the tests that read no profile: the
+    # trend's and the companion's refits; its joint tests are refused in its words (T5dV-3).
+    profile_only = info.get("refused") is not None and \
+        getattr(table, "profile_refusal", None) == info.get("refused")
+    if info.get("refused") and not profile_only:
         return [], []
     held: dict[str, Any] = {}
 
     def joint(chosen: Sequence[int]) -> dict[str, Any] | None:
         """The joint test on the table's covariance. A Firth table (a logistic model the data
-        separate, in one completed copy made for Rubin's rules: no covariance; one not pooled is
-        refused before any test) asks the penalized likelihood-ratio test on the same design,
-        which is refused on separated rows (:func:`firth_lr_test`): None, and why is held for the
-        column's words (:func:`unreported`), as it is where a penalized fit did not converge."""
+        separate: in one completed copy made for Rubin's rules, no covariance; one not pooled,
+        its estimates alone) asks the penalized likelihood-ratio test on the same design, which
+        is refused on separated rows (:func:`firth_lr_test`; one not pooled is refused without
+        asking): None, and why is held for the column's words (:func:`unreported`), as it is
+        where a penalized fit did not converge."""
         from turbotab.core.models.inference import FirthProfileSeparated
 
+        if profile_only:  # the data separate: a penalized likelihood-ratio test is refused there
+            held["why"] = "separated"
+            return None
         result = wald_test(estimates, cov, chosen, info, rows)
         if result is not None or info.get("covariance") != "profile":
             return result
@@ -1947,12 +1960,17 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
                              f"{boundaries_words(column, step.cuts_[column], word).capitalize()}.")))
             if form == "categories":
                 continue
-            trend = _trend(family, pipeline, step, column, X, y, task=task, clusters=clusters,
-                           outcome=outcome, survey=survey)
+            trend, refit_words = _trend(family, pipeline, step, column, X, y, task=task,
+                                        clusters=clusters, outcome=outcome, survey=survey)
             if trend is None:
-                concerns.append(f"The trend test for `{column}` could not be computed.")
+                concerns.append(refit_words or f"The trend test for `{column}` could not be "
+                                               f"computed.")
                 continue
             tests.append(trend)
+            continue
+        if profile_only:
+            # A data-derived cut point's test is its row of the table, whose p-value and interval
+            # the table refuses (its words say why).
             continue
         # A data-derived cut point: its one coefficient, with the search it came from.
         row = rows[idx[0]]
@@ -2030,16 +2048,18 @@ def _refit(family: Any, matrix: pd.DataFrame, y: Any, *, pipeline: Any, task: st
 
 def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.DataFrame, y: Any,
            *, task: str, clusters: Any, outcome: Any = None,
-           survey: Any = None) -> dict[str, Any] | None:
+           survey: Any = None) -> tuple[dict[str, Any] | None, str | None]:
     """The trend test on quintile medians: the model matrix with ``column``'s indicators replaced
     by one column, each row's quintile median, refit by the family's own inference table (in one
-    completed copy, made for Rubin's rules: its estimate and standard error, :func:`_readable`)."""
+    completed copy, made for Rubin's rules: its estimate and standard error, :func:`_readable`),
+    and None; or no test, and why where the refit is a Firth table the data separate, which
+    reports its estimate alone (:func:`_firth_refit_words`; None otherwise)."""
     from turbotab.core.models.linear import model_matrix
 
     matrix = model_matrix(pipeline, X)
     indicators = quintile_names(column)
     if not all(c in matrix.columns for c in indicators):
-        return None
+        return None, None
     raw = _before_form(pipeline, X)[column].to_numpy(dtype=float, na_value=np.nan)
     score_name = f"{column}{SCORE_SUFFIX}"
     at = list(matrix.columns).index(indicators[0])
@@ -2048,10 +2068,13 @@ def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.D
     table = _refit(family, kept, y, pipeline=pipeline, task=task, clusters=clusters,
                    outcome=outcome, survey=survey, study=[score_name])
     if table is None:
-        return None
+        return None, None
     row = next((r for r in table.rows if str(r["feature"]) == score_name), None)
     if not _readable(row):
-        return None
+        refused = _firth_refit_words(table)
+        return None, (None if refused is None else
+                      f"The {TREND_LABEL} across quintiles of `{column}` is not reported: its "
+                      f"refit's maximum-likelihood estimate does not exist. {refused}")
     medians = ", ".join(f"{m:.4g}" for m in step.medians_[column])
     reference = "t" if row.get("df") is not None else "z"
     caption = (f"The {TREND_LABEL} across quintiles of `{column}`: each row scored by its "
@@ -2071,7 +2094,19 @@ def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.D
                  medians=[float(m) for m in step.medians_[column]],
                  boundaries=[float(v) for v in step.cuts_[column]], label=TREND_LABEL,
                  reference=f"quintile 1, `{column}` ≤ {step.cuts_[column][0]:.4g}",
-                 caption=caption)
+                 caption=caption), None
+
+
+def _firth_refit_words(table: Any) -> str | None:
+    """The refusal of a refit that is a Firth table the data separate, its estimates served and
+    every profile interval and p-value refused (``InferenceTable.profile_refusal``, which names
+    the refit's separated columns and says why), outside a completed copy made for Rubin's rules;
+    None otherwise."""
+    from turbotab.core.models.inference import pooling
+
+    if table is None or pooling():
+        return None
+    return getattr(table, "profile_refusal", None)
 
 
 def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.DataFrame,
@@ -2085,7 +2120,9 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
     each fit's. In one completed copy the refits are made for Rubin's rules, as the copy's table
     is (``inference.for_pooling``): a Firth refit's row has its estimate and standard error and no
     p-value or interval, and each test says whether its coefficient is infinite there
-    (:data:`INFINITE`)."""
+    (:data:`INFINITE`). Outside one, a refit the data separate is Firth's table of penalized
+    estimates alone: each caption says so, and the refit's refusal, which names its separated
+    columns, is a concern (:func:`_firth_refit_words`)."""
     from turbotab.core.models.linear import model_matrix
 
     matrix = model_matrix(pipeline, X)
@@ -2118,6 +2155,13 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
     if table is None:
         return [], [f"The quintiles beside `{column}`'s spline could not be refit."]
     by = {str(r["feature"]): r for r in table.rows}
+    # A refit the data separate is Firth's, its estimates alone (T5dV-6): the captions say so,
+    # and its refusal, naming its separated columns, is carried into the concerns.
+    firth = _firth_refit_words(table)
+    penalized = "Firth's penalized estimate " if firth is not None else ""
+    worries = ([] if firth is None else
+               [f"The quintiles beside `{column}`'s spline are Firth's penalized estimates alone: "
+                f"their refit's maximum-likelihood estimate does not exist. {firth}"])
     for g, name in enumerate(indicators, start=2):
         row = by.get(name)
         if row is None or row.get("estimate") is None:
@@ -2133,7 +2177,8 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
             boundaries=[float(c) for c in cuts], reference=reference,
             what=f"quintile {g} of `{column}` against the lowest",
             caption=(f"Beside the spline: quintile {g} of `{column}` against the lowest, "
-                     f"{row['estimate']:+.4g}{ratio}{_p_words(row)}; {bounds}.{design}")))
+                     f"{penalized}{row['estimate']:+.4g}{ratio}{_p_words(row)}; "
+                     f"{bounds}.{design}")))
     score_name = f"{column}{SCORE_SUFFIX}"
     scored = matrix.drop(columns=terms)
     scored.insert(at, score_name, np.where(group < 0, np.nan,
@@ -2142,6 +2187,10 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
                          outcome=outcome, survey=survey, study=[score_name])
     row = next((r for r in (trend_table.rows if trend_table is not None else [])
                 if str(r["feature"]) == score_name), None)
+    trend_refused = _firth_refit_words(trend_table) if not _readable(row) else None
+    if trend_refused is not None:
+        worries.append(f"The {TREND_LABEL} beside `{column}`'s spline is not reported: its "
+                       f"refit's maximum-likelihood estimate does not exist. {trend_refused}")
     if _readable(row):
         listed = ", ".join(f"{m:.4g}" for m in medians)
         out.append(_test(
@@ -2157,7 +2206,7 @@ def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: 
                      f"{row['estimate']:+.4g} per unit{_p_words(row)}. The spline's "
                      f"overall test is the test of association; this is a test of a linear trend, "
                      f"not of a dose–response.{design}")))
-    return out, []
+    return out, worries
 
 
 def describe(forms: Mapping[str, Any]) -> str:

@@ -13,8 +13,9 @@ Under inference the linear family's coefficient table is made here, in four part
   McCaffrey's Satterthwaite approximation under the working model of independent rows
   (Pustejovsky & Tipton 2018, *J Bus Econ Stat* 36:672; clubSandwich's ``test = "Satterthwaite"``).
   One engine, :func:`cr2`, serves OLS, logistic and multinomial models through their working
-  linear models (McCaffrey & Bell 2006, *Stat Med* 25:4081). Below the unit floor no interval is
-  reported: the table says why and offers the exits.
+  linear models (McCaffrey & Bell 2006, *Stat Med* 25:4081), each cluster's meat term read from
+  its score alone, never a working residual divided by the root of a weight (:func:`_cr2_parts`).
+  Below the unit floor no interval is reported: the table says why and offers the exits.
 * **Independent rows** of a least-squares model get HC3 standard errors with t(n − p) reference
   distributions (Long & Ervin 2000, *Am Stat* 54:217), and a Breusch–Pagan check in Koenker's
   studentized form says when the residual spread is not constant. A coefficient that rests on a
@@ -352,7 +353,8 @@ def cr2(X: np.ndarray, e: np.ndarray, codes: np.ndarray, bread: np.ndarray,
     For each cluster ``A_g = (I − H_gg)^(−½)``, with ``H_gg = X_g (XᵀX)⁻¹ X_gᵀ`` (a pseudo-inverse
     square root when ``I − H_gg`` is singular, as clubSandwich does), and
     ``V = B (Σ_g X_gᵀ A_g e_g e_gᵀ A_g X_g) B``. ``H_gg`` has rank at most P, so ``A_g`` is
-    applied through the eigenvectors of its P-dimensional part: no ``n_g × n_g`` matrix is formed.
+    applied through the eigenvectors of its P-dimensional part: no ``n_g × n_g`` matrix is formed,
+    and each cluster's term is read from its score ``Σ x_i e_i`` alone (:func:`_cr2_parts`).
 
     The degrees of freedom for coefficient j (:func:`_bell_mccaffrey`, for any linear combination
     of the coefficients): with ``p_g = A_g X_g B e_j`` and the working model's residual-maker
@@ -369,40 +371,52 @@ def cr2(X: np.ndarray, e: np.ndarray, codes: np.ndarray, bread: np.ndarray,
 
 
 def _cr2_parts(X: np.ndarray, e: np.ndarray, codes: np.ndarray, bread: np.ndarray, *,
-               adjust: bool = True) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
+               adjust: bool = True, score: np.ndarray | None = None
+               ) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
     """:func:`cr2`'s covariance, with what its Bell–McCaffrey df are computed from: ``A_g X_g``
-    for every cluster (N × P) and the clusters' rows in blocks (:func:`_size_blocks`)."""
+    for every cluster (N × P) and the clusters' rows in blocks (:func:`_size_blocks`).
+
+    The meat reads each cluster's score ``t_g = X_gᵀ e_g`` alone, the sum of the rows of ``score``
+    (N × P, each row's ``x_i e_i``: ``X * e`` where not given), through the push-through identity:
+    with ``(λ_k, u_k)`` the eigenpairs of ``H_gg`` and ``w_k = X_gᵀ u_k = R_gᵀ z_k`` (``X_g =
+    Q_g R_g``, ``z_k`` the eigenvectors of ``R_g B R_gᵀ``), ``u_kᵀ e_g = w_kᵀ B t_g / λ_k``, so
+    ``X_gᵀ A_g e_g = t_g + Σ_k (f_k/λ_k) w_k w_kᵀ B t_g`` for ``A_g = I + Σ_k f_k u_k u_kᵀ``. No row
+    of Q meets a residual: Householder's QR leaves rounding of the cluster's longest row's scale in
+    a short row of Q, and a logistic working row ``√w·x`` beside its Pearson residual ``(y −
+    μ)/√w`` is short exactly where the residual is long (a fitted probability of 10⁻³³ beside the
+    event: a residual of 10¹⁶), so ``Σ_g (A_g X_g)ᵀ e_g`` served the CR2 standard errors 3% wrong
+    with such a row first in the data and right with it 1,000 rows later (T5dV-1). A caller whose
+    residual divides by a weight gives each row's score as the fit computes it, never divided
+    (:func:`_clustered`)."""
     X = np.asarray(X, dtype=float)
     e = np.asarray(e, dtype=float)
     N, P = X.shape
+    S = X * e[:, None] if score is None else np.asarray(score, dtype=float)
     blocks = _size_blocks(np.asarray(codes), P)
     # Pass 1: A_g X_g for every cluster, kept as one N × P array (the size of the design itself).
     AX = X.copy()
     meat = np.zeros((P, P))
     for block in blocks:
         Xg = X[block]  # (k, m, P)
+        t = S[block].sum(axis=1)  # (k, P): each cluster's score X_gᵀ e_g
         if adjust:
-            lengths = np.linalg.norm(Xg, axis=2)  # (k, m)
-            graded = lengths.min(axis=1) < np.finfo(float).eps * lengths.max(axis=1)
-            if graded.any():
-                # A cluster with a row under rounding's share of its longest is factored longest
-                # row first, Q put back in order: Householder is then accurate row by row
-                # (:func:`qr_frame`), where a short row among the first keeps rounding in its Q.
-                order = np.argsort(-lengths, axis=1, kind="stable")
-                order[~graded] = np.arange(Xg.shape[1])
-                Q_sorted, R = np.linalg.qr(np.take_along_axis(Xg, order[:, :, None], axis=1))
-                Q = np.empty_like(Q_sorted)
-                Q[np.arange(len(order))[:, None], order] = Q_sorted
-            else:
-                Q, R = np.linalg.qr(Xg)  # X_g = Q R, Q with orthonormal columns
+            Q, R = np.linalg.qr(Xg)  # X_g = Q R, Q with orthonormal columns
             Bg = R @ bread @ np.swapaxes(R, 1, 2)
             lam, Z = np.linalg.eigh((Bg + np.swapaxes(Bg, 1, 2)) / 2)
             gap = 1.0 - lam
             f = np.where(gap > _EIG_FLOOR, 1.0 / np.sqrt(np.clip(gap, _EIG_FLOOR, None)) - 1.0, -1.0)
             U = Q @ Z  # eigenvectors of H_gg (k, m, r)
             AX[block] = Xg + U @ (f[:, :, None] * (np.swapaxes(U, 1, 2) @ Xg))
-        s = np.einsum("kmp,km->kp", AX[block], e[block])
-        meat += s.T @ s
+            # f/λ = 1/(√(1 − λ)(1 + √(1 − λ))) without dividing by λ (0.5 where λ = 0, whose
+            # term w_kᵀ B t_g is zero); −1/λ where 1 − λ is pseudo-inverted (f = −1, λ within
+            # 10⁻¹⁰ of one).
+            root = np.sqrt(np.clip(gap, 0.0, None))
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = np.where(gap > _EIG_FLOOR, 1.0 / (root * (1.0 + root)), -1.0 / lam)
+            Wk = np.swapaxes(R, 1, 2) @ Z  # (k, P, r): w_k = X_gᵀ u_k
+            reach = np.einsum("kpr,kp->kr", Wk, t @ bread)  # w_kᵀ B t_g (bread symmetric)
+            t = t + np.einsum("kpr,kr->kp", Wk, ratio * reach)
+        meat += t.T @ t
     V = bread @ meat @ bread
     return (V + V.T) / 2, AX, blocks
 
@@ -499,27 +513,13 @@ def qr_frame(X: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
     statsmodels' HC3 leverages ``diag(X(XᵀX)⁻¹Xᵀ)`` put `v`'s HC3 standard error off by 2.6 times,
     and the pseudo-inverse of ``XᵀX`` dropped the near-null direction from CR2's (−1.3·10⁻³).
 
-    Where some row's length is under rounding's share of the longest's (a working design whose
-    weight rounds to zero on a row: a fitted probability of 0 or 1), the rows are factored longest
-    first and Q put back in their order: Householder's QR is accurate row by row on rows so sorted
-    (Powell & Reid 1969; Cox & Higham 1998, *BIT* 38:24), where a short row among the first ones
-    keeps its row of Q at rounding, 10⁻¹⁷, not at its own scale. Times that row's Pearson residual,
-    divided by the root of its weight, that rounding made the logistic CR2 standard errors beside
-    one outlying row first in the data (its fitted probability 1.0, no event) 10¹³¹ and more,
-    where they are 0.06 to 0.30 (CR2's QR of each cluster sorts its rows so too,
-    :func:`_cr2_parts`). Other designs are factored as they come."""
+    A short row of Q (a working design's row whose weight is tiny or rounds to zero) holds
+    rounding of the longest row's scale, not of its own: no caller multiplies it by a residual
+    divided by that weight (CR2's meat reads each cluster's score, :func:`_cr2_parts`)."""
     from scipy.linalg import solve_triangular
 
     X = np.asarray(X, dtype=float)
-    lengths = np.linalg.norm(X, axis=1) if X.size else np.zeros(len(X))
-    if len(lengths) and np.isfinite(lengths).all() and \
-            lengths.min() < np.finfo(float).eps * lengths.max():
-        order = np.argsort(-lengths, kind="stable")
-        Q_sorted, R = np.linalg.qr(X[order])
-        Q = np.empty_like(Q_sorted)
-        Q[order] = Q_sorted
-    else:
-        Q, R = np.linalg.qr(X)
+    Q, R = np.linalg.qr(X)
     if not np.all(np.isfinite(R)) or np.any(np.diag(R) == 0):
         return None
     return Q, solve_triangular(R, np.eye(R.shape[0]))
@@ -1233,19 +1233,24 @@ def _cluster_caption(clusters: Clusters, bell_mccaffrey: bool = True) -> str:
 
 
 def _clustered(names: Sequence[str], est: np.ndarray, estimator: str, X: np.ndarray, e: np.ndarray,
-               codes: np.ndarray, clusters: Clusters) -> InferenceTable:
+               codes: np.ndarray, clusters: Clusters, *,
+               score: np.ndarray | None = None) -> InferenceTable:
     """The CR2 table of a working linear model (``X``, ``e``), rows clustered by ``codes``; a
     linear combination of its coefficients gets its own Bell–McCaffrey df
-    (:attr:`InferenceTable.contrast`)."""
+    (:attr:`InferenceTable.contrast`). The meat reads each cluster's score alone
+    (:func:`_cr2_parts`): ``score`` (N × P), each working row's share of it as the fit computes
+    it, never divided by a weight (``X * e`` where not given), carried to Q's frame by ``R⁻¹``,
+    never Q's rows times ``e``."""
     X = np.asarray(X, dtype=float)
     P = X.shape[1]
+    S = X * np.asarray(e, dtype=float)[:, None] if score is None else np.asarray(score, float)
     frame = qr_frame(X)
     if frame is None:  # dependent columns: the pseudo-inverse's covariance, as before
         bread, carry, Z = bread_of(X), np.eye(P), X
     else:  # on Q, carried to the coefficients by R⁻¹ (:func:`qr_frame`)
         Z, carry = frame
         bread = np.eye(P)
-    V, AX, blocks = _cr2_parts(Z, e, codes, bread)
+    V, AX, blocks = _cr2_parts(Z, e, codes, bread, score=S @ carry)
     V = carry @ V @ carry.T
     V = (V + V.T) / 2
     exact = _bm_affordable(blocks, P)
@@ -1941,9 +1946,10 @@ def information_distance(score: np.ndarray, information: np.ndarray) -> float:
 
 
 def _standard_errors(distance: float) -> str:
-    """A distance in standard errors as the words say it: to two figures below a thousand, written
-    out below a million, and above as a power of ten (2.9 × 10¹⁰¹), never as its every digit."""
-    if distance < 1_000:
+    """A distance in standard errors as the words say it: to two figures below ten, written out
+    whole from ten to below a million (150, 1,000, never 1.5e+02 or 1e+03), and above as a power
+    of ten (2.9 × 10¹⁰¹), never as its every digit."""
+    if distance < 9.95:
         return f"{distance:.2g}"
     if distance < 999_999.5:
         return f"{distance:,.0f}"
@@ -2083,7 +2089,9 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     if refusal:
         return _refused(names, est, estimator, clusters, *refusal)
     if clusters.clustered:
-        return _clustered(names, est, estimator, Xw, ew, clusters.codes, clusters)
+        # CR2's meat reads each row's score, x(y − μ), never Q's row times (y − μ)/√w (T5dV-1).
+        return _clustered(names, est, estimator, Xw, ew, clusters.codes, clusters,
+                          score=X * (y - mu)[:, None])
     # The inverse information from the working design's QR (:func:`gram_inverse`), not
     # statsmodels' inverse of the Hessian, whose rounding is the design's condition number squared.
     cov = gram_inverse(Xw)
@@ -2115,7 +2123,9 @@ def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clust
     combination where the columns were centered (and, in one completed copy's table made for
     Rubin's rules, its standard error), it gives through :attr:`InferenceTable.contrast`
     (:func:`firth_combination`, never its profile: the data separate). A table refused (its
-    profile on separated rows among the reasons) gives its intercept's estimate alone."""
+    profile on separated rows among the reasons) gives its intercept's estimate alone, and none
+    where the fit stopped short of its maximum (its rows' estimates, which the intercept's
+    combination reads, are none)."""
     fit = firth_fit(X, y)
     table = _firth_rows(names, X, y, clusters, separated, fit)
     refused = table.info.get("refused") is not None
@@ -2154,8 +2164,9 @@ def firth_distance(X: np.ndarray, y: np.ndarray, beta: np.ndarray) -> float:
 def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clusters,
                 separated: list[str], fit: FirthFit) -> InferenceTable:
     """Firth's rows on rows the data separate (``separated``, the columns of the cone
-    :func:`separated_columns` finds): refused for want of independent rows or of enough units, or
-    with no estimate where the fit is not at its penalized maximum (:func:`at_maximum`); in one
+    :func:`separated_columns` finds): with no estimate where the fit is not at its penalized
+    maximum (:func:`at_maximum`), whatever else refuses; refused for want of independent rows or
+    of enough units, the estimates kept where the fit is at its maximum; in one
     completed copy's table made for Rubin's rules, each estimate with its standard error from the
     information (:func:`for_pooling`); otherwise the penalized estimates alone, every profile
     interval and p-value refused in :func:`separated_profile_words`' words with the separation's
@@ -2175,9 +2186,12 @@ def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Cluste
                     {"label": f"Leave {_and(separated)} out, or merge its rare levels", "decision": None}))
     short = at_maximum("Firth's penalized fit", firth_distance(X, y, est),
                        converged=fit.converged, steps=fit.iterations)
-    if refusal is None and short:
-        # Where it stopped is not the penalized maximum: no estimate (:func:`at_maximum`).
-        refusal = (short, ())
+    if short:
+        # Where it stopped is not the penalized maximum: no estimate (:func:`at_maximum`), whatever
+        # else refuses the intervals; the clustering or floor words, and their exits, follow. Set
+        # only where nothing else refused, the check let a clustered table serve a fit 7 to 9.6
+        # standard errors short of its maximum after 300 steps (T5dV-4).
+        refusal = (short, ()) if refusal is None else (f"{short} {refusal[0]}", refusal[1])
         est = np.full(len(names), np.nan)
     if refusal:
         table = _refused(names, est, estimator, clusters, *refusal)
@@ -2301,7 +2315,14 @@ def withheld_reason(m: int, named: Sequence[str]) -> str:
     return f"{because} (Heinze & Schemper 2002)"
 
 
-COMPLETE_CASES = "analyze complete cases, where one table is fit and none is pooled"
+# The way forward that complete cases offer a table pooled over completed copies, which promises
+# nothing the complete-case table cannot keep: where the complete cases separate the outcome too,
+# its Firth table reports its estimates alone (:func:`_firth_rows`), so the words say so. Once T5d
+# refused every profile on separated rows, the words had promised complete cases an interval their
+# table refuses (T5dV-2).
+COMPLETE_CASES = ("analyze complete cases, where one table is fit and none is pooled; where the "
+                  "complete cases separate the outcome too, that table reports no standard error, "
+                  "interval or p-value either")
 
 
 def pooled_firth(tables: Sequence[InferenceTable], rows: list[dict[str, Any]], *,
@@ -2434,7 +2455,11 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
     if refusal:
         return _refused(labels, est, estimator, clusters, *refusal)
     if clusters.clustered:
-        return _clustered(labels, est, estimator, Xw, ew, np.repeat(clusters.codes, q), clusters)
+        # Each working row (unit i, class a) carries x_i (y_ia − π_ia) in class a's columns, so
+        # each cluster's rows sum to its score, never W_i^(−½) times W_i^½ (T5dV-1).
+        rows = np.einsum("ia,ab,ij->iabj", onehot - probs[:, 1:], np.eye(q), X)
+        return _clustered(labels, est, estimator, Xw, ew, np.repeat(clusters.codes, q), clusters,
+                          score=rows.reshape(len(X) * q, q * X.shape[1]))
     # The inverse information from the working design's QR (:func:`gram_inverse`), class by class
     # as ``est``, not statsmodels' inverse of the Hessian.
     C = gram_inverse(Xw)

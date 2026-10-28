@@ -125,7 +125,8 @@ def test_a_firth_fit_stopped_short_of_its_maximum_is_still_refused(monkeypatch):
 
 def test_a_distance_too_large_to_print_reads_as_a_bounded_number():
     """The verifier's base distance, 2.89·10¹⁰¹, reads as "2.9 × 10¹⁰¹", never as its 102 digits;
-    below a million the number is written out, below a thousand to two figures."""
+    from ten to below a million the number is written out, whole (150 and 999.7 read "150" and
+    "1,000", never "1.5e+02" and "1e+03", T5dV-7), below ten to two figures."""
     assert at_maximum("Firth's penalized fit", 2.886585886899571e101) == (
         "Firth's penalized fit stopped short of its maximum: where it stopped, one more Newton step "
         "would still move its estimates by up to 2.9 × 10¹⁰¹ of a standard error, and a table is "
@@ -134,7 +135,12 @@ def test_a_distance_too_large_to_print_reads_as_a_bounded_number():
     assert "by up to 3.4 × 10⁶ of" in at_maximum("the fit", 3.4e6)
     assert "by up to 999,999 of" in at_maximum("the fit", 999_999.4)
     assert "by up to 1,234 of" in at_maximum("the fit", 1234.2)
+    assert "by up to 1,000 of" in at_maximum("the fit", 999.7)
+    assert "by up to 150 of" in at_maximum("the fit", 150.0)
+    assert "by up to 12 of" in at_maximum("the fit", 12.3)
+    assert "by up to 9.6 of" in at_maximum("the fit", 9.6)
     assert "by up to 0.063 of" in at_maximum("the fit", 0.063)
+    assert "by up to 0.00015 of" in at_maximum("the fit", 1.5e-4)
 
 
 # ── the logistic and multinomial distances ───────────────────────────────────
@@ -194,7 +200,8 @@ def test_the_clustered_logistic_table_beside_that_row_serves_cr2_as_written_out(
     ``where``, the CR2 standard errors are those written out densely to 10⁻⁶ (the estimates
     statsmodels'). Where the row came first its weight's zero kept rounding in its row of Q, and
     the base refused the table as stopped short of its maximum; served with the distance read
-    from the score but Q not taken row by row, its standard errors were 10¹²⁷ and more. Where it
+    from the score and the meat on that row of Q times its residual, its standard errors were
+    10¹²⁷ and more (the meat now reads each cluster's score, ``inference._cr2_parts``). Where it
     came later the base served it, as now."""
     import statsmodels.api as sm
 

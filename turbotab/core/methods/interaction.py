@@ -1421,11 +1421,14 @@ def _register_contracts() -> None:
                  by=f"{me}:family_count"),
         relation("separation-profile", "disables", "profile intervals and a penalized "
                  "likelihood-ratio heterogeneity test", "a logistic model the data separate",
-                 "each effect, combination, ratio of odds ratios and RERI is Firth's penalized "
-                 "estimate alone, with no interval or p-value, and no heterogeneity test is "
-                 "reported: with a coefficient held at a value the penalized likelihood can have "
-                 "more than one maximum, and the fit cannot certify that it found the highest",
-                 by=f"{me}:_firth_family"),
+                 "fit once on independent rows (complete cases), each effect, combination, ratio "
+                 "of odds ratios and RERI is Firth's penalized estimate alone, with no interval or "
+                 "p-value, and no heterogeneity test is reported: with a coefficient held at a "
+                 "value the penalized likelihood can have more than one maximum, and the fit "
+                 "cannot certify that it found the highest; under multiple imputation, where an "
+                 "imputed copy separates, the modification is not estimable, in words that say "
+                 "why: the penalized estimates have no covariance for Rubin's rules and D1 to "
+                 "pool", by=f"{me}:_firth_family"),
     )
     register_contract(MethodContract(
         key="effect_modification", package=PACKAGE,
