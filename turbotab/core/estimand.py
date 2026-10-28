@@ -1103,8 +1103,8 @@ def unadjusted_blocked(state: Any, n: int) -> bool:
     return multiplicity_rung("stated_count", n, omics_family(state)) == "block_and_record"
 
 
-def multiplicity_question(state: Any, n: int, *,
-                          family: Sequence[str] | None = None) -> dict[str, Any]:
+def multiplicity_question(state: Any, n: int, *, family: Sequence[str] | None = None,
+                          columns: Sequence[Any] | None = None) -> dict[str, Any]:
     """The family's multiplicity method, each option labeled customary and sound (BLUEPRINT north
     star 5), soundest first: Benjamini–Hochberg always; unadjusted p-values with the count stated
     are customary for a few declared nutrient hypotheses (Rothman 1990) and unsound for an omics
@@ -1114,25 +1114,29 @@ def multiplicity_question(state: Any, n: int, *,
     ``n``: the family's members, by which the unadjusted rung is read, as the multiplicity answer
     reads it (``methods.omics._multiplicity_leash``). ``family``: its members, so that each count of
     tests is of those feature-wise regression would test (:func:`card_tests`, the verifier's
-    V4a-3): a member recorded as codes is named as adjusted for, not tested, and where a member's
-    declared form refuses the table no test is counted; ``n_tests`` is that count. Without it,
-    every member is counted."""
-    from turbotab.core.voice import listing
-
+    V4a-3 and V4a2-2): a category among them (recorded as codes, or text by ``columns``, the
+    table's column summaries) is named as adjusted for, not tested; where a member's declared form
+    refuses the table no test is counted; and where a member's type is not known (no column
+    summaries), no option counts a test. ``n_tests`` is that count; where a member's type is not
+    known, the most the family would make, its members not known for categories. Without
+    ``family``, every member is counted."""
     omics = omics_family(state)
     blocked = unadjusted_blocked(state, n)
-    tested, coded, formed = (card_tests(state, family) if family is not None
-                             else (None, [], None))
-    k = n if tested is None else len(tested)
-    one = len(coded) == 1
-    after = (f"; {listing(coded)} {'is' if one else 'are'} recorded as "
-             f"{'a category' if one else 'categories'}, adjusted for, not tested"
-             if coded else "")
-    if formed is not None or not k:
-        # No test would be made: no option counts one, and each says why.
-        after = (f"; as their forms stand, none of the {n:,} study factors would be tested"
-                 if formed is not None else
-                 f"{after}, so none of the {n:,} study factors would be tested")
+    counts = card_tests(state, family, columns) if family is not None else None
+    coded, text = (counts.coded, counts.text) if counts is not None else ([], [])
+    named = [*coded, *text]
+    tested = counts.tested if counts is not None else range(n)
+    formed = counts.refused if counts is not None else None
+    k = len(tested) if tested is not None else n - len(named)
+    after = f"; {category_words(coded, text)}, adjusted for, not tested" if named else ""
+    if formed is not None or not k or tested is None:
+        # No test would be made, or a member's type is not known here, a text column being a
+        # category (the verifier's V4a2-2): no option counts one, and where none would be made,
+        # each says why.
+        if formed is not None:
+            after = f"; as their forms stand, none of the {n:,} study factors would be tested"
+        elif not k:
+            after = f"{after}, so none of the {n:,} study factors would be tested"
         among, shown = "among the tests", "every member tested is still shown"
         chance = "at p < 0.05 about one test in twenty passes by chance alone"
         in_view = "every test"
@@ -1140,7 +1144,7 @@ def multiplicity_question(state: Any, n: int, *,
     else:
         tests = f"{k:,} test{'' if k == 1 else 's'}"
         among = f"among the {tests}"
-        shown = "every member tested is still shown" if coded else "every member is still shown"
+        shown = "every member tested is still shown" if named else "every member is still shown"
         chance = (f"{tests} at p < 0.05 give{'s' if k == 1 else ''} about {0.05 * k:,.0f} false "
                   f"positives by chance alone")
         in_view = "the 1 test" if k == 1 else f"all {tests}"
@@ -1357,14 +1361,47 @@ def _option_words(state: Any, exposure: Any,
     return None
 
 
-def card_tests(state: Any, family: Sequence[str]) -> tuple[list[str], list[str], str | None]:
-    """``(tested, coded, refused)``: what the estimand card knows, before any model is fit, of the
-    tests feature-wise regression would make of ``family`` (the orchestrator's ruling (1)): the
-    members it would test (each not recorded as codes), those the answers record as codes (each a
-    category, adjusted for, not tested), and, where a member's declared form is not a straight
-    line, the table's refusal in its own words (``models.featurewise.formed_study_factor``), so
-    none would be tested. The card has no column's values, so a text column is not known for a
-    category here, and is counted among the tested."""
+# The column summaries' types (``datastore.ColumnInfo.dtype``) that enter the model as numbers; any
+# other (text, categorical, a date) is a category, as the design reads a column that is not a
+# number (``pipeline.design_spec``).
+NUMBER_TYPES = ("numeric", "integer", "boolean")
+
+
+@dataclass(frozen=True)
+class CardTests:
+    """What the estimand card knows, before any model is fit, of the tests feature-wise regression
+    would make of an exposure family (:func:`card_tests`)."""
+
+    tested: list[str] | None  # the members it would test; None where a member's type is not known
+    coded: list[str]  # the members the answers record as codes: categories, adjusted for
+    text: list[str]  # the members the table holds as text: categories, adjusted for
+    refused: str | None  # the table's refusal where a member's declared form is not a line
+
+
+def _column_types(columns: Sequence[Any] | None) -> dict[str, str]:
+    """Each column's type in ``columns``, column summaries as dicts (``table_info``'s) or
+    ``ColumnInfo``s (a store's ``info()``)."""
+    out: dict[str, str] = {}
+    for c in columns or []:
+        name = c.get("name") if isinstance(c, Mapping) else getattr(c, "name", None)
+        dtype = c.get("dtype") if isinstance(c, Mapping) else getattr(c, "dtype", None)
+        if name is not None:
+            out[str(name)] = str(dtype)
+    return out
+
+
+def card_tests(state: Any, family: Sequence[str],
+               columns: Sequence[Any] | None = None) -> CardTests:
+    """What the estimand card knows, before any model is fit, of the tests feature-wise regression
+    would make of ``family`` (the orchestrator's ruling (1)), by the rule the multiplicity preview
+    reads off the design (``plan_previews.planned_tests``): a member that enters the model as one
+    column is tested; a category (recorded as codes, or text by ``columns``, the table's column
+    summaries) enters as indicators of its levels, adjusted for, not tested; and where a member's
+    declared form is not a straight line, the table's refusal in its own words
+    (``models.featurewise.formed_study_factor``), so none would be tested. A member's type is
+    known from its answer (codes, or amounts) or from ``columns``; where one is not known (the
+    card given no column summaries, a text column a category), ``tested`` is None, the count of
+    tests not known here (the verifier's V4a2-2)."""
     from turbotab.core.methods.exposure_form import _form_of, current_forms
     from turbotab.core.models.featurewise import formed_study_factor
     from turbotab.core.readings import confirmation
@@ -1374,49 +1411,82 @@ def card_tests(state: Any, family: Sequence[str]) -> tuple[list[str], list[str],
              if c in members and _form_of(f)[0] != "linear"}
     if forms:
         reason, _ = formed_study_factor(forms, list(forms), list(forms))
-        return [], [], reason
-    coded = [c for c in members if confirmation(state, "code_or_count", c) == "code"]
-    return [c for c in members if c not in coded], coded, None
+        return CardTests([], [], [], reason)
+    answers = {c: confirmation(state, "code_or_count", c) for c in members}
+    types = _column_types(columns)
+    coded = [c for c in members if answers[c] == "code"]
+    text = [c for c in members if c not in coded and answers[c] != "amount"
+            and c in types and types[c] not in NUMBER_TYPES]
+    known = all(answers[c] in ("code", "amount") or c in types for c in members)
+    tested = [c for c in members if c not in coded and c not in text]
+    return CardTests(tested if known else None, coded, text, None)
 
 
-def family_consequence(state: Any, family: Sequence[str]) -> str:
+def category_words(coded: Sequence[str], text: Sequence[str]) -> str:
+    """The categories among a family's members as the card names them: "`arm` is recorded as a
+    category" for one the answers record as codes, "`grp` is a category" for a text column."""
+    from turbotab.core.voice import listing
+
+    parts = []
+    if coded:
+        one = len(coded) == 1
+        parts.append(f"{listing(coded)} {'is' if one else 'are'} recorded as "
+                     f"{'a category' if one else 'categories'}")
+    if text:
+        one = len(text) == 1
+        parts.append(f"{listing(text)} {'is a category' if one else 'are categories'}")
+    return " and ".join(parts)
+
+
+def family_consequence(state: Any, family: Sequence[str],
+                       columns: Sequence[Any] | None = None) -> str:
     """The family option's consequence on the estimand card, before any model is fit (the
     orchestrator's ruling (1)): feature-wise regression tests each member that enters the model as
     one column, adjusted for the covariates and not for the other members it tests, and a category
-    enters each test as indicators of its levels, adjusted for, not tested: the members the
-    answers record as codes are named (the card has no column's values, so a text column is not
-    known for one here). Where a member's declared form is not a straight line, the table is
-    refused, so the consequence claims no test and gives the refusal in its own words
-    (``models.featurewise.formed_study_factor``)."""
-    from turbotab.core.voice import listing
+    enters each test as indicators of its levels, adjusted for, not tested: the members known for
+    categories are named (recorded as codes, or text by ``columns``, the table's column summaries;
+    :func:`card_tests`). Where a member's declared form is not a straight line, or every member is
+    a category, the table is refused, so the consequence claims no test and gives the refusal in
+    its own words (``models.featurewise.formed_study_factor``, ``no_study_factor``)."""
+    from turbotab.core.models.featurewise import no_study_factor
 
     members = [str(c) for c in family]
-    _, coded, reason = card_tests(state, members)
-    if reason is not None:
+    counts = card_tests(state, members, columns)
+    if counts.refused is not None:
         return (f"None of the {len(members):,} study factors would be tested as their forms stand "
-                f"(the feature-wise family): {reason}")
+                f"(the feature-wise family): {counts.refused}")
+    if counts.tested == []:
+        reason, _ = no_study_factor(members, members)
+        return (f"None of the {len(members):,} study factors would be tested (the feature-wise "
+                f"family): {reason}")
     said = (f"Each of the {len(members):,} study factors that enters the model as one column is "
             f"tested in turn, adjusted for the covariates but not for the other study factors "
             f"tested, with its multiplicity method; every one tested is shown (the feature-wise "
             f"family).")
-    if coded:
-        one = len(coded) == 1
-        return (f"{said} {listing(coded)} {'is' if one else 'are'} recorded as "
-                f"{'a category' if one else 'categories'}: {'it enters' if one else 'they enter'} "
-                f"each test as indicators of {'its' if one else 'their'} levels, adjusted for, not "
-                f"tested, as any category among them would.")
+    named = [*counts.coded, *counts.text]
+    if named:
+        one = len(named) == 1
+        # Where a member's type is not known here, another may be a category too.
+        tail = "" if counts.tested is not None else ", as any category among them would"
+        return (f"{said} {category_words(counts.coded, counts.text)}: "
+                f"{'it enters' if one else 'they enter'} each test as indicators of "
+                f"{'its' if one else 'their'} levels, adjusted for, not tested{tail}.")
     return (f"{said} A category among them enters each test as indicators of its levels: it is "
             f"adjusted for, not tested.")
 
 
 def estimand_card(state: Any, task: str | None, prevalence: float | None = None, *,
-                  nested: Mapping[str, str] | None = None) -> dict[str, Any] | None:
+                  nested: Mapping[str, str] | None = None,
+                  columns: Sequence[Any] | None = None) -> dict[str, Any] | None:
     """What the estimand question offers: the exposure candidates, the effects, the contrast for an
     energy-bearing exposure, and the measures ruling 9 labels (difference or ratio; conditional or
     marginal), ranked by the outcome's ``prevalence`` (the event's share) for a yes/no outcome.
     ``nested``: the values' reading of the parts inside their totals (:func:`values_nesting`). A
     sample drawn by its outcome (``designs.sampled_by_outcome``) has no prevalence: its case share
-    was set by the study, so it ranks nothing and the marginal measures are refused."""
+    was set by the study, so it ranks nothing and the marginal measures are refused. ``columns``:
+    the table's column summaries (``table_info``'s), by whose types the family option knows a text
+    member for a category, adjusted for, not tested (:func:`card_tests`); without them, its
+    multiplicity options count no test."""
     if _get(state, "purpose") != "inference" or _get(state, "roles") is None:
         return None
     from turbotab.core.designs import sampled_by_outcome
@@ -1450,8 +1520,9 @@ def estimand_card(state: Any, task: str | None, prevalence: float | None = None,
         # 2): offered with two or more exposures, as an omics table's features are.
         "family": ({"n": len(family), "energy_contrast": family_contrast_applies(state),
                     "measures": measures_offered(task, family=True),
-                    "multiplicity": multiplicity_question(state, len(family), family=family),
-                    "consequence": family_consequence(state, family)}
+                    "multiplicity": multiplicity_question(state, len(family), family=family,
+                                                          columns=columns),
+                    "consequence": family_consequence(state, family, columns)}
                    if len(family) >= 2 and fitted_measures(task, family=True) else None),
         "effects": [
             {"effect": "total", "label": "Total effect",

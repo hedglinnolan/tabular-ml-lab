@@ -2030,9 +2030,9 @@ def _without_the_primary(artifact: EffectsArtifact, fam: Any, two: Any, whose: s
                          why: str) -> str:
     """The methods text where Model 2, the primary, reports no estimate and another model does (a
     study factor with nothing left once the covariates are projected out is estimated without
-    them): the models that report it, Model 2's refusal and each other model's in their own words,
-    and the family's multiplicity sentence (the verifier's V4a-2), where it said that no estimate
-    was reported."""
+    them): the models that report it, and Model 2's refusal and each other model's in their own
+    words (the verifier's V4a-2), where it said that no estimate was reported; the family's
+    multiplicity sentence follows it (:func:`methods_sentence`)."""
     from turbotab.core.voice import listing
 
     def added(fit: Any) -> str:
@@ -2069,21 +2069,46 @@ def _without_the_primary(artifact: EffectsArtifact, fam: Any, two: Any, whose: s
         refused = s.inference.refused if s.inference is not None else None
         text += (f" {whom} reports none: {said(refused)}" if refused else
                  f" {whom} could not be fit and is not reported.")
-    if artifact.multiplicity:
-        text += " " + artifact.multiplicity
     return text
+
+
+def _reporting(fam: Any) -> set[str]:
+    """The models of ``fam``'s sequence that report an estimate."""
+    return {s.key for s in fam.sequence if _estimates(s)}
 
 
 def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
     """The methods text this stage writes, from what it fitted: the sequence, the display rule, the
-    marginal standardization, the diagnostics and their responses, and the sensitivity analyses."""
-    from turbotab.core.models.effects import COOK, WESTREICH
-    from turbotab.core.voice import listing, tick
+    marginal standardization, the diagnostics and their responses, and the sensitivity analyses,
+    then the family's multiplicity sentence. It describes the first family chosen; where another
+    family reports an estimate from a model the first reports none from (the linear model's Model
+    2 singular where feature-wise regression tests `fiber` in it), each family's text is said
+    under its name (the verifier's V4a2-1)."""
+    from turbotab.core.models import get_family
 
     if not artifact.families:
         return artifact.methods
+    head, *rest = artifact.families
+    if not any(_reporting(f) - _reporting(head) for f in rest):
+        text, follows = _family_methods(artifact, head)
+        return f"{text} {artifact.multiplicity}" if follows and artifact.multiplicity else text
+    task = str(getattr(state, "task", None) or "regression")
+    parts = []
+    for fam in artifact.families:
+        text, _ = _family_methods(artifact, fam)
+        parts.append(f"Under {_named(get_family(fam.family), task)}, {text[0].lower()}{text[1:]}")
+    text = " ".join(parts)
+    return f"{text} {artifact.multiplicity}" if artifact.multiplicity else text
+
+
+def _family_methods(artifact: EffectsArtifact, fam: Any) -> tuple[str, bool]:
+    """``(text, follows)``: the methods text of one family's sequence (:func:`methods_sentence`),
+    and whether the family's multiplicity sentence follows it (not where no model of the family
+    reports an estimate)."""
+    from turbotab.core.models.effects import COOK, WESTREICH
+    from turbotab.core.voice import listing, tick
+
     whose = ("each exposure" if artifact.exposure == "*" else tick(artifact.exposure))
-    fam = artifact.families[0]
     # The models reported: one declared but not fit (Model 3 held by its own imputation's question,
     # say) is said apart, never listed among them.
     keys = [s.key for s in fam.sequence if s.effects]
@@ -2093,8 +2118,8 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
                or (two.concerns[0] if two is not None and two.concerns else None)
                or "no model could be fit")
         if two is not None and any(_estimates(s) for s in fam.sequence):
-            return _without_the_primary(artifact, fam, two, whose, why)
-        return f"No estimate of {whose} is reported: {why}"
+            return _without_the_primary(artifact, fam, two, whose, why), True
+        return f"No estimate of {whose} is reported: {why}", False
     seq = []
     if "crude" in keys:
         crude = next(s for s in fam.sequence if s.key == "crude")
@@ -2189,9 +2214,7 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
         e = lines[0].e_value
         text += " " + sensitivity_clause(lines[0].methods, names, of=of,
                                          sd_basis=e.sd_basis if e is not None else None)
-    if artifact.multiplicity:
-        text += " " + artifact.multiplicity
-    return text
+    return text, True
 
 
 def _p(p: float) -> str:

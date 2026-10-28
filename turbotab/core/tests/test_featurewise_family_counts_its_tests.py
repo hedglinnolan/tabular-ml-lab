@@ -871,21 +871,32 @@ CARD_TENSION = ("For a few declared nutrient hypotheses the field reports unadju
                 "the false-discovery rate across all 2 of them.")
 
 
+def _columns(frame: pd.DataFrame) -> list[dict]:
+    """The table's column summaries as the proposals stage reads them (``table_info``), each type
+    from the frame's own values: text where they are not numbers."""
+    return [{"name": c, "dtype": "numeric" if pd.api.types.is_numeric_dtype(frame[c]) else "text"}
+            for c in frame.columns]
+
+
 def test_the_cards_multiplicity_question_counts_the_tests_the_family_would_make():
     """The verifier's V4a-3: beside the consequence that says none, or fewer, would be tested, the
     card's multiplicity options said "among the 2 tests" and "every member is still shown". With
     `fiber` in a declared spline no test would be made, so no option counts any; with `arm`
     recorded as codes, 1 test would be made, and `arm` is named as adjusted for, not tested. The
-    numeric family's options are as they were, byte for byte."""
+    numeric family's options are as they were, byte for byte: {`fiber`, `sugar`}, each type known
+    from the table's columns (the verifier's V4a2-2: {`fiber`, `arm`}, pinned here as silent, has
+    `arm` a text column, a category)."""
     from turbotab.core import estimand as est
 
-    def question(**kw):
-        family = est.estimand_card(_family({"fiber": "exposure", "arm": "exposure"},
-                                           ["featurewise"], **kw), "regression")["family"]
+    columns = _columns(_frame())
+
+    def question(members=("fiber", "arm"), **kw):
+        family = est.estimand_card(_family({m: "exposure" for m in members}, ["featurewise"],
+                                           **kw), "regression", columns=columns)["family"]
         q = family["multiplicity"]
         return q, {o["key"]: o["sound"]["reason"] for o in q["options"]}
 
-    plain, reasons = question()
+    plain, reasons = question(("fiber", "sugar"))
     assert (reasons, plain["tension"], plain["n_tests"]) == (
         {"fdr_bh": CARD_BH, "count_stated": CARD_STATED}, CARD_TENSION, 2)  # silent
     formed, reasons = question(exposure_forms={"fiber": d.ExposureFormSpec(form="spline",
@@ -934,3 +945,220 @@ def test_a_category_study_factor_beside_a_numeric_estimand_is_named_once(tmp_pat
     assert row["estimate"] == pytest.approx(_ols(frame, "fiber", [*MODEL_2, *GRP])[0], rel=1e-9)
     assert ("Model 2, the primary, adjusted for `age`, `sex`, `smoking`, `activity` and `grp`; "
             in out["effects"]["methods"])
+
+
+# ── the second repair round (the verifier's V4a2-1 and V4a2-2) ───────────────
+
+SINGULAR = ("On these 400 rows the model matrix is singular: `activity` and `fib` are fixed "
+            "combinations of the other columns and the intercept, so their coefficients are not "
+            "identified. No estimate, interval or p-value is reported; leave one of the dependent "
+            "columns out.")
+SEQUENCE = ("the estimate of each exposure is reported across a declared sequence of models fit "
+            "on all 400 analyzed rows: unadjusted; Model 2, the primary, adjusted for `age`, "
+            "`sex`, `smoking` and `activity`")
+MODEL_3 = "; Model 3, further adjusted for `bmi`, a possible mediator, so not a total effect."
+APART = (" Only the exposure's estimates are shown as effects; every other coefficient is listed "
+         "apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J "
+         "Epidemiol 177:292).")
+BENCHMARKED = (" Sensitivity to unmeasured confounding is reported by the Cinelli–Hazlett "
+               "robustness value (each adjusted covariate a named benchmark) and by the E-value "
+               "for the estimate and for the confidence limit nearer the null, never as a pass or "
+               "a fail.")
+# Feature-wise regression's paragraph for {`fiber`, `fib`}: the sequence it reports, then the
+# family's sentence, of Model 2, naming the unadjusted model's tests.
+FIB_FAMILY = (f"In Model 2, the primary, feature-wise regression tested 1 of the 2 exposures "
+              f"(`fiber`); Benjamini–Hochberg q-values control the false-discovery rate across "
+              f"that 1 test ({BH}), and every exposure tested is shown, significant or not. `fib` "
+              f"is not estimable given the covariates: nothing of it is left once they are "
+              f"projected out, so it is not tested. The unadjusted model tested each of the 2 "
+              f"exposures (`fiber` and `fib`), with Benjamini–Hochberg q-values across its 2 "
+              f"tests.")
+FIB_FEATUREWISE = f"{SEQUENCE}{MODEL_3}{APART}{BENCHMARKED} {FIB_FAMILY}"
+
+
+def _rank_deficient(frame: pd.DataFrame, columns: list[str]) -> bool:
+    """Whether numpy finds the least-squares design on ``columns`` (and the intercept) singular."""
+    X = _design(frame, columns).to_numpy(float)
+    return int(np.linalg.matrix_rank(X)) < X.shape[1]
+
+
+def test_where_one_familys_model_2_reports_and_anothers_is_refused_each_is_said_by_name(tmp_path):
+    """The verifier's V4a2-1: models [linear, feature-wise], the family {`fiber`, `fib`}. The
+    linear model's Model 2 and Model 3 hold `fib` = 2 × `activity` + 1 beside `activity`, a matrix
+    numpy finds singular, so they are refused; feature-wise regression tests `fiber` in each
+    (statsmodels' estimates). The methods text described the linear model alone ("reported from
+    the unadjusted model alone ... Model 2 ... reports none") and then said Model 2 tested
+    `fiber`; now each family's sentences are said under its name."""
+    frame = _fib_frame()
+    out = ef.run(frame, tmp_path, _family({"fiber": "exposure", "fib": "exposure"},
+                                           ["linear", "featurewise"], amounts=FIB_AMOUNTS))
+    assert _rank_deficient(frame, ["fiber", "fib", *MODEL_2])  # the premise
+    linear = _sequence(out, "linear")
+    for key in ("model_2", "model_3"):
+        assert linear[key]["effects"] is None
+        assert linear[key]["inference"]["refused"] == SINGULAR
+    featurewise = _sequence(out)
+    for key, adjust in (("model_2", MODEL_2), ("model_3", [*MODEL_2, "bmi"])):
+        rows = {r["feature"]: r for r in featurewise[key]["effects"]}
+        assert rows["fiber"]["estimate"] == pytest.approx(_ols(frame, "fiber", adjust)[0],
+                                                          rel=1e-9)
+    assert out["effects"]["multiplicity"] == FIB_FAMILY
+    assert out["effects"]["methods"] == (
+        f"Under the linear model, the estimate of each exposure is reported from the unadjusted "
+        f"model alone, fit on all 400 analyzed rows. Model 2, the primary, adjusted for `age`, "
+        f"`sex`, `smoking` and `activity`, reports none: {SINGULAR} Model 3, further adjusted for "
+        f"`bmi`, reports none: {SINGULAR} Under the feature-wise regression, {FIB_FEATUREWISE}")
+
+
+def test_where_one_familys_model_3_reports_and_anothers_is_refused_each_is_said_by_name(tmp_path):
+    """V4a2-1's Model 3: {`fiber`, `fib3`}, `fib3` = `activity` + 2 × `bmi`, so only Model 3's
+    matrix is singular (numpy). The linear model reports Models 1 and 2 and not Model 3;
+    feature-wise regression's Model 3 tests `fiber` (statsmodels). The methods text said "Model 3
+    ... could not be fit and is not reported" of both; now of the linear model alone."""
+    frame = _fib_frame()
+    frame["fib3"] = frame["activity"] + 2 * frame["bmi"]
+    out = ef.run(frame, tmp_path, _family({"fiber": "exposure", "fib3": "exposure"},
+                                           ["linear", "featurewise"],
+                                           amounts={**ef.AMOUNTS, "code_or_count:fib3": "amount"}))
+    assert _rank_deficient(frame, ["fiber", "fib3", *MODEL_2, "bmi"])  # the premise
+    assert not _rank_deficient(frame, ["fiber", "fib3", *MODEL_2])
+    assert _sequence(out, "linear")["model_3"]["effects"] is None
+    rows = {r["feature"]: r for r in _sequence(out)["model_3"]["effects"]}
+    assert rows["fiber"]["estimate"] == pytest.approx(
+        _ols(frame, "fiber", [*MODEL_2, "bmi"])[0], rel=1e-9)
+    methods = out["effects"]["methods"]
+    linear, featurewise = methods.split(" Under the feature-wise regression, ")
+    assert linear.startswith(f"Under the linear model, {SEQUENCE}. Model 3, further adjusted for "
+                             f"`bmi`, could not be fit and is not reported.{APART}")
+    assert featurewise.startswith(f"{SEQUENCE}{MODEL_3}{APART}{BENCHMARKED} In Model 2, ")
+    assert "could not be fit" not in featurewise
+
+
+def test_where_every_family_reports_the_same_models_the_methods_text_is_as_it_was(tmp_path):
+    """Silent, byte for byte: {`fiber`, `fib`} under feature-wise regression alone and with the
+    linear model after it (the first family reports in every model the other does), and the
+    numeric family {`fiber`, `sugar`} under [linear, feature-wise]."""
+    frame = _fib_frame()
+    for models in (["featurewise"], ["featurewise", "linear"]):
+        out = ef.run(frame, tmp_path / "-".join(models),
+                     _family({"fiber": "exposure", "fib": "exposure"}, models,
+                             amounts=FIB_AMOUNTS))
+        assert out["effects"]["methods"] == f"T{FIB_FEATUREWISE[1:]}", models
+    out = ef.run(_frame(), tmp_path / "numeric", _family({"fiber": "exposure", "sugar": "exposure"},
+                                                         ["linear", "featurewise"]))
+    assert out["effects"]["methods"] == (
+        f"T{SEQUENCE[1:]}{MODEL_3}{APART} Influence was checked by Cook's distance against the "
+        f"median of F(7, 393) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to "
+        f"unmeasured confounding is reported by the Cinelli–Hazlett robustness value (each "
+        f"adjusted covariate a named benchmark; its form for the 95% interval, and the "
+        f"benchmarks' intervals, are not reported, as they assume classical standard errors and "
+        f"the intervals reported are HC3) and by the E-value for the estimate and for the "
+        f"confidence limit nearer the null, never as a pass or a fail. {ALL_TWO}")
+
+
+def _card(members, columns=None, **kw) -> dict:
+    from turbotab.core import estimand as est
+
+    return est.estimand_card(_family({m: "exposure" for m in members}, ["featurewise"], **kw),
+                             "regression", columns=columns)["family"]
+
+
+def _reasons(family: dict) -> dict:
+    return {o["key"]: o["sound"]["reason"] for o in family["multiplicity"]["options"]}
+
+
+def test_the_cards_multiplicity_options_count_a_text_category_out():
+    """The verifier's V4a2-2: {`fiber`, `arm`}, `arm` a text column (the frame's own values), so
+    feature-wise regression would test `fiber` alone, as the fit and the effects stage say. With
+    the table's columns handed to it, the card's options count 1 test and name `arm` as a
+    category, adjusted for, not tested, where they said "among the 2 tests", and its consequence
+    names `arm`."""
+    family = _card(("fiber", "arm"), _columns(_frame()))
+    named = "; `arm` is a category, adjusted for, not tested"
+    assert _reasons(family) == {
+        "fdr_bh": (f"controls the expected share of false discoveries among the 1 test ({BH}), "
+                   f"and every member tested is still shown{named}"),
+        "count_stated": ("sound for a few hypotheses each declared on its own, read with the 1 "
+                         "test in view (STROBE item 20: \"multiplicity of analyses\")" + named)}
+    assert family["multiplicity"]["tension"] == (
+        "For a few declared nutrient hypotheses the field reports unadjusted p-values with the "
+        "count stated (Rothman 1990, Epidemiology 1:43); Benjamini–Hochberg controls the "
+        f"false-discovery rate across that 1 test{named}.")
+    assert family["multiplicity"]["n_tests"] == 1
+    assert family["consequence"] == (f"{GENERIC} `arm` is a category: it enters each test as "
+                                     f"indicators of its levels, adjusted for, not tested.")
+
+
+def test_the_cards_options_count_no_test_where_a_members_type_is_not_known():
+    """V4a2-2 without the table's columns (the proposals stage hands the card none yet): `arm`'s
+    type is not known, so no option counts a test, where they said "among the 2 tests". Silent
+    where every member's type is known without them: each recorded as an amount, 2 tests, byte
+    for byte."""
+    family = _card(("fiber", "arm"))
+    assert _reasons(family) == {
+        "fdr_bh": (f"controls the expected share of false discoveries among the tests ({BH}), "
+                   f"and every member tested is still shown"),
+        "count_stated": ("sound for a few hypotheses each declared on its own, read with every "
+                         "test in view (STROBE item 20: \"multiplicity of analyses\")")}
+    assert family["multiplicity"]["tension"] == (
+        "For a few declared nutrient hypotheses the field reports unadjusted p-values with the "
+        "count stated (Rothman 1990, Epidemiology 1:43); Benjamini–Hochberg controls the "
+        "false-discovery rate across the tests made.")
+    known = _card(("fiber", "sugar"), amounts={**ef.AMOUNTS, "code_or_count:fiber": "amount",
+                                               "code_or_count:sugar": "amount"})
+    assert (_reasons(known), known["multiplicity"]["tension"],
+            known["multiplicity"]["n_tests"]) == (
+        {"fdr_bh": CARD_BH, "count_stated": CARD_STATED}, CARD_TENSION, 2)
+
+
+def test_the_cards_count_is_the_previews_on_the_same_columns(planned):
+    """V4a2-2's construction: {`fiber`, `supplement`, `grp`}, `grp` a text column. On the columns
+    the preview reads (the working table's summaries), the card counts the 2 tests the preview
+    draws, naming `grp`, where it counted 3; a family of categories alone counts none, and its
+    consequence quotes the table's refusal."""
+    from turbotab.core import estimand as est
+
+    columns = planned.store.info().columns
+    family = est.estimand_card(planned.state, "regression", columns=columns)["family"]
+    _, ctx = planned.preview(d.SetMultiplicity(method="bh"))
+    assert family["multiplicity"]["n_tests"] == ctx.read["multiplicity"]["m"] == 2
+    assert _reasons(family)["fdr_bh"] == (
+        f"controls the expected share of false discoveries among the 2 tests ({BH}), and every "
+        f"member tested is still shown; `grp` is a category, adjusted for, not tested")
+    frame = planned.store.materialize(["grp", "site"])
+    assert not any(pd.api.types.is_numeric_dtype(frame[c]) for c in ("grp", "site"))  # text
+    roles = {**planned.state.roles, "fiber": "covariate", "supplement": "covariate",
+             "site": "exposure"}
+    categories = planned.state.model_copy(update={"roles": roles,
+                                                  "role_confirmations": dict(roles)})
+    members = est.family_exposures(categories)
+    assert sorted(members) == ["grp", "site"]
+    alone = est.estimand_card(categories, "regression", columns=columns)["family"]
+    assert alone["multiplicity"]["n_tests"] == 0
+    assert alone["consequence"] == (
+        f"None of the 2 study factors would be tested (the feature-wise family): {NO_FACTOR}"
+        f"`{members[0]}` and `{members[1]}` have that role, but the model matrix holds no column "
+        f"of their names.")
+
+
+def test_where_the_first_family_reports_nothing_and_another_reports_each_is_said_by_name(tmp_path):
+    """V4a2-1's other order: models [feature-wise, linear], the estimand `grp`, a category, so
+    feature-wise regression's tables are refused, and the linear model reports `grp`'s indicators
+    in Model 2 (statsmodels' glucose ~ `grp`'s indicators + `fiber` + the covariates). The
+    methods text said "No estimate of `grp` is reported" of both; now of feature-wise regression
+    alone."""
+    frame = _frame()
+    out = ef.run(frame, tmp_path, _state({"fiber": "exposure", "grp": "exposure"},
+                                         ["featurewise", "linear"], exposure="grp"))
+    rows = {r["feature"]: r for r in _sequence(out, "linear")["model_2"]["effects"]}
+    fit = sm.OLS(frame["glucose"].to_numpy(float),
+                 _design(frame, [*GRP, *MODEL_2, "fiber"])).fit()
+    for c in GRP:
+        assert rows[c]["estimate"] == pytest.approx(float(fit.params[c]), rel=1e-9)
+    assert _sequence(out)["model_2"]["inference"]["refused"] == GRP_ALONE
+    methods = out["effects"]["methods"]
+    assert methods.startswith(f"Under the feature-wise regression, no estimate of `grp` is "
+                              f"reported: {GRP_ALONE} Under the linear model, the estimate of "
+                              f"`grp` is reported across a declared sequence of models fit on all "
+                              f"400 analyzed rows: unadjusted; Model 2, the primary, adjusted for "
+                              f"`age`, `sex`, `smoking`, `activity` and `fiber`;")

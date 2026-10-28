@@ -465,9 +465,11 @@ def build_graph() -> Graph:
             # medications and lifestyle under the exposure-outcome pairing, in blocks of the same
             # guess, with a multi-select answer; the grouping question's card shows each guess.
             # proposals 21 (the swarm's tail, T4a, 2026-10-27): the estimand card's family option
-            # says what feature-wise regression would test (a member recorded as codes adjusted
-            # for, not tested; none where a member's declared form refuses the table), in its
-            # consequence and in each multiplicity option, where it said every member is shown.
+            # says what feature-wise regression would test (a member recorded as codes, or a text
+            # column by the table's column summaries, adjusted for, not tested; none where a
+            # member's declared form refuses the table or every member is a category), in its
+            # consequence and in each multiplicity option, where it said every member is shown;
+            # the options count no test where a member's type is not known.
             Stage("proposals", 21, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", *WP17_READS),
@@ -955,9 +957,11 @@ def build_graph() -> Graph:
             # counts the members its feature-wise table tested, claiming no test or method where
             # the table tested none (its refusal's words instead), said of Model 2 where another
             # model tested other members, which it names; the methods text says which model
-            # reports an estimate where Model 2 reports none; each feature-wise model names the
-            # category whose indicators it holds as adjusted for, once (the unadjusted one
-            # "Without covariates"); and an exposure's columns are its own encoding's, never
+            # reports an estimate where Model 2 reports none, and says each family's sequence
+            # under its name where another reports from a model the first reports none from (the
+            # linear model's Model 2 singular beside feature-wise tests); each feature-wise model
+            # names the category whose indicators it holds as adjusted for, once (the unadjusted
+            # one "Without covariates"); and an exposure's columns are its own encoding's, never
             # another predictor's (a longer one's spline terms, a fixed-effects grouping's
             # intercepts).
             Stage("effects", 10, ("working", "design", "split", "target_info"),
