@@ -472,3 +472,71 @@ def test_a_record_that_fails_its_schema_is_a_failed_run_kept_with_its_error(tmp_
     assert "materiality" in body["error"] and body["assembled"] == raw
     with pytest.raises(FileExistsError):
         write(predict_record(), "run-1", tmp_path)  # a failed run is not written over by a pass
+
+
+# ── a shrunk coefficient never reaches the corpus as an effect (P4) ──────────
+
+# Ridge's row of `x` as GET …/fits serves it under inference, under the fit's ``effects``: its
+# coefficient shrunk by the penalty, with no interval (no inference table).
+SHRUNK = {"feature": "x", "estimate": 0.12, "ci_low": None, "ci_high": None}
+
+
+def with_ridge():
+    """:func:`estimate_record` whose fits are of the linear model and ridge, each fit's rows as
+    the server serves them: ridge's shrunk row under ``effects`` beside the linear model's."""
+    data = estimate_record()
+    for a in data["attempts"]:
+        a["families"] = [*a["families"], "ridge"]
+        a["effects"] = {**a["effects"], "ridge": [dict(SHRUNK)]}
+    return data
+
+
+def test_the_engine_gives_ridge_no_coefficient_table_and_the_linear_model_one():
+    """The construction: which family's rows estimate an effect is the engine's rule
+    (``stages.effects.has_coefficient_table``), read here from the engine, not the record."""
+    import turbotab.core.models  # noqa: F401 - registers the families
+    from turbotab.core.models.base import get_family
+    from turbotab.core.stages.effects import has_coefficient_table
+
+    assert not has_coefficient_table(get_family("ridge"))
+    assert has_coefficient_table(get_family("linear"))
+
+
+def test_a_penalized_familys_rows_are_kept_apart_from_the_effects_and_the_linear_kept():
+    """A record read with ridge's rows under ``effects`` (as the server serves them) holds them
+    under ``penalized``, never ``effects``, written and read again; the linear model's rows stay
+    its effects, and a fit with no penalized family keeps an empty ``penalized``."""
+    rec = R.validate(with_ridge())
+    for a, given in zip(rec.attempts, estimate_record()["attempts"]):
+        assert a.effects == given["effects"] and "ridge" not in a.effects
+        assert a.penalized == {"ridge": [SHRUNK]}
+    again = R.validate(json.loads(json.dumps(rec.model_dump(mode="json", by_alias=True))))
+    assert again.attempts[0].penalized == {"ridge": [SHRUNK]}
+    assert "ridge" not in again.attempts[0].effects
+    plain = R.validate(estimate_record())
+    assert plain.attempts[0].penalized == {} and plain.attempts[0].effects == {
+        "linear": estimate_record()["attempts"][0]["effects"]["linear"]}
+
+
+def test_a_row_held_both_under_effects_and_under_penalized_fails_the_schema():
+    data = with_ridge()
+    data["attempts"][0]["penalized"] = {"ridge": [dict(SHRUNK)]}
+    with pytest.raises(ValidationError, match="rows of ridge both as effects"):
+        R.validate(data)
+
+
+def test_no_reader_of_the_record_takes_a_shrunk_row_as_an_effect():
+    """The readers of a fit's rows: the referee's prompt shows the linear model's row of `x` and
+    not ridge's; the seal check finds the result's estimate among the locked fit's effects; the
+    assembler's estimate is the linear model's alone (``assemble.fit_estimates``)."""
+    from research.swarm import checks, referee
+    from research.swarm.assemble import fit_estimates
+
+    rec = R.validate(with_ridge())
+    text = referee.prompt(rec, 1)
+    assert "`linear`: `x` 0.3 " in text
+    assert "ridge" not in text and "0.12" not in text
+    assert checks.seal_integrity(rec).outcome == "pass"
+    assert [e["family"] for e in fit_estimates(rec.attempts[0].effects, "difference")] == [
+        "linear"]
+    assert [e.family for e in rec.result.estimates] == ["linear"]

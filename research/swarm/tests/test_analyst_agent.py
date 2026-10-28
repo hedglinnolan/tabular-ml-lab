@@ -95,8 +95,18 @@ def test_it_says_what_a_refusal_lists_as_the_driver_prints_it():
     # ``answer`` takes a marker (SWARM_PLAN §2; the verifier's P1), so the way forward's form
     # names it, and a fit the engine refused lists its ways forward as the server's refusal does.
     assert ("A way forward with an id, in a refusal or in `ask`, is taken with "
-            "`answer <id> --marker <marker> --reason <why>`; one whose id is null records "
-            "nothing, and `answer` cannot take it.") in text
+            "`answer <id> --marker <marker> --reason <why>`.") in text
+    # P7 (a): a revert or an opening offered as a way forward has no id (``answer`` refuses
+    # both) and names the command that records it, as the prompt says.
+    revert = opts.exits([{"label": "Undo", "decision": {"kind": "revert", "decision_id": "r2"}}])
+    opening = opts.exits([{"label": "Open", "decision": {"kind": "open_seal", "family": "f"}}])
+    assert (revert[0]["id"], revert[0]["command"]) == (None, "revisit r2")
+    assert (opening[0]["id"], opening[0]["command"]) == (None, "seal f")
+    assert ("One whose id is null and that names a `command` (an earlier decision to revert, or "
+            "the held-out rows to open) is taken with that command and a reason: `revisit "
+            "<decision id> --reason <why>` or `seal <family> --reason <why>`. One whose id is "
+            "null and that names no command records nothing, and `answer` cannot take it.") in text
+    assert "command" not in ways[0] and "command" not in ways[1]
     assert 'A fit the app refused (`"by": "engine"`) lists them the same way.' in text
     args = driver.build_parser().parse_args(["answer", "--run", "r1", "x-1", "--marker", "design",
                                              "--reason", "why"])

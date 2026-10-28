@@ -70,7 +70,9 @@ A `want` also names its kind with `--kind`: `option`, `check`, `reading` or `eli
   id: `answer set_validation:internal_external --set cluster=site --marker design --reason "..."`.
   `fit_failed` lists a fit that stopped: `"kind": "refused"` is a fit the app refused, with its
   `refusal`'s code, words and ways forward (`exits`); `"kind": "failed"` is one that failed, with
-  its `error`. `decisions` is the log so far, each with its `id`. When `fit_reached` is true, run
+  its `error`. Under Estimate, `effects_failed` lists the effects stage the same way when it
+  stopped: the app's own words for why no effect is shown, and its ways forward.
+  `decisions` is the log so far, each with its `id`. When `fit_reached` is true, run
   `fit`. When `question` is null and Fit was pressed, every question is answered: read
   `results`, then `export`.
 
@@ -106,7 +108,8 @@ A `want` also names its kind with `--kind`: `option`, `check`, `reading` or `eli
       scripts/py -m research.swarm.driver fit --run RUN
 
 - `results`: the results the app shows now (cross-validated scores under Predict; the estimate,
-  and which decisions mattered, under Estimate).
+  and which decisions mattered, under Estimate). Where the effects stage stopped, `effects_failed`
+  gives the app's own words for why, as `ask` does.
 
       scripts/py -m research.swarm.driver results --run RUN
 
@@ -132,8 +135,11 @@ When a command is refused, its JSON says why under `refused`. A refusal by the a
 (`"by": "server"`) lists its ways forward under `exits`. A fit the app refused (`"by": "engine"`)
 lists them the same way. A refusal by the driver (`"by": "driver"`) lists none, and its `message`
 says why. A way forward with an id, in a refusal or in `ask`, is taken with `answer <id> --marker
-<marker> --reason <why>`; one whose id is null records nothing, and `answer` cannot take it. You
-can also change an earlier answer with `revisit`.
+<marker> --reason <why>`. One whose id is null and that names a `command` (an earlier decision to
+revert, or the held-out rows to open) is taken with that command and a reason: `revisit <decision
+id> --reason <why>` or `seal <family> --reason <why>`. One whose id is null and that names no
+command records nothing, and `answer` cannot take it. You can also change an earlier answer with
+`revisit`.
 
 ## How you work: explore first, then commit once
 

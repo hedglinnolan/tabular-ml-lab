@@ -112,7 +112,10 @@ measure's scale (``estimand.measure_facts``), never the fit's coefficients read 
   families reports coefficients (the random forest), which serves no rows, unless the route's
   gate withheld them, whose reason stands first.
 
-The fit's coefficient rows themselves stay its attempt's (``Attempt.effects``).
+The fit's coefficient rows themselves stay its attempt's (``Attempt.effects``), but a penalized
+family's, which ``GET …/fits`` serves among them: shrunk, they estimate no effect, so the attempt
+keeps them apart (``Attempt.penalized``, ``record.split_effects``) and no reader of its effects
+takes one for an effect.
 
 **Examined options.** A decision answers one or more questions (:func:`answers_of`: each answer
 the server keeps apart is its own question, so a preview of another covariate's adjustment answer
@@ -888,11 +891,15 @@ def attempts_of(fits: Sequence[Mapping[str, Any]], records: Sequence[Mapping[str
         change = change_of(fits[i - 1] if i else None, rec, records, prefixes)
         reasons = [{"seq": s, "note": notes[s]} for s in change["changed"] or () if notes.get(s)]
         keep = {k: rec.get(k) for k in R.Attempt.model_fields
-                if k not in (*CHANGE, "reasons", *V2_ATTEMPT)}
+                if k not in (*CHANGE, "reasons", *V2_ATTEMPT, "effects", "penalized")}
+        # A penalized family's rows, served among the fit's effects, are kept apart: they are
+        # shrunk by the penalty and estimate no effect (``record.split_effects``).
+        effects, penalized = R.split_effects(rec.get("effects"))
         markers, why = fit_markers(rec, snapshots, prefixes)
         changes, change_why = signed_change(rec, fits[i - 1] if i else None, splits)
-        out.append({**keep, **change, "reasons": reasons, "markers": markers,
-                    "markers_why": why, "change": changes, "change_why": change_why})
+        out.append({**keep, **change, "effects": effects, "penalized": penalized,
+                    "reasons": reasons, "markers": markers, "markers_why": why,
+                    "change": changes, "change_why": change_why})
     return out
 
 
@@ -1343,15 +1350,8 @@ def has_table(family: Any) -> bool:
     """Whether ``family`` gives a coefficient table under inference, as the effects stage reads it
     (``stages.effects.has_coefficient_table``), so its fit's rows of the exposure are an estimate
     of the effect: a penalized family's shrunk rows are not, nor are those of a family the engine
-    does not register."""
-    import turbotab.core.models  # noqa: F401 - registers the families
-    from turbotab.core.models.base import get_family
-    from turbotab.core.stages.effects import has_coefficient_table
-
-    try:
-        return has_coefficient_table(get_family(str(family)))
-    except KeyError:
-        return False
+    does not register (``record.has_table``)."""
+    return R.has_table(family)
 
 
 def no_table_why(doc: Mapping[str, Any], fit: Mapping[str, Any],

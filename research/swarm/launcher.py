@@ -4,13 +4,14 @@ command reads it.
 
     python -m research.swarm.launcher --dataset <id> --crash <crash.json>
                                       --model M --persona P [--effort E] --prompt-version V
-                                      [--prereg FILE] [--runs DIR] [--launches DIR] [--scripted]
+                                      [--prereg FILE] [--runs DIR] [--scripted]
 
-**The pre-registration must be ready** (``research/swarm/prereg_fill.py``): before each launch the
-launcher reads ``prereg.json`` (``prereg_fill.load``) and asks ``prereg_fill.ready`` whether the
-trio may start (every pilot dataset's fit budget and the sweeps' compute cap filled from the crash
-sweeps, r0 measured, all on the engine now, the margins still the generators'); where it says why
-not, the dataset is not launched, in its words.
+**The pre-registration must be ready for the dataset** (``research/swarm/prereg_fill.py``, staged
+by dataset): before each launch the launcher reads ``prereg.json`` (``prereg_fill.load``) and asks
+``prereg_fill.ready`` whether that dataset may launch (a pilot dataset, its own fit budget filled
+from its own crash sweep, on the Predict fixture r0 measured, every report filled and the engine
+now on one tree with no file modified, the margins still the generators'); where it says why not,
+the dataset is not launched, in its words.
 
 **The crash sweep must have passed** (``research/swarm/sweep.py``, :func:`crash_passed`): its report
 is the dataset's, on the table the dataset's manifest names (its SHA-256), it swept every decision
@@ -39,8 +40,17 @@ words for it) and the planted value, where the answers file states the effect of
 exposure on its outcome, ``{null: true}`` where it states the effect is none; any other dataset
 has none (a Predict fixture's decision quality is its replay's, SWARM_PLAN §7). The family is
 named only where the answers file names one. It is written with the rest of what the record
-needs (:func:`record_meta`) to ``research/corpus/launches/<run id>.json``, a folder no analyst's
+needs (:func:`record_meta`) to ``<run id>.json`` in the launches folder, a folder no analyst's
 command opens (``driver.UNREAD_FOLDERS``), never into the run's own folder.
+
+**The launches folder** (:func:`launches_of`) is one for every checkout of the repository:
+``research/corpus/launches`` in its main checkout, the folder git's common directory lies in
+(``git rev-parse --git-common-dir``), whichever checkout, the main one or a worktree, the launcher
+or ``prereg_fill`` runs in. ``research/corpus/`` is kept out of git, so a launch is in that folder
+alone, and ``prereg_fill`` reads each dataset's graded runs (its launches) there. Where git cannot
+tell which checkout is the main one (a ``.git`` file it does not follow), the folder is refused,
+and nothing is launched; a folder in no git repository is its own only checkout. No option writes a
+launch elsewhere; a test hands :func:`launch` a folder of its own.
 """
 from __future__ import annotations
 
@@ -48,13 +58,13 @@ import argparse
 import hashlib
 import json
 import math
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 REPO = Path(__file__).resolve().parents[2]
 DATASETS = REPO / "research" / "datasets"
-LAUNCHES = REPO / "research" / "corpus" / "launches"
 RUNS = REPO / "research" / "runs"
 # The words an answers file states a planted effect's measure in, and the engine's name for that
 # measure (``estimand.MEASURE_OF_TASK``' difference in means of a numeric outcome).
@@ -67,6 +77,42 @@ class Refused(Exception):
 
 def _json(path: Path) -> Any:
     return json.loads(Path(path).read_text("utf-8"))
+
+
+def main_checkout(repo: Path | None = None) -> Path:
+    """The main checkout of the repository ``repo`` (this checkout, where None) belongs to, which
+    each of its worktrees shares (the module docstring): the folder that holds git's common
+    directory, a ``.git`` folder; ``repo`` itself where it is in no git repository. Refused where
+    git names a common directory that no checkout holds, or does not answer for a checkout whose
+    ``.git`` is a file (a worktree's)."""
+    repo = Path(REPO if repo is None else repo).resolve()
+    try:
+        out = subprocess.run(["git", "-C", str(repo), "rev-parse", "--path-format=absolute",
+                              "--git-common-dir"], capture_output=True, text=True, timeout=30)
+        common = Path(out.stdout.strip()) if out.returncode == 0 and out.stdout.strip() else None
+    except (OSError, subprocess.SubprocessError):
+        common = None
+    if common is not None and common.name == ".git":
+        return common.resolve().parent
+    if common is None and not (repo / ".git").is_file():
+        return repo
+    raise Refused(f"git cannot tell which checkout is the main one for {repo} ("
+                  + (f"its common directory is {common}, in no checkout" if common is not None
+                     else "its .git is a file git does not follow")
+                  + "), so the launches every checkout shares cannot be found.")
+
+
+def launches_of(repo: Path | None = None) -> Path:
+    """The launches folder every checkout of ``repo``'s repository shares (the module
+    docstring): ``research/corpus/launches`` in its main checkout (:func:`main_checkout`)."""
+    return main_checkout(repo) / "research" / "corpus" / "launches"
+
+
+try:
+    # This checkout's launches folder, the main checkout's; None where it cannot be told.
+    LAUNCHES: Path | None = launches_of(REPO)
+except Refused:
+    LAUNCHES = None
 
 
 def engine_now() -> dict[str, Any]:
@@ -195,8 +241,8 @@ def record_meta(launch: Mapping[str, Any]) -> dict[str, Any]:
             "dataset": dataset, "help": []}
 
 
-def launch_of(run_id: str, launches: Path = LAUNCHES) -> dict[str, Any]:
-    return _json(Path(launches) / f"{run_id}.json")
+def launch_of(run_id: str, launches: Path | None = None) -> dict[str, Any]:
+    return _json((launches_of() if launches is None else Path(launches)) / f"{run_id}.json")
 
 
 # ── one launch ───────────────────────────────────────────────────────────────
@@ -223,16 +269,16 @@ def prereg_budget(prereg: Mapping[str, Any], dataset: str) -> dict[str, Any]:
 
 def launch(dataset: str, crash: Path, *, model: str, persona: str | None,
            prompt_version: str, effort: str | None = None, runs: Path = RUNS,
-           launches: Path = LAUNCHES, scripted: bool = False, data: Path | None = None,
+           launches: Path | None = None, scripted: bool = False, data: Path | None = None,
            start: Any = None, prereg: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """One run of ``dataset`` started (the module docstring); its launch file's contents.
     ``start(argv)`` runs the driver's command line (``arms.Driven.command``, by default),
-    ``data`` stands for the table its manifest builds and ``prereg`` for prereg.json (a
-    test's)."""
+    ``data`` stands for the table its manifest builds, ``prereg`` for prereg.json and
+    ``launches`` for the launches folder (:func:`launches_of`, where None) (a test's)."""
     from research.swarm import prereg_fill
 
     prereg = prereg_fill.load() if prereg is None else prereg
-    why = prereg_fill.ready(prereg)
+    why = prereg_fill.ready(prereg, dataset=dataset)
     if why is not None:
         raise Refused(f"{dataset} is not launched: {why}")
     report = _json(crash)
@@ -240,6 +286,7 @@ def launch(dataset: str, crash: Path, *, model: str, persona: str | None,
     if why is not None:
         raise Refused(f"{dataset} is not launched: {why}")
     budget = prereg_budget(prereg, dataset)
+    folder = launches_of() if launches is None else Path(launches)
     meta = dataset_meta(dataset)
     if data is None:
         from research.swarm.dry_run import table_of
@@ -269,8 +316,8 @@ def launch(dataset: str, crash: Path, *, model: str, persona: str | None,
                                           .hexdigest(),
                                           "engine_tree": report.get("engine_tree"),
                                           "commit": report.get("commit")}}
-    Path(launches).mkdir(parents=True, exist_ok=True)
-    path = Path(launches) / f"{run_id}.json"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{run_id}.json"
     path.write_text(json.dumps(record, indent=1, ensure_ascii=False) + "\n", "utf-8")
     return record | {"launch": str(path)}
 
@@ -288,7 +335,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--prompt-version", required=True)
     parser.add_argument("--prereg", type=Path, help="prereg.json (default: prereg_fill's own)")
     parser.add_argument("--runs", type=Path, default=RUNS)
-    parser.add_argument("--launches", type=Path, default=LAUNCHES)
     parser.add_argument("--scripted", action="store_true")
     args = parser.parse_args(argv)
     try:
@@ -299,7 +345,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             prereg = prereg_fill.load(args.prereg)
         out = launch(args.dataset, args.crash, model=args.model, persona=args.persona,
                      prompt_version=args.prompt_version, effort=args.effort, runs=args.runs,
-                     launches=args.launches, scripted=args.scripted, prereg=prereg)
+                     scripted=args.scripted, prereg=prereg)
     except Refused as exc:
         sys.stdout.write(json.dumps({"refused": str(exc)}) + "\n")
         return 1

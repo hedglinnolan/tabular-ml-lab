@@ -55,7 +55,11 @@ the multiplicity and the sensitivity analyses; ``quest.DECLARATIONS``) is listed
 engine's own definitions, and ``preview`` and ``answer`` take them by id like a question's. A fit
 the engine refused in words (its stage status's typed ``refusal``) is said with its code and its
 ways forward, which ``answer`` takes by id; a fit that failed with an error the engine did not type
-as a refusal is said as it failed.
+as a refusal is said as it failed. So is the effects stage once it stopped, in ``ask`` and
+``results`` (``effects_failed``), since the results serve no words for a stage in error. A way
+forward whose decision the driver records only through a command of its own (a revert, the
+opening of the held-out rows), which ``answer`` refuses, is listed with no id and with the command
+that records it (``options.exits``: ``revisit <decision id>``, ``seal <family>``).
 
 **The analyst's tags** (SWARM_PLAN §2, §4): ``preview`` and ``answer`` take a reason; ``answer``
 takes a marker of the controlled vocabulary (``research/swarm/vocabulary.py``) and may name the
@@ -86,8 +90,9 @@ run's record reads them from ``commands.jsonl``, so their source is the driver.
 ``answer``, ``revisit``, ``fit``, ``results``, ``seal``, ``export``, ``want`` or ``account``
 runs (:data:`ANALYST_COMMANDS`), opening anything a run
 is judged against (a dataset's declared answers and its manifest under ``research/datasets/``, the
-corpus records and their materiality under ``research/corpus/``, the fixtures' declared truths, the
-decoy's generator, the glucose benchmark) or importing a module that holds or builds them
+corpus records and their materiality under ``research/corpus/``, the launches with their known
+answers in the main checkout's, which every checkout shares (``launcher.LAUNCHES``), the fixtures'
+declared truths, the decoy's generator, the glucose benchmark) or importing a module that holds or builds them
 (:data:`UNREAD_MODULES`), by
 an import statement or by ``importlib``, is refused, so nothing it prints can come from them. The
 driver itself imports none of those modules, so none is loaded before a command runs.
@@ -119,6 +124,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from research.swarm import declarations as decl
+from research.swarm import launcher
 from research.swarm import options as opts
 from research.swarm import vocabulary as V
 
@@ -176,9 +182,12 @@ class DriverError(Exception):
 UNREAD_MODULES = ("turbotab.core.tests.truths", "research.swarm.intake", "research.swarm.decoys",
                   "research.swarm.record", "research.swarm.assemble", "research.swarm.checks",
                   "research.swarm.referee", "research.swarm.benchmark")
-# The dry run's folder holds corpus-shaped records with known answers for three pilot datasets.
+# The dry run's folder holds corpus-shaped records with known answers for three pilot datasets;
+# the launches, each with its run's known answer, are the main checkout's, whichever checkout
+# this is (``launcher.LAUNCHES``, None where git cannot say which that is).
 UNREAD_FOLDERS = (REPO / "research" / "datasets", REPO / "research" / "corpus",
-                  REPO / "research" / "swarm" / "dryrun")
+                  REPO / "research" / "swarm" / "dryrun") + (
+    (launcher.LAUNCHES,) if launcher.LAUNCHES is not None else ())
 UNREAD_FILES = (REPO / "turbotab" / "core" / "tests" / "truths.py",
                 REPO / "research" / "swarm" / "decoys.py", REPO / "research" / "swarm" / "intake.py",
                 REPO / "research" / "swarm" / "benchmark.py")
@@ -739,6 +748,10 @@ def the_question(run: Run, client: Client, wait: float) -> dict[str, Any]:
     if failed:
         out["fit_failed"] = failed
         ways += [w for f in failed for w in (f["refusal"] or {}).get("exits") or []]
+    effects = failures(view, ["effects"])
+    if effects:  # the effects stage stopped (under Estimate): its own words and ways forward
+        out["effects_failed"] = effects
+        ways += [w for f in effects for w in (f["refusal"] or {}).get("exits") or []]
     kept = run.kept_exits()
     if kept:
         out["last_refusal_exits"] = kept
@@ -1561,6 +1574,9 @@ def cmd_results(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | No
     out: dict[str, Any] = {"results": r.json(),
                            "stages": {s: (stages.get(s) or {}).get("status")
                                       for s in ("fit", "effects", "mattered") if s in stages}}
+    effects = failures(view, ["effects"])
+    if effects:  # the results serve no words for a stage that stopped: its status's, as served
+        out["effects_failed"] = effects
     state = view.get("state") or {}
     if state.get("purpose") == "inference" and state.get("plan_locked"):
         m = client.get(f"/projects/{run.project}/mattered")

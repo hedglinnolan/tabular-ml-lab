@@ -10,6 +10,8 @@ kinds of claim, mechanical arms, replay scoring, a pre-registered decision rule)
 before it (its §10). Its gates, cost and order replace §1–§5 below; this report stays as the
 record of the state on the morning of 2026-10-19.
 
+**Amended 2026-10-28:** Bang 2009 is deferred to the next wave (the owner and the orchestrator, 2026-10-28): its default plan's fit took 9,816 s on one core (2 h 44 min) in the orchestrator's timing run of 2026-10-27, so its crash sweep cannot run in the daytime windows and an analyst would wait about four hours for each Fit (the ruling's estimate). It is first in line for the next wave once its fit is faster (SWARM_PLAN §5 and §11, the post-pilot backlog). The pilot is SWARM_PLAN §6's five datasets and 39 agent runs, the measured trio runs on Sullivan 2021 and the Estimate fixture, and `prereg.json` is filled dataset by dataset (SWARM_PLAN §7).
+
 ## TL;DR
 
 - **Almost.** Four of SWARM_PLAN §9's five gates are met. The fifth is your word on the schedule.
@@ -71,7 +73,7 @@ DRIVER_PLAN's own stopping point (D6) asks for the dry run and the restriction c
 
 SWARM_PLAN §6, unchanged except where noted:
 - **Six datasets:**
-  - Bang 2009 (Predict, its own 1999–2006 intake);
+  - Bang 2009 (Predict, its own 1999–2006 intake; deferred to the next wave on 2026-10-28, above);
   - Sullivan 2021 (Estimate);
   - your NHANES fasting glucose (Predict);
   - a Predict fixture (`clinical_readmission_predict`, declared C 0.7419);
@@ -141,6 +143,8 @@ build needs, you are told before the rest runs (SWARM_PLAN §6).
   `Bash(scripts/py -m research.swarm.driver:*)` in `.claude/settings.local.json`, local only.
 - **The pilot's launcher:**
   - it writes each known answer as `{feature, family?, measure, value}` or `{null: true}`;
+  - it writes each launch to the main checkout's `research/corpus/launches`, whichever checkout
+    it runs in, and `prereg_fill` reads the graded runs there from any checkout;
   - `start` names each run itself (`run_NN` plus a secret part), so no label tells an analyst it
     is on a decoy;
   - the fit budget is set from the first runs' measured fit times (§6).

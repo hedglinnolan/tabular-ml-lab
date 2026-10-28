@@ -1,5 +1,6 @@
 # The research swarm: what it measures, how, and the pilot
 
+Version 5.2, amended 2026-10-28 by three rulings: Bang 2009 leaves the pilot (the owner and the orchestrator, §5), the pre-registration is filled dataset by dataset (§7), and the measured trio runs on Sullivan 2021 (§6).
 Version 5.1, amended 2026-10-20 after a sixth review (`notes/swarm-audit/2026-10-20-plan-review-6.md`)
 found the driver answers no declaration; version 5, written 2026-10-19 by the orchestrator. It makes the small fixes a fourth independent
 review (`notes/swarm-audit/2026-10-19-plan-review-4.md`, a fresh Fable 5.1 reader at xhigh effort)
@@ -29,9 +30,10 @@ Nolan's go-ahead of 2026-10-18.
   - the claim pipeline runs beside a shuffled corpus, so the share of its proposals that come from
     its prior is measured;
   - Nolan blind-checks the referees.
-- **The pilot: six datasets, 45 agent runs.**
+- **The pilot: five datasets, 39 agent runs.**
   - The datasets:
-    - Bang 2009 and Sullivan 2021;
+    - Sullivan 2021 (Bang 2009 is deferred to the next wave, its fit too slow for the pilot's
+      daytime windows, §5);
     - Nolan's NHANES glucose, rebuilt and tested on a later cycle against Bang's published score;
     - a hardened Predict fixture, a new Estimate fixture and a measurement fixture.
   - The analysts: Haiku 5.5 and Sonnet 5.5 under three personas, and Opus 5.5 as a reference.
@@ -188,8 +190,14 @@ Built for version 1 (`research/swarm/intake.py`). Version 2 of the intake adds:
   handled explicitly, STROBE's "confirmed eligible"), so Bang excludes diagnosed diabetes by its
   code.
 
-**The pilot's six datasets:**
-1. **Bang 2009** (Predict, NHANES 1999–2004, 31,126 rows from its own intake). Its replication
+**The pilot's five datasets,** items 2 to 6 (item 1, Bang 2009, is deferred):
+1. **Bang 2009, deferred to the next wave** (the owner and the orchestrator, 2026-10-28). Its
+   default plan's fit took 9,816 s on one core (2 h 44 min) in the orchestrator's timing run of
+   2026-10-27, so its crash sweep cannot run in the daytime windows and an analyst would wait
+   about four hours for each Fit (the ruling's estimate). It is first in line for the next wave
+   once its fit is faster (the post-pilot backlog, §11). Its intake, manifest, markers and notes
+   stay, and the glucose benchmark (item 3) still uses its published score. It is Predict,
+   NHANES 1999–2004, 31,126 rows from its own intake. Its replication
    targets the logistic model's odds ratios, which the engine reaches; the points score's
    performance needs fixed-rule scoring on new rows, which the engine lacks
    (`notes/replication/bang2009.md` §8), so it is computed by a research script (item 3 below).
@@ -275,12 +283,12 @@ false-promotion rate (§9).
   move the result.
 - **Explorer:** deliberately tries the alternatives the field rarely takes.
 
-**Agent runs** (45):
+**Agent runs** (39):
 
 | Arm | Datasets | Runs |
 |---|---|---|
-| Haiku 5.5, high effort, each persona | all six | 18 |
-| Sonnet 5.5, high effort, each persona | all six | 18 |
+| Haiku 5.5, high effort, each persona | all five | 15 |
+| Sonnet 5.5, high effort, each persona | all five | 15 |
 | Haiku replicates, two more per persona | the Estimate fixture | 6 |
 | Opus 5.5, high effort, conventional | the Estimate fixture, three runs (the reference) | 3 |
 
@@ -322,11 +330,16 @@ expensive datasets (Nolan, 2026-10-19).
      Models preview, and a fold whose selection kept no predictor), on paths no automated walk had
      taken.
 2. **Sizing:**
-   - the measured trio: Haiku and Sonnet, explorer persona, on Bang (the largest table), and Opus
-     on the Estimate fixture (its only dataset). The trio's three runs are among the 45;
-   - Nolan reads his usage meter before and after.
+   - the measured trio: Haiku and Sonnet, explorer persona, on Sullivan 2021, and Opus on the
+     Estimate fixture (its only dataset). The trio's three runs are among the 39 (until
+     2026-10-28 the trio ran on Bang, then deferred, §5);
+   - Nolan reads his usage meter before and after;
+   - NHANES glucose is now the slowest pilot dataset (its median fit about 13 minutes in the
+     last crash sweep, the orchestrator's reading), so its first run's spend is read before
+     the other NHANES runs launch.
 3. **The waves:** the Estimate fixture first, then the other datasets, in randomized order within
-   each wave, under the stopping rule (§7).
+   each wave, under the stopping rule (§7); each dataset launches once its own part of the
+   pre-registration is filled (§7).
 4. **The sweeps,** within the compute cap.
 5. **The claim cycle** (§9) on the pilot corpus and its shuffled control.
 6. **Nolan's walkthrough** of a Haiku analyst's record of his glucose project (2026-10-19).
@@ -345,8 +358,22 @@ Cutting the replicates defers the persona question; it does not decide it.
 
 ## 7. Pre-registration and acceptance
 
-Written before the trio in `research/swarm/prereg.json` and applied by
-`research/swarm/score_pilot.py`, not by the orchestrator.
+Written in `research/swarm/prereg.json` by `research/swarm/prereg_fill.py` and applied by
+`research/swarm/score_pilot.py`, not by the orchestrator. It is filled dataset by dataset (the
+orchestrator's ruling of 2026-10-28), so a dataset whose crash sweep has passed need not wait
+for the slowest one's:
+- every rule and margin the generators give (b₀, the coverage band, k, the r₀ rule, the prices'
+  rule, the materiality rules) is written before the first graded run, as before, and never
+  rewritten after it: once the pilot has a graded run, every fill and write is refused where the
+  generators no longer give what `prereg.json` holds;
+- a dataset launches once its own fit budget is filled from its own passed crash sweep, and every
+  report filled and the engine now share one `turbotab/` tree, with no file modified;
+- r₀'s value is filled before any run on the Predict fixture;
+- the sweeps' compute cap, which needs every dataset's crash sweep, before the pilot's sweep step;
+- each fill is mechanical (a crash sweep's fits and seconds; r₀ from the default path's replay),
+  reads no graded run, is recorded with when it was filled, and is refused for a dataset that
+  already has a graded run (a launch of it, read from the main checkout's launches, which the
+  launcher writes and every checkout reads).
 
 **Regression checks** on every run (they hold by construction): seal integrity, schema validity, a
 reason on every preview and decision.
@@ -384,8 +411,8 @@ fixture's generator: at least 100 draws, so a coverage band is testable.
   the default path's regret on the planted nonlinearity.
 - **The measurement fixture is reported:** the false-discovery proportion against the nominal
   rate, power against the oracle plan's, and effect-size bias on the log2 scale.
-- b₀, r₀ and the bands are computed from the generators and written into `prereg.json` before the
-  trio.
+- b₀ and the bands are computed from the generators and written into `prereg.json` before the
+  first graded run, and r₀ before the first run on the Predict fixture.
 
 **The unit:** a model is within the margins on a fixture when at least two-thirds of its non-refused
 plans there are within them, with at least two non-refused plans (Haiku 6 of 9, Sonnet 2 of 3, Opus
@@ -575,6 +602,12 @@ planted reasons) come out of the pilot's 40%.
 - forecasting tabled;
 - the categorical eligibility rule;
 - his walkthrough of the Haiku glucose record.
+
+**The rulings of 2026-10-28:**
+- Bang 2009 is deferred to the next wave (the owner and the orchestrator, 2026-10-28): its default plan's fit took 9,816 s on one core (2 h 44 min) in the orchestrator's timing run of 2026-10-27, so its crash sweep cannot run in the daytime windows and an analyst would wait about four hours for each Fit (the ruling's estimate); it is first in line for the next wave once its fit is faster (the post-pilot
+  backlog);
+- the pre-registration filled dataset by dataset (§7, the orchestrator's);
+- the measured trio on Sullivan 2021 and the Estimate fixture (§6).
 
 **The orchestrator's calls,** recorded so he can overrule them:
 - the cycles;

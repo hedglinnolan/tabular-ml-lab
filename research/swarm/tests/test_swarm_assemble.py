@@ -385,6 +385,21 @@ def test_a_fit_after_a_revert_alone_is_the_reverts_change_with_its_reason_and_me
         "source": "fits", "attempt": "fit2", "movement": got[1]["movement"]}
 
 
+def test_a_penalized_familys_served_rows_are_assembled_apart_from_the_fits_effects():
+    """P4: GET …/fits serves ridge's shrunk row of `x` under the fit's ``effects`` beside the
+    linear model's (a family with no coefficient table, ``stages.effects.has_coefficient_table``);
+    the attempt keeps ridge's under ``penalized`` and the linear model's, and a family with no
+    rows, under ``effects``. A fit with no penalized family keeps an empty ``penalized``."""
+    linear = [{"feature": "x", "estimate": 0.30, "ci_low": 0.10, "ci_high": 0.50}]
+    ridge = [{"feature": "x", "estimate": 0.12, "ci_low": None, "ci_high": None}]
+    fits = [_fit(1, 3, [1, 2], effects={"linear": linear, "ridge": ridge, "random_forest": None}),
+            _fit(2, 5, [1, 2], effects={"linear": linear})]
+    got = A.attempts_of(fits, [TARGET, MODELS])
+    assert got[0]["effects"] == {"linear": linear, "random_forest": None}
+    assert got[0]["penalized"] == {"ridge": ridge}
+    assert (got[1]["effects"], got[1]["penalized"]) == ({"linear": linear}, {})
+
+
 def test_a_revert_and_a_new_record_before_one_fit_share_its_change():
     """Revert #4 of #3 and record #5 both came before fit 3: neither has its movement alone."""
     records = [TARGET, MODELS, _rec(3, 4, _excluded("a")), _revert(4, 6, 3),

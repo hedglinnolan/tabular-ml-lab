@@ -133,7 +133,7 @@ WITHHELD: dict[str, str] = {
            "surfacings.refusals.message", "surfacings.refusals.exits",
            "surfacings.failed_fits.error", "surfacings.failed_fits.refusal", "claims"),
     **_all(RESULT_WHY, "result", "attempts.scores", "attempts.holdout", "attempts.holdout_why",
-           "attempts.at_opening", "attempts.effects"),
+           "attempts.at_opening", "attempts.effects", "attempts.penalized"),
     **_all(RESTATED_WHY, "regime.n_rows", "regime.n_analyzed", "regime.task", "regime.events",
            "regime.missing", "regime.design"),
     **_all(POST_HOC_WHY, *(f"regime.markers.{name}" for name in V.POST_HOC)),

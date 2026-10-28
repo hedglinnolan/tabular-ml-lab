@@ -12,7 +12,10 @@ teaching option's ``value``, a family's ``key``, a column's name, a group's ``ke
 level. A way forward (a refusal's exit, an ask card's exit, a quest line's press) carries a label
 and a decision but no id of its own, and its label holds backticks the analyst's shell may not
 pass, so it is named by its decision: ``x-`` and the first 8 hex digits of the SHA-256 of the
-decision's canonical JSON (:func:`exit_id`), the same for the same decision.
+decision's canonical JSON (:func:`exit_id`), the same for the same decision. A way forward whose
+decision the driver records only through a command of its own (a revert, by ``revisit``; the
+opening of the held-out rows, by ``seal``), which ``answer`` refuses, has no id and names that
+command instead (:func:`exits`).
 
 **Words.** Every label, consequence and note is the server's, as served. Where the server serves
 no label (a column, a level), the option has none; the driver adds no words to a question. The
@@ -68,16 +71,45 @@ def exit_id(decision: Mapping[str, Any]) -> str:
     return "x-" + hashlib.sha256(canonical(decision).encode("utf-8")).hexdigest()[:8]
 
 
+# The decisions the driver records only through a command of its own (``driver.NOT_THIS_WAY``,
+# which ``answer`` refuses): a revert by ``revisit``, the opening of the held-out rows by ``seal``,
+# the plan's lock by ``fit``; and a re-seal, which no run records.
+OWN_COMMAND = {"revert": "revisit", "open_seal": "seal", "lock_plan": "fit"}
+NEVER_RECORDED = ("reseal",)
+
+
+def command_of(decision: Mapping[str, Any]) -> str | None:
+    """The driver command that records ``decision``, one :data:`OWN_COMMAND` takes, with what it
+    names (``revisit <decision id>``, ``seal <family>``, ``fit``); None for any other, and for one
+    that does not name what its command needs."""
+    kind = decision.get("kind")
+    named = {"revert": decision.get("decision_id"), "open_seal": decision.get("family"),
+             "lock_plan": ""}.get(str(kind))
+    if kind not in OWN_COMMAND or named is None:
+        return None
+    return f"{OWN_COMMAND[str(kind)]} {named}".strip()
+
+
 def exits(items: Iterable[Mapping[str, Any]] | None, **extra: Any) -> list[dict[str, Any]]:
     """Ways forward as the driver lists them: the server's label and decision, with the decision's
-    id; one without a decision (a "wait for the fit") has no id and records nothing."""
+    id; one without a decision (a "wait for the fit") has no id and records nothing. One whose
+    decision the driver records only through a command of its own (:data:`OWN_COMMAND`, a revert
+    or the opening of the held-out rows), which ``answer`` refuses, has no id either, and names the
+    command that records it (``command``, :func:`command_of`); a re-seal names none."""
     out = []
     for item in items or []:
         if not isinstance(item, Mapping):
             continue
         decision = item.get("decision")
-        out.append({"id": exit_id(decision) if isinstance(decision, Mapping) else None,
-                    "label": item.get("label"), "decision": decision, **extra})
+        way = {"id": exit_id(decision) if isinstance(decision, Mapping) else None,
+               "label": item.get("label"), "decision": decision, **extra}
+        if isinstance(decision, Mapping) and decision.get("kind") in (*OWN_COMMAND,
+                                                                      *NEVER_RECORDED):
+            way["id"] = None
+            command = command_of(decision)
+            if command is not None:
+                way["command"] = command
+        out.append(way)
     return out
 
 

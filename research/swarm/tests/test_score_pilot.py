@@ -56,6 +56,9 @@ from research.swarm.record import validate
 from research.swarm.tests import constructed as C
 
 ENGINE = {"commit": "c0", "engine_tree": "t0", "engine_modified": False}
+# A sweep's report on the frozen engine, as sweep.py writes the engine it ended on and whether it
+# changed while the sweep ran (``sweep.engine_changed``: None).
+ON_FROZEN = {**ENGINE, "engine_changed": None}
 
 
 @pytest.fixture(scope="module")
@@ -497,9 +500,11 @@ def refit(point: str, option: str, change: list[dict], material: Any, **more: An
             "change": change, "material": material, **more}
 
 
-def test_prereg_margins_agree_with_a_sweep_that_applied_them_and_list_one_that_did_not(prereg):
+def test_prereg_margins_agree_with_a_sweep_that_applied_them_and_list_one_that_did_not(crashed):
+    prereg = crashed
     half = prereg["material"]["half"]
-    sweep = {"dataset": P.ESTIMATE_FIXTURE, "plan": "default", "purpose": "inference",
+    sweep = {**ON_FROZEN, "dataset": P.ESTIMATE_FIXTURE, "plan": "default",
+             "purpose": "inference",
              "fit_seconds": {"total": 7200.0},
              "refits": [refit("question:missing", "complete_case",
                               [{"shift": half * 2.0, "half_width": 2.0, "material": True}], True),
@@ -519,10 +524,12 @@ def test_prereg_margins_agree_with_a_sweep_that_applied_them_and_list_one_that_d
     assert got["material"] == ["question:missing"]
 
 
-def test_under_predict_a_refit_is_material_only_where_its_interval_excludes_zero(prereg):
+def test_under_predict_a_refit_is_material_only_where_its_interval_excludes_zero(crashed):
+    prereg = crashed
     half = prereg["material"]["half"]
     big = {"difference": -0.02, "half_width": 0.02, "excludes_zero": True}
-    sweep = {"dataset": P.PREDICT_FIXTURE, "plan": "default", "purpose": "prediction",
+    sweep = {**ON_FROZEN, "dataset": P.PREDICT_FIXTURE, "plan": "default",
+             "purpose": "prediction",
              "refits": [refit("question:missing", "a", [big], True),
                         refit("question:missing", "b", [{**big, "excludes_zero": False}], False),
                         refit("question:split", "c", [{**big, "difference": -half * 0.02 + 1e-9}],
@@ -559,13 +566,15 @@ FIVE_FOLDS = {"n_train": 100, "folds": 5, "repeats": 1, "fold_scheme": "random",
               "validation": "kfold", "grouped_by": None}
 
 
-def test_a_refit_scored_as_the_plan_in_every_fold_is_not_material_and_is_read(prereg):
+def test_a_refit_scored_as_the_plan_in_every_fold_is_not_material_and_is_read(crashed):
     """F15, both ways: a refit whose fold scores are the plan's on the same folds has no signed
     change (no spread) but a zero one by construction, so prereg.json reads it not material, and
     its decision is read, not counted apart; one whose every fold moved by the same 0.01 is not the
     plan again, and stays not read. The plan's scores on other folds are an unpaired change with
     a number (zero), read by the rule as any number is."""
-    sweep = {"dataset": P.PREDICT_FIXTURE, "plan": "default", "purpose": "prediction",
+    prereg = crashed
+    sweep = {**ON_FROZEN, "dataset": P.PREDICT_FIXTURE, "plan": "default",
+             "purpose": "prediction",
              "baseline": {"scores": {"metric": "log_loss", "folds": "d0", "families": {
                  "linear": {"log_loss": {"folds": PLAN_FOLDS}}}}},
              "refits": [predict_refit("same", list(PLAN_FOLDS)),
@@ -587,7 +596,8 @@ def test_a_refit_scored_as_the_plan_in_every_fold_is_not_material_and_is_read(pr
     assert S.sweep_verdicts(alone, prereg)["not_read"][0]["point"] == "question:missing"
 
 
-def test_the_measurement_fixtures_discovery_set_rule_at_k_below_it_and_without_q(prereg):
+def test_the_measurement_fixtures_discovery_set_rule_at_k_below_it_and_without_q(crashed):
+    prereg = crashed
     k = prereg["material"]["measurement"]["k"]
     q = prereg["material"]["measurement"]["q"]
     base = [{"feature": f"mz_{j:04d}", "estimate": 1.0, "q": q / 2 if j <= 10 else 0.5}
@@ -599,7 +609,8 @@ def test_the_measurement_fixtures_discovery_set_rule_at_k_below_it_and_without_q
             r["q"] = q / 2
         return rows
 
-    sweep = {"dataset": P.MEASUREMENT_FIXTURE, "plan": "default", "purpose": "inference",
+    sweep = {**ON_FROZEN, "dataset": P.MEASUREMENT_FIXTURE, "plan": "default",
+             "purpose": "inference",
              "baseline": {"estimates": base},
              "refits": [refit("question:batch", "k", [], None, estimates=moved(k)),
                         refit("question:batch", "below", [], None, estimates=moved(k - 1)),
@@ -626,7 +637,8 @@ def sweep_shaped(dataset: str, purpose: str, plan_rows: list[dict],
         W.materiality(r, plan, purpose)
         done.append(r)
     points = [W.Point(*p.split(":", 1)) for p in dict.fromkeys(r[0] for r in refits)]
-    return {"dataset": dataset, "plan": "default", "purpose": purpose, "baseline": plan.json(),
+    return {**ON_FROZEN, "dataset": dataset, "plan": "default", "purpose": purpose,
+            "baseline": plan.json(),
             "refits": [r.json() for r in done], "decisions": W.decisions_of(points, done),
             "fit_seconds": {"total": 60.0}}
 
@@ -643,12 +655,13 @@ def panel_rows(shift: float, q: float) -> list[dict]:
     return A.fit_estimates({"featurewise": served}, "difference")
 
 
-def test_on_the_measurement_sweep_sweep_py_writes_the_k_rule_is_applied_to_no_refit(prereg):
+def test_on_the_measurement_sweep_sweep_py_writes_the_k_rule_is_applied_to_no_refit(crashed):
     """sweep.py's estimates on the measurement fixture carry no q-value (assemble.fit_estimates
     keeps none), so prereg.json's discovery-set rule reads no refit: the sweep's own verdicts (the
     half-width rule) are listed beside 'not read', the dataset holds no material set, and the
     report says the rule was applied to no refit instead of counting 0 material decisions. A
     sweep whose estimates carry q-values is read (the test above)."""
+    prereg = crashed
     q = prereg["material"]["measurement"]["q"]
     sweep = sweep_shaped(P.MEASUREMENT_FIXTURE, "inference", panel_rows(0.0, q),
                          [("question:batch", "a", panel_rows(0.5, q)),
@@ -671,10 +684,11 @@ def test_on_the_measurement_sweep_sweep_py_writes_the_k_rule_is_applied_to_no_re
     assert "`question:batch=a` (sweep yes, prereg.json not read)" in text
 
 
-def test_a_decision_none_of_whose_refits_is_read_is_counted_apart_as_not_read(prereg):
+def test_a_decision_none_of_whose_refits_is_read_is_counted_apart_as_not_read(crashed):
     """On an Estimate sweep one decision's refit shifts the estimate by a whole half-width
     (material), and another's refit reports no estimate the plan reports (no number): the report
     reads '1 material, 1 not read' with the reason, and prints 'not read' for that verdict."""
+    prereg = crashed
     def rows(shift: float, feature: str = "walks_daily") -> list[dict]:
         return [{"family": "linear", "feature": feature, "setting": None, "estimate": shift,
                  "ci_low": shift - 1.0, "ci_high": shift + 1.0, "why": None}]
@@ -692,6 +706,59 @@ def test_a_decision_none_of_whose_refits_is_read_is_counted_apart_as_not_read(pr
     assert (f"- {P.ESTIMATE_FIXTURE} around the default plan: 1 material, 1 not read "
             f"(`question:exclusions`: The plan reports no estimate for this family, feature and "
             f"setting); 0 refit(s) where the two verdicts differ.") in text
+
+
+def frozen_sweep(plan: str = "h-conventional", **engine: Any) -> dict:
+    """An Estimate sweep around a named plan with one material refit (a shift of a whole
+    half-width), on the frozen engine unless ``engine`` says otherwise."""
+    return {**ON_FROZEN, **engine, "dataset": P.ESTIMATE_FIXTURE, "plan": plan,
+            "purpose": "inference", "fit_seconds": {"total": 3600.0},
+            "refits": [refit("question:missing", "complete_case",
+                             [{"shift": 1.0, "half_width": 1.0}], True)],
+            "decisions": [{"point": "question:missing", "material": True}]}
+
+
+CHANGED = ("The engine changed while the sweep ran: a run of it started on engine tree t0 (commit "
+           "c0) at 2026-10-28T10:00:00+00:00, and it ended on engine tree t7 (commit c7): its "
+           "results are not of one engine, so the report is refused, not passed.")
+
+
+@pytest.mark.parametrize("engine, named", [
+    ({"engine_tree": "t9"}, "engine tree t9 \\(no file modified\\); the frozen engine .* tree t0"),
+    ({"engine_modified": True}, "engine tree t0 \\(tracked files modified\\); the frozen"),
+    ({"engine_modified": None}, "engine tree t0 \\(not known to be unmodified\\)"),
+    ({"engine_tree": "t7", "commit": "c7", "engine_changed": CHANGED},
+     "engine tree t7 .*says the engine changed while it ran: The engine changed.*tree t0"),
+    ({"engine_changed": "x", "engine_tree": None}, "engine tree None"),
+], ids=["another_tree", "modified", "not_known_unmodified", "engine_changed", "no_tree"])
+def test_a_sweep_off_the_frozen_engine_is_refused_naming_its_tree_and_the_frozen_one(
+        crashed, engine, named):
+    """P5, both ways: a sweep whose report says it ran on another ``turbotab/`` tree than the
+    crash sweeps', with tracked files modified or not known to be unmodified, or that the engine
+    changed while it ran, is refused in words naming its tree and the frozen one, and is read for
+    nothing; on the frozen engine the same sweep is scored as before."""
+    import re
+
+    scored = S.sweep_verdicts(frozen_sweep(), crashed)
+    assert scored["refused"] is None and scored["material"] == ["question:missing"]
+    got = S.sweep_verdicts(frozen_sweep(**engine), crashed)
+    assert re.search(named, got["refused"]), got["refused"]
+    assert (got["refits"], got["decisions"], got["material"], got["applied"]) == ([], [], [],
+                                                                                 False)
+    report = S.score([], [], [frozen_sweep(), frozen_sweep("h-skeptical", **engine)],
+                     crashed)
+    assert [s["plan"] for s in report["sweeps"]] == ["h-conventional"]
+    assert report["refused_sweeps"] == [{"dataset": P.ESTIMATE_FIXTURE, "plan": "h-skeptical",
+                                         "engine_tree": engine.get("engine_tree", "t0"),
+                                         "why": got["refused"]}]
+    text = S.report_md(report, crashed)
+    assert f"- {P.ESTIMATE_FIXTURE} around the h-skeptical plan: {got['refused']}" in text
+
+
+def test_with_no_crash_fill_no_sweep_is_known_to_be_on_the_frozen_engine(prereg):
+    got = S.sweep_verdicts(frozen_sweep(), prereg)
+    assert "frozen engine" in got["refused"] and got["material"] == []
+    assert S.score([], [], [frozen_sweep()], prereg)["material"] == {}
 
 
 # ── reach and the personas ───────────────────────────────────────────────────
@@ -924,7 +991,8 @@ def test_the_score_and_its_report_carry_the_same_numbers(filled):
                estimate_replay(prereg, bias=b0 * 2, covered=95, run="hskeptical"),
                estimate_replay(prereg, bias=0.0, covered=80, run="hexplorer")]
     points = ("question:adjustment", "question:missing", "question:exclusions")
-    sweep = {"dataset": P.ESTIMATE_FIXTURE, "plan": "default", "purpose": "inference",
+    sweep = {**ON_FROZEN, "dataset": P.ESTIMATE_FIXTURE, "plan": "default",
+             "purpose": "inference",
              "fit_seconds": {"total": 7200.0},
              "refits": [refit(p, "x", [{"shift": 1.0, "half_width": 1.0}], True)
                         for p in points],
@@ -978,7 +1046,7 @@ def test_the_plans_to_sweep_are_each_named_run_by_when_it_started_never_by_its_r
                           {"model": "haiku", "persona": "explorer", "run": "h-explorer"},
                           {"model": "sonnet", "persona": "explorer", "run": None}]
     assert named[P.PREDICT_FIXTURE][0]["run"] == "h-predict"
-    assert named["bang2009"][0]["run"] is None
+    assert named["sullivan2021"][0]["run"] is None and "bang2009" not in named  # R1
 
 
 def test_the_command_writes_the_score_and_its_report_from_the_folders_it_is_given(filled,
