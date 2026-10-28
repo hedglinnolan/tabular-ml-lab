@@ -17,12 +17,17 @@ Under inference the linear family's coefficient table is made here, in four part
   reported: the table says why and offers the exits.
 * **Independent rows** of a least-squares model get HC3 standard errors with t(n − p) reference
   distributions (Long & Ervin 2000, *Am Stat* 54:217), and a Breusch–Pagan check in Koenker's
-  studentized form says when the residual spread is not constant.
+  studentized form says when the residual spread is not constant. A coefficient that rests on a
+  row of leverage one, which the fit passes through, has no HC3 standard error and is refused by
+  row, naming it (:func:`resting_on_leverage_one`); the others are the other rows' HC3.
 * **Separation** in a logistic model is found by linear programming (Konis 2007, *Linear
   programming algorithms for detecting separated data in binary logistic regression models*,
   DPhil thesis, Oxford), named, and the table becomes Firth's penalized likelihood (Firth 1993,
   *Biometrika* 80:27) with profile penalized-likelihood intervals and likelihood-ratio p-values
-  (Heinze & Schemper 2002, *Stat Med* 21:2409), whose estimates are finite. Under multiple
+  (Heinze & Schemper 2002, *Stat Med* 21:2409), whose estimates are finite. The survey
+  multinomial and the proportional-odds tables run the same linear programs on their own
+  likelihoods (:func:`separated_multinomial`, :func:`separated_ordinal`) and refuse a separated
+  table, naming the separating column. Under multiple
   imputation each completed copy's table, and each refit its form tests make on it, is made for
   Rubin's rules (:func:`for_pooling`), which read an estimate and its standard error: a Firth copy
   computes no profile, and the pooled table reports only the estimate of a coefficient that
@@ -43,12 +48,16 @@ column's unit or origin moves another's numbers (:func:`by_identified`); the Cox
 scaled and not centered (the Cox fit centers its columns itself), and the mixed model's REML
 factors the design by QR, which already leaves the numbers unmoved. The near-singular concern the
 GEE, Cox and mixed tables refuse in reads the columns centered too
-(``linear.collinearity_concern``). A logistic or multinomial fit that does not converge is
-refused with no estimate
-(:func:`not_converged`). In each of them, and the mixed model's, where the model matrix's columns
-are dependent at R's tolerance on the centered columns (``repeated.aliased``: a column whose part
-outside the span of those before it is under 10⁻⁷ of its length is aliased, as ``lm`` aliases it)
-and the caller names what is studied (``study``), a coefficient in no dependency is reported as
+(``linear.collinearity_concern``). An iterative fit's table (logistic, multinomial, proportional
+odds, Firth, and their survey forms) is served only at its maximum: a fit that does not converge,
+or whose Newton step from its estimate would move a coefficient by more than
+:data:`SHORT_OF_MAXIMUM` of a standard error, is refused with no estimate (:func:`not_converged`,
+:func:`at_maximum`), and a Firth profile that cannot be computed is refused in its own words
+(:class:`FirthProfileFailed`). In each of them, and the mixed model's, where the model matrix's
+columns are dependent at R's tolerance on the centered columns (``repeated.aliased``: a column
+whose part outside the span of those before it is under 10⁻⁷ of its length is aliased, as ``lm``
+aliases it; which columns are in its dependency is read on the same centered columns, each
+scaled to unit length) and the caller names what is studied (``study``), a coefficient in no dependency is reported as
 the fit with the aliased columns left out gives it, as R's ``lm`` does, and each one in a
 dependency is refused by row, with no estimate, in words that name the dependency's columns; the
 whole table is refused, with no estimate, where a column named as studied, or every coefficient,
@@ -489,10 +498,22 @@ def gram_inverse(W: np.ndarray) -> np.ndarray | None:
     return (V + V.T) / 2
 
 
+# A row whose leverage is within this of one is one the fit passes through to working precision
+# (:func:`hc3_covariance`): its residual and one less its leverage are both rounding, and HC3's
+# e/(1 − h) is zero by zero. Above it, e/(1 − h) keeps its rounding under this share.
+LEVERAGE_ONE = math.sqrt(np.finfo(float).eps)
+
+
 def hc3_covariance(X: np.ndarray, e: np.ndarray) -> np.ndarray:
     """HC3's covariance (MacKinnon & White 1985), ``(XᵀX)⁻¹ Xᵀ diag(e²/(1 − h)²) X (XᵀX)⁻¹``,
     from the design's QR (:func:`qr_frame`): the leverages are the rows' squared lengths in Q, and
-    the meat is taken on Q and carried by ``R⁻¹``; NaN throughout where R is singular."""
+    the meat is taken on Q and carried by ``R⁻¹``; NaN throughout where R is singular. A row of
+    leverage one (:data:`LEVERAGE_ONE`) adds nothing: its HC3 term is zero by zero (R's
+    ``sandwich::vcovHC`` gives NaN), and a coefficient that rests on it has no HC3 standard error
+    (:func:`resting_on_leverage_one`), while one that does not has the HC3 covariance of the fit
+    without that row, whose leverages and residuals are the others' (the hat matrix is that row's
+    alone plus theirs). Kept, a single row's indicator was served an HC3 standard error of 6.16,
+    from rounding."""
     X = np.asarray(X, dtype=float)
     e = np.asarray(e, dtype=float)
     frame = qr_frame(X)
@@ -501,9 +522,51 @@ def hc3_covariance(X: np.ndarray, e: np.ndarray) -> np.ndarray:
     Q, Rinv = frame
     h = np.einsum("ij,ij->i", Q, Q)
     with np.errstate(divide="ignore", invalid="ignore"):
-        w = (e / (1.0 - h)) ** 2
+        w = np.where(h >= 1.0 - LEVERAGE_ONE, 0.0, (e / (1.0 - h)) ** 2)
         V = Rinv @ ((Q * w[:, None]).T @ Q) @ Rinv.T
     return (V + V.T) / 2
+
+
+def resting_on_leverage_one(X: np.ndarray) -> tuple[Callable[[np.ndarray], bool], int] | None:
+    """Whether a combination ``c`` of the coefficients rests on the design's rows of leverage one
+    (:data:`LEVERAGE_ONE`): more than ``repeated.IN_DEPENDENCY`` of its classical variance
+    ``cᵀ(XᵀX)⁻¹c`` is theirs, ``Σ (cᵀR⁻¹q_i)²`` over their rows ``q_i`` of Q (beside a single row's
+    indicator, all of the indicator's and none of the others'), and how many such rows there are;
+    None where no row has leverage one or R is singular."""
+    from turbotab.core.models.repeated import IN_DEPENDENCY
+
+    frame = qr_frame(np.asarray(X, dtype=float))
+    if frame is None:
+        return None
+    Q, Rinv = frame
+    lone = np.einsum("ij,ij->i", Q, Q) >= 1.0 - LEVERAGE_ONE
+    if not lone.any():
+        return None
+    G = Rinv @ Q[lone].T
+
+    def rests(c: np.ndarray) -> bool:
+        c = np.asarray(c, dtype=float)
+        total = float(np.sum((c @ Rinv) ** 2))
+        return float(np.sum((c @ G) ** 2)) > IN_DEPENDENCY * total
+
+    return rests, int(lone.sum())
+
+
+def leverage_words(n_lone: int, n_rows: int, named: Sequence[str], whole: bool = False) -> str:
+    """Why the HC3 coefficients ``named``, which rest on the ``n_lone`` of the ``n_rows`` rows
+    whose leverage is one (:func:`resting_on_leverage_one`), have no standard error: refused by
+    row, or the whole table where ``whole`` (a coefficient studied among them)."""
+    one = n_lone == 1
+    lead = (f"{n_lone:,} of these {n_rows:,} rows {'has' if one else 'have'} leverage one: the fit "
+            f"passes through {'it' if one else 'them'} exactly, and HC3 divides "
+            f"{'its residual' if one else 'their residuals'} by one less "
+            f"{'its' if one else 'their'} leverage, zero by zero")
+    if whole:
+        return (f"{lead}, so {_terms(list(named))} {'has' if len(named) == 1 else 'have'} no HC3 "
+                f"standard error. No estimate, interval or p-value is reported.")
+    return (f"{lead}, so no estimate, interval or p-value is reported for {_terms(list(named))}, "
+            f"which {'rests' if len(named) == 1 else 'rest'} on {'it' if one else 'them'}; the "
+            f"other coefficients' HC3 standard errors are those of the other rows.")
 
 
 def logistic_working(X: np.ndarray, y: np.ndarray, mu: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -584,6 +647,142 @@ def separated_columns(X: np.ndarray, y: np.ndarray) -> list[int]:
     return infinite
 
 
+def _infinite_in_cone(M: np.ndarray, check: int, order: np.ndarray | None = None) -> list[int]:
+    """:func:`separated_columns`' linear programs on any likelihood whose rows' terms stay away
+    from zero along a direction ``z`` exactly where each margin ``M_r z`` is at least zero (and
+    each of ``order``'s rows, which keep the cut-points in order, is too): with ``z`` boxed in
+    [−1, 1], one program maximizing the margins' sum finds a direction with some margin positive,
+    along which the likelihood rises without end, where one exists; each of the first ``check``
+    entries of ``z`` that some such direction moves (one program each way) is infinite. Every
+    direction a solver returns is checked again on the margins before it is believed."""
+    from scipy.optimize import linprog
+
+    V = M.shape[1]
+    A = -M if order is None else -np.vstack([M, order])
+    b = np.zeros(A.shape[0])
+    bounds = [(-1.0, 1.0)] * V
+
+    def direction(c: np.ndarray) -> np.ndarray | None:
+        result = linprog(c, A_ub=A, b_ub=b, bounds=bounds, method="highs")
+        if result.status != 0 or result.x is None:
+            return None
+        z = np.where(np.abs(result.x) < 1e-9, 0.0, result.x)
+        margins = M @ z
+        ordered = order is None or (order @ z).min() >= -1e-7
+        return z if ordered and margins.min() >= -1e-7 and margins.max() > 1e-6 else None
+
+    if direction(-M.sum(axis=0)) is None:
+        return []
+    infinite = []
+    for j in range(check):
+        for sign in (1.0, -1.0):
+            c = np.zeros(V)
+            c[j] = -sign
+            z = direction(c)
+            if z is not None and sign * z[j] > 1e-6:
+                infinite.append(j)
+                break
+    return infinite
+
+
+def _boxed(X: np.ndarray) -> np.ndarray | None:
+    """``X`` with every column scaled to at most one in absolute value, or None where its rows do
+    not exceed its columns or it is rank-deficient (:func:`separated_columns`' reading)."""
+    X = np.asarray(X, dtype=float)
+    n, P = X.shape
+    scale = np.abs(X).max(axis=0) if n else np.ones(P)
+    scale[scale == 0] = 1.0
+    Xs = X / scale
+    if n <= P or np.linalg.matrix_rank(Xs) < P:
+        return None
+    return Xs
+
+
+def separated_multinomial(X: np.ndarray, codes: np.ndarray, K: int) -> list[int]:
+    """The columns of ``X`` (its intercept among them) some class's maximum-likelihood
+    coefficient on which is infinite in a multinomial logit against class 0; [] when none.
+
+    The log-likelihood ``Σ_i log π_{i,y_i}`` rises without end along coefficients ``D`` (one
+    column of ``X``'s length per class, class 0's zero) exactly where every row's own class has
+    the largest linear predictor along them, ``x_iᵀ(D_{y_i} − D_k) ≥ 0`` for every other class k,
+    and some row's strictly (Albert & Anderson 1984, *Biometrika* 71:1, for any number of
+    classes): :func:`separated_columns`' linear programs on those margins
+    (:func:`_infinite_in_cone`). A column whose coefficient for some class is moved is named."""
+    Xs = _boxed(X)
+    if Xs is None:
+        return []
+    n, P = Xs.shape
+    q = K - 1
+    codes = np.asarray(codes, dtype=np.int64)
+    rows = []
+    for k in range(K):  # x_iᵀ(D_{y_i} − D_k), D class-major over classes 1…K − 1
+        other = codes != k
+        if not other.any():
+            continue
+        M = np.zeros((int(other.sum()), q * P))
+        own, Xo = codes[other], Xs[other]
+        for c in range(1, K):
+            M[own == c, (c - 1) * P:c * P] = Xo[own == c]
+        if k > 0:
+            M[:, (k - 1) * P:k * P] -= Xo
+        rows.append(M)
+    found = _infinite_in_cone(np.vstack(rows), q * P) if rows else []
+    return sorted({j % P for j in found})
+
+
+def separated_ordinal(X: np.ndarray, codes: np.ndarray) -> list[int]:
+    """The columns of ``X`` whose maximum-likelihood coefficient in a proportional-odds
+    (cumulative logit) model ``P(y ≤ j) = σ(θ_j − xᵀβ)`` is infinite; [] when none. Along
+    ``(β, θ) + s·(b, t)`` a row of level j keeps its probability away from zero exactly where
+    ``t_j − x_iᵀb ≥ 0`` (below the top level) and ``x_iᵀb − t_{j−1} ≥ 0`` (above the bottom), with
+    the cut-points kept in order (``t_j ≥ t_{j−1}``); the likelihood rises without end where some
+    row's margin is strict: :func:`separated_columns`' linear programs on those margins
+    (:func:`_infinite_in_cone`), the levels the codes 0…K − 1 in order."""
+    Xs = _boxed(X)
+    if Xs is None:
+        return []
+    n, P = Xs.shape
+    codes = np.asarray(codes, dtype=np.int64)
+    K = int(codes.max()) + 1 if n else 0
+    if K < 2:
+        return []
+    q = K - 1
+    rows = []
+    for x, j in zip(Xs, codes):
+        if j < q:  # t_j − xᵀb
+            m = np.concatenate([-x, np.zeros(q)])
+            m[P + j] = 1.0
+            rows.append(m)
+        if j > 0:  # xᵀb − t_{j−1}
+            m = np.concatenate([x, np.zeros(q)])
+            m[P + j - 1] = -1.0
+            rows.append(m)
+    order = np.zeros((max(q - 1, 0), P + q))
+    for j in range(1, q):
+        order[j - 1, P + j], order[j - 1, P + j - 1] = 1.0, -1.0
+    return _infinite_in_cone(np.array(rows), P, order if q > 1 else None)
+
+
+def separation_words(separated: Sequence[str], what: str, among: str = "") -> str:
+    """Why a multinomial or proportional-odds table that :func:`separated_multinomial` or
+    :func:`separated_ordinal` finds separated reports no estimate: the columns named separate the
+    outcome's ``what`` (classes, levels) ``among`` (the weighted rows), so a maximum-likelihood
+    coefficient is infinite."""
+    tail = ("(a maximum-likelihood coefficient is infinite), so no estimate, interval or p-value "
+            "is reported.")
+    if not separated:
+        return f"The outcome's {what} are separated{among} {tail}"
+    verb = "separates" if len(separated) == 1 else "separate"
+    return f"{_and(separated)} {verb} the outcome's {what}{among} {tail}"
+
+
+def separation_exits(separated: Sequence[str]) -> tuple[dict[str, Any], ...]:
+    """The way out of a separated table: leave its separating columns out, or merge their rare
+    levels."""
+    named = _and(separated) if separated else "the separating column"
+    return ({"label": f"Leave {named} out, or merge its rare levels", "decision": None},)
+
+
 @dataclass
 class FirthFit:
     beta: np.ndarray
@@ -594,14 +793,48 @@ class FirthFit:
 
 
 def _firth_parts(X: np.ndarray, y: np.ndarray, beta: np.ndarray) -> tuple[Any, ...]:
+    """At ``beta``: the fitted probabilities, their weights ``w = μ(1 − μ)``, the QR of the
+    weighted design ``√w·X = QR`` (``RᵀR`` the Fisher information), and the penalized
+    log-likelihood ``l(β) + ½ log |I(β)|``, the penalty ``Σ log |R_jj|``: from the QR, its rounding
+    is the design's condition number, where a determinant of the information has that squared."""
     eta = X @ beta
     mu = 0.5 * (1.0 + np.tanh(0.5 * eta))  # the logistic function, without overflow
     w = mu * (1.0 - mu)
-    info = X.T @ (X * w[:, None])
-    sign, logdet = np.linalg.slogdet(info)
+    Q, R = np.linalg.qr(X * np.sqrt(w)[:, None])
+    diagonal = np.abs(np.diag(R))
     loglik = float(np.sum(y * eta - np.logaddexp(0.0, eta)))
-    penalized = loglik + 0.5 * logdet if sign > 0 else -np.inf
-    return mu, w, info, penalized
+    penalized = (loglik + float(np.sum(np.log(diagonal)))
+                 if np.all(np.isfinite(R)) and np.all(diagonal > 0) else -np.inf)
+    return mu, w, Q, R, penalized
+
+
+def _newton_step(R: np.ndarray, score: np.ndarray) -> tuple[np.ndarray, float]:
+    """The Newton step ``(RᵀR)⁻¹ s`` and its decrement ``sᵀ(RᵀR)⁻¹s = |R⁻ᵀs|²`` from the triangle of
+    the weighted design's QR (two triangular solves); from a least-squares solve on ``RᵀR`` where
+    R is singular."""
+    from scipy.linalg import solve_triangular
+
+    if R.shape[0] == 0:
+        return np.zeros(0), 0.0
+    if not np.all(np.isfinite(R)) or np.any(np.diag(R) == 0):
+        step = np.linalg.lstsq(R.T @ R, score, rcond=None)[0]
+        return step, float(score @ step)
+    z = solve_triangular(R, score, trans="T")
+    return solve_triangular(R, z), float(z @ z)
+
+
+def _inverse_information(R: np.ndarray) -> np.ndarray:
+    """``(RᵀR)⁻¹ = R⁻¹R⁻ᵀ`` from the QR's triangle (:func:`gram_inverse`'s form); a pseudo-inverse
+    of ``RᵀR`` (:func:`scaled_inverse`) where R is singular."""
+    from scipy.linalg import solve_triangular
+
+    if R.shape[0] == 0:
+        return np.zeros((0, 0))
+    if not np.all(np.isfinite(R)) or np.any(np.diag(R) == 0):
+        return scaled_inverse(R.T @ R)
+    Rinv = solve_triangular(R, np.eye(R.shape[0]))
+    V = Rinv @ Rinv.T
+    return (V + V.T) / 2
 
 
 def firth_fit(X: np.ndarray, y: np.ndarray, *, fixed: dict[int, float] | None = None,
@@ -612,7 +845,14 @@ def firth_fit(X: np.ndarray, y: np.ndarray, *, fixed: dict[int, float] | None = 
     weighted fit), which is the exact gradient of the penalized log-likelihood, with steps capped
     at :data:`FIRTH_MAX_STEP` and halved until the penalized log-likelihood does not fall
     (logistf's algorithm). ``fixed`` holds coefficients at given values (the profile). Converged
-    when the Newton decrement ``Uᵀ I⁻¹ U`` (invariant to the columns' units) is below ``tol``².
+    when the Newton decrement ``Uᵀ I⁻¹ U`` (invariant to the columns' units) is below ``tol``², or,
+    where rounding keeps it from falling further (it falls by less than half in a step), at most
+    :data:`SHORT_OF_MAXIMUM` squared, the fit then within that share of a standard error of its
+    maximum (:func:`newton_distance`). The step, the decrement, the hat values and the penalty
+    are taken from the QR of the weighted design (:func:`_firth_parts`): from the information
+    itself, whose rounding is the design's condition number squared, the decrement beside
+    ``x + 3·10⁻⁷·d`` passed its tolerance far from the maximum, and the table served `v`'s
+    penalized log-odds as −5·10⁻⁶ against the maximum's −0.353.
     """
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -622,39 +862,61 @@ def firth_fit(X: np.ndarray, y: np.ndarray, *, fixed: dict[int, float] | None = 
     for j, value in (fixed or {}).items():
         free[j] = False
         beta[j] = value
-    mu, w, info, ll = _firth_parts(X, y, beta)
+    mu, w, Q, R, ll = _firth_parts(X, y, beta)
     converged = False
+    previous = math.inf
     it = 0
     for it in range(1, max_iter + 1):
-        inv = scaled_inverse(info)
-        h = w * np.einsum("ij,jk,ik->i", X, inv, X)
+        h = np.einsum("ij,ij->i", Q, Q)
         score = X.T @ (y - mu + h * (0.5 - mu))
+        held = R if free.all() else np.linalg.qr((X * np.sqrt(w)[:, None])[:, free], mode="r")
         delta = np.zeros(P)
-        delta[free] = np.linalg.lstsq(info[np.ix_(free, free)], score[free], rcond=None)[0]
-        if float(score[free] @ delta[free]) < tol * tol:
+        delta[free], decrement = _newton_step(held, score[free])
+        if decrement < tol * tol or (decrement <= SHORT_OF_MAXIMUM ** 2
+                                     and decrement > previous / 2):
             converged = True
             break
+        previous = decrement
         biggest = float(np.abs(delta).max()) if P else 0.0
         if biggest > FIRTH_MAX_STEP:
             delta *= FIRTH_MAX_STEP / biggest
         for _ in range(40):
             trial = beta + delta
             parts = _firth_parts(X, y, trial)
-            if parts[3] >= ll - 1e-12 * max(1.0, abs(ll)):
+            if parts[4] >= ll - 1e-12 * max(1.0, abs(ll)):
                 break
             delta /= 2.0
         beta = trial
-        mu, w, info, ll = parts
-    return FirthFit(beta=beta, loglik=float(ll), cov=scaled_inverse(info), iterations=it,
+        mu, w, Q, R, ll = parts
+    return FirthFit(beta=beta, loglik=float(ll), cov=_inverse_information(R), iterations=it,
                     converged=converged)
 
 
+# The most penalized Newton steps one coefficient's profile may take (:func:`firth_profile`,
+# ``strict``), over every fit its bounds and its p-value make: a converged profile takes some
+# 150; beside a near copy each penalized fit could run its 300 steps unconverged, for every
+# doubling of the search and every step of the root-finder (the verifier timed one table at 215 s).
+FIRTH_PROFILE_STEPS = 5_000
+
+
+class FirthProfileFailed(ValueError):
+    """A Firth profile (:func:`firth_profile`, ``strict``) that could not be computed: a
+    penalized fit along it did not converge, its bound could not be bracketed, or it ran past
+    :data:`FIRTH_PROFILE_STEPS`. Its message says which, in the words a table refuses in."""
+
+
 def firth_profile(X: np.ndarray, y: np.ndarray, fit: FirthFit, j: int, *,
-                  level: float = LEVEL) -> tuple[float | None, float | None, float]:
+                  level: float = LEVEL, strict: bool = False, name: str | None = None
+                  ) -> tuple[float | None, float | None, float]:
     """Coefficient j's profile penalized-likelihood interval and likelihood-ratio p-value.
 
     The interval is every b with ``2 (l*(β̂) − max_{β: β_j = b} l*(β)) ≤ χ²₁(level)``
-    (Heinze & Schemper 2002); a bound that is not reached within a wide search is None.
+    (Heinze & Schemper 2002); a bound that is not reached within a wide search is None. With
+    ``strict`` (a coefficient table's, whose coefficient ``name`` is), a profile that cannot be
+    computed raises :class:`FirthProfileFailed` in words that name it, rather than give a bound
+    or a p-value from a penalized fit that did not converge: one that did not, a bound the search
+    cannot bracket (whose solver raised an untyped ``ValueError``), or a profile past
+    :data:`FIRTH_PROFILE_STEPS` Newton steps.
     """
     from scipy.optimize import brentq
     from scipy.stats import chi2
@@ -662,9 +924,21 @@ def firth_profile(X: np.ndarray, y: np.ndarray, fit: FirthFit, j: int, *,
     crit = 0.5 * float(chi2.ppf(level, 1))
     centre = float(fit.beta[j])
     warm = {"beta": fit.beta.copy()}
+    spent = {"steps": 0}
+    profiled = (f"Firth's profile of {_term(name) if name else 'this coefficient'} could not be "
+                f"computed")
+    reported = "so no interval or p-value is reported"
 
     def drop(b: float) -> float:
         profile = firth_fit(X, y, fixed={j: b}, start=warm["beta"])
+        spent["steps"] += profile.iterations
+        if strict and not profile.converged:
+            raise FirthProfileFailed(
+                f"{profiled}: the penalized fit with it held at {b:.4g} did not converge in "
+                f"{profile.iterations:,} Newton steps, {reported}.")
+        if strict and spent["steps"] > FIRTH_PROFILE_STEPS:
+            raise FirthProfileFailed(
+                f"{profiled} within {FIRTH_PROFILE_STEPS:,} penalized Newton steps, {reported}.")
         warm["beta"] = profile.beta
         return fit.loglik - profile.loglik
 
@@ -677,8 +951,17 @@ def firth_profile(X: np.ndarray, y: np.ndarray, fit: FirthFit, j: int, *,
         for _ in range(40):
             outer = centre + side * reach
             if drop(outer) >= crit:
-                bound = brentq(lambda b: drop(b) - crit, min(inner, outer), max(inner, outer),
-                               xtol=1e-10, rtol=1e-10)
+                low, high = min(inner, outer), max(inner, outer)
+                try:
+                    bound = brentq(lambda b: drop(b) - crit, low, high, xtol=1e-10, rtol=1e-10)
+                except FirthProfileFailed:
+                    raise
+                except ValueError:
+                    if not strict:
+                        raise
+                    raise FirthProfileFailed(
+                        f"{profiled}: its penalized likelihood ratio did not cross its bound "
+                        f"between {low:.4g} and {high:.4g}, {reported}.") from None
                 break
             inner, reach = outer, reach * 2.0
         bounds.append(bound)
@@ -738,6 +1021,10 @@ class InferenceTable:
     # concern); never serialized.
     unidentified: list[str] = field(default_factory=list)
     dependency: str | None = None
+    # The rows of an HC3 table refused by row because their coefficients rest on rows of leverage
+    # one (:func:`resting_on_leverage_one`), and how many such rows there are; never serialized.
+    leverage_one: list[str] = field(default_factory=list)
+    leverage_rows: int = 0
     # A linear combination ``c`` of the coefficients, at its estimate, as a row's fields (``se``,
     # ``df``, ``ci_low``, ``ci_high``, ``p``, and ``infinite`` where separation is checked), for a
     # table whose rows do not follow from its covariance and one df: CR2's Bell–McCaffrey df,
@@ -1165,12 +1452,21 @@ def column_scales(values: np.ndarray) -> np.ndarray:
     arithmetic that keeps a fit's numbers on columns of every unit at working precision.
     statsmodels' least squares, logistic and multinomial fits, and every covariance inverted from
     an unscaled information, served wrong estimates or standard errors once some column's unit was
-    10⁵ or more times another's."""
+    10⁵ or more times another's. Where squaring a column's entries would overflow or underflow
+    (beyond about 10¹⁵⁰, or under 10⁻¹⁵⁰), its root mean square is taken over its largest
+    absolute value (``repeated.peaks``): squared as it stood, a column of 10²⁰⁰'s was infinite and
+    one of 10⁻²⁰⁰'s zero, each left unscaled."""
+    from turbotab.core.models.repeated import peaks
+
     values = np.asarray(values, dtype=float)
     if values.size == 0:
         return np.ones(values.shape[1] if values.ndim == 2 else 0)
-    with np.errstate(invalid="ignore", over="ignore"):
+    with np.errstate(invalid="ignore", over="ignore", under="ignore"):
         rms = np.sqrt(np.mean(values ** 2, axis=0))
+        peak = peaks(values)
+        extreme = (peak > 1e150) | (peak < 1e-150)
+        if extreme.any():
+            rms = np.where(extreme, peak * np.sqrt(np.mean((values / peak) ** 2, axis=0)), rms)
     return np.where(np.isfinite(rms) & (rms > 0), rms, 1.0)
 
 
@@ -1438,9 +1734,20 @@ def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | Non
     spare = _no_spare_rows(task, len(matrix), matrix.shape[1] + 1, clusters)
     if spare is not None:
         return spare
-    return by_identified(matrix, lambda m: _fitted(task, m, y, classes, clusters),
-                         layout="intercept", study=study,
-                         refuse=lambda reason: _nothing(estimator, clusters, reason))
+    table = by_identified(matrix, lambda m: _fitted(task, m, y, classes, clusters),
+                          layout="intercept", study=study,
+                          refuse=lambda reason: _nothing(estimator, clusters, reason))
+    resting = table.leverage_one
+    if resting and (study is None or set(study) & set(resting)):
+        # As for a dependency (:func:`by_identified`): a studied coefficient refused by row, or
+        # nothing named as studied, refuses the whole table.
+        reason = leverage_words(table.leverage_rows, len(matrix), resting, whole=True)
+        cols = [c for c in resting if c != "(intercept)"]
+        exits = [{"label": f"Leave {_and(cols)} out, or merge its rare levels", "decision": None}
+                 ] if cols else []
+        return InferenceTable([], _info(estimator, "none", f"No coefficients: {reason}", clusters,
+                                        refused=reason, exits=exits), [reason])
+    return table
 
 
 def _fitted(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
@@ -1476,6 +1783,74 @@ def not_converged(model: str) -> str:
             f"estimate, interval or p-value is reported.")
 
 
+# An iterative fit's table (logistic, multinomial, proportional odds, Firth, and their survey
+# forms) is served only where the fit is at its maximum to within this share of a standard error
+# (:func:`at_maximum`).
+SHORT_OF_MAXIMUM = 1e-4
+
+
+def newton_distance(working: np.ndarray, residual: np.ndarray) -> float:
+    """How far a fit is from its maximum, in standard errors: ``√(sᵀ I⁻¹ s)`` for the score ``s``
+    and the information ``I`` at its estimate, with ``working`` its working design (``WᵀW = I``)
+    and ``residual`` its working residual (``Wᵀr = s``: :func:`logistic_working`,
+    :func:`multinomial_working`). By Cauchy–Schwarz no coefficient, nor any combination of them,
+    is moved by the Newton step from there by more than this many of its standard errors, and the
+    step moves some combination by exactly that many. Taken from the QR of the working design
+    (``W = QR``, so the distance is ``|Qᵀr|``), whose rounding is its condition number, where an
+    inverse of the information has that squared: the survey multinomial fit beside
+    ``x + 1.1·10⁻⁷·d``, whose steps came from a least-squares solve on an information of
+    condition number 10¹⁴, declared convergence where this distance was 0.57 and served the study
+    factor's log-odds at −0.1200 against the maximum's −0.1177. Infinite where the working design
+    is singular or not finite."""
+    W = np.asarray(working, dtype=float)
+    r = np.asarray(residual, dtype=float)
+    if W.shape[1] == 0:
+        return 0.0
+    if not (np.all(np.isfinite(W)) and np.all(np.isfinite(r))):
+        return math.inf
+    Q, R = np.linalg.qr(W)
+    if np.any(np.diag(R) == 0):
+        return math.inf
+    return float(np.linalg.norm(Q.T @ r))
+
+
+def information_distance(score: np.ndarray, information: np.ndarray) -> float:
+    """:func:`newton_distance` from a fit's score and its information, ``√(sᵀ I⁻¹ s)``, for a fit
+    whose information is evaluated on the QR's Q (``ordinal.on_qr``), so is well conditioned."""
+    s = np.asarray(score, dtype=float)
+    if s.size == 0:
+        return 0.0
+    if not (np.all(np.isfinite(s)) and np.all(np.isfinite(information))):
+        return math.inf
+    value = float(s @ scaled_inverse(np.asarray(information, dtype=float)) @ s)
+    return math.sqrt(value) if value >= 0 else math.inf
+
+
+def _standard_errors(distance: float) -> str:
+    return f"{distance:,.0f}" if distance >= 1_000 else f"{distance:.2g}"
+
+
+def at_maximum(fit: str, distance: float, *, converged: bool = True,
+               steps: int | None = None) -> str | None:
+    """Why an iterative fit's table (``fit`` names it, as "the proportional-odds fit") reports no
+    estimate: it did not converge (in ``steps`` Newton steps, where given), or it stopped more than
+    :data:`SHORT_OF_MAXIMUM` of a standard error from its maximum (:func:`newton_distance`), its
+    numbers being where the steps stopped, not the maximum's; None where neither holds."""
+    lead = fit[0].upper() + fit[1:]
+    if not converged:
+        within = "" if steps is None else f" in {steps:,} Newton step{'s' if steps != 1 else ''}"
+        return (f"{lead} did not converge{within}, so no estimate, interval or p-value is "
+                f"reported.")
+    if math.isfinite(distance) and distance <= SHORT_OF_MAXIMUM:
+        return None
+    moved = ("the information there is singular" if not math.isfinite(distance) else
+             f"one more Newton step would still move its estimates by up to "
+             f"{_standard_errors(distance)} of a standard error")
+    return (f"{lead} stopped short of its maximum: where it stopped, {moved}, and a table is "
+            f"served only within 1/{round(1 / SHORT_OF_MAXIMUM):,} of one, so no estimate, "
+            f"interval or p-value is reported.")
+
+
 def _least_squares(names: list[str], exog: pd.DataFrame, y: np.ndarray,
                    clusters: Clusters) -> InferenceTable:
     import statsmodels.api as sm
@@ -1495,17 +1870,56 @@ def _least_squares(names: list[str], exog: pd.DataFrame, y: np.ndarray,
     with np.errstate(invalid="ignore"):
         se = np.sqrt(np.diag(cov))
     dof = float(fit.df_resid)
-    reason = no_interval(names, se, fit="The least-squares fit's HC3 covariance")
+    # A coefficient that rests on a row of leverage one has no HC3 standard error: refused by row
+    # (the intercept, which centering moves, through the contrast as it stands).
+    lone = resting_on_leverage_one(X)
+    rests = lone[0] if lone else (lambda c: False)
+    resting = [j for j, n in enumerate(names) if n != "(intercept)" and rests(np.eye(len(names))[j])]
+    served = [j for j in range(len(names)) if j not in set(resting)]
+    reason = no_interval([names[j] for j in served], se[served],
+                         fit="The least-squares fit's HC3 covariance")
     if reason:
         return _refused(names, est, estimator, clusters, reason, ())
     rows = _t_rows(names, est, se, np.full(len(est), dof))
     concerns = [clusters.note] if clusters.note else []
     hetero = heteroskedasticity_concern(np.asarray(fit.resid, float), X, names,
-                                        np.asarray(fit.bse, float), se)
+                                        np.asarray(fit.bse, float),
+                                        np.where(np.isin(np.arange(len(names)), resting), np.nan,
+                                                 se))
     if hetero:
         concerns.append(hetero)
     caption = f"95% intervals from HC3 heteroskedasticity-robust standard errors, on t({dof:,.0f})."
-    return InferenceTable(rows, _info(estimator, "HC3", caption, clusters), concerns, cov=cov)
+    table = InferenceTable(rows, _info(estimator, "HC3", caption, clusters), concerns, cov=cov)
+    if lone is None:
+        return table
+    blank = ("estimate", "se", "df", "ci_low", "ci_high", "p")
+    table.leverage_rows = lone[1]
+    for j in resting:
+        rows[j].update(dict.fromkeys(blank))
+        table.leverage_one.append(names[j])
+    if resting:
+        table.cov = np.array(cov, dtype=float)
+        table.cov[resting, :] = np.nan
+        table.cov[:, resting] = np.nan
+    words = leverage_words(lone[1], len(X), table.leverage_one)
+    if table.leverage_one:
+        table.concerns.insert(0, words)
+
+    def contrast(c: np.ndarray, b: float) -> dict[str, Any]:
+        nonlocal words
+        if rests(c):
+            if table.concerns and table.concerns[0] == words:
+                table.concerns.pop(0)
+            table.leverage_one.insert(0, "(intercept)")
+            words = leverage_words(lone[1], len(X), table.leverage_one)
+            table.concerns.insert(0, words)
+            return dict.fromkeys(blank)
+        value = float(c @ est)
+        return {"estimate": value, **combination_row(value, math.sqrt(max(float(c @ cov @ c),
+                                                                          0.0)), dof)}
+
+    table.contrast = contrast
+    return table
 
 
 def _named(names: Sequence[str], idx: Sequence[int]) -> list[str]:
@@ -1533,10 +1947,13 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     if not fit.mle_retvals.get("converged", False):
         return _refused(names, np.full(len(names), np.nan), estimator, clusters,
                         not_converged("logistic"), ())
+    Xw, ew = logistic_working(X, y, np.asarray(fit.predict(X), dtype=float))
+    short = at_maximum("the logistic model's maximum-likelihood fit", newton_distance(Xw, ew))
+    if short:
+        return _refused(names, np.full(len(names), np.nan), estimator, clusters, short, ())
     refusal = floor_refusal(clusters, task="binary")
     if refusal:
         return _refused(names, est, estimator, clusters, *refusal)
-    Xw, ew = logistic_working(X, y, np.asarray(fit.predict(X), dtype=float))
     if clusters.clustered:
         return _clustered(names, est, estimator, Xw, ew, clusters.codes, clusters)
     # The inverse information from the working design's QR (:func:`gram_inverse`), not
@@ -1569,14 +1986,32 @@ def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clust
     """Firth's table (:func:`_firth_rows`), whose intercept's row, the profile and separation
     check of a linear combination where the columns were centered, it gives through
     :attr:`InferenceTable.contrast` (:func:`firth_combination`), so no profile is computed for an
-    intercept the centering moves."""
+    intercept the centering moves. An intercept whose profile cannot be computed
+    (:class:`FirthProfileFailed`) is refused by row, with no estimate, the words a concern."""
     fit = firth_fit(X, y)
     table = _firth_rows(names, X, y, clusters, separated, fit)
     refused = table.info.get("refused") is not None
     profile = not refused and not _POOLING.get()
-    table.contrast = lambda c, b: firth_combination(X, y, fit, c, profile=profile,
-                                                    se=not refused)
+
+    def contrast(c: np.ndarray, b: float) -> dict[str, Any]:
+        try:
+            return firth_combination(X, y, fit, c, profile=profile, se=not refused, strict=True)
+        except FirthProfileFailed as failed:
+            table.concerns.append(str(failed))
+            return dict.fromkeys(("estimate", "se", "df", "ci_low", "ci_high", "p"))
+
+    table.contrast = contrast
     return table
+
+
+def firth_distance(X: np.ndarray, y: np.ndarray, beta: np.ndarray) -> float:
+    """:func:`newton_distance` for a Firth fit: its working design ``√w·X`` and residual
+    ``(y − μ + h (½ − μ))/√w``, whose product is the modified score."""
+    mu, w, Q, _, _ = _firth_parts(np.asarray(X, dtype=float), np.asarray(y, dtype=float), beta)
+    h = np.einsum("ij,ij->i", Q, Q)
+    root = np.sqrt(np.clip(w, 1e-300, None))
+    return newton_distance(np.asarray(X, dtype=float) * root[:, None],
+                           (np.asarray(y, dtype=float) - mu + h * (0.5 - mu)) / root)
 
 
 def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clusters,
@@ -1594,6 +2029,12 @@ def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Cluste
                    ({"label": f"Combine each `{clusters.column}`'s rows into one (the unit question, "
                               f"before the seal)", "decision": None},
                     {"label": f"Leave {_and(separated)} out, or merge its rare levels", "decision": None}))
+    short = at_maximum("Firth's penalized fit", firth_distance(X, y, est),
+                       converged=fit.converged, steps=fit.iterations)
+    if refusal is None and short:
+        # Where it stopped is not the penalized maximum: no estimate (:func:`at_maximum`).
+        refusal = (short, ())
+        est = np.full(len(names), np.nan)
     if refusal:
         table = _refused(names, est, estimator, clusters, *refusal)
         table.info.update(extra)
@@ -1601,8 +2042,6 @@ def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Cluste
         return table
     se = np.sqrt(np.clip(np.diag(fit.cov), 0, None))
     concerns = [concern] + ([clusters.note] if clusters.note else [])
-    if not fit.converged:
-        concerns.append("Firth's penalized fit stopped before converging; treat these numbers with care.")
     if _POOLING.get():
         # One completed copy's table, for Rubin's rules (:func:`for_pooling`): no profile.
         rows = [_row(name, est[j], se[j]) for j, name in enumerate(names)]
@@ -1613,7 +2052,14 @@ def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Cluste
         if name == "(intercept)":  # its profile is :func:`firth_combination`'s (:func:`_firth_table`)
             rows.append(_row(name, est[j], se[j]))
             continue
-        low, high, p = firth_profile(X, y, fit, j)
+        try:
+            low, high, p = firth_profile(X, y, fit, j, strict=True, name=name)
+        except FirthProfileFailed as failed:
+            # A bound or p-value from an unconverged penalized fit is no number (T1V3-3).
+            table = _refused(names, est, estimator, clusters, str(failed), ())
+            table.info.update(extra)
+            table.concerns.insert(0, concern)
+            return table
         rows.append(_row(name, est[j], se[j], None, low, high, p))
     caption = ("95% profile penalized-likelihood intervals of a Firth-penalized logistic regression, "
                "because the maximum-likelihood estimate does not exist; p-values from penalized "
@@ -1622,7 +2068,8 @@ def _firth_rows(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Cluste
 
 
 def firth_combination(X: np.ndarray, y: np.ndarray, fit: FirthFit, c: np.ndarray, *,
-                      profile: bool = True, se: bool = True) -> dict[str, Any]:
+                      profile: bool = True, se: bool = True, strict: bool = False
+                      ) -> dict[str, Any]:
     """A linear combination ``cᵀβ`` of a Firth fit's coefficients as a row's fields: whether its
     maximum-likelihood value is infinite (:func:`separated_columns`), with ``se`` its standard
     error from the information, and with ``profile`` its profile penalized-likelihood interval and
@@ -1640,7 +2087,8 @@ def firth_combination(X: np.ndarray, y: np.ndarray, fit: FirthFit, c: np.ndarray
         if se:
             out["se"] = _clean(math.sqrt(max(float(fit.cov[j, j]), 0.0)))
         if profile:
-            low, high, p = firth_profile(X, y, fit, j)
+            low, high, p = firth_profile(X, y, fit, j, strict=strict,
+                                         name="(intercept)" if strict and j == 0 else None)
             out.update(df=None, ci_low=None if low is None else _clean(low),
                        ci_high=None if high is None else _clean(high), p=_clean(p))
         return out
@@ -1653,9 +2101,10 @@ def firth_combination(X: np.ndarray, y: np.ndarray, fit: FirthFit, c: np.ndarray
         out["se"] = _clean(math.sqrt(max(float(c @ fit.cov @ c), 0.0)))
     if profile:
         delta = T @ fit.beta
-        moved = FirthFit(beta=delta, loglik=float(_firth_parts(Xd, y, delta)[3]),
+        moved = FirthFit(beta=delta, loglik=float(_firth_parts(Xd, y, delta)[4]),
                          cov=T @ fit.cov @ T.T, iterations=fit.iterations, converged=fit.converged)
-        low, high, p = firth_profile(Xd, y, moved, 0)
+        low, high, p = firth_profile(Xd, y, moved, 0, strict=strict,
+                                     name="(intercept)" if strict else None)
         out.update(df=None, ci_low=None if low is None else _clean(low),
                    ci_high=None if high is None else _clean(high), p=_clean(p))
     return out
@@ -1839,10 +2288,13 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
     if not fit.mle_retvals.get("converged", False):
         return _refused(labels, np.full(len(labels), np.nan), estimator, clusters,
                         not_converged("multinomial"), ())
+    Xw, ew = multinomial_working(X, codes, np.asarray(fit.predict(X), dtype=float))
+    short = at_maximum("the multinomial model's maximum-likelihood fit", newton_distance(Xw, ew))
+    if short:
+        return _refused(labels, np.full(len(labels), np.nan), estimator, clusters, short, ())
     refusal = floor_refusal(clusters, task="multiclass")
     if refusal:
         return _refused(labels, est, estimator, clusters, *refusal)
-    Xw, ew = multinomial_working(X, codes, np.asarray(fit.predict(X), dtype=float))
     if clusters.clustered:
         return _clustered(labels, est, estimator, Xw, ew, np.repeat(clusters.codes, q), clusters)
     # The inverse information from the working design's QR (:func:`gram_inverse`), class by class

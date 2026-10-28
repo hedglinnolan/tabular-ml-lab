@@ -412,41 +412,61 @@ def on_qr(model: ProportionalOddsRegression, X: np.ndarray, codes: np.ndarray, w
 
 def _ordinal_table(matrix: pd.DataFrame, codes: np.ndarray, levels: Sequence[Any] | None,
                    clusters: Any) -> Any:
-    """:func:`ordinal_table` on columns that are not dependent."""
+    """:func:`ordinal_table` on columns that are not dependent: refused where a column separates
+    the levels (``inference.separated_ordinal``), and where the fit is not at its maximum
+    (``inference.at_maximum``), its information and scores on the QR's Q (:func:`on_qr`)."""
     from turbotab.core.models.inference import (
         InferenceTable,
         _info,
         _refused,
         _t_rows,
         _z_rows,
+        at_maximum,
         floor_refusal,
         format_p,
+        information_distance,
         no_interval,
         scaled_inverse,
+        separated_ordinal,
+        separation_exits,
+        separation_words,
     )
 
     X = matrix.to_numpy(dtype=float)
     estimator = ESTIMATOR
+    features = [str(c) for c in matrix.columns]
+    present = np.unique(codes)
+    found = separated_ordinal(X, np.searchsorted(present, codes))
+    if found:
+        # As the logistic table runs its separation check: a single row's indicator at the lowest
+        # level was served at a log cumulative odds ratio of −23.5 (SE 126,231), where the
+        # maximum is at minus infinity.
+        named = [features[j] for j in found]
+        levels_ = list(levels) if levels is not None and len(levels) == len(present) else \
+            [str(c) for c in present]
+        return _refused(features + cut_names(levels_), np.full(len(features) + len(present) - 1,
+                                                               np.nan), estimator, clusters,
+                        separation_words(named, "levels"), separation_exits(named))
     model = ProportionalOddsRegression().fit(X, codes)
     K = len(model.classes_)
     names_levels = list(levels) if levels is not None and len(levels) == K else \
         [str(c) for c in model.classes_]
-    features = [str(c) for c in matrix.columns]
     names = features + cut_names(names_levels)
     est = np.concatenate([model.coef_, model.thresholds_])
     scale = (f"Coefficients are log cumulative odds ratios: exp(β) multiplies the odds of a higher "
              f"level, per unit, at every cut-point.")
     concerns: list[str] = []
-    if not model.converged_:
-        concerns.append("The proportional-odds fit stopped before converging; treat these numbers "
-                        "with care.")
-    refusal = floor_refusal(clusters)
-    if refusal:
-        table = _refused(names, est, estimator, clusters, *refusal)
-        table.concerns.extend(concerns)
-        return table
     inner = np.searchsorted(model.classes_, codes).astype(np.int64)
     information, scores, carry = on_qr(model, X, inner, np.ones(len(codes)))
+    short = at_maximum("the proportional-odds fit", information_distance(scores.sum(axis=0),
+                                                                         information),
+                       converged=bool(model.converged_))
+    if short:
+        # Where the steps stopped is not the maximum: no estimate (``inference.at_maximum``).
+        return _refused(names, np.full(len(names), np.nan), estimator, clusters, short, ())
+    refusal = floor_refusal(clusters)
+    if refusal:
+        return _refused(names, est, estimator, clusters, *refusal)
     bread = scaled_inverse(information)
     if clusters.clustered:
         G = clusters.n_clusters
@@ -542,7 +562,12 @@ def _survey_ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | 
     The Brant check is computed on these participants, unweighted: a diagnostic of the model's
     form, never a design-based test, and said so.
     """
-    from turbotab.core.models.inference import format_p
+    from turbotab.core.models.inference import (
+        format_p,
+        separated_ordinal,
+        separation_exits,
+        separation_words,
+    )
     from turbotab.core.models.survey import _refused, design_table, domain_of
 
     features = [str(c) for c in matrix.columns]
@@ -558,6 +583,12 @@ def _survey_ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | 
         return _refused(features, None, estimator, design, domain.n,
                         f"Only {domain.n:,} analysis rows in {K} level{'s' if K != 1 else ''} carry "
                         f"a positive weight and a place in the design, too few for the model.")
+    found = separated_ordinal(X, np.searchsorted(present, codes))
+    if found:  # as the unweighted table (:func:`_ordinal_table`)
+        named = [features[j] for j in found]
+        return _refused(features, None, estimator, design, domain.n,
+                        separation_words(named, "levels", " among the weighted rows"),
+                        separation_exits(named))
     model = ProportionalOddsRegression(tol=_SURVEY_TOL).fit(X, codes, sample_weight=domain.weight)
     level_names = ([str(names_levels[int(c)]) for c in model.classes_] if names_levels is not None
                    else [str(c) for c in model.classes_])
@@ -567,7 +598,7 @@ def _survey_ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | 
     information, scores, carry = on_qr(model, X, inner, domain.weight)
     table = design_table(names, est, scores * domain.weight[:, None], information,
                          design, domain, estimator, converged=bool(model.converged_),
-                         carry=carry)
+                         carry=carry, fit="the survey-weighted proportional-odds fit")
     if table.info.get("refused"):
         return table
     table.info["caption"] += (" Coefficients are log cumulative odds ratios: exp(β) multiplies the "

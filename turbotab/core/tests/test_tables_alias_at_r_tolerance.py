@@ -35,7 +35,7 @@ from turbotab.core.models.inference import INDEPENDENT, Clusters, inference_tabl
 from turbotab.core.models.ordinal import ordinal_table
 from turbotab.core.models.repeated import gee_table, mixed_table
 from turbotab.core.models.survey import SurveyDesign, survey_table
-from turbotab.core.models.survival import cox_table, survival_outcome
+from turbotab.core.models.survival import cox_table, survey_cox_table, survival_outcome
 
 N, G = 400, 80
 ABOVE = (1e-4, 1e-6)
@@ -205,6 +205,7 @@ def _families():
         "mixed model": lambda m: mixed_table(m, y, cl, **S),
         "GEE": lambda m: gee_table(m, y, cl, "regression", **S),
         "GEE (logit)": lambda m: gee_table(m, yb, cl, "binary", [0, 1], **S),
+        "survey Cox": lambda m: survey_cox_table(m, ys, design, **S),
     }
 
 
@@ -212,7 +213,10 @@ def _families():
 def test_every_family_aliases_below_the_tolerance_and_keeps_above_it(family):
     """At ε = 10⁻⁹ each family refuses `x` and `x2` by row and serves `v`'s row as its own table on
     ``(x, v)`` does, every field; at ε = 10⁻² (the silent side) it keeps `x2`, refusing nothing by
-    row. On the base the families found no dependency at 10⁻⁹."""
+    row, and serves the table: not refused whole, which an empty dependency also satisfies, in
+    the Cox, survey Cox, mixed, GEE and GEE logit families too, whose near-singular refusal stands
+    above a centered condition number of 1,000 (the methods lead's ruling 5 of 2026-10-27,
+    T1V3-6). On the base the families found no dependency at 10⁻⁹."""
     index, families = _families()
     build = families[family]
     x, d, v, *_ = _data()
@@ -232,6 +236,8 @@ def test_every_family_aliases_below_the_tolerance_and_keeps_above_it(family):
                 want, rel=1e-7), (row["feature"], key)
     kept = build(_near(1e-2).set_axis(index))
     assert kept.unidentified == [] and kept.dependency is None
+    assert kept.info["refused"] is None, kept.info["refused"]
+    assert any(r["feature"].split(" [")[0] == "x2" and r["se"] is not None for r in kept.rows)
 
 
 def test_the_logistic_and_cox_rows_below_the_tolerance_are_statsmodels_without_x2():

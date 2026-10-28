@@ -308,13 +308,17 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     paragraph beside a refused feature-wise table came to say it was refused rather than that 0
     features were tested (T3); and the fit and the stages that refit its tables again, when its
     coefficient tables came to be fit on scaled columns and to refuse a dependency by row, and the
-    Cox fit to bound its linear predictor's SD (the tail tables package, merged after T2 and T3)."""
+    Cox fit to bound its linear predictor's SD (the tail tables package, merged after T2 and T3);
+    and the fit and those stages again when a dependency's columns came to be read on the
+    centered design, an iterative fit's table to be served only at its maximum, a coefficient on
+    a row of leverage one to have no HC3 standard error and a separated multinomial or
+    proportional-odds table to be refused (T5a)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 36, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 37, 21)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
-            versions["secondary"], versions["scales"]) == (10, 19, 17, 10, 8)
+            versions["secondary"], versions["scales"]) == (11, 20, 18, 11, 9)
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:

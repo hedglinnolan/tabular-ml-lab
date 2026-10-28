@@ -756,11 +756,11 @@ Claims whose enforcers resolve and whose tests exist (CLAIMS_REGISTRY.md §6).
 
 ### `survival.monotone_likelihood`
 
-*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `b5f40ed68c03`
+*rule* · from *audit* · weakest part *judgment* · built · version 1 · hash `ec617863a305`
 
 - **Card:** none
 - **Methods:** A Cox fit whose partial likelihood has no maximum is refused, with no interval or p-value, where a column, or a direction along which the information has all but vanished, orders every risk set: the rows with the event have the lowest, or the highest, value at every event time, as when a group has no events. The refusal names that column alone, or says that a fixed combination of the columns it names does it.
-- **Parameters:** `diverged` = 20 standard deviations of the column, read by `turbotab.core.models.survival:DIVERGED`; `flat` = 1e-08 share of the information's largest eigenvalue, read by `turbotab.core.models.survival:FLAT`; `singular` = 1e-12 share of the information's largest eigenvalue, read by `turbotab.core.models.survival:SINGULAR`
+- **Parameters:** `diverged` = 20 standard deviations of the linear predictor (for one column, of the column), read by `turbotab.core.models.survival:DIVERGED`; `flat` = 1e-08 share of the information's largest eigenvalue, read by `turbotab.core.models.survival:FLAT`; `singular` = 1e-12 share of the information's largest eigenvalue, read by `turbotab.core.models.survival:SINGULAR`
 - **Regime:** a Cox proportional-hazards model fit by Newton's method on standardized columns, with Efron's ties, unweighted or with case weights; predicates `turbotab.core.claims.inference:cox_partial_likelihood`
 - **Decision:** decision `cox_table.intervals`; verdict *refused*; goal inference
 - **Parts:**
