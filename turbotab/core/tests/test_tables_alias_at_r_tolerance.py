@@ -94,10 +94,11 @@ def _dense_cr2(X: np.ndarray, e: np.ndarray, codes: np.ndarray, C: np.ndarray
     return V, np.array(df)
 
 
-def _reference(design: np.ndarray, kind: str, T: np.ndarray | None = None
-               ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _reference(design: np.ndarray, kind: str, T: np.ndarray | None = None, *,
+               cov: bool = False) -> tuple[np.ndarray, ...]:
     """Each coefficient's estimate, standard error and df on ``design`` (with its intercept), by
-    HC3 (statsmodels) or CR2 (dense), on the coefficients ``T⁻¹β`` where ``T`` is given."""
+    HC3 (statsmodels) or CR2 (dense), on the coefficients ``T⁻¹β`` where ``T`` is given; with
+    ``cov``, their covariance too."""
     _, _, _, codes, y, *_ = _data()
     fit = sm.OLS(y, design).fit()
     P = design.shape[1]
@@ -108,7 +109,33 @@ def _reference(design: np.ndarray, kind: str, T: np.ndarray | None = None
     else:
         V, df = _dense_cr2(design, np.asarray(fit.resid), codes, Tinv.T)
     V = Tinv @ V @ Tinv.T
-    return Tinv @ np.asarray(fit.params), np.sqrt(np.diag(V)), df
+    out = (Tinv @ np.asarray(fit.params), np.sqrt(np.diag(V)), df)
+    return (*out, V) if cov else out
+
+
+# The unit roundoff of float64.
+UNIT = np.finfo(float).eps / 2
+
+
+def _intercept_rounding(matrix: pd.DataFrame, V: np.ndarray) -> float:
+    """The relative rounding the intercept's standard error can carry as the table computes it
+    (CI-T1): mapped back from the columns centered at their means m and scaled to an SD s of one
+    (``inference.by_identified``), it is √(cᵀV_c c) with c = (1, −m/s) and V_c the covariance of
+    that fit, ``B V Bᵀ`` for the map ``B`` = [[1, m], [0, diag(s)]] from this table's
+    coefficients to its. The rounding of the sums of products that form ``V_c = R⁻¹MR⁻ᵀ`` and
+    then cᵀV_c c, four columns and two products each, is at most γ₁₆ ≈ 16u of |c|ᵀ|V_c||c| on
+    the variance (Higham 2002, *Accuracy and Stability of Numerical Algorithms*, §3.1), so 8u
+    times the amplification ``A = |c|ᵀ|V_c||c| / cᵀV_c c`` on its root; the rest (R⁻¹'s own
+    rounding and the residuals') is of the condition number's order, 10⁻¹⁰ here. ``V`` (this
+    table's covariance, the reference's) gives A's magnitudes, and its intercept entry cᵀV_c c."""
+    values = matrix.to_numpy(dtype=float)
+    m, s = values.mean(axis=0), values.std(axis=0)
+    B = np.eye(len(V))
+    B[0, 1:] = m
+    B[1:, 1:] = np.diag(s)
+    c = np.concatenate([[1.0], -m / s])
+    amplification = float(np.abs(c) @ np.abs(B @ V @ B.T) @ np.abs(c)) / float(V[0, 0])
+    return 8.0 * UNIT * amplification
 
 
 def _table(kind: str, matrix: pd.DataFrame, **kw):
@@ -122,17 +149,31 @@ def _table(kind: str, matrix: pd.DataFrame, **kw):
 def test_above_the_tolerance_the_table_is_the_reparametrized_one(eps, kind):
     """`x2` is kept and every row is the table on ``(1, x, d, v)`` mapped by ``T⁻¹``: estimate,
     standard error and df, `x2`'s standard error ``1/ε`` times `d`'s. On the base, at 10⁻⁶,
-    `v`'s HC3 standard error was off by −1.8·10⁻⁶ and its CR2 one by +4.2·10⁻⁷."""
+    `v`'s HC3 standard error was off by −1.8·10⁻⁶ and its CR2 one by +4.2·10⁻⁷.
+
+    Every standard error to 10⁻⁸ but the intercept's, whose own rounding bound is its tolerance
+    where that is larger (:func:`_intercept_rounding`): beside the near pair, `x`'s and `x2`'s
+    entries of the centered fit's covariance are some (s/ε)² and cancel in cᵀV_c c, their means
+    over their SDs (0.014) leaving a variance of 0.0062. Measured, the amplification A is
+    8.0·10⁴ at ε = 10⁻⁴ and 8.0·10⁸ at 10⁻⁶ for HC3 (8.4·10⁴ and 8.4·10⁸ for CR2), growing as the
+    square of the condition number of the centered, unit-SD design the engine factors (2.0·10⁴
+    and 2.0·10⁶), so the bound 8u·A is 7·10⁻¹¹ at 10⁻⁴ (10⁻⁸ stands) and 7.1·10⁻⁷ (HC3) and
+    7.4·10⁻⁷ (CR2) at 10⁻⁶. CI's Linux runner had the intercept's HC3 standard error 3.2·10⁻⁸ and
+    1.7·10⁻⁸ off at 10⁻⁶, in two runs, and its CR2 one 1.5·10⁻⁸ (macOS: 8·10⁻¹⁰ and 8·10⁻⁹),
+    within it. `v`'s and the slopes' standard errors carry no such cancellation (their rounding is
+    the condition number's, 2·10⁻¹⁰), so they keep 10⁻⁸, which the base's `v` fails."""
     x, d, v, *_ = _data()
     table = _table(kind, _near(eps), study=["v"])
     assert table.info["refused"] is None and table.unidentified == []
     T = np.eye(4)
     T[1, 2], T[2, 2] = 1.0, eps  # (1, x, d, v) T = (1, x, x + εd, v)
-    est, se, df = _reference(np.column_stack([np.ones(N), x, d, v]), kind, T)
+    est, se, df, V = _reference(np.column_stack([np.ones(N), x, d, v]), kind, T, cov=True)
     rows = table.rows
     assert [r["feature"] for r in rows] == ["(intercept)", "x", "x2", "v"]
     np.testing.assert_allclose([r["estimate"] for r in rows], est, rtol=1e-8)
-    np.testing.assert_allclose([r["se"] for r in rows], se, rtol=1e-8)
+    intercept = max(1e-8, _intercept_rounding(_near(eps), V))
+    assert rows[0]["se"] == pytest.approx(se[0], rel=intercept)
+    np.testing.assert_allclose([r["se"] for r in rows[1:]], se[1:], rtol=1e-8)
     np.testing.assert_allclose([r["df"] for r in rows], df, rtol=1e-6)
 
 

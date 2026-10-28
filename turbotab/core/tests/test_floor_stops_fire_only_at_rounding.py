@@ -11,7 +11,8 @@ at its tolerance.
 The survey fits' steps are Newton's on the likelihood's own Hessian, so their decrement's root is
 the distance in standard errors to second order. Their floor fires where the decrement, under the
 share squared, stopped falling (``survey._at_floor``): beside ``x1 + ε·d`` rounding stalls it
-there, and without the floor the survey logistic table is refused as unconverged. Where it still
+there, and without the floor the survey logistic table is refused as unconverged at whichever ε
+rounding stalls on the platform, or served right. Where it still
 falls, however slowly (each step cut to a quarter, here), the fit keeps stepping to its maximum;
 at ac3d66da the floor fired at a fall of less than half a step and stopped 5·10⁻⁵ of a standard
 error short.
@@ -38,6 +39,7 @@ from turbotab.core.models.inference import (
 )
 from turbotab.core.models.survey import survey_table
 from turbotab.core.tests.test_iterative_tables_served_at_their_maximum import N, _data
+from turbotab.core.tests.test_firth_profile_under_complete_separation import WORDS
 
 # brglm2's AS_mean fit on _separated(seed): (estimates, standard errors) of the intercept, x1, xs
 # and x4.
@@ -61,20 +63,27 @@ def _separated(seed: int) -> pd.DataFrame:
 
 
 @pytest.mark.parametrize("seed", sorted(BRGLM2))
-def test_a_completely_separated_firth_table_is_served_at_brglm2s_maximum(seed):
+def test_a_completely_separated_firth_table_serves_brglm2s_maximum(seed):
     """Each coefficient within 10⁻⁷ of a standard error of brglm2's (the share claimed is 10⁻⁴),
-    its standard error to 10⁻⁷: the decrement falls to 0.52 to 0.72 of itself a step here, and at
-    ac3d66da the floor stop served these tables 2.5·10⁻⁴ to 5.9·10⁻⁴ of a standard error off."""
+    and the fit's standard error to 10⁻⁷: the decrement falls to 0.52 to 0.72 of itself a step
+    here, and at ac3d66da the floor stop served these tables 2.5·10⁻⁴ to 5.9·10⁻⁴ of a standard
+    error off. The separation is complete, so the table reports the estimates alone, no profile
+    interval or p-value (``inference.complete_separation_words``, T5aV2-1), and the standard error
+    is read off the fit, whose information the table no longer reports."""
     rows = _separated(seed)
     table = inference_table("binary", rows[["x1", "xs", "x4"]], rows["y"].to_numpy(), [0, 1],
                             INDEPENDENT, study=["x1"])
-    assert table.info["refused"] is None and table.info["estimator"] == I.FIRTH
+    assert table.info["estimator"] == I.FIRTH
+    assert table.info["refused"] == WORDS
     want, se = BRGLM2[seed]
     served = {r["feature"]: r for r in table.rows}
     for j, name in enumerate(["(intercept)", "x1", "xs", "x4"]):
         assert abs(served[name]["estimate"] - want[j]) <= 1e-7 * se[j], (name, served[name])
-        assert served[name]["se"] == pytest.approx(se[j], rel=1e-7), name
+        assert served[name]["ci_low"] is None and served[name]["p"] is None, name
     assert abs(served["x1"]["estimate"] - want[1]) <= SHORT_OF_MAXIMUM * se[1]
+    X = np.column_stack([np.ones(300), rows[["x1", "xs", "x4"]].to_numpy()])
+    fit = I.firth_fit(X, rows["y"].to_numpy(dtype=float))
+    np.testing.assert_allclose(np.sqrt(np.diag(fit.cov)), se, rtol=1e-7)
 
 
 def test_a_firth_fit_converges_only_at_its_tolerance():
@@ -109,10 +118,15 @@ def test_a_survey_fit_rounding_stalls_is_served_at_its_maximum(eps):
     assert abs(row["estimate"] - want) <= 1e-6 * row["se"]
 
 
-def test_without_the_floor_rounding_leaves_a_survey_fit_unconverged(monkeypatch):
-    """The construction is one rounding stalls: with the floor switched off the survey logistic
-    table is refused as unconverged in its words at some ε of the band (3·10⁻⁷, 2·10⁻⁷ and
-    1.05·10⁻⁷ on the machine this was written on), and never served wrong."""
+def test_without_the_floor_a_survey_fit_is_right_or_refused_as_unconverged(monkeypatch):
+    """With the floor switched off, at every ε of the band the survey logistic table is either
+    refused as unconverged in its words or served within ``SHORT_OF_MAXIMUM`` of a standard error
+    of the weighted maximum: never served wrong. Which ε rounding stalls is the platform's: on the
+    machine this was written on, 3·10⁻⁷, 2·10⁻⁷ and 1.05·10⁻⁷, where the decrement stalled at
+    1.8·10⁻¹⁷, 5.3·10⁻¹⁸ and 1.7·10⁻¹⁷, 1.5 to 5 times its convergence tolerance (about
+    3.6·10⁻¹⁸), so another BLAS or LAPACK can converge at each of them and no count of refusals is
+    pinned (T5aV2-2). That rounding does stall it, where the floor fires, is the fires-side test's
+    (:func:`test_a_survey_fit_rounding_stalls_is_served_at_its_maximum`)."""
     import statsmodels.api as sm
 
     x1, d, x4, _, yb, _, design, *_ = _data()
@@ -121,17 +135,14 @@ def test_without_the_floor_rounding_leaves_a_survey_fit_unconverged(monkeypatch)
     monkeypatch.setattr(S, "_at_floor", lambda *args: False)
     words = at_maximum("the survey-weighted logistic fit", 0.0, converged=False,
                        steps=S._NEWTON_MAX)
-    refused = 0
     for eps in (3e-7, 2e-7, 1.5e-7, 1.3e-7, 1.1e-7, 1.05e-7):
         matrix = pd.DataFrame({"x1": x1, "x2": x1 + eps * d, "x4": x4}, index=pd.RangeIndex(N))
         table = survey_table("binary", matrix, yb, [0, 1], design, study=["x4"])
         if table.info["refused"] is not None:
-            assert table.info["refused"] == words
-            refused += 1
+            assert table.info["refused"] == words, eps
             continue
         row = next(r for r in table.rows if r["feature"] == "x4")
-        assert abs(row["estimate"] - want) <= SHORT_OF_MAXIMUM * row["se"]
-    assert refused >= 1
+        assert abs(row["estimate"] - want) <= SHORT_OF_MAXIMUM * row["se"], eps
 
 
 def _quarter_steps(monkeypatch):

@@ -817,7 +817,18 @@ def build_graph() -> Graph:
             # fit 39, sensitivity 22, calibration 19, secondary 13, scales 10, effects 13 (the merge
             # of T5b after T5a, 2026-10-28): both sides moved each of these, so the merged engine
             # takes a number neither side served.
-            Stage("fit", 39, ("working", "design", "split", "target_info", "cohort"),
+            # fit 39, sensitivity 22, calibration 19, secondary 13, scales 10, effects 13,
+            # modification 6, mattered 2 (the swarm's tail, T5c, 2026-10-28): a Firth table on
+            # completely separated rows (some direction puts every row strictly on its own side)
+            # reports its penalized estimates alone, no profile interval or p-value, since held at
+            # a value its penalized likelihood can have more than one maximum
+            # (``inference.completely_separated``); each of these refits a logistic coefficient
+            # table that can be Firth's (the modification stage's product-terms table, the
+            # mattered stage's specifications).
+            # fit 40, sensitivity 23, calibration 20, secondary 14, scales 11, effects 14 (the merge
+            # of T5c after T5b, 2026-10-28): both sides moved each of these, so the merged engine
+            # takes a number neither side served.
+            Stage("fit", 40, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),
@@ -929,7 +940,9 @@ def build_graph() -> Graph:
             # sensitivity 21, calibration 18, secondary 12, scales 9 (T5b): as fit 38, each refit's
             # table (the calibration's uncorrected estimate's, the scales' uncorrected
             # coefficient's) told the columns it is read for.
-            Stage("sensitivity", 22, ("working", "design", "split", "target_info"),
+            # sensitivity 22, calibration 19, secondary 13, scales 10, effects 13, modification 6,
+            # mattered 2: as fit 39.
+            Stage("sensitivity", 23, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
@@ -952,7 +965,7 @@ def build_graph() -> Graph:
             # calibration 13 (resume integration 2): both calibration 12s (this one and the engine
             # residue's, beside sensitivity 15 above).
             # calibration 14: as sensitivity 16 above (its uncorrected estimate's table).
-            Stage("calibration", 19,
+            Stage("calibration", 20,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models", "purpose"),
@@ -962,7 +975,7 @@ def build_graph() -> Graph:
             # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
             # secondary 7: as sensitivity 16 above.
             # secondary 10: as sensitivity 19 above.
-            Stage("secondary", 13, ("working", "design", "split", "target_info"),
+            Stage("secondary", 14, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -981,7 +994,7 @@ def build_graph() -> Graph:
             # scales 5: as sensitivity 16 above (the uncorrected coefficient's table).
             # scales 6: as sensitivity 17 above.
             # scales 7: as sensitivity 18 above.
-            Stage("scales", 10, ("working", "design", "split", "target_info", "cohort"),
+            Stage("scales", 11, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models", "purpose"),
                   label="Estimating each scale's reliability", serves=ESTIMATE),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
@@ -1031,7 +1044,7 @@ def build_graph() -> Graph:
             # each family's sequence under its name wherever two families report from different
             # models, whichever order they were chosen in, and gives a later model's refusal in
             # its words where that model was fit and its table refused.
-            Stage("effects", 13, ("working", "design", "split", "target_info"),
+            Stage("effects", 14, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",
@@ -1091,7 +1104,7 @@ def build_graph() -> Graph:
             # modification 2: as sensitivity 16 above (the product terms' table).
             # modification 3: as sensitivity 17 above.
             # modification 3: as fit 33 (its copies, drawn by interaction.impute_with_products).
-            Stage("modification", 5, ("working", "design", "split", "target_info"),
+            Stage("modification", 6, ("working", "design", "split", "target_info"),
                   MODIFICATION_READS, modification_stage, heavy=True,
                   requires=("modifications", "models", "purpose"),
                   label="Estimating the declared effect modification", serves=ESTIMATE),
@@ -1125,7 +1138,8 @@ def build_graph() -> Graph:
             # the lock (``core/mattered.py``). It requires the lock, so nothing is fitted before
             # it. It serves no estimate of its own kind (``serves`` is unset), so it adds no slot
             # to the plan the lock records; its routes withhold it as the estimates are withheld.
-            Stage("mattered", 1, ("working", "cohort", "split", "target_info", "design", "fit"),
+            # mattered 2: as fit 39 (a specification's Firth table on completely separated rows).
+            Stage("mattered", 2, ("working", "cohort", "split", "target_info", "design", "fit"),
                   MATTERED_READS, mattered_stage, heavy=True, requires=MATTERED_REQUIRES,
                   label="Refitting the estimate with each recorded choice changed"),
         ]

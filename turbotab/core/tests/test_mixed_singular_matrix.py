@@ -24,6 +24,9 @@ predictions.
 """
 from __future__ import annotations
 
+import math
+from typing import Callable
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -170,6 +173,46 @@ def test_a_nearly_dependent_matrix_is_not_refused():
     np.testing.assert_allclose([model.intercept_, *model.coef_], reml.fe_params, rtol=1e-3)
 
 
+def _stopping_room(profile: Callable[[float], float], z: float) -> float:
+    """How far in log γ a minimizer of the computed ``profile`` can stop from its minimum near
+    ``z`` for rounding alone (CI-T2): it cannot tell apart points where the profile is within twice
+    its rounding δ of its least value, so ``|Δz| ≤ 2√(δ/f'')``, with δ the profile's largest
+    departure from a quadratic over z ± 2·10⁻⁶ (81 points) and f'' its curvature (by differences
+    10⁻³ apart); and Brent's bounded search stops within ``2(√ε_mach |z| + xatol/3)`` of where it
+    brackets (scipy's ``_minimize_scalar_bounded``, xatol 10⁻¹⁰ here and in the fit)."""
+    grid = z + np.linspace(-2e-6, 2e-6, 81)
+    values = np.array([profile(t) for t in grid])
+    delta = float(np.abs(values - np.polyval(np.polyfit(grid - z, values, 2), grid - z)).max())
+    h = 1e-3
+    curvature = (profile(z + h) - 2.0 * profile(z) + profile(z - h)) / h ** 2
+    return 2.0 * math.sqrt(delta / curvature) + 2.0 * (math.sqrt(np.finfo(float).eps) * abs(z)
+                                                       + 1e-10 / 3)
+
+
+def _turn_sensitivity(span: np.ndarray, y: np.ndarray, codes: np.ndarray, z: float) -> float:
+    """How fast the dense profile's slope in log γ at ``z`` changes as the span's last column
+    turns off the span, at the fastest (CI-T2): the norm of its gradient in that column, projected
+    off the span, by central differences (10⁻⁵ in the column, 10⁻⁴ in log γ). Over the profile's
+    curvature it is how far the minimum moves, in log γ, per radian the column turns."""
+    from turbotab.core.tests.test_no_standard_error_refusal import _dense_profile
+
+    Q = np.linalg.qr(span)[0]
+
+    def slope(S: np.ndarray) -> float:
+        return (_dense_profile(S, y, codes, math.exp(z + 1e-4))
+                - _dense_profile(S, y, codes, math.exp(z - 1e-4))) / 2e-4
+
+    gradient = np.empty(len(y))
+    for k in range(len(y)):
+        off = -(Q @ Q[k])
+        off[k] += 1.0  # the k-th unit vector, projected off the span
+        up, down = span.copy(), span.copy()
+        up[:, -1] += 1e-5 * off
+        down[:, -1] -= 1e-5 * off
+        gradient[k] = (slope(up) - slope(down)) / 2e-5
+    return float(np.linalg.norm(gradient))
+
+
 @pytest.mark.parametrize("noise", [1e-8, 1e-12])
 def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
     """Between the two rules: `x` beside `x` plus noise of SD 10⁻⁸ or 10⁻¹² (a scaled condition
@@ -180,8 +223,26 @@ def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
     ``[1, x, near]`` does (``near − x`` is computed exactly, by Sterbenz's lemma), so γ̂ and the
     fitted values are the dense profile's minimum on that well-conditioned design. The fit is
     REML's exactly on a design within rounding of this one (a Householder QR is backward stable),
-    so it is as close as the condition number allows: γ̂ and the fitted values (against the
-    largest of them) to 10⁻⁷ at 10⁻⁸ and 10⁻³ at 10⁻¹²."""
+    so it is as close as the condition number allows: at 10⁻¹², to 10⁻³ (the condition number
+    times the unit roundoff, 2·10⁻⁴).
+
+    At 10⁻⁸ γ̂'s tolerance comes from the reference and the design alone, never from the engine's
+    own profile (V5c-2). A Householder QR factors exactly a design whose columns are each within
+    about the unit roundoff u of the design's (Higham 2002, Theorem 19.4, whose constant, m·n, is
+    a worst case far above what is seen), so the span the engine fits is turned off the true one
+    by at most κ√P·u, κ the condition number of ``[1, x, near]`` with its columns scaled to unit
+    length: 1.9·10⁸ × √3 × 1.1·10⁻¹⁶ = 3.7·10⁻⁸ radians here. The dense profile's minimum moves
+    by at most 0.40 in log γ per radian of such a turn (:func:`_turn_sensitivity` over the
+    curvature, 12.3), so by 1.5·10⁻⁸. Each minimizer stops within :func:`_stopping_room` of its
+    profile's minimum: how flat the profile is where its rounding (about 7·10⁻¹⁴ on values near
+    45) hides its rise, and Brent's tolerance. Both profiles evaluate one function by
+    backward-stable factorizations of well-scaled matrices, so the dense profile's room, measured
+    on the platform the test runs on (1.7·10⁻⁷ here), stands for both: γ̂'s relative tolerance
+    is twice that room plus the turn, 3.5·10⁻⁷ here. CI's Linux runner had γ̂ 1.29·10⁻⁷ from its
+    reference, where 10⁻⁷ was asked. Added to the engine's profile, a tilt of 4·10⁻⁵ γ moves γ̂
+    by 4.2·10⁻⁶, and a ripple of 10⁻¹² of its value by 7.2·10⁻⁷; each fails here. The fitted
+    values move by 1.5·10⁻² of their largest per unit of log γ and by 5.6·10⁻⁹ over designs within
+    rounding of this one, together under 1.1·10⁻⁸, so they keep 10⁻⁷."""
     from scipy.optimize import minimize_scalar
 
     from turbotab.core.models.repeated import dependencies
@@ -191,19 +252,33 @@ def test_nearly_dependent_columns_fit_where_no_dependency_is_found(noise):
     codes = units.to_numpy()
     near = x + np.random.default_rng(9).normal(scale=noise, size=N)
     frame = pd.DataFrame({"x": x, "near": near})
-    assert dependencies(np.column_stack([np.ones(N), x, near]))[0] == 0
+    design = np.column_stack([np.ones(N), x, near])
+    assert dependencies(design)[0] == 0
     model = RandomInterceptRegressor(units=units).fit(frame, y)
     d = near - x
     span = np.column_stack([np.ones(N), x, d / np.linalg.norm(d)])
-    found = minimize_scalar(lambda z: _dense_profile(span, y, codes, float(np.exp(z))),
-                            bounds=(-10.0, 5.0), method="bounded", options={"xatol": 1e-10})
+
+    def dense(z: float) -> float:
+        return _dense_profile(span, y, codes, float(np.exp(z)))
+
+    found = minimize_scalar(dense, bounds=(-10.0, 5.0), method="bounded",
+                            options={"xatol": 1e-10})
     gamma = float(np.exp(found.x))
     Hi = np.linalg.inv(np.eye(N) + gamma * (codes[:, None] == codes[None, :]))
     fitted = span @ np.linalg.solve(span.T @ Hi @ span, span.T @ Hi @ y)
-    tol = 1e-7 if noise > 1e-10 else 1e-3
-    assert model.sigma2_u_ / model.sigma2_e_ == pytest.approx(gamma, rel=tol)
+    if noise > 1e-10:
+        z = float(found.x)
+        curvature = (dense(z + 1e-3) - 2.0 * dense(z) + dense(z - 1e-3)) / 1e-6
+        kappa = float(np.linalg.cond(design / np.linalg.norm(design, axis=0)))
+        turn = kappa * math.sqrt(design.shape[1]) * np.finfo(float).eps / 2
+        gamma_tol = (2.0 * _stopping_room(dense, z)
+                     + turn * _turn_sensitivity(span, y, codes, z) / curvature)
+        fitted_tol = 1e-7
+    else:
+        gamma_tol = fitted_tol = 1e-3
+    assert model.sigma2_u_ / model.sigma2_e_ == pytest.approx(gamma, rel=gamma_tol)
     np.testing.assert_allclose(model.predict(frame), fitted, rtol=0,
-                               atol=tol * float(np.abs(fitted).max()))
+                               atol=fitted_tol * float(np.abs(fitted).max()))
 
 
 def _with_a_recoding() -> pd.DataFrame:

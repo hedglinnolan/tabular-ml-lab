@@ -320,13 +320,16 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     be told the study factor's columns, so a dependency among the covariates is refused by row
     (with the effects stage's methods text naming each family wherever two report from different
     models), and the proposals stage when it came to hand the estimand card the table's columns
-    (T5b); and, where two branches both moved a stage, one past both at their merge."""
+    (T5b); and the fit and the stages that refit a logistic table again when a Firth table on
+    completely separated rows came to report its estimates alone (T5c); and, where two branches
+    both moved a stage, one past both at their merge."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 39, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 40, 21)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
-            versions["secondary"], versions["scales"]) == (13, 22, 19, 13, 10)
+            versions["secondary"], versions["scales"]) == (14, 23, 20, 14, 11)
+    assert (versions["modification"], versions["mattered"]) == (6, 2)
     assert versions["proposals"] == 22
 
 
