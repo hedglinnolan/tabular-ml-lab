@@ -569,6 +569,15 @@
     "slowest_fit": 2213.207,
     "sha256": "b8ef2513a5025a05b9dbc4b1201242b9892e53cd5082964553cecffd73880525",
     "filled_at": "2026-10-28T22:37:46+00:00"
+   },
+   "plasma_panel_estimate": {
+    "commit": "3e6bbe6682c56bf14101af7e18d1d0df5348ca27",
+    "engine_tree": "523fcc2a14e181803573766883fd4d22566c2afe",
+    "fits": 29,
+    "total_seconds": 76.023,
+    "slowest_fit": 10.947,
+    "sha256": "77893e0e56cf7788ba97364708b286c963c64aec40a4e6275cf9f4e1ba43cad5",
+    "filled_at": "2026-10-29T19:10:44+00:00"
    }
   },
   "fit_budget": {
@@ -586,6 +595,11 @@
     "fits": 51,
     "seconds": 112874.0,
     "slowest_fit": 2213.207
+   },
+   "plasma_panel_estimate": {
+    "fits": 29,
+    "seconds": 318.0,
+    "slowest_fit": 10.947
    }
   },
   "compute_cap": null,
