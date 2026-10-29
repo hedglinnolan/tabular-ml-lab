@@ -21,7 +21,9 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
   true concentrations give the same discovery sets, so the same power, false-discovery proportion
   and mean draw-to-draw change, whose rounding up is k.
 * The graded menus: outcome-protected ComBat graded the engine's refusal, the covariate a choice.
-* The committed prereg.json is what the generators give, and a changed margin is named.
+* The committed prereg.json is what the generators give with its fills, and a changed margin is
+  named. Every other test starts from what the generators give with nothing filled
+  (``prereg_fill.build``), each fill constructed, so it holds whatever the pilot's real fills are.
 * The crash sweep's fields: the fit budget the launcher's own rule gives, the compute cap summed by
   hand from §6's named plans, the Predict fixture's default plan; the pilot refused without them,
   on a report that did not pass, across two engine trees, and on a report whose table is not the
@@ -58,6 +60,15 @@ ENGINE = {"commit": "c0", "engine_tree": "t0", "engine_modified": False}
 
 @pytest.fixture(scope="module")
 def prereg():
+    """What the generators give with nothing filled, the content of the plain write with no file
+    to keep fills from (``prereg_fill.build``): the base every fill here starts from, so each
+    test holds whatever the pilot's real fills in the committed file are."""
+    return P.build()
+
+
+@pytest.fixture(scope="module")
+def committed():
+    """The committed prereg.json, with whatever fills it holds."""
     return P.load()
 
 
@@ -235,10 +246,25 @@ def test_r0s_reference_is_half_the_straight_line_classs_regret_by_statsmodels(pr
     assert "not r0" in reference["label"]
 
 
-def test_r0_waits_for_the_crash_sweep_and_its_measure_in_the_committed_file(prereg):
+def test_r0_waits_for_the_crash_sweep_and_its_measure_in_the_committed_file(prereg, committed):
+    """With nothing filled, r0 waits for the Predict fixture's crash sweep; once it is filled,
+    for its measure. The committed file, whatever its fills, holds a value only once r0 is
+    filled, and until then says which of the two it waits for; its ruling is the one the
+    generators give."""
     r0 = prereg["predict_fixture"]["r0"]
     assert prereg["filled"]["default_plan"] is None and prereg["filled"]["r0"] is None
     assert r0["value"] is None and "crash sweep" in r0["why"]
+    crashed = P.fill(prereg, reports(["boosted_trees", "elastic_net"]), engine=ENGINE)
+    waiting = crashed["predict_fixture"]["r0"]
+    assert waiting["value"] is None and "has not been measured" in waiting["why"]
+    held = committed["predict_fixture"]["r0"]
+    if committed["filled"]["r0"] is None:
+        assert held["value"] is None
+        assert ("crash sweep" if committed["filled"]["default_plan"] is None
+                else "has not been measured") in held["why"]
+    else:
+        assert held["value"] is not None
+    assert held["ruling"] == r0["ruling"]
     ruling = r0["ruling"]
     assert (ruling["date"], ruling["by"]) == ("2026-10-23", "the orchestrator, the methods lead")
     assert "measured" in ruling["words"] and "seeds 1001-1100" in ruling["words"]
@@ -509,9 +535,9 @@ def test_the_graded_menus_grade_a_refused_rung_the_engines_refusal_and_the_rest_
 # ── the file ─────────────────────────────────────────────────────────────────
 
 
-def test_the_committed_prereg_is_what_the_generators_give_and_a_changed_margin_is_named(prereg):
-    assert P.check(prereg) == []
-    changed = copy.deepcopy(prereg)
+def test_the_committed_prereg_is_what_the_generators_give_and_a_changed_margin_is_named(committed):
+    assert P.check(committed) == []
+    changed = copy.deepcopy(committed)
     changed["estimate_fixture"]["b0"] = 0.5
     assert P.check(changed) == ["estimate_fixture"]
 

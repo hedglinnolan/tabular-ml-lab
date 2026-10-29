@@ -4,7 +4,7 @@ own API, one small command at a time, each printing JSON.
     python -m research.swarm.driver start --data <file> [--provenance url,date,license]
                                          --budget-fits N --budget-seconds S [--scripted]
                                          [--model M] [--persona P] [--effort E] [--prompt-version V]
-    python -m research.swarm.driver ask      --run <id>
+    python -m research.swarm.driver ask      --run <id> [--decisions | --line <ref or line id>]
     python -m research.swarm.driver preview  --run <id> <option> [<option> ...] [--set ...] --reason <why>
     python -m research.swarm.driver answer   --run <id> <option> [<option> ...] [--set ...] --reason <why>
                                              --marker <marker> [--rejected <option>]
@@ -16,6 +16,7 @@ own API, one small command at a time, each printing JSON.
     python -m research.swarm.driver want     --run <id> <what> --kind <kind> --reason <why> --marker <marker>
     python -m research.swarm.driver account  --run <id> <the account>
     python -m research.swarm.driver stop     --run <id>
+    python -m research.swarm.driver <analyst's command> --run <id> [--decisions | --line <ref>] --part N
 
 **One run** is one directory, ``research/runs/<run id>/`` (``$TURBOTAB_SWARM_RUNS`` in its place
 for a test), named by the id ``start`` gives and prints (:func:`new_run_id`): a neutral label
@@ -31,9 +32,10 @@ and returned (``done``; ``returned``), its arguments and a summary of its respon
 ``markers.jsonl`` the live markers read at each command that reads the run's results (``fit``,
 ``results``, ``seal``, ``export``), by the current fit's key (``research/swarm/markers.py``);
 ``server.log`` is the server's output;
-``exits.json`` the ways forward of the last refusal, so ``answer`` can take one; ``export.zip``
-the bundle. ``start`` runs ``python -m turbotab.server --analyst`` on a free local port with two
-workers and uploads the file; ``stop`` stops that PID and no other.
+``exits.json`` the ways forward of the last refusal, so ``answer`` can take one; ``parts/`` the
+last printing of each output too long to print whole, as its parts; ``export.zip`` the bundle.
+``start`` runs ``python -m turbotab.server --analyst`` on a free local port with two workers and
+uploads the file; ``stop`` stops that PID and no other.
 
 **A run refuses to start where the analyst cannot be held to the driver** (DRIVER_PLAN D2): the
 analyst agent type (``.claude/agents/analyst.md``, ``tools: Bash``) and its PreToolUse hook
@@ -60,6 +62,41 @@ as a refusal is said as it failed. So is the effects stage once it stopped, in `
 forward whose decision the driver records only through a command of its own (a revert, the
 opening of the held-out rows), which ``answer`` refuses, is listed with no id and with the command
 that records it (``options.exits``: ``revisit <decision id>``, ``seal <family>``).
+
+**Several options in one answer.** Where the open question takes several (the lens, the models,
+the exclusions' rules: ``options.resolve``), ``ask``'s ``multi`` says how in the form ``answer``
+reads (:func:`several`): each id its own word, separated by spaces; and ``answer`` refuses ids
+joined by commas in words that name that form (``options.resolve``), unless the joined word is
+itself an id offered.
+
+**What a command prints** (the driver-output package, 2026-10-28): Claude Code shows a Bash
+call's output inline only up to about 30,000 characters, and past that an analyst sees a 2 KB
+preview of it and nothing more, since it runs only the driver's commands. So every analyst's
+command prints at most :data:`OUTPUT_CAP` (:func:`to_cap`), weighed in UTF-8 bytes, which no count
+of its characters exceeds, and what it leaves out it names with the command that shows it. An
+``ask`` that would pass the cap lists each decision without its note, then each other open line
+by its ref, id, key, source, name and status alone, then only the newest decisions there is room
+for, and ``left_out`` names each command that shows the rest: ``ask --decisions``, the whole log,
+and ``ask --line <ref>``, one other open line whole. A line's ref is hex digits cut from the hash
+of its id and key (:func:`line_refs`), which a command always holds where a line's id may not (it
+may hold a column's name, and so ``$``, ``&`` or ``<``, which the analyst's hook refuses), and
+which tells apart the lines that share one id (every role line's); ``--line`` takes a line's id
+too, and refuses an id or ref several lines have, naming each one's ref. The question's own
+words, options, fields, readings, ways forward and refusals are never left out. Where an output
+still passes the cap
+(``ask``'s question alone, the log, one other line, the results, any other), it is printed in
+parts: the first by the command itself, each with a ``part`` that says which of how many, where it
+goes on from the part before (``continues``) and the command that prints the next, the output's
+own with ``--part N`` (``<command> --run <id> --part N``, with ``ask``'s ``--decisions`` or
+``--line`` and the word it was given before ``--part`` for the log's or a line's:
+:func:`output_command`), which
+runs nothing else and prints part N as kept in ``parts/``. Each output's parts are kept apart
+(:meth:`Run.keep_parts`), so a part's ``next`` goes on with its own output whichever printed
+after it; an output that printed whole drops its own kept parts and no other's, and an
+``answer``, ``revisit``, ``fit`` or ``seal`` that may have changed the run (any but one the
+driver or the server refused) marks every other command's no longer shown. A scripted analyst
+(``start --scripted``) reads the JSON in its own process, past no harness, so its run's outputs
+print whole (:func:`held_to_cap`).
 
 **The analyst's tags** (SWARM_PLAN §2, §4): ``preview`` and ``answer`` take a reason; ``answer``
 takes a marker of the controlled vocabulary (``research/swarm/vocabulary.py``) and may name the
@@ -110,6 +147,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import signal
 import socket
 import subprocess
@@ -163,6 +201,15 @@ NOT_THIS_WAY = {
 }
 AFTER_SEAL = ("The held-out rows are open: the run's result is the score at the opening, and "
               "nothing more is tried. ask, results and export still read the run.")
+# What an analyst's command prints at once (the module docstring, **What a command prints**):
+# Claude Code shows a Bash call's output inline only up to about 30,000 characters, so this keeps
+# a margin under it. Weighed in UTF-8 bytes (:func:`printed_size`).
+OUTPUT_CAP = 24_000
+INVOKE = "scripts/py -m research.swarm.driver"  # the form an analyst runs a command in
+PARTS_DIR = "parts"  # a run's outputs too long to print whole, one file per output
+# The commands that may change the run (a decision posted, Fit pressed): once one has, another
+# command's kept parts no longer show the run as it stands.
+RECORDING = ("answer", "revisit", "fit", "seal")
 
 
 class DriverError(Exception):
@@ -406,6 +453,58 @@ class Run:
             return list(json.loads((self.folder / "exits.json").read_text("utf-8"))["exits"])
         except (OSError, ValueError, KeyError):
             return []
+
+    def _parts_file(self, of: str) -> Path:
+        """Where the output ``of`` (:func:`output_of`) is kept in parts: ``parts/<command>.json``
+        for a command's own output, and for one with flags (``ask --decisions``, ``ask --line
+        <ref>``) the command and a hash of its flags, since a line's id, which ``--line`` takes
+        too, may hold any character."""
+        command, _, flags = of.partition(" ")
+        name = command if not flags else (
+            f"{command}.{hashlib.sha256(flags.encode('utf-8')).hexdigest()[:16]}")
+        return self.folder / PARTS_DIR / f"{name}.json"
+
+    @staticmethod
+    def _read_parts(path: Path) -> dict[str, Any] | None:
+        try:
+            return dict(json.loads(path.read_text("utf-8")))
+        except (OSError, ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _write_parts(path: Path, kept: dict[str, Any]) -> None:
+        path.parent.mkdir(exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(kept, ensure_ascii=False) + "\n", encoding="utf-8")
+        tmp.replace(path)
+
+    def keep_parts(self, command: str, of: str, made: str, texts: list[str]) -> None:
+        """The output ``of``, of ``command``, as last printed too long to print whole: the parts
+        it printed in, kept apart from every other output's."""
+        self._write_parts(self._parts_file(of), {"command": command, "of": of, "made": made,
+                                                 "stale": None, "parts": texts})
+
+    def kept_parts(self, of: str) -> dict[str, Any] | None:
+        kept = self._read_parts(self._parts_file(of))
+        return kept if kept is not None and kept.get("of") == of else None
+
+    def drop_parts(self, of: str) -> None:
+        """The output ``of``'s kept parts, dropped once it printed whole; every other output's
+        stay (``ask --decisions`` printed whole leaves the question's parts kept)."""
+        self._parts_file(of).unlink(missing_ok=True)
+
+    def stale_parts(self, by: str, at: str) -> None:
+        """Every other command's kept parts, marked no longer the run as it stands: ``by`` ran at
+        ``at`` and may have changed it (:data:`RECORDING`)."""
+        try:
+            files = [p for p in (self.folder / PARTS_DIR).iterdir() if p.suffix == ".json"]
+        except FileNotFoundError:
+            return
+        for path in files:
+            kept = self._read_parts(path)
+            if kept is None or kept.get("command") == by or kept.get("stale"):
+                continue
+            self._write_parts(path, kept | {"stale": {"command": by, "at": at}})
 
 
 # ── the server's process ─────────────────────────────────────────────────────
@@ -660,6 +759,59 @@ def decision_log(view: dict[str, Any]) -> list[dict[str, Any]]:
             for r in view.get("decisions") or []]
 
 
+def _and(words: list[str]) -> str:
+    return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} and {words[-1]}"
+
+
+def _options_named(options: list[dict[str, Any]]) -> str:
+    """``options`` named as options, each by its id and, where it has one, its label: "The option
+    none (Keep every row)", "The options custom (Your own range) and levels (By level)"."""
+    named = [f"{o['id']} ({o['label']})" if o.get("label") else str(o["id"]) for o in options]
+    return f"{'The option' if len(named) == 1 else 'The options'} {_and(named)}"
+
+
+def several(composed: dict[str, Any], run_id: str) -> str:
+    """How the open question takes several of its options in one answer, in the form ``answer``
+    reads (``options.resolve``): each id its own word, each option adding its own items to the
+    answer's list (``multi``: its lenses, models or rules) in the order named; a rule of one's own
+    (an exclusions option with fields of its own) named more than once, a rule each time; a
+    setting's place among the options named where more than one takes it; and an option whose
+    answer lists none of them, answered alone. ``ask``'s ``multi``, in the driver's words."""
+    multi = str(composed.get("multi"))
+    offered = [o for o in composed.get("options") or [] if o.get("id") is not None]
+
+    def items(option: dict[str, Any]) -> Any:
+        decision = option.get("decision") or option.get("_base")
+        return decision.get(multi) if isinstance(decision, dict) else None
+
+    adds = [str(o["id"]) for o in offered if items(o)]
+    again = [o for o in offered if o.get("_range") or o.get("_levels")]
+    alone = [o for o in offered
+             if isinstance(o.get("decision"), dict) and not o["decision"].get(multi)]
+    example = ([str(again[0]["id"]), str(again[-1]["id"]), str(again[-1]["id"])] if again
+               else adds[:2])
+    words = (f"This question takes several of its options in one answer, each adding its own to "
+             f"the {multi} recorded, in the order named: write each option's id after answer, "
+             f"each id its own word, separated by spaces, never joined by commas, as in {INVOKE} "
+             f"answer --run {run_id} {' '.join(example)} "
+             f"{'--set ... ' if again else ''}--marker MARKER --reason \"WHY\".")
+    if again:
+        words += (f" {_options_named(again)} may {'each ' if len(again) > 1 else ''}be named "
+                  f"more than once, a rule of your own each time, set with --set.")
+    placed = [f for f in composed.get("fields") or [] if f.get("applies_to")]
+    if placed:
+        second = example[1] if len(example) > 1 else None
+        name = next((str(f["name"]) for f in placed if second in f["applies_to"]),
+                    str(placed[0]["name"]))
+        words += (f" A setting goes to the one option named that takes it; where more than one "
+                  f"option named takes it, write the place of the one it is for, among those "
+                  f"named, before its name: --set 2.{name}=VALUE sets the second option's {name}.")
+    if alone:
+        words += (f" {_options_named(alone)} {'is' if len(alone) == 1 else 'are each'} answered "
+                  f"alone, never beside another option.")
+    return words
+
+
 def the_question(run: Run, client: Client, wait: float) -> dict[str, Any]:
     """What ``ask`` serves, with the private parts ``preview`` and ``answer`` resolve against."""
     view, step = wait_open(run, client, wait)
@@ -701,7 +853,7 @@ def the_question(run: Run, client: Client, wait: float) -> dict[str, Any]:
             if composed.get("fields"):
                 out["fields"] = composed["fields"]
             if composed.get("multi"):
-                out["multi"] = True
+                out["multi"] = several(composed, run.id)
             if composed.get("data"):
                 out["data"] = composed["data"]
             if composed.get("seal"):
@@ -969,9 +1121,63 @@ def cmd_stop(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]
 
 
 def cmd_ask(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
+    """The open question; with ``--decisions`` the decision log alone, every decision with its
+    note; with ``--line <ref or id>`` one of the other open lines ``also_open`` lists, whole: the
+    one with that id, else the one with that ref (:func:`line_refs`). Where several have it (role
+    lines share one id), none is shown, and the refusal names each one's ref."""
     run = Run.load(args.run)
-    q = the_question(run, run.client(), args.wait)
-    return 0, private_free(q), run
+    client = run.client()
+    if getattr(args, "decisions", False):
+        return 0, {"run": run.id, "decisions": decision_log(view_of(run, client))}, run
+    q = the_question(run, client, args.wait)
+    wanted = getattr(args, "line", None)
+    if wanted is None:
+        return 0, private_free(q), run
+    lines = q.get("also_open") or []
+    named = lines_named(lines, wanted)
+    if len(named) == 1:
+        return 0, {"run": run.id, "also_open": [private_free(named[0])]}, run
+    refs = line_refs(lines)
+    if named:
+        which = "; ".join(f"{ref} (id {ln.get('id')}, key {ln.get('key')})"
+                          for ln, ref in zip(lines, refs) if any(ln is n for n in named))
+        raise DriverError("several_lines", (
+            f"{len(named)} other open lines have {wanted} as their id or ref, so none is shown: "
+            f"{which}. {INVOKE} ask --run {run.id} --line REF shows one in full, REF its ref as "
+            f"listed here."))
+    listed = ", ".join(f"{ref} ({ln.get('id')})" for ln, ref in zip(lines, refs)) or "none"
+    own = (q.get("line") or {}).get("id")
+    raise DriverError("no_such_line", (
+        f"{wanted} is the open question's own line, which ask shows itself; the other open "
+        f"lines are {listed}, each by its ref and, in brackets, its id." if wanted == own else
+        f"No other open line has {wanted} as its id or its ref now; the other open lines ask "
+        f"lists under also_open are {listed}, each by its ref and, in brackets, its id."))
+
+
+def cmd_part(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
+    """``<command> [--decisions | --line <ref>] --part N``: part N of that output
+    (:func:`output_of`), as kept when it last printed too long to print whole (:func:`to_cap`),
+    each output's parts apart from every other's; nothing else runs."""
+    run = Run.load(args.run)
+    of = output_of(args)
+    kept = run.kept_parts(of)
+    if kept is None:
+        raise DriverError("no_such_part", f"No output of {of} is kept in parts for this run: "
+                                          f"its last output printed whole, or none was too "
+                                          f"long to, so there is no part {args.part}.")
+    stale = kept.get("stale")
+    if stale:
+        again = (f" {output_command(args, run.id)} shows the run as it stands."
+                 if args.command in ("ask", "results") else "")
+        raise DriverError("no_such_part", f"The output of {kept['of']} at {kept['made']} is no "
+                                          f"longer the run as it stands: {stale['command']} ran "
+                                          f"after it, at {stale['at']}, so its parts are not "
+                                          f"shown.{again}")
+    texts = list(kept.get("parts") or [])
+    if args.part > len(texts):
+        raise DriverError("no_such_part", f"The output of {kept['of']} at {kept['made']} is in "
+                                          f"{len(texts)} parts; there is no part {args.part}.")
+    return 0, json.loads(texts[args.part - 1]), run
 
 
 def chosen(run: Run, client: Client, ids: list[str], sets: list[str]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -1646,9 +1852,11 @@ def cmd_want(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]
 
 
 def account_given(run: Run) -> str | None:
-    """When the run's account was given, from ``commands.jsonl``, or None."""
+    """When the run's account was given, from ``commands.jsonl``, or None: an ``account`` that
+    kept its account (a read of its output's part keeps none)."""
     for entry in _commands(run):
-        if entry.get("command") == "account" and (entry.get("summary") or {}).get("exit") == 0:
+        given = entry.get("summary") or {}
+        if entry.get("command") == "account" and given.get("exit") == 0 and "account" in given:
             return str(entry.get("at"))
     return None
 
@@ -1701,6 +1909,343 @@ def trim(obj: Any, limit: int = TRIM) -> Any:
         head = [trim(v, limit) for v in obj[:limit]]
         return head + ([{"more": len(obj) - limit}] if len(obj) > limit else [])
     return obj
+
+
+# ── what a command prints: under the cap (the module docstring) ─────────────
+
+HEADER_ROOM = 2_000  # what a part's own header (its ``part``) may take of the cap
+MIN_ROOM = 400  # below this much room, a value is not cut further
+LINE_BRIEF = ("id", "key", "source", "name", "status")  # an other open line, listed briefly
+REF_DIGITS = 8  # the fewest hex digits of a line's ref (:func:`line_refs`)
+PIECE = "piece"  # a path's mark of one piece of a text cut across parts
+
+
+def printed_size(text: str) -> int:
+    """What ``text`` weighs against :data:`OUTPUT_CAP`: its UTF-8 bytes, which no count of its
+    characters exceeds (code points, or UTF-16 units as a JavaScript string counts them)."""
+    return len(text.encode("utf-8"))
+
+
+def _dumped(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _weight(value: Any) -> int:
+    return printed_size(_dumped(value))
+
+
+def held_to_cap(run: Run | None) -> bool:
+    """Whether a run's analyst reads what its commands print through Claude Code's Bash tool,
+    whose limit :data:`OUTPUT_CAP` keeps under: every analyst but a script (``start
+    --scripted``), which reads the JSON in its own process."""
+    return run is None or run.meta.get("analyst") != "scripted"
+
+
+def log_words(n: int, k: int, run_id: str) -> str:
+    """What a shortened ``ask`` says of the decision log it lists: the ``k`` newest of its ``n``
+    decisions, each without its note, and the command that lists them all."""
+    command = f"{INVOKE} ask --run {run_id} --decisions"
+    if k == n:
+        lead = ("The decision is listed without its note" if n == 1 else
+                f"Each of the {n} decisions is listed without its note")
+    elif k == 0:
+        lead = f"None of the {n} decisions is listed here"
+    else:
+        before = n - k
+        one = k == 1
+        lead = (f"{'The newest' if one else f'The {k} newest'} of the {n} decisions "
+                f"{'is' if one else 'are'} listed, without {'its note' if one else 'their notes'}, "
+                f"and the {before} before {'it' if one else 'them'} "
+                f"{'is' if before == 1 else 'are'} left out")
+    return f"{lead}; {command} lists every decision with its note."
+
+
+def lines_words(m: int, run_id: str) -> str:
+    """What a shortened ``ask`` says of the other open lines it lists by their ref
+    (:func:`line_refs`) and :data:`LINE_BRIEF`."""
+    lead = "The other open line is" if m == 1 else f"Each of the {m} other open lines is"
+    return (f"{lead} listed by its ref, {', '.join(LINE_BRIEF[:-1])} and {LINE_BRIEF[-1]} "
+            f"alone; {INVOKE} ask --run {run_id} --line REF shows one in full, with its "
+            f"options, fields and readings, REF its ref as listed here.")
+
+
+def line_hash(line: dict[str, Any]) -> str:
+    """What a line's ref is cut from: the hash of its id and key, which together tell one listed
+    line from another (every role line has the id ``decision:confirm_role``, each its own key)."""
+    return hashlib.sha256(_dumped([line.get("id"), line.get("key")]).encode("utf-8")).hexdigest()
+
+
+def line_refs(lines: list[dict[str, Any]]) -> list[str]:
+    """Each of ``lines``' refs, the handle ``ask --line`` reads beside a line's id: hex digits
+    alone, which an analyst's command always holds (a line's id may hold a column's name, and so
+    a ``$``, ``&`` or ``<``, which an analyst's command never holds), the first
+    :data:`REF_DIGITS` of its hash, or more where two lines' hashes begin alike, so that lines
+    whose hashes differ have refs that differ."""
+    hashes = [line_hash(ln) for ln in lines]
+    distinct = sorted(set(hashes))
+    n = max([REF_DIGITS] + [len(os.path.commonprefix([a, b])) + 1
+                            for a, b in zip(distinct, distinct[1:])])
+    return [h[:n] for h in hashes]
+
+
+def lines_named(lines: list[dict[str, Any]], wanted: str) -> list[dict[str, Any]]:
+    """The lines ``wanted`` names: those whose id it is, else those whose ref it is."""
+    return [ln for ln in lines if ln.get("id") == wanted] or [
+        ln for ln, ref in zip(lines, line_refs(lines)) if ref == wanted]
+
+
+def short_ask(payload: dict[str, Any], run_id: str) -> tuple[dict[str, Any], bool]:
+    """``ask``'s output shortened toward the cap, and whether it fits: first each decision without
+    its note; then, too, each other open line by its ref (:func:`line_refs`) and
+    :data:`LINE_BRIEF` alone; then only the newest decisions there is room for. The question's
+    own words, options, fields, readings, ways forward and refusals are kept whole, and
+    ``left_out`` says what is left out and the command that shows it. Where none fits, the last,
+    with no decision listed, is the one printed in parts."""
+    log = list(payload.get("decisions") or [])
+    lines = list(payload.get("also_open") or [])
+    bare = [{k: v for k, v in d.items() if k != "note"} for d in log]
+    brief = [{"ref": ref} | {k: ln[k] for k in LINE_BRIEF if k in ln}
+             for ln, ref in zip(lines, line_refs(lines))]
+    noted = any("note" in d for d in log)
+
+    def built(k: int, short_lines: bool) -> dict[str, Any]:
+        left: dict[str, str] = {}
+        if log and (k < len(log) or noted):
+            left["decisions"] = log_words(len(log), k, run_id)
+        if short_lines:
+            left["also_open"] = lines_words(len(lines), run_id)
+        out: dict[str, Any] = {"run": payload.get("run"), "left_out": left}
+        out.update({key: value for key, value in payload.items() if key != "run"})
+        if "decisions" in payload:
+            out["decisions"] = bare[len(bare) - k:] if k else []
+        if short_lines:
+            out["also_open"] = brief
+        return out
+
+    def fits(shown: dict[str, Any]) -> bool:
+        return _weight(shown) <= OUTPUT_CAP
+
+    n = len(log)
+    for shown in [built(n, False)] + ([built(n, True)] if lines else []):
+        if fits(shown):
+            return shown, True
+    low, high = 0, n - 1  # the most decisions there is room for, if any: their weight grows with k
+    if not fits(built(0, bool(lines))):
+        return built(0, bool(lines)), False
+    while low < high:
+        mid = (low + high + 1) // 2
+        low, high = (mid, high) if fits(built(mid, bool(lines))) else (low, mid - 1)
+    return built(low, bool(lines)), True
+
+
+def _cost(path: tuple) -> int:
+    """The most a value at ``path`` adds to a part beside its own weight: each key's or list
+    place's wrapping."""
+    return sum(6 + (_weight(p) if isinstance(p, str) else 0) for p in path)
+
+
+def _pieces(text: str, room: int) -> list[str]:
+    """``text`` cut into pieces, in order, each weighing at most ``room`` printed."""
+    out, i = [], 0
+    while i < len(text):
+        n = min(len(text) - i, room)
+        while n > 1 and _weight(text[i:i + n]) > room:
+            n = max(1, min(n - 1, n * room // _weight(text[i:i + n])))
+        out.append(text[i:i + n])
+        i += n
+    return out
+
+
+def _units(value: Any, path: tuple, room: int) -> Any:
+    """``value`` (at ``path``) as the units a part takes whole: itself where it fits in ``room``
+    with its path's wrapping, else an object by its keys, a list by its items and a text by its
+    pieces, each in order."""
+    left = room - _cost(path)
+    if left < MIN_ROOM or _weight(value) <= left:
+        yield path, value
+    elif isinstance(value, dict) and value:
+        for k, v in value.items():
+            yield from _units(v, path + (k,), room)
+    elif isinstance(value, list) and value:
+        for i, v in enumerate(value):
+            yield from _units(v, path + (i,), room)
+    elif isinstance(value, str):  # pieces a quarter of a part at most, so a part ends fuller
+        for j, piece in enumerate(_pieces(value, min(left - 6, room // 4))):
+            yield path + ((PIECE, j),), piece
+    else:
+        yield path, value
+
+
+class _Seq(dict):
+    """A list cut across parts: its items by their place in the whole."""
+
+
+class _Text(list):
+    """A text cut across parts: its pieces in order."""
+
+
+def _assemble(units: list[tuple[tuple, Any]]) -> dict[str, Any]:
+    """The part that ``units`` make: each value at its path, a list's items and a text's pieces
+    in order."""
+    root: dict[str, Any] = {}
+    for path, value in units:
+        node: Any = root
+        for depth, head in enumerate(path):
+            if depth == len(path) - 1:
+                if isinstance(head, tuple):
+                    node.append(value)
+                else:
+                    node[head] = value
+                break
+            nxt = path[depth + 1]
+            if head not in node:
+                node[head] = (_Text() if isinstance(nxt, tuple) else _Seq() if isinstance(nxt, int)
+                              else {})
+            node = node[head]
+
+    def plain(node: Any) -> Any:
+        if isinstance(node, _Text):
+            return "".join(node)
+        if isinstance(node, _Seq):
+            return [plain(v) for v in node.values()]
+        if isinstance(node, dict):
+            return {k: plain(v) for k, v in node.items()}
+        return node
+
+    return plain(root)
+
+
+def _groups(payload: dict[str, Any], room: int) -> list[list[tuple[tuple, Any]]]:
+    """``payload``'s units packed in order into parts of at most ``room`` printed each."""
+    groups: list[list[tuple[tuple, Any]]] = []
+    current: list[tuple[tuple, Any]] = []
+    bound = 2  # an upper bound of what ``current`` weighs assembled; exact where it matters
+    for unit in _units(payload, (), room):
+        add = _weight(unit[1]) + _cost(unit[0])
+        if current and bound + add > room:
+            exact = _weight(_assemble(current + [unit]))
+            if exact > room:
+                groups.append(current)
+                current, bound = [unit], _weight(_assemble([unit]))
+                continue
+            bound = exact
+        else:
+            bound += add
+        current.append(unit)
+    if current:
+        groups.append(current)
+    return groups
+
+
+def _common(a: tuple, b: tuple) -> tuple:
+    n = 0
+    while n < min(len(a), len(b)) and a[n] == b[n]:
+        n += 1
+    return a[:n]
+
+
+def output_flags(args: argparse.Namespace) -> list[str]:
+    """The flags that say which of a command's outputs ``args`` print: ``ask``'s ``--decisions``
+    or ``--line`` with the word it was given (a line's ref or id), and none for any other."""
+    if args.command == "ask" and getattr(args, "decisions", False):
+        return ["--decisions"]
+    if args.command == "ask" and getattr(args, "line", None) is not None:
+        return ["--line", str(args.line)]
+    return []
+
+
+def output_of(args: argparse.Namespace) -> str:
+    """Which output ``args`` print, as its parts' words name it and its parts are kept apart by:
+    ``ask``, ``ask --decisions``, ``ask --line <ref>``, ``results``, and so on."""
+    return " ".join([args.command, *output_flags(args)])
+
+
+def output_command(args: argparse.Namespace, run_id: str) -> str:
+    """The command that prints the output ``args`` print, as an analyst runs it, each flag's
+    word quoted where a shell would read it otherwise: with ``--part N`` after it, its part N."""
+    return " ".join([INVOKE, args.command, "--run", run_id,
+                     *(shlex.quote(word) for word in output_flags(args))])
+
+
+def part_head(k: int, n: int, of: str, shown_by: str, made: str,
+              continues: tuple) -> dict[str, Any]:
+    """Part ``k`` of ``n``'s own words: what it is, where it goes on from the part before, and
+    the command that prints the next, the output's own (``shown_by``) with ``--part``."""
+    head: dict[str, Any] = {"this": k, "of": n, "made": made, "words": (
+        f"The output of {of} at {made} is too long to print whole, so it is printed in {n} "
+        f"parts, and this is part {k}. The parts hold its keys in order; where one ends inside a "
+        f"list, a text or an object, the next goes on with it and names where under continues "
+        f"(keys, and list places counted from 0)."
+        + (f" {shown_by} --part {k + 1} prints part {k + 1}." if k < n
+           else " This is the last part."))}
+    if continues:
+        head["continues"] = list(continues)
+    if k < n:
+        head["next"] = f"{shown_by} --part {k + 1}"
+    return head
+
+
+def in_parts(payload: dict[str, Any], of: str, shown_by: str, made: str) -> list[str]:
+    """``payload`` printed in parts, each at most :data:`OUTPUT_CAP` with its header
+    (:func:`part_head`); a refusal where it cannot be."""
+    plain = json.loads(_dumped(payload))
+    for room in (HEADER_ROOM, 4 * HEADER_ROOM):
+        groups = _groups(plain, OUTPUT_CAP - room)
+        texts = []
+        for k, group in enumerate(groups, start=1):
+            continues = _common(groups[k - 2][-1][0], group[0][0]) if k > 1 else ()
+            head = part_head(k, len(groups), of, shown_by, made, continues)
+            texts.append(_dumped({"part": head} | _assemble(group)))
+        if all(printed_size(t) <= OUTPUT_CAP for t in texts):
+            return texts
+    raise DriverError("output_unsplit", "This output is too long to print whole, and the driver "
+                                        "could not print it in parts.")
+
+
+def to_cap(args: argparse.Namespace, run: Run | None, payload: dict[str, Any],
+           text: str) -> tuple[str, dict[str, Any] | None]:
+    """What an analyst's command prints, at most :data:`OUTPUT_CAP`, and what ``commands.jsonl``
+    keeps of how (None where it printed whole): ``text`` where it fits; else ``ask``'s question
+    shortened (:func:`short_ask`) where that fits; else part 1 of the output (``ask``'s
+    shortened), each part kept in the run, apart from every other output's, for the output's
+    own command with ``--part N`` (:func:`output_command`). An output that prints whole drops
+    its own kept parts and no other's (:meth:`Run.drop_parts`): ``ask --decisions`` printed
+    whole leaves the question's parts kept."""
+    of = output_of(args)
+    full = printed_size(text)
+    if full <= OUTPUT_CAP:
+        if run is not None:
+            run.drop_parts(of)
+        return text, None
+    if run is None:
+        return _dumped({"refused": {"by": "driver", "code": "output_too_long", "message": (
+            "This output is too long to print whole, and with no run named the driver keeps no "
+            "parts of it.")}}), {"bytes": full, "as": "refused"}
+    shown = payload
+    if of == "ask" and "refused" not in payload:
+        shown, fits = short_ask(payload, run.id)
+        if fits:
+            run.drop_parts(of)
+            return _dumped(shown), {"bytes": full, "as": "shortened"}
+    made = now()
+    try:
+        texts = in_parts(shown, of, output_command(args, run.id), made)
+    except DriverError as exc:
+        return _dumped({"refused": {"by": "driver", "code": exc.code, "message": exc.message}}), \
+            {"bytes": full, "as": "refused"}
+    run.keep_parts(args.command, of, made, texts)
+    return texts[0], {"bytes": full, "as": "parts", "parts": len(texts)}
+
+
+def part_summary(code: int, payload: dict[str, Any]) -> dict[str, Any]:
+    """What ``commands.jsonl`` keeps of a read of an output's part: the part, or its refusal;
+    never what the command it is a part of records."""
+    if "refused" in payload:
+        r = payload["refused"]
+        return {"exit": code, "refused": {k: r.get(k) for k in ("by", "code", "message")}
+                | {"exits": []}}
+    head = payload.get("part") or {}
+    return {"exit": code, "part": {k: head.get(k) for k in ("this", "of", "made")}}
 
 
 def summary(name: str, code: int, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1774,6 +2319,55 @@ def _wait(text: str) -> float:
     return value
 
 
+def _part(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        value = 0
+    if value < 1:
+        raise argparse.ArgumentTypeError("--part is a part's number, 1 or more")
+    return value
+
+
+OPTION_HELP = ("the option's id, as ask lists it; where ask shows multi, several ids, each id its "
+               "own word, separated by spaces, never joined by commas")
+PART_HELP = ("print part N of this output, as last printed too long to print whole, and run "
+             "nothing else; takes --run beside it and, for ask's log or one of its lines, "
+             "--decisions or --line REF, as the part's next names them")
+
+
+def shown_flags(p: argparse.ArgumentParser) -> None:
+    """``ask``'s flags for which of its outputs it prints: the log alone, or one other line."""
+    shown = p.add_mutually_exclusive_group()
+    shown.add_argument("--decisions", action="store_true", default=None,  # unlogged unless given
+                       help="the decision log alone, every decision with its note")
+    shown.add_argument("--line", metavar="REF",
+                       help="one other open line in full, by its ref as a shortened ask lists "
+                            "it under also_open, or by its id")
+
+
+def reads_a_part(argv: list[str]) -> bool:
+    """Whether ``argv`` asks for an output's part (``<command> --run <id> [--decisions | --line
+    <ref>] --part N``)."""
+    return bool(argv) and argv[0] in ANALYST_COMMANDS and any(
+        a == "--part" or a.startswith("--part=") for a in argv[1:])
+
+
+def part_parser() -> argparse.ArgumentParser:
+    """The command line of a read of an output's part: an analyst's command, its run, which of
+    its outputs (``ask``'s ``--decisions`` or ``--line <ref>``) and the part, nothing else."""
+    parser = argparse.ArgumentParser(prog="python -m research.swarm.driver",
+                                     description="A part of a command's last output.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name in ANALYST_COMMANDS:
+        q = sub.add_parser(name)
+        q.add_argument("--run", required=True)
+        if name == "ask":
+            shown_flags(q)
+        q.add_argument("--part", type=_part, required=True, metavar="N", help=PART_HELP)
+    return parser
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m research.swarm.driver",
                                      description="The swarm's driver (DRIVER_PLAN D1).")
@@ -1797,16 +2391,19 @@ def build_parser() -> argparse.ArgumentParser:
         if wait:
             q.add_argument("--wait", type=_wait, default=WAIT_DEFAULT,
                            help=f"seconds to wait for what is computing (default {WAIT_DEFAULT:g})")
+        if name in ANALYST_COMMANDS:  # read by part_parser, which main uses where it is given
+            q.add_argument("--part", type=_part, metavar="N", help=PART_HELP)
         return q
 
     with_run("stop", "stop the run's server")
-    with_run("ask", "the open question", wait=True)
+    p = with_run("ask", "the open question", wait=True)
+    shown_flags(p)
     p = with_run("preview", "what recording an option would do, with why; nothing is recorded")
-    p.add_argument("option", nargs="+")
+    p.add_argument("option", nargs="+", help=OPTION_HELP)
     p.add_argument("--set", action="append", metavar="NAME=VALUE")
     p.add_argument("--reason", required=True)
     p = with_run("answer", "record an option, with why and the marker it answers to")
-    p.add_argument("option", nargs="+")
+    p.add_argument("option", nargs="+", help=OPTION_HELP)
     p.add_argument("--set", action="append", metavar="NAME=VALUE")
     p.add_argument("--reason", required=True)
     p.add_argument("--marker", required=True, help="a marker of the controlled vocabulary")
@@ -1839,7 +2436,9 @@ def _git_head() -> str | None:
 
 
 def main(argv: list[str] | None = None, out: Callable[[str], None] | None = None) -> int:
-    parser = build_parser()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    reading = reads_a_part(argv)
+    parser = part_parser() if reading else build_parser()
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -1851,7 +2450,7 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] | None = None
         try:
             if args.command in ANALYST_COMMANDS:
                 with analyst_sealed():
-                    code, payload, run = COMMANDS[args.command](args)
+                    code, payload, run = (cmd_part if reading else COMMANDS[args.command])(args)
             else:
                 code, payload, run = COMMANDS[args.command](args)
         except DriverError:
@@ -1869,12 +2468,22 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] | None = None
             except DriverError:
                 run = None
     payload = private_free(payload)
-    write(json.dumps(payload, ensure_ascii=False, default=str))
+    text = json.dumps(payload, ensure_ascii=False, default=str)
+    printed = None
+    if not reading and args.command in ANALYST_COMMANDS and held_to_cap(run):
+        text, printed = to_cap(args, run, payload, text)
+    write(text)
     if run is not None:
+        by = (payload.get("refused") or {}).get("by")
+        if not reading and args.command in RECORDING and (code == 0 or by not in ("driver",
+                                                                                  "server")):
+            run.stale_parts(args.command, now())
         given = {k: v for k, v in vars(args).items() if k not in ("command",) and v is not None}
+        kept = part_summary(code, payload) if reading else summary(args.command, code, payload)
+        if printed:
+            kept["printed"] = printed
         run.log({"at": started, "done": now(), "began": began, "returned": now_us(),
-                 "command": args.command, "args": given,
-                 "summary": summary(args.command, code, payload)})
+                 "command": args.command, "args": given, "summary": kept})
     return code
 
 

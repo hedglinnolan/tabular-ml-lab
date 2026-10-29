@@ -1,6 +1,8 @@
 """The pilot's scoring (SWARM_PLAN §7; ``research/swarm/score_pilot.py``): prereg.json's rules
 applied to constructed records, replays and sweeps whose verdicts are known by construction, each
-rule both ways.
+rule both ways. The pre-registration they start from is what the generators give with nothing
+filled (``prereg_fill.build``), each fill constructed, so each holds whatever the pilot's real fills
+in the committed prereg.json are.
 
 * A replay is judged only as its record's plan, on the pre-registered draws and rows on the
   frozen engine: one of another dataset, bundle or family, another generator, recorded seed or
@@ -67,7 +69,9 @@ ON_FROZEN = {**ENGINE, "engine_changed": None}
 
 @pytest.fixture(scope="module")
 def prereg():
-    return P.load()
+    """What the generators give with nothing filled (``prereg_fill.build``, the plain write's
+    content with no file to keep fills from), whatever the committed file's fills are."""
+    return P.build()
 
 
 @pytest.fixture(scope="module")

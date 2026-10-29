@@ -61,20 +61,29 @@ A `want` also names its kind with `--kind`: `option`, `check`, `reading` or `eli
 - `ask`: the open question. `words` is the question; `options` lists each answer with its `id`
   and the `decision` it records; `fields` are settings you can change with `--set`; `readings`
   are what the answer rests on, with ways forward (ids starting `x-`); `also_open` lists the
-  other open lines, each with its options: a role to confirm, a finding to act on, and each
-  declaration the app asks of you beside the questions (the selection, the validation, the
-  levers, the intended use and the others). A declaration's options have ids of the form
-  `<kind>:<value>`, such as `set_selection:elastic_net`; its `fields` are set with
-  `--set name=value`, and an option that lists `needs` records nothing until you set each
-  field it names. You preview and answer a declaration's option as you do a question's, by its
-  id: `answer set_validation:internal_external --set cluster=site --marker design --reason "..."`.
+  other open lines, each with its options unless `ask` had to shorten its output (below): a
+  role to confirm, a finding to act on, and each declaration the app asks of you beside the
+  questions (the selection, the validation, the levers, the intended use and the others). A
+  declaration's options have ids of the form `<kind>:<value>`, such as
+  `set_selection:elastic_net`; its `fields` are set with `--set name=value`, and an option
+  that lists `needs` records nothing until you set each field it names. You preview and
+  answer a declaration's option as you do a question's, by its id:
+  `answer set_validation:internal_external --set cluster=site --marker design --reason "..."`.
   `fit_failed` lists a fit that stopped: `"kind": "refused"` is a fit the app refused, with its
   `refusal`'s code, words and ways forward (`exits`); `"kind": "failed"` is one that failed, with
   its `error`. Under Estimate, `effects_failed` lists the effects stage the same way when it
   stopped: the app's own words for why no effect is shown, and its ways forward.
-  `decisions` is the log so far, each with its `id`. When `fit_reached` is true, run
-  `fit`. When `question` is null and Fit was pressed, every question is answered: read
-  `results`, then `export`.
+  `decisions` is the log so far, each with its `id`. Where all of it would be too long to
+  print, `ask` shortens it in steps and stops at the first that fits: first it lists each
+  decision without its note; if that is still too long, it also lists each other open line by
+  its ref, id, key, source, name and status alone; if that is still too long, it lists only the
+  newest decisions there is room for. `left_out` says which of these it did, and the command
+  that shows what it left out: `ask --run RUN --decisions` lists every decision with its note,
+  and `ask --run RUN --line REF` shows one other open line in full, REF its `ref` as
+  `also_open` lists it. The question's own words, options, readings and ways forward are never
+  left out; where even they are too long to print, the output is printed in parts (below).
+  When `fit_reached` is true, run `fit`. When `question` is null and Fit was pressed, every
+  question is answered: read `results`, then `export`.
 
       scripts/py -m research.swarm.driver ask --run RUN
 
@@ -85,8 +94,12 @@ A `want` also names its kind with `--kind`: `option`, `check`, `reading` or `eli
 
 - `answer <option> --marker <marker> --reason <why>`: records the option, with the marker the
   reason rests on, and with `--rejected <option>` the option offered for the same question that
-  you turned down, if one. Some questions take several options at once (`multi`), some take
-  settings (`--set name=value`), and a way forward is taken by its id.
+  you turned down, if one. Where `ask` shows `multi`, the question takes several of its options
+  in one answer, and `multi` says how: each id its own word after `answer`, separated by spaces,
+  never joined by commas (`answer --run RUN dietary clinical ...`); for the exclusions, a rule
+  of your own is named once for each rule, and a setting more than one option named takes is
+  written with that option's place before its name (`--set 2.level_column=...`). Some questions
+  take settings (`--set name=value`), and a way forward is taken by its id.
 
       scripts/py -m research.swarm.driver answer --run RUN impute --marker complete_case_share --rejected complete_case --reason "The complete-case preview dropped rows a new patient could still be scored on. Testing whether a fill keeps the score."
 
@@ -140,6 +153,16 @@ revert, or the held-out rows to open) is taken with that command and a reason: `
 id> --reason <why>` or `seal <family> --reason <why>`. One whose id is null and that names no
 command records nothing, and `answer` cannot take it. You can also change an earlier answer with
 `revisit`.
+
+An output too long to print whole is printed in parts. Its `part` says which part of how many
+this is, and `next` gives the command that prints the next one: the same command with only
+`--run`, `ask`'s `--decisions` or `--line REF` where it had one, and `--part N`, which runs
+nothing again and records nothing. Each output keeps its own parts, so the question's, the
+log's and each line's `next` goes on with that output, whatever printed after it. Where a part
+ends inside a list or a text, the next part goes on with it, and its `continues` says where.
+Once an `answer`, `revisit`, `fit` or `seal` has run, unless the driver or the app refused it
+with `"by": "driver"` or `"by": "server"`, the parts of another command's output are not shown,
+since the run may have changed: `ask` and `results` show it as it stands.
 
 ## How you work: explore first, then commit once
 
