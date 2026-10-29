@@ -146,8 +146,10 @@ record's own result). A fit's live markers are those the driver read while the f
 (the snapshots whose fit key is the fit's): each marker the first snapshot holding a value for it
 gives, the markers read from the answers alone (``markers.STATE_ONLY``) read again from the
 answers the fit read (the log folded through the prefix the fit read, :class:`Prefixes`), since
-an answer the fit does not read can change while its key stands. A fit no snapshot was taken at
-has none, and says so.
+an answer the fit does not read can change while its key stands. Under Predict the primary score
+is the metric the fit's own record names (:data:`OWN_METRIC`), whatever the snapshots hold: a
+snapshot names the newest record's, so one kept while the fit ran, before its record was served,
+names the fit before's. A fit no snapshot was taken at has none, and says so.
 
 **The signed change** (``signed.py``) of each family's primary score from the fit before, paired
 where the two fits scored the same folds (their ``folds`` digests are one), else unpaired, each
@@ -192,6 +194,7 @@ MARKERS_FILE = "markers.jsonl"
 META_KEYS = ("design", "analyst_model", "persona", "effort", "prompt_version", "transcript",
              "dataset", "help")
 NO_SNAPSHOT = "No command of the run read the live markers while this fit was current."
+OWN_METRIC = "the primary metric this fit's own record names"
 NO_FIT_BEFORE = "This is the run's first fit: there is no fit before it to compare with."
 NOT_PREDICT = "Under Estimate a fit's result is its estimate, not a cross-validated score."
 
@@ -925,8 +928,9 @@ def attempts_of(fits: Sequence[Mapping[str, Any]], records: Sequence[Mapping[str
 def fit_markers(fit: Mapping[str, Any], snapshots: Sequence[Mapping[str, Any]],
                 prefixes: Prefixes) -> tuple[list[dict[str, Any]] | None, str | None]:
     """The live markers at ``fit`` (the module docstring): each from the first snapshot at its key
-    holding a value for it, else the last one's why; the markers read from the answers alone read
-    again from the answers the fit read, or why they are not known."""
+    holding a value for it, else the last one's why; under Predict the primary score from the
+    fit's own record; the markers read from the answers alone read again from the answers the fit
+    read, or why they are not known."""
     at = [s for s in snapshots if s.get("fit_key") == fit.get("fit_key")]
     if not at:
         return None, NO_SNAPSHOT
@@ -936,6 +940,11 @@ def fit_markers(fit: Mapping[str, Any], snapshots: Sequence[Mapping[str, Any]],
             name = m.get("name")
             if name in V.LIVE and (name not in merged or merged[name].get("value") is None):
                 merged[name] = dict(m)
+    metric = fit.get("primary_metric")
+    if fit.get("purpose") == "prediction" and metric:
+        # A snapshot names the newest record's metric (``markers._primary_score``): one kept while
+        # this fit ran, before ``GET …/fits`` served its record, names the fit before's.
+        merged["primary_score"] = M.marker("primary_score", {"metric": metric}, OWN_METRIC)
     n = prefixes.read_through(fit)
     held = prefixes.at(n) if n is not None else None
     if held is None:

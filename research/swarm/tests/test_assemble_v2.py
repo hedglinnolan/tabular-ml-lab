@@ -1,8 +1,9 @@
 """The assembler's version 2 (SWARM_PLAN §4; ``assemble.py``), on constructed run directories: each
 field from the driver's own lines (a preview's reason, an answer's tag, a want, the account, each
-failed fit), the live markers at each fit (the driver's snapshots by the fit's key, and the
-answers the fit read), and each family's signed change from the fit before (``signed.py``). Every
-number is constructed; each guard both ways."""
+failed fit), the live markers at each fit (the driver's snapshots by the fit's key, the answers
+the fit read and, under Predict, the primary metric its own record names), and each family's
+signed change from the fit before (``signed.py``). Every number is constructed; each guard both
+ways."""
 from __future__ import annotations
 
 import json
@@ -13,8 +14,9 @@ from typing import Any
 import pytest
 
 from research.swarm import assemble as A
+from research.swarm import markers as M
 from research.swarm import vocabulary as V
-from research.swarm.record import FailedFit, SignedChange, validate
+from research.swarm.record import FailedFit, Marker, SignedChange, validate
 from research.swarm.tests.test_swarm_assemble import META, FakeClient, _run_dir, _served_routes
 
 T = "2026-10-22T10:00:"
@@ -120,6 +122,97 @@ def test_a_fit_whose_answers_are_not_known_says_so_of_the_markers_read_from_them
     by = {m["name"]: m for m in got}
     assert by["rows"]["value"] == 480
     assert by["purpose"]["value"] is None and "not known" in by["purpose"]["why"]
+
+
+# ── a fit's primary score ────────────────────────────────────────────────────
+
+
+def tasks(purpose: str = "prediction") -> list[dict[str, Any]]:
+    """The outcome answered yes/no (#3), then numeric (#4): its primary metric changes."""
+    return [record(1, 1.0, {"kind": "set_purpose", "purpose": purpose}),
+            record(2, 1.5, {"kind": "set_target", "column": "y"}),
+            record(3, 2.0, {"kind": "set_task", "column": "y", "task": "binary"}),
+            record(4, 5.0, {"kind": "set_task", "column": "y", "task": "regression"})]
+
+
+def fit_record(seq: int, key: str, metric: str, decisions: list[int], sec: float,
+               purpose: str = "prediction") -> dict[str, Any]:
+    return {"id": f"f{seq}", "seq": seq, "at": t(sec), "purpose": purpose, "target": "y",
+            "fit_key": key, "decisions": decisions, "families": ["linear"],
+            "primary_metric": metric, "folds": "D", "scores": {"linear": {}}, "effects": {},
+            "movement": [], "movement_why": None}
+
+
+# K1 read the yes/no answer and names log loss; K2, fitted after the numeric one, mean squared error.
+K1 = fit_record(1, "K1", "log_loss", [1, 2, 3], 3.0)
+K2 = fit_record(2, "K2", "mse", [1, 2, 4], 9.0)
+
+
+def snapshot(key: str, served: list[dict[str, Any]], purpose: str = "prediction"
+             ) -> dict[str, Any]:
+    """The driver's snapshot (``driver.keep_markers``) while ``key`` is the current fit's and
+    ``GET …/fits`` serves the records ``served``: every live marker as ``markers.live`` reads it."""
+    view = {"state": {"purpose": purpose, "target": "y"}, "stages": {"fit": {"key": key}}}
+    return {"fit_key": M.fit_key(view),
+            "markers": M.live(view, lambda path: {"records": served} if path == "fits" else None)}
+
+
+def primary_score(markers: list[dict[str, Any]]) -> dict[str, Any]:
+    return next(m for m in markers if m["name"] == "primary_score")
+
+
+def test_a_fits_primary_score_is_its_own_records_though_kept_while_it_ran():
+    """K2's only snapshot was kept while K2 ran, GET …/fits serving K1's record alone, so it names
+    K1's log loss; K2's attempt names its own record's metric, and every other marker is as the
+    snapshot holds it (or, read from the answers alone, as the answers K2 read give it)."""
+    snaps = [snapshot("K1", [K1]), snapshot("K2", [K1])]
+    assert primary_score(snaps[1]["markers"])["value"] == {"metric": "log_loss"}
+    first, second = A.attempts_of([K1, K2], tasks(), snaps)
+    assert primary_score(first["markers"])["value"] == {"metric": "log_loss"}
+    got = primary_score(second["markers"])
+    assert got["value"] == {"metric": "mse"} and got["why"] is None
+    assert got["basis"] == A.OWN_METRIC
+    Marker.model_validate(got)
+    assert [m["name"] for m in second["markers"]] == list(V.LIVE)
+    kept = {m["name"]: m for m in snaps[1]["markers"]
+            if m["name"] not in (*M.STATE_ONLY, "primary_score")}
+    assert {m["name"]: m for m in second["markers"] if m["name"] in kept} == kept
+    by = {m["name"]: m for m in second["markers"]}
+    assert by["purpose"]["value"] == "prediction"
+
+
+def test_a_fits_primary_score_kept_after_its_record_was_served_stays_its_metric():
+    snaps = [snapshot("K1", [K1]), snapshot("K2", [K1, K2])]
+    assert primary_score(snaps[1]["markers"])["value"] == {"metric": "mse"}
+    _, second = A.attempts_of([K1, K2], tasks(), snaps)
+    assert primary_score(second["markers"])["value"] == {"metric": "mse"}
+
+
+@pytest.mark.parametrize("later", [False, True], ids=["before-only", "and-after"])
+def test_a_first_fit_snapshotted_before_any_record_ends_with_its_own_records_metric(later):
+    """A snapshot kept while the run's first fit ran holds no primary score (no record named one);
+    with or without a later snapshot after its record was served, the fit names its record's."""
+    snaps = [snapshot("K1", []), *([snapshot("K1", [K1])] if later else [])]
+    assert primary_score(snaps[0]["markers"])["value"] is None
+    (got,) = A.attempts_of([K1], tasks(), snaps)
+    assert primary_score(got["markers"])["value"] == {"metric": "log_loss"}
+    assert primary_score(got["markers"])["why"] is None
+
+
+def test_an_estimate_fits_primary_score_holds_none_though_its_record_names_a_metric():
+    """Under Estimate the fit record names the fit's primary metric too (the engine's fit artifact
+    always does), but the marker holds none, as the snapshot read it: the result is the estimate."""
+    est = {**K2, "purpose": "inference"}
+    snaps = [snapshot("K2", [est], purpose="inference")]
+    held = primary_score(snaps[0]["markers"])
+    assert held["value"] is None and "Estimate" in held["why"]
+    (got,) = A.attempts_of([est], tasks("inference"), snaps)
+    assert primary_score(got["markers"]) == held
+
+
+def test_a_predict_fit_no_snapshot_was_taken_at_still_has_no_markers():
+    (got,) = A.attempts_of([K1], tasks(), [snapshot("K9", [K1])])
+    assert got["markers"] is None and got["markers_why"] == A.NO_SNAPSHOT
 
 
 # ── the signed change ────────────────────────────────────────────────────────
