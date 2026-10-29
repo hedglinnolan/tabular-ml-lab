@@ -174,14 +174,19 @@ def _join(a: Any, b: Any, cont: tuple, path: tuple) -> Any:
     raise AssertionError(f"part goes on at {path} where continues names {cont}")
 
 
-def parts_of(first: str, command: str, extra: list[str] | None = None) -> list[str]:
-    """The parts of an output whose first part is ``first``: the rest by ``<command> --part k``,
-    each run as its ``next`` says."""
+def parts_of(first: str, command: str, *flags: str) -> list[str]:
+    """The parts of an output whose first part is ``first``: the rest each by the ``next`` the
+    part before names, run as written, which is the output's own command (``command`` with
+    ``flags``: ``ask --decisions``, ``ask --line <id>``) and ``--part k``."""
+    import shlex
+
     texts = [weighed(first)]
     head = json.loads(first)["part"]
+    own = " ".join([command, "--run", RID, *(shlex.quote(f) for f in flags)])
     for k in range(2, head["of"] + 1):
-        assert json.loads(texts[-1])["part"]["next"] == f"{INVOKE} {command} --run {RID} --part {k}"
-        code, text = said([command, "--run", RID, "--part", str(k), *(extra or [])])
+        given = json.loads(texts[-1])["part"]["next"]
+        assert given == f"{INVOKE} {own} --part {k}"
+        code, text = said(shlex.split(given)[3:])
         assert code == 0, text
         texts.append(text)
     assert "next" not in json.loads(texts[-1])["part"]
@@ -263,7 +268,7 @@ def test_a_long_runs_ask_stays_under_the_cap_and_its_whole_log_is_shown_in_parts
     assert got["options"] == public["options"] and got["readings"] == public["readings"]
     code, first = said(["ask", "--run", RID, "--decisions"])
     assert code == 0
-    texts = parts_of(first, "ask")
+    texts = parts_of(first, "ask", "--decisions")
     assert len(texts) > 1
     assert joined(texts) == {"run": RID, "decisions": log_of(raw)}
 
@@ -333,6 +338,134 @@ def test_a_part_is_shown_only_of_the_last_output_while_the_run_stands(tmp_path, 
     code, text = said(["ask", "--run", RID, "--part", "2"])
     assert code == 1 and json.loads(text)["refused"]["code"] == "no_such_part"
     assert len(sent) == 1
+
+
+def huge_line() -> dict[str, Any]:
+    """An other open line too long to print whole by itself: a declaration whose one field offers
+    120 choices of 300 characters (39,004 bytes printed)."""
+    return {"id": "decision:set_usual_intake:whos_in", "key": "set_usual_intake",
+            "source": "declaration", "label": "Decide", "name": "the usual intake",
+            "status": "open", "stage": "whos_in",
+            "options": [{"id": "set_usual_intake:a", "label": "As recorded",
+                         "decision": {"kind": "set_usual_intake"}}],
+            "fields": [{"name": "column", "choices": [{"value": text_of(300, i)}
+                                                      for i in range(120)]}]}
+
+
+def recording(monkeypatch) -> list[Any]:
+    """``answer``'s post stood in for: each decision it would post is kept in the list given."""
+    monkeypatch.setattr(driver, "guard_budget", lambda *a, **k: None)
+    sent: list[Any] = []
+
+    class Answered:
+        status = 200
+
+        def json(self) -> Any:
+            return {"decisions": [{"id": "r9", "seq": 9, "decision": sent[-1]}], "interview": []}
+
+    def post(run, client, decision, note):
+        sent.append(decision)
+        return Answered()
+
+    monkeypatch.setattr(driver, "post_decision", post)
+    return sent
+
+
+def test_each_output_in_parts_goes_on_by_its_own_next_whatever_printed_in_parts_after_it(
+        tmp_path, monkeypatch):
+    """The question, the whole log and one other open line, each too long to print whole, printed
+    one after another, each in parts: each one's ``next`` names that output's own command, passes
+    the analyst's hook as written, and prints that output's next part, so the parts joined are
+    each output as constructed here, whichever printed in parts after it (the verifier's P1: the
+    question's ``next`` once printed the log's part)."""
+    from research.swarm import analyst_hook
+
+    fake_run(tmp_path, monkeypatch)
+    lines = other_lines() + [huge_line()]
+    public, whole, raw = asked(600, n_options=200, option_size=300, why=30_000, lines=lines)
+    standing(monkeypatch, whole, raw)
+    big = lines[-1]["id"]
+    firsts = {}
+    for flags in ((), ("--decisions",), ("--line", big)):
+        code, first = said(["ask", "--run", RID, *flags])
+        head = json.loads(weighed(first))["part"]
+        assert code == 0 and head["this"] == 1 and head["of"] > 1, flags
+        assert analyst_hook.bash_refusal(head["next"], analyst_hook.REPO) is None, head["next"]
+        firsts[flags] = first
+    question = joined(parts_of(firsts[()], "ask"))
+    for key in ("question", "words", "options", "readings", "last_refusal_exits", "line"):
+        assert question[key] == public[key], key
+    assert joined(parts_of(firsts[("--decisions",)], "ask", "--decisions")) == {
+        "run": RID, "decisions": log_of(raw)}
+    assert joined(parts_of(firsts[("--line", big)], "ask", "--line", big)) == {
+        "run": RID, "also_open": [lines[-1]]}
+
+
+@pytest.mark.parametrize("line_id,written", [
+    ("finding:pack::dietary::implausible_intake", "finding:pack::dietary::implausible_intake"),
+    ("finding:BMI (kg/m2) high", "'finding:BMI (kg/m2) high'")], ids=["plain", "shell_words"])
+def test_a_lines_next_part_reads_back_its_id_whole(line_id, written):
+    """Both ways: an id a shell reads as one word is written as it is; one it would split or
+    read (a space, parentheses) is quoted. Either way the analyst's hook passes the command and
+    the part's parser reads back the id as given."""
+    import shlex
+
+    from research.swarm import analyst_hook
+
+    args = driver.part_parser().parse_args(["ask", "--run", RID, "--line", line_id, "--part", "1"])
+    command = f"{driver.output_command(args, RID)} --part 2"
+    assert command == f"{INVOKE} ask --run {RID} --line {written} --part 2"
+    assert analyst_hook.bash_refusal(command, analyst_hook.REPO) is None, command
+    back = driver.part_parser().parse_args(shlex.split(command)[3:])
+    assert (back.command, back.line, back.part, driver.output_of(back)) == (
+        "ask", line_id, 2, f"ask --line {line_id}")
+
+
+def test_a_part_is_refused_where_its_own_output_printed_whole_and_shown_where_another_did(
+        tmp_path, monkeypatch):
+    """Both ways, each output by its own parts: the question printed whole refuses the question's
+    part 2 while the log's and the line's parts are shown; the log printed whole refuses the
+    log's while the line's is shown; and once an answer is recorded, the line's is refused, in
+    words naming the command that shows the line as it stands."""
+    fake_run(tmp_path, monkeypatch)
+    sent = recording(monkeypatch)
+    lines = other_lines() + [huge_line()]
+    big = lines[-1]["id"]
+    public, whole, raw = asked(600, n_options=200, option_size=300, why=30_000, lines=lines)
+    standing(monkeypatch, whole, raw)
+    for flags in ((), ("--decisions",), ("--line", big)):
+        assert "part" in json.loads(said(["ask", "--run", RID, *flags])[1])
+    shown_log = said(["ask", "--run", RID, "--decisions", "--part", "2"])
+    shown_line = said(["ask", "--run", RID, "--line", big, "--part", "2"])
+    assert shown_log[0] == 0 and json.loads(shown_log[1])["part"]["this"] == 2
+    assert shown_line[0] == 0 and json.loads(shown_line[1])["part"]["this"] == 2
+
+    _, short, _ = asked(600, lines=lines)  # the question prints whole, shortened
+    standing(monkeypatch, short, raw)
+    assert "part" not in json.loads(said(["ask", "--run", RID])[1])
+    code, text = said(["ask", "--run", RID, "--part", "2"])
+    refused = json.loads(text).get("refused") or {}
+    assert code == 1 and refused.get("code") == "no_such_part", text[:300]
+    assert "No output of ask is kept in parts" in refused["message"]
+    assert said(["ask", "--run", RID, "--decisions", "--part", "2"]) == shown_log
+    assert said(["ask", "--run", RID, "--line", big, "--part", "2"]) == shown_line
+
+    _, small, small_raw = asked(3, lines=lines)  # the log prints whole
+    standing(monkeypatch, small, small_raw)
+    assert "part" not in json.loads(said(["ask", "--run", RID, "--decisions"])[1])
+    code, text = said(["ask", "--run", RID, "--decisions", "--part", "2"])
+    refused = json.loads(text).get("refused") or {}
+    assert code == 1 and refused.get("code") == "no_such_part", text[:300]
+    assert "No output of ask --decisions is kept in parts" in refused["message"]
+    assert said(["ask", "--run", RID, "--line", big, "--part", "2"]) == shown_line
+
+    code, _ = said(["answer", "--run", RID, "impute", "--reason", "Fill.", "--marker", "rows"])
+    assert code == 0 and len(sent) == 1
+    code, text = said(["ask", "--run", RID, "--line", big, "--part", "2"])
+    refused = json.loads(text).get("refused") or {}
+    assert code == 1 and refused.get("code") == "no_such_part", text[:300]
+    assert "answer ran after it" in refused["message"]
+    assert f"{INVOKE} ask --run {RID} --line {big} shows the run as it stands" in refused["message"]
 
 
 def results_served(families: int) -> dict[str, Any]:
@@ -447,9 +580,10 @@ def test_ask_says_how_the_exclusions_take_several_rules_and_each_claim_holds(tmp
     q = asked_of(tmp_path, monkeypatch, "exclusions", composed)
     words = q["multi"]
     assert f"{INVOKE} answer --run {RID} custom levels levels --set ... " in words
-    assert "custom, eligibility and levels may each be named more than once" in words
+    assert ("The options custom (Your own range), eligibility (Who it is about) and levels (By "
+            "level) may each be named more than once") in words
     assert "--set 2.level_column=VALUE sets the second option's level_column" in words
-    assert "none is answered alone" in words
+    assert "The option none (Keep every row) is answered alone, never beside another option." in words
     got = opts.resolve(composed, ["custom", "levels", "levels"], [
         "1.column=age", "1.low=20", "2.level_column=sex", "2.exclude=2", "3.level_column=smoker",
         "3.exclude=1"])
@@ -457,6 +591,7 @@ def test_ask_says_how_the_exclusions_take_several_rules_and_each_claim_holds(tmp
     assert [r["column"] for r in got["rules"]] == ["age", "sex", "smoker"]  # each by its place
     with pytest.raises(opts.Unanswerable, match="answered alone"):
         opts.resolve(composed, ["none", "custom"], ["column=age", "low=20"])
+    assert opts.resolve(composed, ["none"], []) == {"kind": "set_exclusions", "rules": []}
     with pytest.raises(opts.Unanswerable, match="write its place"):
         opts.resolve(composed, ["levels", "levels"], ["level_column=sex"])
 
