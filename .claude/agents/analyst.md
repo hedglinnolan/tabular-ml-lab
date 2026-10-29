@@ -72,9 +72,13 @@ A `want` also names its kind with `--kind`: `option`, `check`, `reading` or `eli
   `refusal`'s code, words and ways forward (`exits`); `"kind": "failed"` is one that failed, with
   its `error`. Under Estimate, `effects_failed` lists the effects stage the same way when it
   stopped: the app's own words for why no effect is shown, and its ways forward.
-  `decisions` is the log so far, each with its `id`. When `fit_reached` is true, run
-  `fit`. When `question` is null and Fit was pressed, every question is answered: read
-  `results`, then `export`.
+  `decisions` is the log so far, each with its `id`. Where all of it would be too long to
+  print, `ask` lists each decision without its note, or only the newest, and each other open
+  line by its id, key, source, name and status alone, and `left_out` says what it left out and
+  the command that shows it: `ask --run RUN --decisions` lists every decision with its note,
+  and `ask --run RUN --line ID` shows one other open line in full, ID its id as `also_open`
+  lists it. When `fit_reached` is true, run `fit`. When `question` is null and Fit was pressed,
+  every question is answered: read `results`, then `export`.
 
       scripts/py -m research.swarm.driver ask --run RUN
 
@@ -85,8 +89,12 @@ A `want` also names its kind with `--kind`: `option`, `check`, `reading` or `eli
 
 - `answer <option> --marker <marker> --reason <why>`: records the option, with the marker the
   reason rests on, and with `--rejected <option>` the option offered for the same question that
-  you turned down, if one. Some questions take several options at once (`multi`), some take
-  settings (`--set name=value`), and a way forward is taken by its id.
+  you turned down, if one. Where `ask` shows `multi`, the question takes several of its options
+  in one answer, and `multi` says how: each id its own word after `answer`, separated by spaces,
+  never joined by commas (`answer --run RUN dietary clinical ...`); for the exclusions, a rule
+  of your own is named once for each rule, and a setting more than one option named takes is
+  written with that option's place before its name (`--set 2.level_column=...`). Some questions
+  take settings (`--set name=value`), and a way forward is taken by its id.
 
       scripts/py -m research.swarm.driver answer --run RUN impute --marker complete_case_share --rejected complete_case --reason "The complete-case preview dropped rows a new patient could still be scored on. Testing whether a fill keeps the score."
 
@@ -140,6 +148,14 @@ revert, or the held-out rows to open) is taken with that command and a reason: `
 id> --reason <why>` or `seal <family> --reason <why>`. One whose id is null and that names no
 command records nothing, and `answer` cannot take it. You can also change an earlier answer with
 `revisit`.
+
+An output too long to print whole is printed in parts. Its `part` says which part of how many
+this is, and `next` gives the command that prints the next one: the same command with only
+`--run` and `--part N`, which runs nothing again and records nothing. Where a part ends inside a
+list or a text, the next part goes on with it, and its `continues` says where. Once an
+`answer`, `revisit`, `fit` or `seal` has run, unless the driver or the app refused it with
+`"by": "driver"` or `"by": "server"`, the parts of another command's output are not shown, since
+the run may have changed: `ask` and `results` show it as it stands.
 
 ## How you work: explore first, then commit once
 

@@ -47,7 +47,9 @@ adding its own rule; keeping every row is answered alone. A setting goes to the 
 that takes it; where more than one does, its place among the options named is written before it
 (``--set 2.level_column=DIQ010 --set 3.level_column=DIQ050``), so each rule has its own column,
 levels and handling of a row it cannot confirm. A way forward is answered alone, never beside
-the question's own options.
+the question's own options. Each id is its own word: ids joined by commas, where the joined word
+is not itself an id offered, are refused in words that name the form that is read
+(:func:`_not_offered`), so the driver's ``ask`` says how too (``driver.several``).
 """
 from __future__ import annotations
 
@@ -947,6 +949,31 @@ def _place(name: str, applies: list[str], ids: list[str], place: int | None) -> 
     return place
 
 
+APART = "each id its own word, separated by spaces, never joined by commas"
+
+
+def _not_offered(missing: list[str], options: Mapping[str, Any], own: set[str],
+                 multi: bool) -> str:
+    """Why ``missing`` ids are not answered: one that joins offered ids by commas is named with
+    the form that is read (several apart, where the question takes several; one, where it takes
+    one); any other id is not offered now. An offered id holding a comma is never here."""
+    for oid in missing:
+        parts = [p.strip() for p in oid.split(",")] if "," in oid else []
+        if not parts or not all(p in options for p in parts):
+            continue
+        if multi and all(p in own for p in parts):
+            return (f"{oid} joins {len(parts)} options by commas: name them apart, {APART}, as "
+                    f"{' '.join(parts)}.")
+        if not multi:
+            return (f"{oid} joins {len(parts)} options by commas, and this question takes one "
+                    f"option at a time: name one, such as {parts[0]}.")
+    said = (f"No option {', '.join(missing)} is offered now; ask lists the open question's "
+            f"options and its ways forward.")
+    if multi and any("," in oid for oid in missing):
+        said += f" Several of this question's options are named apart, {APART}."
+    return said
+
+
 def resolve(composed: Composed, ids: list[str], sets: list[str],
             ways: Iterable[Mapping[str, Any]] = ()) -> dict[str, Any]:
     """The decision ``ids`` and ``sets`` name among what the open question offers (``composed``)
@@ -960,15 +987,14 @@ def resolve(composed: Composed, ids: list[str], sets: list[str],
     for way in ways:
         if way.get("id") is not None:
             options.setdefault(str(way["id"]), dict(way))
+    multi = composed.get("multi")
+    own_ids = {str(o["id"]) for o in composed.get("options") or [] if o.get("id") is not None}
     missing = [i for i in ids if i not in options]
     if missing:
-        raise Unanswerable(f"No option {', '.join(missing)} is offered now; ask lists the open "
-                           f"question's options and its ways forward.")
+        raise Unanswerable(_not_offered(missing, options, own_ids, bool(multi)))
     chosen = [options[i] for i in ids]
-    multi = composed.get("multi")
     if len(chosen) > 1 and not multi:
         raise Unanswerable("This question takes one option at a time.")
-    own_ids = {str(o["id"]) for o in composed.get("options") or [] if o.get("id") is not None}
     ways_named = list(dict.fromkeys(i for i in ids if i not in own_ids))
     if len(chosen) > 1 and ways_named:
         raise Unanswerable(
