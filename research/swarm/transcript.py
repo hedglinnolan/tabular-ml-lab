@@ -25,19 +25,28 @@ background command's notice (its ``prompt``).
   list (the text it was shown; a queued command with none recorded, its ``prompt``; any other
   with none recorded, its kind and that its text is not recorded);
 * each message of the analyst's (an ``assistant`` line's ``text`` block), headed ``THE ANALYST``;
-* each command it ran (a ``tool_use`` block): a Bash command's ``command`` as written, another
-  tool's name and its input as JSON, headed ``COMMAND``;
+* each line the harness wrote in the analyst's place (an ``assistant`` line whose
+  ``message.model`` is ``<synthetic>``, or that is marked ``isApiErrorMessage``: an API error,
+  such as a usage limit reached), its text headed ``THE HARNESS, IN THE ANALYST'S PLACE``;
+* each command it ran (a ``tool_use`` block): a Bash command's ``command`` as written, after the
+  analyst's own ``description`` of it on a line of its own (``Description: ...``) where it gave
+  one, another tool's name and its input as JSON, headed ``COMMAND``;
 * each command's output as the analyst was shown it (its ``tool_result``), headed ``OUTPUT``, or
   ``OUTPUT, MARKED AN ERROR`` where the result is marked so; a block of it that is not text is
-  said as one, not shown.
+  said as one, not shown;
+* each block of a conversation line of a kind not named above (a user's image or document, an
+  assistant's server tool call), said as one, naming its kind, not shown, under its line's head.
 
-No thinking, no harness context on :data:`HARNESS_CONTEXT`'s list (the same for every run, or
-about the session rather than the analysis: the model's name and the account's email address
-among it), no record of the session, no command's description, and no usage, id, time or model. A block that a
-later line of the same message repeats is written once. A line ends at ``"\\n"`` alone, as JSON
-lines do, so a line separator a string holds raw (U+2028, U+2029, U+0085) is kept in its text and
-ends no line. A line that is not JSON is refused (:class:`Unread`), naming its number so counted,
-and nothing is written.
+No thinking (a ``thinking`` or ``redacted_thinking`` block), no harness context on
+:data:`HARNESS_CONTEXT`'s list (the same for every run, or about the session rather than the
+analysis: the model's name and the account's email address among it, and the records of the
+session that show the analyst no text, such as a note that earlier thinking was left out of a
+request), no record of the session, no input of a Bash command but its command and description,
+and no usage, id, time or model. A block that a later line of the same message repeats is written
+once. A line ends at ``"\\n"`` alone, as JSON lines do, so a line separator a string holds raw
+(U+2028, U+2029, U+0085) is kept in its text and ends no line. A line that is not JSON, or a file
+that is not UTF-8, is refused (:class:`Unread`), naming the line so counted (for a file not
+UTF-8, the line its first such byte is on), and nothing is written.
 """
 from __future__ import annotations
 
@@ -49,11 +58,17 @@ from typing import Any, Callable, Iterator, Sequence
 
 CONVERSATION = ("user", "assistant")
 HEADS = {"to": "TO THE ANALYST", "harness": "TO THE ANALYST, FROM THE HARNESS",
-         "analyst": "THE ANALYST", "command": "COMMAND", "output": "OUTPUT",
-         "error": "OUTPUT, MARKED AN ERROR"}
+         "analyst": "THE ANALYST", "in_place": "THE HARNESS, IN THE ANALYST'S PLACE",
+         "command": "COMMAND", "output": "OUTPUT", "error": "OUTPUT, MARKED AN ERROR"}
+# The model Claude Code names on an assistant line it wrote itself, in the analyst's place (an API
+# error, such as a usage limit reached, which it also marks ``isApiErrorMessage``).
+SYNTHETIC = "<synthetic>"
+# The blocks of the analyst's thinking, which the extract leaves out.
+THINKING = ("thinking", "redacted_thinking")
 # The attachments the extract leaves out, each kind and what it holds, and no other: the harness's
-# context, the same for every run or about the session rather than the analysis (the kinds the
-# subagent transcripts on the owner's machine held, 2026-10-28). Any other attachment is written.
+# context, the same for every run or about the session rather than the analysis, and its records
+# of the session that show the analyst no text (the kinds the subagent transcripts on the owner's
+# machine held, 2026-10-28). Any other attachment is written.
 HARNESS_CONTEXT = {
     "total_tokens_reminder": "the tokens left",
     "date": "today's date",
@@ -74,6 +89,8 @@ HARNESS_CONTEXT = {
     "bash_output_audience_note": "that a command's output is the analyst's to read",
     "batching_reminder_sent": "a reminder to make independent calls together",
     "structured_output": "the data of the analyst's own report call, which its command shows",
+    "thinking_drop": "a record that earlier thinking was left out of a request, no text shown",
+    "command_permissions": "the tools a command is allowed, no text shown",
 }
 
 
@@ -84,7 +101,13 @@ class Unread(ValueError):
 def _lines(path: Path) -> Iterator[dict[str, Any]]:
     # A JSON line ends at "\n" alone: not at what else str.splitlines breaks at (U+2028, U+2029,
     # U+0085, which JSON leaves raw inside a string), and blank only where JSON's own whitespace.
-    for n, text in enumerate(Path(path).read_bytes().decode("utf-8").split("\n"), start=1):
+    raw = Path(path).read_bytes()
+    try:
+        whole = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        n = raw.count(b"\n", 0, exc.start) + 1
+        raise Unread(f"{path}: line {n} is not UTF-8, so the transcript is not read.") from None
+    for n, text in enumerate(whole.split("\n"), start=1):
         if not text.strip(" \t\r"):
             continue
         try:
@@ -114,9 +137,13 @@ def _output(content: Any) -> str:
 
 
 def _command(block: dict[str, Any]) -> str:
+    """A command as the analyst wrote it (the module docstring): a Bash command after its
+    description, where it gave one; another tool's name and its input."""
     given = block.get("input") or {}
     if block.get("name") == "Bash" and isinstance(given, dict) and "command" in given:
-        return str(given["command"])
+        described = str(given.get("description") or "").strip()
+        command = str(given["command"])
+        return f"Description: {described}\n{command}" if described else command
     return f"{block.get('name')} {json.dumps(given, ensure_ascii=False, sort_keys=True)}"
 
 
@@ -150,7 +177,11 @@ def entries(path: Path) -> list[tuple[str, str]]:
             continue
         if kind not in CONVERSATION or not isinstance(message, dict):
             continue
-        meta = kind == "user" and bool(item.get("isMeta"))
+        if kind == "user":
+            head = "harness" if item.get("isMeta") else "to"
+        else:  # an assistant line the harness wrote is not the analyst's
+            head = "in_place" if (message.get("model") == SYNTHETIC
+                                  or item.get("isApiErrorMessage")) else "analyst"
         content = message.get("content")
         blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
         mid = message.get("id")
@@ -163,14 +194,19 @@ def entries(path: Path) -> list[tuple[str, str]]:
                     continue
                 seen.add(key)
             what = block.get("type")
-            if what == "text" and str(block.get("text") or "").strip():
-                head = "harness" if meta else "to" if kind == "user" else "analyst"
-                out.append((HEADS[head], str(block["text"])))
+            if what in THINKING:
+                continue
+            if what == "text":
+                if str(block.get("text") or "").strip():
+                    out.append((HEADS[head], str(block["text"])))
             elif what == "tool_use" and kind == "assistant":
                 out.append((HEADS["command"], _command(block)))
             elif what == "tool_result" and kind == "user":
                 out.append((HEADS["error" if block.get("is_error") else "output"],
                             _output(block.get("content"))))
+            else:  # a block of a kind the extract does not read, said as one
+                named = str(what) if what else "unnamed"
+                out.append((HEADS[head], f"[{_article(named)} {named} block, not shown]"))
     return out
 
 

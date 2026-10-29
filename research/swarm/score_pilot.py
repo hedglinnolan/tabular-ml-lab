@@ -45,7 +45,11 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
   and the coverage band, r0, or (the measurement fixture) its numbers reported. An exported
   record on a fixture whose result is refused is judged by its record whatever replay is given
   (:func:`result_refusal`): a refused plan where the run reported no result or the engine served
-  none, unjudged where the record cannot say;
+  none, unjudged where the record cannot say. A run whose export was refused is no plan, except
+  where its engine served no result (:func:`unexported_refusal`, as under Estimate for a family
+  with no coefficient table, or for a fit the engine refused once the plan was locked, where under
+  a marginal measure the results serve no number either): that is a refused plan, the mechanical
+  arms' and the analysts' alike;
 * the unit per model and fixture (:func:`unit`);
 * materiality on every sweep with prereg.json's margins (:func:`sweep_verdicts`), but a sweep
   not run on the frozen engine (:func:`sweep_refusal`: its report says the engine changed while
@@ -158,6 +162,22 @@ def result_refusal(kind: str | None, words: str) -> tuple[str, str]:
     """The verdict and why of a plan whose record's result is refused (:data:`NO_RESULT`)."""
     verdict, said = NO_RESULT.get(str(kind), ("unjudged", f"of an unknown kind {kind!r}"))
     return verdict, f"The record reports no result ({said}, {kind}): {words}"
+
+
+def unexported_refusal(rec: Any) -> bool:
+    """Whether ``rec``, a run whose export the server refused, is a refused plan all the same
+    (SWARM_PLAN §7: "A refused plan counts as neither, and goes into the refusal rate", for every
+    arm and model alike): its engine served no result for the plan the run locked or opened
+    (``not_served``): under Estimate a family with no coefficient table, whose effects stage
+    refuses, so its export is refused and the run stops there (the random arm's draw of one,
+    ``arms.run_arm``), or a fit the engine refused in words once Fit had locked the plan
+    (``assemble.fit_refused_at_lock``), after which the arm stops with no export, where under a
+    marginal measure the results serve no number of it either (``assemble.serves_no_marginal``:
+    the effects stage can serve one with no fit made). A run never exported that reported no
+    result (stuck before its lock or its opening, ``not_reported``) or whose record cannot say
+    (``not_known``: its fit crashed, say, or the results serve the lock's marginal risks) is no
+    plan."""
+    return not rec.export.sha256 and rec.result.refused_kind == "not_served"
 
 
 def _same(a: Any, b: Any) -> bool:
@@ -784,9 +804,11 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
     by_run = {r.run.id: r for r in records}
 
     def judged_by_record(rec: Any) -> dict[str, Any] | None:
-        # An exported plan on a fixture whose result is refused: no replay judges it.
+        # A plan on a fixture whose result is refused: no replay judges it. A run never exported
+        # has one only where :func:`unexported_refusal` says so.
         kind = fixture_of(prereg, rec.dataset.id)
-        if not kind or not rec.export.sha256 or rec.result.refused is None:
+        if not kind or rec.result.refused is None or not (
+                rec.export.sha256 or unexported_refusal(rec)):
             return None
         verdict, why = result_refusal(rec.result.refused_kind, rec.result.refused)
         return {"run": rec.run.id, "dataset": rec.dataset.id, "kind": kind, "verdict": verdict,
@@ -825,7 +847,7 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
     replayed = set(given_for)
     for rec in records:
         kind = fixture_of(prereg, rec.dataset.id)
-        if kind and rec.export.sha256 and rec.run.id not in replayed:
+        if kind and (rec.export.sha256 or unexported_refusal(rec)) and rec.run.id not in replayed:
             plans.append((judged_by_record(rec) or {
                 "run": rec.run.id, "dataset": rec.dataset.id, "kind": kind,
                 "verdict": "unscored", "why": "No replay of this plan is given."})

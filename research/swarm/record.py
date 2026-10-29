@@ -96,11 +96,15 @@ Control = Literal["known_answer", "null_decoy"]
 # Why a result has no numbers (``assemble.result_of``): "not_reported", the run reported none (the
 # seal never opened, the plan never locked, no goal, no estimand in the lock's plan);
 # "not_served", the engine served none (the opening recorded no held-out scores and its fit serves
-# none; the locked fit serves no exposure rows and withholds none; the effects stage served no
-# marginal risk for any family); "not_known", the record cannot say what the run reported (no fit
-# record, or several, is marked the one the lock was recorded on; the route withholds the locked
-# fit's rows now; the opening recorded no scores while its fit serves held-out scores; the results
-# no longer serve the locked plan's marginal risks).
+# none; the engine refused the fit of the locked plan, ``assemble.fit_refused_at_lock``, and
+# under a marginal measure the results serve no number of it either,
+# ``assemble.serves_no_marginal``; the locked fit serves no exposure rows and withholds none; the
+# effects stage served no marginal risk for any family); "not_known", the record cannot say what
+# the run reported (no fit record, or several, is marked the one the lock was recorded on, and
+# the engine did not refuse that fit, or under a marginal measure the results serve a number of
+# it or cannot say; the route withholds the locked fit's rows now; the opening recorded no scores
+# while its fit serves held-out scores; the results no longer serve the locked plan's marginal
+# risks).
 RefusedKind = Literal["not_reported", "not_served", "not_known"]
 # SWARM_PLAN §6's personas: stances toward the field's defaults, under one protocol.
 Persona = Literal["conventional", "skeptical", "explorer"]

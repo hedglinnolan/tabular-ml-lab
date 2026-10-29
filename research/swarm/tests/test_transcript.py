@@ -8,9 +8,11 @@ writes (each line's keys, an attachment's ``rendered`` text and its role, a user
 ``isMeta``, as in the subagent transcripts on the owner's machine), its contents made up and its
 expected text written here by hand from the construction: each message to the analyst and of the
 analyst, each command and each output, and what the harness showed the analyst (a coordinator's
-message among them, in both of the forms the transcripts hold it), in order, and nothing else (no
-thinking, no harness context on the extract's list, no usage, ids, times or model, no command's
-description, a block repeated under one message id once)."""
+message among them, in both of the forms the transcripts hold it), in order, each Bash command
+with its description, and nothing else (no thinking, no harness context on the extract's list, no
+usage, ids, times or model, a block repeated under one message id once). Apart from it: a line the
+harness wrote in the analyst's place (an API error) is not headed as the analyst's, a block of a
+kind the extract does not read is said as one, and a file that is not UTF-8 is refused."""
 from __future__ import annotations
 
 import json
@@ -33,6 +35,8 @@ COMMON = {"parentUuid": "p", "isSidechain": True, "agentId": "a1", "uuid": "u",
           "cwd": "/SECRET/cwd", "sessionId": "SECRET-session", "version": "2.1.289",
           "gitBranch": "SECRET-branch", "slug": "SECRET-slug"}
 COORDINATOR = "Answer the missing values with the median first."
+# The analyst's own words about a Bash command (the tool's ``description`` input).
+DESCRIBED = "Ask the driver for the next question"
 REMINDER = ("<system-reminder id=\"r1\">\nThe coordinator sent a message while you were working:\n"
             f"{COORDINATOR}\n\nAddress this before completing your current task.\n"
             "</system-reminder id=\"r1\">")
@@ -86,6 +90,9 @@ def harness_context() -> list[dict]:
         attached("bash_output_audience_note", shown.format("only you see it"), toolUseID="t1"),
         attached("batching_reminder_sent", text="SECRET batching", model="claude-haiku-5-5"),
         attached("structured_output", data={"SECRET": 1}, toolUseID="t9"),
+        attached("thinking_drop", blockHashes=["SECRET"], model="claude-haiku-5-5",
+                 newlyDropped=1, requestId="SECRET-request"),
+        attached("command_permissions", allowedTools=["SECRET tool"]),
     ]
 
 
@@ -100,11 +107,11 @@ def constructed() -> list[dict]:
         line("assistant", [{"type": "text", "text": "I will ask first."}],
              message={"id": "m1", "model": "claude-haiku-5-5", "usage": usage}),
         line("assistant", [{"type": "tool_use", "id": "t1", "name": "Bash",
-                            "input": {"command": ASK, "description": "SECRET description"}}],
+                            "input": {"command": ASK, "description": DESCRIBED}}],
              message={"id": "m1", "usage": usage}),
         # The same block again under the same message id (a line that repeats it): once.
         line("assistant", [{"type": "tool_use", "id": "t1", "name": "Bash",
-                            "input": {"command": ASK, "description": "SECRET description"}}],
+                            "input": {"command": ASK, "description": DESCRIBED}}],
              message={"id": "m1", "usage": usage}),
         line("user", [{"type": "tool_result", "tool_use_id": "t1", "content": '{"question": 1}',
                        "is_error": False}], toolUseResult={"stdout": "SECRET duplicate"}),
@@ -145,6 +152,7 @@ Run run_01. The card: does x lower y?
 I will ask first.
 
 [4] COMMAND
+Description: {DESCRIBED}
 {ASK}
 
 [5] OUTPUT
@@ -257,6 +265,82 @@ def test_a_line_break_python_reads_inside_a_json_string_is_kept_and_breaks_no_li
         path.write_text(raw + bad + "\n", "utf-8")
         with pytest.raises(T.Unread, match=f"line {n} is not JSON"):
             T.extract(path)
+
+
+# The line Claude Code writes in the analyst's place when the API refuses a request: an assistant
+# line whose model is "<synthetic>", marked isApiErrorMessage (the shape of the ten such lines in
+# the subagent transcripts on the owner's machine, 2026-10-28; its words made up).
+LIMIT = "You've hit your weekly limit · resets at noon"
+
+
+def test_a_line_the_harness_wrote_in_the_analysts_place_is_not_headed_the_analysts(tmp_path):
+    """Both ways: the analyst's own text is headed THE ANALYST; an API error the harness wrote as
+    an assistant line (its model "<synthetic>", marked isApiErrorMessage, or either alone) is
+    headed as the harness's, in the analyst's place, so a run cut short by a limit does not read
+    as the analyst stopping."""
+    lines = [
+        line("assistant", [{"type": "text", "text": "I will ask first."}],
+             message={"id": "m1", "model": "claude-haiku-5-5"}),
+        line("assistant", [{"type": "text", "text": LIMIT}],
+             message={"id": "m2", "model": "<synthetic>"}, isApiErrorMessage=True,
+             error="rate_limit", apiErrorStatus=429),
+        line("assistant", [{"type": "text", "text": "API Error: 500"}],
+             message={"id": "m3", "model": "claude-haiku-5-5"}, isApiErrorMessage=True),
+        line("assistant", [{"type": "text", "text": "No response requested."}],
+             message={"id": "m4", "model": "<synthetic>"}),
+    ]
+    path = write_jsonl(tmp_path / "agent.jsonl", lines)
+    place = T.HEADS["in_place"]
+    assert place != T.HEADS["analyst"] and "HARNESS" in place
+    assert T.entries(path) == [(T.HEADS["analyst"], "I will ask first."), (place, LIMIT),
+                               (place, "API Error: 500"), (place, "No response requested.")]
+
+
+def test_a_file_that_is_not_utf8_is_refused_in_the_commands_own_refusal(tmp_path):
+    """Both ways: a transcript in UTF-8 (its characters past ASCII included) is read; one whose
+    second line holds a byte UTF-8 has no character for is refused as one that is not JSON lines
+    is, naming its line, the command exiting 1 with its JSON refusal and writing nothing."""
+    good = json.dumps(line("user", "Run run_01. The café card."), ensure_ascii=False) + "\n"
+    path = tmp_path / "agent.jsonl"
+    path.write_bytes(good.encode("utf-8"))
+    assert T.entries(path) == [(T.HEADS["to"], "Run run_01. The café card.")]
+    path.write_bytes(good.encode("utf-8") + b'{"type": "user", "message": "caf\xe9"}\n')
+    with pytest.raises(T.Unread, match="line 2 is not UTF-8"):
+        T.extract(path)
+    printed: list[str] = []
+    assert T.main([str(path), "--out", str(tmp_path / "t.txt")], out=printed.append) == 1
+    assert "line 2 is not UTF-8" in json.loads(printed[0])["refused"]
+    assert not (tmp_path / "t.txt").exists()
+
+
+def test_a_block_of_a_kind_the_extract_does_not_read_is_said_as_one(tmp_path):
+    """A conversation block of a kind the extract does not read (a user's image or document, an
+    assistant's server tool call or its result) is said as one, naming its kind, under the head
+    of the line that held it, as an output's block that is not text is; the analyst's thinking,
+    redacted or not, is still left out, and a Bash command with no description is its command
+    alone."""
+    lines = [
+        line("user", [{"type": "text", "text": "Run run_01."},
+                      {"type": "image", "source": {"data": "SECRET"}},
+                      {"type": "document", "source": {"data": "SECRET"}}]),
+        line("assistant", [{"type": "redacted_thinking", "data": "SECRET"},
+                           {"type": "thinking", "thinking": "SECRET", "signature": "s"},
+                           {"type": "server_tool_use", "id": "s1", "name": "web_search",
+                            "input": {"query": "SECRET"}},
+                           {"type": "web_search_tool_result", "tool_use_id": "s1",
+                            "content": [{"title": "SECRET"}]},
+                           {"type": "tool_use", "id": "t1", "name": "Bash",
+                            "input": {"command": ASK, "description": ""}}],
+             message={"id": "m1"}),
+    ]
+    text = T.extract(write_jsonl(tmp_path / "agent.jsonl", lines))
+    assert text == ("[1] TO THE ANALYST\nRun run_01.\n\n"
+                    "[2] TO THE ANALYST\n[an image block, not shown]\n\n"
+                    "[3] TO THE ANALYST\n[a document block, not shown]\n\n"
+                    "[4] THE ANALYST\n[a server_tool_use block, not shown]\n\n"
+                    "[5] THE ANALYST\n[a web_search_tool_result block, not shown]\n\n"
+                    f"[6] COMMAND\n{ASK}\n")
+    assert "SECRET" not in text
 
 
 # ── the reader's role ────────────────────────────────────────────────────────

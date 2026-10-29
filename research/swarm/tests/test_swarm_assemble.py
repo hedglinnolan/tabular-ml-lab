@@ -75,6 +75,30 @@ def test_spend_is_refused_when_a_line_cannot_be_counted_once(tmp_path):
         A.spend(transcript(tmp_path / "t.jsonl", lines))
 
 
+def test_spend_reads_a_line_whose_strings_hold_a_line_separator_raw_and_refuses_one_not_json(
+        tmp_path):
+    """A JSON line ends at "\\n" alone: U+2028, U+2029 and U+0085 inside a string are written raw
+    (json.dumps with ensure_ascii=False, as Claude Code writes a transcript) and break no line, so
+    the transcript's spend is the one its counts give (:data:`FRESH`, :data:`CACHED`); a line that
+    is not JSON is still refused, and so is one that holds only U+2028, which is no JSON
+    whitespace."""
+    odd = "a b c\x85d"
+    lines = [{"type": "user", "message": {"role": "user", "content": f"the card {odd}"}},
+             *[{**x, "message": {**x["message"], "content": [{"type": "text", "text": odd}]}}
+               for x in TRANSCRIPT[1:]]]
+    path = tmp_path / "t.jsonl"
+    path.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in lines), "utf-8")
+    raw = path.read_text("utf-8")
+    assert all(c in raw for c in "  \x85") and raw.count("\n") == len(lines)
+    assert len(raw.splitlines()) > len(lines)  # Python alone breaks them
+    got = A.spend(path)
+    assert (got.fresh, got.cached, got.messages) == (FRESH, CACHED, 2)
+    for bad in ("{not json", " "):
+        path.write_text(raw + bad + "\n", "utf-8")
+        with pytest.raises(ValueError):
+            A.spend(path)
+
+
 # ── what a decision answers, and what was examined before it ─────────────────
 
 
@@ -1004,9 +1028,10 @@ def test_under_estimate_the_result_is_the_locked_fit_whatever_its_plans_digest()
 
 
 def test_under_estimate_a_lock_no_fit_record_is_marked_with_is_refused():
-    """No fit record is marked as the one the lock was recorded on (that fit never completed, say):
-    the result is refused, never the fit whose plan's digest is the lock's, nor the last fit before
-    the lock; nor where two are marked."""
+    """No fit record is marked as the one the lock was recorded on (that fit never completed, say,
+    and no refusal of it is served: a fit the engine refused is none served, below): the result is
+    refused, never the fit whose plan's digest is the lock's, nor the last fit before the lock;
+    nor where two are marked."""
     unmarked = [{**f, "locked": False} for f in TRIED_FITS]
     got = A.result_of("inference", TRIED, unmarked, A.Read(200, {}))
     assert (got["attempt"], got["lock"], got["plan_digest"], got.get("estimates")) == (
@@ -1375,6 +1400,117 @@ def test_on_the_served_journey_a_random_forest_lock_is_refused_in_the_effects_st
     assert status["refusal"]["message"] == NO_TABLE_WORDS and validate_result(got)
 
 
+NO_ROWS = ("There are no analyzed rows to build the models on; the row flow says which answers "
+           "removed them.")
+
+
+def fit_failed(key: str = "key9", words: str | None = NO_ROWS) -> dict[str, Any]:
+    """The fit stage's status as ``GET /projects/{pid}`` serves it (the engine's own
+    ``graph.StageStatus``), failed at ``key``: refused in ``words`` where they are given, as the
+    design stage it waits on refused (``graph.Refused``, the stage that refused named), else a
+    failure in no words (a crash)."""
+    from turbotab.core.graph import Refused, StageStatus
+
+    refusal = Refused(stage="design", code="no_rows", message=words) if words else None
+    return StageStatus(stage="fit", status="error", key=key, error="Needs 'design', which failed.",
+                       refusal=refusal).model_dump(mode="json")
+
+
+def test_under_estimate_a_lock_whose_fit_the_engine_refused_is_refused_none_served():
+    """V-1: Fit records the lock before the fit runs, and a fit is recorded only once its key is
+    fresh, so a fit the engine refuses in words leaves a lock no fit record is marked with. Where
+    the fit stage is refused in words, the plan in force is the lock's and no fit record is of that
+    plan (a record of an earlier plan beside it or none), the engine made no fit for the plan it
+    locked: under a conditional measure (the mean difference; a marginal one is below) the result
+    is refused in the engine's words, none served (SWARM_PLAN §7's refused plan). Both ways, it
+    stays not known: with no fit stage served (the default), a fit that failed in no words, one
+    not failed now, a plan changed after the lock or a log that does not read, and a fit record
+    of the lock's plan (at the stage's key, with the lock's digest, or with the lock in force)."""
+    log = _locked("mean_difference")
+    lock = log[3]
+    earlier = {"id": "fit0", "fit_key": "key0", "plan_digest": "d0", "decisions": [1, 2, 3],
+               "effects": {"linear": [dict(LOG_ODDS)]}, "withheld": None, "locked": False}
+    for fits in ([], [earlier]):
+        got = A.result_of("inference", log, fits, A.Read(200, {}), fit_stage=fit_failed())
+        assert (got["refused"], got["refused_kind"]) == (A.fit_refused_why(4, NO_ROWS),
+                                                         "not_served")
+        assert NO_ROWS in got["refused"] and "#4" in got["refused"]
+        assert (got["attempt"], got["lock"], got.get("estimates")) == (None, 4, None)
+        assert validate_result(got)
+
+    def kind(stage: Any = fit_failed(), records: Any = log, fits: Any = ()) -> tuple[str, str]:
+        got = A.result_of("inference", records, list(fits), A.Read(200, {}), fit_stage=stage)
+        return got["refused"], got["refused_kind"]
+
+    not_known = (A.no_locked_fit(4), "not_known")
+    assert A.result_of("inference", log, [], A.Read(200, {}))["refused_kind"] == "not_known"
+    assert kind(stage=None) == not_known
+    assert kind(stage=fit_failed(words=None)) == not_known
+    for status in ("running", "queued", "fresh", "stale", "idle", "blocked"):
+        assert kind(stage={**fit_failed(), "status": status}) == not_known, status
+    rules = {"kind": "set_exclusions", "rules": [{"column": "x", "low": 0, "high": 9,
+                                                  "reason": "range"}]}
+    assert kind(records=_locked("mean_difference", rules)) == not_known
+    assert kind(records=TRIED) == (A.no_locked_fit(5), "not_known")  # its log does not fold
+    for of_plan in ({**earlier, "fit_key": "key9"},
+                    {**earlier, "plan_digest": lock["decision"]["digest"]},
+                    {**earlier, "decisions": [1, 2, 3, 4]}):
+        assert kind(fits=[of_plan]) == not_known, of_plan
+
+
+FIT_ONLY = "Words only the fit refuses in, constructed for this test."
+
+
+@pytest.mark.parametrize("measure", ["risk_difference", "risk_ratio"])
+def test_under_a_marginal_measure_a_refused_fit_is_none_served_only_where_no_risk_is(measure):
+    """V2-1: a marginal measure's number is the effects stage's standardization as GET …/results
+    serves it, and the effects stage does not wait on the fit (``stages.build_graph``), so a fit
+    the engine refused in its own words (``graph.Refused`` of the fit stage) can leave the lock's
+    marginal risks served all the same. Both ways. Where the results serve a number of the measure
+    (the lock's, the effects stage current; an earlier artifact the route serves in place of a
+    failed one), or cannot say (the route fails, its numbers withheld, the effects stage neither
+    current nor failed), the result stays not known. Where they serve none (the effects stage
+    failed too, with nothing in its place; current with its standardization refused; current
+    with no family standardized), the result is refused in the fit's words, none served."""
+    from turbotab.core.graph import Refused, StageStatus
+
+    own = StageStatus(stage="fit", status="error", key="key9",
+                      refusal=Refused(stage="fit", code="constructed", message=FIT_ONLY)
+                      ).model_dump(mode="json")
+    log = _locked(measure)
+    failed_fit = {"key": None, "fresh": False, "status": "error"}
+    served = {**_results(measure), "fit": failed_fit}
+
+    def kind(doc: Any, stage: Any = own) -> tuple[str, str]:
+        got = A.result_of("inference", log, [], doc, fit_stage=stage)
+        assert (got["attempt"], got["lock"], got.get("estimates")) == (None, 4, None)
+        assert validate_result(got)
+        return got["refused"], got["refused_kind"]
+
+    not_known = (A.no_locked_fit(4), "not_known")
+    none_served = (A.fit_refused_why(4, FIT_ONLY), "not_served")
+    assert kind(A.Read(200, served)) == not_known
+    earlier = {**served, "effects": {"key": "e0", "fresh": False, "status": "error"}}
+    assert kind(A.Read(200, earlier)) == not_known
+    assert kind(A.Read(500, {"error": {"code": "internal", "message": "boom"}})) == not_known
+    assert kind(A.Read(200, {**served, "withheld": "A question the estimates rest on is open."})
+                ) == not_known
+    for status in ("running", "queued", "stale", "idle", "blocked"):
+        unread = {**served, "families": [], "effects": {"key": None, "fresh": False,
+                                                        "status": status}}
+        assert kind(A.Read(200, unread)) == not_known, status
+    both = {**served, "families": [], "effects": {"key": None, "fresh": False, "status": "error"}}
+    assert kind(A.Read(200, both)) == none_served
+    assert kind(A.Read(200, both), stage=fit_failed()) == (A.fit_refused_why(4, NO_ROWS),
+                                                           "not_served")
+    words = "The marginal risks are not pooled over multiple imputations here."
+    refused = {**_results(measure, contrasts=[], refused=words), "fit": failed_fit}
+    assert kind(A.Read(200, refused)) == none_served
+    unstandardized = {**served, "families": [{**served["families"][0], "marginal": None}]}
+    assert kind(A.Read(200, unstandardized)) == none_served
+    assert kind(A.Read(200, both), stage=fit_failed(words=None)) == not_known
+
+
 def test_a_lock_whose_plan_declares_no_estimand_reports_no_estimate():
     no_estimand = [*_locked("odds_ratio")[:3], _rec(4, 4, {"kind": "lock_plan", "plan": {},
                                                             "digest": "d"})]
@@ -1555,6 +1691,28 @@ def test_a_route_that_fails_to_serve_leaves_a_failed_run_not_an_empty_record(tmp
     assert not ok and path == tmp_path / "failed" / "failed" / "r1.json"
     assert json.loads(path.read_text("utf-8"))["assembled"]["unreadable"].startswith(
         f"{name} could not be read (HTTP 500)")
+
+
+def test_the_record_reads_the_fit_stage_the_project_serves_where_no_fit_is_locked(tmp_path):
+    """V-1 through the assembly: the project served with the locked log, its fit stage refused in
+    words (``GET /projects/{pid}``'s ``stages``) and no fit record, as a run left whose fit the
+    engine refused after Fit locked the plan: the record validates, its result refused in the
+    engine's words, none served. Both ways: the same project with its fit stage not failed leaves
+    the result not known."""
+    run = _run_dir(tmp_path / "runs" / "r1", started="2026-10-18T10:00:00+00:00")
+    log = _locked("mean_difference")
+    fresh = {**fit_failed(), "status": "fresh", "fresh": True, "error": None, "refusal": None}
+    for stage, kind in ((fit_failed(), "not_served"), (fresh, "not_known")):
+        project = {"decisions": log, "state": {"purpose": "inference"}, "stages": {"fit": stage},
+                   "summary": {"source_name": "table.csv"}}
+        path, ok = A.assemble(run, meta=META, client=FakeClient({**_served_routes(),
+                                                                 "/p1": project}),
+                              corpus=tmp_path / kind, mattered_wait=0)
+        raw = json.loads(path.read_text("utf-8"))
+        assert ok, raw
+        result = validate(raw).result
+        assert (result.refused_kind, result.lock, result.attempt) == (kind, 4, None)
+        assert (result.refused == A.fit_refused_why(4, NO_ROWS)) is (kind == "not_served")
 
 
 # ── end to end ───────────────────────────────────────────────────────────────
@@ -2116,8 +2274,8 @@ def relock_e2e(tmp_path_factory) -> dict[str, Any]:
             assert ok, path.read_text("utf-8")[:2000]
             records = service.log(pid).records()
             return {"rec": validate(json.loads(path.read_text("utf-8"))),
-                    "locked_key": service._locked_fit(pid, records,
-                                                      plan_lock.current_lock(records)),
+                    "locked_keys": service._locked_fit(pid, records,
+                                                       plan_lock.current_lock(records)),
                     "fits": client.get(f"/api/projects/{pid}/fits").json()["records"],
                     "log": client.get(f"/api/projects/{pid}").json()["decisions"],
                     "results": client.get(f"/api/projects/{pid}/results").json()}
@@ -2140,7 +2298,8 @@ def _rows(fit: dict[str, Any]) -> dict[str, Any]:
 
 def test_under_estimate_a_rule_tried_and_undone_before_the_lock_leaves_the_locked_fit(relock_e2e):
     """E1: by construction the lock is on the drive's rule, fit 1's plan; the server's own rule
-    for the fit the lock was recorded on (``_locked_fit``) names the same key."""
+    for the fit the lock was recorded on (``_locked_fit``, the keys that fit is keyed by) names
+    its key, and not fit 2's."""
     e1 = relock_e2e["e1"]
     rules = [r for r in e1["log"] if r["decision"]["kind"] == "set_exclusions"]
     drives, tried, again = rules
@@ -2150,7 +2309,7 @@ def test_under_estimate_a_rule_tried_and_undone_before_the_lock_leaves_the_locke
     assert len(fits) == 2  # the drive's rule again made no new fit record
     locked, other = fits
     assert drives["seq"] in locked["decisions"] and tried["seq"] not in locked["decisions"]
-    assert locked["fit_key"] == e1["locked_key"]
+    assert locked["fit_key"] in e1["locked_keys"] and other["fit_key"] not in e1["locked_keys"]
     r = e1["rec"].result
     assert r.refused is None and (r.attempt, r.decisions) == (locked["id"], locked["decisions"])
     assert [e.model_dump() for e in r.estimates] == _reported(_rows(locked)) and r.estimates
@@ -2171,7 +2330,7 @@ def test_under_estimate_a_revert_after_the_lock_leaves_the_locked_fits_estimate(
     (fit 2's estimate under the lock's digest) is not passed by seal integrity."""
     e3 = relock_e2e["e3"]
     assert e3["log"][-1]["decision"]["kind"] == "revert" and e3["log"][-1]["after_estimates"]
-    locked = next(f for f in e3["fits"] if f["fit_key"] == e3["locked_key"])
+    [locked] = [f for f in e3["fits"] if f["fit_key"] in e3["locked_keys"]]  # the one it names
     other = next(f for f in e3["fits"] if f["id"] != locked["id"])
     assert _rows(other) and _rows(other) != _rows(locked)
     rec = e3["rec"]
@@ -2240,8 +2399,8 @@ def lone_e2e(tmp_path_factory) -> dict[str, Any]:
                                                                 "control": "null_decoy"}},
                                      client=client, corpus=folder / "decoy")
         records = client.app.state.service.log(pid).records()
-        locked_key = client.app.state.service._locked_fit(pid, records,
-                                                          plan_lock.current_lock(records))
+        locked_keys = client.app.state.service._locked_fit(pid, records,
+                                                           plan_lock.current_lock(records))
         served = {name: client.get(f"/api/projects/{pid}{route}").json() for name, route in (
             ("view", ""), ("fits", "/fits"), ("mattered", "/mattered"))}
         in_force = _server_in_force(client, pid)
@@ -2249,7 +2408,7 @@ def lone_e2e(tmp_path_factory) -> dict[str, Any]:
     assert decoy_ok, decoy.read_text("utf-8")[:2000]
     return {"rec": validate(json.loads(path.read_text("utf-8"))),
             "decoy": validate(json.loads(decoy.read_text("utf-8"))), "served": served,
-            "locked_key": locked_key, "in_force": in_force}
+            "locked_keys": locked_keys, "in_force": in_force}
 
 
 def test_on_the_server_a_run_that_previewed_only_its_own_answers_is_single_pass(lone_e2e):
@@ -2281,7 +2440,8 @@ def test_on_the_server_each_adjustment_group_is_credited_with_its_own_choices(lo
 def test_on_the_server_the_locked_fit_is_the_result_whatever_its_plans_digest(lone_e2e):
     """DRV-INT (DB's [next, engine] line): the lock's digest is no fit record's (the sensitivity
     answer came after the fit), but GET …/fits marks the fit the lock was recorded on, the one the
-    server's own rule names (``_locked_fit``, its key), and the result is that fit's estimate.
+    server's own rule names (``_locked_fit``, among its keys), and the result is that fit's
+    estimate.
     Before, the record could not identify it and the known answer and the decoy went unjudged.
     Now they are judged: the known answer 9.0 (constructed: no interval near it) fails, and the
     decoy check reads the served interval; seal integrity passes."""
@@ -2290,7 +2450,8 @@ def test_on_the_server_the_locked_fit_is_the_result_whatever_its_plans_digest(lo
     fits = served["fits"]["records"]
     assert all(f["plan_digest"] != lock["decision"]["digest"] for f in fits)
     [locked] = [f for f in fits if f["locked"]]
-    assert locked["fit_key"] == lone_e2e["locked_key"]  # the server's own rule names it
+    # the server's own rule names it, and no other fit record
+    assert [f["id"] for f in fits if f["fit_key"] in lone_e2e["locked_keys"]] == [locked["id"]]
     rows = {f: rows for f, rows in locked["effects"].items() if rows}
     assert any(row["estimate"] is not None for rs in rows.values() for row in rs)
     r = rec.result
