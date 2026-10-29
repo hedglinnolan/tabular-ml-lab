@@ -63,12 +63,25 @@ the split, by the revert of its record its way forward names. It withdraws that 
 withdrawn again as the plan had it, in the order of the plan's log (so where the log answers one
 decision twice, the plan's latest answer is again the one in force; a split answered again is the
 draw drawn again), then previews and fits as for any option; each answer withdrawn and answered
-again is recorded (``withdrawn``, in the order withdrawn, in the listing and the refit). Where that
+again is recorded (``withdrawn``, in the order withdrawn, in the listing and the refit). Where a
+finding's revisit leaves it off the ask's open lines because an answer still in force settles it
+(the orchestrator's ruling of 2026-10-29: its quest line answered by a record in force that is
+neither the one revisited nor an answer to the finding itself, such as the answer to the question
+the finding routes to, the plan's missing answer for a two-level column whose blanks route it to
+the missing question), the sweep withdraws that answer after the revisit (:meth:`Sweep._settling`,
+its entry in ``withdrawn`` naming the finding it ``settles``) and asks again, as often as the line
+stays settled, until the answers withdrawn for the revisit, the engine's included, are
+:data:`WITHDRAWN_AT_MOST`; once the line is open it lists the line's options, and each refit
+answers each answer withdrawn again after the option as above. Where that
 way is itself refused (the withdrawing revert, the revisit after it, or the answer again), the
 refusal is recorded with the engine's reason and the option counts visited and refused; at the
 listing, the decision's revisit itself does (:data:`REVISIT`), never unlisted. A refusal that
 names no answer to withdraw (another code, or ``sealed`` with no revert among its ways) leaves the
-decision unlisted, in the engine's words.
+decision unlisted, in the engine's words; a finding off the open lines otherwise (no line naming
+it, its line not answered or not counted, or the record that answers it the one revisited, an
+earlier answer to the finding itself, which answered again would replace the option, or one the
+log does not hold in force), or still settled once the answers withdrawn are that many, is
+unlisted with its line's status and the record that answers it.
 
 **Each refit** answers the option on its copy (a question, a finding or a reading by its id after
 the revisit, ``driver.chosen``; a declaration's option as its line composed it, which is what the
@@ -1421,7 +1434,8 @@ def decisions_of(points: Sequence[Point], refits: Sequence[Refit]) -> list[dict[
 def unlisted_of(points: Sequence[Point], offered: Mapping[str, Mapping[str, Any]]
                 ) -> list[dict[str, Any]]:
     """Each decision whose options were not listed, so none of them was visited: not yet listed;
-    listed with why they could not be (a revisit refused, a question that did not open again); or
+    listed with why they could not be (a revisit refused, a question that did not open again, a
+    finding off the ask's open lines, with its line's status and the record that answers it); or
     listed with none, where the plan records an answer to it (a decision the plan answered has at
     least that answer to offer). A decision whose revisit took the way the engine names and was
     refused on it (``refused``, :meth:`Sweep._revisit`) was visited: its revisit is a refit,
@@ -1820,8 +1834,9 @@ class Sweep:
 
     def _listed(self, session: Any, point: Point, policy: Named
                 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """:meth:`options`, and the plan's answers the revisit withdrew first (:meth:`_revisit`);
-        a reading or a role asked on the way settled by ``policy``."""
+        """:meth:`options`, and the plan's answers the revisit withdrew first (:meth:`_revisit`),
+        with, for a finding the revisit leaves settled by another answer in force, that answer
+        (:meth:`_settling`); a reading or a role asked on the way settled by ``policy``."""
         if point.kind == "declaration":
             from research.swarm import declarations as decl, driver
 
@@ -1833,9 +1848,32 @@ class Sweep:
         if point.kind == "question":
             return list(q.get("options") or []), withdrawn
         if point.kind == "finding":
-            line = next((ln for ln in q.get("also_open") or [] if ln.get("source") == "finding"
-                         and str(ln.get("key")) == point.key), {})
-            return list(line.get("options") or []), withdrawn
+            while True:
+                line = next((ln for ln in q.get("also_open") or [] if ln.get("source") == "finding"
+                             and str(ln.get("key")) == point.key), None)
+                if line is not None:
+                    return list(line.get("options") or []), withdrawn
+                # Off the open lines: the answer in force that settles it withdrawn first, the
+                # way an answer the engine names is (:meth:`_settling`), and the ask read again.
+                settling = self._settling(session, point, withdrawn)
+                if isinstance(settling, str):
+                    raise arms.Stuck(settling)
+                what, record = settling
+                took = session.revisit(record.id, f"The sweep withdraws the plan's {what} first, "
+                                                  f"which settles {point.id}, to revisit it.")
+                withdrawn.append({"what": what, "column": None, "seq": record.seq,
+                                  "record": record.id,
+                                  "decision": record.decision.model_dump(mode="json"),
+                                  "reverted": said_json(took), "settles": point.id})
+                if not took.ok:
+                    raise arms.Met(f"Revisiting {point.id} leaves it settled by the plan's {what} "
+                                   f"(record {record.seq}), and its revert was {took.kind}: "
+                                   f"{took.code}: {took.message}",
+                                   "failed" if took.kind == "failed" else "refused",
+                                   said_json(took) | {"at": "revisit",
+                                                      "exits": arms.exit_fields(took.exits),
+                                                      "withdrawn": [dict(w) for w in withdrawn]})
+                q = session.ask()
         reading, column = point.key.split(":", 1)
         if reading == "unit":
             return [w for w in arms.ways_of(q) if w.get("id") and (w.get("decision") or {}).get(
@@ -1878,6 +1916,49 @@ class Sweep:
                         f"hold in force as a split.")
             return "split", None, split
         return None
+
+    @staticmethod
+    def _settling(session: Any, point: Point, withdrawn: Sequence[Mapping[str, Any]]
+                  ) -> tuple[str, Any] | str:
+        """Why ``point``, a finding, is off the ask's open lines after its revisit, read from its
+        quest line (the module docstring): where the line is answered by a record in force other
+        than the one revisited and other than an answer to the finding itself, the record that
+        settles it (the answer to the question it routes to, say), to withdraw first, as
+        ``(what, record)``; else words that name the line's status and the record that answers
+        it, or that no line names the finding, as they do once ``withdrawn`` holds
+        :data:`WITHDRAWN_AT_MOST` answers."""
+        quest = session.read("quest") or {}
+        line = next((ln for st in quest.get("stages") or [] for ln in st.get("lines") or []
+                     if ln.get("source") == "finding" and str(ln.get("key")) == point.key), None)
+        gone = f"After the revisit the ask lists no open line for {point.id}"
+        if line is None:
+            return f"{gone}, and no quest line names it."
+        by = line.get("decision_id")
+        said = (f"{gone}: its quest line is {line.get('status')}"
+                + (f" by record {by}" if by else "")
+                + ("" if line.get("counted") else ", not counted"))
+        if line.get("status") != "answered" or not by:
+            return f"{said}."
+        if by == point.record:
+            return f"{said}, the record revisited."
+        record = next((r for r in live(session.view()) if r.id == by), None)
+        if record is None:
+            return f"{said}, which the log does not hold in force."
+        kind = record.decision.kind
+        if kind in FINDING_KINDS and str(record.decision.finding_id) == point.key:
+            # Answered again after the option, it would replace the option: not withdrawn.
+            return f"{said}, an earlier answer to the finding itself."
+        key = question_key(kind)  # named by the question it answers, else the finding or its kind
+        if key is not None:
+            what = f"{key} answer"
+        elif kind in FINDING_KINDS:
+            what = f"answer to finding {record.decision.finding_id}"
+        else:
+            what = f"{kind} answer"
+        if len(withdrawn) >= WITHDRAWN_AT_MOST:
+            return (f"{said}, the plan's {what} in force; the sweep withdrew {len(withdrawn)} "
+                    f"answers first already.")
+        return what, record
 
     def _revisit(self, session: Any, point: Point) -> list[dict[str, Any]]:
         """``point``'s record reverted (the revisit), each answer the engine names to withdraw
@@ -1982,7 +2063,9 @@ class Sweep:
                 options, withdrawn = self._listed(session, point, policy)
                 refit.withdrawn = withdrawn
                 refit.answered += [{"answer": f"withdrawn first: the plan's {w['what']} (record "
-                                              f"{w['seq']}), as the engine asks",
+                                              f"{w['seq']}), " + (f"which settles {w['settles']}"
+                                                                  if w.get("settles")
+                                                                  else "as the engine asks"),
                                     **w["reverted"]} for w in withdrawn]
                 wanted = fielded.ids if fielded is not None else [refit.option]
                 gone = [i for i in dict.fromkeys(wanted)
@@ -2382,6 +2465,7 @@ class Sweep:
             session.drop(copy, self.made)
         return {"point": point.id, "why": why, "refused": refused,
                 "withdrawn": [{k: w.get(k) for k in ("what", "column", "seq", "record")}
+                              | ({"settles": w["settles"]} if w.get("settles") else {})
                               for w in withdrawn],
                 "ways": list(policy.taken) if policy is not None else [],
                 "options": [{"id": o.get("id"), "label": o.get("label"),
@@ -2520,16 +2604,22 @@ def table_md(report: Mapping[str, Any]) -> str:
                   str(report["engine_changed"])]
     if report.get("stopped"):
         lines += ["", "## Stopped at the compute cap", "", str(report["stopped"]["why"])]
-    withdrawn = [o for o in report.get("offered") or [] if o.get("withdrawn")]
-    if withdrawn:
-        lines += ["", "## Answers withdrawn first to revisit a decision, as the engine asks", ""]
+    # Those the engine named, and those that settle a finding the revisit left off the open lines.
+    for heading, settles in (("a decision, as the engine asks", False), ("a finding", True)):
+        withdrawn = [(o, [w for w in o.get("withdrawn") or [] if bool(w.get("settles")) == settles])
+                     for o in report.get("offered") or []]
+        withdrawn = [(o, ws) for o, ws in withdrawn if ws]
+        if not withdrawn:
+            continue
+        lines += ["", f"## Answers withdrawn first to revisit {heading}", ""]
         lines += [f"- `{o['point']}`: " + ", ".join(f"the {w['what']} (record {w['seq']})"
-                                                    + (f", which reads `{w['column']}`"
+                                                    + (", which settles it" if settles else
+                                                       f", which reads `{w['column']}`"
                                                        if w.get("column") else "")
-                                                    for w in o["withdrawn"])
+                                                    for w in ws)
                   + ("; refused on the way" if o.get("refused") else
                      "; answered again after each option, as the plan had them")
-                  for o in withdrawn]
+                  for o, ws in withdrawn]
     if report.get("unlisted"):
         lines += ["", "## Decisions whose options were not listed", ""]
         lines += [f"- `{u['point']}`: {str(u['why'])[:300]}" for u in report["unlisted"]]

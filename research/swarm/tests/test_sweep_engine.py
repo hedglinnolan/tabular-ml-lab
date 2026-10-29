@@ -37,7 +37,15 @@ for how long, and its copy removed, while the next refit is fitted at once and s
 runner, read as the server closes, holds no job queued or running and every stand-in job
 cancelled; the effects stage's bare error under complete cases, read after the fit, a failed
 refit and an engine defect; its typed refusal under another answer, refused with its code; the
-plan and the next refit, neither in error, scored; and a second run, which presses Fit no more."""
+plan and the next refit, neither in error, scored; and a second run, which presses Fit no more.
+
+A finding the plan's missing answer settles (the plasma panel's S1), on a table written here: sex
+written F or M beside a measured predictor, blank on 30 of 200 rows, so its two-level finding
+routes to the missing question; the finding's revisit leaves it settled by that answer, which the
+sweep withdraws first, listing the table's two levels and Dismiss and answering the missing
+question again after each as the plan had it (the plan's own level is the plan's digest again);
+and, the same table with sex never blank, the finding opened again by its revisit with nothing
+withdrawn."""
 from __future__ import annotations
 
 import json
@@ -1250,3 +1258,112 @@ def test_a_rerun_after_a_cancelled_refit_fits_nothing_the_first_run_finished(wai
     assert waited["presses"]["first"] > 0 and waited["presses"]["second"] == 0
     assert [(r["id"], r["kind"], r["why"]) for r in again["refits"]] == [
         (r["id"], r["kind"], r["why"]) for r in first["refits"]]
+
+
+# ── a finding the plan's missing answer settles, on the engine (the plasma panel's S1) ─────────
+
+SEX = "finding:binary_text__sex"
+SEX_BLANK, X1_BLANK = 30, 12  # rows blank in sex (15%, at least the 10% that routes it) and in x1
+
+
+def sexed_table(path, *, blanks):
+    """200 people: a measured predictor x1 drawn by numpy, sex written F or M, and a yes/no
+    outcome from a logistic model in both; x1 blank on X1_BLANK rows in either table, so each
+    plan answers the missing question, and sex blank on SEX_BLANK others where ``blanks``. The
+    two tables are one draw but for sex's blanks."""
+    rng = np.random.default_rng(8)
+    n = 200
+    x1 = rng.normal(size=n).round(3)
+    sex = np.where(rng.random(n) < 0.5, "F", "M")
+    p = 1 / (1 + np.exp(-(0.8 * x1 + 0.6 * (sex == "F") - 0.3)))
+    frame = pd.DataFrame({"x1": x1, "sex": sex, "y": (rng.random(n) < p).astype(int)})
+    rows = rng.choice(n, X1_BLANK + SEX_BLANK, replace=False)
+    frame.loc[rows[:X1_BLANK], "x1"] = np.nan
+    if blanks:
+        frame.loc[rows[X1_BLANK:], "sex"] = np.nan
+    frame.to_csv(path, index=False)
+    return frame
+
+
+def sexed_sweep(work, *, blanks):
+    """The crash sweep of the sex finding alone on the table, and the template's log in force."""
+    frame = sexed_table(work / "sexed.csv", blanks=blanks)
+    report = W.crash("sexed", work / "out", data=work / "sexed.csv", question=QUESTION,
+                     only=[SEX])
+    with W.arms.Local(work / "out" / "home") as session:
+        session.use(report["template"]["project"])
+        live = W.live(session.view())
+    return {"report": report, "live": live, "frame": frame}
+
+
+def level_options(offered):
+    """The options listed, each as what it records: the level it counts as 1 (case aside: the
+    engine reads two-level text in lower case), or a dismissal."""
+    return sorted((o["decision"]["kind"],
+                   str((o["decision"].get("params") or {}).get("one") or "").casefold())
+                  for o in offered["options"])
+
+
+def levels_of(column):
+    """The table's levels of ``column``, by construction, case aside."""
+    return sorted({str(v).casefold() for v in column.dropna()})
+
+
+@pytest.mark.slow
+def test_a_finding_the_plans_missing_answer_settles_is_listed_with_that_answer_withdrawn(
+        tmp_path):
+    """S1: sex is blank on 15% of rows, so its two-level finding routes to the missing question,
+    and the plan answered its level before that question. Reverting the level leaves the finding
+    settled by the plan's missing answer, off the ask's open lines; the sweep withdraws that answer
+    first, lists the finding's two levels and Dismiss, and answers the missing question again
+    after each as the plan had it, so the plan's own level is the plan again (its digest) and no
+    decision is left unlisted."""
+    got = sexed_sweep(tmp_path, blanks=True)
+    report, live = got["report"], got["live"]
+    (repair,) = [r for r in live if r.decision.kind == "apply_repair"
+                 and r.decision.finding_id == "binary_text__sex"]
+    (missing,) = [r for r in live if r.decision.kind == "set_missing"]
+    assert repair.seq < missing.seq  # the level answered before the missing question
+    (offered,) = report["offered"]
+    levels = levels_of(got["frame"]["sex"])  # F and M, by construction
+    assert levels == ["f", "m"] and level_options(offered) == sorted(
+        [("apply_repair", v) for v in levels] + [("dismiss_finding", "")])
+    assert offered["why"] is None and offered["refused"] is None
+    assert offered["withdrawn"] == [{"what": "missing answer", "column": None,
+                                     "seq": missing.seq, "record": missing.id, "settles": SEX}]
+    assert report["unlisted"] == [] and report["complete"] is True and report["defects"] == []
+    assert W.passed(report | {"only": None}) is True
+    refits = [r for r in report["refits"] if r["point"] == SEX]
+    assert {r["option"] for r in refits} == {o["id"] for o in offered["options"]}
+    plan_missing = missing.decision.model_dump(mode="json")
+    for r in refits:
+        assert r["kind"] in ("scored", "refused", "duplicate"), r
+        assert [w["decision"] for w in r["withdrawn"]] == [plan_missing]
+        again = [a["kind"] for a in r["answered"]
+                 if a["answer"] == f"the plan's missing answer again (record {missing.seq})"]
+        assert again == ["ok"], r["answered"]
+    one = repair.decision.params["one"]
+    (own,) = [r for r in refits if (r["decision"].get("params") or {}).get("one") == one]
+    assert own["kind"] == "duplicate" and own["duplicate_of"] == W.PLAN, own
+    assert all(r["digest"] != report["baseline"]["digest"] for r in refits if r is not own)
+    assert f"the missing answer (record {missing.seq}), which settles it" in W.table_md(report)
+
+
+@pytest.mark.slow
+def test_with_sex_never_blank_the_finding_reopens_on_its_revisit_and_nothing_is_withdrawn(
+        tmp_path):
+    """The other way: the same table with sex never blank, so its finding routes to no question;
+    the plan answers the missing question (x1's blanks) all the same, and reverting the level
+    opens the finding again: its two levels and Dismiss listed, nothing withdrawn."""
+    got = sexed_sweep(tmp_path, blanks=False)
+    report, live = got["report"], got["live"]
+    assert [r for r in live if r.decision.kind == "set_missing"]  # an answer in force all the same
+    (offered,) = report["offered"]
+    levels = levels_of(got["frame"]["sex"])
+    assert levels == ["f", "m"] and level_options(offered) == sorted(
+        [("apply_repair", v) for v in levels] + [("dismiss_finding", "")])
+    assert offered["withdrawn"] == [] and offered["why"] is None
+    assert report["unlisted"] == [] and report["complete"] is True and report["defects"] == []
+    for r in report["refits"]:
+        assert r["withdrawn"] == [], r
+        assert not [a for a in r["answered"] if a["answer"].startswith("the plan's ")], r
