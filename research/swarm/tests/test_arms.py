@@ -2,17 +2,25 @@
 path's and the random path's answers on asks built here, the walk on a session that serves those
 asks (and what stops it, classed by what the engine said), a local session's posts keeping a
 refusal's ways forward until an answer is recorded as the driver's do, a copy's fit cancelled
-through the server's Cancel and, only where the copy stays busy, each job it holds, and, slow,
-each path through the driver's own commands on a small dataset that is not one of the pilot's
-(``clinical_readmission_predict``, 480 rows) to a record that validates.
+through the server's Cancel and, only where the copy stays busy, each job it holds; each path
+through a driver modeled here whose press of Fit comes back with the fit still running, waited out
+to the export or stopped at the run's time budget, and a fit blocked, held, refused or failed
+stopping the arm as before; the engine keeping a stage's one job when it is refreshed at the same
+key, the premise of pressing Fit again; and, slow, each path through the driver's own commands on a
+small dataset that is not one of the pilot's (``clinical_readmission_predict``, 480 rows) to a
+record that validates.
 
 Known truth: the event level from the card's own words; each default from what the ask offers in
 its order and the app's own guess and detection, built here; each random draw from numpy's
 generator at the same seed, drawn here, the adjustment's columns each drawn in or out as the
-driver's composer takes them; the record from the schema (``record.validate``)."""
+driver's composer takes them; each press's wait and the time waited from a hand clock that only
+the modeled driver moves, derived here from the budget and the wait; the arm's commands against
+those of the same arm whose first press comes back fresh; the job and the artifact from the
+engine's own toy graph; the record from the schema (``record.validate``)."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -533,3 +541,230 @@ def test_a_copys_fit_is_cancelled_and_where_it_stays_busy_each_job_it_holds_too(
     assert session.client.posts == posts
     assert done == {"fit": 200, "jobs": jobs, "idle": idle[-1], "wait": arms.CANCEL_WAIT}
     assert waits == [("p1", arms.CANCEL_WAIT)] * len(idle) and answers == []
+
+
+# ── a fit that outlasts one press's wait ─────────────────────────────────────
+
+
+RID = "run_01-" + "0" * 32
+
+
+class Clock:
+    """The arms' clock, by hand: the driver modeled here moves it on, and nothing else does."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def pressed(status, **extra):
+    """A press of Fit as the driver's ``fit`` prints it: the lock pressed, the fit's status."""
+    return {"pressed": {"pressed": True}, "fit": {"status": status, "key": "k1", **extra}}
+
+
+RUNNING = (0, pressed("running", progress=0.73))
+FRESH = (0, pressed("fresh"))
+BLOCKED = (0, pressed("blocked"))
+HELD = (0, pressed("idle", held="fit"))
+FAILED = (0, pressed("error", error="ValueError: no rows"))
+REFUSED = (1, {**pressed("error"), "refused": {"by": "engine", "stage": "fit",
+                                               "code": "too_few_rows",
+                                               "message": "The answers leave 3 of 60 rows.",
+                                               "exits": []}})
+NOT_FRESH = (1, {"refused": {"by": "server", "status": 409, "code": "fit_not_fresh",
+                             "message": "The held-out rows open on a current fit.", "exits": []}})
+
+
+class Modeled:
+    """The driver's answers to an arm's commands (``driver.main``'s exit status and JSON), modeled
+    here: the start takes ``start`` seconds of the clock; every ask finds Fit reached with nothing
+    open; each press of Fit answers the next of ``fits`` (the last again once they run out), and
+    one whose fit is still computing (or held while the shelf measures its time) moves the clock
+    on by the press's whole wait, as ``driver.wait_fit`` waits it out, while one done, failed,
+    blocked or held for a press returns at once;
+    the seal answers the next of ``seals`` (recorded, once they run out); the results, the export
+    and the stop are given. Each command is kept (``argv``)."""
+
+    VIEW = {"state": {"purpose": "prediction", "models": ["logistic"]}, "stages": {}}
+
+    def __init__(self, clock, fits, seals=(), start=0.0):
+        self.clock, self.fits, self.seals, self.start = clock, list(fits), list(seals), start
+        self.argv: list[list[str]] = []
+
+    def __call__(self, *argv):  # set on the class, it is not bound: no session comes first
+        self.argv.append(list(argv))
+        command = argv[0]
+        if command == "start":
+            self.clock.sleep(self.start)
+            return 0, {"started": {"run": RID}}
+        if command == "ask":
+            return 0, {"question": None, "fit_reached": True, "options": [], "also_open": []}
+        if command == "fit":
+            code, payload = self.fits.pop(0) if len(self.fits) > 1 else self.fits[0]
+            fit = payload["fit"]
+            if fit["status"] not in ("fresh", "error", "blocked") and fit.get("held") != "fit":
+                self.clock.sleep(float(argv[argv.index("--wait") + 1]))
+            return code, payload
+        if command == "seal" and self.seals:
+            return self.seals.pop(0)
+        return 0, {"seal": {"recorded": {"id": "r9", "seq": 9, "decision": {"kind": "open_seal"}}},
+                   "results": {"results": {}}, "export": {"exported": {"path": "export.zip"}},
+                   "stop": {"stopped": {"run": RID}}}[command]
+
+    def waits(self):
+        """The wait each press of Fit was given."""
+        return [a[a.index("--wait") + 1] for a in self.argv if a[0] == "fit"]
+
+
+def armed(tmp_path, monkeypatch, path, fits, *, seals=(), start=0.0,
+          budget_seconds=4 * 3600.0):
+    """``path`` (the default arm, or the random at seed 3) run by ``arms.run_arm`` on the Predict
+    card ``clinical_readmission_predict`` through the driver modeled here (:class:`Modeled`, on
+    the hand clock), its record assembled by a stub; what the arm returned, and the model."""
+    from research.swarm import assemble
+
+    clock = Clock()
+    model = Modeled(clock, fits, seals, start)
+    monkeypatch.setattr(arms, "time", clock)
+    monkeypatch.setattr(arms.Driven, "command", model)
+    monkeypatch.setattr(arms.Driven, "read", lambda self, p: Modeled.VIEW if p is None else None)
+    monkeypatch.setattr(assemble, "assemble",
+                        lambda folder, meta, corpus: (Path(corpus) / "record.json", True))
+    out = arms.run_arm("clinical_readmission_predict", path, seed=3 if path == "random" else None,
+                       runs=tmp_path / "runs", corpus=tmp_path / "corpus",
+                       budget_seconds=budget_seconds, data=tmp_path / "t.csv", meta={})
+    return out, model
+
+
+ARMS = ["default", "random"]
+
+
+@pytest.mark.parametrize("path", ARMS)
+def test_a_fit_still_running_when_a_press_comes_back_is_waited_out_to_the_export(
+        tmp_path, monkeypatch, path):
+    """W1: the press of Fit comes back three times with the fit still running (its wait ran out,
+    as on the readmission fixture on 2026-10-29), then fresh: the arm presses Fit again, which
+    waits on the same fit, and goes on to the seal and the export as the arm whose first press
+    came back fresh does, its commands the same but the three presses more."""
+    out, model = armed(tmp_path, monkeypatch, path, [RUNNING, RUNNING, RUNNING, FRESH])
+    assert out["error"] is None and out["valid"] is True
+    commands = [a[0] for a in model.argv]
+    assert commands[-2:] == ["export", "stop"] and "seal" in commands
+    assert model.waits() == [format(arms.WAIT, "g")] * 4  # each press waits as the first did
+    at_once, once = armed(tmp_path / "once", monkeypatch, path, [FRESH])
+    assert at_once["error"] is None and at_once["steps"] == out["steps"]
+    fits = [i for i, a in enumerate(model.argv) if a[0] == "fit"]
+    assert len(fits) == 4 and fits == list(range(fits[0], fits[0] + 4))  # nothing between
+    # After the start (whose table is each run's own), the commands are the same, but the three.
+    assert [a for i, a in enumerate(model.argv) if i not in fits[:3]][1:] == once.argv[1:]
+
+
+@pytest.mark.parametrize("fit, still", [
+    (RUNNING, "running"), ((0, pressed("idle", held="estimate")), "idle, held for estimate,"),
+], ids=["running", "held_while_the_shelf_measures"])
+@pytest.mark.parametrize("path", ARMS)
+def test_a_fit_that_outlasts_the_runs_time_budget_stops_the_arm_saying_how_long_it_waited(
+        tmp_path, monkeypatch, path, fit, still):
+    """W1, the other way: the fit is never done. The run is given 1000 s from its start, and its
+    start takes 100 s, so Fit is first pressed 100 s in: three presses wait their whole 240 s
+    (to 820 s), the fourth what is left (180 s), and the arm stops at the budget, having waited
+    900 s, in its own words; nothing after Fit is given, and the record is still assembled."""
+    budget, start = 1000.0, 100.0
+    out, model = armed(tmp_path, monkeypatch, path, [fit], start=start, budget_seconds=budget)
+    whole = int((budget - start) // arms.WAIT)  # the presses that wait their whole wait
+    left = budget - start - whole * arms.WAIT
+    assert model.waits() == [format(arms.WAIT, "g")] * whole + [format(left, "g")]
+    assert out["error"] == (f"The fit outlasted the run's time budget of {budget:g} s from its "
+                            f"start: it was still {still} after a wait of {budget - start:g} s "
+                            f"over {whole + 1} presses of Fit.")
+    assert [a[0] for a in model.argv][-2:] == ["fit", "stop"] and out["valid"] is True
+
+
+def test_a_budget_spent_before_fit_is_pressed_leaves_the_press_its_own_wait_and_no_more(
+        tmp_path, monkeypatch):
+    """The first press waits its whole wait, as before, whatever is left of the budget; where the
+    budget is spent by then (the start took all 100 s of it), Fit is not pressed again, and the
+    arm says so, over one press."""
+    out, model = armed(tmp_path, monkeypatch, "default", [RUNNING], start=100.0,
+                       budget_seconds=100.0)
+    assert model.waits() == [format(arms.WAIT, "g")]
+    assert out["error"] == (f"The fit outlasted the run's time budget of 100 s from its start: "
+                            f"it was still running after a wait of {arms.WAIT:g} s over 1 press "
+                            f"of Fit.")
+
+
+@pytest.mark.parametrize("fit, said", [
+    (BLOCKED, "fit_not_reached: The fit is blocked."),
+    (HELD, "fit_not_reached: The fit is idle, held for fit."),
+    (REFUSED, "too_few_rows: The answers leave 3 of 60 rows."),
+    (FAILED, "fit_failed: ValueError: no rows"),
+], ids=["blocked", "held_for_a_press", "refused_by_the_engine", "failed"])
+@pytest.mark.parametrize("path", ARMS)
+def test_a_fit_blocked_held_refused_or_failed_stops_the_arm_at_its_one_press_as_before(
+        tmp_path, monkeypatch, path, fit, said):
+    """Both ways: a press that comes back for any reason but its wait running out (the fit
+    blocked, held for a press of Fit, refused by the engine with no way forward, or failed) is
+    not pressed again, and the arm stops on it in the words it stopped in before."""
+    out, model = armed(tmp_path, monkeypatch, path, [fit])
+    assert out["error"] == f"Fit was not made: {said}"
+    assert model.waits() == [format(arms.WAIT, "g")] and model.clock.now == 0.0
+
+
+@pytest.mark.parametrize("path", ARMS)
+def test_the_fit_the_seal_waits_for_is_waited_out_as_the_first_is(tmp_path, monkeypatch, path):
+    """The seal refused for a fit that is not current (``fit_not_fresh``): the press it waits for
+    comes back twice with the fit still running, then fresh, and the seal opens and the export is
+    given (``arms.seal_through``)."""
+    out, model = armed(tmp_path, monkeypatch, path, [FRESH, RUNNING, RUNNING, FRESH],
+                       seals=[NOT_FRESH])
+    assert out["error"] is None
+    commands = [a[0] for a in model.argv]
+    seal = commands.index("seal")
+    assert commands[seal:] == ["seal", "fit", "fit", "fit", "seal", "results", "export", "stop"]
+
+
+def test_a_stage_refreshed_while_it_runs_at_the_same_key_keeps_its_one_job(tmp_path):
+    """The premise of pressing Fit again: the server's press (``ProjectService.press_fit``) writes
+    the same press and refreshes the engine (``Engine.on_decision``), which keeps a stage's run
+    whose key the answers leave as it was and starts none beside it. On the engine's own toy
+    graph (a heavy stage sleeping in steps, in a worker process), the stage refreshed again while
+    it runs keeps its job; that one job ends done, and one artifact is written."""
+    import time
+
+    from turbotab.core.events import EventBus
+    from turbotab.core.graph import Engine, ProjectContext
+    from turbotab.core.jobs import JobRunner
+    from turbotab.core.tests.toy_stages import ToyState
+
+    def ctx(pid):
+        return ProjectContext(project_id=pid, state=ToyState(y="1"),
+                              cache_root=tmp_path / "cache", paths={}, settings={"steps": 40},
+                              fingerprint="fp-1")
+
+    def until(engine, done):
+        end = time.monotonic() + 30
+        while not done(engine.status("p1")["H"]):
+            assert time.monotonic() < end, engine.status("p1")["H"]
+            time.sleep(0.02)
+        return engine.status("p1")["H"]
+
+    with JobRunner(workers=1) as runner:
+        engine = Engine(graph_factory="turbotab.core.tests.toy_stages:heavy_graph",
+                        runner=runner, bus=EventBus(), project_ctx=ctx)
+        try:
+            engine.on_decision("p1")
+            first = until(engine, lambda s: s.status == "running")
+            engine.on_decision("p1")  # Fit pressed again, the answers as they were
+            again = engine.status("p1")["H"]
+            assert (again.status, again.job_id, again.key) == ("running", first.job_id, first.key)
+            done = until(engine, lambda s: s.status == "fresh")
+            assert done.key == first.key and runner.get(first.job_id).state == "done"
+            assert [p.name for p in (tmp_path / "cache" / "H").iterdir() if p.is_dir()] == [
+                first.key]
+        finally:
+            engine.shutdown()

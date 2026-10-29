@@ -35,8 +35,12 @@ another option (the next offered, or another drawn), never another of the card's
 none is left, an answer fails, or a question waits on stages that failed, the walk stops with what
 the engine said, classed refused or failed (:class:`Met`), which the sweep classes its refit by.
 Under Predict, what the fit raises is answered and Fit pressed again before the held-out rows open,
-so they open on a current fit. Each record is given the dataset as the launcher gives an analyst's
-run (``launcher.dataset_meta``: its control kind and known answer).
+so they open on a current fit. A press of Fit that comes back with the fit still computing, its
+wait run out, is pressed again, which waits on the same fit (the server keeps the fit running for
+the same answers), until the fit is done or the run's time budget, its ``budget_seconds`` from its
+start, is spent, which stops the arm, saying so and how long it waited (:meth:`Driven.fit`). Each
+record is given the dataset as the launcher gives an analyst's run (``launcher.dataset_meta``: its
+control kind and known answer).
 
 **Two sessions** (:class:`Driven`, :class:`Local`), one walker (:func:`walk`). ``Driven`` is a run
 of the driver's own: every command goes through ``driver.main`` in this process, so the run's
@@ -68,7 +72,7 @@ DATASETS = REPO / "research" / "datasets"
 # that varies makes the outcome a time to event) is another question, and the table's layout is
 # how it was written.
 FIXED = ("target", "event", "purpose", "task", "follow_up", "orientation")
-WAIT = 240.0  # seconds a command waits for what is computing
+WAIT = 240.0  # seconds a command waits for what is computing (each press of Fit: ``Driven.fit``)
 CANCEL_WAIT = 60.0  # seconds a cancelled copy is waited for, each time (``Local.cancel``)
 STEPS = 300  # the most answers a walk gives before it says it never reached Fit
 PROMPT_VERSION = "arms-1"
@@ -175,6 +179,16 @@ def said_of(code: int, payload: dict[str, Any]) -> Said:
                 exits=list(refused.get("exits") or []), status=status)
 
 
+def ran_out(fit: Said) -> bool:
+    """Whether a press of Fit (:class:`Said`) came back because its wait ran out: its fit neither
+    done (fresh, or in error) nor blocked, nor held for a press of Fit, each of which the wait
+    returns on at once (``driver.wait_fit``). The arms press such a fit again (:meth:`Driven.fit`),
+    and the crash sweep cancels it (``sweep.Sweep._fit``)."""
+    status = fit.payload.get("fit") if "pressed" in fit.payload else None
+    return (fit.by == "driver" and fit.code == "fit_not_reached" and isinstance(status, Mapping)
+            and status.get("status") != "blocked" and status.get("held") != "fit")
+
+
 class Stuck(RuntimeError):
     """A walk that cannot go on: what it met, in words."""
 
@@ -254,11 +268,15 @@ def met_answer(words: str, key: str | None, said: Said, answered: Sequence[str] 
 
 class Driven:
     """A run of the driver's own (the module docstring): ``start --scripted`` and every later
-    command through ``driver.main`` in this process, with the runs' home ``runs``."""
+    command through ``driver.main`` in this process, with the runs' home ``runs``. Its time budget
+    is the ``budget_seconds`` it was started with, from its start (``until``, on the monotonic
+    clock; None before a start): a press of Fit waits out a fit to it (:meth:`fit`)."""
 
     def __init__(self, runs: Path):
         self.runs = Path(runs).absolute()
         self.run: str | None = None
+        self.budget_seconds: float | None = None
+        self.until: float | None = None
 
     @contextlib.contextmanager
     def _home(self) -> Iterator[None]:
@@ -295,6 +313,8 @@ class Driven:
                 "--prompt-version", prompt_version]
         if effort is not None:
             args += ["--effort", effort]
+        self.budget_seconds = float(budget_seconds)
+        self.until = time.monotonic() + self.budget_seconds
         code, payload = self.command(*args)
         if code != 0:
             raise Stuck(f"The run did not start: {json.dumps(payload)[:800]}")
@@ -342,7 +362,31 @@ class Driven:
                         reason)
 
     def fit(self) -> Said:
-        return self.cmd("fit", "--wait", str(int(WAIT)))
+        """Fit pressed and waited for :data:`WAIT` seconds (``fit --wait``). A press that comes
+        back only because its wait ran out (:func:`ran_out`: the fit still computing) is pressed
+        again, which starts no new work: the server's press refreshes the engine, which keeps the
+        fit already running for the same answers (its key) and starts none beside it, so the press
+        waits on that fit again, for :data:`WAIT` seconds or what is left of the run's time budget
+        (``until``), whichever is less. The first press that comes back otherwise (the fit done,
+        in error, blocked or held for a press, or the press refused) is the answer. Where the
+        budget is spent first, the run stops (:class:`Stuck`), saying so and how long it waited.
+        Before a start there is no budget, and the first press is the answer."""
+        began = time.monotonic()
+        said = self.cmd("fit", "--wait", format(WAIT, "g"))
+        presses = 1
+        while self.until is not None and ran_out(said):
+            left = self.until - time.monotonic()
+            if left <= 0:
+                fit = said.payload.get("fit") or {}
+                held = f", held for {fit['held']}," if fit.get("held") else ""
+                raise Stuck(f"The fit outlasted the run's time budget of "
+                            f"{self.budget_seconds:g} s from its start: it was still "
+                            f"{fit.get('status')}{held} after a wait of "
+                            f"{round(time.monotonic() - began, 1):g} s over {presses} "
+                            f"{'press' if presses == 1 else 'presses'} of Fit.")
+            said = self.cmd("fit", "--wait", format(min(WAIT, left), "g"))
+            presses += 1
+        return said
 
     def results(self) -> Said:
         return self.cmd("results", "--wait", str(int(WAIT)))
@@ -1098,8 +1142,10 @@ MARKER_OF = _markers()
 
 
 def fit_through(session: Any, policy: Default, steps: list[Step], *, tries: int = 3) -> Said:
-    """Fit pressed; a fit the engine refused in words takes the way forward the policy picks and the
-    walk goes on, up to ``tries`` presses; the last press's answer."""
+    """Fit pressed (the session's ``fit``: a run of the driver's own waits out a fit still
+    computing, to its time budget, :meth:`Driven.fit`); a fit the engine refused in words takes the
+    way forward the policy picks and the walk goes on, up to ``tries`` presses; the last press's
+    answer."""
     said = session.fit()
     for _ in range(tries - 1):
         if said.kind != "refused" or said.by != "engine":
@@ -1121,7 +1167,9 @@ def seal_through(session: Any, policy: Default, family: str, steps: list[Step], 
                  tries: int = 6) -> Said:
     """The held-out rows opened on ``family``; where the opening is refused in words (it waits for
     the triage of the open noticings, say), the way forward that confirms the triage, else the
-    first that is not the opening itself, then the opening again (the dry run's ``seal``)."""
+    first that is not the opening itself, then the opening again (the dry run's ``seal``). Where it
+    waits for a current fit, Fit is pressed as :func:`fit_through` presses it, and waited out as
+    long."""
     reason = f"{policy.name}: {family} declared final."
     for _ in range(tries):
         opened = session.seal(family, reason)
@@ -1179,8 +1227,10 @@ def run_arm(dataset: str, policy_name: str, *, seed: int | None, runs: Path, cor
     to its record in ``corpus`` (``assemble.assemble``): its card's question, the default or the
     random path, Fit, under Predict the seal on the family the path declares final, the export.
     ``meta`` (the launcher's ``dataset`` and the rest) is given to the record; without it, the
-    dataset's id and card. Returns what was done: the run, its steps, the record and whether it
-    validated, or where the arm stopped."""
+    dataset's id and card. ``budget_seconds`` is the driver's budget of seconds of fitting and the
+    run's time budget, from its start, that a press of Fit waits out a fit to (:meth:`Driven.fit`).
+    Returns what was done: the run, its steps, the record and whether it validated, or where the
+    arm stopped."""
     from research.swarm import assemble as A
     from research.swarm.dry_run import table_of
 

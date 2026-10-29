@@ -4,10 +4,11 @@ offers and draws at a seed; the end of the path's second seal and revisit after 
 stub (the real engine cannot be made to accept them) and refused; the report refused where its
 engines differ; a run that skips a seed already reported; whole walks on a server modeled here
 (:class:`Served`): the round owed where a decision is reverted and no round sent one, and a fault of
-the walker's own after the walk, which ends only that walk; and, slow, one walk through the
-driver's own commands on a small dataset that is not one of the pilot's
-(``clinical_readmission_predict``, 480 rows), whose second seal and revisit after it the engine and
-the driver refuse.
+the walker's own after the walk, which ends only that walk; the end of the path on a driver modeled
+as the arms' tests model it, whose press of Fit comes back with the fit still running, waited out
+or stopped at the run's time budget; and, slow, one walk through the driver's own commands on a
+small dataset that is not one of the pilot's (``clinical_readmission_predict``, 480 rows), whose
+second seal and revisit after it the engine and the driver refuse.
 
 Known truth: each command's payload as the driver prints it (``driver.main``'s JSON: ``refused``
 with its ``by``, ``status``, ``code``, ``message`` and ``exits``; ``recorded``; a press of Fit's
@@ -16,7 +17,9 @@ with its ``by``, ``status``, ``code``, ``message`` and ``exits``; ``recorded``; 
 (``decisions.DecisionLog``) and a fit record written from it, its digest the SHA-256 of the plan's
 canonical JSON computed here with hashlib; each draw from numpy's generator at the walker's seed,
 drawn here; the modeled server's log the engine's own, and its refusal of a revert of a decision
-already reverted the engine's (``decisions._check_revert``)."""
+already reverted the engine's (``decisions._check_revert``); each press's wait and the time
+waited from a hand clock that only the modeled driver moves, derived here from the budget and the
+wait."""
 from __future__ import annotations
 
 import hashlib
@@ -307,6 +310,27 @@ def test_a_fit_seal_or_export_given_after_its_way_or_without_it_is_no_dead_end(c
         then, AGAIN)[command]))
     assert walk.dead_ends_of(t) == []
     assert walk.classed(record(transcript=t, reached=True))[0] == "clean"
+
+
+RAN_OUT = {"pressed": {}, "fit": {"status": "running", "key": "k2", "progress": 0.4}}
+
+
+@pytest.mark.parametrize("then, dead_end", [
+    (AGAIN["fit"], True), (GIVEN["fit"], False), (OTHER["fit"], False),
+], ids=["refused_again", "given", "another_code"])
+def test_fit_given_again_is_the_press_that_does_not_come_back_only_because_its_wait_ran_out(
+        then, dead_end):
+    """A press of Fit whose wait ran out with the fit still running is pressed again for the same
+    fit (``arms.Driven.fit``), so Fit given again after the way is taken is the first press after
+    it that came back otherwise: refused again with the same code there, it is a dead end; given,
+    or refused for another reason, it is none. Each way, two presses whose waits ran out come
+    first."""
+    before, again = retried("fit")
+    t = entries(*before, (again, 0, RAN_OUT), (again, 0, RAN_OUT), (again, *then))
+    found = walk.dead_ends_of(t)
+    assert [(d["code"], d["request"]["n"]) for d in found] == (
+        [("too_few_rows", len(t) - 1)] if dead_end else [])
+    assert [e["code"] for e in t[-3:-1]] == ["fit_not_reached"] * 2 and walk.wordless_of(t) == []
 
 
 # ── (4) the plan's digest, refolded from the log ─────────────────────────────
@@ -969,6 +993,66 @@ def test_each_walk_whose_rounds_revert_a_decision_sends_one_already_reverted(ser
         cases["owed" if reverted and not sent else "sent" if sent else "none"] += 1
         assert w["class"] == "clean", seed
     assert all(cases.values()), cases
+
+
+# ── a fit that outlasts one press's wait, at the end of the path ─────────────
+
+
+def ending(tmp_path, monkeypatch, fits, budget):
+    """A walker at the end of the path on a run of the driver's own whose driver is modeled as the
+    arms' tests model it (``test_arms.Modeled``, on its hand clock): the run started with
+    ``budget`` seconds, every ask finds Fit reached with nothing open, and the project's fit is
+    running when the end of the path reads it; each press of Fit answers the next of ``fits``."""
+    from research.swarm.tests.test_arms import Clock, Modeled
+
+    clock = Clock()
+    model = Modeled(clock, fits)
+    view = {"state": {"purpose": "inference"}, "stages": {"fit": {"status": "running",
+                                                                  "key": "k1"}}}
+    monkeypatch.setattr(arms, "time", clock)
+    monkeypatch.setattr(arms.Driven, "command", model)
+    monkeypatch.setattr(arms.Driven, "read", lambda self, p: view if p is None else None)
+    session = walk.Walked(tmp_path / "runs")
+    session.start(tmp_path / "t.csv", budget_fits=walk.BUDGET_FITS, budget_seconds=budget,
+                  model="mechanical-walk-1")
+    w = record(actions=[], skipped=[], end=[])
+    return walk.Walker(session, arms.Random(QUESTION, 1), walk.walker_rng(1), w, None), model
+
+
+def test_the_end_of_the_path_waits_out_a_fit_still_running_when_a_press_comes_back(
+        tmp_path, monkeypatch):
+    """W1 in the walker (``Walker.settle``): the fit not fresh at the end of the path, Fit is
+    pressed, and its press comes back twice with the fit still running, then fresh; the walk goes
+    on to the results and the ask, where it stopped refused before ("Fit was not made for the end
+    of the path")."""
+    from research.swarm.tests.test_arms import FRESH, RUNNING
+
+    walker, model = ending(tmp_path, monkeypatch, [RUNNING, RUNNING, FRESH], walk.BUDGET_SECONDS)
+    q = walker.settle()
+    assert q["fit_reached"] is True
+    assert [a[0] for a in model.argv][-5:] == ["fit", "fit", "fit", "results", "ask"]
+    assert model.waits() == [format(arms.WAIT, "g")] * 3
+
+
+def test_a_fit_that_outlasts_the_runs_time_budget_stops_the_walk_at_its_own_limit(
+        tmp_path, monkeypatch):
+    """The other way: the fit never done, the run given 500 s, Fit is pressed at its start and
+    waited for 240 s, 240 s and the 20 s left; the walk stops at the budget in the arm's words,
+    a limit of the walk's own (a stuck stop), not a refusal."""
+    from research.swarm.tests.test_arms import RUNNING
+
+    budget = 500.0
+    walker, model = ending(tmp_path, monkeypatch, [RUNNING], budget)
+    with pytest.raises(arms.Stuck) as got:
+        walker.settle()
+    assert not isinstance(got.value, arms.Met)
+    whole = int(budget // arms.WAIT)  # 2 presses wait their whole wait, the third the 20 s left
+    assert model.waits() == [format(arms.WAIT, "g")] * whole + [
+        format(budget - whole * arms.WAIT, "g")]
+    assert walk.stop_of(got.value) == {
+        "by": "walk", "kind": "stuck", "detail": None,
+        "words": f"The fit outlasted the run's time budget of {budget:g} s from its start: it was "
+                 f"still running after a wait of {budget:g} s over {whole + 1} presses of Fit."}
 
 
 # ── one walk through the driver, to its end ──────────────────────────────────
