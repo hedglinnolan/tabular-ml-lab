@@ -11,10 +11,11 @@ export end.
 
 **One walk** (:func:`walk_one`) is one seed on the dataset, in a run of the driver's own
 (``arms.Driven``: every command through ``driver.main``, each kept with what it said, its
-``transcript``, :class:`Walked`). It is the random arm's walk to the first Fit (``arms.Random`` at
-the seed: the card's question, every question, reading and finding answered by its draws, each
-open declaration line once, Fit as ``arms.fit_through`` presses it, the results), then 2 to 4
-rounds (:data:`ROUNDS`; the count and every draw of the walker's own from numpy's generator at
+``transcript``, :class:`Walked`; a press of Fit whose wait ran out, with what the arm's wait for its
+fit came to, ``arms.Driven.waited``). It is the random arm's walk to the first Fit (``arms.Random``
+at the seed: the card's question, every question, reading and finding answered by its draws, each
+open declaration line once, Fit as ``arms.fit_through`` presses it, the results), then 2 to 4 rounds
+(:data:`ROUNDS`; the count and every draw of the walker's own from numpy's generator at
 ``(STREAM, seed)``, :func:`walker_rng`, so the random arm's draws stay its own). Each round draws
 one action uniformly among those the driver offers at that point (:func:`offered_actions`), then
 one of its candidates uniformly:
@@ -64,10 +65,8 @@ times at most.
 3. a dead end: a way forward that records something which, taken (the next command after its
    refusal that records something answers it), is refused again with the same code, or, where
    the refusal was of a press of Fit, the seal or the export, is recorded and the next of that
-   command is refused again with the same code (:func:`dead_ends_of`; of Fit, the next press
-   that did not come back only because its wait ran out, since Fit is pressed again for a fit
-   still computing, ``arms.Driven.fit``; so a walk the export's or the seal's tries end, each way
-   taken and refused again alike, is a defect);
+   command is refused again with the same code (:func:`dead_ends_of`; so a walk the export's or
+   the seal's tries end, each way taken and refused again alike, is a defect);
 4. a fit record whose plan's digest is not the log's: the decision log (``decisions.jsonl``, read
    with the engine's own reader) refolded offline as it stood when the fit completed (the records
    appended by the record's time, the longest prefix whose records in force are those it names)
@@ -232,9 +231,10 @@ def entry_of(argv: Sequence[str], code: int, payload: Mapping[str, Any], *, n: i
 
 class Walked(arms.Driven):
     """A run of the driver's own (``arms.Driven``) that keeps every command it ran, with what it
-    said (:func:`entry_of`), in ``transcript``; and after each press of Fit and each read of the
-    results, the project's stages in error (:func:`stages_of`, one view read), each kept once in
-    ``met`` with where the walk was (``at``: ``forward``, a round's number, ``end``) and the
+    said (:func:`entry_of`), in ``transcript`` (a press of Fit whose wait ran out, with what the
+    arm's wait for its fit came to: :meth:`waited`); and after each press of Fit and each read of
+    the results, the project's stages in error (:func:`stages_of`, one view read), each kept once
+    in ``met`` with where the walk was (``at``: ``forward``, a round's number, ``end``) and the
     command it followed, since a later refit computes the stage again at another key and the
     project's view as the walk ends no longer holds it; with the driver's ``revisit``."""
 
@@ -261,6 +261,21 @@ class Walked(arms.Driven):
         said = super().fit()
         self.held()
         return said
+
+    def waited(self, pressed: Mapping[str, Any], began: float) -> tuple[int, dict[str, Any]]:
+        """The rest of a press of Fit whose wait ran out (``arms.Driven.waited``), kept as what
+        that press said: its entry in the transcript becomes what the press would have said had
+        its wait been that long (:func:`entry_of`), with what it printed when its wait ran out
+        beside it (``ran_out``: its kind, by whom, its code and words, and the fit's status), so
+        the oracle reads each press of Fit by what it came to. Where the run's time budget is
+        spent first, the entry stays as the press printed it."""
+        code, payload = super().waited(pressed, began)
+        i = max(k for k, e in enumerate(self.transcript) if e.get("command") == "fit")
+        first = self.transcript[i]
+        self.transcript[i] = entry_of(["fit", "--run", str(self.run), *first["args"]], code,
+                                      payload, n=first["n"]) | {
+            "ran_out": {k: first.get(k) for k in ("kind", "by", "code", "message", "fit")}}
+        return code, payload
 
     def results(self) -> arms.Said:
         said = super().results()
@@ -421,24 +436,14 @@ def wordless_of(transcript: Sequence[Mapping[str, Any]],
     return out
 
 
-def waited_out(entry: Mapping[str, Any]) -> bool:
-    """Whether the transcript's ``entry`` is a press of Fit that came back only because its wait
-    ran out (``arms.ran_out``, over what the entry keeps of it: what it said and the fit's status),
-    which the walk presses again for the same fit (``arms.Driven.fit``)."""
-    return entry.get("command") == "fit" and arms.ran_out(arms.Said(
-        str(entry.get("kind")), {"pressed": {}, "fit": entry.get("fit")}, by=entry.get("by"),
-        code=entry.get("code")))
-
-
 def dead_ends_of(transcript: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """(3) Each way forward that records something which, taken, is refused again with the same
     code: a refusal whose ways have ids and decisions, and the next command after it that records
     something (:data:`RECORDING`) an answer naming one of them (the way taken), which is refused
     with the refusal's code; or, where the refusal was of a command the walk gives again
     (:data:`RETRIED`: a press of Fit, the seal, the export), the way recorded and the next of that
-    command after it refused with the refusal's code (of Fit, the next press that did not come
-    back only because its wait ran out, :func:`waited_out`). Each keeps the refusal, the way taken
-    and the request refused again."""
+    command after it refused with the refusal's code. Each keeps the refusal, the way taken and
+    the request refused again."""
     out = []
     for i, e in enumerate(transcript):
         if e.get("kind") != "refused":
@@ -453,8 +458,8 @@ def dead_ends_of(transcript: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]
             continue
         again: Mapping[str, Any] | None = taken
         if taken.get("kind") == "ok" and e.get("command") in RETRIED:
-            again = next((g for g in transcript[j + 1:] if g.get("command") == e.get("command")
-                          and not waited_out(g)), None)
+            again = next((g for g in transcript[j + 1:] if g.get("command") == e.get("command")),
+                         None)
         if again is not None and again.get("kind") == "refused" \
                 and again.get("code") == e.get("code"):
             out.append({"defect": "dead_end", "command": e.get("command"), "code": e.get("code"),

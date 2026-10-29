@@ -1722,7 +1722,7 @@ class Sweep:
         started = time.monotonic()
         fit = session.fit(self.refit_wait)
         read_refit(session, refit, fit, self.question.purpose)
-        if arms.ran_out(fit):  # the arms press such a fit again; the sweep cancels it
+        if arms.ran_out(fit):  # the arms wait such a fit out; the sweep cancels it
             self._cancel(session, refit, (fit.payload.get("fit") or {}).get("status"))
             return
         if refit.kind != "scored":
