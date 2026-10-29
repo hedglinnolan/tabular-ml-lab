@@ -896,3 +896,11 @@ Nolan: "a first pass to provide insight". Truth on this fixture: -5.0 mmHg (comp
 - [swarm tooling] No command assembles a run's record from its launch file; run_01 was assembled in Python with launcher.record_meta plus the transcript path — orchestrator, run_01.
 - [reader] transcript-reader.md lists Grep, which this harness does not provide, so the reader read the whole extract with Read; it also ran one read-only `wc` beyond its one command — reader, run_01.
 - [worked] The reader found no refusal ignored and no way forward misused; the analyst explored the missing-values and adjustment-set decisions by preview and quoted their numbers — reader, run_01.
+
+## From the pilot-side follow-up's last verifier (2026-10-28, merged at its repair cap, 9804c85f)
+- [swarm, score, before scoring] assemble.py:1509's 'withheld' guard (and the failed-read guard in the same test) has a test that passes with the guard removed: make the withheld case serve no number (`"families": []`, as estimand.withhold leaves it) and the failed read a body that would otherwise read as none served, and check each fails with its guard removed — verifier V3-1.
+- [swarm, transcript] An escaped lone surrogate in a JSON line parses but makes write_text raise UnicodeEncodeError outside the try (a traceback and an empty extract) — verifier.
+- [swarm, transcript] A `<synthetic>` assistant line not marked isApiErrorMessage (e.g. 'No response requested.') is headed THE HARNESS, IN THE ANALYST'S PLACE, and the rubric then says an API error stopped the analyst there — verifier.
+- [swarm, score] early_stopping's docstring still says a run stuck before its export has no plan; a not_served one is now a refused plan (no number moves) — verifier.
+- [swarm, assemble] A transcript line that is valid JSON but not an object raises AttributeError in spend, which run_of does not catch — verifier.
+- [swarm, pilot] Bang 2009 is first in the next wave once its default plan's fit is faster (its fit took 2h44m on the frozen engine; SWARM_PLAN §5 points here) — orchestrator, R1.
