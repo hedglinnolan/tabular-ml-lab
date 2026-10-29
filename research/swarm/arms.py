@@ -35,8 +35,12 @@ another option (the next offered, or another drawn), never another of the card's
 none is left, an answer fails, or a question waits on stages that failed, the walk stops with what
 the engine said, classed refused or failed (:class:`Met`), which the sweep classes its refit by.
 Under Predict, what the fit raises is answered and Fit pressed again before the held-out rows open,
-so they open on a current fit. Each record is given the dataset as the launcher gives an analyst's
-run (``launcher.dataset_meta``: its control kind and known answer).
+so they open on a current fit. A press of Fit that comes back with the fit still computing, its
+wait run out, is not pressed again: the arm waits that fit out with reads alone, as the press
+waits, until it is done or the run's time budget, its ``budget_seconds`` from its start, is spent,
+which stops the arm, saying so and how long after the press (:meth:`Driven.fit`). Each record is
+given the dataset as the launcher gives an analyst's run (``launcher.dataset_meta``: its control
+kind and known answer).
 
 **Two sessions** (:class:`Driven`, :class:`Local`), one walker (:func:`walk`). ``Driven`` is a run
 of the driver's own: every command goes through ``driver.main`` in this process, so the run's
@@ -175,6 +179,23 @@ def said_of(code: int, payload: dict[str, Any]) -> Said:
                 exits=list(refused.get("exits") or []), status=status)
 
 
+def computing(fit: Mapping[str, Any]) -> bool:
+    """Whether the fit (its stage's status, as the driver's wait returns it) is still computing:
+    neither done (fresh, or in error) nor blocked, nor held for a press of Fit, each of which the
+    driver's wait returns on at once (``driver.wait_fit``); held while the shelf measures its time
+    (``held: "estimate"``), it is computing, as the hold ends by itself."""
+    return fit.get("status") not in ("fresh", "error", "blocked") and fit.get("held") != "fit"
+
+
+def ran_out(fit: Said) -> bool:
+    """Whether a press of Fit (:class:`Said`) came back because its wait ran out: its fit still
+    computing (:func:`computing`). The arms wait such a fit out (:meth:`Driven.fit`), and the
+    crash sweep cancels it (``sweep.Sweep._fit``)."""
+    status = fit.payload.get("fit") if "pressed" in fit.payload else None
+    return (fit.by == "driver" and fit.code == "fit_not_reached" and isinstance(status, Mapping)
+            and computing(status))
+
+
 class Stuck(RuntimeError):
     """A walk that cannot go on: what it met, in words."""
 
@@ -254,11 +275,15 @@ def met_answer(words: str, key: str | None, said: Said, answered: Sequence[str] 
 
 class Driven:
     """A run of the driver's own (the module docstring): ``start --scripted`` and every later
-    command through ``driver.main`` in this process, with the runs' home ``runs``."""
+    command through ``driver.main`` in this process, with the runs' home ``runs``. Its time budget
+    is the ``budget_seconds`` it was started with, from its start (``until``, on the monotonic
+    clock; None before a start): a press of Fit waits out a fit to it (:meth:`fit`)."""
 
     def __init__(self, runs: Path):
         self.runs = Path(runs).absolute()
         self.run: str | None = None
+        self.budget_seconds: float | None = None
+        self.until: float | None = None
 
     @contextlib.contextmanager
     def _home(self) -> Iterator[None]:
@@ -295,6 +320,8 @@ class Driven:
                 "--prompt-version", prompt_version]
         if effort is not None:
             args += ["--effort", effort]
+        self.budget_seconds = float(budget_seconds)
+        self.until = time.monotonic() + self.budget_seconds
         code, payload = self.command(*args)
         if code != 0:
             raise Stuck(f"The run did not start: {json.dumps(payload)[:800]}")
@@ -342,7 +369,94 @@ class Driven:
                         reason)
 
     def fit(self) -> Said:
-        return self.cmd("fit", "--wait", str(int(WAIT)))
+        """Fit pressed, once, and waited for :data:`WAIT` seconds (``fit --wait``). A press that
+        comes back only because its wait ran out (:func:`ran_out`: the fit still computing) is not
+        pressed again, since each press is kept beside the project in place of the last
+        (``fit_press.record_press``: the last record before it and the estimate it confirmed, which
+        the fit's record copies as its ``press`` and the scheduler's hold reads), and under
+        Estimate the lock is recorded after the first. The fit is waited out as the press waits
+        (:meth:`waited`), with reads alone, to the run's time budget (``until``); what the arm
+        then says is what the press would have said had its wait been that long. Where the budget
+        is spent first, the run stops (:class:`Stuck`), saying so and how long after the press.
+        Before a start there is no budget, and the press is the answer."""
+        began = time.monotonic()
+        said = self.cmd("fit", "--wait", format(WAIT, "g"))
+        if self.until is None or not ran_out(said):
+            return said
+        return said_of(*self.waited(said.payload, began))
+
+    def waited(self, pressed: Mapping[str, Any], began: float) -> tuple[int, dict[str, Any]]:
+        """The rest of a press of Fit whose wait ran out (``pressed``: what it printed; ``began``,
+        when it was given), as the driver's ``fit`` goes on after its press (``driver.cmd_fit``),
+        with no press again: its wait (``driver.wait_fit``, reads of the project alone) given
+        what is left of the run's time budget; then the markers kept (``driver.keep_markers``),
+        what is spent read (``driver.budget_now``: ``GET …/fits``, which waits a moment for a fit
+        just made to be recorded) and, where the engine refused the fit in words, its ways forward
+        kept for ``answer``. Its exit status and JSON as ``fit`` prints them, its press the one it
+        printed; a refusal of the driver's own (its server unreadable, say) as ``driver.main``
+        prints one. Either is kept on the press's line in the commands log (:meth:`kept_waited`).
+        Where the fit is still computing at the budget, the run stops (:class:`Stuck`), the
+        press's line as the press printed it."""
+        from research.swarm import driver
+        from research.swarm import options as opts
+
+        with self._home():
+            run = None
+            try:
+                run = driver.Run.load(str(self.run))
+                client = run.client()
+                left = (self.until or 0.0) - time.monotonic()
+                status = driver.wait_fit(run, client, max(left, 0.0))
+                if computing(status):
+                    held = f", held for {status['held']}," if status.get("held") else ""
+                    raise Stuck(f"The fit outlasted the run's time budget of "
+                                f"{self.budget_seconds:g} s from its start: it was still "
+                                f"{status.get('status')}{held} "
+                                f"{round(time.monotonic() - began, 1):g} s after Fit was "
+                                f"pressed.")
+                driver.keep_markers(run, client, "fit")
+                out = {"pressed": pressed.get("pressed"), "fit": status,
+                       "spent": driver.public_budget(driver.budget_now(run, client))}
+                refusal = status.get("refusal")
+                if status.get("status") == "error" and refusal:
+                    ways = opts.exits(refusal.get("exits"))
+                    run.keep_exits(ways, refusal.get("code"), "fit")
+                    code, payload = 1, out | {"refused": {
+                        "by": "engine", "stage": refusal.get("stage"), "code": refusal.get("code"),
+                        "message": refusal.get("message"), "exits": ways}}
+                else:
+                    code, payload = 0, out
+            except driver.DriverError as exc:
+                code, payload = 1, {"refused": {"by": "driver", "code": exc.code,
+                                                "message": exc.message, **exc.extra}}
+            payload = driver.private_free(payload)
+            if run is not None:
+                self.kept_waited(run, code, payload)
+            return code, payload
+
+    @staticmethod
+    def kept_waited(run: Any, code: int, payload: dict[str, Any]) -> None:
+        """The press's line in the run's commands log (``commands.jsonl``: its last, since no
+        command came after the press) kept as what the press came to (:meth:`waited`): its
+        summary the driver's of ``code`` and ``payload`` (``driver.summary``), when that came, and
+        what the press printed when its wait ran out beside it (``ran_out``), so the record reads
+        the press by what it came to (``assemble.surfacings_of``: the refusals the run met, and
+        each fit that failed), as it reads a press whose wait was that long. Written whole and
+        then moved into place."""
+        from research.swarm import driver
+
+        path = run.folder / "commands.jsonl"
+        lines = path.read_text(encoding="utf-8").splitlines()
+        last = json.loads(lines[-1]) if lines else {}
+        if last.get("command") != "fit":
+            return
+        last.update({"done": driver.now(), "returned": driver.now_us(),
+                     "summary": driver.summary("fit", code, payload) | {
+                         "ran_out": last.get("summary")}})
+        lines[-1] = json.dumps(last, ensure_ascii=False, default=str)
+        tmp = path.with_name(f".{path.name}.tmp")
+        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmp.replace(path)
 
     def results(self) -> Said:
         return self.cmd("results", "--wait", str(int(WAIT)))
@@ -1098,8 +1212,10 @@ MARKER_OF = _markers()
 
 
 def fit_through(session: Any, policy: Default, steps: list[Step], *, tries: int = 3) -> Said:
-    """Fit pressed; a fit the engine refused in words takes the way forward the policy picks and the
-    walk goes on, up to ``tries`` presses; the last press's answer."""
+    """Fit pressed (the session's ``fit``: a run of the driver's own waits out a fit still
+    computing, to its time budget, :meth:`Driven.fit`); a fit the engine refused in words takes the
+    way forward the policy picks and the walk goes on, up to ``tries`` presses; the last press's
+    answer."""
     said = session.fit()
     for _ in range(tries - 1):
         if said.kind != "refused" or said.by != "engine":
@@ -1121,7 +1237,9 @@ def seal_through(session: Any, policy: Default, family: str, steps: list[Step], 
                  tries: int = 6) -> Said:
     """The held-out rows opened on ``family``; where the opening is refused in words (it waits for
     the triage of the open noticings, say), the way forward that confirms the triage, else the
-    first that is not the opening itself, then the opening again (the dry run's ``seal``)."""
+    first that is not the opening itself, then the opening again (the dry run's ``seal``). Where it
+    waits for a current fit, Fit is pressed as :func:`fit_through` presses it, and waited out as
+    long."""
     reason = f"{policy.name}: {family} declared final."
     for _ in range(tries):
         opened = session.seal(family, reason)
@@ -1179,8 +1297,10 @@ def run_arm(dataset: str, policy_name: str, *, seed: int | None, runs: Path, cor
     to its record in ``corpus`` (``assemble.assemble``): its card's question, the default or the
     random path, Fit, under Predict the seal on the family the path declares final, the export.
     ``meta`` (the launcher's ``dataset`` and the rest) is given to the record; without it, the
-    dataset's id and card. Returns what was done: the run, its steps, the record and whether it
-    validated, or where the arm stopped."""
+    dataset's id and card. ``budget_seconds`` is the driver's budget of seconds of fitting and the
+    run's time budget, from its start, that a press of Fit waits out a fit to (:meth:`Driven.fit`).
+    Returns what was done: the run, its steps, the record and whether it validated, or where the
+    arm stopped."""
     from research.swarm import assemble as A
     from research.swarm.dry_run import table_of
 

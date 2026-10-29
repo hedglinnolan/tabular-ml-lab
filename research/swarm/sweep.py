@@ -1276,15 +1276,6 @@ def read_refit(session: Any, refit: Refit, fit: Any, purpose: str) -> None:
         refit.estimates, refit.estimate_why = estimate_of(session)
 
 
-def ran_out(fit: Any) -> bool:
-    """Whether a press of Fit (``arms.Said``) came back because its wait ran out: its fit neither
-    done (fresh, or in error) nor blocked, nor held for a press of Fit, each of which the wait
-    returns on at once (``driver.wait_fit``)."""
-    status = fit.payload.get("fit") if "pressed" in fit.payload else None
-    return (fit.by == "driver" and fit.code == "fit_not_reached" and isinstance(status, Mapping)
-            and status.get("status") != "blocked" and status.get("held") != "fit")
-
-
 def in_flight(view: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Each stage of ``view`` queued or running, in the graph's order, with its status."""
     return [{"stage": name, "status": (status or {}).get("status")}
@@ -1745,7 +1736,7 @@ class Sweep:
         started = time.monotonic()
         fit = session.fit(self.refit_wait)
         read_refit(session, refit, fit, self.question.purpose)
-        if ran_out(fit):
+        if arms.ran_out(fit):  # the arms wait such a fit out; the sweep cancels it
             self._cancel(session, refit, (fit.payload.get("fit") or {}).get("status"))
             return
         if refit.kind != "scored":

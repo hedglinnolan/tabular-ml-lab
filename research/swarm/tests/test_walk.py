@@ -4,10 +4,12 @@ offers and draws at a seed; the end of the path's second seal and revisit after 
 stub (the real engine cannot be made to accept them) and refused; the report refused where its
 engines differ; a run that skips a seed already reported; whole walks on a server modeled here
 (:class:`Served`): the round owed where a decision is reverted and no round sent one, and a fault of
-the walker's own after the walk, which ends only that walk; and, slow, one walk through the
-driver's own commands on a small dataset that is not one of the pilot's
-(``clinical_readmission_predict``, 480 rows), whose second seal and revisit after it the engine and
-the driver refuse.
+the walker's own after the walk, which ends only that walk; a press of Fit whose wait ran out, on
+the arms' tests' modeled server (``test_arms.Server``), its fit waited out at the end of the path
+or stopped at the run's time budget, and kept in the transcript as what it came to, so Fit refused
+again after its way forward is a dead end there too; and, slow, one walk through the driver's own
+commands on a small dataset that is not one of the pilot's (``clinical_readmission_predict``, 480
+rows), whose second seal and revisit after it the engine and the driver refuse.
 
 Known truth: each command's payload as the driver prints it (``driver.main``'s JSON: ``refused``
 with its ``by``, ``status``, ``code``, ``message`` and ``exits``; ``recorded``; a press of Fit's
@@ -16,7 +18,8 @@ with its ``by``, ``status``, ``code``, ``message`` and ``exits``; ``recorded``; 
 (``decisions.DecisionLog``) and a fit record written from it, its digest the SHA-256 of the plan's
 canonical JSON computed here with hashlib; each draw from numpy's generator at the walker's seed,
 drawn here; the modeled server's log the engine's own, and its refusal of a revert of a decision
-already reverted the engine's (``decisions._check_revert``)."""
+already reverted the engine's (``decisions._check_revert``); the time waited from the arms' tests'
+hand clock, which only the waits move, derived here from the budget."""
 from __future__ import annotations
 
 import hashlib
@@ -969,6 +972,105 @@ def test_each_walk_whose_rounds_revert_a_decision_sends_one_already_reverted(ser
         cases["owed" if reverted and not sent else "sent" if sent else "none"] += 1
         assert w["class"] == "clean", seed
     assert all(cases.values()), cases
+
+
+# ── a fit that outlasts one press's wait ─────────────────────────────────────
+
+
+def walked(tmp_path, monkeypatch, server, budget, then=None):
+    """A walker's run of the driver's own (:class:`walk.Walked`) whose driver is modeled as the
+    arms' tests model it (``test_arms.Modeled``: its Fit the driver's own on ``server``, on the
+    server's hand clock; ``then``, a call after a command), the project read as ``server`` serves
+    it, started with ``budget`` seconds; the session and the model."""
+    from research.swarm.tests.test_arms import Modeled, wired
+
+    wired(tmp_path, monkeypatch, server)
+    model = Modeled(server.clock, then=then)
+    monkeypatch.setattr(arms.Driven, "command", model)
+    monkeypatch.setattr(arms.Driven, "read", lambda self, p: server.view() if p is None else None)
+    session = walk.Walked(tmp_path / "runs")
+    session.start(tmp_path / "t.csv", budget_fits=walk.BUDGET_FITS, budget_seconds=budget,
+                  model="mechanical-walk-1")
+    return session, model
+
+
+def ending(tmp_path, monkeypatch, server, budget):
+    """A walker at the end of the path (``Walker.settle``) on :func:`walked`'s session, every ask
+    finding Fit reached with nothing open, the fit not yet pressed."""
+    session, model = walked(tmp_path, monkeypatch, server, budget)
+    w = record(actions=[], skipped=[], end=[])
+    return walk.Walker(session, arms.Random(QUESTION, 1), walk.walker_rng(1), w, None), model
+
+
+def test_the_end_of_the_path_waits_out_a_fit_still_running_when_its_press_comes_back(
+        tmp_path, monkeypatch):
+    """W1 in the walker: the fit not fresh at the end of the path, Fit is pressed, and its press
+    comes back with the fit (of 1000 s) still running; the walk waits it out with reads alone and
+    goes on to the results and the ask, where it stopped refused before ("Fit was not made for the
+    end of the path"). The press's entry in the transcript is what it came to, fresh, with what it
+    printed when its wait ran out beside it."""
+    from research.swarm.tests.test_arms import Clock, Server
+
+    server = Server(Clock(), purpose=QUESTION.purpose, seconds=1000.0)
+    walker, model = ending(tmp_path, monkeypatch, server, walk.BUDGET_SECONDS)
+    q = walker.settle()
+    assert q["fit_reached"] is True
+    assert [a[0] for a in model.argv][-3:] == ["fit", "results", "ask"]
+    assert server.posts == [0.0] and server.clock.now >= 1000.0
+    fits = [e for e in walker.session.transcript if e["command"] == "fit"]
+    assert [(e["kind"], e["fit"]["status"]) for e in fits] == [("ok", "fresh")]
+    assert fits[0]["ran_out"] == {
+        "kind": "refused", "by": "driver", "code": "fit_not_reached",
+        "message": "The fit is running.",
+        "fit": {"status": "running", "key": "k1", "progress": round(arms.WAIT / 1000.0, 3)}}
+
+
+def test_a_fit_that_outlasts_the_runs_time_budget_stops_the_walk_at_its_own_limit(
+        tmp_path, monkeypatch):
+    """The other way: the fit never done, the run given 500 s, Fit pressed at its start and its
+    fit waited for to the budget; the walk stops there in the arm's words, a limit of the walk's
+    own (a stuck stop), not a refusal, and the press's entry stays as it printed it."""
+    from research.swarm.tests.test_arms import Clock, Server
+
+    budget = 500.0
+    server = Server(Clock(), purpose=QUESTION.purpose, end="never")
+    walker, model = ending(tmp_path, monkeypatch, server, budget)
+    with pytest.raises(arms.Stuck) as got:
+        walker.settle()
+    assert not isinstance(got.value, arms.Met)
+    assert model.waits() == [format(arms.WAIT, "g")] and server.posts == [0.0]
+    assert walk.stop_of(got.value) == {
+        "by": "walk", "kind": "stuck", "detail": None,
+        "words": f"The fit outlasted the run's time budget of {budget:g} s from its start: it was "
+                 f"still running {budget:g} s after Fit was pressed."}
+    fits = [e for e in walker.session.transcript if e["command"] == "fit"]
+    assert [(e["code"], "ran_out" in e) for e in fits] == [("fit_not_reached", False)]
+
+
+@pytest.mark.parametrize("then, dead_end", [("refused_with_a_way", True), ("fresh", False)],
+                         ids=["refused_again", "given"])
+def test_fit_waited_out_is_read_by_what_it_came_to_so_refused_again_after_its_way_is_a_dead_end(
+        tmp_path, monkeypatch, then, dead_end):
+    """Both ways: Fit refused by the engine in words with a way forward, the way taken (answers
+    that change the fit's key, to a fit of 1000 s), and Fit pressed again, whose press comes back
+    with that fit still running and is waited out. Refused again with the same code there, it is
+    a dead end, the request refused again the second press; given, it is none."""
+    from research.swarm.tests.test_arms import WORDS, Clock, Server
+
+    server = Server(Clock(), purpose=QUESTION.purpose, seconds=0.0, end="refused_with_a_way")
+    session, _ = walked(tmp_path, monkeypatch, server, walk.BUDGET_SECONDS,
+                        then={"answer": lambda: server.refit(1000.0, then)})
+    first = session.fit()
+    assert (first.by, first.code, first.message) == ("engine", "too_few_rows", WORDS)
+    assert session.answer([first.exits[0]["id"]], [], "walk: the fit's way forward.").ok
+    again = session.fit()
+    assert again.ok is not dead_end and server.posts == [0.0, 0.0]
+    fits = [e for e in session.transcript if e["command"] == "fit"]
+    found = walk.dead_ends_of(session.transcript)
+    assert [(d["code"], d["request"]["n"]) for d in found] == (
+        [("too_few_rows", fits[-1]["n"])] if dead_end else [])
+    assert len(fits) == 2 and fits[1]["ran_out"]["code"] == "fit_not_reached"
+    assert walk.wordless_of(session.transcript) == []
 
 
 # ── one walk through the driver, to its end ──────────────────────────────────

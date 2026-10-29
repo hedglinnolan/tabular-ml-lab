@@ -11,10 +11,11 @@ export end.
 
 **One walk** (:func:`walk_one`) is one seed on the dataset, in a run of the driver's own
 (``arms.Driven``: every command through ``driver.main``, each kept with what it said, its
-``transcript``, :class:`Walked`). It is the random arm's walk to the first Fit (``arms.Random`` at
-the seed: the card's question, every question, reading and finding answered by its draws, each
-open declaration line once, Fit as ``arms.fit_through`` presses it, the results), then 2 to 4
-rounds (:data:`ROUNDS`; the count and every draw of the walker's own from numpy's generator at
+``transcript``, :class:`Walked`; a press of Fit whose wait ran out, with what the arm's wait for its
+fit came to, ``arms.Driven.waited``). It is the random arm's walk to the first Fit (``arms.Random``
+at the seed: the card's question, every question, reading and finding answered by its draws, each
+open declaration line once, Fit as ``arms.fit_through`` presses it, the results), then 2 to 4 rounds
+(:data:`ROUNDS`; the count and every draw of the walker's own from numpy's generator at
 ``(STREAM, seed)``, :func:`walker_rng`, so the random arm's draws stay its own). Each round draws
 one action uniformly among those the driver offers at that point (:func:`offered_actions`), then
 one of its candidates uniformly:
@@ -230,9 +231,10 @@ def entry_of(argv: Sequence[str], code: int, payload: Mapping[str, Any], *, n: i
 
 class Walked(arms.Driven):
     """A run of the driver's own (``arms.Driven``) that keeps every command it ran, with what it
-    said (:func:`entry_of`), in ``transcript``; and after each press of Fit and each read of the
-    results, the project's stages in error (:func:`stages_of`, one view read), each kept once in
-    ``met`` with where the walk was (``at``: ``forward``, a round's number, ``end``) and the
+    said (:func:`entry_of`), in ``transcript`` (a press of Fit whose wait ran out, with what the
+    arm's wait for its fit came to: :meth:`waited`); and after each press of Fit and each read of
+    the results, the project's stages in error (:func:`stages_of`, one view read), each kept once
+    in ``met`` with where the walk was (``at``: ``forward``, a round's number, ``end``) and the
     command it followed, since a later refit computes the stage again at another key and the
     project's view as the walk ends no longer holds it; with the driver's ``revisit``."""
 
@@ -259,6 +261,21 @@ class Walked(arms.Driven):
         said = super().fit()
         self.held()
         return said
+
+    def waited(self, pressed: Mapping[str, Any], began: float) -> tuple[int, dict[str, Any]]:
+        """The rest of a press of Fit whose wait ran out (``arms.Driven.waited``), kept as what
+        that press said: its entry in the transcript becomes what the press would have said had
+        its wait been that long (:func:`entry_of`), with what it printed when its wait ran out
+        beside it (``ran_out``: its kind, by whom, its code and words, and the fit's status), so
+        the oracle reads each press of Fit by what it came to. Where the run's time budget is
+        spent first, the entry stays as the press printed it."""
+        code, payload = super().waited(pressed, began)
+        i = max(k for k, e in enumerate(self.transcript) if e.get("command") == "fit")
+        first = self.transcript[i]
+        self.transcript[i] = entry_of(["fit", "--run", str(self.run), *first["args"]], code,
+                                      payload, n=first["n"]) | {
+            "ran_out": {k: first.get(k) for k in ("kind", "by", "code", "message", "fit")}}
+        return code, payload
 
     def results(self) -> arms.Said:
         said = super().results()
