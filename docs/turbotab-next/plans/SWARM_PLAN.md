@@ -334,7 +334,8 @@ expensive datasets (Nolan, 2026-10-19).
    - the measured trio: Haiku and Sonnet, explorer persona, on Sullivan 2021, and Opus on the
      Estimate fixture (its only dataset). The trio's three runs are among the 39 (until
      2026-10-28 the trio ran on Bang, then deferred, §5);
-   - Nolan reads his usage meter before and after;
+   - the spend is counted from the runs' own transcripts (each record's spend); the usage meter is no
+     measure, since the owner runs other agents beside the swarm (Nolan, 2026-10-29);
    - NHANES glucose is now the slowest pilot dataset (its median fit about 13 minutes in the
      last crash sweep, the orchestrator's reading), so its first run's spend is read before
      the other NHANES runs launch.
@@ -346,8 +347,12 @@ expensive datasets (Nolan, 2026-10-19).
 6. **Nolan's walkthrough** of a Haiku analyst's record of his glucose project (2026-10-19).
 
 **Compute and timing:** daytime, unthrottled (Nolan, 2026-10-19), since under the throttle long
-commands make agents miss their prompt cache and cost about four times as much. At most three
-agent runs at once; every command short. The sweeps cost compute and fan noise, not tokens.
+commands make agents miss their prompt cache and cost about four times as much. One agent run at
+a time, with no other background task of the orchestrator's live beside it (the orchestrator's
+ruling of 2026-10-28, after the trio's Haiku run was shown the concurrent Sonnet run's progress
+after a context compaction); each transcript is scanned for such status entries after its run, and
+the transcript readers run after a wave, never during a run. Every command short. The sweeps cost
+compute and fan noise, not tokens.
 
 **Budget:** up to 40% of a fresh week. If the trio projects past it, the waves are cut in this
 order:
