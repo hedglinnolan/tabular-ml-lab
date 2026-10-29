@@ -76,13 +76,13 @@ A `want` also names its kind with `--kind`: `option`, `check`, `reading` or `eli
   `decisions` is the log so far, each with its `id`. Where all of it would be too long to
   print, `ask` shortens it in steps and stops at the first that fits: first it lists each
   decision without its note; if that is still too long, it also lists each other open line by
-  its id, key, source, name and status alone; if that is still too long, it lists only the
+  its ref, id, key, source, name and status alone; if that is still too long, it lists only the
   newest decisions there is room for. `left_out` says which of these it did, and the command
   that shows what it left out: `ask --run RUN --decisions` lists every decision with its note,
-  and `ask --run RUN --line ID` shows one other open line in full, ID its id as `also_open`
-  lists it. The question's own words, options, readings and ways forward are never left out;
-  where even they are too long to print, the output is printed in parts (below). When
-  `fit_reached` is true, run `fit`. When `question` is null and Fit was pressed, every
+  and `ask --run RUN --line REF` shows one other open line in full, REF its `ref` as
+  `also_open` lists it. The question's own words, options, readings and ways forward are never
+  left out; where even they are too long to print, the output is printed in parts (below).
+  When `fit_reached` is true, run `fit`. When `question` is null and Fit was pressed, every
   question is answered: read `results`, then `export`.
 
       scripts/py -m research.swarm.driver ask --run RUN
@@ -156,7 +156,7 @@ command records nothing, and `answer` cannot take it. You can also change an ear
 
 An output too long to print whole is printed in parts. Its `part` says which part of how many
 this is, and `next` gives the command that prints the next one: the same command with only
-`--run`, `ask`'s `--decisions` or `--line ID` where it had one, and `--part N`, which runs
+`--run`, `ask`'s `--decisions` or `--line REF` where it had one, and `--part N`, which runs
 nothing again and records nothing. Each output keeps its own parts, so the question's, the
 log's and each line's `next` goes on with that output, whatever printed after it. Where a part
 ends inside a list or a text, the next part goes on with it, and its `continues` says where.

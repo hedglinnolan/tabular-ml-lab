@@ -219,7 +219,7 @@ def test_the_ask_that_was_cut_prints_under_the_cap_and_names_how_to_see_the_rest
     for oid, d in shown.items():
         assert d == {k: v for k, v in full[oid].items() if k != "note"}
     if "also_open" in left:
-        assert f"{INVOKE} ask --run {RID} --line ID shows one in full" in left["also_open"]
+        assert f"{INVOKE} ask --run {RID} --line REF shows one in full" in left["also_open"]
     assert [ln["id"] for ln in got["also_open"]] == [ln["id"] for ln in public["also_open"]]
 
 
@@ -657,7 +657,7 @@ def test_every_command_the_new_words_name_is_one_the_hook_passes(tmp_path, monke
              form]
     named = [w[w.index(INVOKE):].split(" lists ")[0].split(" shows ")[0].rstrip(".")
              for w in words]
-    named[1] = named[1].replace("--line ID", "--line decision:set_usual_intake")
+    named[1] = named[1].replace("--line REF", f"--line {driver.line_refs(public['also_open'])[3]}")
     named[3] = named[3].replace("MARKER", "rows").replace("WHY", "Both")
     for command in named:
         assert analyst_hook.bash_refusal(command, analyst_hook.REPO) is None, command
@@ -675,3 +675,256 @@ def test_answer_and_preview_help_say_how_several_options_are_named(capsys):
         assert driver.main([command, "--help"], out=lambda s: None) == 0
         text = " ".join(capsys.readouterr().out.split())
         assert "each id its own word, separated by spaces, never joined by commas" in text, command
+
+
+# ── which commands make another output's kept parts stale ───────────────────
+#
+# The verifier's V1 (repair round 2): main marks every other output's kept parts no longer shown
+# once an ``answer``, ``revisit``, ``fit`` or ``seal`` ran, unless the driver or the server refused
+# it; a fit the engine refused (``"by": "engine"``) ran, and the run may have changed. Each branch
+# both ways.
+
+LONG = text_of(30_000, 6).strip()  # a reason past the cap by itself
+SPENT = {"fits": 0, "running": 0, "seconds": 0.0, "budget_fits": 3, "budget_seconds": 99.0,
+         "keys": [], "running_key": None}
+LOCK = {"plan": [text_of(300, i) for i in range(100)]}  # Fit's press answered past the cap
+SERVER_REFUSAL = driver.Response(409, json.dumps({"error": {
+    "code": "conflict", "message": "The server refused it.", "exits": []}}).encode(), {})
+
+
+def changing(monkeypatch, raw: list[dict[str, Any]]) -> dict[str, Any]:
+    """The four commands that may change the run, the server stood in for: a post of a decision
+    records it with its note, as the server keeps one; Fit's press is answered with :data:`LOCK`
+    and its fit is fresh; the view holds ``raw`` and the fitted family ``logistic``. What the
+    dict returned holds under ``post``, ``press`` and ``fit`` each post, press and fit answers
+    instead (a refusal), and under ``spent`` the budget spent."""
+    stand: dict[str, Any] = {"post": None, "press": None, "fit": {"status": "fresh"},
+                             "spent": dict(SPENT)}
+
+    def post(run, client, decision, note):
+        if stand["post"] is not None:
+            return stand["post"]
+        body = {"decisions": [{"id": "r9", "seq": 9, "note": note, "decision": decision}],
+                "interview": []}
+        return driver.Response(200, json.dumps(body).encode(), {})
+
+    monkeypatch.setattr(driver, "post_decision", post)
+    monkeypatch.setattr(driver, "guard_budget", lambda *a, **k: None)
+    monkeypatch.setattr(driver, "keep_markers", lambda run, client, command: None)
+    monkeypatch.setattr(driver, "budget_now", lambda run, client, view=None: dict(stand["spent"]))
+    monkeypatch.setattr(driver, "wait_fit", lambda run, client, seconds: dict(stand["fit"]))
+    monkeypatch.setattr(driver.Client, "post", lambda self, path, data=None, **q: (
+        stand["press"] or driver.Response(200, json.dumps(LOCK).encode(), {})))
+    monkeypatch.setattr(driver, "view_of", lambda run, client: {
+        "decisions": copy.deepcopy(raw), "state": {"models": ["logistic"]}, "stages": {}})
+    return stand
+
+
+def recorded_by(command: str, raw: list[dict[str, Any]]) -> list[str]:
+    """``command``'s words past ``--run``, each recording what it records with :data:`LONG` as
+    its reason (``fit`` takes none: its press is answered past the cap)."""
+    return {"answer": ["impute", "--reason", LONG, "--marker", "rows"],
+            "revisit": [raw[0]["id"], "--reason", LONG], "fit": [],
+            "seal": ["logistic", "--reason", LONG]}[command]
+
+
+@pytest.mark.parametrize("command", driver.RECORDING)
+def test_a_command_that_may_change_the_run_keeps_its_own_parts_and_stales_the_others(
+        tmp_path, monkeypatch, command):
+    """Both ways, for each of the four: its own output, past the cap, prints in parts, each read by
+    its own next, joined to what was constructed (the reason posted, the lock pressed), so it does
+    not stale its own; the question's parts, kept before it ran, are refused, naming it."""
+    fake_run(tmp_path, monkeypatch)
+    public, whole, raw = asked(28, n_options=200, option_size=300, why=30_000)
+    standing(monkeypatch, whole, raw)
+    changing(monkeypatch, raw)
+    assert "part" in json.loads(said(["ask", "--run", RID])[1])
+    assert said(["ask", "--run", RID, "--part", "2"])[0] == 0
+    code, first = said([command, "--run", RID, *recorded_by(command, raw)])
+    assert code == 0 and json.loads(weighed(first))["part"]["of"] > 1, first[:300]
+    got = joined(parts_of(first, command))
+    if command == "fit":
+        assert got["pressed"] == LOCK
+    else:
+        assert got["recorded"]["note"] == LONG
+    code, text = said(["ask", "--run", RID, "--part", "2"])
+    refused = json.loads(text).get("refused") or {}
+    assert code == 1 and refused.get("code") == "no_such_part", text[:300]
+    assert f"{command} ran after it" in refused["message"]
+
+
+def test_a_fit_the_engine_refused_stales_the_results_parts_and_one_refused_before_it_ran_does_not(
+        tmp_path, monkeypatch):
+    """The results past the cap print in parts. A fit the server refused, and one the driver
+    refused (the fit budget spent), leave their part 2 shown; a fit the engine refused in words
+    (``"by": "engine"``) was made, so their part 2 is refused, in words naming fit and the command
+    that shows the results as they stand."""
+    fake_run(tmp_path, monkeypatch)
+    stand = changing(monkeypatch, [])
+    served = results_served(120)
+    monkeypatch.setattr(driver, "view_of", lambda run, client: {"state": {}, "stages": {}})
+    monkeypatch.setattr(driver.Client, "get", lambda self, path, **q: driver.Response(
+        200, json.dumps(served).encode(), {}))
+    code, first = said(["results", "--run", RID, "--wait", "0"])
+    assert code == 0 and json.loads(weighed(first))["part"]["of"] > 1
+    shown = said(["results", "--run", RID, "--part", "2"])
+    assert shown[0] == 0 and json.loads(shown[1])["part"]["this"] == 2
+
+    stand["press"] = SERVER_REFUSAL
+    code, payload = run_main(["fit", "--run", RID, "--wait", "0"])
+    assert code == 1 and payload["refused"]["by"] == "server"
+    assert said(["results", "--run", RID, "--part", "2"]) == shown
+    stand["press"], stand["spent"] = None, dict(SPENT, fits=3)
+    code, payload = run_main(["fit", "--run", RID, "--wait", "0"])
+    assert code == 1 and (payload["refused"]["by"], payload["refused"]["code"]) == (
+        "driver", "fit_budget")
+    assert said(["results", "--run", RID, "--part", "2"]) == shown
+
+    stand["spent"] = dict(SPENT)
+    stand["press"] = driver.Response(200, b'{"pressed": true}', {})  # its output prints whole
+    stand["fit"] = {"status": "error", "key": "k2", "refusal": {
+        "stage": "fit", "code": "nothing_kept", "message": "The screen kept no predictor.",
+        "exits": []}}
+    code, payload = run_main(["fit", "--run", RID, "--wait", "0"])
+    assert code == 1 and payload["refused"]["by"] == "engine"
+    code, text = said(["results", "--run", RID, "--part", "2"])
+    refused = json.loads(text).get("refused") or {}
+    assert code == 1 and refused.get("code") == "no_such_part", text[:300]
+    assert "fit ran after it" in refused["message"]
+    assert f"{INVOKE} results --run {RID} shows the run as it stands" in refused["message"]
+
+
+def test_an_answer_the_server_refused_leaves_the_questions_parts_shown_and_one_recorded_does_not(
+        tmp_path, monkeypatch):
+    fake_run(tmp_path, monkeypatch)
+    public, whole, raw = asked(28, n_options=200, option_size=300, why=30_000)
+    standing(monkeypatch, whole, raw)
+    stand = changing(monkeypatch, raw)
+    assert "part" in json.loads(said(["ask", "--run", RID])[1])
+    shown = said(["ask", "--run", RID, "--part", "2"])
+    assert shown[0] == 0 and json.loads(shown[1])["part"]["this"] == 2
+    stand["post"] = SERVER_REFUSAL
+    code, payload = run_main(["answer", "--run", RID, "impute", "--reason", "Fill.",
+                              "--marker", "rows"])
+    assert code == 1 and payload["refused"]["by"] == "server"
+    assert said(["ask", "--run", RID, "--part", "2"]) == shown
+    stand["post"] = None
+    code, _ = said(["answer", "--run", RID, "impute", "--reason", "Fill.", "--marker", "rows"])
+    assert code == 0
+    code, text = said(["ask", "--run", RID, "--part", "2"])
+    assert code == 1 and "answer ran after it" in json.loads(text)["refused"]["message"]
+
+
+# ── a line's ref: the handle an analyst's command always holds ──────────────
+#
+# The verifier's V2 (repair round 2): a finding line's id holds its finding's id, which names a
+# column (``finding:voice::identifier__<column>``), and a column's name may hold $, &, |, ;, < or
+# >, which the analyst's hook refuses in any command, quoted or not; and every role line has the
+# one id ``decision:confirm_role`` (quest.py: ROLE_LINE's), each with its own key. So a shortened
+# ask lists each other open line by a ref too, hex digits alone, and ``--line`` reads a ref.
+
+
+def finding_line(column: str, size: int, n: int) -> dict[str, Any]:
+    """A finding line as ``describe_line`` gives one for a column named ``column``."""
+    finding = f"voice::identifier__{column}"
+    return {"id": f"finding:{finding}", "key": finding, "source": "finding", "label": "Decide",
+            "name": text_of(150, n), "status": "open", "stage": "whos_in",
+            "options": [{"id": f"x-{n:08x}", "label": text_of(size, n),
+                         "decision": {"kind": "dismiss_finding", "finding_id": finding}}]}
+
+
+def role_line(column: str) -> dict[str, Any]:
+    """A role line: every one has the id ``decision:confirm_role``, each its own key."""
+    return {"id": "decision:confirm_role", "key": f"role::{column}", "source": "reading",
+            "label": "Decide", "name": f"What {column} is", "status": "open", "stage": "data",
+            "items": [{"kind": "role", "column": column, "value": "predictor",
+                       "options": [{"id": f"x-role-{column}", "label": text_of(2500, 3)}]}]}
+
+
+def shortened(tmp_path, monkeypatch, lines: list[dict[str, Any]]) -> tuple[dict[str, Any], str]:
+    """A run whose ask lists ``lines`` briefly: what it printed, and the command its
+    ``left_out`` names for one line, REF in its ref's place."""
+    fake_run(tmp_path, monkeypatch)
+    public, whole, raw = asked(28, lines=lines)
+    standing(monkeypatch, whole, raw)
+    got = json.loads(weighed(said(["ask", "--run", RID])[1]))
+    assert "part" not in got and "also_open" in got["left_out"]  # by construction
+    words = got["left_out"]["also_open"]
+    return got, words[words.index(INVOKE):].split(" shows ")[0]
+
+
+def test_a_line_whose_id_no_command_holds_is_reached_by_its_ref(tmp_path, monkeypatch):
+    """Finding lines for columns named ``Income ($)``, ``R&D site`` and ``Age<65``, the last past
+    the cap by itself: the hook refuses each by its id; the ask lists each by a ref of hex digits,
+    one ref to one line, and the command ``left_out`` names, with that ref, passes the hook and
+    shows the line whole, as constructed; the line past the cap prints in parts, each ``next``
+    passes the hook, and joined they are the line."""
+    import re
+    import shlex
+
+    from research.swarm import analyst_hook
+
+    big = finding_line("Age<65", 300, 2)
+    big["options"] = [dict(big["options"][0], label=text_of(300, i)) for i in range(120)]
+    lines = [finding_line("Income ($)", 3000, 0), finding_line("R&D site", 3000, 1), big]
+    for line in lines:
+        by_id = f"{INVOKE} ask --run {RID} --line {shlex.quote(line['id'])}"
+        assert analyst_hook.bash_refusal(by_id, analyst_hook.REPO) is not None, by_id
+    got, form = shortened(tmp_path, monkeypatch, lines)
+    assert form == f"{INVOKE} ask --run {RID} --line REF"
+    assert [b["id"] for b in got["also_open"]] == [ln["id"] for ln in lines]
+    refs = [b["ref"] for b in got["also_open"]]
+    assert all(re.fullmatch("[0-9a-f]{8,64}", r) for r in refs) and len(set(refs)) == 3
+    for ref, line in zip(refs, lines):
+        command = form.replace("REF", ref)
+        assert analyst_hook.bash_refusal(command, analyst_hook.REPO) is None, command
+        code, text = said(shlex.split(command)[3:])
+        assert code == 0, text[:300]
+        if line is not big:
+            assert json.loads(weighed(text)) == {"run": RID, "also_open": [line]}
+            continue
+        texts = parts_of(text, "ask", "--line", ref)
+        assert len(texts) > 1
+        for part in texts[:-1]:
+            given = json.loads(part)["part"]["next"]
+            assert analyst_hook.bash_refusal(given, analyst_hook.REPO) is None, given
+        assert joined(texts) == {"run": RID, "also_open": [line]}
+
+
+def test_lines_that_share_an_id_are_each_reached_by_ref_and_the_shared_id_shows_neither(
+        tmp_path, monkeypatch):
+    """Two role lines share the id ``decision:confirm_role``: each ref shows its own line, and
+    the shared id, which showed the first alone, is refused, naming both refs; an id one line
+    holds alone still shows that line; a word that is neither id nor ref is refused, naming each
+    line by its ref and its id."""
+    lines = [role_line("sex"), role_line("smoker"), finding_line("waist", 3000, 4)]
+    got, form = shortened(tmp_path, monkeypatch, lines)
+    refs = [b["ref"] for b in got["also_open"]]
+    assert len(set(refs)) == 3
+    for ref, line in zip(refs, lines):
+        code, text = said(["ask", "--run", RID, "--line", ref])
+        assert code == 0 and json.loads(text) == {"run": RID, "also_open": [line]}
+    code, text = said(["ask", "--run", RID, "--line", "decision:confirm_role"])
+    refused = json.loads(text).get("refused") or {}
+    assert code == 1 and refused.get("code") == "several_lines", text[:300]
+    assert refs[0] in refused["message"] and refs[1] in refused["message"]
+    assert refs[2] not in refused["message"]
+    assert f"{INVOKE} ask --run {RID} --line REF shows one" in refused["message"]
+    code, text = said(["ask", "--run", RID, "--line", lines[2]["id"]])
+    assert code == 0 and json.loads(text) == {"run": RID, "also_open": [lines[2]]}
+    code, text = said(["ask", "--run", RID, "--line", "0123abcd"])
+    refused = json.loads(text).get("refused") or {}
+    assert code == 1 and refused.get("code") == "no_such_line", text[:300]
+    assert all(f"{ref} ({ln['id']})" in refused["message"] for ref, ln in zip(refs, lines))
+
+
+def test_a_ref_grows_only_where_two_lines_hashes_begin_alike(monkeypatch):
+    """Both ways, the hashes constructed: lines whose hashes part within the first eight hex
+    digits have refs of eight; two that share the first ten have refs of eleven, each its own."""
+    hashes = {"a": "0123456a" + "0" * 56, "b": "0123456b" + "0" * 56, "c": "f" * 64}
+    monkeypatch.setattr(driver, "line_hash", lambda line: hashes[line["id"]])
+    assert driver.line_refs([{"id": k} for k in "abc"]) == ["0123456a", "0123456b", "ffffffff"]
+    hashes.update(a="0123456789" + "a" * 54, b="0123456789" + "b" * 54)
+    assert driver.line_refs([{"id": k} for k in "abc"]) == [
+        "0123456789a", "0123456789b", "fffffffffff"]
+    assert driver.line_refs([]) == []

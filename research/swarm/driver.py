@@ -4,7 +4,7 @@ own API, one small command at a time, each printing JSON.
     python -m research.swarm.driver start --data <file> [--provenance url,date,license]
                                          --budget-fits N --budget-seconds S [--scripted]
                                          [--model M] [--persona P] [--effort E] [--prompt-version V]
-    python -m research.swarm.driver ask      --run <id> [--decisions | --line <line id>]
+    python -m research.swarm.driver ask      --run <id> [--decisions | --line <ref or line id>]
     python -m research.swarm.driver preview  --run <id> <option> [<option> ...] [--set ...] --reason <why>
     python -m research.swarm.driver answer   --run <id> <option> [<option> ...] [--set ...] --reason <why>
                                              --marker <marker> [--rejected <option>]
@@ -16,7 +16,7 @@ own API, one small command at a time, each printing JSON.
     python -m research.swarm.driver want     --run <id> <what> --kind <kind> --reason <why> --marker <marker>
     python -m research.swarm.driver account  --run <id> <the account>
     python -m research.swarm.driver stop     --run <id>
-    python -m research.swarm.driver <analyst's command> --run <id> [--decisions | --line <line id>] --part N
+    python -m research.swarm.driver <analyst's command> --run <id> [--decisions | --line <ref>] --part N
 
 **One run** is one directory, ``research/runs/<run id>/`` (``$TURBOTAB_SWARM_RUNS`` in its place
 for a test), named by the id ``start`` gives and prints (:func:`new_run_id`): a neutral label
@@ -75,15 +75,21 @@ preview of it and nothing more, since it runs only the driver's commands. So eve
 command prints at most :data:`OUTPUT_CAP` (:func:`to_cap`), weighed in UTF-8 bytes, which no count
 of its characters exceeds, and what it leaves out it names with the command that shows it. An
 ``ask`` that would pass the cap lists each decision without its note, then each other open line
-by its id, key, source, name and status alone, then only the newest decisions there is room for,
-and ``left_out`` names each command that shows the rest: ``ask --decisions``, the whole log, and
-``ask --line <line id>``, one other open line whole. The question's own words, options, fields,
-readings, ways forward and refusals are never left out. Where an output still passes the cap
+by its ref, id, key, source, name and status alone, then only the newest decisions there is room
+for, and ``left_out`` names each command that shows the rest: ``ask --decisions``, the whole log,
+and ``ask --line <ref>``, one other open line whole. A line's ref is hex digits cut from the hash
+of its id and key (:func:`line_refs`), which a command always holds where a line's id may not (it
+may hold a column's name, and so ``$``, ``&`` or ``<``, which the analyst's hook refuses), and
+which tells apart the lines that share one id (every role line's); ``--line`` takes a line's id
+too, and refuses an id or ref several lines have, naming each one's ref. The question's own
+words, options, fields, readings, ways forward and refusals are never left out. Where an output
+still passes the cap
 (``ask``'s question alone, the log, one other line, the results, any other), it is printed in
 parts: the first by the command itself, each with a ``part`` that says which of how many, where it
 goes on from the part before (``continues``) and the command that prints the next, the output's
 own with ``--part N`` (``<command> --run <id> --part N``, with ``ask``'s ``--decisions`` or
-``--line <line id>`` before ``--part`` for the log's or a line's: :func:`output_command`), which
+``--line`` and the word it was given before ``--part`` for the log's or a line's:
+:func:`output_command`), which
 runs nothing else and prints part N as kept in ``parts/``. Each output's parts are kept apart
 (:meth:`Run.keep_parts`), so a part's ``next`` goes on with its own output whichever printed
 after it; an output that printed whole drops its own kept parts and no other's, and an
@@ -451,7 +457,8 @@ class Run:
     def _parts_file(self, of: str) -> Path:
         """Where the output ``of`` (:func:`output_of`) is kept in parts: ``parts/<command>.json``
         for a command's own output, and for one with flags (``ask --decisions``, ``ask --line
-        <id>``) the command and a hash of its flags, since a line's id may hold any character."""
+        <ref>``) the command and a hash of its flags, since a line's id, which ``--line`` takes
+        too, may hold any character."""
         command, _, flags = of.partition(" ")
         name = command if not flags else (
             f"{command}.{hashlib.sha256(flags.encode('utf-8')).hexdigest()[:16]}")
@@ -1115,7 +1122,9 @@ def cmd_stop(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]
 
 def cmd_ask(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
     """The open question; with ``--decisions`` the decision log alone, every decision with its
-    note; with ``--line <id>`` one of the other open lines ``also_open`` lists, whole."""
+    note; with ``--line <ref or id>`` one of the other open lines ``also_open`` lists, whole: the
+    one with that id, else the one with that ref (:func:`line_refs`). Where several have it (role
+    lines share one id), none is shown, and the refusal names each one's ref."""
     run = Run.load(args.run)
     client = run.client()
     if getattr(args, "decisions", False):
@@ -1125,20 +1134,28 @@ def cmd_ask(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
     if wanted is None:
         return 0, private_free(q), run
     lines = q.get("also_open") or []
-    line = next((ln for ln in lines if ln.get("id") == wanted), None)
-    if line is None:
-        listed = ", ".join(str(ln.get("id")) for ln in lines) or "none"
-        own = (q.get("line") or {}).get("id")
-        raise DriverError("no_such_line", (
-            f"{wanted} is the open question's own line, which ask shows itself; the other open "
-            f"lines are {listed}." if wanted == own else
-            f"No other open line {wanted} is listed now; the other open lines ask lists under "
-            f"also_open are {listed}."))
-    return 0, {"run": run.id, "also_open": [private_free(line)]}, run
+    named = lines_named(lines, wanted)
+    if len(named) == 1:
+        return 0, {"run": run.id, "also_open": [private_free(named[0])]}, run
+    refs = line_refs(lines)
+    if named:
+        which = "; ".join(f"{ref} (id {ln.get('id')}, key {ln.get('key')})"
+                          for ln, ref in zip(lines, refs) if any(ln is n for n in named))
+        raise DriverError("several_lines", (
+            f"{len(named)} other open lines have {wanted} as their id or ref, so none is shown: "
+            f"{which}. {INVOKE} ask --run {run.id} --line REF shows one in full, REF its ref as "
+            f"listed here."))
+    listed = ", ".join(f"{ref} ({ln.get('id')})" for ln, ref in zip(lines, refs)) or "none"
+    own = (q.get("line") or {}).get("id")
+    raise DriverError("no_such_line", (
+        f"{wanted} is the open question's own line, which ask shows itself; the other open "
+        f"lines are {listed}, each by its ref and, in brackets, its id." if wanted == own else
+        f"No other open line has {wanted} as its id or its ref now; the other open lines ask "
+        f"lists under also_open are {listed}, each by its ref and, in brackets, its id."))
 
 
 def cmd_part(args: argparse.Namespace) -> tuple[int, dict[str, Any], Run | None]:
-    """``<command> [--decisions | --line <id>] --part N``: part N of that output
+    """``<command> [--decisions | --line <ref>] --part N``: part N of that output
     (:func:`output_of`), as kept when it last printed too long to print whole (:func:`to_cap`),
     each output's parts apart from every other's; nothing else runs."""
     run = Run.load(args.run)
@@ -1899,6 +1916,7 @@ def trim(obj: Any, limit: int = TRIM) -> Any:
 HEADER_ROOM = 2_000  # what a part's own header (its ``part``) may take of the cap
 MIN_ROOM = 400  # below this much room, a value is not cut further
 LINE_BRIEF = ("id", "key", "source", "name", "status")  # an other open line, listed briefly
+REF_DIGITS = 8  # the fewest hex digits of a line's ref (:func:`line_refs`)
 PIECE = "piece"  # a path's mark of one piece of a text cut across parts
 
 
@@ -1943,24 +1961,51 @@ def log_words(n: int, k: int, run_id: str) -> str:
 
 
 def lines_words(m: int, run_id: str) -> str:
-    """What a shortened ``ask`` says of the other open lines it lists by :data:`LINE_BRIEF`."""
+    """What a shortened ``ask`` says of the other open lines it lists by their ref
+    (:func:`line_refs`) and :data:`LINE_BRIEF`."""
     lead = "The other open line is" if m == 1 else f"Each of the {m} other open lines is"
-    return (f"{lead} listed by its {', '.join(LINE_BRIEF[:-1])} and {LINE_BRIEF[-1]} alone; "
-            f"{INVOKE} ask --run {run_id} --line ID shows one in full, with its options, "
-            f"fields and readings, ID its id as listed here.")
+    return (f"{lead} listed by its ref, {', '.join(LINE_BRIEF[:-1])} and {LINE_BRIEF[-1]} "
+            f"alone; {INVOKE} ask --run {run_id} --line REF shows one in full, with its "
+            f"options, fields and readings, REF its ref as listed here.")
+
+
+def line_hash(line: dict[str, Any]) -> str:
+    """What a line's ref is cut from: the hash of its id and key, which together tell one listed
+    line from another (every role line has the id ``decision:confirm_role``, each its own key)."""
+    return hashlib.sha256(_dumped([line.get("id"), line.get("key")]).encode("utf-8")).hexdigest()
+
+
+def line_refs(lines: list[dict[str, Any]]) -> list[str]:
+    """Each of ``lines``' refs, the handle ``ask --line`` reads beside a line's id: hex digits
+    alone, which an analyst's command always holds (a line's id may hold a column's name, and so
+    a ``$``, ``&`` or ``<``, which an analyst's command never holds), the first
+    :data:`REF_DIGITS` of its hash, or more where two lines' hashes begin alike, so that lines
+    whose hashes differ have refs that differ."""
+    hashes = [line_hash(ln) for ln in lines]
+    distinct = sorted(set(hashes))
+    n = max([REF_DIGITS] + [len(os.path.commonprefix([a, b])) + 1
+                            for a, b in zip(distinct, distinct[1:])])
+    return [h[:n] for h in hashes]
+
+
+def lines_named(lines: list[dict[str, Any]], wanted: str) -> list[dict[str, Any]]:
+    """The lines ``wanted`` names: those whose id it is, else those whose ref it is."""
+    return [ln for ln in lines if ln.get("id") == wanted] or [
+        ln for ln, ref in zip(lines, line_refs(lines)) if ref == wanted]
 
 
 def short_ask(payload: dict[str, Any], run_id: str) -> tuple[dict[str, Any], bool]:
     """``ask``'s output shortened toward the cap, and whether it fits: first each decision without
-    its note; then, too, each other open line by :data:`LINE_BRIEF` alone; then only the newest
-    decisions there is room for. The question's own words, options, fields, readings, ways
-    forward and refusals are kept whole, and ``left_out`` says what is left out and the command
-    that shows it. Where none fits, the last, with no decision listed, is the one printed in
-    parts."""
+    its note; then, too, each other open line by its ref (:func:`line_refs`) and
+    :data:`LINE_BRIEF` alone; then only the newest decisions there is room for. The question's
+    own words, options, fields, readings, ways forward and refusals are kept whole, and
+    ``left_out`` says what is left out and the command that shows it. Where none fits, the last,
+    with no decision listed, is the one printed in parts."""
     log = list(payload.get("decisions") or [])
     lines = list(payload.get("also_open") or [])
     bare = [{k: v for k, v in d.items() if k != "note"} for d in log]
-    brief = [{k: ln[k] for k in LINE_BRIEF if k in ln} for ln in lines]
+    brief = [{"ref": ref} | {k: ln[k] for k in LINE_BRIEF if k in ln}
+             for ln, ref in zip(lines, line_refs(lines))]
     noted = any("note" in d for d in log)
 
     def built(k: int, short_lines: bool) -> dict[str, Any]:
@@ -2101,7 +2146,7 @@ def _common(a: tuple, b: tuple) -> tuple:
 
 def output_flags(args: argparse.Namespace) -> list[str]:
     """The flags that say which of a command's outputs ``args`` print: ``ask``'s ``--decisions``
-    or ``--line <id>``, and none for any other."""
+    or ``--line`` with the word it was given (a line's ref or id), and none for any other."""
     if args.command == "ask" and getattr(args, "decisions", False):
         return ["--decisions"]
     if args.command == "ask" and getattr(args, "line", None) is not None:
@@ -2111,7 +2156,7 @@ def output_flags(args: argparse.Namespace) -> list[str]:
 
 def output_of(args: argparse.Namespace) -> str:
     """Which output ``args`` print, as its parts' words name it and its parts are kept apart by:
-    ``ask``, ``ask --decisions``, ``ask --line <id>``, ``results``, and so on."""
+    ``ask``, ``ask --decisions``, ``ask --line <ref>``, ``results``, and so on."""
     return " ".join([args.command, *output_flags(args)])
 
 
@@ -2288,7 +2333,7 @@ OPTION_HELP = ("the option's id, as ask lists it; where ask shows multi, several
                "own word, separated by spaces, never joined by commas")
 PART_HELP = ("print part N of this output, as last printed too long to print whole, and run "
              "nothing else; takes --run beside it and, for ask's log or one of its lines, "
-             "--decisions or --line ID, as the part's next names them")
+             "--decisions or --line REF, as the part's next names them")
 
 
 def shown_flags(p: argparse.ArgumentParser) -> None:
@@ -2296,20 +2341,21 @@ def shown_flags(p: argparse.ArgumentParser) -> None:
     shown = p.add_mutually_exclusive_group()
     shown.add_argument("--decisions", action="store_true", default=None,  # unlogged unless given
                        help="the decision log alone, every decision with its note")
-    shown.add_argument("--line", metavar="ID",
-                       help="one other open line in full, by its id under also_open")
+    shown.add_argument("--line", metavar="REF",
+                       help="one other open line in full, by its ref as a shortened ask lists "
+                            "it under also_open, or by its id")
 
 
 def reads_a_part(argv: list[str]) -> bool:
     """Whether ``argv`` asks for an output's part (``<command> --run <id> [--decisions | --line
-    <id>] --part N``)."""
+    <ref>] --part N``)."""
     return bool(argv) and argv[0] in ANALYST_COMMANDS and any(
         a == "--part" or a.startswith("--part=") for a in argv[1:])
 
 
 def part_parser() -> argparse.ArgumentParser:
     """The command line of a read of an output's part: an analyst's command, its run, which of
-    its outputs (``ask``'s ``--decisions`` or ``--line <id>``) and the part, nothing else."""
+    its outputs (``ask``'s ``--decisions`` or ``--line <ref>``) and the part, nothing else."""
     parser = argparse.ArgumentParser(prog="python -m research.swarm.driver",
                                      description="A part of a command's last output.")
     sub = parser.add_subparsers(dest="command", required=True)
