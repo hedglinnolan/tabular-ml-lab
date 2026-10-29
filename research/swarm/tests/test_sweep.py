@@ -29,7 +29,13 @@ or the declared exposure, and the crash sweep's answer of one, named by its sour
 the unreached line of a report finished before. A revisit refused because the split is drawn
 (``sealed``) taken through the way its refusal names, both splits withdrawn and drawn again in the
 plan's order on a log built here and folded, visited and refused where that way is refused, and
-unlisted where it names none or none that is a split in force. Around an Estimate plan, named or
+unlisted where it names none or none that is a split in force. A finding another answer in force
+settles, off the ask's open lines once revisited: that answer withdrawn and answered again after
+each option in the plan's order (each of two, the plan's own act then the plan's digest), on a
+log built here and folded; unlisted with its line's status and the record that answers it where
+the line is off them otherwise (nothing withdrawn) or still settled after the most answers one
+revisit withdraws; and visited and refused where that answer's revert is refused. Around an
+Estimate plan, named or
 the crash sweep's, each column of the plan's adjustment answers in force (its records merged by
 column on a log built here and folded by the engine, a column of an earlier record than its
 latest among them) and each the question offers that the plan answered, toggled in or out by the
@@ -1686,6 +1692,232 @@ def test_the_answers_withdrawn_first_are_answered_again_in_the_plans_order(tmp_p
     assert state.models == TWO_MODELS["models"]
     with_option = view_at([(12, LINEAR), (13, STAGE_COUNT), (14, TWO_MODELS)])
     assert refit.digest == W.plan_digest(with_option) != plan.digest
+
+
+# ── a finding another answer in force settles, off the ask's open lines once revisited (S1) ──
+
+SEX_KEY = "binary_text__sex"
+LEVEL_F = {"kind": "apply_repair", "finding_id": SEX_KEY, "option": "level",
+           "params": {"column": "sex", "one": "f", "zero": "m", "relabels": False}}
+LEVEL_M = {**LEVEL_F, "params": {"column": "sex", "one": "m", "zero": "f", "relabels": False}}
+DISMISS_SEX = {"kind": "dismiss_finding", "finding_id": SEX_KEY, "reason": None}
+SEX_ACTS = {"x-f": LEVEL_F, "x-m": LEVEL_M, "x-dismiss": DISMISS_SEX}
+COMPLETE = {"kind": "set_missing", "strategy": "complete_case"}
+IMPUTE = {"kind": "set_missing", "strategy": "impute"}
+SEX = W.Point("finding", SEX_KEY, 4, "r4", LEVEL_F)
+GONE = f"After the revisit the ask lists no open line for {SEX.id}"
+
+
+class Settled(Walked):
+    """A copy of a plan that counted sex's `f` as 1 (record 4) and then answered the missing
+    question (``missing``: record 12 by default), whose answer settles the finding while it routes
+    to that question. Its quest line is answered by the latest answer to the finding in force,
+    else by the latest missing answer in force, else open; ``line`` replaces the line once no
+    answer to the finding is in force (None: no line names the finding). The ask lists the
+    finding with its three acts while its line is open and counted, and asks the missing question
+    while no missing answer is in force. Each post is a record of the log (:func:`view_at`), from
+    the plan's on each copy, so what a refit leaves in force is the fold of what it posted;
+    reverting a missing answer is refused where ``refuse``; ``earlier``, the plan dismissed the
+    finding (record 2) before it counted `f` as 1."""
+
+    KEEP = object()
+
+    def __init__(self, *, missing=((12, COMPLETE),), line=KEEP, refuse=False, earlier=False):
+        super().__init__([])
+        self.plan = [*([(2, DISMISS_SEX)] if earlier else []), (4, LEVEL_F), *missing]
+        self.log, self.line, self.refuse, self.calls = list(self.plan), line, refuse, []
+
+    def copy(self, pid):
+        self.log = list(self.plan)  # a fresh copy of the template
+        self.calls.append(("copy",))
+        return "c1"
+
+    def view(self):
+        return {**view_at(self.log), "stages": self.stages, "state": {}}
+
+    def _post(self, decision):
+        self.log.append((max(seq for seq, _ in self.log) + 1, dict(decision)))
+        return arms.Said("ok", {})
+
+    def _line(self):
+        live = W.live(self.view())
+        own = [r for r in live if r.decision.kind in W.FINDING_KINDS]
+        missing = [r for r in live if r.decision.kind == "set_missing"]
+        if own:
+            return {"status": "answered", "counted": True, "decision_id": own[-1].id}
+        if self.line is not self.KEEP:
+            return self.line
+        if missing:
+            return {"status": "answered", "counted": True, "decision_id": missing[-1].id}
+        return {"status": "open", "counted": True, "decision_id": None}
+
+    def read(self, path):
+        line = self._line()
+        if path != "quest":
+            return None
+        lines = [] if line is None else [{"id": f"finding:{SEX_KEY}", "key": SEX_KEY,
+                                          "source": "finding", "label": "Decide", **line}]
+        return {"stages": [{"key": "whos_in", "lines": lines}]}
+
+    def ask(self):
+        from research.swarm.tests.test_arms import opt
+
+        line = self._line()
+        listed = line is not None and line["status"] == "open" and line["counted"]
+        asked = not any(r.decision.kind == "set_missing" for r in W.live(self.view()))
+        return {"question": {"key": "missing", "status": "open"} if asked else None,
+                "fit_reached": not asked,
+                "also_open": [{"source": "finding", "key": SEX_KEY, "status": "open",
+                               "options": [opt(i, d) for i, d in SEX_ACTS.items()]}]
+                if listed else []}
+
+    def revisit(self, record, reason):
+        self.calls.append(("revisit", record))
+        if self.refuse and record != SEX.record:
+            return arms.Said("refused", {}, by="server", code="missing_read_later",
+                             message="The recorded split reads the missing answer.",
+                             exits=[{"label": "Keep the answers as they are", "decision": None}])
+        return self._post({"kind": "revert", "decision_id": record})
+
+    def preview(self, ids, sets, reason):
+        self.calls.append(("preview", list(ids)))
+        return arms.Said("ok", {})
+
+    def answer(self, ids, sets, reason, marker=None):
+        self.calls.append(("answer", list(ids)))
+        return self._post(SEX_ACTS[ids[0]])
+
+    def decide(self, decision, reason):
+        self.calls.append(("decide", dict(decision)))
+        return self._post(decision)
+
+    def fit(self, wait=0):
+        return arms.Said("refused", {"fit": {}}, by="driver", code="not_here",
+                         message="No fit is made here.")
+
+
+def swept_settled(tmp_path, session):
+    sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
+        target="y", purpose="prediction"), crash=True, plan="default")
+    sweep.base = {"project": "p0", "digest": "d0", "seq": 12, "scoring": {"set": False},
+                  "points": [SEX.json()], "skipped": []}
+    sweep.done[W.PLAN] = W.Refit(W.PLAN, None, None, kind="scored",
+                                 digest=W.plan_digest(session.view()))
+    report = sweep.run(session, lambda s: "p0")
+    return report, {r["id"]: r for r in report["refits"]}
+
+
+def calls_of(session, nth):
+    """The session's calls on its ``nth`` copy (0: the listing's)."""
+    starts = [i for i, c in enumerate(session.calls) if c == ("copy",)] + [len(session.calls)]
+    return session.calls[starts[nth] + 1:starts[nth + 1]]
+
+
+def as_recorded(decision):
+    """``decision`` as the plan's log holds it, read by the engine's model (its defaults filled)."""
+    return W.records_of(view_at([(1, decision)]))[0].decision.model_dump(mode="json")
+
+
+def test_a_finding_the_plans_missing_answer_settles_is_listed_with_that_answer_withdrawn_first(
+        tmp_path):
+    """S1, the orchestrator's ruling of 2026-10-29: reverting the level leaves the finding
+    answered by the plan's missing answer, off the ask's open lines; the sweep withdraws that
+    answer first, lists the three acts, and after each answers the missing question again as the
+    plan had it, so the plan's own act leaves the plan as it was (its digest, folded by the
+    engine), and the finding is visited."""
+    session = Settled()
+    report, refits = swept_settled(tmp_path, session)
+    assert report["unlisted"] == [] and report["unvisited"] == [] and report["defects"] == []
+    assert report["complete"] is True and W.passed(report) is True
+    (offered,) = report["offered"]
+    assert [o["id"] for o in offered["options"]] == list(SEX_ACTS)
+    assert offered["withdrawn"] == [{"what": "missing answer", "column": None, "seq": 12,
+                                     "record": "r12", "settles": SEX.id}]
+    assert calls_of(session, 0) == [("revisit", "r4"), ("revisit", "r12")]
+    assert calls_of(session, 2) == [("revisit", "r4"), ("revisit", "r12"), ("preview", ["x-m"]),
+                                    ("answer", ["x-m"]), ("decide", as_recorded(COMPLETE))]
+    m = refits[f"{SEX.id}=x-m"]
+    assert [w["decision"] for w in m["withdrawn"]] == [as_recorded(COMPLETE)]
+    assert [a["answer"] for a in m["answered"]][:3] == [
+        f"withdrawn first: the plan's missing answer (record 12), which settles {SEX.id}",
+        f"{SEX.id}=x-m", "the plan's missing answer again (record 12)"]
+    assert refits[f"{SEX.id}=x-f"]["kind"] == "duplicate"
+    for other in ("x-m", "x-dismiss"):  # another plan: Fit pressed, which makes none here
+        r = refits[f"{SEX.id}={other}"]
+        assert r["digest"] != report["baseline"]["digest"] and r["duplicate_of"] is None
+        assert r["why"] == "No fit is made here."
+    assert (f"- `{SEX.id}`: the missing answer (record 12), which settles it; answered again "
+            f"after each option, as the plan had them") in W.table_md(report)
+
+
+def test_each_missing_answer_that_settles_it_is_withdrawn_and_answered_again_in_the_plans_order(
+        tmp_path):
+    """Two missing answers in force, the later (12) first in the line's way: both withdrawn, the
+    later first, and answered again in the plan's order, so the plan's latest is again the one
+    in force and the plan's own act is the plan's digest."""
+    session = Settled(missing=((10, IMPUTE), (12, COMPLETE)))
+    report, refits = swept_settled(tmp_path, session)
+    (offered,) = report["offered"]
+    assert [w["seq"] for w in offered["withdrawn"]] == [12, 10]
+    assert calls_of(session, 2)[-2:] == [("decide", as_recorded(IMPUTE)),
+                                         ("decide", as_recorded(COMPLETE))]
+    assert refits[f"{SEX.id}=x-f"]["kind"] == "duplicate"
+    assert report["unlisted"] == [] and report["complete"] is True
+
+
+def test_a_finding_still_settled_after_the_most_answers_one_revisit_withdraws_is_unlisted(
+        tmp_path):
+    """The withdrawals count against WITHDRAWN_AT_MOST: one missing answer more than it in force,
+    each answering the line in turn, and the finding is unlisted with the record that answers it
+    then, and nothing is answered."""
+    seqs = range(12 - W.WITHDRAWN_AT_MOST, 13)  # WITHDRAWN_AT_MOST + 1 missing answers
+    session = Settled(missing=[(seq, COMPLETE) for seq in seqs])
+    report, refits = swept_settled(tmp_path, session)
+    (unlisted,) = report["unlisted"]
+    left = 12 - W.WITHDRAWN_AT_MOST
+    assert unlisted == {"point": SEX.id, "why": (
+        f"{GONE}: its quest line is answered by record r{left}, the plan's missing answer in "
+        f"force; the sweep withdrew {W.WITHDRAWN_AT_MOST} answers first already.")}
+    assert calls_of(session, 0) == [("revisit", "r4")] + [
+        ("revisit", f"r{seq}") for seq in range(12, left, -1)]
+    assert report["complete"] is False and refits == {}
+
+
+@pytest.mark.parametrize("line, earlier, words", [
+    (None, False, f"{GONE}, and no quest line names it."),
+    ({"status": "answered", "counted": True, "decision_id": "r4"}, False,
+     f"{GONE}: its quest line is answered by record r4, the record revisited."),
+    ({"status": "answered", "counted": True, "decision_id": "r99"}, False,
+     f"{GONE}: its quest line is answered by record r99, which the log does not hold in force."),
+    ({"status": "open", "counted": False, "decision_id": None}, False,
+     f"{GONE}: its quest line is open, not counted."),
+    (Settled.KEEP, True,
+     f"{GONE}: its quest line is answered by record r2, an earlier answer to the finding itself.")],
+    ids=["no_line", "the_record_revisited", "a_record_not_in_force", "not_counted",
+         "an_earlier_answer_to_it"])
+def test_a_finding_off_the_open_lines_otherwise_is_unlisted_with_its_line_and_withdraws_nothing(
+        tmp_path, line, earlier, words):
+    """The other way: where the finding's line is off the ask's open lines for any other reason,
+    nothing is withdrawn, and the finding is unlisted with the line's status and the record that
+    answers it, never as a decision that offered no option. An earlier answer to the finding
+    itself is not withdrawn: answered again after the option, it would replace it."""
+    session = Settled(line=line, earlier=earlier)
+    report, refits = swept_settled(tmp_path, session)
+    assert report["unlisted"] == [{"point": SEX.id, "why": words}]
+    assert calls_of(session, 0) == [("revisit", "r4")]
+    assert report["offered"][0]["withdrawn"] == [] and report["complete"] is False
+
+
+def test_where_the_answer_that_settles_it_cannot_be_withdrawn_the_finding_is_visited_and_refused(
+        tmp_path):
+    report, refits = swept_settled(tmp_path, Settled(refuse=True))
+    revisit = refits[f"{SEX.id}={W.REVISIT}"]
+    assert revisit["kind"] == "refused" and revisit["refused"]["at"] == "revisit"
+    assert (revisit["refused"]["code"], revisit["refused"]["message"]) == (
+        "missing_read_later", "The recorded split reads the missing answer.")
+    assert [(w["what"], w["record"], w["settles"]) for w in revisit["refused"]["withdrawn"]] == [
+        ("missing answer", "r12", SEX.id)]
+    assert report["unlisted"] == [] and report["complete"] is True and report["defects"] == []
 
 
 # ── a refusal's way forward after an option: only one the plan or the option names ─────────
