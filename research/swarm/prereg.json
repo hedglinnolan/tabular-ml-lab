@@ -211,9 +211,9 @@
   },
   "r0": {
    "final": "boosted_trees",
-   "value": null,
-   "default_regret": null,
-   "why": "The default plan's regret on the pre-registered draws has not been measured: replay its export (python -m research.swarm.score_pilot replay …) and fill it (python -m research.swarm.prereg_fill r0 …).",
+   "value": 0.006997944178583435,
+   "default_regret": 0.01399588835716687,
+   "why": null,
    "reference": {
     "class": "linear",
     "value": 0.009418361832874013,
@@ -741,7 +741,32 @@
     }
    ]
   },
-  "r0": null,
+  "r0": {
+   "run": "run_02-bf37265aaff1316076dce086b1813d61",
+   "engine_commit": "b4e6ccbc99e344a4a279d37e055af43a51e8db2a",
+   "engine_modified": false,
+   "engine_tree": "523fcc2a14e181803573766883fd4d22566c2afe",
+   "replay_engine": {
+    "commit": "b4e6ccbc99e344a4a279d37e055af43a51e8db2a",
+    "engine_tree": "523fcc2a14e181803573766883fd4d22566c2afe",
+    "engine_modified": false
+   },
+   "family": "boosted_trees",
+   "bundle_sha256": "7e8c992e11438d36e76e2e43406fb4729a766d396c9a2ccb67d124b4f6526f24",
+   "draws": 100,
+   "seeds": [
+    1001,
+    1100
+   ],
+   "evaluation": {
+    "seed": 2001,
+    "rows": 20000
+   },
+   "mean_regret": 0.01399588835716687,
+   "record_sha256": "a87abd8a8b8ef8b0a40eb626b67c6690ce7fbbc213c3e0ca0d66b42f0cb03763",
+   "replay_sha256": "74f4d48e124e251ce2da7f9828c319e3be9fc525a581f38fa9476a2714c5e342",
+   "filled_at": "2026-10-30T01:20:35+00:00"
+  },
   "relative_price": null
  }
 }
