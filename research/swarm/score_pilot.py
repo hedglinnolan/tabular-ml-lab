@@ -1028,10 +1028,12 @@ def report_md(report: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
                   f"{len(report['deviations'])} dataset(s) are held by prereg.json's amendment to "
                   f"an engine tree of their own, not to the one the other datasets' crash sweeps "
                   f"passed on, each a deviation from the pre-registration:", ""]
+        # Replays are named only of a fixture, the datasets the replay command replays.
         lines += [f"- {v['dataset']}: amended {v['at']} to engine tree {v['engine_tree']} (commit "
-                  f"{v['commit']}); its crash sweep, its launches, its records, its sweeps and its "
-                  f"replays are each held to that tree. Why: {v['why']}"
-                  for v in report["deviations"]]
+                  f"{v['commit']}); its crash sweep, its launches, its records"
+                  + (", its sweeps and its replays" if fixture_of(prereg, v["dataset"]) else
+                     " and its sweeps")
+                  + f" are each held to that tree. Why: {v['why']}" for v in report["deviations"]]
         lines.append("")
     d = report["decision"]
     lines += ["## The decision", "",

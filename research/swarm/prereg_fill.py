@@ -672,9 +672,9 @@ def frozen_engine(prereg: Mapping[str, Any], dataset: str | None = None
     For a dataset prereg.json amends (:func:`amend`): its amendment's ``turbotab/`` tree, the
     commit its crash sweep ran at where that sweep is filled on the tree (none until then), and
     the amendment. For any other dataset, or with no dataset: the engine the crash sweeps of the
-    datasets not amended passed on, their one tree and the commits they ran at, or None where
-    none is filled in or they are on more than one tree (with no amendment, every crash
-    sweep's)."""
+    datasets not amended passed on, their one tree and the commits they ran at, and, where
+    prereg.json amends any dataset, the datasets it amends (``amended``), or None where none is
+    filled in or they are on more than one tree (with no amendment, every crash sweep's)."""
     amended = amendments_of(prereg)
     reports = (prereg.get("filled") or {}).get("reports") or {}
     if dataset is not None and dataset in amended:
@@ -689,18 +689,25 @@ def frozen_engine(prereg: Mapping[str, Any], dataset: str | None = None
     trees = {e.get("engine_tree") for e in rest}
     if len(trees) != 1 or None in trees:
         return None
-    return {"engine_tree": next(iter(trees)),
-            "commits": sorted({str(e.get("commit")) for e in rest if e.get("commit")})}
+    out = {"engine_tree": next(iter(trees)),
+           "commits": sorted({str(e.get("commit")) for e in rest if e.get("commit")})}
+    if amended:
+        out["amended"] = sorted(amended)
+    return out
 
 
 def frozen_words(frozen: Mapping[str, Any]) -> str:
-    """Whose frozen engine ``frozen`` (:func:`frozen_engine`'s) is, in words: the crash sweeps',
-    or, for an amended dataset, the one its amendment holds it to."""
+    """Whose frozen engine ``frozen`` (:func:`frozen_engine`'s) is, in words: the crash sweeps'
+    (where prereg.json amends a dataset, those of the datasets it does not amend), or, for an
+    amended dataset, the one its amendment holds it to."""
     entry = frozen.get("amendment")
-    if not entry:
-        return "the frozen engine the crash sweeps passed on"
-    return (f"the frozen engine prereg.json's amendment of {entry.get('at')} holds "
-            f"{entry.get('dataset')} to")
+    if entry:
+        return (f"the frozen engine prereg.json's amendment of {entry.get('at')} holds "
+                f"{entry.get('dataset')} to")
+    if frozen.get("amended"):
+        return ("the frozen engine the crash sweeps of the datasets prereg.json does not amend "
+                "passed on")
+    return "the frozen engine the crash sweeps passed on"
 
 
 def _git(*args: str) -> str | None:
@@ -725,8 +732,9 @@ def engine_tree_of(commit: str | None) -> str | None:
 def record_engine_why(rec: Any, frozen: Mapping[str, Any]) -> tuple[str | None, str | None]:
     """The ``turbotab/`` tree of the engine ``rec`` was made on, and why it is not the
     ``frozen`` one, its dataset's (:func:`frozen_engine` of ``rec.dataset.id``): a commit neither
-    a crash sweep's nor one whose tree is theirs (for an amended dataset, its amendment's tree),
-    or tracked files modified, or not known to be unmodified; else None."""
+    a crash sweep's nor one whose tree is theirs (for an amended dataset, its amendment's tree;
+    where prereg.json amends another, its dataset named as one it does not amend), or tracked
+    files modified, or not known to be unmodified; else None."""
     commit = rec.run.engine_commit
     tree = frozen["engine_tree"] if commit in frozen["commits"] else engine_tree_of(commit)
     if tree != frozen["engine_tree"]:
@@ -739,10 +747,14 @@ def record_engine_why(rec: Any, frozen: Mapping[str, Any]) -> tuple[str | None, 
                           f"{tree}), and prereg.json's amendment of {entry.get('at')} holds "
                           f"{entry.get('dataset')} to tree {frozen['engine_tree']}{passed}: not "
                           f"its frozen engine.")
+        crash = (f"commit(s) {', '.join(frozen['commits'])}, tree {frozen['engine_tree']}: not "
+                 f"the frozen engine.")
+        if frozen.get("amended"):
+            return tree, (f"The record of {rec.dataset.id}, a dataset prereg.json does not amend, "
+                          f"was made on engine commit {commit} (its turbotab/ tree {tree}), and "
+                          f"the crash sweeps of the datasets it does not amend passed on {crash}")
         return tree, (f"The record was made on engine commit {commit} (its turbotab/ tree "
-                      f"{tree}), and the crash sweeps passed on commit(s) "
-                      f"{', '.join(frozen['commits'])}, tree {frozen['engine_tree']}: not the "
-                      f"frozen engine.")
+                      f"{tree}), and the crash sweeps passed on {crash}")
     if rec.run.engine_modified is not False:
         return tree, (f"The record was made on engine commit {commit} with tracked files "
                       + ("modified" if rec.run.engine_modified else "not known to be unmodified")
@@ -1095,10 +1107,11 @@ def ready(prereg: Mapping[str, Any], engine: Mapping[str, Any] | None = None, *,
     # The crash sweeps of the datasets not amended (with no amendment, every one) on one tree, and
     # an amended dataset's on its amendment's.
     trees = {e.get("engine_tree") for d, e in reports.items() if d not in amended}
-    of = " of the datasets it does not amend" if amended else ""
+    sweeps = ("The crash sweeps of the datasets prereg.json does not amend" if amended else
+              "The crash sweeps prereg.json was filled from")
     if len(trees) > 1:
-        return (f"The crash sweeps prereg.json was filled from{of} ran on more than one engine "
-                f"tree ({', '.join(sorted(map(str, trees)))}): fill them again on one.")
+        return (f"{sweeps} ran on more than one engine tree "
+                f"({', '.join(sorted(map(str, trees)))}): fill them again on one.")
     for d, entry in amended.items():
         if d in reports and reports[d].get("engine_tree") != entry.get("engine_tree"):
             return (f"{d}'s crash sweep prereg.json was filled from ran on engine tree "
@@ -1133,9 +1146,8 @@ def ready(prereg: Mapping[str, Any], engine: Mapping[str, Any] | None = None, *,
                     f"{entry.get('engine_tree')}, and the engine now is "
                     f"{engine.get('engine_tree')}{modified}.")
     elif trees != {engine.get("engine_tree")} or engine.get("engine_modified"):
-        return (f"The crash sweeps prereg.json was filled from{of} ran on engine tree(s) "
-                f"{', '.join(sorted(map(str, trees)))}, and the engine now is "
-                f"{engine.get('engine_tree')}{modified}.")
+        return (f"{sweeps} ran on engine tree(s) {', '.join(sorted(map(str, trees)))}, and the "
+                f"engine now is {engine.get('engine_tree')}{modified}.")
     if margins:
         changed = check(prereg)
         if changed:

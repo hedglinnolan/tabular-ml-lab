@@ -48,7 +48,9 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
   amendment already, no tree, the frozen tree, its crash sweep filled on another) leaves the file
   byte for byte. The amended dataset fills only on its amendment's tree beside the others on
   theirs, its frozen engine is that tree, and it may launch only on it, every other dataset only
-  on theirs; with no amendment the same reports on two trees are refused.
+  on theirs, its refusal naming the crash sweeps of the datasets not amended; with no amendment
+  the same reports on two trees are refused, and the refusals keep today's words. The plain write
+  keeps the amendment byte for byte, before and after a graded run.
 """
 from __future__ import annotations
 
@@ -1088,7 +1090,8 @@ def test_a_fill_holds_an_amended_dataset_to_its_amendments_tree_and_every_other_
 
 def test_each_dataset_is_held_to_its_own_frozen_engine_and_may_launch_only_on_it(prereg, once):
     """Glucose's frozen engine is its amendment's tree and the commit its report ran at; every
-    other dataset's is the one tree of theirs, as with no amendment. Glucose may launch on t1 and
+    other dataset's is the one tree of theirs, as with no amendment, naming glucose as amended.
+    Glucose may launch on t1 and
     not on t0, each other dataset on t0 and not on t1; the pilot whole is filled on t0. A glucose
     report off its amendment's tree refuses every dataset; with no amendment, the same reports on
     two trees refuse every dataset and no frozen engine is known."""
@@ -1096,7 +1099,8 @@ def test_each_dataset_is_held_to_its_own_frozen_engine_and_may_launch_only_on_it
     assert P.frozen_engine(whole, GLUCOSE) == {"engine_tree": "t1", "commits": ["c1"],
                                                "amendment": ENTRY}
     for d in (None, *OTHERS):
-        assert P.frozen_engine(whole, d) == {"engine_tree": "t0", "commits": ["c0"]}, d
+        assert P.frozen_engine(whole, d) == {"engine_tree": "t0", "commits": ["c0"],
+                                             "amended": [GLUCOSE]}, d
     assert P.ready(whole, FIXED, dataset=GLUCOSE) is None  # its margins recomputed too
     assert P.ready(whole, ENGINE, dataset=GLUCOSE, margins=False) == (
         f"prereg.json's amendment of 2026-10-31T12:00:00+00:00 holds {GLUCOSE} to engine tree "
@@ -1229,3 +1233,47 @@ def test_each_refused_amendment_says_why_and_leaves_prereg_json_byte_identical(
                    "--why", WHY]) == 1
     assert re.search(FROZEN, json.loads(capsys.readouterr().out)["refused"])
     assert path.read_bytes() == before
+
+
+def test_the_plain_write_keeps_the_amendments_before_and_after_a_graded_run(
+        prereg, tmp_path, monkeypatch, capsys, once):
+    """The plain write (no command) of an amended prereg.json writes it again byte for byte, its
+    amendment kept and check reading it as held: with no graded run, and with a graded run of
+    another dataset, the pilot's case, where a write that dropped the amendment would go through
+    (check reads the held amendment as held) and hold glucose's records to the frozen engine."""
+    path = P.write(both_trees(prereg), tmp_path / "prereg.json")
+    before = path.read_bytes()
+    for graded in (tmp_path / "none", launched(tmp_path / "launches", RUN, SULLIVAN)):
+        monkeypatch.setattr(P, "GRADED", graded)
+        assert P.main(["--prereg", str(path)]) == 0, graded
+        assert capsys.readouterr().out == f"wrote {path}\n"
+        assert path.read_bytes() == before, graded
+        written = P.load(path)
+        assert written["amendments"] == [ENTRY] and P.check(written) == [], graded
+
+
+def test_another_datasets_readiness_names_the_crash_sweeps_of_the_datasets_not_amended(
+        prereg, once):
+    """With glucose amended, another dataset's refusal on the amended tree, and on the crash
+    sweeps of the datasets not amended filled on two trees, names those crash sweeps in a sentence
+    that parses; with no amendment the same two refusals keep today's words."""
+    def split(held, amendments=None):
+        reports = held["filled"]["reports"]
+        return P.build(held["filled"] | {"reports": reports | {
+            SULLIVAN: reports[SULLIVAN] | {"engine_tree": "t9"}}}, amendments)
+
+    whole = both_trees(prereg)
+    assert P.ready(whole, FIXED, dataset=SULLIVAN, margins=False) == (
+        "The crash sweeps of the datasets prereg.json does not amend ran on engine tree(s) t0, "
+        "and the engine now is t1.")
+    assert P.ready(split(whole, [ENTRY]), ENGINE, dataset=ESTIMATE, margins=False) == (
+        "The crash sweeps of the datasets prereg.json does not amend ran on more than one engine "
+        "tree (t0, t9): fill them again on one.")
+    # The other way: with no amendment, today's words.
+    plain = P.fill(prereg, only(*P.PILOT), engine=ENGINE)
+    assert P.ready(plain, FIXED, dataset=SULLIVAN, margins=False) == (
+        "The crash sweeps prereg.json was filled from ran on engine tree(s) t0, and the engine "
+        "now is t1.")
+    assert P.ready(split(plain), ENGINE, dataset=ESTIMATE, margins=False) == (
+        "The crash sweeps prereg.json was filled from ran on more than one engine tree (t0, t9): "
+        "fill them again on one.")
