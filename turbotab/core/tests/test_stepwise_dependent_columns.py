@@ -360,3 +360,92 @@ def test_a_spanned_columns_variance_is_rs_lm(tmp_path, monkeypatch):
     _, _, inv, _ = VS._ols(X, y)
     _close(inv[:3, :3], np.asarray(r["unscaled"], dtype=float))
     assert np.isnan(inv[3]).all() and np.isnan(inv[:, 3]).all()
+
+
+# ── the inference sensitivity analysis reads what it read before ──────────────
+# Backward elimination by pooled Wald tests (``backward_wald``, the sensitivity analysis under
+# inference) is outside this package: each copy's covariance stays σ̂²(XᵀX)⁺, numpy's pinv, with
+# σ̂² = RSS/(n − k) and k every column. Pinned here from that formula, computed with numpy,
+# statsmodels and scipy, on the designs where the identified columns' R⁻¹R⁻ᵀ would move it: one
+# with a column the others nearly span, and one with an aliased column. Neither pin is R's ``lm``
+# (an INBOX line): on the first pinv loses digits to XᵀX's conditioning; on the second ``lm``
+# reports the aliased coefficient NA and takes σ̂² over n − rank.
+
+
+def _sensitivity_rows(seed: int, partner: str) -> tuple[pd.DataFrame, np.ndarray]:
+    """An exposure ``e`` (forced), ``x`` with an effect, its partner ``x2``, ``u`` with none and
+    ``w`` with a small one. ``x2`` is x + 10⁻⁶·noise (full rank, XᵀX's condition number about
+    4·10¹²), or 2x + 1, exactly or with 10⁻⁹·noise (aliased at :data:`VS.ALIASED`)."""
+    rng = np.random.default_rng(seed)
+    e, x, u, w, noise = rng.normal(size=(5, 200))
+    x2 = {"near": x + 1e-6 * noise, "aliased": 2 * x + 1,
+          "aliased_noise": 2 * x + 1 + 1e-9 * noise}[partner]
+    y = 1.0 + 0.5 * e + 0.3 * x + 0.14 * w + rng.normal(size=200)
+    return pd.DataFrame({"e": e, "x": x, "x2": x2, "u": u, "w": w}), y
+
+
+def _pinv_wald(frame: pd.DataFrame, y: np.ndarray, columns: list[str]) -> dict[str, float]:
+    """Each unforced column's t test on one copy by the pinned formula: β statsmodels' ``OLS``'s by
+    QR, as ``lm`` solves, variance RSS/(n − k)·pinv(XᵀX)ⱼⱼ, df n − k."""
+    from scipy import stats
+
+    X = np.column_stack([np.ones(len(frame)), frame[columns].to_numpy(dtype=float)])
+    n, k = X.shape
+    fit = sm.OLS(y, X).fit(method="qr")
+    variance = fit.ssr / (n - k) * np.diag(np.linalg.pinv(X.T @ X))
+    return {c: float(2 * stats.t.sf(abs(fit.params[j]) / math.sqrt(variance[j]), n - k))
+            for j, c in enumerate(columns, start=1) if c != "e"}
+
+
+def _pinv_backward(frame: pd.DataFrame, y: np.ndarray,
+                   columns: list[str]) -> tuple[list[dict], list[str]]:
+    """The elimination from ``columns`` by :func:`_pinv_wald`, the largest p leaving while above α:
+    (each step's p-values, the columns kept)."""
+    path, remaining = [], list(columns)
+    while True:
+        tested = _pinv_wald(frame, y, remaining)
+        worst = max(tested, key=lambda c: (tested[c], c)) if tested else None
+        path.append(tested)
+        if worst is None or tested[worst] <= VS.INFERENCE_ALPHA:
+            return path, remaining
+        remaining.remove(worst)
+
+
+def _steps_equal(got: dict, want: tuple[list[dict], list[str]], start: int = 0) -> None:
+    """``backward_wald``'s path from step ``start`` and its kept columns are :func:`_pinv_backward`'s,
+    each p to 10⁻⁹."""
+    path, kept = want
+    assert got["kept"] == kept
+    assert len(got["path"]) - start == len(path)
+    for step, tested in zip(got["path"][start:], path):
+        assert set(step["tested"]) == set(tested), step["step"]
+        for term, p in tested.items():
+            assert step["tested"][term] == pytest.approx(p, rel=1e-9, abs=1e-12), (step["step"], term)
+
+
+@pytest.mark.parametrize("seed", [3, 8])
+def test_the_sensitivity_analysis_on_a_nearly_spanned_column_reads_the_pinv(seed):
+    """Full rank, x₂ = x + 10⁻⁶·noise: every step's p-values are the pinned formula's to 10⁻⁹, and
+    the same terms leave. Under the identified columns' R⁻¹R⁻ᵀ (5c7a3bf5) x's and x₂'s moved by
+    10⁻⁵ to 2·10⁻⁴ of themselves, to statsmodels' ``OLS``'s p-values."""
+    frame, y = _sensitivity_rows(seed, "near")
+    columns = list(frame.columns)
+    got = VS.backward_wald("regression", [frame], [y], {c: [c] for c in columns}, ["e"])
+    _steps_equal(got, _pinv_backward(frame, y, columns))
+
+
+@pytest.mark.parametrize("partner", ["aliased", "aliased_noise"])
+def test_the_sensitivity_analysis_drops_an_aliased_column_first(partner):
+    """x₂ = 2x + 1, exactly or to 10⁻⁹: one of x and x₂ is aliased, its coefficient zero, so its
+    Wald test's p is 1 and it leaves first; every later step is the pinned formula's on the design
+    without it (full rank there, so statsmodels' ``OLS``'s), the same terms leaving. Under
+    R⁻¹R⁻ᵀ (5c7a3bf5) the aliased column's p was NaN, so it never left while aliased, and ``u``
+    and ``w`` left instead."""
+    frame, y = _sensitivity_rows(3, partner)
+    columns = list(frame.columns)
+    got = VS.backward_wald("regression", [frame], [y], {c: [c] for c in columns}, ["e"])
+    first = got["path"][0]
+    assert first["dropped"] in ("x", "x2") and first["p"] == 1.0
+    assert set(first["tested"]) == {"x", "x2", "u", "w"}
+    rest = [c for c in columns if c != first["dropped"]]
+    _steps_equal(got, _pinv_backward(frame, y, rest), start=1)

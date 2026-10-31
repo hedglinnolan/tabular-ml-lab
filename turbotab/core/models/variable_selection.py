@@ -744,15 +744,20 @@ def inclusion_frequencies(pipeline: Any, X: pd.DataFrame, y: Any,
 
 
 def _fit_copy(task: str, X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
-    """(β, covariance) of least squares (σ̂²(XᵀX)⁻¹, as ``lm``) or a logistic regression (the inverse
-    information, as ``glm``); ``X`` holds the intercept."""
+    """(β, covariance) of least squares or a logistic regression (the inverse information, as
+    ``glm``); ``X`` holds the intercept. The least squares' covariance is σ̂²(XᵀX)⁺: σ̂² =
+    RSS/(n − k), k every column, times numpy's pinv of XᵀX, as before 2026-10-31, not
+    :func:`_ols`'s R⁻¹R⁻ᵀ, which would move these tests. It is ``lm``'s σ̂²(XᵀX)⁻¹ on a
+    well-conditioned full-rank design; pinv loses digits as XᵀX's conditioning grows, and an
+    aliased column, whose coefficient is zero, gets a finite variance, so its p is 1 and it leaves
+    first (``lm`` reports it NA and takes σ̂² over n − rank)."""
     if task == "binary":
         from turbotab.core.models.performance import logistic_fit
 
         return logistic_fit(X, y)
-    beta, rss, inv, _ = _ols(X, y)
+    beta, rss, _, _ = _ols(X, y)
     n, k = X.shape
-    return beta, rss / (n - k) * inv
+    return beta, rss / (n - k) * np.linalg.pinv(X.T @ X)
 
 
 def term_p(task: str, copies: Sequence[tuple[np.ndarray, np.ndarray]], columns: Sequence[int],
