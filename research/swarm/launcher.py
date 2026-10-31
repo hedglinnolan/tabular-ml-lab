@@ -43,6 +43,17 @@ named only where the answers file names one. It is written with the rest of what
 needs (:func:`record_meta`) to ``<run id>.json`` in the launches folder, a folder no analyst's
 command opens (``driver.UNREAD_FOLDERS``), never into the run's own folder.
 
+**The engine the run starts on** (:func:`engine_stamp`) is written there too, as ``engine``: the
+engine :func:`engine_now` reads before the driver's start (the commit, the tree of ``turbotab/``
+there and whether tracked files under it differ from it), the one the crash sweep is held to, read
+again once the start has returned; the driver starts the run's server on ``turbotab`` in this
+checkout (``driver.start_server``'s working directory). Where the second read is another engine
+(another tree, or another answer to whether its files are modified: ``sweep.ENGINE_KEYS``), or
+the first names no commit or does not say whether the files are modified, the engine the server
+started on is not known, and ``engine`` is null. The run's record names this engine only where
+its export names none (``assemble.engine_of``); a launch file written before the stamp holds no
+``engine``, and gives the record none.
+
 **The launches folder** (:func:`launches_of`) is one for every checkout of the repository:
 ``research/corpus/launches`` in its main checkout, the folder git's common directory lies in
 (``git rev-parse --git-common-dir``), whichever checkout, the main one or a worktree, the launcher
@@ -119,6 +130,21 @@ def engine_now() -> dict[str, Any]:
     from research.swarm.sweep import engine_version
 
     return engine_version()
+
+
+def engine_stamp(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The engine the run's server started on (the module docstring): ``before``, read before the
+    driver's start, where it names a commit and whether the engine's files are modified and
+    ``after``, read once the start returned, is the same engine (``sweep.ENGINE_KEYS``); else
+    None."""
+    from research.swarm.sweep import ENGINE_KEYS
+
+    commit, modified = before.get("commit"), before.get("engine_modified")
+    if not isinstance(commit, str) or not commit or not isinstance(modified, bool):
+        return None
+    if any(after.get(k) != before.get(k) for k in ENGINE_KEYS):
+        return None
+    return {"commit": commit, "engine_tree": before.get("engine_tree"), "engine_modified": modified}
 
 
 # ── the crash sweep ──────────────────────────────────────────────────────────
@@ -234,11 +260,12 @@ def dataset_meta(dataset: str) -> dict[str, Any]:
 
 
 def record_meta(launch: Mapping[str, Any]) -> dict[str, Any]:
-    """What ``assemble.assemble`` is given for the run (its ``meta``), from its launch file."""
+    """What ``assemble.assemble`` is given for the run (its ``meta``), from its launch file: with
+    the engine it stamped (``engine``, :func:`engine_stamp`), None where it holds none."""
     dataset = {k: v for k, v in launch["dataset"].items() if k != "known_source"}
     return {"design": 2, "analyst_model": launch["analyst_model"], "persona": launch.get("persona"),
             "effort": launch.get("effort"), "prompt_version": launch["prompt_version"],
-            "dataset": dataset, "help": []}
+            "dataset": dataset, "help": [], "engine": launch.get("engine")}
 
 
 def launch_of(run_id: str, launches: Path | None = None) -> dict[str, Any]:
@@ -282,7 +309,8 @@ def launch(dataset: str, crash: Path, *, model: str, persona: str | None,
     if why is not None:
         raise Refused(f"{dataset} is not launched: {why}")
     report = _json(crash)
-    why = crash_passed(report, dataset)
+    engine = engine_now()  # before the driver's start: the engine the crash sweep is held to
+    why = crash_passed(report, dataset, engine)
     if why is not None:
         raise Refused(f"{dataset} is not launched: {why}")
     budget = prereg_budget(prereg, dataset)
@@ -314,11 +342,11 @@ def launch(dataset: str, crash: Path, *, model: str, persona: str | None,
     run_id = str(payload["started"]["run"])
     record = {"run": run_id, "dataset": meta, "design": 2, "analyst_model": model,
               "persona": persona, "effort": effort, "prompt_version": prompt_version,
-              "budget": budget, "crash": {"path": str(crash),
-                                          "sha256": hashlib.sha256(Path(crash).read_bytes())
-                                          .hexdigest(),
-                                          "engine_tree": report.get("engine_tree"),
-                                          "commit": report.get("commit")}}
+              "budget": budget, "engine": engine_stamp(engine, engine_now()),
+              "crash": {"path": str(crash),
+                        "sha256": hashlib.sha256(Path(crash).read_bytes()).hexdigest(),
+                        "engine_tree": report.get("engine_tree"),
+                        "commit": report.get("commit")}}
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{run_id}.json"
     path.write_text(json.dumps(record, indent=1, ensure_ascii=False) + "\n", "utf-8")
