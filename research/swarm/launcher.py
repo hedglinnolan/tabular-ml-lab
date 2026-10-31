@@ -9,9 +9,10 @@ command reads it.
 **The pre-registration must be ready for the dataset** (``research/swarm/prereg_fill.py``, staged
 by dataset): before each launch the launcher reads ``prereg.json`` (``prereg_fill.load``) and asks
 ``prereg_fill.ready`` whether that dataset may launch (a pilot dataset, its own fit budget filled
-from its own crash sweep, on the Predict fixture r0 measured, every report filled and the engine
-now on one tree with no file modified, the margins still the generators'); where it says why not,
-the dataset is not launched, in its words.
+from its own crash sweep, on the Predict fixture r0 measured, every report filled on one tree but
+an amended dataset's, on its amendment's, and the engine now that dataset's tree with no file
+modified, the margins still the generators'); where it says why not, the dataset is not
+launched, in its words.
 
 **The crash sweep must have passed** (``research/swarm/sweep.py``, :func:`crash_passed`): its report
 is the dataset's, on the table the dataset's manifest names (its SHA-256), it swept every decision

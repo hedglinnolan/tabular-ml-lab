@@ -47,6 +47,11 @@ in the committed prereg.json are.
 * The replay of a plan: the row a draw is read from is located on the recorded bundle (one row,
   never two), and (slow) on two fresh draws its estimate and interval are statsmodels' on the
   generator's own table at each seed.
+* A dataset amended to an engine tree of its own (two trees from a scratch repository's git): its
+  records, sweeps and replays are kept on that tree and refused on the frozen one, every other
+  dataset's the other way, in today's words; each amendment is listed as a deviation in
+  score.json and in a section of score.md of its own, and with none the list is empty and the
+  section absent.
 """
 from __future__ import annotations
 
@@ -60,6 +65,7 @@ import pytest
 from research.swarm import generators as G, prereg_fill as P, score_pilot as S
 from research.swarm.record import validate
 from research.swarm.tests import constructed as C
+from research.swarm.tests.test_prereg import once  # noqa: F401 (a fixture: each fill quick)
 
 ENGINE = {"commit": "c0", "engine_tree": "t0", "engine_modified": False}
 # A sweep's report on the frozen engine, as sweep.py writes the engine it ended on and whether it
@@ -868,6 +874,112 @@ def test_with_no_crash_fill_no_sweep_is_known_to_be_on_the_frozen_engine(prereg)
     got = S.sweep_verdicts(frozen_sweep(), prereg)
     assert "frozen engine" in got["refused"] and got["material"] == []
     assert S.score([], [], [frozen_sweep()], prereg)["material"] == {}
+
+
+# ── a dataset amended to an engine tree of its own (the owner, 2026-10-31) ───
+
+GLUCOSE = "nhanes_glucose_predict"
+
+
+@pytest.fixture
+def two_engines(prereg, tmp_path, monkeypatch, once):
+    """A repository of two engine trees (``test_prereg.engine_repo``: commit A on tree TA, B and
+    B2 on TB), read for each record's commit, and prereg.json amended to hold glucose to B's tree
+    (``test_prereg.ENTRY`` at B): every other dataset's crash sweep filled at A, glucose's at B."""
+    from research.swarm.tests import test_prereg as T
+
+    git = T.engine_repo(tmp_path / "repo")
+    monkeypatch.setattr(P, "REPO", git["repo"])
+    entry = T.ENTRY | {"commit": git["B"], "engine_tree": git["TB"]}
+    base = T.on_commit(T.amended(prereg, entry), git, "A")
+    return git, entry, T.on_commit(base, git, "B", datasets=(GLUCOSE,))
+
+
+def test_each_record_is_held_to_its_own_datasets_frozen_engine_under_an_amendment(two_engines):
+    """Glucose amended to B's tree: a glucose record made at B, or at B2 (another commit, B's tree
+    by git), is scored, and one made at A refused, naming both trees; a record of the Estimate
+    fixture made at A is scored, and one made at B refused in the words of today, naming both."""
+    git, entry, held = two_engines
+    recs = [record(kind="predict", run="g-b", dataset=GLUCOSE, commit=git["B"]),
+            record(kind="predict", run="g-b2", dataset=GLUCOSE, commit=git["B2"], minute=1),
+            record(kind="predict", run="g-a", dataset=GLUCOSE, commit=git["A"], minute=2),
+            record(run="e-a", commit=git["A"], minute=3),
+            record(run="e-b", commit=git["B"], minute=4)]
+    report = S.score(recs, [], [], held)
+    refused = {r["run"]: r["why"] for r in report["refused_records"]}
+    assert refused == {
+        "g-a": (f"The record was made on engine commit {git['A']} (its turbotab/ tree "
+                f"{git['TA']}), and prereg.json's amendment of {entry['at']} holds {GLUCOSE} to "
+                f"tree {git['TB']}, which its crash sweep passed on at commit(s) {git['B']}: not "
+                f"its frozen engine."),
+        "e-b": (f"The record was made on engine commit {git['B']} (its turbotab/ tree "
+                f"{git['TB']}), and the crash sweeps passed on commit(s) {git['A']}, tree "
+                f"{git['TA']}: not the frozen engine.")}
+    assert set(report["regression"]["runs"]) == {"g-b", "g-b2", "e-a"}
+
+
+def test_each_sweep_is_held_to_its_own_datasets_frozen_engine_under_an_amendment(two_engines):
+    """A sweep of glucose on B's tree is read and one on A's refused, naming the amendment; a sweep
+    of the Estimate fixture on A's tree is read and one on B's refused, in the words of today."""
+    git, entry, held = two_engines
+    amended_to = (f"the frozen engine prereg.json's amendment of {entry['at']} holds {GLUCOSE} to "
+                  f"is tree {git['TB']} with no file modified")
+    frozen = (f"the frozen engine the crash sweeps passed on is tree {git['TA']} with no file "
+              f"modified")
+    for dataset, name, want in ((GLUCOSE, "B", None), (GLUCOSE, "A", amended_to),
+                                (P.ESTIMATE_FIXTURE, "A", None), (P.ESTIMATE_FIXTURE, "B", frozen)):
+        sweep = frozen_sweep(engine_tree=git["T" + name], commit=git[name]) | {"dataset": dataset}
+        got = S.sweep_verdicts(sweep, held)
+        if want is None:
+            assert got["refused"] is None and got["material"] == ["question:missing"], dataset
+        else:
+            assert got["refused"] == (f"The sweep ran on engine tree {git['T' + name]} (no file "
+                                      f"modified); {want}."), dataset
+
+
+def test_a_replay_is_held_to_its_own_datasets_frozen_engine_under_an_amendment(filled, once):
+    """The Estimate fixture amended to tree t1 (its crash sweep filled there at c1): its plan's
+    replay on t1 is judged, and on t0 invalid, naming the amendment; the Predict fixture's, not
+    amended, is judged on t0 as before."""
+    from research.swarm.tests import test_prereg as T
+
+    entry = T.ENTRY | {"dataset": P.ESTIMATE_FIXTURE}
+    reports = filled["filled"]["reports"]
+    held = P.build(filled["filled"] | {"reports": reports | {P.ESTIMATE_FIXTURE: reports[
+        P.ESTIMATE_FIXTURE] | {"engine_tree": "t1", "commit": "c1"}}}, [entry])
+    rec = record(run="h1", commit="c1")
+    on_t1 = estimate_replay(held, bias=0.0, covered=95, run="h1") | {"engine": dict(T.FIXED)}
+    [plan] = S.score([rec], [on_t1], [], held)["plans"]
+    assert plan["verdict"] == "within"
+    [plan] = S.score([rec], [on_t1 | {"engine": dict(ENGINE)}], [], held)["plans"]
+    assert (plan["verdict"], plan["why"]) == ("invalid", (
+        f"The replay ran on engine tree t0 (no file modified); the frozen engine prereg.json's "
+        f"amendment of {entry['at']} holds {P.ESTIMATE_FIXTURE} to is tree t1 with no file "
+        f"modified."))
+    r0 = held["predict_fixture"]["r0"]["value"]
+    [plan] = S.score([record(kind="predict", run="p1")],
+                     [predict_replay(held, r0 * 0.5, run="p1")], [], held)["plans"]
+    assert plan["verdict"] == "within"
+
+
+def test_every_amendment_is_reported_as_a_deviation_from_the_preregistration(two_engines,
+                                                                             filled):
+    """score.json lists each amendment (its dataset, tree, commit, why and when) as a deviation,
+    and score.md states it in a section of its own, every word of it the entry's; with no
+    amendment the list is empty and score.md has no such section."""
+    git, entry, held = two_engines
+    report = S.score([], [], [], held)
+    assert report["deviations"] == [{"dataset": GLUCOSE, "engine_tree": git["TB"],
+                                     "commit": git["B"], "why": entry["why"], "at": entry["at"]}]
+    text = S.report_md(report, held)
+    assert ("## Deviations from the pre-registration\n\n1 dataset(s) are held by prereg.json's "
+            "amendment to an engine tree of their own, not to the one the other datasets' crash "
+            "sweeps passed on, each a deviation from the pre-registration:\n\n"
+            f"- {GLUCOSE}: amended {entry['at']} to engine tree {git['TB']} (commit {git['B']}); "
+            f"its crash sweep, its launches, its records, its sweeps and its replays are each "
+            f"held to that tree. Why: {entry['why']}\n") in text
+    plain = S.score([], [], [], filled)
+    assert plain["deviations"] == [] and "Deviations" not in S.report_md(plain, filled)
 
 
 # ── reach and the personas ───────────────────────────────────────────────────

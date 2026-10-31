@@ -8,7 +8,9 @@ hands the driver: no label of its own, the run named by the driver, the known an
 no analyst's command reads it, in the launches folder every checkout shares (the main checkout's,
 the first ``git worktree list`` names), with no command-line option to write it elsewhere; and the
 engine the run started on stamped in the launch file, both ways, through to the record of a run
-that never exported and the pre-registered engine rule."""
+that never exported and the pre-registered engine rule; and, with prereg_fill's own ``ready``, a
+dataset amended to an engine tree of its own launched only on that tree and another only on the
+frozen one."""
 from __future__ import annotations
 
 import json
@@ -18,6 +20,7 @@ import os
 import pytest
 
 from research.swarm import driver, launcher as L
+from research.swarm.tests.test_prereg import once  # noqa: F401 (a fixture: each fill quick)
 
 ENGINE = {"commit": "c0", "engine_tree": "t0", "engine_modified": False}
 # The table the dataset's manifest names, read from the manifest itself.
@@ -202,17 +205,19 @@ def prereg(monkeypatch):
 
 
 def started(tmp_path, monkeypatch, *, dataset=PILOT, table=PILOT_TABLE, passed=True,
-            after=None):
-    """A launch of ``dataset`` with a crash report on its manifest's table, the start command
-    lines it handed the driver, and its result (or the refusal). The engine is :data:`ENGINE`
-    until the driver's start returns, and ``after`` from then on, where given."""
+            after=None, engine=ENGINE, prereg=None):
+    """A launch of ``dataset`` with a crash report on its manifest's table, run on ``engine``, the
+    start command lines it handed the driver, and its result (or the refusal). The engine is
+    ``engine`` until the driver's start returns, and ``after`` from then on, where given;
+    ``prereg`` stands for prereg.json (the launcher's own ``prereg_fill.load()``, where None)."""
     crash = tmp_path / "crash.json"
     crash.write_text(json.dumps(report(dataset=dataset, data={"path": "t.csv", "sha256": table},
+                                       engine_tree=engine["engine_tree"], commit=engine["commit"],
                                        **({} if passed else {"passed": False,
                                                              "defects": [{"refit": "x"}]}))))
     given: list[list[str]] = []
     monkeypatch.setattr(L, "engine_now",
-                        lambda: dict(after if after is not None and given else ENGINE))
+                        lambda: dict(after if after is not None and given else engine))
     data = tmp_path / "walking_bp.csv"
     data.write_text("x,y\n1,0\n")
     runs, launches = tmp_path / "runs", tmp_path / "launches"
@@ -225,7 +230,7 @@ def started(tmp_path, monkeypatch, *, dataset=PILOT, table=PILOT_TABLE, passed=T
     try:
         out = L.launch(dataset, crash, model="claude-haiku-5-5", persona="skeptical",
                        prompt_version="pilot-1", effort="high", runs=runs, launches=launches,
-                       data=data, start=start)
+                       data=data, start=start, prereg=prereg)
     except L.Refused as exc:
         return given, exc
     return given, out | {"runs": runs, "launches": launches, "data": data}
@@ -335,6 +340,32 @@ def test_the_committed_pre_registration_gates_the_launch_in_prereg_fills_words(t
     else:
         assert isinstance(out, L.Refused) and str(out) == f"{PILOT} is not launched: {why}"
         assert given == []
+
+
+def test_an_amended_dataset_launches_only_on_its_own_tree_and_another_only_on_the_frozen_one(
+        tmp_path, monkeypatch, once):
+    """With prereg_fill's own ``ready``: prereg.json amended to hold glucose to tree t1
+    (``test_prereg.both_trees``: every other dataset filled on t0, glucose on t1). Glucose, its
+    crash sweep on t1, launches on t1 and is refused on t0; the Estimate fixture, its crash sweep
+    on t0, launches on t0 and is refused on t1, each in ``ready``'s words."""
+    from research.swarm import prereg_fill as P
+    from research.swarm.tests import test_prereg as T
+
+    whole = T.both_trees(P.build())
+    glucose = "nhanes_glucose_predict"
+    for dataset, engine, launches in ((glucose, T.FIXED, True), (glucose, T.ENGINE, False),
+                                      (PILOT, T.ENGINE, True), (PILOT, T.FIXED, False)):
+        folder = tmp_path / f"{dataset}-{engine['engine_tree']}"
+        folder.mkdir()
+        given, out = started(folder, monkeypatch, dataset=dataset,
+                             table=T.table_of(dataset)["sha256"], engine=engine, prereg=whole)
+        if launches:
+            assert given and isinstance(out, dict) and out["engine"] == engine, (dataset, out)
+            assert out["crash"]["engine_tree"] == engine["engine_tree"]
+        else:
+            why = P.ready(whole, engine, dataset=dataset, margins=False)
+            assert why is not None and given == [], dataset
+            assert isinstance(out, L.Refused) and str(out) == f"{dataset} is not launched: {why}"
 
 
 # ── the engine the run starts on ─────────────────────────────────────────────

@@ -28,18 +28,22 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
 **What it applies,** each rule in prereg.json's own numbers:
 
 * first, the engine each record was made on (:func:`engine_refusal`): a record whose engine
-  commit's ``turbotab/`` tree is not the frozen one (the crash sweeps', ``prereg_fill.
-  frozen_engine``), or whose ``engine_modified`` is not False, is refused, listed with why
+  commit's ``turbotab/`` tree is not its dataset's frozen one (the crash sweeps', or for an
+  amended dataset its amendment's: ``prereg_fill.frozen_engine`` of its dataset), or whose
+  ``engine_modified`` is not False, is refused, listed with why
   (``refused_records``), and scored nowhere (its replay is no plan's); with no crash fill the
   frozen engine is not known, and every record is refused so. Its tokens were spent all the
   same: they count against the budget in early stopping, where its run is still one to do, and
   in no model's cost per useful result, which is of the runs on the frozen engine;
+* every amendment prereg.json holds (``prereg_fill.amend``: one dataset held to an engine tree of
+  its own), reported as a deviation from the pre-registration (:func:`deviations`), its dataset,
+  tree, commit, why and when;
 * the regression checks on every run (:func:`regression_checks`);
 * each replay judged only as its record's plan (:func:`paired`: its run, dataset, bundle and
   reading the record's; a replay with no record, or one of two of a run, judges nothing), on the
   pre-registered draws and rows on the frozen engine (:func:`provenance`: the fixture's generator
-  and recorded seed, the Predict fixture's evaluation rows, the crash sweeps' engine tree with no
-  file modified; with no crash fill the frozen engine is not known, and nothing is judged);
+  and recorded seed, the Predict fixture's evaluation rows, its dataset's frozen engine tree with
+  no file modified; with no crash fill the frozen engine is not known, and nothing is judged);
 * each replay against its fixture's margins (:func:`score_replay`): the pre-registered draws or
   none, a draw refused making the plan a refused plan, as a replay refused as a whole does; b0
   and the coverage band, r0, or (the measurement fixture) its numbers reported. An exported
@@ -52,8 +56,8 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
   arms' and the analysts' alike;
 * the unit per model and fixture (:func:`unit`);
 * materiality on every sweep with prereg.json's margins (:func:`sweep_verdicts`), but a sweep
-  not run on the frozen engine (:func:`sweep_refusal`: its report says the engine changed while
-  it ran, or does not say, or it ended on another ``turbotab/`` tree than the crash sweeps', or
+  not run on its dataset's frozen engine (:func:`sweep_refusal`: its report says the engine
+  changed while it ran, or does not say, or it ended on another ``turbotab/`` tree than that, or
   with tracked files modified or not known to be unmodified; with no crash fill the frozen engine
   is not known), which is refused, listed with why naming its tree and the frozen one
   (``refused_sweeps``), and read for nothing; beside the
@@ -73,7 +77,8 @@ classes: run id → ``engine_defect``, ``driver_defect``, ``capability_gap`` or
   alarm).
 
 **The output**: ``score.json``, every number computed, and ``score.md``, whose every number is
-interpolated from it (:func:`report_md`).
+interpolated from it (:func:`report_md`); each deviation from the pre-registration in a section of
+its own, in score.md only where prereg.json holds one.
 """
 from __future__ import annotations
 
@@ -188,9 +193,10 @@ def provenance(replay: Mapping[str, Any], prereg: Mapping[str, Any]) -> tuple[st
     """Why ``replay`` (on a fixture) is not on the pre-registered draws and rows on the frozen
     engine, as ``(verdict, why)``: ``invalid`` where it names another generator or recorded seed
     than its fixture's, other evaluation rows than prereg.json's (the Predict fixture), or an
-    engine other than the crash sweeps' (``prereg_fill.frozen_engine``: their ``turbotab/`` tree,
-    no tracked file modified); ``unjudged`` where prereg.json holds no crash fill, so the frozen
-    engine is not known; else None."""
+    engine other than its dataset's frozen one (``prereg_fill.frozen_engine``: the crash sweeps'
+    ``turbotab/`` tree, or the tree prereg.json's amendment of that dataset names, no tracked
+    file modified); ``unjudged`` where prereg.json holds no crash fill, so the frozen engine is
+    not known; else None."""
     kind = fixture_of(prereg, replay.get("dataset"))
     fx = prereg[FIXTURE_KEY[str(kind)]]
     wanted = [("generator", "generator", fx["generator"]),
@@ -201,7 +207,7 @@ def provenance(replay: Mapping[str, Any], prereg: Mapping[str, Any]) -> tuple[st
         if not _same(replay.get(key), want):
             return "invalid", (f"The replay's {said} is {replay.get(key)!r}, not the "
                                f"pre-registered {want!r}.")
-    frozen = P.frozen_engine(prereg)
+    frozen = P.frozen_engine(prereg, replay.get("dataset"))
     if frozen is None:
         return "unjudged", ("prereg.json holds no crash fill, so the frozen engine a replay must "
                             "run on is not known.")
@@ -212,8 +218,8 @@ def provenance(replay: Mapping[str, Any], prereg: Mapping[str, Any]) -> tuple[st
                  "tracked files modified" if engine.get("engine_modified") else
                  "not known to be unmodified")
         return "invalid", (f"The replay ran on engine tree {engine.get('engine_tree')} ({state}); "
-                           f"the frozen engine the crash sweeps passed on is tree "
-                           f"{frozen['engine_tree']} with no file modified.")
+                           f"{P.frozen_words(frozen)} is tree {frozen['engine_tree']} with no "
+                           f"file modified.")
     return None
 
 
@@ -448,20 +454,20 @@ NO_FROZEN_SWEEP = ("prereg.json holds no crash fill, so the frozen engine a swee
 
 def sweep_refusal(sweep: Mapping[str, Any], frozen: Mapping[str, Any] | None) -> str | None:
     """Why ``sweep`` (a sweep's report, ``sweep.json`` or ``crash.json``) is refused for the engine
-    it ran on, in words naming its ``turbotab/`` tree and the frozen one: its report says the
-    engine changed while it ran (``sweep.engine_changed``, its words), or does not say whether it
-    did, or it ended on another tree than the crash sweeps' (``prereg_fill.frozen_engine``), or
-    with tracked files modified or not known to be unmodified; with no crash fill the frozen
-    engine is not known (:data:`NO_FROZEN_SWEEP`). None where it ran on the frozen engine from its
-    start to its end."""
+    it ran on, in words naming its ``turbotab/`` tree and the frozen one, ``frozen``, its
+    dataset's (``prereg_fill.frozen_engine``: the crash sweeps', or the tree prereg.json's
+    amendment of that dataset names): its report says the engine changed while it ran
+    (``sweep.engine_changed``, its words), or does not say whether it did, or it ended on another
+    tree than that, or with tracked files modified or not known to be unmodified; with no crash
+    fill the frozen engine is not known (:data:`NO_FROZEN_SWEEP`). None where it ran on the frozen
+    engine from its start to its end."""
     if frozen is None:
         return NO_FROZEN_SWEEP
     tree, modified = sweep.get("engine_tree"), sweep.get("engine_modified")
     state = ("no file modified" if modified is False else
              "tracked files modified" if modified else "not known to be unmodified")
     on = f"The sweep ran on engine tree {tree} ({state})"
-    want = (f"the frozen engine the crash sweeps passed on is tree {frozen['engine_tree']} with no "
-            f"file modified")
+    want = f"{P.frozen_words(frozen)} is tree {frozen['engine_tree']} with no file modified"
     if "engine_changed" not in sweep:
         return (f"{on}, and its report does not say whether the engine changed while it ran; "
                 f"{want}.")
@@ -479,7 +485,7 @@ def sweep_verdicts(sweep: Mapping[str, Any], prereg: Mapping[str, Any]) -> dict[
     counted apart, as not read, with why; and whether the rule read any refit at all
     (``applied``), with why where it read none. A sweep not run on the frozen engine
     (:func:`sweep_refusal`) is refused, its why in ``refused``, and nothing of it is read."""
-    refused = sweep_refusal(sweep, P.frozen_engine(prereg))
+    refused = sweep_refusal(sweep, P.frozen_engine(prereg, sweep.get("dataset")))
     if refused is not None:
         return {"dataset": sweep.get("dataset"), "plan": sweep.get("plan"),
                 "purpose": sweep.get("purpose"), "rule": rule_of(sweep, prereg),
@@ -769,12 +775,21 @@ NO_FROZEN_ENGINE = ("prereg.json holds no crash fill, so the frozen engine a rec
 
 def engine_refusal(rec: Any, frozen: Mapping[str, Any] | None) -> str | None:
     """Why ``rec`` is refused for the engine it was made on (the module docstring): not the
-    frozen one (``prereg_fill.record_engine_why``: its commit's ``turbotab/`` tree another than
-    the crash sweeps', or tracked files modified, or not known to be unmodified), or no frozen
-    engine known (:data:`NO_FROZEN_ENGINE`); None where it was made on the frozen engine."""
+    frozen one, ``frozen``, its dataset's (``prereg_fill.frozen_engine`` of ``rec.dataset.id``;
+    ``prereg_fill.record_engine_why``: its commit's ``turbotab/`` tree another than the crash
+    sweeps', or than the tree prereg.json's amendment of its dataset names, or tracked files
+    modified, or not known to be unmodified), or no frozen engine known
+    (:data:`NO_FROZEN_ENGINE`); None where it was made on the frozen engine."""
     if frozen is None:
         return NO_FROZEN_ENGINE
     return P.record_engine_why(rec, frozen)[1]
+
+
+def deviations(prereg: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every deviation from the pre-registration prereg.json records: each amendment
+    (``prereg_fill.amend``), its dataset, engine tree, commit, why and when, as it holds them."""
+    return [{k: a.get(k) for k in ("dataset", "engine_tree", "commit", "why", "at")}
+            for a in prereg.get("amendments") or []]
 
 
 def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
@@ -782,16 +797,16 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
           referee: Sequence[Mapping[str, Any]] = (), classes: Mapping[str, str] | None = None,
           failed: Sequence[str] = (), budget_fresh: float | None = None) -> dict[str, Any]:
     """prereg.json applied to the pilot (the module docstring): every number, as data. A record
-    not made on the frozen engine is refused before anything is scored (:func:`engine_refusal`),
-    listed with why (``refused_records``), and scored nowhere; only its spend counts, against the
-    budget (:func:`early_stopping`)."""
+    not made on its dataset's frozen engine is refused before anything is scored
+    (:func:`engine_refusal`), listed with why (``refused_records``), and scored nowhere; only its
+    spend counts, against the budget (:func:`early_stopping`). Each amendment prereg.json holds is
+    reported as a deviation (:func:`deviations`)."""
     from research.swarm import checks
 
     classes = classes or {}
-    frozen = P.frozen_engine(prereg)
     refused_records, kept, refused = [], [], []
     for rec in records:
-        why = engine_refusal(rec, frozen)
+        why = engine_refusal(rec, P.frozen_engine(prereg, rec.dataset.id))
         if why is None:
             kept.append(rec)
         else:
@@ -930,6 +945,7 @@ def score(records: Sequence[Any], replays: Sequence[Mapping[str, Any]],
     return {
         "prereg": {"version": prereg.get("version"),
                    "generators_sha256": prereg.get("generators_sha256")},
+        "deviations": deviations(prereg),
         "regression": {"failed_schema": list(failed),
                        "runs": {r.run.id: regression_checks(r) for r in records}},
         "refused_records": refused_records,
@@ -1007,6 +1023,16 @@ def report_md(report: Mapping[str, Any], prereg: Mapping[str, Any]) -> str:
              f"{fx['coverage']['draws']}, r0 = "
              f"{_n(prereg['predict_fixture']['r0'].get('value'))}, k = "
              f"{prereg['material']['measurement']['k']}.", ""]
+    if report.get("deviations"):
+        lines += ["## Deviations from the pre-registration", "",
+                  f"{len(report['deviations'])} dataset(s) are held by prereg.json's amendment to "
+                  f"an engine tree of their own, not to the one the other datasets' crash sweeps "
+                  f"passed on, each a deviation from the pre-registration:", ""]
+        lines += [f"- {v['dataset']}: amended {v['at']} to engine tree {v['engine_tree']} (commit "
+                  f"{v['commit']}); its crash sweep, its launches, its records, its sweeps and its "
+                  f"replays are each held to that tree. Why: {v['why']}"
+                  for v in report["deviations"]]
+        lines.append("")
     d = report["decision"]
     lines += ["## The decision", "",
               (f"The production analyst is {d['production']}." if d["production"]
@@ -1322,8 +1348,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["decision", "early_stopping", "examined_points", "faithfulness", "fixture_of",
-           "locate", "main", "make_replay", "model_of", "named_plans", "paired", "persona_rule",
+__all__ = ["decision", "deviations", "early_stopping", "examined_points", "faithfulness",
+           "fixture_of", "locate", "main", "make_replay", "model_of", "named_plans", "paired",
+           "persona_rule",
            "point_of", "provenance", "reach_of", "regression_checks", "report_md", "robustness",
            "rule_of", "score", "score_replay", "sweep_verdicts", "target_of", "unit"]
 

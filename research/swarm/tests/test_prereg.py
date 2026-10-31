@@ -42,6 +42,13 @@ own parameters with numpy, statsmodels, scikit-learn and scipy, never from the s
   A launch kept in a repository's main checkout refuses a fill made in a worktree of it
   (``git worktree add``), as in the main checkout; where git cannot place that folder (a ``.git``
   file naming no repository), the plain write is refused in the launcher's words.
+* An amendment (the owner's ruling of 2026-10-31): the amend command writes one entry, the commit's
+  full id and turbotab/ tree from a scratch repository's git, every other part as it was, with a
+  graded run of another dataset; each refusal (no pilot dataset, no words, a graded run or an
+  amendment already, no tree, the frozen tree, its crash sweep filled on another) leaves the file
+  byte for byte. The amended dataset fills only on its amendment's tree beside the others on
+  theirs, its frozen engine is that tree, and it may launch only on it, every other dataset only
+  on theirs; with no amendment the same reports on two trees are refused.
 """
 from __future__ import annotations
 
@@ -1003,3 +1010,222 @@ def test_the_commands_fill_one_dataset_and_say_whether_it_may_launch(prereg, tmp
     assert P.main(["--prereg", str(path), "ready", "--dataset", SULLIVAN]) == 1
     said = json.loads(capsys.readouterr().out)
     assert said["why"] == P.ready(written, ENGINE, dataset=SULLIVAN, margins=False)
+
+
+# ── an amendment: one dataset on an engine tree of its own (the owner, 2026-10-31) ──────────
+
+WHY = ("The frozen engine met a defect in the glucose crash sweep (stepwise selection, 'SVD did "
+       "not converge'), fixed in one engine change; glucose alone runs on it.")
+# An amendment as the amend command writes one (its shape is the command's own, below): the
+# glucose dataset held to engine tree t1, at commit c1.
+ENTRY = {"dataset": GLUCOSE, "commit": "c1", "engine_tree": "t1", "why": WHY,
+         "at": "2026-10-31T12:00:00+00:00"}
+FIXED = {"commit": "c1", "engine_tree": "t1", "engine_modified": False}
+OTHERS = tuple(d for d in P.PILOT if d != GLUCOSE)
+
+
+def amended(prereg, entry=ENTRY):
+    """``prereg`` with ``entry`` added to its amendments (``prereg_fill.build``'s)."""
+    return P.build(prereg["filled"], [*(prereg.get("amendments") or []), dict(entry)])
+
+
+def on(tree: str, commit: str, *datasets: str) -> dict[str, dict]:
+    """:func:`only`'s reports of ``datasets``, each run on ``tree`` at ``commit``."""
+    given = only(*datasets)
+    for r in given.values():
+        r.update(engine_tree=tree, commit=commit)
+    return given
+
+
+def both_trees(prereg) -> dict:
+    """``prereg`` amended (:data:`ENTRY`), every dataset but glucose filled on t0 at c0, glucose
+    on t1 at c1, and r0 measured on t0."""
+    base = P.fill(amended(prereg), only(*OTHERS), engine=ENGINE)
+    whole = P.fill(base, on("t1", "c1", GLUCOSE), engine=FIXED)
+    data = default_record()
+    return P.fill_r0(whole, data, default_replay(whole, data))
+
+
+def _trees(prereg) -> dict[str, str]:
+    return {d: e["engine_tree"] for d, e in prereg["filled"]["reports"].items()}
+
+
+def test_a_fill_holds_an_amended_dataset_to_its_amendments_tree_and_every_other_to_one(prereg,
+                                                                                     once):
+    """With glucose amended to tree t1, the other datasets fill on t0 and glucose on t1 beside
+    them, in either order; glucose's report on t0 or on a third tree is refused naming its
+    amendment, and another dataset's on t1 beside the others on t0 is refused as before. With no
+    amendment, glucose on t1 beside the others on t0 is refused. Every write keeps the amendment
+    (the crash fill, the r0 fill, the prices), and check reads it as held."""
+    base = P.fill(amended(prereg), only(*OTHERS), engine=ENGINE)
+    assert base["amendments"] == [ENTRY]
+    whole = P.fill(base, on("t1", "c1", GLUCOSE), engine=FIXED)
+    assert _trees(whole) == {**{d: "t0" for d in OTHERS}, GLUCOSE: "t1"}
+    # Glucose's own crash seconds (30 s) in the cap: five plans at 100 s, two at 30 s on four.
+    assert whole["filled"]["compute_cap"]["seconds"] == 5 * 100.0 + 4 * 2 * 30.0
+    first = P.fill(amended(prereg), on("t1", "c1", GLUCOSE), engine=FIXED)
+    assert _trees(first) == {GLUCOSE: "t1"}
+    assert _trees(P.fill(first, only(*OTHERS), engine=ENGINE)) == _trees(whole)
+    for tree in ("t0", "t9"):
+        with pytest.raises(P.Refused, match=(
+                rf"{GLUCOSE}'s crash sweep ran on engine tree {tree}, and prereg\.json's "
+                rf"amendment of 2026-10-31T12:00:00\+00:00 holds {GLUCOSE} to engine tree t1")):
+            P.fill(base, on(tree, "c9", GLUCOSE), engine={**ENGINE, "engine_tree": tree})
+    with pytest.raises(P.Refused, match="different engine trees"):
+        P.fill(whole, on("t1", "c1", SULLIVAN), engine=FIXED)
+    # The other way: no amendment, the same glucose report beside the others is refused.
+    plain = P.fill(prereg, only(*OTHERS), engine=ENGINE)
+    assert "amendments" not in plain
+    with pytest.raises(P.Refused, match="different engine trees"):
+        P.fill(plain, on("t1", "c1", GLUCOSE), engine=FIXED)
+    # Every write keeps the amendment.
+    data = default_record()
+    measured_ = P.fill_r0(whole, data, default_replay(whole, data))
+    priced = P.set_prices(measured_, PRICES, "the list prices")
+    for written in (whole, measured_, priced):
+        assert written["amendments"] == [ENTRY] and P.check(written) == []
+
+
+def test_each_dataset_is_held_to_its_own_frozen_engine_and_may_launch_only_on_it(prereg, once):
+    """Glucose's frozen engine is its amendment's tree and the commit its report ran at; every
+    other dataset's is the one tree of theirs, as with no amendment. Glucose may launch on t1 and
+    not on t0, each other dataset on t0 and not on t1; the pilot whole is filled on t0. A glucose
+    report off its amendment's tree refuses every dataset; with no amendment, the same reports on
+    two trees refuse every dataset and no frozen engine is known."""
+    whole = both_trees(prereg)
+    assert P.frozen_engine(whole, GLUCOSE) == {"engine_tree": "t1", "commits": ["c1"],
+                                               "amendment": ENTRY}
+    for d in (None, *OTHERS):
+        assert P.frozen_engine(whole, d) == {"engine_tree": "t0", "commits": ["c0"]}, d
+    assert P.ready(whole, FIXED, dataset=GLUCOSE) is None  # its margins recomputed too
+    assert P.ready(whole, ENGINE, dataset=GLUCOSE, margins=False) == (
+        f"prereg.json's amendment of 2026-10-31T12:00:00+00:00 holds {GLUCOSE} to engine tree "
+        f"t1, and the engine now is t0.")
+    assert "with modified files" in P.ready(whole, {**FIXED, "engine_modified": True},
+                                            dataset=GLUCOSE, margins=False)
+    for d in OTHERS:
+        assert P.ready(whole, ENGINE, dataset=d, margins=False) is None, d
+        assert "and the engine now is t1" in P.ready(whole, FIXED, dataset=d, margins=False)
+    assert P.ready(whole, ENGINE, margins=False) is None
+    off = P.build(whole["filled"] | {"reports": whole["filled"]["reports"] | {
+        GLUCOSE: whole["filled"]["reports"][GLUCOSE] | {"engine_tree": "t0"}}}, [ENTRY])
+    for d in (GLUCOSE, SULLIVAN):
+        assert P.ready(off, FIXED if d == GLUCOSE else ENGINE, dataset=d, margins=False) == (
+            f"{GLUCOSE}'s crash sweep prereg.json was filled from ran on engine tree t0, and "
+            f"prereg.json's amendment of 2026-10-31T12:00:00+00:00 holds {GLUCOSE} to engine "
+            f"tree t1: fill it again on that tree.")
+    plain = P.build(whole["filled"])
+    assert P.frozen_engine(plain) is None and P.frozen_engine(plain, GLUCOSE) is None
+    assert "more than one engine tree" in P.ready(plain, ENGINE, dataset=SULLIVAN, margins=False)
+
+
+def engine_repo(folder) -> dict:
+    """A repository (``git init``) of three commits: ``A``, whose ``turbotab/`` holds one file;
+    ``B``, that file changed (another tree of ``turbotab/``); ``B2``, a file outside
+    ``turbotab/`` changed (``B``'s tree again). Each commit and tree as git itself gives them."""
+    import subprocess
+
+    folder.mkdir(parents=True)
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(folder), "-c", "core.hooksPath=/dev/null", "-c",
+                               "commit.gpgsign=false", "-c", "user.name=test", "-c",
+                               "user.email=research@example.org", *args], check=True,
+                              capture_output=True, text=True, timeout=60).stdout.strip()
+
+    git("init", "-q")
+    (folder / "turbotab").mkdir()
+    out: dict = {"repo": folder.resolve()}
+    for name, path, text in (("A", "turbotab/engine.py", "x = 1\n"),
+                             ("B", "turbotab/engine.py", "x = 2\n"), ("B2", "README", "y\n")):
+        (folder / path).write_text(text, "utf-8")
+        git("add", path)
+        git("commit", "-q", "-m", name)
+        out[name], out["T" + name] = git("rev-parse", "HEAD"), git("rev-parse", "HEAD:turbotab")
+    assert out["TA"] != out["TB"] == out["TB2"]  # the construction
+    return out
+
+
+def on_commit(prereg, git: dict, name: str, datasets=OTHERS, launches=None) -> dict:
+    """``prereg`` with the crash sweeps of ``datasets`` filled at ``git``'s commit ``name``, on
+    its tree."""
+    tree, commit = git["T" + name], git[name]
+    return P.fill(prereg, on(tree, commit, *datasets), launches=launches,
+                  engine={"commit": commit, "engine_tree": tree, "engine_modified": False})
+
+
+def test_the_amend_command_writes_one_entry_holding_a_dataset_to_its_commits_tree(
+        prereg, tmp_path, monkeypatch, capsys, once):
+    """``amend`` adds one entry to prereg.json's ``amendments``: the dataset, the commit (its full
+    id, given abbreviated), that commit's turbotab/ tree as git gives it, the words, and when
+    (now, UTC). Every other part is as it was, and check reads it as held. It goes through with a
+    graded run of another dataset (the pilot's case, the guards below silent)."""
+    from datetime import datetime, timedelta, timezone
+
+    git = engine_repo(tmp_path / "repo")
+    monkeypatch.setattr(P, "REPO", git["repo"])
+    path = P.write(on_commit(prereg, git, "A", launches=tmp_path / "none"),
+                   tmp_path / "prereg.json")
+    monkeypatch.setattr(P, "GRADED", launched(tmp_path / "launches", RUN, ESTIMATE))
+    before = P.load(path)
+    start = datetime.now(timezone.utc).replace(microsecond=0)
+    assert P.main(["--prereg", str(path), "amend", "--dataset", GLUCOSE, "--commit",
+                   git["B"][:10], "--why", WHY]) == 0
+    end = datetime.now(timezone.utc)
+    written = P.load(path)
+    (entry,) = written["amendments"]
+    assert {k: v for k, v in entry.items() if k != "at"} == {
+        "dataset": GLUCOSE, "commit": git["B"], "engine_tree": git["TB"], "why": WHY}
+    at = datetime.fromisoformat(entry["at"])
+    assert at.utcoffset() == timedelta(0) and start <= at <= end
+    assert {k: v for k, v in written.items() if k != "amendments"} == before
+    assert P.check(written) == []
+    assert json.loads(capsys.readouterr().out) == {"amended": str(path), "amendment": entry}
+    # Its glucose report then fills on that tree, beside the others on theirs.
+    glucose = on_commit(written, git, "B", datasets=(GLUCOSE,), launches=tmp_path / "none")
+    assert _trees(glucose)[GLUCOSE] == git["TB"]
+    assert P.frozen_engine(glucose, GLUCOSE)["engine_tree"] == git["TB"]
+    assert P.frozen_engine(glucose)["engine_tree"] == git["TA"]
+
+
+def test_each_refused_amendment_says_why_and_leaves_prereg_json_byte_identical(
+        prereg, tmp_path, monkeypatch, capsys, once):
+    """The amend command refuses, prints why, exits 1 and leaves prereg.json byte for byte as it
+    was, where: the dataset is not a pilot dataset; no words say why; the dataset has a graded run
+    already; it has an amendment already; git resolves no turbotab/ tree at the commit; the tree
+    is the frozen one the other datasets' crash sweeps passed on (nothing to amend); the dataset's
+    crash sweep is filled already on another tree; or, after a graded run, a rule has changed
+    (as every write is refused). The test above is each guard's silent way."""
+    git = engine_repo(tmp_path / "repo")
+    monkeypatch.setattr(P, "REPO", git["repo"])
+    none = tmp_path / "none"
+    base = on_commit(prereg, git, "A", launches=none)
+    filled_on_a = on_commit(prereg, git, "A", datasets=P.PILOT, launches=none)
+    twice = P.amend(base, GLUCOSE, git["B"], WHY, launches=none)
+    monkeypatch.setattr(P, "GRADED", launched(tmp_path / "launches", RUN, SULLIVAN))
+    cases = [
+        (base, "bang2009", git["B"], WHY, "bang2009 is not one of the pilot's datasets"),
+        (base, GLUCOSE, git["B"], "  ", "An amendment states why"),
+        (base, SULLIVAN, git["B"], WHY, rf"{SULLIVAN} has 1 graded run\(s\) already \({RUN}\)"),
+        (twice, GLUCOSE, git["B2"], WHY, rf"{GLUCOSE} has an amendment already \(of "),
+        (base, GLUCOSE, "0" * 40, WHY, "git resolves no turbotab/ tree at commit 0{40}"),
+        (base, GLUCOSE, git["A"], WHY,
+         rf"tree {git['TA']} is the frozen engine the other datasets' crash sweeps passed on"),
+        (filled_on_a, GLUCOSE, git["B"], WHY,
+         rf"{GLUCOSE}'s crash sweep is filled already on engine tree {git['TA']}, not "
+         rf"{git['TB']}"),
+    ]
+    for held, dataset, commit, why, said in cases:
+        path = P.write(held, tmp_path / "prereg.json")
+        before = path.read_bytes()
+        assert P.main(["--prereg", str(path), "amend", "--dataset", dataset, "--commit", commit,
+                       "--why", why]) == 1, said
+        assert re.search(said, json.loads(capsys.readouterr().out)["refused"]), said
+        assert path.read_bytes() == before, said
+    path = P.write(base, tmp_path / "prereg.json")
+    before = path.read_bytes()
+    monkeypatch.setattr(P, "UNIT_MIN", P.UNIT_MIN + 1)
+    assert P.main(["--prereg", str(path), "amend", "--dataset", GLUCOSE, "--commit", git["B"],
+                   "--why", WHY]) == 1
+    assert re.search(FROZEN, json.loads(capsys.readouterr().out)["refused"])
+    assert path.read_bytes() == before
