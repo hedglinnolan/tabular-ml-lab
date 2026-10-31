@@ -9,6 +9,7 @@ hand.
     python -m research.swarm.prereg_fill r0 --record <default.json> --replay <replay.json>
     python -m research.swarm.prereg_fill prices haiku=P sonnet=P opus=P --source WORDS
     python -m research.swarm.prereg_fill ready [--dataset ID]   # whether it may launch
+    python -m research.swarm.prereg_fill amend --dataset ID --commit C --why WORDS
 
 **Every margin is computed from the generators** (``research/swarm/generators.py``), never from a
 draw a plan is graded on, but r0, which the orchestrator's ruling measures on the very draws and
@@ -53,10 +54,10 @@ any pilot datasets, each passed: ``launcher.crash_passed``, on the engine now; t
 ruling of 2026-10-28, a staged pre-registration). Each fill is mechanical (a sweep's fits and
 seconds), reads no graded run, adds to what is filled without dropping an earlier dataset's, and
 is recorded with when it was filled (``filled_at``); every report filled is on one ``turbotab/``
-tree; and a fill for a dataset that already has a graded run (a launch of it in the launches every
-checkout of the repository shares, the main checkout's, ``launcher.launches_of``:
-:func:`graded_runs`) is refused, since what it fixes is fixed before that dataset's first graded
-run:
+tree, but an amended dataset's, which is on its amendment's (below); and a fill for a dataset
+that already has a graded run (a launch of it in the launches every checkout of the repository
+shares, the main checkout's, ``launcher.launches_of``: :func:`graded_runs`) is refused, since what
+it fixes is fixed before that dataset's first graded run:
 
 * **each dataset's fit budget**: as many fits as the crash sweep made there (every option of the
   default plan fitted once), and as many seconds as those fits take at its slowest fit
@@ -79,6 +80,20 @@ generator at its recorded seed, on the pre-registered draws and evaluation rows,
 engine (``score_pilot.provenance``), refused on no draw. A crash fill of the Predict fixture
 clears it, since it reads that crash sweep's default plan; a fill of another dataset keeps it.
 
+**Amended, dataset by dataset** (:func:`amend`, the owner's ruling of 2026-10-31: the frozen
+engine met a defect in one dataset's crash sweep, fixed in one engine change that dataset alone
+runs on): prereg.json's ``amendments`` hold a pilot dataset to the ``turbotab/`` tree of a commit
+of its own instead of the frozen engine, each entry its dataset, the commit (its full id), that
+commit's tree (:func:`engine_tree_of`), why, and when it was written. It is written before the
+dataset's first graded run, once per dataset, never to the tree the other datasets' crash sweeps
+were filled on (nothing to amend), and not where the dataset's own crash sweep is filled on
+another tree. The amended dataset's crash sweep is then filled only from a report on that tree, it
+launches only on that engine (:func:`ready`), and its records, replays and sweeps are held to it
+(:func:`frozen_engine` of the dataset, read by ``score_pilot``, which reports each amendment as a
+deviation from the pre-registration); every other dataset's stay on the one tree of the crash
+sweeps of the datasets not amended, as with no amendment. Every write keeps the amendments, and
+:func:`check` reads them as held.
+
 **Set before the scoring** (:func:`set_prices`): each model's list price relative to the others',
 a fact rather than a choice, which the decision rule's "the cheaper" reads. The ``filled`` section
 holds these inputs, and ``--check`` reads them as held.
@@ -92,13 +107,14 @@ goes through, and before any graded run a changed rule is written again.
 
 :func:`ready` with a dataset says why that dataset may not launch, or None: it is not a pilot
 dataset; its own fit budget is not filled from its own crash sweep; on the Predict fixture, r0 is
-not measured, or not on the crash sweeps' engine; the reports filled are not on one engine tree,
-or not on the engine now with no file modified; or the margins and rules (b0, the coverage band,
-k, the r0 rule, the prices' rule, the materiality rules) are no longer the generators' (to be
-written again before any graded run, and never after one). With no dataset it says why the pilot
-is not filled whole, as its sweep step needs: every pilot dataset's fit budget, the sweeps'
-compute cap and r0, on the same terms. The launcher asks it of each dataset before each
-launch.
+not measured, or not on the crash sweeps' engine; the reports filled are not on one engine tree
+(an amended dataset's on its amendment's), or the dataset's tree (with no dataset, the one of the
+datasets not amended) is not the engine now with no file modified; or the margins and rules (b0,
+the coverage band, k, the r0 rule, the prices' rule, the materiality rules) are no longer the
+generators' (to be written again before any graded run, and never after one). With no dataset it
+says why the pilot is not filled whole, as its sweep step needs: every pilot dataset's fit budget,
+the sweeps' compute cap and r0, on the same terms; an amended dataset's engine now is asked of it
+alone. The launcher asks it of each dataset before each launch.
 """
 from __future__ import annotations
 
@@ -606,20 +622,24 @@ EMPTY_FILLED: dict[str, Any] = {"reports": {}, "fit_budget": None, "compute_cap"
                                 "default_plan": None, "r0": None, "relative_price": None}
 
 
-def build(filled: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def build(filled: Mapping[str, Any] | None = None,
+          amendments: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """The whole pre-registration: :func:`compute` and its ``filled`` section (its inputs only,
-    each :data:`EMPTY_FILLED` names)."""
+    each :data:`EMPTY_FILLED` names), with ``amendments`` (:func:`amend`'s entries, an input no
+    generator gives either) kept as given, where any list is given."""
     given = dict(filled or {})
     section = {k: copy.deepcopy(given.get(k, v)) for k, v in EMPTY_FILLED.items()}
     out = compute(section)
+    if amendments is not None:
+        out["amendments"] = [dict(copy.deepcopy(a)) for a in amendments]
     out["filled"] = section
     return out
 
 
 def check(prereg: Mapping[str, Any]) -> list[str]:
-    """Where ``prereg`` is not what the generators give (its ``filled`` inputs read as held):
-    each top-level part that differs, by name."""
-    again = build(prereg.get("filled"))
+    """Where ``prereg`` is not what the generators give (its ``filled`` inputs and its
+    ``amendments`` read as held): each top-level part that differs, by name."""
+    again = build(prereg.get("filled"), prereg.get("amendments"))
     return [k for k in sorted(set(again) | set(prereg)) if k != "filled"
             and json.loads(json.dumps(again.get(k))) != json.loads(json.dumps(prereg.get(k)))]
 
@@ -639,15 +659,66 @@ def ruled_final_why(final: str | None) -> str:
             f"filled.")
 
 
-def frozen_engine(prereg: Mapping[str, Any]) -> dict[str, Any] | None:
-    """The engine the crash sweeps passed on (the module docstring): their one ``turbotab/`` tree
-    and the commits they ran at, or None where none is filled in."""
-    reports = ((prereg.get("filled") or {}).get("reports") or {}).values()
-    trees = {e.get("engine_tree") for e in reports}
+def amendments_of(prereg: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Each amended dataset's amendment (:func:`amend`'s entry, prereg.json's ``amendments``), by
+    dataset."""
+    return {str(a.get("dataset")): dict(a) for a in prereg.get("amendments") or []
+            if isinstance(a, Mapping)}
+
+
+def frozen_engine(prereg: Mapping[str, Any], dataset: str | None = None
+                  ) -> dict[str, Any] | None:
+    """The engine ``dataset``'s records, replays and sweeps are held to (the module docstring).
+    For a dataset prereg.json amends (:func:`amend`): its amendment's ``turbotab/`` tree, the
+    commit its crash sweep ran at where that sweep is filled on the tree (none until then), and
+    the amendment. For any other dataset, or with no dataset: the engine the crash sweeps of the
+    datasets not amended passed on, their one tree and the commits they ran at, and, where
+    prereg.json amends any dataset, the datasets it amends (``amended``), or None where none is
+    filled in or they are on more than one tree (with no amendment, every crash sweep's)."""
+    amended = amendments_of(prereg)
+    reports = (prereg.get("filled") or {}).get("reports") or {}
+    if dataset is not None and dataset in amended:
+        entry = amended[dataset]
+        if not entry.get("engine_tree"):
+            return None
+        mine = reports.get(dataset) or {}
+        on = mine.get("engine_tree") == entry["engine_tree"] and mine.get("commit")
+        return {"engine_tree": entry["engine_tree"],
+                "commits": [str(mine["commit"])] if on else [], "amendment": entry}
+    rest = [e for d, e in reports.items() if d not in amended]
+    trees = {e.get("engine_tree") for e in rest}
     if len(trees) != 1 or None in trees:
         return None
-    return {"engine_tree": next(iter(trees)),
-            "commits": sorted({str(e.get("commit")) for e in reports if e.get("commit")})}
+    out = {"engine_tree": next(iter(trees)),
+           "commits": sorted({str(e.get("commit")) for e in rest if e.get("commit")})}
+    if amended:
+        out["amended"] = sorted(amended)
+    return out
+
+
+def frozen_words(frozen: Mapping[str, Any]) -> str:
+    """Whose frozen engine ``frozen`` (:func:`frozen_engine`'s) is, in words: the crash sweeps'
+    (where prereg.json amends a dataset, those of the datasets it does not amend), or, for an
+    amended dataset, the one its amendment holds it to."""
+    entry = frozen.get("amendment")
+    if entry:
+        return (f"the frozen engine prereg.json's amendment of {entry.get('at')} holds "
+                f"{entry.get('dataset')} to")
+    if frozen.get("amended"):
+        return ("the frozen engine the crash sweeps of the datasets prereg.json does not amend "
+                "passed on")
+    return "the frozen engine the crash sweeps passed on"
+
+
+def _git(*args: str) -> str | None:
+    """What ``git rev-parse --verify --quiet <args>`` prints in this checkout, or None where git
+    does not resolve it."""
+    try:
+        out = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", *args],
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (out.stdout.strip() or None) if out.returncode == 0 else None
 
 
 def engine_tree_of(commit: str | None) -> str | None:
@@ -655,25 +726,35 @@ def engine_tree_of(commit: str | None) -> str | None:
     <commit>:turbotab``), or None where git does not resolve it."""
     if not commit:
         return None
-    try:
-        out = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet",
-                              f"{commit}:turbotab"], capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return (out.stdout.strip() or None) if out.returncode == 0 else None
+    return _git(f"{commit}:turbotab")
 
 
 def record_engine_why(rec: Any, frozen: Mapping[str, Any]) -> tuple[str | None, str | None]:
     """The ``turbotab/`` tree of the engine ``rec`` was made on, and why it is not the
-    ``frozen`` one (a commit neither a crash sweep's nor one whose tree is theirs, or tracked
-    files modified, or not known to be unmodified), else None."""
+    ``frozen`` one, its dataset's (:func:`frozen_engine` of ``rec.dataset.id``): a commit neither
+    a crash sweep's nor one whose tree is theirs (for an amended dataset, its amendment's tree;
+    where prereg.json amends another, its dataset named as one it does not amend), or tracked
+    files modified, or not known to be unmodified; else None."""
     commit = rec.run.engine_commit
     tree = frozen["engine_tree"] if commit in frozen["commits"] else engine_tree_of(commit)
     if tree != frozen["engine_tree"]:
+        entry = frozen.get("amendment")
+        if entry:
+            passed = (f", which its crash sweep passed on at commit(s) "
+                      f"{', '.join(frozen['commits'])}" if frozen["commits"] else
+                      ", on which no crash sweep of it is filled yet")
+            return tree, (f"The record was made on engine commit {commit} (its turbotab/ tree "
+                          f"{tree}), and prereg.json's amendment of {entry.get('at')} holds "
+                          f"{entry.get('dataset')} to tree {frozen['engine_tree']}{passed}: not "
+                          f"its frozen engine.")
+        crash = (f"commit(s) {', '.join(frozen['commits'])}, tree {frozen['engine_tree']}: not "
+                 f"the frozen engine.")
+        if frozen.get("amended"):
+            return tree, (f"The record of {rec.dataset.id}, a dataset prereg.json does not amend, "
+                          f"was made on engine commit {commit} (its turbotab/ tree {tree}), and "
+                          f"the crash sweeps of the datasets it does not amend passed on {crash}")
         return tree, (f"The record was made on engine commit {commit} (its turbotab/ tree "
-                      f"{tree}), and the crash sweeps passed on commit(s) "
-                      f"{', '.join(frozen['commits'])}, tree {frozen['engine_tree']}: not the "
-                      f"frozen engine.")
+                      f"{tree}), and the crash sweeps passed on {crash}")
     if rec.run.engine_modified is not False:
         return tree, (f"The record was made on engine commit {commit} with tracked files "
                       + ("modified" if rec.run.engine_modified else "not known to be unmodified")
@@ -780,13 +861,14 @@ def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
          launches: Path | None = None, at: str | None = None) -> dict[str, Any]:
     """``prereg`` with the crash sweep's fields filled from ``reports`` (dataset → its crash.json),
     any pilot datasets', each passed (``launcher.crash_passed`` on ``engine``) on the one engine
-    tree every report filled is on, none of a dataset with a graded run (:func:`graded_runs` in
-    ``launches``), and none once a run is graded where the generators no longer give what
-    ``prereg`` holds (:func:`frozen_why`), each recorded with when it was filled (``at``, else
-    now), added to what is filled (the module docstring); the compute cap once every pilot
-    dataset's is filled; and, where the Predict fixture's report is among them, its default plan
-    set and r0's measure cleared (:func:`fill_r0` reads that plan). ``paths`` names each report's
-    file, for its SHA-256."""
+    tree every report filled of a dataset prereg.json does not amend is on, an amended dataset's
+    on its amendment's tree (:func:`amend`), none of a dataset with a graded run
+    (:func:`graded_runs` in ``launches``), and none once a run is graded where the generators no
+    longer give what ``prereg`` holds (:func:`frozen_why`), each recorded with when it was filled
+    (``at``, else now), added to what is filled (the module docstring); the compute cap once
+    every pilot dataset's is filled; and, where the Predict fixture's report is among them, its
+    default plan set and r0's measure cleared (:func:`fill_r0` reads that plan). ``paths`` names
+    each report's file, for its SHA-256."""
     from research.swarm import launcher
 
     if not reports:
@@ -809,9 +891,17 @@ def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
     held = {d: dict(e) for d, e in (filled.get("reports") or {}).items() if d not in reports}
     trees = {d: e.get("engine_tree") for d, e in held.items()} | {
         d: r.get("engine_tree") for d, r in reports.items()}
-    if len(set(trees.values())) != 1:
+    amended = amendments_of(prereg)
+    for d, t in trees.items():
+        if d in amended and t != amended[d].get("engine_tree"):
+            raise Refused(f"{d}'s crash sweep ran on engine tree {t}, and prereg.json's amendment "
+                          f"of {amended[d].get('at')} holds {d} to engine tree "
+                          f"{amended[d].get('engine_tree')}: it is filled only from a sweep on "
+                          f"that tree.")
+    rest = {d: t for d, t in trees.items() if d not in amended}
+    if len(set(rest.values())) > 1:
         raise Refused("The crash sweeps ran on different engine trees: "
-                      + ", ".join(f"{d} on {t}" for d, t in trees.items()) + ".")
+                      + ", ".join(f"{d} on {t}" for d, t in rest.items()) + ".")
     default, r0 = filled.get("default_plan"), filled.get("r0")
     if PREDICT_FIXTURE in reports:
         default, r0 = default_plan_of(reports[PREDICT_FIXTURE]), None
@@ -836,7 +926,7 @@ def fill(prereg: Mapping[str, Any], reports: Mapping[str, Mapping[str, Any]], *,
     section = filled | {"reports": entries, "fit_budget": budget,
                         "compute_cap": compute_cap_of(entries), "default_plan": default,
                         "r0": r0}
-    return build(section)
+    return build(section, prereg.get("amendments"))
 
 
 def _same(a: Any, b: Any) -> bool:
@@ -858,7 +948,7 @@ def fill_r0(prereg: Mapping[str, Any], record: Any, replay: Mapping[str, Any], *
 
     filled = dict(prereg.get("filled") or {})
     plan = filled.get("default_plan")
-    frozen = frozen_engine(prereg)
+    frozen = frozen_engine(prereg, PREDICT_FIXTURE)
     if not plan or PREDICT_FIXTURE not in (filled.get("fit_budget") or {}) or frozen is None:
         raise Refused("r0 is measured after the Predict fixture's crash fill: fill its crash "
                       "sweep's fields first (python -m research.swarm.prereg_fill crash …).")
@@ -908,7 +998,7 @@ def fill_r0(prereg: Mapping[str, Any], record: Any, replay: Mapping[str, Any], *
              else None,
              "replay_sha256": _sha256(Path(paths["replay"])) if paths and "replay" in paths
              else None, "filled_at": at or now()}
-    return build(filled | {"r0": entry})
+    return build(filled | {"r0": entry}, prereg.get("amendments"))
 
 
 def set_prices(prereg: Mapping[str, Any], prices: Mapping[str, float], source: str, *,
@@ -927,7 +1017,66 @@ def set_prices(prereg: Mapping[str, Any], prices: Mapping[str, float], source: s
     section = dict(prereg.get("filled") or {}) | {
         "relative_price": {"prices": {m: float(prices[m]) for m in MODELS},
                            "source": str(source)}}
-    return build(section)
+    return build(section, prereg.get("amendments"))
+
+
+def commit_of(commit: str | None) -> str | None:
+    """The full id of ``commit`` in this checkout (``git rev-parse <commit>^{commit}``), or None
+    where git does not resolve it to a commit."""
+    if not commit:
+        return None
+    return _git(f"{commit}^{{commit}}")
+
+
+def amend(prereg: Mapping[str, Any], dataset: str, commit: str, why: str, *,
+          launches: Path | None = None, at: str | None = None) -> dict[str, Any]:
+    """``prereg`` with one amendment added (the module docstring): ``dataset`` held to the
+    ``turbotab/`` tree of ``commit`` (:func:`engine_tree_of`), not to the frozen engine the other
+    datasets' crash sweeps passed on, for ``why``; recorded with the commit's full id
+    (:func:`commit_of`) and when it was written (``at``, else now). Refused where ``dataset`` is
+    not a pilot dataset; no words say why; it has an amendment already, or a graded run
+    (:func:`graded_runs` in ``launches``); git resolves no ``turbotab/`` tree at ``commit``; that
+    tree is one the crash sweeps of the other datasets not amended were filled on (there is
+    nothing to amend); ``dataset``'s own crash sweep is filled already on another tree; or, once a
+    run is graded, the generators no longer give what ``prereg`` holds (:func:`frozen_why`)."""
+    if dataset not in PILOT:
+        raise Refused(f"{dataset} is not one of the pilot's datasets ({', '.join(PILOT)}), so "
+                      f"prereg.json holds no amendment of it.")
+    words = str(why or "").strip()
+    if not words:
+        raise Refused(f"An amendment states why {dataset} leaves the frozen engine, and no words "
+                      f"are given.")
+    amended = amendments_of(prereg)
+    if dataset in amended:
+        held = amended[dataset]
+        raise Refused(f"{dataset} has an amendment already (of {held.get('at')}, engine tree "
+                      f"{held.get('engine_tree')}): a dataset is amended once.")
+    runs = graded_runs(dataset, launches)
+    if runs:
+        raise Refused(f"{dataset} has {len(runs)} graded run(s) already ({_named(runs)}): an "
+                      f"amendment is written before its first graded run, so none is written.")
+    full = commit_of(commit)
+    tree = engine_tree_of(full)
+    if tree is None:
+        raise Refused(f"git resolves no turbotab/ tree at commit {commit} in this checkout, so "
+                      f"prereg.json cannot hold {dataset} to it.")
+    reports = (prereg.get("filled") or {}).get("reports") or {}
+    others = {e.get("engine_tree") for d, e in reports.items()
+              if d != dataset and d not in amended}
+    if tree in others:
+        raise Refused(f"Commit {commit}'s turbotab/ tree {tree} is the frozen engine the other "
+                      f"datasets' crash sweeps passed on: there is nothing to amend.")
+    mine = reports.get(dataset)
+    if mine is not None and mine.get("engine_tree") != tree:
+        raise Refused(f"{dataset}'s crash sweep is filled already on engine tree "
+                      f"{mine.get('engine_tree')}, not {tree}: an amendment is written before "
+                      f"the crash sweep it holds the dataset to is filled.")
+    frozen = frozen_why(prereg, launches)
+    if frozen is not None:
+        raise Refused(frozen)
+    entry = {"dataset": dataset, "commit": full, "engine_tree": tree, "why": words,
+             "at": at or now()}
+    return build(prereg.get("filled"), [*(prereg.get("amendments") or []), entry])
 
 
 def ready(prereg: Mapping[str, Any], engine: Mapping[str, Any] | None = None, *,
@@ -935,9 +1084,11 @@ def ready(prereg: Mapping[str, Any], engine: Mapping[str, Any] | None = None, *,
           ) -> str | None:
     """Why ``dataset`` may not launch on ``prereg``, or with no dataset why the pilot is not
     filled whole, as its sweep step needs (the module docstring); None where nothing stops it.
-    ``engine``: the engine now (``launcher.engine_now`` where None); ``margins``: also recompute
-    the margins, and where they changed, read the graded runs (:func:`graded_runs` in
-    ``launches``) to say whether they may be written again."""
+    The engine now must be ``dataset``'s frozen engine: its amendment's tree, for a dataset
+    prereg.json amends, else (and with no dataset) the one tree of the crash sweeps of the
+    datasets not amended. ``engine``: the engine now (``launcher.engine_now`` where None);
+    ``margins``: also recompute the margins, and where they changed, read the graded runs
+    (:func:`graded_runs` in ``launches``) to say whether they may be written again."""
     filled = prereg.get("filled") or {}
     budget = filled.get("fit_budget") or {}
     reports = filled.get("reports") or {}
@@ -952,10 +1103,21 @@ def ready(prereg: Mapping[str, Any], engine: Mapping[str, Any] | None = None, *,
                 f"(python -m research.swarm.prereg_fill crash …).")
     if dataset is None and not filled.get("compute_cap"):
         return "prereg.json holds no compute cap for the sweeps: fill it from the crash sweeps."
-    trees = {e.get("engine_tree") for e in reports.values()}
-    if len(trees) != 1:
-        return (f"The crash sweeps prereg.json was filled from ran on more than one engine tree "
+    amended = amendments_of(prereg)
+    # The crash sweeps of the datasets not amended (with no amendment, every one) on one tree, and
+    # an amended dataset's on its amendment's.
+    trees = {e.get("engine_tree") for d, e in reports.items() if d not in amended}
+    sweeps = ("The crash sweeps of the datasets prereg.json does not amend" if amended else
+              "The crash sweeps prereg.json was filled from")
+    if len(trees) > 1:
+        return (f"{sweeps} ran on more than one engine tree "
                 f"({', '.join(sorted(map(str, trees)))}): fill them again on one.")
+    for d, entry in amended.items():
+        if d in reports and reports[d].get("engine_tree") != entry.get("engine_tree"):
+            return (f"{d}'s crash sweep prereg.json was filled from ran on engine tree "
+                    f"{reports[d].get('engine_tree')}, and prereg.json's amendment of "
+                    f"{entry.get('at')} holds {d} to engine tree {entry.get('engine_tree')}: "
+                    f"fill it again on that tree.")
     if dataset in (None, PREDICT_FIXTURE):
         r0 = (prereg.get("predict_fixture") or {}).get("r0") or {}
         if r0.get("value") is None:
@@ -963,21 +1125,29 @@ def ready(prereg: Mapping[str, Any], engine: Mapping[str, Any] | None = None, *,
         measured = filled.get("r0") or {}
         on = (measured.get("engine_tree"),
               (measured.get("replay_engine") or {}).get("engine_tree"))
-        if set(on) != trees or measured.get("engine_modified") is not False \
+        mine = PREDICT_FIXTURE in amended
+        held = {amended[PREDICT_FIXTURE].get("engine_tree")} if mine else trees
+        whose = "amendment's" if mine else "crash sweeps'"
+        if set(on) != held or measured.get("engine_modified") is not False \
                 or (measured.get("replay_engine") or {}).get("engine_modified") is not False:
             return (f"prereg.json's r0 was measured on a record made on engine tree {on[0]} and a "
-                    f"replay run on {on[1]}, not both on the crash sweeps' "
-                    f"{', '.join(sorted(map(str, trees)))} with no file modified: measure it "
+                    f"replay run on {on[1]}, not both on the {whose} "
+                    f"{', '.join(sorted(map(str, held)))} with no file modified: measure it "
                     f"again (python -m research.swarm.prereg_fill r0 …).")
     if engine is None:
         from research.swarm import launcher
 
         engine = launcher.engine_now()
-    if trees != {engine.get("engine_tree")} or engine.get("engine_modified"):
-        return (f"The crash sweeps prereg.json was filled from ran on engine tree(s) "
-                f"{', '.join(sorted(map(str, trees)))}, and the engine now is "
-                f"{engine.get('engine_tree')}"
-                + (" with modified files" if engine.get("engine_modified") else "") + ".")
+    modified = " with modified files" if engine.get("engine_modified") else ""
+    if dataset in amended:
+        entry = amended[dataset]
+        if entry.get("engine_tree") != engine.get("engine_tree") or engine.get("engine_modified"):
+            return (f"prereg.json's amendment of {entry.get('at')} holds {dataset} to engine tree "
+                    f"{entry.get('engine_tree')}, and the engine now is "
+                    f"{engine.get('engine_tree')}{modified}.")
+    elif trees != {engine.get("engine_tree")} or engine.get("engine_modified"):
+        return (f"{sweeps} ran on engine tree(s) {', '.join(sorted(map(str, trees)))}, and the "
+                f"engine now is {engine.get('engine_tree')}{modified}.")
     if margins:
         changed = check(prereg)
         if changed:
@@ -1038,8 +1208,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--source", required=True, help="where the list prices were read")
     y = sub.add_parser("ready", help="whether a dataset may launch, or the pilot is filled whole")
     y.add_argument("--dataset", help="a pilot dataset (none: every one, and the compute cap)")
+    a = sub.add_parser("amend", help="hold one pilot dataset to the engine tree of a commit, "
+                                     "before its first graded run")
+    a.add_argument("--dataset", required=True, help="the pilot dataset amended")
+    a.add_argument("--commit", required=True, help="the commit whose turbotab/ tree it runs on")
+    a.add_argument("--why", required=True, help="why it leaves the frozen engine, in words")
     args = parser.parse_args(argv)
     try:
+        if args.command == "amend":
+            out = amend(load(args.prereg), args.dataset, args.commit, args.why)
+            write(out, args.prereg)
+            print(json.dumps({"amended": str(args.prereg), "amendment": out["amendments"][-1]}))
+            return 0
         if args.command == "crash":
             reports, paths = {}, {}
             for path in args.reports:
@@ -1086,13 +1266,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if why is not None:
         print(json.dumps({"refused": why}))
         return 1
-    print(f"wrote {write(build((held or {}).get('filled')), args.prereg)}")
+    again = build((held or {}).get("filled"), (held or {}).get("amendments"))
+    print(f"wrote {write(again, args.prereg)}")
     return 0
 
 
-__all__ = ["PREREG", "RULED_FINAL", "Refused", "binomial_band", "build", "changed_why", "check",
-           "compute", "compute_cap_of", "default_plan_of", "engine_tree_of", "fill", "fill_r0",
-           "frozen_engine", "frozen_why", "graded_menus", "graded_runs", "in_band", "k_ruling",
+__all__ = ["PREREG", "RULED_FINAL", "Refused", "amend", "amendments_of", "binomial_band", "build",
+           "changed_why", "check", "commit_of", "compute", "compute_cap_of", "default_plan_of",
+           "engine_tree_of", "fill", "fill_r0", "frozen_engine", "frozen_why", "frozen_words",
+           "graded_menus", "graded_runs", "in_band", "k_ruling",
            "latent_discoveries", "load", "main", "measurement_oracle", "r0_of", "r0_ruling",
            "readiness", "ready", "record_engine_why", "replay_seeds", "ruled_final_why",
            "set_prices", "swept_plans", "write"]
