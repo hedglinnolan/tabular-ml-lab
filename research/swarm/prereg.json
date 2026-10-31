@@ -541,6 +541,15 @@
   },
   "rule": "Beyond the default plan (whose fits the crash sweep paid), each dataset's sweeps are around the plans named here, chosen by when their runs started, never by their results."
  },
+ "amendments": [
+  {
+   "dataset": "nhanes_glucose_predict",
+   "commit": "5c4ba8f5d5ecc14669ea9c0db1c8dd306e8daa78",
+   "engine_tree": "21cde147c2b6de36ebaa7a9c21b819eaa064c03c",
+   "why": "The crash sweep of nhanes_glucose_predict on the frozen engine (tree 523fcc2a, 2026-10-31) met an engine defect: set_selection:stepwise ended the fit with 'LinAlgError: SVD did not converge' (numpy's pinv of a singular X'X in backward elimination by AIC). The owner ruled on 2026-10-31, before glucose's first graded run, to fix it (the svdfix package, merged at 5c4ba8f5) and to run and score glucose alone on the fixed engine; every other pilot dataset stays on tree 523fcc2a.",
+   "at": "2026-10-31T18:01:33+00:00"
+  }
+ ],
  "filled": {
   "reports": {
    "sullivan2021": {
