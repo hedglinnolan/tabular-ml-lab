@@ -1,9 +1,9 @@
 """The assembler's version 2 (SWARM_PLAN §4; ``assemble.py``), on constructed run directories: each
 field from the driver's own lines (a preview's reason, an answer's tag, a want, the account, each
 failed fit), the live markers at each fit (the driver's snapshots by the fit's key, the answers
-the fit read and, under Predict, the primary metric its own record names), and each family's
-signed change from the fit before (``signed.py``). Every number is constructed; each guard both
-ways."""
+the fit read and, under Predict, the primary metric its own record names), each family's signed
+change from the fit before (``signed.py``), and the engine the record names (the export's, else
+the launch's stamp, else none). Every number is constructed; each guard both ways."""
 from __future__ import annotations
 
 import json
@@ -359,3 +359,66 @@ def test_the_run_dir_holds_the_drivers_markers(tmp_path):
     (run / A.MARKERS_FILE).write_text(json.dumps({"fit_key": "K", "markers": []}) + "\n\n")
     assert A.read_run_dir(run).markers == [{"fit_key": "K", "markers": []}]
     assert Path(run / A.MARKERS_FILE).exists()
+
+
+# ── the engine a run started on ──────────────────────────────────────────────
+
+LAUNCHED = {"commit": "c0", "engine_tree": "t0", "engine_modified": False}  # launcher.engine_now's
+
+
+def _bundle(engine: dict[str, Any]) -> bytes:
+    """An export bundle as ``GET …/export`` serves it, its provenance naming ``engine`` (the
+    export's own keys: ``commit``, ``modified``)."""
+    import io
+    import zipfile
+
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr("bundle/provenance.json", json.dumps({"engine": engine, "inputs": []}))
+    return out.getvalue()
+
+
+def _engine(tmp_path: Path, meta: dict[str, Any], export: bytes | None = None,
+            **driver: Any) -> tuple[str | None, bool | None]:
+    """The record's ``run.engine_commit`` and ``engine_modified`` for a run given ``meta``, its
+    export served as ``export`` (refused where None) and driver.json holding ``driver``."""
+    run = _run_dir(tmp_path / "runs" / "r1", started="2026-10-29T22:18:59+00:00", **driver)
+    routes = _served_routes() | ({"/export": export} if export is not None else {})
+    path, ok = A.assemble(run, meta=meta, client=FakeClient(routes), corpus=tmp_path / "corpus",
+                          mattered_wait=0)
+    assert ok, json.loads(path.read_text())["error"]
+    rec = validate(json.loads(path.read_text("utf-8")))
+    return rec.run.engine_commit, rec.run.engine_modified
+
+
+def test_a_run_that_never_exported_names_the_engine_its_launch_stamped(tmp_path):
+    assert _engine(tmp_path, {**META, "engine": LAUNCHED}) == ("c0", False)
+    stamped_modified = {**LAUNCHED, "engine_modified": True}
+    assert _engine(tmp_path / "m", {**META, "engine": stamped_modified}) == ("c0", True)
+
+
+@pytest.mark.parametrize("launched", [None, LAUNCHED, {**LAUNCHED, "commit": "c9"}],
+                         ids=["no_stamp", "same", "other"])
+def test_an_exports_engine_wins_whatever_the_launch_stamped(tmp_path, launched):
+    meta = {**META, "engine": launched}
+    exported = _bundle({"turbotab": "2.0.0.dev0", "commit": "e1", "modified": True, "stages": {}})
+    assert _engine(tmp_path, meta, exported) == ("e1", True)
+
+
+@pytest.mark.parametrize("launched", [None, {"commit": None, "engine_tree": "t0",
+                                             "engine_modified": False},
+                                      {"commit": "c0", "engine_tree": "t0"},
+                                      {"commit": "c0", "engine_modified": "false"},
+                                      ["c0", False]],
+                         ids=["no_stamp", "no_commit", "no_modified", "modified_not_a_flag",
+                              "not_a_stamp"])
+def test_a_run_with_no_export_and_no_whole_stamp_names_no_engine(tmp_path, launched):
+    """A launch with no engine (every launch before the stamp) keeps the nulls; so does one whose
+    stamp does not name both a commit and whether the engine's files were modified."""
+    assert _engine(tmp_path, {**META, "engine": launched}) == (None, None)
+
+
+def test_the_engine_is_never_read_from_driver_json(tmp_path):
+    """driver.json's ``commit`` (the driver's ``_git_head``), or an ``engine`` it held, is no
+    stamp of the engine: with no export and no engine given, the record names none."""
+    assert _engine(tmp_path, dict(META), commit="d" * 40, engine=LAUNCHED) == (None, None)

@@ -36,6 +36,15 @@ reads the run directory the driver wrote and the server's own data, builds the r
   key.
 * ``home/``: the server's home.
 
+**The engine** (:func:`engine_of`), the record's ``run.engine_commit`` and ``engine_modified``: the
+export's, where the bundle the server serves names one in its provenance (``engine``: ``commit``,
+and ``modified``, whether any tracked file of the server's checkout differed from it), whatever the
+launch says; else the one the run's launch stamped, given to :func:`assemble` as ``engine``
+(``launcher.record_meta``, from the launch file: ``commit``, and ``engine_modified``, whether a
+tracked file under ``turbotab/`` differed from it, when the server started); else none (nulls),
+as for a launch file written before the stamp. driver.json's ``commit`` is never read as the
+engine.
+
 **The server's reads.** The analyst log comes first, since any later read can render a claim and
 each render is logged. Then the project with its decision log, the fit records, the results, which
 decisions mattered (waiting while that stage computes), the materiality ledger, the ingest, the
@@ -1755,6 +1764,20 @@ def question_of(state: Mapping[str, Any], meta: Mapping[str, Any]) -> dict[str, 
             "stated": card.get("question"), "paper": card.get("paper")}
 
 
+def engine_of(provenance: Mapping[str, Any], launched: Any) -> dict[str, Any]:
+    """The engine the record names (the module docstring), as ``commit`` and ``modified``: the
+    export's, where its provenance names one, whatever the launch stamped; else the one the run's
+    launch stamped (``launched``, ``launcher.engine_stamp``'s ``commit`` and ``engine_modified``),
+    where it names a commit and whether the engine's files were modified; else none known."""
+    exported = provenance.get("engine")
+    if isinstance(exported, Mapping) and exported:
+        return {"commit": exported.get("commit"), "modified": exported.get("modified")}
+    if isinstance(launched, Mapping) and isinstance(launched.get("commit"), str) \
+            and launched["commit"] and isinstance(launched.get("engine_modified"), bool):
+        return {"commit": launched["commit"], "modified": launched["engine_modified"]}
+    return {"commit": None, "modified": None}
+
+
 def run_of(run: RunDir, meta: Mapping[str, Any], attempts: Sequence[Mapping[str, Any]],
            provenance: Mapping[str, Any], health: Read) -> dict[str, Any]:
     d = run.driver
@@ -1770,11 +1793,11 @@ def run_of(run: RunDir, meta: Mapping[str, Any], attempts: Sequence[Mapping[str,
         except (OSError, SpendRefused, ValueError) as exc:
             why = f"The transcript's spend was not counted: {exc}"
     seconds = [a["seconds"] for a in attempts if a.get("seconds") is not None]
-    engine = provenance.get("engine") or {}
+    engine = engine_of(provenance, meta.get("engine"))
     h = health.body if health.ok else {}
     return {
         "id": d.get("run") or run.path.name, "design": meta.get("design"),
-        "engine_commit": engine.get("commit"), "engine_modified": engine.get("modified"),
+        "engine_commit": engine["commit"], "engine_modified": engine["modified"],
         "engine_version": (h or {}).get("version"), "analyst_model": meta.get("analyst_model"),
         "persona": meta.get("persona"), "effort": meta.get("effort"),
         "prompt_version": meta.get("prompt_version"),
@@ -1879,9 +1902,12 @@ def write(raw: Mapping[str, Any], run_id: str, corpus: Path = CORPUS) -> tuple[P
 
 
 def meta_of(run: RunDir, given: Mapping[str, Any] | None) -> dict[str, Any]:
-    """The run's own fields (:data:`META_KEYS`): the given ones, else driver.json's."""
+    """The run's own fields (:data:`META_KEYS`): the given ones, else driver.json's; and the
+    engine the run's launch stamped (``engine``, :func:`engine_of`), the given one alone:
+    driver.json holds no stamp of the engine (its ``commit`` does not say whether the engine's
+    files were modified)."""
     given = {k: v for k, v in (given or {}).items() if v is not None}
-    return {k: given.get(k, run.driver.get(k)) for k in META_KEYS}
+    return {k: given.get(k, run.driver.get(k)) for k in META_KEYS} | {"engine": given.get("engine")}
 
 
 def assemble(run_dir: str | Path, *, meta: Mapping[str, Any] | None = None, client: Any = None,

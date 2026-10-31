@@ -6,7 +6,9 @@ both ways (``prereg_fill.ready`` asked before each, here a stand-in, and package
 is on the tree) with the fit budget prereg.json holds, and the start command line the launcher
 hands the driver: no label of its own, the run named by the driver, the known answer written where
 no analyst's command reads it, in the launches folder every checkout shares (the main checkout's,
-the first ``git worktree list`` names), with no command-line option to write it elsewhere."""
+the first ``git worktree list`` names), with no command-line option to write it elsewhere; and the
+engine the run started on stamped in the launch file, both ways, through to the record of a run
+that never exported and the pre-registered engine rule."""
 from __future__ import annotations
 
 import json
@@ -199,18 +201,21 @@ def prereg(monkeypatch):
     return install
 
 
-def started(tmp_path, monkeypatch, *, dataset=PILOT, table=PILOT_TABLE, passed=True):
+def started(tmp_path, monkeypatch, *, dataset=PILOT, table=PILOT_TABLE, passed=True,
+            after=None):
     """A launch of ``dataset`` with a crash report on its manifest's table, the start command
-    lines it handed the driver, and its result (or the refusal)."""
+    lines it handed the driver, and its result (or the refusal). The engine is :data:`ENGINE`
+    until the driver's start returns, and ``after`` from then on, where given."""
     crash = tmp_path / "crash.json"
     crash.write_text(json.dumps(report(dataset=dataset, data={"path": "t.csv", "sha256": table},
                                        **({} if passed else {"passed": False,
                                                              "defects": [{"refit": "x"}]}))))
-    monkeypatch.setattr(L, "engine_now", lambda: dict(ENGINE))
+    given: list[list[str]] = []
+    monkeypatch.setattr(L, "engine_now",
+                        lambda: dict(after if after is not None and given else ENGINE))
     data = tmp_path / "walking_bp.csv"
     data.write_text("x,y\n1,0\n")
     runs, launches = tmp_path / "runs", tmp_path / "launches"
-    given: list[list[str]] = []
 
     def start(argv):
         given.append(list(argv))
@@ -330,6 +335,103 @@ def test_the_committed_pre_registration_gates_the_launch_in_prereg_fills_words(t
     else:
         assert isinstance(out, L.Refused) and str(out) == f"{PILOT} is not launched: {why}"
         assert given == []
+
+
+# ── the engine the run starts on ─────────────────────────────────────────────
+
+
+def test_the_launch_file_holds_the_engine_the_run_started_on_and_record_meta_passes_it(
+        tmp_path, monkeypatch, prereg):
+    """The engine read before the driver's start (the one the crash sweep is held to), the same
+    once the start returned: the launch file keeps it whole, and the record is given it."""
+    prereg()
+    given, out = started(tmp_path, monkeypatch)
+    assert given, out
+    kept = json.loads((out["launches"] / f"{out['run']}.json").read_text())
+    assert kept["engine"] == ENGINE and out["engine"] == ENGINE
+    assert L.record_meta(kept)["engine"] == ENGINE
+
+
+def test_a_commit_that_leaves_the_engine_as_it_was_while_the_run_starts_keeps_the_stamp(
+        tmp_path, monkeypatch, prereg):
+    """The guard below stays silent here: a commit after the read that leaves ``turbotab/``'s tree
+    and its files as they were is the same engine (``sweep.ENGINE_KEYS``), so the engine read
+    before the start is kept, its commit the one the crash sweep was held to."""
+    prereg()
+    _, out = started(tmp_path, monkeypatch, after={**ENGINE, "commit": "c1"})
+    kept = json.loads((out["launches"] / f"{out['run']}.json").read_text())
+    assert kept["engine"] == ENGINE
+
+
+@pytest.mark.parametrize("after", [{**ENGINE, "engine_tree": "t1", "commit": "c1"},
+                                   {**ENGINE, "engine_modified": True}],
+                         ids=["other_tree", "modified"])
+def test_an_engine_that_changed_while_the_run_started_is_not_stamped(tmp_path, monkeypatch,
+                                                                      prereg, after):
+    """Where the engine once the start returned is not the one read before it, the engine the
+    server started on is not known: the launch file's engine is null, and so is the record's."""
+    prereg()
+    given, out = started(tmp_path, monkeypatch, after=after)
+    assert given, out  # the run started; only its engine is not known
+    kept = json.loads((out["launches"] / f"{out['run']}.json").read_text())
+    assert "engine" in kept and kept["engine"] is None
+    assert L.record_meta(kept)["engine"] is None
+
+
+@pytest.mark.parametrize("engine", [{**ENGINE, "commit": None}, {**ENGINE, "commit": ""},
+                                    {**ENGINE, "engine_modified": None},
+                                    {"commit": "c0", "engine_tree": "t0"}],
+                         ids=["no_commit", "empty_commit", "modified_unknown", "no_modified"])
+def test_an_engine_read_that_names_no_commit_or_no_state_of_its_files_is_not_stamped(engine):
+    assert L.engine_stamp(engine, engine) is None
+    assert L.engine_stamp(ENGINE, dict(ENGINE)) == ENGINE
+
+
+def test_a_launch_file_written_before_the_stamp_gives_the_record_no_engine():
+    """Every launch before this change (run_04 and run_27 among them) holds no ``engine``: the
+    record is given none, never one read from git or from driver.json."""
+    meta = L.dataset_meta(PILOT)
+    assert L.record_meta({"dataset": meta, "analyst_model": "m", "prompt_version": "p"})[
+        "engine"] is None
+
+
+def _assembled(tmp_path, launch_file):
+    """The record ``assemble`` writes for a run that never exported (the server refuses its
+    export), given what :func:`launcher.record_meta` makes of ``launch_file``."""
+    from research.swarm import assemble as A
+    from research.swarm.record import validate
+    from research.swarm.tests.test_swarm_assemble import FakeClient, _run_dir, _served_routes
+
+    run = _run_dir(tmp_path / "runs" / "r1", started="2026-10-29T22:18:59+00:00",
+                   commit="d" * 40)  # driver.json's commit, never read as the engine
+    path, ok = A.assemble(run, meta=L.record_meta(launch_file),
+                          client=FakeClient(_served_routes()), corpus=tmp_path / "corpus",
+                          mattered_wait=0)
+    assert ok, json.loads(path.read_text())["error"]
+    return validate(json.loads(path.read_text("utf-8")))
+
+
+def test_a_run_that_never_exported_is_scored_on_the_engine_its_launch_stamped(tmp_path,
+                                                                               monkeypatch,
+                                                                               prereg):
+    """From the launch to the record to the pre-registered engine rule
+    (``prereg_fill.record_engine_why``, as ``score_pilot`` refuses a record): a stuck run whose
+    launch stamped the frozen engine is on it; the same run from a launch file with no stamp is
+    refused, as run_04 and run_27 are."""
+    from research.swarm import prereg_fill as P
+
+    prereg()
+    _, out = started(tmp_path, monkeypatch)
+    kept = json.loads((out["launches"] / f"{out['run']}.json").read_text())
+    frozen = {"engine_tree": ENGINE["engine_tree"], "commits": [ENGINE["commit"]]}
+    rec = _assembled(tmp_path / "stamped", kept)
+    assert (rec.run.engine_commit, rec.run.engine_modified) == ("c0", False)
+    assert not rec.export.reached and rec.export.sha256 is None
+    assert P.record_engine_why(rec, frozen) == ("t0", None)
+    unstamped = _assembled(tmp_path / "unstamped", {k: v for k, v in kept.items()
+                                                    if k != "engine"})
+    assert (unstamped.run.engine_commit, unstamped.run.engine_modified) == (None, None)
+    assert P.record_engine_why(unstamped, frozen)[1] is not None
 
 
 # ── the launches every checkout shares ───────────────────────────────────────
