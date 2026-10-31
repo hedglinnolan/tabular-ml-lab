@@ -173,18 +173,25 @@ def identified(X: np.ndarray) -> np.ndarray:
 def _ols(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, float, np.ndarray, int]:
     """(β, residual sum of squares, (XᵀX)⁻¹, rank) by least squares on the identified columns
     (:func:`identified`; an aliased column's coefficient is zero, NA in R): the residuals are the
-    rows' projection's, whatever the coding. Where columns are dependent, numpy's ``lstsq``
-    (LAPACK's divide-and-conquer SVD) can fail to converge: a 7,418-row fold of the NHANES glucose
-    sweep with every level of 26 categories beside the intercept did (2026-10-26)."""
+    rows' projection's, whatever the coding. (XᵀX)⁻¹ is the identified columns' R⁻¹R⁻ᵀ from the same
+    QR factor, NaN in an aliased column's row and column (R's ``vcov`` reports NA there): the rows
+    identify no variance for it. No SVD is taken: where columns are dependent, LAPACK's
+    divide-and-conquer SVD can fail to converge. On the NHANES glucose sweep, with every level of
+    26 categories beside the intercept, numpy's ``lstsq`` did on a 7,418-row fold (2026-10-26), and
+    numpy's ``pinv`` of XᵀX on a 7,458-row fold's trial of 59 columns of rank 44 (2026-10-31)."""
     from scipy.linalg import qr, solve_triangular
 
     kept = identified(X)
-    beta = np.zeros(X.shape[1])
+    p = X.shape[1]
+    beta = np.zeros(p)
+    inverse = np.full((p, p), np.nan)
     if len(kept):
         Q, R = qr(X[:, kept], mode="economic")
         beta[kept] = solve_triangular(R, Q.T @ y)
+        R_inv = solve_triangular(R, np.eye(len(kept)))
+        inverse[np.ix_(kept, kept)] = R_inv @ R_inv.T
     rss = float(((y - X @ beta) ** 2).sum())
-    return beta, rss, np.linalg.pinv(X.T @ X), len(kept)
+    return beta, rss, inverse, len(kept)
 
 
 def _loglik(X: np.ndarray, y: np.ndarray) -> float | None:

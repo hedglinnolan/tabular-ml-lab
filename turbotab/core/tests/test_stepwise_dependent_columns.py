@@ -26,6 +26,7 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.linalg
 import statsmodels.api as sm
 
 from turbotab.core.models import variable_selection as VS
@@ -154,3 +155,208 @@ def test_the_every_level_coding_keeps_what_mass_stepaic_keeps(task, tmp_path):
     Ze, ge = _coded(frame, True)
     kept = VS.backward_aic(Ze, y, task, ge)
     assert sorted(t for t, k in zip(TERMS, kept) if k) == sorted(r["kept"])
+
+
+# ── no SVD on the stepwise path ───────────────────────────────────────────────
+# The NHANES glucose sweep met "SVD did not converge" again (2026-10-31), past the fix above: on a
+# 7,458-row fold (108 columns, rank 83 with the intercept), after 30 drops, numpy's pinv of XᵀX for
+# a trial of 59 columns of rank 44, every time. The AIC never read that (XᵀX)⁻¹; it is now the
+# identified columns' R⁻¹R⁻ᵀ from the QR factor, so no SVD is taken anywhere on the path. Here every
+# SVD numpy and scipy offer is made to fail as LAPACK's failed there, after each truth is computed.
+
+SVD_SITES = ((np.linalg, "svd"), (np.linalg, "pinv"), (np.linalg, "lstsq"),
+             (scipy.linalg, "svd"), (scipy.linalg, "pinv"), (scipy.linalg, "lstsq"))
+
+
+def _no_svd(monkeypatch) -> None:
+    def no_convergence(*args, **kwargs):
+        raise np.linalg.LinAlgError("SVD did not converge")
+
+    for module, name in SVD_SITES:
+        monkeypatch.setattr(module, name, no_convergence)
+
+
+def _reference(frame: pd.DataFrame, terms: list[str]) -> np.ndarray:
+    """The intercept and ``terms`` in R's default coding: each category by all levels but the
+    first."""
+    parts = [np.ones((len(frame), 1))]
+    for term in terms:
+        block = (pd.get_dummies(frame[term], dtype=float).to_numpy()[:, 1:]
+                 if term in ("level", "other") else frame[[term]].to_numpy(float))
+        parts.append(block)
+    return np.hstack(parts)
+
+
+def _statsmodels_aic(frame: pd.DataFrame, y: np.ndarray, terms: list[str], task: str) -> float:
+    X = _reference(frame, terms)
+    if task == "binary":
+        return -2.0 * sm.Logit(y, X).fit(disp=0).llf + 2.0 * X.shape[1]
+    return N * math.log(float(sm.OLS(y, X).fit().ssr) / N) + 2.0 * X.shape[1]
+
+
+def _statsmodels_backward(frame: pd.DataFrame, y: np.ndarray, task: str) -> tuple[list[str], float]:
+    """``MASS::stepAIC(direction = "backward")``'s rule, each AIC statsmodels' on the reference
+    coding: drop the term whose removal lowers AIC most, while that lowers it by more than 10⁻⁷.
+    (The kept terms, their model's AIC.)"""
+    kept = list(TERMS)
+    current = _statsmodels_aic(frame, y, kept, task)
+    while kept:
+        trials = {t: _statsmodels_aic(frame, y, [k for k in kept if k != t], task) for t in kept}
+        term = min(trials, key=trials.get)
+        if trials[term] >= current - 1e-7:
+            break
+        kept.remove(term)
+        current = trials[term]
+    return kept, current
+
+
+def _close(actual, expected) -> None:
+    """Equal to 10⁻¹⁰ of the expected values' scale."""
+    expected = np.asarray(expected, dtype=float)
+    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-10 * np.abs(expected).max())
+
+
+@pytest.mark.parametrize(("task", "seed"), CASES)
+def test_backward_elimination_takes_no_svd(task, seed, monkeypatch):
+    """With every SVD failing, backward elimination on the every-level coding completes and keeps
+    the terms statsmodels' AICs keep under ``stepAIC``'s rule, with their AIC. On the base the
+    regression's raised the ``LinAlgError`` (numpy's pinv in the least squares); the logistic fit
+    took no SVD there either."""
+    frame, y = _rows(seed, task == "binary")
+    expected_terms, expected_aic = _statsmodels_backward(frame, y, task)
+    Ze, ge = _coded(frame, True)
+    _no_svd(monkeypatch)
+    kept = VS.backward_aic(Ze, y, task, ge)
+    assert [t for t, k in zip(TERMS, kept) if k] == expected_terms
+    columns = [c for g, k in zip(ge, kept) if k for c in g]
+    final = VS.aic(np.hstack([np.ones((N, 1)), Ze[:, columns]]), y, task)
+    assert final == pytest.approx(expected_aic, rel=1e-9)
+
+
+@needs_r
+@pytest.mark.parametrize("seed", SEEDS["regression"])
+def test_backward_elimination_without_svd_is_mass_stepaics(seed, tmp_path, monkeypatch):
+    """``MASS::stepAIC(direction = "backward")`` on ``lm`` with the categories as factors: its kept
+    terms, and its final model's ``extractAIC``, are the every-level coding's with every SVD
+    failing."""
+    frame, y = _rows(seed, False)
+    r = run_r("""
+        suppressPackageStartupMessages(library(MASS))
+        d <- read.csv(s_csv)
+        d$level <- factor(d$level); d$other <- factor(d$other)
+        fit <- stepAIC(lm(y ~ x1 + x2 + level + other, data = d), direction = "backward",
+                       trace = 0)
+        out(list(kept = attr(terms(fit), "term.labels"), aic = extractAIC(fit)[2]))
+    """, {"s": frame.assign(y=y)}, tmp_path)
+    Ze, ge = _coded(frame, True)
+    _no_svd(monkeypatch)
+    kept = VS.backward_aic(Ze, y, "regression", ge)
+    assert sorted(t for t, k in zip(TERMS, kept) if k) == sorted(r["kept"])
+    columns = [c for g, k in zip(ge, kept) if k for c in g]
+    final = VS.aic(np.hstack([np.ones((N, 1)), Ze[:, columns]]), y, "regression")
+    assert final == pytest.approx(float(r["aic"]), rel=1e-9)
+
+
+@pytest.mark.parametrize("svd", ["available", "failing"])
+def test_least_squares_on_independent_columns_is_statsmodels(svd, monkeypatch):
+    """The rule's silent side: on a full-rank design (the reference coding with the intercept)
+    every value the least squares' callers read is statsmodels' ``OLS``'s to 10⁻¹⁰: the
+    coefficients, the residual sum of squares, (XᵀX)⁻¹ (``normalized_cov_params``, whose slope
+    entry the univariable t test reads) and the rank; and each univariable p-value, a column's t
+    test and a term's F test. The same with every SVD failing, which on the base raised."""
+    frame, y = _rows(4, False)
+    Zr, gr = _coded(frame, False)
+    ones = np.ones((N, 1))
+    X = np.hstack([ones, Zr])
+    ols = sm.OLS(y, X).fit()
+    singles = [float(sm.OLS(y, np.hstack([ones, Zr[:, [j]]])).fit().pvalues[1])
+               for j in range(Zr.shape[1])]
+    terms = [float(sm.OLS(y, np.hstack([ones, Zr[:, g]])).fit().f_pvalue) for g in gr]
+    if svd == "failing":
+        _no_svd(monkeypatch)
+    beta, rss, inv, rank = VS._ols(X, y)
+    _close(beta, ols.params)
+    _close(rss, ols.ssr)
+    _close(inv, ols.normalized_cov_params)
+    assert rank == 8
+    np.testing.assert_allclose(VS.univariable_p(Zr, y, "regression"), singles, rtol=1e-10)
+    np.testing.assert_allclose(VS.univariable_p(Zr, y, "regression", gr), terms, rtol=1e-10)
+
+
+def _spanned(seed: int) -> tuple[np.ndarray, np.ndarray]:
+    """The intercept, two numeric columns and, last, a column they span, x₃ = (x₁ − x₂)/10."""
+    rng = np.random.default_rng(seed)
+    x = rng.normal(size=(N, 2))
+    y = 1.0 + x @ np.array([0.5, -0.3]) + rng.normal(size=N)
+    return np.column_stack([np.ones(N), x, (x[:, 0] - x[:, 1]) / 10.0]), y
+
+
+@pytest.mark.parametrize("svd", ["available", "failing"])
+def test_least_squares_on_a_spanned_column_reads_the_identified_columns(svd, monkeypatch):
+    """The rule's firing side, with SVDs available or failing: where the last column is spanned by
+    the others, the coefficients and (XᵀX)⁻¹ on the identified columns are statsmodels' on the
+    design without it, the residual sum of squares its; the aliased column's coefficient is zero
+    (the residuals' contract; NA in R) and its row and column of (XᵀX)⁻¹ NaN (``vcov`` in R reports
+    NA): the rows identify no variance for it. On the base (XᵀX)⁻¹ was the pseudo-inverse of the
+    whole, another matrix on the identified columns, and finite where nothing is identified."""
+    X, y = _spanned(7)
+    reduced = sm.OLS(y, X[:, :3]).fit()
+    if svd == "failing":
+        _no_svd(monkeypatch)
+    beta, rss, inv, rank = VS._ols(X, y)
+    assert rank == 3 and VS.identified(X).tolist() == [0, 1, 2]
+    _close(beta[:3], reduced.params)
+    assert beta[3] == 0.0
+    _close(rss, reduced.ssr)
+    _close(inv[:3, :3], reduced.normalized_cov_params)
+    assert np.isnan(inv[3]).all() and np.isnan(inv[:, 3]).all()
+
+
+@pytest.mark.parametrize("svd", ["available", "failing"])
+def test_least_squares_on_a_category_coded_by_every_level_reads_the_identified_columns(
+        svd, monkeypatch):
+    """The same for each category coded by every level beside the intercept, as the elastic net's
+    pipeline codes it: 10 columns of rank 8 (the intercept, two numeric columns, 2 + 3 levels), one
+    level of each category aliased; on the identified columns (XᵀX)⁻¹ is statsmodels' on those
+    columns, and NaN in the aliased ones' rows and columns."""
+    frame, y = _rows(4, False)
+    Ze, ge = _coded(frame, True)
+    X = np.hstack([np.ones((N, 1)), Ze])
+    kept = VS.identified(X)
+    aliased = np.setdiff1d(np.arange(X.shape[1]), kept)
+    assert len(kept) == 8
+    # one level of each category (``ge`` holds positions in Ze, one before X's)
+    assert sorted(len(set((aliased - 1).tolist()) & set(g)) for g in ge) == [0, 0, 1, 1]
+    reduced = sm.OLS(y, X[:, kept]).fit()
+    if svd == "failing":
+        _no_svd(monkeypatch)
+    beta, rss, inv, rank = VS._ols(X, y)
+    assert rank == 8
+    _close(beta[kept], reduced.params)
+    assert (beta[aliased] == 0.0).all()
+    _close(rss, reduced.ssr)
+    _close(inv[np.ix_(kept, kept)], reduced.normalized_cov_params)
+    assert np.isnan(inv[aliased]).all() and np.isnan(inv[:, aliased]).all()
+
+
+@needs_r
+def test_a_spanned_columns_variance_is_rs_lm(tmp_path, monkeypatch):
+    """R's ``lm`` on the spanned design: x₃'s coefficient NA, ``vcov`` NA in its row and column, and
+    ``summary``'s unscaled covariance of the others the least squares' (XᵀX)⁻¹ there, with every
+    SVD failing."""
+    X, y = _spanned(7)
+    frame = pd.DataFrame({"x1": X[:, 1], "x2": X[:, 2], "x3": X[:, 3], "y": y})
+    r = run_r("""
+        d <- read.csv(s_csv)
+        fit <- lm(y ~ x1 + x2 + x3, data = d)
+        v <- vcov(fit)
+        out(list(aliased = names(which(is.na(coef(fit)))),
+                 na_rows = unname(which(apply(is.na(v), 1, all))) - 1,
+                 na_columns = unname(which(apply(is.na(v), 2, all))) - 1,
+                 unscaled = unname(summary(fit)$cov.unscaled)))
+    """, {"s": frame}, tmp_path)
+    assert r["aliased"] == "x3" and r["na_rows"] == 3 and r["na_columns"] == 3
+    _no_svd(monkeypatch)
+    _, _, inv, _ = VS._ols(X, y)
+    _close(inv[:3, :3], np.asarray(r["unscaled"], dtype=float))
+    assert np.isnan(inv[3]).all() and np.isnan(inv[:, 3]).all()
