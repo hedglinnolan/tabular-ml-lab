@@ -81,19 +81,23 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
   covariates; with the design in the covariate models only, an outcome that differs by stratum
   biased the pooled design-based estimates (MS2 repair: z −0.06, about 7 Monte Carlo SE).
 
-**How wide the model may be** (:func:`model_width`). Not a fixed count of columns: each incomplete
-column's model is held to the rows-per-parameter rule the engine holds an inference model's
-coefficients to (``imputation.model_size``: about 2 rows per parameter for least squares, 10
-events, its rarer value's rows, per parameter for a model of two levels, and 10 per parameter of
-the effective sample size for a multinomial model, whose parameters are a slope per predictor
-column for each level beyond the first) on the rows that record it; the chain fits a numeric code
-the user declared a category as its indicators, as the rule counts it. Before this rule a fixed 80
-columns was refused whatever the rows, and only at Fit, after the plan's lock: Sullivan 2021's runs
-22 and 26 locked imputations of 89 and 84 columns on 7,937 rows, the survey design's strata most of
-them. The same function refuses here and at the answer, before the lock (:func:`imputation_at`,
-registered for every answer and for the lock); its ways forward are complete cases, the sample
-answer where the design's terms are most of the width, and leaving out a column the others already
-span (a recode beside its code).
+**How wide the model may be** (:func:`model_width`, :meth:`ModelWidth.refused`). Up to
+``imputation.MAX_MODEL_COLUMNS`` columns, categories as indicators, it is drawn whatever its rows,
+as before; wider, each incomplete column's model is held to the rows-per-parameter rule the
+engine holds an inference model's coefficients to (``imputation.model_size``: about 2 rows per
+parameter for least squares, 10 events, its rarer value's rows, per parameter for a model of two
+levels, and 10 per parameter of the effective sample size for a multinomial model, whose
+parameters are a slope per predictor column for each level beyond the first) on the rows that
+record it, and the model is refused only where one falls short. The rule lifts the fixed cap where
+the rows support it and removes nothing the cap drew (the orchestrator's ruling, 2026-11-02). The
+chain fits a numeric code the user declared a category as its indicators, as the rule counts it.
+Before this rule every model wider than 80 columns was refused whatever its rows, and only at Fit,
+after the plan's lock: Sullivan 2021's runs 22 and 26 locked imputations of 89 and 84 columns on
+7,937 rows, the survey design's strata most of them. The same function refuses here and at the
+answer, before the lock (:func:`imputation_at`, registered for every answer and for the lock); its
+ways forward are complete cases, the sample answer where the design's terms are most of the width,
+and leaving out a column the others already span (a recode beside its code), of the columns an
+exit may leave out (the answer's settled covariates; the fit, given none, names none).
 """
 from __future__ import annotations
 
@@ -108,6 +112,7 @@ import pandas as pd
 from turbotab.core.methods.imputation import (
     ITERATIONS,
     M_DEFAULT,
+    MAX_MODEL_COLUMNS,
     Censoring,
     ImputationRefused,
     Imputations,
@@ -1391,6 +1396,13 @@ class ModelWidth:
         """The models with fewer rows per parameter than the rule asks, the furthest short first."""
         return sorted((m for m in self.models if m.short), key=lambda m: m.per / m.needed)
 
+    def refused(self) -> bool:
+        """Whether the sampler refuses it: wider than
+        :data:`~turbotab.core.methods.imputation.MAX_MODEL_COLUMNS` columns with a model short of
+        the rule. Up to that width it is drawn whatever its rows, as before the rule, which so
+        removes nothing the fixed cap drew (the orchestrator's ruling, 2026-11-02)."""
+        return self.width > MAX_MODEL_COLUMNS and bool(self.short())
+
 
 def chain_kinds(data: pd.DataFrame, variables: Sequence[Variable],
                 kinds: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -1414,8 +1426,8 @@ def model_width(data: pd.DataFrame, variables: Sequence[Variable], *,
                 kinds: Mapping[str, str] | None = None, exclude: Sequence[str] = ()) -> ModelWidth:
     """The imputation model's width, and each incomplete column's model against the rule
     (:func:`~turbotab.core.methods.imputation.model_size`), as :func:`impute` fits them on
-    ``data``: the one width function, which the sampler refuses by and the check at the answer
-    runs (:func:`imputation_at`).
+    ``data``: the one width function, which the sampler refuses by (:meth:`ModelWidth.refused`)
+    and the check at the answer runs (:func:`imputation_at`).
 
     The width counts every predictor column of ``data`` as R's ``model.matrix`` does, a category as
     its levels less one (total energy under ``identity``, and ``exclude``, are never predictors). A
@@ -1503,6 +1515,22 @@ def _model_words(m: ModelSize) -> str:
             f"parameter enough for least-squares coefficients, standard errors and intervals")
 
 
+def _short_words(m: ModelSize) -> str:
+    """One more model short of its own rule, as a refusal names it after the first
+    (:func:`_model_words` says the first in full): its own count, parameters and rule."""
+    per = _below(m.per, m.needed)
+    rows = "units" if m.units else "rows"
+    if m.levels > 2:
+        size = _below(m.counted, m.needed * m.parameters, 0)
+        return (f"an effective sample size of {size} on {m.parameters:,} parameters, {per} per "
+                f"parameter where its rule asks for {m.needed}")
+    if m.levels == 2:
+        return (f"{int(m.counted):,} {rows} of its rarer value on {m.parameters:,} parameters, "
+                f"{per} events per parameter where its rule asks for {m.needed}")
+    return (f"{m.rows:,} {rows} on {m.parameters:,} parameters, {per} per parameter where its rule "
+            f"asks for about {m.needed}")
+
+
 def _indicators(k: int, of: str) -> str:
     return f"one indicator of {of}" if k == 1 else f"{k:,} indicators of {of}"
 
@@ -1550,29 +1578,39 @@ def redundant_columns(data: pd.DataFrame, kinds: Mapping[str, str], candidates: 
 def width_refusal(sized: ModelWidth, data: pd.DataFrame, variables: Sequence[Variable], *,
                   identity: Identity | None = None, units: np.ndarray | None = None,
                   kinds: Mapping[str, str] | None = None, exclude: Sequence[str] = (),
-                  leavable: Sequence[str] | None = None) -> ImputationRefused:
-    """The refusal of an imputation model too wide for its rows (:func:`model_width`), with its
-    ways forward on it, which the fit's table offers as exits (``stages.modeling.
-    _missing_for_table``) and the check at the answer as its own (:func:`imputation_at`):
+                  leavable: Sequence[str] = ()) -> ImputationRefused:
+    """The refusal of an imputation model the sampler refuses (:meth:`ModelWidth.refused`: wider
+    than :data:`~turbotab.core.methods.imputation.MAX_MODEL_COLUMNS` columns with a model short of
+    its rows), with its ways forward on it, which the fit's table offers as exits
+    (``stages.modeling._missing_for_table``) and the check at the answer as its own
+    (:func:`imputation_at`):
 
-    * the models that fall short, the furthest first, in words from their own counts;
+    * the width and both conditions, interpolated from it and the cap; then the models that fall
+      short, the furthest first, the first in full and each after it in its own count and rule;
     * where the survey design's terms are most of the width, how many they are; and where the
-      models have their rows without them, the sample answer (``exits``: the words
+      model without them is drawn, the sample answer (``exits``: the words
       :data:`~turbotab.core.methods.missing.WITHOUT_THE_DESIGN` name it);
-    * a column the others already span (:func:`redundant_columns`; of ``leavable``, else of every
-      column but the outcome's, the survey design's and the energy identity's), where leaving it
-      out gives every model its rows (``columns``, which the exits offer to leave out);
+    * a column the others already span (:func:`redundant_columns`), of ``leavable`` only: the
+      columns an exit may leave out (the answer's settled covariates, never what the analysis
+      studies; none given, as at the fit, none named), never the outcome's, the survey design's or
+      the energy identity's, where the model without it is drawn (``columns``, which the exits
+      offer to leave out), in words that say which condition then holds;
     * complete cases stay a way forward (``complete_cases`` is left unset)."""
     short = sized.short()
-    words = [_model_words(short[0])]
-    words[0] = words[0][0].upper() + words[0][1:] + "."
+    first = _model_words(short[0])
+    words = [f"The imputation model would hold {sized.width:,} columns (categories as indicators): "
+             f"up to {MAX_MODEL_COLUMNS} it is drawn whatever its rows, and wider only where each "
+             f"incomplete column's model has the rows per parameter its rule asks for.",
+             first[0].upper() + first[1:] + "."]
     rest = short[1:]
-    if rest:
-        named = [f"`{m.column}`" for m in rest[:SHOWN_MODELS]]
+    if len(rest) == 1:
+        words.append(f"The model of `{rest[0].column}` falls short of its own rule too: "
+                     f"{_short_words(rest[0])}.")
+    elif rest:
+        named = [f"`{m.column}` ({_short_words(m)})" for m in rest[:SHOWN_MODELS]]
         if len(rest) > len(named):
             named.append(f"{len(rest) - len(named):,} more")
-        words.append(f"The model of {named[0]} falls short of the rule too." if len(rest) == 1
-                     else f"The models of {_listed(named)} fall short of the rule too.")
+        words.append(f"The models of {_listed(named)} fall short of their own rules too.")
     exits: list[dict[str, Any]] = []
     columns: list[str] = []
     variables = list(variables)
@@ -1589,7 +1627,7 @@ def width_refusal(sized: ModelWidth, data: pd.DataFrame, variables: Sequence[Var
         without = model_width(data.drop(columns=[c for c in DESIGN_TERMS if c in data.columns]),
                               variables, identity=identity, units=units, kinds=kinds,
                               exclude=exclude)
-        if not without.short():
+        if not without.refused():
             from turbotab.core.methods.missing import WITHOUT_THE_DESIGN, sample_way
 
             words.append(WITHOUT_THE_DESIGN)
@@ -1597,7 +1635,7 @@ def width_refusal(sized: ModelWidth, data: pd.DataFrame, variables: Sequence[Var
     energy = identity.energy if identity is not None else None
     structural = {*exclude, *([energy, identity.other, *identity.factors] if identity else [])}
     # never the outcome's terms, the design's or "other", whose names ``missing`` starts with "__"
-    candidates = [c for c in (data.columns if leavable is None else leavable)
+    candidates = [c for c in leavable
                   if c in data.columns and c not in structural and not str(c).startswith("__")]
     if candidates:
         resolved = chain_kinds(data, variables, kinds)
@@ -1607,13 +1645,16 @@ def width_refusal(sized: ModelWidth, data: pd.DataFrame, variables: Sequence[Var
             narrower = model_width(data.drop(columns=gone),
                                    [v for v in variables if v.name not in gone],
                                    identity=identity, units=units, kinds=kinds, exclude=exclude)
-            if not narrower.short():
+            if not narrower.refused():
                 one = len(gone) == 1
+                drawn = (f"the imputation model would hold {narrower.width:,} columns, no more "
+                         f"than the {MAX_MODEL_COLUMNS} drawn whatever the rows"
+                         if narrower.short() else "each incomplete column's model has the rows "
+                                                  "per parameter its rule asks for")
                 words.append(f"{_listed([f'`{c}`' for c in gone])} {'adds' if one else 'add'} "
                              f"nothing the other columns do not hold on the {n:,} rows that record "
                              f"them all (as a recode adds nothing beside the column it recodes), "
-                             f"and without {'it' if one else 'them'} each incomplete column's "
-                             f"model has the rows per parameter the rule asks for.")
+                             f"and without {'it' if one else 'them'} {drawn}.")
                 columns = gone
     refused = ImputationRefused(" ".join(words))
     if exits:
@@ -1629,7 +1670,8 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
            seed: int = 0, rjlimit: int = RJLIMIT, exclude: Sequence[str] = (),
            kinds: Mapping[str, str] | None = None,
            progress: Callable[[int, int], None] | None = None,
-           cancelled: Callable[[], bool] | None = None) -> Imputations:
+           cancelled: Callable[[], bool] | None = None,
+           leavable: Sequence[str] = ()) -> Imputations:
     """``m`` completed copies of ``data``.
 
     ``data`` holds every column of the imputation model on its raw scale: the ``variables`` (blank
@@ -1640,7 +1682,10 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
     (clustered rows). ``exclude``: columns carried in ``data`` that are never predictors.
     ``kinds``: how each complete column enters the models (a numeric code column the user declared
     categorical is a category, whatever its values look like); by its values otherwise.
-    Deterministic for a given ``seed``.
+    ``leavable``: the columns a refusal of the model's width may name to leave out (the answer's
+    settled covariates, :func:`imputation_at`); none given, it names none, so the fit's table,
+    which passes none (``missing.impute_for_inference``), never names a column the analysis
+    studies. Deterministic for a given ``seed``.
     """
     if mode == "smcfcs" and substantive is None:
         raise ValueError("SMC-FCS needs the substantive model.")
@@ -1671,14 +1716,15 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
                                         f"cannot be imputed.")
             refused.columns = [v.name]  # what leaving out would let the imputation run without
             raise refused
-    # Each incomplete column's model against the rows-per-parameter rule, on the rows that record
-    # it (:func:`model_width`): the check at the answer runs the same function before the plan's
-    # lock (:func:`imputation_at`), so a plan refused here was refused there, where it could be.
+    # Wider than the cap, each incomplete column's model against the rows-per-parameter rule, on
+    # the rows that record it (:func:`model_width`, :meth:`ModelWidth.refused`): the check at the
+    # answer runs the same function before the plan's lock (:func:`imputation_at`), so a plan
+    # refused here was refused there, where it could be.
     sized = model_width(data, variables, identity=identity, units=units, kinds=kinds,
                         exclude=exclude)
-    if sized.short():
+    if sized.refused():
         raise width_refusal(sized, data, variables, identity=identity, units=units, kinds=kinds,
-                            exclude=exclude)
+                            exclude=exclude, leavable=leavable)
     kinds = chain_kinds(data, variables, kinds)
     miss_any = energy_blank.copy()
     for v in variables:
@@ -1908,8 +1954,10 @@ def _frame_reads() -> tuple[str, ...]:
 def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
     """The rule at the answer (:func:`model_width` on the frame the fit would impute,
     :func:`imputation_at`): an answer that leaves multiple imputation under inference with a model
-    too wide for the rows that record its column is refused when it is given, with the fit's words
-    and ways forward (:func:`width_refusal`; complete cases where the record accepts them).
+    the sampler refuses (:meth:`ModelWidth.refused`: wider than
+    :data:`~turbotab.core.methods.imputation.MAX_MODEL_COLUMNS` columns, with a model short of the
+    rows that record its column) is refused when it is given, with the fit's words and ways
+    forward (:func:`width_refusal`; complete cases where the record accepts them).
     Registered for every kind that writes a slot, so the answer refused is the one that makes the
     model too wide (multiple imputation itself, a role, the survey answer, an exclusion), and for
     the plan's lock, which the server records when Fit is pressed: a plan the rows cannot carry is
@@ -1932,7 +1980,7 @@ def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
                                 for s in _frame_reads()):
             return
     found = imputation_at(after, ctx)
-    if found is None or not found.sized.short():
+    if found is None or not found.sized.refused():
         return
     plan = found.plan
     refused = width_refusal(found.sized, plan.data, plan.variables, identity=plan.identity,

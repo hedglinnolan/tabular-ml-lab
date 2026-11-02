@@ -74,11 +74,14 @@ M_MAX = 200
 ITERATIONS = 10  # sweeps per chain (van Buuren §6.5: 5–20 is usually enough)
 RIDGE = 1e-5  # mice's ridge on XᵀX's diagonal, for collinear imputation models
 LOGIT_RIDGE = 1e-3  # on standardized predictors: keeps a separated yes/no model finite
-# How wide an imputation model may be is not a fixed count of columns: each incomplete column's
-# model is held to the engine's rows-per-parameter rule on the rows that record it
-# (:func:`model_size`). Its run time grows with its width (each sweep fits one least-squares or
-# Newton model of n rows on p columns per incomplete column, about n·p² operations), a cost of the
-# fit, not a reason its draws are unreliable.
+# The widest imputation model (after categories become indicators) drawn whatever its rows, as
+# before the rows rule: a wider one is drawn where each incomplete column's model has the rows per
+# parameter the engine's rule asks for on the rows that record it (:func:`model_size`), and refused
+# only where one has not (``smcfcs.ModelWidth.refused``), so the rule lifts this cap where the rows
+# support it and removes nothing it drew. Its run time grows with its width (each sweep fits one
+# least-squares or Newton model of n rows on p columns per incomplete column, about n·p²
+# operations), a cost of the fit, not a reason its draws are unreliable.
+MAX_MODEL_COLUMNS = 80
 LOG_GAIN = 2.0  # a censored column is modeled on the log scale when that gains this much log-likelihood
 OUTCOME_PREFIX = "__outcome"  # the outcome's terms in the imputation model never collide with a column
 
@@ -148,8 +151,12 @@ class ModelSize:
 
     @property
     def held(self) -> bool:
-        """Whether the rule applies: a yes/no or categorical model whose recorded values hold one
-        level has nothing to tell apart (its draws are that level)."""
+        """Whether the rule applies: not to a yes/no or categorical model whose recorded values
+        hold one level, which has no second level to count events or an effective size over. The
+        chain draws such a categorical column's blanks as its one level without fitting a model
+        (``_categorical``); a 0/1 column's logistic model is fit all the same (``_binary``), on
+        recorded values of one level that give its intercept no finite maximum, and its draws can
+        be the other level."""
         return self.kind not in ("binary", "categorical") or self.levels > 1
 
     @property
@@ -775,7 +782,7 @@ def pooled_cov(estimates: np.ndarray, covariances: np.ndarray) -> np.ndarray:
 __all__ = [
     "Censoring", "ITERATIONS", "ImputationRefused", "Imputations", "M_DEFAULT", "M_MAX",
     "censored_loglik", "log_scale_fits_better",
-    "ModelSize", "OUTCOME_PREFIX", "Pooled", "barnard_rubin", "censoring_of",
+    "MAX_MODEL_COLUMNS", "ModelSize", "OUTCOME_PREFIX", "Pooled", "barnard_rubin", "censoring_of",
     "chained_equations", "column_kind", "m_rule", "model_size", "nelson_aalen", "outcome_terms",
     "pool_rows",
     "pool_scalar", "pooled_cov", "pooled_wald", "reiter_df", "tobit_expectation", "tobit_fit",
