@@ -4,13 +4,17 @@ refused at a fixed 80 columns, whatever the rows, after the lock).
 
 Each incomplete column's model is held to the engine's rows-per-parameter rule on the rows that
 record it: about 2 rows per predictor parameter for least squares (Austin & Steyerberg 2015, J Clin
-Epidemiol 68:627), and 10 per parameter of the effective sample size n − Σn³/n² for a yes/no or
-categorical model (Peduzzi et al. 1996, on Whitehead's effective size, Harrell's RMS §4.4). Every
-expected value here is from construction or a derivation: the parameters counted from the columns
-built, the rows from pandas, the effective size by its formula, and the width by R's
-``ncol(model.matrix(~ ., data)) - 1`` on the imputation frame, its strata a factor. Each boundary is
-tested on both sides; the brief's scale (about 90 columns: 8,000 rows imputed, 150 refused) through
-the sampler, through the answer and through the plan's lock, and through the fit.
+Epidemiol 68:627), 10 events (its rarer value's rows) per parameter for a model of two levels
+(Peduzzi et al. 1996, the engine's rule for logistic coefficients), and 10 per parameter of the
+effective sample size n − Σn³/n² for a multinomial model, whose parameters are a slope per
+predictor for each level beyond the first. The chain fits a numeric code the user declared a
+category as its indicators, as the width counts it. Every expected value here is from
+construction or a derivation: the parameters counted from the columns built, the rows and events
+from pandas, the effective size by its formula, the multinomial model's slopes from
+scikit-learn, and the width by R's ``ncol(model.matrix(~ ., data)) - 1`` on the imputation frame,
+its strata a factor. Each boundary is tested on both sides; the brief's scale (about 90 columns:
+8,000 rows imputed, 150 refused) through the sampler, through the answer and through the plan's
+lock, and through the fit (and over HTTP, ``server/tests/test_imputation_width_api.py``).
 """
 from __future__ import annotations
 
@@ -28,7 +32,7 @@ from turbotab.core.tests.acceptance.r_reference import needs_r, run_r
 from turbotab.core.tests.stage_harness import Ingested
 
 SPV = 2  # Austin & Steyerberg 2015: about 2 subjects per variable for least-squares coefficients
-EPV = 10  # Peduzzi et al. 1996: 10 per parameter, here of the effective sample size
+EPV = 10  # Peduzzi et al. 1996: events per parameter (a multinomial model: effective size)
 LEAD = "Multiple imputation cannot run on these data: "
 SOURCE = ("where Austin & Steyerberg 2015 found about 2 per parameter enough for least-squares "
           "coefficients, standard errors and intervals")
@@ -119,39 +123,147 @@ def _yes_no(ones: int, zeros: int) -> pd.DataFrame:
     return pd.DataFrame({"b": b, **numbers(n, 2, rng), "__outcome": rng.normal(size=n)})
 
 
-def test_a_yes_no_model_is_held_to_ten_per_parameter_of_its_effective_sample_size():
-    """3 parameters need an effective sample size of 30: 20 ones and 20 zeros give exactly 30
-    (40 − 2·20³/40²) and are imputed; 19 ones and 20 zeros give 29.2 and are refused."""
-    assert effective([20, 20]) == 30.0 == EPV * 3
-    impute(_yes_no(20, 20), [Variable("b", "binary")], m=2, iterations=1)
-    size = effective([19, 20])
-    assert size < EPV * 3
-    with pytest.raises(ImputationRefused) as refused:
-        impute(_yes_no(19, 20), [Variable("b", "binary")], m=2, iterations=1)
-    assert str(refused.value) == (
-        f"The chained equations would impute `b` from a model of 3 predictor parameters "
-        f"(categories as indicators) fit on the 39 rows that record it, an effective sample size "
-        f"of {size:,.0f} (n − Σn³/n² over its 2 levels), {per(size, 3)} per parameter, where a "
-        f"common rule of thumb asks for 10 (Peduzzi et al. 1996).")
+def test_a_yes_no_model_is_held_to_ten_events_per_parameter_on_its_rarer_value():
+    """3 parameters need 30 events, the rows of the rarer value (Peduzzi's count, which the
+    engine's logistic rule counts): 30 ones beside 60 zeros are imputed; 29 ones beside 60 zeros
+    are refused, and so are 29 zeros beside 60 ones, in words of events. The effective sample size
+    3ab/n would have drawn both (58.7 of the 30 asked)."""
+    assert 30 == EPV * 3 and 29 < EPV * 3 <= effective([29, 60])
+    impute(_yes_no(30, 60), [Variable("b", "binary")], m=2, iterations=1)
+    impute(_yes_no(60, 30), [Variable("b", "binary")], m=2, iterations=1)
+    for ones, zeros in ((29, 60), (60, 29)):
+        with pytest.raises(ImputationRefused) as refused:
+            impute(_yes_no(ones, zeros), [Variable("b", "binary")], m=2, iterations=1)
+        assert str(refused.value) == (
+            f"The chained equations would impute `b` from a model of 3 predictor parameters "
+            f"(categories as indicators) fit on the 89 rows that record it, 29 of them its rarer "
+            f"value, {per(29, 3)} events per parameter, where a common rule for logistic "
+            f"coefficients asks for 10 (Peduzzi et al. 1996).")
 
 
-def _categories(counts: list[int]) -> pd.DataFrame:
+def _categories(counts: list[int], levels: str = "pqr") -> pd.DataFrame:
     rng = np.random.default_rng(4)
-    values = [lv for lv, k in zip("pqr", counts) for _ in range(k)] + [np.nan] * 4
+    values = [lv for lv, k in zip(levels, counts) for _ in range(k)] + [np.nan] * 4
     n = len(values)
     return pd.DataFrame({"g": pd.Series(values, dtype=object), **numbers(n, 2, rng),
                          "__outcome": rng.normal(size=n)})
 
 
-def test_a_categorical_model_is_held_to_the_same_rule_over_its_levels():
-    """Three levels and 3 parameters: 11, 11 and 12 recorded give an effective size of 30.2 and
-    are imputed; 11 of each give 29.3 and are refused."""
-    assert effective([11, 11, 12]) >= EPV * 3 > effective([11, 11, 11])
-    impute(_categories([11, 11, 12]), [Variable("g", "categorical")], m=2, iterations=1)
+def test_a_category_of_two_levels_is_a_logistic_model_held_to_its_events():
+    """Text of two levels is drawn by the same logistic model as a 0/1 column, so it is held to
+    the same events: 30 `p` beside 60 `q` on 3 parameters are imputed, 29 are refused."""
+    impute(_categories([30, 60], "pq"), [Variable("g", "categorical")], m=2, iterations=1)
     with pytest.raises(ImputationRefused) as refused:
-        impute(_categories([11, 11, 11]), [Variable("g", "categorical")], m=2, iterations=1)
-    assert f"an effective sample size of {effective([11, 11, 11]):,.0f} (n − Σn³/n² over its 3 " \
-           f"levels), {per(effective([11, 11, 11]), 3)} per parameter" in str(refused.value)
+        impute(_categories([29, 60], "pq"), [Variable("g", "categorical")], m=2, iterations=1)
+    assert "fit on the 89 rows that record it, 29 of them its rarer value, " \
+           f"{per(29, 3)} events per parameter" in str(refused.value)
+
+
+def test_a_multinomial_model_counts_a_slope_per_predictor_for_each_level_beyond_the_first():
+    """Three levels on 3 predictor parameters: scikit-learn's multinomial model fits
+    (3 − 1)·3 = 6 identified slopes, so the rule asks for an effective size of 60. 22, 23 and 23
+    recorded give 60.4 and are imputed; 22, 22 and 23 give 59.5 and are refused, in words that
+    count the 6 parameters. Counted as 3, both would have been drawn (30 asked)."""
+    from sklearn.linear_model import LogisticRegression
+
+    rng = np.random.default_rng(0)
+    model = LogisticRegression(max_iter=500).fit(rng.normal(size=(90, 3)),
+                                                 np.repeat(list("pqr"), 30))
+    assert model.coef_.shape == (3, 3)  # one row per level: identified up to a common shift
+    assert effective([22, 23, 23]) >= EPV * 6 > effective([22, 22, 23]) >= EPV * 3
+    impute(_categories([22, 23, 23]), [Variable("g", "categorical")], m=2, iterations=1)
+    with pytest.raises(ImputationRefused) as refused:
+        impute(_categories([22, 22, 23]), [Variable("g", "categorical")], m=2, iterations=1)
+    size = effective([22, 22, 23])
+    assert str(refused.value) == (
+        f"The chained equations would impute `g` from a multinomial model of 6 parameters (3 "
+        f"predictor parameters, categories as indicators, for each of its 2 levels beyond the "
+        f"first) fit on the 67 rows that record it, an effective sample size of {size:,.1f} "
+        f"(n − Σn³/n² over its 3 levels), {per(size, 6)} per parameter, where a common rule of "
+        f"thumb asks for 10.")
+
+
+# ── a declared code is a category in the chain's own models ─────────────────
+
+
+def _coded(n: int = 600, seed: int = 11) -> pd.DataFrame:
+    """`x` (blank on about one row in five) is 10 where the complete code `code` is 2 and 0 on its
+    other codes (1, 3 and 7), plus noise of SD 0.3; beside text `grp` (five levels, blanks), a 0/1
+    `flag` (blanks), a number `z` and the outcome's term."""
+    rng = np.random.default_rng(seed)
+    code = rng.choice([1, 2, 3, 7], n).astype(float)
+    x = 10.0 * (code == 2) + rng.normal(scale=0.3, size=n)
+    frame = pd.DataFrame({"x": x, "grp": rng.choice(list("abcde"), n).astype(object),
+                          "flag": (rng.random(n) < 0.3).astype(float), "code": code,
+                          "z": rng.normal(size=n), "__outcome": rng.normal(size=n)})
+    for c, share in (("x", 0.2), ("grp", 0.1), ("flag", 0.15)):
+        frame.loc[rng.random(n) < share, c] = np.nan
+    return frame
+
+
+CODED = [Variable("x", "numeric"), Variable("grp", "categorical"), Variable("flag", "binary")]
+
+
+def _designs(frame: pd.DataFrame, variables: list[Variable], **kw: Any) -> dict[str, int]:
+    """Each drawn column's design columns, the intercept not counted, as the chain builds them."""
+    seen: dict[str, int] = {}
+    rows, units = smcfcs._Chain.design_rows, smcfcs._Chain.design_units
+
+    def spy(real: Any) -> Any:
+        def built(self: Any, target: str, skip: Any) -> np.ndarray:
+            X = real(self, target, skip)
+            seen[target] = X.shape[1] - 1
+            return X
+        return built
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(smcfcs._Chain, "design_rows", spy(rows))
+        mp.setattr(smcfcs._Chain, "design_units", spy(units))
+        impute(frame, variables, m=1, iterations=1, **kw)
+    return seen
+
+
+def test_a_declared_numeric_code_enters_the_chain_as_the_indicators_the_width_counts():
+    """`code` declared a category: each model the chain fits holds its three indicators, as the
+    width counts them (`x`: grp's 4 + flag + code's 3 + z + the outcome's term = 10; `grp`: 7;
+    `flag`: 10), and so does each model on clustered rows (1,200 rows in units of four, a
+    unit-level `u`: `x` on the 11 other columns, the 10 row-level ones' unit means and its own =
+    22; `u` on the 11 row-level columns' unit means). Undeclared, `code` is one number in both."""
+    frame = _coded()
+    kinds = {"code": "categorical"}
+    sized = smcfcs.model_width(frame, CODED, kinds=kinds)
+    widths = {m.column: m.predictors for m in sized.models}
+    assert widths == {"x": 10, "grp": 7, "flag": 10}
+    assert _designs(frame, CODED, kinds=kinds) == widths
+    plain = {m.column: m.predictors for m in smcfcs.model_width(frame, CODED).models}
+    assert plain == {"x": 8, "grp": 5, "flag": 8} == _designs(frame, CODED)
+    rng = np.random.default_rng(12)
+    rows = _coded(1200)
+    units = np.repeat(np.arange(len(rows) // 4), 4)
+    u = np.repeat(rng.normal(size=len(rows) // 4), 4)
+    u[np.repeat(rng.random(len(rows) // 4) < 0.2, 4)] = np.nan
+    clustered = rows.drop(columns=["__outcome"]).assign(u=u, __outcome=rows["__outcome"])
+    variables = [*CODED, Variable("u", "numeric", unit_level=True)]
+    sized = smcfcs.model_width(clustered, variables, units=units, kinds=kinds)
+    widths = {m.column: m.predictors for m in sized.models}
+    assert widths["x"] == 11 + 10 + 1 and widths["u"] == 11
+    assert _designs(clustered, variables, units=units, kinds=kinds) == widths
+
+
+def test_a_declared_numeric_code_is_imputed_from_its_levels_not_as_a_line():
+    """`x` is 10 on code 2 and 0 on codes 1, 3 and 7 (`_coded`): drawn from `code`'s indicators,
+    the blanks on code 2 average about 10 and the others about 0 (within 0.5, the noise's SD
+    0.3 and the draws' own spread allowing); a line in the code's value cannot put them there."""
+    frame = _coded()
+    blank = frame["x"].isna().to_numpy()
+    on_two = blank & (frame["code"].to_numpy() == 2)
+    off_two = blank & ~(frame["code"].to_numpy() == 2)
+    assert on_two.sum() > 20 and off_two.sum() > 60
+    drawn = impute(frame, CODED, kinds={"code": "categorical"}, m=5, iterations=5)
+    for copy in drawn.frames:
+        x = copy["x"].to_numpy(dtype=float)
+        assert abs(x[on_two].mean() - 10.0) < 0.5
+        assert abs(x[off_two].mean()) < 0.5
 
 
 # ── the brief's scale: about 90 columns ──────────────────────────────────────
@@ -183,15 +295,15 @@ def _wide_frame(table: pd.DataFrame) -> tuple[pd.DataFrame, list[Variable]]:
 
 def _refusal_words(table: pd.DataFrame) -> str:
     """The refusal's words for :func:`wide`'s table, from pandas' counts: `smoke`'s model is the
-    furthest short (its effective size against 10 per parameter), then `x`'s."""
+    furthest short (its rarer value's rows, the events, against 10 per parameter), then `x`'s."""
     smoke = table["smoke"].dropna()
-    size = effective([int(k) for k in smoke.value_counts().to_numpy()])
+    events = int(smoke.value_counts().min())
     p = WIDTH - 1
     return (f"The chained equations would impute `smoke` from a model of {p} predictor parameters "
-            f"(categories as indicators) fit on the {len(smoke):,} rows that record it, an effective "
-            f"sample size of {size:,.0f} (n − Σn³/n² over its 2 levels), {per(size, p)} per "
-            f"parameter, where a common rule of thumb asks for 10 (Peduzzi et al. 1996). The "
-            f"models of `x` fall short of the rule too.")
+            f"(categories as indicators) fit on the {len(smoke):,} rows that record it, {events:,} "
+            f"of them its rarer value, {per(events, p)} events per parameter, where a common rule "
+            f"for logistic coefficients asks for 10 (Peduzzi et al. 1996). The models of `x` fall "
+            f"short of the rule too.")
 
 
 def test_ninety_columns_are_imputed_on_8000_rows_and_refused_on_150_by_the_sampler():

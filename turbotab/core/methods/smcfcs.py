@@ -83,14 +83,17 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
 
 **How wide the model may be** (:func:`model_width`). Not a fixed count of columns: each incomplete
 column's model is held to the rows-per-parameter rule the engine holds an inference model's
-coefficients to (``imputation.model_size``: about 2 rows per parameter for least squares, 10 per
-parameter of the effective sample size for yes/no and categorical models) on the rows that record
-it. Before this rule a fixed 80 columns was refused whatever the rows, and only at Fit, after the
-plan's lock: Sullivan 2021's runs 22 and 26 locked imputations of 89 and 84 columns on 7,937 rows,
-the survey design's strata most of them. The same function refuses here and at the answer, before
-the lock (:func:`imputation_at`, registered for every answer and for the lock); its ways forward are
-complete cases, the sample answer where the design's terms are most of the width, and leaving out a
-column the others already span (a recode beside its code).
+coefficients to (``imputation.model_size``: about 2 rows per parameter for least squares, 10
+events, its rarer value's rows, per parameter for a model of two levels, and 10 per parameter of
+the effective sample size for a multinomial model, whose parameters are a slope per predictor
+column for each level beyond the first) on the rows that record it; the chain fits a numeric code
+the user declared a category as its indicators, as the rule counts it. Before this rule a fixed 80
+columns was refused whatever the rows, and only at Fit, after the plan's lock: Sullivan 2021's runs
+22 and 26 locked imputations of 89 and 84 columns on 7,937 rows, the survey design's strata most of
+them. The same function refuses here and at the answer, before the lock (:func:`imputation_at`,
+registered for every answer and for the lock); its ways forward are complete cases, the sample
+answer where the design's terms are most of the width, and leaving out a column the others already
+span (a recode beside its code).
 """
 from __future__ import annotations
 
@@ -759,7 +762,11 @@ class _Chain:
         self.miss = {name: ~rec for name, rec in self.recorded.items()}
         for s in (identity.factors if identity is not None else {}):
             self.recorded.setdefault(s, data[s].notna().to_numpy())  # a complete source
-        kinds: dict[str, str] = {}
+        # how each column enters the models: an imputed variable by its kind, a complete column as
+        # ``kinds`` declares it (a numeric code the user declared a category is its indicators, as
+        # :func:`model_width` counts it), else by its values
+        declared = dict(kinds or {})
+        modeled: dict[str, str] = {}
         levels: dict[str, list[Any]] = {}
         values: dict[str, np.ndarray] = {}
         energy = identity.energy if identity is not None else None
@@ -767,15 +774,15 @@ class _Chain:
             if c == energy:
                 continue
             var = self.vars.get(c)
-            kind = var.kind if var is not None else ((kinds or {}).get(c) or _kind_of(data[c]))
-            kinds[c] = "numeric" if kind == "censored" else kind
+            kind = var.kind if var is not None else (declared.get(c) or _kind_of(data[c]))
+            modeled[c] = "numeric" if kind == "censored" else kind
             if kind == "categorical":
                 levels[c] = sorted(pd.unique(data[c].dropna()), key=str)
                 values[c] = data[c].to_numpy(dtype=object).copy()
             else:
                 x = pd.to_numeric(data[c], errors="coerce").to_numpy(dtype=float).copy()
                 values[c] = self.scaled(c, x)
-        self.st = _State(values=values, levels=levels, kinds=kinds)
+        self.st = _State(values=values, levels=levels, kinds=modeled)
         self.units = None if units is None else np.asarray(units, dtype=np.int64)
         if self.units is not None:
             self.G = int(self.units.max()) + 1 if len(self.units) else 0
@@ -1413,11 +1420,14 @@ def model_width(data: pd.DataFrame, variables: Sequence[Variable], *,
     The width counts every predictor column of ``data`` as R's ``model.matrix`` does, a category as
     its levels less one (total energy under ``identity``, and ``exclude``, are never predictors). A
     column the chain draws is held to the rule with its own design's columns
-    (:meth:`_Chain.design_rows`, :meth:`_Chain.design_units`): the other columns', an energy
-    source's total-energy terms in place of "other", and with ``units`` the other columns' unit
-    means and its own; on the rows that record it (the units, for a unit-level variable). Under
-    ``"smcfcs"`` a covariate model is fit on every row with its current values, but what it learns
-    from are the recorded ones, so they are counted under either mode."""
+    (:meth:`_Chain.design_rows`, :meth:`_Chain.design_units`, which encode each column as
+    :func:`chain_kinds` reads it, a declared numeric code as its indicators): the other columns',
+    an energy source's total-energy terms in place of "other", and with ``units`` the other
+    columns' unit means and its own; on the rows that record it (the units, for a unit-level
+    variable). A multinomial model fits those columns once for each level beyond the first
+    (:attr:`~turbotab.core.methods.imputation.ModelSize.parameters`). Under ``"smcfcs"`` a
+    covariate model is fit on every row with its current values, but what it learns from are the
+    recorded ones, so they are counted under either mode."""
     from turbotab.core.methods.imputation import model_size
 
     variables = [v for v in variables if v.name in data.columns]
@@ -1445,40 +1455,51 @@ def model_width(data: pd.DataFrame, variables: Sequence[Variable], *,
         row_level = sum(w for c, w in others.items() if c not in once)
         recorded = data[v.name].notna().to_numpy()
         if v.name in once:
-            parameters = sum(w for c, w in others.items() if c in once) + row_level + energy_terms
+            columns = sum(w for c, w in others.items() if c in once) + row_level + energy_terms
             codes = np.asarray(units)[recorded]
             values = pd.Series(data[v.name].to_numpy()[recorded]).groupby(codes).last()
         else:
-            parameters = sum(others.values()) + energy_terms
+            columns = sum(others.values()) + energy_terms
             if clustered:  # the unit means, and the column's own over the row's unit
-                parameters += row_level + energy_terms + (1 if blocks.get(v.name) == 1 else 0)
+                columns += row_level + energy_terms + (1 if blocks.get(v.name) == 1 else 0)
             values = data[v.name][recorded]
-        models.append(model_size(v.name, v.kind, parameters, values, units=v.name in once))
+        models.append(model_size(v.name, v.kind, columns, values, units=v.name in once))
     return ModelWidth(sum(predictors.values()), predictors, models,
                       sum(predictors.get(c, 0) for c in DESIGN_TERMS))
 
 
-def _below(m: ModelSize) -> str:
-    """``m``'s count per parameter in words, with the digits that keep it below the rule."""
-    for digits in (1, 2, 3):
-        said = f"{m.per:.{digits}f}"
-        if float(said) < m.needed:
+def _below(value: float, limit: float, first: int = 1) -> str:
+    """``value`` in words, with the fewest digits from ``first`` that keep it below ``limit``."""
+    for digits in range(first, 4):
+        said = f"{value:,.{digits}f}"
+        if float(said.replace(",", "")) < limit:
             return said
-    return f"{math.floor(m.per * 1000) / 1000:.3f}"
+    return f"{math.floor(value * 1000) / 1000:,.3f}"
 
 
 def _model_words(m: ModelSize) -> str:
-    """How far one imputation model falls short of the rule, as a refusal says it."""
+    """How far one imputation model falls short of the rule, as a refusal says it: least squares
+    in rows, a model of two levels in events (its rarer value's rows), a multinomial model in its
+    effective sample size over its (k − 1)·p parameters (:class:`~turbotab.core.methods.
+    imputation.ModelSize`)."""
     from turbotab.core.models.sample_size import SOURCE_SPV
 
-    lead = (f"the chained equations would impute `{m.column}` from a model of {m.parameters:,} "
-            f"predictor parameters (categories as indicators) fit on the {m.rows:,} "
-            f"{'units' if m.units else 'rows'} that record it")
-    if m.kind in ("binary", "categorical"):
-        return (f"{lead}, an effective sample size of {m.counted:,.0f} (n − Σn³/n² over its "
-                f"{m.levels} levels), {_below(m)} per parameter, where a common rule of thumb asks "
-                f"for {m.needed} (Peduzzi et al. 1996)")
-    return (f"{lead}, {_below(m)} per parameter, where {SOURCE_SPV} found about {m.needed} per "
+    per = _below(m.per, m.needed)
+    on = f"fit on the {m.rows:,} {'units' if m.units else 'rows'} that record it"
+    if m.levels > 2:
+        size = _below(m.counted, m.needed * m.parameters, 0)
+        return (f"the chained equations would impute `{m.column}` from a multinomial model of "
+                f"{m.parameters:,} parameters ({m.predictors:,} predictor parameters, categories "
+                f"as indicators, for each of its {m.levels - 1:,} levels beyond the first) {on}, "
+                f"an effective sample size of {size} (n − Σn³/n² over its {m.levels} levels), "
+                f"{per} per parameter, where a common rule of thumb asks for {m.needed}")
+    lead = (f"the chained equations would impute `{m.column}` from a model of {m.predictors:,} "
+            f"predictor parameters (categories as indicators) {on}")
+    if m.levels == 2:
+        return (f"{lead}, {int(m.counted):,} of them its rarer value, {per} events per "
+                f"parameter, where a common rule for logistic coefficients asks for {m.needed} "
+                f"(Peduzzi et al. 1996)")
+    return (f"{lead}, {per} per parameter, where {SOURCE_SPV} found about {m.needed} per "
             f"parameter enough for least-squares coefficients, standard errors and intervals")
 
 

@@ -132,12 +132,25 @@ class ModelSize:
 
     column: str
     kind: str  # how it is drawn: "numeric", "censored", "binary" or "categorical"
-    parameters: int  # its design's predictor columns, the intercept not counted
+    predictors: int  # its design's predictor columns, the intercept not counted
     rows: int  # the rows (the units, for a unit-level variable) that record it
-    counted: float  # what the rule counts: those rows for least squares, else their effective size
+    counted: float  # what the rule counts: those rows, the rarer value's (two levels), or their
+    # effective size (three or more)
     needed: int  # what the rule asks per parameter
     levels: int = 0  # its observed levels (a yes/no or categorical model)
     units: bool = False  # imputed once per unit, from a model of the units
+
+    @property
+    def parameters(self) -> int:
+        """The slopes the model fits: one per predictor column, and a multinomial model of k ≥ 3
+        levels one per predictor column for each level beyond the first, (k − 1)·p."""
+        return self.predictors * (self.levels - 1) if self.levels > 2 else self.predictors
+
+    @property
+    def held(self) -> bool:
+        """Whether the rule applies: a yes/no or categorical model whose recorded values hold one
+        level has nothing to tell apart (its draws are that level)."""
+        return self.kind not in ("binary", "categorical") or self.levels > 1
 
     @property
     def per(self) -> float:
@@ -145,12 +158,12 @@ class ModelSize:
 
     @property
     def short(self) -> bool:
-        return self.parameters > 0 and self.counted < self.needed * self.parameters
+        return self.held and self.parameters > 0 and self.counted < self.needed * self.parameters
 
 
-def model_size(column: str, kind: str, parameters: int, recorded: pd.Series, *,
+def model_size(column: str, kind: str, predictors: int, recorded: pd.Series, *,
                units: bool = False) -> ModelSize:
-    """``column``'s imputation model (``parameters`` predictor columns, fit on its ``recorded``
+    """``column``'s imputation model (``predictors`` design columns, fit on its ``recorded``
     values: one per row, or per unit for a unit-level variable) against the rule the engine holds
     an inference model's coefficients to:
 
@@ -159,25 +172,32 @@ def model_size(column: str, kind: str, parameters: int, recorded: pd.Series, *,
       :data:`~turbotab.core.models.sample_size.SPV_INFERENCE` rows per parameter (Austin &
       Steyerberg 2015, *J Clin Epidemiol* 68:627; ``models.sample_size``, as ``models.linear``
       states it);
-    * **yes/no and categories** (logistic and multinomial models):
+    * **two levels** (yes/no, or a category with two recorded levels: a logistic model):
+      :data:`~turbotab.core.models.sample_size.EPV_INFERENCE` events per parameter, the events
+      being the rows of its rarer value (Peduzzi et al. 1996, the rule ``models.linear`` states
+      for logistic coefficients and ``models.sample_size`` counts on the rarer class);
+    * **three or more levels** (a multinomial model, which fits a slope per predictor column for
+      each level beyond the first, (k − 1)·p parameters):
       :data:`~turbotab.core.models.ordinal.PER_PARAMETER` per parameter of the effective sample
-      size n − Σn_k³/n² over the observed levels (``models.ordinal``: Peduzzi et al. 1996's events
-      per variable on Whitehead's effective size, as Harrell's *Regression Modeling Strategies*
-      §4.4 gives it). A model whose recorded values hold one level has nothing to tell apart (its
-      draws are that level), and is not held to the rule.
+      size n − Σn_k³/n² over the recorded levels (Whitehead's, as ``models.ordinal`` counts it
+      for a proportional-odds model's predictors).
 
-    The rule judges reliability; the width's run time is a cost the rule does not count."""
+    A yes/no or categorical model whose recorded values hold one level is not held to the rule
+    (:attr:`ModelSize.held`). The rule judges reliability; the width's run time is a cost the rule
+    does not count."""
     from turbotab.core.models.ordinal import PER_PARAMETER, effective_rows
-    from turbotab.core.models.sample_size import SPV_INFERENCE
+    from turbotab.core.models.sample_size import EPV_INFERENCE, SPV_INFERENCE
 
     values = recorded.dropna()
     n = int(len(values))
     if kind in ("binary", "categorical"):
         counts = [int(k) for k in values.astype(str).value_counts().to_numpy()]
-        return ModelSize(column, kind, int(parameters) if len(counts) > 1 else 0, n,
-                         float(effective_rows(counts)), PER_PARAMETER, levels=len(counts),
-                         units=units)
-    return ModelSize(column, kind, int(parameters), n, float(n), SPV_INFERENCE, units=units)
+        if len(counts) == 2:  # a logistic model: its events are the rarer value's rows
+            return ModelSize(column, kind, int(predictors), n, float(min(counts)), EPV_INFERENCE,
+                             levels=2, units=units)
+        return ModelSize(column, kind, int(predictors), n, float(effective_rows(counts)),
+                         PER_PARAMETER, levels=len(counts), units=units)
+    return ModelSize(column, kind, int(predictors), n, float(n), SPV_INFERENCE, units=units)
 
 
 # ── the variables ────────────────────────────────────────────────────────────
