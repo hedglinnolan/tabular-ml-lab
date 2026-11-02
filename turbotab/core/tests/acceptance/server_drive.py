@@ -426,7 +426,8 @@ class Drive:
     def reach(self, key: str, timeout: float = 120.0) -> dict[str, Any]:
         end = time.monotonic() + timeout
         while True:
-            steps = self.view()["interview"]
+            view = self.view()
+            steps = view["interview"]
             step = next(s for s in steps if s["key"] == key)
             first = next((s for s in steps if s["status"] in ("open", "waiting")), None)
             ready = step["status"] not in ("open", "waiting") or first is None or first["key"] == key
@@ -441,8 +442,30 @@ class Drive:
                     and on_the_way(self, first["key"])):
                 answer_wp17(self, first["key"], exposure=self.exposure)
                 continue
-            assert time.monotonic() < end, f"{key} held behind {first}"
+            assert time.monotonic() < end, (f"{key} held behind {first}; waiting on "
+                                            f"{self._waited_on(view, step, first)}")
             time.sleep(0.05)
+
+    def _waited_on(self, view: dict[str, Any], *steps: dict[str, Any] | None) -> str:
+        """What a timed-out :meth:`reach` waited on: each stage the steps wait on, with its status,
+        why the scheduler holds it, and its job (that job's state and progress)."""
+        named = [w for s in steps if s for w in s.get("waiting_on") or []]
+        parts = []
+        for name in dict.fromkeys(named):
+            stage = view["stages"].get(name)
+            if stage is None:  # an earlier question, or a record TurboTab is writing itself
+                parts.append(f"{name} (not a stage)")
+                continue
+            job = stage.get("job_id")
+            if job is None:
+                run = "no job"
+            else:
+                got = self.c.get(f"/api/projects/{self.pid}/jobs/{job}")
+                run = (f"job {job} {got.json()['state']}, progress {got.json()['progress']}"
+                       if got.status_code == 200 else f"job {job} (GET {got.status_code})")
+            parts.append(f"stage {name}: status {stage['status']}, held {stage.get('held')}, "
+                         f"{run}")
+        return "; ".join(parts) or "no stage"
 
     def answer(self, key: str, body: dict[str, Any]) -> None:
         if self.reach(key)["status"] in ("open", "waiting") or self._differs(key, body):
