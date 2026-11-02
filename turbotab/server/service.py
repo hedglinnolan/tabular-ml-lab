@@ -1684,7 +1684,8 @@ class ProjectService:
         if lock is not None:
             after = decisions.state_after(parsed, ctx)
             if after is not None and plan_lock.plan_changed(lock.decision, after):
-                self._withdraw_lock(pid, lock, "the plan was changed before then.")
+                self._withdraw_lock(pid, lock, "the plan was changed before then.",
+                                    "The plan was changed", after.purpose)
                 records = log.records()
             seen = False
         facts = SentenceFacts(ctx, parsed, records)
@@ -2100,13 +2101,25 @@ class ProjectService:
             return None
         return lock if self._shown_lock(pid) != lock.id else None
 
-    def _withdraw_lock(self, pid: str, lock: Any, why: str) -> None:
+    def _withdraw_lock(self, pid: str, lock: Any, why: str, happened: str,
+                       purpose: str | None) -> None:
         """Withdraw a lock no estimate was served under (calm/FOUNDATION §7): a revert of it,
-        recorded by the server and not marked as made after the estimates were seen, so the record
-        keeps the withdrawn lock with its time and fingerprint. The press goes with it, so Fit is
-        asked for again. Called under ``_locking``."""
+        recorded by the server (``recorded_by`` TurboTab) and not marked as made after the
+        estimates were seen, so the record keeps the withdrawn lock with its time and fingerprint.
+        The press goes with it, so Fit is asked for again. ``why`` ends the record's sentence. The
+        note gives the reason: what ``happened`` before any estimate was shown under the lock
+        caused it, and no estimate shown under it allowed it (plan_lock's rule; ``_unseen_lock``
+        checks only estimates, so the note claims nothing else unseen), and what Fit does under
+        the goal now, ``purpose``: under prediction nothing locks (``press_fit``), and under
+        inference a press that ``press_fit`` accepts while the plan is unlocked locks the plan as
+        it then stands (a refused press locks nothing). Called under ``_locking``."""
+        then = ("under prediction nothing locks" if purpose == "prediction" else
+                "under inference, a press of Fit that is accepted while the plan is unlocked locks "
+                "the plan as it then stands")
         record = self.log(pid).append(
-            decisions.Revert(decision_id=lock.id), after_estimates=False,
+            decisions.Revert(decision_id=lock.id), after_estimates=False, recorded_by="turbotab",
+            note=(f"{happened} before any estimate was shown under this lock, so TurboTab "
+                  f"withdrew it; {then}."),
             sentence=lambda d, before: (f"The analysis-plan lock of {fit_press._when(lock.at)} "
                                         f"was withdrawn before any estimate was shown: {why}"))
         fit_press.withdraw_press(self.workspace.project_dir(pid))
@@ -2214,7 +2227,8 @@ class ProjectService:
             state = decisions.fold(records)
             lock = self._unseen_lock(pid, records)
             if lock is not None:
-                self._withdraw_lock(pid, lock, "Fit was canceled.")
+                self._withdraw_lock(pid, lock, "Fit was canceled.", "Fit was canceled",
+                                    state.purpose)
             elif not state.plan_locked and not read_seen(
                     self.workspace.project_dir(pid)).get(state.target or ""):
                 fit_press.withdraw_press(self.workspace.project_dir(pid))  # nothing was shown
