@@ -203,6 +203,33 @@ def _duck_type(arrow_type: Any) -> str:
     return _DUCK_TYPES.get(str(arrow_type), str(arrow_type).upper())
 
 
+def _nans_as_missing(con: Any, parquet: Path) -> list[str]:
+    """Rewrite ``parquet``, a table this module wrote, with NaN → NULL in every float column that
+    holds a NaN, as ingest does (``datastore._null_the_nans``): a NaN is no value, and every count
+    of the working table (``n_missing`` and the readers of it: complete cases, the missing-values
+    previews, the row floor) reads nulls. Returns the columns it rewrote."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    from turbotab.core.datastore import _null_the_nans
+
+    pf = pq.ParquetFile(parquet)
+    try:
+        floats = [i for i, f in enumerate(pf.schema_arrow)
+                  if f.name != ROW_ID and pa.types.is_floating(f.type)]
+        found: list[str] = []
+        for start in range(0, len(floats), 200):
+            block = pf.reader.read_all(column_indices=floats[start:start + 200], use_threads=True)
+            found += [name for name, col in zip(block.column_names, block.columns)
+                      if pc.any(pc.is_nan(col)).as_py()]
+    finally:
+        pf.close()
+    if found:
+        _null_the_nans(con, parquet, found, uuid.uuid4().hex[:8])
+    return found
+
+
 def _describe(parquet: Path, sidecar: Path, started: float,
               warnings: Sequence[str] = ()) -> dict[str, Any]:
     """DatasetInfo for a table this module wrote, plus the sidecar the DataStore reads it from.
@@ -1983,6 +2010,7 @@ def working_stage(ctx: StageContext) -> Bundle:
             aggregation = _aggregate(ctx, con, src_sql, info, plan, table_out, map_out)
             files[ROW_MAP] = map_out
         ctx.progress(0.85, "Describing the working table")
+        _nans_as_missing(con, table_out)  # a NaN is no value, as at ingest: the counts read nulls
         described = _describe(table_out, sidecar, started)
     except BaseException:
         _cleanup(table_out, sidecar, map_out, *(p for p in (qc_out, qc_rows_out) if p is not None))

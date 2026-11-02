@@ -873,7 +873,10 @@ def reference_plan(state: Any) -> QCPlan | None:
 
 def correct_table(path: Any, plan: QCPlan, qc_out: Any) -> dict[str, Any]:
     """Run the plan on the parquet table at ``path`` (every injection), write the corrected feature
-    columns back in place, and the QCs' per-feature statistics to ``qc_out``. Returns the record."""
+    columns back in place, and the QCs' per-feature statistics to ``qc_out``. Returns the record.
+
+    A blank stays blank: it is written as a null, as ingest writes it, never as a float NaN that
+    the working table's counts would read as a value."""
     import pyarrow as pa
     import pyarrow.parquet as pq
 
@@ -884,8 +887,8 @@ def correct_table(path: Any, plan: QCPlan, qc_out: Any) -> dict[str, Any]:
     result = run_reference_rows(frame, plan)
     for j, c in enumerate(features):
         i = table.column_names.index(c)
-        table = table.set_column(i, pa.field(c, pa.float64()), pa.array(result.values[:, j],
-                                                                        type=pa.float64()))
+        table = table.set_column(i, pa.field(c, pa.float64()),
+                                 pa.array(result.values[:, j], type=pa.float64(), from_pandas=True))
     pq.write_table(table, path, compression="zstd")
     kept = set(result.kept)
     pd.DataFrame({"feature": features, "qc_sd": result.qc_sd,
