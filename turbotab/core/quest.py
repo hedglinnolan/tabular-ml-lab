@@ -2405,7 +2405,10 @@ def _finding_lines(state: Any, findings: Any, steps: Mapping[str, Any],
             answered_by = f.get("answered_by")
             answered = answered_by is not None
         decide = bool(question or f.get("repairs") or f.get("routes_to"))
-        # A disposition the person withdrew (a revert of it) opens the finding again, and says so.
+        # A disposition the person withdrew (a revert of it) opens the finding again, and says so,
+        # only where nothing else answers it: where the answer to the question it routes to settles
+        # it (``repairs.matching_answer``), or another finding's repair did its work
+        # (``repairs.annotate``), the line stays answered by that and nothing is reopened.
         reopened = None
         if log is not None and not answered:
             reopened = _finding_withdrawal(log, str(f.get("id")))

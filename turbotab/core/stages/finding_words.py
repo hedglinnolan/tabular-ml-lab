@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from typing import AbstractSet, Any, Callable, Mapping, Sequence
 
+import numpy as np
 import pandas as pd
 
 from turbotab.core.voice import count, finish, listing, number, plural, tick
@@ -51,10 +52,23 @@ class FindingContext:
     # The columns whose values below a detection limit the app's own finding reads, with its repair
     # (``below_detection__<column>``): the lab pack's censored-values finding leaves them to it.
     below_detection: frozenset[str] = frozenset()
+    # The positions in ``frame`` of the rows the pooled-QC finding reads as one sample injected
+    # repeatedly (:func:`pooled_qc_rows`): not participants, and blank by design on what a
+    # participant carries (age, sex, the outcome). Empty where that finding is not raised.
+    reference_rows: frozenset[int] = frozenset()
 
     @property
     def n_rows(self) -> int:
         return len(self.frame)
+
+    @cached_property
+    def kept(self) -> pd.DataFrame:
+        """The rows that stay once the reference rows leave: every row where there are none."""
+        if not self.reference_rows:
+            return self.frame
+        keep = np.ones(len(self.frame), dtype=bool)
+        keep[sorted(self.reference_rows)] = False
+        return self.frame[keep]
 
     @cached_property
     def energy(self) -> dict[str, Any] | None:
@@ -130,11 +144,34 @@ def _col(entry: Any) -> str | None:
     return str(entry) if entry is not None else None
 
 
-def _blank_share(fc: FindingContext, column: str | None) -> tuple[int, float]:
-    if not column or column not in fc.frame.columns or not fc.n_rows:
-        return 0, 0.0
-    n = int(fc.frame[column].isna().sum())
-    return n, n / fc.n_rows
+POOLED_QC = "pack::metabolomics::pooled_qc"
+
+
+def pooled_qc_rows(frame: pd.DataFrame, from_packs: Sequence[Mapping[str, Any]]) -> frozenset[int]:
+    """The positions of the rows the pooled-QC finding names: where its column holds its QC level,
+    compared as text, as the exclusion it offers compares them
+    (``turbotab.core.reference_rows._exclusion`` and ``reference_filter``). The findings are read
+    before any answer, so these are read from the data, the same whether that finding is later
+    answered, set aside or not answered at all; with no pooled-QC finding (no assay lens, or no
+    rows that vary far less than the rest) there are none."""
+    for f in from_packs:
+        if family(str(f.get("id"))) != POOLED_QC:
+            continue
+        p = f.get("params") or {}
+        column, level = p.get("column"), p.get("qc_value")
+        if column in frame.columns and level is not None:
+            at = (frame[column].astype(str) == str(level)).to_numpy()
+            return frozenset(int(i) for i in np.flatnonzero(at))
+    return frozenset()
+
+
+def _blank_share(fc: FindingContext, column: str | None) -> tuple[int, int]:
+    """``column``'s blanks and the rows they are counted over: the rows that stay
+    (:attr:`FindingContext.kept`), so a column blank only on the pooled-QC rows has none."""
+    rows = fc.kept
+    if not column or column not in rows.columns or not len(rows):
+        return 0, 0
+    return int(rows[column].isna().sum()), len(rows)
 
 
 # ── the family table ─────────────────────────────────────────────────────────
@@ -154,15 +191,33 @@ class Voice:
 BLANKS = ("missing", "Choose how blanks are handled")
 
 
+def _offers_a_level(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> bool:
+    """Whether the finding offers its levels as repairs (``level``: which one counts as 1), asked
+    of the repair registry over the table and outcome ``repairs.attach`` offers on."""
+    from turbotab.core.repairs import OfferContext, offer
+
+    found = offer(f, {"params": p}, OfferContext(frame=fc.frame, target=fc.target))
+    return any(o.key == "level" for o in found)
+
+
 def _two_level_text(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     col = p.get("column") or (f["affected_columns"] or [None])[0]
-    n_blank, share = _blank_share(fc, col)
+    n_blank, n_rows = _blank_share(fc, col)
     if p.get("written_as") == "bool_dtype":
         return Voice(f"{tick(col)} is already a true/false column; nothing needs repairing.",
                      closes=True)
-    if share >= 0.1:
-        return Voice(f"{tick(col)} is two-level text with {count(n_blank)} of {count(fc.n_rows)} "
-                     f"blank; a blank may mean not asked.", *BLANKS)
+    if n_rows and n_blank / n_rows >= 0.1:
+        # Counted over the rows that stay: with pooled-QC rows set aside, the rows outside them.
+        rows = f"{count(n_blank)} of {count(n_rows)}{' non-QC rows' if fc.reference_rows else ''}"
+        if _offers_a_level(f, p, fc):
+            # The blanks' answer settles the finding (``repairs.matching_answer``) and chooses no
+            # level: which one counts as 1 is the finding's own repairs' to choose. Where they are
+            # offered differs by reader (the app's card for an answered finding offers none), so
+            # the line says only that it is a choice apart from the blanks' answer.
+            return Voice(f"{tick(col)}, two-level text: {rows} blank (maybe not asked); which "
+                         f"level counts as 1 is another choice.", *BLANKS)
+        return Voice(f"{tick(col)} is two-level text with {rows} blank; a blank may mean not "
+                     f"asked.", *BLANKS)
     levels = [str(v) for v in p.get("levels") or []]
     if len(levels) == 2:
         return Voice(f"{tick(col)} is two-level text ({tick(levels[0])}, {tick(levels[1])}); which "
@@ -1338,6 +1393,50 @@ def repoint_energy(legacy: list[tuple[dict[str, Any], dict[str, Any]]],
     return out
 
 
+LEFT_CENSORED = "pack::metabolomics::left_censored"
+
+
+def left_censoring_on_the_participants(legacy: list[tuple[dict[str, Any], dict[str, Any]]],
+                                       fc: FindingContext
+                                       ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """The lab pack's left-censoring finding, read on the rows outside the ones the served
+    pooled-QC finding names (:attr:`FindingContext.reference_rows`), over the assay features with
+    the outcome (:attr:`FindingContext.target`) set aside.
+
+    The pack's detector sets aside the rows its own pooled-QC reading flags (``packs._pooled_qc``),
+    which reads a two-level label only; the served reading (``reference_rows.pooled_qc_finding``)
+    reads a label of 2 to 10 levels, so on a Case/Control/QC label it names the QC rows and the
+    pack's names none. The pack is not given the outcome (``packs.findings`` takes none), so it
+    reads ``omics.candidate_columns`` with no target, and an outcome no name rule sets aside (a
+    `disease` or `responder` column) is read there as a feature. The detector runs again with the
+    served reading's rows and the outcome set aside, and its finding takes the pack's place (none
+    does where it no longer fires; it joins the pack's findings where it now does)."""
+    if "metabolomics" not in fc.lens:
+        return legacy
+    from turbotab import packs
+    from turbotab.core.stages.findings import pack_finding
+
+    served = np.zeros(fc.n_rows, dtype=bool)
+    served[sorted(fc.reference_rows)] = True
+    where = [i for i, (_, finding) in enumerate(legacy) if family(finding["id"]) == LEFT_CENSORED]
+    try:
+        again = packs._left_censored(fc.frame, qc_rows=pd.Series(served, index=fc.frame.index),
+                                     target=fc.target)
+    except Exception:  # noqa: BLE001 - as ``detectors.pack_findings`` handles a pack detector
+        from turbotab import devchecks
+
+        devchecks.swallowed(
+            "finding_words.left_censoring_on_the_participants", packs._last_exception(),
+            "the left-censoring finding was not read on the participants' features, so none is "
+            "said: the pack's may have been read with the pooled-QC rows or the outcome in it")
+        again = None
+    out = [pair for i, pair in enumerate(legacy) if i not in where]
+    if again is not None:
+        at = where[0] if where else len(out)
+        out.insert(at, (again, pack_finding(again)))
+    return out
+
+
 def energy_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """The pack's implausible-intake and energy-adjustment findings for a total-energy column only
     the app's recognizer reads (audit IN-08: ``DR2TKCAL``, ``DRXTKCAL``, ``ENERC_KCAL``,
@@ -1403,6 +1502,6 @@ def flag_columns(findings: Sequence[dict[str, Any]]) -> set[str]:
 
 __all__ = [
     "FAMILIES", "FindingContext", "GROUPS", "LEVER_WORDS", "NO_LEVER", "SUMMARY_WORDS",
-    "energy_correlations", "family", "flag_columns", "own_findings", "quote_columns",
-    "restate_energy", "settle_groups", "speak",
+    "energy_correlations", "family", "flag_columns", "left_censoring_on_the_participants",
+    "own_findings", "pooled_qc_rows", "quote_columns", "restate_energy", "settle_groups", "speak",
 ]

@@ -539,21 +539,28 @@ def test_an_offered_prior_informs_the_question_and_never_removes_it():
 def test_two_packs_disagreeing_about_a_column_leaves_the_question_asked():
     """The reason `priors()` returns a list, made operational.
 
-    `age` and `bmi` on the metabolomics fixture are blank on the QC rows AND are
-    clinical reference variables, so both packs have something to say about
-    them and they disagree. A skip taken on whichever prior happens to be
-    `derived` would resolve that silently, which is the one thing the list
-    return exists to prevent.
+    `glucose` here is one of the panel's features (`mz_0002`, renamed, with
+    blanks among the participants) and is a clinical reference variable: the
+    left-censoring reading names it with the other features, and the clinical
+    pack reads it too, so both packs have something to say about it and they
+    disagree. A skip taken on whichever prior happens to be `derived` would
+    resolve that silently, which is the one thing the list return exists to
+    prevent. `bmi`, blank on three participants as well as on the QC rows, is a
+    person's characteristic, not an assay feature: the left-censoring reading
+    does not name it, so only the clinical pack reads it.
     """
-    df = load("metabolomics_untargeted")
+    df = load("metabolomics_untargeted").rename(columns={"mz_0002": "glucose"})
+    participant = df["sample_type"] == "participant"
+    assert df.loc[participant, "glucose"].isna().any()
+    df.loc[df.index[participant][:3], "bmi"] = np.nan
     with_blanks = [str(c) for c in df.columns if df[c].isna().any()]
     both = [P.METABOLOMICS, P.CLINICAL]
-    contested = [c for c in with_blanks
-                 if len(P.prior_for_column(both, "missingness_direction", c, df)) > 1]
-    assert contested, "the fixture no longer produces a contested column"
-
     pri = {c: P.prior_for_column(both, "missingness_direction", c, df)
            for c in with_blanks}
+    contested = [c for c in with_blanks if len(pri[c]) > 1]
+    assert contested == ["glucose"], "the table no longer produces the one contested column"
+    assert [p["pack"] for p in pri["bmi"]] == [P.CLINICAL]
+
     plan = router.plan([], target="responder", detection=None, step="preprocess",
                        deferred={}, answered=["choose_models",
                                               "choose_preparation_mode"],
