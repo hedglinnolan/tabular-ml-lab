@@ -114,6 +114,40 @@ def test_least_squares_is_drawn_at_two_rows_per_parameter_and_refused_below():
     assert getattr(refused.value, "columns", None) is None  # nothing the others already span
 
 
+def _several_short(k: int) -> pd.DataFrame:
+    """``k`` incomplete numbers `a1` … `ak` on 30 rows, `aj` recorded on its first 11 + j, beside
+    nine complete numbers and the outcome's term: each model has k + 9 predictor parameters (the
+    other k − 1, the nine and the outcome's), so every one falls short of 2 per parameter (11 + j
+    rows against 2k + 18), `a1` the furthest (its rows are the fewest)."""
+    rng = np.random.default_rng(11)
+    frame = pd.DataFrame({**{f"a{j}": rng.normal(size=30) for j in range(1, k + 1)},
+                          **numbers(30, 9, rng), "__outcome": rng.normal(size=30)})
+    for j in range(1, k + 1):
+        frame.loc[11 + j:, f"a{j}"] = np.nan
+    return frame
+
+
+@pytest.mark.parametrize("k, tail", [
+    (2, "The model of `a2` falls short of the rule too."),
+    (3, "The models of `a2` and `a3` fall short of the rule too."),
+    (6, "The models of `a2`, `a3`, `a4` and 2 more fall short of the rule too."),
+])
+def test_the_models_short_after_the_first_are_named_as_one_or_as_several(k, tail):
+    """One model short after the first is named in the singular; several in the plural, three by
+    name and the rest counted. The parameters and rows are the frame's own: `a1`'s 12 recorded
+    rows against k + 9 parameters, below 2 each for every k here."""
+    frame = _several_short(k)
+    p = k + 9
+    assert [int(frame[f"a{j}"].notna().sum()) for j in range(1, k + 1)] == list(range(12, 12 + k))
+    assert 11 + k < SPV * p  # the last column, the nearest the rule, is short too
+    with pytest.raises(ImputationRefused) as refused:
+        impute(frame, [Variable(f"a{j}", "numeric") for j in range(1, k + 1)], m=2, iterations=1)
+    assert str(refused.value) == (
+        f"The chained equations would impute `a1` from a model of {p} predictor parameters "
+        f"(categories as indicators) fit on the 12 rows that record it, {per(12, p)} per "
+        f"parameter, {SOURCE}. {tail}")
+
+
 def _yes_no(ones: int, zeros: int) -> pd.DataFrame:
     """A 0/1 column `b` recorded as ``ones`` ones and ``zeros`` zeros, blank on five more rows,
     beside two complete numbers and the outcome's term: 3 predictor parameters."""
@@ -302,7 +336,7 @@ def _refusal_words(table: pd.DataFrame) -> str:
     return (f"The chained equations would impute `smoke` from a model of {p} predictor parameters "
             f"(categories as indicators) fit on the {len(smoke):,} rows that record it, {events:,} "
             f"of them its rarer value, {per(events, p)} events per parameter, where a common rule "
-            f"for logistic coefficients asks for 10 (Peduzzi et al. 1996). The models of `x` fall "
+            f"for logistic coefficients asks for 10 (Peduzzi et al. 1996). The model of `x` falls "
             f"short of the rule too.")
 
 

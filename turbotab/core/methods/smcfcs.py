@@ -1571,7 +1571,8 @@ def width_refusal(sized: ModelWidth, data: pd.DataFrame, variables: Sequence[Var
         named = [f"`{m.column}`" for m in rest[:SHOWN_MODELS]]
         if len(rest) > len(named):
             named.append(f"{len(rest) - len(named):,} more")
-        words.append(f"The models of {_listed(named)} fall short of the rule too.")
+        words.append(f"The model of {named[0]} falls short of the rule too." if len(rest) == 1
+                     else f"The models of {_listed(named)} fall short of the rule too.")
     exits: list[dict[str, Any]] = []
     columns: list[str] = []
     variables = list(variables)
