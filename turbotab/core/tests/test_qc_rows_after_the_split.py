@@ -163,17 +163,38 @@ def test_a_pooled_qc_answer_after_the_engines_no_holdout_split_is_accepted(plasm
     validate(answer(plasma.qc, key), ctx_of(before, out, split=False))
 
 
-def _laid_out(folder: Path, layout: str) -> Path:
-    """The plasma panel with its rows in another order: ``first`` puts the 28 pooled QCs before
-    every participant, ``last`` after every one; ``run_order`` keeps each injection's place."""
+def _laid_out(folder: Path, layout: str, cut: int = 0) -> Path:
+    """The plasma panel with its rows in another order (``run_order`` keeps each injection's
+    place): ``first`` puts the 28 pooled QCs before every participant, ``last`` after every one;
+    ``participant_first`` moves the first participant ahead of the first QC and keeps every other
+    row as run; ``between`` puts every QC after the participants on source rows up to ``cut`` and
+    before the participants after it."""
     df = pd.read_csv(PLASMA)
     qc = df["sample_type"].eq(QC_LEVEL)
+    if layout == "participant_first":
+        lead = int(np.flatnonzero(~qc.to_numpy())[0])
+        parts = [df.iloc[[lead, *(i for i in range(len(df)) if i != lead)]]]
+    elif layout == "between":
+        early = ~qc & (df.index <= cut)
+        parts = [df[early], df[qc], df[~qc & ~early]]
+    else:
+        parts = [df[qc], df[~qc]] if layout == "first" else [df[~qc], df[qc]]
     path = folder / f"plasma_{layout}.csv"
-    pd.concat([df[qc], df[~qc]] if layout == "first" else [df[~qc], df[qc]]).to_csv(path, index=False)
+    pd.concat(parts).to_csv(path, index=False)
     return path
 
 
-@pytest.mark.parametrize("layout", ["as_run", "first", "last"])
+def _sealed(project: Project) -> tuple[ProjectState, dict, Any, set[int]]:
+    """``project`` drawn with 20% held out: the state, the run, the split's sealed row ids, and
+    the source rows they name in that run's working table (the held-out participants)."""
+    before = project.state(0.2)
+    old = project.draw(before)
+    sealed = row_previews.sealed_rows(old["split"])
+    named = row_map(old["working"]).set_index("row_id")["source_row_id"]
+    return before, old, sealed, set(named.loc[sealed].tolist())
+
+
+@pytest.mark.parametrize("layout", ["as_run", "first", "participant_first", "between", "last"])
 @pytest.mark.parametrize("key", ["qc_rlsc_lc", "exclude_rows"])
 def test_until_the_split_is_drawn_again_no_preview_reads_a_held_out_participant(
         tmp_path, layout, key):
@@ -184,19 +205,38 @@ def test_until_the_split_is_drawn_again_no_preview_reads_a_held_out_participant(
     still recomputing) and train on the new cohort's rows but those
     (``server.service.training_rows``). By construction the held-out participants are the source
     rows the old split's sealed ids named in the old working table, and neither pool may hold one.
-    With the QCs as run, or all first, they come before rows in the draw, and leaving would
-    renumber them: the answer is refused (on the base it was accepted as run, and the pool held 18
-    of the 20). With every QC after every participant, no row in the draw is renumbered: the answer
-    is accepted, and the window reads no held-out participant."""
-    source = PLASMA if layout == "as_run" else _laid_out(tmp_path, layout)
+    The window is built for every layout, as it would open were the answer accepted.
+
+    With the QCs as run, all first, or as run behind a first participant (held out on this draw),
+    a QC comes before held-out participants, and the window would read them (18 of the 20 as run
+    or all first, 17 behind the first participant): the answer is refused. A guard that refused
+    only a leaving row with its outcome recorded accepted all three; one that compares the leaving
+    rows against the first row in the draw, not the last, accepts ``participant_first``. With
+    every QC after the last held-out participant but before five training participants
+    (``between``), the window would read none, and the answer is refused all the same: the guard
+    refuses wherever a row with the outcome recorded is renumbered, not only a held-out one, so
+    accepting there would be a change of rule. With every QC after every participant, no row in
+    the draw is renumbered: the answer is accepted, and the window reads no held-out participant."""
+    cut = 0
+    if layout == "between":  # the last held-out participant's source row, the panel as run
+        panel = Project(PLASMA, tmp_path / "as_run", PLASMA_BASE)
+        try:
+            cut = max(_sealed(panel)[3])
+        finally:
+            panel.run.close()
+    source = PLASMA if layout == "as_run" else _laid_out(tmp_path, layout, cut)
     project = Project(source, tmp_path / "p", PLASMA_BASE)
     try:
-        before = project.state(0.2)
-        old = project.draw(before)
-        sealed = row_previews.sealed_rows(old["split"])
-        named = row_map(old["working"]).set_index("row_id")["source_row_id"]
-        held_out = set(named.loc[sealed].tolist())
+        before, old, sealed, held_out = _sealed(project)
         assert len(held_out) == 20
+        df = pd.read_csv(source)
+        qc_rows = np.flatnonzero(df["sample_type"].eq(QC_LEVEL).to_numpy())
+        last_participant = int(np.flatnonzero(df["sample_type"].ne(QC_LEVEL).to_numpy())[-1])
+        if layout == "participant_first":
+            assert 0 in held_out and int(qc_rows[0]) == 1
+        if layout == "between":  # every held-out row before every QC, five drawn rows after them
+            assert max(held_out) < int(qc_rows[0])
+            assert last_participant - int(qc_rows[-1]) == 5
         outcomes = []
         for split in (True, False):
             try:
@@ -206,20 +246,21 @@ def test_until_the_split_is_drawn_again_no_preview_reads_a_held_out_participant(
                 outcomes.append(caught)
         refusal = outcomes[0]
         assert (outcomes[1] is None) == (refusal is None)
-        if refusal is None:
-            new = project.run.run(project.state(0.2, findings=applied(project.qc, key)),
-                                  upto=["cohort"])
-            n_rows = int(data(new["working"])["n_rows"])
-            assert n_rows == 100
-            preview = consequences.PreviewContext(
-                project_id="p", state=before, datastore=SimpleNamespace(n_rows=n_rows),
-                artifact=lambda _: None, training_row_ids=None, cohort_row_ids=None,
-                sealed_row_ids=sealed)
-            cohort = new["cohort"].frames["rows"]["row_id"].to_numpy(dtype=np.int64)
-            training = np.setdiff1d(cohort, sealed)  # service.training_rows, the split recomputing
-            source_of = row_map(new["working"]).set_index("row_id")["source_row_id"]
-            for pool in (preview.unsealed_row_ids(), training):
-                assert held_out.isdisjoint(source_of.loc[pool].tolist())
+        new = project.run.run(project.state(0.2, findings=applied(project.qc, key)),
+                              upto=["cohort"])
+        n_rows = int(data(new["working"])["n_rows"])
+        assert n_rows == 100
+        preview = consequences.PreviewContext(
+            project_id="p", state=before, datastore=SimpleNamespace(n_rows=n_rows),
+            artifact=lambda _: None, training_row_ids=None, cohort_row_ids=None,
+            sealed_row_ids=sealed)
+        cohort = new["cohort"].frames["rows"]["row_id"].to_numpy(dtype=np.int64)
+        training = np.setdiff1d(cohort, sealed)  # service.training_rows, the split recomputing
+        source_of = row_map(new["working"]).set_index("row_id")["source_row_id"]
+        read = set().union(*(held_out & set(source_of.loc[pool].tolist())
+                             for pool in (preview.unsealed_row_ids(), training)))
+        assert bool(read) == (layout in ("as_run", "first", "participant_first"))
+        assert refusal is not None or not read
         assert (refusal is None) == (layout == "last")
         if refusal is not None:
             assert refusal.code == "rows_after_the_seal"
