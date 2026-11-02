@@ -324,11 +324,12 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     completely separated rows came to report its estimates alone (T5c), and again when it came to
     report them alone wherever the data separate and an iterative fit's distance from its maximum
     came to read its score (T5d); and, where two branches both moved a stage, one past both at
-    their merge."""
+    their merge; and the fit again when its refusal of the imputation came to say the answer's
+    words (pp1f)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
-    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 41, 21)
+    assert (versions["design"], versions["fit"], versions["findings"]) == (35, 42, 21)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
             versions["secondary"], versions["scales"]) == (15, 24, 21, 15, 12)
     assert (versions["modification"], versions["mattered"]) == (7, 3)

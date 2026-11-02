@@ -18,6 +18,10 @@ by R's ``ncol(model.matrix(~ ., data)) - 1`` on the imputation frame, its strata
 boundary is tested on both sides (80 columns and 81; each rule's rows); the brief's scale (about 90
 columns: 8,000 rows imputed, 150 refused) through the sampler, through the answer and through the
 plan's lock, and through the fit (and over HTTP, ``server/tests/test_imputation_width_api.py``).
+Where the width rule refuses a model, the answer says what the sampler refuses first (a logged
+column's zeros, a column with fewer than two recorded values, then the width) with the fit's ways
+forward, the fit's table is given the answer's set of columns an exit may leave out, and both read
+one lead.
 """
 from __future__ import annotations
 
@@ -218,6 +222,50 @@ def test_each_model_after_the_first_is_counted_by_its_own_rule_not_the_first_s()
         f"coefficients asks for 10 (Peduzzi et al. 1996). The models of `g` (an effective sample "
         f"size of 80 on 166 parameters, {per(80, 166)} per parameter where its rule asks for 10) "
         f"and `a` ({short_of(101, 84)}) fall short of their own rules too.")
+
+
+def test_a_count_of_one_is_said_in_the_singular_and_a_figure_below_0_05_in_two_digits():
+    """0/1 columns `a` and `b` each record their rarer value on one row (of 200 and 250 recorded),
+    and a number `x` is recorded on 3 rows, beside 87 complete numbers and the outcome's term: 91
+    columns, each model 90 predictor parameters. `a` and `b` are equally far short (1/90 events per
+    parameter against 10), so the chain's order names `a` first, in full; then `b` and `x` in their
+    own counts, `b`'s one row in the singular. 1/90 = 0.0111… and 3/90 = 0.0333…: one decimal
+    would read both as 0.0, so each is said to two significant digits. A variable imputed once per
+    unit, recorded on the two rows of one unit, is fit on 1 unit: said so, and 1/86 = 0.0116… per
+    parameter as 0.012."""
+    rng = np.random.default_rng(17)
+    n = 300
+    a = np.r_[1.0, np.zeros(199), np.full(100, np.nan)]
+    b = np.r_[np.zeros(100), 1.0, np.zeros(149), np.full(50, np.nan)]
+    x = np.r_[rng.normal(size=3), np.full(n - 3, np.nan)]
+    frame = pd.DataFrame({"x": x, **numbers(n, 87, rng), "a": a, "b": b,
+                          "__outcome": rng.normal(size=n)})
+    assert [int(frame[c].notna().sum()) for c in "abx"] == [200, 250, 3]
+    assert [int(frame[c].value_counts().min()) for c in "ab"] == [1, 1]
+    variables = [Variable("a", "binary"), Variable("b", "binary"), Variable("x", "numeric")]
+    assert smcfcs.model_width(frame, variables).width == 87 + 3 + 1 == 91
+    with pytest.raises(ImputationRefused) as refused:
+        impute(frame, variables, m=2, iterations=1)
+    assert str(refused.value) == (
+        f"{opening(91)}The chained equations would impute `a` from a model of 90 predictor "
+        f"parameters (categories as indicators) fit on the 200 rows that record it, 1 of them its "
+        f"rarer value, 0.011 events per parameter, where a common rule for logistic coefficients "
+        f"asks for 10 (Peduzzi et al. 1996). The models of `b` (1 row of its rarer value on 90 "
+        f"parameters, 0.011 events per parameter where its rule asks for 10) and `x` (3 rows on 90 "
+        f"parameters, 0.033 per parameter where its rule asks for about 2) fall short of their own "
+        f"rules too.")
+    # once per unit: `u` recorded on unit 0's two rows; 85 numbers and the outcome's term, row-level
+    units = np.repeat(np.arange(n // 2), 2)
+    u = np.r_[0.4, 0.4, np.full(n - 2, np.nan)]
+    clustered = pd.DataFrame({"u": u, **numbers(n, 85, rng), "__outcome": rng.normal(size=n)})
+    assert int(clustered["u"].notna().sum()) == 2 and len(set(units[:2])) == 1
+    with pytest.raises(ImputationRefused) as refused:
+        impute(clustered, [Variable("u", "numeric", unit_level=True)], units=units, m=2,
+               iterations=1)
+    assert str(refused.value) == (
+        f"{opening(87)}The chained equations would impute `u` from a model of 86 predictor "
+        f"parameters (categories as indicators) fit on the 1 unit that records it, 0.012 per "
+        f"parameter, {SOURCE}.")
 
 
 def _yes_no(ones: int, zeros: int) -> pd.DataFrame:
@@ -598,8 +646,8 @@ def test_the_sampler_names_a_column_to_leave_out_only_from_the_set_it_is_given()
     """`race3` recodes `race6`, and so does `race2` (two groups); both are spanned. On 176 recorded
     rows `x`'s model is short with both (89 parameters) and has its rows without either (88, or
     87). Given `race3` alone as a column it may leave out, the refusal names `race3` and never
-    `race2`; given no set, as the fit's table calls the sampler (``missing.impute_for_inference``
-    passes none), it names no column and says nothing of leaving one out."""
+    `race2`; given no set, it names no column and says nothing of leaving one out (the fit's table
+    passes the answer's set, so it names `race3` as the answer does: below)."""
     frame = _recoded(True, recorded=176)
     frame.insert(frame.columns.get_loc("race3"), "race2",
                  np.where(np.isin(frame["race6"], ["r1", "r2", "r3"]), "u", "v").astype(object))
@@ -727,8 +775,12 @@ def test_at_the_answer_a_recode_beside_its_code_is_offered_to_leave_out(tmp_path
 def test_given_the_answer_s_set_the_sampler_says_what_the_answer_says(tmp_path):
     """Where a redundant covariate exists (`race3`, :func:`_recoded_project`), the sampler run on
     the frame the answer built, with the set of columns the answer may leave out, is refused in
-    the answer's very words; with no set, as the fit's table calls it today, its words are the
-    answer's without the sentence that names `race3`, and it names no column."""
+    the answer's very words; and so it is called as the fit's table now calls it
+    (``missing.impute_for_inference`` on the design's inputs, given the answer's set), naming
+    `race3` as the column to leave out. Given no set, the sampler names none
+    (:func:`test_the_sampler_names_a_column_to_leave_out_only_from_the_set_it_is_given`)."""
+    from turbotab.core.methods.missing import impute_for_inference
+
     state, ingested = _recoded_project(tmp_path)
     ctx = ctx_of(state, ingested)
     with pytest.raises(Refusal) as answered:
@@ -741,13 +793,15 @@ def test_given_the_answer_s_set_the_sampler_says_what_the_answer_says(tmp_path):
                kinds=plan.kinds, leavable=found.leavable, m=2, iterations=1)
     assert LEAD + str(drawn.value) == answered.value.message
     assert drawn.value.columns == ["race3"]
-    with pytest.raises(ImputationRefused) as unset:
-        impute(plan.data, plan.variables, identity=plan.identity, units=plan.units,
-               kinds=plan.kinds, m=2, iterations=1)
+    table = ingested.frame()
+    with pytest.raises(ImputationRefused) as fit_s:
+        impute_for_inference(found.spec, table[list(found.spec.inputs)], table["y"].to_numpy(),
+                             "regression", leavable=found.leavable)
     sentence = (SPANNED.format(n=172) + "each incomplete column's model has the rows per "
                 "parameter its rule asks for.")
-    assert f"{LEAD}{unset.value} {sentence}" == answered.value.message
-    assert getattr(unset.value, "columns", None) is None
+    assert f"{LEAD}{fit_s.value}" == answered.value.message
+    assert answered.value.message.endswith(sentence)
+    assert fit_s.value.columns == ["race3"]
 
 
 @needs_r
@@ -871,3 +925,215 @@ def test_the_fit_never_names_the_exposure_to_leave_out_and_says_what_the_answer_
     [said] = [m["inference"]["caption"] for m in fit["models"]]
     assert said == f"No coefficients: {answered.value.message}"
     assert "`race3`" not in said
+
+
+# ── the answer says the sampler's first refusal, with the fit's ways forward ─
+
+
+ONCE = "`q` has fewer than two observed values, so it cannot be imputed."
+ZEROS = ("`fat` is analyzed on the log scale and is zero or negative on {k}, so it cannot be "
+         "imputed on that scale; a zero a log would turn into a blank goes to the detection-limit "
+         "question, never to a fill.")
+FIT = {"split": {"holdout": 0.0, "seed": 0, "folds": 5}, "models": ["linear"], "lens": ["clinical"]}
+
+
+def _with_q(folder: Any, n: int, recorded: str) -> tuple[pd.DataFrame, Any, ProjectState]:
+    """:func:`wide`'s table with a covariate `q` (91 model columns), recorded on one row
+    (``"once"``) or on the last 200, which an eligibility rule leaves out of the analysis
+    (``"excluded"``), under multiple imputation."""
+    from turbotab.core.decisions import ExclusionRule
+
+    table = wide(n)
+    q = np.full(n, np.nan)
+    if recorded == "once":
+        q[0] = 1.5
+    else:
+        q[n - 200:] = np.random.default_rng(6).normal(size=200)  # amounts, not codes
+    table["q"] = q
+    path = folder / "wide_q.csv"
+    table.to_csv(path, index=False)
+    rules = ([ExclusionRule(column="id", high=float(n - 201), reason="the last 200 rows")]
+             if recorded == "excluded" else [])
+    state = wide_state(roles={**WIDE_ROLES, "q": "covariate"}, exclusions=rules,
+                       missing=MissingSpec(strategy="multiple_imputation"), **FIT)
+    return table, path, state
+
+
+def _fit_table(path: Any, folder: Any, state: ProjectState) -> dict[str, Any]:
+    """The linear family's coefficient table, as the fit run through the stage graph serves it."""
+    fit, _ = _graph_fit(path, folder, state)
+    [table] = [m["inference"] for m in fit["models"]]
+    return table
+
+
+@pytest.mark.parametrize("recorded", ["once", "excluded"])
+def test_a_column_with_fewer_than_two_values_is_refused_alike_at_the_answer_and_the_fit(
+        tmp_path, recorded):
+    """On 8,000 rows :func:`wide`'s 90 columns are drawn; with `q` recorded on one analyzed row, or
+    on none (its 200 values on rows the eligibility rule leaves out), its model falls short and
+    the width rule refuses the 91. The sampler refuses first that `q` has fewer than two values,
+    so the answer, its lock and the fit say that, and offer the one way the fit offers: leaving
+    `q` out, which the record accepts (the 90 are drawn). Complete cases keep one row or none,
+    which the record refuses, so neither offers them."""
+    table, path, state = _with_q(tmp_path, 8000, recorded)
+    analyzed = table if recorded == "once" else table[table["id"] <= 7799]
+    assert int(analyzed["q"].notna().sum()) == (1 if recorded == "once" else 0)
+    ingested = Ingested(path, tmp_path / "answer")
+    ctx = ctx_of(state, ingested)
+    assert smcfcs.imputation_at(state, ctx).sized.refused()  # the width rule refuses it too
+    with pytest.raises(Refusal) as answered:
+        validate({"kind": "lock_plan"}, ctx)
+    assert answered.value.message == LEAD + ONCE
+    exits = answered.value.exits
+    assert [e["label"] for e in exits] == ["Leave `q` out"]
+    assert exits[0]["decision"]["strategy"] == "multiple_imputation"
+    assert exits[0]["decision"]["drop_columns"] == ["q"]
+    validate(exits[0]["decision"], ctx)  # taken, it is accepted
+    before = state.model_copy(update={"missing": None})  # not yet answered
+    with pytest.raises(Refusal) as refused:
+        validate(SetMissing(strategy="multiple_imputation"), ctx_of(before, ingested))
+    assert refused.value.message == LEAD + ONCE
+    assert [e["label"] for e in refused.value.exits] == ["Leave `q` out"]
+    said = _fit_table(path, tmp_path / "project", state)
+    assert said["caption"] == f"No coefficients: {LEAD}{ONCE}"
+    assert [e["label"] for e in said["exits"]] == ["Leave `q` out"]
+    assert said["exits"][0]["decision"]["drop_columns"] == ["q"]
+
+
+def test_the_exposure_recorded_once_is_never_offered_to_leave_out(tmp_path):
+    """`x`, what the analysis studies, recorded on one of :func:`wide`'s 8,000 rows: the answer and
+    the fit say `x` has fewer than two values, and neither offers to leave it out, since an exit
+    leaves out a settled covariate only; complete cases keep one row, which the record refuses."""
+    table = wide(8000)
+    table.loc[1:, "x"] = np.nan
+    path = tmp_path / "wide_x.csv"
+    table.to_csv(path, index=False)
+    state = wide_state(missing=MissingSpec(strategy="multiple_imputation"), **FIT)
+    assert int(table["x"].notna().sum()) == 1
+    once = "`x` has fewer than two observed values, so it cannot be imputed."
+    with pytest.raises(Refusal) as answered:
+        validate({"kind": "lock_plan"}, ctx_of(state, Ingested(path, tmp_path / "answer")))
+    assert answered.value.message == LEAD + once
+    assert answered.value.exits == []
+    said = _fit_table(path, tmp_path / "project", state)
+    assert said["caption"] == f"No coefficients: {LEAD}{once}"
+    assert said["exits"] == []
+
+
+def test_where_leaving_the_column_out_leaves_a_model_short_neither_offers_it(tmp_path):
+    """`q` recorded once on :func:`wide`'s 150 rows: the answer and the fit say `q` has fewer than
+    two values, and neither offers to leave it out, since the 90 columns without it are refused on
+    150 rows (above); complete cases keep one row, which the record refuses."""
+    _, path, state = _with_q(tmp_path, 150, "once")
+    with pytest.raises(Refusal) as answered:
+        validate({"kind": "lock_plan"}, ctx_of(state, Ingested(path, tmp_path / "answer")))
+    assert answered.value.message == LEAD + ONCE
+    assert answered.value.exits == []
+    said = _fit_table(path, tmp_path / "project", state)
+    assert said["caption"] == f"No coefficients: {LEAD}{ONCE}"
+    assert said["exits"] == []
+
+
+def _fat(folder: Any, method: str, zeros: int = 1) -> tuple[pd.DataFrame, Any, ProjectState]:
+    """:func:`wide`'s 150 rows with its exposure `fat`, about 10% blank and zero on ``zeros`` rows,
+    adjusted for total energy `kcal` (a density, or the log residual method): the analysis takes
+    `fat`'s log, and the model's 90 columns are refused by the width rule."""
+    from turbotab.core.decisions import EnergyAdjustment
+
+    table = wide(150).rename(columns={"x": "fat"})
+    rng = np.random.default_rng(3)
+    fat = np.exp(rng.normal(3, 0.3, 150))
+    fat[:zeros] = 0.0
+    fat[zeros:zeros + 15] = np.nan
+    table["fat"] = fat
+    table["kcal"] = np.exp(rng.normal(7.5, 0.2, 150))
+    path = folder / "wide_fat.csv"
+    table.to_csv(path, index=False)
+    roles = {**{c: r for c, r in WIDE_ROLES.items() if c != "x"}, "fat": "exposure",
+             "kcal": "energy"}
+    adjustment = EnergyAdjustment(method=method, energy_column="kcal", nutrients=["fat"],
+                                  log_transform=method == "residual")
+    state = wide_state(roles=roles, energy_adjustment=adjustment,
+                       missing=MissingSpec(strategy="multiple_imputation"), **FIT)
+    return table, path, state
+
+
+@pytest.mark.parametrize("zeros, rows", [(1, "1 row"), (3, "3 rows")])
+def test_a_logged_column_s_zeros_are_refused_alike_at_the_answer_and_the_fit(tmp_path, zeros,
+                                                                             rows):
+    """`fat` as a density is analyzed on the log scale, and is zero on ``zeros`` rows (pandas): the
+    sampler refuses its zeros before the width, so the answer and the fit say that, a count of one
+    in the singular, with the one way forward the fit offers (how the zeros are read)."""
+    table, path, state = _fat(tmp_path, "density", zeros)
+    assert int((table["fat"] <= 0).sum()) == zeros
+    ctx = ctx_of(state, Ingested(path, tmp_path / "answer"))
+    assert smcfcs.imputation_at(state, ctx).sized.refused()
+    with pytest.raises(Refusal) as answered:
+        validate({"kind": "lock_plan"}, ctx)
+    way = "Say how the zeros of `fat` are read: values below a detection limit, or true zeros"
+    assert answered.value.message == LEAD + ZEROS.format(k=rows)
+    assert [(e["label"], e["decision"]) for e in answered.value.exits] == [(way, None)]
+    said = _fit_table(path, tmp_path / "project", state)
+    assert said["caption"] == f"No coefficients: {answered.value.message}"
+    assert [(e["label"], e["decision"]) for e in said["exits"]] == [(way, None)]
+
+
+def test_under_the_log_residual_the_answer_offers_the_fit_s_way_without_the_log(tmp_path):
+    """Under the log residual method the fit's table offers the energy adjustment without the log
+    as well (``stages.modeling._missing_for_table``, called on the frame the answer built, since
+    the design stage's own residual fit stops at the zero first): the answer offers the same two
+    ways, in the same words."""
+    from turbotab.core.graph import StageContext
+    from turbotab.core.stages.modeling import _missing_for_table
+
+    table, path, state = _fat(tmp_path, "residual")
+    ctx = ctx_of(state, Ingested(path, tmp_path / "answer"))
+    with pytest.raises(Refusal) as answered:
+        validate({"kind": "lock_plan"}, ctx)
+    assert answered.value.message == LEAD + ZEROS.format(k="1 row")
+    spec = smcfcs.imputation_at(state, ctx).spec
+    stage = StageContext(project_id="fat", state=state, inputs={}, paths={}, settings={})
+    held = _missing_for_table(stage, spec, table[list(spec.inputs)], table["y"].to_numpy(),
+                              "regression", ["linear"])
+    assert held.refusal == answered.value.message
+    assert [e["label"] for e in held.exits] == [e["label"] for e in answered.value.exits] == [
+        "Adjust for energy without the log",
+        "Say how the zeros of `fat` are read: values below a detection limit, or true zeros"]
+    without = answered.value.exits[0]["decision"]
+    assert without == held.exits[0]["decision"]
+    assert without["kind"] == "set_energy_adjustment" and without["log_transform"] is False
+
+
+def test_the_fit_names_the_recode_to_leave_out_as_the_answer_does(tmp_path):
+    """:func:`_recoded_project` (`race3` a covariate recoding `race6`) run through the stage
+    graph: the fit's table is refused in the answer's words, the sentence naming `race3` among
+    them, with the answer's ways forward: complete cases and leaving `race3` out."""
+    state, _ = _recoded_project(tmp_path)
+    state = ProjectState(**{**state.model_dump(), **FIT})
+    path = tmp_path / "recoded.csv"
+    with pytest.raises(Refusal) as answered:
+        validate({"kind": "lock_plan"}, ctx_of(state, Ingested(path, tmp_path / "answer")))
+    said = _fit_table(path, tmp_path / "project", state)
+    assert said["caption"] == f"No coefficients: {answered.value.message}"
+    assert said["caption"].endswith(
+        SPANNED.format(n=172) + "each incomplete column's model has the rows per parameter its "
+        "rule asks for.")
+    assert [e["label"] for e in said["exits"]] == [e["label"] for e in answered.value.exits] == [
+        "Complete cases, with their assumption stated", "Leave `race3` out"]
+    assert said["exits"][1]["decision"]["drop_columns"] == ["race3"]
+
+
+def test_the_answer_and_the_fit_read_one_refusal_lead(tmp_path, monkeypatch):
+    """The lead both refusals begin with is one constant (``smcfcs.REFUSED_LEAD``): changed there,
+    the answer's refusal and the fit's both begin with the change."""
+    table = wide(150)
+    path = tmp_path / "wide.csv"
+    table.to_csv(path, index=False)
+    state = wide_state(missing=MissingSpec(strategy="multiple_imputation"), **FIT)
+    assert smcfcs.REFUSED_LEAD == LEAD
+    monkeypatch.setattr(smcfcs, "REFUSED_LEAD", "A LEAD UNDER TEST: ")
+    with pytest.raises(Refusal) as answered:
+        validate({"kind": "lock_plan"}, ctx_of(state, Ingested(path, tmp_path / "answer")))
+    assert answered.value.message == "A LEAD UNDER TEST: " + _refusal_words(table)
+    said = _fit_table(path, tmp_path / "project", state)
+    assert said["caption"] == f"No coefficients: {answered.value.message}"

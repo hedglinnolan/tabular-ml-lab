@@ -1379,7 +1379,9 @@ class _Chain:
 DESIGN_TERMS = ("__stratum", "__psu", "__weight")
 SHOWN_MODELS = 3  # incomplete columns a refusal names after the first; the rest are counted
 WIDTH_REFUSAL = "imputation_too_wide"
-REFUSED_LEAD = "Multiple imputation cannot run on these data: "  # as the fit's table says it
+# The lead of the imputation's refusal, which the answer's (:func:`_imputation_has_its_rows`) and
+# the fit's table's (``stages.modeling._missing_for_table``) both read.
+REFUSED_LEAD = "Multiple imputation cannot run on these data: "
 
 
 @dataclass
@@ -1480,8 +1482,17 @@ def model_width(data: pd.DataFrame, variables: Sequence[Variable], *,
                       sum(predictors.get(c, 0) for c in DESIGN_TERMS))
 
 
+SMALL = 0.05  # below this, one decimal would read a figure as 0.0
+
+
 def _below(value: float, limit: float, first: int = 1) -> str:
-    """``value`` in words, with the fewest digits from ``first`` that keep it below ``limit``."""
+    """``value`` in words, with the fewest digits from ``first`` that keep it below ``limit``; a
+    value above 0 and below :data:`SMALL`, which one decimal would read as 0.0, to two significant
+    digits (1/90 as 0.011)."""
+    if 0 < value < SMALL:
+        said = f"{value:,.{max(first, 1 - math.floor(math.log10(value)))}f}"
+        if float(said.replace(",", "")) < limit:
+            return said
     for digits in range(first, 4):
         said = f"{value:,.{digits}f}"
         if float(said.replace(",", "")) < limit:
@@ -1497,7 +1508,8 @@ def _model_words(m: ModelSize) -> str:
     from turbotab.core.models.sample_size import SOURCE_SPV
 
     per = _below(m.per, m.needed)
-    on = f"fit on the {m.rows:,} {'units' if m.units else 'rows'} that record it"
+    on = (f"fit on the {_counted(m.rows, 'units' if m.units else 'rows')} that "
+          f"record{'s' if m.rows == 1 else ''} it")
     if m.levels > 2:
         size = _below(m.counted, m.needed * m.parameters, 0)
         return (f"the chained equations would impute `{m.column}` from a multinomial model of "
@@ -1525,10 +1537,15 @@ def _short_words(m: ModelSize) -> str:
         return (f"an effective sample size of {size} on {m.parameters:,} parameters, {per} per "
                 f"parameter where its rule asks for {m.needed}")
     if m.levels == 2:
-        return (f"{int(m.counted):,} {rows} of its rarer value on {m.parameters:,} parameters, "
-                f"{per} events per parameter where its rule asks for {m.needed}")
-    return (f"{m.rows:,} {rows} on {m.parameters:,} parameters, {per} per parameter where its rule "
-            f"asks for about {m.needed}")
+        return (f"{_counted(int(m.counted), rows)} of its rarer value on {m.parameters:,} "
+                f"parameters, {per} events per parameter where its rule asks for {m.needed}")
+    return (f"{_counted(m.rows, rows)} on {m.parameters:,} parameters, {per} per parameter where "
+            f"its rule asks for about {m.needed}")
+
+
+def _counted(k: int, things: str) -> str:
+    """``k`` rows (or units) in words, a count of one in the singular."""
+    return f"{k:,} {things if k != 1 else things[:-1]}"
 
 
 def _indicators(k: int, of: str) -> str:
@@ -1592,9 +1609,10 @@ def width_refusal(sized: ModelWidth, data: pd.DataFrame, variables: Sequence[Var
       :data:`~turbotab.core.methods.missing.WITHOUT_THE_DESIGN` name it);
     * a column the others already span (:func:`redundant_columns`), of ``leavable`` only: the
       columns an exit may leave out (the answer's settled covariates, never what the analysis
-      studies; none given, as at the fit, none named), never the outcome's, the survey design's or
-      the energy identity's, where the model without it is drawn (``columns``, which the exits
-      offer to leave out), in words that say which condition then holds;
+      studies, which the answer and the fit's table both pass; none given, none named), never the
+      outcome's, the survey design's or the energy identity's, where the model without it is drawn
+      (``columns``, which the exits offer to leave out), in words that say which condition then
+      holds;
     * complete cases stay a way forward (``complete_cases`` is left unset)."""
     short = sized.short()
     first = _model_words(short[0])
@@ -1664,6 +1682,79 @@ def width_refusal(sized: ModelWidth, data: pd.DataFrame, variables: Sequence[Var
     return refused
 
 
+def _targets(data: pd.DataFrame, variables: Sequence[Variable],
+             identity: Identity | None) -> tuple[list[Variable], np.ndarray]:
+    """The variables the chain draws (each with a blank; "other" where total energy is blank), and
+    the rows whose total energy is blank."""
+    energy_blank = (pd.to_numeric(data[identity.energy], errors="coerce").isna().to_numpy()
+                    if identity is not None else np.zeros(len(data), dtype=bool))
+
+    def drawn(v: Variable) -> bool:
+        if identity is not None and v.name == identity.other:
+            return bool(energy_blank.any())
+        return bool(data[v.name].isna().any())
+
+    return [v for v in variables if drawn(v)], energy_blank
+
+
+def refusal_before_drawing(data: pd.DataFrame, variables: Sequence[Variable], *,
+                           identity: Identity | None = None, units: np.ndarray | None = None,
+                           kinds: Mapping[str, str] | None = None, exclude: Sequence[str] = (),
+                           leavable: Sequence[str] = ()) -> ImputationRefused | None:
+    """What :func:`impute` refuses before it draws a copy, the first in its order, or None where it
+    draws: a variable analyzed on the log scale recorded at zero or below (``zeros``); a column
+    the chain draws, other than a category, with fewer than two recorded values (``columns``);
+    then a model the width rule refuses (:meth:`ModelWidth.refused`, :func:`width_refusal`, which
+    ``leavable`` reaches). The sampler raises it, and the check at the answer says it with the
+    fit's ways forward (:func:`_imputation_has_its_rows`), so both say the same."""
+    variables = [v for v in variables if v.name in data.columns]
+    for v in variables:
+        if v.log:
+            x = pd.to_numeric(data[v.name], errors="coerce")
+            bad = x.notna() & (x <= 0)
+            if bad.any():
+                refused = ImputationRefused(
+                    f"`{v.name}` is analyzed on the log scale and is zero or negative on "
+                    f"{_counted(int(bad.sum()), 'rows')}, so it cannot be imputed on that scale; a "
+                    f"zero a log would turn into a blank goes to the detection-limit question, "
+                    f"never to a fill.")
+                refused.zeros = [v.name]  # the columns whose zeros the analysis cannot log
+                return refused
+    targets, _ = _targets(data, variables, identity)
+    for v in targets:
+        if data[v.name].notna().sum() < 2 and v.kind != "categorical":
+            refused = ImputationRefused(f"`{v.name}` has fewer than two observed values, so it "
+                                        f"cannot be imputed.")
+            refused.columns = [v.name]  # what leaving out would let the imputation run without
+            return refused
+    # Wider than the cap, each incomplete column's model against the rows-per-parameter rule, on
+    # the rows that record it (:func:`model_width`, :meth:`ModelWidth.refused`): the check at the
+    # answer runs this before the plan's lock (:func:`imputation_at`), so a plan refused here was
+    # refused there, where it could be.
+    sized = model_width(data, variables, identity=identity, units=units, kinds=kinds,
+                        exclude=exclude)
+    if sized.refused():
+        return width_refusal(sized, data, variables, identity=identity, units=units, kinds=kinds,
+                             exclude=exclude, leavable=leavable)
+    return None
+
+
+def zero_exits(column: str, adjustment: Any) -> list[dict[str, Any]]:
+    """The ways forward from ``column``'s zeros that the analysis logs (``zeros``), as the fit's
+    table offers them (``stages.modeling._missing_for_table``): no fill or row choice resolves
+    them, only how the zeros are read, or, where ``adjustment`` (the energy adjustment) logs that
+    column, an energy model without the log (MODELING_SEQUENCE §2, zeros)."""
+    exits: list[dict[str, Any]] = []
+    if (adjustment is not None and adjustment.log_transform
+            and column in (*adjustment.nutrients, adjustment.energy_column)):
+        exits.append({"label": "Adjust for energy without the log",
+                      "decision": {"kind": "set_energy_adjustment", **adjustment.model_dump(),
+                                   "log_transform": False}})
+    exits.append({"label": f"Say how the zeros of `{column}` are read: values below a detection "
+                           f"limit, or true zeros", "decision": None})
+    return exits
+
+
 def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "fcs",
            substantive: Substantive | None = None, identity: Identity | None = None,
            units: np.ndarray | None = None, m: int = M_DEFAULT, iterations: int = ITERATIONS,
@@ -1683,48 +1774,19 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
     ``kinds``: how each complete column enters the models (a numeric code column the user declared
     categorical is a category, whatever its values look like); by its values otherwise.
     ``leavable``: the columns a refusal of the model's width may name to leave out (the answer's
-    settled covariates, :func:`imputation_at`); none given, it names none, so the fit's table,
-    which passes none (``missing.impute_for_inference``), never names a column the analysis
-    studies. Deterministic for a given ``seed``.
+    settled covariates, :func:`imputation_at`, which the fit's table passes too through
+    ``missing.impute_for_inference``); none given, it names none, so a column the analysis
+    studies is never named. Before any copy is drawn, refused as :func:`refusal_before_drawing`
+    says. Deterministic for a given ``seed``.
     """
     if mode == "smcfcs" and substantive is None:
         raise ValueError("SMC-FCS needs the substantive model.")
     variables = [v for v in variables if v.name in data.columns]
-    for v in variables:
-        if v.log:
-            x = pd.to_numeric(data[v.name], errors="coerce")
-            bad = x.notna() & (x <= 0)
-            if bad.any():
-                refused = ImputationRefused(
-                    f"`{v.name}` is analyzed on the log scale and is zero or negative on "
-                    f"{int(bad.sum()):,} rows, so it cannot be imputed on that scale; a zero a log "
-                    f"would turn into a blank goes to the detection-limit question, never to a fill.")
-                refused.zeros = [v.name]  # the columns whose zeros the analysis cannot log
-                raise refused
-    energy_blank = (pd.to_numeric(data[identity.energy], errors="coerce").isna().to_numpy()
-                    if identity is not None else np.zeros(len(data), dtype=bool))
-
-    def drawn(v: Variable) -> bool:
-        if identity is not None and v.name == identity.other:
-            return bool(energy_blank.any())
-        return bool(data[v.name].isna().any())
-
-    targets = [v for v in variables if drawn(v)]
-    for v in targets:
-        if data[v.name].notna().sum() < 2 and v.kind != "categorical":
-            refused = ImputationRefused(f"`{v.name}` has fewer than two observed values, so it "
-                                        f"cannot be imputed.")
-            refused.columns = [v.name]  # what leaving out would let the imputation run without
-            raise refused
-    # Wider than the cap, each incomplete column's model against the rows-per-parameter rule, on
-    # the rows that record it (:func:`model_width`, :meth:`ModelWidth.refused`): the check at the
-    # answer runs the same function before the plan's lock (:func:`imputation_at`), so a plan
-    # refused here was refused there, where it could be.
-    sized = model_width(data, variables, identity=identity, units=units, kinds=kinds,
-                        exclude=exclude)
-    if sized.refused():
-        raise width_refusal(sized, data, variables, identity=identity, units=units, kinds=kinds,
-                            exclude=exclude, leavable=leavable)
+    refused = refusal_before_drawing(data, variables, identity=identity, units=units, kinds=kinds,
+                                     exclude=exclude, leavable=leavable)
+    if refused is not None:
+        raise refused
+    targets, energy_blank = _targets(data, variables, identity)
     kinds = chain_kinds(data, variables, kinds)
     miss_any = energy_blank.copy()
     for v in variables:
@@ -1789,12 +1851,14 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
 @dataclass
 class AtTheAnswer:
     """What the fit would impute under a state (:func:`imputation_at`): the sampler's inputs
-    (``missing.ImputationPlan``), its width (:func:`model_width`), and the columns an exit may
-    leave out (the settled covariates, never what the analysis studies)."""
+    (``missing.ImputationPlan``), its width (:func:`model_width`), the columns an exit may leave
+    out (the settled covariates, never what the analysis studies), and the design stage's spec the
+    plan is built from (its energy adjustment says the ways forward from a logged zero)."""
 
     plan: Any
     sized: ModelWidth
     leavable: list[str]
+    spec: Any = None
 
 
 def imputation_at(state: Any, ctx: Any) -> AtTheAnswer | None:
@@ -1937,7 +2001,7 @@ def _imputation_at(state: Any, ctx: Any, store: Any) -> AtTheAnswer | None:
     sized = model_width(plan.data, plan.variables, identity=plan.identity, units=plan.units,
                         kinds=plan.kinds)
     covariates = [c for c, r in settled_roles(state).items() if r == "covariate"]
-    return AtTheAnswer(plan, sized, _leavable(state, covariates))
+    return AtTheAnswer(plan, sized, _leavable(state, covariates), spec)
 
 
 @lru_cache(maxsize=1)
@@ -1956,16 +2020,23 @@ def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
     :func:`imputation_at`): an answer that leaves multiple imputation under inference with a model
     the sampler refuses (:meth:`ModelWidth.refused`: wider than
     :data:`~turbotab.core.methods.imputation.MAX_MODEL_COLUMNS` columns, with a model short of the
-    rows that record its column) is refused when it is given, with the fit's words and ways
-    forward (:func:`width_refusal`; complete cases where the record accepts them).
+    rows that record its column) is refused when it is given, in the words the sampler refuses it
+    with, the first in its order (:func:`refusal_before_drawing`: a logged column's zeros, a column
+    with fewer than two recorded values, then the width), and with the ways forward the fit's table
+    offers for them (``stages.modeling._missing_for_table``): for the zeros, how they are read
+    (:func:`zero_exits`); otherwise complete cases, the width refusal's own (the sample answer),
+    and leaving out a column the refusal names, of the settled covariates only. Each
+    missing-values answer among them is offered where the record accepts it, as the fit's table
+    counts it (``row_floor.stage_exits``).
     Registered for every kind that writes a slot, so the answer refused is the one that makes the
     model too wide (multiple imputation itself, a role, the survey answer, an exclusion), and for
     the plan's lock, which the server records when Fit is pressed: a plan the rows cannot carry is
     refused before it is locked, never after."""
-    from turbotab.core.decisions import (Refusal, SetMissing, _accepted_ways, _records_in,
+    from turbotab.core.decisions import (Refusal, SetMissing, _records_in,
                                          _roles_record_what_rode_along, _state, fold_onto,
                                          state_after)
     from turbotab.core.methods.missing import _COMPLETE_CASES_EXIT
+    from turbotab.core.row_floor import _PROBING, accepted_exit
 
     now = _state(ctx)
     if now is None:
@@ -1983,19 +2054,30 @@ def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
     if found is None or not found.sized.refused():
         return
     plan = found.plan
-    refused = width_refusal(found.sized, plan.data, plan.variables, identity=plan.identity,
-                            units=plan.units, kinds=plan.kinds, leavable=found.leavable)
+    refused = refusal_before_drawing(plan.data, plan.variables, identity=plan.identity,
+                                     units=plan.units, kinds=plan.kinds, leavable=found.leavable)
+    if refused is None:  # the width rule refuses it (above), so the sampler does
+        return
+    if _PROBING.get():  # an exit tried for another refusal: only whether it is refused is read
+        raise Refusal(WIDTH_REFUSAL, f"{REFUSED_LEAD}{refused}")
     base = after.missing.model_dump(mode="json")
-    exits: list[dict[str, Any]] = [
-        {"label": _COMPLETE_CASES_EXIT,
-         "decision": SetMissing(**{**base, "strategy": "complete_case", "acknowledged": False})}]
-    exits.extend(dict(e) for e in getattr(refused, "exits", None) or [])
-    left = [c for c in getattr(refused, "columns", None) or [] if c not in base["drop_columns"]]
-    if left:
-        exits.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
-                      "decision": SetMissing(**{**base, "drop_columns": [*base["drop_columns"],
-                                                                          *left]})})
-    raise Refusal(WIDTH_REFUSAL, f"{REFUSED_LEAD}{refused}", exits=_accepted_ways(exits, ctx))
+    zeros = list(getattr(refused, "zeros", None) or [])
+    if zeros:
+        exits = zero_exits(zeros[0], found.spec.energy_adjustment() if found.spec else None)
+    else:
+        exits = [{"label": _COMPLETE_CASES_EXIT,
+                  "decision": SetMissing(**{**base, "strategy": "complete_case",
+                                            "acknowledged": False})}]
+        exits.extend(dict(e) for e in getattr(refused, "exits", None) or [])
+        left = [c for c in getattr(refused, "columns", None) or []
+                if c in found.leavable and c not in base["drop_columns"]]
+        if left:
+            exits.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
+                          "decision": SetMissing(**{**base, "drop_columns": [
+                              *base["drop_columns"], *left]})})
+    raise Refusal(WIDTH_REFUSAL, f"{REFUSED_LEAD}{refused}",
+                  exits=[e for e in exits if not isinstance(e["decision"], SetMissing)
+                         or accepted_exit(e["decision"], ctx) is not None])
 
 
 def _register() -> None:
@@ -2009,7 +2091,8 @@ def _register() -> None:
 
 _register()
 
-__all__ = ["DESIGN_TERMS", "FIRST_TRIES", "Identity", "Mode", "ModelWidth", "Outcome", "RJLIMIT",
-           "START_SHARE", "Substantive", "Term", "Variable", "WIDTH_REFUSAL", "breslow",
-           "chain_kinds", "efron", "imputation_at", "impute", "model_width", "outcome_logdensity",
-           "redundant_columns", "width_refusal"]
+__all__ = ["DESIGN_TERMS", "FIRST_TRIES", "Identity", "Mode", "ModelWidth", "Outcome",
+           "REFUSED_LEAD", "RJLIMIT", "START_SHARE", "Substantive", "Term", "Variable",
+           "WIDTH_REFUSAL", "breslow", "chain_kinds", "efron", "imputation_at", "impute",
+           "model_width", "outcome_logdensity", "redundant_columns", "refusal_before_drawing",
+           "width_refusal", "zero_exits"]
