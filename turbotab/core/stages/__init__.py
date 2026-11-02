@@ -357,7 +357,7 @@ def build_graph() -> Graph:
             # every injection before the seal, and then the QC rows leave as reference rows.
             # working 9 (MS7 repair): a feature with a detected value outside its detected QCs'
             # span is not corrected (its curve would be extrapolated) and leaves as uncorrectable.
-            Stage("working", 9, ("oriented", "findings", "structure"),
+            Stage("working", 10, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical", "outcome_scale"),
                   working_stage, heavy=True, label="Building the working table"),
