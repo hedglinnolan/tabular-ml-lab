@@ -1563,12 +1563,21 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
             if ask:
                 reason, exits = time_invariance_ask(ask, clusters.column, state)
                 return TableMissing(refusal=reason, exits=exits)
+        from turbotab.core.methods.smcfcs import REFUSED_LEAD
+        from turbotab.core.readings import settled_roles
+
+        # The columns an exit may leave out, as the check at the answer reads them
+        # (``smcfcs.imputation_at``): the settled covariates, never what the analysis studies. The
+        # sampler names a redundant one among them, and where the answer refused the plan, the
+        # table offers to leave out only these (below).
+        leavable = _leavable(state, [c for c, r in settled_roles(state).items()
+                                     if r == "covariate"])
         try:
             imputations = impute_for_inference(spec, X, y, task, seed=seed, progress=progress,
                                                cancelled=ctx.cancelled, survey=design,
                                                clusters=clusters if clustered else None,
                                                nested=nested, factors=_settled_factors(ctx, spec),
-                                               time_invariant=once)
+                                               time_invariant=once, leavable=leavable)
         except ImputationRefused as exc:
             zeros = list(getattr(exc, "zeros", None) or [])
             exits: list[dict[str, Any]] = []
@@ -1594,15 +1603,20 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
                 # terms are what makes the imputation's model fail (``smcfcs._cox_refusal``).
                 exits.extend(dict(e) for e in getattr(exc, "exits", None) or [])
                 # A column with too few values to impute from can be left out, and the copies drawn
-                # without it (where complete cases on it would leave too few rows, the only way).
-                left = [c for c in _leavable(state, getattr(exc, "columns", None) or [])
-                        if c not in (answer.get("drop_columns") or [])]
+                # without it (where complete cases on it would leave too few rows, the only way):
+                # where the width rule refuses the model too, the answer refused the plan in these
+                # words (``smcfcs.refusal_before_drawing``), and a settled covariate only, as the
+                # answer offers it; elsewhere any column but the exposure.
+                named = getattr(exc, "columns", None) or []
+                offered = leavable if getattr(exc, "width_refused", False) \
+                    else _leavable(state, named)
+                left = [c for c in named
+                        if c in offered and c not in (answer.get("drop_columns") or [])]
                 if left:
                     exits.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
                                   "decision": {**answer, "kind": "set_missing", "drop_columns": [
                                       *(answer.get("drop_columns") or []), *left]}})
-            return TableMissing(refusal=f"Multiple imputation cannot run on these data: {exc}",
-                                exits=stage_exits(exits, ctx))
+            return TableMissing(refusal=f"{REFUSED_LEAD}{exc}", exits=stage_exits(exits, ctx))
         return TableMissing(imputations=imputations)
     if strategy == "complete_case":
         if loss is None:

@@ -1547,18 +1547,22 @@ def impute_for_inference(spec: Any, X: pd.DataFrame, y: Any, task: str, *, seed:
                          progress: Any = None, cancelled: Any = None, survey: Any = None,
                          clusters: Any = None, nested: Mapping[str, str] | None = None,
                          factors: Mapping[str, float] | None = None,
-                         time_invariant: Sequence[str] | None = None) -> Any:
+                         time_invariant: Sequence[str] | None = None,
+                         leavable: Sequence[str] = ()) -> Any:
     """The completed copies of ``X`` the inference table is pooled over (``Imputations``, each frame
     holding ``X``'s columns, a level column's blanks left as they were), drawn as
     :func:`imputation_plan` says; ``Imputations.plan`` is the record's source. ``time_invariant``:
-    the columns the user confirmed as one value per unit (:func:`time_invariant_columns`)."""
+    the columns the user confirmed as one value per unit (:func:`time_invariant_columns`).
+    ``leavable``: the columns a refusal of the model's width may name to leave out
+    (``smcfcs.impute``; the fit's table passes the answer's set, the settled covariates less what
+    the analysis studies)."""
     from turbotab.core.methods.smcfcs import impute
 
     plan = imputation_plan(spec, X, y, task, survey=survey, clusters=clusters, nested=nested,
                            factors=factors, time_invariant=time_invariant)
     out = impute(plan.data, plan.variables, mode=plan.mode, substantive=plan.substantive,
                  identity=plan.identity, units=plan.units, m=plan.m, seed=seed,
-                 progress=progress, cancelled=cancelled, kinds=plan.kinds)
+                 progress=progress, cancelled=cancelled, kinds=plan.kinds, leavable=leavable)
     columns = list(X.columns)
     frames = []
     for f in out.frames:

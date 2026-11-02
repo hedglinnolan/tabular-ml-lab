@@ -335,9 +335,10 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
     factor's columns, so a dependency among the covariates is refused by row (T5b); and one more
     when a Firth table on completely separated rows came to report its estimates alone (T5c); and
     one more when it came to report them alone wherever the data separate and an iterative fit's
-    distance from its maximum came to read its score (T5d), each one past both at its merge."""
+    distance from its maximum came to read its score (T5d), each one past both at its merge; and
+    the fit's one more when its refusal of the imputation came to say the answer's words (pp1f)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (41, 24, 21, 15, 12, 15, 7)
+    assert tuple(versions[s] for s in stages) == (42, 24, 21, 15, 12, 15, 7)
