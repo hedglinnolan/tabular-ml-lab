@@ -6485,3 +6485,6 @@ from turbotab.core import sweep as _sweep  # noqa: E402,F401
 # Rows enough to analyze: an answer that would leave fewer rows than the design needs is refused
 # with what removes them (registered for every kind, so last: every kind is known by then).
 from turbotab.core import row_floor as _row_floor  # noqa: E402,F401
+# The imputation model's width at every answer and at the plan's lock (``smcfcs`` registers its
+# check for every kind on import, so after row_floor: every kind is known by then).
+from turbotab.core.methods import smcfcs as _smcfcs  # noqa: E402,F401
