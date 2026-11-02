@@ -653,8 +653,7 @@ def selection_sensitivity(ctx: StageContext, task: str) -> dict[str, Any]:
     from turbotab.core.estimand import current_estimand, exposures_of
     from turbotab.core.models.linear import LINEAR
     from turbotab.core.models.pipeline import DesignSpec, build_pipeline, modeling_frame
-    from turbotab.core.models.variable_selection import (INFERENCE_ALPHA, backward_wald,
-                                                         term_groups)
+    from turbotab.core.models.variable_selection import backward_wald, term_groups
     from turbotab.core.stages.modeling import coded_outcome
 
     state = ctx.state
@@ -686,18 +685,49 @@ def selection_sensitivity(ctx: StageContext, task: str) -> dict[str, Any]:
     exposures = exposures_of(state, current) if current is not None else []
     forced = [t for t in terms if t in exposures]
     found = backward_wald(task, matrices, outcomes, terms, forced)
-    dropped = [s["dropped"] for s in found["path"] if s["dropped"]]
-    from turbotab.core.voice import listing
-
-    pooled = ("pooled across the imputed copies by Rubin's rules" if len(frames) > 1
-              else "on the complete rows")
-    found["sentence"] = (
-        f"As a labeled sensitivity analysis (not the reported model), backward elimination at "
-        f"α = {INFERENCE_ALPHA} with Wald tests {pooled} (Wood, White & Royston 2008), the exposure "
-        f"kept, removed {listing(dropped) if dropped else 'no covariate'}; the declared model is the "
-        f"reported one.")
+    found["sentence"] = sensitivity_sentence(found)
     found["forced"] = forced
     return found
+
+
+def sensitivity_sentence(found: Mapping[str, Any]) -> str:
+    """The sensitivity analysis's sentence from ``backward_wald``'s result: the covariates it
+    removed and those it kept untested because the other columns span them to within
+    ``variable_selection.ALIASED`` of their length (``lm``'s rule, which a yes/no outcome's
+    analysis applies too, though ``glm``'s default tolerance is smaller); or, where it was refused,
+    the step it stopped at and why, with no removal claimed."""
+    from turbotab.core.models.variable_selection import ALIASED
+    from turbotab.core.voice import listing
+
+    pooled = ("pooled across the imputed copies by Rubin's rules" if found["copies"] > 1
+              else "on the complete rows")
+    head = (f"As a labeled sensitivity analysis (not the reported model), backward elimination at "
+            f"α = {found['alpha']} with Wald tests {pooled} (Wood, White & Royston 2008), the "
+            f"exposure kept, ")
+    tail = "; the declared model is the reported one."
+    refused = found.get("refused")
+    if refused:
+        return (f"{head}stopped at step {refused['step']} and reports no result: "
+                f"{refused['reason']}{tail}")
+    dropped = [s["dropped"] for s in found["path"] if s["dropped"]]
+    said = f"removed {listing(dropped) if dropped else 'no covariate'}"
+    untested = found.get("untested") or []
+    if untested:
+        one = len(untested) == 1
+        said += (f"; {listing(untested)} {'was' if one else 'were'} kept untested: the other "
+                 f"columns span {'it' if one else 'each'} to within {_power_of_ten(ALIASED)} of "
+                 f"its length, the share at which R's lm sets a column aside (its coefficient NA)")
+    return head + said + tail
+
+
+def _power_of_ten(x: float) -> str:
+    """A positive number as a power of ten: 10⁻⁷, or 2.5 × 10⁻⁷."""
+    exponent = math.floor(math.log10(x))
+    mantissa = x / 10 ** exponent
+    if round(mantissa, 6) >= 10.0:
+        exponent, mantissa = exponent + 1, mantissa / 10
+    sup = str(exponent).translate(str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹"))
+    return f"10{sup}" if round(mantissa, 6) == 1.0 else f"{mantissa:.2g} × 10{sup}"
 
 
 # ── what a client is shown of the fit under inference (ruling 13; §1 row 11) ──
@@ -753,4 +783,4 @@ def design_sentence(d: Any, state: Any) -> str:
 
 __all__ = ["BENCHMARK", "BENCHMARK_LABEL", "EVALUATION_READS", "EvaluationArtifact",
            "NO_SCORE_UNDER_INFERENCE", "design_sentence", "evaluation_stage",
-           "selection_sensitivity", "withhold_scores"]
+           "selection_sensitivity", "sensitivity_sentence", "withhold_scores"]

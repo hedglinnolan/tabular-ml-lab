@@ -43,6 +43,10 @@ backward elimination by Wald tests among the declared covariates, the exposure k
 across the imputed copies by Rubin's rules (one coefficient: the pooled estimate over its total
 variance with Barnard & Rubin's degrees of freedom; several: Li, Raghunathan & Rubin's D1), as
 Wood, White & Royston (Stat Med 2008;27:3227) recommend for selection with multiple imputation.
+Each copy is fit as R's ``lm`` or ``glm`` fits it: a column the columns before it span, by ``lm``'s
+rule, is set aside untested (its coefficient NA there; the exposure's columns come first, so a
+covariate the exposure spans is the one set aside), a logistic regression is fit on an orthonormal
+basis of its columns and read in their own units, and a copy whose fit fails refuses the analysis.
 """
 from __future__ import annotations
 
@@ -65,8 +69,9 @@ COLLINEAR_TOL = 1e-8  # a share below which a part is rounding (rounding leaves 
 # 1 − |cos| between copies, a column's part outside the others, a coding's shortfall from the
 # residual's largest correlation
 VIP_COMPONENTS = 2
-# R's lm.fit and glm.fit: a column whose part outside the columns before it, in a QR factorization
-# with pivoting, is below this share of its own length is aliased (its coefficient NA).
+# R's lm.fit (``qr(x, tol = 1e-07)``): a column whose part outside the kept columns before it is
+# below this share of its own length is aliased (its coefficient NA). glm.fit applies the rule at
+# min(1e-7, epsilon/1000) of its weighted columns, 1e-11 by default, so it keeps a column between.
 ALIASED = 1e-7
 INFERENCE_ALPHA = 0.157  # Heinze et al. 2018: AIC's equivalent significance level
 SOURCES = {
@@ -155,19 +160,16 @@ def screening_keep(n: int, keep: int | None) -> int:
 
 
 def identified(X: np.ndarray) -> np.ndarray:
-    """The columns of ``X`` whose coefficients its rows identify, in order: a QR factorization with
-    column pivoting keeps each column the kept ones do not span to within :data:`ALIASED` of its
-    own length, as R's ``lm`` and ``glm`` keep them. Every column where none is aliased; a
-    category coded by every level beside the intercept loses one."""
-    from scipy.linalg import qr
+    """The columns of ``X`` whose coefficients its rows identify, in order, by the rule of R's
+    ``lm`` (the limited pivoting of ``qr``, ``effects.column_basis``): a column is aliased, its
+    coefficient NA in ``lm``, when its part outside the span of the kept columns before it is below
+    :data:`ALIASED` of its own length, so of a dependent set the later column is aliased (``glm``
+    applies the rule at a smaller share by default, :data:`ALIASED`'s comment).
+    Every column where none is aliased; a category coded by every level beside the intercept loses
+    its last level."""
+    from turbotab.core.models.effects import column_basis
 
-    if X.shape[1] == 0:
-        return np.arange(0)
-    _, R, piv = qr(X, mode="economic", pivoting=True)
-    lengths = np.linalg.norm(X[:, piv], axis=0)
-    kept = np.abs(np.diag(R)) > ALIASED * np.where(lengths > 0, lengths, 1.0)
-    rank = len(kept) if kept.all() else int(np.argmin(kept))
-    return np.sort(piv[:rank])
+    return np.asarray(column_basis(X, ALIASED), dtype=int)
 
 
 def _ols(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, float, np.ndarray, int]:
@@ -744,32 +746,45 @@ def inclusion_frequencies(pipeline: Any, X: pd.DataFrame, y: Any,
 
 
 def _fit_copy(task: str, X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
-    """(β, covariance) of least squares or a logistic regression (the inverse information, as
-    ``glm``); ``X`` holds the intercept. The least squares' covariance is σ̂²(XᵀX)⁺: σ̂² =
-    RSS/(n − k), k every column, times numpy's pinv of XᵀX, as before 2026-10-31, not
-    :func:`_ols`'s R⁻¹R⁻ᵀ, which would move these tests. It is ``lm``'s σ̂²(XᵀX)⁻¹ on a
-    well-conditioned full-rank design; pinv loses digits as XᵀX's conditioning grows, and an
-    aliased column, whose coefficient is zero, gets a finite variance, so its p is 1 and it leaves
-    first (``lm`` reports it NA and takes σ̂² over n − rank)."""
+    """(β, covariance) on ``X``, the intercept (column 0) and identified columns only
+    (:func:`backward_wald` sets the aliased ones aside): least squares from the QR factor
+    (:func:`_ols`), σ̂²·R⁻¹R⁻ᵀ with σ̂² = RSS/(n − rank), as ``summary.lm`` reads it; or a logistic
+    regression's coefficients and inverse information, as ``glm``, fit on Z = √n·Q, X = QR (the
+    intercept's column constant, the rest centered, uncorrelated and of unit spread), and mapped
+    back to the columns' own units, β = √n·R⁻¹b and its covariance n·R⁻¹CR⁻ᵀ, as the maximum of
+    the likelihood is the same in any basis of the span. So ``performance.logistic_fit``'s bound
+    on a coefficient reads it on that basis: a calendar year's intercept, a fraction's slope, or
+    two nearly equal columns' opposite coefficients are not taken for separation. None when the
+    fit fails: the logistic fit there does not converge or passes that bound, or the least squares
+    leaves no residual degrees of freedom."""
     if task == "binary":
+        from scipy.linalg import qr, solve_triangular
+
         from turbotab.core.models.performance import logistic_fit
 
-        return logistic_fit(X, y)
-    beta, rss, _, _ = _ols(X, y)
-    n, k = X.shape
-    return beta, rss / (n - k) * np.linalg.pinv(X.T @ X)
+        root = math.sqrt(X.shape[0])
+        Q, R = qr(X, mode="economic")
+        fit = logistic_fit(root * Q, y)
+        if fit is None:
+            return None
+        back = root * solve_triangular(R, np.eye(R.shape[0]))
+        return back @ fit[0], back @ fit[1] @ back.T
+    beta, rss, inverse, rank = _ols(X, y)
+    n = X.shape[0]
+    if n - rank < 1:
+        return None
+    return beta, rss / (n - rank) * inverse
 
 
-def term_p(task: str, copies: Sequence[tuple[np.ndarray, np.ndarray]], columns: Sequence[int],
-           df_com: float) -> tuple[float, float, float | None]:
-    """A term's Wald test over the copies: (p, statistic, denominator df). One coefficient: Rubin's
-    rules with Barnard & Rubin's df (``imputation.pool_scalar``; one copy: its own t or z test);
-    several: D1 (``imputation.pooled_wald``)."""
+def term_p(task: str, fits: Sequence[tuple[np.ndarray, np.ndarray]], columns: Sequence[int],
+           df_com: float | None) -> tuple[float, float, float | None]:
+    """A term's Wald test over the copies' fits ``(β, covariance)`` (:func:`_fit_copy`): (p,
+    statistic, denominator df). One coefficient: Rubin's rules with Barnard & Rubin's df
+    (``imputation.pool_scalar``; one copy: its own t test on ``df_com`` df, or with ``df_com`` None
+    its z test); several: D1 (``imputation.pooled_wald``; one copy: its F test on ``df_com`` df, or
+    its χ² test). NaN where no p-value is defined."""
     from turbotab.core.methods.imputation import pool_scalar, pooled_wald
 
-    fits = [_fit_copy(task, X, y) for X, y in copies]
-    if any(f is None for f in fits):
-        return float("nan"), float("nan"), None
     idx = list(columns)
     if len(idx) == 1:
         j = idx[0]
@@ -782,10 +797,13 @@ def term_p(task: str, copies: Sequence[tuple[np.ndarray, np.ndarray]], columns: 
         from scipy import stats
 
         q, u = Q[0], U[0]
-        stat = float(q @ np.linalg.solve(u, q)) / len(idx)
-        dist = stats.f(len(idx), df_com) if task != "binary" else None
-        p = float(dist.sf(stat)) if dist is not None else float(stats.chi2.sf(stat * len(idx), len(idx)))
-        return p, stat, df_com if task != "binary" else None
+        try:
+            stat = float(q @ np.linalg.solve(u, q)) / len(idx)
+        except np.linalg.LinAlgError:
+            return float("nan"), float("nan"), None
+        if df_com is None:
+            return float(stats.chi2.sf(stat * len(idx), len(idx))), stat, None
+        return float(stats.f(len(idx), df_com).sf(stat)), stat, df_com
     tested = pooled_wald(Q, U, df_com)
     if tested is None:
         return float("nan"), float("nan"), None
@@ -799,34 +817,82 @@ def backward_wald(task: str, frames: Sequence[pd.DataFrame], outcomes: Sequence[
 
     ``frames``: each copy's model matrix (named columns, no intercept); ``outcomes`` its outcome;
     ``terms``: each term's columns; ``forced`` terms are never dropped (the exposure). Each step
-    tests every remaining unforced term and drops the one with the largest p-value while it is
-    above ``alpha``. Returns the path ``[{step, tested: {term: p}, dropped, p}]`` and the terms
-    kept."""
+    fits each copy as R's ``lm`` or ``glm`` does: the columns ``lm``'s rule finds aliased
+    (:func:`identified`, the forced terms' columns first) are set aside, their coefficients NA in
+    ``lm`` (under a yes/no outcome too, though ``glm.fit``'s default tolerance keeps a column
+    whose share lies between 10⁻¹¹ and :data:`ALIASED`), and every remaining unforced term with an
+    identified column is tested on its identified columns (:func:`_fit_copy`), the complete-data df
+    n − rank (``df.residual``; a yes/no outcome on one copy takes ``summary.glm``'s z test). The
+    term with the largest p-value leaves while it is above ``alpha``. Returns the path
+    ``[{step, tested: {term: p}, aliased: [column], dropped, p}]``, the terms kept, those kept
+    untested (every column aliased at the last step) and ``refused`` None.
+    Where a copy's fit fails, the copies alias different columns, or a test has no p-value, the
+    analysis is refused: ``refused`` is ``{step, reason}``, the path holds the steps before it, and
+    no terms are kept."""
+    from turbotab.core.voice import listing, tick
+
     remaining = [t for t in terms]
     path: list[dict[str, Any]] = []
     ys = [outcome01(task, y) for y in outcomes]
+    m = len(frames)
+
+    def refused(reason: str) -> dict[str, Any]:
+        return {"path": path, "kept": None, "untested": [], "alpha": alpha, "copies": m,
+                "refused": {"step": len(path) + 1, "reason": reason}}
+
+    def where(k: int) -> str:
+        return "the complete rows" if m == 1 else f"imputed copy {k + 1} of {m}"
+
     while True:
-        columns = [c for t in remaining for c in terms[t]]
-        copies = [(np.column_stack([np.ones(len(f)), f[columns].to_numpy(dtype=float)]), y)
-                  for f, y in zip(frames, ys)]
-        n, k = copies[0][0].shape
-        df_com = float(n - k)
+        ordered = [t for t in remaining if t in forced] + [t for t in remaining if t not in forced]
+        columns = [c for t in ordered for c in terms[t]]
+        designs = [np.column_stack([np.ones(len(f)), f[columns].to_numpy(dtype=float)])
+                   for f in frames]
+        bases = [identified(X).tolist() for X in designs]
+        differ = sorted(set().union(*bases) - set(bases[0]).intersection(*bases))
+        if differ:
+            names = [columns[j - 1] for j in differ]
+            return refused(f"{listing(names)} {'is' if len(names) == 1 else 'are'} spanned by the "
+                           f"other columns in some imputed copies and not in others, so the "
+                           f"copies' fits do not estimate the same coefficients and no pooled test "
+                           f"is defined")
+        kept = bases[0]
+        fits = []
+        for k, (X, y) in enumerate(zip(designs, ys)):
+            fit = _fit_copy(task, X[:, kept], y)
+            if fit is None:
+                return refused(
+                    f"the logistic regression on {where(k)} was not fit (Newton's method did not "
+                    f"converge, or a coefficient grew past the fit's bound, as when the covariates "
+                    f"separate an outcome level)"
+                    if task == "binary" else
+                    f"the least squares on {where(k)} leaves no residual variance ({len(y):,} "
+                    f"rows, {len(kept)} coefficients identified)")
+            fits.append(fit)
+        df_com = None if task == "binary" and m == 1 else float(len(ys[0]) - len(kept))
+        position = {j: i for i, j in enumerate(kept)}
         tested: dict[str, float] = {}
-        for t in remaining:
-            if t in forced:
+        for t in ordered:
+            idx = [position[j] for j in (1 + columns.index(c) for c in terms[t]) if j in position]
+            if t in forced or not idx:
                 continue
-            idx = [1 + columns.index(c) for c in terms[t]]
-            tested[t] = term_p(task, copies, idx, df_com)[0]
-        candidates = {t: p for t, p in tested.items() if math.isfinite(p)}
-        worst = max(candidates, key=lambda t: (candidates[t], t)) if candidates else None
-        step = {"step": len(path) + 1, "tested": tested, "dropped": None, "p": None}
-        if worst is None or candidates[worst] <= alpha:
+            p = term_p(task, fits, idx, df_com)[0]
+            if not math.isfinite(p):
+                return refused(f"the {'pooled ' if m > 1 else ''}Wald test of {tick(t)} has no "
+                               f"p-value")
+            tested[t] = p
+        aliased = [c for j, c in enumerate(columns, start=1) if j not in position]
+        worst = max(tested, key=lambda t: (tested[t], t)) if tested else None
+        step = {"step": len(path) + 1, "tested": tested, "aliased": aliased, "dropped": None,
+                "p": None}
+        if worst is None or tested[worst] <= alpha:
             path.append(step)
-            break
-        step["dropped"], step["p"] = worst, candidates[worst]
+            untested = [t for t in ordered if t not in forced and t not in tested]
+            return {"path": path, "kept": remaining, "untested": untested, "alpha": alpha,
+                    "copies": m, "refused": None}
+        step["dropped"], step["p"] = worst, tested[worst]
         path.append(step)
         remaining.remove(worst)
-    return {"path": path, "kept": remaining, "alpha": alpha, "copies": len(frames)}
 
 
 def term_groups(columns: Sequence[str], inputs: Sequence[str]) -> dict[str, list[str]]:
