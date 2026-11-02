@@ -211,9 +211,11 @@ def _two_level_text(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
         rows = f"{count(n_blank)} of {count(n_rows)}{' non-QC rows' if fc.reference_rows else ''}"
         if _offers_a_level(f, p, fc):
             # The blanks' answer settles the finding (``repairs.matching_answer``) and chooses no
-            # level: its own repairs still do, on its line.
+            # level: which one counts as 1 is the finding's own repairs' to choose. Where they are
+            # offered differs by reader (the app's card for an answered finding offers none), so
+            # the line says only that it is a choice apart from the blanks' answer.
             return Voice(f"{tick(col)}, two-level text: {rows} blank (maybe not asked); which "
-                         f"level counts as 1 is chosen here.", *BLANKS)
+                         f"level counts as 1 is another choice.", *BLANKS)
         return Voice(f"{tick(col)} is two-level text with {rows} blank; a blank may mean not "
                      f"asked.", *BLANKS)
     levels = [str(v) for v in p.get("levels") or []]
@@ -1391,6 +1393,50 @@ def repoint_energy(legacy: list[tuple[dict[str, Any], dict[str, Any]]],
     return out
 
 
+LEFT_CENSORED = "pack::metabolomics::left_censored"
+
+
+def left_censoring_on_the_participants(legacy: list[tuple[dict[str, Any], dict[str, Any]]],
+                                       fc: FindingContext
+                                       ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """The lab pack's left-censoring finding, read on the rows outside the ones the served
+    pooled-QC finding names (:attr:`FindingContext.reference_rows`).
+
+    The pack's detector sets aside the rows its own pooled-QC reading flags (``packs._pooled_qc``),
+    which reads a two-level label only; the served reading (``reference_rows.pooled_qc_finding``)
+    reads a label of 2 to 10 levels, so on a Case/Control/QC label it names the QC rows and the
+    pack's names none, and a covariate or the outcome blank only on the QC rows was named as a
+    non-detection. Where the two readings name different rows the detector runs again with the
+    served reading's rows set aside, and its finding takes the pack's place (none does where it no
+    longer fires; it joins the pack's findings where it now does). Where they name the same rows,
+    the pack's finding stands as it is."""
+    if "metabolomics" not in fc.lens:
+        return legacy
+    from turbotab import packs
+    from turbotab.core.stages.findings import pack_finding
+
+    served = np.zeros(fc.n_rows, dtype=bool)
+    served[sorted(fc.reference_rows)] = True
+    where = [i for i, (_, finding) in enumerate(legacy) if family(finding["id"]) == LEFT_CENSORED]
+    try:
+        if np.array_equal(packs._pooled_qc_rows(fc.frame).to_numpy(dtype=bool), served):
+            return legacy
+        again = packs._left_censored(fc.frame, qc_rows=pd.Series(served, index=fc.frame.index))
+    except Exception:  # noqa: BLE001 - as ``detectors.pack_findings`` handles a pack detector
+        from turbotab import devchecks
+
+        devchecks.swallowed(
+            "finding_words.left_censoring_on_the_participants", packs._last_exception(),
+            "the left-censoring finding was not read on the participants, so none is said: the "
+            "pack's was read with the pooled-QC rows in it")
+        again = None
+    out = [pair for i, pair in enumerate(legacy) if i not in where]
+    if again is not None:
+        at = where[0] if where else len(out)
+        out.insert(at, (again, pack_finding(again)))
+    return out
+
+
 def energy_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """The pack's implausible-intake and energy-adjustment findings for a total-energy column only
     the app's recognizer reads (audit IN-08: ``DR2TKCAL``, ``DRXTKCAL``, ``ENERC_KCAL``,
@@ -1456,6 +1502,6 @@ def flag_columns(findings: Sequence[dict[str, Any]]) -> set[str]:
 
 __all__ = [
     "FAMILIES", "FindingContext", "GROUPS", "LEVER_WORDS", "NO_LEVER", "SUMMARY_WORDS",
-    "energy_correlations", "family", "flag_columns", "own_findings", "pooled_qc_rows",
-    "quote_columns", "restate_energy", "settle_groups", "speak",
+    "energy_correlations", "family", "flag_columns", "left_censoring_on_the_participants",
+    "own_findings", "pooled_qc_rows", "quote_columns", "restate_energy", "settle_groups", "speak",
 ]

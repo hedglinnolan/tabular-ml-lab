@@ -622,7 +622,8 @@ POOLED_QC_EVIDENCE = Evidence(
             "generic tool cannot do"))
 
 
-def _left_censored(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+def _left_censored(df: pd.DataFrame,
+                   qc_rows: Optional[pd.Series] = None) -> Optional[Dict[str, Any]]:
     """Missingness ordered by abundance is left censoring, not randomness.
 
     The reading is a rank correlation between a feature's missing rate and its
@@ -634,16 +635,22 @@ def _left_censored(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     QRILC — *"values below the detection limit were imputed as half the minimum
     observed"* is a sentence a reader can evaluate.
 
-    **Read on the participants' rows**: the rows `_pooled_qc` does not flag. A
-    pooled QC carries no age, BMI or outcome, so those are blank on every QC
-    row by design, not below a detection limit; read over every row, they
-    were named here, and the prior this finding scopes (`GUIDED-027`) reached
-    them. Where `_pooled_qc` flags no row, every row is read.
+    **Read on the participants' rows**: the rows outside `qc_rows`, the pooled
+    QC injections, which are by default the rows `_pooled_qc` flags. A pooled
+    QC carries no age, BMI or outcome, so those are blank on every QC row by
+    design, not below a detection limit; read over every row, they were named
+    here, and the prior this finding scopes (`GUIDED-027`) reached them. Where
+    no row is a QC row, every row is read. `_pooled_qc` reads a two-level label
+    only, so the app passes the rows its own pooled-QC reading names, which
+    reads a Case/Control/QC label too
+    (`turbotab.core.stages.finding_words.left_censoring_on_the_participants`).
     """
     cols = _numeric(df)
     if len(cols) < 30:
         return None
-    rows = df.loc[~_pooled_qc_rows(df), cols]
+    if qc_rows is None:
+        qc_rows = _pooled_qc_rows(df)
+    rows = df.loc[~qc_rows, cols]
     rate = rows.isna().mean()
     with_blanks = [c for c in cols if rate[c] > 0]
     if len(with_blanks) < 5:

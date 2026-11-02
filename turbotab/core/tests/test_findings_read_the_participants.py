@@ -1,6 +1,6 @@
 """The findings judge a column on the participants, not on the pooled-QC rows (the plasma panel's
 package, findings-rows), and a two-level finding its blanks' answer settles still leaves which
-level counts as 1 to the finding.
+level counts as 1 to the finding, a choice apart from the blanks' answer.
 
 A pooled QC is one sample injected repeatedly: it carries no age, sex, BMI or outcome, so those are
 blank on every QC row by design. Read over every row, the two-level reading sent `sex` (blank only
@@ -12,8 +12,12 @@ reading does not name:
   finding names (``reference_rows.pooled_qc_finding``), the rows its exclusion keeps. The findings
   are read before any answer, so those rows are read from the data, whatever the answer to the QC
   finding; where the reading does not fire, every row counts as before;
-* the left-censoring reading (``packs._left_censored``) reads the rows the pack's own pooled-QC
-  reading (``packs._pooled_qc``) does not flag, and names only columns with a blank there.
+* the left-censoring reading (``packs._left_censored``) reads the rows outside those the served
+  pooled-QC finding names, and names only columns with a blank there. The pack's own pooled-QC
+  reading (``packs._pooled_qc``), whose rows it sets aside by default, reads a two-level label
+  only; on a Case/Control/QC label the served reading names the QC rows and the pack's names none,
+  so the app sets aside the served reading's rows
+  (``finding_words.left_censoring_on_the_participants``).
 
 Each truth is by construction on a plasma-like table (60 participants, 10 QC injections, 40
 features censored below a detection limit), counted with pandas, or computed by scipy's Spearman
@@ -39,6 +43,7 @@ from turbotab.core.decisions import (
     fold,
     validate,
 )
+from turbotab.core.quest import _finding_lines
 from turbotab.core.stages.finding_words import SUMMARY_WORDS
 from turbotab.core.stages.findings import findings_stage
 from turbotab.core.tests.stage_harness import SAMPLES, Ingested
@@ -48,9 +53,12 @@ QC_AT = list(range(0, N_PART + N_QC, 7))  # a QC every seventh injection, ten in
 LIMIT = 4.0  # a feature's log value below this is not detected: a blank
 
 
-def panel(*, sex_blank: int = 0, qc_signal: bool = True, seed: int = 11) -> pd.DataFrame:
+def panel(*, sex_blank: int = 0, qc_signal: bool = True, seed: int = 11,
+          labels: tuple[str, ...] = ("participant",)) -> pd.DataFrame:
     """A plasma-like table by construction: 60 participants and 10 pooled-QC injections (every
-    seventh row, ``sample_type`` = ``pooled_qc``), 40 features whose log means run from 3.5 to 12,
+    seventh row, ``sample_type`` = ``pooled_qc``; the participants' ``sample_type`` is drawn from
+    ``labels``, ``case`` and ``control`` for a three-level label, by a generator of its own so the
+    rest of the table is the same), 40 features whose log means run from 3.5 to 12,
     each blank below ``exp(4)`` (left-censored by abundance), and the participants' `age`, `bmi`,
     `sex` and `disease`, blank on every QC row. The first ``sex_blank`` participants have a blank
     `sex` too. With ``qc_signal`` the QC rows are one pooled sample (each feature's log mean, a
@@ -69,7 +77,8 @@ def panel(*, sex_blank: int = 0, qc_signal: bool = True, seed: int = 11) -> pd.D
     sex = rng.choice(["F", "M"], n).astype(object)
     sex[qc] = None
     sex[np.flatnonzero(~qc)[:sex_blank]] = None
-    frame = {"sample_type": np.where(qc, "pooled_qc", "participant"),
+    label = np.random.default_rng(seed + 1).choice(list(labels), n)
+    frame = {"sample_type": np.where(qc, "pooled_qc", label),
              "age": np.where(qc, np.nan, rng.integers(30, 75, n).astype(float)),
              "bmi": np.where(qc, np.nan, np.round(rng.normal(27.0, 4.0, n), 1)),
              "sex": sex}
@@ -136,7 +145,8 @@ def test_a_column_blank_on_a_tenth_of_the_participants_still_routes_to_missing(t
     sex = found["binary_text__sex"]
     assert sex["routes_to"] == "missing"
     assert sex["summary"] == (f"`sex`, two-level text: `{n_blank}` of `{len(kept)}` non-QC rows "
-                              f"blank (maybe not asked); which level counts as 1 is chosen here.")
+                              f"blank (maybe not asked); which level counts as 1 is another "
+                              f"choice.")
     assert voice.words(sex["summary"]) <= SUMMARY_WORDS
 
 
@@ -164,7 +174,7 @@ def test_where_no_pooled_qc_reading_fires_every_row_counts(tmp_path, why):
     assert (n_blank, n) == (N_QC, N_PART + N_QC)
     assert sex["routes_to"] == "missing"
     assert sex["summary"] == (f"`sex`, two-level text: `{n_blank}` of `{n}` blank (maybe not "
-                              f"asked); which level counts as 1 is chosen here.")
+                              f"asked); which level counts as 1 is another choice.")
 
 
 # ── the left-censoring reading: the participants' rows ──────────────────────
@@ -213,6 +223,79 @@ def test_left_censoring_reads_every_row_where_the_pack_flags_no_qc_rows(tmp_path
     assert found is not None and set(found["params"]["columns"]) == every_row
 
 
+def test_left_censoring_sets_aside_the_qc_rows_of_a_case_control_qc_label(tmp_path):
+    """The participants labeled `case` and `control` beside the `pooled_qc` level: the pack's own
+    pooled-QC reading needs a two-level label and flags no row, while the served one (2 to 10
+    levels) names the 10 QC rows by construction. The left-censoring finding sets aside those
+    rows: `age`, `bmi` and the outcome, blank only there, are not named, and its counts and
+    correlation are the participants' own (pandas, scipy)."""
+    frame = panel(labels=("case", "control"))
+    df = read_back(tmp_path, frame)
+    assert set(df["sample_type"]) == {"case", "control", "pooled_qc"}
+    assert packs._pooled_qc(df) is None  # two levels only: the pack's own reading flags no row
+    named, rho, n_usable = _participant_reading(df)
+    assert named and all(c.startswith("mz_") for c in named)
+    found = findings_of(tmp_path, frame, ["metabolomics"], target="disease")
+    exclusion = next(o for o in found["pack::metabolomics::pooled_qc"]["repairs"]
+                     if o["key"] == "exclude_rows")["decision"]["params"]
+    at = np.flatnonzero(df[exclusion["column"]].astype(str).isin(exclusion["levels"]).to_numpy())
+    assert at.tolist() == QC_AT
+    censored = found["pack::metabolomics::left_censored"]
+    assert set(censored["censored_columns"]) == named
+    assert not {"age", "bmi", "disease"} & set(censored["censored_columns"])
+    assert censored["detail"].startswith(
+        f"Across {n_usable:,} features, a feature's missing rate tracks its abundance rank at a "
+        f"rank correlation of {rho:.2f}. {len(named):,} features have blanks;")
+
+
+def test_left_censoring_raised_only_by_the_qc_rows_blanks_is_not_said(tmp_path):
+    """A Case/Control/QC table with no blank among the participants (by construction): only the
+    QC rows are blank, on `age`, `bmi`, the outcome and the three least abundant features. Read
+    over every row, as the pack's own reading reads this label, those six columns are the least
+    abundant of 43 and their blanks track abundance (scipy), so the pack names left censoring;
+    on the participants there is no blank to read, and no left-censoring finding is said."""
+    rng = np.random.default_rng(5)
+    n = N_PART + N_QC
+    qc = np.zeros(n, dtype=bool)
+    qc[QC_AT] = True
+    log_mean = np.linspace(3.5, 12.0, N_FEATURES)
+    sd = np.where(qc[:, None], 0.05, 0.8)
+    values = np.round(np.exp(log_mean + rng.normal(0.0, 1.0, (n, N_FEATURES)) * sd), 2)
+    values[np.ix_(qc, [0, 1, 2])] = np.nan
+    frame = {"sample_type": np.where(qc, "pooled_qc", rng.choice(["case", "control"], n)),
+             "age": np.where(qc, np.nan, rng.integers(30, 75, n).astype(float)),
+             "bmi": np.where(qc, np.nan, np.round(rng.normal(27.0, 4.0, n), 1))}
+    for j in range(N_FEATURES):
+        frame[f"mz_{j + 1:03d}"] = values[:, j]
+    frame["disease"] = np.where(qc, np.nan, rng.integers(0, 2, n).astype(float))
+    df = read_back(tmp_path, pd.DataFrame(frame))
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    assert not participants(df)[numeric].isna().any().any()
+    rate, mean = df[numeric].isna().mean(), df[numeric].mean()
+    assert stats.spearmanr(rate.to_numpy(), np.log(mean.to_numpy())).statistic <= -0.5
+    every_row = packs._left_censored(df)  # the pack's own reading: no QC row on three levels
+    assert every_row is not None
+    assert set(every_row["params"]["columns"]) == {"age", "bmi", "disease", "mz_001", "mz_002",
+                                                   "mz_003"}
+    found = findings_of(tmp_path, pd.DataFrame(frame), ["metabolomics"], target="disease")
+    assert "pack::metabolomics::pooled_qc" in found
+    assert "pack::metabolomics::left_censored" not in found
+
+
+def test_left_censoring_on_a_case_control_qc_label_reads_every_row_where_no_reading_fires(tmp_path):
+    """The silent side: the same three-level label with QC rows that vary as the participants do,
+    so no reading names them, and every row is read: `age`, `bmi` and the outcome, blank on those
+    rows, are named with the features (pandas, every row)."""
+    frame = panel(labels=("case", "control"), qc_signal=False)
+    df = read_back(tmp_path, frame)
+    found = findings_of(tmp_path, frame, ["metabolomics"], target="disease")
+    assert "pack::metabolomics::pooled_qc" not in found
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    every_row = {c for c in numeric if df[c].isna().any()}
+    assert {"age", "bmi", "disease"} <= every_row
+    assert set(found["pack::metabolomics::left_censored"]["censored_columns"]) == every_row
+
+
 # ── a finding its blanks' answer settles keeps its level to choose ──────────
 
 
@@ -220,11 +303,12 @@ def _record(seq: int, decision) -> DecisionRecord:
     return DecisionRecord(id=f"r{seq}", seq=seq, at=datetime.now(timezone.utc), decision=decision)
 
 
-def test_the_blanks_answer_settles_the_finding_and_its_level_is_still_chosen_on_it(tmp_path):
+def test_the_blanks_answer_settles_the_finding_and_its_level_is_still_its_own(tmp_path):
     """`sex` blank on 12 of 70 rows (no assay lens, by construction) routes to the missing-values
     question, which settles the finding (``repairs.matching_answer``) and chooses no level. Its
-    two level options stay on it, its line says the level is chosen there, and one taken after
-    the answer is recorded as the finding's own repair."""
+    two level options stay on it, its line (the quest card's head) says which level counts as 1
+    is another choice and nothing of where it is made (the app's card for an answered finding
+    offers none), and one taken after the answer is recorded as the finding's own repair."""
     frame = panel(sex_blank=2, qc_signal=False)
     df = read_back(tmp_path, frame)
     path = tmp_path / "panel.csv"
@@ -234,10 +318,14 @@ def test_the_blanks_answer_settles_the_finding_and_its_level_is_still_chosen_on_
     assert int(df["sex"].isna().sum()) == 12
     assert sex["routes_to"] == "missing"
     assert sex["summary"] == ("`sex`, two-level text: `12` of `70` blank (maybe not asked); which "
-                              "level counts as 1 is chosen here.")
+                              "level counts as 1 is another choice.")
     assert [o["key"] for o in sex["repairs"]] == ["level", "level"]
     records = [_record(1, SetMissing(strategy="complete_case"))]
-    served = {f["id"]: f for f in repairs.annotate(artifact, fold(records), records)["findings"]}
+    state = fold(records)
+    annotated = repairs.annotate(artifact, state, records)
+    served = {f["id"]: f for f in annotated["findings"]}
+    (line,) = [ln for _, ln in _finding_lines(state, annotated, {}, None) if ln.key == sex["id"]]
+    assert (line.status, line.decision_id, line.name) == ("answered", "r1", sex["summary"])
     assert served[sex["id"]]["answered_by"] == "r1" and served[sex["id"]]["disposition"] is None
     assert [o["key"] for o in served[sex["id"]]["repairs"]] == ["level", "level"]
     level = served[sex["id"]]["repairs"][0]["decision"]

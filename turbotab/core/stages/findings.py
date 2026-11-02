@@ -37,6 +37,7 @@ from turbotab.core.stages.finding_words import (
     FindingContext,
     family,
     flag_columns,
+    left_censoring_on_the_participants,
     own_findings,
     pooled_qc_rows,
     repoint_energy,
@@ -113,12 +114,15 @@ def speak_for(frame: Any, lens: list[str], target: str | None, structural: list[
     check already reports is not reported again as "true/false stored as text".
 
     The rows the pooled-QC finding names (``pooled_qc_rows``) are set aside where a column is
-    judged on the participants: a two-level column's blanks are counted over the other rows.
+    judged on the participants: a two-level column's blanks are counted over the other rows, and
+    the left-censoring finding reads only those rows
+    (``left_censoring_on_the_participants``).
     """
     fc = FindingContext(frame=frame, lens=tuple(lens), target=target, units=dict(units or {}),
                         below_detection=frozenset(str(c) for c in below_detection),
                         reference_rows=pooled_qc_rows(frame, from_packs))
     legacy = [(f, structural_finding(f)) for f in structural] + [(f, pack_finding(f)) for f in from_packs]
+    legacy = left_censoring_on_the_participants(legacy, fc)
     # The pack's energy findings are about the column the app reads as energy intake (audit WP13
     # gate repair: the pack's alias matcher read a device's energy expenditure as intake).
     legacy = repoint_energy(legacy, fc)

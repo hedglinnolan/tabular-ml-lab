@@ -654,22 +654,51 @@ def test_ask_carries_the_effects_stages_refusal_and_its_ways_forward_by_id(tmp_p
 # ── a finding its routed answer settled keeps its own repairs ───────────────
 
 
-def settled_case(tmp_path: Path) -> dict[str, Any]:
-    """The engine's own findings, served (``repairs.annotate``), and their quest lines
-    (``quest._finding_lines``) on a constructed table: `sex` (`F`/`M`) blank on 12 of 60 rows and
-    `meds` (True/False written as text) blank on 9, each routed to the missing-values question,
-    which ``records`` answers (``r1``). `sex` offers its two levels as repairs; `meds` offers none
-    (``repairs._offer_binary`` reads text levels only)."""
+def engine_case(path: Path, lens: list[str], work: Path) -> dict[str, Any]:
+    """The engine's own findings for the table at ``path`` under ``lens``, and ``served``: for a
+    list of records, the findings as served (``repairs.annotate``), their quest lines
+    (``quest._finding_lines``, over the Router's own steps, ``interview.route``) and the view.
+    ``validated`` checks a finding decision as the server does before recording it."""
     from datetime import datetime, timezone
 
-    import numpy as np
-    import pandas as pd
-
     from turbotab.core import repairs
-    from turbotab.core.decisions import DecisionRecord, ProjectState, SetMissing, fold
+    from turbotab.core.decisions import DecisionRecord, ProjectState, fold, validate
+    from turbotab.core.interview import route
     from turbotab.core.quest import _finding_lines
     from turbotab.core.stages.findings import findings_stage
     from turbotab.core.tests.stage_harness import Ingested
+
+    artifact = Ingested(path, work / "ingested").run(findings_stage, ProjectState(lens=lens))
+    fresh = {s: {"status": "fresh"} for s in ("ingest", "oriented", "profile", "findings")}
+
+    def record(seq: int, decision: Any) -> Any:
+        return DecisionRecord(id=f"r{seq}", seq=seq, at=datetime.now(timezone.utc),
+                              decision=decision)
+
+    def validated(decision: Any) -> Any:
+        return validate(decision, {"artifact": lambda s: artifact if s == "findings" else None})
+
+    def served(records: list[Any]) -> dict[str, Any]:
+        state = fold(records)
+        findings = repairs.annotate(artifact, state, records)
+        steps = {s.key: s for s in route(state, fresh, {"findings": findings}, records)}
+        lines = [ln.model_dump(mode="json") | {"stage": stage}
+                 for stage, ln in _finding_lines(state, findings, steps, None)]
+        view = {**VIEW, "decisions": [r.model_dump(mode="json") for r in records]}
+        return {"findings": findings, "lines": lines, "view": view}
+
+    return {"artifact": artifact, "record": record, "served": served, "validated": validated}
+
+
+def settled_case(tmp_path: Path) -> dict[str, Any]:
+    """:func:`engine_case` on a constructed table: `sex` (`F`/`M`) blank on 12 of 60 rows and
+    `meds` (True/False written as text) blank on 9, each routed to the missing-values question,
+    which ``records`` answers (``r1``). `sex` offers its two levels as repairs; `meds` offers none
+    (``repairs._offer_binary`` reads text levels only)."""
+    import numpy as np
+    import pandas as pd
+
+    from turbotab.core.decisions import SetMissing
 
     rng = np.random.default_rng(3)
     n = 60
@@ -681,22 +710,8 @@ def settled_case(tmp_path: Path) -> dict[str, Any]:
     tmp_path.mkdir(parents=True, exist_ok=True)
     pd.DataFrame({"age": rng.integers(20, 80, n), "sex": sex, "meds": meds,
                   "y": rng.normal(0.0, 1.0, n)}).to_csv(path, index=False)
-    artifact = Ingested(path, tmp_path / "ingested").run(findings_stage, ProjectState(lens=[]))
-
-    def record(seq: int, decision: Any) -> Any:
-        return DecisionRecord(id=f"r{seq}", seq=seq, at=datetime.now(timezone.utc),
-                              decision=decision)
-
-    def served(records: list[Any]) -> dict[str, Any]:
-        state = fold(records)
-        findings = repairs.annotate(artifact, state, records)
-        lines = [ln.model_dump(mode="json") | {"stage": stage}
-                 for stage, ln in _finding_lines(state, findings, {}, None)]
-        view = {**VIEW, "decisions": [r.model_dump(mode="json") for r in records]}
-        return {"findings": findings, "lines": lines, "view": view}
-
-    return {"artifact": artifact, "record": record, "served": served,
-            "records": [record(1, SetMissing(strategy="complete_case"))]}
+    case = engine_case(path, [], tmp_path)
+    return case | {"records": [case["record"](1, SetMissing(strategy="complete_case"))]}
 
 
 def serve(monkeypatch, now: dict[str, Any]) -> None:
@@ -721,7 +736,7 @@ def test_a_finding_its_routed_answer_settled_lists_its_own_repairs_and_answer_re
     ``answer`` takes one by its id and posts exactly that ``apply_repair``, which the engine
     records as the finding's own repair. A settled finding with no repair (`meds`) lists none, and
     once `sex`'s own repair is recorded it lists none either."""
-    from turbotab.core.decisions import ApplyRepair, validate
+    from turbotab.core.decisions import ApplyRepair
 
     fake_run(tmp_path, monkeypatch)
     case = settled_case(tmp_path / "engine")
@@ -756,8 +771,7 @@ def test_a_finding_its_routed_answer_settled_lists_its_own_repairs_and_answer_re
                               "rows", "--reason", "Choose which level of sex counts as 1."])
     assert code == 0 and sent == [level] and payload["recorded"]["decision"] == level
     # The engine takes it as the finding's own repair, and the line then lists no way to change it.
-    ctx = {"artifact": lambda stage: case["artifact"] if stage == "findings" else None}
-    taken = validate(ApplyRepair(**{k: v for k, v in level.items() if k != "kind"}), ctx)
+    taken = case["validated"](ApplyRepair(**{k: v for k, v in level.items() if k != "kind"}))
     after = case["served"]([*case["records"], case["record"](2, taken)])
     sex_after = next(f for f in after["findings"]["findings"] if f["id"] == "binary_text__sex")
     assert sex_after["disposition"]["action"] == "applied" and sex_after["answered_by"] == "r2"
@@ -780,3 +794,55 @@ def test_a_finding_line_still_open_is_listed_open_and_not_settled(tmp_path, monk
     assert set(listed) == {"binary_text__sex", "binary_text__meds"}
     assert [o["decision"]["kind"] for o in listed["binary_text__sex"]["options"]] == [
         "apply_repair", "apply_repair", "dismiss_finding"]
+
+
+def test_a_finding_held_for_the_missing_question_its_answer_settled_lists_its_own_repairs(
+        tmp_path, monkeypatch):
+    """`sex`'s finding held for the missing-values question (``r1``, a deferral: its disposition
+    is ``deferred``) and then settled by that question's answer (``r2``): its line is answered by
+    ``r2``, not by the deferral, and lists the finding's own two level repairs, as a finding the
+    answer settled with no deferral does."""
+    from turbotab.core.decisions import DeferFinding, SetMissing
+
+    fake_run(tmp_path, monkeypatch)
+    case = settled_case(tmp_path / "engine")
+    held = case["validated"](DeferFinding(finding_id="binary_text__sex", to="missing"))
+    now = case["served"]([case["record"](1, held),
+                          case["record"](2, SetMissing(strategy="complete_case"))])
+    sex = next(f for f in now["findings"]["findings"] if f["id"] == "binary_text__sex")
+    assert sex["disposition"]["action"] == "deferred" and sex["disposition"]["to"] == "missing"
+    line = next(ln for ln in now["lines"] if ln["key"] == "binary_text__sex")
+    assert (line["status"], line["decision_id"]) == ("answered", "r2")
+    serve(monkeypatch, now)
+    q = driver.the_question(driver.Run.load(RID), driver.Client(9), 0)
+    (settled,) = q["settled_findings"]
+    assert (settled["key"], settled["decision_id"]) == ("binary_text__sex", "r2")
+    assert [w["decision"] for w in settled["change"]] == [o["decision"] for o in sex["repairs"]]
+    assert [o["key"] for o in sex["repairs"]] == ["level", "level"]
+
+
+def test_a_finding_another_findings_repair_did_the_work_of_is_not_listed_settled(
+        tmp_path, monkeypatch):
+    """The survey sample's sentinel-codes repair (``r1``) recodes the codes each column's own
+    sentinel finding names, so those findings are answered by ``r1`` with no disposition of their
+    own (``repairs._covered``) though each still offers "Treat as missing": that repair did its
+    work, so the line is not one the question it routes to settled, and none is listed."""
+    from turbotab.core.decisions import ApplyRepair
+    from turbotab.core.tests.stage_harness import SAMPLES
+
+    fake_run(tmp_path, monkeypatch)
+    case = engine_case(SAMPLES / "survey_sentinels.csv", ["survey"], tmp_path / "engine")
+    pack = next(f for f in case["artifact"]["findings"]
+                if f["id"] == "pack::survey::sentinel_codes")
+    chosen = pack["repairs"][0]["decision"]
+    taken = case["validated"](ApplyRepair(**{k: v for k, v in chosen.items() if k != "kind"}))
+    now = case["served"]([case["record"](1, taken)])
+    covered = [f for f in now["findings"]["findings"] if f["id"].startswith("sentinel_missing__")]
+    assert covered and all(f["answered_by"] == "r1" and f["disposition"] is None and f["repairs"]
+                           for f in covered)
+    lines = {ln["key"]: ln for ln in now["lines"]}
+    assert all((lines[f["id"]]["status"], lines[f["id"]]["decision_id"]) == ("answered", "r1")
+               for f in covered)
+    serve(monkeypatch, now)
+    q = driver.the_question(driver.Run.load(RID), driver.Client(9), 0)
+    assert "settled_findings" not in q
