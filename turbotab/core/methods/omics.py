@@ -2307,19 +2307,21 @@ def unpooled_refusal(label: str, state: Any, frame: pd.DataFrame | None = None,
     first sentence; the feature-wise tests draw their own copies, ``methods.featurewise_mi``, and
     pool none of the data's own), its reason naming exactly the ways forward its exits take
     (:func:`featurewise_missing_exits`; ``frame``: the rows and columns the table is estimated
-    from)."""
+    from). Where none of those is open (complete cases keep too few rows, and values below
+    detection are named, so no single fill), another family is (DoD §1: a way forward for every
+    refusal)."""
     from turbotab.core.methods.exposure_form import SPLINE_MIN_VALUES
+    from turbotab.core.models.featurewise import ANOTHER_FAMILY
 
-    exits = featurewise_missing_exits(state, frame)
+    exits = featurewise_missing_exits(state, frame) or [{**ANOTHER_FAMILY, "way": "another_family"}]
     ways = [EXIT_WORDS[e["way"]] for e in exits]
     reason = why or f"{label} is not pooled over multiple imputations here."
     complete = complete_rows(frame)
     if complete is not None and not any(e["way"] == "complete_case" for e in exits):
         reason += (f" Complete cases are not offered: {complete:,} of the {len(frame):,} rows "
                    f"hold every value, fewer than the {SPLINE_MIN_VALUES} the design needs.")
-    if ways:
-        said = _or(ways)
-        reason += f" {said[:1].upper()}{said[1:]}."
+    said = _or(ways)
+    reason += f" {said[:1].upper()}{said[1:]}."
     return reason, [{k: v for k, v in e.items() if k != "way"} for e in exits]
 
 
@@ -2329,6 +2331,7 @@ def unpooled_refusal(label: str, state: Any, frame: pd.DataFrame | None = None,
 EXIT_WORDS = {
     "complete_case": "choose complete cases",
     "single_fill": "fill the missing values once, recorded as a limitation",
+    "another_family": "choose another model family",
 }
 
 

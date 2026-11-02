@@ -367,6 +367,36 @@ def input_columns(predictors: Sequence[str], adjustment: EnergyAdjustment | None
     return columns
 
 
+def category_inputs(state: Any, frame: pd.DataFrame, inputs: Sequence[str]) -> list[str]:
+    """The ``inputs`` the design one-hot encodes as categories (:func:`design_spec`'s, and the
+    check before the lock's, ``methods.featurewise_mi.plan_categories``), less a scale's items.
+
+    Text is a category; so is a numeric column the user said holds codes, wherever the answer is
+    kept (BLUEPRINT §14.3, every confirmation is honored): ``set_categorical`` (audit MA-15:
+    RIDRETH3's codes 1, 2, 3, 4, 6, 7 are six groups, not one straight line), the fit's own
+    code-or-amount question (``confirm_reading`` / ``confirm_readings``), or a combining rule that
+    took the most frequent value. A later "amount" answer for the column stands over an earlier
+    declaration. Total energy the energy answer "none" leaves out, and the columns an energy method
+    computes with (amounts by that answer), never reach the one-hot step as codes: the energy step
+    has removed or replaced them by then (the fifth gate: a "codes" answer for `energy_kcal` under
+    "none" crashed the design stage); a codes answer for one of them is asked about first
+    (``readings.predictors_or_ask``), never ignored. A grouping's fixed effects (WP17) are one
+    indicator per group, whatever its values look like. A declared scale's items (MS8) are answers
+    on its response scale, summed into its score (``turbotab.core.scales``): never one-hot codes."""
+    from turbotab.core.estimand import fixed_effects_column
+    from turbotab.core.readings import confirmation, energy_plan
+
+    inputs = [c for c in inputs if c in frame.columns]
+    left, amounts = energy_plan(state, inputs)
+    declared = {c for c in inputs if confirmation(state, "code_or_count", c) == "code"} \
+        - left - amounts
+    fe = fixed_effects_column(state)
+    if fe in inputs:
+        declared.add(fe)
+    scored = {c for sc in (getattr(state, "scales", None) or []) for c in sc.items}
+    return [c for c in inputs if (is_categorical(frame[c]) or c in declared) and c not in scored]
+
+
 def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[str],
                 energy: Any = STATE, column_info: Mapping[str, Any] | None = None,
                 qc: Mapping[str, Any] | None = None,
@@ -387,34 +417,18 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
 
     wanted = set(input_columns(predictors, adj)) | set(batch_inputs(state))
     inputs = [c for c in frame.columns if c in wanted]
-    # Text is a category; so is a numeric column the user said holds codes, wherever the answer
-    # is kept (BLUEPRINT §14.3, every confirmation is honored): ``set_categorical`` (audit MA-15:
-    # RIDRETH3's codes 1, 2, 3, 4, 6, 7 are six groups, not one straight line), the fit's own
-    # code-or-amount question (``confirm_reading`` / ``confirm_readings``), or a combining rule that
-    # took the most frequent value. A later "amount" answer for the column stands over an earlier
-    # declaration.
+    # The categories (:func:`category_inputs`): text, and a number declared as codes.
     from turbotab.core.readings import confirmation, energy_plan
 
-    # Total energy the energy answer "none" leaves out, and the columns an energy method computes
-    # with (amounts by that answer), never reach the one-hot step as codes: the energy step has
-    # removed or replaced them by then (the fifth gate: a "codes" answer for `energy_kcal` under
-    # "none" crashed the design stage). A codes answer for one of them is asked about first
-    # (``readings.predictors_or_ask``), never ignored.
     left, amounts = energy_plan(state, inputs)
-    declared = {c for c in inputs if confirmation(state, "code_or_count", c) == "code"} \
-        - left - amounts
     # MS8: a declared scale's items are answers on its response scale by that answer, summed into
     # its score (``turbotab.core.scales``): never one-hot codes.
     scales = [{"name": sc.name, "items": list(sc.items), "reverse": list(sc.reverse),
                "low": sc.low, "high": sc.high, "scoring": sc.scoring, "role": sc.role}
               for sc in (getattr(state, "scales", None) or [])]
-    scored = {c for sc in scales for c in sc["items"]}
-    # WP17: a grouping's fixed effects are one indicator per group, whatever its values look like.
     from turbotab.core.estimand import fixed_effects_column
 
     fe = fixed_effects_column(state)
-    if fe in inputs:
-        declared.add(fe)
     # Text the user said holds amounts is read as numbers on the working table
     # (``stages.working.text_amounts``); one still text (its values below a detection limit wait
     # for their answer) is never one-hot encoded instead (the sixth gate: 175 indicators for a
@@ -432,8 +446,7 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
             f"`{unread[0]}` is recorded as amounts, but some of its values are not numbers yet "
             f"(values below a detection limit, or commas that read two ways); answer how they "
             f"read before the fit.", exits=_unread_exits(unread[0], frame[unread[0]]))
-    categorical = [c for c in inputs if (is_categorical(frame[c]) or c in declared)
-                   and c not in scored]
+    categorical = category_inputs(state, frame, inputs)
     numeric = [c for c in inputs if c not in categorical]
     # A number with exactly two values is one indicator either way (``readings.code_question``);
     # its single fill is its most frequent value, as a code's is, never a median between the two.
@@ -998,6 +1011,8 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             from turbotab.core.methods.omics import describe_split
 
             label, detail = describe_split(spec.normalization or {}, "log")
+            if drawn_per_feature(spec, family, purpose):
+                detail = log_drawn_detail(spec)
             out.append({"key": "log", "label": label, "detail": detail})
         elif name == "batch":
             from turbotab.core.methods.batch import describe_step as describe_batch
@@ -1019,7 +1034,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
                         "detail": impute_detail(spec, step, family, purpose=purpose)})
         elif name == "detect":
             out.append({"key": "detect", "label": "Fill values below detection",
-                        "detail": detect_detail(spec)})
+                        "detail": detect_detail(spec, family, purpose=purpose)})
         elif name == "form":
             from turbotab.core.methods.exposure_form import describe as describe_forms
 
@@ -1126,8 +1141,8 @@ def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None, *,
             least = m_rule(0, 1, int((spec.missing or {}).get("m") or M_DEFAULT))
             text += (f" {family.label}'s tests do not use this fill: they are pooled over at least "
                      f"{least} multiple imputations drawn one study factor at a time, each from "
-                     f"its own model given the outcome and the covariates, more when more rows "
-                     f"are incomplete.")
+                     f"its own model given {per_feature_given(spec)}, more when more rows are "
+                     f"incomplete.")
         elif family is not None and not getattr(family, "pools_imputations", True):
             # Its table pools no copies, so the fit refuses it (``omics.unpooled_refusal``).
             text += (f" {family.label} pools no multiple imputations, so under this answer its "
@@ -1145,10 +1160,50 @@ def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None, *,
     return text
 
 
-def detect_detail(spec: DesignSpec) -> str:
+def drawn_per_feature(spec: DesignSpec, family: Any = None, purpose: Purpose | None = None) -> bool:
+    """Whether ``family``'s tests draw each value below detection within each imputation, none
+    filled by the detect step: a family that draws its own copies one study factor at a time
+    (``draws_per_feature``: the feature-wise tests) under inference with multiple imputation, the
+    values below detection censoring-aware, which ``methods.featurewise_mi.blank_pipeline`` keeps
+    blank through the detect step and the log (half the minimum and QRILC stay single fills)."""
+    censored = getattr(spec, "censored", None) or {}
+    return (family is not None and bool(getattr(family, "draws_per_feature", False))
+            and purpose == "inference" and spec.multiple_imputation()
+            and censored.get("method") == "censoring_aware")
+
+
+def per_feature_given(spec: DesignSpec) -> str:
+    """What each study factor's imputation model is given, as its test's terms: the outcome, and
+    the covariates only where the design has a column that adjusts (any predictor not tested as a
+    study factor: not an exposure, or an exposure that enters as a category's indicators)."""
+    coded = set(spec.categorical or []) | set(getattr(spec, "levels", None) or [])
+    adjusts = any(spec.roles.get(c) != "exposure" or c in coded for c in spec.predictors)
+    return "the outcome and the covariates" if adjusts else "the outcome"
+
+
+def log_drawn_detail(spec: DesignSpec) -> str:
+    """The log step's line where the values below detection are drawn within each imputation
+    (:func:`drawn_per_feature`): ``featurewise_mi.KeepBelowDetection`` blanks each value below
+    detection (zero or less counts as one, as the in-fold fill counts it) and the log keeps it
+    blank, so the draws are on the log scale."""
+    n = len((spec.normalization or {}).get("columns") or [])
+    what = f"{n:,} assay column{'s' if n != 1 else ''}"
+    return (f"Takes log2 of {what}; a value below detection (a blank, or zero or less) stays blank "
+            f"through the log and is drawn below the limit on the log scale within each multiple "
+            f"imputation, given {per_feature_given(spec)}.")
+
+
+def detect_detail(spec: DesignSpec, family: Any = None, *, purpose: Purpose | None = None) -> str:
+    """The detect step's line: how values below detection are filled, learned where; or, where
+    ``family``'s tests draw them within each imputation (:func:`drawn_per_feature`), that none is
+    filled here and how each is drawn."""
     censored = getattr(spec, "censored", None) or {}
     cols = list(censored.get("columns") or [])
     named = f"{', '.join(cols[:3])}{f' and {len(cols) - 3:,} more' if len(cols) > 3 else ''}"
+    if drawn_per_feature(spec, family, purpose):
+        return (f"Blanks in {named} are values below detection: none is filled here; each is drawn "
+                f"below the column's smallest detected value within each multiple imputation, "
+                f"from a censored-normal (Tobit) model given {per_feature_given(spec)}.")
     if censored.get("method") == "half_minimum":
         return (f"Blanks in {named} are values below detection: each becomes half the column's "
                 f"smallest detected value, learned within each training fold.")
@@ -1261,8 +1316,8 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
 
 __all__ = [
     "ADJUST_STEPS", "DesignSpec", "MISSING_LEVEL", "MissingLevelEncoder", "ONEHOT_DROPS",
-    "PREDICTOR_ROLES", "PresentColumns", "build_pipeline", "coded_categories", "describe_steps",
-    "design_spec",
+    "PREDICTOR_ROLES", "PresentColumns", "build_pipeline", "category_inputs", "coded_categories",
+    "describe_steps", "design_spec",
     "detect_detail", "detect_step", "energy_detail", "explore_answers",
     "explore_candidates", "explore_steps", "family_steps", "impute_detail",
     "frame_level_columns", "input_columns", "is_categorical", "level_columns", "make_plans",

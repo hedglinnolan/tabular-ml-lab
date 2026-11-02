@@ -24,7 +24,10 @@ the copies are drawn by chained equations on {``x_j``, ``Z``, the outcome} for e
 means), so ``Z``'s draws see the factor its test treats as the response. A study factor whose
 blanks are its own alone, on rows that do not repeat, is a monotone pattern of one variable: its
 censored-normal model is fit once and its m copies drawn from that fit, which is what m chains of
-one sweep each would do (each would refit the same model on the same observed values).
+one sweep each would do (each would refit the same model on the same observed values). A censored
+column is drawn only where its model has a finite maximum-likelihood fit, read from the design and
+never from the solver (:func:`identification_refusal`; Olsen 1978): one detected only in rows of
+one outcome, or whose detected values are all equal, is refused before any draw.
 
 **What is pooled.** Each copy is tested by the family's own Frisch–Waugh–Lovell tests
 (``featurewise.feature_tests``); each study factor is pooled by Rubin's rules with Barnard and
@@ -395,6 +398,8 @@ def budget_refusal(sweeps: Sequence[int], m: int) -> str | None:
     draws = int(m) * int(sum(sweeps))
     if draws <= MAX_FEATURE_COPIES:
         return None
+    from turbotab.core.voice import plural
+
     n = len(sweeps)
     chained = [s for s in sweeps if s > 1]
     if not chained:
@@ -404,8 +409,9 @@ def budget_refusal(sweeps: Sequence[int], m: int) -> str | None:
     else:
         each = f", {len(chained):,} of them over {chained[0]} sweeps of chained equations,"
     return (f"Feature-wise regression is pooled over multiple imputations drawn one study factor "
-            f"at a time: here {n:,} study factors × {m} imputations{each} make {draws:,} draws, "
-            f"more than the {MAX_FEATURE_COPIES:,} it makes.")
+            f"at a time: here {n:,} {plural(n, 'study factor', 'study factors')} × {m} "
+            f"imputations{each} make {draws:,} draws, more than the {MAX_FEATURE_COPIES:,} one "
+            f"table may draw, a limit that bounds how long its fit takes.")
 
 
 def plan_frame(state: Any, ctx: Any) -> pd.DataFrame | None:
@@ -442,16 +448,66 @@ def plan_frame(state: Any, ctx: Any) -> pd.DataFrame | None:
     return frame
 
 
+def _split_grouping(ctx: Any) -> str | None:
+    """The column the split grouped a unit's rows by, where the context serves the split (the
+    fit reads it from the split it is handed, ``stages.modeling.fit_stage``)."""
+    from turbotab.core.decisions import _ctx
+
+    artifact = _ctx(ctx, "artifact")
+    if not callable(artifact):
+        return None
+    try:
+        split = artifact("split")
+    except Exception:  # noqa: BLE001 - no split yet: the rows are grouped by none
+        return None
+    found = split.get("grouped_by") if isinstance(split, Mapping) else None
+    return str(found) if found else None
+
+
+def plan_units(state: Any, ctx: Any, rows: Any) -> np.ndarray | None:
+    """Each of the plan's ``rows`` (row ids) by the unit the fit clusters them by, as it does
+    (``inference.resolve_clusters`` over ``inference.cluster_columns``: the grain's column, the
+    identifiers and clusters, the cluster answer and the split's grouping, on the rows the
+    analysis reads), so the copies a check before the lock counts are the ones the fit draws;
+    None where the rows do not cluster or the table cannot be read."""
+    from turbotab.core.decisions import _store_of
+    from turbotab.core.models.inference import cluster_columns, resolve_clusters
+
+    store = _store_of(ctx)
+    if store is None:
+        return None
+    try:
+        grouped_by = _split_grouping(ctx)
+        columns = cluster_columns(state, list(store.columns), [grouped_by])
+        if not columns:
+            return None
+        frame = store.materialize(columns)
+    except Exception:  # noqa: BLE001 - an unreadable table: the fit counts them
+        return None
+    frame = frame.loc[frame.index.isin(np.asarray(rows))]
+    clusters = resolve_clusters(state, frame, [grouped_by])
+    return clusters.codes if clusters.clustered else None
+
+
+def plan_categories(state: Any, frame: pd.DataFrame) -> set[str]:
+    """The plan's columns the design one-hot encodes (``pipeline.category_inputs``: text, and a
+    number declared as codes), which the copies, drawing numbers, do not draw."""
+    from turbotab.core.models.pipeline import category_inputs
+
+    return set(category_inputs(state, frame, list(frame.columns)))
+
+
 def plan_refusal(state: Any, answer: Mapping[str, Any], ctx: Any
                  ) -> tuple[str, list[dict[str, Any]]] | None:
     """Why the plan's feature-wise table cannot pool the copies its multiple-imputation answer
     draws, counted on the plan's rows (:func:`plan_frame`): a category among the covariates with
-    blanks, or draws beyond :data:`MAX_FEATURE_COPIES` (the study factors as the roles answer
-    gives them, before the design's filters, so never fewer than the fit draws). With its ways
-    forward (:func:`ways_forward`). None where it can, or where the rows cannot be read: the fit
-    then counts them and refuses in the same words."""
+    blanks (as the design reads categories, :func:`plan_categories`), or draws beyond
+    :data:`MAX_FEATURE_COPIES` (the study factors as the roles answer gives them, before the
+    design's filters, so never fewer than the fit draws; chained where the rows cluster as the fit
+    clusters them, :func:`plan_units`). With its ways forward (:func:`ways_forward`). None where
+    it can, or where the rows cannot be read: the fit then counts them and refuses in the same
+    words."""
     from turbotab.core.methods.imputation import M_DEFAULT
-    from turbotab.core.models.pipeline import is_categorical
     from turbotab.core.readings import settled_roles
     from turbotab.core.voice import listing
 
@@ -467,7 +523,8 @@ def plan_refusal(state: Any, answer: Mapping[str, Any], ctx: Any
         return None
     frame = frame[columns]
     exits = ways_forward(state, frame)
-    hidden = [c for c in adjust if frame[c].isna().any() and is_categorical(frame[c])]
+    categories = plan_categories(state, frame)
+    hidden = [c for c in adjust if frame[c].isna().any() and c in categories]
     if hidden:
         return (f"Feature-wise regression is pooled over multiple imputations one study factor at a "
                 f"time, drawing numbers; {listing(hidden)} "
@@ -478,9 +535,7 @@ def plan_refusal(state: Any, answer: Mapping[str, Any], ctx: Any
     if not drawn and not blank_z:
         return None
     m = imputation_count(frame, tested, adjust, int(answer.get("m") or M_DEFAULT))
-    grain = getattr(state, "grain", None)
-    repeats = getattr(grain, "grain", None) == "repeated" and getattr(grain, "id_column", None)
-    over = budget_refusal(draws_of(tested, drawn, blank_z, True if repeats else None), m)
+    over = budget_refusal(draws_of(tested, drawn, blank_z, plan_units(state, ctx, frame.index)), m)
     return (over, exits) if over is not None else None
 
 
@@ -493,8 +548,9 @@ def marginal_refusal(state: Any, models: Sequence[str], answer: Mapping[str, Any
     imputation: where the declared estimand is one, a chosen family standardizes it
     (``effects.standardizes_risks``) and a predictor the plan's models get is blank on its rows
     (:func:`plan_frame`), the effects stage would draw copies and refuse the risks
-    (``effects.MARGINAL_UNPOOLED``); so the conditional odds ratio, or complete cases. None
-    otherwise, or where the rows cannot be read."""
+    (``effects.MARGINAL_UNPOOLED``); so the conditional odds ratio, or complete cases where the
+    record would accept them (``row_floor.accepted_exit``). None otherwise, or where the rows
+    cannot be read."""
     from turbotab.core import estimand as est
     from turbotab.core.decisions import _ctx
     from turbotab.core.models import get_family
@@ -506,14 +562,18 @@ def marginal_refusal(state: Any, models: Sequence[str], answer: Mapping[str, Any
     task = getattr(state, "task", None) or _ctx(ctx, "task")
     if not any(standardizes_risks(get_family(k), str(task)) for k in models):
         return None
+    from turbotab.core.row_floor import accepted_exit
+
     frame = plan_frame(state, ctx)
     gone = set(answer.get("drop_columns") or [])
     if frame is None or not any(frame[c].isna().any() for c in frame.columns if c not in gone):
         return None
-    cases = [{"label": "Complete cases, with their assumption stated",
-              "decision": {**{k: v for k, v in dict(answer).items() if k != "kind"},
-                           "kind": "set_missing", "strategy": "complete_case",
-                           "indicators": False, "categorical": "impute"}}]
+    # Complete cases only where the record accepts them now (``decisions._accepted_ways``'s rule):
+    # ones that would leave too few rows, or one value of the outcome, are refused when taken.
+    whole = {**{k: v for k, v in dict(answer).items() if k != "kind"}, "kind": "set_missing",
+             "strategy": "complete_case", "indicators": False, "categorical": "impute"}
+    cases = ([{"label": "Complete cases, with their assumption stated", "decision": whole}]
+             if accepted_exit(whole, ctx) is not None else [])
     return MARGINAL_UNPOOLED, [
         {"label": "Report the conditional odds ratio",
          "decision": {**spec.model_dump(mode="json"), "kind": "set_estimand",
@@ -526,7 +586,9 @@ class FeatureCopies:
     m), and of the adjustment columns where they were drawn with it (``adjust``: m arrays, n ×
     the ``adjust_names``), with what was drawn: each study factor's blanks (``imputed``), the most
     rows any one model drew a value in (``n_incomplete``), the censored ones' limits, the most sweeps
-    any chain ran, the seed, and the unit the rows repeat by (None where they do not)."""
+    any chain ran, the seed, the unit the rows repeat by (None where they do not), and the model
+    each drawn column's blanks came from (``kinds``: ``"censored"``, the censored normal;
+    ``"binary"``, a logistic regression; ``"numeric"``, a normal linear model)."""
 
     m: int
     sweeps: int
@@ -540,6 +602,7 @@ class FeatureCopies:
     censored: dict[str, Any] = field(default_factory=dict)
     unit: str | None = None
     asked: int = 20
+    kinds: dict[str, str] = field(default_factory=dict)
 
 
 def _design(term: np.ndarray, Z: np.ndarray) -> np.ndarray:
@@ -551,28 +614,85 @@ def _design(term: np.ndarray, Z: np.ndarray) -> np.ndarray:
     return np.column_stack([np.ones(len(term)), _standardize(block)])
 
 
+# A fit of the detected values whose residual sum of squares is this small a share of their sum of
+# squares fits them exactly (the share is about σ²/(σ² + μ²) for values with any spread; exactly 0
+# for equal ones).
+EXACT_FIT = 1e-20
+
+
+def _on_scale(x: np.ndarray, censoring: Any) -> np.ndarray:
+    """A censored column's values on the scale its censored normal is fitted on."""
+    return np.log(np.clip(x, 1e-300, None)) if censoring.log else x.astype(float)
+
+
+def identification_refusal(name: str, z: np.ndarray, miss: np.ndarray, term: np.ndarray,
+                           Z: np.ndarray) -> str | None:
+    """Why ``name``'s censored-normal (Tobit) model of ``z`` (on its fitted scale; ``miss`` its
+    values below detection) on the outcome's ``term`` and the complete columns ``Z`` has no finite
+    maximum-likelihood fit; None where it has one. Under Olsen's (1978) reparametrization
+    (β/σ, 1/σ) the log-likelihood is concave, and it is bounded above, with a unique maximum,
+    exactly where the detected rows' design has full column rank and does not fit their values
+    exactly; else the solver drifts, so this is read from the design, never from the solver.
+    Where the copies are drawn by chained equations ``Z`` is the complete part of the model's
+    predictors: a design whose columns are rank-deficient on the detected rows stays so beside
+    any other column, and one that fits them exactly stays exact."""
+    from turbotab.core.voice import plural
+
+    detected = ~miss
+    n_d = int(detected.sum())
+    if not miss.any():
+        return None
+    D = _design(term, Z)
+    p = D.shape[1]
+    lead = f"`{name}`'s censored-normal model has no finite fit on these rows: "
+    tail = "its values below detection cannot be drawn."
+    seen = term[detected]
+    if n_d and np.ptp(term) > 0 and np.ptp(seen) == 0:
+        return (f"{lead}all {n_d:,} of its detected values are in rows with the same outcome, so "
+                f"how far below the limit the other rows lie cannot be estimated, and {tail}")
+    Dd, zd = D[detected], z[detected]
+    if n_d < p or np.linalg.matrix_rank(Dd) < p:
+        terms = "the intercept and the outcome" + (" and the covariates" if Z.shape[1] else "")
+        return (f"{lead}its {n_d:,} detected {plural(n_d, 'value', 'values')} cannot estimate the "
+                f"{p} terms of its model ({terms}), so {tail}")
+    resid = zd - Dd @ np.linalg.lstsq(Dd, zd, rcond=None)[0]
+    if float(resid @ resid) <= EXACT_FIT * max(float(zd @ zd), np.finfo(float).tiny):
+        how = ("are all equal" if np.ptp(zd) == 0
+               else "are fitted exactly by the outcome and the covariates")
+        return (f"{lead}its {n_d:,} detected values {how}, so their spread cannot be estimated, "
+                f"and {tail}")
+    return None
+
+
+def _refuse(name: str, reason: str) -> Any:
+    from turbotab.core.methods.imputation import ImputationRefused
+
+    refused = ImputationRefused(reason)
+    refused.columns = [name]
+    return refused
+
+
 def _censored_copies(D: np.ndarray, x: np.ndarray, miss: np.ndarray, censoring: Any, m: int,
                      rng: np.random.Generator, name: str) -> np.ndarray:
     """The m draws of a censored study factor's blanks (n_blank × m) from one censored-normal fit
     on ``D``: θ̂ and its inverse observed information (``imputation.tobit_fit``), then for each copy
     θ* ~ N(θ̂, I⁻¹) and each blank from N(Dβ*, σ*²) truncated above at the limit, as
-    ``imputation``'s censored draw makes one copy."""
+    ``imputation``'s censored draw makes one copy. The caller has checked that the model has a
+    finite fit (:func:`identification_refusal`); a solver that still returns none is refused."""
     from scipy import stats
 
-    from turbotab.core.methods.imputation import ImputationRefused, tobit_fit
+    from turbotab.core.methods.imputation import tobit_fit
 
-    z = np.log(np.clip(x, 1e-300, None)) if censoring.log else x.astype(float)
+    z = _on_scale(x, censoring)
     limit = math.log(censoring.limit) if censoring.log else float(censoring.limit)
-    theta, V = tobit_fit(D, np.where(miss, limit, z), miss, limit)
     try:
+        theta, V = tobit_fit(D, np.where(miss, limit, z), miss, limit)
         if not (np.all(np.isfinite(theta)) and np.all(np.isfinite(V))):
             raise np.linalg.LinAlgError
         root = np.linalg.cholesky(V + np.eye(len(V)) * 1e-12)
-    except np.linalg.LinAlgError:
-        refused = ImputationRefused(f"`{name}`'s censored-normal model has no finite fit on these "
-                                    f"rows, so its values below detection cannot be drawn.")
-        refused.columns = [name]
-        raise refused from None
+    except (np.linalg.LinAlgError, ValueError):
+        raise _refuse(name, f"`{name}`'s censored-normal model has no finite fit on these rows, so "
+                            f"its values below detection cannot be drawn.") from None
     rows = D[miss]
     # Each copy's parameters (one column each), then every copy's blanks in one draw.
     stars = theta[:, None] + root @ rng.standard_normal((len(theta), m))
@@ -595,10 +715,12 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
     columns have blanks, or ``units`` (integer codes) says the rows repeat, each study factor's
     copies are drawn by the engine's chained equations on {factor, outcome, adjustment columns}
     (``smcfcs.impute``, ``"fcs"``); otherwise from one fit of its own model (see the module).
-    Raises ``imputation.ImputationRefused`` where a study factor has fewer than two observed values
-    or no finite censored-normal fit. Deterministic for a given ``seed``: each study factor draws
-    from its own stream, by its place among ``tested``."""
-    from turbotab.core.methods.imputation import ImputationRefused, column_kind
+    Raises ``imputation.ImputationRefused`` where a study factor has fewer than two observed values,
+    or a censored column's model no finite fit (:func:`identification_refusal`), before any is
+    drawn. Deterministic for a given ``seed``: each study factor draws from its own stream, by its
+    place among ``tested``. ``kinds`` records the model each drawn column's blanks came from, as
+    the sampler was handed it."""
+    from turbotab.core.methods.imputation import column_kind
     from turbotab.core.methods.smcfcs import Variable
     from turbotab.core.methods.smcfcs import impute as fcs
 
@@ -614,8 +736,23 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
     values: dict[str, np.ndarray] = {}
     covariates: dict[str, list[np.ndarray]] = {}
     imputed: dict[str, int] = {}
+    kinds: dict[str, str] = {}
     D = None if chained else _design(term, Z)
     position = {c: j for j, c in enumerate(tested)}
+    whole = [c for c in adjust if c not in set(adjust_blank)]
+
+    def identified(column: str, x: np.ndarray, others: Sequence[str]) -> None:
+        # A censored column's model is fit only where it has a finite fit (Olsen 1978): its
+        # complete predictors are the outcome's term and ``others``.
+        Zc = Zframe[list(others)].to_numpy(dtype=float) if others else np.zeros((n, 0))
+        reason = identification_refusal(column, _on_scale(x, censored[column]), ~np.isfinite(x),
+                                        term, Zc)
+        if reason is not None:
+            raise _refuse(column, reason)
+
+    for c in adjust_blank:
+        if c in censored:
+            identified(c, Zframe[c].to_numpy(dtype=float), [a for a in whole if a != c])
     for done, name in enumerate(drawn):
         if cancelled is not None and cancelled():
             from turbotab.core.jobs import Cancelled
@@ -624,16 +761,17 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
         x = matrix[name].to_numpy(dtype=float)
         miss = ~np.isfinite(x)
         if miss.any() and int((~miss).sum()) < 2:
-            refused = ImputationRefused(f"`{name}` has fewer than two observed values, so it cannot "
-                                        f"be imputed.")
-            refused.columns = [name]
-            raise refused
+            raise _refuse(name, f"`{name}` has fewer than two observed values, so it cannot be "
+                                f"imputed.")
+        if miss.any() and name in censored:
+            identified(name, x, whole)
         stream = np.random.SeedSequence([int(seed), int(position[name])])
         if not chained and name in censored:
             rng = np.random.default_rng(stream)
             copies = np.repeat(x[:, None], m, axis=1)
             copies[miss] = _censored_copies(D, x, miss, censored[name], m, rng, name)
             values[name] = copies
+            kinds[name] = "censored"
         else:
             frame = pd.DataFrame({name: x, OUTCOME_TERM: term}, index=matrix.index)
             for c in adjust:
@@ -644,6 +782,7 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
                 variables.append(Variable(name, kind, censoring=censored.get(name)))
             variables += [Variable(c, "censored", censoring=censored[c]) if c in censored
                           else Variable(c, column_kind(frame[c])) for c in adjust_blank]
+            kinds.update({v.name: str(v.kind) for v in variables})
             drawn_set = fcs(frame, variables, mode="fcs", units=units, m=m,
                             seed=int(stream.generate_state(1)[0]), cancelled=cancelled)
             values[name] = np.column_stack([f[name].to_numpy(dtype=float)
@@ -659,7 +798,7 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
                          n_incomplete=incomplete_rows(matrix, tested, adjust),
                          censored={c: censored[c] for c in [*drawn, *adjust_blank]
                                    if c in censored}, unit=unit,
-                         asked=int(asked))
+                         asked=int(asked), kinds=kinds)
 
 
 # ── the copies tested and pooled ─────────────────────────────────────────────
@@ -781,15 +920,16 @@ def first_copy(matrix: pd.DataFrame, copies: FeatureCopies) -> pd.DataFrame:
 
 
 def caption_of(copies: FeatureCopies) -> str:
-    """The pooled table's first sentence: how its copies were drawn and pooled."""
-    censored = bool(copies.censored)
-    plain = [c for c in copies.values if c not in copies.censored and copies.imputed.get(c)]
+    """The pooled table's first sentence: how its copies were drawn and pooled, each study
+    factor's own blanks by the model the sampler drew them from (``FeatureCopies.kinds``)."""
+    own = {copies.kinds.get(c) for c in copies.values if copies.imputed.get(c)}
     how = []
-    if censored:
+    if "censored" in own:
         how.append("below a detection limit from a censored-normal (Tobit) model")
-    if plain:
-        how.append("otherwise from a normal linear model" if censored else
-                   "from a normal linear model")
+    if "binary" in own:
+        how.append("a two-valued study factor's from a logistic regression")
+    if "numeric" in own:
+        how.append("otherwise from a normal linear model" if how else "from a normal linear model")
     drawn = f" ({', '.join(how)})" if how else ""
     chained = []
     if copies.adjust:
@@ -811,8 +951,9 @@ def as_imputations(copies: FeatureCopies, adjust: Sequence[str]) -> Any:
     its own), so the pooled table's record and concerns are written as every pooled table's
     (``missing.multiple_imputation_info``, ``missing.mi_concerns``). Its method is chained
     equations, on each study factor's own variables (one sweep where the factor's blanks are the
-    only ones: the monotone case), and its variables lead with
-    ``missing.PER_FEATURE_VARIABLE``, which the record's readers take it by."""
+    only ones: the monotone case), its variables lead with ``missing.PER_FEATURE_VARIABLE``,
+    which the record's readers take it by, and its ``kinds`` are the models each drawn column's
+    blanks came from, which its methods sentence names (``missing.mi_sentence``)."""
     from turbotab.core.methods.imputation import Imputations
     from turbotab.core.methods.missing import PER_FEATURE_VARIABLE
 
@@ -820,7 +961,8 @@ def as_imputations(copies: FeatureCopies, adjust: Sequence[str]) -> Any:
         frames=[], m=copies.m, iterations=copies.sweeps,
         imputed={c: v for c, v in copies.imputed.items() if v},
         n_incomplete_rows=int(copies.n_incomplete),
-        variables=[PER_FEATURE_VARIABLE, OUTCOME_TERM, *[str(a) for a in adjust]], kinds={},
+        variables=[PER_FEATURE_VARIABLE, OUTCOME_TERM, *[str(a) for a in adjust]],
+        kinds=dict(copies.kinds),
         censored=dict(copies.censored), seed=copies.seed, method="chained_equations",
         plan={"m_asked": copies.asked, "unit": copies.unit,
               "row_level": [PER_FEATURE_VARIABLE] if copies.unit else None})

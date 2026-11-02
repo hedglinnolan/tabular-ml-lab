@@ -1699,7 +1699,7 @@ def multiple_imputation_info(imputations: Any, spec: Any, n_rows: int,
         record.update(outcome_in_model=False, n_incomplete_rows=None, percent_incomplete=None,
                       note=None, assumption=("the copies' imputation model, as the data's provider "
                                              "drew them"))
-    record["sentence"] = mi_sentence(record)
+    record["sentence"] = mi_sentence(record, kinds=getattr(imputations, "kinds", None))
     return record
 
 
@@ -1716,9 +1716,15 @@ def per_feature(record: Mapping[str, Any] | None) -> bool:
     return bool(variables) and variables[0] == PER_FEATURE_VARIABLE
 
 
-def mi_sentence(record: Mapping[str, Any]) -> str:
+def mi_sentence(record: Mapping[str, Any], kinds: Mapping[str, str] | None = None) -> str:
     """The methods sentence of a pooled table's multiple imputation (STROBE-nut nut-13; Sterne et
-    al. 2009's checklist: the imputation model, m, and how the results were combined)."""
+    al. 2009's checklist: the imputation model, m, and how the results were combined).
+
+    ``kinds``: of copies drawn one study factor at a time (:func:`per_feature`), the model each
+    drawn column's blanks came from as the sampler was handed it (``Imputations.kinds``:
+    ``"censored"``, ``"binary"``, ``"numeric"``), which the sentence names and no other; without
+    them it names no model."""
+    from turbotab.core.methods.imputation import M_DEFAULT
     from turbotab.core.voice import finish, listing, plural, tick
 
     def num(v: float) -> str:
@@ -1734,20 +1740,18 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
                 f"were pooled by Rubin's rules (NCHS's combining rules)")
     elif per_feature(record):
         # The feature-wise tests' own copies (``methods.featurewise_mi``): each study factor's
-        # blanks from its own model given the outcome and the covariates, its test's terms.
-        censored = list(record.get("censored") or [])
-        how = ("values below a detection limit from a censored-normal (Tobit) model, its "
-               "parameters drawn from their approximate posterior before each copy, and any other "
-               "blank from a normal linear model" if censored else
-               "from a normal linear model, its parameters drawn from their posterior")
+        # blanks from its own model given the outcome and the covariates, its test's terms; each
+        # drawn column by the model the sampler drew it from (``kinds``), and no other.
+        how = _per_feature_models(set((kinds or {}).values()))
         pct = record.get("percent_incomplete") or 0.0
         # Its variables: each study factor, the outcome, then the adjustment columns.
         given = ("the outcome and the covariates" if len(record.get("variables") or []) > 2
                  else "the outcome")
+        floor = max(M_DEFAULT, int(record.get("m_asked") or M_DEFAULT))  # ``imputation.m_rule``'s
         text = (f"Missing values were multiply imputed one study factor at a time, each from its own "
-                f"model given {given}, the terms of its test ({how}); m = {m} imputations, at least "
-                f"20 and at least the {pct:g}% of rows with an imputed value in the most "
-                f"incomplete study factor's model ({WHITE_ROYSTON_WOOD})")
+                f"model given {given}, the terms of its test{f' ({how})' if how else ''}; m = {m} "
+                f"imputations, at least {floor} and at least the {pct:g}% of rows with an imputed "
+                f"value in the most incomplete study factor's model ({WHITE_ROYSTON_WOOD})")
         if record.get("unit"):
             text += _clustered_clause(record)
     else:
@@ -1815,6 +1819,35 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
         text += (f"; the largest Monte Carlo error, for {tick(record.get('mc_feature'))}, was "
                  f"{100 * ratio:.1f}% of its standard error")
     return finish(text)
+
+
+def _per_feature_models(kinds: set[str]) -> str:
+    """The models the per-feature copies drew from, as the methods sentence names them: the
+    censored normal for values below detection, logistic regression for a two-valued column,
+    normal linear regression (mice's ``norm``) for any other blank; each model's parameters drawn
+    from their posterior, by its normal approximation for the censored-normal and logistic ones.
+    "" for none."""
+    parts = []
+    if "censored" in kinds:
+        parts.append("values below a detection limit from a censored-normal (Tobit) model")
+    if "binary" in kinds:
+        parts.append("a two-valued column's blanks from a logistic regression")
+    if "numeric" in kinds:
+        parts.append(f"{'any other' if parts else 'each'} blank from a normal linear model")
+    if not parts:
+        return ""
+    approximate = [w for k, w in (("censored", "censored-normal"), ("binary", "logistic"))
+                   if k in kinds]
+    said = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    if len(parts) == 1:
+        drawn = f"its parameters drawn from their {'approximate ' if approximate else ''}posterior"
+    elif "numeric" not in kinds:
+        drawn = "each model's parameters drawn from their approximate posterior"
+    else:
+        drawn = (f"each model's parameters drawn from their posterior, approximately for the "
+                 f"{' and '.join(approximate)} {'model' if len(approximate) == 1 else 'models'}"
+                 if approximate else "each model's parameters drawn from their posterior")
+    return f"{said}, {drawn}"
 
 
 def _clustered_clause(record: Mapping[str, Any]) -> str:

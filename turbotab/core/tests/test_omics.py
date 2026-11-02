@@ -235,7 +235,8 @@ def test_a_feature_wise_table_never_offers_complete_cases_that_leave_nothing_to_
     keep rows enough for the design, with their count; the refusal names exactly what is offered.
     Where values below detection are named, one censoring-aware fill is never offered: under
     inference the pooled route replaces it (the orchestrator's ruling on M2; it was the way
-    forward), so with no complete case left the refusal names none."""
+    forward), so with no complete case left another family is the way forward, and the refusal
+    names it (the verifier's FWMI-V6: a way forward for every refusal)."""
     from types import SimpleNamespace
 
     from turbotab.core.decisions import SetMissing
@@ -248,9 +249,10 @@ def test_a_feature_wise_table_never_offers_complete_cases_that_leave_nothing_to_
     censored = SimpleNamespace(missing=SimpleNamespace(drop_columns=[], censored_columns=feats[:3]))
     plain = SimpleNamespace(missing=SimpleNamespace(drop_columns=["bmi"], censored_columns=[]))
     reason, exits = omics.unpooled_refusal("Feature-wise regression", censored, X)
-    assert exits == []
+    assert exits == [{"label": "Choose another model family", "decision": None}]
     assert reason.endswith("Complete cases are not offered: 0 of the 80 rows hold every value, "
-                           f"fewer than the {SPLINE_MIN_VALUES} the design needs."), reason
+                           f"fewer than the {SPLINE_MIN_VALUES} the design needs. Choose another "
+                           f"model family."), reason
     reason, exits = omics.unpooled_refusal("Feature-wise regression", plain, X)
     assert [e["decision"]["strategy"] for e in exits] == ["impute"], exits
     assert "Complete cases are not offered: 0 of the 80 rows hold every value" in reason

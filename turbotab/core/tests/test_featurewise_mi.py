@@ -196,9 +196,7 @@ def test_5_beyond_the_budget_the_copies_are_refused_in_words_from_the_counts(mon
     with pytest.raises(fm.Unpooled) as refused:
         fm.pooled_featurewise_table(frame, event, "binary", features,
                                     censored=limits_of(frame, features), seed=3)
-    assert refused.value.reason == (
-        "Feature-wise regression is pooled over multiple imputations drawn one study factor at a "
-        "time: here 6 study factors × 60 imputations make 360 draws, more than the 359 it makes.")
+    assert refused.value.reason == _budget_words(6, 60, 359)
     monkeypatch.setattr(fm, "MAX_FEATURE_COPIES", 360)
     table, copies = fm.pooled_featurewise_table(frame, event, "binary", features,
                                                 censored=limits_of(frame, features), seed=3)
@@ -286,7 +284,7 @@ def plan_ctx(state) -> dict:
 
 BUDGET_WORDS = ("Feature-wise regression is pooled over multiple imputations drawn one study "
                 "factor at a time: here 6 study factors × 60 imputations make 360 draws, more than "
-                "the 359 it makes.")
+                "the 359 one table may draw, a limit that bounds how long its fit takes.")
 
 
 @pytest.mark.parametrize("order", ["models_after_missing", "missing_after_models", "lock"])
@@ -525,3 +523,533 @@ def test_9_a_study_factor_with_one_observed_value_is_refused_with_leaving_it_out
     table, copies = fm.pooled_featurewise_table(frame, event, "binary", ["f0", "f1"],
                                                 censored={}, m=20)
     assert sorted(copies.values) == ["f0", "f1"]
+
+
+# ── the repair round (the verifier's FWMI-V1 … V8) ───────────────────────────
+
+
+def _spy_kinds(monkeypatch) -> list:
+    """Each call's (column, kind) pairs as the engine's sampler is handed them (``smcfcs.impute``'s
+    ``variables``): what each blank is drawn by, read off the sampler's own input."""
+    from turbotab.core.methods import smcfcs
+
+    seen: list = []
+    real = smcfcs.impute
+
+    def spy(data, variables, **kw):
+        seen.append(sorted({(v.name, v.kind) for v in variables}))
+        return real(data, variables, **kw)
+
+    monkeypatch.setattr(smcfcs, "impute", spy)
+    return seen
+
+
+def _two_valued_panel(seed: int = 4, n: int = 200) -> tuple[pd.DataFrame, np.ndarray]:
+    """``n`` rows: `f0`, a study factor below its 30% quantile blank (censored at it); `z0` a
+    number and `b` a 0/1 covariate, blank on its first 40 rows."""
+    rng = np.random.default_rng(seed)
+    event = (rng.random(n) < 0.5).astype(float)
+    z = rng.standard_normal(n)
+    b = (rng.random(n) < 0.4).astype(float)
+    x = 10 + 0.5 * event + 0.3 * z + 0.4 * b + rng.standard_normal(n)
+    frame = pd.DataFrame({"f0": np.where(x < np.quantile(x, 0.3), np.nan, x), "z0": z, "b": b})
+    frame.loc[frame.index[:40], "b"] = np.nan
+    return frame, event
+
+
+def _lead(frame: pd.DataFrame, how: str) -> str:
+    """The per-feature sentence up to its pooling, built by hand from the case: the rows with a
+    value drawn in `f0`'s model (its own blanks or a covariate's) as a percentage of the rows, and
+    m by the rule over them (at least 20, at least that percentage)."""
+    pct = round(100.0 * int(frame.isna().any(axis=1).sum()) / len(frame), 1)
+    m, floor = max(20, math.ceil(pct)), 20
+    return (f"Missing values were multiply imputed one study factor at a time, each from its own "
+            f"model given the outcome and the covariates, the terms of its test ({how}); m = {m} "
+            f"imputations, at least {floor} and at least the {pct:g}% of rows with an imputed "
+            f"value in the most incomplete study factor's model (White, Royston & Wood 2011); the "
+            f"estimates were pooled by Rubin's rules")
+
+
+def test_10_a_two_valued_covariates_blanks_are_said_drawn_by_logistic_regression(monkeypatch):
+    """FWMI-V1: `b` (0/1) is blank on 40 rows beside the censored `f0`. The sampler is handed `b`
+    as two-valued (a logistic draw) and `f0` as censored, and the methods sentence says exactly
+    those two models, no normal linear one (on the base it said "from a normal linear model" alone
+    of the chained copies, and "any other blank" where none was). With `z0` blank too, a number,
+    the sentence adds it, from a normal linear model; the models' parameter draws are said
+    approximate for the censored-normal and logistic models, exact for the normal linear one
+    (mice's ``norm``). The table's caption names `f0`'s own model alone."""
+    from turbotab.core.methods import featurewise_mi as fm
+
+    seen = _spy_kinds(monkeypatch)
+    frame, event = _two_valued_panel()
+    table, copies = fm.pooled_featurewise_table(frame, event, "binary", ["f0"],
+                                                censored=limits_of(frame, ["f0"]), seed=2)
+    assert seen[-1] == [("b", "binary"), ("f0", "censored")]
+    sentence = table.info["missing"]["sentence"]
+    assert sentence.startswith(_lead(frame, (
+        "values below a detection limit from a censored-normal (Tobit) model and a two-valued "
+        "column's blanks from a logistic regression, each model's parameters drawn from their "
+        "approximate posterior"))), sentence
+    assert "normal linear" not in sentence
+    assert table.info["caption"].startswith(
+        f"Multiple imputation, m = {copies.m}, one study factor at a time: each study factor's "
+        f"blanks were drawn from its own model given the outcome and the covariates (below a "
+        f"detection limit from a censored-normal (Tobit) model), the covariates' blanks drawn with "
+        f"it by chained equations;")
+    frame.loc[frame.index[50:70], "z0"] = np.nan
+    table, _ = fm.pooled_featurewise_table(frame, event, "binary", ["f0"],
+                                           censored=limits_of(frame, ["f0"]), seed=2)
+    assert seen[-1] == [("b", "binary"), ("f0", "censored"), ("z0", "numeric")]
+    assert table.info["missing"]["sentence"].startswith(_lead(frame, (
+        "values below a detection limit from a censored-normal (Tobit) model, a two-valued "
+        "column's blanks from a logistic regression and any other blank from a normal linear "
+        "model, each model's parameters drawn from their posterior, approximately for the "
+        "censored-normal and logistic models")))
+
+
+def test_10_a_two_valued_study_factor_is_said_drawn_by_logistic_regression(monkeypatch):
+    """FWMI-V1 for the study factors' own blanks: `s` (0/1) blank on 30 rows is drawn as
+    two-valued, so the caption and the sentence say a logistic regression for it, and a number
+    drawn alone (`g`) a normal linear model; where only numbers are drawn the sentence says no
+    censored-normal or logistic model and no "other" blank."""
+    from turbotab.core.methods import featurewise_mi as fm
+
+    seen = _spy_kinds(monkeypatch)
+    rng = np.random.default_rng(9)
+    n = 150
+    event = (rng.random(n) < 0.5).astype(float)
+    s = (rng.random(n) < 0.3 + 0.3 * event).astype(float)
+    g = 5 + 0.5 * event + rng.standard_normal(n)
+    frame = pd.DataFrame({"s": s, "g": g})
+    frame.loc[frame.index[:30], "s"] = np.nan
+    frame.loc[frame.index[100:120], "g"] = np.nan
+    table, _ = fm.pooled_featurewise_table(frame, event, "binary", ["s", "g"], censored={}, m=20)
+    assert sorted(map(tuple, (pair for call in seen for pair in call))) == [
+        ("g", "numeric"), ("s", "binary")]
+    assert ("(a two-valued study factor's from a logistic regression, otherwise from a normal "
+            "linear model)") in table.info["caption"]
+    pct = round(100.0 * 30 / n, 1)
+    assert table.info["missing"]["sentence"].startswith(
+        f"Missing values were multiply imputed one study factor at a time, each from its own model "
+        f"given the outcome, the terms of its test (a two-valued column's blanks from a logistic "
+        f"regression and any other blank from a normal linear model, each model's parameters "
+        f"drawn from their posterior, approximately for the logistic model); m = 20 imputations, "
+        f"at least 20 and at least the {pct:g}% of rows")
+    table, _ = fm.pooled_featurewise_table(frame[["g"]], event, "binary", ["g"], censored={}, m=20)
+    sentence = table.info["missing"]["sentence"]
+    assert ("the terms of its test (each blank from a normal linear model, its parameters drawn "
+            "from their posterior); m = 20") in sentence
+    assert "Tobit" not in sentence and "logistic" not in sentence and "other" not in sentence
+
+
+def test_10_the_sentences_floor_of_m_is_the_answers_where_it_is_the_larger():
+    """FWMI-V7: the sentence's "at least" is the floor the engine's rule used, the answer's m
+    where it is larger than the rule's 20 (BLUEPRINT §12 ruling 4): asked 30 on a panel whose most
+    incomplete model has 20% of its rows drawn, m = 30 and the sentence says at least 30; asked
+    nothing, at least 20."""
+    from turbotab.core.methods import featurewise_mi as fm
+
+    frame, event = censored_panel(seed=5, shares=(0.2,), deltas=(0.5,))
+    for asked, m in ((30, 30), (20, 20)):
+        table, copies = fm.pooled_featurewise_table(frame, event, "binary", ["f0"],
+                                                    censored=limits_of(frame, ["f0"]),
+                                                    asked=asked, seed=1)
+        assert copies.m == m
+        assert f"m = {m} imputations, at least {asked} and at least the 20% of rows" in (
+            table.info["missing"]["sentence"])
+
+
+def _budget_words(factors: int, m: int, cap: int, sweeps: int = 1) -> str:
+    """The budget's refusal, built from the case's counts: the study factors drawn × m (× each
+    chain's sweeps) against the cap."""
+    each = f" × {sweeps} sweeps of chained equations" if sweeps > 1 else ""
+    noun = "study factor" if factors == 1 else "study factors"
+    return (f"Feature-wise regression is pooled over multiple imputations drawn one study factor "
+            f"at a time: here {factors} {noun} × {m} imputations{each} make "
+            f"{factors * m * sweeps:,} draws, more than the {cap:,} one table may draw, a limit "
+            f"that bounds how long its fit takes.")
+
+
+def _fit_entry(tmp_path, frame: pd.DataFrame, st) -> dict:
+    """The fit's feature-wise entry for ``frame`` under ``st``, every row analyzed."""
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    paths = mf.ingest_frame(frame, tmp_path)
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed)
+    info = mf.target_info(st.task, st.target)
+    design = design_stage(mf.context(st, {"split": split, "target_info": info}, paths))
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": info},
+                               paths))
+    return next(m for m in fit.data["models"] if m["family"] == "featurewise")
+
+
+def _decide(frame: pd.DataFrame, st) -> dict:
+    return {"state": st, "columns": list(frame.columns), "store": lambda: _Store(frame),
+            "analyzed": lambda: np.arange(len(frame))}
+
+
+MI20 = {"strategy": "multiple_imputation", "m": 20}
+
+
+def _sites(clustered: bool) -> tuple[pd.DataFrame, Any]:
+    """``estimand_fixtures.cohort(300)``, `fiber` (the study factor) blank on 90 rows; with
+    ``clustered`` its rows grouped three to a `site` by the cluster answer, else no site."""
+    from turbotab.core import decisions as d
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(300, seed=5)
+    frame.loc[frame.index[:90], "fiber"] = np.nan
+    if not clustered:
+        return frame, ef.state(target="glucose", task="regression", measure="mean_difference",
+                               models=["featurewise"], missing=MI20)
+    frame["site"] = np.repeat(np.arange(100), 3)
+    return frame, ef.state(target="glucose", task="regression", measure="mean_difference",
+                           roles={**ef.ROLES, "site": "cluster"}, models=["featurewise"],
+                           missing=MI20,
+                           clusters=d.ClusterSpec(column="site", adjust="cluster_only"))
+
+
+def test_11_rows_the_cluster_answer_groups_are_counted_as_the_fit_draws_them(tmp_path,
+                                                                             monkeypatch):
+    """FWMI-V2(a): `fiber` blank on 90 of 300 rows, so m = 30 (the rule over 30% of the rows).
+    Grouped three to a `site` by the cluster answer, the fit clusters its intervals by `site` and
+    draws `fiber`'s copies by chained equations, ten sweeps (the engine's count): 300 draws. At a
+    cap of 100 the fit refuses, and so now does each check before the lock, in the same words (on
+    the base they passed: they read the grain answer alone, one row per unit here). With no site,
+    one fit of `fiber`'s own model makes its 30 draws: the checks are silent and the fit pools."""
+    from turbotab.core import decisions as d
+    from turbotab.core.methods import featurewise_mi as fm
+
+    monkeypatch.setattr(fm, "MAX_FEATURE_COPIES", 100)
+    frame, st = _sites(clustered=True)
+    words = _budget_words(1, 30, 100, sweeps=10)
+    for decision in (d.SelectModels(models=["featurewise"]), d.SetMissing(**MI20), d.LockPlan()):
+        with pytest.raises(d.Refusal) as refused:
+            d.validate(decision, _decide(frame, st))
+        assert (refused.value.code, refused.value.message) == (fm.UNPOOLED, words)
+    entry = _fit_entry(tmp_path / "site", frame, st)
+    assert entry["inference"]["refused"] == words
+    frame, st = _sites(clustered=False)
+    for decision in (d.SelectModels(models=["featurewise"]), d.SetMissing(**MI20), d.LockPlan()):
+        d.validate(decision, _decide(frame, st))
+    entry = _fit_entry(tmp_path / "none", frame, st)
+    assert entry["inference"]["refused"] is None and entry["coefficients"]
+
+
+def test_11_rows_the_grain_says_repeat_but_that_do_not_are_counted_as_independent(tmp_path,
+                                                                                monkeypatch):
+    """FWMI-V2(a), the other way: the grain answer says rows repeat by `pid`, but no `pid` repeats
+    among the analyzed rows (as after each unit's rows are combined into one), so the fit's rows do
+    not cluster and `fiber`'s 30 copies come from one fit of its model. At a cap of 100 the checks
+    before the lock now pass, as the fit pools (on the base they counted ten sweeps from the grain
+    answer, 300 draws, and refused)."""
+    from turbotab.core import decisions as d
+    from turbotab.core.methods import featurewise_mi as fm
+
+    monkeypatch.setattr(fm, "MAX_FEATURE_COPIES", 100)
+    frame, st = _sites(clustered=False)
+    st = st.model_copy(update={"grain": d.GrainSpec(grain="repeated", id_column="pid")})
+    for decision in (d.SelectModels(models=["featurewise"]), d.SetMissing(**MI20), d.LockPlan()):
+        d.validate(decision, _decide(frame, st))
+    entry = _fit_entry(tmp_path, frame, st)
+    assert entry["inference"]["refused"] is None and entry["coefficients"]
+
+
+def test_11_a_number_declared_as_codes_among_the_covariates_with_blanks_is_refused_before_the_lock(
+        tmp_path):
+    """FWMI-V2(b): `activity` (whole numbers) declared as codes is a category to the design
+    (one-hot encoded), so with blanks on 30 rows the fit refuses the table in the category's words;
+    each check before the lock now refuses it in the same words (on the base they read text alone
+    as a category, and passed). Declared as amounts it is a number the copies draw: every check is
+    silent."""
+    from turbotab.core import decisions as d
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(300, seed=5)
+    frame.loc[frame.index[:30], "activity"] = np.nan
+    words = CATEGORY_WORDS.replace("`sex`", "`activity`")
+    for reading, refuses in (("code", True), ("amount", False)):
+        st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                      models=["featurewise"], missing=MI20,
+                      amounts={"code_or_count:smoking": "amount",
+                               "code_or_count:activity": reading})
+        for decision in (d.SelectModels(models=["featurewise"]), d.SetMissing(**MI20),
+                         d.LockPlan()):
+            if refuses:
+                with pytest.raises(d.Refusal) as refused:
+                    d.validate(decision, _decide(frame, st))
+                assert (refused.value.code, refused.value.message) == (fm.UNPOOLED, words)
+            else:
+                d.validate(decision, _decide(frame, st))
+        if refuses:
+            entry = _fit_entry(tmp_path / reading, frame, st)
+            assert entry["inference"]["refused"] == words
+
+
+COMBAT_WORDS = ("Feature-wise regression is pooled over multiple imputations one study factor at a "
+                "time, and ComBat adjusts every feature together, so no study factor's copies can "
+                "be drawn and adjusted on their own.")
+
+
+def test_12_combat_over_columns_with_blanks_is_refused_and_silent_without_blanks_or_combat():
+    """FWMI-V3(1): reference ComBat adjusts the study factors together, so a blank in any of them
+    is refused before any copy is drawn, complete cases (the rows that hold every value, counted
+    here) and another family its ways forward. With no blank the pipeline is fitted, nothing
+    drawn; without ComBat the same blanks are the ones drawn."""
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.methods.batch import ReferenceComBat
+    from turbotab.core.models.featurewise import FeatureWiseTests
+
+    frame, event = censored_panel(seed=11)
+    features = [f"f{j}" for j in range(6)]
+    frame["batch"] = np.where(np.arange(len(frame)) % 2 == 0, "B1", "B2")
+
+    def template(combat: bool) -> Pipeline:
+        model = ("model", FeatureWiseTests(task="binary", features=features))
+        return Pipeline([("batch", ReferenceComBat(features, "batch", drop=True)), model]
+                        if combat else [model])
+
+    with pytest.raises(fm.Unpooled) as refused:
+        fm.prepare(template(True), frame, event)
+    whole = int(frame.notna().all(axis=1).sum())
+    assert refused.value.reason == COMBAT_WORDS
+    assert [e["label"] for e in refused.value.exits] == [
+        f"Complete cases ({whole} of the 100 rows)", "Choose another model family"]
+    rng = np.random.default_rng(0)
+    full = frame.copy()
+    for f in features:
+        full[f] = full[f].fillna(pd.Series(rng.normal(9, 0.5, len(full)), index=full.index))
+    prepared = fm.prepare(template(True), full, event)
+    assert prepared.drawn == []
+    prepared = fm.prepare(template(False), frame.drop(columns=["batch"]), event)
+    assert prepared.drawn == features
+
+
+def test_12_a_spline_of_a_covariate_with_blanks_is_refused_and_silent_where_another_is_blank(
+        tmp_path):
+    """FWMI-V3(2): a declared 4-knot spline of `age` (a covariate) forms its two nonlinear columns
+    from `age` (`age'` and `age''`, Harrell's restricted cubic spline: knots − 2 of them), so with
+    `age` blank on 30 rows those columns hold blanks no copy draws: the fit refuses the table
+    naming them. With `bmi` blank instead the spline's columns are whole: the table is pooled."""
+    from turbotab.core import decisions as d
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  models=["featurewise"], missing=MI20,
+                  exposure_forms={"age": d.ExposureFormSpec(form="spline", knots=4)})
+    formed = ["age" + "'" * j for j in range(1, 4 - 1)]
+    for blank, refuses in (("age", True), ("bmi", False)):
+        frame = ef.cohort(300, seed=5)
+        frame.loc[frame.index[:30], blank] = np.nan
+        entry = _fit_entry(tmp_path / blank, frame, st)
+        if refuses:
+            assert entry["inference"]["refused"] == (
+                f"Feature-wise regression is pooled over multiple imputations one study factor at "
+                f"a time; `{formed[0]}` and `{formed[1]}` hold blanks after a step that forms them "
+                f"from other columns, which these copies do not draw.")
+            assert entry["inference"]["exits"][-1]["label"] == "Choose another model family"
+        else:
+            assert entry["inference"]["refused"] is None and entry["coefficients"]
+
+
+def test_12_a_column_confirmed_as_one_value_per_unit_is_refused_on_clustered_rows(tmp_path):
+    """FWMI-V3(3): rows grouped three to a `site`, `activity` blank on 30 rows. Confirmed as one
+    value per `site`, its blanks would be drawn once per unit, which these copies (row by row) do
+    not do: the fit refuses the table in words naming the column and the unit. Confirmed as
+    changing between a unit's rows it is drawn row by row and the table is pooled."""
+    from turbotab.core import decisions as d
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(300, seed=5)
+    frame["site"] = np.repeat(np.arange(100), 3)
+    frame.loc[frame.index[:30], "activity"] = np.nan
+    for value in ("yes", "no"):
+        st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                      roles={**ef.ROLES, "site": "cluster"}, models=["featurewise"],
+                      missing=MI20, clusters=d.ClusterSpec(column="site", adjust="cluster_only"),
+                      reading_confirmations={"time_invariant:activity": value})
+        entry = _fit_entry(tmp_path / value, frame, st)
+        if value == "yes":
+            assert entry["inference"]["refused"] == (
+                "Feature-wise regression is pooled over multiple imputations drawn one study "
+                "factor at a time, row by row; `activity` is confirmed as one value per `site`, "
+                "which these copies do not draw once per unit.")
+            assert entry["inference"]["exits"][-1]["label"] == "Choose another model family"
+        else:
+            assert entry["inference"]["refused"] is None and entry["coefficients"]
+
+
+def test_12_a_censored_normal_model_with_no_finite_fit_is_refused_and_silent_where_it_has_one():
+    """FWMI-V3(4): the censored-normal (Tobit) likelihood has a finite maximum only where the
+    detected rows' design has full column rank and does not fit the detected values exactly
+    (Olsen 1978: the log-likelihood is concave in (β/σ, 1/σ), and bounded above exactly then).
+    Each case is refused before any draw, in words from its counts: every detected value in rows
+    of one outcome (on the base, for these values, the copies were drawn and the pooled difference
+    was about 10⁵, a number no fit certifies; for others the solver's own refusal fired, so which
+    happened rested on the solver), and every detected value equal (on the base a LinAlgError
+    escaped). With one detected value among the other outcome's rows the model is identified, and
+    drawn."""
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.methods.imputation import ImputationRefused
+
+    rng = np.random.default_rng(0)
+    n = 100
+    event = np.r_[np.ones(58), np.zeros(42)]
+    z = rng.standard_normal(n)
+    constant = np.where(rng.random(n) < 0.4, np.nan, 7.0)
+    separated = np.where(event == 1, 10 + rng.standard_normal(n), np.nan)
+
+    def draw(x: np.ndarray):
+        frame = pd.DataFrame({"f0": x, "z0": z})
+        return fm.pooled_featurewise_table(frame, event, "binary", ["f0"],
+                                           censored=limits_of(frame, ["f0"]), m=20, seed=1)
+
+    with pytest.raises(ImputationRefused) as refused:
+        draw(separated)
+    assert str(refused.value) == (
+        "`f0`'s censored-normal model has no finite fit on these rows: all 58 of its detected "
+        "values are in rows with the same outcome, so how far below the limit the other rows lie "
+        "cannot be estimated, and its values below detection cannot be drawn.")
+    assert refused.value.columns == ["f0"]
+    with pytest.raises(ImputationRefused) as refused:
+        draw(constant)
+    detected = int(np.isfinite(constant).sum())
+    assert str(refused.value) == (
+        f"`f0`'s censored-normal model has no finite fit on these rows: its {detected} detected "
+        f"values are all equal, so their spread cannot be estimated, and its values below "
+        f"detection cannot be drawn.")
+    once = separated.copy()
+    once[70] = 10.5  # one non-event detected
+    table, copies = draw(once)
+    (row,) = table.rows
+    assert copies.m >= 20 and math.isfinite(row["estimate"]) and row["se"] > 0
+
+
+def test_12_the_fit_refuses_the_table_beyond_the_budget_and_pools_it_at_the_budget(tmp_path,
+                                                                                  monkeypatch):
+    """FWMI-V3(5), through the fit: `fiber` blank on 90 of 300 rows, m = 30, one fit of its model,
+    30 draws. At a cap of 29 the fit refuses the table in the budget's words, with complete cases
+    (the 210 rows that hold `fiber`) and another family as ways forward; at 30 it pools it."""
+    from turbotab.core.methods import featurewise_mi as fm
+
+    frame, st = _sites(clustered=False)
+    monkeypatch.setattr(fm, "MAX_FEATURE_COPIES", 29)
+    entry = _fit_entry(tmp_path / "over", frame, st)
+    assert entry["inference"]["refused"] == _budget_words(1, 30, 29)
+    assert [e["label"] for e in entry["inference"]["exits"]] == [
+        f"Complete cases ({300 - 90} of the 300 rows)", "Choose another model family"]
+    assert not entry["coefficients"]
+    monkeypatch.setattr(fm, "MAX_FEATURE_COPIES", 30)
+    entry = _fit_entry(tmp_path / "at", frame, st)
+    assert entry["inference"]["refused"] is None and entry["coefficients"]
+
+
+def test_13_a_feature_wise_refusal_always_carries_a_way_forward():
+    """FWMI-V6: where values below detection are named (no single fill is offered: the pooled
+    route replaces it) and no row holds every value (complete cases are not offered), the
+    feature-wise table's refusal offers another family and says so; where complete cases keep
+    rows enough, they are its way forward, as before."""
+    from turbotab.core.methods.omics import unpooled_refusal
+
+    frame, _ = censored_panel(seed=11)
+    state = plan_state(["featurewise"], MI)
+    few = frame.copy()
+    few.loc[few.notna().all(axis=1), "f0"] = np.nan
+    reason, exits = unpooled_refusal("Feature-wise regression", state, few)
+    assert exits == [{"label": "Choose another model family", "decision": None}]
+    assert reason == (
+        "Feature-wise regression is not pooled over multiple imputations here. Complete cases are "
+        "not offered: 0 of the 100 rows hold every value, fewer than the 6 the design needs. "
+        "Choose another model family.")
+    reason, exits = unpooled_refusal("Feature-wise regression", state, frame)
+    whole = int(frame.notna().all(axis=1).sum())
+    assert [e["label"] for e in exits] == [f"Complete cases ({whole} of the 100 rows)"]
+    assert reason.endswith(" Choose complete cases.")
+
+
+def test_13_the_marginal_risks_refusal_offers_complete_cases_only_where_the_record_takes_them(
+        tmp_path):
+    """FWMI-V8: the marginal risks' refusal under multiple imputation offers complete cases only
+    where taking them is accepted (``row_floor.accepted_exit``, as every set_missing refusal's
+    exits are), counted on the ingested table the record counts on, no missing-values answer
+    recorded yet: with `activity` blank on 40 of 300 rows they keep 260 rows and are offered;
+    blank on 296, complete cases would keep 4, fewer than a fit needs (the row floor refuses them
+    when taken), and are not offered."""
+    from turbotab.core import decisions as d
+    from turbotab.core.datastore import DataStore
+    from turbotab.core.tests import modeling_fixtures as mf
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    for blanks, offered in ((40, True), (296, False)):
+        frame = ef.cohort(300, seed=5)
+        frame.loc[frame.index[:blanks], "activity"] = np.nan
+        paths = mf.ingest_frame(frame, tmp_path / str(blanks))
+        st = ef.state(target="dm", task="binary", measure="risk_difference", event="yes",
+                      models=["linear"], missing=None)
+        with DataStore(paths["data"], 2 << 30) as store:
+            ctx = {"state": st, "columns": list(frame.columns), "store": lambda: store,
+                   "analyzed": lambda: np.arange(len(frame))}
+            with pytest.raises(d.Refusal) as refused:
+                d.validate(d.SetMissing(strategy="multiple_imputation"), ctx)
+            assert refused.value.code == "marginal_risks_unpooled"
+            labels = [e["label"] for e in refused.value.exits]
+            assert labels == (["Report the conditional odds ratio",
+                               "Complete cases, with their assumption stated"] if offered
+                              else ["Report the conditional odds ratio"])
+            if not offered:
+                with pytest.raises(d.Refusal):  # taken, the record refuses it
+                    d.validate(d.SetMissing(strategy="complete_case"), ctx)
+
+
+def _card(purpose: str, covariate: bool, family: str = "featurewise") -> dict[str, str]:
+    """The design card's lines for five intensities, two blank below detection (censoring-aware)
+    between PQN and the log, under multiple imputation; with ``covariate``, `age` adjusts."""
+    from turbotab.core.models import get_family
+    from turbotab.core.models.pipeline import DesignSpec, describe_steps
+
+    feats = [f"mz_{j}" for j in range(5)]
+    predictors = [*feats, *(["age"] if covariate else [])]
+    roles = {**{c: "exposure" for c in feats}, **({"age": "covariate"} if covariate else {})}
+    spec = DesignSpec(predictors=predictors, inputs=predictors, categorical=[],
+                      numeric=predictors, energy=None, impute=True, roles=roles,
+                      normalization={"method": "pqn_log2", "kind": "intensities",
+                                     "columns": feats},
+                      censored={"method": "censoring_aware", "columns": feats[:2]},
+                      missing={"strategy": "multiple_imputation",
+                               "below_detection": "censoring_aware"},
+                      lenses=["metabolomics"], purpose=purpose)
+    return {s["key"]: s["detail"] for s in describe_steps(spec, get_family(family), "binary",
+                                                         purpose)}
+
+
+def test_14_the_design_card_says_values_below_detection_are_drawn_where_the_tests_draw_them():
+    """FWMI-V4: under inference with multiple imputation the feature-wise tests draw each value
+    below detection within each imputation (``featurewise_mi.blank_pipeline`` keeps them blank
+    through the detect step and the log), so the card's detect and log lines say so, given the
+    outcome and, only where the design has one, the covariates; the impute line too. On the base
+    they described the single in-fold fill. Under prediction, and for a family that does not draw
+    its own copies (the linear model's in-fold fill serves its scores), the lines are as before."""
+    drawn = ("Blanks in mz_0, mz_1 are values below detection: none is filled here; each is "
+             "drawn below the column's smallest detected value within each multiple imputation, "
+             "from a censored-normal (Tobit) model given the outcome{}.")
+    logged = ("Takes log2 of 5 assay columns; a value below detection (a blank, or zero or less) "
+              "stays blank through the log and is drawn below the limit on the log scale within "
+              "each multiple imputation, given the outcome{}.")
+    for covariate, given in ((True, " and the covariates"), (False, "")):
+        card = _card("inference", covariate)
+        assert card["detect"] == drawn.format(given)
+        assert card["log"] == logged.format(given)
+        assert card["impute"].endswith(
+            f" each from its own model given the outcome{given}, more when more rows are "
+            f"incomplete.")
+    filled = ("Blanks in mz_0, mz_1 are values below detection: each becomes its expected value "
+              "below the smallest detected one under a censored-normal fit, learned within each "
+              "training fold without the outcome.")
+    before = ("Takes log2 of 5 assay columns, after values below detection are filled, so no zero "
+              "or blank reaches the log.")
+    for card in (_card("prediction", True), _card("inference", True, family="linear")):
+        assert (card["detect"], card["log"]) == (filled, before)
