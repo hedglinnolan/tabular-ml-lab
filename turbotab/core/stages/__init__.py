@@ -310,7 +310,7 @@ def build_graph() -> Graph:
             # cached before are computed again rather than served in the old words.
             Stage(
                 "findings",
-                22,
+                23,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings", "numbers_read",
                  "shape_confirmations", "categorical", "aggregation"),

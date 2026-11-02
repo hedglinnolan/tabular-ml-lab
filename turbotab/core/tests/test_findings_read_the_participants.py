@@ -14,11 +14,14 @@ reading does not name:
   finding; where the reading does not fire, every row counts as before;
 * the left-censoring reading (``packs._left_censored``) reads the assay features only
   (``omics.candidate_columns``: not the outcome, a person's characteristic such as age, sex or
-  BMI, an identifier or how the samples were acquired) on the rows outside those the served
-  pooled-QC finding names, and names only features with a blank there; its detail opens with the
-  count of those rows wherever any row is set aside. Read on the participants with the
-  covariates among its columns, the covariates' complete values pulled its correlation off the
-  features' own and could hold it above the gate where the features are censored. The pack's own
+  BMI, an identifier or how the samples were acquired; and, as the omics_scale reading, not a
+  column of two distinct values or fewer, counted on the rows it reads, so a 0/1 outcome before
+  a target is chosen or a 0/1 covariate on no name list is no feature) on the rows outside those
+  the served pooled-QC finding names, and names only features with a blank there; its detail
+  opens with the count of those rows wherever any row is set aside. Read on the participants
+  with the covariates among its columns, the covariates' complete values pulled its correlation
+  off the features' own and could hold it above the gate where the features are censored, and
+  their blanks, where they tracked abundance, raised it where the features' did not. The pack's own
   pooled-QC reading (``packs._pooled_qc``), whose rows it sets aside by default, reads a
   two-level label only; on a Case/Control/QC label the served reading names the QC rows and the
   pack's names none, so the app sets aside the served reading's rows, and the outcome
@@ -238,11 +241,12 @@ def test_left_censoring_reads_every_row_where_the_pack_flags_no_qc_rows(tmp_path
     assert found is not None and set(found["params"]["columns"]) == every_row
 
 
-def _detail_read_on(rows: pd.DataFrame) -> str:
+def _detail_read_on(rows: pd.DataFrame, feats: list[str] | None = None) -> str:
     """The left-censoring detail's sentence after its opening, its numbers by pandas and scipy on
     ``rows``: the usable features, the Spearman correlation of their missing rate with their log
-    mean, the features with a blank and the highest missing rate among them."""
-    feats = features(rows)
+    mean, the features with a blank and the highest missing rate among them. The features are
+    ``feats``, by default the `mz_` columns."""
+    feats = features(rows) if feats is None else feats
     rate, mean = rows[feats].isna().mean(), rows[feats].mean()
     usable = [c for c in feats if pd.notna(mean[c]) and mean[c] > 0]
     rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
@@ -349,6 +353,162 @@ def test_the_gate_stays_silent_where_the_features_are_not_censored(tmp_path):
     served = findings_of(tmp_path, frame, ["metabolomics"], target="disease")
     assert "pack::metabolomics::pooled_qc" in served
     assert "pack::metabolomics::left_censored" not in served
+
+
+SET_ASIDE = ("age", "bmi", "sex", "visit", "day")  # the verifier's covariates (gate_silent_noblank)
+MORE_TIMES = ("hour", "session")
+
+
+def covariate_blank_table(*, feature_blanks: bool, seed: int = 3) -> pd.DataFrame:
+    """The verifier's table by construction: 30 features (the reading's floor) whose log means run
+    from 5 to 10, above every covariate's, complete; 60 participants and 10 pooled QCs (every
+    seventh row, a two-level label); and the covariates omics sets aside by name (`age`, `bmi`,
+    `sex` coded 0 and 1, `visit`, `day`), blank on every QC row and on 9 to 21 participants each
+    (15% to 35%), drawn at random. With ``feature_blanks`` five features spread across the
+    abundance range (every sixth) are blank on 3 participants each, drawn at random, so their
+    blanks do not track abundance, and two more times omics sets aside by name, `hour` and
+    `session`, are blank too, so that the covariates read among the features still carry the
+    correlation past the gate (with the five alone, five such features took it to about -0.45)."""
+    rng = np.random.default_rng(seed)
+    n, n_features = N_PART + N_QC, 30
+    qc = np.zeros(n, dtype=bool)
+    qc[QC_AT] = True
+    part = np.flatnonzero(~qc)
+    log_mean = np.linspace(5.0, 10.0, n_features)
+    log_value = log_mean + rng.normal(0.0, 1.0, (n, n_features)) * np.where(qc[:, None], 0.05, 0.8)
+    values = np.round(np.exp(log_value), 2)
+    if feature_blanks:
+        for j in range(3, n_features, 6):
+            values[rng.choice(part, 3, replace=False), j] = np.nan
+    draw = {"age": rng.integers(30, 75, n), "bmi": np.round(rng.normal(27.0, 4.0, n), 1),
+            "sex": rng.integers(0, 2, n), "visit": rng.integers(1, 5, n),
+            "day": rng.integers(1, 31, n), "hour": rng.integers(0, 24, n),
+            "session": rng.integers(1, 4, n)}
+    covariates = SET_ASIDE + (MORE_TIMES if feature_blanks else ())
+    frame: dict[str, object] = {"sample_type": np.where(qc, "pooled_qc", "participant")}
+    for name, k in zip(covariates, np.linspace(9, 21, len(covariates)).astype(int)):
+        v = draw[name].astype(float)
+        v[qc] = np.nan
+        v[rng.choice(part, k, replace=False)] = np.nan
+        frame[name] = v
+    for j in range(n_features):
+        frame[f"mz_{j + 1:03d}"] = values[:, j]
+    return pd.DataFrame(frame)
+
+
+@pytest.mark.parametrize("feature_blanks", [False, True], ids=["features_complete",
+                                                               "features_blank_at_random"])
+def test_the_gate_stays_silent_where_only_covariates_omics_sets_aside_track_abundance(
+        tmp_path, feature_blanks):
+    """The features-only gate's silent side: the participants' blanks that track abundance are in
+    the covariates omics sets aside by name (`age`, `bmi`, `sex`, `visit`, `day`, and `hour` and
+    `session` where features have blanks), the least abundant columns. Read among the features,
+    as every numeric column was read before the reading read omics' candidate columns, they
+    carried the correlation to -0.5 or below (scipy) and the finding named them as
+    non-detections. On the features alone it is silent, with no covariate named: where the
+    features are complete none has a blank (the 5-blank floor); where five have blanks at random
+    their correlation is above -0.5 (scipy), so the gate is what keeps it silent."""
+    frame = covariate_blank_table(feature_blanks=feature_blanks)
+    df = read_back(tmp_path, frame)
+    part = participants(df)
+    covariates = [c for c in df.columns if c != "sample_type" and c not in features(df)]
+    every_numeric = covariates + features(df)
+    rate, mean = part[every_numeric].isna().mean(), part[every_numeric].mean()
+    assert (rate[covariates] > 0).all() and (mean > 0).all()
+    assert stats.spearmanr(rate.to_numpy(), np.log(mean.to_numpy())).statistic <= -0.5
+    blank_features = [c for c in features(df) if rate[c] > 0]
+    if feature_blanks:
+        named, rho, n_usable = _participant_reading(df)
+        assert n_usable == 30 and len(named) == 5 and rho > -0.5
+    else:
+        assert not blank_features
+    assert packs._left_censored(df) is None
+    served = findings_of(tmp_path, frame, ["metabolomics"])
+    assert "pack::metabolomics::pooled_qc" in served
+    assert "pack::metabolomics::left_censored" not in served
+    assert not {c for f in served.values() for c in f.get("censored_columns") or []} & set(covariates)
+
+
+# ── the left-censoring reading: a two-valued column is no assay feature ─────
+
+
+def test_before_an_outcome_is_chosen_a_two_valued_outcome_is_not_read_as_a_feature(tmp_path):
+    """Before an outcome is chosen nothing names `disease` the outcome and no name rule sets it
+    aside, but coded 0 and 1 it carries no abundance to order: it is set aside as the omics_scale
+    reading sets aside a column of two distinct values or fewer. So the detail's numbers are the
+    40 features' on the 60 participants (pandas, scipy: -0.81), from the pack handed no outcome
+    (as ``packs.findings`` reads it) and served before a target. Read with the outcome among the
+    features, it said 41 features and -0.75."""
+    frame = panel()
+    df = read_back(tmp_path, frame)
+    part = participants(df)
+    assert sorted(part["disease"].dropna().unique()) == [0.0, 1.0]
+    expected = f"On the {N_PART:,} non-QC rows, across {_detail_read_on(part)}"
+    assert expected.startswith(f"On the 60 non-QC rows, across {N_FEATURES} features, a feature's "
+                               f"missing rate tracks its abundance rank at a rank correlation of "
+                               f"-0.81. ")
+    found = packs._left_censored(df)
+    assert found is not None and found["detail"] == expected
+    assert found["params"]["n_features"] == N_FEATURES
+    served = findings_of(tmp_path, frame, ["metabolomics"])
+    assert served["pack::metabolomics::left_censored"]["detail"] == expected
+
+
+@pytest.mark.parametrize("target, on_the_qc_rows", [(None, None), ("disease", None),
+                                                    ("disease", 9.0)])
+def test_a_two_valued_covariate_on_no_name_list_is_neither_named_nor_counted(
+        tmp_path, target, on_the_qc_rows):
+    """`smoker`, coded 0 and 1 and on no name list, is blank on 3 participants: two values carry
+    no abundance to order, so it is no feature and its blanks are no non-detections, before a
+    target and with one. Its values are counted on the participants, the rows the reading reads:
+    coded 9 on the QC rows, a third value only there, it is still two-valued. The finding's
+    numbers and columns are the 40 features' on the participants (pandas, scipy), and the
+    missing-values question is not handed `smoker` as censored."""
+    frame = panel()
+    qc = frame["sample_type"].eq("pooled_qc").to_numpy()
+    smoker = np.random.default_rng(29).integers(0, 2, len(frame)).astype(float)
+    smoker[qc] = np.nan if on_the_qc_rows is None else on_the_qc_rows
+    smoker[np.flatnonzero(~qc)[:3]] = np.nan
+    frame["smoker"] = smoker
+    df = read_back(tmp_path, frame)
+    part = participants(df)
+    assert int(part["smoker"].isna().sum()) == 3
+    assert sorted(part["smoker"].dropna().unique()) == [0.0, 1.0]
+    named, _, n_usable = _participant_reading(df)
+    assert n_usable == N_FEATURES
+    expected = f"On the {N_PART:,} non-QC rows, across {_detail_read_on(part)}"
+    found = packs._left_censored(df, target=target)
+    assert found is not None and found["detail"] == expected
+    assert set(found["params"]["columns"]) == named
+    assert found["params"]["n_features"] == N_FEATURES
+    served = findings_of(tmp_path, frame, ["metabolomics"], target=target)
+    censored = served["pack::metabolomics::left_censored"]
+    assert censored["detail"] == expected and set(censored["censored_columns"]) == named
+
+
+@pytest.mark.parametrize("levels", [2, 3])
+def test_a_feature_is_read_with_three_distinct_values_and_set_aside_with_two(tmp_path, levels):
+    """The guard both ways at its edge: `mz_041`, the least abundant column, holds ``levels``
+    distinct values among the participants (1, 2 and, with three, 3, by construction; the QC rows
+    hold 2, one pooled sample) and is blank on 12 of them. With three it is read as every
+    feature is, counted and named (pandas, scipy, over the 41 `mz_` columns); with two it is
+    neither, and the numbers are the 40 others' own."""
+    frame = panel()
+    qc = frame["sample_type"].eq("pooled_qc").to_numpy()
+    values = np.random.default_rng(31).integers(1, levels + 1, len(frame)).astype(float)
+    values[qc] = 2.0
+    values[np.flatnonzero(~qc)[:12]] = np.nan
+    frame["mz_041"] = values
+    df = read_back(tmp_path, frame)
+    part = participants(df)
+    assert part["mz_041"].nunique() == levels and int(part["mz_041"].isna().sum()) == 12
+    feats = features(df) if levels == 3 else [c for c in features(df) if c != "mz_041"]
+    found = packs._left_censored(df, target="disease")
+    assert found is not None
+    assert found["detail"] == f"On the {N_PART:,} non-QC rows, across {_detail_read_on(part, feats)}"
+    assert found["params"]["n_features"] == len(feats) == N_FEATURES + levels - 2
+    assert set(found["params"]["columns"]) == {c for c in feats if part[c].isna().any()}
+    assert ("mz_041" in found["params"]["columns"]) == (levels == 3)
 
 
 def test_left_censoring_sets_aside_the_qc_rows_of_a_case_control_qc_label(tmp_path):

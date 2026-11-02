@@ -213,8 +213,8 @@ def test_no_pack_adds_a_question_to_a_fixture_it_does_match_either():
 # ── the other half: a pack that never fires is worthless ─────────────────────
 
 def test_the_metabolomics_pack_reads_its_own_fixture():
-    found = {f["id"]: f for f in P.findings(load("metabolomics_untargeted"),
-                                            [P.METABOLOMICS])}
+    df = load("metabolomics_untargeted")
+    found = {f["id"]: f for f in P.findings(df, [P.METABOLOMICS])}
     assert "pack::metabolomics::left_censored" in found
     assert "pack::metabolomics::run_order" in found
     assert "pack::metabolomics::pooled_qc" in found
@@ -225,6 +225,11 @@ def test_the_metabolomics_pack_reads_its_own_fixture():
         "and which features fall below it is decided by where they sit")
     assert censored["params"]["rho"] < -0.9
     assert censored["params"]["suggested_method"] == "half_minimum"
+    # The pack is handed no outcome, and `responder`, coded 0 and 1, carries no
+    # abundance to order: the reading counts the fixture's `mz_` columns alone.
+    assert sorted(df["responder"].dropna().unique()) == [0, 1]
+    assert censored["params"]["n_features"] == sum(
+        str(c).startswith("mz_") for c in df.columns) == 392
 
     # Correction is OFFERED and never automatic: it alters every value.
     assert found["pack::metabolomics::run_order"]["marker"] == "offered"

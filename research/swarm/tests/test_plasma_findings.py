@@ -7,7 +7,8 @@ sex, BMI or outcome. Read over all 128 rows, `sex` routed to the missing-values 
 128 blank; a blank may mean not asked" and the left-censoring finding named `age`, `bmi` and the
 outcome `disease` among 39 censored columns. On the 100 participants, counted here with pandas,
 `sex` has no blank and 36 columns have one, every one a feature: those are what the findings say,
-and the left-censoring detail's numbers are the 150 features' alone.
+and the left-censoring detail's numbers are the 150 features' alone, before the outcome is chosen
+too (`disease`, coded 0 and 1, is no feature).
 """
 from __future__ import annotations
 
@@ -22,10 +23,9 @@ sys.path.insert(0, str(REPO))
 from research.swarm import generators as G  # noqa: E402
 
 
-@pytest.fixture(scope="module")
-def plasma(tmp_path_factory):
+def _served(tmp_path_factory, target: str | None):
     """The fixture at its committed seed, as a CSV reader reads it, its QC rows by construction,
-    and its findings under the metabolomics lens with `disease` the outcome (the pilot's)."""
+    and its findings under the metabolomics lens with ``target`` the outcome."""
     from turbotab.core.decisions import ProjectState
     from turbotab.core.stages.findings import findings_stage
     from turbotab.core.tests.stage_harness import Ingested
@@ -36,9 +36,36 @@ def plasma(tmp_path_factory):
     df = pd.read_csv(path)
     qc = G.panel_layout()["qc"].to_numpy()
     table = Ingested(path, folder / "ingested")
-    artifact = table.run(findings_stage, ProjectState(lens=["metabolomics"],
-                                                      target=G.PANEL_OUTCOME))
+    artifact = table.run(findings_stage, ProjectState(lens=["metabolomics"], target=target))
     return df, qc, {f["id"]: f for f in artifact["findings"]}
+
+
+@pytest.fixture(scope="module")
+def plasma(tmp_path_factory):
+    """The findings with `disease` the outcome (the pilot's)."""
+    return _served(tmp_path_factory, G.PANEL_OUTCOME)
+
+
+@pytest.fixture(scope="module")
+def plasma_before_a_target(tmp_path_factory):
+    """The findings before an outcome is chosen."""
+    return _served(tmp_path_factory, None)
+
+
+def _read_on(rows: pd.DataFrame) -> str:
+    """The left-censoring detail's sentence after its opening, by pandas and scipy on ``rows``
+    over the 150 features (the `mz_` columns, by construction)."""
+    import numpy as np
+    from scipy import stats
+
+    features = [c for c in rows.columns if c.startswith("mz_")]
+    rate, mean = rows[features].isna().mean(), rows[features].mean()
+    usable = [c for c in features if pd.notna(mean[c]) and mean[c] > 0]
+    rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
+    blank = [c for c in features if rate[c] > 0]
+    return (f"{len(usable):,} features, a feature's missing rate tracks its abundance rank at "
+            f"a rank correlation of {rho:.2f}. {len(blank):,} features have blanks; the "
+            f"highest rate is {rate[blank].max():.0%}, on one of the least abundant.")
 
 
 def test_sex_blank_only_on_the_qc_rows_reads_as_two_level_text(plasma):
@@ -72,26 +99,28 @@ def test_the_left_censoring_detail_says_it_reads_the_100_participants(plasma):
     correlation of -0.74, 36 features with a blank and a highest rate of 86%. It names those rows,
     since read on all 128 rows the highest rate is another number. Read with `run_order`, `age`,
     `bmi` and the outcome among its columns, it said 154 features and -0.68."""
-    import numpy as np
-    from scipy import stats
-
     df, qc, found = plasma
     features = [c for c in df.columns if c.startswith("mz_")]
     assert len(features) == G.PANEL["features"] == 150
-
-    def read_on(rows: pd.DataFrame) -> str:
-        rate, mean = rows[features].isna().mean(), rows[features].mean()
-        usable = [c for c in features if pd.notna(mean[c]) and mean[c] > 0]
-        rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
-        blank = [c for c in features if rate[c] > 0]
-        return (f"{len(usable):,} features, a feature's missing rate tracks its abundance rank at "
-                f"a rank correlation of {rho:.2f}. {len(blank):,} features have blanks; the "
-                f"highest rate is {rate[blank].max():.0%}, on one of the least abundant.")
-
     assert int((~qc).sum()) == 100
-    assert read_on(df.loc[~qc]) == (
+    assert _read_on(df.loc[~qc]) == (
         "150 features, a feature's missing rate tracks its abundance rank at a rank correlation "
         "of -0.74. 36 features have blanks; the highest rate is 86%, on one of the least abundant.")
-    assert read_on(df.loc[~qc]) != read_on(df)
+    assert _read_on(df.loc[~qc]) != _read_on(df)
     detail = found["pack::metabolomics::left_censored"]["detail"]
-    assert detail == f"On the 100 non-QC rows, across {read_on(df.loc[~qc])}"
+    assert detail == f"On the 100 non-QC rows, across {_read_on(df.loc[~qc])}"
+
+
+def test_before_a_target_the_left_censoring_detail_reads_the_150_features(plasma_before_a_target):
+    """Before an outcome is chosen nothing names `disease` the outcome, but it holds two values on
+    the participants (0 and 1, pandas) and carries no abundance to order, so it is set aside as
+    the omics_scale finding sets it aside, whose block is the 150 features: the detail is the one
+    read with the outcome chosen (pandas, scipy: 150 features, -0.74). Read with `disease` among
+    the features it said 151 features and -0.73."""
+    df, qc, found = plasma_before_a_target
+    assert sorted(df.loc[~qc, G.PANEL_OUTCOME].dropna().unique()) == [0, 1]
+    assert found["omics_scale"]["summary"].startswith("`150` columns are raw intensities")
+    detail = found["pack::metabolomics::left_censored"]["detail"]
+    assert detail == f"On the 100 non-QC rows, across {_read_on(df.loc[~qc])}"
+    assert detail.startswith("On the 100 non-QC rows, across 150 features, a feature's missing "
+                             "rate tracks its abundance rank at a rank correlation of -0.74. ")
