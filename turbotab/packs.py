@@ -654,14 +654,18 @@ def _left_censored(df: pd.DataFrame, qc_rows: Optional[pd.Series] = None,
     how the samples were acquired (run order, batch, plate, well, a column
     that numbers the rows); and, as that reading sets them aside, not a
     column of `omics.INDICATOR_LEVELS` distinct values or fewer, counted on
-    the rows read. A two-valued column (a 0/1 outcome, a yes/no covariate)
-    carries no abundance to order, so it is no feature, blanks or none, and
-    its blanks are no non-detections. A feature observed with two values or
-    fewer on those rows (one detected on two participants) is set aside with
-    it, as the `omics_scale` block leaves it out. `packs.findings` passes no
-    `target`, nor does the app before an outcome is chosen: there a 0/1
-    outcome is set aside as two-valued, and an outcome of more values that
-    no name rule sets aside is read as a feature. The missing rate, the
+    the rows read, where it is observed on more of them than that: there a
+    value repeats, as a code's do. A two-valued column (a 0/1 outcome, a
+    yes/no covariate) carries no abundance to order, so it is no feature,
+    blanks or none, and its blanks are no non-detections. A column observed
+    on `omics.INDICATOR_LEVELS` of those rows or fewer has no value to
+    repeat and is read, though the `omics_scale` block leaves it out: a
+    feature detected on one or two participants, or on none (named, though
+    with no mean it is not in the correlation), is the most censored kind,
+    and its blanks are non-detections. `packs.findings`
+    passes no `target`, nor does the app before an outcome is chosen: there
+    a 0/1 outcome is set aside as two-valued, and an outcome of more values
+    that no name rule sets aside is read as a feature. The missing rate, the
     abundance, the correlation, both counts and the columns named are the
     features'. Read with the covariates among them on the participants'
     rows, where a covariate has no blank, the covariates pulled the
@@ -679,7 +683,8 @@ def _left_censored(df: pd.DataFrame, qc_rows: Optional[pd.Series] = None,
     values = df.loc[~qc_rows, cols].to_numpy(dtype=float, na_value=np.nan)
     finite = np.isfinite(values)
     cols = [c for j, c in enumerate(cols)
-            if np.unique(values[finite[:, j], j]).size > INDICATOR_LEVELS]
+            if np.unique(values[finite[:, j], j]).size > INDICATOR_LEVELS
+            or finite[:, j].sum() <= INDICATOR_LEVELS]
     rows = df.loc[~qc_rows, cols]
     rate = rows.isna().mean()
     with_blanks = [c for c in cols if rate[c] > 0]

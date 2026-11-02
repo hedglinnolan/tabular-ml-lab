@@ -15,17 +15,18 @@ reading does not name:
 * the left-censoring reading (``packs._left_censored``) reads the assay features only
   (``omics.candidate_columns``: not the outcome, a person's characteristic such as age, sex or
   BMI, an identifier or how the samples were acquired; and, as the omics_scale reading, not a
-  column of two distinct values or fewer, counted on the rows it reads, so a 0/1 outcome before
-  a target is chosen or a 0/1 covariate on no name list is no feature) on the rows outside those
-  the served pooled-QC finding names, and names only features with a blank there; its detail
-  opens with the count of those rows wherever any row is set aside. Read on the participants
-  with the covariates among its columns, the covariates' complete values pulled its correlation
-  off the features' own and could hold it above the gate where the features are censored, and
-  their blanks, where they tracked abundance, raised it where the features' did not. The pack's own
-  pooled-QC reading (``packs._pooled_qc``), whose rows it sets aside by default, reads a
-  two-level label only; on a Case/Control/QC label the served reading names the QC rows and the
-  pack's names none, so the app sets aside the served reading's rows, and the outcome
-  (``finding_words.left_censoring_on_the_participants``).
+  column of two distinct values or fewer, counted on the rows it reads, where it is observed on
+  more than two of them, so a 0/1 outcome before a target is chosen or a 0/1 covariate on no
+  name list is no feature, while a feature detected on two participants or fewer is still read)
+  on the rows outside those the served pooled-QC finding names, and names only features with a
+  blank there; its detail opens with the count of those rows wherever any row is set aside.
+  Read on the participants with the covariates among its columns, the covariates' complete
+  values pulled its correlation off the features' own and could hold it above the gate where the
+  features are censored, and their blanks, where they tracked abundance, raised it where the
+  features' did not. The pack's own pooled-QC reading (``packs._pooled_qc``), whose rows it sets
+  aside by default, reads a two-level label only; on a Case/Control/QC label the served reading
+  names the QC rows and the pack's names none, so the app sets aside the served reading's rows,
+  and the outcome (``finding_words.left_censoring_on_the_participants``).
 
 Each truth is by construction on a plasma-like table (60 participants, 10 QC injections, 40
 features censored below a detection limit, the features being the `mz_` columns it builds),
@@ -48,6 +49,7 @@ from turbotab.core.decisions import (
     ApplyRepair,
     DecisionRecord,
     ProjectState,
+    Refusal,
     SetMissing,
     fold,
     validate,
@@ -98,13 +100,18 @@ def panel(*, sex_blank: int = 0, qc_signal: bool = True, seed: int = 11,
     return out
 
 
-def findings_of(tmp_path: Path, frame: pd.DataFrame, lens: list[str],
-                target: str | None = None) -> dict[str, dict]:
+def artifact_of(tmp_path: Path, frame: pd.DataFrame, lens: list[str],
+                target: str | None = None) -> dict:
+    """The findings stage's artifact on ``frame``, written and ingested as the app does."""
     path = tmp_path / "panel.csv"
     frame.to_csv(path, index=False)
     table = Ingested(path, tmp_path / "ingested")
-    artifact = table.run(findings_stage, ProjectState(lens=lens, target=target))
-    return {f["id"]: f for f in artifact["findings"]}
+    return table.run(findings_stage, ProjectState(lens=lens, target=target))
+
+
+def findings_of(tmp_path: Path, frame: pd.DataFrame, lens: list[str],
+                target: str | None = None) -> dict[str, dict]:
+    return {f["id"]: f for f in artifact_of(tmp_path, frame, lens, target)["findings"]}
 
 
 def read_back(tmp_path: Path, frame: pd.DataFrame) -> pd.DataFrame:
@@ -435,10 +442,11 @@ def test_the_gate_stays_silent_where_only_covariates_omics_sets_aside_track_abun
 def test_before_an_outcome_is_chosen_a_two_valued_outcome_is_not_read_as_a_feature(tmp_path):
     """Before an outcome is chosen nothing names `disease` the outcome and no name rule sets it
     aside, but coded 0 and 1 it carries no abundance to order: it is set aside as the omics_scale
-    reading sets aside a column of two distinct values or fewer. So the detail's numbers are the
-    40 features' on the 60 participants (pandas, scipy: -0.81), from the pack handed no outcome
-    (as ``packs.findings`` reads it) and served before a target. Read with the outcome among the
-    features, it said 41 features and -0.75."""
+    reading sets aside a column of two distinct values or fewer (observed here on all 60
+    participants, so its values repeat). So the detail's numbers are the 40 features' on the 60
+    participants (pandas, scipy: -0.81), from the pack handed no outcome (as ``packs.findings``
+    reads it) and served before a target. Read with the outcome among the features, it said 41
+    features and -0.75."""
     frame = panel()
     df = read_back(tmp_path, frame)
     part = participants(df)
@@ -509,6 +517,110 @@ def test_a_feature_is_read_with_three_distinct_values_and_set_aside_with_two(tmp
     assert found["params"]["n_features"] == len(feats) == N_FEATURES + levels - 2
     assert set(found["params"]["columns"]) == {c for c in feats if part[c].isna().any()}
     assert ("mz_041" in found["params"]["columns"]) == (levels == 3)
+
+
+@pytest.mark.parametrize("detected, read", [((), True), ((55.0,), True), ((55.0, 61.0), True),
+                                            ((55.0, 55.0, 61.0), False)],
+                         ids=["on_no_participant", "on_one", "on_two_distinct",
+                              "on_three_two_values"])
+def test_a_feature_detected_on_two_participants_or_fewer_is_read_and_a_code_is_set_aside(
+        tmp_path, detected, read):
+    """The two-valued guard's edge on the rows observed. `mz_041` is detected on the first
+    participants at ``detected`` (and at 58 on every QC row, one pooled sample) and blank on the
+    other participants, by construction. On two participants or fewer it has no value to repeat:
+    it is a feature detected rarely, the most censored kind, so it is read, counted where it has a
+    mean and named with its blanks (pandas, scipy, over the 41 `mz_` columns), and the
+    missing-values question is handed it as censored. On three participants with two values one
+    repeats, as a code's do: it is set aside, and the numbers are the 40 others' own."""
+    frame = panel()
+    qc = frame["sample_type"].eq("pooled_qc").to_numpy()
+    values = np.where(qc, 58.0, np.nan)
+    values[np.flatnonzero(~qc)[:len(detected)]] = detected
+    frame["mz_041"] = values
+    df = read_back(tmp_path, frame)
+    part = participants(df)
+    assert part["mz_041"].dropna().tolist() == list(detected)
+    assert int(part["mz_041"].isna().sum()) == N_PART - len(detected)
+    feats = features(df) if read else [c for c in features(df) if c != "mz_041"]
+    expected = f"On the {N_PART:,} non-QC rows, across {_detail_read_on(part, feats)}"
+    found = packs._left_censored(df, target="disease")
+    assert found is not None and found["detail"] == expected
+    assert set(found["params"]["columns"]) == {c for c in feats if part[c].isna().any()}
+    assert ("mz_041" in found["params"]["columns"]) == read
+    served = findings_of(tmp_path, frame, ["metabolomics"], target="disease")
+    censored = served["pack::metabolomics::left_censored"]["censored_columns"]
+    assert ("mz_041" in censored) == read
+
+
+SPARSE = tuple(f"mz_{j:03d}" for j in range(31, 37))
+
+
+def sparse_table(seed: int = 3) -> pd.DataFrame:
+    """A table whose only censoring is in features detected rarely, by construction: 30 complete
+    features whose log means run from 5 to 10, and six more (``SPARSE``) detected on one or two
+    participants each, alternately, at distinct values from 50 to 61 and blank on every other
+    row; 60 participants and 10 pooled QCs (every seventh row, a two-level label), and the
+    outcome `disease`, coded 0 and 1 and blank on the QC rows."""
+    rng = np.random.default_rng(seed)
+    n, n_complete = N_PART + N_QC, 30
+    qc = np.zeros(n, dtype=bool)
+    qc[QC_AT] = True
+    part = np.flatnonzero(~qc)
+    log_mean = np.linspace(5.0, 10.0, n_complete)
+    log_value = log_mean + rng.normal(0.0, 1.0, (n, n_complete)) * np.where(qc[:, None], 0.05, 0.8)
+    frame: dict[str, object] = {"sample_type": np.where(qc, "pooled_qc", "participant")}
+    for j in range(n_complete):
+        frame[f"mz_{j + 1:03d}"] = np.round(np.exp(log_value[:, j]), 2)
+    for j, name in enumerate(SPARSE):
+        k = 1 + j % 2
+        v = np.full(n, np.nan)
+        v[part[2 * j:2 * j + k]] = 50.0 + 2 * j + np.arange(k)
+        frame[name] = v
+    out = pd.DataFrame(frame)
+    out["disease"] = np.where(qc, np.nan, rng.integers(0, 2, n).astype(float))
+    return out
+
+
+def test_features_detected_on_one_or_two_participants_are_non_detections_no_fill_reads_at_random(
+        tmp_path):
+    """The six features of ``sparse_table`` are detected on one or two participants each, at
+    distinct values below every complete feature's mean (pandas): their blanks are the table's
+    censoring, and the reading fires on them alone (scipy over the 36 features, at or below
+    -0.5), before an outcome is chosen and with one, naming the six. The missing-values question
+    reads them as non-detections: a median fill is refused, each way out names the six, and
+    under inference multiple imputation is refused. Set aside as two-valued, they left the
+    reading silent and both fills were accepted."""
+    frame = sparse_table()
+    df = read_back(tmp_path, frame)
+    part = participants(df)
+    sparse = list(SPARSE)
+    observed = part[sparse].notna().sum()
+    assert observed.tolist() == [1, 2, 1, 2, 1, 2]
+    assert (part[sparse].nunique() == observed).all()
+    complete = [c for c in features(df) if c not in SPARSE]
+    assert not part[complete].isna().any().any()
+    assert part[sparse].mean().max() < part[complete].mean().min()
+    named, rho, n_usable = _participant_reading(df)
+    assert named == set(sparse) and n_usable == 36 and rho <= -0.5
+    expected = f"On the {N_PART:,} non-QC rows, across {_detail_read_on(part)}"
+    for target in (None, "disease"):
+        found = packs._left_censored(df, target=target)
+        assert found is not None and found["detail"] == expected
+        assert set(found["params"]["columns"]) == set(sparse)
+    artifact = artifact_of(tmp_path, frame, ["metabolomics"], target="disease")
+    (censored,) = [f for f in artifact["findings"]
+                   if f["id"] == "pack::metabolomics::left_censored"]
+    assert censored["detail"] == expected and set(censored["censored_columns"]) == set(sparse)
+    for purpose, strategy in (("prediction", "impute"), ("inference", "multiple_imputation")):
+        ctx = {"artifact": lambda stage: artifact if stage == "findings" else None,
+               "state": ProjectState(lens=["metabolomics"], target="disease", purpose=purpose)}
+        with pytest.raises(Refusal) as refused:
+            validate(SetMissing(strategy=strategy), ctx)
+        assert refused.value.code == "median_below_detection"
+        ways = [e["decision"] for e in refused.value.exits if e["decision"] is not None]
+        assert ways and all(set(d["censored_columns"]) == set(sparse) for d in ways)
+        assert ("never filled as missing at random" in refused.value.message) == (
+            purpose == "inference")
 
 
 def test_left_censoring_sets_aside_the_qc_rows_of_a_case_control_qc_label(tmp_path):
