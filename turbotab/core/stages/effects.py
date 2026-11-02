@@ -309,15 +309,19 @@ def rests_on_units(family: Any) -> bool:
 
 
 def table_given(state: Any, family: Any, task: str,
-                fits: Sequence[tuple[Any, pd.DataFrame, Any]], survey: Any = None) -> bool:
+                fits: Sequence[tuple[Any, pd.DataFrame, Any]], survey: Any = None,
+                per_feature: bool = False) -> bool:
     """Whether ``family``'s table can be given on each of ``fits`` (a table the stage fits: its
     design spec, its rows' inputs, and the clusters ``inference.resolve_clusters`` reads from its
     rows, None where no column may name a unit), as far as the rows and the answers decide it.
     Under inference: a family with no design-based estimator is blocked under the surveyed
     population (``survey``, the stage's ``FitSurvey``, holds the design;
-    ``survey.no_design_estimator``); a table that pools no imputed copies (``pools_imputations``
-    False: the feature-wise tests) is refused where the copies are drawn (:func:`draws_copies`;
-    ``omics.unpooled_refusal``); and with no survey design, a table that rests on cluster-robust
+    ``survey.no_design_estimator``); where the copies are drawn (:func:`draws_copies`), a table
+    that pools none (``pools_imputations`` False) is refused (``omics.unpooled_refusal``), and so
+    is one that pools copies it draws one study factor at a time (``draws_per_feature``: the
+    feature-wise tests, ``methods.featurewise_mi``) unless the stage draws them
+    (``per_feature``: the declared models do; the further-adjusted and sensitivity analyses do
+    not); and with no survey design, a table that rests on cluster-robust
     intervals (:func:`rests_on_units`) reports none where the rows repeat by fewer units than the
     floor (``inference.min_clusters``; ``inference.floor_refusal``). Under either goal a family
     that models the unit itself (its estimator is handed the rows' ``units``, as the fit stage
@@ -331,8 +335,9 @@ def table_given(state: Any, family: Any, task: str,
     if inference and design and not has_design_estimator(family, task):
         return False
     for spec, X, clusters in fits:
-        if inference and not getattr(family, "pools_imputations", True) and draws_copies(
-                state, spec, X):
+        if inference and draws_copies(state, spec, X) and (
+                not getattr(family, "pools_imputations", True)
+                or (getattr(family, "draws_per_feature", False) and not per_feature)):
             return False
         estimator = family.build(task, "inference" if inference else "prediction", len(X),
                                  X.shape[1])
@@ -355,11 +360,13 @@ def _named(family: Any, task: str) -> str:
 
 
 def no_table_refusal(state: Any, task: str, nothing: str,
-                     fits: Sequence[tuple[Any, pd.DataFrame, Any]], survey: Any = None) -> Any:
+                     fits: Sequence[tuple[Any, pd.DataFrame, Any]], survey: Any = None,
+                     per_feature: bool = False) -> Any:
     """The refusal (coded :data:`NO_COEFFICIENT_TABLE`) of a stage that refits only families with
     a coefficient table when none of the chosen ones has one; ``nothing`` says what there is then
     none of, and ``fits`` holds each table the stage fits and ``survey`` the survey answer as the
-    stage applies it (:func:`table_given`). Under inference its ways forward add, to the chosen
+    stage applies it (:func:`table_given`; ``per_feature``: the stage draws the feature-wise
+    tests' own copies). Under inference its ways forward add, to the chosen
     families, each family the engine registers for ``task`` that has one
     (:func:`has_coefficient_table`), serves inference and whose table every one of ``fits`` can
     give, in the shelf's order, the linear model first; under prediction (the sensitivity stage
@@ -375,7 +382,7 @@ def no_table_refusal(state: Any, task: str, nothing: str,
     offered = [f for f in families(task) if f.key not in chosen and (
         (has_coefficient_table(f) and "inference" in f.purposes) if inference
         else (reports_coefficients(f) and "prediction" in f.purposes))
-        and table_given(state, f, task, fits, survey)]
+        and table_given(state, f, task, fits, survey, per_feature)]
     exits = [{"label": f"Add {f.label}, which {has}",
               "decision": {"kind": "select_models", "models": [*chosen, f.key]}} for f in offered]
     head = f"None of the chosen model families {has}, so there is {nothing}"
@@ -573,11 +580,13 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
                  features: Sequence[str], model: Any = None,
                  exposures: Sequence[str] | None = None,
                  entered: Mapping[str, Sequence[str]] | None = None,
-                 study: Sequence[str] | None = None) -> Any:
+                 study: Sequence[str] | None = None, copies: Any = None) -> Any:
     """The family's inference table on ``matrix`` (every analyzed row), as the fit stage computes
     it for the primary: design-based under ``survey`` for the families that have a design-based
     estimator (the stage blocks the others before they get here). None for a family whose table
-    is not made from a matrix alone (:func:`refits_on_matrix`).
+    is not made from a matrix alone (:func:`refits_on_matrix`). ``copies``: the study factors'
+    imputed copies where ``matrix`` keeps its blanks (the feature-wise tests' own,
+    ``methods.featurewise_mi``), over which the family's ``inference`` pools the table.
 
     The table is the family's own ``inference``, handed a pipeline whose one step is the model
     step as the matrix's fit leaves it (its classes, its ordered levels, its tested columns), so
@@ -640,7 +649,7 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
     held = set(str(c) for c in matrix.columns)
     studied = [str(c) for c in (study if study is not None else features) if str(c) in held]
     given = {"outcome": outcome, "rows": "all", "survey": survey, "event": event,
-             "study": studied or None}
+             "study": studied or None, "copies": copies}
     kw = {k: v for k, v in given.items() if k in takes}
     if survey is not None and "survey" not in takes:
         raise ValueError(f"{family.label} has no design-based estimator, so it has no table over "
@@ -679,6 +688,10 @@ class _MatrixStep:
 # ── the stage ────────────────────────────────────────────────────────────────
 
 
+# Under multiple imputation the marginal risks are refused here, and before the lock wherever the
+# plan would draw copies (``featurewise._pools_before_the_lock``, the plasma scope's item 1 (b)).
+MARGINAL_UNPOOLED = ("The marginal risks are not pooled over multiple imputations here: the "
+                     "bootstrap would have to repeat the imputation in every resample.")
 MARGINAL_POPULATION = ("The marginal risks are standardized over these participants; no "
                        "design-based standardization over the surveyed population is built here.")
 
@@ -813,7 +826,8 @@ def effects_stage(ctx: StageContext) -> Bundle:
         tables = [(spec, frame[list(spec.inputs)], clusters)]
         if spec3 is not None:
             tables.append((spec3, frame3[list(spec3.inputs)], clusters3))
-        raise no_table_refusal(state, task, "no effect to report", tables, survey)
+        raise no_table_refusal(state, task, "no effect to report", tables, survey,
+                               per_feature=True)
     keys = [f.key for f in families]
     # The primary's missing values exactly as the fit handles them (the same rows, columns and
     # seed, and since wave 1b's MS2 the same imputation model: the survey design under the
@@ -828,17 +842,37 @@ def effects_stage(ctx: StageContext) -> Bundle:
     parts = dict((design.objects or {}).get("nested") or {})
     missing = _missing_for_table(ctx, spec, frame[list(spec.inputs)], y, task, keys,
                                  loss={"n_dropped": None}, survey=survey, clusters=clusters,
-                                 nested=nesting(state, parts, columns=spec.inputs))
+                                 nested=nesting(state, parts, columns=spec.inputs),
+                                 per_feature=True)
     missing3 = (_missing_for_table(ctx, spec3, frame3[list(spec3.inputs)], y3, task, keys,
                                    loss={"n_dropped": None}, survey=survey, clusters=clusters3,
-                                   nested=nesting(state, parts, columns=spec3.inputs))
+                                   nested=nesting(state, parts, columns=spec3.inputs),
+                                   per_feature=True)
                 if spec3 is not None else None)
+    # The feature-wise tests draw their own copies, one study factor at a time, whatever the other
+    # families' joint imputation does (the plasma scope's item 1), as the fit's do: their answer
+    # is read for them alone.
+    own = [k for k in keys if getattr(get_family(k), "draws_per_feature", False)]
+    own_missing, own_missing3 = missing, missing3
+    if own and own != keys:
+        own_missing = _missing_for_table(ctx, spec, frame[list(spec.inputs)], y, task, own,
+                                         loss={"n_dropped": None}, survey=survey,
+                                         clusters=clusters,
+                                         nested=nesting(state, parts, columns=spec.inputs),
+                                         per_feature=True)
+        own_missing3 = (_missing_for_table(ctx, spec3, frame3[list(spec3.inputs)], y3, task, own,
+                                           loss={"n_dropped": None}, survey=survey,
+                                           clusters=clusters3,
+                                           nested=nesting(state, parts, columns=spec3.inputs),
+                                           per_feature=True)
+                        if spec3 is not None else None)
     facts = est.measure_facts(str(spec_e.measure))
     run = _Run(ctx=ctx, state=state, spec_e=spec_e, key=key, exposures=exposures, task=task,
                frame=frame, y=y, spec=spec, spec3=spec3, pipelines=pipelines, outcome=outcome,
                levels=levels, clusters=clusters, survey=survey, missing=missing,
                model_one=model_one, further=further, extra=extra, unit_columns=list(unit_columns),
                rows3=rows3, frame3=frame3, y3=y3, clusters3=clusters3, missing3=missing3,
+               own_missing=own_missing, own_missing3=own_missing3,
                designs=designs, split_seed=split_seed,
                split_units=split_units(frame, grouping[0] if grouping else None,
                                        assignment["train"].to_numpy()))
@@ -973,6 +1007,47 @@ class _Run:
             concerns=[reason]).model_dump(mode="json")
 
     def family_block(self, family: Any, build_pipeline: Any) -> dict[str, Any]:
+        """The family's declared models; a family that draws its own copies one study factor at
+        a time (the feature-wise tests, ``methods.featurewise_mi``) reads its own missing-values
+        answer (``own_missing``), whatever the other families' joint imputation does."""
+        if not getattr(family, "draws_per_feature", False) or (
+                self.own_missing is self.missing and self.own_missing3 is self.missing3):
+            return self._family_block(family, build_pipeline)
+        import copy
+
+        run = copy.copy(self)
+        run.missing, run.missing3 = self.own_missing, self.own_missing3
+        out = run._family_block(family, build_pipeline)
+        if hasattr(run, "untested"):
+            self.untested = run.untested
+        return out
+
+    def _per_feature(self, family: Any, pipeline: Any, X: pd.DataFrame, y: Any, clusters: Any,
+                     missing: Any) -> tuple[Any, Any]:
+        """(the pipeline fitted with its blanks kept, the study factors' copies drawn on its
+        matrix, None where nothing is blank) for a family whose tests draw their own copies;
+        raises ``featurewise_mi.Unpooled`` with the reason and ways forward where they cannot be
+        drawn (beyond the budget, a blank they do not draw, a study factor the imputation cannot
+        model)."""
+        from turbotab.core.methods import featurewise_mi as fm
+        from turbotab.core.methods.imputation import M_DEFAULT, ImputationRefused
+        from turbotab.core.models.linear import model_matrix
+
+        prepared = fm.prepare(pipeline, X, y, state=self.state)
+        model = prepared.fitted[-1]
+        answer = dict(self.spec.missing or {})
+        try:
+            copies = fm.copies_for(model_matrix(prepared.fitted, X), y, self.task,
+                                   getattr(model, "features", None), clusters,
+                                   censored=prepared.censored,
+                                   asked=int(answer.get("m") or M_DEFAULT), seed=self.split_seed,
+                                   cancelled=self.ctx.cancelled)
+        except ImputationRefused as exc:
+            raise fm.Unpooled(f"Multiple imputation cannot run on these data: {exc}",
+                              fm.ways_forward(self.state, X)) from exc
+        return prepared.fitted, copies
+
+    def _family_block(self, family: Any, build_pipeline: Any) -> dict[str, Any]:
         from turbotab.core import estimand as est
         from turbotab.core.methods.missing import copy_pipeline
         from turbotab.core.models.effects import split_rows
@@ -1009,13 +1084,32 @@ class _Run:
         curve: tuple[str, list[str]] | None = None  # a spline's straight-line and nonlinear columns
         supported = refits_on_matrix(family)
         imputed = getattr(self.missing, "imputations", None) if self.missing else None
+        # The feature-wise tests' own copies, drawn once on the primary's matrix, one study
+        # factor at a time, and pooled in each declared model (``methods.featurewise_mi``).
+        per_feature = bool(getattr(self.missing, "per_feature", False)) and supported
+        drawn = None
         for k, X_k in enumerate(self.copies(self.missing, self.frame)):
             self._unless_cancelled()
             X = X_k[list(self.spec.inputs)]
-            # Under multiple imputation each copy is fit as the fit stage fits it (MI repair):
-            # the knots placed once on the observed values, and an impute step that refuses a
-            # blank made inside the copy instead of median-filling it (``copy_pipeline``).
-            fitted = self._fit(with_units(copy_pipeline(pipeline, imputed), units), X, self.y)
+            if per_feature:
+                from turbotab.core.methods.featurewise_mi import Unpooled, ways_forward
+
+                try:
+                    fitted, drawn = self._per_feature(family, pipeline, X, self.y, self.clusters,
+                                                      self.missing)
+                except Unpooled as exc:
+                    from turbotab.core.row_floor import stage_exits
+
+                    return self._blocked(family, blocked(
+                        exc.reason, stage_exits(exc.exits or ways_forward(self.state, X),
+                                                self.ctx),
+                        estimator="not fitted").info)
+            else:
+                # Under multiple imputation each copy is fit as the fit stage fits it (MI
+                # repair): the knots placed once on the observed values, and an impute step that
+                # refuses a blank made inside the copy instead of median-filling it
+                # (``copy_pipeline``).
+                fitted = self._fit(with_units(copy_pipeline(pipeline, imputed), units), X, self.y)
             if self.levels is not None:
                 fitted[-1].level_names_ = list(self.levels)
             classes = list(getattr(fitted[-1], "classes_", [])) or None
@@ -1059,15 +1153,22 @@ class _Run:
                       survey=design, levels=self.levels, event=self.state.event, features=feats,
                       model=fitted[-1], exposures=self.exposures, entered=entered,
                       study=study_columns(fitted, M.columns, self.exposures, predictors))
+            if drawn is not None:
+                kw["copies"] = drawn  # each model pools these copies on its own columns
             for name, cols in subsets.items():
                 per_copy.setdefault(name, []).append(self._table(
                     lambda _c=cols: self._with_relative(
                         family, fitted, M[_c], self.y, matrix_table(family, M[_c], self.y, **kw),
                         kw), name, failures, pooled=imputed is not None))
             if k == 0:
+                from turbotab.core.methods.featurewise_mi import first_copy
+
                 features = feats
-                first = {"fitted": fitted, "matrix": M, "sources": sources, "classes": classes,
-                         "entered": entered}
+                # The analyses beside the estimates read one complete matrix: the first copy.
+                first = {"fitted": fitted,
+                         "matrix": first_copy(M, drawn) if drawn is not None else M,
+                         "sources": sources, "classes": classes, "entered": entered,
+                         "copies": drawn}
 
                 def holding(cols: Sequence[str]) -> list[str]:
                     # The categories whose indicators a model holds, each adjusted for in it.
@@ -1223,11 +1324,26 @@ class _Run:
                   if self.clusters3 is not None and self.clusters3.clustered else None)
         comparison = None
         imputed3 = getattr(self.missing3, "imputations", None) if self.missing3 else None
+        # The feature-wise tests' own copies, drawn on Model 3's matrix (its added columns among
+        # each study factor's covariates), as the primary's are (``methods.featurewise_mi``).
+        per_feature = bool(getattr(self.missing3, "per_feature", False))
+        drawn3 = None
         for k, X_k in enumerate(self.copies(self.missing3, self.frame3)):
             self._unless_cancelled()
             X3 = X_k[list(self.spec3.inputs)]
-            fitted3 = self._fit(with_units(copy_pipeline(pipeline3, imputed3), units3), X3,
-                                self.y3)
+            if per_feature:
+                from turbotab.core.methods.featurewise_mi import Unpooled
+
+                try:
+                    fitted3, drawn3 = self._per_feature(family, pipeline3, X3, self.y3,
+                                                        self.clusters3, self.missing3)
+                except Unpooled as exc:
+                    per_copy.setdefault("model_3", []).append(None)
+                    failures.setdefault("model_3", exc.reason)
+                    return None
+            else:
+                fitted3 = self._fit(with_units(copy_pipeline(pipeline3, imputed3), units3), X3,
+                                    self.y3)
             if self.levels is not None:
                 fitted3[-1].level_names_ = list(self.levels)
             classes3 = list(getattr(fitted3[-1], "classes_", [])) or None
@@ -1240,6 +1356,8 @@ class _Run:
                        study=study_columns(fitted3, M3.columns, self.exposures, predictors),
                        entered=(category_columns(fitted3, getattr(fitted3[-1], "categories", None)
                                                  or []) if tests_only(family) else {}))
+            if drawn3 is not None:
+                kw3["copies"] = drawn3
             per_copy.setdefault("model_3", []).append(self._table(
                 lambda: self._with_relative(family, fitted3, M3, self.y3,
                                             matrix_table(family, M3, self.y3, **kw3), kw3),
@@ -1511,8 +1629,7 @@ class _Run:
             out.exits = [InferenceExit(**e) for e in exits]
             return out
         if getattr(self.missing, "imputations", None) is not None:
-            out.refused = ("The marginal risks are not pooled over multiple imputations here: the "
-                           "bootstrap would have to repeat the imputation in every resample.")
+            out.refused = MARGINAL_UNPOOLED
             out.exits = [InferenceExit(label="Report the conditional odds ratio", decision={
                 **self.spec_e.model_dump(mode="json"), "kind": "set_estimand",
                 "measure": "odds_ratio"})]
@@ -1630,7 +1747,8 @@ class _Run:
         from turbotab.core import estimand as est
 
         responses = est.current_responses(self.state)
-        imputed = getattr(self.missing, "imputations", None) is not None
+        imputed = (getattr(self.missing, "imputations", None) is not None
+                   or first.get("copies") is not None)  # the feature-wise tests' own copies
         on = " (on the first of the completed copies)" if imputed else ""
         M = first["matrix"]
         if self.survey is not None and self.survey.design is not None:
@@ -1802,7 +1920,8 @@ class _Run:
                                 not_computed=f"No E-value or robustness value is defined here for "
                                              f"a {est.MEASURE_WORDS[est.MEASURE_OF_TASK[self.task]]}.")]
         M, sources = first["matrix"], first["sources"]
-        imputed = getattr(self.missing, "imputations", None) is not None
+        imputed = (getattr(self.missing, "imputations", None) is not None
+                   or first.get("copies") is not None)  # the feature-wise tests' own copies
         covariance = str(primary.inference.covariance) if primary.inference is not None else "none"
         if curve is not None:
             return [self._curve(family, M, sources, features, curve, straight, marginal, imputed)]

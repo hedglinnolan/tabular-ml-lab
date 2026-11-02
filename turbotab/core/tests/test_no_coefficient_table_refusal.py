@@ -16,8 +16,10 @@ regression, the random-intercept mixed model and GEE (``models/linear.py``, ``fe
 mixed model and GEE model the unit, and in ``ef.cohort`` the identifier `pid` takes a value of its
 own on every row, so no unit repeats and their tables are refused (``repeated._no_units``); with
 `pid` repeated three times over (100 units of 3 rows) both are offered and fit. The feature-wise
-tests pool no imputed copies, so under multiple imputation with `activity` blank on 112 rows
-their table is refused (``omics.unpooled_refusal``) and only the linear model is offered. Of the
+tests pool copies they draw one study factor at a time (``methods.featurewise_mi``), which the
+declared models draw and the further-adjusted model does not, so under multiple imputation with
+`activity` blank on 112 rows both are offered for the declared models and only the linear model
+for the further-adjusted one. Of the
 four, only the linear model declares a design-based estimator (``InferenceDecl.design_based``), so
 under the surveyed population the feature-wise table is blocked (``survey.no_design_estimator``)
 and only the linear model is offered; under the "these participants" answer both are. Below the
@@ -42,8 +44,8 @@ from turbotab.core.tests.acceptance import estimand_fixtures as ef
 # Read off the family declarations by hand, in their registration order (the shelf's).
 WITH_A_TABLE = ["linear", "featurewise", "mixed", "gee"]
 # Of those, the ones these rows give a table for where no identifier repeats (the mixed model and
-# GEE model the unit), and under multiple imputation with a blank (the feature-wise tests pool no
-# copies).
+# GEE model the unit), and under multiple imputation with a blank in the further-adjusted model,
+# which draws none of the feature-wise tests' own copies.
 NO_UNIT_REPEATS = ["linear", "featurewise"]
 UNDER_IMPUTATION = ["linear"]
 DESIGN_BASED = ["linear"]
@@ -158,13 +160,40 @@ def test_for_a_yes_no_outcome_gee_is_not_offered_where_no_identifier_repeats(tmp
 @pytest.mark.parametrize("secondary", [False, True])
 def test_under_multiple_imputation_the_ways_forward_leave_out_the_unpooled_table(tmp_path,
                                                                                   secondary):
-    """`activity` blank on 112 rows under multiple imputation: the feature-wise table pools no
-    copies, so the fit refuses it (the design's impute line says so), and the only way forward is
-    the linear model, where the refusal offered the feature-wise regression too."""
+    """`activity` blank on 112 rows under multiple imputation: the feature-wise tests pool copies
+    they draw one study factor at a time (the plasma scope's item 1), which the declared models
+    draw too, so there the feature-wise regression is offered beside the linear model (on the
+    base, which refused it at the fit, it was left out); the further-adjusted model draws none
+    of them, so there the only way forward is the linear model."""
     with pytest.raises(StageRefusal) as refused:
         _run(tmp_path, ["elastic_net"], secondary=secondary, imputed=True)
     _check_refusal(refused.value, SECONDARY_WORDS if secondary else EFFECTS_WORDS,
-                   ["elastic_net"], UNDER_IMPUTATION)
+                   ["elastic_net"], UNDER_IMPUTATION if secondary else NO_UNIT_REPEATS)
+
+
+def test_the_feature_wise_way_forward_under_multiple_imputation_is_pooled(tmp_path):
+    """That way forward taken: the declared models' feature-wise table of `fiber` under multiple
+    imputation is pooled over copies drawn one study factor at a time, the blank covariate
+    `activity` drawn in `fiber`'s model (one sweep: `fiber` has no blank, so `activity` is the
+    one variable drawn, a monotone pattern), with an interval that holds its estimate and a record
+    of the imputations; the further-adjusted model's table is refused, in words that say why."""
+    effects = _run(tmp_path / "effects", ["elastic_net", "featurewise"], secondary=False,
+                   imputed=True)
+    model_2 = ef.sequence(effects)["model_2"]
+    assert model_2["inference"]["refused"] is None
+    record = model_2["inference"]["missing"]
+    assert record["variables"][0] == "each study factor" and record["iterations"] == 1
+    assert record["n_incomplete_rows"] == 112
+    [fiber] = model_2["effects"]
+    assert fiber["ci_low"] < fiber["estimate"] < fiber["ci_high"]
+    secondary = _run(tmp_path / "secondary", ["elastic_net", "featurewise"], secondary=True,
+                     imputed=True)
+    [family] = secondary["families"]
+    for fit in family["fits"]:
+        assert fit["inference"]["refused"].startswith(
+            "Feature-wise regression pools imputations it draws one study factor at a time in "
+            "the fit and the declared models; this analysis draws none, so its table is not fit "
+            "here.")
 
 
 @pytest.mark.parametrize("secondary", [False, True])

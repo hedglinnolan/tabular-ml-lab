@@ -1464,17 +1464,21 @@ def _survey(ctx: StageContext, clusters: Any) -> tuple[Any, str | None]:
 
 class TableMissing:
     """How the inference table handles missing predictor values: blocked (``refusal`` with its
-    ``exits``), pooled over ``imputations``, or a record (``info``) and ``concerns`` its table
-    carries (complete cases with their assumption and cost; a recorded single fill)."""
+    ``exits``), pooled over ``imputations``, pooled over copies its own table draws one study
+    factor at a time (``per_feature``: the feature-wise tests, ``methods.featurewise_mi``; ``m``
+    the answer's count, the floor of the engine's rule), or a record (``info``) and ``concerns``
+    its table carries (complete cases with their assumption and cost; a recorded single fill)."""
 
     def __init__(self, refusal: str | None = None, exits: Sequence[dict[str, Any]] = (),
                  imputations: Any = None, info: dict[str, Any] | None = None,
-                 concerns: Sequence[str] = ()):
+                 concerns: Sequence[str] = (), per_feature: bool = False, m: int | None = None):
         self.refusal = refusal
         self.exits = list(exits)
         self.imputations = imputations
         self.info = info
         self.concerns = [c for c in concerns if c]
+        self.per_feature = per_feature
+        self.m = m
 
     def record(self, table: Any) -> Any:
         """Put the record and concerns on a table that is not blocked (a pooled table has its own)."""
@@ -1491,7 +1495,8 @@ class TableMissing:
 def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, task: str,
                        keys: Sequence[str], loss: Mapping[str, Any] | None = None, *,
                        survey: Any = None, clusters: Any = None,
-                       nested: Mapping[str, str] | None = None) -> TableMissing | None:
+                       nested: Mapping[str, str] | None = None,
+                       per_feature: bool = False) -> TableMissing | None:
     """Under inference, the missing-values answer as the coefficient table applies it.
 
     ``X`` and ``y`` are the rows the table is estimated from; ``loss`` the complete-case comparison
@@ -1500,7 +1505,14 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
     survey design's variables (``survey``: the ``FitSurvey`` of a population answer) and the
     clusters (``clusters``: by unit, ruling 12); ``nested``: parts of totals, which the energy
     identity leaves to their own models. Passive imputation with a declared nonlinear term, and
-    single-level imputation on clustered rows, are held until recorded (MODELING_SEQUENCE §4)."""
+    single-level imputation on clustered rows, are held until recorded (MODELING_SEQUENCE §4).
+
+    Where every chosen table draws its own copies one study factor at a time (the feature-wise
+    tests, ``methods.featurewise_mi``), no joint copy is drawn: a stage that draws those copies
+    (``per_feature``: the fit's, the declared models') is told so (``TableMissing.per_feature``),
+    and any other stage's table is refused, since it would otherwise be fit on the in-fold fill;
+    under inference one censoring-aware fill is refused for them either way (the orchestrator's
+    ruling on M2)."""
     from turbotab.core.methods.imputation import ImputationRefused, M_DEFAULT
     from turbotab.core.methods.missing import (COMPLETE_CASE_ASSUMPTION, INDICATOR_CAUTION,
                                                MI_ASSUMPTION, SINGLE_FILL_CAUTION,
@@ -1516,6 +1528,16 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
     gaps = [c for c in spec.inputs if c not in levels and c in X.columns and X[c].isna().any()]
     imputing = answer.get("strategy") == "multiple_imputation" and bool(gaps)
     clustered = clusters is not None and getattr(clusters, "clustered", False)
+    tables = [k for k in keys if get_family(k).inference is not None]
+    if tables and all(getattr(get_family(k), "draws_per_feature", False) for k in tables):
+        from turbotab.core.methods.featurewise_mi import single_censoring_fill, single_fill_refusal
+
+        if single_censoring_fill(answer):
+            # The orchestrator's ruling on M2: under inference the feature-wise table takes no
+            # single censoring-aware fill, recorded or not; its pooled route replaces it.
+            reason, exits = single_fill_refusal(answer, state,
+                                                X[[c for c in spec.inputs if c in X.columns]])
+            return TableMissing(refusal=reason, exits=stage_exits(exits, ctx))
     held = missing_block(answer, "inference", levels,
                          nonlinear=nonlinear_terms(spec, task) if imputing else (),
                          passive=imputing and task in ("ordinal", "multiclass"),
@@ -1534,13 +1556,14 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
         if not pools:
             return TableMissing(info={**base, "note": "No chosen family has a table to pool."})
         if not any(getattr(get_family(k), "pools_imputations", True) for k in pools):
-            # MS7 repair: a table that cannot pool the copies (feature-wise tests) draws none; it
-            # is held with its ways forward, the censoring-aware single fill among them.
+            # MS7 repair: a table that cannot pool the copies draws none; it is held with its
+            # ways forward.
             from turbotab.core.methods.omics import unpooled_refusal
 
             reason, exits = unpooled_refusal(get_family(pools[0]).label, state,
                                              X[[c for c in spec.inputs if c in X.columns]])
             return TableMissing(refusal=reason, exits=exits)
+        own = all(getattr(get_family(k), "draws_per_feature", False) for k in pools)
         seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
         last = [0.0]
 
@@ -1563,6 +1586,32 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
             if ask:
                 reason, exits = time_invariance_ask(ask, clusters.column, state)
                 return TableMissing(refusal=reason, exits=exits)
+        if own:
+            # The plasma scope's item 1: the feature-wise tests draw their own copies, one study
+            # factor at a time, each from that factor's own model given the outcome and the
+            # covariates (``methods.featurewise_mi``): no joint copy is drawn for them here.
+            if not per_feature:
+                from turbotab.core.methods.omics import unpooled_refusal
+
+                label = get_family(pools[0]).label
+                reason, exits = unpooled_refusal(
+                    label, state, X[[c for c in spec.inputs if c in X.columns]],
+                    why=(f"{label} pools imputations it draws one study factor at a time in the "
+                         f"fit and the declared models; this analysis draws none, so its table "
+                         f"is not fit here."))
+                return TableMissing(refusal=reason, exits=stage_exits(exits, ctx))
+            if once:
+                from turbotab.core.methods.featurewise_mi import ways_forward
+                from turbotab.core.voice import listing
+
+                return TableMissing(refusal=(
+                    f"Feature-wise regression is pooled over multiple imputations drawn one study "
+                    f"factor at a time, row by row; {listing(once)} {'is' if len(once) == 1 else 'are'} "
+                    f"confirmed as one value per `{clusters.column}`, which these copies do not "
+                    f"draw once per unit."),
+                    exits=stage_exits(ways_forward(state, X[[c for c in spec.inputs
+                                                             if c in X.columns]]), ctx))
+            return TableMissing(info=base, per_feature=True, m=m)
         try:
             imputations = impute_for_inference(spec, X, y, task, seed=seed, progress=progress,
                                                cancelled=ctx.cancelled, survey=design,
@@ -2165,6 +2214,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     if inference and implicate is not None:
         missing, copy_clusters = _copies_for_table(ctx, spec, frame.loc[table_rows], implicate,
                                                     y_tab, unit_columns)
+        own_missing = missing
     else:
         from turbotab.core.readings import nesting
 
@@ -2172,7 +2222,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
         nested = nesting(state, dict((design.objects or {}).get("nested") or {}), columns=spec.inputs) \
             if inference else None
         missing = (_missing_for_table(ctx, spec, X_tab, y_tab, task, keys, survey=survey,
-                                      clusters=clusters, nested=nested) if inference else None)
+                                      clusters=clusters, nested=nested, per_feature=True)
+                   if inference else None)
+        # The feature-wise tests draw their own copies, one study factor at a time, whatever the
+        # other families' joint imputation does (the plasma scope's item 1): their answer is read
+        # for them alone.
+        own = [k for k in keys if getattr(get_family(k), "draws_per_feature", False)]
+        own_missing = (_missing_for_table(ctx, spec, X_tab, y_tab, task, own, survey=survey,
+                                          clusters=clusters, nested=nested, per_feature=True)
+                       if inference and own and own != list(keys) else missing)
     # Audit IN-22: under inference the coefficient table says its dietary intakes are measured with
     # error and not corrected here (methods/dietary_caveats.py; Freedman et al. 2011).
     error_line = _measurement_error_line(ctx, spec) if inference else None
@@ -2330,10 +2388,27 @@ def fit_stage(ctx: StageContext) -> Bundle:
                       else fit(clone(pipelines[key]), X, y))
             X_c, y_c = (X_tab, y_tab) if all_rows else (X, y)
             unit_c = (None if unit_all is None else unit_all[table_rows]) if all_rows else groups
+            mine = own_missing if getattr(family, "draws_per_feature", False) else missing
+
+            def pooled(on: Any, _key: str = key, _family: Any = family, _X: Any = X_c,
+                       _y: Any = y_c) -> Any:
+                last = [0.0]
+
+                def drawing(done_: int, total: int) -> None:
+                    if done_ == total or done_ - last[0] >= max(1, total // 50):
+                        last[0] = done_
+                        ctx.progress(share(done), f"{_family.label}: imputing study factor "
+                                                  f"{done_:,} of {total:,}")
+
+                return _per_feature_table(
+                    _family, pipelines[_key], _X, _y, task, state, on, spec=spec,
+                    seed=int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0,
+                    ctx=ctx, progress=drawing, cancelled=ctx.cancelled)
+
             models.append(_tests_only(family, tested, X_c, y_c, task, state, clusters, unit_c,
                                       baseline, started, rows="all" if all_rows else "training",
                                       survey=survey, survey_note=survey_note,
-                                      missing=missing if all_rows else None))
+                                      missing=mine if all_rows else None, pooled=pooled))
             done += len(sub_pairs) + own_pairs + 2
             continue
 
@@ -2961,16 +3036,78 @@ def relative_refit(matrix: Any, refit: Any, infinite: list[str] | None = None) -
     return table
 
 
+def _per_feature_table(family: Any, template: Any, X: Any, y: Any, task: str, state: Any,
+                       clusters: Any, *, spec: Any = None, seed: int = 0, asked: int | None = None,
+                       ctx: Any = None, progress: Any = None, cancelled: Any = None) -> Any:
+    """The feature-wise table pooled over imputations drawn one study factor at a time (the
+    plasma scope's item 1; ``methods.featurewise_mi``): ``template`` (the family's unfitted
+    pipeline) fitted on ``X`` with its blanks kept, each study factor's blanks drawn from its own
+    model given the outcome and the covariates, m by the engine's rule over ``asked`` (the
+    answer's), each copy tested and pooled. Where the copies cannot be drawn the table is refused
+    with the reason and its ways forward: beyond the budget, or a blank the copies do not draw
+    (``featurewise_mi.Unpooled``), or a study factor the imputation cannot model (complete cases,
+    and leaving it out)."""
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.methods.imputation import M_DEFAULT, ImputationRefused
+    from turbotab.core.models.featurewise import category_columns
+    from turbotab.core.models.survey import blocked
+
+    answer = dict(getattr(spec, "missing", None) or (state.missing.model_dump(mode="json")
+                                                     if state.missing else {}))
+    held = "not fitted: the missing-values answer decides it"
+    try:
+        prepared = fm.prepare(template, X, y, state=state)
+        model = prepared.fitted[-1]
+        entered = (category_columns(prepared.fitted, model.categories)
+                   if getattr(model, "categories", None) else None)
+        table, copies = fm.pooled_featurewise_table(
+            prepared.matrix, y, task, getattr(model, "features", None), clusters, state.event,
+            censored=prepared.censored, asked=int(asked or answer.get("m") or M_DEFAULT),
+            seed=seed, named=getattr(model, "named", None), forms=getattr(model, "forms", None),
+            entered=entered, spec=spec, progress=progress, cancelled=cancelled)
+        if copies is None and (table.rows or not table.info.get("refused")):
+            # No value its tests read is blank (the blanks were in columns the design's filters
+            # took out): nothing was drawn, and the record says so, never a count of copies.
+            from turbotab.core.methods.missing import MI_ASSUMPTION, PER_FEATURE_VARIABLE
+
+            table.info["missing"] = {
+                "method": "multiple_imputation", "assumption": MI_ASSUMPTION, "m": 0,
+                "n_rows": int(len(X)), "n_incomplete_rows": 0, "outcome_in_model": True,
+                "variables": [PER_FEATURE_VARIABLE], "censored": [],
+                "note": "No value the tests read is missing among the analyzed rows, so nothing "
+                        "was imputed."}
+        return table
+    except fm.Unpooled as exc:
+        exits = exc.exits or fm.ways_forward(state, X)
+        return blocked(exc.reason, stage_exits(exits, ctx) if ctx is not None else exits,
+                       estimator=held)
+    except ImputationRefused as exc:
+        left = [c for c in getattr(exc, "columns", None) or []
+                if c not in (answer.get("drop_columns") or [])]
+        exits = [e for e in fm.ways_forward(state, X) if e.get("decision")]
+        if left:
+            exits.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
+                          "decision": {**answer, "kind": "set_missing", "drop_columns": [
+                              *(answer.get("drop_columns") or []), *left]}})
+        exits.append(fm._another_family(state))
+        return blocked(f"Multiple imputation cannot run on these data: {exc}",
+                       stage_exits(exits, ctx) if ctx is not None else exits, estimator=held)
+
+
 def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, clusters: Any,
                 groups: Any, baseline: dict[str, Any], started: float,
                 rows: str = "training", survey: Any = None,
-                survey_note: str | None = None, missing: Any = None) -> dict[str, Any]:
+                survey_note: str | None = None, missing: Any = None,
+                pooled: Any = None) -> dict[str, Any]:
     """The fit artifact's entry for a family that tests and makes no predictions: its table, its
     concerns, and no score (``cv`` empty, ``holdout`` and ``versus_baseline`` null). ``X`` and
     ``y`` are the rows the table is estimated from (``rows``: every analyzed row under inference).
 
     Under a survey design (WP10) the table waits for the survey answer as the linear family's does;
-    under the population answer a family with no design-based tests is blocked and recorded (MS4)."""
+    under the population answer a family with no design-based tests is blocked and recorded (MS4).
+    Under multiple imputation drawn one study factor at a time (``missing.per_feature``) the table
+    is ``pooled(clusters)``'s (:func:`_per_feature_table`); copies drawn otherwise (the data's own)
+    are not pooled for it, and its table is refused (``omics.unpooled_refusal``)."""
     from turbotab.core.models.inference import _on_rows
     from turbotab.core.models.linear import as_clusters
     from turbotab.core.stages.effects import tests_only
@@ -2996,13 +3133,17 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
             from turbotab.core.methods.omics import unpooled_refusal
 
             reason, exits = ((missing.refusal, missing.exits) if missing.refusal
-                             else unpooled_refusal(family.label, state, X))
+                             else unpooled_refusal(
+                                 family.label, state, X,
+                                 why=(f"{family.label} is not pooled over the data's own imputed "
+                                      f"copies here.")))
             table = blocked(reason, exits, estimator="not fitted: the missing-values answer decides it")
         else:
-            table = family.inference(final, X, y, task=task,
-                                     clusters=clusters if clusters is not None else as_clusters(groups),
-                                     event=state.event)
-            if table.info.get("n_rows") is None:
+            on = clusters if clusters is not None else as_clusters(groups)
+            table = (pooled(on) if missing is not None and missing.per_feature and pooled is not None
+                     else family.inference(final, X, y, task=task, clusters=on, event=state.event))
+            # A table the pooled route refused before any test was estimated from no row.
+            if table.info.get("n_rows") is None and (table.rows or not table.info.get("refused")):
                 table = _on_rows(table, len(X), rows)
             if tests_only(family) and not table.info.get("refused"):
                 # MS7: an exposure family's recorded multiplicity method (Benjamini–Hochberg implied).

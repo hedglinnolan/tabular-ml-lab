@@ -1074,11 +1074,14 @@ def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None, *,
     and that no copy is drawn, with no count. Under inference a number of imputations is stated
     only on the line of a family whose table is pooled over the copies (every family where
     ``family`` is None), as ``stages.modeling._missing_for_table`` reads the chosen families
-    before drawing any: a family with no inference table is said to be fit on this fill, and one
-    whose table pools no copies (``pools_imputations`` False: the feature-wise tests) to have its
-    table not fit, the fit's refusal saying why and what to choose instead
-    (``omics.unpooled_refusal``). A family that makes no predictions (``predicts`` False: the
-    feature-wise tests) has no cross-validated score, and its line names none."""
+    before drawing any: a family with no inference table is said to be fit on this fill; one whose
+    tests draw their own copies one study factor at a time (``draws_per_feature``: the
+    feature-wise tests, ``methods.featurewise_mi``) not to use it, and to be pooled over at least
+    the rule's floor, the fit counting the rest; and one whose table pools no copies
+    (``pools_imputations`` False) to have its table not fit, the fit's refusal saying why and what
+    to choose instead (``omics.unpooled_refusal``). A family that makes no predictions
+    (``predicts`` False: the feature-wise tests) has no cross-validated score, and its line names
+    none."""
     marked = "; each filled number also gets a missing indicator" if spec.indicators else ""
     fill = getattr(spec, "energy_fill", None) or {}
     nutrients = list(fill.get("nutrients") or [])
@@ -1114,6 +1117,17 @@ def impute_detail(spec: DesignSpec, step: Any = None, family: Any = None, *,
             # No table draws copies for it: its fit, as its scores, is on this fill.
             text += (f" {family.label} has no coefficient table to pool over multiple "
                      f"imputations: this fill serves its fit and its cross-validated scores.")
+        elif family is not None and getattr(family, "draws_per_feature", False):
+            # Its tests draw their own copies, one study factor at a time
+            # (``methods.featurewise_mi``): the fit counts them by the engine's rule over the most
+            # incomplete study factor's model, so the line states the rule's floor alone.
+            from turbotab.core.methods.imputation import M_DEFAULT, m_rule
+
+            least = m_rule(0, 1, int((spec.missing or {}).get("m") or M_DEFAULT))
+            text += (f" {family.label}'s tests do not use this fill: they are pooled over at least "
+                     f"{least} multiple imputations drawn one study factor at a time, each from "
+                     f"its own model given the outcome and the covariates, more when more rows "
+                     f"are incomplete.")
         elif family is not None and not getattr(family, "pools_imputations", True):
             # Its table pools no copies, so the fit refuses it (``omics.unpooled_refusal``).
             text += (f" {family.label} pools no multiple imputations, so under this answer its "

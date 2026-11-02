@@ -842,7 +842,7 @@ def build_graph() -> Graph:
             # complete cases no interval they would refuse (T5d's repair round;
             # ``inference.separated_profile_words``, ``inference.newton_distance``,
             # ``inference._cr2_parts``).
-            Stage("fit", 41, ("working", "design", "split", "target_info", "cohort"),
+            Stage("fit", 42, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models", "purpose"),

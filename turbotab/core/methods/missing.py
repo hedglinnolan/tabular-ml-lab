@@ -1703,6 +1703,19 @@ def multiple_imputation_info(imputations: Any, spec: Any, n_rows: int,
     return record
 
 
+# The first of the imputation model's variables in the record of copies drawn one study factor at a
+# time (the feature-wise tests' own, ``methods.featurewise_mi``): chained equations on each study
+# factor's own variables, so the record's ``model`` is ``chained_equations``, and this names them.
+PER_FEATURE_VARIABLE = "each study factor"
+
+
+def per_feature(record: Mapping[str, Any] | None) -> bool:
+    """Whether ``record`` (an ``inference.missing`` record) is of copies drawn one study factor at
+    a time (:data:`PER_FEATURE_VARIABLE` leads its variables)."""
+    variables = list((record or {}).get("variables") or [])
+    return bool(variables) and variables[0] == PER_FEATURE_VARIABLE
+
+
 def mi_sentence(record: Mapping[str, Any]) -> str:
     """The methods sentence of a pooled table's multiple imputation (STROBE-nut nut-13; Sterne et
     al. 2009's checklist: the imputation model, m, and how the results were combined)."""
@@ -1719,6 +1732,24 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
         text = (f"Each of the data's {m} imputed copies ({numbered}{tick(record.get('implicate'))}) "
                 f"was analyzed as its own completed dataset with its own outcome, and the estimates "
                 f"were pooled by Rubin's rules (NCHS's combining rules)")
+    elif per_feature(record):
+        # The feature-wise tests' own copies (``methods.featurewise_mi``): each study factor's
+        # blanks from its own model given the outcome and the covariates, its test's terms.
+        censored = list(record.get("censored") or [])
+        how = ("values below a detection limit from a censored-normal (Tobit) model, its "
+               "parameters drawn from their approximate posterior before each copy, and any other "
+               "blank from a normal linear model" if censored else
+               "from a normal linear model, its parameters drawn from their posterior")
+        pct = record.get("percent_incomplete") or 0.0
+        # Its variables: each study factor, the outcome, then the adjustment columns.
+        given = ("the outcome and the covariates" if len(record.get("variables") or []) > 2
+                 else "the outcome")
+        text = (f"Missing values were multiply imputed one study factor at a time, each from its own "
+                f"model given {given}, the terms of its test ({how}); m = {m} imputations, at least "
+                f"20 and at least the {pct:g}% of rows with an imputed value in the most "
+                f"incomplete study factor's model ({WHITE_ROYSTON_WOOD})")
+        if record.get("unit"):
+            text += _clustered_clause(record)
     else:
         if model == "smcfcs":
             kind = {"linear": "linear", "logistic": "logistic", "cox": "Cox"}.get(
@@ -1772,6 +1803,8 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
         if record.get("unit"):
             text += _clustered_clause(record)
     pooled = "" if model == "supplied" else "; the estimates were pooled by Rubin's rules"
+    if per_feature(record):
+        pooled += ", each study factor's on t with Barnard–Rubin degrees of freedom"
     if record.get("tests_d1"):
         pooled += ", multi-parameter tests by D1 (Li, Raghunathan & Rubin 1991)"
     if record.get("df_com"):
@@ -2179,6 +2212,7 @@ __all__ = [
     "imputation_model_options", "MI_CONTRACTS", "CopyGuard", "FixedForms", "ImputationPlan",
     "PASSIVE_CAUTION", "SINGLE_LEVEL_CAUTION", "copy_pipeline", "copy_template", "design_variables",
     "energy_identity", "fixed_forms", "imputation_plan", "logged_columns", "mi_sentence",
+    "per_feature", "PER_FEATURE_VARIABLE",
     "nonlinear_terms", "supplied_copies", "carry_within_units", "time_invariance_ask",
     "time_invariant_columns", "MI_EXIT_LABEL", "MI_LABEL", "M_WORDS", "engine_substantive",
     "DesignWords", "design_term_words", "sample_way", "WITHOUT_THE_DESIGN",

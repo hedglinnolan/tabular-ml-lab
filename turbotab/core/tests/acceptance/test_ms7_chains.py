@@ -271,19 +271,22 @@ def test_chain_3_writes_the_reviewers_methods_sentence(chain3):
     assert said == expected
 
 
-def test_chain_3_inference_twin_feature_wise_tests_fill_values_below_detection_censoring_aware(
+def test_chain_3_inference_twin_feature_wise_tests_draw_values_below_detection_censoring_aware(
         tmp_path):
     """Chain 3's table under inference, every metabolite tested on its own (feature-wise, BH).
     Multiple imputation with the censored-normal draw is the leash's first answer for values below
-    detection, but a feature-wise table pools no imputations (more columns than an imputation
-    model holds): the fit holds the table, its reason naming exactly its two exits, complete cases
-    and one censoring-aware fill recorded as a limitation (MODELING_SEQUENCE §4: a single fill
-    under inference is block-and-record). Taking the second, the table is computed and the methods
-    paragraph says what was done: the QC answer's counts (``qc_counts_by_hand``), PQN and log2, the
-    features filled once on the analyzed rows (the censored ones the QC filters kept, pandas), the
-    single fill recorded, the intervals clustered by participant (no folds under inference), and
-    the family's tests with Benjamini–Hochberg (statsmodels' ``multipletests`` over the table's
-    p-values)."""
+    detection, and the feature-wise table is pooled over copies drawn one study factor at a time
+    (the plasma scope's item 1; on the base the fit held the table, offering complete cases or one
+    censoring-aware fill). The table is computed and the methods paragraph says what was done:
+    the QC answer's counts (``qc_counts_by_hand``), PQN and log2, the features drawn below the
+    limit (the censored ones the QC filters kept and the study samples hold blank, pandas) within
+    each of m imputations (the engine's rule from that count: at least 20, at least the percentage
+    of the 78 samples blank in the most incomplete feature), the intervals clustered by
+    participant (no folds under inference), and the family's tests pooled, with
+    Benjamini–Hochberg (statsmodels' ``multipletests`` over the table's pooled p-values). Recording
+    one censoring-aware fill instead is refused, its first way forward the pooled route."""
+    import math
+
     from statsmodels.stats.multitest import multipletests
 
     frame, _ = metabolomics_run()
@@ -320,18 +323,12 @@ def test_chain_3_inference_twin_feature_wise_tests_fill_values_below_detection_c
                  "missing": {k: v for k, v in drawn.items() if k != "kind"},
                  "split": {"holdout": 0.0, "folds": 5, "seed": 0, "validation": "kfold"},
                  "models": ["featurewise"]}
-        out = run.run(ProjectState.model_validate(slots), upto=["fit"])
-        held = data(out["fit"])["models"][0]["inference"]
-        assert held["refused"] == (
-            "Feature-wise regression is not pooled over multiple imputations here: its tests run "
-            "feature by feature over more columns than an imputation model holds. Choose complete "
-            "cases, or fill the values below detection once, censoring-aware, recorded as a "
-            "limitation.")
-        once = held["exits"][1]["decision"]
-        assert [e["decision"]["strategy"] for e in held["exits"]] == ["complete_case", "impute"]
-        assert (once["below_detection"], once["acknowledged"]) == ("censoring_aware", True)
-        validate(SetMissing(**{k: v for k, v in once.items() if k != "kind"}), ctx)
-        slots["missing"] = {k: v for k, v in once.items() if k != "kind"}
+        once = {**slots["missing"], "strategy": "impute", "acknowledged": True}
+        with pytest.raises(Refusal) as refused:
+            validate(SelectModels(models=["featurewise"]),
+                     ctx_of(ProjectState.model_validate({**slots, "missing": once}), frame, out))
+        assert refused.value.code == "featurewise_single_fill"
+        assert refused.value.exits[0]["decision"]["strategy"] == "multiple_imputation"
         state = ProjectState.model_validate(slots)
         out = run.run(state, upto=["fit"])
         model = data(out["fit"])["models"][0]
@@ -339,10 +336,14 @@ def test_chain_3_inference_twin_feature_wise_tests_fill_values_below_detection_c
         qc_rows = pd.read_parquet(out["working"].files[Q.QC_ROWS_FILE]).set_index("__row_id")
         detection, guessed, high, remain = qc_counts_by_hand(frame, feats, qc_rows)
         assert [r["feature"] for r in rows] == remain  # every member of the family shown
-        assert model["inference"]["missing"]["method"] == "single_fill"
+        assert model["inference"]["refused"] is None
+        study = frame[frame["sample_type"] == "Sample"]
+        filled = [c for c in remain if study[c].isna().any()]
+        most = max(int(study[c].isna().sum()) for c in remain)
+        m = max(20, math.ceil(100 * most / len(study)))
+        assert model["inference"]["missing"]["m"] == m
         q = multipletests([r["p"] for r in rows], method="fdr_bh")[1]
         np.testing.assert_allclose([r["q"] for r in rows], q, rtol=1e-10)
-        filled = [c for c in feats if frame[c].isna().any() and c in set(remain)]
         assert model["methods"] == (
             f"Drift was corrected per batch by QC-RLSC fitted to pooled QCs only, which were then "
             f"removed. QC-RLSC (Dunn et al. 2011) fitted, for each feature and each of the 2 batches "
@@ -354,13 +355,13 @@ def test_chain_3_inference_twin_feature_wise_tests_fill_values_below_detection_c
             f"({len(high)}; the LC-MS criterion) were removed (Broadhurst et al. 2018); "
             f"{len(remain)} of {len(feats)} remain. Intensities were normalized by probabilistic "
             f"quotient normalization (Dieterle et al. 2006) and log2-transformed. Values below "
-            f"detection in {len(filled)} features were filled after normalization and before the "
-            f"log, each by its expected value below the limit under a left-censored normal fitted "
-            f"to the feature's logarithm on the analyzed rows (Lubin et al. 2004). A single fill, "
-            f"recorded as a limitation: its intervals are too narrow. Intervals were cluster-robust "
-            f"(CR2) by `participant_id`. Each of the {len(remain)} features was tested in its own "
-            f"linear model with the covariates; Benjamini–Hochberg q-values across the "
-            f"{len(remain)} tests ({int(np.sum(q < 0.05))} below 0.05), every feature shown.")
+            f"detection in {len(filled)} features were drawn below the limit within each of the "
+            f"{m} multiple imputations, each feature's from its own censored-normal (Tobit) model "
+            f"given the outcome (Lubin et al. 2004). Intervals were cluster-robust (CR2) by "
+            f"`participant_id`. Each of the {len(remain)} features was tested in its own linear "
+            f"model with the covariates in each imputation and pooled by Rubin's rules; "
+            f"Benjamini–Hochberg q-values across the pooled p-values of the {len(remain)} tests "
+            f"({int(np.sum(q < 0.05))} below 0.05), every feature shown.")
     finally:
         run.close()
 

@@ -232,7 +232,10 @@ def test_a_feature_wise_table_never_offers_complete_cases_that_leave_nothing_to_
     """DoD §1, no dead end: on the untargeted metabolomics fixture no row holds every feature, so
     the "Complete cases" way forward the feature-wise refusal once offered left 0 rows and the
     design stage threw (“Found array with 0 sample(s)”). It is offered only when complete cases
-    keep rows enough for the design, with their count; the refusal names exactly what is offered."""
+    keep rows enough for the design, with their count; the refusal names exactly what is offered.
+    Where values below detection are named, one censoring-aware fill is never offered: under
+    inference the pooled route replaces it (the orchestrator's ruling on M2; it was the way
+    forward), so with no complete case left the refusal names none."""
     from types import SimpleNamespace
 
     from turbotab.core.decisions import SetMissing
@@ -244,26 +247,26 @@ def test_a_feature_wise_table_never_offers_complete_cases_that_leave_nothing_to_
     assert omics.complete_rows(X) == 0
     censored = SimpleNamespace(missing=SimpleNamespace(drop_columns=[], censored_columns=feats[:3]))
     plain = SimpleNamespace(missing=SimpleNamespace(drop_columns=["bmi"], censored_columns=[]))
-    for state, way in ((censored, "censoring_aware"), (plain, "single_fill")):
-        reason, exits = omics.unpooled_refusal("Feature-wise regression", state, X)
-        assert [e["decision"]["strategy"] for e in exits] == ["impute"], exits
-        assert "Complete cases are not offered: 0 of the 80 rows hold every value" in reason
-        words = omics.EXIT_WORDS[way]
-        assert reason.endswith(f" {words[:1].upper()}{words[1:]}."), reason
-        for e in exits:  # each way forward is an answer the decision log accepts
-            SetMissing(**{k: v for k, v in e["decision"].items() if k != "kind"})
-            assert e["decision"]["acknowledged"] is True
+    reason, exits = omics.unpooled_refusal("Feature-wise regression", censored, X)
+    assert exits == []
+    assert reason.endswith("Complete cases are not offered: 0 of the 80 rows hold every value, "
+                           f"fewer than the {SPLINE_MIN_VALUES} the design needs."), reason
+    reason, exits = omics.unpooled_refusal("Feature-wise regression", plain, X)
+    assert [e["decision"]["strategy"] for e in exits] == ["impute"], exits
+    assert "Complete cases are not offered: 0 of the 80 rows hold every value" in reason
+    words = omics.EXIT_WORDS["single_fill"]
+    assert reason.endswith(f" {words[:1].upper()}{words[1:]}."), reason
+    SetMissing(**{k: v for k, v in exits[0]["decision"].items() if k != "kind"})
+    assert exits[0]["decision"]["acknowledged"] is True
     assert exits[0]["decision"]["drop_columns"] == ["bmi"]
-    # with rows enough, complete cases lead, counted; without a frame, as before
+    # with rows enough, complete cases alone, counted; without a frame, as before
     some = X.copy()
     some.loc[some.index[:SPLINE_MIN_VALUES], :] = 1.0
     reason, exits = omics.unpooled_refusal("Feature-wise regression", censored, some)
     assert exits[0]["label"] == f"Complete cases ({SPLINE_MIN_VALUES} of the 80 rows)"
-    assert [e["decision"]["strategy"] for e in exits] == ["complete_case", "impute"]
-    assert reason.endswith("Choose complete cases, or fill the values below detection once, "
-                           "censoring-aware, recorded as a limitation."), reason
+    assert [e["decision"]["strategy"] for e in exits] == ["complete_case"]
+    assert reason.endswith("Choose complete cases."), reason
     few = X.copy()
     few.loc[few.index[:SPLINE_MIN_VALUES - 1], :] = 1.0
-    assert [e["decision"]["strategy"] for e in omics.featurewise_missing_exits(censored, few)] == \
-        ["impute"]
+    assert omics.featurewise_missing_exits(censored, few) == []
     assert [e["label"] for e in omics.featurewise_missing_exits(censored)][0] == "Complete cases"
