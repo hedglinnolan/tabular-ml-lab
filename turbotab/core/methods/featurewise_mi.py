@@ -25,9 +25,16 @@ means), so ``Z``'s draws see the factor its test treats as the response. A study
 blanks are its own alone, on rows that do not repeat, is a monotone pattern of one variable: its
 censored-normal model is fit once and its m copies drawn from that fit, which is what m chains of
 one sweep each would do (each would refit the same model on the same observed values). A censored
-column is drawn only where its model has a finite maximum-likelihood fit, read from the design and
-never from the solver (:func:`identification_refusal`; Olsen 1978): one detected only in rows of
-one outcome, or whose detected values are all equal, is refused before any draw.
+column is drawn only where its model has one finite maximum-likelihood fit, read from the design
+and never from the solver (:func:`identification_refusal`; Olsen 1978): one detected only in rows
+of one outcome, or whose detected values are all equal, is refused before any draw, and one with
+fewer detected values than terms is drawn where the rows below detection identify the rest. A
+chained model the sampler cannot fit is refused, never drawn (:func:`chain_refusal`). On repeated
+rows a censored column's chained model holds the other variables' unit means, so beside a complete
+column that is one value per unit two of its terms are one: whether the solver still fits it rests
+on rounding (in the second repair round's check, 4 of 10 panels; their pooled estimates were those
+of the same chain without the repeated term within one Monte Carlo error), and where it does not
+the refusal says why.
 
 **What is pooled.** Each copy is tested by the family's own Frisch–Waugh–Lovell tests
 (``featurewise.feature_tests``); each study factor is pooled by Rubin's rules with Barnard and
@@ -401,17 +408,28 @@ def budget_refusal(sweeps: Sequence[int], m: int) -> str | None:
     from turbotab.core.voice import plural
 
     n = len(sweeps)
-    chained = [s for s in sweeps if s > 1]
-    if not chained:
-        each = ""
-    elif len(chained) == n:
-        each = f" × {chained[0]} sweeps of chained equations"
-    else:
-        each = f", {len(chained):,} of them over {chained[0]} sweeps of chained equations,"
-    return (f"Feature-wise regression is pooled over multiple imputations drawn one study factor "
-            f"at a time: here {n:,} {plural(n, 'study factor', 'study factors')} × {m} "
-            f"imputations{each} make {draws:,} draws, more than the {MAX_FEATURE_COPIES:,} one "
-            f"table may draw, a limit that bounds how long its fit takes.")
+    lead = ("Feature-wise regression is pooled over multiple imputations drawn one study factor at "
+            "a time")
+    tail = (f"more than the {MAX_FEATURE_COPIES:,} one table may draw, a limit that bounds how "
+            f"long its fit takes.")
+    groups: dict[int, int] = {}
+    for s in sweeps:
+        groups[int(s)] = groups.get(int(s), 0) + 1
+    if len(groups) == 1:
+        (s,) = groups
+        each = f" × {s} sweeps of chained equations" if s > 1 else ""
+        return (f"{lead}: here {n:,} {plural(n, 'study factor', 'study factors')} × {m} "
+                f"imputations{each} make {draws:,} draws, {tail}")
+    # Some by chained equations, some once in each imputation (the verifier's FWMI-R1-4): each
+    # group's count with its sweeps and m, so the sum can be followed.
+    parts = []
+    for s, k in sorted(groups.items(), reverse=True):
+        who = (f"{k:,} {plural(k, 'study factor is', 'study factors are')} drawn" if not parts
+               else f"{k:,}")
+        imputations = "" if parts else " imputations"
+        parts.append(f"{who} by chained equations, {s} sweeps in each of {m} imputations" if s > 1
+                     else f"{who} once in each of {m}{imputations}")
+    return f"{lead}: here {', and '.join(parts)}, {draws:,} draws in all, {tail}"
 
 
 def plan_frame(state: Any, ctx: Any) -> pd.DataFrame | None:
@@ -497,6 +515,33 @@ def plan_categories(state: Any, frame: pd.DataFrame) -> set[str]:
     return set(category_inputs(state, frame, list(frame.columns)))
 
 
+def plan_levels(answer: Mapping[str, Any], ctx: Any, frame: pd.DataFrame) -> set[str]:
+    """The plan's columns whose blanks the answer keeps as a level of their own
+    (``categorical == "missing_category"``), as the design reads them
+    (``pipeline.level_columns``: categorical or two-valued, over the table's column summaries
+    where the context's table serves them, else ``pipeline.frame_level_columns`` on ``frame``): no
+    blank of theirs reaches the model matrix, so none is drawn."""
+    from types import SimpleNamespace
+
+    from turbotab.core.decisions import _store_of
+    from turbotab.core.models.pipeline import frame_level_columns, level_columns
+
+    if answer.get("categorical") != "missing_category":
+        return set()
+    # The design reads the answer from the state's slot; here the answer is the one being checked.
+    reading = SimpleNamespace(missing=SimpleNamespace(categorical="missing_category"))
+    columns = list(frame.columns)
+    store = _store_of(ctx)
+    info = None
+    try:
+        info = {c.name: c for c in store.info().columns} if hasattr(store, "info") else None
+    except Exception:  # noqa: BLE001 - no column summaries: the plan's rows stand in
+        info = None
+    found = (level_columns(reading, columns, info) if info is not None
+             else frame_level_columns(reading, frame, columns))
+    return set(found)
+
+
 def plan_refusal(state: Any, answer: Mapping[str, Any], ctx: Any
                  ) -> tuple[str, list[dict[str, Any]]] | None:
     """Why the plan's feature-wise table cannot pool the copies its multiple-imputation answer
@@ -504,10 +549,12 @@ def plan_refusal(state: Any, answer: Mapping[str, Any], ctx: Any
     blanks (as the design reads categories, :func:`plan_categories`), or draws beyond
     :data:`MAX_FEATURE_COPIES` (the study factors as the roles answer gives them, before the
     design's filters, so never fewer than the fit draws; chained where the rows cluster as the fit
-    clusters them, :func:`plan_units`). With its ways forward (:func:`ways_forward`). None where
-    it can, or where the rows cannot be read: the fit then counts them and refuses in the same
-    words."""
+    clusters them, :func:`plan_units`). A column whose blanks the answer keeps as a level of their
+    own is neither (:func:`plan_levels`): the fit encodes them, and draws none. With its ways
+    forward (:func:`ways_forward`). None where it can, or where the rows cannot be read: the fit
+    then counts them and refuses in the same words."""
     from turbotab.core.methods.imputation import M_DEFAULT
+    from turbotab.core.models.pipeline import MISSING_LEVEL
     from turbotab.core.readings import settled_roles
     from turbotab.core.voice import listing
 
@@ -523,6 +570,11 @@ def plan_refusal(state: Any, answer: Mapping[str, Any], ctx: Any
         return None
     frame = frame[columns]
     exits = ways_forward(state, frame)
+    levels = plan_levels(answer, ctx, frame)
+    if levels:
+        # Their blanks are a level the design encodes: counted as values, never as blanks.
+        frame = frame.assign(**{c: frame[c].astype(object).where(frame[c].notna(), MISSING_LEVEL)
+                                for c in levels})
     categories = plan_categories(state, frame)
     hidden = [c for c in adjust if frame[c].isna().any() and c in categories]
     if hidden:
@@ -618,6 +670,9 @@ def _design(term: np.ndarray, Z: np.ndarray) -> np.ndarray:
 # squares fits them exactly (the share is about σ²/(σ² + μ²) for values with any spread; exactly 0
 # for equal ones).
 EXACT_FIT = 1e-20
+# An exact fit of the detected values puts a row below detection at or below the limit where it
+# lies above it by no more than this share of the values' scale (rounding: 0 for equal values).
+AT_LIMIT = 1e-9
 
 
 def _on_scale(x: np.ndarray, censoring: Any) -> np.ndarray:
@@ -625,19 +680,82 @@ def _on_scale(x: np.ndarray, censoring: Any) -> np.ndarray:
     return np.log(np.clip(x, 1e-300, None)) if censoring.log else x.astype(float)
 
 
-def identification_refusal(name: str, z: np.ndarray, miss: np.ndarray, term: np.ndarray,
-                           Z: np.ndarray) -> str | None:
-    """Why ``name``'s censored-normal (Tobit) model of ``z`` (on its fitted scale; ``miss`` its
-    values below detection) on the outcome's ``term`` and the complete columns ``Z`` has no finite
-    maximum-likelihood fit; None where it has one. Under Olsen's (1978) reparametrization
-    (β/σ, 1/σ) the log-likelihood is concave, and it is bounded above, with a unique maximum,
-    exactly where the detected rows' design has full column rank and does not fit their values
-    exactly; else the solver drifts, so this is read from the design, never from the solver.
-    Where the copies are drawn by chained equations ``Z`` is the complete part of the model's
-    predictors: a design whose columns are rank-deficient on the detected rows stays so beside
-    any other column, and one that fits them exactly stays exact."""
-    from turbotab.core.voice import plural
+def _rank(A: np.ndarray) -> tuple[int, np.ndarray]:
+    """(the rank of ``A`` at numpy's tolerance, ``matrix_rank``'s, an orthonormal basis of its null
+    space as columns)."""
+    k = A.shape[1]
+    if not A.shape[0]:
+        return 0, np.eye(k)
+    _, s, Vt = np.linalg.svd(A, full_matrices=A.shape[0] < k)  # Vt is k × k either way
+    tol = (s.max() if len(s) else 0.0) * max(A.shape) * np.finfo(float).eps
+    r = int(np.sum(s > tol))
+    return r, Vt[r:].T
 
+
+def _rises_along_unestimated(Dd: np.ndarray, Dc: np.ndarray) -> bool:
+    """Whether some combination v of the terms the detected rows leave unestimated (D_d v = 0)
+    moves no row below detection up and some down (D_c v ≤ 0, Σ D_c v < 0): along it each such
+    row's likelihood rises toward a bound it never reaches, so the fit has no finite maximum. A
+    linear program, never the Tobit solver."""
+    from scipy.optimize import linprog
+
+    _, N = _rank(Dd)
+    if not N.shape[1]:
+        return False
+    C = Dc @ N
+    k = N.shape[1]
+    found = linprog(np.zeros(k), A_ub=np.vstack([C, C.sum(axis=0)]),
+                    b_ub=np.r_[np.zeros(len(C)), -1.0], bounds=[(None, None)] * k,
+                    method="highs")
+    return found.status != 2  # 2: infeasible, no such combination
+
+
+def _exact_fit_at_or_below(Dd: np.ndarray, zd: np.ndarray, Dc: np.ndarray, limit: float) -> bool:
+    """Whether some exact fit of the detected values (D_d β = z_d) puts every row below detection
+    at or below the limit (D_c β ≤ L): then σ → 0 raises the likelihood without bound. A linear
+    program over the exact fits (one, or a line or more where D_d is rank-deficient)."""
+    from scipy.optimize import linprog
+
+    beta = np.linalg.lstsq(Dd, zd, rcond=None)[0]
+    resid = zd - Dd @ beta
+    if float(resid @ resid) > EXACT_FIT * max(float(zd @ zd), np.finfo(float).tiny):
+        return False
+    scale = max(1.0, abs(float(limit)), float(np.max(np.abs(zd))) if len(zd) else 0.0)
+    excess = Dc @ beta - limit
+    _, N = _rank(Dd)
+    if not N.shape[1]:
+        worst = float(excess.max())
+    else:
+        # The least worst excess over the exact fits β + N w: min s with D_c N w − s ≤ −excess.
+        C = Dc @ N
+        k = N.shape[1]
+        found = linprog(np.r_[np.zeros(k), 1.0], A_ub=np.column_stack([C, -np.ones(len(C))]),
+                        b_ub=-excess, bounds=[(None, None)] * k + [(-scale, None)],
+                        method="highs")
+        worst = float(found.fun) if found.status == 0 else -scale
+    return worst <= AT_LIMIT * scale
+
+
+def identification_refusal(name: str, z: np.ndarray, miss: np.ndarray, term: np.ndarray,
+                           Z: np.ndarray, limit: float | None = None) -> str | None:
+    """Why ``name``'s censored-normal (Tobit) model of ``z`` (on its fitted scale; ``miss`` its
+    values below detection, ``limit`` theirs on that scale, else the smallest detected value) on
+    the outcome's ``term`` and the complete columns ``Z`` has no one maximum-likelihood fit; None
+    where it has one. Under Olsen's (1978) reparametrization (γ, τ) = (β/σ, 1/σ) the
+    log-likelihood is concave, strictly where the design D has full column rank on every row, and
+    a concave function has a maximum, and one only, where no direction but zero leaves it
+    non-decreasing (Rockafellar 1970, Theorem 27.1). Here such a direction is a combination of
+    terms D leaves unestimated on every row (refused: no one fit is best), a combination the
+    detected rows leave unestimated (D_d v = 0) along which no row below detection moves up
+    (:func:`_rises_along_unestimated`; with a two-level outcome, every detected value in rows of
+    one outcome is one), or an exact fit of the detected values putting every row below
+    detection at or below the limit, along which σ → 0 (:func:`_exact_fit_at_or_below`; equal
+    detected values are one). Fewer detected values than terms is none of these by itself: the
+    rows below detection can carry the rest (survreg fits such a model to the same maximum).
+    Each is read from the design by linear algebra and linear programs, never from the Tobit
+    solver. Where the copies are drawn by chained equations ``Z`` is the complete part of the
+    model's predictors: each reason found there holds beside any other column (a direction with
+    zero on the others)."""
     detected = ~miss
     n_d = int(detected.sum())
     if not miss.any():
@@ -646,22 +764,75 @@ def identification_refusal(name: str, z: np.ndarray, miss: np.ndarray, term: np.
     p = D.shape[1]
     lead = f"`{name}`'s censored-normal model has no finite fit on these rows: "
     tail = "its values below detection cannot be drawn."
-    seen = term[detected]
-    if n_d and np.ptp(term) > 0 and np.ptp(seen) == 0:
-        return (f"{lead}all {n_d:,} of its detected values are in rows with the same outcome, so "
-                f"how far below the limit the other rows lie cannot be estimated, and {tail}")
-    Dd, zd = D[detected], z[detected]
-    if n_d < p or np.linalg.matrix_rank(Dd) < p:
-        terms = "the intercept and the outcome" + (" and the covariates" if Z.shape[1] else "")
-        return (f"{lead}its {n_d:,} detected {plural(n_d, 'value', 'values')} cannot estimate the "
-                f"{p} terms of its model ({terms}), so {tail}")
-    resid = zd - Dd @ np.linalg.lstsq(Dd, zd, rcond=None)[0]
-    if float(resid @ resid) <= EXACT_FIT * max(float(zd @ zd), np.finfo(float).tiny):
+    terms = "the intercept and the outcome" + (" and the covariates" if Z.shape[1] else "")
+    if _rank(D)[0] < p:
+        return (f"`{name}`'s censored-normal model has no single fit on these rows: the {p} terms "
+                f"of its model ({terms}) are tied exactly to one another on them, so no one fit is "
+                f"best, and {tail}")
+    Dd, zd, Dc = D[detected], z[detected], D[miss]
+    at = float(limit) if limit is not None else (float(zd.min()) if n_d else 0.0)
+    if n_d and _exact_fit_at_or_below(Dd, zd, Dc, at):
         how = ("are all equal" if np.ptp(zd) == 0
-               else "are fitted exactly by the outcome and the covariates")
+               else "are fitted exactly by the outcome and the covariates, by a fit that puts "
+                    "every value below detection at or below the limit")
         return (f"{lead}its {n_d:,} detected values {how}, so their spread cannot be estimated, "
                 f"and {tail}")
+    if _rises_along_unestimated(Dd, Dc):
+        if n_d and np.ptp(term) > 0 and np.ptp(term[detected]) == 0:
+            return (f"{lead}all {n_d:,} of its detected values are in rows with the same outcome, "
+                    f"so how far below the limit the other rows lie cannot be estimated, and "
+                    f"{tail}")
+        return (f"{lead}its {n_d:,} detected values leave a combination of the {p} terms of its "
+                f"model ({terms}) unestimated, and the rows below detection fit ever better along "
+                f"it, so how far below the limit they lie cannot be estimated, and {tail}")
     return None
+
+
+def unit_repeats(complete: Mapping[str, np.ndarray], units: np.ndarray) -> list[str]:
+    """The complete columns of a chained model on repeated rows (``complete``, keyed by the words
+    that name them: the outcome's term, the complete covariates) that are the same on every row of
+    their unit (``units``: integer codes), so the unit mean the engine's chained equations hold
+    beside each (``smcfcs.impute``) repeats it: two terms of the model are one, and a censored
+    model's information then has no inverse (the verifier's FWMI-R1-1). Whether the solver still
+    returns a fit rests on rounding, so this only says why, where it did not."""
+    codes = np.asarray(units, dtype=np.int64)
+    G = int(codes.max()) + 1 if len(codes) else 0
+    size = np.bincount(codes, minlength=G).astype(float)
+    size[size == 0] = 1.0
+    out = []
+    for label, values in complete.items():
+        v = np.asarray(values, dtype=float)
+        mean = (np.bincount(codes, weights=v, minlength=G) / size)[codes]
+        spread = float(np.max(np.abs(v))) if len(v) else 0.0
+        if np.ptp(v) > 0 and np.all(np.abs(v - mean) <= 1e-12 * max(1.0, spread)):
+            out.append(label)
+    return out
+
+
+def chain_refusal(name: str, frame: pd.DataFrame, units: np.ndarray | None,
+                  unit: str | None) -> str:
+    """The refusal of a study factor whose chained equations (on ``frame``, its chain's variables)
+    could not fit their models: where the rows repeat, with the complete columns its chain holds
+    beside unit means that repeat them (:func:`unit_repeats`: the outcome's term, the complete
+    covariates, and the study factor itself where it has no blank)."""
+    from turbotab.core.voice import listing
+
+    why = ""
+    if units is not None:
+        complete = {("the outcome" if c == OUTCOME_TERM else f"`{c}`"):
+                    frame[c].to_numpy(dtype=float)
+                    for c in frame.columns if not frame[c].isna().any()}
+        repeated = unit_repeats(complete, units)
+        if repeated:
+            by = f"`{unit}`" if unit else "unit"
+            one = len(repeated) == 1
+            repeats = "that mean repeats it" if one else "those means repeat them"
+            why = (f": on rows that repeat by {by} each of their models holds each other "
+                   f"variable's mean over the {by}'s rows beside it, and "
+                   f"{listing(repeated, ticked=False)} {'is' if one else 'are'} the same on every "
+                   f"row of a {by}, so {repeats}")
+    return (f"The chained equations that draw `{name}`'s copies could not fit their models on "
+            f"these rows, so its copies cannot be drawn{why}.")
 
 
 def _refuse(name: str, reason: str) -> Any:
@@ -691,7 +862,7 @@ def _censored_copies(D: np.ndarray, x: np.ndarray, miss: np.ndarray, censoring: 
             raise np.linalg.LinAlgError
         root = np.linalg.cholesky(V + np.eye(len(V)) * 1e-12)
     except (np.linalg.LinAlgError, ValueError):
-        raise _refuse(name, f"`{name}`'s censored-normal model has no finite fit on these rows, so "
+        raise _refuse(name, f"`{name}`'s censored-normal model could not be fit on these rows, so "
                             f"its values below detection cannot be drawn.") from None
     rows = D[miss]
     # Each copy's parameters (one column each), then every copy's blanks in one draw.
@@ -716,10 +887,11 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
     copies are drawn by the engine's chained equations on {factor, outcome, adjustment columns}
     (``smcfcs.impute``, ``"fcs"``); otherwise from one fit of its own model (see the module).
     Raises ``imputation.ImputationRefused`` where a study factor has fewer than two observed values,
-    or a censored column's model no finite fit (:func:`identification_refusal`), before any is
-    drawn. Deterministic for a given ``seed``: each study factor draws from its own stream, by its
-    place among ``tested``. ``kinds`` records the model each drawn column's blanks came from, as
-    the sampler was handed it."""
+    or a censored column's model no one finite fit (:func:`identification_refusal`), before any
+    is drawn, and where the chained equations cannot fit a model (a LinAlgError, never a copy:
+    :func:`chain_refusal`). Deterministic for a given ``seed``: each study factor draws from its
+    own stream, by its place among ``tested``. ``kinds`` records the model each drawn column's
+    blanks came from, as the sampler was handed it."""
     from turbotab.core.methods.imputation import column_kind
     from turbotab.core.methods.smcfcs import Variable
     from turbotab.core.methods.smcfcs import impute as fcs
@@ -745,8 +917,9 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
         # A censored column's model is fit only where it has a finite fit (Olsen 1978): its
         # complete predictors are the outcome's term and ``others``.
         Zc = Zframe[list(others)].to_numpy(dtype=float) if others else np.zeros((n, 0))
-        reason = identification_refusal(column, _on_scale(x, censored[column]), ~np.isfinite(x),
-                                        term, Zc)
+        c = censored[column]
+        reason = identification_refusal(column, _on_scale(x, c), ~np.isfinite(x), term, Zc,
+                                        limit=math.log(c.limit) if c.log else float(c.limit))
         if reason is not None:
             raise _refuse(column, reason)
 
@@ -783,8 +956,14 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
             variables += [Variable(c, "censored", censoring=censored[c]) if c in censored
                           else Variable(c, column_kind(frame[c])) for c in adjust_blank]
             kinds.update({v.name: str(v.kind) for v in variables})
-            drawn_set = fcs(frame, variables, mode="fcs", units=units, m=m,
-                            seed=int(stream.generate_state(1)[0]), cancelled=cancelled)
+            try:
+                drawn_set = fcs(frame, variables, mode="fcs", units=units, m=m,
+                                seed=int(stream.generate_state(1)[0]), cancelled=cancelled)
+            except np.linalg.LinAlgError:
+                # A model the chain cannot fit (the verifier's FWMI-R1-1: a censored model's
+                # information with no inverse, raised from the sampler) is refused, never a copy;
+                # where rows repeat and a complete column is one value per unit, that says why.
+                raise _refuse(name, chain_refusal(name, frame, units, unit)) from None
             values[name] = np.column_stack([f[name].to_numpy(dtype=float)
                                             for f in drawn_set.frames])
             if adjust_blank:

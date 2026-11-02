@@ -884,9 +884,9 @@ def test_12_a_column_confirmed_as_one_value_per_unit_is_refused_on_clustered_row
 
 
 def test_12_a_censored_normal_model_with_no_finite_fit_is_refused_and_silent_where_it_has_one():
-    """FWMI-V3(4): the censored-normal (Tobit) likelihood has a finite maximum only where the
-    detected rows' design has full column rank and does not fit the detected values exactly
-    (Olsen 1978: the log-likelihood is concave in (β/σ, 1/σ), and bounded above exactly then).
+    """FWMI-V3(4): the censored-normal (Tobit) likelihood (concave in (β/σ, 1/σ), Olsen 1978) has
+    no finite maximum where a direction leaves it non-decreasing (``identification_refusal``; the
+    other way, a model with fewer detected values than terms that survreg fits, is test 16).
     Each case is refused before any draw, in words from its counts: every detected value in rows
     of one outcome (on the base, for these values, the copies were drawn and the pooled difference
     was about 10⁵, a number no fit certifies; for others the solver's own refusal fired, so which
@@ -1053,3 +1053,449 @@ def test_14_the_design_card_says_values_below_detection_are_drawn_where_the_test
               "or blank reaches the log.")
     for card in (_card("prediction", True), _card("inference", True, family="linear")):
         assert (card["detect"], card["log"]) == (filled, before)
+
+
+# ── the second repair round (the verifier's FWMI-R1-1 … R1-5) ────────────────
+
+
+def _repeated_panel(outcome_per_unit: bool, covariate_per_unit: bool, censored: bool = True,
+                    seed: int = 3, units: int = 30, rows: int = 4
+                    ) -> tuple[pd.DataFrame, np.ndarray, np.ndarray, dict[str, Censoring]]:
+    """``units`` units of ``rows`` rows each: study factor `c0` = 8 + 0.5 × event + 0.3 `z0` + a
+    unit effect + N(0, 1), blank below its 30% quantile (left-censored there), or with
+    ``censored`` False blank at random on 30% of its rows; the event and `z0` drawn once per unit
+    where asked (so the same on every row of a unit), else row by row."""
+    rng = np.random.default_rng(seed)
+    codes = np.repeat(np.arange(units), rows)
+    n = len(codes)
+    event = (np.repeat(rng.random(units) < 0.5, rows) if outcome_per_unit
+             else rng.random(n) < 0.5).astype(float)
+    effect = np.repeat(rng.standard_normal(units) * 0.7, rows)
+    z0 = (np.repeat(rng.standard_normal(units), rows) if covariate_per_unit
+          else rng.standard_normal(n))
+    x = 8 + 0.5 * event + 0.3 * z0 + effect + rng.standard_normal(n)
+    if censored:
+        x = np.where(x < np.quantile(x, 0.3), np.nan, x)
+    else:
+        x[rng.random(n) < 0.3] = np.nan
+    frame = pd.DataFrame({"c0": x, "z0": z0})
+    limits = {"c0": Censoring(limit=float(np.nanmin(x)), log=False)} if censored else {}
+    return frame, event, codes, limits
+
+
+def _chain_words(name: str, unit: str, repeated: list[str]) -> str:
+    """The refusal of a study factor whose chained equations could not fit their models on rows
+    that repeat, ``repeated`` (the words that name them, in the order of the chain's columns) one
+    value per unit."""
+    one = len(repeated) == 1
+    who = repeated[0] if one else ", ".join(repeated[:-1]) + " and " + repeated[-1]
+    return (f"The chained equations that draw `{name}`'s copies could not fit their models on "
+            f"these rows, so its copies cannot be drawn: on rows that repeat by `{unit}` each of "
+            f"their models holds each other variable's mean over the `{unit}`'s rows beside it, "
+            f"and {who} {'is' if one else 'are'} the same on every row of a `{unit}`, so "
+            f"{'that mean repeats it' if one else 'those means repeat them'}.")
+
+
+def test_15_a_censored_study_factor_beside_a_column_one_value_per_unit_is_refused_or_drawn():
+    """FWMI-R1-1: on repeated rows the chained equations draw a censored study factor from a
+    model holding each other variable's unit mean beside it; an outcome or covariate the same on
+    every row of its unit (by construction here: drawn once per unit) equals that mean, so two of
+    the model's terms are one and the censored model's information has no inverse. Whether the
+    solver still returns a fit rests on rounding (the verifier's panels raised; chain 3 of
+    ``test_ms7_chains`` pools), so this pins the claim, not which happens: on the base a
+    LinAlgError escaped (Matrix is not positive definite); now each is refused in words naming
+    what repeats, or drawn with a finite row. With both varying within units it is pooled, and a
+    blank not below a limit (a normal draw) is pooled beside unit-level columns as before."""
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.methods.imputation import ImputationRefused
+    from turbotab.core.models.linear import as_clusters
+
+    for outcome, covariate, named in ((True, False, ["the outcome"]), (False, True, ["`z0`"]),
+                                      (True, True, ["the outcome", "`z0`"])):
+        frame, event, codes, limits = _repeated_panel(outcome, covariate)
+        try:
+            table, _ = fm.pooled_featurewise_table(frame, event, "binary", ["c0"],
+                                                   as_clusters(codes), censored=limits, seed=1)
+        except ImputationRefused as refused:
+            assert str(refused) == _chain_words("c0", "unit", named)
+            assert refused.columns == ["c0"]
+        else:
+            (row,) = table.rows
+            assert math.isfinite(row["estimate"]) and row["se"] > 0
+    for outcome, covariate, censored in ((False, False, True), (True, True, False)):
+        frame, event, codes, limits = _repeated_panel(outcome, covariate, censored)
+        table, copies = fm.pooled_featurewise_table(frame, event, "binary", ["c0"],
+                                                    as_clusters(codes), censored=limits, seed=1)
+        (row,) = table.rows
+        assert copies.unit == "unit" and math.isfinite(row["estimate"]) and row["se"] > 0
+
+
+def _pid_panel(vary: bool) -> tuple[pd.DataFrame, Any]:
+    """``estimand_fixtures.cohort(100)``, each participant's row repeated three times (the grain
+    answer: rows repeat by `pid`), `fiber` + N(0, 2) per row, blank below its 30% quantile
+    (censoring-aware multiple imputation, m 20). `sex`, `smoking`, `activity` and `bmi` are drawn
+    row by row; `glucose` (the outcome) and `age` too where ``vary``, else one value per `pid`."""
+    from turbotab.core import decisions as d
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    base = ef.cohort(100, seed=5)
+    frame = base.loc[base.index.repeat(3)].reset_index(drop=True)
+    rng = np.random.default_rng(1)
+    n = len(frame)
+    frame["fiber"] = frame["fiber"] + rng.normal(0, 2, n)
+    frame["sex"] = rng.choice(["female", "male"], n)
+    frame["smoking"] = rng.binomial(1, 0.3, n).astype(float)
+    frame["activity"] = rng.integers(0, 8, n).astype(float)
+    frame["bmi"] = frame["bmi"] + rng.normal(0, 1, n)
+    if vary:
+        frame["glucose"] = frame["glucose"] + rng.normal(0, 3, n)
+        frame["age"] = frame["age"] + rng.normal(0, 1, n)
+    frame.loc[frame["fiber"] < np.quantile(frame["fiber"], 0.3), "fiber"] = np.nan
+    mi = {"strategy": "multiple_imputation", "below_detection": "censoring_aware",
+          "censored_columns": ["fiber"], "m": 20}
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  models=["featurewise"], missing=mi)
+    return frame, st.model_copy(update={"grain": d.GrainSpec(grain="repeated", id_column="pid")})
+
+
+def test_15_through_the_fit_and_the_declared_models_a_failed_chain_is_refused_in_words(
+        tmp_path):
+    """FWMI-R1-1 through the stages: participants' rows repeated three times by `pid`, `fiber`
+    censored. With the outcome and `age` one value per `pid`, the fit's feature-wise table is
+    refused in words naming them, with complete cases, leaving `fiber` out and another family as
+    ways forward, and the effects stage's declared model in the same words; or, where the solver
+    fits the chain anyway, both pool (rounding decides: the claim is pinned, not which). On the
+    base the fit's table had only the solver's message, "Matrix is not positive definite", and no
+    way forward, and the effects stage raised it. With both drawn row by row, both stages pool."""
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    words = ("Multiple imputation cannot run on these data: "
+             + _chain_words("fiber", "pid", ["the outcome", "`age`"]))
+    frame, st = _pid_panel(vary=False)
+    out = ef.run(frame, tmp_path / "unit", st)
+    entry = next(m for m in out["fit"]["models"] if m["family"] == "featurewise")
+    (block,) = out["effects"]["families"]
+    primary = next(s for s in block["sequence"] if s["key"] == "model_2")
+    if entry["inference"]["refused"] is not None:
+        assert entry["inference"]["refused"] == words and not entry["coefficients"]
+        labels = [e["label"] for e in entry["inference"]["exits"]]
+        assert labels[1:] == ["Leave `fiber` out", "Choose another model family"]
+        assert labels[0].startswith("Complete cases (")
+        assert primary["inference"]["refused"] == words
+    else:
+        assert entry["coefficients"] and primary["effects"]
+        assert all(math.isfinite(r["estimate"]) for r in primary["effects"])
+    frame, st = _pid_panel(vary=True)
+    out = ef.run(frame, tmp_path / "rows", st)
+    entry = next(m for m in out["fit"]["models"] if m["family"] == "featurewise")
+    assert entry["inference"]["refused"] is None and entry["coefficients"]
+    (block,) = out["effects"]["families"]
+    primary = next(s for s in block["sequence"] if s["key"] == "model_2")
+    assert primary["inference"]["refused"] is None
+    assert primary["effects"] and all(math.isfinite(r["estimate"]) for r in primary["effects"])
+
+
+SURVREG_DESIGN = """
+suppressPackageStartupMessages(library(survival))
+d <- read.csv(case_csv)
+y <- ifelse(d$det == 1, d$z, d$limit[1])
+X <- as.matrix(d[, grep("^D", names(d))])
+f <- survreg(Surv(y, d$det == 1, type = "left") ~ X, dist = "gaussian",
+             control = survreg.control(maxiter = 500))
+out(list(coef = unname(coef(f)), scale = f$scale, iter = f$iter[1]))
+"""
+
+
+def _fewer_detected() -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str]]:
+    """Censored-normal models today's check refused that have one finite maximum, each (x with its
+    values below detection blank, the outcome's term, the covariates, the event or outcome as the
+    pooled table reads it, its task):
+
+    * ``three``: 100 rows, the event and two covariates (four terms); three values detected (the
+      two largest among events, the largest among the others): the detected rows leave a line of
+      terms unestimated, and the rows below detection lie on both sides of it;
+    * ``tied``: a numeric outcome rounded to tenths; the values detected only where it is 0.0
+      (four), so the outcome is the same on every detected row, but the rows below detection have
+      outcomes above and below it;
+    * ``exact``: 60 rows, the event and a covariate; the 21 detected values lie exactly on
+      10 + 0.5 × event + 0.3 z0, and two rows below detection lie above the limit on it, so no
+      exact fit puts every row below detection at or below the limit."""
+    out = {}
+    rng = np.random.default_rng(0)
+    n = 100
+    event = (rng.random(n) < 0.5).astype(float)
+    z = rng.standard_normal((n, 2))
+    x = 0.8 * event + 0.5 * z[:, 0] + 0.3 * z[:, 1] + rng.standard_normal(n)
+    top1 = np.flatnonzero(event == 1)[np.argsort(-x[event == 1])][:2]
+    top0 = np.flatnonzero(event == 0)[np.argsort(-x[event == 0])][:1]
+    seen = np.zeros(n, dtype=bool)
+    seen[np.r_[top1, top0]] = True
+    out["three"] = (np.where(seen, x, np.nan), event, z, event, "binary")
+    rng = np.random.default_rng(5)
+    n = 80
+    y = np.round(rng.normal(0, 1, n), 1)
+    z0 = rng.standard_normal(n)
+    x = 5 + 0.4 * y + 0.3 * z0 + rng.standard_normal(n)
+    seen = (y == 0.0) & (x > np.quantile(x, 0.2))
+    out["tied"] = (np.where(seen, x, np.nan), y, z0.reshape(-1, 1), y, "regression")
+    rng = np.random.default_rng(3)
+    n = 60
+    event = np.r_[np.ones(30), np.zeros(30)]
+    z0 = rng.standard_normal(n)
+    mean = 10 + 0.5 * event + 0.3 * z0
+    seen = mean > np.quantile(mean, 0.6)
+    seen[np.flatnonzero(seen)[:3]] = False
+    out["exact"] = (np.where(seen, mean, np.nan), event, z0.reshape(-1, 1), event, "binary")
+    return out
+
+
+@needs_r
+def test_16_fewer_detected_values_than_terms_are_drawn_where_survreg_fits_the_model(tmp_path):
+    """FWMI-R1-2: the check before a censored column is drawn refused, saying the model "has no
+    finite fit", where ``survival::survreg``'s left-censored Gaussian fit converges: fewer detected
+    values than terms, one outcome value on every detected row of a numeric outcome, and an exact
+    fit of the detected values that puts rows below detection above the limit. The rows below
+    detection identify what the detected ones leave (the likelihood has no non-decreasing
+    direction). Now each is drawn: the check is silent, the engine's own fit of the design
+    (``imputation.tobit_fit``) is survreg's on the same columns to 1e-5, and the pooled table has
+    its row. On the base each was refused."""
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.methods.imputation import tobit_fit
+
+    for name, (x, term, Z, outcome, task) in _fewer_detected().items():
+        miss = ~np.isfinite(x)
+        limit = float(np.nanmin(x))
+        assert fm.identification_refusal("x", x, miss, term, Z) is None, name
+        D = fm._design(term, Z)
+        case = pd.DataFrame({f"D{j}": D[:, j] for j in range(1, D.shape[1])})
+        case["z"] = np.where(miss, limit, x)
+        case["det"] = (~miss).astype(int)
+        case["limit"] = limit
+        ref = run_r(SURVREG_DESIGN, {"case": case}, tmp_path / name)
+        assert ref["iter"] < 500, name  # survreg converged
+        theta, _ = tobit_fit(D, np.where(miss, limit, x), miss, limit)
+        assert theta[:-1] == pytest.approx(ref["coef"], rel=1e-5, abs=1e-6), name
+        assert math.exp(theta[-1]) == pytest.approx(ref["scale"], rel=1e-5), name
+        frame = pd.DataFrame({"c0": x, **{f"z{j}": Z[:, j] for j in range(Z.shape[1])}})
+        table, copies = fm.pooled_featurewise_table(frame, outcome, task, ["c0"],
+                                                    censored=limits_of(frame, ["c0"]), m=20,
+                                                    seed=1)
+        (row,) = table.rows
+        assert copies.imputed["c0"] == int(miss.sum()) and math.isfinite(row["estimate"]), name
+
+
+def test_16_an_exact_fit_with_every_value_below_detection_under_the_limit_is_refused():
+    """FWMI-R1-2, the other way: the detected values lie exactly on 10 + 0.5 × event + 0.3 z0 and
+    every row below detection lies under the limit on it, so σ → 0 raises the likelihood without
+    bound (a derivation: the detected terms grow as n_d log(1/σ), the others tend to 0): refused in
+    words that say so. A two-level outcome's one-outcome case and equal values stay refused (test
+    12)."""
+    from turbotab.core.methods import featurewise_mi as fm
+
+    rng = np.random.default_rng(3)
+    event = np.r_[np.ones(30), np.zeros(30)]
+    z0 = rng.standard_normal(60)
+    mean = 10 + 0.5 * event + 0.3 * z0
+    x = np.where(mean > np.quantile(mean, 0.6), mean, np.nan)
+    detected = int(np.isfinite(x).sum())
+    assert fm.identification_refusal("x", x, ~np.isfinite(x), event, z0.reshape(-1, 1)) == (
+        f"`x`'s censored-normal model has no finite fit on these rows: its {detected} detected "
+        f"values are fitted exactly by the outcome and the covariates, by a fit that puts every "
+        f"value below detection at or below the limit, so their spread cannot be estimated, and "
+        f"its values below detection cannot be drawn.")
+
+
+def _level_case(categorical: str) -> tuple[pd.DataFrame, Any, dict]:
+    """``estimand_fixtures.cohort(300)``: `sex` (text, a covariate) blank on 30 rows, `fiber`
+    (the study factor) on 60, multiple imputation (m 20) with a category's blanks read by
+    ``categorical``; blanks as their own level recorded (under inference the missing-indicator
+    method is block-and-record: ``decisions``' ``indicator_under_inference``)."""
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(300, seed=5)
+    frame.loc[frame.index[:30], "sex"] = np.nan
+    frame.loc[frame.index[100:160], "fiber"] = np.nan
+    mi = {"strategy": "multiple_imputation", "m": 20, "categorical": categorical,
+          "acknowledged": categorical == "missing_category"}
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  models=["featurewise"], missing=mi)
+    return frame, st, mi
+
+
+def test_17_a_category_whose_blanks_are_their_own_level_passes_the_checks_as_the_fit_pools_it(
+        tmp_path):
+    """FWMI-R1-3: with "blanks as their own level" `sex`'s blanks are a level the design encodes
+    (``MissingLevelEncoder``), so no blank of it reaches the matrix and the fit pools the table;
+    the checks before the lock now agree (on the base all three refused it as a category with
+    blanks the copies do not draw). With its blanks imputed, the fit and the three checks refuse
+    it in the same words."""
+    from turbotab.core import decisions as d
+    from turbotab.core.methods import featurewise_mi as fm
+
+    frame, st, mi = _level_case("missing_category")
+    for decision in (d.SelectModels(models=["featurewise"]), d.SetMissing(**mi), d.LockPlan()):
+        d.validate(decision, _decide(frame, st))
+    entry = _fit_entry(tmp_path / "level", frame, st)
+    assert entry["inference"]["refused"] is None and entry["coefficients"]
+    frame, st, mi = _level_case("impute")
+    for decision in (d.SelectModels(models=["featurewise"]), d.SetMissing(**mi), d.LockPlan()):
+        with pytest.raises(d.Refusal) as refused:
+            d.validate(decision, _decide(frame, st))
+        assert (refused.value.code, refused.value.message) == (fm.UNPOOLED, CATEGORY_WORDS)
+    entry = _fit_entry(tmp_path / "impute", frame, st)
+    assert entry["inference"]["refused"] == CATEGORY_WORDS
+
+
+def _mixed_words(chained: int, once: int, m: int, sweeps: int, cap: int) -> str:
+    """The budget's refusal where ``chained`` study factors are drawn by chained equations and
+    ``once`` once in each imputation, built from the counts."""
+    noun = "study factor is" if chained == 1 else "study factors are"
+    return (f"Feature-wise regression is pooled over multiple imputations drawn one study factor "
+            f"at a time: here {chained:,} {noun} drawn by chained equations, {sweeps} sweeps in "
+            f"each of {m} imputations, and {once:,} once in each of {m}, "
+            f"{chained * sweeps * m + once * m:,} draws in all, more than the {cap:,} one table "
+            f"may draw, a limit that bounds how long its fit takes.")
+
+
+def test_18_the_budget_names_each_part_where_only_some_study_factors_are_chained(tmp_path,
+                                                                                 monkeypatch):
+    """FWMI-R1-4: where some study factors are drawn by chained equations and the rest once in
+    each imputation, the refusal counts each part (on the base: "134 study factors × 38
+    imputations, 40 of them over 10 sweeps", whose arithmetic gives 5,092, not its 18,772). 40 ×
+    10 × 38 + 94 × 38 = 18,772. Through the plan and the fit: `fiber` blank on 60 of 300 rows and
+    `age` (a covariate) on 30 more, `supplement` a second study factor with no blank: m = 30 (90
+    incomplete rows); `fiber`'s chain has two blank variables, ten sweeps; `supplement`'s one
+    (`age`), one sweep: 10 × 30 + 30 = 330 draws. At a cap of 329 the three checks and the fit
+    refuse in those words; at 330 the checks pass and the fit pools."""
+    from turbotab.core import decisions as d
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    monkeypatch.setattr(fm, "MAX_FEATURE_COPIES", 18_000)
+    assert fm.budget_refusal([10] * 40 + [1] * 94, 38) == _mixed_words(40, 94, 38, 10, 18_000)
+    frame = ef.cohort(300, seed=6)
+    frame.loc[frame.index[:60], "fiber"] = np.nan
+    frame.loc[frame.index[200:230], "age"] = np.nan
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  roles={**ef.ROLES, "supplement": "exposure"}, models=["featurewise"],
+                  missing=MI20)
+    monkeypatch.setattr(fm, "MAX_FEATURE_COPIES", 329)
+    words = _mixed_words(1, 1, 30, 10, 329)
+    for decision in (d.SelectModels(models=["featurewise"]), d.SetMissing(**MI20), d.LockPlan()):
+        with pytest.raises(d.Refusal) as refused:
+            d.validate(decision, _decide(frame, st))
+        assert (refused.value.code, refused.value.message) == (fm.UNPOOLED, words)
+    entry = _fit_entry(tmp_path / "over", frame, st)
+    assert entry["inference"]["refused"] == words
+    monkeypatch.setattr(fm, "MAX_FEATURE_COPIES", 330)
+    for decision in (d.SelectModels(models=["featurewise"]), d.SetMissing(**MI20), d.LockPlan()):
+        d.validate(decision, _decide(frame, st))
+    entry = _fit_entry(tmp_path / "at", frame, st)
+    assert entry["inference"]["refused"] is None and entry["coefficients"]
+
+
+C6 = [f"f{j}" for j in range(6)]
+# Each missing-values answer a researcher may give with values below detection named, under
+# inference with feature-wise regression chosen (the verifier's exits_probe.py).
+WAYS_IN = {
+    "median once": {"strategy": "impute", "censored_columns": C6},
+    "multiple imputation": {"strategy": "multiple_imputation", "censored_columns": C6},
+    "half the minimum once": {"strategy": "impute", "censored_columns": C6,
+                              "below_detection": "half_minimum"},
+    "qrilc once": {"strategy": "impute", "censored_columns": C6, "below_detection": "qrilc"},
+    "censoring-aware once": {"strategy": "impute", "censored_columns": C6,
+                             "below_detection": "censoring_aware"},
+    "qrilc, complete cases": {"strategy": "complete_case", "censored_columns": C6,
+                              "below_detection": "qrilc"},
+}
+# decisions.median_below_detection (not this package's) offers "Censoring-aware: a censored-normal
+# draw below the limit, given the outcome" under a fill once: the single fill, which the
+# feature-wise table refuses when taken (an open issue for decisions.py).
+DECISIONS_EXIT = "median_below_detection"
+
+
+def _dead_ends(decision: Any, state: Any, depth: int = 0) -> list[tuple[str, str]]:
+    """Each way forward, three steps deep from ``decision``, that the feature-wise table refuses
+    as one censoring-aware fill when taken: (the code of the refusal that offered it, its
+    label)."""
+    from turbotab.core import decisions as d
+    from turbotab.core.methods import featurewise_mi as fm
+
+    try:
+        d.validate(decision, plan_ctx(state))
+        return []
+    except d.Refusal as refusal:
+        found = []
+        for e in refusal.exits if depth < 3 else []:
+            taken = e["decision"]
+            if not taken or taken.get("kind") != "set_missing":
+                continue
+            answer = d.SetMissing(**{k: v for k, v in taken.items() if k != "kind"})
+            try:
+                d.validate(answer, plan_ctx(state))
+            except d.Refusal as then:
+                if then.code == fm.SINGLE_FILL:
+                    found.append((refusal.code, e["label"]))
+                    continue
+            found += _dead_ends(answer, state, depth + 1)
+        return found
+
+
+@pytest.mark.parametrize("way", sorted(WAYS_IN))
+def test_19_no_way_forward_offered_to_a_feature_wise_plan_under_inference_fills_once(way):
+    """FWMI-R1-5 (M2's ruling: under inference the single censoring-aware fill leaves the
+    feature-wise table's ways forward): from each answer, every way forward offered, three steps
+    deep, is taken; none is the single fill the table then refuses, except the one
+    ``decisions.median_below_detection`` offers (not this package's; its own test below). On the
+    base the omics leash's "Censored-normal: a draw below the limit within the multiple
+    imputation" kept the answer's strategy, so under a fill once it recorded one fill: refused
+    when taken (the QRILC answers)."""
+    from turbotab.core import decisions as d
+
+    state = plan_state(["featurewise"], None)
+    ends = [e for e in _dead_ends(d.SetMissing(**WAYS_IN[way]), state) if e[0] != DECISIONS_EXIT]
+    assert ends == []
+
+
+def test_19_the_leash_s_censored_normal_way_forward_is_the_multiple_imputation_it_names():
+    """FWMI-R1-5: QRILC once is refused under inference, and its one way forward is labeled the
+    draw within the multiple imputation: its answer is multiple imputation, censoring-aware (on the
+    base it kept the single fill's strategy), and the feature-wise plan takes it. Under multiple
+    imputation the way forward is as before."""
+    from turbotab.core import decisions as d
+
+    state = plan_state(["featurewise"], None)
+    for strategy in ("impute", "multiple_imputation"):
+        with pytest.raises(d.Refusal) as refused:
+            d.validate(d.SetMissing(strategy=strategy, censored_columns=C6,
+                                    below_detection="qrilc", acknowledged=True), plan_ctx(state))
+        assert refused.value.code == "qrilc_under_inference"
+        (way,) = refused.value.exits
+        assert way["label"] == ("Censored-normal: a draw below the limit within the multiple "
+                                "imputation")
+        taken = dict(way["decision"])
+        assert (taken["strategy"], taken["below_detection"]) == (
+            "multiple_imputation", "censoring_aware")
+        d.validate(d.SetMissing(**{k: v for k, v in taken.items() if k != "kind"}), plan_ctx(state))
+
+
+@pytest.mark.xfail(strict=True, reason="decisions.median_below_detection offers the single "
+                                       "censoring-aware fill under a fill once (not this package's "
+                                       "file): an open issue for decisions.py")
+def test_19_the_median_refusal_s_censoring_aware_way_forward_is_taken_by_the_feature_wise_plan():
+    """The open issue the walk above leaves out, pinned so its fix shows: under inference a median
+    fill once of values below detection is refused (``median_below_detection``), offering
+    "Censoring-aware: a censored-normal draw below the limit, given the outcome", whose answer
+    keeps the fill once: the single censoring-aware fill, intercept-only, which ignores the
+    outcome its label names; the feature-wise plan refuses it when taken."""
+    from turbotab.core import decisions as d
+
+    state = plan_state(["featurewise"], None)
+    with pytest.raises(d.Refusal) as refused:
+        d.validate(d.SetMissing(strategy="impute", censored_columns=C6,
+                                below_detection="as_missing", acknowledged=True), plan_ctx(state))
+    assert refused.value.code == DECISIONS_EXIT
+    way = next(e for e in refused.value.exits if e["label"].startswith("Censoring-aware"))
+    d.validate(d.SetMissing(**{k: v for k, v in way["decision"].items() if k != "kind"}),
+               plan_ctx(state))
+

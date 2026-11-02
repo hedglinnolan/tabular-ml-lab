@@ -1569,6 +1569,10 @@ def _detection_limit_leash(decision: Any, ctx: Any) -> None:
     * QRILC is refused (one draw outside the multiple imputation);
     * half the minimum above 10% censored is **blocked and recorded**: kept only with the
       attestation (``acknowledged``) the methods sentence carries.
+
+    Each refusal's censored-normal way forward is the draw within the multiple imputation its
+    label names: under an answer that filled once (or kept complete cases), it changes the
+    strategy to multiple imputation too.
     """
     from turbotab.core.decisions import Refusal, _censored_named, _missing_base, _state
 
@@ -1589,7 +1593,12 @@ def _detection_limit_leash(decision: Any, ctx: Any) -> None:
     # included (a share of blanks alone reads 0 when an export wrote non-detects as zeros).
     share = censored_share_of(ctx, censored)
     named = ", ".join(f"`{c}`" for c in censored[:6]) + (" and others" if len(censored) > 6 else "")
-    aware = _missing_base(decision, below_detection="censoring_aware", censored_columns=censored)
+    # The exit its label names: the censored-normal draw within the multiple imputation, whatever
+    # strategy the answer had (the verifier's FWMI-R1-5: kept, a single fill was recorded under
+    # that label, and the feature-wise table refused it when taken).
+    aware = _missing_base(decision, below_detection="censoring_aware", censored_columns=censored,
+                          **({} if decision.strategy == "multiple_imputation" else
+                             {"strategy": "multiple_imputation", "acknowledged": False}))
     if decision.below_detection in (None, "as_missing") and decision.strategy != "complete_case":
         exits = [{"label": "Censored-normal: a draw below the limit within the multiple imputation",
                   "decision": aware}]
