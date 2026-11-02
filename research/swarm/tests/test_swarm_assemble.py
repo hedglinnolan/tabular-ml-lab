@@ -1092,6 +1092,35 @@ def test_a_lock_the_server_withdrew_is_not_the_lock_in_force():
                                                                     "why": A.WITHDRAWN}
 
 
+def _own(rec: dict[str, Any]) -> dict[str, Any]:
+    return {**rec, "recorded_by": "turbotab"}
+
+
+def test_a_withdrawal_of_the_lock_is_turbotabs_and_every_other_revert_is_its_recorders():
+    """No client can revert the plan's lock (``plan_lock._the_lock_stays``), so a revert of one is
+    the server's withdrawal. The pilot's frozen engine recorded it as the person's (``you``) with
+    no note, at the moment of the analyst's own revert (runs 19, 20, 24 and 25): the record gives
+    it the source ``app``. A withdrawal the server records as its own, with its reason, is read by
+    its ``recorded_by``, and so is every other revert, the analyst's with or without a reason."""
+    records = [_rec(1, 1, {"kind": "set_missing", "strategy": "complete_case"}),
+               _own(_rec(2, 2, {"kind": "lock_plan", "digest": "first"}, note=None)),
+               _rec(3, 3, {"kind": "revert", "decision_id": "r2"}, note=None),  # frozen engine's
+               _rec(4, 3, {"kind": "revert", "decision_id": "r1"}),  # the analyst's, its reason
+               _own(_rec(5, 4, {"kind": "lock_plan", "digest": "second"}, note=None)),
+               _own(_rec(6, 5, {"kind": "revert", "decision_id": "r5"}, note="Fit was canceled.")),
+               _rec(7, 6, {"kind": "revert", "decision_id": "r4"}, note=None)]  # the analyst's
+    got = A.decisions_of(records, [], [], purpose=None, mattered=A.Read(200, {}))
+    assert [(d["seq"], d["source"], d["reason"]) for d in got] == [
+        (1, "analyst", "why"), (2, "app", None), (3, "app", None), (4, "analyst", "why"),
+        (5, "app", None), (6, "app", "Fit was canceled."), (7, "analyst", None)]
+    # A revert of the lock with a note is read by its recorded_by: no engine records one as the
+    # person's, so the rule for the frozen engine's records stops at those with no note.
+    lock = _own(_rec(1, 1, {"kind": "lock_plan", "digest": "first"}, note=None))
+    noted = _rec(2, 2, {"kind": "revert", "decision_id": "r1"}, note="mine")
+    assert [d["source"] for d in A.decisions_of([lock, noted], [], [], purpose=None,
+                                                mattered=A.Read(200, {}))] == ["app", "analyst"]
+
+
 # ── DRV-FIX (a): under Estimate, the number the app reports for the estimand ─────────────────
 
 LOG_ODDS = {"feature": "x", "estimate": 0.5, "ci_low": 0.3, "ci_high": 0.7, "p": 0.0001,

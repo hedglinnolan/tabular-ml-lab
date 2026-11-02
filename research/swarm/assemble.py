@@ -1269,6 +1269,19 @@ def tags_of(commands: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
     return out
 
 
+def source_of(rec: Mapping[str, Any], kinds: Mapping[str, Any]) -> str:
+    """Who recorded ``rec``: ``app`` where TurboTab did (``recorded_by``), else ``analyst``. A
+    revert of the plan's lock with no note is TurboTab's too: no client can revert a lock
+    (``plan_lock._the_lock_stays``), and the pilot's frozen engine recorded its own withdrawal of
+    one as the person's, with no note (``service._withdraw_lock``). ``kinds``: each record's
+    decision kind, by id."""
+    decision = rec["decision"]
+    if decision.get("kind") == "revert" and not (rec.get("note") or "").strip() \
+            and kinds.get(str(decision.get("decision_id"))) == "lock_plan":
+        return "app"
+    return "app" if rec.get("recorded_by") == "turbotab" else "analyst"
+
+
 def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mapping[str, Any]],
                  attempts: Sequence[Mapping[str, Any]], *, purpose: str | None,
                  mattered: Read, commands: Sequence[Mapping[str, Any]] = ()
@@ -1278,6 +1291,7 @@ def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mappin
     in_force = in_force_of(records)
     withdrawn = set(cancelled(records))
     prefixes = Prefixes(records)
+    kinds = {str(r["id"]): r["decision"].get("kind") for r in records}
     out: list[dict[str, Any]] = []
     for rec in records:
         materiality = fits_materiality(rec, attempts, records)
@@ -1290,7 +1304,7 @@ def decisions_of(records: Sequence[Mapping[str, Any]], previews: Sequence[Mappin
             "kind": rec["decision"].get("kind"), "option": rec["decision"],
             "answers": [{"question": q, "value": v} for q, v in answers_of(rec["decision"])],
             "reason": rec.get("note"),
-            "source": "app" if rec.get("recorded_by") == "turbotab" else "analyst",
+            "source": source_of(rec, kinds),
             "phase": phase_of(rec), "post_seal": bool(rec.get("post_seal")),
             "after_estimates": bool(rec.get("after_estimates")), "early": rec.get("early"),
             "examined": examined_of(rec, records, previews, attempts, prefixes),

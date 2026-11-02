@@ -9,8 +9,9 @@ EXTERNAL_AUDIT_2026-10-09).
   cross-validated score before it; once a refusal quotes them, they count as seen.
 * Under prediction a preview draws nothing read from the outcome model before Fit.
 * Under Estimate the explore stage's relationship points wait for the plan's lock.
-* A lock that no estimate was shown under is withdrawn when the plan changes, and by Cancel, and
-  the change is not marked as made after the estimates were seen.
+* A lock that no estimate was shown under is withdrawn when the plan changes, and by Cancel, the
+  withdrawal recorded by TurboTab with its reason, and the change is not marked as made after the
+  estimates were seen.
 * Results stays reached when the goal is withdrawn after Fit, and says why it dropped back.
 
 Each expectation is read from the data or the record independently of the code under test: the
@@ -280,6 +281,9 @@ def test_a_lock_no_estimate_was_shown_under_is_withdrawn_by_a_change_and_by_canc
     withdrawal = v["decisions"][-1]
     assert withdrawal["decision"] == {"kind": "revert", "decision_id": first["id"]}
     assert withdrawal["after_estimates"] is False
+    # The server records the withdrawal (plan_lock's rule; no client can revert a lock), and says
+    # why in its note.
+    assert withdrawal["recorded_by"] == "turbotab" and (withdrawal["note"] or "").strip()
     assert any(r["id"] == first["id"] for r in v["decisions"])  # the history stays
     assert stage(client, pid, "fit")["withheld_for"] == "fit"
 
@@ -291,10 +295,15 @@ def test_a_lock_no_estimate_was_shown_under_is_withdrawn_by_a_change_and_by_canc
     drive.decide({"kind": "select_models", "models": ["linear", "elastic_net"]})
     v = view()
     assert v["state"]["plan_locked"] is None
-    assert v["decisions"][-2]["decision"] == {"kind": "revert", "decision_id": second["id"]}
+    withdrawn = v["decisions"][-2]
+    assert withdrawn["decision"] == {"kind": "revert", "decision_id": second["id"]}
     change = v["decisions"][-1]
     assert change["decision"]["kind"] == "select_models"
-    assert change["after_estimates"] is False and v["decisions"][-2]["after_estimates"] is False
+    assert change["after_estimates"] is False and withdrawn["after_estimates"] is False
+    # The server's withdrawal is its own, with its own reason; the change stays the person's.
+    assert withdrawn["recorded_by"] == "turbotab" and (withdrawn["note"] or "").strip()
+    assert withdrawn["note"] != withdrawal["note"]
+    assert change["recorded_by"] == "you" and change["note"] is None
     plan = client.get(f"/api/projects/{pid}/plan").json()
     assert plan["status"] == "declared" and plan["after_estimates"] == []
 
@@ -311,6 +320,7 @@ def test_a_lock_no_estimate_was_shown_under_is_withdrawn_by_a_change_and_by_canc
     drive.decide({"kind": "select_models", "models": ["linear"]})
     v = view()
     assert v["state"]["plan_locked"] is True and v["decisions"][-1]["after_estimates"] is True
+    assert v["decisions"][-2]["id"] == third["id"]  # nothing withdrawn, so the server recorded none
     plan = client.get(f"/api/projects/{pid}/plan").json()
     assert plan["status"] == "locked" and plan["through_record"] == third["seq"]
     assert [r["kind"] for r in plan["after_estimates"]] == ["select_models"]
