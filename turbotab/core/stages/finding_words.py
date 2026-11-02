@@ -1400,16 +1400,17 @@ def left_censoring_on_the_participants(legacy: list[tuple[dict[str, Any], dict[s
                                        fc: FindingContext
                                        ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     """The lab pack's left-censoring finding, read on the rows outside the ones the served
-    pooled-QC finding names (:attr:`FindingContext.reference_rows`).
+    pooled-QC finding names (:attr:`FindingContext.reference_rows`), over the assay features with
+    the outcome (:attr:`FindingContext.target`) set aside.
 
     The pack's detector sets aside the rows its own pooled-QC reading flags (``packs._pooled_qc``),
     which reads a two-level label only; the served reading (``reference_rows.pooled_qc_finding``)
     reads a label of 2 to 10 levels, so on a Case/Control/QC label it names the QC rows and the
-    pack's names none, and a covariate or the outcome blank only on the QC rows was named as a
-    non-detection. Where the two readings name different rows the detector runs again with the
-    served reading's rows set aside, and its finding takes the pack's place (none does where it no
-    longer fires; it joins the pack's findings where it now does). Where they name the same rows,
-    the pack's finding stands as it is."""
+    pack's names none. The pack is not given the outcome (``packs.findings`` takes none), so it
+    reads ``omics.candidate_columns`` with no target, and an outcome no name rule sets aside (a
+    `disease` or `responder` column) is read there as a feature. The detector runs again with the
+    served reading's rows and the outcome set aside, and its finding takes the pack's place (none
+    does where it no longer fires; it joins the pack's findings where it now does)."""
     if "metabolomics" not in fc.lens:
         return legacy
     from turbotab import packs
@@ -1419,16 +1420,15 @@ def left_censoring_on_the_participants(legacy: list[tuple[dict[str, Any], dict[s
     served[sorted(fc.reference_rows)] = True
     where = [i for i, (_, finding) in enumerate(legacy) if family(finding["id"]) == LEFT_CENSORED]
     try:
-        if np.array_equal(packs._pooled_qc_rows(fc.frame).to_numpy(dtype=bool), served):
-            return legacy
-        again = packs._left_censored(fc.frame, qc_rows=pd.Series(served, index=fc.frame.index))
+        again = packs._left_censored(fc.frame, qc_rows=pd.Series(served, index=fc.frame.index),
+                                     target=fc.target)
     except Exception:  # noqa: BLE001 - as ``detectors.pack_findings`` handles a pack detector
         from turbotab import devchecks
 
         devchecks.swallowed(
             "finding_words.left_censoring_on_the_participants", packs._last_exception(),
-            "the left-censoring finding was not read on the participants, so none is said: the "
-            "pack's was read with the pooled-QC rows in it")
+            "the left-censoring finding was not read on the participants' features, so none is "
+            "said: the pack's may have been read with the pooled-QC rows or the outcome in it")
         again = None
     out = [pair for i, pair in enumerate(legacy) if i not in where]
     if again is not None:

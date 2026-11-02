@@ -115,8 +115,8 @@ def speak_for(frame: Any, lens: list[str], target: str | None, structural: list[
 
     The rows the pooled-QC finding names (``pooled_qc_rows``) are set aside where a column is
     judged on the participants: a two-level column's blanks are counted over the other rows, and
-    the left-censoring finding reads only those rows
-    (``left_censoring_on_the_participants``).
+    the left-censoring finding reads only those rows, and only the assay features, the outcome
+    set aside (``left_censoring_on_the_participants``).
     """
     fc = FindingContext(frame=frame, lens=tuple(lens), target=target, units=dict(units or {}),
                         below_detection=frozenset(str(c) for c in below_detection),

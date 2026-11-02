@@ -6,7 +6,8 @@ The fixture's 28 pooled QCs (``generators.panel_layout``'s ``qc``, by constructi
 sex, BMI or outcome. Read over all 128 rows, `sex` routed to the missing-values question as "28 of
 128 blank; a blank may mean not asked" and the left-censoring finding named `age`, `bmi` and the
 outcome `disease` among 39 censored columns. On the 100 participants, counted here with pandas,
-`sex` has no blank and 36 columns have one, every one a feature: those are what the findings say.
+`sex` has no blank and 36 columns have one, every one a feature: those are what the findings say,
+and the left-censoring detail's numbers are the 150 features' alone.
 """
 from __future__ import annotations
 
@@ -66,26 +67,31 @@ def test_left_censoring_names_only_the_features_blank_among_the_participants(pla
 
 
 def test_the_left_censoring_detail_says_it_reads_the_100_participants(plasma):
-    """The detail's numbers are read on the 100 rows outside the 28 QCs (pandas, scipy), and it
-    names those rows: read on all 128 rows the correlation, the count of columns with a blank and
-    the highest rate are other numbers, so a reader checking them against the table needs to know
-    which rows they come from."""
+    """The detail's numbers are the 150 features' (``generators.PANEL``'s ``features``, the `mz_`
+    columns by construction) on the 100 rows outside the 28 QCs (pandas, scipy): 150 features, a
+    correlation of -0.74, 36 features with a blank and a highest rate of 86%. It names those rows,
+    since read on all 128 rows the highest rate is another number. Read with `run_order`, `age`,
+    `bmi` and the outcome among its columns, it said 154 features and -0.68."""
     import numpy as np
     from scipy import stats
 
     df, qc, found = plasma
-    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    features = [c for c in df.columns if c.startswith("mz_")]
+    assert len(features) == G.PANEL["features"] == 150
 
     def read_on(rows: pd.DataFrame) -> str:
-        rate, mean = rows[numeric].isna().mean(), rows[numeric].mean()
-        usable = [c for c in numeric if pd.notna(mean[c]) and mean[c] > 0]
+        rate, mean = rows[features].isna().mean(), rows[features].mean()
+        usable = [c for c in features if pd.notna(mean[c]) and mean[c] > 0]
         rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
-        blank = [c for c in numeric if rate[c] > 0]
+        blank = [c for c in features if rate[c] > 0]
         return (f"{len(usable):,} features, a feature's missing rate tracks its abundance rank at "
                 f"a rank correlation of {rho:.2f}. {len(blank):,} features have blanks; the "
                 f"highest rate is {rate[blank].max():.0%}, on one of the least abundant.")
 
     assert int((~qc).sum()) == 100
+    assert read_on(df.loc[~qc]) == (
+        "150 features, a feature's missing rate tracks its abundance rank at a rank correlation "
+        "of -0.74. 36 features have blanks; the highest rate is 86%, on one of the least abundant.")
     assert read_on(df.loc[~qc]) != read_on(df)
     detail = found["pack::metabolomics::left_censored"]["detail"]
     assert detail == f"On the 100 non-QC rows, across {read_on(df.loc[~qc])}"

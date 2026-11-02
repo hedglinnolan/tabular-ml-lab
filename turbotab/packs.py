@@ -622,8 +622,8 @@ POOLED_QC_EVIDENCE = Evidence(
             "generic tool cannot do"))
 
 
-def _left_censored(df: pd.DataFrame,
-                   qc_rows: Optional[pd.Series] = None) -> Optional[Dict[str, Any]]:
+def _left_censored(df: pd.DataFrame, qc_rows: Optional[pd.Series] = None,
+                   target: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Missingness ordered by abundance is left censoring, not randomness.
 
     The reading is a rank correlation between a feature's missing rate and its
@@ -637,16 +637,33 @@ def _left_censored(df: pd.DataFrame,
 
     **Read on the participants' rows**: the rows outside `qc_rows`, the pooled
     QC injections, which are by default the rows `_pooled_qc` flags. A pooled
-    QC carries no age, BMI or outcome, so those are blank on every QC row by
-    design, not below a detection limit; read over every row, they were named
-    here, and the prior this finding scopes (`GUIDED-027`) reached them. Where
-    no row is a QC row, every row is read; where any is, the detail opens with
-    the count of rows it reads. `_pooled_qc` reads a two-level label
-    only, so the app passes the rows its own pooled-QC reading names, which
-    reads a Case/Control/QC label too
+    QC is one sample injected repeatedly, not a participant, and it carries no
+    age, BMI or outcome, so those are blank on every QC row by design, not
+    below a detection limit; read over every row and every numeric column,
+    they were named here, and the prior this finding scopes (`GUIDED-027`)
+    reached them. Where no row is a QC row, every row is read; where any is,
+    the detail opens with the count of rows it reads. `_pooled_qc` reads a
+    two-level label only, so the app passes the rows its own pooled-QC reading
+    names, which reads a Case/Control/QC label too, and the outcome as
+    `target`
     (`turbotab.core.stages.finding_words.left_censoring_on_the_participants`).
+
+    **Read over the assay features only**, the columns the `omics_scale`
+    reading draws its block from (`omics.candidate_columns`): not `target`,
+    not a person's characteristic, an identifier or a time by name, and not
+    how the samples were acquired (run order, batch, plate, well, a column
+    that numbers the rows). `packs.findings` passes no `target`, so there an
+    outcome no name rule sets aside is read as a feature. The
+    missing rate, the abundance, the correlation, both counts and the columns
+    named are the features'. Read with the covariates among them on the
+    participants' rows, where a covariate has no blank, the covariates pulled
+    the correlation off the features' own and could hold it above the gate
+    where the features are censored, the detail counted them as features, and
+    a covariate blank on a participant was named a non-detection.
     """
-    cols = _numeric(df)
+    from turbotab.core.methods.omics import candidate_columns
+
+    cols = candidate_columns(df, target)
     if len(cols) < 30:
         return None
     if qc_rows is None:
