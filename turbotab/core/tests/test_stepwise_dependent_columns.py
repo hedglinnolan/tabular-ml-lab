@@ -18,6 +18,10 @@ the rank, and hence every AIC and the kept terms, are the same. The AIC's value 
 (``OLS``'s residual sum of squares, ``Logit``'s log-likelihood) on the reference coding, with edf
 its number of coefficients. With R, ``MASS::stepAIC`` on the categories as factors keeps the terms
 the every-level coding keeps.
+
+The last section holds the inference sensitivity analysis (backward elimination by Wald tests) on
+dependent and nearly dependent columns, as R's ``summary.lm``, ``summary.glm`` and
+``mice::pool`` read them.
 """
 from __future__ import annotations
 
@@ -362,90 +366,429 @@ def test_a_spanned_columns_variance_is_rs_lm(tmp_path, monkeypatch):
     assert np.isnan(inv[3]).all() and np.isnan(inv[:, 3]).all()
 
 
-# ── the inference sensitivity analysis reads what it read before ──────────────
+
+# ── the inference sensitivity analysis, as R's summary.lm and summary.glm ─────
 # Backward elimination by pooled Wald tests (``backward_wald``, the sensitivity analysis under
-# inference) is outside this package: each copy's covariance stays σ̂²(XᵀX)⁺, numpy's pinv, with
-# σ̂² = RSS/(n − k) and k every column. Pinned here from that formula, computed with numpy,
-# statsmodels and scipy, on the designs where the identified columns' R⁻¹R⁻ᵀ would move it: one
-# with a column the others nearly span, and one with an aliased column. Neither pin is R's ``lm``
-# (an INBOX line): on the first pinv loses digits to XᵀX's conditioning; on the second ``lm``
-# reports the aliased coefficient NA and takes σ̂² over n − rank.
+# inference) reads each copy's fit as R's ``summary.lm`` and ``summary.glm`` report it: the columns
+# R's rule finds aliased (of a dependent set the later column, the exposure's columns first) are
+# set aside untested, their coefficients NA there; the rest are tested from the QR factor, σ̂² =
+# RSS/(n − rank) and df n − rank, or by a logistic regression on them with its z test; a copy whose
+# fit fails refuses the analysis. On the base (σ̂²·pinv(XᵀX), k every column) an aliased column's
+# partner left first at p = 1, a covariate with a real effect, and every logistic p was NaN, so
+# nothing left and the analysis read as having removed no covariate.
+#
+# Truths: statsmodels on the columns ``lm`` keeps (``lm`` with an NA coefficient spans the same
+# columns, with the same rank, as ``lm`` without it); for a nearly spanned column, statsmodels on a
+# well-conditioned basis of the same span, mapped back; R, step by step (``needs_r``).
+
+ALPHA = VS.INFERENCE_ALPHA
 
 
-def _sensitivity_rows(seed: int, partner: str) -> tuple[pd.DataFrame, np.ndarray]:
+def _sensitivity_rows(seed: int, partner: str, n: int = 200) -> tuple[pd.DataFrame, np.ndarray]:
     """An exposure ``e`` (forced), ``x`` with an effect, its partner ``x2``, ``u`` with none and
-    ``w`` with a small one. ``x2`` is x + 10⁻⁶·noise (full rank, XᵀX's condition number about
-    4·10¹²), or 2x + 1, exactly or with 10⁻⁹·noise (aliased at :data:`VS.ALIASED`)."""
+    ``w`` with a small one. ``x2`` is x + 10⁻⁶·noise (full rank, X's condition number about
+    2·10⁶), 2x + 1, exactly or with 10⁻⁹·noise (aliased at :data:`VS.ALIASED`), or noise of its
+    own (``independent``)."""
     rng = np.random.default_rng(seed)
-    e, x, u, w, noise = rng.normal(size=(5, 200))
+    e, x, u, w, noise = rng.normal(size=(5, n))
     x2 = {"near": x + 1e-6 * noise, "aliased": 2 * x + 1,
-          "aliased_noise": 2 * x + 1 + 1e-9 * noise}[partner]
-    y = 1.0 + 0.5 * e + 0.3 * x + 0.14 * w + rng.normal(size=200)
+          "aliased_noise": 2 * x + 1 + 1e-9 * noise, "independent": noise}[partner]
+    y = 1.0 + 0.5 * e + 0.3 * x + 0.14 * w + rng.normal(size=n)
     return pd.DataFrame({"e": e, "x": x, "x2": x2, "u": u, "w": w}), y
 
 
-def _pinv_wald(frame: pd.DataFrame, y: np.ndarray, columns: list[str]) -> dict[str, float]:
-    """Each unforced column's t test on one copy by the pinned formula: β statsmodels' ``OLS``'s by
-    QR, as ``lm`` solves, variance RSS/(n − k)·pinv(XᵀX)ⱼⱼ, df n − k."""
+def _binary_outcome(frame: pd.DataFrame, seed: int) -> np.ndarray:
+    """A yes/no outcome with log-odds 0.5e + 0.6x."""
+    rng = np.random.default_rng(seed)
+    lp = (0.5 * frame["e"] + 0.6 * frame["x"]).to_numpy()
+    return (rng.random(len(frame)) < 1 / (1 + np.exp(-lp))).astype(float)
+
+
+def _summary_p(frame: pd.DataFrame, y: np.ndarray, columns: list[str],
+               task: str = "regression") -> dict[str, float]:
+    """Each unforced column's p-value as ``summary.lm`` or ``summary.glm`` reports it, by
+    statsmodels on the intercept and ``columns`` (none aliased): ``OLS``'s t test on n − k df, or
+    ``Logit``'s Wald z test (Newton's method to 10⁻¹²)."""
+    X = np.column_stack([np.ones(len(frame)), frame[columns].to_numpy(dtype=float)])
+    if task == "binary":
+        fit = sm.Logit(y, X).fit(disp=0, method="newton", tol=1e-12, maxiter=100)
+    else:
+        fit = sm.OLS(y, X).fit()
+    return {c: float(fit.pvalues[j]) for j, c in enumerate(columns, start=1) if c != "e"}
+
+
+def _reparametrized_p(frame: pd.DataFrame, y: np.ndarray, columns: list[str], a: float, b: float,
+                      delta: float) -> dict[str, float]:
+    """The least squares' t tests where x₂ = a + b·x + δ·v with δ tiny, from statsmodels on a
+    well-conditioned basis of the same span, v = (x₂ − a − b·x)/δ in x₂'s place: its coefficients
+    γ and their covariance mapped back (β_x₂ = γ_v/δ, β_x = γ_x − b·γ_v/δ, the intercept's
+    γ₀ − a·γ_v/δ). Where x or x₂ is out, statsmodels on the columns."""
     from scipy import stats
 
-    X = np.column_stack([np.ones(len(frame)), frame[columns].to_numpy(dtype=float)])
-    n, k = X.shape
-    fit = sm.OLS(y, X).fit(method="qr")
-    variance = fit.ssr / (n - k) * np.diag(np.linalg.pinv(X.T @ X))
-    return {c: float(2 * stats.t.sf(abs(fit.params[j]) / math.sqrt(variance[j]), n - k))
-            for j, c in enumerate(columns, start=1) if c != "e"}
+    if not ("x" in columns and "x2" in columns):
+        return _summary_p(frame, y, columns)
+    W = frame[columns].assign(x2=(frame["x2"] - a - b * frame["x"]) / delta)
+    X = np.column_stack([np.ones(len(W)), W.to_numpy(dtype=float)])
+    fit = sm.OLS(y, X).fit()
+    i, j = 1 + columns.index("x"), 1 + columns.index("x2")
+    back = np.eye(X.shape[1])
+    back[j, j], back[i, j], back[0, j] = 1 / delta, -b / delta, -a / delta
+    beta = back @ fit.params
+    se = np.sqrt(np.diag(back @ fit.cov_params() @ back.T))
+    df = len(y) - X.shape[1]
+    return {c: float(2 * stats.t.sf(abs(beta[k] / se[k]), df))
+            for k, c in enumerate(columns, start=1) if c != "e"}
 
 
-def _pinv_backward(frame: pd.DataFrame, y: np.ndarray,
-                   columns: list[str]) -> tuple[list[dict], list[str]]:
-    """The elimination from ``columns`` by :func:`_pinv_wald`, the largest p leaving while above α:
-    (each step's p-values, the columns kept)."""
-    path, remaining = [], list(columns)
+def _elimination(p_of, columns: list[str], aliased_of=lambda remaining: []
+                 ) -> tuple[list[dict], list[list[str]], list[str]]:
+    """The elimination from ``columns``: at each step the columns ``aliased_of`` names are set
+    aside, the rest tested by ``p_of``, and the largest p above α leaves. (Each step's p-values,
+    each step's set-aside columns, the columns kept.)"""
+    path, aside, remaining = [], [], list(columns)
     while True:
-        tested = _pinv_wald(frame, y, remaining)
-        worst = max(tested, key=lambda c: (tested[c], c)) if tested else None
+        out = aliased_of(remaining)
+        tested = p_of([c for c in remaining if c not in out])
         path.append(tested)
-        if worst is None or tested[worst] <= VS.INFERENCE_ALPHA:
-            return path, remaining
+        aside.append(out)
+        worst = max(tested, key=lambda c: (tested[c], c)) if tested else None
+        if worst is None or tested[worst] <= ALPHA:
+            return path, aside, remaining
         remaining.remove(worst)
 
 
-def _steps_equal(got: dict, want: tuple[list[dict], list[str]], start: int = 0) -> None:
-    """``backward_wald``'s path from step ``start`` and its kept columns are :func:`_pinv_backward`'s,
-    each p to 10⁻⁹."""
-    path, kept = want
+def _x2_spanned(remaining: list[str]) -> list[str]:
+    """x₂ = 2x + 1 is aliased, the later of the two, while x is in."""
+    return ["x2"] if {"x", "x2"} <= set(remaining) else []
+
+
+def _steps_equal(got: dict, want: tuple[list[dict], list[list[str]], list[str]], rel: float) -> None:
+    """``backward_wald``'s path and kept columns are ``want``'s (:func:`_elimination`), each p to
+    ``rel`` of itself."""
+    path, aside, kept = want
+    assert got.get("refused") is None
     assert got["kept"] == kept
-    assert len(got["path"]) - start == len(path)
-    for step, tested in zip(got["path"][start:], path):
+    assert len(got["path"]) == len(path)
+    for step, tested, out in zip(got["path"], path, aside):
+        assert step.get("aliased", []) == out, step["step"]
         assert set(step["tested"]) == set(tested), step["step"]
         for term, p in tested.items():
-            assert step["tested"][term] == pytest.approx(p, rel=1e-9, abs=1e-12), (step["step"], term)
+            assert step["tested"][term] == pytest.approx(p, rel=rel), (step["step"], term)
 
 
-@pytest.mark.parametrize("seed", [3, 8])
-def test_the_sensitivity_analysis_on_a_nearly_spanned_column_reads_the_pinv(seed):
-    """Full rank, x₂ = x + 10⁻⁶·noise: every step's p-values are the pinned formula's to 10⁻⁹, and
-    the same terms leave. Under the identified columns' R⁻¹R⁻ᵀ (5c7a3bf5) x's and x₂'s moved by
-    10⁻⁵ to 2·10⁻⁴ of themselves, to statsmodels' ``OLS``'s p-values."""
-    frame, y = _sensitivity_rows(seed, "near")
-    columns = list(frame.columns)
-    got = VS.backward_wald("regression", [frame], [y], {c: [c] for c in columns}, ["e"])
-    _steps_equal(got, _pinv_backward(frame, y, columns))
+def _wald(task: str, frame: pd.DataFrame, y: np.ndarray, forced=("e",)) -> dict:
+    return VS.backward_wald(task, [frame], [y], {c: [c] for c in frame.columns}, list(forced))
+
+
+def test_identified_aliases_the_later_column_of_a_dependent_set():
+    """R's rule (``lm``'s limited pivoting): of x and 2x + 1 beside the intercept, whichever comes
+    later is aliased; of a category coded by every level beside the intercept, the last level. On
+    the base a QR with column pivoting kept the longer column, 2x + 1, wherever it stood."""
+    rng = np.random.default_rng(1)
+    x = rng.normal(size=N)
+    ones = np.ones(N)
+    assert VS.identified(np.column_stack([ones, x, 2 * x + 1])).tolist() == [0, 1]
+    assert VS.identified(np.column_stack([ones, 2 * x + 1, x])).tolist() == [0, 1]
+    levels = np.eye(3)[rng.integers(0, 3, N)]
+    assert VS.identified(np.column_stack([ones, levels, x])).tolist() == [0, 1, 2, 4]
+
+
+@needs_r
+def test_identified_is_lms_rule_in_either_order(tmp_path):
+    """R's ``lm``: the NA coefficient is the later of x and 2x + 1, in either order, and of a
+    category's every-level indicators beside the intercept, the last."""
+    rng = np.random.default_rng(1)
+    x = rng.normal(size=N)
+    levels = np.eye(3)[rng.integers(0, 3, N)]
+    frame = pd.DataFrame({"x": x, "z": 2 * x + 1, "l1": levels[:, 0], "l2": levels[:, 1],
+                          "l3": levels[:, 2], "y": x + rng.normal(size=N)})
+    r = run_r("""
+        d <- read.csv(s_csv)
+        na <- function(f) I(names(which(is.na(coef(lm(f, data = d))))))
+        out(list(xz = na(y ~ x + z), zx = na(y ~ z + x), levels = na(y ~ l1 + l2 + l3 + x)))
+    """, {"s": frame}, tmp_path)
+    ones = np.ones((N, 1))
+    for key, names in (("xz", ["x", "z"]), ("zx", ["z", "x"]), ("levels", ["l1", "l2", "l3", "x"])):
+        kept = VS.identified(np.hstack([ones, frame[names].to_numpy()])).tolist()
+        assert [n for j, n in enumerate(names, start=1) if j not in kept] == r[key], key
 
 
 @pytest.mark.parametrize("partner", ["aliased", "aliased_noise"])
-def test_the_sensitivity_analysis_drops_an_aliased_column_first(partner):
-    """x₂ = 2x + 1, exactly or to 10⁻⁹: one of x and x₂ is aliased, its coefficient zero, so its
-    Wald test's p is 1 and it leaves first; every later step is the pinned formula's on the design
-    without it (full rank there, so statsmodels' ``OLS``'s), the same terms leaving. Under
-    R⁻¹R⁻ᵀ (5c7a3bf5) the aliased column's p was NaN, so it never left while aliased, and ``u``
-    and ``w`` left instead."""
+def test_the_sensitivity_analysis_sets_an_aliased_column_aside_untested(partner):
+    """x₂ = 2x + 1, exactly or to 10⁻⁹: R's rule aliases x₂, the later, so it is set aside
+    untested at every step x is in (an NA coefficient in ``summary.lm``) and kept, and x, u and w
+    are tested as statsmodels tests them on the design without x₂, to 10⁻¹⁰. On the base x left
+    first at p = 1 (a zero coefficient beside a finite pinv variance), a covariate with a real
+    effect."""
     frame, y = _sensitivity_rows(3, partner)
-    columns = list(frame.columns)
-    got = VS.backward_wald("regression", [frame], [y], {c: [c] for c in columns}, ["e"])
-    first = got["path"][0]
-    assert first["dropped"] in ("x", "x2") and first["p"] == 1.0
-    assert set(first["tested"]) == {"x", "x2", "u", "w"}
-    rest = [c for c in columns if c != first["dropped"]]
-    _steps_equal(got, _pinv_backward(frame, y, rest), start=1)
+    got = _wald("regression", frame, y)
+    want = _elimination(lambda cols: _summary_p(frame, y, cols), list(frame.columns), _x2_spanned)
+    _steps_equal(got, want, rel=1e-10)
+    assert "x2" in got["kept"] and got["untested"] == ["x2"]
+
+
+@pytest.mark.parametrize("seed", [3, 8])
+def test_the_sensitivity_analysis_on_a_nearly_spanned_column_is_least_squares(seed):
+    """Full rank, x₂ = x + 10⁻⁶·noise (X's condition number about 2·10⁶): every step's p-values are
+    the least squares' t tests to 10⁻⁸ of themselves, from statsmodels on a well-conditioned basis
+    of the same span (:func:`_reparametrized_p`), and the same terms leave. On the base
+    σ̂²·pinv(XᵀX) put x's p off by 1·10⁻⁵ (seed 3) and 5·10⁻⁵ (seed 8) of itself."""
+    frame, y = _sensitivity_rows(seed, "near")
+    got = _wald("regression", frame, y)
+    want = _elimination(lambda cols: _reparametrized_p(frame, y, cols, 0.0, 1.0, 1e-6),
+                        list(frame.columns))
+    _steps_equal(got, want, rel=1e-8)
+
+
+@pytest.mark.parametrize("task", ["regression", "binary"])
+def test_the_sensitivity_analysis_on_a_well_conditioned_design_is_statsmodels(task):
+    """The rule's silent side: with no column aliased or nearly spanned nothing is set aside, and
+    every step is statsmodels': the t tests to 10⁻¹⁰, or a logistic regression's z tests (as
+    ``summary.glm`` reads them) to 10⁻⁹. The regression's p-values were the base's; the logistic
+    one's were not: the base read each z statistic against Student's t on n − k df, x's p 0.000162
+    where ``glm``'s is 0.000119."""
+    frame, y = _sensitivity_rows(3, "independent")
+    if task == "binary":
+        y = _binary_outcome(frame, 5)
+    got = _wald(task, frame, y)
+    want = _elimination(lambda cols: _summary_p(frame, y, cols, task), list(frame.columns))
+    _steps_equal(got, want, rel=1e-10 if task == "regression" else 1e-9)
+    assert got["untested"] == []
+
+
+def test_the_binary_sensitivity_analysis_sets_an_aliased_column_aside():
+    """x₂ = 2x + 1 under a yes/no outcome: the logistic regression on the identified columns, as
+    ``glm`` fits it, x₂ set aside untested; each step's z tests are statsmodels' ``Logit``'s on the
+    design without x₂, to 10⁻⁹. On the base the logistic fit on every column had a singular
+    information, so every p was NaN and nothing left."""
+    frame, _ = _sensitivity_rows(3, "aliased")
+    y = _binary_outcome(frame, 5)
+    got = _wald("binary", frame, y)
+    want = _elimination(lambda cols: _summary_p(frame, y, cols, "binary"), list(frame.columns),
+                        _x2_spanned)
+    _steps_equal(got, want, rel=1e-9)
+    assert got["untested"] == ["x2"]
+
+
+@pytest.mark.parametrize("at", [0, 1])
+def test_the_exposures_columns_come_first_so_its_partner_is_set_aside(at):
+    """c = 2e + 1 before the exposure e in the model matrix, or after it: the exposure's columns
+    come first in R's rule, so c is the aliased one wherever it stands, set aside untested at every
+    step, and x, u and w are tested as statsmodels tests them on the design without c. On the base
+    the pivoted QR aliased the exposure instead, and c was tested at p ≈ 5·10⁻²¹ with its effect."""
+    frame, y = _sensitivity_rows(3, "independent")
+    frame = frame.drop(columns="x2")
+    frame.insert(at, "c", 2 * frame["e"] + 1)
+    got = _wald("regression", frame, y)
+    want = _elimination(lambda cols: _summary_p(frame, y, cols), list(frame.columns),
+                        lambda remaining: ["c"])
+    _steps_equal(got, want, rel=1e-10)
+
+
+@pytest.mark.parametrize("share", [0.5, 1.0, 2.0])
+def test_a_column_at_the_alias_tolerance_is_set_aside_or_tested_right(share):
+    """x₂ = 2x + 1 + c·r, r orthogonal to the intercept, e and x, so x₂'s part outside the columns
+    before it is ``share`` times :data:`VS.ALIASED` of its length. At 1 float64 can tip R's rule
+    either way, so what is pinned is that the analysis is right either way (CLAUDE.md): x₂ set
+    aside and the rest statsmodels' on the design without it, to 10⁻¹⁰; or x₂ tested and every p
+    the least squares', from a well-conditioned basis of the same span (r in x₂'s place, mapped
+    back), to 10⁻⁶ (X's condition number near 10⁷ leaves float64 least squares about 10⁻⁹). At
+    half the tolerance x₂ is set aside, at twice it is tested. On the base, at half the tolerance x
+    was tested at p = 1 and left; at and above it x's p was 3% off (0.089 and 0.084 for 0.086)."""
+    frame, y = _sensitivity_rows(3, "independent")
+    Q, _ = np.linalg.qr(np.column_stack([np.ones(len(frame)), frame[["e", "x"]].to_numpy()]))
+    r = np.random.default_rng(9).normal(size=len(frame))
+    for _ in range(2):
+        r = r - Q @ (Q.T @ r)
+    line = 2 * frame["x"].to_numpy() + 1
+    c = share * VS.ALIASED * float(np.linalg.norm(line) / np.linalg.norm(r))
+    frame["x2"] = line + c * r
+    got = _wald("regression", frame, y)
+    aside = got["path"][0].get("aliased") == ["x2"]
+    if aside:
+        want = _elimination(lambda cols: _summary_p(frame, y, cols), list(frame.columns),
+                            _x2_spanned)
+    else:
+        want = _elimination(lambda cols: _reparametrized_p(frame, y, cols, 1.0, 2.0, c),
+                            list(frame.columns))
+    _steps_equal(got, want, rel=1e-10 if aside else 1e-6)
+    if share != 1.0:
+        assert aside == (share < 1.0)
+
+
+def _separating(y: np.ndarray, seed: int) -> np.ndarray:
+    """A covariate positive exactly where the outcome is an event."""
+    return np.where(y == 1, 1.0, -1.0) * np.random.default_rng(seed).uniform(0.5, 1.5, len(y))
+
+
+def test_a_logistic_fit_that_fails_refuses_the_analysis():
+    """A covariate s that separates the outcome (an event exactly where s > 0): the logistic
+    likelihood has no maximum, so the analysis is refused at step 1 in words, with no step, removal
+    or kept set reported. Without s it runs. On the base every p was NaN, nothing left, and the
+    analysis read as having removed no covariate."""
+    frame, _ = _sensitivity_rows(3, "independent")
+    y = _binary_outcome(frame, 5)
+    got = _wald("binary", frame.assign(s=_separating(y, 2)), y)
+    assert got["refused"] == {
+        "step": 1, "reason": "the logistic regression on the complete rows did not reach a finite "
+                             "maximum-likelihood fit (as when the covariates separate an outcome "
+                             "level)"}
+    assert got["path"] == [] and got["kept"] is None
+    assert _wald("binary", frame, y)["refused"] is None
+
+
+def test_one_imputed_copys_failed_fit_refuses_the_pooled_analysis():
+    """Three copies whose s is noise, but in the second it separates the outcome: the refusal names
+    that copy. With every copy's s noise, the pooled analysis runs."""
+    frame, _ = _sensitivity_rows(3, "independent")
+    y = _binary_outcome(frame, 5)
+    noise = np.random.default_rng(4).normal(size=(3, len(y)))
+    terms = {c: [c] for c in [*frame.columns, "s"]}
+    copies = [frame.assign(s=noise[k]) for k in range(3)]
+    assert VS.backward_wald("binary", copies, [y] * 3, terms, ["e"])["refused"] is None
+    copies[1] = frame.assign(s=_separating(y, 2))
+    got = VS.backward_wald("binary", copies, [y] * 3, terms, ["e"])
+    assert got["refused"]["step"] == 1 and got["kept"] is None
+    assert got["refused"]["reason"].startswith("the logistic regression on imputed copy 2 of 3 did "
+                                               "not reach")
+
+
+@pytest.mark.parametrize("rows", [6, 7])
+def test_least_squares_with_no_residual_df_refuses_the_analysis(rows):
+    """Six coefficients (the intercept, e, x, x₂, u, w) on six rows leave no residual variance, so
+    no t test is defined and the analysis is refused; on seven rows (one residual df) it runs, each
+    step statsmodels'. On the base six rows raised ``ZeroDivisionError`` (RSS/(n − k))."""
+    frame, y = _sensitivity_rows(3, "independent", n=rows)
+    got = _wald("regression", frame, y)
+    if rows == 6:
+        assert got["refused"] == {"step": 1, "reason": "the least squares on the complete rows "
+                                                       "leaves no residual variance (6 rows, 6 "
+                                                       "coefficients identified)"}
+        assert got["kept"] is None
+        return
+    _steps_equal(got, _elimination(lambda cols: _summary_p(frame, y, cols), list(frame.columns)),
+                 rel=1e-9)
+
+
+def test_copies_that_alias_different_columns_refuse_the_pooled_analysis():
+    """x₂ = 2x + 1 in one copy and 2x + 1 + noise in the other: ``lm`` aliases x₂ in the first only,
+    so the copies' fits do not estimate the same coefficients and no pooled test of them is
+    defined; the analysis is refused, naming x₂. Where both copies alias it, it runs."""
+    exact, y = _sensitivity_rows(3, "aliased")
+    noise = np.random.default_rng(6).normal(size=(2, len(y)))
+    terms = {c: [c] for c in exact.columns}
+    both = [exact.assign(u=exact["u"] + 0.1 * noise[0]), exact]
+    ran = VS.backward_wald("regression", both, [y, y], terms, ["e"])
+    assert ran["refused"] is None and ran["path"][0]["aliased"] == ["x2"]
+    one = [exact.assign(x2=exact["x2"] + 0.1 * noise[1]), exact]
+    got = VS.backward_wald("regression", one, [y, y], terms, ["e"])
+    assert got["kept"] is None
+    assert got["refused"] == {
+        "step": 1, "reason": "`x2` is spanned by the other columns in some imputed copies and not "
+                             "in others, so the copies' fits do not estimate the same "
+                             "coefficients and no pooled test is defined"}
+
+
+def test_a_pooled_test_with_no_p_value_refuses_the_analysis(monkeypatch):
+    """Where a pooled test returns no p-value (here D1 is made to report the within-copy covariance
+    singular, as ``pooled_wald`` does), the analysis is refused, naming the term; on the base its
+    NaN left the term in, untested and unsaid. Unpatched, the same copies run."""
+    from turbotab.core.methods import imputation
+
+    frame, y = _sensitivity_rows(3, "independent")
+    noise = np.random.default_rng(7).normal(size=len(y))
+    copies = [frame, frame.assign(u=frame["u"] + 0.1 * noise)]
+    terms = {"e": ["e"], "xu": ["x", "u"], "x2": ["x2"], "w": ["w"]}
+    assert VS.backward_wald("regression", copies, [y, y], terms, ["e"])["refused"] is None
+    monkeypatch.setattr(imputation, "pooled_wald", lambda *args, **kwargs: None)
+    got = VS.backward_wald("regression", copies, [y, y], terms, ["e"])
+    assert got["refused"] == {"step": 1, "reason": "the pooled Wald test of `xu` has no p-value"}
+    assert got["kept"] is None
+
+
+def test_the_sentence_says_what_the_analysis_did():
+    """The evaluation stage's sentence: as before where every term was tested; naming a term kept
+    untested, and why, where one was; and, where the analysis was refused, that it stopped, at
+    which step, and why, with no removal claimed."""
+    from turbotab.core.stages.evaluation import sensitivity_sentence
+    from turbotab.core.voice import listing
+
+    head = (f"As a labeled sensitivity analysis (not the reported model), backward elimination at "
+            f"α = {ALPHA} with Wald tests on the complete rows (Wood, White & Royston 2008), the "
+            f"exposure kept, ")
+    tail = "; the declared model is the reported one."
+    frame, y = _sensitivity_rows(3, "independent")
+    found = _wald("regression", frame, y)
+    dropped = [s["dropped"] for s in found["path"] if s["dropped"]]
+    assert sensitivity_sentence(found) == (
+        f"{head}removed {listing(dropped) if dropped else 'no covariate'}{tail}")
+    frame, y = _sensitivity_rows(3, "aliased")
+    found = _wald("regression", frame, y)
+    dropped = [s["dropped"] for s in found["path"] if s["dropped"]]
+    assert found["untested"] == ["x2"] and dropped
+    assert sensitivity_sentence(found) == (
+        f"{head}removed {listing(dropped)}; `x2` was kept untested: the other columns span it (R "
+        f"reports its coefficient NA){tail}")
+    found["untested"] = ["x2", "z"]
+    assert sensitivity_sentence(found).endswith(
+        "; `x2` and `z` were kept untested: the other columns span them (R reports their "
+        f"coefficients NA){tail}")
+    pooled = VS.backward_wald("regression", [frame, frame.assign(u=frame["u"] * 1.01)], [y, y],
+                              {c: [c] for c in frame.columns}, ["e"])
+    assert pooled["untested"] == ["x2"]
+    assert sensitivity_sentence(pooled).startswith(
+        "As a labeled sensitivity analysis (not the reported model), backward elimination at "
+        f"α = {ALPHA} with Wald tests pooled across the imputed copies by Rubin's rules (Wood, "
+        "White & Royston 2008), the exposure kept, removed ")
+    yb = _binary_outcome(frame, 5)
+    refused = _wald("binary", frame.drop(columns="x2").assign(s=_separating(yb, 2)), yb)
+    assert sensitivity_sentence(refused) == (
+        f"{head}stopped at step 1 and reports no result: {refused['refused']['reason']}{tail}")
+
+
+@needs_r
+@pytest.mark.parametrize(("task", "partner"), [("regression", "aliased"), ("regression", "near"),
+                                               ("binary", "aliased"), ("binary", "independent")])
+def test_the_sensitivity_analysis_is_rs_summary_step_by_step(task, partner, tmp_path):
+    """R's elimination by ``summary.lm``'s t tests or ``summary.glm``'s z tests, e forced, the
+    largest p above α leaving (``which.max`` passes over an aliased term's NA): each step's p-values
+    to 10⁻⁸ of themselves, the terms R reports NA set aside, and the terms kept. ``glm`` runs to
+    ``epsilon = 1e-10`` and once more from its own estimates: ``summary.glm`` reads the
+    information at the weights of the iteration before the last, so restarted at the estimates it
+    reads it there. (``glm.fit`` aliases at ``min(1e-7, epsilon/1000)`` of each weighted column,
+    10⁻¹³ here, which an exact dependence such as 2x + 1 still meets.)"""
+    frame, y = _sensitivity_rows(3, partner)
+    if task == "binary":
+        y = _binary_outcome(frame, 5)
+    r = run_r(f"""
+        d <- read.csv(s_csv)
+        terms <- c("e", "x", "x2", "u", "w"); forced <- "e"; path <- list(); na <- list()
+        logistic <- function(f) {{
+          tight <- glm.control(epsilon = 1e-10, maxit = 100)
+          b <- coef(glm(f, family = binomial, data = d, control = tight)); b[is.na(b)] <- 0
+          glm(f, family = binomial, data = d, start = b, control = tight)
+        }}
+        repeat {{
+          f <- as.formula(paste("y ~", paste(terms, collapse = " + ")))
+          fit <- if ("{task}" == "binary") logistic(f) else lm(f, data = d)
+          s <- summary(fit)$coefficients
+          tested <- setdiff(terms, forced)
+          p <- setNames(rep(NA_real_, length(tested)), tested)
+          hit <- intersect(tested, rownames(s)); p[hit] <- s[hit, 4]
+          path[[length(path) + 1]] <- as.list(p[!is.na(p)])
+          na[[length(na) + 1]] <- I(names(which(is.na(coef(fit)))))
+          worst <- names(which.max(p))
+          if (length(worst) == 0 || p[[worst]] <= {ALPHA}) break
+          terms <- setdiff(terms, worst)
+        }}
+        out(list(path = path, na = na, kept = I(terms)))
+    """, {"s": frame.assign(y=y)}, tmp_path)
+    got = _wald(task, frame, y)
+    assert got.get("refused") is None
+    assert got["kept"] == r["kept"]
+    assert len(got["path"]) == len(r["path"])
+    for step, want, na in zip(got["path"], r["path"], r["na"]):
+        assert step.get("aliased", []) == na, step["step"]
+        assert set(step["tested"]) == set(want or {}), step["step"]
+        for term, p in (want or {}).items():
+            assert step["tested"][term] == pytest.approx(p, rel=1e-8), (step["step"], term)

@@ -354,8 +354,8 @@ def _copies(seed: int = 11, m: int = 5, n: int = 300):
 def test_7_backward_wald_pools_each_test_by_rubins_rules_as_r_mice_does(tmp_path):
     """Wood, White & Royston (2008): selection after multiple imputation tests each term by Rubin's
     rules across the copies. Each step: least squares in each copy; each unforced coefficient's
-    pooled estimate over its total variance with Barnard & Rubin's df (complete-data df n − k); the
-    term with the largest p above α = 0.157 leaves. Reference: the same elimination in R with
+    pooled estimate over its total variance with Barnard & Rubin's df (complete-data df n − rank,
+    here n − k: no column is aliased); the term with the largest p above α = 0.157 leaves. Reference: the same elimination in R with
     ``summary(mice::pool(as.mira(fits)))``'s p-values, step by step, to 10⁻⁸."""
     copies = _copies()
     frames = [c[["x1", "x2", "x3", "x4"]] for c in copies]
@@ -385,6 +385,98 @@ def test_7_backward_wald_pools_each_test_by_rubins_rules_as_r_mice_does(tmp_path
         assert set(step["tested"]) == set(want)
         for term, p in want.items():
             assert abs(step["tested"][term] - p) < 1e-8, (step["step"], term)
+
+
+def _aliased_copies():
+    """The copies of :func:`_copies` with x5 = 2·x2 + 1 in each, made after the imputation (a
+    passive column), so ``lm`` aliases x5, the later of the two, in every copy."""
+    return [c.assign(x5=2 * c["x2"] + 1)[["x1", "x2", "x3", "x4", "x5", "y"]] for c in _copies()]
+
+
+def _rubin_p(estimates, variances, df_com: float) -> float:
+    """Rubin's rules for one coefficient (Rubin 1987): the mean estimate over its total variance
+    T = W + (1 + 1/m)·B, against Student's t on Barnard & Rubin's (1999) df: λ = (1 + 1/m)·B/T,
+    ν_old = (m − 1)/λ², ν_obs = (ν_com + 1)/(ν_com + 3)·ν_com·(1 − λ), ν = ν_old·ν_obs/(ν_old +
+    ν_obs)."""
+    from scipy import stats
+
+    q, u = np.asarray(estimates), np.asarray(variances)
+    m = len(q)
+    between = float(q.var(ddof=1))
+    total = float(u.mean()) + (1 + 1 / m) * between
+    lam = (1 + 1 / m) * between / total
+    old = (m - 1) / lam ** 2
+    obs = (df_com + 1) / (df_com + 3) * df_com * (1 - lam)
+    return float(2 * stats.t.sf(abs(q.mean()) / math.sqrt(total), old * obs / (old + obs)))
+
+
+def test_7_backward_wald_sets_an_aliased_term_aside_and_pools_the_rest_by_rubins_rules():
+    """x5 = 2·x2 + 1 in every copy: x5 is set aside untested while x2 is in (an NA coefficient in
+    each copy's ``lm``) and kept, and every other unforced term is tested by Rubin's rules over the
+    copies' least squares on the columns without x5 (statsmodels' ``OLS``, the same span and rank
+    as ``lm`` with x5 NA), complete-data df n − rank, to 10⁻⁹ of itself. On the base x2 was
+    tested at p = 1, its coefficient zero beside a finite pinv variance, and left first."""
+    import statsmodels.api as sm
+
+    copies = _aliased_copies()
+    names = ["x1", "x2", "x3", "x4", "x5"]
+    got = VS.backward_wald("regression", [c[names] for c in copies],
+                           [c["y"].to_numpy() for c in copies], {c: [c] for c in names},
+                           forced=["x1"])
+    remaining = list(names)
+    for step in got["path"]:
+        aside = ["x5"] if {"x2", "x5"} <= set(remaining) else []
+        assert step["aliased"] == aside, step["step"]
+        columns = [c for c in remaining if c not in aside]
+        fits = [sm.OLS(c["y"].to_numpy(), np.column_stack([np.ones(len(c)), c[columns]])).fit()
+                for c in copies]
+        df_com = len(copies[0]) - (len(columns) + 1)
+        want = {t: _rubin_p([f.params[j] for f in fits], [f.bse[j] ** 2 for f in fits], df_com)
+                for j, t in enumerate(columns, start=1) if t != "x1"}
+        assert set(step["tested"]) == set(want), step["step"]
+        for term, p in want.items():
+            assert step["tested"][term] == pytest.approx(p, rel=1e-9), (step["step"], term)
+        if step["dropped"]:
+            remaining.remove(step["dropped"])
+    assert got["refused"] is None and got["kept"] == remaining
+    assert "x5" in got["kept"] and got["untested"] == ["x5"]
+
+
+@needs_r
+def test_7_backward_wald_sets_an_aliased_term_aside_as_r_mice_pool_does(tmp_path):
+    """The same elimination in R: ``summary(mice::pool(as.mira(fits)))`` on each copy's ``lm``, x5
+    NA there (``which.max`` passes over it): each step's p-values to 10⁻⁸ of themselves, the terms
+    whose pooled p is NA set aside, and the terms kept."""
+    copies = _aliased_copies()
+    names = ["x1", "x2", "x3", "x4", "x5"]
+    got = VS.backward_wald("regression", [c[names] for c in copies],
+                           [c["y"].to_numpy() for c in copies], {c: [c] for c in names},
+                           forced=["x1"])
+    long = pd.concat([c.assign(imp=k + 1) for k, c in enumerate(copies)], ignore_index=True)
+    r = run_r("""
+        suppressPackageStartupMessages(library(mice))
+        d <- read.csv(m_csv)
+        terms <- c("x1", "x2", "x3", "x4", "x5"); forced <- "x1"; path <- list(); na <- list()
+        repeat {
+          f <- as.formula(paste("y ~", paste(terms, collapse = " + ")))
+          fits <- lapply(split(d, d$imp), function(k) lm(f, data = k))
+          s <- summary(pool(as.mira(fits)))
+          p <- setNames(s$p.value, as.character(s$term))[setdiff(terms, forced)]
+          path[[length(path) + 1]] <- as.list(p[!is.na(p)])
+          na[[length(na) + 1]] <- I(names(p)[is.na(p)])
+          worst <- names(which.max(p))
+          if (length(p) == 0 || p[[worst]] <= 0.157) break
+          terms <- setdiff(terms, worst)
+        }
+        out(list(path = path, na = na, kept = I(terms)))
+    """, {"m": long}, tmp_path)
+    assert got["refused"] is None and got["kept"] == r["kept"]
+    assert len(got["path"]) == len(r["path"])
+    for step, want, na in zip(got["path"], r["path"], r["na"]):
+        assert step["aliased"] == na, step["step"]
+        assert set(step["tested"]) == set(want), step["step"]
+        for term, p in want.items():
+            assert step["tested"][term] == pytest.approx(p, rel=1e-8), (step["step"], term)
 
 
 def test_7_terms_are_grouped_by_the_input_each_column_came_from():
