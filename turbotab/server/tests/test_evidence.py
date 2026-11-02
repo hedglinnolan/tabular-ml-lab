@@ -133,8 +133,8 @@ def test_the_missing_question_previews_the_rows_leaving_the_blank_columns_out_sa
                                         "categorical": "impute", "indicators": False, "m": 20,
                                         "below_detection": None, "censored_columns": [],
                                         "acknowledged": False, "reason": None,
-                                        "imputation_model": "compatible",
-                                        "imputation_levels": "clustered"}
+                                        # complete cases draw no copies: neither MS1–MS2 answer
+                                        "imputation_model": None, "imputation_levels": None}
     wait_for(client, nhanes, {"cohort": "fresh"})
     cohort = client.get(f"/api/projects/{nhanes}/stages/cohort").json()["artifact"]
     assert cohort["n_final"] == 21_348 and not {"meds_hbp", "meds_chol"} & set(cohort["predictors"])

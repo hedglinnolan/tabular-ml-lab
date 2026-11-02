@@ -632,9 +632,12 @@ class MissingSpec(_Value):
     reason: str | None = None
     # MS1–MS2 (MODELING_SEQUENCE §4): multiple imputation compatible with the analysis model, or
     # the customary passive chained equations (block and record with a declared nonlinear term);
-    # clustered rows imputed by unit (ruling 12), or single-level (block and record).
-    imputation_model: ImputationModel = "compatible"
-    imputation_levels: ImputationLevels = "clustered"
+    # clustered rows imputed by unit (ruling 12), or single-level (block and record). None where
+    # the answer says nothing of it (``_missing_records_what_its_copies_read``): no copies, or no
+    # rows that cluster when it was recorded; a consumer reads None as the compatible, clustered
+    # imputation, so rows a later answer clusters are imputed by cluster all the same.
+    imputation_model: ImputationModel | None = None
+    imputation_levels: ImputationLevels | None = None
 
 
 class SetRoles(_DecisionModel):
@@ -860,9 +863,12 @@ class SetMissing(_DecisionModel):
     reason: str | None = None
     # MS1–MS2: compatible with the analysis model (SMC-FCS where the model needs it) or passive;
     # clustered rows by unit or single-level. The passive and single-level answers are blocked and
-    # recorded under inference (MODELING_SEQUENCE §4).
-    imputation_model: ImputationModel = "compatible"
-    imputation_levels: ImputationLevels = "clustered"
+    # recorded under inference (MODELING_SEQUENCE §4). The compatible and clustered answers are
+    # recorded only where they apply, under multiple imputation (on rows that cluster when it is
+    # recorded, a unit's repeating or a named grouping's, for the clustered one), and None
+    # elsewhere (``_missing_records_what_its_copies_read``).
+    imputation_model: ImputationModel | None = None
+    imputation_levels: ImputationLevels | None = None
 
     @field_validator("drop_columns", "censored_columns")
     @classmethod
@@ -3870,11 +3876,122 @@ def _screens_read_settled_body_measures(decision: SetExclusions, ctx: Any) -> No
                   exits=[*exits, *confirm_exits(state, roles_waiting), leave])
 
 
+# The answer each slot a revisit's refusal can name holds, as its words say it, and the verb that
+# agrees with it: "The recorded sensitivity analyses read `weight`"; "Withdraw the models answer
+# first" reverts the record in force for ``models`` (``_record_in_force``).
+_READER_ANSWERS = {"models": ("models answer", "reads"),
+                   "exclusions": ("exclusion rules", "read"),
+                   "sensitivity": ("sensitivity analyses", "read"),
+                   "aggregation": ("combining answer", "reads")}
+
+
+def _record_in_force(ctx: Any, slot: str) -> str | None:
+    """The id of the record that holds an unkeyed ``slot`` now: the latest record of a kind that
+    writes it that no revert cancels (``fold`` keeps the latest word); None when the log ``ctx``
+    names holds none."""
+    records = _records_in(ctx)
+    if not records:
+        return None
+    ordered = sorted(records, key=lambda r: r.seq)
+    try:
+        cancelled = reverted(ordered)
+    except Refusal:
+        return None
+    live = [r for r in ordered if SLOTS.get(r.decision.kind) == slot and r.id not in cancelled]
+    return live[-1].id if live else None
+
+
+def _unsettled_columns(waiting: Any) -> list[str]:
+    """The columns whose readings a revisit would unsettle (``waiting``, the consumer's
+    :class:`~turbotab.core.readings.Unsettled` after it), in the ask's order of its readings; else
+    the first of its ways forward that names a column (the first may confirm several at once)."""
+    columns = list(dict.fromkeys(str(r.column) for r in waiting.readings))
+    if columns:
+        return columns
+    named = next(((e.get("decision") or {}).get("column") for e in waiting.exits
+                  if (e.get("decision") or {}).get("column")), None)
+    return [str(named)] if named else []
+
+
+def _other_readings(now: Any, waiting: Any, columns: list[str]
+                    ) -> list[tuple[str, dict[str, Any]]]:
+    """The ask's confirmations of each of ``columns``' readings a revisit would unsettle
+    (``waiting``), each but the value in force ``now``, column by column, each with that value:
+    confirming one in place of the column's reading keeps that reading settled."""
+    from turbotab.core.readings import confirmation
+
+    out: list[tuple[str, dict[str, Any]]] = []
+    for column in columns:
+        kind = next((r.kind for r in waiting.readings if r.column == column), None)
+        held = confirmation(now, kind, column) if kind is not None else None
+        if held is None:
+            continue
+        out += [(str(held), e) for e in waiting.exits
+                if (e.get("decision") or {}).get("kind") == "confirm_reading"
+                and e["decision"].get("reading") == kind and e["decision"].get("column") == column
+                and str(e["decision"].get("value")) != str(held)]
+    return out
+
+
+def _taken(exits: list[dict[str, Any]], ctx: Any) -> list[dict[str, Any]]:
+    """``exits`` each accepted where they are offered (:func:`validate` under ``ctx``): a way
+    forward the record would refuse is never offered, nor named (seal.py's exits do the same)."""
+    out = []
+    for e in exits:
+        try:
+            validate(e["decision"], ctx)
+        except Refusal:
+            continue
+        out.append(e)
+    return out
+
+
+def _withdraws(ctx: Any, slot: str) -> Revert | None:
+    """The revert that withdraws the answer ``slot`` holds: the record in force's
+    (:func:`_record_in_force`), where folding the log with it leaves ``slot`` empty; None where an
+    earlier record of it is still live, since that revert returns the earlier answer instead
+    (``fold`` keeps the latest live word), and where no record holds it."""
+    record = _record_in_force(ctx, slot)
+    if record is None:
+        return None
+    revert = Revert(decision_id=record)
+    left = state_after(revert, ctx)
+    return revert if left is not None and getattr(left, slot, None) is None else None
+
+
+def _in_place_of(others: list[tuple[str, dict[str, Any]]], columns: list[str]) -> str:
+    """The route the other readings take (``others``, each with the value in force it replaces), in
+    words: in place of "this one", the confirmation revisited, only where the revisit unsettles one
+    column (``columns``); where it unsettles several, each column's other reading in place of that
+    column's own reading, which is all its exit replaces (the confirmation revisited still holds
+    the others'), even where only one column's is offered, by the value in force, column by column
+    where the values differ."""
+    held = {str(e["decision"]["column"]): value for value, e in others}  # in the ask's order
+    which = "the other" if len(others) == len(held) else "another"  # one other value per column
+    if len(columns) == 1:
+        return f"confirm {which} reading of `{next(iter(held))}` in place of this one"
+    if len(set(held.values())) == 1:
+        named = [f"of `{c}`" for c in held]
+        joined = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} or {named[-1]}"
+        return (f"confirm {which} reading {joined} in place of its {next(iter(held.values()))} "
+                f"reading")
+    each = [f"of `{c}` in place of its {value} reading" for c, value in held.items()]
+    return f"confirm {which} reading {', '.join(each[:-1])} or {each[-1]}"
+
+
 def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
     """BLUEPRINT §14.1 (and §13's "invalidates"): undoing a reading's confirmation while a recorded
     answer reads it (a screen's body measure, the order a unit's records were combined in, a
     predictor's code-or-amount reading) would leave a number resting on a reading nobody settled;
-    refused until that answer changes, never kept silently."""
+    refused until that answer changes, never kept silently. The refusal offers each way it names,
+    and names only the ways the record accepts now (:func:`_taken`): for a predictor's reading, its
+    other value confirmed in place of the one revisited, column by column where one confirmation
+    covered several, each in place of that column's reading (the reading stays settled, so the
+    models answer still holds); the answer that reads it withdrawn first, a revert of the record in
+    force, only where that revert leaves no such answer (:func:`_withdraws`: with an earlier one
+    still live it would return that one, which reads the reading as well), after which the revisit
+    is accepted, and unless that revert is itself refused (the seal keeps how each unit's rows are
+    combined once the held-out rows are drawn); and the answers kept."""
     from turbotab.core.readings import (
         Unsettled, body_unit_reading, predictors_or_ask, time_column_reading,
     )
@@ -3883,16 +4000,18 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
     after = state_after(decision, ctx)
     if now is None or after is None:
         return
-    readers: list[tuple[str, str]] = []
-    rules = [*(now.exclusions or []), *(r for a in (now.sensitivity or []) for r in a.rules)]
-    for rule in rules:
+    # (the slot whose answer reads it, the columns, the other readings with the values they replace)
+    readers: list[tuple[str, list[str], list[tuple[str, dict[str, Any]]]]] = []
+    rules = [*(("exclusions", r) for r in now.exclusions or []),
+             *(("sensitivity", r) for a in (now.sensitivity or []) for r in a.rules)]
+    for slot, rule in rules:
         if getattr(rule, "kind", "range") != "goldberg":
             continue
         for attr, measure, _ in _BODY_EXPECTED:
             column = getattr(rule, attr, None)
             if column and body_unit_reading(column, measure, now).settled \
                     and not body_unit_reading(column, measure, after).settled:
-                readers.append(("exclusion rules", column))
+                readers.append((slot, [column], []))
     agg = now.aggregation
     if agg is not None:
         from turbotab.core.stages.working import needs_order
@@ -3900,7 +4019,7 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
         if needs_order(agg.method, agg.outcome, agg.columns):
             before_t, after_t = time_column_reading(now, None), time_column_reading(after, None)
             if before_t is not None and before_t.settled and (after_t is None or not after_t.settled):
-                readers.append(("combining answer", before_t.column))
+                readers.append(("aggregation", [before_t.column], []))
     if now.models:
         info = _ctx(ctx, "column_info")
         store = _store_of(ctx)
@@ -3912,16 +4031,35 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
             try:
                 predictors_or_ask(after, info, drop=left_out(after), store=store)
             except Unsettled as waiting:
-                column = (waiting.exits[0].get("decision") or {}).get("column", "a predictor")
-                readers.append(("models answer", str(column)))
+                columns = _unsettled_columns(waiting)
+                readers.append(("models", columns, _other_readings(now, waiting, columns)))
     if not readers:
         return
-    what, column = readers[0]
+    slot, columns, others = readers[0]
+    what, reads = _READER_ANSWERS[slot]
+    routes: list[str] = []
+    exits: list[dict[str, Any]] = []
+    others = [(value, e) for value, e in others if _taken([e], ctx)]
+    if others:
+        routes.append(_in_place_of(others, columns))
+        exits.extend(e for _, e in others)
+    withdrawal = _withdraws(ctx, slot)
+    withdraw = _taken([{"label": f"Withdraw the {what} first", "decision": withdrawal}],
+                      ctx) if withdrawal is not None else []
+    if withdraw:
+        routes.append(f"withdraw the {what} first")
+        exits.extend(withdraw)
+    routes.append("keep the confirmation")
+    said = routes[0] if len(routes) == 1 else f"{', '.join(routes[:-1])}, or {routes[-1]}"
+    from turbotab.core.readings import listing
+
+    names = listing(columns) if columns else "a predictor"
+    rests = "a reading" if len(columns) <= 1 else "readings"
     raise Refusal(
         "role_unconfirmed",
-        f"The recorded {what} reads `{column}`, which would then rest on a reading nobody "
-        f"settled. Change the {what} first, or keep the confirmation.",
-        exits=[{"label": "Keep the answers as they are", "decision": None}])
+        f"The recorded {what} {reads} {names}, which would then rest on {rests} nobody "
+        f"settled. {said[0].upper()}{said[1:]}.",
+        exits=[*exits, {"label": "Keep the answers as they are", "decision": None}])
 
 
 def _rule_without(decision: SetExclusions, index: int) -> SetExclusions:
@@ -5408,7 +5546,7 @@ def _imputation_fits_the_analysis(decision: SetMissing, ctx: Any) -> None:
                     cc, keep], ctx))
     if decision.imputation_levels == "single_level":
         grain = getattr(state, "grain", None)
-        if getattr(grain, "grain", None) == "repeated" and getattr(state, "unit", None) != "unit":
+        if _rows_repeat(state):
             raise Refusal(
                 "single_level_imputation_on_clustered_rows",
                 f"The rows repeat by `{getattr(grain, 'id_column', None) or 'unit'}`. Under "
@@ -5417,6 +5555,69 @@ def _imputation_fits_the_analysis(decision: SetMissing, ctx: Any) -> None:
                     {"label": "Clustered multiple imputation (time-invariant values once per unit)",
                      "decision": _missing_base(decision, imputation_levels="clustered")},
                     cc, keep], ctx))
+
+
+def _rows_repeat(state: Any) -> bool:
+    """Whether a unit's rows repeat in the analysis: the grain answer says they repeat, and the
+    unit answer does not combine them into one row per unit."""
+    grain = getattr(state, "grain", None)
+    return getattr(grain, "grain", None) == "repeated" and getattr(state, "unit", None) != "unit"
+
+
+def _rows_cluster(state: Any, ctx: Any) -> bool:
+    """Whether the analysis rows cluster, as the intervals and the copies read it
+    (``inference.resolve_clusters``), as far as a decision's ``ctx`` can tell: a unit's rows repeat
+    (:func:`_rows_repeat`), or a grouping the user gave repeats in the table (``column_info``'s
+    distinct values below its rows with a value): the grain's named column (unless each unit's rows
+    were combined into one), the cluster answer, or a column whose cluster reading the user settled
+    as "yes" (a confirmed cluster role, or identifier role, ``readings.cluster_reading``). Without
+    the table's facts, only the first. The intervals read the analysis rows, not the table's, and
+    the answers as they stand when the fit runs, not when this is asked."""
+    if state is None:
+        return False
+    if _rows_repeat(state):
+        return True
+    info = _ctx(ctx, "column_info")
+    n_rows = _ctx(ctx, "n_rows")
+    if not info or n_rows is None:
+        return False
+    from turbotab.core.estimand import cluster_answer
+    from turbotab.core.models.inference import cluster_columns
+    from turbotab.core.readings import cluster_reading
+
+    grain = getattr(state, "grain", None)
+    named = getattr(grain, "id_column", None)
+    grouping = cluster_answer(state)
+    for column in cluster_columns(state, list(info)):
+        if column == named and getattr(state, "unit", None) == "unit":
+            continue  # each unit's rows combined into one: it no longer repeats
+        facts = info[column] or {}
+        recorded = int(n_rows) - int(facts.get("n_missing") or 0)
+        if not 0 < int(facts.get("n_unique") or 0) < recorded:
+            continue
+        reading = cluster_reading(state, column)
+        if column in (named, grouping) or (reading.settled and reading.value == "yes"):
+            return True
+    return False
+
+
+def _missing_records_what_its_copies_read(decision: SetMissing, ctx: Any) -> SetMissing:
+    """MS1–MS2's two answers, recorded only where they say something: the imputation compatible
+    with the analysis model only under multiple imputation, and the clustered imputation only
+    under multiple imputation on rows that cluster (:func:`_rows_cluster`: a unit's rows repeat, or
+    a site or household the user named groups them); None elsewhere, whatever the client sent, so a
+    default never stands in the record as a fact about the table (the pilot's records said
+    "clustered" on every missing answer, plasma's and Sullivan's, where no row repeats). The
+    passive and single-level answers are the user's, and are kept under multiple imputation. Every
+    consumer reads only those two (the copies, the check before the lock, the methods sentence), so
+    no copy and no sentence changes: a None answer is imputed by cluster wherever the fit finds the
+    rows cluster, as "clustered" is."""
+    if decision.strategy != "multiple_imputation":
+        return decision.model_copy(update={"imputation_model": None, "imputation_levels": None})
+    model = "passive" if decision.imputation_model == "passive" else "compatible"
+    levels = ("single_level" if decision.imputation_levels == "single_level"
+              else "clustered" if _rows_cluster(_state(ctx), ctx) else None)
+    return decision.model_copy(update={"imputation_model": model, "imputation_levels": levels})
 
 
 def _censored_named(ctx: Any) -> list[str]:
@@ -5809,6 +6010,7 @@ register_validator("set_missing", _left_out_columns_are_predictors)
 register_validator("set_missing", _missing_fits_the_purpose)
 register_validator("set_missing", _non_detections_are_not_filled_by_the_median)
 register_validator("set_missing", _imputation_fits_the_analysis)
+register_completion("set_missing", _missing_records_what_its_copies_read)
 register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
 register_validator("set_exclusions", _screens_wait_for_the_unit)

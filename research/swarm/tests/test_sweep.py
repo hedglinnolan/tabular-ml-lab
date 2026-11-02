@@ -1280,7 +1280,14 @@ STAGE_COUNT = {**STAGE_CODE, "value": "count"}
 TWO_MODELS = {"kind": "select_models", "models": ["elastic_net", "screened_elastic_net"]}
 # The engine's words for it, as ``decisions._answers_keep_settled_readings`` writes them.
 READS_STAGE = ("The recorded models answer reads `stage`, which would then rest on a reading "
-               "nobody settled. Change the models answer first, or keep the confirmation.")
+               "nobody settled. Confirm the other reading of `stage` in place of this one, "
+               "withdraw the models answer first, or keep the confirmation.")
+# Its ways forward, each the route its words name: the other reading, the models answer (record 14)
+# withdrawn first, and the answers kept. The sweep takes the way the words name (``READER_WORDS``).
+READS_EXITS = [{"label": "`stage` is a count", "decision": STAGE_COUNT},
+               {"label": "Withdraw the models answer first",
+                "decision": {"kind": "revert", "decision_id": "r14"}},
+               {"label": "Keep the answers as they are", "decision": None}]
 STAGE = W.Point("reading", "code_or_count:stage", 13, "r13", STAGE_CODE)
 
 
@@ -1292,9 +1299,11 @@ class Reads(Walked):
     models answer posted again is refused where ``refuse`` is ``"again"``. Every log is the plan's,
     so each refit is its duplicate and no Fit is pressed."""
 
-    def __init__(self, *, refuse=None, fail=None, code="role_unconfirmed", words=READS_STAGE):
+    def __init__(self, *, refuse=None, fail=None, code="role_unconfirmed", words=READS_STAGE,
+                 exits=READS_EXITS):
         super().__init__([])
         self.calls, self.refuse, self.fail, self.code, self.words = [], refuse, fail, code, words
+        self.exits = exits
         self.withdrawn = self.reopened = False
 
     def copy(self, pid):
@@ -1325,7 +1334,7 @@ class Reads(Walked):
             return arms.Said("ok", {})
         if record == "r13" and not self.withdrawn:
             return arms.Said("refused", {}, by="server", code=self.code, message=self.words,
-                             exits=[{"label": "Keep the answers as they are", "decision": None}])
+                             exits=self.exits)
         self.reopened = True
         return arms.Said("ok", {})
 
@@ -1355,11 +1364,11 @@ class Reads(Walked):
         return arms.Said("ok", {})
 
 
-def swept_reads(tmp_path, session):
+def swept_reads(tmp_path, session, point=STAGE):
     sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
         target="y", purpose="prediction"), crash=True, plan="default")
     sweep.base = {"project": "p0", "digest": "d0", "seq": 14, "scoring": {"set": False},
-                  "points": [STAGE.json()], "skipped": []}
+                  "points": [point.json()], "skipped": []}
     sweep.done[W.PLAN] = W.Refit(W.PLAN, None, None, kind="scored",
                                  digest=W.plan_digest(session.view()))
     report = sweep.run(session, lambda s: "p0")
@@ -1434,6 +1443,107 @@ def test_a_500_on_the_way_the_engine_names_is_an_engine_defect(tmp_path):
     assert revisit["kind"] == "failed" and revisit["failed"]["code"] == "http_500"
     assert [d["refit"] for d in report["defects"]] == [revisit["id"]]
     assert W.passed(report) is False
+
+
+# A Goldberg screen (record 14, held by the exclusion rules or by the sensitivity analyses) that
+# reads `age`, recorded in years by record 13, after the roles (11) and the weight read in kg (12).
+AGE_YEARS = {"kind": "set_column_unit", "column": "age", "unit": "years", "days": 1}
+AGE_MONTHS = {**AGE_YEARS, "unit": "months"}
+GOLDBERG = {"kind": "goldberg", "column": "energy_kcal", "days": 1, "sex": "sex", "female": ["F"],
+            "male": ["M"], "age": "age", "weight": "weight", "equation": "schofield", "pal": 1.55,
+            "reason": "implausible energy reports"}
+SCREENS = {"exclusion rules": {"kind": "set_exclusions", "rules": [GOLDBERG]},
+           "sensitivity analyses": {"kind": "set_sensitivity",
+                                    "analyses": [{"label": "screened", "rules": [GOLDBERG]}]}}
+SCREENED_LOG = {11: {"kind": "set_roles", "roles": {"energy_kcal": "energy", "age": "covariate",
+                                                    "weight": "covariate", "sex": "covariate"}},
+                12: {"kind": "confirm_reading", "reading": "unit", "column": "weight",
+                     "value": "kg"},
+                13: AGE_YEARS}
+AGE = W.Point("reading", "unit:age", 13, "r13", AGE_YEARS)
+
+
+def screen_refusal(answer):
+    """The engine's own refusal of reverting record 13 under ``answer`` (record 14), as
+    ``decisions._answers_keep_settled_readings`` writes it for this log; None where it accepts the
+    revert (``answer`` None: no screen reads the age)."""
+    from turbotab.core import decisions as D
+
+    at = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    logged = {**SCREENED_LOG, **({14: answer} if answer else {})}
+    log = [D.DecisionRecord(id=f"r{seq}", seq=seq, at=at, decision=D.parse_decision(d))
+           for seq, d in logged.items()]
+    try:
+        D.validate({"kind": "revert", "decision_id": "r13"},
+                   {"state": D.fold(log), "records": lambda: list(log)})
+    except D.Refusal as refusal:
+        return refusal
+    return None
+
+
+class Screens(Reads):
+    """:class:`Reads` with a Goldberg screen (``answer``, record 14) in place of the models answer:
+    reverting the age's unit (record 13) is refused in the engine's own words and ways
+    (:func:`screen_refusal`) while the screen stands; reverting the screen withdraws it, and then
+    the age's two units are asked."""
+
+    def __init__(self, answer):
+        said = screen_refusal(answer)
+        super().__init__(code=said.code, words=said.message, exits=said.exits)
+        self.screen = answer
+
+    def view(self):
+        at = datetime(2026, 10, 23, tzinfo=timezone.utc).isoformat()
+        return {"decisions": [{"id": f"r{seq}", "seq": seq, "at": at, "recorded_by": "you",
+                               "decision": d} for seq, d in {**SCREENED_LOG,
+                                                             14: self.screen}.items()],
+                "stages": self.stages, "state": {}}
+
+    def ask(self):
+        from research.swarm.tests.test_arms import opt
+
+        if self.reopened:
+            return {"question": {"key": "whos_in", "status": "open"},
+                    "readings": {"exits": [opt("x-years", AGE_YEARS),
+                                           opt("x-months", AGE_MONTHS)]}}
+        return {"question": None, "fit_reached": True}
+
+
+def test_with_no_screen_the_engine_accepts_the_ages_revisit():
+    """The other direction of the test below: no answer reads the age, so its revisit is
+    accepted, and nothing is withdrawn first."""
+    assert screen_refusal(None) is None
+
+
+@pytest.mark.parametrize("what", list(SCREENS))
+def test_a_reading_a_goldberg_screen_reads_is_revisited_by_withdrawing_the_answer_holding_it(
+        tmp_path, what):
+    """V3-1: the engine's words name the answer that holds the screen with a verb that agrees
+    ("The recorded exclusion rules read `age`"; the sensitivity analyses likewise), and the sweep
+    takes the way they name, as for the models answer: that answer's record withdrawn first (the
+    exclusion rules by their ``set_exclusions`` record, the sensitivity analyses by their
+    ``set_sensitivity`` one), the age's units listed and each answered, and the screen answered
+    again as the plan had it; the reading is visited, not left unlisted."""
+    session = Screens(SCREENS[what])
+    assert session.code == "role_unconfirmed"
+    assert session.words.startswith(f"The recorded {what} read `age`, which would then rest on a "
+                                    f"reading nobody settled.")
+    sweep, report, refits = swept_reads(tmp_path, session, AGE)
+    assert report["unlisted"] == [] and report["unvisited"] == [] and report["defects"] == []
+    assert report["complete"] is True and W.passed(report) is True
+    (offered,) = report["offered"]
+    assert [o["id"] for o in offered["options"]] == ["x-years", "x-months"]
+    assert offered["withdrawn"] == [{"what": what, "column": "age", "seq": 14, "record": "r14"}]
+    from turbotab.core.decisions import parse_decision
+
+    screen = parse_decision(SCREENS[what]).model_dump(mode="json")  # the record, as the log has it
+    months = refits[f"{AGE.id}=x-months"]
+    start = max(i for i, c in enumerate(session.calls) if c == ("copy",))
+    assert session.calls[start + 1:] == [("revisit", "r13"), ("revisit", "r14"),
+                                         ("revisit", "r13"), ("preview", ["x-months"]),
+                                         ("answer", ["x-months"]), ("decide", screen)]
+    assert [w["decision"] for w in months["withdrawn"]] == [screen]
+    assert f"the plan's {what} again (record 14)" in [a["answer"] for a in months["answered"]]
 
 
 # ── a revisit refused because the split is drawn (F1): the way the engine names ──
@@ -1645,8 +1755,7 @@ class Logged(Walked):
         if record == "r13" and any(r.decision.kind == "select_models"
                                    for r in W.live(self.view())):
             return arms.Said("refused", {}, by="server", code="role_unconfirmed",
-                             message=READS_STAGE,
-                             exits=[{"label": "Keep the answers as they are", "decision": None}])
+                             message=READS_STAGE, exits=READS_EXITS)
         return self._post({"kind": "revert", "decision_id": record})
 
     def ask(self):
