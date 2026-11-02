@@ -8,7 +8,10 @@ The routes, by construction: the reading's other value confirmed in place of the
 (whole numbers are codes or amounts, so the other of "code" is "amount"), which keeps the reading
 settled, so the models answer still validates; the answer that reads it withdrawn first, a revert
 of the record in force for its slot, after which the revisit is accepted; and the answers kept.
-With no answer reading the column, the revisit is accepted and nothing is offered.
+Only a route the record accepts is offered and named: where the withdrawal is itself refused (a
+family whose score was shown with no rows held out stays), the words leave it out. One
+confirmation that covered two columns names both, and offers each column's other reading. With
+no answer reading the column, the revisit is accepted and nothing is offered.
 """
 from __future__ import annotations
 
@@ -35,9 +38,10 @@ def rec(seq: int, decision: dict[str, Any]) -> d.DecisionRecord:
                             decision=d.parse_decision(decision))
 
 
-def ctx(log: list[d.DecisionRecord]) -> dict[str, Any]:
-    return {"state": d.fold(log), "records": lambda: list(log), "columns": [*ROLES, "y"],
-            "target": "y", "column_info": INFO}
+def ctx(log: list[d.DecisionRecord], roles: dict[str, str] = ROLES,
+        info: dict[str, Any] = INFO, **extra: Any) -> dict[str, Any]:
+    return {"state": d.fold(log), "records": lambda: list(log), "columns": [*roles, "y"],
+            "target": "y", "column_info": info, **extra}
 
 
 def recorded(log: list[d.DecisionRecord], decision: dict[str, Any]) -> list[d.DecisionRecord]:
@@ -46,19 +50,28 @@ def recorded(log: list[d.DecisionRecord], decision: dict[str, Any]) -> list[d.De
     return [*log, rec(log[-1].seq + 1, done.model_dump(mode="json"))]
 
 
-def plan(*models: dict[str, Any]) -> list[d.DecisionRecord]:
-    """A prediction plan reading `charlson_index` as codes (record 5), then ``models``."""
+def plan(*models: dict[str, Any], roles: dict[str, str] = ROLES,
+         reading: dict[str, Any] = CODES) -> list[d.DecisionRecord]:
+    """A prediction plan reading `charlson_index` as codes (record 5, ``reading``), then
+    ``models``."""
     head = [{"kind": "set_target", "column": "y"},
             {"kind": "set_task", "column": "y", "task": "regression"},
             {"kind": "set_purpose", "purpose": "prediction"},
-            {"kind": "set_roles", "roles": ROLES}, CODES, *models]
+            {"kind": "set_roles", "roles": roles}, reading, *models]
     return [rec(i, x) for i, x in enumerate(head, start=1)]
 
 
-def refused(log: list[d.DecisionRecord], decision: dict[str, Any]) -> d.Refusal:
+def refused(log: list[d.DecisionRecord], decision: dict[str, Any], **kw: Any) -> d.Refusal:
     with pytest.raises(d.Refusal) as caught:
-        d.validate(decision, ctx(log))
+        d.validate(decision, ctx(log, **kw))
     return caught.value
+
+
+def offered(refusal: d.Refusal, given: dict[str, Any]) -> None:
+    """Every way forward the refusal offers is accepted where it is offered."""
+    for way in refusal.exits:
+        if way["decision"] is not None:
+            d.validate(way["decision"], given)
 
 
 REVISIT = {"kind": "revert", "decision_id": "r5"}
@@ -114,6 +127,78 @@ def test_the_withdrawal_names_the_models_record_in_force():
 
 def test_with_no_answer_reading_it_the_revisit_is_accepted():
     d.validate(REVISIT, ctx(plan()))
+
+
+TWO = {"kind": "select_models", "models": ["linear", "elastic_net"]}
+NO_HOLDOUT = {"kind": "set_split", "holdout": 0.0}  # the readmission plan's (prereg.json)
+SEEN = {"y": ["linear", "elastic_net"]}  # both families' cross-validated scores were shown
+
+
+def test_a_withdrawal_the_engine_refuses_is_neither_offered_nor_named():
+    """Prediction with no rows held out, the models answered twice (records 7 and 8) and both
+    families' scores shown: undoing the answer in force would leave `elastic_net` out of the
+    families fitted, so its revert is refused (MODELING_SEQUENCE §4, "a revert cannot unsee a
+    score"; ``selection._compared_families_stay``), and no revert withdraws the models answer.
+    The refusal then names, and offers, only the other reading and keeping."""
+    log = plan(NO_HOLDOUT, LINEAR, TWO)
+    given = ctx(log, seen=SEEN)
+    with pytest.raises(d.Refusal) as withdrawal:
+        d.validate({"kind": "revert", "decision_id": "r8"}, given)
+    assert withdrawal.value.code == "compared_families_stay"
+    refusal = refused(log, REVISIT, seen=SEEN)
+    assert refusal.message == (
+        "The recorded models answer reads `charlson_index`, which would then rest on a reading "
+        "nobody settled. Confirm the other reading of `charlson_index` in place of this one, or "
+        "keep the confirmation.")
+    from turbotab.core.readings import code_or_count_exits
+
+    assert refusal.exits == [code_or_count_exits("charlson_index")[0], KEEP]
+    offered(refusal, given)
+
+
+def test_a_withdrawal_the_engine_accepts_is_offered_under_the_same_plan():
+    """The guard's other direction: one models answer (record 7) under the same plan; with no
+    family selected none is left out, so its revert is accepted, and offered."""
+    log = plan(NO_HOLDOUT, TWO)
+    given = ctx(log, seen=SEEN)
+    refusal = refused(log, REVISIT, seen=SEEN)
+    assert "withdraw the models answer first" in refusal.message
+    assert refusal.exits[1] == {"label": "Withdraw the models answer first",
+                                "decision": {"kind": "revert", "decision_id": "r7"}}
+    offered(refusal, given)
+    assert d.fold(recorded(log, refusal.exits[1]["decision"])).models is None
+
+
+# run_34: one confirmation read two whole-number predictors as codes.
+TWO_ROLES = {**ROLES, "prior_adm": "covariate"}
+TWO_INFO = {**INFO, "prior_adm": {"dtype": "integer", "n_unique": 9}}
+BOTH_CODES = {"kind": "confirm_readings", "items": [
+    {"reading": "code_or_count", "column": "charlson_index", "value": "code"},
+    {"reading": "code_or_count", "column": "prior_adm", "value": "code"}]}
+
+
+def test_one_confirmation_of_two_columns_names_both_and_offers_each_other_reading():
+    """Undoing one confirmation that read `charlson_index` and `prior_adm` as codes unsettles
+    both: the refusal names both, and offers each column's other reading (whole numbers are
+    codes or amounts, so the other of "code" is "amount"), each accepted, and each keeping the
+    models answer valid, since the other column's reading still stands."""
+    from turbotab.core.readings import code_or_count_exits
+
+    log = plan(LINEAR, roles=TWO_ROLES, reading=BOTH_CODES)
+    given = ctx(log, TWO_ROLES, TWO_INFO)
+    refusal = refused(log, REVISIT, roles=TWO_ROLES, info=TWO_INFO)
+    assert refusal.message == (
+        "The recorded models answer reads `charlson_index` and `prior_adm`, which would then rest "
+        "on readings nobody settled. Confirm the other reading of `charlson_index` or `prior_adm` "
+        "in place of this one, withdraw the models answer first, or keep the confirmation.")
+    assert refusal.exits == [code_or_count_exits("charlson_index")[0],
+                             code_or_count_exits("prior_adm")[0],
+                             {"label": "Withdraw the models answer first",
+                              "decision": {"kind": "revert", "decision_id": "r6"}}, KEEP]
+    offered(refusal, given)
+    for way in refusal.exits[:2]:
+        after = [*log, rec(7, d.validate(way["decision"], given).model_dump(mode="json"))]
+        d.validate(LINEAR, ctx(after, TWO_ROLES, TWO_INFO))
 
 
 GOLD = {"kind": "goldberg", "column": "energy_kcal", "days": 1, "sex": "sex", "female": ["F"],

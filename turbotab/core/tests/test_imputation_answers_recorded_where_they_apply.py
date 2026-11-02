@@ -1,8 +1,9 @@
-"""The missing-values answer records how multiple imputation treats rows that repeat
+"""The missing-values answer records how multiple imputation treats rows that cluster
 (``imputation_levels``) and how its copies relate to the analysis model (``imputation_model``)
 only where they say something (``decisions._missing_records_what_its_copies_read``): the
-clustered imputation only for multiple imputation on rows a unit repeats, the compatible one only
-for multiple imputation; None elsewhere. Before, every missing answer recorded both ("clustered",
+clustered imputation only for multiple imputation on rows that cluster (a unit's rows repeat, or
+a site or household the user named groups them, ``decisions._rows_cluster``), the compatible one
+only for multiple imputation; None elsewhere. Before, every missing answer recorded both ("clustered",
 "compatible"), plasma's and Sullivan's included, though no row repeats there and complete cases
 impute nothing: a reader of the record could take "clustered" as a fact about the table.
 
@@ -10,7 +11,10 @@ Truths by construction: every consumer reads only the single-level and passive a
 (``== "single_level"``, ``== "passive"``), so on one row per unit the copies drawn under the new
 record (None) equal those drawn under the old one ("clustered") at the same seed; on rows that
 repeat the answer is recorded as "clustered" and each person's confirmed time-invariant value is
-imputed once (one income per person in every copy). A stored answer that says "clustered" loads,
+imputed once (one income per person in every copy); on one row per person grouped by a site the
+user named, several persons to a site, it is recorded as "clustered" and the copies are drawn by
+site, and where the site holds one person, or the user said it groups nothing, as None. A stored
+answer that says "clustered" loads,
 and the plan reads it as stored.
 """
 from __future__ import annotations
@@ -23,9 +27,10 @@ import pytest
 
 import turbotab.core.models  # noqa: F401 - registers the families
 from turbotab.core import decisions as d
-from turbotab.core.decisions import GrainSpec, MissingSpec, ProjectState, SetMissing, validate
+from turbotab.core.decisions import (ClusterSpec, GrainSpec, MissingSpec, ProjectState, SetMissing,
+                                     validate)
 from turbotab.core.methods.missing import impute_for_inference, time_invariant_columns
-from turbotab.core.models.inference import INDEPENDENT, Clusters
+from turbotab.core.models.inference import INDEPENDENT, Clusters, resolve_clusters
 from turbotab.core.models.pipeline import design_spec
 
 ROLES = {"x": "exposure", "income": "covariate", "sex": "covariate"}
@@ -165,3 +170,56 @@ def test_a_stored_answer_that_says_clustered_still_loads_and_the_plan_reads_it_a
     assert record.decision.imputation_levels == "clustered"
     plan = plan_lock.plan_of(d.fold([record]))
     assert plan["missing"] == {k: v for k, v in CARD_COMPLETE_CASES.items() if k != "kind"}
+
+
+# One row per person, persons grouped by the site the user named (V3): rows within a site are not
+# independent, so the copies are drawn by site although no person's row repeats.
+PEOPLE, SITES = 150, 15
+SITE_ROLES = {**ROLES, "id": "identifier", "site": "cluster"}
+
+
+def by_site(answer: bool = True, role: bool = True, **extra) -> ProjectState:
+    roles = SITE_ROLES if role else {c: r for c, r in SITE_ROLES.items() if c != "site"}
+    return ProjectState(target="y", task="regression", purpose="inference", roles=roles,
+                        grain=GrainSpec(grain="one_row_per_unit", id_column="id"),
+                        clusters=ClusterSpec(column="site") if answer else None, **extra)
+
+
+def table_facts(sites: int) -> dict:
+    """What the server tells a decision of the table (``DecisionContext``): each column's distinct
+    values and blanks, and the rows. ``sites`` distinct sites over the persons, one per person
+    when ``sites`` is ``PEOPLE``."""
+    info = {"id": {"dtype": "integer", "n_unique": PEOPLE, "n_missing": 0},
+            "site": {"dtype": "integer", "n_unique": sites, "n_missing": 0},
+            **{c: {"dtype": "float", "n_unique": PEOPLE, "n_missing": 0} for c in ROLES}}
+    return {"column_info": info, "n_rows": PEOPLE}
+
+
+@pytest.mark.parametrize("st", [by_site(), by_site(answer=False), by_site(role=False)],
+                         ids=["answer_and_role", "cluster_role", "cluster_answer"])
+def test_one_row_per_person_grouped_by_a_named_site_records_the_clustered_imputation(st):
+    done = validate(MI, {"state": st, **table_facts(SITES)})
+    assert done.imputation_levels == "clustered"
+
+
+def test_the_copies_of_one_row_per_person_grouped_by_site_are_drawn_by_site():
+    """The record and the copies agree: the intervals' clustering (``resolve_clusters``) is by
+    `site`, its 15 sites, and the copies are imputed by it."""
+    frame = one_row_frame(n=PEOPLE).assign(site=np.arange(PEOPLE) % SITES)
+    st = by_site()
+    clusters = resolve_clusters(st, frame[["id", "site"]])
+    assert clusters.column == "site" and clusters.n_clusters == SITES
+    recorded = validate(MI, {"state": st, **table_facts(SITES)})
+    st = st.model_copy(update={"missing": MissingSpec(**recorded.model_dump(exclude={"kind"}))})
+    assert copies(st, frame, clusters).plan["unit"] == "site"
+
+
+def test_a_named_grouping_that_groups_no_two_rows_records_none():
+    """The guard's other direction: a site per person (nothing repeats), the site's grouping
+    withdrawn by a later confirmation (``estimand.cluster_answer``), or no grouping named over one
+    row per person (the plasma and Sullivan tables): each draws the copies row by row."""
+    assert validate(MI, {"state": by_site(), **table_facts(PEOPLE)}).imputation_levels is None
+    denied = by_site(reading_confirmations={"cluster:site": "no"})
+    assert validate(MI, {"state": denied, **table_facts(SITES)}).imputation_levels is None
+    plain = ONE_ROW.model_copy(update={"roles": {**ROLES, "id": "identifier"}})
+    assert validate(MI, {"state": plain, **table_facts(SITES)}).imputation_levels is None
