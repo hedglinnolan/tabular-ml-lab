@@ -3,8 +3,10 @@ server's reads stood in for by what a server serves (a question, a project view,
 so what each command does is known from construction: a preview says why; an answer names a marker
 of the vocabulary and may name the alternative it rejected; a declaration line is answered by id;
 a want and the account are kept, the account once; a fit the engine refused in words is a refusal
-with its ways forward, and one that crashed is not; the markers are kept and never fail a command.
-A real run through all of it is ``test_driver.py``'s slow one."""
+with its ways forward, and one that crashed is not; the markers are kept and never fail a command;
+a finding its routed answer settled lists its own repairs, which ``answer`` takes (the engine's
+own findings and quest lines, served). A real run through all of it is ``test_driver.py``'s slow
+one."""
 from __future__ import annotations
 
 import json
@@ -647,3 +649,134 @@ def test_ask_carries_the_effects_stages_refusal_and_its_ways_forward_by_id(tmp_p
     mi = refusal["exits"][1]["decision"]
     assert [w["decision"] for w in q["_ways"] if w["id"]] == [mi]
     assert driver.opts.resolve(q["_composed"], [driver.opts.exit_id(mi)], [], q["_ways"]) == mi
+
+
+# ── a finding its routed answer settled keeps its own repairs ───────────────
+
+
+def settled_case(tmp_path: Path) -> dict[str, Any]:
+    """The engine's own findings, served (``repairs.annotate``), and their quest lines
+    (``quest._finding_lines``) on a constructed table: `sex` (`F`/`M`) blank on 12 of 60 rows and
+    `meds` (True/False written as text) blank on 9, each routed to the missing-values question,
+    which ``records`` answers (``r1``). `sex` offers its two levels as repairs; `meds` offers none
+    (``repairs._offer_binary`` reads text levels only)."""
+    from datetime import datetime, timezone
+
+    import numpy as np
+    import pandas as pd
+
+    from turbotab.core import repairs
+    from turbotab.core.decisions import DecisionRecord, ProjectState, SetMissing, fold
+    from turbotab.core.quest import _finding_lines
+    from turbotab.core.stages.findings import findings_stage
+    from turbotab.core.tests.stage_harness import Ingested
+
+    rng = np.random.default_rng(3)
+    n = 60
+    sex = rng.choice(["F", "M"], n).astype(object)
+    sex[:12] = None
+    meds = rng.choice(["True", "False"], n).astype(object)
+    meds[20:29] = None
+    path = tmp_path / "settled.csv"
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"age": rng.integers(20, 80, n), "sex": sex, "meds": meds,
+                  "y": rng.normal(0.0, 1.0, n)}).to_csv(path, index=False)
+    artifact = Ingested(path, tmp_path / "ingested").run(findings_stage, ProjectState(lens=[]))
+
+    def record(seq: int, decision: Any) -> Any:
+        return DecisionRecord(id=f"r{seq}", seq=seq, at=datetime.now(timezone.utc),
+                              decision=decision)
+
+    def served(records: list[Any]) -> dict[str, Any]:
+        state = fold(records)
+        findings = repairs.annotate(artifact, state, records)
+        lines = [ln.model_dump(mode="json") | {"stage": stage}
+                 for stage, ln in _finding_lines(state, findings, {}, None)]
+        view = {**VIEW, "decisions": [r.model_dump(mode="json") for r in records]}
+        return {"findings": findings, "lines": lines, "view": view}
+
+    return {"artifact": artifact, "record": record, "served": served,
+            "records": [record(1, SetMissing(strategy="complete_case"))]}
+
+
+def serve(monkeypatch, now: dict[str, Any]) -> None:
+    """``ask`` and ``answer`` read ``now`` as the server's: the view with no question open, the
+    quest lines, the findings artifact (``GET …/stages/findings``) and no teaching entry."""
+    monkeypatch.setattr(driver, "wait_open", lambda run, client, wait: (now["view"], None))
+    monkeypatch.setattr(driver, "quest_lines", lambda run, client: (now["lines"], None))
+    monkeypatch.setattr(driver, "served", lambda run, client: (lambda stage: None))
+
+    def get(self, path, **query):
+        body = {"artifact": now["findings"]} if path.endswith("/stages/findings") else []
+        return driver.Response(200, json.dumps(body).encode(), {})
+
+    monkeypatch.setattr(driver.Client, "get", get)
+
+
+def test_a_finding_its_routed_answer_settled_lists_its_own_repairs_and_answer_records_one(
+        tmp_path, monkeypatch):
+    """The missing-values answer settles `sex`'s finding (``repairs.matching_answer``) and chooses
+    no level, so its line, answered, lists the finding's own two level repairs as its ways to
+    change it (``settled_findings``), each with the decision the findings artifact serves;
+    ``answer`` takes one by its id and posts exactly that ``apply_repair``, which the engine
+    records as the finding's own repair. A settled finding with no repair (`meds`) lists none, and
+    once `sex`'s own repair is recorded it lists none either."""
+    from turbotab.core.decisions import ApplyRepair, validate
+
+    fake_run(tmp_path, monkeypatch)
+    case = settled_case(tmp_path / "engine")
+    now = case["served"](case["records"])
+    sex = next(f for f in now["findings"]["findings"] if f["id"] == "binary_text__sex")
+    assert sex["answered_by"] == "r1" and sex["disposition"] is None
+    lines = {ln["key"]: ln for ln in now["lines"]}
+    assert lines["binary_text__sex"]["status"] == lines["binary_text__meds"]["status"] == "answered"
+    serve(monkeypatch, now)
+    q = driver.the_question(driver.Run.load(RID), driver.Client(9), 0)
+    (settled,) = q["settled_findings"]
+    assert (settled["key"], settled["status"], settled["decision_id"]) == (
+        "binary_text__sex", "answered", "r1")
+    assert [w["decision"] for w in settled["change"]] == [o["decision"] for o in sex["repairs"]]
+    assert [w["label"] for w in settled["change"]] == [o["label"] for o in sex["repairs"]]
+    assert all(w["id"] == driver.opts.exit_id(w["decision"]) for w in settled["change"])
+    assert "also_open" not in q  # no line is open: the settled one is not listed as open
+    # answer takes the second level by its id and posts exactly its decision.
+    level = sex["repairs"][1]["decision"]
+    sent: list[dict[str, Any]] = []
+
+    class Answered:
+        status = 200
+
+        def json(self) -> Any:
+            return {"decisions": [{"id": "r2", "seq": 2, "decision": sent[-1]}], "interview": []}
+
+    monkeypatch.setattr(driver, "guard_budget", lambda *a, **k: None)
+    monkeypatch.setattr(driver, "post_decision",
+                        lambda run, client, decision, note: sent.append(decision) or Answered())
+    code, payload = run_main(["answer", "--run", RID, driver.opts.exit_id(level), "--marker",
+                              "rows", "--reason", "Choose which level of sex counts as 1."])
+    assert code == 0 and sent == [level] and payload["recorded"]["decision"] == level
+    # The engine takes it as the finding's own repair, and the line then lists no way to change it.
+    ctx = {"artifact": lambda stage: case["artifact"] if stage == "findings" else None}
+    taken = validate(ApplyRepair(**{k: v for k, v in level.items() if k != "kind"}), ctx)
+    after = case["served"]([*case["records"], case["record"](2, taken)])
+    sex_after = next(f for f in after["findings"]["findings"] if f["id"] == "binary_text__sex")
+    assert sex_after["disposition"]["action"] == "applied" and sex_after["answered_by"] == "r2"
+    assert sex_after["disposition"]["params"] == level["params"]
+    serve(monkeypatch, after)
+    assert "settled_findings" not in driver.the_question(driver.Run.load(RID), driver.Client(9), 0)
+
+
+def test_a_finding_line_still_open_is_listed_open_and_not_settled(tmp_path, monkeypatch):
+    """With no missing-values answer both findings are open: each is listed under ``also_open``
+    with its options (its repairs and dismissing it), as before, and none as settled."""
+    fake_run(tmp_path, monkeypatch)
+    case = settled_case(tmp_path / "engine")
+    now = case["served"]([])
+    assert {ln["status"] for ln in now["lines"]} == {"open"}
+    serve(monkeypatch, now)
+    q = driver.the_question(driver.Run.load(RID), driver.Client(9), 0)
+    assert "settled_findings" not in q
+    listed = {ln["key"]: ln for ln in q["also_open"]}
+    assert set(listed) == {"binary_text__sex", "binary_text__meds"}
+    assert [o["decision"]["kind"] for o in listed["binary_text__sex"]["options"]] == [
+        "apply_repair", "apply_repair", "dismiss_finding"]

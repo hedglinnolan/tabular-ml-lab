@@ -54,7 +54,11 @@ the selection, the batch handling, the intended use, the scales, the levers, the
 validation scheme, the explanations, the model sequence, the measurement error, the usual intake,
 the multiplicity and the sensitivity analyses; ``quest.DECLARATIONS``) is listed under
 ``also_open`` with its options and fields, composed by :mod:`research.swarm.declarations` from the
-engine's own definitions, and ``preview`` and ``answer`` take them by id like a question's. A fit
+engine's own definitions, and ``preview`` and ``answer`` take them by id like a question's. A
+finding line the answer to the question its finding routes to settled (any missing-values answer
+settles a two-level column's finding, and chooses no level to count as 1) is listed under
+``settled_findings`` with the finding's own repairs as its ways to change it (``change``), which
+``answer`` takes by id like any way forward (:func:`settled_findings`). A fit
 the engine refused in words (its stage status's typed ``refusal``) is said with its code and its
 ways forward, which ``answer`` takes by id; a fit that failed with an error the engine did not type
 as a refusal is said as it failed. So is the effects stage once it stopped, in ``ask`` and
@@ -741,6 +745,46 @@ def finding_options(run: Run, client: Client, purpose: str | None) -> dict[str, 
     return out
 
 
+# A finding's own disposition, or another finding's repair that did its work: a finding line one
+# of these answered was not settled by the question its finding routes to.
+FINDING_DECISIONS = ("apply_repair", "dismiss_finding", "defer_finding")
+
+
+def settled_findings(run: Run, client: Client, lines: list[dict[str, Any]],
+                     view: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each finding line the answer to the question its finding routes to settled
+    (``repairs.matching_answer``: any missing-values answer settles a two-level column's finding,
+    one held for that question too), with the finding's own repairs as its ways to change it
+    (``change``, each with the ``apply_repair`` it records), as a reading read from the data lists
+    its own: the answer took none of them (it chose no level of a two-level column to count as 1),
+    so each is still the finding's, and ``answer`` takes one by its id. A line its finding's own
+    repair, dismissal or deferral answered, or another finding's repair, is not listed, nor is a
+    finding with no repair."""
+    answered = [ln for ln in lines
+                if ln.get("source") == "finding" and ln.get("status") == "answered"]
+    if not answered:
+        return []
+    kinds = {str(r.get("id")): (r.get("decision") or {}).get("kind")
+             for r in view.get("decisions") or []}
+    r = client.get(f"/projects/{run.project}/stages/findings")
+    art = ((r.json() or {}).get("artifact") or {}) if r.status == 200 else {}
+    found = {str(f["id"]): f for f in art.get("findings") or [] if isinstance(f, dict) and f.get("id")}
+    out = []
+    for line in answered:
+        f = found.get(str(line.get("key")))
+        kind = kinds.get(str(line.get("decision_id")))
+        if f is None or kind is None or kind in FINDING_DECISIONS:
+            continue
+        if (f.get("disposition") or {}).get("action") not in (None, "deferred"):
+            continue
+        change = [w | {"consequence": rep.get("consequence")}
+                  for rep in f.get("repairs") or [] for w in opts.exits([rep])]
+        if change:
+            out.append(describe_line(line) | {"decision_id": line.get("decision_id"),
+                                              "change": change})
+    return out
+
+
 LINE_KEEP = ("id", "key", "source", "label", "name", "status", "reason", "waiting_for", "computing",
              "reopened_by", "would_change", "changes_nothing", "changed_since", "stage")
 
@@ -896,6 +940,10 @@ def the_question(run: Run, client: Client, wait: float) -> dict[str, Any]:
                              if offered.get(k)})
         out["also_open"] = described
         ways += [w for ln in others for item in line_items(ln) for w in item["options"]]
+    settled_lines = settled_findings(run, client, lines, view)
+    if settled_lines:
+        out["settled_findings"] = settled_lines
+        ways += [w for line in settled_lines for w in line["change"]]
     failed = failures(view, [*((step or {}).get("waiting_on") or []), "fit"])
     if failed:
         out["fit_failed"] = failed

@@ -539,18 +539,22 @@ def test_an_offered_prior_informs_the_question_and_never_removes_it():
 def test_two_packs_disagreeing_about_a_column_leaves_the_question_asked():
     """The reason `priors()` returns a list, made operational.
 
-    `age` and `bmi` on the metabolomics fixture are blank on the QC rows AND are
-    clinical reference variables, so both packs have something to say about
-    them and they disagree. A skip taken on whichever prior happens to be
-    `derived` would resolve that silently, which is the one thing the list
-    return exists to prevent.
+    `bmi` here is blank on three participants as well as on the QC rows, and is
+    a clinical reference variable: the left-censoring reading, which reads the
+    participants' rows, names it with the features, and the clinical pack
+    reads it too, so both packs have something to say about it and they
+    disagree. A skip taken on whichever prior happens to be `derived` would
+    resolve that silently, which is the one thing the list return exists to
+    prevent. (Blank on the QC rows alone, as `age` is, the left-censoring
+    reading does not name it: a pooled QC carries no BMI by design.)
     """
     df = load("metabolomics_untargeted")
+    df.loc[df.index[df["sample_type"] == "participant"][:3], "bmi"] = np.nan
     with_blanks = [str(c) for c in df.columns if df[c].isna().any()]
     both = [P.METABOLOMICS, P.CLINICAL]
     contested = [c for c in with_blanks
                  if len(P.prior_for_column(both, "missingness_direction", c, df)) > 1]
-    assert contested, "the fixture no longer produces a contested column"
+    assert contested == ["bmi"], "the table no longer produces the one contested column"
 
     pri = {c: P.prior_for_column(both, "missingness_direction", c, df)
            for c in with_blanks}

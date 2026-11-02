@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from typing import AbstractSet, Any, Callable, Mapping, Sequence
 
+import numpy as np
 import pandas as pd
 
 from turbotab.core.voice import count, finish, listing, number, plural, tick
@@ -51,10 +52,23 @@ class FindingContext:
     # The columns whose values below a detection limit the app's own finding reads, with its repair
     # (``below_detection__<column>``): the lab pack's censored-values finding leaves them to it.
     below_detection: frozenset[str] = frozenset()
+    # The positions in ``frame`` of the rows the pooled-QC finding reads as one sample injected
+    # repeatedly (:func:`pooled_qc_rows`): not participants, and blank by design on what a
+    # participant carries (age, sex, the outcome). Empty where that finding is not raised.
+    reference_rows: frozenset[int] = frozenset()
 
     @property
     def n_rows(self) -> int:
         return len(self.frame)
+
+    @cached_property
+    def kept(self) -> pd.DataFrame:
+        """The rows that stay once the reference rows leave: every row where there are none."""
+        if not self.reference_rows:
+            return self.frame
+        keep = np.ones(len(self.frame), dtype=bool)
+        keep[sorted(self.reference_rows)] = False
+        return self.frame[keep]
 
     @cached_property
     def energy(self) -> dict[str, Any] | None:
@@ -130,11 +144,34 @@ def _col(entry: Any) -> str | None:
     return str(entry) if entry is not None else None
 
 
-def _blank_share(fc: FindingContext, column: str | None) -> tuple[int, float]:
-    if not column or column not in fc.frame.columns or not fc.n_rows:
-        return 0, 0.0
-    n = int(fc.frame[column].isna().sum())
-    return n, n / fc.n_rows
+POOLED_QC = "pack::metabolomics::pooled_qc"
+
+
+def pooled_qc_rows(frame: pd.DataFrame, from_packs: Sequence[Mapping[str, Any]]) -> frozenset[int]:
+    """The positions of the rows the pooled-QC finding names: where its column holds its QC level,
+    compared as text, as the exclusion it offers compares them
+    (``turbotab.core.reference_rows._exclusion`` and ``reference_filter``). The findings are read
+    before any answer, so these are read from the data, the same whether that finding is later
+    answered, set aside or not answered at all; with no pooled-QC finding (no assay lens, or no
+    rows that vary far less than the rest) there are none."""
+    for f in from_packs:
+        if family(str(f.get("id"))) != POOLED_QC:
+            continue
+        p = f.get("params") or {}
+        column, level = p.get("column"), p.get("qc_value")
+        if column in frame.columns and level is not None:
+            at = (frame[column].astype(str) == str(level)).to_numpy()
+            return frozenset(int(i) for i in np.flatnonzero(at))
+    return frozenset()
+
+
+def _blank_share(fc: FindingContext, column: str | None) -> tuple[int, int]:
+    """``column``'s blanks and the rows they are counted over: the rows that stay
+    (:attr:`FindingContext.kept`), so a column blank only on the pooled-QC rows has none."""
+    rows = fc.kept
+    if not column or column not in rows.columns or not len(rows):
+        return 0, 0
+    return int(rows[column].isna().sum()), len(rows)
 
 
 # ── the family table ─────────────────────────────────────────────────────────
@@ -154,15 +191,31 @@ class Voice:
 BLANKS = ("missing", "Choose how blanks are handled")
 
 
+def _offers_a_level(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> bool:
+    """Whether the finding offers its levels as repairs (``level``: which one counts as 1), asked
+    of the repair registry over the table and outcome ``repairs.attach`` offers on."""
+    from turbotab.core.repairs import OfferContext, offer
+
+    found = offer(f, {"params": p}, OfferContext(frame=fc.frame, target=fc.target))
+    return any(o.key == "level" for o in found)
+
+
 def _two_level_text(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     col = p.get("column") or (f["affected_columns"] or [None])[0]
-    n_blank, share = _blank_share(fc, col)
+    n_blank, n_rows = _blank_share(fc, col)
     if p.get("written_as") == "bool_dtype":
         return Voice(f"{tick(col)} is already a true/false column; nothing needs repairing.",
                      closes=True)
-    if share >= 0.1:
-        return Voice(f"{tick(col)} is two-level text with {count(n_blank)} of {count(fc.n_rows)} "
-                     f"blank; a blank may mean not asked.", *BLANKS)
+    if n_rows and n_blank / n_rows >= 0.1:
+        # Counted over the rows that stay: with pooled-QC rows set aside, the rows outside them.
+        rows = f"{count(n_blank)} of {count(n_rows)}{' non-QC rows' if fc.reference_rows else ''}"
+        if _offers_a_level(f, p, fc):
+            # The blanks' answer settles the finding (``repairs.matching_answer``) and chooses no
+            # level: its own repairs still do, on its line.
+            return Voice(f"{tick(col)}, two-level text: {rows} blank (maybe not asked); which "
+                         f"level counts as 1 is chosen here.", *BLANKS)
+        return Voice(f"{tick(col)} is two-level text with {rows} blank; a blank may mean not "
+                     f"asked.", *BLANKS)
     levels = [str(v) for v in p.get("levels") or []]
     if len(levels) == 2:
         return Voice(f"{tick(col)} is two-level text ({tick(levels[0])}, {tick(levels[1])}); which "
@@ -1403,6 +1456,6 @@ def flag_columns(findings: Sequence[dict[str, Any]]) -> set[str]:
 
 __all__ = [
     "FAMILIES", "FindingContext", "GROUPS", "LEVER_WORDS", "NO_LEVER", "SUMMARY_WORDS",
-    "energy_correlations", "family", "flag_columns", "own_findings", "quote_columns",
-    "restate_energy", "settle_groups", "speak",
+    "energy_correlations", "family", "flag_columns", "own_findings", "pooled_qc_rows",
+    "quote_columns", "restate_energy", "settle_groups", "speak",
 ]

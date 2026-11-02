@@ -1,0 +1,262 @@
+"""The findings judge a column on the participants, not on the pooled-QC rows (the plasma panel's
+package, findings-rows), and a two-level finding its blanks' answer settles still leaves which
+level counts as 1 to the finding.
+
+A pooled QC is one sample injected repeatedly: it carries no age, sex, BMI or outcome, so those are
+blank on every QC row by design. Read over every row, the two-level reading sent `sex` (blank only
+on the QC rows) to the missing-values question as "may mean not asked", and the left-censoring
+reading named `age`, `bmi` and the outcome as non-detections. Here both read the rows the pooled-QC
+reading does not name:
+
+* the two-level reading's blank share counts over the rows outside the QC level the served pooled-QC
+  finding names (``reference_rows.pooled_qc_finding``), the rows its exclusion keeps. The findings
+  are read before any answer, so those rows are read from the data, whatever the answer to the QC
+  finding; where the reading does not fire, every row counts as before;
+* the left-censoring reading (``packs._left_censored``) reads the rows the pack's own pooled-QC
+  reading (``packs._pooled_qc``) does not flag, and names only columns with a blank there.
+
+Each truth is by construction on a plasma-like table (60 participants, 10 QC injections, 40
+features censored below a detection limit), counted with pandas, or computed by scipy's Spearman
+correlation. The plasma fixture itself is ``research/swarm/tests/test_plasma_findings.py``'s.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+from scipy import stats
+
+from turbotab import packs
+from turbotab.core import repairs, voice
+from turbotab.core.decisions import (
+    ApplyRepair,
+    DecisionRecord,
+    ProjectState,
+    SetMissing,
+    fold,
+    validate,
+)
+from turbotab.core.stages.finding_words import SUMMARY_WORDS
+from turbotab.core.stages.findings import findings_stage
+from turbotab.core.tests.stage_harness import SAMPLES, Ingested
+
+N_PART, N_QC, N_FEATURES = 60, 10, 40
+QC_AT = list(range(0, N_PART + N_QC, 7))  # a QC every seventh injection, ten in all
+LIMIT = 4.0  # a feature's log value below this is not detected: a blank
+
+
+def panel(*, sex_blank: int = 0, qc_signal: bool = True, seed: int = 11) -> pd.DataFrame:
+    """A plasma-like table by construction: 60 participants and 10 pooled-QC injections (every
+    seventh row, ``sample_type`` = ``pooled_qc``), 40 features whose log means run from 3.5 to 12,
+    each blank below ``exp(4)`` (left-censored by abundance), and the participants' `age`, `bmi`,
+    `sex` and `disease`, blank on every QC row. The first ``sex_blank`` participants have a blank
+    `sex` too. With ``qc_signal`` the QC rows are one pooled sample (each feature's log mean, a
+    technical SD of 0.05); without it they vary as the participants do (log SD 0.8), and no
+    reading can tell them from participants."""
+    rng = np.random.default_rng(seed)
+    n = N_PART + N_QC
+    qc = np.zeros(n, dtype=bool)
+    qc[QC_AT] = True
+    assert int(qc.sum()) == N_QC
+    log_mean = np.linspace(3.5, 12.0, N_FEATURES)
+    sd = np.where(qc[:, None] & qc_signal, 0.05, 0.8)
+    log_value = log_mean + rng.normal(0.0, 1.0, (n, N_FEATURES)) * sd
+    values = np.round(np.exp(log_value), 2)
+    values[log_value < LIMIT] = np.nan
+    sex = rng.choice(["F", "M"], n).astype(object)
+    sex[qc] = None
+    sex[np.flatnonzero(~qc)[:sex_blank]] = None
+    frame = {"sample_type": np.where(qc, "pooled_qc", "participant"),
+             "age": np.where(qc, np.nan, rng.integers(30, 75, n).astype(float)),
+             "bmi": np.where(qc, np.nan, np.round(rng.normal(27.0, 4.0, n), 1)),
+             "sex": sex}
+    for j in range(N_FEATURES):
+        frame[f"mz_{j + 1:03d}"] = values[:, j]
+    out = pd.DataFrame(frame)
+    out["disease"] = np.where(qc, np.nan, rng.integers(0, 2, n).astype(float))
+    return out
+
+
+def findings_of(tmp_path: Path, frame: pd.DataFrame, lens: list[str],
+                target: str | None = None) -> dict[str, dict]:
+    path = tmp_path / "panel.csv"
+    frame.to_csv(path, index=False)
+    table = Ingested(path, tmp_path / "ingested")
+    artifact = table.run(findings_stage, ProjectState(lens=lens, target=target))
+    return {f["id"]: f for f in artifact["findings"]}
+
+
+def read_back(tmp_path: Path, frame: pd.DataFrame) -> pd.DataFrame:
+    """The table as a CSV reader reads it (a blank text cell is a blank)."""
+    path = tmp_path / "read.csv"
+    frame.to_csv(path, index=False)
+    return pd.read_csv(path)
+
+
+def participants(df: pd.DataFrame) -> pd.DataFrame:
+    return df[df["sample_type"] != "pooled_qc"]
+
+
+# ── the two-level reading: blanks counted over the participants ─────────────
+
+
+def test_a_column_blank_only_on_the_qc_rows_reads_as_two_level_text(tmp_path):
+    """`sex` is blank on the 10 QC rows and on no participant (by construction), so 0 of 60
+    participants: the two-level reading, not the missing-values question. Over every row it was
+    10 of 70 (14%), which routed it there."""
+    frame = panel()
+    df = read_back(tmp_path, frame)
+    assert int(participants(df)["sex"].isna().sum()) == 0 and int(df["sex"].isna().sum()) == N_QC
+    found = findings_of(tmp_path, frame, ["metabolomics"])
+    assert "pack::metabolomics::pooled_qc" in found  # the reading that names the QC rows fired
+    sex = found["binary_text__sex"]
+    assert sex["routes_to"] is None
+    assert sex["summary"].startswith("`sex` is two-level text (")
+    assert sex["summary"].endswith("which level counts as 1 is not asked yet.")
+    assert "blank" not in sex["summary"]
+
+
+@pytest.mark.parametrize("blank", [6, 9])
+def test_a_column_blank_on_a_tenth_of_the_participants_still_routes_to_missing(tmp_path, blank):
+    """6 and 9 of the 60 participants blank (10% and 15%, by construction) route to the
+    missing-values question, and the sentence counts over the 60 rows the pooled-QC finding's
+    exclusion would keep, read from that exclusion's own column and level with pandas."""
+    frame = panel(sex_blank=blank)
+    df = read_back(tmp_path, frame)
+    found = findings_of(tmp_path, frame, ["metabolomics"])
+    exclusion = next(o for o in found["pack::metabolomics::pooled_qc"]["repairs"]
+                     if o["key"] == "exclude_rows")["decision"]["params"]
+    kept = df[~df[exclusion["column"]].astype(str).isin(exclusion["levels"])]
+    assert len(kept) == N_PART
+    n_blank = int(kept["sex"].isna().sum())
+    assert n_blank == blank
+    sex = found["binary_text__sex"]
+    assert sex["routes_to"] == "missing"
+    assert sex["summary"] == (f"`sex`, two-level text: `{n_blank}` of `{len(kept)}` non-QC rows "
+                              f"blank (maybe not asked); which level counts as 1 is chosen here.")
+    assert voice.words(sex["summary"]) <= SUMMARY_WORDS
+
+
+def test_under_a_tenth_of_the_participants_blank_is_the_two_level_reading(tmp_path):
+    """5 of 60 participants (8%) is under the share that routes to the missing-values question,
+    though with the QC rows it is 15 of 70 (21%), over it."""
+    frame = panel(sex_blank=5)
+    df = read_back(tmp_path, frame)
+    assert int(df["sex"].isna().sum()) / len(df) >= 0.1 > 5 / N_PART
+    sex = findings_of(tmp_path, frame, ["metabolomics"])["binary_text__sex"]
+    assert sex["routes_to"] is None and "blank" not in sex["summary"]
+
+
+@pytest.mark.parametrize("why", ["no_qc_signal", "no_assay_lens"])
+def test_where_no_pooled_qc_reading_fires_every_row_counts(tmp_path, why):
+    """The guard's silent side: where the QC rows vary as the participants do (no reading can
+    tell them apart), or no assay lens reads them, no row is set aside, so `sex` blank on the 10
+    QC rows is 10 of 70 rows, counted with pandas over every row, and routes as before."""
+    frame = panel(qc_signal=why != "no_qc_signal")
+    df = read_back(tmp_path, frame)
+    found = findings_of(tmp_path, frame, ["clinical"] if why == "no_assay_lens" else ["metabolomics"])
+    assert "pack::metabolomics::pooled_qc" not in found
+    sex = found["binary_text__sex"]
+    n_blank, n = int(df["sex"].isna().sum()), len(df)
+    assert (n_blank, n) == (N_QC, N_PART + N_QC)
+    assert sex["routes_to"] == "missing"
+    assert sex["summary"] == (f"`sex`, two-level text: `{n_blank}` of `{n}` blank (maybe not "
+                              f"asked); which level counts as 1 is chosen here.")
+
+
+# ── the left-censoring reading: the participants' rows ──────────────────────
+
+
+def _participant_reading(df: pd.DataFrame) -> tuple[set[str], float, int]:
+    """By pandas and scipy: the numeric columns with a blank among the participants, and the
+    Spearman correlation of each usable column's missing rate with its log mean there."""
+    part = participants(df)
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    rate = part[numeric].isna().mean()
+    mean = part[numeric].mean()
+    usable = [c for c in numeric if pd.notna(mean[c]) and mean[c] > 0]
+    rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
+    return {c for c in numeric if rate[c] > 0}, float(rho), len(usable)
+
+
+def test_left_censoring_names_only_columns_blank_among_the_participants(tmp_path):
+    """`age`, `bmi` and the outcome are blank only on the QC rows: not non-detections, so not
+    named. Every feature with a blank among the participants still is, and the correlation is
+    the participants' own (scipy)."""
+    df = read_back(tmp_path, panel())
+    named, rho, n_usable = _participant_reading(df)
+    assert named and all(c.startswith("mz_") for c in named)
+    found = packs._left_censored(df)
+    assert found is not None
+    assert set(found["params"]["columns"]) == named
+    assert not {"age", "bmi", "disease"} & set(found["params"]["columns"])
+    assert found["params"]["n_with_blanks"] == len(named)
+    assert found["params"]["n_features"] == n_usable
+    assert found["params"]["rho"] == round(rho, 3)
+    # Served: the missing-values question reads these as the censored columns.
+    served = findings_of(tmp_path, panel(), ["metabolomics"])["pack::metabolomics::left_censored"]
+    assert set(served["censored_columns"]) == named
+
+
+def test_left_censoring_reads_every_row_where_the_pack_flags_no_qc_rows(tmp_path):
+    """The silent side: the same table with QC rows no reading tells from participants is read
+    over every row, as before, so a column blank on those rows is named (pandas, every row)."""
+    df = read_back(tmp_path, panel(qc_signal=False))
+    assert packs._pooled_qc(df) is None
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    every_row = {c for c in numeric if df[c].isna().any()}
+    assert {"age", "bmi", "disease"} <= every_row
+    found = packs._left_censored(df)
+    assert found is not None and set(found["params"]["columns"]) == every_row
+
+
+# ── a finding its blanks' answer settles keeps its level to choose ──────────
+
+
+def _record(seq: int, decision) -> DecisionRecord:
+    return DecisionRecord(id=f"r{seq}", seq=seq, at=datetime.now(timezone.utc), decision=decision)
+
+
+def test_the_blanks_answer_settles_the_finding_and_its_level_is_still_chosen_on_it(tmp_path):
+    """`sex` blank on 12 of 70 rows (no assay lens, by construction) routes to the missing-values
+    question, which settles the finding (``repairs.matching_answer``) and chooses no level. Its
+    two level options stay on it, its line says the level is chosen there, and one taken after
+    the answer is recorded as the finding's own repair."""
+    frame = panel(sex_blank=2, qc_signal=False)
+    df = read_back(tmp_path, frame)
+    path = tmp_path / "panel.csv"
+    frame.to_csv(path, index=False)
+    artifact = Ingested(path, tmp_path / "ingested").run(findings_stage, ProjectState(lens=[]))
+    sex = next(f for f in artifact["findings"] if f["id"] == "binary_text__sex")
+    assert int(df["sex"].isna().sum()) == 12
+    assert sex["routes_to"] == "missing"
+    assert sex["summary"] == ("`sex`, two-level text: `12` of `70` blank (maybe not asked); which "
+                              "level counts as 1 is chosen here.")
+    assert [o["key"] for o in sex["repairs"]] == ["level", "level"]
+    records = [_record(1, SetMissing(strategy="complete_case"))]
+    served = {f["id"]: f for f in repairs.annotate(artifact, fold(records), records)["findings"]}
+    assert served[sex["id"]]["answered_by"] == "r1" and served[sex["id"]]["disposition"] is None
+    assert [o["key"] for o in served[sex["id"]]["repairs"]] == ["level", "level"]
+    level = served[sex["id"]]["repairs"][0]["decision"]
+    ctx = {"artifact": lambda stage: artifact if stage == "findings" else None}
+    taken = validate(ApplyRepair(**{k: v for k, v in level.items() if k != "kind"}), ctx)
+    records.append(_record(2, taken))
+    after = {f["id"]: f for f in repairs.annotate(artifact, fold(records), records)["findings"]}
+    assert after[sex["id"]]["answered_by"] == "r2"
+    assert after[sex["id"]]["disposition"]["action"] == "applied"
+    assert after[sex["id"]]["disposition"]["params"] == level["params"]
+
+
+def test_a_two_level_finding_with_no_level_to_choose_says_nothing_of_one(tmp_path):
+    """True/False written as text offers no level (``repairs._offer_binary``: text levels only), so
+    its routed sentence is as before, its counts by pandas."""
+    df = pd.read_csv(SAMPLES / "binary_shapes.csv")
+    table = Ingested(SAMPLES / "binary_shapes.csv", tmp_path / "shapes")
+    found = {f["id"]: f for f in table.run(findings_stage, ProjectState(lens=["clinical"]))["findings"]}
+    chol = found["binary_text__meds_chol"]
+    assert chol["routes_to"] == "missing" and chol["repairs"] == []
+    assert chol["summary"] == (f"`meds_chol` is two-level text with `{int(df['meds_chol'].isna().sum())}` "
+                               f"of `{len(df)}` blank; a blank may mean not asked.")

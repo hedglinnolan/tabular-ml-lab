@@ -633,15 +633,22 @@ def _left_censored(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     Only the METHOD is a choice, and half-minimum wins on explainability over
     QRILC — *"values below the detection limit were imputed as half the minimum
     observed"* is a sentence a reader can evaluate.
+
+    **Read on the participants' rows**: the rows `_pooled_qc` does not flag. A
+    pooled QC carries no age, BMI or outcome, so those are blank on every QC
+    row by design, not below a detection limit; read over every row, they
+    were named here, and the prior this finding scopes (`GUIDED-027`) reached
+    them. Where `_pooled_qc` flags no row, every row is read.
     """
     cols = _numeric(df)
     if len(cols) < 30:
         return None
-    rate = df[cols].isna().mean()
+    rows = df.loc[~_pooled_qc_rows(df), cols]
+    rate = rows.isna().mean()
     with_blanks = [c for c in cols if rate[c] > 0]
     if len(with_blanks) < 5:
         return None
-    abundance = df[cols].mean(numeric_only=True)
+    abundance = rows.mean(numeric_only=True)
     usable = [c for c in cols if pd.notna(abundance[c]) and abundance[c] > 0]
     if len(usable) < 30:
         return None
@@ -790,6 +797,18 @@ def _pooled_qc(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
                     "n_qc": n_minor, "rsd_qc": round(rsd_minor, 3),
                     "rsd_participants": round(rsd_rest, 3)})
     return None
+
+
+def _pooled_qc_rows(df: pd.DataFrame) -> pd.Series:
+    """The rows `_pooled_qc` reads as pooled QC injections — its column at its
+    QC level, compared as text as an exclusion of that level compares them —
+    and none where it reads none. One reading, so a detector here that sets the
+    QC rows aside sets aside the rows `_pooled_qc`'s finding names."""
+    found = _pooled_qc(df)
+    if found is None:
+        return pd.Series(False, index=df.index)
+    p = found["params"]
+    return df[p["column"]].astype(str) == p["qc_value"]
 
 
 # ── metabolomics · §11, where confident automation would embarrass us ────────
