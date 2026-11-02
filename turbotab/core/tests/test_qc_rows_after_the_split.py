@@ -1,4 +1,4 @@
-"""Reference rows that leave after the split: refused only where leaving would draw it again.
+"""Reference rows that leave after the split: refused only where leaving would move the draw.
 
 Under Estimate the engine records its own split at the missing answer, holding nothing out (P0.6),
 so every pooled-QC answer reached after it was refused ``rows_after_the_seal`` on the plasma panel,
@@ -9,21 +9,26 @@ The held-out rows are drawn over the rows with the outcome recorded, sorted by r
 position (``stages.rows.draw_split``); the folds over the training rows the same way. So rows that
 leave with the outcome blank on them, as the plasma panel's pooled QCs do, move no participant
 across the seal or between folds: the truth here is construction, the same participants' places in
-the draws with and without the rows leaving, mapped to source rows. The guard still refuses where
-the split holds rows out and a row that leaves has its outcome recorded (a ``QC`` level of the
-outcome, the audit's export; or an outcome written on the QC rows), and where the draw groups by an
-identifier some drawn row leaves blank: such a row is a unit of its own named by its working row id
-(``__missing_{rid}``), which the leaving rows renumber, and the draw shown here moves.
+the draws with and without the rows leaving, mapped to source rows. But the rows that stay are
+numbered again, and the seal names rows by number: until the split is drawn again over the new
+working table, the previews read every row but the old split's sealed numbers, which then name
+other participants. So while rows are held out the guard refuses where a row that leaves comes
+before a row in the draw (it renumbers it), as well as where a row that leaves has its outcome
+recorded (a ``QC`` level of the outcome, the audit's export; or an outcome written on the QC rows).
+A grouped draw names a drawn row with no identifier by its working row id (``__missing_{rid}``),
+so that guard holds it still too.
 """
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from turbotab.core import consequences, row_previews
 from turbotab.core.decisions import ApplyRepair, ProjectState, Refusal, validate
 from turbotab.core.methods import qc_drift as Q
 from turbotab.core.stages.working import row_map
@@ -36,6 +41,12 @@ QC_LEVEL = "pooled_qc"
 REFUSED_WORDS = ("The held-out rows are drawn over the rows the analysis holds, so reference rows "
                  "leave before the seal; excluding them now would draw it again. Start a new "
                  "analysis, or keep them in and say so.")
+RENUMBERED_WORDS = ("The held-out rows are drawn and named by their row numbers, so reference rows "
+                    "leave before the seal; excluding them now would renumber the rows with "
+                    "`disease` recorded that come after them. Start a new analysis, or keep them "
+                    "in and say so.")
+PLASMA_BASE = {"lens": ["metabolomics"], "orientation": "sample_major", "target": "disease",
+               "grain": {"grain": "one_row_per_unit"}}
 
 
 def data(artifact: Any) -> Any:
@@ -108,9 +119,7 @@ def plasma(tmp_path_factory):
     """The pilot's plasma panel: 100 participants and 28 pooled QCs, ``disease`` blank on every
     QC, one row per participant."""
     folder = tmp_path_factory.mktemp("plasma")
-    project = Project(PLASMA, folder / "p", {
-        "lens": ["metabolomics"], "orientation": "sample_major", "target": "disease",
-        "grain": {"grain": "one_row_per_unit"}})
+    project = Project(PLASMA, folder / "p", PLASMA_BASE)
     yield project
     project.run.close()
 
@@ -142,16 +151,81 @@ def test_the_pooled_qcs_leaving_moves_no_participant_across_the_seal_or_a_fold(
     assert int((a["partition"] == "holdout").sum()) == (20 if holdout else 0)
 
 
-@pytest.mark.parametrize("holdout", [0.0, 0.2])
 @pytest.mark.parametrize("key", ["qc_rlsc_lc", "exclude_rows"])
-def test_a_pooled_qc_answer_after_a_split_that_holds_none_of_them_is_accepted(plasma, holdout, key):
-    """The engine's own no-holdout split under Estimate, and a 20% held-out set, recorded before
-    the pooled-QC answer: the QC rows carry no outcome, so neither draw holds them, and the answer
-    is accepted (on the base it was refused ``rows_after_the_seal``)."""
-    before = plasma.state(holdout)
+def test_a_pooled_qc_answer_after_the_engines_no_holdout_split_is_accepted(plasma, key):
+    """The engine's own no-holdout split under Estimate, recorded before the pooled-QC answer: the
+    QC rows carry no outcome, so the draw holds none of them, and nothing is held out, so no seal
+    names a row by its number: the answer is accepted (on the base it was refused
+    ``rows_after_the_seal``), with the split fresh or recomputing."""
+    before = plasma.state(0.0)
     out = plasma.draw(before)
     validate(answer(plasma.qc, key), ctx_of(before, out))
     validate(answer(plasma.qc, key), ctx_of(before, out, split=False))
+
+
+def _laid_out(folder: Path, layout: str) -> Path:
+    """The plasma panel with its rows in another order: ``first`` puts the 28 pooled QCs before
+    every participant, ``last`` after every one; ``run_order`` keeps each injection's place."""
+    df = pd.read_csv(PLASMA)
+    qc = df["sample_type"].eq(QC_LEVEL)
+    path = folder / f"plasma_{layout}.csv"
+    pd.concat([df[qc], df[~qc]] if layout == "first" else [df[~qc], df[qc]]).to_csv(path, index=False)
+    return path
+
+
+@pytest.mark.parametrize("layout", ["as_run", "first", "last"])
+@pytest.mark.parametrize("key", ["qc_rlsc_lc", "exclude_rows"])
+def test_until_the_split_is_drawn_again_no_preview_reads_a_held_out_participant(
+        tmp_path, layout, key):
+    """The window between the working table and the split: a pooled-QC answer accepted while 20%
+    are held out numbers the rows that stay again, and until the split is drawn again over them the
+    previews and the evidence read every working row but the newest split's sealed row ids
+    (``consequences.PreviewContext.unsealed_row_ids``; ``server.service.sealed_rows``, fresh or
+    still recomputing) and train on the new cohort's rows but those
+    (``server.service.training_rows``). By construction the held-out participants are the source
+    rows the old split's sealed ids named in the old working table, and neither pool may hold one.
+    With the QCs as run, or all first, they come before rows in the draw, and leaving would
+    renumber them: the answer is refused (on the base it was accepted as run, and the pool held 18
+    of the 20). With every QC after every participant, no row in the draw is renumbered: the answer
+    is accepted, and the window reads no held-out participant."""
+    source = PLASMA if layout == "as_run" else _laid_out(tmp_path, layout)
+    project = Project(source, tmp_path / "p", PLASMA_BASE)
+    try:
+        before = project.state(0.2)
+        old = project.draw(before)
+        sealed = row_previews.sealed_rows(old["split"])
+        named = row_map(old["working"]).set_index("row_id")["source_row_id"]
+        held_out = set(named.loc[sealed].tolist())
+        assert len(held_out) == 20
+        outcomes = []
+        for split in (True, False):
+            try:
+                validate(answer(project.qc, key), ctx_of(before, old, split=split))
+                outcomes.append(None)
+            except Refusal as caught:
+                outcomes.append(caught)
+        refusal = outcomes[0]
+        assert (outcomes[1] is None) == (refusal is None)
+        if refusal is None:
+            new = project.run.run(project.state(0.2, findings=applied(project.qc, key)),
+                                  upto=["cohort"])
+            n_rows = int(data(new["working"])["n_rows"])
+            assert n_rows == 100
+            preview = consequences.PreviewContext(
+                project_id="p", state=before, datastore=SimpleNamespace(n_rows=n_rows),
+                artifact=lambda _: None, training_row_ids=None, cohort_row_ids=None,
+                sealed_row_ids=sealed)
+            cohort = new["cohort"].frames["rows"]["row_id"].to_numpy(dtype=np.int64)
+            training = np.setdiff1d(cohort, sealed)  # service.training_rows, the split recomputing
+            source_of = row_map(new["working"]).set_index("row_id")["source_row_id"]
+            for pool in (preview.unsealed_row_ids(), training):
+                assert held_out.isdisjoint(source_of.loc[pool].tolist())
+        assert (refusal is None) == (layout == "last")
+        if refusal is not None:
+            assert refusal.code == "rows_after_the_seal"
+            assert refusal.message == RENUMBERED_WORDS
+    finally:
+        project.run.close()
 
 
 def test_pqn_against_the_pooled_qcs_follows_the_qc_answer_after_the_split(plasma):
@@ -209,37 +283,45 @@ def test_rows_held_out_and_a_leaving_row_with_its_outcome_recorded_still_refuse(
         project.run.close()
 
 
-def _repeated(folder: Path, blank_ids: int) -> Path:
+def _repeated(folder: Path, blank_ids: int, layout: str) -> Path:
     """Chain 3's run, smaller (two batches of 40 injections, 40 features): two samples from each
     participant, grouped by ``participant_id``; the pooled QCs have no outcome and no identifier.
-    ``blank_ids`` participant rows, spread across the run, lose their identifier."""
+    ``blank_ids`` participant rows, spread across the run, lose their identifier. ``layout``
+    ``last`` puts every QC row after every participant row (``injection_order`` keeps the run)."""
     frame, _ = metabolomics_run(batches=2, per_batch=40, p=40, near=4)
-    study = np.flatnonzero(frame["sample_type"].ne("QC").to_numpy())
+    qc = frame["sample_type"].eq("QC")
+    study = np.flatnonzero((~qc).to_numpy())
     if blank_ids:
         frame.loc[study[:: len(study) // blank_ids][:blank_ids], "participant_id"] = None
-    path = folder / f"repeated_{blank_ids}.csv"
+    if layout == "last":
+        frame = pd.concat([frame[~qc], frame[qc]])
+    path = folder / f"repeated_{blank_ids}_{layout}.csv"
     frame.to_csv(path, index=False)
     return path
 
 
-@pytest.fixture(params=[0, 20], ids=["every_id", "twenty_blank_ids"])
+@pytest.fixture(params=[(0, "as_run"), (20, "as_run"), (0, "last"), (20, "last")],
+                ids=["every_id", "twenty_blank_ids", "every_id_qcs_last", "twenty_blank_ids_qcs_last"])
 def repeated(request, tmp_path):
-    project = Project(_repeated(tmp_path, request.param), tmp_path / "p",
+    blank_ids, layout = request.param
+    project = Project(_repeated(tmp_path, blank_ids, layout), tmp_path / "p",
                       {"lens": ["metabolomics"], "orientation": "sample_major", "target": "case",
                        "grain": {"grain": "repeated", "id_column": "participant_id"},
                        "unit": "row", "repeat_kind": {"repeat_kind": "repeats"}})
-    project.blank_ids = request.param
+    project.blank_ids, project.layout = blank_ids, layout
     yield project
     project.run.close()
 
 
-def test_a_grouped_draw_holds_still_unless_a_drawn_row_has_no_identifier(repeated):
-    """By construction, with 20% held out and the draw grouped by ``participant_id``: with every
-    participant row identified, the QC rows leaving moves no row across the seal or between folds,
-    and the answer is accepted; with twenty rows unidentified, each a unit named by its working row
-    id, the QC rows leaving renumbers them and the draw moves (rows change side or fold), so the
-    answer is refused, with the split recomputing too. Under cross-validation alone it is accepted
-    either way."""
+def test_a_grouped_draw_holds_still_where_no_row_in_it_is_renumbered(repeated):
+    """By construction, with 20% held out and the draw grouped by ``participant_id``: a drawn row
+    with no identifier is a unit of its own named by its working row id. With the QCs as run they
+    come before rows in the draw, and leaving renumbers them: with every participant row identified
+    the draw holds still all the same, with twenty unidentified it moves (rows change side or
+    fold), and either way the answer is refused, with the split recomputing too. With every QC
+    after every participant no row in the draw is renumbered, and the draw holds still with twenty
+    unidentified too: the answer is accepted (on the base, refused there). Under cross-validation
+    alone it is accepted in each."""
     sealed = repeated.state(0.2)
     out = repeated.draw(sealed)
     assert data(out["split"])["grouped_by"] == "participant_id"
@@ -247,14 +329,14 @@ def test_a_grouped_draw_holds_still_unless_a_drawn_row_has_no_identifier(repeate
     kept = placed(out)
     assert list(gone.index) == list(kept.index)
     moved = int(((gone["partition"] != kept["partition"]) | (gone["fold"] != kept["fold"])).sum())
-    if repeated.blank_ids:
-        assert moved > 0
+    assert (moved > 0) == (repeated.blank_ids > 0 and repeated.layout == "as_run")
+    if repeated.layout == "as_run":
         for split in (True, False):
             with pytest.raises(Refusal) as caught:
                 validate(answer(repeated.qc, "qc_rlsc_lc"), ctx_of(sealed, out, split=split))
             assert caught.value.code == "rows_after_the_seal"
+            assert caught.value.message == RENUMBERED_WORDS.replace("`disease`", "`case`")
     else:
-        assert moved == 0 and (gone["fold"] == kept["fold"]).all()
         validate(answer(repeated.qc, "qc_rlsc_lc"), ctx_of(sealed, out))
     folds_only = repeated.state(0.0)
     validate(answer(repeated.qc, "qc_rlsc_lc"), ctx_of(folds_only, repeated.draw(folds_only)))

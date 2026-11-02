@@ -23,10 +23,11 @@ So here:
   no QC row can be drawn into the held-out set. The participant flow counts them on a line of
   their own (``stages.rows.cohort_flow``'s ``reference`` steps).
 * Its data scope is *row-local* (BLUEPRINT §13): whether a row leaves reads that row's own label.
-  Once rows are held out it is refused where the rows leaving could draw them again
-  (:func:`_before_the_seal`): a leaving row with its outcome recorded, or a grouped draw with a
-  drawn row's identifier blank. Pooled QCs with no outcome were never in the draw, so after the
-  engine's own no-holdout split under Estimate, or any split, they still leave.
+  Once rows are held out it is refused where the rows leaving would move the draw
+  (:func:`_before_the_seal`): a leaving row with its outcome recorded draws the held-out rows
+  again, and one before a row in the draw renumbers it, while the seal names rows by number.
+  Pooled QCs with no outcome were never in the draw, so after the engine's own no-holdout split
+  under Estimate, or after a split whose drawn rows all come before them, they still leave.
 """
 from __future__ import annotations
 
@@ -274,31 +275,26 @@ def _ctx_reader(ctx: Any, name: str, stage: str) -> Any:
         return None
 
 
-def _draw_groups(state: Any, ctx: Any) -> list[str]:
-    """The columns the held-out draw groups by: the fresh split's own, else each it could (the
-    grain's unit column, a column whose role is an identifier; ``seal.seal_inputs``)."""
-    split = _ctx_reader(ctx, "artifact", "split")
-    split = getattr(split, "data", split)
-    if isinstance(split, Mapping) and "grouped_by" in split:
-        return [str(split["grouped_by"])] if split.get("grouped_by") else []
-    grain = getattr(state, "grain", None)
-    named = [grain.id_column] if grain is not None and getattr(grain, "id_column", None) else []
-    roles = getattr(state, "roles", None) or {}
-    return list(dict.fromkeys([*named, *(c for c, r in roles.items() if r == "identifier")]))
-
-
-def _moves_the_draw(decision: ApplyRepair, state: Any, ctx: Any) -> bool:
-    """Whether the rows this answer takes out (or brings back) could move the held-out draw.
+def _what_moves(decision: ApplyRepair, state: Any, ctx: Any) -> str | None:
+    """What the rows this answer takes out (or brings back) would move of the held-out draw:
+    ``"draw"`` where they could draw it again, ``"numbers"`` where they renumber rows in it, None
+    where neither.
 
     The held-out rows are drawn over the rows with the outcome recorded, sorted by working row id
     and drawn by position, and the folds over the training rows the same way
-    (``stages.rows.draw_split``); the leaving rows renumber the rest, keeping their order. So
-    the draw moves where a row that leaves or returns has its outcome recorded (as the working table
-    reads it, after its repairs), or where the draw groups by an identifier some drawn row leaves
-    blank: that row is a unit of its own named by its working row id (``__missing_{rid}``), and
-    renumbered, the units sort otherwise. Read on the oriented table, where the working table reads
-    the labels; True wherever it cannot be read (no table at hand, rows combined per unit, an
-    outcome the table does not hold), since the seal then cannot be shown to stay."""
+    (``stages.rows.draw_split``); the rows that stay are numbered 0…n − 1 again, keeping their
+    order (``stages.working``). So the draw moves where a row that leaves or returns has its
+    outcome recorded (as the working table reads it, after its repairs). One with no outcome
+    recorded keeps every drawn row's place in the draw, but renumbers each row after it, and the
+    seal names rows by number: until the split is drawn again over the new working table, the
+    previews and the evidence read every row but the old split's sealed numbers
+    (``server.service.sealed_rows``), which would then name other rows, held-out participants
+    among those read. So nothing moves only where every row that leaves or returns comes after
+    every row in the draw; a grouped draw then holds still too, since it names a drawn row with no
+    identifier by its working row id (``__missing_{rid}``). Read on the oriented table, where the
+    working table reads the labels; ``"draw"`` wherever it cannot be read (no table at hand, rows
+    combined per unit, an outcome the table does not hold), since the seal then cannot be shown to
+    stay."""
     from turbotab.core import decisions
     from turbotab.core.repairs import _fill_params, evaluate, ident
     from turbotab.core.stages.rows import _measured
@@ -311,11 +307,11 @@ def _moves_the_draw(decision: ApplyRepair, state: Any, ctx: Any) -> bool:
     if target is None or (grain is not None and grain.grain == "repeated"
                           and getattr(state, "unit", None) == "unit"
                           and getattr(state, "aggregation", None) is not None):
-        return True
+        return "draw"
     oriented = _ctx_reader(ctx, "bundle", "oriented")
     files = getattr(oriented, "files", None) or {}
     if TABLE not in files:
-        return True
+        return "draw"
     findings = _ctx_reader(ctx, "artifact", "findings")
     findings = getattr(findings, "data", findings)
     decision = _fill_params(decision, ctx)
@@ -328,37 +324,37 @@ def _moves_the_draw(decision: ApplyRepair, state: Any, ctx: Any) -> bool:
         repairs.update(text_amounts(state, source, names, repairs))
         _, derived, _ = row_local_additions(state, findings, names, repairs)
         if target not in names and target not in derived:
-            return True
+            return "draw"
         keep = {when: reference_filter([r for r in reference_rules(answers, findings)
                                          if r["column"] in names]) or "TRUE"
                 for when, answers in (("now", now), ("after", after))}
-        groups = [c for c in _draw_groups(state, ctx) if c in names]
         alias = {"now": "__tt_kept_now", "after": "__tt_kept_after", "outcome": "__tt_outcome"}
         expressions = {alias["now"]: keep["now"], alias["after"]: keep["after"],
-                       alias["outcome"]: derived.get(target) or repairs.get(target, ident(target)),
-                       **{g: repairs.get(g, ident(g)) for g in groups}}
-        frame = evaluate(source, [*alias.values(), *groups], expressions)
+                       alias["outcome"]: derived.get(target) or repairs.get(target, ident(target))}
+        frame = evaluate(source, list(alias.values()), expressions)  # in row-id order
     except Exception:  # noqa: BLE001 - values that cannot be read: the seal cannot be shown to stay
-        return True
+        return "draw"
     kept_now = frame[alias["now"]].astype(bool).to_numpy()
     kept_after = frame[alias["after"]].astype(bool).to_numpy()
     changed = kept_now != kept_after
     if not changed.any():
-        return False
+        return None
     recorded = _measured(frame[alias["outcome"]]).to_numpy()
     if (changed & recorded).any():
-        return True
-    drawn = kept_after & recorded
-    return any(bool(frame.loc[drawn, g].isna().any()) for g in groups)
+        return "draw"
+    drawn = np.flatnonzero((kept_now | kept_after) & recorded)
+    if len(drawn) and int(np.flatnonzero(changed)[0]) < int(drawn[-1]):
+        return "numbers"
+    return None
 
 
 def _before_the_seal(decision: ApplyRepair, ctx: Any) -> None:
-    """Reference rows leave before the held-out rows are drawn where, afterwards, they would draw
-    them again: while the split holds rows out (a share or a cut-point) and the rows that leave
-    could move the draw (:func:`_moves_the_draw`). Under cross-validation alone nothing is held
-    out, and the folds are drawn again over the rows that stay, as after an exclusion; rows with no
-    outcome recorded were never in the draw, so the pooled QCs of the usual export leave with
-    every participant where the seal and the folds put them."""
+    """Reference rows leave before the held-out rows are drawn where, afterwards, they would move
+    the draw: while the split holds rows out (a share or a cut-point) and the rows that leave would
+    draw it again or renumber rows in it (:func:`_what_moves`). Under cross-validation alone nothing
+    is held out, and the folds are drawn again over the rows that stay, as after an exclusion; rows
+    with no outcome recorded were never in the draw, so the pooled QCs of the usual export leave
+    with every participant where the folds put them."""
     from turbotab.core.decisions import _state, holds_out
     from turbotab.core.repairs import family_for
 
@@ -366,13 +362,20 @@ def _before_the_seal(decision: ApplyRepair, ctx: Any) -> None:
     state = _state(ctx)
     if fam is None or fam.key != FAMILY or state is None:
         return
-    if not holds_out(getattr(state, "split", None)) or not _moves_the_draw(decision, state, ctx):
+    if not holds_out(getattr(state, "split", None)):
         return
+    moves = _what_moves(decision, state, ctx)
+    if moves is None:
+        return
+    if moves == "numbers":
+        why = (f"The held-out rows are drawn and named by their row numbers, so reference rows "
+               f"leave before the seal; excluding them now would renumber the rows with "
+               f"`{state.target}` recorded that come after them.")
+    else:
+        why = ("The held-out rows are drawn over the rows the analysis holds, so reference rows "
+               "leave before the seal; excluding them now would draw it again.")
     raise Refusal(
-        "rows_after_the_seal",
-        "The held-out rows are drawn over the rows the analysis holds, so reference rows leave "
-        "before the seal; excluding them now would draw it again. Start a new analysis, or keep "
-        "them in and say so.",
+        "rows_after_the_seal", f"{why} Start a new analysis, or keep them in and say so.",
         exits=[{"label": "Keep the rows as they are", "decision": None}])
 
 
