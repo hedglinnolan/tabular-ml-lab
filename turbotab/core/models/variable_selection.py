@@ -862,10 +862,9 @@ def backward_wald(task: str, frames: Sequence[pd.DataFrame], outcomes: Sequence[
             fit = _fit_copy(task, X[:, kept], y)
             if fit is None:
                 return refused(
-                    f"the logistic regression on {where(k)} was not fit: Newton's method, run on "
-                    f"uncorrelated unit-spread combinations of its columns, did not converge or "
-                    f"ran a coefficient past the size it allows (as when the covariates separate "
-                    f"an outcome level)"
+                    f"the logistic regression on {where(k)} was not fit (Newton's method did not "
+                    f"converge, or a coefficient grew past the fit's bound, as when the covariates "
+                    f"separate an outcome level)"
                     if task == "binary" else
                     f"the least squares on {where(k)} leaves no residual variance ({len(y):,} "
                     f"rows, {len(kept)} coefficients identified)")

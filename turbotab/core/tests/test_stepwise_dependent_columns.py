@@ -692,10 +692,9 @@ def test_a_logistic_fit_that_fails_refuses_the_analysis():
     y = _binary_outcome(frame, 5)
     got = _wald("binary", frame.assign(s=_separating(y, 2)), y)
     assert got["refused"] == {
-        "step": 1, "reason": "the logistic regression on the complete rows was not fit: Newton's "
-                             "method, run on uncorrelated unit-spread combinations of its "
-                             "columns, did not converge or ran a coefficient past the size it "
-                             "allows (as when the covariates separate an outcome level)"}
+        "step": 1, "reason": "the logistic regression on the complete rows was not fit (Newton's "
+                             "method did not converge, or a coefficient grew past the fit's "
+                             "bound, as when the covariates separate an outcome level)"}
     assert got["path"] == [] and got["kept"] is None
     assert _wald("binary", frame, y)["refused"] is None
 
@@ -711,9 +710,11 @@ def test_one_imputed_copys_failed_fit_refuses_the_pooled_analysis():
     assert VS.backward_wald("binary", copies, [y] * 3, terms, ["e"])["refused"] is None
     copies[1] = frame.assign(s=_separating(y, 2))
     got = VS.backward_wald("binary", copies, [y] * 3, terms, ["e"])
-    assert got["refused"]["step"] == 1 and got["kept"] is None
-    assert got["refused"]["reason"].startswith("the logistic regression on imputed copy 2 of 3 was "
-                                               "not fit")
+    assert got["refused"] == {
+        "step": 1, "reason": "the logistic regression on imputed copy 2 of 3 was not fit (Newton's "
+                             "method did not converge, or a coefficient grew past the fit's "
+                             "bound, as when the covariates separate an outcome level)"}
+    assert got["kept"] is None
 
 
 @pytest.mark.parametrize("rows", [6, 7])
@@ -808,7 +809,9 @@ def test_the_sentence_says_what_the_analysis_did():
     yb = _binary_outcome(frame, 5)
     refused = _wald("binary", frame.drop(columns="x2").assign(s=_separating(yb, 2)), yb)
     assert sensitivity_sentence(refused) == (
-        f"{head}stopped at step 1 and reports no result: {refused['refused']['reason']}{tail}")
+        f"{head}stopped at step 1 and reports no result: the logistic regression on the complete "
+        f"rows was not fit (Newton's method did not converge, or a coefficient grew past the fit's "
+        f"bound, as when the covariates separate an outcome level){tail}")
 
 
 def test_the_sentence_names_lms_rule_where_glm_would_keep_the_column():
