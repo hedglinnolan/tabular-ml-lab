@@ -3879,18 +3879,10 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
-            /**
-             * Imputation Model
-             * @default compatible
-             * @enum {string}
-             */
-            imputation_model: "compatible" | "passive";
-            /**
-             * Imputation Levels
-             * @default clustered
-             * @enum {string}
-             */
-            imputation_levels: "clustered" | "single_level";
+            /** Imputation Model */
+            imputation_model: ("compatible" | "passive") | null;
+            /** Imputation Levels */
+            imputation_levels: ("clustered" | "single_level") | null;
         };
         /**
          * ModelSequenceSpec
@@ -6496,18 +6488,10 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason?: string | null;
-            /**
-             * Imputation Model
-             * @default compatible
-             * @enum {string}
-             */
-            imputation_model: "compatible" | "passive";
-            /**
-             * Imputation Levels
-             * @default clustered
-             * @enum {string}
-             */
-            imputation_levels: "clustered" | "single_level";
+            /** Imputation Model */
+            imputation_model?: ("compatible" | "passive") | null;
+            /** Imputation Levels */
+            imputation_levels?: ("clustered" | "single_level") | null;
         };
         /**
          * SetMissing
@@ -6556,18 +6540,10 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
-            /**
-             * Imputation Model
-             * @default compatible
-             * @enum {string}
-             */
-            imputation_model: "compatible" | "passive";
-            /**
-             * Imputation Levels
-             * @default clustered
-             * @enum {string}
-             */
-            imputation_levels: "clustered" | "single_level";
+            /** Imputation Model */
+            imputation_model: ("compatible" | "passive") | null;
+            /** Imputation Levels */
+            imputation_levels: ("clustered" | "single_level") | null;
         };
         /** SetModelSequence */
         "SetModelSequence-Input": {
@@ -15419,16 +15395,14 @@ export interface components {
             reason: string | null;
             /**
              * Imputation Model
-             * @default compatible
-             * @enum {string}
+             * @default null
              */
-            imputation_model: "compatible" | "passive";
+            imputation_model: ("compatible" | "passive") | null;
             /**
              * Imputation Levels
-             * @default clustered
-             * @enum {string}
+             * @default null
              */
-            imputation_levels: "clustered" | "single_level";
+            imputation_levels: ("clustered" | "single_level") | null;
         };
         /** SetModelSequence */
         SetModelSequence: {

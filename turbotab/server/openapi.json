@@ -11340,22 +11340,34 @@
             "title": "Reason"
           },
           "imputation_model": {
-            "type": "string",
-            "enum": [
-              "compatible",
-              "passive"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "compatible",
+                  "passive"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Imputation Model",
-            "default": "compatible"
+            "title": "Imputation Model"
           },
           "imputation_levels": {
-            "type": "string",
-            "enum": [
-              "clustered",
-              "single_level"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "clustered",
+                  "single_level"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Imputation Levels",
-            "default": "clustered"
+            "title": "Imputation Levels"
           }
         },
         "additionalProperties": false,
@@ -18710,22 +18722,34 @@
             "title": "Reason"
           },
           "imputation_model": {
-            "type": "string",
-            "enum": [
-              "compatible",
-              "passive"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "compatible",
+                  "passive"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Imputation Model",
-            "default": "compatible"
+            "title": "Imputation Model"
           },
           "imputation_levels": {
-            "type": "string",
-            "enum": [
-              "clustered",
-              "single_level"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "clustered",
+                  "single_level"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Imputation Levels",
-            "default": "clustered"
+            "title": "Imputation Levels"
           }
         },
         "additionalProperties": false,
@@ -18823,22 +18847,34 @@
             "title": "Reason"
           },
           "imputation_model": {
-            "type": "string",
-            "enum": [
-              "compatible",
-              "passive"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "compatible",
+                  "passive"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Imputation Model",
-            "default": "compatible"
+            "title": "Imputation Model"
           },
           "imputation_levels": {
-            "type": "string",
-            "enum": [
-              "clustered",
-              "single_level"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "clustered",
+                  "single_level"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Imputation Levels",
-            "default": "clustered"
+            "title": "Imputation Levels"
           }
         },
         "additionalProperties": false,
@@ -40797,22 +40833,36 @@
             "title": "Reason"
           },
           "imputation_model": {
-            "default": "compatible",
-            "enum": [
-              "compatible",
-              "passive"
+            "anyOf": [
+              {
+                "enum": [
+                  "compatible",
+                  "passive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Imputation Model",
-            "type": "string"
+            "default": null,
+            "title": "Imputation Model"
           },
           "imputation_levels": {
-            "default": "clustered",
-            "enum": [
-              "clustered",
-              "single_level"
+            "anyOf": [
+              {
+                "enum": [
+                  "clustered",
+                  "single_level"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Imputation Levels",
-            "type": "string"
+            "default": null,
+            "title": "Imputation Levels"
           }
         },
         "required": [
