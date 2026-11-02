@@ -3876,10 +3876,13 @@ def _screens_read_settled_body_measures(decision: SetExclusions, ctx: Any) -> No
                   exits=[*exits, *confirm_exits(state, roles_waiting), leave])
 
 
-# The answer each slot a revisit's refusal can name holds, as its way forward says it: "Withdraw
-# the models answer first" reverts the record in force for ``models`` (``_record_in_force``).
-_READER_ANSWERS = {"models": "models answer", "exclusions": "exclusion rules",
-                   "sensitivity": "sensitivity analyses", "aggregation": "combining answer"}
+# The answer each slot a revisit's refusal can name holds, as its words say it, and the verb that
+# agrees with it: "The recorded sensitivity analyses read `weight`"; "Withdraw the models answer
+# first" reverts the record in force for ``models`` (``_record_in_force``).
+_READER_ANSWERS = {"models": ("models answer", "reads"),
+                   "exclusions": ("exclusion rules", "read"),
+                   "sensitivity": ("sensitivity analyses", "read"),
+                   "aggregation": ("combining answer", "reads")}
 
 
 def _record_in_force(ctx: Any, slot: str) -> str | None:
@@ -3910,19 +3913,20 @@ def _unsettled_columns(waiting: Any) -> list[str]:
     return [str(named)] if named else []
 
 
-def _other_readings(now: Any, waiting: Any, columns: list[str]) -> list[dict[str, Any]]:
+def _other_readings(now: Any, waiting: Any, columns: list[str]
+                    ) -> list[tuple[str, dict[str, Any]]]:
     """The ask's confirmations of each of ``columns``' readings a revisit would unsettle
-    (``waiting``), each but the value in force ``now``, column by column: confirming one in place of
-    the one revisited keeps that reading settled."""
+    (``waiting``), each but the value in force ``now``, column by column, each with that value:
+    confirming one in place of the column's reading keeps that reading settled."""
     from turbotab.core.readings import confirmation
 
-    out: list[dict[str, Any]] = []
+    out: list[tuple[str, dict[str, Any]]] = []
     for column in columns:
         kind = next((r.kind for r in waiting.readings if r.column == column), None)
         held = confirmation(now, kind, column) if kind is not None else None
         if held is None:
             continue
-        out += [e for e in waiting.exits
+        out += [(str(held), e) for e in waiting.exits
                 if (e.get("decision") or {}).get("kind") == "confirm_reading"
                 and e["decision"].get("reading") == kind and e["decision"].get("column") == column
                 and str(e["decision"].get("value")) != str(held)]
@@ -3942,9 +3946,34 @@ def _taken(exits: list[dict[str, Any]], ctx: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _or(columns: list[str]) -> str:
-    quoted = [f"`{c}`" for c in columns]
-    return quoted[0] if len(quoted) == 1 else f"{', '.join(quoted[:-1])} or {quoted[-1]}"
+def _withdraws(ctx: Any, slot: str) -> Revert | None:
+    """The revert that withdraws the answer ``slot`` holds: the record in force's
+    (:func:`_record_in_force`), where folding the log with it leaves ``slot`` empty; None where an
+    earlier record of it is still live, since that revert returns the earlier answer instead
+    (``fold`` keeps the latest live word), and where no record holds it."""
+    record = _record_in_force(ctx, slot)
+    if record is None:
+        return None
+    revert = Revert(decision_id=record)
+    left = state_after(revert, ctx)
+    return revert if left is not None and getattr(left, slot, None) is None else None
+
+
+def _in_place_of(others: list[tuple[str, dict[str, Any]]]) -> str:
+    """The route the other readings take (``others``, each with the value in force it replaces), in
+    words: one column's in place of "this one", the confirmation revisited; several columns' each in
+    place of its own reading, which is all its exit replaces (the confirmation revisited still holds
+    the others'), by the value in force, column by column where the values differ."""
+    held = {str(e["decision"]["column"]): value for value, e in others}  # in the ask's order
+    which = "the other" if len(others) == len(held) else "another"  # one other value per column
+    if len(held) == 1:
+        return f"confirm {which} reading of `{next(iter(held))}` in place of this one"
+    if len(set(held.values())) == 1:
+        named = [f"of `{c}`" for c in held]
+        return (f"confirm {which} reading {', '.join(named[:-1])} or {named[-1]} in place of its "
+                f"{next(iter(held.values()))} reading")
+    each = [f"of `{c}` in place of its {value} reading" for c, value in held.items()]
+    return f"confirm {which} reading {', '.join(each[:-1])} or {each[-1]}"
 
 
 def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
@@ -3954,11 +3983,12 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
     refused until that answer changes, never kept silently. The refusal offers each way it names,
     and names only the ways the record accepts now (:func:`_taken`): for a predictor's reading, its
     other value confirmed in place of the one revisited, column by column where one confirmation
-    covered several (the reading stays settled, so the models answer still holds); the answer that
-    reads it withdrawn first (a revert of the record in force, :func:`_record_in_force`), after
-    which the revisit is accepted, unless that revert is itself refused (a family whose score was
-    shown with no rows held out stays, ``selection._compared_families_stay``); and the answers
-    kept."""
+    covered several, each in place of that column's reading (the reading stays settled, so the
+    models answer still holds); the answer that reads it withdrawn first, a revert of the record in
+    force, only where that revert leaves no such answer (:func:`_withdraws`: with an earlier one
+    still live it would return that one, which reads the reading as well), after which the revisit
+    is accepted, and unless that revert is itself refused (the seal keeps how each unit's rows are
+    combined once the held-out rows are drawn); and the answers kept."""
     from turbotab.core.readings import (
         Unsettled, body_unit_reading, predictors_or_ask, time_column_reading,
     )
@@ -3967,8 +3997,8 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
     after = state_after(decision, ctx)
     if now is None or after is None:
         return
-    # (what the first sentence names, the columns, the slot its record writes, the other readings)
-    readers: list[tuple[str, list[str], str, list[dict[str, Any]]]] = []
+    # (the slot whose answer reads it, the columns, the other readings with the values they replace)
+    readers: list[tuple[str, list[str], list[tuple[str, dict[str, Any]]]]] = []
     rules = [*(("exclusions", r) for r in now.exclusions or []),
              *(("sensitivity", r) for a in (now.sensitivity or []) for r in a.rules)]
     for slot, rule in rules:
@@ -3978,7 +4008,7 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
             column = getattr(rule, attr, None)
             if column and body_unit_reading(column, measure, now).settled \
                     and not body_unit_reading(column, measure, after).settled:
-                readers.append(("exclusion rules", [column], slot, []))
+                readers.append((slot, [column], []))
     agg = now.aggregation
     if agg is not None:
         from turbotab.core.stages.working import needs_order
@@ -3986,7 +4016,7 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
         if needs_order(agg.method, agg.outcome, agg.columns):
             before_t, after_t = time_column_reading(now, None), time_column_reading(after, None)
             if before_t is not None and before_t.settled and (after_t is None or not after_t.settled):
-                readers.append(("combining answer", [before_t.column], "aggregation", []))
+                readers.append(("aggregation", [before_t.column], []))
     if now.models:
         info = _ctx(ctx, "column_info")
         store = _store_of(ctx)
@@ -3999,25 +4029,22 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
                 predictors_or_ask(after, info, drop=left_out(after), store=store)
             except Unsettled as waiting:
                 columns = _unsettled_columns(waiting)
-                readers.append(("models answer", columns, "models",
-                                _other_readings(now, waiting, columns)))
+                readers.append(("models", columns, _other_readings(now, waiting, columns)))
     if not readers:
         return
-    what, columns, slot, others = readers[0]
+    slot, columns, others = readers[0]
+    what, reads = _READER_ANSWERS[slot]
     routes: list[str] = []
     exits: list[dict[str, Any]] = []
-    others = _taken(others, ctx)
+    others = [(value, e) for value, e in others if _taken([e], ctx)]
     if others:
-        read = list(dict.fromkeys(str(e["decision"]["column"]) for e in others))
-        one = len(others) == len(read)  # one other value for each column: "the other reading"
-        routes.append(f"confirm {'the other' if one else 'another'} reading of {_or(read)} in "
-                      f"place of this one")
-        exits.extend(others)
-    record = _record_in_force(ctx, slot)
-    withdraw = _taken([{"label": f"Withdraw the {_READER_ANSWERS[slot]} first",
-                        "decision": Revert(decision_id=record)}], ctx) if record else []
+        routes.append(_in_place_of(others))
+        exits.extend(e for _, e in others)
+    withdrawal = _withdraws(ctx, slot)
+    withdraw = _taken([{"label": f"Withdraw the {what} first", "decision": withdrawal}],
+                      ctx) if withdrawal is not None else []
     if withdraw:
-        routes.append(f"withdraw the {_READER_ANSWERS[slot]} first")
+        routes.append(f"withdraw the {what} first")
         exits.extend(withdraw)
     routes.append("keep the confirmation")
     said = routes[0] if len(routes) == 1 else f"{', '.join(routes[:-1])}, or {routes[-1]}"
@@ -4027,7 +4054,7 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
     rests = "a reading" if len(columns) <= 1 else "readings"
     raise Refusal(
         "role_unconfirmed",
-        f"The recorded {what} reads {names}, which would then rest on {rests} nobody "
+        f"The recorded {what} {reads} {names}, which would then rest on {rests} nobody "
         f"settled. {said[0].upper()}{said[1:]}.",
         exits=[*exits, {"label": "Keep the answers as they are", "decision": None}])
 
