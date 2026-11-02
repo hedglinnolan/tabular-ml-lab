@@ -3959,19 +3959,22 @@ def _withdraws(ctx: Any, slot: str) -> Revert | None:
     return revert if left is not None and getattr(left, slot, None) is None else None
 
 
-def _in_place_of(others: list[tuple[str, dict[str, Any]]]) -> str:
+def _in_place_of(others: list[tuple[str, dict[str, Any]]], columns: list[str]) -> str:
     """The route the other readings take (``others``, each with the value in force it replaces), in
-    words: one column's in place of "this one", the confirmation revisited; several columns' each in
-    place of its own reading, which is all its exit replaces (the confirmation revisited still holds
-    the others'), by the value in force, column by column where the values differ."""
+    words: in place of "this one", the confirmation revisited, only where the revisit unsettles one
+    column (``columns``); where it unsettles several, each column's other reading in place of that
+    column's own reading, which is all its exit replaces (the confirmation revisited still holds
+    the others'), even where only one column's is offered, by the value in force, column by column
+    where the values differ."""
     held = {str(e["decision"]["column"]): value for value, e in others}  # in the ask's order
     which = "the other" if len(others) == len(held) else "another"  # one other value per column
-    if len(held) == 1:
+    if len(columns) == 1:
         return f"confirm {which} reading of `{next(iter(held))}` in place of this one"
     if len(set(held.values())) == 1:
         named = [f"of `{c}`" for c in held]
-        return (f"confirm {which} reading {', '.join(named[:-1])} or {named[-1]} in place of its "
-                f"{next(iter(held.values()))} reading")
+        joined = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} or {named[-1]}"
+        return (f"confirm {which} reading {joined} in place of its {next(iter(held.values()))} "
+                f"reading")
     each = [f"of `{c}` in place of its {value} reading" for c, value in held.items()]
     return f"confirm {which} reading {', '.join(each[:-1])} or {each[-1]}"
 
@@ -4038,7 +4041,7 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
     exits: list[dict[str, Any]] = []
     others = [(value, e) for value, e in others if _taken([e], ctx)]
     if others:
-        routes.append(_in_place_of(others))
+        routes.append(_in_place_of(others, columns))
         exits.extend(e for _, e in others)
     withdrawal = _withdraws(ctx, slot)
     withdraw = _taken([{"label": f"Withdraw the {what} first", "decision": withdrawal}],

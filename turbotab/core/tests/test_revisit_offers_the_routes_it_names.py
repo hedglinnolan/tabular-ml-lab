@@ -14,7 +14,9 @@ combined), the words leave it out. And the withdrawal only where it withdraws: w
 answer of the same slot is still live, reverting the one in force returns that earlier answer,
 which reads the column as well (the pilot answered the models question twice in run_30 and three
 times in run_35), so no withdrawal is offered or named. One confirmation that covered two columns
-names both, and offers each column's other reading, each in place of that column's reading. With
+names both, and offers each column's other reading, each in place of that column's reading (where
+only one column's is accepted, that one alone, still in place of its own reading: "in place of this
+one", the confirmation revisited, only where the revisit unsettles one column). With
 no answer reading the column, the revisit is accepted and nothing is offered.
 """
 from __future__ import annotations
@@ -272,6 +274,33 @@ def test_an_other_reading_the_engine_refuses_is_neither_offered_nor_named():
     assert refusal.exits == [{"label": "Withdraw the models answer first",
                               "decision": {"kind": "revert", "decision_id": "r6"}}, KEEP]
     offered(refusal, given)
+
+
+def test_two_columns_named_with_one_other_reading_offered_name_it_in_place_of_its_own():
+    """V3-2: one confirmation read `charlson_index` (labels, so no amount: :class:`Labels`) and
+    `prior_adm` as codes. The revisit unsettles both, and only `prior_adm`'s other reading is
+    accepted, so it alone is offered, and named in place of its own code reading, not in place of
+    "this one", the confirmation revisited: by construction that confirmation still holds
+    `charlson_index`'s reading after it, and the revisit is refused again naming that column
+    alone. "In place of this one" is the words only where the revisit unsettles one column (the
+    first test)."""
+    from turbotab.core.readings import code_or_count_exits
+
+    log = plan(LINEAR, roles=TWO_ROLES, reading=BOTH_CODES)
+    given = ctx(log, TWO_ROLES, TWO_INFO, store=Labels)
+    refusal = refused(log, REVISIT, roles=TWO_ROLES, info=TWO_INFO, store=Labels)
+    assert refusal.message == (
+        "The recorded models answer reads `charlson_index` and `prior_adm`, which would then rest "
+        "on readings nobody settled. Confirm the other reading of `prior_adm` in place of its "
+        "code reading, withdraw the models answer first, or keep the confirmation.")
+    assert refusal.exits == [code_or_count_exits("prior_adm")[0],
+                             {"label": "Withdraw the models answer first",
+                              "decision": {"kind": "revert", "decision_id": "r6"}}, KEEP]
+    offered(refusal, given)
+    after = [*log, rec(7, d.validate(refusal.exits[0]["decision"], given).model_dump(mode="json"))]
+    again = refused(after, REVISIT, roles=TWO_ROLES, info=TWO_INFO, store=Labels)
+    assert again.message.startswith("The recorded models answer reads `charlson_index`, which "
+                                    "would then rest on a reading nobody settled.")
 
 
 GOLD = {"kind": "goldberg", "column": "energy_kcal", "days": 1, "sex": "sex", "female": ["F"],

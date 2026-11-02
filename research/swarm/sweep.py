@@ -260,13 +260,17 @@ PLAN = "plan"  # the refit of the plan itself, every other refit's comparison
 REVISIT = "(the revisit)"  # a decision's revisit itself, refitted as an option where it failed
 # A revisit the engine refuses because a recorded answer reads a column the revisit would leave on
 # a reading nobody settled (``decisions._answers_keep_settled_readings``): its code, the words that
-# name that answer ("The recorded <answer> reads `<column>`. Change the <answer> first, …"), and
-# the kinds of record each answer it names is. The sweep takes the way those words name (the
-# module docstring): that answer withdrawn first, and answered again as the plan had it.
+# name that answer and the column it reads (the first, where they name several), with a verb that
+# agrees ("The recorded models answer reads `<column>`, …", "The recorded exclusion rules read
+# `<column>`, …", and the sensitivity analyses as the exclusion rules; "Withdraw the <answer>
+# first" among its routes where that withdraws it), and the kind of record each answer it names
+# is. The sweep takes the way those words name (the module docstring): that answer withdrawn
+# first, and answered again as the plan had it.
 READER_REFUSAL = "role_unconfirmed"
-READER_WORDS = re.compile(r"The recorded (?P<what>.+?) reads `(?P<column>[^`]+)`")
+READER_WORDS = re.compile(r"The recorded (?P<what>.+?) reads? `(?P<column>[^`]+)`")
 READERS = {"models answer": ("select_models",),
-           "exclusion rules": ("set_exclusions", "set_sensitivity"),
+           "exclusion rules": ("set_exclusions",),
+           "sensitivity analyses": ("set_sensitivity",),
            "combining answer": ("set_aggregation",)}
 # A revisit the engine refuses because the split is drawn and the decision changes what a row is
 # (``seal._sealed_refusal``: "Withdraw the split first, then draw it again"): its code, and the
