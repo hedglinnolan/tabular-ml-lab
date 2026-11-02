@@ -55,8 +55,9 @@ not swept; the crash sweep answers and fits its options all the same.
 **The revisit** reverts the decision's record. Where the engine refuses that and names an answer
 to withdraw first, the sweep takes the way it names (the orchestrator's ruling of 2026-10-23):
 where a recorded answer reads a column the revisit would leave on a reading nobody settled
-(``role_unconfirmed``, whose words name that answer: the models answer, the exclusion rules or the
-combining answer, :data:`READERS`), that answer; where the split is drawn and the decision changes
+(``role_unconfirmed``, whose words name that answer: the models answer, the exclusion rules, the
+sensitivity analyses or the combining answer, :data:`READERS`), that answer; where the split is
+drawn and the decision changes
 what a row is (``sealed``, "Withdraw the split first, then draw it again", :data:`SEALED_REFUSAL`),
 the split, by the revert of its record its way forward names. It withdraws that answer first
 (reverts its record in force), revisits the decision, answers the option, and answers each answer

@@ -18,7 +18,11 @@ declaration's) and of a question opened again at its default, which decisions th
 that an HTTP 500 induced on one fails the refit as a defect, while one on a decision before the
 option does not; a revisit the engine refuses until
 the answers that read the column are withdrawn, those answers given again in the plan's order on a
-log built here and folded; a refusal's way forward after an option, in its answer or served on the
+log built here and folded; each answer that refusal names, in the engine's own words for a log
+built here (the models answer reading one column or two, the column read the first named, the
+combining answer, and a Goldberg screen's exclusion rules or sensitivity analyses), withdrawn by
+its own record, and on each log without that answer the engine accepting the revisit; a
+refusal's way forward after an option, in its answer or served on the
 asks after it, taken only where the plan or the option names it; the decisions a plan offers the
 sweep and those it does not, from a decision log built here; what the report counts as not visited
 and what it says it swept; the readings graded against a declared truth; the run times' summary by
@@ -1278,32 +1282,53 @@ STAGE_CODE = {"kind": "confirm_reading", "reading": "code_or_count", "column": "
               "value": "code"}
 STAGE_COUNT = {**STAGE_CODE, "value": "count"}
 TWO_MODELS = {"kind": "select_models", "models": ["elastic_net", "screened_elastic_net"]}
-# The engine's words for it, as ``decisions._answers_keep_settled_readings`` writes them.
-READS_STAGE = ("The recorded models answer reads `stage`, which would then rest on a reading "
-               "nobody settled. Confirm the other reading of `stage` in place of this one, "
-               "withdraw the models answer first, or keep the confirmation.")
-# Its ways forward, each the route its words name: the other reading, the models answer (record 14)
-# withdrawn first, and the answers kept. The sweep takes the way the words name (``READER_WORDS``).
-READS_EXITS = [{"label": "`stage` is a count", "decision": STAGE_COUNT},
-               {"label": "Withdraw the models answer first",
-                "decision": {"kind": "revert", "decision_id": "r14"}},
-               {"label": "Keep the answers as they are", "decision": None}]
+# The plan: `stage` a covariate (record 11) of four whole-number values, so the fit asks whether
+# they are codes or amounts (``readings.code_question``), read as a code (13) before the models
+# answer (14).
+STAGE_LOG = {11: {"kind": "set_roles", "roles": {"stage": "covariate"}}, 13: STAGE_CODE,
+             14: TWO_MODELS}
+STAGE_INFO = {"column_info": {"stage": {"dtype": "integer", "n_unique": 4}}}
+
+
+def engine_refusal(logged, **given):
+    """The engine's own refusal of reverting record 13 of ``logged`` (each record by its seq), as
+    ``decisions.validate`` checks a revert beside the log and ``given`` (the columns' facts the
+    models answer's check reads); None where it accepts the revert."""
+    from turbotab.core import decisions as D
+
+    at = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    log = [D.DecisionRecord(id=f"r{seq}", seq=seq, at=at, decision=D.parse_decision(d))
+           for seq, d in logged.items()]
+    try:
+        D.validate({"kind": "revert", "decision_id": "r13"},
+                   {"state": D.fold(log), "records": lambda: list(log), **given})
+    except D.Refusal as refusal:
+        return refusal
+    return None
+
+
+# The engine's words for it and its ways forward, as ``decisions._answers_keep_settled_readings``
+# writes them for this log: the other reading, the models answer (record 14) withdrawn first, and
+# the answers kept. The sweep takes the way the words name (``READER_WORDS``).
+READS = engine_refusal(STAGE_LOG, **STAGE_INFO)
+READS_STAGE, READS_EXITS = READS.message, READS.exits
 STAGE = W.Point("reading", "code_or_count:stage", 13, "r13", STAGE_CODE)
 
 
 class Reads(Walked):
-    """A copy of a plan whose models answer (record 14) reads `stage`, read as a code by record 13:
-    reverting the reading is refused (``code``, the engine's ``words``) while the models answer
-    stands; reverting the models answer withdraws it, unless ``refuse`` (``"withdraw"``) refuses
-    that revert or ``fail`` fails it as an HTTP 500; then the reading's two ways are asked. The
-    models answer posted again is refused where ``refuse`` is ``"again"``. Every log is the plan's,
-    so each refit is its duplicate and no Fit is pressed."""
+    """A copy of a plan (``logged``, :data:`STAGE_LOG` by default) whose models answer (record 14)
+    reads `stage`, read as a code by record 13: reverting the reading is refused (``code``, the
+    engine's ``words``) while the models answer stands; reverting the models answer withdraws it,
+    unless ``refuse`` (``"withdraw"``) refuses that revert or ``fail`` fails it as an HTTP 500;
+    then the reading's two ways are asked. The models answer posted again is refused where
+    ``refuse`` is ``"again"``. Every log is the plan's, so each refit is its duplicate and no Fit
+    is pressed."""
 
     def __init__(self, *, refuse=None, fail=None, code="role_unconfirmed", words=READS_STAGE,
-                 exits=READS_EXITS):
+                 exits=READS_EXITS, logged=STAGE_LOG):
         super().__init__([])
         self.calls, self.refuse, self.fail, self.code, self.words = [], refuse, fail, code, words
-        self.exits = exits
+        self.exits, self.logged = exits, logged
         self.withdrawn = self.reopened = False
 
     def copy(self, pid):
@@ -1314,7 +1339,7 @@ class Reads(Walked):
     def view(self):
         at = datetime(2026, 10, 23, tzinfo=timezone.utc).isoformat()
         return {"decisions": [{"id": f"r{seq}", "seq": seq, "at": at, "recorded_by": "you",
-                               "decision": d} for seq, d in ((13, STAGE_CODE), (14, TWO_MODELS))],
+                               "decision": d} for seq, d in self.logged.items()],
                 "stages": self.stages, "state": {}}
 
     def revisit(self, record, reason):
@@ -1467,18 +1492,7 @@ def screen_refusal(answer):
     """The engine's own refusal of reverting record 13 under ``answer`` (record 14), as
     ``decisions._answers_keep_settled_readings`` writes it for this log; None where it accepts the
     revert (``answer`` None: no screen reads the age)."""
-    from turbotab.core import decisions as D
-
-    at = datetime(2026, 10, 23, tzinfo=timezone.utc)
-    logged = {**SCREENED_LOG, **({14: answer} if answer else {})}
-    log = [D.DecisionRecord(id=f"r{seq}", seq=seq, at=at, decision=D.parse_decision(d))
-           for seq, d in logged.items()]
-    try:
-        D.validate({"kind": "revert", "decision_id": "r13"},
-                   {"state": D.fold(log), "records": lambda: list(log)})
-    except D.Refusal as refusal:
-        return refusal
-    return None
+    return engine_refusal({**SCREENED_LOG, **({14: answer} if answer else {})})
 
 
 class Screens(Reads):
@@ -1544,6 +1558,124 @@ def test_a_reading_a_goldberg_screen_reads_is_revisited_by_withdrawing_the_answe
                                          ("answer", ["x-months"]), ("decide", screen)]
     assert [w["decision"] for w in months["withdrawn"]] == [screen]
     assert f"the plan's {what} again (record 14)" in [a["answer"] for a in months["answered"]]
+
+
+# The combining answer (record 14) takes each unit's last row by the order `visit_date` gives its
+# rows, read so by record 13 (the engine test's ``TIMED`` log, numbered as the plan's here).
+VISIT_ORDERS = {"kind": "confirm_reading", "reading": "time_column", "column": "visit_date",
+                "value": "orders"}
+COMBINING = {"kind": "set_aggregation", "method": "last", "outcome": "last"}
+TIMED_LOG = {10: {"kind": "set_grain", "grain": "repeated", "id_column": "pid"},
+             11: {"kind": "set_repeat_kind", "repeat_kind": "time_points"},
+             12: {"kind": "set_unit", "unit": "unit"}, 13: VISIT_ORDERS, 14: COMBINING}
+VISIT = W.Point("reading", "time_column:visit_date", 13, "r13", VISIT_ORDERS)
+# The missing-values answer (record 13) left out two whole-number predictors whose readings
+# nobody settled, before the models answer (14): its revisit returns both to the predictors
+# unsettled, so the engine's words name both (run_34's two columns). A confirmation of two
+# (``confirm_readings``, the engine test's ``BOTH_CODES``) is no decision the sweep revisits
+# (``sweep.NOT_A_POINT``), and while it stands no other revisit unsettles either column.
+TWO_ROLES = {"charlson_index": "covariate", "prior_adm": "covariate", "age": "exposure"}
+TWO_INFO = {"column_info": {"charlson_index": {"dtype": "integer", "n_unique": 7},
+                            "prior_adm": {"dtype": "integer", "n_unique": 9},
+                            "age": {"dtype": "float", "n_unique": 80}}}
+LEFT_OUT = {"kind": "set_missing", "strategy": "complete_case",
+            "drop_columns": ["charlson_index", "prior_adm"]}
+LEFT_OUT_LOG = {11: {"kind": "set_roles", "roles": TWO_ROLES}, 13: LEFT_OUT,
+                14: {"kind": "select_models", "models": ["linear"]}}
+LEFT_OUT_POINT = W.Point("question", "missing", 13, "r13", LEFT_OUT)
+
+
+class Engined(Reads):
+    """:class:`Reads` on a log built here (``logged``): reverting record 13 is refused in the
+    engine's own words and ways (:func:`engine_refusal`, with the columns' facts ``given``) while
+    the answer that reads its column (record 14) stands; reverting that answer withdraws it, and
+    then ``point`` is asked again with ``ways`` (a question's options, or a reading's ways)."""
+
+    def __init__(self, logged, point, ways, **given):
+        said = engine_refusal(logged, **given)
+        super().__init__(code=said.code, words=said.message, exits=said.exits, logged=logged)
+        self.point, self.ways = point, ways
+
+    def ask(self):
+        if not self.reopened:
+            return {"question": None, "fit_reached": True}
+        if self.point.kind == "question":
+            return {"question": {"key": self.point.key, "status": "open"}, "options": self.ways}
+        return {"question": {"key": "models", "status": "open"}, "readings": {"exits": self.ways}}
+
+
+@pytest.mark.parametrize("logged, given", [(STAGE_LOG, STAGE_INFO), (TIMED_LOG, {}),
+                                           (LEFT_OUT_LOG, TWO_INFO)],
+                         ids=["models_answer", "combining_answer", "models_answer_of_two"])
+def test_with_no_answer_reading_the_column_the_engine_accepts_the_revisit(logged, given):
+    """The other direction of the tests on either side: each log without the answer that reads
+    the column (record 14), and the engine accepts the revisit, so the sweep withdraws nothing
+    first; with it, the engine refuses with the code the sweep reads."""
+    assert engine_refusal({s: d for s, d in logged.items() if s != 14}, **given) is None
+    assert engine_refusal(logged, **given).code == "role_unconfirmed"
+
+
+def test_a_reading_the_combining_answer_reads_is_revisited_by_withdrawing_that_answer(tmp_path):
+    """The engine's words for the combining answer ("The recorded combining answer reads
+    `visit_date`, …"), read as the models answer's are: its ``set_aggregation`` record withdrawn
+    first, the time column's reading listed and answered, and the combining answer answered again
+    as the plan had it; the reading is visited, not left unlisted."""
+    from research.swarm.tests.test_arms import opt
+    from turbotab.core.decisions import parse_decision
+
+    session = Engined(TIMED_LOG, VISIT, [opt("x-orders", VISIT_ORDERS)])
+    assert session.code == "role_unconfirmed"
+    assert session.words.startswith("The recorded combining answer reads `visit_date`, which "
+                                    "would then rest on a reading nobody settled.")
+    sweep, report, refits = swept_reads(tmp_path, session, VISIT)
+    assert report["unlisted"] == [] and report["unvisited"] == [] and report["defects"] == []
+    assert report["complete"] is True and W.passed(report) is True
+    (offered,) = report["offered"]
+    assert [o["id"] for o in offered["options"]] == ["x-orders"]
+    assert offered["withdrawn"] == [{"what": "combining answer", "column": "visit_date",
+                                     "seq": 14, "record": "r14"}]
+    combining = parse_decision(COMBINING).model_dump(mode="json")  # the record, as the log has it
+    orders = refits[f"{VISIT.id}=x-orders"]
+    start = max(i for i, c in enumerate(session.calls) if c == ("copy",))
+    assert session.calls[start + 1:] == [("revisit", "r13"), ("revisit", "r14"),
+                                         ("revisit", "r13"), ("preview", ["x-orders"]),
+                                         ("answer", ["x-orders"]), ("decide", combining)]
+    assert [w["decision"] for w in orders["withdrawn"]] == [combining]
+    assert "the combining answer (record 14), which reads `visit_date`" in W.table_md(report)
+
+
+def test_a_revisit_that_unsettles_two_columns_the_models_answer_reads_withdraws_that_answer(
+        tmp_path):
+    """The engine's words where they name two columns ("The recorded models answer reads
+    `charlson_index` and `prior_adm`, …"): the sweep reads the answer they name, and the column
+    it reads as the first named; it withdraws the models answer's ``select_models`` record first,
+    lists the missing question's options and answers each, and answers the models answer again as
+    the plan had it; the question is visited, not left unlisted."""
+    from research.swarm.tests.test_arms import opt
+    from turbotab.core.decisions import parse_decision
+
+    session = Engined(LEFT_OUT_LOG, LEFT_OUT_POINT,
+                      [opt("x-left-out", LEFT_OUT), opt("x-impute", IMPUTE)], **TWO_INFO)
+    assert session.code == "role_unconfirmed"
+    assert session.words.startswith("The recorded models answer reads `charlson_index` and "
+                                    "`prior_adm`, which would then rest on readings nobody "
+                                    "settled.")
+    sweep, report, refits = swept_reads(tmp_path, session, LEFT_OUT_POINT)
+    assert report["unlisted"] == [] and report["unvisited"] == [] and report["defects"] == []
+    assert report["complete"] is True and W.passed(report) is True
+    (offered,) = report["offered"]
+    assert [o["id"] for o in offered["options"]] == ["x-left-out", "x-impute"]
+    assert offered["withdrawn"] == [{"what": "models answer", "column": "charlson_index",
+                                     "seq": 14, "record": "r14"}]
+    models = parse_decision(LEFT_OUT_LOG[14]).model_dump(mode="json")
+    impute = refits[f"{LEFT_OUT_POINT.id}=x-impute"]
+    start = max(i for i, c in enumerate(session.calls) if c == ("copy",))
+    assert session.calls[start + 1:] == [("revisit", "r13"), ("revisit", "r14"),
+                                         ("revisit", "r13"), ("preview", ["x-impute"]),
+                                         ("answer", ["x-impute"]), ("decide", models)]
+    assert [w["decision"] for w in impute["withdrawn"]] == [models]
+    assert "the plan's models answer again (record 14)" in [a["answer"]
+                                                             for a in impute["answered"]]
 
 
 # ── a revisit refused because the split is drawn (F1): the way the engine names ──
