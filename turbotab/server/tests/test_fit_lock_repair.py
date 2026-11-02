@@ -10,8 +10,9 @@ EXTERNAL_AUDIT_2026-10-09).
 * Under prediction a preview draws nothing read from the outcome model before Fit.
 * Under Estimate the explore stage's relationship points wait for the plan's lock.
 * A lock that no estimate was shown under is withdrawn when the plan changes, and by Cancel, the
-  withdrawal recorded by TurboTab with its reason, and the change is not marked as made after the
-  estimates were seen.
+  withdrawal recorded by TurboTab with its reason and what the next press of Fit does (under
+  prediction, after a change of the goal, nothing locks), and the change is not marked as made
+  after the estimates were seen.
 * Results stays reached when the goal is withdrawn after Fit, and says why it dropped back.
 
 Each expectation is read from the data or the record independently of the code under test: the
@@ -25,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pytest
 
 from turbotab.server.tests.conftest import answer_settled, prepare, wait_for
 from turbotab.server.tests.test_seal_api import decide, sealed_project
@@ -282,8 +284,12 @@ def test_a_lock_no_estimate_was_shown_under_is_withdrawn_by_a_change_and_by_canc
     assert withdrawal["decision"] == {"kind": "revert", "decision_id": first["id"]}
     assert withdrawal["after_estimates"] is False
     # The server records the withdrawal (plan_lock's rule; no client can revert a lock), and says
-    # why in its note.
+    # why in its note: Cancel caused it, nothing shown allowed it (said once), and the next press
+    # of Fit locks the plan anew, as the press below does.
     assert withdrawal["recorded_by"] == "turbotab" and (withdrawal["note"] or "").strip()
+    assert withdrawal["note"].startswith("Fit was canceled")
+    assert withdrawal["note"].count("before any estimate was shown") == 1
+    assert "the next press of Fit locks the plan" in withdrawal["note"]
     assert any(r["id"] == first["id"] for r in v["decisions"])  # the history stays
     assert stage(client, pid, "fit")["withheld_for"] == "fit"
 
@@ -303,6 +309,9 @@ def test_a_lock_no_estimate_was_shown_under_is_withdrawn_by_a_change_and_by_canc
     # The server's withdrawal is its own, with its own reason; the change stays the person's.
     assert withdrawn["recorded_by"] == "turbotab" and (withdrawn["note"] or "").strip()
     assert withdrawn["note"] != withdrawal["note"]
+    assert withdrawn["note"].startswith("The plan was changed")
+    assert withdrawn["note"].count("before any estimate was shown") == 1
+    assert "the next press of Fit locks the plan" in withdrawn["note"]  # the third press below
     assert change["recorded_by"] == "you" and change["note"] is None
     plan = client.get(f"/api/projects/{pid}/plan").json()
     assert plan["status"] == "declared" and plan["after_estimates"] == []
@@ -312,6 +321,7 @@ def test_a_lock_no_estimate_was_shown_under_is_withdrawn_by_a_change_and_by_canc
     wait_for(client, pid, {"fit": "fresh"}, timeout=240)
     press(client, pid)
     third = view()["decisions"][-1]
+    assert third["decision"]["kind"] == "lock_plan" and third["id"] != second["id"]
     from turbotab.core.plan_lock import shows_estimates
 
     assert shows_estimates("fit", stage(client, pid, "fit"))
@@ -324,6 +334,42 @@ def test_a_lock_no_estimate_was_shown_under_is_withdrawn_by_a_change_and_by_canc
     plan = client.get(f"/api/projects/{pid}/plan").json()
     assert plan["status"] == "locked" and plan["through_record"] == third["seq"]
     assert [r["kind"] for r in plan["after_estimates"]] == ["select_models"]
+
+
+@pytest.mark.slow
+def test_a_change_of_the_goal_to_prediction_withdraws_the_lock_and_its_note_says_nothing_locks(
+        client):
+    """The goal is part of the plan, so changing it to prediction under a lock nothing was shown
+    under withdraws the lock; the note then says what the next press does under prediction, which
+    is to lock nothing (the press below records no lock), not to lock the plan anew."""
+    drive = _inference_drive(client)
+    pid = drive.pid
+    drive.decide({"kind": "select_models", "models": ["linear"]})
+    wait_for(client, pid, {"fit": "fresh"}, timeout=240)
+
+    def view() -> dict:
+        return client.get(f"/api/projects/{pid}").json()
+
+    press(client, pid)
+    lock = view()["decisions"][-1]
+    assert lock["decision"]["kind"] == "lock_plan"
+    changed = client.post(f"/api/projects/{pid}/decisions",
+                          json={"kind": "set_purpose", "purpose": "prediction"})
+    assert changed.status_code == 200, changed.text
+    v = view()
+    withdrawn, change = v["decisions"][-2], v["decisions"][-1]
+    assert withdrawn["decision"] == {"kind": "revert", "decision_id": lock["id"]}
+    assert withdrawn["recorded_by"] == "turbotab" and change["decision"]["kind"] == "set_purpose"
+    note = withdrawn["note"] or ""
+    assert note.startswith("The plan was changed")
+    assert "under prediction nothing locks" in note and "locks the plan" not in note
+
+    # The next press: accepted, and no lock recorded, as the note says.
+    report = press(client, pid)
+    v = view()
+    assert report["locks"] is False and report["locked"] is False
+    assert v["state"]["plan_locked"] is None
+    assert v["decisions"][-1]["id"] == change["id"]
 
 
 # ── 6. Results stays reached when the goal is withdrawn after Fit ────────────
