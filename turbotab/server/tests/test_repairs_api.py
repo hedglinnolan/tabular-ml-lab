@@ -170,7 +170,7 @@ def test_nhanes_can_keep_meds_hbp_blanks_as_a_missing_level(client):
     level = {"kind": "set_missing", "strategy": "impute", "categorical": "missing_category",
              "drop_columns": [], "indicators": False, "m": 20, "below_detection": None,
              "censored_columns": [], "acknowledged": False, "reason": None,
-             "imputation_model": "compatible", "imputation_levels": "clustered"}
+             "imputation_model": None, "imputation_levels": None}  # a single fill draws no copies
     assert level in [e["decision"] for e in impute["caution"]["exits"]]
     previews = [client.post(f"/api/projects/{pid}/preview", json=body).json()
                 for body in (level, {"kind": "set_missing", "strategy": "impute"})]

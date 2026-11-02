@@ -1280,7 +1280,14 @@ STAGE_COUNT = {**STAGE_CODE, "value": "count"}
 TWO_MODELS = {"kind": "select_models", "models": ["elastic_net", "screened_elastic_net"]}
 # The engine's words for it, as ``decisions._answers_keep_settled_readings`` writes them.
 READS_STAGE = ("The recorded models answer reads `stage`, which would then rest on a reading "
-               "nobody settled. Change the models answer first, or keep the confirmation.")
+               "nobody settled. Confirm the other reading of `stage` in place of this one, "
+               "withdraw the models answer first, or keep the confirmation.")
+# Its ways forward, each the route its words name: the other reading, the models answer (record 14)
+# withdrawn first, and the answers kept. The sweep takes the way the words name (``READER_WORDS``).
+READS_EXITS = [{"label": "`stage` is a count", "decision": STAGE_COUNT},
+               {"label": "Withdraw the models answer first",
+                "decision": {"kind": "revert", "decision_id": "r14"}},
+               {"label": "Keep the answers as they are", "decision": None}]
 STAGE = W.Point("reading", "code_or_count:stage", 13, "r13", STAGE_CODE)
 
 
@@ -1325,7 +1332,7 @@ class Reads(Walked):
             return arms.Said("ok", {})
         if record == "r13" and not self.withdrawn:
             return arms.Said("refused", {}, by="server", code=self.code, message=self.words,
-                             exits=[{"label": "Keep the answers as they are", "decision": None}])
+                             exits=READS_EXITS)
         self.reopened = True
         return arms.Said("ok", {})
 
@@ -1645,8 +1652,7 @@ class Logged(Walked):
         if record == "r13" and any(r.decision.kind == "select_models"
                                    for r in W.live(self.view())):
             return arms.Said("refused", {}, by="server", code="role_unconfirmed",
-                             message=READS_STAGE,
-                             exits=[{"label": "Keep the answers as they are", "decision": None}])
+                             message=READS_STAGE, exits=READS_EXITS)
         return self._post({"kind": "revert", "decision_id": record})
 
     def ask(self):
