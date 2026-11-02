@@ -308,6 +308,10 @@ def build_graph() -> Graph:
             # findings 21 (W1-R R-f 14): the SAS-zero finding says how many columns hold its cells
             # ("9 cells in 3 columns (`a` and 2 more)", ``repairs.sas_zero_finding``), so findings
             # cached before are computed again rather than served in the old words.
+            # findings 22 (PP1 findings-rows): columns are judged on the participants, not the
+            # pooled-QC rows; a two-level finding a missing-values answer settles keeps its levels.
+            # findings 23 (pp1f): the left-censoring reading sets aside two-valued columns, as the
+            # omics_scale reading does.
             Stage(
                 "findings",
                 23,
@@ -964,7 +968,9 @@ def build_graph() -> Graph:
             # mattered 2: as fit 39.
             # sensitivity 24, calibration 21, secondary 15, scales 12, effects 15, modification 7,
             # mattered 3: as fit 41.
-            Stage("sensitivity", 24, ("working", "design", "split", "target_info"),
+            # sensitivity 25, calibration 22, secondary 16, scales 13, effects 16 (pp1f): as fit 42,
+            # their refusal of the imputation reads the answer's words and ways forward.
+            Stage("sensitivity", 25, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
@@ -987,7 +993,7 @@ def build_graph() -> Graph:
             # calibration 13 (resume integration 2): both calibration 12s (this one and the engine
             # residue's, beside sensitivity 15 above).
             # calibration 14: as sensitivity 16 above (its uncorrected estimate's table).
-            Stage("calibration", 21,
+            Stage("calibration", 22,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models", "purpose"),
@@ -997,7 +1003,7 @@ def build_graph() -> Graph:
             # secondary 6 (RT-1b): the further-adjusted model's fresh spec carries the design's plans.
             # secondary 7: as sensitivity 16 above.
             # secondary 10: as sensitivity 19 above.
-            Stage("secondary", 15, ("working", "design", "split", "target_info"),
+            Stage("secondary", 16, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment", "purpose"),
                   label="Fitting the model further adjusted for the declared covariates",
@@ -1016,7 +1022,7 @@ def build_graph() -> Graph:
             # scales 5: as sensitivity 16 above (the uncorrected coefficient's table).
             # scales 6: as sensitivity 17 above.
             # scales 7: as sensitivity 18 above.
-            Stage("scales", 12, ("working", "design", "split", "target_info", "cohort"),
+            Stage("scales", 13, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models", "purpose"),
                   label="Estimating each scale's reliability", serves=ESTIMATE),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
@@ -1066,7 +1072,7 @@ def build_graph() -> Graph:
             # each family's sequence under its name wherever two families report from different
             # models, whichever order they were chosen in, and gives a later model's refusal in
             # its words where that model was fit and its table refused.
-            Stage("effects", 15, ("working", "design", "split", "target_info"),
+            Stage("effects", 16, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand", "purpose"),
                   label="Reporting the effect of what you study across the declared models",
