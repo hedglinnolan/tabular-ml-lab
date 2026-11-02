@@ -692,8 +692,11 @@ def selection_sensitivity(ctx: StageContext, task: str) -> dict[str, Any]:
 
 def sensitivity_sentence(found: Mapping[str, Any]) -> str:
     """The sensitivity analysis's sentence from ``backward_wald``'s result: the covariates it
-    removed and those it kept untested because the other columns span them (their coefficients NA
-    in R); or, where it was refused, the step it stopped at and why, with no removal claimed."""
+    removed and those it kept untested because the other columns span them to within
+    ``variable_selection.ALIASED`` of their length (``lm``'s rule, which a yes/no outcome's
+    analysis applies too, though ``glm``'s default tolerance is smaller); or, where it was refused,
+    the step it stopped at and why, with no removal claimed."""
+    from turbotab.core.models.variable_selection import ALIASED
     from turbotab.core.voice import listing
 
     pooled = ("pooled across the imputed copies by Rubin's rules" if found["copies"] > 1
@@ -712,9 +715,19 @@ def sensitivity_sentence(found: Mapping[str, Any]) -> str:
     if untested:
         one = len(untested) == 1
         said += (f"; {listing(untested)} {'was' if one else 'were'} kept untested: the other "
-                 f"columns span {'it' if one else 'them'} (R reports "
-                 f"{'its coefficient' if one else 'their coefficients'} NA)")
+                 f"columns span {'it' if one else 'each'} to within {_power_of_ten(ALIASED)} of "
+                 f"its length, the share at which R's lm sets a column aside (its coefficient NA)")
     return head + said + tail
+
+
+def _power_of_ten(x: float) -> str:
+    """A positive number as a power of ten: 10⁻⁷, or 2.5 × 10⁻⁷."""
+    exponent = math.floor(math.log10(x))
+    mantissa = x / 10 ** exponent
+    if round(mantissa, 6) >= 10.0:
+        exponent, mantissa = exponent + 1, mantissa / 10
+    sup = str(exponent).translate(str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹"))
+    return f"10{sup}" if round(mantissa, 6) == 1.0 else f"{mantissa:.2g} × 10{sup}"
 
 
 # ── what a client is shown of the fit under inference (ruling 13; §1 row 11) ──

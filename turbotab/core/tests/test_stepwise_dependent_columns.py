@@ -418,25 +418,30 @@ def _summary_p(frame: pd.DataFrame, y: np.ndarray, columns: list[str],
 
 
 def _reparametrized_p(frame: pd.DataFrame, y: np.ndarray, columns: list[str], a: float, b: float,
-                      delta: float) -> dict[str, float]:
-    """The least squares' t tests where x₂ = a + b·x + δ·v with δ tiny, from statsmodels on a
-    well-conditioned basis of the same span, v = (x₂ − a − b·x)/δ in x₂'s place: its coefficients
-    γ and their covariance mapped back (β_x₂ = γ_v/δ, β_x = γ_x − b·γ_v/δ, the intercept's
-    γ₀ − a·γ_v/δ). Where x or x₂ is out, statsmodels on the columns."""
+                      delta: float, task: str = "regression") -> dict[str, float]:
+    """The least squares' t tests (or a logistic regression's z tests) where x₂ = a + b·x + δ·v
+    with δ tiny, from statsmodels on a well-conditioned basis of the same span, v = (x₂ − a −
+    b·x)/δ in x₂'s place: its coefficients γ and their covariance mapped back (β_x₂ = γ_v/δ, β_x =
+    γ_x − b·γ_v/δ, the intercept's γ₀ − a·γ_v/δ). Where x or x₂ is out, statsmodels on the
+    columns."""
     from scipy import stats
 
     if not ("x" in columns and "x2" in columns):
-        return _summary_p(frame, y, columns)
+        return _summary_p(frame, y, columns, task)
     W = frame[columns].assign(x2=(frame["x2"] - a - b * frame["x"]) / delta)
     X = np.column_stack([np.ones(len(W)), W.to_numpy(dtype=float)])
-    fit = sm.OLS(y, X).fit()
+    if task == "binary":
+        fit = sm.Logit(y, X).fit(disp=0, method="newton", tol=1e-12, maxiter=100)
+    else:
+        fit = sm.OLS(y, X).fit()
     i, j = 1 + columns.index("x"), 1 + columns.index("x2")
     back = np.eye(X.shape[1])
     back[j, j], back[i, j], back[0, j] = 1 / delta, -b / delta, -a / delta
     beta = back @ fit.params
     se = np.sqrt(np.diag(back @ fit.cov_params() @ back.T))
     df = len(y) - X.shape[1]
-    return {c: float(2 * stats.t.sf(abs(beta[k] / se[k]), df))
+    tail = stats.norm.sf if task == "binary" else (lambda z: stats.t.sf(z, df))
+    return {c: float(2 * tail(abs(beta[k] / se[k])))
             for k, c in enumerate(columns, start=1) if c != "e"}
 
 
@@ -540,6 +545,22 @@ def test_the_sensitivity_analysis_on_a_nearly_spanned_column_is_least_squares(se
     _steps_equal(got, want, rel=1e-8)
 
 
+@pytest.mark.parametrize("seed", [3, 8])
+def test_the_binary_sensitivity_analysis_on_a_nearly_spanned_column_is_glms(seed):
+    """Full rank, x₂ = x + 10⁻⁶·noise under a yes/no outcome: the maximum-likelihood fit is finite,
+    x's and x₂'s coefficients near ±10⁵ a unit and a standard deviation, and every step's z tests
+    are statsmodels' ``Logit`` on a well-conditioned basis of the same span, mapped back
+    (:func:`_reparametrized_p`), to 10⁻⁸ of themselves, the same terms leaving. Before this repair,
+    as with the columns centered and scaled, those coefficients passed
+    ``performance.logistic_fit``'s bound and the analysis was refused at step 1."""
+    frame, _ = _sensitivity_rows(seed, "near")
+    y = _binary_outcome(frame, 5)
+    got = _wald("binary", frame, y)
+    want = _elimination(lambda cols: _reparametrized_p(frame, y, cols, 0.0, 1.0, 1e-6, "binary"),
+                        list(frame.columns))
+    _steps_equal(got, want, rel=1e-8)
+
+
 @pytest.mark.parametrize("task", ["regression", "binary"])
 def test_the_sensitivity_analysis_on_a_well_conditioned_design_is_statsmodels(task):
     """The rule's silent side: with no column aliased or nearly spanned nothing is set aside, and
@@ -585,16 +606,19 @@ def test_the_exposures_columns_come_first_so_its_partner_is_set_aside(at):
     _steps_equal(got, want, rel=1e-10)
 
 
+@pytest.mark.parametrize("task", ["regression", "binary"])
 @pytest.mark.parametrize("share", [0.5, 1.0, 2.0])
-def test_a_column_at_the_alias_tolerance_is_set_aside_or_tested_right(share):
+def test_a_column_at_the_alias_tolerance_is_set_aside_or_tested_right(share, task):
     """x₂ = 2x + 1 + c·r, r orthogonal to the intercept, e and x, so x₂'s part outside the columns
     before it is ``share`` times :data:`VS.ALIASED` of its length. At 1 float64 can tip R's rule
     either way, so what is pinned is that the analysis is right either way (CLAUDE.md): x₂ set
     aside and the rest statsmodels' on the design without it, to 10⁻¹⁰; or x₂ tested and every p
     the least squares', from a well-conditioned basis of the same span (r in x₂'s place, mapped
     back), to 10⁻⁶ (X's condition number near 10⁷ leaves float64 least squares about 10⁻⁹). At
-    half the tolerance x₂ is set aside, at twice it is tested. On the base, at half the tolerance x
-    was tested at p = 1 and left; at and above it x's p was 3% off (0.089 and 0.084 for 0.086)."""
+    half the tolerance x₂ is set aside, at twice it is tested. The same under a yes/no outcome,
+    statsmodels' ``Logit`` in place of ``OLS``. On the base, at half the tolerance x was tested at
+    p = 1 and left; at and above it x's p was 3% off (0.089 and 0.084 for 0.086); under a yes/no
+    outcome, before this repair, the fit on x₂'s near copy of 2x + 1 was refused."""
     frame, y = _sensitivity_rows(3, "independent")
     Q, _ = np.linalg.qr(np.column_stack([np.ones(len(frame)), frame[["e", "x"]].to_numpy()]))
     r = np.random.default_rng(9).normal(size=len(frame))
@@ -603,17 +627,55 @@ def test_a_column_at_the_alias_tolerance_is_set_aside_or_tested_right(share):
     line = 2 * frame["x"].to_numpy() + 1
     c = share * VS.ALIASED * float(np.linalg.norm(line) / np.linalg.norm(r))
     frame["x2"] = line + c * r
-    got = _wald("regression", frame, y)
+    if task == "binary":
+        y = _binary_outcome(frame, 5)
+    got = _wald(task, frame, y)
     aside = got["path"][0].get("aliased") == ["x2"]
     if aside:
-        want = _elimination(lambda cols: _summary_p(frame, y, cols), list(frame.columns),
+        want = _elimination(lambda cols: _summary_p(frame, y, cols, task), list(frame.columns),
                             _x2_spanned)
     else:
-        want = _elimination(lambda cols: _reparametrized_p(frame, y, cols, 1.0, 2.0, c),
+        want = _elimination(lambda cols: _reparametrized_p(frame, y, cols, 1.0, 2.0, c, task),
                             list(frame.columns))
-    _steps_equal(got, want, rel=1e-10 if aside else 1e-6)
+    _steps_equal(got, want, rel=(1e-10 if task == "regression" else 1e-9) if aside else 1e-6)
     if share != 1.0:
         assert aside == (share < 1.0)
+
+
+def _units_rows(covariate: str, seed: int = 4, n: int = 300) -> tuple[pd.DataFrame, np.ndarray]:
+    """A yes/no outcome on the exposure ``e`` (0.5 log-odds a unit), noise ``w``, and a covariate
+    whose coefficients in its own units are large though the fit is finite: ``year``, a calendar
+    year ~ U(1990, 2020) at 0.1 log-odds a year, so the intercept is near −200; or ``share``, a
+    fraction ~ U(0, 0.02) at 150 log-odds a unit (0.87 a standard deviation)."""
+    rng = np.random.default_rng(seed)
+    e, w = rng.normal(size=(2, n))
+    if covariate == "year":
+        c = rng.uniform(1990, 2020, n)
+        lp = -0.5 + 0.1 * (c - 2005) + 0.5 * e
+    else:
+        c = rng.uniform(0, 0.02, n)
+        lp = 150 * (c - 0.01) + 0.5 * e
+    y = (rng.random(n) < 1 / (1 + np.exp(-lp))).astype(float)
+    return pd.DataFrame({"e": e, covariate: c, "w": w}), y
+
+
+@pytest.mark.parametrize("covariate", ["year", "share"])
+def test_a_logistic_fit_large_in_its_columns_units_is_tested(covariate):
+    """A calendar year (the intercept near −200 a unit) or a fraction-scale covariate (its slope
+    above 150 a unit): the maximum-likelihood fit is finite (statsmodels' ``Logit`` by Newton's
+    method converges, a coefficient past 50 in the columns' units), and each step's z tests are
+    ``Logit``'s on the columns as they are, to 10⁻⁹, the same terms leaving. On the base every p
+    was NaN and the analysis said it removed no covariate; before this repair it was refused at
+    step 1 as a fit that did not reach a finite maximum (``performance.logistic_fit``'s bound on
+    a coefficient, 50, read in the columns' units)."""
+    frame, y = _units_rows(covariate)
+    X = np.column_stack([np.ones(len(y)), frame.to_numpy()])
+    fit = sm.Logit(y, X).fit(disp=0, method="newton", tol=1e-12, maxiter=100)
+    assert fit.mle_retvals["converged"] and np.max(np.abs(fit.params)) > 50
+    got = _wald("binary", frame, y)
+    want = _elimination(lambda cols: _summary_p(frame, y, cols, "binary"), list(frame.columns))
+    _steps_equal(got, want, rel=1e-9)
+    assert covariate in got["kept"]
 
 
 def _separating(y: np.ndarray, seed: int) -> np.ndarray:
@@ -630,9 +692,10 @@ def test_a_logistic_fit_that_fails_refuses_the_analysis():
     y = _binary_outcome(frame, 5)
     got = _wald("binary", frame.assign(s=_separating(y, 2)), y)
     assert got["refused"] == {
-        "step": 1, "reason": "the logistic regression on the complete rows did not reach a finite "
-                             "maximum-likelihood fit (as when the covariates separate an outcome "
-                             "level)"}
+        "step": 1, "reason": "the logistic regression on the complete rows was not fit: Newton's "
+                             "method, run on uncorrelated unit-spread combinations of its "
+                             "columns, did not converge or ran a coefficient past the size it "
+                             "allows (as when the covariates separate an outcome level)"}
     assert got["path"] == [] and got["kept"] is None
     assert _wald("binary", frame, y)["refused"] is None
 
@@ -649,8 +712,8 @@ def test_one_imputed_copys_failed_fit_refuses_the_pooled_analysis():
     copies[1] = frame.assign(s=_separating(y, 2))
     got = VS.backward_wald("binary", copies, [y] * 3, terms, ["e"])
     assert got["refused"]["step"] == 1 and got["kept"] is None
-    assert got["refused"]["reason"].startswith("the logistic regression on imputed copy 2 of 3 did "
-                                               "not reach")
+    assert got["refused"]["reason"].startswith("the logistic regression on imputed copy 2 of 3 was "
+                                               "not fit")
 
 
 @pytest.mark.parametrize("rows", [6, 7])
@@ -726,13 +789,15 @@ def test_the_sentence_says_what_the_analysis_did():
     found = _wald("regression", frame, y)
     dropped = [s["dropped"] for s in found["path"] if s["dropped"]]
     assert found["untested"] == ["x2"] and dropped
+    assert VS.ALIASED == 1e-7
     assert sensitivity_sentence(found) == (
-        f"{head}removed {listing(dropped)}; `x2` was kept untested: the other columns span it (R "
-        f"reports its coefficient NA){tail}")
+        f"{head}removed {listing(dropped)}; `x2` was kept untested: the other columns span it to "
+        f"within 10⁻⁷ of its length, the share at which R's lm sets a column aside (its "
+        f"coefficient NA){tail}")
     found["untested"] = ["x2", "z"]
     assert sensitivity_sentence(found).endswith(
-        "; `x2` and `z` were kept untested: the other columns span them (R reports their "
-        f"coefficients NA){tail}")
+        "; `x2` and `z` were kept untested: the other columns span each to within 10⁻⁷ of its "
+        f"length, the share at which R's lm sets a column aside (its coefficient NA){tail}")
     pooled = VS.backward_wald("regression", [frame, frame.assign(u=frame["u"] * 1.01)], [y, y],
                               {c: [c] for c in frame.columns}, ["e"])
     assert pooled["untested"] == ["x2"]
@@ -746,23 +811,47 @@ def test_the_sentence_says_what_the_analysis_did():
         f"{head}stopped at step 1 and reports no result: {refused['refused']['reason']}{tail}")
 
 
-@needs_r
-@pytest.mark.parametrize(("task", "partner"), [("regression", "aliased"), ("regression", "near"),
-                                               ("binary", "aliased"), ("binary", "independent")])
-def test_the_sensitivity_analysis_is_rs_summary_step_by_step(task, partner, tmp_path):
-    """R's elimination by ``summary.lm``'s t tests or ``summary.glm``'s z tests, e forced, the
-    largest p above α leaving (``which.max`` passes over an aliased term's NA): each step's p-values
-    to 10⁻⁸ of themselves, the terms R reports NA set aside, and the terms kept. ``glm`` runs to
-    ``epsilon = 1e-10`` and once more from its own estimates: ``summary.glm`` reads the
-    information at the weights of the iteration before the last, so restarted at the estimates it
-    reads it there. (``glm.fit`` aliases at ``min(1e-7, epsilon/1000)`` of each weighted column,
-    10⁻¹³ here, which an exact dependence such as 2x + 1 still meets.)"""
-    frame, y = _sensitivity_rows(3, partner)
-    if task == "binary":
-        y = _binary_outcome(frame, 5)
+def test_the_sentence_names_lms_rule_where_glm_would_keep_the_column():
+    """x₂ = 2x + 1 + 10⁻⁹·noise under a yes/no outcome: its part outside the intercept, e and x
+    (numpy's least squares) is about 4·10⁻¹⁰ of its length, below lm's 10⁻⁷ (:data:`VS.ALIASED`),
+    so it is set aside, but above the 10⁻¹¹ at which ``glm.fit`` aliases by default
+    (``min(1e-7, epsilon/1000)``), where R's ``glm`` keeps it (its p 0.31). The sentence says the
+    rule the code applies, lm's, and not that R reports the coefficient NA, as it said before this
+    repair."""
+    from turbotab.core.stages.evaluation import sensitivity_sentence
+
+    frame, _ = _sensitivity_rows(3, "aliased_noise")
+    y = _binary_outcome(frame, 5)
+    before = np.column_stack([np.ones(len(y)), frame[["e", "x"]].to_numpy()])
+    x2 = frame["x2"].to_numpy()
+    rest = x2 - before @ np.linalg.lstsq(before, x2, rcond=None)[0]
+    share = float(np.linalg.norm(rest) / np.linalg.norm(x2))
+    assert 1e-11 < share < VS.ALIASED == 1e-7
+    found = _wald("binary", frame, y)
+    assert found["refused"] is None and found["untested"] == ["x2"]
+    said = sensitivity_sentence(found)
+    assert "R reports" not in said
+    assert said.endswith("; `x2` was kept untested: the other columns span it to within 10⁻⁷ of "
+                         "its length, the share at which R's lm sets a column aside (its "
+                         "coefficient NA); the declared model is the reported one.")
+    from turbotab.core.stages.evaluation import _power_of_ten
+
+    assert [_power_of_ten(x) for x in (1e-7, 2.5e-7, 1e-11, 1e3)] == [
+        "10⁻⁷", "2.5 × 10⁻⁷", "10⁻¹¹", "10³"]
+
+
+def _r_steps(task: str, frame: pd.DataFrame, y: np.ndarray, tmp_path) -> None:
+    """R's elimination by ``summary.lm``'s t tests or ``summary.glm``'s z tests over ``frame``'s
+    columns, e forced, the largest p above α leaving (``which.max`` passes over an aliased term's
+    NA), is ``backward_wald``'s: each step's p-values to 10⁻⁸ of themselves, the terms R reports NA
+    set aside, and the terms kept. ``glm`` runs to ``epsilon = 1e-10`` and once more from its own
+    estimates: ``summary.glm`` reads the information at the weights of the iteration before the
+    last, so restarted at the estimates it reads it there. (``glm.fit`` aliases at
+    ``min(1e-7, epsilon/1000)`` of each weighted column, 10⁻¹³ here, which an exact dependence such
+    as 2x + 1 still meets.)"""
     r = run_r(f"""
         d <- read.csv(s_csv)
-        terms <- c("e", "x", "x2", "u", "w"); forced <- "e"; path <- list(); na <- list()
+        terms <- setdiff(names(d), "y"); forced <- "e"; path <- list(); na <- list()
         logistic <- function(f) {{
           tight <- glm.control(epsilon = 1e-10, maxit = 100)
           b <- coef(glm(f, family = binomial, data = d, control = tight)); b[is.na(b)] <- 0
@@ -792,3 +881,26 @@ def test_the_sensitivity_analysis_is_rs_summary_step_by_step(task, partner, tmp_
         assert set(step["tested"]) == set(want or {}), step["step"]
         for term, p in (want or {}).items():
             assert step["tested"][term] == pytest.approx(p, rel=1e-8), (step["step"], term)
+
+
+@needs_r
+@pytest.mark.parametrize(("task", "partner"), [("regression", "aliased"), ("regression", "near"),
+                                               ("binary", "aliased"), ("binary", "near"),
+                                               ("binary", "independent")])
+def test_the_sensitivity_analysis_is_rs_summary_step_by_step(task, partner, tmp_path):
+    """R's elimination step by step (:func:`_r_steps`) on x₂ = 2x + 1 or x + 10⁻⁶·noise, or with
+    every column independent."""
+    frame, y = _sensitivity_rows(3, partner)
+    if task == "binary":
+        y = _binary_outcome(frame, 5)
+    _r_steps(task, frame, y, tmp_path)
+
+
+@needs_r
+@pytest.mark.parametrize("covariate", ["year", "share"])
+def test_a_logistic_fit_large_in_its_columns_units_is_rs_glm_step_by_step(covariate, tmp_path):
+    """A calendar year or a fraction-scale covariate (:func:`_units_rows`), the coefficients past
+    50 in the columns' own units: R's ``glm`` elimination step by step (:func:`_r_steps`), each p to
+    10⁻⁸ of itself. Before this repair the analysis was refused at step 1."""
+    frame, y = _units_rows(covariate)
+    _r_steps("binary", frame, y, tmp_path)

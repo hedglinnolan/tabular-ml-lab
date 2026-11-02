@@ -479,6 +479,94 @@ def test_7_backward_wald_sets_an_aliased_term_aside_as_r_mice_pool_does(tmp_path
             assert step["tested"][term] == pytest.approx(p, rel=1e-8), (step["step"], term)
 
 
+def _year_copies(seed: int = 21, m: int = 3, n: int = 300):
+    """Three completed copies of a table with a yes/no outcome (log-odds 0.1 a calendar year and
+    0.5 a unit of the exposure e) and the year missing for a fifth of the rows, each copy filling
+    them by its own uniform draw over the years (an independent imputation, not the app's), so the
+    year's mean and standard deviation differ by copy; the intercept is near −200 a unit."""
+    rng = np.random.default_rng(seed)
+    e, w = rng.normal(size=(2, n))
+    year = rng.uniform(1990, 2020, n)
+    lp = -0.5 + 0.1 * (year - 2005) + 0.5 * e
+    y = (rng.random(n) < 1 / (1 + np.exp(-lp))).astype(float)
+    miss = rng.random(n) < 0.2
+    return [pd.DataFrame({"e": e, "year": np.where(
+        miss, np.random.default_rng(seed * 100 + k).uniform(1990, 2020, n), year), "w": w, "y": y})
+        for k in range(m)]
+
+
+def test_7_backward_wald_pools_logistic_fits_in_the_columns_own_units():
+    """A yes/no outcome over copies whose calendar year differs (:func:`_year_copies`): each step
+    tests every unforced coefficient by Rubin's rules over the copies' logistic regressions on the
+    columns as they are (statsmodels' ``Logit`` by Newton's method to 10⁻¹², each converged with
+    its intercept past 50 a unit), complete-data df n − rank, to 10⁻⁹ of itself, so each copy's
+    fit is pooled in the year's own units, not its copy's standardized ones. Before this repair
+    the analysis was refused at step 1 as a fit that did not reach a finite maximum."""
+    import statsmodels.api as sm
+
+    copies = _year_copies()
+    names = ["e", "year", "w"]
+    got = VS.backward_wald("binary", [c[names] for c in copies],
+                           [c["y"].to_numpy() for c in copies], {c: [c] for c in names},
+                           forced=["e"])
+    remaining = list(names)
+    assert got["refused"] is None
+    for step in got["path"]:
+        X = [np.column_stack([np.ones(len(c)), c[remaining]]) for c in copies]
+        fits = [sm.Logit(c["y"].to_numpy(), x).fit(disp=0, method="newton", tol=1e-12,
+                                                    maxiter=100) for c, x in zip(copies, X)]
+        assert all(f.mle_retvals["converged"] and abs(f.params[0]) > 50 for f in fits)
+        df_com = len(copies[0]) - (len(remaining) + 1)
+        want = {t: _rubin_p([f.params[j] for f in fits], [f.bse[j] ** 2 for f in fits], df_com)
+                for j, t in enumerate(remaining, start=1) if t != "e"}
+        assert step["aliased"] == [] and set(step["tested"]) == set(want), step["step"]
+        for term, p in want.items():
+            assert step["tested"][term] == pytest.approx(p, rel=1e-9), (step["step"], term)
+        if step["dropped"]:
+            remaining.remove(step["dropped"])
+    assert got["kept"] == remaining and "year" in remaining
+
+
+@needs_r
+def test_7_backward_wald_pools_logistic_fits_as_r_mice_pool_does(tmp_path):
+    """The same elimination in R: ``summary(mice::pool(as.mira(fits)))`` on each copy's ``glm``
+    (run to ``epsilon = 1e-10`` and once more from its own estimates, so ``summary.glm`` reads the
+    information at them), each step's p-values to 10⁻⁸ of themselves, and the terms kept."""
+    copies = _year_copies()
+    names = ["e", "year", "w"]
+    got = VS.backward_wald("binary", [c[names] for c in copies],
+                           [c["y"].to_numpy() for c in copies], {c: [c] for c in names},
+                           forced=["e"])
+    long = pd.concat([c.assign(imp=k + 1) for k, c in enumerate(copies)], ignore_index=True)
+    r = run_r("""
+        suppressPackageStartupMessages(library(mice))
+        d <- read.csv(m_csv)
+        terms <- c("e", "year", "w"); forced <- "e"; path <- list()
+        tight <- glm.control(epsilon = 1e-10, maxit = 100)
+        logistic <- function(f, k) {
+          b <- coef(glm(f, family = binomial, data = k, control = tight))
+          glm(f, family = binomial, data = k, start = b, control = tight)
+        }
+        repeat {
+          f <- as.formula(paste("y ~", paste(terms, collapse = " + ")))
+          fits <- lapply(split(d, d$imp), function(k) logistic(f, k))
+          s <- summary(pool(as.mira(fits)))
+          p <- setNames(s$p.value, as.character(s$term))[setdiff(terms, forced)]
+          path[[length(path) + 1]] <- as.list(p)
+          worst <- names(which.max(p))
+          if (length(p) == 0 || p[[worst]] <= 0.157) break
+          terms <- setdiff(terms, worst)
+        }
+        out(list(path = path, kept = I(terms)))
+    """, {"m": long}, tmp_path)
+    assert got["refused"] is None and got["kept"] == r["kept"]
+    assert len(got["path"]) == len(r["path"])
+    for step, want in zip(got["path"], r["path"]):
+        assert set(step["tested"]) == set(want), step["step"]
+        for term, p in want.items():
+            assert step["tested"][term] == pytest.approx(p, rel=1e-8), (step["step"], term)
+
+
 def test_7_terms_are_grouped_by_the_input_each_column_came_from():
     assert VS.term_groups(["fat", "fat_sat", "fat_sat_adj", "race_2", "race_3", "x", "x'", "z"],
                           ["fat", "fat_sat", "race", "x"]) == {
