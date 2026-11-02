@@ -1568,7 +1568,8 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
 
         # The columns an exit may leave out, as the check at the answer reads them
         # (``smcfcs.imputation_at``): the settled covariates, never what the analysis studies. The
-        # sampler names a redundant one among them, and the table offers to leave out only these.
+        # sampler names a redundant one among them, and where the answer refused the plan, the
+        # table offers to leave out only these (below).
         leavable = _leavable(state, [c for c, r in settled_roles(state).items()
                                      if r == "covariate"])
         try:
@@ -1603,9 +1604,14 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
                 exits.extend(dict(e) for e in getattr(exc, "exits", None) or [])
                 # A column with too few values to impute from can be left out, and the copies drawn
                 # without it (where complete cases on it would leave too few rows, the only way):
-                # a settled covariate only, as the answer offers it.
-                left = [c for c in getattr(exc, "columns", None) or []
-                        if c in leavable and c not in (answer.get("drop_columns") or [])]
+                # where the width rule refuses the model too, the answer refused the plan in these
+                # words (``smcfcs.refusal_before_drawing``), and a settled covariate only, as the
+                # answer offers it; elsewhere any column but the exposure.
+                named = getattr(exc, "columns", None) or []
+                offered = leavable if getattr(exc, "width_refused", False) \
+                    else _leavable(state, named)
+                left = [c for c in named
+                        if c in offered and c not in (answer.get("drop_columns") or [])]
                 if left:
                     exits.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
                                   "decision": {**answer, "kind": "set_missing", "drop_columns": [

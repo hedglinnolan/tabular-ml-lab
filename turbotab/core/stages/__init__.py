@@ -842,11 +842,12 @@ def build_graph() -> Graph:
             # complete cases no interval they would refuse (T5d's repair round;
             # ``inference.separated_profile_words``, ``inference.newton_distance``,
             # ``inference._cr2_parts``).
-            # fit 42 (pp1f, 2026-11-02): multiple imputation that cannot run is refused in the words
-            # and with the ways forward the answer gives (``smcfcs.refusal_before_drawing``): the
-            # sampler is given the answer's set of columns an exit may leave out, so a redundant
-            # covariate is named; a count of one is said in the singular, and a figure below 0.05
-            # to two significant digits.
+            # fit 42 (pp1f, 2026-11-02): multiple imputation that cannot run, where the answer
+            # refuses the plan too (the width rule refuses it), is refused in the answer's words
+            # and with its ways forward (``smcfcs.refusal_before_drawing``): the sampler is given
+            # the answer's set of columns an exit may leave out, so a redundant covariate is named,
+            # and only these are offered to leave out; a count of one is said in the singular, and
+            # a figure below 0.05 to two significant digits.
             Stage("fit", 42, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),

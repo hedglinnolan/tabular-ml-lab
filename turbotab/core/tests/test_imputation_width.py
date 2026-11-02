@@ -20,8 +20,10 @@ columns: 8,000 rows imputed, 150 refused) through the sampler, through the answe
 plan's lock, and through the fit (and over HTTP, ``server/tests/test_imputation_width_api.py``).
 Where the width rule refuses a model, the answer says what the sampler refuses first (a logged
 column's zeros, a column with fewer than two recorded values, then the width) with the fit's ways
-forward, the fit's table is given the answer's set of columns an exit may leave out, and both read
-one lead.
+forward (each where the record accepts it), the fit's table is given the answer's set of columns
+an exit may leave out and offers to leave out what the answer offers, and both read one lead;
+where the width rule does not refuse the model, the answer gives no refusal, and the fit's table
+offers what it offered before.
 """
 from __future__ import annotations
 
@@ -934,6 +936,8 @@ ONCE = "`q` has fewer than two observed values, so it cannot be imputed."
 ZEROS = ("`fat` is analyzed on the log scale and is zero or negative on {k}, so it cannot be "
          "imputed on that scale; a zero a log would turn into a blank goes to the detection-limit "
          "question, never to a fill.")
+ZEROS_WAY = "Say how the zeros of `fat` are read: values below a detection limit, or true zeros"
+NO_LOG = "Adjust for energy without the log"
 FIT = {"split": {"holdout": 0.0, "seed": 0, "folds": 5}, "models": ["linear"], "lens": ["clinical"]}
 
 
@@ -1034,6 +1038,84 @@ def test_where_leaving_the_column_out_leaves_a_model_short_neither_offers_it(tmp
     assert said["exits"] == []
 
 
+KCAL_ONCE = "`kcal` has fewer than two observed values, so it cannot be imputed."
+
+
+def _kcal_once(table: pd.DataFrame, path: Any) -> pd.DataFrame:
+    """``table`` with total energy `kcal` recorded on its first row only, written to ``path``."""
+    kcal = np.full(len(table), np.nan)
+    kcal[0] = 2100.0
+    table = table.assign(kcal=kcal)
+    table.to_csv(path, index=False)
+    return table
+
+
+def test_above_the_width_neither_offers_to_leave_out_a_column_that_is_not_a_covariate(tmp_path):
+    """`kcal`, total energy in the standard energy model (its role energy, not a covariate),
+    recorded on one of :func:`wide`'s 8,000 rows: the width rule refuses the 91 columns, so the
+    answer says `kcal` has fewer than two values and, an exit leaving out a settled covariate
+    only, offers no way to leave it out (the energy model names it); complete cases keep one row,
+    which the record refuses. The fit says the same with the same ways forward, none: it offers
+    to leave out what the answer offers where the answer refused the plan in these words."""
+    from turbotab.core.decisions import EnergyAdjustment
+
+    path = tmp_path / "wide_kcal.csv"
+    table = _kcal_once(wide(8000), path)
+    assert int(table["kcal"].notna().sum()) == 1
+    state = wide_state(roles={**WIDE_ROLES, "kcal": "energy"},
+                       energy_adjustment=EnergyAdjustment(method="standard", energy_column="kcal",
+                                                          nutrients=["x"]),
+                       missing=MissingSpec(strategy="multiple_imputation"), **FIT)
+    ctx = ctx_of(state, Ingested(path, tmp_path / "answer"))
+    found = smcfcs.imputation_at(state, ctx)
+    assert found.sized.width == WIDTH + 1 and found.sized.refused()  # `kcal`'s model: one row
+    assert "kcal" not in found.leavable
+    with pytest.raises(Refusal) as answered:
+        validate({"kind": "lock_plan"}, ctx)
+    assert answered.value.message == LEAD + KCAL_ONCE
+    assert answered.value.exits == []
+    said = _fit_table(path, tmp_path / "project", state)
+    assert said["caption"] == f"No coefficients: {LEAD}{KCAL_ONCE}"
+    assert said["exits"] == []
+
+
+def test_within_the_width_the_fit_offers_to_leave_out_any_column_but_the_exposure(tmp_path):
+    """`kcal`, of the energy role and named by no energy model, recorded on one of 300 rows of a
+    model 8 columns wide (`x`, `kcal`, five covariates and the outcome's term): the width rule does
+    not refuse it, so the answer is accepted and gives no refusal to match, and the fit's table,
+    refused because `kcal` has fewer than two values, offers what it offered before the check at
+    the answer: to leave out any column but the exposure, `kcal` here. Taken, the record accepts
+    it, and the fit pools the copies drawn without `kcal`: its imputation model holds `x`, the five
+    covariates and the outcome."""
+    from turbotab.core.methods.imputation import M_DEFAULT
+
+    rng = np.random.default_rng(4)
+    n = 300
+    x = np.exp(rng.normal(3, 0.3, size=n))
+    x[rng.random(n) < 0.1] = np.nan
+    cols = {f"c{j}": rng.normal(size=n) for j in range(1, 6)}
+    path = tmp_path / "kcal.csv"
+    _kcal_once(pd.DataFrame({"id": np.arange(n), "y": rng.normal(size=n), "x": x, **cols}), path)
+    roles = {"id": "identifier", "x": "exposure", **{c: "covariate" for c in cols},
+             "kcal": "energy"}
+    state = wide_state(roles=roles, missing=MissingSpec(strategy="multiple_imputation"), **FIT)
+    ctx = ctx_of(state, Ingested(path, tmp_path / "answer"))
+    assert smcfcs.imputation_at(state, ctx).sized.width == 1 + 1 + 5 + 1
+    validate({"kind": "lock_plan"}, ctx)  # the answer is accepted
+    said = _fit_table(path, tmp_path / "project", state)
+    assert said["caption"] == f"No coefficients: {LEAD}{KCAL_ONCE}"
+    assert [e["label"] for e in said["exits"]] == ["Leave `kcal` out"]
+    left = said["exits"][0]["decision"]
+    assert left["strategy"] == "multiple_imputation" and left["drop_columns"] == ["kcal"]
+    validate(left, ctx)  # taken, it is accepted
+    taken = state.model_copy(update={"missing": MissingSpec(strategy="multiple_imputation",
+                                                            drop_columns=["kcal"])})
+    drawn = _fit_table(path, tmp_path / "taken", taken)
+    assert drawn["caption"].startswith(f"Multiple imputation, m = {M_DEFAULT}:")
+    assert drawn["refused"] is None and drawn["missing"]["m"] == M_DEFAULT
+    assert drawn["missing"]["variables"] == ["x", *cols, "the outcome"]
+
+
 def _fat(folder: Any, method: str, zeros: int = 1) -> tuple[pd.DataFrame, Any, ProjectState]:
     """:func:`wide`'s 150 rows with its exposure `fat`, about 10% blank and zero on ``zeros`` rows,
     adjusted for total energy `kcal` (a density, or the log residual method): the analysis takes
@@ -1070,19 +1152,20 @@ def test_a_logged_column_s_zeros_are_refused_alike_at_the_answer_and_the_fit(tmp
     assert smcfcs.imputation_at(state, ctx).sized.refused()
     with pytest.raises(Refusal) as answered:
         validate({"kind": "lock_plan"}, ctx)
-    way = "Say how the zeros of `fat` are read: values below a detection limit, or true zeros"
     assert answered.value.message == LEAD + ZEROS.format(k=rows)
-    assert [(e["label"], e["decision"]) for e in answered.value.exits] == [(way, None)]
+    assert [(e["label"], e["decision"]) for e in answered.value.exits] == [(ZEROS_WAY, None)]
     said = _fit_table(path, tmp_path / "project", state)
     assert said["caption"] == f"No coefficients: {answered.value.message}"
-    assert [(e["label"], e["decision"]) for e in said["exits"]] == [(way, None)]
+    assert [(e["label"], e["decision"]) for e in said["exits"]] == [(ZEROS_WAY, None)]
 
 
-def test_under_the_log_residual_the_answer_offers_the_fit_s_way_without_the_log(tmp_path):
-    """Under the log residual method the fit's table offers the energy adjustment without the log
-    as well (``stages.modeling._missing_for_table``, called on the frame the answer built, since
-    the design stage's own residual fit stops at the zero first): the answer offers the same two
-    ways, in the same words."""
+def test_under_the_log_residual_the_answer_offers_no_way_the_record_refuses(tmp_path):
+    """Under the log residual method, `fat`'s zero is refused at the answer in the words of the
+    fit's table (``stages.modeling._missing_for_table``, called on the frame the answer built,
+    since the design stage's own residual fit stops at the zero first). Without the log the
+    imputation model holds the same 91 columns on the same 150 rows (the log enters no column's
+    count), which the width rule refuses, so the record refuses the energy adjustment without the
+    log, and the answer offers only how the zeros are read."""
     from turbotab.core.graph import StageContext
     from turbotab.core.stages.modeling import _missing_for_table
 
@@ -1091,17 +1174,37 @@ def test_under_the_log_residual_the_answer_offers_the_fit_s_way_without_the_log(
     with pytest.raises(Refusal) as answered:
         validate({"kind": "lock_plan"}, ctx)
     assert answered.value.message == LEAD + ZEROS.format(k="1 row")
+    assert [(e["label"], e["decision"]) for e in answered.value.exits] == [(ZEROS_WAY, None)]
+    without = {"kind": "set_energy_adjustment", **state.energy_adjustment.model_dump(),
+               "log_transform": False}
+    with pytest.raises(Refusal) as taken:
+        validate(without, ctx)
+    assert taken.value.code == smcfcs.WIDTH_REFUSAL
+    assert taken.value.message.startswith(LEAD + opening(WIDTH + 1))  # `fat` for `x`, and `kcal`
     spec = smcfcs.imputation_at(state, ctx).spec
     stage = StageContext(project_id="fat", state=state, inputs={}, paths={}, settings={})
     held = _missing_for_table(stage, spec, table[list(spec.inputs)], table["y"].to_numpy(),
                               "regression", ["linear"])
     assert held.refusal == answered.value.message
-    assert [e["label"] for e in held.exits] == [e["label"] for e in answered.value.exits] == [
-        "Adjust for energy without the log",
-        "Say how the zeros of `fat` are read: values below a detection limit, or true zeros"]
-    without = answered.value.exits[0]["decision"]
-    assert without == held.exits[0]["decision"]
-    assert without["kind"] == "set_energy_adjustment" and without["log_transform"] is False
+
+
+def test_the_answer_offers_the_way_without_the_log_where_the_record_accepts_it(tmp_path,
+                                                                               monkeypatch):
+    """The guard above the other way. No state has the answer refuse a logged zero and the record
+    accept the energy adjustment without the log (the model the width rule refused is as wide
+    without it), so the record's check is made to accept every answer: the answer then offers
+    the way without the log first, as the fit's table words it, then how the zeros are read."""
+    from turbotab.core import row_floor
+
+    _, path, state = _fat(tmp_path, "residual")
+    monkeypatch.setattr(row_floor, "accepted_exit", lambda decision, ctx: dict(decision))
+    with pytest.raises(Refusal) as answered:
+        validate({"kind": "lock_plan"}, ctx_of(state, Ingested(path, tmp_path / "answer")))
+    assert answered.value.message == LEAD + ZEROS.format(k="1 row")
+    assert [e["label"] for e in answered.value.exits] == [NO_LOG, ZEROS_WAY]
+    assert answered.value.exits[0]["decision"] == {
+        "kind": "set_energy_adjustment", **state.energy_adjustment.model_dump(),
+        "log_transform": False}
 
 
 def test_the_fit_names_the_recode_to_leave_out_as_the_answer_does(tmp_path):

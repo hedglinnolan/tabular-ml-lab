@@ -1700,13 +1700,20 @@ def _targets(data: pd.DataFrame, variables: Sequence[Variable],
 def refusal_before_drawing(data: pd.DataFrame, variables: Sequence[Variable], *,
                            identity: Identity | None = None, units: np.ndarray | None = None,
                            kinds: Mapping[str, str] | None = None, exclude: Sequence[str] = (),
-                           leavable: Sequence[str] = ()) -> ImputationRefused | None:
+                           leavable: Sequence[str] = (), sized: ModelWidth | None = None
+                           ) -> ImputationRefused | None:
     """What :func:`impute` refuses before it draws a copy, the first in its order, or None where it
     draws: a variable analyzed on the log scale recorded at zero or below (``zeros``); a column
     the chain draws, other than a category, with fewer than two recorded values (``columns``);
     then a model the width rule refuses (:meth:`ModelWidth.refused`, :func:`width_refusal`, which
     ``leavable`` reaches). The sampler raises it, and the check at the answer says it with the
-    fit's ways forward (:func:`_imputation_has_its_rows`), so both say the same."""
+    fit's ways forward (:func:`_imputation_has_its_rows`), so both say the same. ``sized``: the
+    model's width where it is measured already (the answer's, :func:`imputation_at`), measured
+    here otherwise. The refusals that may name a column to leave out (fewer than two values, the
+    width) carry ``width_refused``: whether the width rule refuses the model, so the check at the
+    answer, which runs only where it does, refuses the plan in these words; the fit's table then
+    offers to leave out what the answer offers, of ``leavable`` only
+    (``stages.modeling._missing_for_table``)."""
     variables = [v for v in variables if v.name in data.columns]
     for v in variables:
         if v.log:
@@ -1726,17 +1733,30 @@ def refusal_before_drawing(data: pd.DataFrame, variables: Sequence[Variable], *,
             refused = ImputationRefused(f"`{v.name}` has fewer than two observed values, so it "
                                         f"cannot be imputed.")
             refused.columns = [v.name]  # what leaving out would let the imputation run without
+            refused.width_refused = _measured(sized, data, variables, identity, units, kinds,
+                                              exclude).refused()
             return refused
     # Wider than the cap, each incomplete column's model against the rows-per-parameter rule, on
     # the rows that record it (:func:`model_width`, :meth:`ModelWidth.refused`): the check at the
     # answer runs this before the plan's lock (:func:`imputation_at`), so a plan refused here was
     # refused there, where it could be.
-    sized = model_width(data, variables, identity=identity, units=units, kinds=kinds,
-                        exclude=exclude)
+    sized = _measured(sized, data, variables, identity, units, kinds, exclude)
     if sized.refused():
-        return width_refusal(sized, data, variables, identity=identity, units=units, kinds=kinds,
-                             exclude=exclude, leavable=leavable)
+        refused = width_refusal(sized, data, variables, identity=identity, units=units,
+                                kinds=kinds, exclude=exclude, leavable=leavable)
+        refused.width_refused = True
+        return refused
     return None
+
+
+def _measured(sized: ModelWidth | None, data: pd.DataFrame, variables: Sequence[Variable],
+              identity: Identity | None, units: np.ndarray | None,
+              kinds: Mapping[str, str] | None, exclude: Sequence[str]) -> ModelWidth:
+    """``sized`` where it is given, else the model's width measured (:func:`model_width`)."""
+    if sized is not None:
+        return sized
+    return model_width(data, variables, identity=identity, units=units, kinds=kinds,
+                       exclude=exclude)
 
 
 def zero_exits(column: str, adjustment: Any) -> list[dict[str, Any]]:
@@ -2023,11 +2043,12 @@ def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
     rows that record its column) is refused when it is given, in the words the sampler refuses it
     with, the first in its order (:func:`refusal_before_drawing`: a logged column's zeros, a column
     with fewer than two recorded values, then the width), and with the ways forward the fit's table
-    offers for them (``stages.modeling._missing_for_table``): for the zeros, how they are read
-    (:func:`zero_exits`); otherwise complete cases, the width refusal's own (the sample answer),
-    and leaving out a column the refusal names, of the settled covariates only. Each
-    missing-values answer among them is offered where the record accepts it, as the fit's table
-    counts it (``row_floor.stage_exits``).
+    offers for them (``stages.modeling._missing_for_table``): for the zeros, how they are read,
+    and the energy model without the log where the record accepts it (:func:`zero_exits`; the
+    fit's table offers that one without asking the record); otherwise complete cases, the width
+    refusal's own (the sample answer), and leaving out a column the refusal names, of the settled
+    covariates only. Each missing-values answer among them is offered where the record accepts it,
+    as the fit's table counts it (``row_floor.stage_exits``).
     Registered for every kind that writes a slot, so the answer refused is the one that makes the
     model too wide (multiple imputation itself, a role, the survey answer, an exclusion), and for
     the plan's lock, which the server records when Fit is pressed: a plan the rows cannot carry is
@@ -2055,7 +2076,8 @@ def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
         return
     plan = found.plan
     refused = refusal_before_drawing(plan.data, plan.variables, identity=plan.identity,
-                                     units=plan.units, kinds=plan.kinds, leavable=found.leavable)
+                                     units=plan.units, kinds=plan.kinds, leavable=found.leavable,
+                                     sized=found.sized)
     if refused is None:  # the width rule refuses it (above), so the sampler does
         return
     if _PROBING.get():  # an exit tried for another refusal: only whether it is refused is read
@@ -2063,7 +2085,11 @@ def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
     base = after.missing.model_dump(mode="json")
     zeros = list(getattr(refused, "zeros", None) or [])
     if zeros:
-        exits = zero_exits(zeros[0], found.spec.energy_adjustment() if found.spec else None)
+        # Each where taking it is accepted: the energy model without the log is as wide (the log
+        # enters no column's count), so where the width rule refuses this one, it is refused too.
+        exits = [e for e in zero_exits(zeros[0], found.spec.energy_adjustment() if found.spec
+                                       else None)
+                 if e["decision"] is None or accepted_exit(e["decision"], ctx) is not None]
     else:
         exits = [{"label": _COMPLETE_CASES_EXIT,
                   "decision": SetMissing(**{**base, "strategy": "complete_case",
