@@ -161,21 +161,33 @@ def test_the_table_on_the_same_rows_in_another_order_is_reml(seed):
     _table_at_reml(X[order], y[order], codes[order])
 
 
-def test_the_profile_curves_as_derived_and_refuses_a_gamma_moved_by_a_thousandth():
-    """What ``GAP`` rests on, and its pin firing: at γ̂·exp(±h), h = 10⁻³, the per-unit profile lies
-    (G − 1)·h²/2 = 1.5 × 10⁻⁶ above its minimum (the derivation where ``GAP`` is set, to the h³ the
-    expansion leaves), so a γ̂ moved by 10⁻³ fails the pin the engine's γ̂ passes."""
+@pytest.mark.parametrize("seed", [None, 78, 222])
+def test_the_profile_curves_as_derived_and_refuses_a_gamma_moved_by_a_thousandth(seed):
+    """What ``GAP`` rests on, and its pin firing, on the rows as drawn and in two other orders. The
+    per-unit profile's second difference at the engine's γ̂, the mean of its values at γ̂·exp(±h)
+    less its value at γ̂, is (G − 1)·h²/2 = 1.5 × 10⁻⁶ at h = 10⁻³ (the derivation where ``GAP`` is
+    set) to 10⁻³ of itself: float64's noise in the three values, about 2·(N − P)·ε = 9 × 10⁻¹¹, is
+    6 × 10⁻⁵ of it, the curvature departs from G − 1 by terms of order 1/(m γ̂) ≈ 10⁻⁵, and the h⁴
+    term adds h²/12. γ̂'s offset h₀ from the profile's smooth minimum, which rounding sets (the
+    engine's γ̂ spreads over 1.1 × 10⁻⁵ in log γ across 300 orders of these rows), moves the
+    difference only by a relative h₀; each side alone lies (G − 1)(h ± h₀)²/2 above the minimum, off
+    by 2·h₀/h, which passed 10⁻² on 6 of those orders, 78 and 222 among them, where the difference
+    stayed within 9 × 10⁻⁵ on all 300. A γ̂ moved by 10⁻³, 1.5 × 10⁻⁶ above the minimum, fails the
+    pin the engine's γ̂ passes."""
     X, y, codes = _large()
+    if seed is not None:
+        order = np.random.default_rng(seed).permutation(len(y))
+        X, y, codes = X[order], y[order], codes[order]
     units = len(np.unique(codes))
     fit = fit_random_intercept(X, y, codes)
     gamma = fit.sigma2_u / fit.sigma2_e
     at = _per_unit_profile(X, y, codes)
-    least = _least(at)
-    for h in (1e-3, -1e-3):
-        assert at(gamma * math.exp(h))[0] - least == pytest.approx((units - 1) * h ** 2 / 2,
-                                                                   rel=1e-2)
+    h = 1e-3
+    second = (at(gamma * math.exp(h))[0] + at(gamma * math.exp(-h))[0]) / 2 - at(gamma)[0]
+    assert second == pytest.approx((units - 1) * h ** 2 / 2, rel=1e-3)
+    for moved in (gamma * math.exp(h), gamma * math.exp(-h)):
         with pytest.raises(AssertionError):
-            _at_reml(X, y, codes, gamma * math.exp(h))
+            _at_reml(X, y, codes, moved)
     _at_reml(X, y, codes, gamma)
 
 
