@@ -80,11 +80,23 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
   assumes an auxiliary variable is independent of the outcome given the substantive model's
   covariates; with the design in the covariate models only, an outcome that differs by stratum
   biased the pooled design-based estimates (MS2 repair: z −0.06, about 7 Monte Carlo SE).
+
+**How wide the model may be** (:func:`model_width`). Not a fixed count of columns: each incomplete
+column's model is held to the rows-per-parameter rule the engine holds an inference model's
+coefficients to (``imputation.model_size``: about 2 rows per parameter for least squares, 10 per
+parameter of the effective sample size for yes/no and categorical models) on the rows that record
+it. Before this rule a fixed 80 columns was refused whatever the rows, and only at Fit, after the
+plan's lock: Sullivan 2021's runs 22 and 26 locked imputations of 89 and 84 columns on 7,937 rows,
+the survey design's strata most of them. The same function refuses here and at the answer, before
+the lock (:func:`imputation_at`, registered for every answer and for the lock); its ways forward are
+complete cases, the sample answer where the design's terms are most of the width, and leaving out a
+column the others already span (a recode beside its code).
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any, Callable, Literal, Mapping, Sequence
 
 import numpy as np
@@ -96,7 +108,7 @@ from turbotab.core.methods.imputation import (
     Censoring,
     ImputationRefused,
     Imputations,
-    MAX_MODEL_COLUMNS,
+    ModelSize,
     _as01,
     _expit,
     _from01,
@@ -1348,6 +1360,247 @@ class _Chain:
         return self.raw_frame()
 
 
+# ── how wide the imputation model may be ─────────────────────────────────────
+
+# The survey design's columns among the imputation model's (``missing.design_variables``): its
+# strata and its PSUs within them as categories, and its weight.
+DESIGN_TERMS = ("__stratum", "__psu", "__weight")
+SHOWN_MODELS = 3  # incomplete columns a refusal names after the first; the rest are counted
+WIDTH_REFUSAL = "imputation_too_wide"
+REFUSED_LEAD = "Multiple imputation cannot run on these data: "  # as the fit's table says it
+
+
+@dataclass
+class ModelWidth:
+    """The imputation model's width and each incomplete column's model against the
+    rows-per-parameter rule (:func:`model_width`)."""
+
+    width: int  # every model column of its predictors: R's ncol(model.matrix(~ ., data)) − 1
+    columns: dict[str, int]  # each predictor's model columns (a category's levels less one)
+    models: list[ModelSize]  # each column the chain draws, as its model is fit
+    design: int = 0  # of ``width``, the survey design's terms
+
+    def short(self) -> list[ModelSize]:
+        """The models with fewer rows per parameter than the rule asks, the furthest short first."""
+        return sorted((m for m in self.models if m.short), key=lambda m: m.per / m.needed)
+
+
+def chain_kinds(data: pd.DataFrame, variables: Sequence[Variable],
+                kinds: Mapping[str, str] | None = None) -> dict[str, str]:
+    """How each column of ``data`` enters the chain's models: an imputed variable by its kind, a
+    complete column as ``kinds`` declares it (a numeric code column the user declared a category)
+    or else by its values."""
+    declared = dict(kinds or {})
+    own = {v.name: v.kind for v in variables}
+    return {c: own.get(c) or declared.get(c) or _kind_of(data[c]) for c in data.columns}
+
+
+def _blocks(data: pd.DataFrame, kinds: Mapping[str, str], energy: str | None) -> dict[str, int]:
+    """Each column's model columns as the chain encodes it (``_State.refresh``): a category's
+    levels but the first as indicators, any other column one."""
+    return {c: (max(len(pd.unique(data[c].dropna())) - 1, 0) if kinds[c] == "categorical" else 1)
+            for c in data.columns if c != energy}
+
+
+def model_width(data: pd.DataFrame, variables: Sequence[Variable], *,
+                identity: Identity | None = None, units: np.ndarray | None = None,
+                kinds: Mapping[str, str] | None = None, exclude: Sequence[str] = ()) -> ModelWidth:
+    """The imputation model's width, and each incomplete column's model against the rule
+    (:func:`~turbotab.core.methods.imputation.model_size`), as :func:`impute` fits them on
+    ``data``: the one width function, which the sampler refuses by and the check at the answer
+    runs (:func:`imputation_at`).
+
+    The width counts every predictor column of ``data`` as R's ``model.matrix`` does, a category as
+    its levels less one (total energy under ``identity``, and ``exclude``, are never predictors). A
+    column the chain draws is held to the rule with its own design's columns
+    (:meth:`_Chain.design_rows`, :meth:`_Chain.design_units`): the other columns', an energy
+    source's total-energy terms in place of "other", and with ``units`` the other columns' unit
+    means and its own; on the rows that record it (the units, for a unit-level variable). Under
+    ``"smcfcs"`` a covariate model is fit on every row with its current values, but what it learns
+    from are the recorded ones, so they are counted under either mode."""
+    from turbotab.core.methods.imputation import model_size
+
+    variables = [v for v in variables if v.name in data.columns]
+    resolved = chain_kinds(data, variables, kinds)
+    energy = identity.energy if identity is not None else None
+    skip = {*exclude, *([energy] if energy is not None else [])}
+    blocks = _blocks(data, resolved, energy)
+    predictors = {c: w for c, w in blocks.items() if c not in skip}
+    e_obs = (pd.to_numeric(data[energy], errors="coerce").notna().to_numpy()
+             if energy is not None else np.zeros(len(data), dtype=bool))
+    clustered = units is not None
+    once = {v.name for v in variables if v.unit_level} if clustered else set()
+    models: list[ModelSize] = []
+    for v in variables:
+        drawn = (bool((~e_obs).any()) if identity is not None and v.name == identity.other
+                 else bool(data[v.name].isna().any()))
+        if not drawn:
+            continue
+        gone = {v.name, *skip}
+        energy_terms = 0
+        if identity is not None and v.name in identity.factors and e_obs.any():
+            gone.add(identity.other)  # read the total in place of "other" (:meth:`energy_terms`)
+            energy_terms = 1 + (2 if (~e_obs).any() else 0)
+        others = {c: w for c, w in blocks.items() if c not in gone and w}
+        row_level = sum(w for c, w in others.items() if c not in once)
+        recorded = data[v.name].notna().to_numpy()
+        if v.name in once:
+            parameters = sum(w for c, w in others.items() if c in once) + row_level + energy_terms
+            codes = np.asarray(units)[recorded]
+            values = pd.Series(data[v.name].to_numpy()[recorded]).groupby(codes).last()
+        else:
+            parameters = sum(others.values()) + energy_terms
+            if clustered:  # the unit means, and the column's own over the row's unit
+                parameters += row_level + energy_terms + (1 if blocks.get(v.name) == 1 else 0)
+            values = data[v.name][recorded]
+        models.append(model_size(v.name, v.kind, parameters, values, units=v.name in once))
+    return ModelWidth(sum(predictors.values()), predictors, models,
+                      sum(predictors.get(c, 0) for c in DESIGN_TERMS))
+
+
+def _below(m: ModelSize) -> str:
+    """``m``'s count per parameter in words, with the digits that keep it below the rule."""
+    for digits in (1, 2, 3):
+        said = f"{m.per:.{digits}f}"
+        if float(said) < m.needed:
+            return said
+    return f"{math.floor(m.per * 1000) / 1000:.3f}"
+
+
+def _model_words(m: ModelSize) -> str:
+    """How far one imputation model falls short of the rule, as a refusal says it."""
+    from turbotab.core.models.sample_size import SOURCE_SPV
+
+    lead = (f"the chained equations would impute `{m.column}` from a model of {m.parameters:,} "
+            f"predictor parameters (categories as indicators) fit on the {m.rows:,} "
+            f"{'units' if m.units else 'rows'} that record it")
+    if m.kind in ("binary", "categorical"):
+        return (f"{lead}, an effective sample size of {m.counted:,.0f} (n − Σn³/n² over its "
+                f"{m.levels} levels), {_below(m)} per parameter, where a common rule of thumb asks "
+                f"for {m.needed} (Peduzzi et al. 1996)")
+    return (f"{lead}, {_below(m)} per parameter, where {SOURCE_SPV} found about {m.needed} per "
+            f"parameter enough for least-squares coefficients, standard errors and intervals")
+
+
+def _indicators(k: int, of: str) -> str:
+    return f"one indicator of {of}" if k == 1 else f"{k:,} indicators of {of}"
+
+
+def redundant_columns(data: pd.DataFrame, kinds: Mapping[str, str], candidates: Sequence[str],
+                      skip: Sequence[str] = ()) -> tuple[list[str], int]:
+    """Of ``candidates``, the columns of ``data`` the others already span on the rows that record
+    every predictor (as a recode spans nothing its code does not): each one whose model columns R's
+    ``lm`` would report as aliased (``NA``) were it entered after the rest
+    (:func:`identified_columns`), tried from the last column back, so of several that span each
+    other the last is left out and the rest kept. With the number of those rows; none where the
+    rows are too few to tell a column's span apart from the rows' own shortage."""
+    gone = set(skip)
+    blocks = _blocks(data, kinds, None)
+    cols = [c for c in data.columns if c not in gone and blocks[c]]
+    complete = data[cols].notna().all(axis=1).to_numpy()
+    n = int(complete.sum())
+    parts: dict[str, np.ndarray] = {}
+    for c in cols:
+        if kinds[c] == "categorical":
+            levels = sorted(pd.unique(data[c].dropna()), key=str)
+            v = data[c].to_numpy(dtype=object)[complete]
+            parts[c] = np.column_stack([(v == lv).astype(float) for lv in levels[1:]])
+        else:
+            x = pd.to_numeric(data[c], errors="coerce").to_numpy(dtype=float)[complete]
+            parts[c] = _standardize(x.reshape(-1, 1))
+    ones = np.ones((n, 1))
+    full = np.column_stack([ones, *parts.values()]) if parts else ones
+    if n <= full.shape[1] or len(identified_columns(full)) == full.shape[1]:
+        return [], n
+    kept = list(cols)
+    out: list[str] = []
+    for c in reversed(cols):
+        if c not in candidates:
+            continue
+        rest = [x for x in kept if x != c]
+        M = np.column_stack([ones, *[parts[x] for x in rest], parts[c]])
+        first = M.shape[1] - parts[c].shape[1]
+        if not any(j >= first for j in identified_columns(M)):
+            out.append(c)
+            kept = rest
+    return out[::-1], n
+
+
+def width_refusal(sized: ModelWidth, data: pd.DataFrame, variables: Sequence[Variable], *,
+                  identity: Identity | None = None, units: np.ndarray | None = None,
+                  kinds: Mapping[str, str] | None = None, exclude: Sequence[str] = (),
+                  leavable: Sequence[str] | None = None) -> ImputationRefused:
+    """The refusal of an imputation model too wide for its rows (:func:`model_width`), with its
+    ways forward on it, which the fit's table offers as exits (``stages.modeling.
+    _missing_for_table``) and the check at the answer as its own (:func:`imputation_at`):
+
+    * the models that fall short, the furthest first, in words from their own counts;
+    * where the survey design's terms are most of the width, how many they are; and where the
+      models have their rows without them, the sample answer (``exits``: the words
+      :data:`~turbotab.core.methods.missing.WITHOUT_THE_DESIGN` name it);
+    * a column the others already span (:func:`redundant_columns`; of ``leavable``, else of every
+      column but the outcome's, the survey design's and the energy identity's), where leaving it
+      out gives every model its rows (``columns``, which the exits offer to leave out);
+    * complete cases stay a way forward (``complete_cases`` is left unset)."""
+    short = sized.short()
+    words = [_model_words(short[0])]
+    words[0] = words[0][0].upper() + words[0][1:] + "."
+    rest = short[1:]
+    if rest:
+        named = [f"`{m.column}`" for m in rest[:SHOWN_MODELS]]
+        if len(rest) > len(named):
+            named.append(f"{len(rest) - len(named):,} more")
+        words.append(f"The models of {_listed(named)} fall short of the rule too.")
+    exits: list[dict[str, Any]] = []
+    columns: list[str] = []
+    variables = list(variables)
+    if sized.design and 2 * sized.design > sized.width:
+        parts = []
+        if sized.columns.get("__stratum"):
+            parts.append(_indicators(sized.columns["__stratum"], "its strata"))
+        if sized.columns.get("__psu"):
+            parts.append(_indicators(sized.columns["__psu"], "its PSUs within their strata"))
+        if "__weight" in sized.columns:
+            parts.append("its weight")
+        words.append(f"Of the imputation model's {sized.width:,} columns, {sized.design:,} are "
+                     f"the survey design's: {_listed(parts)}.")
+        without = model_width(data.drop(columns=[c for c in DESIGN_TERMS if c in data.columns]),
+                              variables, identity=identity, units=units, kinds=kinds,
+                              exclude=exclude)
+        if not without.short():
+            from turbotab.core.methods.missing import WITHOUT_THE_DESIGN, sample_way
+
+            words.append(WITHOUT_THE_DESIGN)
+            exits.append(sample_way())
+    energy = identity.energy if identity is not None else None
+    structural = {*exclude, *([energy, identity.other, *identity.factors] if identity else [])}
+    # never the outcome's terms, the design's or "other", whose names ``missing`` starts with "__"
+    candidates = [c for c in (data.columns if leavable is None else leavable)
+                  if c in data.columns and c not in structural and not str(c).startswith("__")]
+    if candidates:
+        resolved = chain_kinds(data, variables, kinds)
+        skip = [c for c in data.columns if c == energy or c in exclude]
+        gone, n = redundant_columns(data, resolved, candidates, skip)
+        if gone:
+            narrower = model_width(data.drop(columns=gone),
+                                   [v for v in variables if v.name not in gone],
+                                   identity=identity, units=units, kinds=kinds, exclude=exclude)
+            if not narrower.short():
+                one = len(gone) == 1
+                words.append(f"{_listed([f'`{c}`' for c in gone])} {'adds' if one else 'add'} "
+                             f"nothing the other columns do not hold on the {n:,} rows that record "
+                             f"them all (as a recode adds nothing beside the column it recodes), "
+                             f"and without {'it' if one else 'them'} each incomplete column's "
+                             f"model has the rows per parameter the rule asks for.")
+                columns = gone
+    refused = ImputationRefused(" ".join(words))
+    if exits:
+        refused.exits = exits  # the sample answer, which the words name
+    if columns:
+        refused.columns = columns  # what leaving out lets the imputation be drawn without
+    return refused
+
+
 def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "fcs",
            substantive: Substantive | None = None, identity: Identity | None = None,
            units: np.ndarray | None = None, m: int = M_DEFAULT, iterations: int = ITERATIONS,
@@ -1390,24 +1643,21 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
         return bool(data[v.name].isna().any())
 
     targets = [v for v in variables if drawn(v)]
-    width = 0
-    declared = dict(kinds or {})
-    kinds = {c: (next((v.kind for v in variables if v.name == c), None) or declared.get(c)
-                 or _kind_of(data[c])) for c in data.columns}
-    for c in data.columns:
-        if identity is not None and c == identity.energy:
-            continue
-        width += max(1, data[c].nunique(dropna=True) - 1) if kinds[c] == "categorical" else 1
-    if width > MAX_MODEL_COLUMNS:
-        raise ImputationRefused(
-            f"The imputation model would hold {width:,} columns (categories as indicators), more "
-            f"than the {MAX_MODEL_COLUMNS} chained equations are run with here.")
     for v in targets:
         if data[v.name].notna().sum() < 2 and v.kind != "categorical":
             refused = ImputationRefused(f"`{v.name}` has fewer than two observed values, so it "
                                         f"cannot be imputed.")
             refused.columns = [v.name]  # what leaving out would let the imputation run without
             raise refused
+    # Each incomplete column's model against the rows-per-parameter rule, on the rows that record
+    # it (:func:`model_width`): the check at the answer runs the same function before the plan's
+    # lock (:func:`imputation_at`), so a plan refused here was refused there, where it could be.
+    sized = model_width(data, variables, identity=identity, units=units, kinds=kinds,
+                        exclude=exclude)
+    if sized.short():
+        raise width_refusal(sized, data, variables, identity=identity, units=units, kinds=kinds,
+                            exclude=exclude)
+    kinds = chain_kinds(data, variables, kinds)
     miss_any = energy_blank.copy()
     for v in variables:
         if not (identity is not None and v.name == identity.other):
@@ -1465,5 +1715,231 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
                        rejection_failures=failures, identity_infeasible=infeasible)
 
 
-__all__ = ["FIRST_TRIES", "Identity", "Mode", "Outcome", "RJLIMIT", "START_SHARE", "Substantive",
-           "Term", "Variable", "breslow", "efron", "impute", "outcome_logdensity"]
+# ── the same rule at the answer, before the plan's lock ──────────────────────
+
+
+@dataclass
+class AtTheAnswer:
+    """What the fit would impute under a state (:func:`imputation_at`): the sampler's inputs
+    (``missing.ImputationPlan``), its width (:func:`model_width`), and the columns an exit may
+    leave out (the settled covariates, never what the analysis studies)."""
+
+    plan: Any
+    sized: ModelWidth
+    leavable: list[str]
+
+
+def imputation_at(state: Any, ctx: Any) -> AtTheAnswer | None:
+    """The imputation model the fit would draw under ``state``, built over the table the context
+    opens as the fit builds it: the cohort's rows under ``state`` (every analyzed row under
+    inference, ruling 3), the design stage's spec, the outcome as the fit codes it, the clusters,
+    the survey design under the population answer, the parts of totals and the energy identity's
+    factors, then ``missing.imputation_plan`` and :func:`model_width` on its frame.
+
+    None where the fit would draw no copies (not inference, not multiple imputation, no blank, a
+    block the fit holds first, the data's own copies, no family that pools), or where what it would
+    draw cannot be foreseen here (no table to open, a reading the fit asks first): the fit's own
+    refusal says the same words then (:func:`impute`)."""
+    missing = getattr(state, "missing", None)
+    if (getattr(state, "purpose", None) != "inference" or missing is None
+            or missing.strategy != "multiple_imputation" or not state.target or not state.roles):
+        return None
+    from turbotab.core.decisions import _store_of
+    from turbotab.core.stages.modeling import imputed_copies_column
+
+    if imputed_copies_column(state) is not None:
+        return None  # the data's own copies are pooled, and none is drawn
+    store = _store_of(ctx)
+    if store is None:
+        return None
+    try:
+        return _imputation_at(state, ctx, store)
+    except Exception:  # noqa: BLE001 - what cannot be foreseen here: the fit says why, in its words
+        return None
+
+
+def _imputation_at(state: Any, ctx: Any, store: Any) -> AtTheAnswer | None:
+    from turbotab.core.decisions import _ctx, left_out
+    from turbotab.core.methods.batch import batch_inputs
+    from turbotab.core.methods.energy import PARTITION_METHODS
+    from turbotab.core.methods.missing import (imputation_plan, missing_block, nonlinear_terms,
+                                               time_invariant_columns)
+    from turbotab.core.models import get_family
+    from turbotab.core.models.inference import cluster_columns, resolve_clusters
+    from turbotab.core.models.pipeline import (design_spec, input_columns, model_predictors,
+                                               modeling_frame)
+    from turbotab.core.readings import (energy_source_factors, factor_verdicts, kcal_per_unit,
+                                        nesting, predictors_or_ask, settled_roles)
+    from turbotab.core.stages.modeling import _leavable, coded_outcome
+    from turbotab.core.stages.rows import compute_cohort
+
+    infos = list(store.info().columns)
+    # The fit's predictor set once every reading it rests on is settled; while one is not, the fit
+    # asks first (``readings.predictors_or_ask`` raises), and nothing is foreseen here.
+    predictors_or_ask(state, {c.name: {"dtype": c.dtype, "n_unique": c.n_unique} for c in infos},
+                      drop=left_out(state), store=store)
+    predictors = model_predictors(state)
+    task = getattr(state, "task", None) or _ctx(ctx, "task")
+    if not predictors or not task:
+        return None
+    bundle = _ctx(ctx, "bundle")
+    working = bundle("working") if callable(bundle) else None
+    split = bundle("split") if callable(bundle) else None
+    ingest = dict(getattr(working, "data", None) or {"columns": [c.to_dict() for c in infos]})
+    _, kept, _ = compute_cohort(store, state, ingest)  # the analyzed rows: the cohort's, ruling 3
+    rows = np.asarray(kept, dtype=np.int64)
+    if not len(rows):
+        return None
+    target = state.target
+    adj = state.energy_adjustment
+    grouped_by = (getattr(split, "data", None) or {}).get("grouped_by") if split is not None else None
+    unit_columns = cluster_columns(state, store.columns, [grouped_by])
+    follow = []
+    if task == "time_to_event":
+        from turbotab.core.models.survival import follow_up_columns
+
+        follow = follow_up_columns(state)
+    inputs = list(dict.fromkeys([*input_columns(predictors, adj), *batch_inputs(state)]))
+    frame = modeling_frame(store, list(dict.fromkeys([*inputs, target, *unit_columns, *follow])),
+                           rows, outcome=target)
+    factors = None
+    if adj is not None and adj.method in PARTITION_METHODS:
+        factors = energy_source_factors(state, list(adj.nutrients), store=store)
+    spec = design_spec(state, frame[[c for c in inputs if c in frame.columns]], predictors,
+                       column_info={c.name: c for c in infos}, energy_factors=factors)
+    X = frame[list(spec.inputs)]
+    if task == "ordinal":
+        from turbotab.core.models.ordinal import ordinal_outcome
+
+        coded, _ = ordinal_outcome(frame[target].to_numpy(), state.outcome_order, column=target)
+    else:
+        coded = coded_outcome(task, frame[target].to_numpy(), state.event)
+    if task == "time_to_event":
+        from turbotab.core.models.survival import time_to_event_outcome
+
+        y = time_to_event_outcome(state, frame, coded)
+    else:
+        y = np.asarray(coded)
+    answer = spec.missing or {}
+    levels = [c for c in spec.levels if c in X.columns and X[c].isna().any()]
+    gaps = [c for c in spec.inputs if c not in levels and X[c].isna().any()]
+    if not gaps:
+        return None
+    clusters = resolve_clusters(state, frame[list(unit_columns)], [grouped_by])
+    clustered = clusters is not None and getattr(clusters, "clustered", False)
+    # What the fit's table holds before any copy is drawn (``stages.modeling._missing_for_table``):
+    # a passive or single-level imputation it blocks, a chosen set of families none of which pools
+    # the copies, and an unconfirmed one-value-per-unit column it asks about.
+    if missing_block(answer, "inference", levels, nonlinear=nonlinear_terms(spec, task),
+                     passive=task in ("ordinal", "multiclass"), clustered=clustered) is not None:
+        return None
+    pools = [k for k in (state.models or []) if get_family(k).inference is not None]
+    if state.models and (not pools or not any(getattr(get_family(k), "pools_imputations", True)
+                                              for k in pools)):
+        return None
+    once: list[str] = []
+    if clustered and answer.get("imputation_levels") != "single_level":
+        once, ask = time_invariant_columns(state, X, clusters.codes, gaps)
+        if ask:
+            return None
+    survey = None
+    from turbotab.core.survey import reading_of
+
+    if state.survey is not None or reading_of(state).present:
+        from turbotab.core.methods.survey import for_fit
+
+        found = for_fit(state, store, clusters.column if clustered else None)
+        if found is not None and found.refusal:
+            return None  # the survey question is the fit's refusal first
+        if found is not None and found.answer == "population":
+            survey = found.design
+    numeric = [c for c in spec.predictors if c in set(spec.numeric)]
+    nested = nesting(state, nesting(state, frame=X, columns=numeric), columns=spec.inputs)
+    settled: dict[str, float] = {}
+    nutrients = list(adj.nutrients) if adj is not None else []
+    if nutrients:  # the factors the identity may compute with (``modeling._settled_factors``)
+        verdicts = factor_verdicts(state, store, nutrients)
+        for c in nutrients:
+            reading = kcal_per_unit(state, c, verdict=verdicts.get(c))
+            if reading.settled and reading.factor is not None:
+                settled[c] = float(reading.factor)
+    plan = imputation_plan(spec, X, y, task, survey=survey,
+                           clusters=clusters if clustered else None, nested=nested,
+                           factors=settled, time_invariant=once)
+    sized = model_width(plan.data, plan.variables, identity=plan.identity, units=plan.units,
+                        kinds=plan.kinds)
+    covariates = [c for c, r in settled_roles(state).items() if r == "covariate"]
+    return AtTheAnswer(plan, sized, _leavable(state, covariates))
+
+
+@lru_cache(maxsize=1)
+def _frame_reads() -> tuple[str, ...]:
+    """Every slot the fit's imputation frame is built from: the fit's and its upstream stages'."""
+    from turbotab.core.graph import load_graph
+    from turbotab.core.stages import GRAPH_FACTORY
+
+    graph = load_graph(GRAPH_FACTORY)
+    names = graph.upstream("fit") | {"fit"}
+    return tuple(sorted({slot for name in names for slot in graph[name].reads}))
+
+
+def _imputation_has_its_rows(decision: Any, ctx: Any) -> None:
+    """The rule at the answer (:func:`model_width` on the frame the fit would impute,
+    :func:`imputation_at`): an answer that leaves multiple imputation under inference with a model
+    too wide for the rows that record its column is refused when it is given, with the fit's words
+    and ways forward (:func:`width_refusal`; complete cases where the record accepts them).
+    Registered for every kind that writes a slot, so the answer refused is the one that makes the
+    model too wide (multiple imputation itself, a role, the survey answer, an exclusion), and for
+    the plan's lock, which the server records when Fit is pressed: a plan the rows cannot carry is
+    refused before it is locked, never after."""
+    from turbotab.core.decisions import (Refusal, SetMissing, _accepted_ways, _records_in,
+                                         _roles_record_what_rode_along, _state, fold_onto,
+                                         state_after)
+    from turbotab.core.methods.missing import _COMPLETE_CASES_EXIT
+
+    now = _state(ctx)
+    if now is None:
+        return
+    if decision.kind == "lock_plan":
+        after = now  # the plan as it is locked
+    else:
+        if decision.kind == "set_roles":  # what rides along unconfirmed, as it will be recorded
+            decision = _roles_record_what_rode_along(decision, ctx)
+        after = fold_onto(now, decision) if _records_in(ctx) is None else state_after(decision, ctx)
+        if after is None or all(getattr(now, s, None) == getattr(after, s, None)
+                                for s in _frame_reads()):
+            return
+    found = imputation_at(after, ctx)
+    if found is None or not found.sized.short():
+        return
+    plan = found.plan
+    refused = width_refusal(found.sized, plan.data, plan.variables, identity=plan.identity,
+                            units=plan.units, kinds=plan.kinds, leavable=found.leavable)
+    base = after.missing.model_dump(mode="json")
+    exits: list[dict[str, Any]] = [
+        {"label": _COMPLETE_CASES_EXIT,
+         "decision": SetMissing(**{**base, "strategy": "complete_case", "acknowledged": False})}]
+    exits.extend(dict(e) for e in getattr(refused, "exits", None) or [])
+    left = [c for c in getattr(refused, "columns", None) or [] if c not in base["drop_columns"]]
+    if left:
+        exits.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
+                      "decision": SetMissing(**{**base, "drop_columns": [*base["drop_columns"],
+                                                                          *left]})})
+    raise Refusal(WIDTH_REFUSAL, f"{REFUSED_LEAD}{refused}", exits=_accepted_ways(exits, ctx))
+
+
+def _register() -> None:
+    """Importing this module registers the check, for every kind the decisions know by then (as
+    ``row_floor`` registers its own) and for revert."""
+    from turbotab.core.decisions import SLOTS, register_validator
+
+    for kind in [*SLOTS, "revert"]:
+        register_validator(kind, _imputation_has_its_rows)
+
+
+_register()
+
+__all__ = ["DESIGN_TERMS", "FIRST_TRIES", "Identity", "Mode", "ModelWidth", "Outcome", "RJLIMIT",
+           "START_SHARE", "Substantive", "Term", "Variable", "WIDTH_REFUSAL", "breslow",
+           "chain_kinds", "efron", "imputation_at", "impute", "model_width", "outcome_logdensity",
+           "redundant_columns", "width_refusal"]

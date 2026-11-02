@@ -74,10 +74,11 @@ M_MAX = 200
 ITERATIONS = 10  # sweeps per chain (van Buuren §6.5: 5–20 is usually enough)
 RIDGE = 1e-5  # mice's ridge on XᵀX's diagonal, for collinear imputation models
 LOGIT_RIDGE = 1e-3  # on standardized predictors: keeps a separated yes/no model finite
-# The most variables (after categories become indicators) an imputation model may hold: beyond
-# this, each incomplete column's model is a regression on more columns than chained equations
-# estimate reliably in the rows a nutrition study has, and the run time grows with the square.
-MAX_MODEL_COLUMNS = 80
+# How wide an imputation model may be is not a fixed count of columns: each incomplete column's
+# model is held to the engine's rows-per-parameter rule on the rows that record it
+# (:func:`model_size`). Its run time grows with its width (each sweep fits one least-squares or
+# Newton model of n rows on p columns per incomplete column, about n·p² operations), a cost of the
+# fit, not a reason its draws are unreliable.
 LOG_GAIN = 2.0  # a censored column is modeled on the log scale when that gains this much log-likelihood
 OUTCOME_PREFIX = "__outcome"  # the outcome's terms in the imputation model never collide with a column
 
@@ -119,6 +120,64 @@ class Imputations:
 
 class ImputationRefused(ValueError):
     """The data cannot carry a chained-equations model; the message says why."""
+
+
+# ── how many rows an imputation model needs ──────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ModelSize:
+    """One incomplete column's imputation model against the rows-per-parameter rule
+    (:func:`model_size`)."""
+
+    column: str
+    kind: str  # how it is drawn: "numeric", "censored", "binary" or "categorical"
+    parameters: int  # its design's predictor columns, the intercept not counted
+    rows: int  # the rows (the units, for a unit-level variable) that record it
+    counted: float  # what the rule counts: those rows for least squares, else their effective size
+    needed: int  # what the rule asks per parameter
+    levels: int = 0  # its observed levels (a yes/no or categorical model)
+    units: bool = False  # imputed once per unit, from a model of the units
+
+    @property
+    def per(self) -> float:
+        return self.counted / self.parameters if self.parameters else math.inf
+
+    @property
+    def short(self) -> bool:
+        return self.parameters > 0 and self.counted < self.needed * self.parameters
+
+
+def model_size(column: str, kind: str, parameters: int, recorded: pd.Series, *,
+               units: bool = False) -> ModelSize:
+    """``column``'s imputation model (``parameters`` predictor columns, fit on its ``recorded``
+    values: one per row, or per unit for a unit-level variable) against the rule the engine holds
+    an inference model's coefficients to:
+
+    * **a number** (least squares, ``mice``'s ``norm``), and a value below a detection limit (a
+      censored normal, counted on its detected values): about
+      :data:`~turbotab.core.models.sample_size.SPV_INFERENCE` rows per parameter (Austin &
+      Steyerberg 2015, *J Clin Epidemiol* 68:627; ``models.sample_size``, as ``models.linear``
+      states it);
+    * **yes/no and categories** (logistic and multinomial models):
+      :data:`~turbotab.core.models.ordinal.PER_PARAMETER` per parameter of the effective sample
+      size n − Σn_k³/n² over the observed levels (``models.ordinal``: Peduzzi et al. 1996's events
+      per variable on Whitehead's effective size, as Harrell's *Regression Modeling Strategies*
+      §4.4 gives it). A model whose recorded values hold one level has nothing to tell apart (its
+      draws are that level), and is not held to the rule.
+
+    The rule judges reliability; the width's run time is a cost the rule does not count."""
+    from turbotab.core.models.ordinal import PER_PARAMETER, effective_rows
+    from turbotab.core.models.sample_size import SPV_INFERENCE
+
+    values = recorded.dropna()
+    n = int(len(values))
+    if kind in ("binary", "categorical"):
+        counts = [int(k) for k in values.astype(str).value_counts().to_numpy()]
+        return ModelSize(column, kind, int(parameters) if len(counts) > 1 else 0, n,
+                         float(effective_rows(counts)), PER_PARAMETER, levels=len(counts),
+                         units=units)
+    return ModelSize(column, kind, int(parameters), n, float(n), SPV_INFERENCE, units=units)
 
 
 # ── the variables ────────────────────────────────────────────────────────────
@@ -696,7 +755,8 @@ def pooled_cov(estimates: np.ndarray, covariances: np.ndarray) -> np.ndarray:
 __all__ = [
     "Censoring", "ITERATIONS", "ImputationRefused", "Imputations", "M_DEFAULT", "M_MAX",
     "censored_loglik", "log_scale_fits_better",
-    "MAX_MODEL_COLUMNS", "OUTCOME_PREFIX", "Pooled", "barnard_rubin", "censoring_of",
-    "chained_equations", "column_kind", "m_rule", "nelson_aalen", "outcome_terms", "pool_rows",
+    "ModelSize", "OUTCOME_PREFIX", "Pooled", "barnard_rubin", "censoring_of",
+    "chained_equations", "column_kind", "m_rule", "model_size", "nelson_aalen", "outcome_terms",
+    "pool_rows",
     "pool_scalar", "pooled_cov", "pooled_wald", "reiter_df", "tobit_expectation", "tobit_fit",
 ]
