@@ -652,22 +652,39 @@ def _left_censored(df: pd.DataFrame, qc_rows: Optional[pd.Series] = None,
     reading draws its block from (`omics.candidate_columns`): not `target`,
     not a person's characteristic, an identifier or a time by name, and not
     how the samples were acquired (run order, batch, plate, well, a column
-    that numbers the rows). `packs.findings` passes no `target`, so there an
-    outcome no name rule sets aside is read as a feature. The
-    missing rate, the abundance, the correlation, both counts and the columns
-    named are the features'. Read with the covariates among them on the
-    participants' rows, where a covariate has no blank, the covariates pulled
-    the correlation off the features' own and could hold it above the gate
-    where the features are censored, the detail counted them as features, and
-    a covariate blank on a participant was named a non-detection.
+    that numbers the rows); and, as that reading sets them aside, not a
+    column of `omics.INDICATOR_LEVELS` distinct values or fewer, counted on
+    the rows read, where it is observed on more of them than that: there a
+    value repeats, as a code's do. A two-valued column (a 0/1 outcome, a
+    yes/no covariate) carries no abundance to order, so it is no feature,
+    blanks or none, and its blanks are no non-detections. A column observed
+    on `omics.INDICATOR_LEVELS` of those rows or fewer has no value to
+    repeat and is read, though the `omics_scale` block leaves it out: a
+    feature detected on one or two participants, or on none (named, though
+    with no mean it is not in the correlation), is the most censored kind,
+    and its blanks are non-detections. `packs.findings`
+    passes no `target`, nor does the app before an outcome is chosen: there
+    a 0/1 outcome is set aside as two-valued, and an outcome of more values
+    that no name rule sets aside is read as a feature. The missing rate, the
+    abundance, the correlation, both counts and the columns named are the
+    features'. Read with the covariates among them on the participants'
+    rows, where a covariate has no blank, the covariates pulled the
+    correlation off the features' own and could hold it above the gate
+    where the features are censored, the detail counted them as features,
+    and a covariate blank on a participant was named a non-detection.
     """
-    from turbotab.core.methods.omics import candidate_columns
+    from turbotab.core.methods.omics import INDICATOR_LEVELS, candidate_columns
 
     cols = candidate_columns(df, target)
     if len(cols) < 30:
         return None
     if qc_rows is None:
         qc_rows = _pooled_qc_rows(df)
+    values = df.loc[~qc_rows, cols].to_numpy(dtype=float, na_value=np.nan)
+    finite = np.isfinite(values)
+    cols = [c for j, c in enumerate(cols)
+            if np.unique(values[finite[:, j], j]).size > INDICATOR_LEVELS
+            or finite[:, j].sum() <= INDICATOR_LEVELS]
     rows = df.loc[~qc_rows, cols]
     rate = rows.isna().mean()
     with_blanks = [c for c in cols if rate[c] > 0]
