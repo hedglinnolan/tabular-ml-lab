@@ -9,10 +9,13 @@ now the Gram matrix of a triangle factored from the within-unit deviations and e
 (``repeated._at``), so it is positive definite to working precision at every γ. Truth: statsmodels
 ``MixedLM`` (REML) for the fixed effects; for γ̂ and the standard errors, the REML profile written
 here from each unit's own cross-products of its deviations from its means, unit by unit, so no
-difference of numbers near 1 forms it (lme4 2.0.6 with lmerTest 3.2.1 on R 4.6.1, offline, stops
-on this flat profile at a γ̂ larger by 1.7 × 10⁻⁴ of itself, where the profile is 4 × 10⁻⁸
-higher); and for the intercept's Satterthwaite df, a derivation: on units this large its variance
-is σ²_u/G, whose estimate rests on G − 1 = 3 df.
+difference of numbers near 1 forms it: the engine's γ̂ minimizes it to within what float64 can
+tell apart on a profile this flat (``GAP``, derived where it is set; the base's pin, γ̂ to 10⁻⁶ of
+this file's minimizer, failed on CI's runner and on other orders of the same rows), and the
+standard errors are the profile's at the engine's γ̂ (lme4 2.0.6 with lmerTest 3.2.1 on R 4.6.1,
+offline, stops on this flat profile at a γ̂ larger by 1.7 × 10⁻⁴ of itself, where the profile is
+4 × 10⁻⁸ higher); and for the intercept's Satterthwaite df, a derivation: on units this large its
+variance is σ²_u/G, whose estimate rests on G − 1 = 3 df.
 
 **Past the search.** Where the outcome barely varies within a unit beyond what the predictors
 explain, REML's γ̂ can lie past 10⁸; the fit stopped at 10⁸ and said nothing, and the table served
@@ -29,7 +32,7 @@ to G − p_u − (N − P), p_u the design's unit-level directions.
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -54,10 +57,12 @@ def _large() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return np.column_stack([np.ones(G * m), x]), y, codes
 
 
-def _per_unit_reml(X: np.ndarray, y: np.ndarray, codes: np.ndarray) -> tuple[float, np.ndarray]:
-    """γ̂ and the standard errors from the REML profile written from each unit's cross-products of
-    its deviations from its means plus its sums: ``[X y]ᵀH⁻¹[X y] = Σ_g (D_gᵀD_g + s_g s_gᵀ /
-    (m_g(1 + m_g γ)))``, minimized by Brent's method on [0.1, 10]."""
+def _per_unit_profile(X: np.ndarray, y: np.ndarray,
+                      codes: np.ndarray) -> Callable[[float], tuple[float, np.ndarray]]:
+    """The REML profile in γ written from each unit's cross-products of its deviations from its
+    means plus its sums: ``[X y]ᵀH⁻¹[X y] = Σ_g (D_gᵀD_g + s_g s_gᵀ / (m_g(1 + m_g γ)))``. At a γ:
+    the profile (−2 × REML's log-likelihood with σ²_e profiled out, up to a constant) and the
+    standard errors at that γ."""
     N, P = X.shape
     blocks = []
     for g in np.unique(codes):
@@ -65,46 +70,113 @@ def _per_unit_reml(X: np.ndarray, y: np.ndarray, codes: np.ndarray) -> tuple[flo
         D = Z - Z.mean(axis=0)
         blocks.append((D.T @ D, Z.sum(axis=0), len(Z)))
 
-    def parts(gamma: float) -> tuple[float, float, np.ndarray]:
+    def at(gamma: float) -> tuple[float, np.ndarray]:
         M = sum(W + np.outer(s, s) / (m * (1 + m * gamma)) for W, s, m in blocks)
         A, b = M[:P, :P], M[:P, P]
         rss = M[P, P] - b @ np.linalg.solve(A, b)
         log_h = sum(math.log1p(m * gamma) for _, _, m in blocks)
-        return (N - P) * math.log(rss / (N - P)) + log_h + np.linalg.slogdet(A)[1], rss, A
+        profile = (N - P) * math.log(rss / (N - P)) + log_h + np.linalg.slogdet(A)[1]
+        return profile, np.sqrt(np.diag(rss / (N - P) * np.linalg.inv(A)))
 
-    found = minimize_scalar(lambda z: parts(math.exp(z))[0], bounds=(math.log(0.1), math.log(10)),
+    return at
+
+
+def _least(at: Callable[[float], tuple[float, np.ndarray]]) -> float:
+    """The per-unit profile's minimum, by Brent's method in log γ on [0.1, 10]."""
+    found = minimize_scalar(lambda z: at(math.exp(z))[0], bounds=(math.log(0.1), math.log(10)),
                             method="bounded", options={"xatol": 1e-12})
-    gamma = math.exp(found.x)
-    _, rss, A = parts(gamma)
-    return gamma, np.sqrt(np.diag(rss / (N - P) * np.linalg.inv(A)))
+    return float(found.fun)
 
 
-def test_four_units_of_50000_rows_fit_at_the_reml_estimate():
-    """The regressor fits, at statsmodels' REML fixed effects; on the base it raised
-    ``LinAlgError: Matrix is not positive definite`` at the grid's top."""
-    X, y, codes = _large()
-    model = RandomInterceptRegressor(units=pd.Series(codes)).fit(pd.DataFrame({"x": X[:, 1]}), y)
-    reml = sm.MixedLM(y, X, groups=codes).fit(reml=True)
-    np.testing.assert_allclose([model.intercept_, *model.coef_], reml.fe_params, rtol=1e-6)
-    gamma, _ = _per_unit_reml(X, y, codes)
-    assert model.sigma2_u_ / model.sigma2_e_ == pytest.approx(gamma, rel=1e-6)
+# The most a γ̂ may lie above the per-unit profile's minimum: what float64 can certify on this flat
+# profile. Float64 evaluates each of its values, (N − P)·log(RSS/(N − P)) plus terms of order G, to
+# about (N − P)·ε = 4.4 × 10⁻¹¹ (ε the machine epsilon, N − P = 199,998), so it cannot tell apart
+# two γ whose values are closer: on 40 orders of these rows the engine's γ̂ and the minimizer here
+# lay up to 6 × 10⁻⁶ of γ̂ apart (on CI's runner 2.6 × 10⁻⁶, which the base's pin, γ̂ to 10⁻⁶ of
+# the minimizer, refused) while the profile put them at most 9.4 × 10⁻¹¹ apart, either way. Near
+# its minimum the profile rises as (G − 1)·h²/2 in h = log(γ/γ̂), a derivation: on units this large
+# it is, up to a constant, (G − 1)·log λ + c/λ in λ = 1 + mγ (a unit mean's variance over σ²_e),
+# whose curvature in log λ at its minimum is G − 1 = 3, and log λ moves with log γ to 1/(mγ) ≈
+# 10⁻⁵ (``test_the_profile_curves_as_derived_and_refuses_a_gamma_moved_by_a_thousandth``). So a γ
+# within GAP of the minimum lies within h = √(2·GAP/(G − 1)) = 8.2 × 10⁻⁵ of γ̂, and the standard
+# errors, which move with γ at most half as fast (the intercept's variance is about σ²_u/G; `x`'s
+# barely moves), within 4.1 × 10⁻⁵ of REML's. GAP is 225 times (N − P)·ε; a γ moved by 10⁻³ lies
+# 1.5 × 10⁻⁶ above the minimum, 150 times GAP, and lme4's stop (above) 4 × 10⁻⁸, 4 times GAP.
+GAP = 1e-8
 
 
-def test_the_table_on_four_units_of_50000_rows_is_reml_and_satterthwaite():
-    """The table is served: γ̂ and the standard errors are the per-unit profile's, the intercept's
-    df G − 1 = 3 to the 1/(m γ̂) its rows add, and the row-level `x`'s near N − G − 1. On the base
-    the table ended in the same ``LinAlgError``."""
-    X, y, codes = _large()
+def _at_reml(X: np.ndarray, y: np.ndarray, codes: np.ndarray, gamma: float) -> np.ndarray:
+    """``gamma`` minimizes the per-unit profile to within ``GAP``; the standard errors at it."""
+    at = _per_unit_profile(X, y, codes)
+    profile, se = at(gamma)
+    above = profile - _least(at)
+    assert above <= GAP, (gamma, above)
+    return se
+
+
+def _table_at_reml(X: np.ndarray, y: np.ndarray, codes: np.ndarray) -> list[dict[str, Any]]:
+    """The table on the four units is served, at the fit's γ̂, which minimizes the per-unit profile
+    to within ``GAP``, and with that profile's standard errors at that γ̂ (to 10⁻⁹: the fit factors
+    the same sums otherwise)."""
     clusters = Clusters(column="unit", codes=codes, n_clusters=4, n_missing=0)
     table = mixed_table(pd.DataFrame({"x": X[:, 1]}), y, clusters)
     assert table.info["refused"] is None
     fit = fit_random_intercept(X, y, codes)
-    gamma, se = _per_unit_reml(X, y, codes)
-    assert fit.sigma2_u / fit.sigma2_e == pytest.approx(gamma, rel=1e-6)
-    np.testing.assert_allclose([r["se"] for r in table.rows], se, rtol=1e-6)
-    intercept, x = table.rows
+    se = _at_reml(X, y, codes, fit.sigma2_u / fit.sigma2_e)
+    np.testing.assert_allclose([r["se"] for r in table.rows], se, rtol=1e-9)
+    return table.rows
+
+
+def test_four_units_of_50000_rows_fit_at_the_reml_estimate():
+    """The regressor fits, at statsmodels' REML fixed effects and at a γ̂ that minimizes the
+    per-unit profile to within ``GAP``; on the base it raised ``LinAlgError: Matrix is not positive
+    definite`` at the grid's top."""
+    X, y, codes = _large()
+    model = RandomInterceptRegressor(units=pd.Series(codes)).fit(pd.DataFrame({"x": X[:, 1]}), y)
+    reml = sm.MixedLM(y, X, groups=codes).fit(reml=True)
+    np.testing.assert_allclose([model.intercept_, *model.coef_], reml.fe_params, rtol=1e-6)
+    _at_reml(X, y, codes, model.sigma2_u_ / model.sigma2_e_)
+
+
+def test_the_table_on_four_units_of_50000_rows_is_reml_and_satterthwaite():
+    """The table is served: its γ̂ minimizes the per-unit profile to within ``GAP`` and its standard
+    errors are the profile's at that γ̂; the intercept's df are G − 1 = 3 to the 1/(m γ̂) its rows
+    add, and the row-level `x`'s near N − G − 1. On the base the table ended in the same
+    ``LinAlgError``."""
+    X, y, codes = _large()
+    intercept, x = _table_at_reml(X, y, codes)
     assert intercept["df"] == pytest.approx(3.0, rel=1e-4)
     assert x["df"] == pytest.approx(len(y) - 4 - 1, rel=1e-6)
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3, 4])
+def test_the_table_on_the_same_rows_in_another_order_is_reml(seed):
+    """The same rows in another order, which float64 sums otherwise: on these four orders the
+    engine's γ̂ and the minimizer here lie up to 3.7 × 10⁻⁶ of γ̂ apart, so the base's pins (γ̂ to
+    10⁻⁶ of the minimizer, the standard errors to 10⁻⁶ of the minimizer's) failed on three of them,
+    as on CI's runner; γ̂ within ``GAP`` of the minimum and the standard errors at γ̂ hold on
+    each."""
+    X, y, codes = _large()
+    order = np.random.default_rng(seed).permutation(len(y))
+    _table_at_reml(X[order], y[order], codes[order])
+
+
+def test_the_profile_curves_as_derived_and_refuses_a_gamma_moved_by_a_thousandth():
+    """What ``GAP`` rests on, and its pin firing: at γ̂·exp(±h), h = 10⁻³, the per-unit profile lies
+    (G − 1)·h²/2 = 1.5 × 10⁻⁶ above its minimum (the derivation where ``GAP`` is set, to the h³ the
+    expansion leaves), so a γ̂ moved by 10⁻³ fails the pin the engine's γ̂ passes."""
+    X, y, codes = _large()
+    units = len(np.unique(codes))
+    fit = fit_random_intercept(X, y, codes)
+    gamma = fit.sigma2_u / fit.sigma2_e
+    at = _per_unit_profile(X, y, codes)
+    least = _least(at)
+    for h in (1e-3, -1e-3):
+        assert at(gamma * math.exp(h))[0] - least == pytest.approx((units - 1) * h ** 2 / 2,
+                                                                   rel=1e-2)
+        with pytest.raises(AssertionError):
+            _at_reml(X, y, codes, gamma * math.exp(h))
+    _at_reml(X, y, codes, gamma)
 
 
 def test_ten_units_of_20000_rows_constant_within_units_fit_as_the_unit_means():
