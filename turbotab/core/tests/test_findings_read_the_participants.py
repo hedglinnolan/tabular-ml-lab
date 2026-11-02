@@ -13,7 +13,8 @@ reading does not name:
   are read before any answer, so those rows are read from the data, whatever the answer to the QC
   finding; where the reading does not fire, every row counts as before;
 * the left-censoring reading (``packs._left_censored``) reads the rows outside those the served
-  pooled-QC finding names, and names only columns with a blank there. The pack's own pooled-QC
+  pooled-QC finding names, and names only columns with a blank there; its detail opens with the
+  count of those rows wherever any row is set aside. The pack's own pooled-QC
   reading (``packs._pooled_qc``), whose rows it sets aside by default, reads a two-level label
   only; on a Case/Control/QC label the served reading names the QC rows and the pack's names none,
   so the app sets aside the served reading's rows
@@ -223,6 +224,50 @@ def test_left_censoring_reads_every_row_where_the_pack_flags_no_qc_rows(tmp_path
     assert found is not None and set(found["params"]["columns"]) == every_row
 
 
+def _detail_read_on(rows: pd.DataFrame) -> str:
+    """The left-censoring detail's sentence after its opening, its numbers by pandas and scipy on
+    ``rows``: the usable features, the Spearman correlation of their missing rate with their log
+    mean, the numeric columns with a blank and the highest missing rate among them."""
+    numeric = [c for c in rows.columns if pd.api.types.is_numeric_dtype(rows[c])]
+    rate, mean = rows[numeric].isna().mean(), rows[numeric].mean()
+    usable = [c for c in numeric if pd.notna(mean[c]) and mean[c] > 0]
+    rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
+    blank = [c for c in numeric if rate[c] > 0]
+    return (f"{len(usable):,} features, a feature's missing rate tracks its abundance rank at a "
+            f"rank correlation of {rho:.2f}. {len(blank):,} features have blanks; the highest "
+            f"rate is {rate[blank].max():.0%}, on one of the least abundant.")
+
+
+def test_the_left_censoring_detail_names_the_non_qc_rows_its_numbers_are_read_on(tmp_path):
+    """With the 10 QC rows set aside (the pack's own reading flags them on this two-level label),
+    the detail's numbers are the 60 participants' (pandas, scipy) and it says so: on every row
+    they differ, since `age`, `bmi` and the outcome are blank on the QC rows, so a reader who
+    checked them against the whole table would get other numbers."""
+    frame = panel()
+    df = read_back(tmp_path, frame)
+    assert packs._pooled_qc_rows(df).to_numpy().nonzero()[0].tolist() == QC_AT
+    part = participants(df)
+    assert len(part) == N_PART
+    expected = f"On the {N_PART:,} non-QC rows, across {_detail_read_on(part)}"
+    assert _detail_read_on(part) != _detail_read_on(df)
+    assert packs._left_censored(df)["detail"] == expected
+    served = findings_of(tmp_path, frame, ["metabolomics"])["pack::metabolomics::left_censored"]
+    assert served["detail"] == expected
+
+
+def test_the_left_censoring_detail_read_on_every_row_names_no_rows(tmp_path):
+    """The silent side: QC rows no reading tells from participants, so every row is read, the
+    detail's numbers are every row's (pandas, scipy) and it names no rows."""
+    frame = panel(qc_signal=False)
+    df = read_back(tmp_path, frame)
+    assert not packs._pooled_qc_rows(df).any()
+    expected = f"Across {_detail_read_on(df)}"
+    assert packs._left_censored(df)["detail"] == expected
+    served = findings_of(tmp_path, frame, ["metabolomics"])["pack::metabolomics::left_censored"]
+    assert served["detail"] == expected
+    assert "non-QC" not in served["detail"]
+
+
 def test_left_censoring_sets_aside_the_qc_rows_of_a_case_control_qc_label(tmp_path):
     """The participants labeled `case` and `control` beside the `pooled_qc` level: the pack's own
     pooled-QC reading needs a two-level label and flags no row, while the served one (2 to 10
@@ -244,8 +289,11 @@ def test_left_censoring_sets_aside_the_qc_rows_of_a_case_control_qc_label(tmp_pa
     assert set(censored["censored_columns"]) == named
     assert not {"age", "bmi", "disease"} & set(censored["censored_columns"])
     assert censored["detail"].startswith(
-        f"Across {n_usable:,} features, a feature's missing rate tracks its abundance rank at a "
-        f"rank correlation of {rho:.2f}. {len(named):,} features have blanks;")
+        f"On the {N_PART:,} non-QC rows, across {n_usable:,} features, a feature's missing rate "
+        f"tracks its abundance rank at a rank correlation of {rho:.2f}. {len(named):,} features "
+        f"have blanks;")
+    on_the_participants = _detail_read_on(participants(df))
+    assert censored["detail"] == f"On the {N_PART:,} non-QC rows, across {on_the_participants}"
 
 
 def test_left_censoring_raised_only_by_the_qc_rows_blanks_is_not_said(tmp_path):

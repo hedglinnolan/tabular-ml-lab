@@ -640,7 +640,8 @@ def _left_censored(df: pd.DataFrame,
     QC carries no age, BMI or outcome, so those are blank on every QC row by
     design, not below a detection limit; read over every row, they were named
     here, and the prior this finding scopes (`GUIDED-027`) reached them. Where
-    no row is a QC row, every row is read. `_pooled_qc` reads a two-level label
+    no row is a QC row, every row is read; where any is, the detail opens with
+    the count of rows it reads. `_pooled_qc` reads a two-level label
     only, so the app passes the rows its own pooled-QC reading names, which
     reads a Case/Control/QC label too
     (`turbotab.core.stages.finding_words.left_censoring_on_the_participants`).
@@ -664,10 +665,15 @@ def _left_censored(df: pd.DataFrame,
     if pd.isna(rho) or rho > -0.5:
         return None
     worst = rate[with_blanks].sort_values(ascending=False)
+    # THE ROWS READ ARE NAMED where any is set aside: the numbers are the
+    # participants' and differ from the whole table's, which is what a reader
+    # checking them would read them against.
+    where = (f"On the {len(rows):,} non-QC rows, across " if qc_rows.any()
+             else "Across ")
     return _finding(
         "pack::metabolomics::left_censored", "warning",
         "Your missing values cluster in the lowest-abundance features",
-        (f"Across {len(usable):,} features, a feature's missing rate tracks its "
+        (f"{where}{len(usable):,} features, a feature's missing rate tracks its "
          f"abundance rank at a rank correlation of {rho:.2f}. "
          f"{len(with_blanks):,} features have blanks; the highest rate is "
          f"{worst.iloc[0]:.0%}, on one of the least abundant."),

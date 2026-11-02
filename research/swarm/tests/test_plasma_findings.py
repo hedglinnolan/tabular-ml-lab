@@ -63,3 +63,29 @@ def test_left_censoring_names_only_the_features_blank_among_the_participants(pla
     assert {"age", "bmi", G.PANEL_OUTCOME} <= {c for c in numeric if df[c].isna().any()}
     censored = found["pack::metabolomics::left_censored"]
     assert set(censored["censored_columns"]) == among
+
+
+def test_the_left_censoring_detail_says_it_reads_the_100_participants(plasma):
+    """The detail's numbers are read on the 100 rows outside the 28 QCs (pandas, scipy), and it
+    names those rows: read on all 128 rows the correlation, the count of columns with a blank and
+    the highest rate are other numbers, so a reader checking them against the table needs to know
+    which rows they come from."""
+    import numpy as np
+    from scipy import stats
+
+    df, qc, found = plasma
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+
+    def read_on(rows: pd.DataFrame) -> str:
+        rate, mean = rows[numeric].isna().mean(), rows[numeric].mean()
+        usable = [c for c in numeric if pd.notna(mean[c]) and mean[c] > 0]
+        rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
+        blank = [c for c in numeric if rate[c] > 0]
+        return (f"{len(usable):,} features, a feature's missing rate tracks its abundance rank at "
+                f"a rank correlation of {rho:.2f}. {len(blank):,} features have blanks; the "
+                f"highest rate is {rate[blank].max():.0%}, on one of the least abundant.")
+
+    assert int((~qc).sum()) == 100
+    assert read_on(df.loc[~qc]) != read_on(df)
+    detail = found["pack::metabolomics::left_censored"]["detail"]
+    assert detail == f"On the 100 non-QC rows, across {read_on(df.loc[~qc])}"
