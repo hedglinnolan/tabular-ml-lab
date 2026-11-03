@@ -3,7 +3,8 @@ P0.8; ``plan_lock``).
 
 * A client's revert of TurboTab's withdrawal of a lock is refused, so no lock comes back over a
   plan changed since: the plan GET /plan declares and the lock a press of Fit then records hold the
-  models in force, and the fit serves those models.
+  models in force, and the fit serves those models. Pressing Fit is offered as the way forward
+  only while the plan is unlocked, where a press records a lock.
 * A change the log refuses leaves no withdrawal behind: the lock is withdrawn only for a change the
   log then records.
 * A revert that makes the goal inference again, after estimates were shown under prediction, locks
@@ -97,6 +98,17 @@ def test_a_revert_of_turbotabs_withdrawal_is_refused_and_the_plan_and_fit_agree(
     assert plan["status"] == "locked" and plan["plan"]["models"] == ["linear", "elastic_net"]
     assert plan["plan_sha256"] == report["sha256"]
     assert families(stage(client, pid, "fit")) == ["linear", "elastic_net"]
+
+    # With that newer lock in force the revert of the withdrawal is still refused, and pressing Fit
+    # is no longer offered: a press records a lock only while the plan is unlocked.
+    count = len(view_of(client, pid)["decisions"])
+    refused = client.post(f"/api/projects/{pid}/decisions",
+                          json={"kind": "revert", "decision_id": withdrawal["id"]})
+    assert refused.status_code == 409, refused.text
+    error = refused.json()["error"]
+    assert error["code"] == "lock_stays_withdrawn" and error["exits"] == []
+    v = view_of(client, pid)
+    assert len(v["decisions"]) == count and v["state"]["plan_locked"] is True
 
 
 # ── 2. a change the log refuses leaves no withdrawal (INBOX 1045) ────────────

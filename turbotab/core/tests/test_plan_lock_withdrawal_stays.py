@@ -3,14 +3,15 @@
 TurboTab withdraws a lock no estimate was shown under, on Cancel or a change to the plan, by
 recording a revert of it. A revert of that withdrawal would bring the lock back over the plan as it
 stands, which may have changed since, so estimates would be served under the old lock's plan and
-fingerprint: it is refused, with pressing Fit as the way forward. A revert of any other revert is
-not the lock's business and passes. Further down the chain the parity says what a revert does: one
-that would withdraw a lock again (a reinstatement an older engine accepted) is refused as a revert
-of the lock itself is.
+fingerprint: it is refused, with pressing Fit as the way forward where a press would lock the plan
+(under inference, while it is unlocked). A revert of any other revert is not the lock's business
+and passes. Further down the chain the parity says what a revert does: one that would withdraw a
+lock again (a reinstatement an older engine accepted) is refused as a revert of the lock itself is.
 
-Each expectation is read from the log's own fold (``decisions.fold``), never from the check under
-test: a revert is refused here only where folding the log with it would change whether a lock is
-in force, and passes where the fold's lock stays as it is.
+Each expectation is read from the log's own fold (``decisions.fold``, ``decisions.reverted``),
+never from the check under test: a revert is refused here only where folding the log with it would
+change whether a lock is in force or bring a withdrawn lock back into the record, and passes where
+the fold's lock stays as it is.
 """
 from __future__ import annotations
 
@@ -80,6 +81,28 @@ def test_under_prediction_the_withdrawal_stays_and_no_press_is_offered_as_a_lock
     records = withdrawn_log("prediction")
     assert decisions.fold(records).purpose == "prediction"
     assert locked_with(records, "r4")
+    with pytest.raises(Refusal) as refused:
+        check(records, "r4")
+    assert refused.value.code == "lock_stays_withdrawn"
+    assert refused.value.exits == []
+
+
+def test_with_a_newer_lock_in_force_the_withdrawal_stays_and_no_press_is_offered_as_a_lock():
+    """Fit pressed again after the withdrawal recorded a newer lock (r6), so the plan is locked. The
+    revert of the withdrawal (r4) is refused just the same: the lock in force stays r6, but the
+    revert would bring the withdrawn lock (r3) back into the record as never withdrawn. Pressing
+    Fit is not offered as the way forward, since a press records a lock only while the plan is
+    unlocked (``press_fit``); here the fold holds it locked."""
+    newer = {"purpose": "inference", "models": ["linear", "elastic_net"]}
+    records = [*withdrawn_log(),
+               record(6, {"kind": "lock_plan", "plan": newer, "digest": plan_lock.digest(newer)})]
+    state = decisions.fold(records)
+    assert state.purpose == "inference" and state.plan_locked is True
+    assert locked_with(records, "r4")
+    probe = DecisionRecord(id="probe", seq=7, at=T0 + timedelta(1),
+                           decision=parse_decision({"kind": "revert", "decision_id": "r4"}))
+    assert decisions.reverted(records)["r3"] == "r4"  # withdrawn now
+    assert "r3" not in decisions.reverted([*records, probe])  # the revert would bring it back
     with pytest.raises(Refusal) as refused:
         check(records, "r4")
     assert refused.value.code == "lock_stays_withdrawn"

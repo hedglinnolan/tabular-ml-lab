@@ -364,7 +364,9 @@ def _the_lock_stays(decision: Any, ctx: Any) -> None:
     of a revert that brought it back) is refused, and so is one that would bring back a lock
     TurboTab withdrew (a revert of the withdrawal), which would hold the plan as it stood when the
     lock was recorded, whatever has changed since. Only the server withdraws a lock
-    (``ProjectService._withdraw_lock``), and only while no estimate was shown under it."""
+    (``ProjectService._withdraw_lock``), and only while no estimate was shown under it. Pressing
+    Fit is offered as the way forward only where a press records a lock: under inference, while
+    the plan is unlocked (``ProjectService.press_fit``)."""
     target, count = _reverts_down_to(decision, _records(ctx) or [])
     if target is None or target.decision.kind != "lock_plan":
         return
@@ -383,7 +385,8 @@ def _the_lock_stays(decision: Any, ctx: Any) -> None:
         "inference, a press of Fit that is accepted while the plan is unlocked locks the plan as "
         "it then stands.",
         exits=([{"label": PRESS_FIT, "decision": None}]
-               if getattr(state, "purpose", None) == "inference" else []),
+               if getattr(state, "purpose", None) == "inference"
+               and not getattr(state, "plan_locked", None) else []),
     )
 
 
