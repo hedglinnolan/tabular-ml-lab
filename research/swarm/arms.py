@@ -74,6 +74,12 @@ DATASETS = REPO / "research" / "datasets"
 FIXED = ("target", "event", "purpose", "task", "follow_up", "orientation")
 WAIT = 240.0  # seconds a command waits for what is computing
 CANCEL_WAIT = 60.0  # seconds a cancelled copy is waited for, each time (``Local.cancel``)
+# A dropped copy (``Local.drop``): the seconds it is waited for while its stages compute, before
+# its removal and after one that failed; the removals tried before it is kept; and the seconds
+# between them, for a late write to land.
+DROP_WAIT = 120.0
+DROP_TRIES = 5
+DROP_PAUSE = 1.0
 STEPS = 300  # the most answers a walk gives before it says it never reached Fit
 PROMPT_VERSION = "arms-1"
 # The tag each answer carries (record version 2's ``Tag``): the marker of the vocabulary the
@@ -599,23 +605,42 @@ class Local:
     def drop(self, pid: str, made: set[str]) -> bool:
         """The copy ``pid`` removed, once none of its stages is computing; only a copy this session
         made (``made``), never a project it did not. Whether it was removed. A late write can land
-        between the idle check and the removal ("Directory not empty"): it waits for idle and tries
-        again, and where the copy still cannot be removed it is kept and the answer is False."""
+        between the idle check and the removal ("Directory not empty"), by when the removal may
+        have taken the copy's ``project.json``, so the server can no longer read it: once the
+        copy has stopped computing (:meth:`_stopped`), it is removed again after
+        :data:`DROP_PAUSE` seconds, :data:`DROP_TRIES` removals in all. A copy still computing, or
+        one that still cannot be removed, is kept and the answer is False; a failed removal never
+        raises."""
         import shutil
 
-        if pid not in made or not self.idle(pid, wait=120.0):
+        if pid not in made or not self.idle(pid, wait=DROP_WAIT):
             return False
-        for attempt in range(3):
+        for attempt in range(DROP_TRIES):
             try:
                 shutil.rmtree(self.home / "projects" / pid)
                 break
             except OSError:
-                if attempt == 2 or not self.idle(pid, wait=120.0):
+                if attempt == DROP_TRIES - 1 or not self._stopped(pid):
                     return False
-                time.sleep(1.0)
+                time.sleep(DROP_PAUSE)
         shutil.rmtree(self.home / "driver" / pid, ignore_errors=True)  # its driver folder (``use``)
         made.discard(pid)
         return True
+
+    def _stopped(self, pid: str) -> bool:
+        """Whether the copy ``pid``, a removal of it failed, has stopped computing: none of its
+        stages is computing, after waiting up to :data:`DROP_WAIT` seconds for those that are; or
+        the server can no longer read it, answering that there is no such project (its 404, which
+        it answers once the copy's ``project.json`` is gone: ``Workspace.get``). Where the server
+        fails on the read otherwise, that says nothing of whether the copy still computes, and it
+        has not stopped."""
+        from research.swarm import driver
+        from turbotab.server.errors import not_found
+
+        try:
+            return self.idle(pid, wait=DROP_WAIT)
+        except driver.DriverError as exc:
+            return (exc.extra.get("server") or {}).get("code") == not_found(pid).code
 
     def cancel(self, pid: str, wait: float = CANCEL_WAIT) -> dict[str, Any]:
         """The fit of the copy ``pid`` cancelled as Cancel on the analysis flowchart cancels it
