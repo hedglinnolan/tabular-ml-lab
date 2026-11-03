@@ -482,13 +482,18 @@ interface ServedSubgroups {
 const reportedName = (fit: FitArtifact, ev: EvaluationArtifact) =>
   ev.reported_family ? (familyLabels(fit, ev)[ev.reported_family] ?? ev.reported_family) : "The reported model";
 
+/** A row's key in its own space, the served values it is made of JSON-encoded, so no column's name
+ *  and no level (one named "pooled", one holding a colon) can make two rows' keys one. */
+const rowKey = (space: string, ...parts: string[]) => `${space}:${JSON.stringify(parts)}`;
+
 /**
  * Subgroup performance (`subgroups`): each named column a group of rows, its groups in the order
  * served, each with its rows, its events under a yes/no outcome, and every metric scored with its
  * interval, the metrics in the order the fit names them. A group the engine names but does not
  * score, an interval it refuses and a column whose groups wait on a reading are each marked, the
  * engine's words their footnotes. Null where none is named. The caption names a group scored with
- * no interval by its column and its level ("sex 1"), since two coded columns can share a level.
+ * no interval by its column and its level ("sex 1"), since two coded columns can share a level,
+ * each by its own row's key, which no column's name or level can make another row's.
  */
 export function subgroupTable(ev: EvaluationArtifact, fit: FitArtifact): TableData | null {
   const subs = ev.subgroups as unknown as ServedSubgroups[];
@@ -499,14 +504,15 @@ export function subgroupTable(ev: EvaluationArtifact, fit: FitArtifact): TableDa
     label: fit.metric_labels[key] ?? key,
   }));
   const events = subs.some((s) => s.groups.some((g) => typeof g.events === "number"));
+  const groupKey = (column: string, group: string) => rowKey("group", column, group);
   const notes = marker();
   const rows: TableRow[] = subs.flatMap((s): TableRow[] => [
-    { kind: "group", key: `column:${s.column}`, label: s.column, marks: s.note ? [notes.mark(plain(s.note))] : undefined },
+    { kind: "group", key: rowKey("column", s.column), label: s.column, marks: s.note ? [notes.mark(plain(s.note))] : undefined },
     ...s.groups.map((g): TableRow => {
       const said = uniq([g.note, ...metrics.map((m) => g.scores[m.key]?.refused)].filter((t): t is string => !!t));
       return {
         kind: "row",
-        key: `${s.column}:${g.group}`,
+        key: groupKey(s.column, g.group),
         label: g.group,
         indent: true,
         marks: said.length ? said.map((t) => notes.mark(plain(t))) : undefined,
@@ -523,7 +529,7 @@ export function subgroupTable(ev: EvaluationArtifact, fit: FitArtifact): TableDa
       };
     }),
   ]);
-  const names = Object.fromEntries(subs.flatMap((s) => s.groups.map((g) => [`${s.column}:${g.group}`, `${s.column} ${g.group}`])));
+  const names = Object.fromEntries(subs.flatMap((s) => s.groups.map((g) => [groupKey(s.column, g.group), `${s.column} ${g.group}`])));
   return {
     number: "Subgroups",
     title: `${reportedName(fit, ev)}'s out-of-fold scores in each group${intervalClause(rows, metrics, names)}`,
@@ -549,25 +555,28 @@ type ServedInternalExternal = InternalExternal & { family: string; label: string
  * summary over them with its interval. The engine's sentence on the spread is the footnote of the
  * summary, or of the model's row where there is none. Null where no grouping is named. The caption
  * names a row scored with no interval by its model, as each model holds the same levels: a level
- * with its grouping ("Ridge's site 3"), the summary as the model's random-effects summary.
+ * with its grouping ("Ridge's site 3"), the summary as the model's random-effects summary, each by
+ * its own row's key, so a level named "pooled" is named as its level, never as the summary.
  */
 export function internalExternalTable(ev: EvaluationArtifact, fit: FitArtifact): TableData | null {
   const runs = ev.internal_external as unknown as ServedInternalExternal[];
   if (!runs.length) return null;
   const metrics: Metric[] = uniq(runs.map((r) => r.metric)).map((key) => ({ key, label: fit.metric_labels[key] ?? key }));
   const events = runs.some((r) => r.clusters.some((c) => typeof c.n_events === "number"));
+  const levelKey = (run: ServedInternalExternal, cluster: string) => rowKey("level", run.family, cluster);
+  const summaryKey = (run: ServedInternalExternal) => rowKey("summary", run.family);
   const notes = marker();
   const rows: TableRow[] = runs.flatMap((run): TableRow[] => {
     // The engine's own rule (validation.py `_spread_sentence`): with one level pooled, `pooled` is
     // that level's own score, and with none it holds no estimate, so neither is a summary.
     const summary = run.pooled.k >= 2 && typeof run.pooled.estimate === "number";
     const spread = () => (run.spread ? [notes.mark(`${run.label}: ${plain(run.spread)}`)] : undefined);
-    const head: TableRow = { kind: "group", key: run.family, label: run.label, marks: summary ? undefined : spread() };
+    const head: TableRow = { kind: "group", key: rowKey("model", run.family), label: run.label, marks: summary ? undefined : spread() };
     const levels = run.clusters.map((c): TableRow => {
       const said = uniq([c.note, c.primary.refused].filter((t): t is string => !!t));
       return {
         kind: "row",
-        key: `${run.family}:${c.cluster}`,
+        key: levelKey(run, c.cluster),
         label: c.cluster,
         indent: true,
         marks: said.length ? said.map((t) => notes.mark(plain(t))) : undefined,
@@ -584,7 +593,7 @@ export function internalExternalTable(ev: EvaluationArtifact, fit: FitArtifact):
       ...levels,
       {
         kind: "row",
-        key: `${run.family}:pooled`,
+        key: summaryKey(run),
         label: "Random-effects summary",
         indent: true,
         marks: spread(),
@@ -595,8 +604,8 @@ export function internalExternalTable(ev: EvaluationArtifact, fit: FitArtifact):
   const clusters = uniq(runs.map((r) => r.cluster));
   const names = Object.fromEntries(
     runs.flatMap((run) => [
-      ...run.clusters.map((c) => [`${run.family}:${c.cluster}`, `${run.label}'s ${run.cluster} ${c.cluster}`]),
-      [`${run.family}:pooled`, `${run.label}'s random-effects summary`],
+      ...run.clusters.map((c) => [levelKey(run, c.cluster), `${run.label}'s ${run.cluster} ${c.cluster}`]),
+      [summaryKey(run), `${run.label}'s random-effects summary`],
     ]),
   );
   return {

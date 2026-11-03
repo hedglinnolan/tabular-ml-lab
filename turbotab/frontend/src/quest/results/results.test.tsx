@@ -848,6 +848,24 @@ describe("the subgroups", () => {
     expect(titleOf([refused(sex), arm])).toBe(`${lead}, except ${sex.column} ${level}`);
     expect(titleOf([refused(sex), refused(arm)])).toBe(`${lead}, except ${sex.column} ${level} and ${arm.column} ${level}`);
   });
+
+  it("key each row where no column's name or level can make two rows one, and name each by its own key", () => {
+    // By construction, from the capture's sex column's first group, every score with its interval:
+    // a column "visit" holding the level "10:30" beside a column "visit:10" holding "30" (the same
+    // text joined by a colon), and a column named "column" holding the level "visit".
+    const g = (B.evaluation.subgroups as unknown as ServedSubgroup[]).find((s) => s.column === "sex")!.groups[0]!;
+    expect(Object.values(g.scores).every((sc) => sc.ci_low !== null && sc.ci_high !== null)).toBe(true);
+    const refused = Object.fromEntries(Object.entries(g.scores).map(([k, sc]) => [k, { ...sc, se: null, ci_low: null, ci_high: null, refused: "A constructed refusal of the interval." }]));
+    const column = (name: string, group: string, bare: boolean): ServedSubgroup => ({ column: name, groups: [{ ...g, group, scores: bare ? refused : g.scores }] });
+    const tableOf = (first: boolean, second: boolean) =>
+      subgroupTable({ ...B.evaluation, subgroups: [column("visit", "10:30", first), column("visit:10", "30", second), column("column", "visit", false)] } as unknown as EvaluationArtifact, B.fit)!;
+    const keys = tableOf(false, false).rows.map((r) => r.key);
+    expect(new Set(keys).size, JSON.stringify(keys)).toBe(keys.length);
+    const lead = `${nameOf(B.fit, B.evaluation, B.evaluation.reported_family!)}'s out-of-fold scores in each group: each score with its interval`;
+    expect(tableOf(false, false).title).toBe(lead);
+    expect(tableOf(true, false).title).toBe(`${lead}, except visit 10:30`);
+    expect(tableOf(false, true).title).toBe(`${lead}, except visit:10 30`);
+  });
 });
 
 describe("model updating", () => {
@@ -981,6 +999,33 @@ describe("internal–external validation", () => {
     expect(titleOf([bare(ridge), bench])).toBe(`${lead}, except ${levelOf(ridge)}`);
     expect(titleOf([bare(ridge), bare(bench)])).toBe(`${lead}, except ${levelOf(ridge)} and ${levelOf(bench)}`);
     expect(titleOf([ridge, unpooled(bench)])).toBe(`${lead}, except ${bench.label}'s random-effects summary`);
+  });
+
+  it("keys each row where no level's name can make it another, so a level named pooled is named as its level and the summary as the summary", () => {
+    // By construction, from the capture's two runs with their second level renamed "pooled": in the
+    // shape served where the engine pooled one level (`runsWith(1)`: that level's own score, the
+    // renamed level with no interval, no summary row), and where it pooled the capture's four (the
+    // summary row beside the level).
+    const renamed = (run: ServedIecv): ServedIecv => ({ ...run, clusters: run.clusters.map((c, i) => (i === 1 ? { ...c, cluster: "pooled" } : c)) });
+    const tableOf = (runs: ServedIecv[]) => internalExternalTable({ ...B.evaluation, internal_external: runs } as unknown as EvaluationArtifact, B.fit)!;
+    const served = (B.evaluation.internal_external as unknown as ServedIecv[]).map(renamed);
+    const [ridge, bench] = served as [ServedIecv, ServedIecv];
+    const lead = `Each level of ${ridge.cluster} held out in turn, scored by each model fitted on the rest: each score with its interval`;
+    const levelOf = (run: ServedIecv) => `${run.label}'s ${run.cluster} pooled`;
+    // One level pooled: the level is named, never a summary the table does not hold.
+    const one = (runsWith(1) as unknown as ServedIecv[]).map(renamed);
+    expect(one.map((r) => (r.pooled as unknown as { k: number }).k)).toEqual([1, 1]);
+    expect(tableOf(one).rows.some((r) => r.label === "Random-effects summary")).toBe(false);
+    expect(tableOf(one).title).toBe(`${lead}, except ${levelOf(one[0]!)} and ${levelOf(one[1]!)}`);
+    // Four pooled: the level and the summary are two rows, each its own key and name.
+    expect(served.map((r) => (r.pooled as unknown as { k: number }).k)).toEqual([4, 4]);
+    const keys = tableOf(served).rows.map((r) => r.key);
+    expect(new Set(keys).size, JSON.stringify(keys)).toBe(keys.length);
+    const bare = (run: ServedIecv): ServedIecv => ({ ...run, clusters: run.clusters.map((c, i) => (i === 1 ? { ...c, primary: { ...c.primary, ci_low: null, ci_high: null } } : c)) });
+    const unpooled = (run: ServedIecv): ServedIecv => ({ ...run, pooled: { ...run.pooled, ci_low: null, ci_high: null } });
+    expect(tableOf(served).title).toBe(lead);
+    expect(tableOf([bare(ridge), bench]).title).toBe(`${lead}, except ${levelOf(ridge)}`);
+    expect(tableOf([unpooled(ridge), bench]).title).toBe(`${lead}, except ${ridge.label}'s random-effects summary`);
   });
 });
 
