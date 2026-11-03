@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { api, RefusalError } from "../../../api/client";
 import type { ProposalsArtifact } from "../../../api/m1-types";
 import { keys } from "../../../api/queries";
@@ -142,6 +142,27 @@ function servedIn(name: string): { f: M3Fixture; view: ProjectView; proposals: P
   throw new Error(`${name} serves no Model 1 declaration`);
 }
 
+/** A capture's view and proposals result once `declared` is recorded for the served exposure: the
+ *  state holds the sequence (the quest line is answered while it holds, core/quest.py
+ *  `_model_one_is_current`) and the fresh result serves the same columns as declared
+ *  (core/estimand.py `model_sequence_card`). */
+function declaredIn(
+  at: { view: ProjectView; proposals: ProposalsArtifact; served: Served },
+  declared: string[],
+): { view: ProjectView; proposals: ProposalsArtifact } {
+  const model_sequence = { exposure: at.served.decision.exposure as string, model_1: declared };
+  return {
+    view: { ...at.view, state: { ...at.view.state, model_sequence } } as ProjectView,
+    proposals: { ...at.proposals, model_sequence: { ...at.served, declared } },
+  };
+}
+
+/** The Model 1 columns checked now, in the card's order. */
+const checkedNow = () =>
+  Array.from(document.querySelectorAll<HTMLInputElement>("[data-testid^=pick-model_1-]"))
+    .filter((p) => p.checked)
+    .map((p) => p.dataset.testid!.slice("pick-model_1-".length));
+
 // ── mounting ────────────────────────────────────────────────────────────────
 
 const NAMES: Record<Kind, string> = {
@@ -195,9 +216,30 @@ function stateOf(over: Record<string, unknown> = {}): ProjectState {
   } as unknown as ProjectState;
 }
 
+/**
+ * Serve the proposals stage: fresh, its result at the key the view reports; or recomputing, the
+ * view reporting the key it computes while the server serves the latest older result with
+ * `fresh: false` (core/graph.py `Engine.get`, allow_stale).
+ */
+function serveProposals(qc: QueryClient, view: ProjectView, artifact: ProposalsArtifact | null, fresh = true) {
+  const status = fresh ? "fresh" : "running";
+  qc.setQueryData(keys.view(PID), {
+    ...view,
+    stages: { ...view.stages, proposals: { stage: "proposals", status, key: "p", fresh, updated_at: null } },
+  } as unknown as ProjectView);
+  qc.setQueryData(keys.stage(PID, "proposals"), { stage: "proposals", key: fresh ? "p" : "p0", fresh, status, artifact });
+}
+
 function mount(
   kind: Kind,
-  opts: { view?: ProjectView; proposals?: ProposalsArtifact | null; state?: Record<string, unknown>; line?: Partial<QuestLine> } = {},
+  opts: {
+    view?: ProjectView;
+    proposals?: ProposalsArtifact | null;
+    /** Serve the proposals result as an older one while the stage recomputes. */
+    stale?: boolean;
+    state?: Record<string, unknown>;
+    line?: Partial<QuestLine>;
+  } = {},
 ) {
   const view =
     opts.view ??
@@ -209,15 +251,10 @@ function mount(
       stages: { ingest: { stage: "ingest", status: "fresh", key: "k", updated_at: null } },
     } as unknown as ProjectView);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  const withProposals =
-    opts.proposals !== undefined
-      ? ({ ...view, stages: { ...view.stages, proposals: { stage: "proposals", status: "fresh", key: "p", updated_at: null } } } as unknown as ProjectView)
-      : view;
-  qc.setQueryData(keys.view(PID), withProposals);
+  qc.setQueryData(keys.view(PID), view);
+  if (opts.proposals !== undefined) serveProposals(qc, view, opts.proposals, !opts.stale);
+  const withProposals = qc.getQueryData<ProjectView>(keys.view(PID))!;
   qc.setQueryData(keys.columns(PID), Object.keys(withProposals.state.roles ?? {}).map((name) => ({ name })));
-  if (opts.proposals !== undefined) {
-    qc.setQueryData(keys.stage(PID, "proposals"), { stage: "proposals", key: "p", fresh: true, status: "fresh", artifact: opts.proposals });
-  }
   const decide = vi.spyOn(api, "decide").mockResolvedValue(withProposals);
   // The engine's preview of an option pointed at says nothing here: the words are its, not these tests'.
   vi.spyOn(api, "preview").mockImplementation(() => new Promise(() => {}));
@@ -230,7 +267,7 @@ function mount(
       </StageFocusProvider>
     </QueryClientProvider>,
   );
-  return { decide };
+  return { decide, qc };
 }
 
 /** A press as a mouse makes it: a click chooses the option, and the card's own button records it. */
@@ -342,22 +379,70 @@ describe("the Model 1 card, from the proposals stage's model_sequence", () => {
   it("checks the columns declared once the line is answered, and marks the option that records them", () => {
     const { view, proposals, served } = servedIn("nhanes-inference");
     const declared = served.allowed.filter((c) => !served.guess.includes(c)).slice(0, 1);
-    const answered = { ...proposals, model_sequence: { ...served, declared } };
-    mount("set_model_sequence", { view, proposals: answered, line: { status: "answered", decision_id: "r1" } });
-    const checked = Array.from(document.querySelectorAll<HTMLInputElement>("[data-testid^=pick-model_1-]"))
-      .filter((p) => p.checked)
-      .map((p) => p.dataset.testid);
-    expect(checked).toEqual(declared.map((c) => `pick-model_1-${c}`));
+    const at = declaredIn({ view, proposals, served }, declared);
+    mount("set_model_sequence", { ...at, line: { status: "answered", decision_id: "r1" } });
+    expect(checkedNow()).toEqual(declared);
     expect(screen.getByTestId("option-model_1:checked")).toHaveAttribute("data-recorded");
     expect(screen.getByTestId("option-model_1:guess")).not.toHaveAttribute("data-recorded");
   });
 
   it("marks the suggested option recorded where the columns declared are the guess", () => {
     const { view, proposals, served } = servedIn("nhanes-inference");
-    const answered = { ...proposals, model_sequence: { ...served, declared: [...served.guess].reverse() } };
-    mount("set_model_sequence", { view, proposals: answered, line: { status: "answered", decision_id: "r1" } });
+    const at = declaredIn({ view, proposals, served }, [...served.guess].reverse());
+    mount("set_model_sequence", { ...at, line: { status: "answered", decision_id: "r1" } });
     expect(screen.getByTestId("option-model_1:guess")).toHaveAttribute("data-recorded");
     expect(screen.getByTestId("option-model_1:checked")).not.toHaveAttribute("data-recorded");
+  });
+
+  it("checks nothing and marks nothing recorded on an open line, whatever sequence the state holds", () => {
+    // An open line's sequence on record no longer holds (another exposure, or a column gone from
+    // the primary set: core/estimand.py `current_model_sequence`), so it is no answer to show.
+    const { view, proposals, served } = servedIn("nhanes-inference");
+    const declared = served.allowed.filter((c) => !served.guess.includes(c)).slice(0, 2);
+    const at = declaredIn({ view, proposals, served }, declared);
+    mount("set_model_sequence", { view: at.view, proposals });
+    expect(checkedNow()).toEqual([]);
+    expect(document.querySelectorAll("[data-recorded]")).toHaveLength(0);
+  });
+
+  it("keeps the checks and the recorded mark on the columns declared while the proposals result catches up with the record", async () => {
+    // The proposals stage reads model_sequence, so a record recomputes it; meanwhile the server
+    // serves its older result, the one before the record (declared null), with fresh false.
+    const { view, proposals, served } = servedIn("nhanes-inference");
+    const declared = served.allowed.filter((c) => !served.guess.includes(c)).slice(0, 2);
+    expect(declared).toHaveLength(2);
+    const at = declaredIn({ view, proposals, served }, declared);
+    const before = { ...proposals, model_sequence: { ...served, declared: null } };
+    const { qc } = mount("set_model_sequence", { view: at.view, proposals: before, stale: true, line: { status: "answered", decision_id: "r1" } });
+    expect(checkedNow()).toEqual(declared);
+    act(() => serveProposals(qc, at.view, at.proposals));
+    await waitFor(() => expect(screen.getByTestId("model-one-veil")).toHaveAttribute("data-veil", "fresh"));
+    expect(checkedNow()).toEqual(declared);
+    const recorded = screen.getByTestId("option-model_1:checked");
+    expect(recorded).toHaveAttribute("data-recorded");
+    for (const c of declared) expect(recorded).toHaveTextContent(c);
+    expect(screen.getByTestId("option-model_1:guess")).not.toHaveAttribute("data-recorded");
+  });
+
+  it("veils the columns and the options, inert, while the proposals result is not fresh", () => {
+    const { view, proposals } = servedIn("nhanes-inference");
+    mount("set_model_sequence", { view, proposals, stale: true });
+    const veil = screen.getByTestId("model-one-veil");
+    expect(veil.getAttribute("data-veil")).not.toBe("fresh");
+    for (const id of ["model-one-reason", "options-model-one", "card-record"]) {
+      expect(screen.getByTestId(id).closest("[inert]"), id).not.toBeNull();
+    }
+    expect(veil).toContainElement(screen.getByTestId("option-model_1:guess"));
+  });
+
+  it("leaves them unveiled and live once the proposals result is fresh", async () => {
+    const { view, proposals } = servedIn("nhanes-inference");
+    const { qc } = mount("set_model_sequence", { view, proposals, stale: true });
+    act(() => serveProposals(qc, view, proposals));
+    await waitFor(() => expect(screen.getByTestId("model-one-veil")).toHaveAttribute("data-veil", "fresh"));
+    for (const id of ["model-one-reason", "options-model-one", "card-record"]) {
+      expect(screen.getByTestId(id).closest("[inert]"), id).toBeNull();
+    }
   });
 
   it("says so, and offers nothing to record, where the proposals stage serves no Model 1 declaration", async () => {

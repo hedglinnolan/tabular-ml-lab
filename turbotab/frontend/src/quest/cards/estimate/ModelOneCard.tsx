@@ -12,12 +12,20 @@
  * column, as the model takes it). An empty guess suggests nothing, so only the columns checked are
  * offered. A column outside the primary's adjustment set the engine refuses in its own words, with
  * its exits.
+ *
+ * The columns declared are the state's: the line is answered only while the sequence on record
+ * holds (core/quest.py `_model_one_is_current`), and the served declaration is that sequence's only
+ * once the stage that serves it is fresh. That stage reads the sequence, so every record recomputes
+ * it, and meanwhile the server serves its older result (core/graph.py `Engine.get`): the card's
+ * columns and options stay veiled and inert until the fresh result arrives, so nothing is offered
+ * from the older one.
  */
 import { useState } from "react";
 import { useProjectView, useStageResult } from "../../../api/queries";
 import type { ProjectView } from "../../../api/schema";
 import { Pending } from "../../../components/record/blocks";
 import { Prose } from "../../../components/Prose";
+import { StaleVeil, veilFor } from "../../../motion/StaleVeil";
 import type { LineCard } from "../../contracts";
 import { Choice, Frame, useCard, type CardWiring, type Offer } from "../predict/card";
 import c from "../predict/declaration.module.css";
@@ -34,16 +42,15 @@ function Body({
   card,
   served,
   guess,
-  answered,
+  declared,
 }: {
   card: CardWiring;
   served: ModelOneServed;
   /** The served one-tap decision, which declares the guess. */
   guess: ModelSequence;
-  answered: boolean;
+  /** Model 1's columns on record, once the line is answered; null while it is not. */
+  declared: readonly string[] | null;
 }) {
-  // The columns declared, as the engine holds them current, once the line is answered.
-  const declared = answered ? served.declared : null;
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set(declared ?? []));
   const columns = served.allowed.filter((col) => checked.has(col));
   const values: readonly Answer[] = guess.model_1.length ? ["guess", "checked"] : ["checked"];
@@ -100,21 +107,26 @@ function useProposals(pid: string, view: ProjectView | undefined) {
 
 export const ModelOneCard: LineCard = ({ pid, line }) => {
   const card = useCard(pid, "set_model_sequence");
-  const proposals = useProposals(pid, useProjectView(pid).data);
+  const view = useProjectView(pid).data;
+  const proposals = useProposals(pid, view);
   const served = proposals.data?.artifact?.model_sequence ?? null;
   const guess = served ? servedSequence(served) : null;
+  const declared = line.status === "answered" ? (card.state?.model_sequence?.model_1 ?? null) : null;
   return (
     <Frame line={line}>
       {!card.state || (proposals.isLoading && !served) ? (
         <Pending>Loading the Model 1 question…</Pending>
       ) : served && guess ? (
-        <Body
-          key={line.decision_id ?? "open"}
-          card={card}
-          served={served}
-          guess={guess}
-          answered={line.status === "answered"}
-        />
+        <StaleVeil state={veilFor(view?.stages.proposals, proposals.data)} testId="model-one-veil">
+          {/* The checks start from the columns on record, so a new record starts them again. */}
+          <Body
+            key={`${line.decision_id ?? "open"} ${JSON.stringify(declared)}`}
+            card={card}
+            served={served}
+            guess={guess}
+            declared={declared}
+          />
+        </StaleVeil>
       ) : (
         <p className={c.waiting} data-testid="model-one-unserved">
           The columns Model 1 may hold are not computed yet.
