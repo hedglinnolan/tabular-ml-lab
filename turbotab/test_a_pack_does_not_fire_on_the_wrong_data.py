@@ -484,6 +484,7 @@ def test_detection_is_a_suggestion_and_a_contradiction_detector_never_the_answer
 
 # ── the priors layer, wired · GUIDED-024 / 025 / 027 ─────────────────────────
 
+@pytest.mark.slow  # every metabolomics detector once per blank column (308): minutes
 def test_a_derived_column_prior_turns_a_mechanism_question_into_a_stated_fact():
     """`GUIDED-024`: metabolomics, the flagship pack, changed zero questions.
 
@@ -541,6 +542,7 @@ def test_an_offered_prior_informs_the_question_and_never_removes_it():
     assert not [q for q in plan if q.status == "skipped"]
 
 
+@pytest.mark.slow  # both packs' detectors once per blank column: minutes
 def test_two_packs_disagreeing_about_a_column_leaves_the_question_asked():
     """The reason `priors()` returns a list, made operational.
 

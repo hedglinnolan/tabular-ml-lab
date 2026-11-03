@@ -266,6 +266,7 @@ INFERENCE_THEN = ("under inference, a press of Fit that is accepted while the pl
                   "locks the plan as it then stands.")
 
 
+@pytest.mark.slow
 def test_a_lock_no_estimate_was_shown_under_is_withdrawn_by_a_change_and_by_cancel(client):
     drive = _inference_drive(client)
     pid = drive.pid
