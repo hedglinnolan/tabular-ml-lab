@@ -361,6 +361,10 @@ def build_graph() -> Graph:
             # every injection before the seal, and then the QC rows leave as reference rows.
             # working 9 (MS7 repair): a feature with a detected value outside its detected QCs'
             # span is not corrected (its curve would be extrapolated) and leaves as uncorrectable.
+            # working 10 (PP1 qc-rows): QC-RLSC writes a blank as a null, and any NaN left in the
+            # table is a null, as at ingest, so n_missing and complete cases count it. "Before the
+            # seal" in working 7 and 8 is the stages' order; a reference-row answer given after the
+            # split is held where it would move the draw (reference_rows._before_the_seal).
             Stage("working", 10, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical", "outcome_scale"),

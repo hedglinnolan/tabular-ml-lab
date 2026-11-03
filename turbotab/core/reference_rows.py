@@ -23,11 +23,15 @@ So here:
   no QC row can be drawn into the held-out set. The participant flow counts them on a line of
   their own (``stages.rows.cohort_flow``'s ``reference`` steps).
 * Its data scope is *row-local* (BLUEPRINT §13): whether a row leaves reads that row's own label.
-  Once rows are held out it is refused where the rows leaving would move the draw
-  (:func:`_before_the_seal`): a leaving row with its outcome recorded draws the held-out rows
-  again, and one before a row in the draw renumbers it, while the seal names rows by number.
-  Pooled QCs with no outcome were never in the draw, so after the engine's own no-holdout split
-  under Estimate, or after a split whose drawn rows all come before them, they still leave.
+  Once rows are held out (a share or a cut-point), an answer that changes which reference rows
+  leave (the exclusion or QC-RLSC applied, either dismissed or deferred, or a revert that undoes
+  one or brings one back) is refused where the rows leaving or coming back would move the draw
+  (:func:`_before_the_seal`): one with its outcome recorded draws the held-out rows again, and one
+  before a row in the draw renumbers it, while the seal names rows by number. It is refused too
+  where that cannot be read (no oriented table at hand, rows combined per unit, an outcome the
+  table does not hold). Pooled QCs with no outcome were never in the draw, so they still leave, or
+  come back, where nothing is held out (the engine's own no-holdout split under Estimate, or
+  cross-validation alone), or where every row in the draw comes before them and the table is read.
 """
 from __future__ import annotations
 
@@ -37,7 +41,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from turbotab.core.decisions import ApplyRepair, Refusal, register_validator
+from turbotab.core.decisions import Refusal, register_validator
 from turbotab.core.repairs import (
     Family,
     OfferContext,
@@ -275,10 +279,47 @@ def _ctx_reader(ctx: Any, name: str, stage: str) -> Any:
         return None
 
 
-def _what_moves(decision: ApplyRepair, state: Any, ctx: Any) -> str | None:
-    """What the rows this answer takes out (or brings back) would move of the held-out draw:
-    ``"draw"`` where they could draw it again, ``"numbers"`` where they renumber rows in it, None
-    where neither.
+def _left_out(dispositions: Any, findings: Any) -> set[tuple[str, str]]:
+    """The ``(column, level)`` pairs whose rows leave the working table under ``dispositions``."""
+    return {(rule["column"], level) for rule in reference_rules(dispositions, findings)
+            for level in rule["levels"]}
+
+
+def _answered(decision: Any, ctx: Any) -> tuple[Any, dict[str, Any]] | None:
+    """The state an answer is given in and the finding dispositions it would leave, for the answers
+    that can change which reference rows leave: a reference-row finding's repair applied, dismissed
+    or deferred, and any revert (of one of those, or of an answer that replaced one), read on the
+    log it folds. None for any other answer, and for a revert with no log at hand or one the log
+    refuses itself."""
+    from turbotab.core import decisions
+    from turbotab.core.repairs import _fill_params, family_for
+
+    if decision.kind == "revert":
+        records = decisions._records_in(ctx)
+        if not records:
+            return None
+        try:
+            state = decisions.fold(records)
+        except Refusal:
+            return None
+        after = decisions.state_after(decision, ctx)
+        if after is None:
+            return None
+        return state, dict(after.findings or {})
+    fam = family_for(decision.finding_id)
+    state = decisions._state(ctx)
+    if fam is None or fam.key != FAMILY or state is None:
+        return None
+    if decision.kind == "apply_repair":
+        decision = _fill_params(decision, ctx)
+    return state, {**dict(state.findings or {}),
+                   decision.finding_id: decisions._SLOT_VALUE[decision.kind](decision)}
+
+
+def _what_moves(state: Any, after: Mapping[str, Any], findings: Any, ctx: Any) -> str | None:
+    """What the rows that leave or come back, going from ``state``'s finding dispositions to
+    ``after``, would move of the held-out draw: ``"draw"`` where they could draw it again,
+    ``"numbers"`` where they renumber rows in it, None where neither.
 
     The held-out rows are drawn over the rows with the outcome recorded, sorted by working row id
     and drawn by position, and the folds over the training rows the same way
@@ -295,8 +336,7 @@ def _what_moves(decision: ApplyRepair, state: Any, ctx: Any) -> str | None:
     working table reads the labels; ``"draw"`` wherever it cannot be read (no table at hand, rows
     combined per unit, an outcome the table does not hold), since the seal then cannot be shown to
     stay."""
-    from turbotab.core import decisions
-    from turbotab.core.repairs import _fill_params, evaluate, ident
+    from turbotab.core.repairs import evaluate, ident
     from turbotab.core.stages.rows import _measured
     from turbotab.core.stages.working import (
         TABLE, repair_expressions, row_local_additions, text_amounts,
@@ -312,11 +352,7 @@ def _what_moves(decision: ApplyRepair, state: Any, ctx: Any) -> str | None:
     files = getattr(oriented, "files", None) or {}
     if TABLE not in files:
         return "draw"
-    findings = _ctx_reader(ctx, "artifact", "findings")
-    findings = getattr(findings, "data", findings)
-    decision = _fill_params(decision, ctx)
     now = dict(getattr(state, "findings", None) or {})
-    after = {**now, decision.finding_id: decisions._SLOT_VALUE["apply_repair"](decision)}
     source = Path(files[TABLE])
     names = [str(c["name"]) for c in (getattr(oriented, "data", None) or {}).get("columns", [])]
     try:
@@ -348,38 +384,56 @@ def _what_moves(decision: ApplyRepair, state: Any, ctx: Any) -> str | None:
     return None
 
 
-def _before_the_seal(decision: ApplyRepair, ctx: Any) -> None:
-    """Reference rows leave before the held-out rows are drawn where, afterwards, they would move
-    the draw: while the split holds rows out (a share or a cut-point) and the rows that leave would
-    draw it again or renumber rows in it (:func:`_what_moves`). Under cross-validation alone nothing
-    is held out, and the folds are drawn again over the rows that stay, as after an exclusion; rows
-    with no outcome recorded were never in the draw, so the pooled QCs of the usual export leave
+def _before_the_seal(decision: Any, ctx: Any) -> None:
+    """Reference rows leave before the held-out rows are drawn where, afterwards, leaving or coming
+    back would move the draw: while the split holds rows out (a share or a cut-point) and the rows
+    an answer takes out or brings back would draw it again or renumber rows in it
+    (:func:`_what_moves`). The answers held are every one that can change which rows leave
+    (:func:`_answered`): the exclusion or QC-RLSC applied, either dismissed or deferred, and a
+    revert that undoes one or brings one back. An answer that leaves the same rules in place moves
+    no row and is not held, read or not. Under cross-validation alone nothing is held out, and the
+    folds are drawn again over the rows that stay, as after an exclusion; rows with no outcome
+    recorded were never in the draw, so the pooled QCs of the usual export leave, or come back,
     with every participant where the folds put them."""
-    from turbotab.core.decisions import _state, holds_out
-    from turbotab.core.repairs import family_for
+    from turbotab.core.decisions import holds_out
 
-    fam = family_for(decision.finding_id)
-    state = _state(ctx)
-    if fam is None or fam.key != FAMILY or state is None:
+    answered = _answered(decision, ctx)
+    if answered is None:
         return
+    state, after = answered
     if not holds_out(getattr(state, "split", None)):
         return
-    moves = _what_moves(decision, state, ctx)
+    findings = _ctx_reader(ctx, "artifact", "findings")
+    findings = getattr(findings, "data", findings)
+    now_out, after_out = _left_out(state, findings), _left_out(after, findings)
+    if now_out == after_out:
+        return
+    moves = _what_moves(state, after, findings, ctx)
     if moves is None:
         return
+    if not after_out - now_out:
+        change, keep = "bringing them back now", "keep them out"
+    elif not now_out - after_out:
+        change, keep = "excluding them now", "keep them in and say so"
+    else:
+        change, keep = "changing which of them leave now", "keep the rows as they are"
     if moves == "numbers":
         why = (f"The held-out rows are drawn and named by their row numbers, so reference rows "
-               f"leave before the seal; excluding them now would renumber the rows with "
-               f"`{state.target}` recorded that come after them.")
+               f"leave before the seal; {change} would renumber the rows with `{state.target}` "
+               f"recorded that come after them.")
     else:
-        why = ("The held-out rows are drawn over the rows the analysis holds, so reference rows "
-               "leave before the seal; excluding them now would draw it again.")
+        why = (f"The held-out rows are drawn over the rows the analysis holds, so reference rows "
+               f"leave before the seal; {change} would draw it again.")
     raise Refusal(
-        "rows_after_the_seal", f"{why} Start a new analysis, or keep them in and say so.",
+        "rows_after_the_seal", f"{why} Start a new analysis, or {keep}.",
         exits=[{"label": "Keep the rows as they are", "decision": None}])
 
 
-register_validator("apply_repair", _before_the_seal)
+# Every answer that can change which rows leave (:func:`_answered`); the seal's own draw check on
+# these kinds (``seal._redrawn_by``) reads the outcome, the task, the temporal answer and the draw
+# columns' values, never which rows the working table keeps.
+for _kind in ("apply_repair", "dismiss_finding", "defer_finding", "revert"):
+    register_validator(_kind, _before_the_seal)
 
 __all__ = ["EXCLUDE", "FAMILY", "exclusion_sentence", "pooled_qc_finding", "reference_filter",
            "reference_rules"]

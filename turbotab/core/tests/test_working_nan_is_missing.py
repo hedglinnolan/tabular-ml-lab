@@ -160,3 +160,80 @@ def test_the_plasma_panel_through_the_qc_repair_counts_its_76_incomplete_partici
     assert got["kept"] == complete and len(complete) == 24
     step = next(s for s in got["cohort"]["steps"] if s["key"] == "complete_cases")
     assert step["dropped"] == 76 and got["cohort"]["n_final"] == 24
+
+
+def _written(path: Path, nested: bool) -> pa.Table:
+    """A table as the working stage writes it: ``__row_id``, ``x`` with a NaN on row 1 and ``y``
+    with a null on row 0 and a NaN on row 2. ``nested`` puts a struct of two whole numbers before
+    ``x`` and a list of them between ``x`` and ``y``, so a field's place among the top-level fields
+    is not its place among the leaf columns Parquet stores (``x`` is field 2 and leaf 3, ``y`` field
+    4 and leaf 5)."""
+    columns: dict[str, Any] = {"__row_id": pa.array([0, 1, 2, 3], pa.int64())}
+    if nested:
+        columns["visit"] = pa.array([{"a": i, "b": 10 * i} for i in range(4)],
+                                    pa.struct([("a", pa.int64()), ("b", pa.int64())]))
+    columns["x"] = pa.array([1.5, float("nan"), 2.5, 3.5], pa.float64())
+    if nested:
+        columns["tags"] = pa.array([[1], [], [2, 3], None], pa.list_(pa.int64()))
+    columns["y"] = pa.array([None, 4.0, float("nan"), 5.0], pa.float64())
+    table = pa.table(columns)
+    pq.write_table(table, path)
+    return table
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["flat", "nested"])
+def test_each_float_columns_nans_are_read_by_the_columns_own_place(tmp_path, nested):
+    """By construction: ``_nans_as_missing`` finds the float columns that hold a NaN and rewrites
+    each NaN as a null, every other cell as it was. The flat table reads the same before the fix and
+    after (no working table changes); with a nested column ahead of them, the base read the leaf
+    columns at the floats' field places (the struct's ``b`` and the list), not ``x`` and ``y``."""
+    import duckdb
+
+    from turbotab.core.stages.working import _nans_as_missing
+
+    path = tmp_path / "table.parquet"
+    table = _written(path, nested)
+    con = duckdb.connect()
+    try:
+        assert _nans_as_missing(con, path) == ["x", "y"]
+    finally:
+        con.close()
+    got = pq.read_table(path)
+    assert sorted(got.column_names) == sorted(table.column_names)  # the row id is written last
+    assert got.column("x").to_pylist() == [1.5, None, 2.5, 3.5]
+    assert got.column("y").to_pylist() == [None, 4.0, None, 5.0]
+    for name in set(table.column_names) - {"x", "y"}:
+        assert got.column(name).to_pylist() == table.column(name).to_pylist(), name
+
+
+def test_a_failed_nan_rewrite_leaves_nothing_beside_the_table(tmp_path, monkeypatch):
+    """``datastore._null_the_nans`` writes the table again to ``<table>.<token>.nan`` and moves it
+    over the table. Where the move fails, the working stage's rewrite raises, the table is as it
+    was, and no file is left beside it (ingest removes its own the same way); on the base the
+    ``.nan`` file stayed."""
+    import duckdb
+
+    from turbotab.core import datastore
+    from turbotab.core.stages.working import _nans_as_missing
+
+    path = tmp_path / "table.parquet"
+    table = _written(path, nested=False)
+
+    def full(src: Any, dst: Any) -> None:
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(datastore.atomic, "replace", full)
+    con = duckdb.connect()
+    try:
+        with pytest.raises(OSError):
+            _nans_as_missing(con, path)
+    finally:
+        con.close()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["table.parquet"]
+
+    def cells(t: pa.Table) -> dict[str, list[Any]]:  # a NaN spelled out: it equals nothing
+        return {c: ["nan" if v != v else v for v in t.column(c).to_pylist()]
+                for c in t.column_names}
+
+    assert cells(pq.read_table(path)) == cells(table)
+    assert cells(table)["x"] == [1.5, "nan", 2.5, 3.5]

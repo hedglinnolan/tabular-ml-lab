@@ -304,7 +304,7 @@ Noticings decided here (4), each on the card or question it changes. Each is an 
 - That confirmation cannot be recorded: no such column, the outcome has its own questions, the column holds labels not numbers, or the value is not one this reading takes `refusal:readings` (on screen)
 - The column roles come after the outcome, the goal and who is in; answer those first `refusal:roles-not-yet` (on screen)
 - Undoing that confirmation would leave a recorded answer resting on a reading nobody settled; change that answer first `refusal:revert-unsettles` (on screen)
-- That repair cannot be applied now: it is not offered, the reference rows must leave before the seal, the QC answer does not fit the run, or the logged options wait for the zeros `refusal:repairs` (on screen)
+- That repair cannot be applied now: it is not offered, the reference rows leaving would move the held-out draw, the QC answer does not fit the run, or the logged options wait for the zeros `refusal:repairs` (on screen)
 
 </details>
 
@@ -732,7 +732,7 @@ Noticings decided here (51), each on the card or question it changes. Each is an
 - Values below detection need a censoring-aware fill `refusal:below_detection` (engine only; Estimate, Predict; metabolomics, clinical)
 - The held-out rows cannot be drawn yet `refusal:split` (on screen; Predict)
 - The held-out rows are drawn: withdraw them before changing this `refusal:sealed` (on screen; Predict)
-- Reference rows cannot leave once rows are held out `refusal:rows_after_the_seal` (on screen; Predict; metabolomics)
+- Once rows are held out, reference rows cannot leave or come back where that would draw the held-out rows again or renumber a row in the draw `refusal:rows_after_the_seal` (on screen; Predict; metabolomics)
 - The time column cannot order the rows, so the latest cannot be held out `refusal:chronology_cannot_order` (partial; Predict)
 - Who is in the analysis: rows at each step `result:cohort` (on screen)
 - What a held-out set of each size can measure, and how the seal would be drawn `result:seal_plan` (partial; Predict)
@@ -1897,8 +1897,8 @@ Of the twenty fixes, fourteen were rewritten and six pass (13, 15 and 18 with a 
       - **Results** draws the curve over that range and the risks against the thresholds, and fixes the recalibration, just before the opening (`preview:updating_and_intended_use`).
       - **A range changed later.** With rows held out, a range revised in Results before the opening is covered by them. With none held out (cross-validation only, or a Predict track after a track that read its outcome), a range or recalibration changed after the curve is stated outside the corrected score (`result:hand_levers`).
 17. **Reference rows and QC drift correction sit in two stages.**
-    - *Evidence:* they are repairs before the seal, in Your data (`reference_rows.py:_before_the_seal`), but their leaving is a participant-flow step (`stages/rows.py:cohort_flow`, `reference:i`).
-    - *Against the rule:* (1) holds: they are decided before anything reads the outcome's kind. (2) holds. (3) holds: the drift correction and the QC filters fit on the pooled QC injections, not on participants' values, and the rows leave before the draw (`stages/__init__.py`, working 8).
+    - *Evidence:* they are repairs in Your data, and once rows are held out an answer to them that would move the draw is refused (`reference_rows.py:_before_the_seal`), but their leaving is a participant-flow step (`stages/rows.py:cohort_flow`, `reference:i`).
+    - *Against the rule:* (1) holds: they are decided before anything reads the outcome's kind. (2) holds. (3) holds: the drift correction and the QC filters fit on the pooled QC injections, not on participants' values, and the rows leave in the working table, which the draw reads (`stages/__init__.py`, working 8).
     - *Fix:* decide them in Your data, because they must leave before the outcome's kind is read, and draw them as the first step of the participant flow.
 18. **The Router's order inside Models differs from the ruled list.**
     - *Evidence:* the time-varying question comes before the energy model and the forms (`interview.py:QUESTION_KEYS`).
