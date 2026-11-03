@@ -235,9 +235,8 @@ def _least_squares_path(Z: np.ndarray, y: np.ndarray, lams: np.ndarray,
     n = Z.shape[0]
     bad = Z.size - int(np.count_nonzero(np.isfinite(Z)))
     if bad:
-        raise ValueError(f"Ridge's path is not fit: {bad:,} of the {Z.size:,} entries of its "
-                         f"design matrix " + ("is not a finite number." if bad == 1 else
-                                              "are not finite numbers."))
+        raise ValueError(f"Ridge is not fit: {bad:,} of the {Z.size:,} values in {_fold(Z.shape)} "
+                         + ("is not a finite number." if bad == 1 else "are not finite numbers."))
     w = np.ones(n) if weights is None else np.asarray(weights, dtype=float)
     zbar = w @ Z / w.sum()
     ybar = float(w @ y / w.sum())
@@ -256,7 +255,9 @@ def _thin_svd(A: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     rounding. Accelerate's gesdd failed so on an inner fold of a full-coded NHANES design (3,382 ×
     97, 26 singular values below 10⁻¹² and one zero column), which gesvd factored; with its rows or
     its columns reordered gesdd converged. Where gesvd fails too (LAPACK allows it), the path is
-    refused in words; scipy refuses a matrix that is not finite before gesvd runs."""
+    refused in words, with a way forward: the failure stops the stage it is raised in, every
+    family's fit with it (glucose's Fit stage), until ridge is left out. scipy refuses a matrix
+    that is not finite before gesvd runs."""
     try:
         return np.linalg.svd(A, full_matrices=False)
     except np.linalg.LinAlgError:
@@ -266,10 +267,19 @@ def _thin_svd(A: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     try:
         return svd(A, full_matrices=False, lapack_driver="gesvd")
     except np.linalg.LinAlgError as exc:
-        rows, cols = A.shape
         raise np.linalg.LinAlgError(
-            f"Ridge's path is not fit: neither of LAPACK's SVD drivers, gesdd and then gesvd, "
-            f"converged on its {rows:,} × {cols:,} centered design matrix.") from exc
+            f"Ridge is not fit: on {_fold(A.shape)}, the matrix factorization its penalty path "
+            f"needs did not converge (an SVD: LAPACK's gesdd, then gesvd). Ridge can be left out "
+            f"of the chosen model families.") from exc
+
+
+def _fold(shape: tuple[int, ...]) -> str:
+    """The matrix a refusal of the path names, in the researcher's words: the path is fit only in
+    the penalty search, on one inner fold's training rows after the steps before the model
+    (``tuning._path_searched``, its one caller), so its size is that fold's, not the table's."""
+    rows, cols = shape
+    return (f"one inner fold's training rows as the model receives them ({rows:,} rows × "
+            f"{cols:,} columns)")
 
 
 def _logistic_path(Z: np.ndarray, y: np.ndarray, lams: np.ndarray,

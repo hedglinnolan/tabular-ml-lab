@@ -524,26 +524,41 @@ def test_where_gesdd_converges_the_path_is_its_own_result(design, monkeypatch):
     assert np.array_equal(fit.intercepts[0, :, 0], ybar - coefs @ zbar)
 
 
+def _not_finite(bad: int, rows: int, cols: int) -> str:
+    """The refusal of a design with ``bad`` values that are not finite numbers, word for word."""
+    verb = "is not a finite number" if bad == 1 else "are not finite numbers"
+    return (rf"^Ridge is not fit: {bad:,} of the {rows * cols:,} values in one inner fold's "
+            rf"training rows as the model receives them \({rows:,} rows × {cols:,} columns\) "
+            rf"{verb}\.$")
+
+
+def _not_factored(rows: int, cols: int) -> str:
+    """The refusal of a design neither SVD driver factors, word for word."""
+    return (rf"^Ridge is not fit: on one inner fold's training rows as the model receives them "
+            rf"\({rows:,} rows × {cols:,} columns\), the matrix factorization its penalty path "
+            rf"needs did not converge \(an SVD: LAPACK's gesdd, then gesvd\)\. Ridge can be "
+            rf"left out of the chosen model families\.$")
+
+
 @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
 def test_a_design_that_is_not_finite_is_refused_in_words(bad):
-    """R1: a design with a value that is not a finite number is refused, the count named, before
-    any SVD runs (gesdd said only "SVD did not converge"); a finite one fits (every test above)."""
+    """R1: a design with a value that is not a finite number is refused, the count and the matrix's
+    size named, before any SVD runs (gesdd said only "SVD did not converge"); a finite one fits
+    (every test above)."""
     f = _family()
     Z, y = _data(5)
     Z[[3, 9], 1] = bad
-    with pytest.raises(ValueError, match=r"^Ridge's path is not fit: 2 of the 800 entries of its "
-                                         r"design matrix are not finite numbers\.$"):
+    with pytest.raises(ValueError, match=_not_finite(2, N, P)):
         f.path(Z, y, {"lambda": np.array([1.0, 0.01])}, task="regression")
     Z[9, 1] = 0.5
-    with pytest.raises(ValueError, match=r"^Ridge's path is not fit: 1 of the 800 entries of its "
-                                         r"design matrix is not a finite number\.$"):
+    with pytest.raises(ValueError, match=_not_finite(1, N, P)):
         f.path(Z, y, {"lambda": np.array([1.0, 0.01])}, task="regression")
 
 
 def test_where_both_drivers_fail_the_path_is_refused_in_words(monkeypatch):
-    """R1: where gesvd fails too (LAPACK documents that it can), the path is refused in words
-    naming both drivers and the matrix's size, never a number; where gesvd converges it is silent
-    (the test above where gesdd fails)."""
+    """R1: where gesvd fails too (LAPACK documents that it can), the path is refused in plain
+    words, the matrix's size and both drivers named, with a way forward, never a number; where
+    gesvd converges it is silent (the test above where gesdd fails)."""
     import scipy.linalg
 
     f = _family()
@@ -554,7 +569,57 @@ def test_where_both_drivers_fail_the_path_is_refused_in_words(monkeypatch):
         raise np.linalg.LinAlgError("SVD did not converge")
 
     monkeypatch.setattr(scipy.linalg, "svd", fails)
-    with pytest.raises(np.linalg.LinAlgError,
-                       match=r"^Ridge's path is not fit: neither of LAPACK's SVD drivers, gesdd "
-                             r"and then gesvd, converged on its 160 × 5 centered design matrix\.$"):
+    with pytest.raises(np.linalg.LinAlgError, match=_not_factored(N, P)):
         f.path(Z, y, {"lambda": np.array([1.0, 0.01])}, task="regression")
+
+
+@pytest.mark.parametrize("failure", ["not_finite", "not_factored"])
+def test_a_refusal_names_the_inner_folds_rows_the_path_search_fit(failure, monkeypatch):
+    """R1 (V1): ridge's path is fit only in the penalty search, on each inner fold's training rows
+    as the model receives them (``tuning._path_searched``), so a refusal's sizes are that fold's,
+    as it says: here 300 rows, 5 inner folds, so each fold trains on 240, and the count of values
+    that are not finite is the fold's own, counted here in the rows the split drew."""
+    import warnings
+
+    import scipy.linalg
+
+    from turbotab.core.models import tuning as T
+    from turbotab.core.models.inner_cv import fit_pipeline
+    from turbotab.core.models.tuning import TunedPipeline, make_plan
+
+    f = _family()
+    n, p = 300, 4
+    rng = np.random.default_rng(8)
+    X = pd.DataFrame(rng.normal(size=(n, p)), columns=[f"x{j}" for j in range(p)],
+                     index=pd.Index(np.arange(n) + 7_000, name="row_id"))
+    y = X.to_numpy() @ np.array([1.0, -0.5, 0.2, 0.0]) + rng.normal(size=n)
+    if failure == "not_finite":
+        X.iloc[::15, 1] = np.nan  # 20 rows; the scaler keeps a missing value missing
+    else:
+        _gesdd_fails(monkeypatch)
+
+        def fails(*args, **kwargs):
+            raise np.linalg.LinAlgError("SVD did not converge")
+
+        monkeypatch.setattr(scipy.linalg, "svd", fails)
+    plan = make_plan(f, task="regression", loss="mse", n_plan=n, plan_rows=n, unit="units",
+                     split_seed=11)
+    assert plan is not None and plan.kind == "path" and plan.inner_k == 5
+    pipe = TunedPipeline([("scale", StandardScaler()),
+                          ("model", f.build("regression", "prediction", n, p))],
+                         search=plan).set_output(transform="pandas")
+    drawn: list = []
+    with pytest.raises((ValueError, np.linalg.LinAlgError)) as caught, \
+            T.observing(drawn.append), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fit_pipeline(pipe, X, y, seed=11)
+    fold = [d for d in drawn if d.kind == "inner"][-1]  # the split whose path was refused
+    rows = len(fold.train)
+    assert rows == n - n // 5 < n
+    if failure == "not_finite":
+        bad = int(X.loc[fold.train].isna().to_numpy().sum())
+        assert 0 < bad < 20  # some of the 20 sit in the fold's validation rows
+        assert caught.type is ValueError and re.match(_not_finite(bad, rows, p), str(caught.value))
+    else:
+        assert caught.type is np.linalg.LinAlgError
+        assert re.match(_not_factored(rows, p), str(caught.value))
