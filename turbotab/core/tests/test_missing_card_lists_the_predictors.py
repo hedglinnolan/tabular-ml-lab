@@ -3,11 +3,12 @@
 ``proposals.missing.columns`` (the card's list and its count) took every column holding a predictor
 role with a blank, so on the plasma panel's QC-RLSC plans it listed 36 columns, 16 of them features
 the QC filters removed: the working table keeps a removed feature's column, and the repair takes it
-out of the predictors (``repairs.unusable_columns``). The card now leaves out what
-``decisions.left_out`` leaves out but the missing-values answer's own columns: a repair's unusable
-columns and, under inference, the covariates the adjustment answers leave out. The missing-values
-answer's columns stay listed: they are this card's own offer (``leave_out``), and that answer's
-slot is not among the stage's reads.
+out of the predictors (``repairs.unusable_columns``). The card now leaves out the columns the
+answers other than the missing-values one leave out of every model: a repair's unusable columns
+and, under inference, the covariates the adjustment answers leave out of the primary model, but
+not those the declared "further adjusted for" model beside it holds (``estimand.secondary_columns``),
+whose blanks cost that model rows. The missing-values answer's columns stay listed: they are this
+card's own offer (``leave_out``).
 
 The truth is pandas: the blanks on the rows with the outcome measured, among the columns built to
 hold a predictor role, less the columns the recorded answers name. On the plasma panel the removed
@@ -118,9 +119,10 @@ ADJUSTMENT = {"x1": {"exposure": "f3", "causes_exposure": "no", "causes_outcome"
 @pytest.mark.parametrize("purpose", ["inference", "prediction"])
 def test_under_inference_a_covariate_the_adjustment_leaves_out_is_not_listed(tmp_path, purpose):
     """Fires under inference: `x1` answered as changed by `f3` and a cause of `y` is a mediator, which
-    a total effect leaves out (``estimand.adjustment_left_out``), so its blanks drop no row and it
-    is not listed. Silent under prediction, where the same answers leave nothing out."""
-    from turbotab.core.estimand import adjustment_left_out
+    a total effect leaves out of every model (``estimand.adjustment_left_out``, and not among
+    ``estimand.secondary_columns``), so its blanks drop no row and it is not listed. Silent under
+    prediction, where the same answers leave nothing out."""
+    from turbotab.core.estimand import adjustment_left_out, secondary_columns
 
     table, df = _table(tmp_path)
     state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose=purpose,
@@ -128,8 +130,77 @@ def test_under_inference_a_covariate_the_adjustment_leaves_out_is_not_listed(tmp
                          adjustment=ADJUSTMENT)
     gone = ["x1"] if purpose == "inference" else []
     assert adjustment_left_out(state) == gone
+    assert secondary_columns(state) == []
     want = blanks(df, [c for c in PREDICTORS if c not in gone], "y")
     assert listed(table.run(proposals_stage, state)) == want
+
+
+# `x1`'s answers that leave it out of the primary model but put it in the declared "further adjusted
+# for" model beside it (``estimand.secondary_columns``; the secondary stage fits it there, and its
+# blanks cost that model rows or are imputed in it).
+FURTHER = {
+    "timing unknown": {"exposure": "f3", "causes_exposure": "no", "causes_outcome": "yes",
+                       "after_exposure": "unknown"},
+    "mediator, further adjusted for": {**ADJUSTMENT["x1"], "further": True},
+}
+
+
+@pytest.mark.parametrize("answers", list(FURTHER.values()), ids=list(FURTHER))
+def test_a_covariate_the_further_adjusted_model_holds_stays_listed(tmp_path, answers):
+    """Silent on the secondary model's columns: a covariate of unknown timing, and a mediator the
+    user asks to be further adjusted for, leave the primary model (``adjustment_left_out``) but
+    enter the "further adjusted for" one, so `x1` stays listed with its 3 blanks."""
+    from turbotab.core.estimand import adjustment_left_out, secondary_columns
+
+    table, df = _table(tmp_path)
+    state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
+                         estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
+                         adjustment={"x1": answers})
+    assert adjustment_left_out(state) == secondary_columns(state) == ["x1"]
+    want = blanks(df, PREDICTORS, "y")
+    assert ("x1", 3, 0.3) in want
+    assert listed(table.run(proposals_stage, state)) == want
+
+
+def test_a_missing_answer_that_takes_the_exposure_out_lists_the_mediator(tmp_path):
+    """The card reads the missing-values answer through the adjustment answers: one that leaves the
+    exposure `f3` out ends the estimand (``estimand.current_estimand``), so no answer leaves the
+    mediator `x1` out and the fresh card lists it, beside `f3`, that answer's own column."""
+    table, df = _table(tmp_path)
+    state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
+                         estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
+                         adjustment=ADJUSTMENT,
+                         missing=MissingSpec(strategy="complete_case", drop_columns=["f3"]))
+    want = blanks(df, PREDICTORS, "y")
+    assert ("x1", 3, 0.3) in want and ("f3", 2, 0.2) in want
+    assert listed(table.run(proposals_stage, state)) == want
+
+
+@pytest.mark.xfail(strict=True, reason="INBOX:1027 repair P2: the integrator adds 'missing' to the "
+                                       "proposals Stage's reads (with its version bump); then drop "
+                                       "this marker")
+def test_a_missing_answer_that_takes_the_exposure_out_rekeys_the_card():
+    """So the stage's key changes with a missing-values answer that leaves the exposure out (the
+    test above: its fresh card lists `x1`), or the card cached without that answer, which omits
+    `x1`, is served."""
+    from turbotab.core.estimand import adjustment_left_out
+    from turbotab.core.graph import stage_keys
+    from turbotab.core.stages import build_graph
+
+    order = build_graph().order()
+    answers = dict(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
+                   estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
+                   adjustment=ADJUSTMENT)
+    plain = ProjectState(**answers)
+    dropped = ProjectState(**answers, missing=MissingSpec(strategy="complete_case",
+                                                          drop_columns=["f3"]))
+    assert (adjustment_left_out(plain), adjustment_left_out(dropped)) == (["x1"], [])
+
+    def key(state: ProjectState) -> str | None:
+        return stage_keys(order, state.model_dump(mode="json"), "fingerprint")["proposals"]
+
+    assert key(plain) is not None
+    assert key(dropped) != key(plain)
 
 
 # ── the plasma panel through QC-RLSC, through the real stage graph ───────────────────────────────
