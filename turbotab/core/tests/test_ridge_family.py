@@ -433,3 +433,128 @@ def test_a_weighted_logistic_path_and_refit_are_the_weighted_likelihood_minimum(
         est.set_params(**estimator_params(f, task, {"lambda": lam}, n_units=N, n_rows=N))
         est.fit(Zs, y, sample_weight=relative)
         assert np.max(np.abs(est.coef_ - W)) < 1e-6 and np.max(np.abs(est.intercept_ - b)) < 1e-6
+
+
+# ── R1 (PP2): an SVD that converges on any finite design ─────────────────────
+
+
+def _full_coded(seed: int = 0, n: int = 240) -> tuple[np.ndarray, np.ndarray]:
+    """The failing NHANES design's shape in small: every level of three categories its own column
+    (full coding, so each category's columns sum to one, a dependency per category), three skewed
+    numbers and one constant column, standardized as the pipeline's scaler does (a constant
+    column's scale is 1, so it is all zero): rank-deficient, as the inner fold whose SVD failed
+    (3,382 × 97, ``ridge._thin_svd``)."""
+    rng = np.random.default_rng(seed)
+    cols = [(rng.integers(0, k, size=n)[:, None] == np.arange(k)[None, :]).astype(float)
+            for k in (2, 3, 4)]
+    cols += [rng.lognormal(size=(n, 3)), np.ones((n, 1))]
+    raw = np.hstack(cols)
+    scale = raw.std(axis=0)
+    Z = (raw - raw.mean(axis=0)) / np.where(scale > 0, scale, 1.0)
+    y = Z @ rng.normal(size=Z.shape[1]) + rng.normal(scale=2.0, size=n) + 3.0
+    return Z, y
+
+
+def _gesdd_fails(monkeypatch) -> list[int]:
+    """numpy's SVD (LAPACK gesdd) raising as Accelerate's did on glucose's folds; the list grows
+    by one at each call it refuses."""
+    refused: list[int] = []
+
+    def fails(*args, **kwargs):
+        refused.append(1)
+        raise np.linalg.LinAlgError("SVD did not converge")
+
+    monkeypatch.setattr(np.linalg, "svd", fails)
+    return refused
+
+
+@pytest.mark.parametrize("design,weighted", [("correlated", False), ("correlated", True),
+                                             ("full_coded", False)])
+def test_where_gesdd_fails_the_path_is_still_the_closed_form(design, weighted, monkeypatch):
+    """R1: with gesdd refusing, every grid point is still the normal equations' ridge solved by
+    numpy (weighted at weights of mean 1), and scikit-learn's Ridge at α = nλ, to 1e-8: the path
+    falls back to a driver that converges, with the same coefficients, rank-deficient or not."""
+    from sklearn.linear_model import Ridge as SklearnRidge
+
+    f = _family()
+    Z, y = _data(3) if design == "correlated" else _full_coded()
+    n = len(y)
+    w = np.random.default_rng(7).uniform(0.2, 3.0, size=n) if weighted else None
+    lams = 10.0 ** np.linspace(2, -5, 50)
+    refused = _gesdd_fails(monkeypatch)
+    fit = f.path(Z, y, {"lambda": lams}, task="regression", weights=w)
+    assert refused, "the path never asked gesdd"
+    relative = None if w is None else w / w.mean()
+    for g, lam in enumerate(lams):
+        beta, b = _closed_form(Z, y, lam, relative)
+        assert np.max(np.abs(fit.coefs[0, g, 0] - beta)) < 1e-8, lam
+        assert abs(fit.intercepts[0, g, 0] - b) < 1e-8, lam
+        ref = SklearnRidge(alpha=n * lam, solver="cholesky").fit(Z, y, sample_weight=relative)
+        assert np.max(np.abs(fit.coefs[0, g, 0] - ref.coef_)) < 1e-8, lam
+        assert abs(fit.intercepts[0, g, 0] - ref.intercept_) < 1e-8, lam
+
+
+@pytest.mark.parametrize("design", ["correlated", "full_coded"])
+def test_where_gesdd_converges_the_path_is_its_own_result(design, monkeypatch):
+    """R1, the fallback silent: where gesdd converges, scipy's driver is never asked and the path
+    is gesdd's own factors in the closed form, bit for bit (ESL eq. 3.47 on the centered matrix)."""
+    import scipy.linalg
+
+    f = _family()
+    Z, y = _data(4) if design == "correlated" else _full_coded(1)
+    n = len(y)
+    lams = 10.0 ** np.linspace(2, -5, 50)
+    asked: list[int] = []
+    gesvd = scipy.linalg.svd
+
+    def spy(*args, **kwargs):
+        asked.append(1)
+        return gesvd(*args, **kwargs)
+
+    monkeypatch.setattr(scipy.linalg, "svd", spy)
+    fit = f.path(Z, y, {"lambda": lams}, task="regression")
+    assert not asked
+    # the path's own arithmetic, unit weights included, so the bits can match
+    w = np.ones(n)
+    zbar, ybar = w @ Z / w.sum(), float(w @ y / w.sum())
+    U, d, Vt = np.linalg.svd(w[:, None] * (Z - zbar), full_matrices=False)
+    shrink = d[None, :] / (d[None, :] ** 2 + n * lams[:, None])
+    coefs = (shrink * (U.T @ (w * (y - ybar)))[None, :]) @ Vt
+    assert np.array_equal(fit.coefs[0, :, 0], coefs)
+    assert np.array_equal(fit.intercepts[0, :, 0], ybar - coefs @ zbar)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_a_design_that_is_not_finite_is_refused_in_words(bad):
+    """R1: a design with a value that is not a finite number is refused, the count named, before
+    any SVD runs (gesdd said only "SVD did not converge"); a finite one fits (every test above)."""
+    f = _family()
+    Z, y = _data(5)
+    Z[[3, 9], 1] = bad
+    with pytest.raises(ValueError, match=r"^Ridge's path is not fit: 2 of the 800 entries of its "
+                                         r"design matrix are not finite numbers\.$"):
+        f.path(Z, y, {"lambda": np.array([1.0, 0.01])}, task="regression")
+    Z[9, 1] = 0.5
+    with pytest.raises(ValueError, match=r"^Ridge's path is not fit: 1 of the 800 entries of its "
+                                         r"design matrix is not a finite number\.$"):
+        f.path(Z, y, {"lambda": np.array([1.0, 0.01])}, task="regression")
+
+
+def test_where_both_drivers_fail_the_path_is_refused_in_words(monkeypatch):
+    """R1: where gesvd fails too (LAPACK documents that it can), the path is refused in words
+    naming both drivers and the matrix's size, never a number; where gesvd converges it is silent
+    (the test above where gesdd fails)."""
+    import scipy.linalg
+
+    f = _family()
+    Z, y = _data(6)
+    _gesdd_fails(monkeypatch)
+
+    def fails(*args, **kwargs):
+        raise np.linalg.LinAlgError("SVD did not converge")
+
+    monkeypatch.setattr(scipy.linalg, "svd", fails)
+    with pytest.raises(np.linalg.LinAlgError,
+                       match=r"^Ridge's path is not fit: neither of LAPACK's SVD drivers, gesdd "
+                             r"and then gesvd, converged on its 160 × 5 centered design matrix\.$"):
+        f.path(Z, y, {"lambda": np.array([1.0, 0.01])}, task="regression")

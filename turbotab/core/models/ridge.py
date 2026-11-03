@@ -12,10 +12,11 @@ Each fit turns λ into its estimator's own parameter on its own rows (:meth:`Rid
   penalized in either.
 
 **The path** (:meth:`Ridge.path`): one split's whole grid. For a number it is the closed form on
-the centered matrix (the intercept unpenalized) through one SVD, Zc = UDVᵀ,
-β(λ) = V diag(dⱼ/(dⱼ² + nλ)) Uᵀ(y − ȳ), b = ȳ − z̄ᵀβ (ESL §3.4.1, eq. 3.47). For classes it is
-L-BFGS at each point, warm-started from the stronger penalty before it, to the tolerance the
-refit uses, so the path's point and the refit at that λ are the same fit.
+the centered matrix (the intercept unpenalized) through one SVD, Zc = UDVᵀ (LAPACK's gesdd, or
+gesvd where gesdd does not converge), β(λ) = V diag(dⱼ/(dⱼ² + nλ)) Uᵀ(y − ȳ), b = ȳ − z̄ᵀβ
+(ESL §3.4.1, eq. 3.47); a design with an entry that is not a finite number is refused. For
+classes it is L-BFGS at each point, warm-started from the stronger penalty before it, to the
+tolerance the refit uses, so the path's point and the refit at that λ are the same fit.
 
 **Row weights are relative.** Given ``weights``, the path scales them to mean 1, as glmnet scales
 its observation weights to sum to n, so the loss is Σᵢ (wᵢ/w̄)ℓᵢ beside the penalty nλ: weights that
@@ -228,18 +229,47 @@ class Ridge(FamilyBase):
 
 def _least_squares_path(Z: np.ndarray, y: np.ndarray, lams: np.ndarray,
                         weights: Any) -> tuple[np.ndarray, np.ndarray]:
-    """(G, 1, p) coefficients and (G, 1) intercepts by one SVD of the (weighted) centered matrix."""
+    """(G, 1, p) coefficients and (G, 1) intercepts by one SVD of the (weighted) centered matrix
+    (:func:`_thin_svd`). A design with an entry that is not a finite number is refused, the count
+    named, before any SVD runs: gesdd said only "SVD did not converge" of it."""
     n = Z.shape[0]
+    bad = Z.size - int(np.count_nonzero(np.isfinite(Z)))
+    if bad:
+        raise ValueError(f"Ridge's path is not fit: {bad:,} of the {Z.size:,} entries of its "
+                         f"design matrix " + ("is not a finite number." if bad == 1 else
+                                              "are not finite numbers."))
     w = np.ones(n) if weights is None else np.asarray(weights, dtype=float)
     zbar = w @ Z / w.sum()
     ybar = float(w @ y / w.sum())
     root = np.sqrt(w)
-    U, d, Vt = np.linalg.svd(root[:, None] * (Z - zbar), full_matrices=False)
+    U, d, Vt = _thin_svd(root[:, None] * (Z - zbar))
     Uty = U.T @ (root * (y - ybar))
     shrink = d[None, :] / (d[None, :] ** 2 + n * lams[:, None])  # (G, r)
     coefs = (shrink * Uty[None, :]) @ Vt  # (G, p)
     intercepts = ybar - coefs @ zbar
     return coefs[:, None, :], intercepts[:, None]
+
+
+def _thin_svd(A: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A = U diag(d) Vᵀ, thin: numpy's LAPACK gesdd (divide and conquer), or where it does not
+    converge, scipy's gesvd (QR iteration), whose factors give the path the same coefficients to
+    rounding. Accelerate's gesdd failed so on an inner fold of a full-coded NHANES design (3,382 ×
+    97, 26 singular values below 10⁻¹² and one zero column), which gesvd factored; with its rows or
+    its columns reordered gesdd converged. Where gesvd fails too (LAPACK allows it), the path is
+    refused in words; scipy refuses a matrix that is not finite before gesvd runs."""
+    try:
+        return np.linalg.svd(A, full_matrices=False)
+    except np.linalg.LinAlgError:
+        pass
+    from scipy.linalg import svd
+
+    try:
+        return svd(A, full_matrices=False, lapack_driver="gesvd")
+    except np.linalg.LinAlgError as exc:
+        rows, cols = A.shape
+        raise np.linalg.LinAlgError(
+            f"Ridge's path is not fit: neither of LAPACK's SVD drivers, gesdd and then gesvd, "
+            f"converged on its {rows:,} × {cols:,} centered design matrix.") from exc
 
 
 def _logistic_path(Z: np.ndarray, y: np.ndarray, lams: np.ndarray,
