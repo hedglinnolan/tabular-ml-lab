@@ -601,22 +601,30 @@ def strata_cohort() -> pd.DataFrame:
     return frame
 
 
-def energy_state(**energy: Any) -> d.ProjectState:
-    """`kcal` total energy, a confounder, and the residual energy model of `fiber` on it."""
+def energy_state(*, answers: dict[str, dict[str, str]] | None = None,
+                 **energy: Any) -> d.ProjectState:
+    """`kcal` total energy, a confounder, and the residual energy model of `fiber` on it;
+    ``answers`` replace the adjustment answers of the columns they name."""
     return state(roles={**ef.ROLES, "kcal": "energy"},
-                 answers={**ef.ANSWERS, "kcal": ef.CONFOUNDER},
+                 answers={**ef.ANSWERS, "kcal": ef.CONFOUNDER, **(answers or {})},
                  energy_adjustment=d.EnergyAdjustment(method="residual", energy_column="kcal",
                                                       nutrients=["fiber"], **energy))
 
 
 def within_strata(part: pd.DataFrame) -> np.ndarray:
     """`fiber_adj` by the stratified residual model's definition (``StratifiedEnergyAdjuster``):
-    N − b_s (E − Ē_s) − N̄_s + N̄ in each level s of `sex`, with b_s, Ē_s and N̄_s that level's
-    slope of `fiber` on `kcal` and means on these rows, and N̄ `fiber`'s mean over all of them."""
+    N − b_s (E − Ē_s) − N̄_s + N̄ in each level s of `sex`, a blank `sex` a level of its own, with
+    b_s, Ē_s and N̄_s that level's slope of `fiber` on `kcal` and means on these rows, and N̄
+    `fiber`'s mean over all of them. (A level under ``energy.MIN_LEVEL_ROWS`` rows would take the
+    pooled slope instead; each level here has more.)"""
+    from turbotab.core.methods.energy import MIN_LEVEL_ROWS
+
     e, n_ = part["kcal"].to_numpy(dtype=float), part["fiber"].to_numpy(dtype=float)
+    levels = part["sex"].astype(object).where(part["sex"].notna(), "(blank)")
     out = np.empty(len(part))
-    for level in pd.unique(part["sex"]):
-        m = (part["sex"] == level).to_numpy()
+    for level in pd.unique(levels):
+        m = (levels == level).to_numpy()
+        assert m.sum() >= MIN_LEVEL_ROWS, level  # the definition above, not the pooled slope's
         slope = float(np.cov(e[m], n_[m], ddof=1)[0, 1] / np.var(e[m], ddof=1))
         out[m] = n_[m] - slope * (e[m] - e[m].mean()) - n_[m].mean() + n_.mean()
     return out
@@ -660,6 +668,103 @@ def test_a_departure_dropping_the_strata_column_keeps_it_as_the_energy_model_s_s
         assert s["n"] == len(part), s["key"]
         assert (s["estimate"], s["low"], s["high"]) == pytest.approx(
             (float(fit.params["fiber_adj"]), float(low), float(high)), rel=1e-8), s["key"]
+
+
+NOT_A_CAUSE = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+
+
+def slopes_cohort(blank_sex: int = 0) -> pd.DataFrame:
+    """The cohort with total energy rising 70 kcal per gram of `fiber` in men and 30 in women,
+    and 350 kcal higher in men, so the residual model within the levels of `sex` is not the
+    pooled one; ``blank_sex`` rows, drawn at random, with `sex` blank."""
+    frame = cohort()
+    rng = np.random.default_rng(23)
+    male = (frame["sex"] == "male").to_numpy()
+    frame["kcal"] = (1900 + np.where(male, 70.0, 30.0) * (frame["fiber"] - 20) + 350 * male
+                     + rng.normal(0, 250, len(frame)))
+    if blank_sex:
+        frame.loc[rng.choice(len(frame), blank_sex, replace=False), "sex"] = np.nan
+    return frame
+
+
+def strata_fit(table: pd.DataFrame, picks: dict[str, str]) -> tuple[int, float, float, float]:
+    """A specification under the residual model within `sex`, by its definition: the rules its
+    picks apply; its covariates, each column they adjust for or add; its rows, those with the
+    outcome, `fiber`, `kcal` and its covariates recorded (`sex` among them only where it is a
+    covariate, so a blank `sex` keeps its row elsewhere); and statsmodels' least squares with HC3
+    on t(n − p) of `glucose` on its covariates and `fiber_adj` (:func:`within_strata` on these
+    rows). Returns (n, estimate, low, high)."""
+    rules = tuple(i for i in (0, 1) if picks[f"exclusion:{i}"] == M.RECORDED)
+    covariates = [k.split(":", 1)[1] for k, v in picks.items()
+                  if (k.startswith("adjusted:") and v == M.RECORDED)
+                  or (k.startswith("left_out:") and v == "added")]
+    part = table[rows_of(table, rules=rules, columns=["glucose", "fiber", "kcal", *covariates])]
+    X = ef.design_matrix(part, covariates)
+    X["fiber_adj"] = within_strata(part)
+    fit = sm.OLS(part["glucose"].astype(float), X).fit(cov_type="HC3", use_t=True)
+    low, high = fit.conf_int(alpha=0.05).loc["fiber_adj"]
+    return len(part), float(fit.params["fiber_adj"]), float(low), float(high)
+
+
+def test_a_strata_column_the_plan_never_adjusts_for_stays_the_energy_model_s_strata(tmp_path):
+    """VR1-1 (PP2 C1), both ways. The residual energy model within the levels of `sex`, where the
+    plan never adjusts for `sex` (a cause of neither the exposure nor the outcome): `sex` is an
+    input only, the model's strata, no predictor (``pipeline.input_columns``). Each departure's
+    plan keeps it so. Every specification but the one dropping `kcal` is estimated, each
+    statsmodels' fit of `fiber_adj` within `sex` with its own covariates (:func:`strata_fit`),
+    the departure adding `sex` to the adjustment among them, and a column a departure drops that
+    no step reads (`age`) leaves it. A departure's inputs taken from the primary's predictors
+    instead of its inputs fail here: each departure but the one adding `sex` then stops on its
+    strata column missing.
+
+    Then with 40 rows' `sex` blank, under complete cases, `sex` adjusted for: the specifications
+    that adjust for `sex` lose the rows with it blank, and the departure dropping `sex` keeps
+    them, a blank `sex` a level of its own in the energy model (``StratifiedEnergyAdjuster``).
+    Its n is the rows of the primary's rules with every column it reads recorded, and its
+    estimate is statsmodels' fit written out here and R's: lm with sandwich's HC3 on the same
+    rows, `fiber_adj` written out with the blanks their own level, -0.517709353575527 (R 4.6.1,
+    sandwich 3.1.3, read to 15 digits)."""
+    never = Run(slopes_cohort(), tmp_path / "never",
+                energy_state(strata="sex", answers={"sex": NOT_A_CAUSE}))
+    spec = never.design.objects["spec"]
+    assert spec["energy"]["strata"] == "sex"  # the premise
+    assert "sex" in spec["inputs"] and "sex" not in spec["predictors"]
+    art = never.mattered()
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    assert curve["through"] == ["energy"]
+    assert [s["picks"]["adjusted:kcal"] for s in curve["not_estimated"]] == ["dropped"]
+    assert curve["not_estimated"][0]["reason"] == ("With this choice changed, "
+                                                   + M.ENERGY_READS.format(column="kcal"))
+    changed = [[k for k, v in s["picks"].items() if v != M.RECORDED] for s in curve["specs"]]
+    assert changed == [[], ["exclusion:0"], ["exclusion:1"], ["adjusted:age"],
+                       ["adjusted:smoking"], ["adjusted:activity"], ["left_out:sex"],
+                       ["left_out:bmi"]]
+    assert curve["specs"][6]["picks"]["left_out:sex"] == "added"
+    for s in curve["specs"]:
+        n, estimate, low, high = strata_fit(never.table, s["picks"])
+        assert s["n"] == n, s["key"]
+        assert (s["estimate"], s["low"], s["high"]) == pytest.approx(
+            (estimate, low, high), rel=1e-8), s["key"]
+
+    blank = Run(slopes_cohort(blank_sex=40), tmp_path / "blank", energy_state(strata="sex"))
+    assert int(blank.table["sex"].isna().sum()) == 40  # the premise
+    assert blank.state.missing.strategy == "complete_case"
+    curve = blank.mattered()["curve"]
+    assert [s["picks"]["adjusted:kcal"] for s in curve["not_estimated"]] == ["dropped"]
+    assert len(curve["specs"]) == len(departures())
+    for s in curve["specs"]:
+        n, estimate, low, high = strata_fit(blank.table, s["picks"])
+        assert s["n"] == n, s["key"]
+        assert (s["estimate"], s["low"], s["high"]) == pytest.approx(
+            (estimate, low, high), rel=1e-8), s["key"]
+    every = rows_of(blank.table, rules=(0, 1),
+                    columns=["glucose", "fiber", "kcal", *[c for c in ADJUSTED if c != "sex"]])
+    blanks = int(blank.table["sex"][every].isna().sum())
+    [primary] = [s for s in curve["specs"] if s["primary"]]
+    [dropped] = [s for s in curve["specs"] if s["picks"]["adjusted:sex"] == "dropped"]
+    assert dropped["n"] == int(every.sum()) == primary["n"] + blanks and blanks > 0
+    assert dropped["estimate"] == pytest.approx(-0.517709353575527, rel=1e-10)  # R's
 
 
 REFIT_ERROR = ("With this choice changed, the curve's refit of this specification stopped on an "
