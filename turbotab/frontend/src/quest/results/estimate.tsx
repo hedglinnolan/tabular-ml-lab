@@ -17,9 +17,9 @@
  *      cut's `<exposure>_C2`, a level's indicator), whose unit is not the exposure's, under its
  *      served name; a model that reports no estimate is said in its refusal's words beside it,
  *      and an exposure served as several rows (a category's levels) is named, not drawn, nor
- *      headed (`asTable2`, `unreportedOf`); where a model holds several members of an exposure
- *      family in one fit, the footnotes say first that each is adjusted for the others there, the
- *      unadjusted model's included, naming them as served (`jointOf`);
+ *      headed (`asTable2`, `unreportedOf`); where an exposure family's models serve more than one
+ *      member, neither Table 2 nor its forest is drawn, and one line says why and that the
+ *      estimates are in the export (`membersOf`, `FAMILY_NOT_DRAWN`);
  *   3. beside it the primary model's diagnostics in the engine's words: a failed check's ways
  *      forward are named, never pressed, and a recorded response is said as its record words it,
  *      with the estimates the engine serves for it.
@@ -252,55 +252,41 @@ function asTable2(art: ServedEffects, index: number): ServedEffects {
   };
 }
 
-/** "a", "a and b", "a, b and c". */
-const listOf = (xs: readonly string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
-
-/** The members of what is studied a declared model holds, from its served rows: each member with
- *  the columns it is served as, in the artifact's order of the members, or none where its rows are
- *  one member's (a single exposure, a category's levels). */
-function heldOf(fit: Fit, exposures: readonly string[]): [string, string[]][] {
-  const by = new Map<string, string[]>();
-  for (const r of fit.effects ?? []) {
-    const member = whose(r.feature, exposures) ?? r.feature;
-    by.set(member, [...(by.get(member) ?? []), r.feature]);
-  }
-  const at = (m: string) => (exposures.includes(m) ? exposures.indexOf(m) : exposures.length);
-  return by.size < 2 ? [] : [...by].sort(([a], [b]) => at(a) - at(b));
+/** The members of what is studied a model family's declared models serve rows for, any model's
+ *  (`whose`; a row no member owns counts as its own): a single exposure's rows are all its own. */
+function membersOf(fam: Family, exposures: readonly string[]): Set<string> {
+  return new Set(fam.sequence.flatMap((fit) => (fit.effects ?? []).map((r) => whose(r.feature, exposures) ?? r.feature)));
 }
 
-/** What Table 2 says, first among its footnotes, where a declared model it draws holds several
- *  members of an exposure family in one fit (their rows served from that model): each member's
- *  estimate is adjusted for the others there, the unadjusted model's included, so the row's "No
- *  other column in the model" and a footnote's "adjusted for" name only the columns beyond them.
- *  The members are named as served (`arm` as `arm_y`), and the models by their labels where not
- *  every drawn model holds the same ones. A model that holds one member says nothing. */
-function jointOf(fam: Family, drawn: ReadonlySet<string>, exposures: readonly string[]): string[] {
-  const fits = fam.sequence.filter((fit) => drawn.has(fit.key));
-  const groups = new Map<string, { these: Fit[]; held: [string, string[]][] }>();
-  for (const fit of fits) {
-    const held = heldOf(fit, exposures);
-    if (!held.length) continue;
-    const key = JSON.stringify(held);
-    groups.set(key, { these: [...(groups.get(key)?.these ?? []), fit], held });
-  }
-  const plain = (x: string) => x.replaceAll("`", "");
-  return [...groups.values()].map(({ these, held }) => {
-    const where =
-      these.length === fits.length
-        ? `In each model of this table${these.some((fit) => !fit.adjusted_for.length) ? ", the unadjusted one included," : ","}`
-        : `In ${listOf(these.map((fit) => plain(fit.label)))},`;
-    const members = listOf(held.map(([m, columns]) => (columns.length === 1 && columns[0] === m ? m : `${m} (as ${listOf(columns)})`)));
-    return `${where} ${members} are in the model together, so each is adjusted for the other${held.length > 2 ? "s" : ""}, beyond the columns the model's row and footnote name.`;
-  });
-}
+/** Said in place of Table 2 and its forest where an exposure family's models serve more than one
+ *  member (`membersOf`). The engine serves a model's adjustment as its covariates alone
+ *  (`adjusted_for`, the unadjusted model's "no other column in the model"), which is wrong where
+ *  the members share one fit (the linear model: each is adjusted for the others there) and right
+ *  where each is fitted on its own (feature-wise regression), and both serve each member's rows
+ *  per model alike; until it says which, no row of a family is drawn with a label beside it. A
+ *  family whose models serve one member (feature-wise regression's, beside a category it adjusts
+ *  for and names) is drawn as a single exposure's. Every served row is written to the export's
+ *  Table 2 (core/export/tables.py `table2`). */
+const FAMILY_NOT_DRAWN =
+  "This first version of Results does not draw Table 2 for a family of exposures, because what the engine says each estimate is adjusted for is not yet right for every family; the estimates are in the export.";
 
 function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; index: number; many: boolean; decisions: readonly DecisionRecord[] }) {
   const [lit, setLit] = useState<string | null>(null);
   const fam = art.families[index]!;
+  const number = many ? `Table 2 (${fam.label})` : "Table 2";
+  const diagnostics = <Diagnostics fam={fam} exposure={art.exposure} scale={art.scale} decisions={decisions} />;
+  if (membersOf(fam, art.exposures).size > 1) {
+    return (
+      <div className={s.tapestry}>
+        <section className={s.exhibit} data-purpose="table2" data-testid="results-table2" data-family={fam.family}>
+          <OneLine view="table" title={number} text={<span data-testid="results-family-not-drawn">{FAMILY_NOT_DRAWN}</span>} />
+        </section>
+        {diagnostics}
+      </div>
+    );
+  }
   const shown = asTable2(art, index);
-  const drawn = new Set(shown.families[index]!.sequence.map((fit) => fit.key));
-  const adapted = table2FromEffects(shown, index, many ? `Table 2 (${fam.label})` : "Table 2");
-  const table = { ...adapted, footnotes: [...jointOf(fam, drawn, art.exposures).map((text) => ({ text })), ...adapted.footnotes] };
+  const table = table2FromEffects(shown, index, number);
   const unreported = unreportedOf(fam, art.exposures);
   const said = unreported.map((x, i) => (
     <span key={`${x.key}:${i}`} className={s.itemReason} data-testid="results-unreported" data-fit={x.key}>
@@ -320,7 +306,7 @@ function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; 
           <OneLine view="table" title={table.number} text={<span className={s.items}>{said}</span>} />
         )}
       </section>
-      <Diagnostics fam={fam} exposure={art.exposure} scale={art.scale} decisions={decisions} />
+      {diagnostics}
     </div>
   );
 }
