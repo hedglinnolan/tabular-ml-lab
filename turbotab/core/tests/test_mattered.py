@@ -421,8 +421,9 @@ def test_a_one_column_form_on_the_exposure_is_refused_and_one_on_a_covariate_is_
         tmp_path):
     """V3 (PP2 C1 repair), both ways. One cut point declared on `fiber`, what the curve follows,
     or one data-derived cut point: the linear model fits it as one column (`fiber_C2`,
-    `fiber_above`), a contrast of the groups the form makes, not a difference per unit of
-    `fiber`. Refused in words with no exit, before anything is fitted, as truth (c) refuses an
+    `fiber_above`), a contrast of the groups either side of the cut, not a difference per unit of
+    `fiber`. Refused in words that end with what happens (the declared cut's sentence written out,
+    VR2-2), with no exit, before anything is fitted, as truth (c) refuses an
     exposure split by its own form (on the base refused as a step the refit did not repeat; before
     this repair drawn, labeled per unit of `fiber_C2`). One cut point declared on `age`, a
     covariate, is fitted through: each specification is statsmodels' fit with `age` replaced by
@@ -439,6 +440,12 @@ def test_a_one_column_form_on_the_exposure_is_refused_and_one_on_a_covariate_is_
         assert art["curve"] is None and art["reported"] is None
         assert art["refused"] == {"message": M.FORMED_CONTRAST.format(exposure="fiber", name=name),
                                   "exits": []}, form.form
+        if form.form == "categories":  # the sentence the user reads, ending with what happens
+            assert art["refused"]["message"] == (
+                "The plan fits `fiber` by a declared form other than a straight line: the linear "
+                "model's one coefficient of it (`fiber_C2`) compares the groups on either side of "
+                "the form's cut point, and the curve follows only a difference per unit, so it is "
+                "not drawn.")
 
     run = Run(cohort(), tmp_path / "age",
               state(exposure_forms={"age": ExposureFormSpec(form="categories", cuts=[50.0])}))

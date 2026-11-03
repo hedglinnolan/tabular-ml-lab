@@ -76,8 +76,9 @@ fitted as the primary is. That refusal quotes no estimate: it is served where no
   log, values below detection, a batch correction, the D-ratio filter, or the data's own imputed
   copies. So does a form the plan declares on the exposure itself, once the fit's row is read and
   before anything is fitted: one that splits it into several coefficients
-  (:data:`FORMED_EXPOSURE`), and one that leaves it one column contrasting the groups the form
-  makes, such as one cut point (:data:`FORMED_CONTRAST`), which is no difference per unit.
+  (:data:`FORMED_EXPOSURE`), and one that leaves it one column contrasting the groups either side
+  of one cut point, declared or data-derived (:data:`FORMED_CONTRAST`), which is no difference per
+  unit.
   Each other specification is judged on the coding the plan would give its own columns
   (``pipeline.design_spec`` over the table's column summaries, as the design stage reads them): a
   departure whose plan would apply such a step is not estimated, with the step named, and so is
@@ -153,12 +154,14 @@ FORMED_EXPOSURE = ("The plan fits `{exposure}` by a declared form other than a s
                    "the linear model reports {n:,} coefficients of it ({names}) and no one estimate "
                    "for the curve to follow across the choices.")
 # The exposure left one column by a form the plan declares on it (one cut point, declared or
-# derived from the data): its coefficient contrasts the form's groups, where the curve follows a
-# difference per unit (its label, ``curve_for``'s ``label_of``). The form is the plan's, so no exit.
-FORMED_CONTRAST = ("The plan fits `{exposure}` by a declared form other than a straight line, so "
-                   "the linear model's coefficient of it (`{name}`) compares groups that form "
-                   "makes, not a difference per unit, the one kind of estimate the curve follows "
-                   "across the choices.")
+# derived from the data, the only forms that leave one column: ``design_forms`` drops a straight
+# line, and a spline, its quintiles or non-consumers apart make two or more): its coefficient
+# contrasts the two groups either side of the cut, where the curve follows a difference per unit
+# (its label, ``curve_for``'s ``label_of``). The form is the plan's, so no exit.
+FORMED_CONTRAST = ("The plan fits `{exposure}` by a declared form other than a straight line: the "
+                   "linear model's one coefficient of it (`{name}`) compares the groups on either "
+                   "side of the form's cut point, and the curve follows only a difference per "
+                   "unit, so it is not drawn.")
 # A specification fitted as its plan whose table holds no row of the column the curve follows (a
 # departure that drops the energy column the energy model needs to make it), after
 # "With this choice changed, " or, for the primary, :data:`RECORDED_WORDS`.
