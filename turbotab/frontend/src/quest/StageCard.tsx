@@ -43,6 +43,7 @@ import {
 import type {
   ChecklistItem,
   Decision,
+  DecisionRecord,
   Finding,
   ProjectState,
   QuestLine,
@@ -108,18 +109,51 @@ function settledText(log: QuestLog, line: QuestLine, noticings: readonly Finding
 }
 
 /**
+ * How many reverts record `id` is from the answer it finally changes, following each revert to the
+ * record it undoes as the engine does (core/quest.py `_Log.undone`): 1 for a revert of an answer,
+ * 2 for a revert of that revert. Null where the project's records cannot finish the walk (a record
+ * they do not hold, or a loop).
+ */
+function revertDepth(id: string, records: readonly DecisionRecord[]): number | null {
+  const byId = new Map(records.map((r) => [r.id, r]));
+  const seen = new Set<string>();
+  let depth = 0;
+  let record = byId.get(id);
+  while (record && record.decision.kind === "revert") {
+    if (seen.has(record.id)) return null;
+    seen.add(record.id);
+    depth += 1;
+    record = byId.get(record.decision.decision_id);
+  }
+  return record ? depth : null;
+}
+
+/**
  * The change that asked a line again (`reopened_by`), in the words of the stage's own reason
  * (`QuestStage.reopened`, "Your change to … reopened"): by the stage it was made in, or as another
  * answer in this one, since any other cause is a record after the line's last answer. A revert
- * (an answer taken back, the Record's "undo") is said as only that: the engine names one the cause
- * whichever answer it took back, the line's own included, and by the stage the undone kind sits in
- * (every noticing's disposition in Your data), so neither "another answer" nor the stage holds.
+ * (the Record's "undo") that takes an answer back is said as only that: the engine names one the
+ * cause whichever answer it took back, the line's own included, and by the stage the undone kind
+ * sits in (every noticing's disposition in Your data), so neither "another answer" nor the stage
+ * holds. The log cancels latest first (core/decisions.py `reverted`), so a revert of an answer
+ * takes it back, a revert of that revert puts it back, and so on in turn: one that puts an answer
+ * back is said as the change it restored, by that answer's stage, which is the stage the engine
+ * names (`_Log.stage_of`). A revert the project's records (`records`) cannot follow says nothing.
  * Null on an answered line, which reads as its answer, and where the log names no such stage.
  */
-function reopenedText(log: QuestLog, stage: QuestStage, line: QuestLine): string | null {
+function reopenedText(
+  log: QuestLog,
+  stage: QuestStage,
+  line: QuestLine,
+  records: readonly DecisionRecord[] | undefined,
+): string | null {
   const by = line.reopened_by;
   if (!by || line.status === "answered") return null;
-  if (by.kind === "revert") return "Reopened because an answer was taken back.";
+  if (by.kind === "revert") {
+    const depth = records ? revertDepth(by.decision_id, records) : null;
+    if (depth === null) return null;
+    if (depth % 2 === 1) return "Reopened because an answer was taken back.";
+  }
   if (by.stage === stage.key) return `Reopened by your change to another answer in ${stage.name}.`;
   const where = log.stages.find((s) => s.key === by.stage);
   return where ? `Reopened by your change to ${where.name}.` : null;
@@ -213,7 +247,8 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requested]);
 
-  const state = useProjectView(pid).data?.state ?? null;
+  const view = useProjectView(pid).data;
+  const state = view?.state ?? null;
   const noticings = useNoticings(pid);
   const groups = byLabel(stage);
   // A line no card can answer yet comes after those that can (FOUNDATION §3, "Not available yet").
@@ -245,7 +280,7 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
       state={state}
       confirm={confirm}
       settledAs={settledText(log, l, noticings)}
-      reopenedAs={reopenedText(log, stage, l)}
+      reopenedAs={reopenedText(log, stage, l, view?.decisions)}
       swept={!!stage.sweep?.confirmed_by && l.label === "Confirm" && l.decision_id === stage.sweep.confirmed_by}
     />
   );
@@ -544,17 +579,32 @@ function ForTheRecord({ pid, stage }: { pid: string; stage: QuestStage }) {
 }
 
 /** An item's number as the bundle's checklist labels it (core/export/checklists.py `markdown`):
- *  STROBE's own items under STROBE-nut by "STROBE", and TRIPOD+AI's with the scope the source gives
- *  each (D, E or D;E) beside it. */
+ *  STROBE's own items under STROBE-nut by "STROBE". */
 function itemLabel(item: ChecklistItem): string {
-  const id = item.kind === "STROBE" ? `${item.kind} ${item.id}` : item.id;
-  return item.scope ? `${id} (${item.scope})` : id;
+  return item.kind === "STROBE" ? `${item.kind} ${item.id}` : item.id;
 }
 
 /**
- * Write-up's checklist: the reporting guideline's items, by how far the record answers each, then
- * each item the record answers only in part, with what the author must still supply (`owed`), as
- * the bundle's checklist says it.
+ * TRIPOD+AI's scope codes in plain words, as the source's own legend defines them (Collins et al.
+ * 2024, Table 2's footnote, which core/export/data/tripod_ai.json holds): "D=items relevant only to
+ * the development of a prediction model; E=items relating solely to the evaluation of a prediction
+ * model; D;E=items applicable to both the development and evaluation of a prediction model". The
+ * report serves the code alone; a code the legend does not define is shown as served, with no
+ * words.
+ */
+const SCOPE_WORDS: Readonly<Record<string, string>> = {
+  D: "Applies only to developing a model.",
+  E: "Applies only to evaluating a model.",
+  "D;E": "Applies to both developing and evaluating a model.",
+};
+
+/**
+ * Write-up's checklist: the reporting guideline's items, by how far the record answers each, then,
+ * behind one quiet disclosure as For the record is (FOUNDATION §2, one click away), each item the
+ * record answers only in part, with what the author must still supply (`owed`), as the bundle's
+ * checklist says it. Every item the record answers in part owes something, and only those do
+ * (core/export/checklists.py `fill`), so the disclosure is counted by the items it holds.
+ * TRIPOD+AI's scope is said in plain words (`SCOPE_WORDS`), its code the quiet label.
  */
 function Checklist({ pid }: { pid: string }) {
   const report = useChecklist(pid).data;
@@ -569,18 +619,36 @@ function Checklist({ pid }: { pid: string }) {
         of {counts.items} items.
       </p>
       {owed.length ? (
-        <ul className={q.lines} data-testid="checklist-owed">
-          {owed.map((i) => (
-            <li key={i.id} className={q.line}>
-              <span className={q.lineName}>
-                {itemLabel(i)} · <Plain text={i.topic} />
-              </span>
-              <p className={q.lineReason}>
-                The author must supply <Plain text={i.owed} />.
-              </p>
-            </li>
-          ))}
-        </ul>
+        <details className={q.record} data-testid="checklist-owed">
+          <summary>Partly answered · {owed.length}</summary>
+          <ul className={q.lines}>
+            {owed.map((i) => {
+              const words = i.scope ? SCOPE_WORDS[i.scope] : undefined;
+              return (
+                <li key={i.id} className={q.line}>
+                  <div className={q.lineRow}>
+                    <span className={q.lineName}>
+                      {itemLabel(i)} · <Plain text={i.topic} />
+                    </span>
+                    {i.scope ? (
+                      <span className={q.lineLabel} data-testid={`checklist-scope-code-${i.id}`}>
+                        {i.scope}
+                      </span>
+                    ) : null}
+                  </div>
+                  {words ? (
+                    <p className={q.lineQuiet} data-testid={`checklist-scope-${i.id}`}>
+                      {words}
+                    </p>
+                  ) : null}
+                  <p className={q.lineReason}>
+                    The author must supply <Plain text={i.owed} />.
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
       ) : null}
       {report.waiting.length ? (
         <ul className={q.recordList}>
