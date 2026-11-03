@@ -4,11 +4,12 @@
 role with a blank, so on the plasma panel's QC-RLSC plans it listed 36 columns, 16 of them features
 the QC filters removed: the working table keeps a removed feature's column, and the repair takes it
 out of the predictors (``repairs.unusable_columns``). The card now leaves out the columns the
-answers other than the missing-values one leave out of every model: a repair's unusable columns
-and, under inference, the covariates the adjustment answers leave out of the primary model, but
-not those the declared "further adjusted for" model beside it holds (``estimand.secondary_columns``),
-whose blanks cost that model rows. The missing-values answer's columns stay listed: they are this
-card's own offer (``leave_out``).
+answers other than the missing-values one leave out: a repair's unusable columns and, under
+inference, the covariates the adjustment answers leave out of the primary model, but not those a
+model declared beside it holds, whose blanks cost that model rows: the "further adjusted for" model
+(``estimand.secondary_columns``) and a declared modification's (the modifier, and an interaction's
+confounders of its second exposure: ``interaction.adjusted_sets``). The missing-values answer's
+columns stay listed: they are this card's own offer (``leave_out``).
 
 The truth is pandas: the blanks on the rows with the outcome measured, among the columns built to
 hold a predictor role, less the columns the recorded answers name. On the plasma panel the removed
@@ -22,7 +23,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from turbotab.core.decisions import EstimandSpec, MissingSpec, ProjectState
+from turbotab.core.decisions import EstimandSpec, MissingSpec, ModificationSpec, ProjectState
 from turbotab.core.methods import qc_drift as Q
 from turbotab.core.stages.proposals import proposals_stage
 from turbotab.core.tests.stage_harness import Ingested
@@ -119,9 +120,10 @@ ADJUSTMENT = {"x1": {"exposure": "f3", "causes_exposure": "no", "causes_outcome"
 @pytest.mark.parametrize("purpose", ["inference", "prediction"])
 def test_under_inference_a_covariate_the_adjustment_leaves_out_is_not_listed(tmp_path, purpose):
     """Fires under inference: `x1` answered as changed by `f3` and a cause of `y` is a mediator, which
-    a total effect leaves out of every model (``estimand.adjustment_left_out``, and not among
-    ``estimand.secondary_columns``), so its blanks drop no row and it is not listed. Silent under
-    prediction, where the same answers leave nothing out."""
+    a total effect leaves out of the primary model (``estimand.adjustment_left_out``), and no model
+    declared beside it holds (not among ``estimand.secondary_columns``; no modification declared),
+    so its blanks drop no row and it is not listed. Silent under prediction, where the same answers
+    leave nothing out."""
     from turbotab.core.estimand import adjustment_left_out, secondary_columns
 
     table, df = _table(tmp_path)
@@ -174,6 +176,109 @@ def test_a_missing_answer_that_takes_the_exposure_out_lists_the_mediator(tmp_pat
     want = blanks(df, PREDICTORS, "y")
     assert ("x1", 3, 0.3) in want and ("f3", 2, 0.2) in want
     assert listed(table.run(proposals_stage, state)) == want
+
+
+# `x1` answered as a cause of neither `f3` nor `y`: the primary model leaves it out and the "further
+# adjusted for" model does not hold it. A declared modification's model (``methods.interaction``)
+# can: the modifier is one of its predictors, as is each confounder an interaction's answers for its
+# second exposure add (``interaction.adjusted_sets``), so their blanks cost that model rows.
+NEITHER = {"exposure": "f3", "causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+CONFOUNDER = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
+MODIFIED = {
+    "x1 the modifier": {"x1": ModificationSpec(kind="effect_modification", exposure="f3")},
+    "x1 a confounder of the second exposure": {"f1": ModificationSpec(
+        kind="interaction", exposure="f3",
+        answers={c: CONFOUNDER for c in ["x1", "x2", "f2"]})},
+}
+
+
+def modified_state(modifications: dict | None) -> ProjectState:
+    return ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
+                        estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
+                        adjustment={"x1": NEITHER}, modifications=modifications)
+
+
+@pytest.mark.parametrize("modifications", list(MODIFIED.values()), ids=list(MODIFIED))
+def test_a_covariate_a_declared_modification_holds_stays_listed(tmp_path, modifications):
+    """Silent on a declared modification's columns: `x1`, which the adjustment answers leave out of
+    the primary model, is the declared modifier, or a confounder of the interaction's second
+    exposure `f1`, so the modification's model holds it and `x1` stays listed with its 3 blanks."""
+    from turbotab.core.estimand import adjustment_left_out, secondary_columns
+    from turbotab.core.methods.interaction import adjusted_sets, declared
+
+    table, df = _table(tmp_path)
+    state = modified_state(modifications)
+    assert (adjustment_left_out(state), secondary_columns(state)) == (["x1"], [])
+    found = declared(state)
+    assert list(found) == list(modifications)
+    assert any(m == "x1" or "x1" in adjusted_sets(state, m, s)[1] for m, s in found.items())
+    want = blanks(df, PREDICTORS, "y")
+    assert want == [("f1", 4, 0.4), ("x1", 3, 0.3), ("f3", 2, 0.2), ("f2", 1, 0.1)]
+    assert listed(table.run(proposals_stage, state)) == want
+
+
+NOT_HELD = {
+    "none declared": None,
+    "x1 withdrawn": {"x1": ModificationSpec(kind="effect_modification", exposure="f3",
+                                            withdrawn=True, post_hoc=True)},
+    "x1 no confounder of the second exposure": {"f1": ModificationSpec(
+        kind="interaction", exposure="f3",
+        answers={"x1": {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"},
+                 "x2": CONFOUNDER, "f2": CONFOUNDER})},
+}
+
+
+@pytest.mark.parametrize("modifications", list(NOT_HELD.values()), ids=list(NOT_HELD))
+def test_a_covariate_no_declared_modification_holds_is_not_listed(tmp_path, modifications):
+    """Fires: with no modification declared, one withdrawn (no longer estimated), or an interaction
+    whose answers make `x1` a cause of neither its second exposure nor `y`, no model holds `x1`, so
+    it is not listed."""
+    from turbotab.core.methods.interaction import adjusted_sets, declared
+
+    table, df = _table(tmp_path)
+    state = modified_state(modifications)
+    assert not any(m == "x1" or "x1" in adjusted_sets(state, m, s)[1]
+                   for m, s in declared(state).items())
+    want = blanks(df, [c for c in PREDICTORS if c != "x1"], "y")
+    assert listed(table.run(proposals_stage, state)) == want
+
+
+@pytest.mark.parametrize("declared_f1", [True, False], ids=["f1 the modifier", "none declared"])
+def test_a_removed_feature_a_declared_modification_holds_stays_listed(tmp_path, declared_f1):
+    """Both ways on a repair's columns: QC-RLSC removes `f1` and `f2`, and under inference `f1`
+    declared as the modifier is a predictor of the modification's model (which reads its column
+    from the working table), so `f1` stays listed with its 4 blanks; with none declared it is not
+    listed. `f2` is listed in neither."""
+    table, df = _table(tmp_path)
+    state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
+                         estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
+                         findings=qc_answer(), modifications={"f1": ModificationSpec(
+                             kind="effect_modification", exposure="f3")} if declared_f1 else None)
+    kept = ["x1", "x2", "f3", *(["f1"] if declared_f1 else [])]
+    want = blanks(df, kept, "y")
+    assert want == ([("f1", 4, 0.4)] if declared_f1 else []) + [("x1", 3, 0.3), ("f3", 2, 0.2)]
+    assert listed(table.run(proposals_stage, state)) == want
+
+
+@pytest.mark.xfail(strict=True, reason="INBOX:1027 repair V2-1: the integrator adds 'modifications' "
+                                       "to the proposals Stage's reads (with its version bump); "
+                                       "then drop this marker")
+def test_declaring_a_modification_rekeys_the_card():
+    """So the stage's key changes when a modification that holds `x1` is declared (the test above:
+    its fresh card lists `x1`), or the card cached before it, which omits `x1`, is served."""
+    from turbotab.core.graph import stage_keys
+    from turbotab.core.stages import build_graph
+    from turbotab.core.stages.proposals import answered_out
+
+    order = build_graph().order()
+    plain, modified = modified_state(None), modified_state(MODIFIED["x1 the modifier"])
+    assert (answered_out(plain), answered_out(modified)) == (["x1"], [])
+
+    def key(state: ProjectState) -> str | None:
+        return stage_keys(order, state.model_dump(mode="json"), "fingerprint")["proposals"]
+
+    assert key(plain) is not None
+    assert key(modified) != key(plain)
 
 
 @pytest.mark.xfail(strict=True, reason="INBOX:1027 repair P2: the integrator adds 'missing' to the "

@@ -1105,27 +1105,36 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
 
 
 def answered_out(state: Any) -> list[str]:
-    """The columns answers other than the missing-values one leave out of every model: those a
-    repair marked unusable (the features the QC filters removed, whose columns the working table
-    keeps) and, under inference, the covariates the adjustment answers leave out of the primary
-    model (``decisions.left_out``) but not those the declared "further adjusted for" model beside
-    it holds (``estimand.secondary_columns``: a covariate of unknown timing, or one the user asked
-    to be further adjusted for), whose blanks cost that model rows or are imputed in it. The
-    missing-values answer's own columns are not among them: they are its card's offer."""
+    """The columns answers other than the missing-values one leave out: those a repair marked
+    unusable (the features the QC filters removed, whose columns the working table keeps) and, under
+    inference, the covariates the adjustment answers leave out of the primary model
+    (``decisions.left_out``), less each column a model declared beside the primary holds, whose
+    blanks cost that model rows or are imputed in it: the "further adjusted for" model's
+    (``estimand.secondary_columns``: a covariate of unknown timing, or one the user asked to be
+    further adjusted for) and each declared modification's (``methods.interaction.declared``: the
+    modifier, and the confounders an interaction's answers for its second exposure add,
+    ``interaction.adjusted_sets``). The missing-values answer's own columns are not among them:
+    they are its card's offer. Two models can still hold a covariate listed here: the time-varying
+    lane's, which adjusts for a confounder affected by prior exposure
+    (``time_varying.affected_confounders``), and, after the lock, the specification curve's
+    departure that adds a covariate the adjustment answers left out (``mattered``)."""
     if state is None:
         return []
     from turbotab.core.estimand import adjustment_left_out, secondary_columns
+    from turbotab.core.methods.interaction import adjusted_sets, declared
     from turbotab.core.repairs import unusable_columns
 
-    out = list(unusable_columns(state))
-    further = set(secondary_columns(state))
-    return out + [c for c in adjustment_left_out(state) if c not in out and c not in further]
+    held = set(secondary_columns(state))
+    for modifier, spec in declared(state).items():
+        held |= {modifier, *adjusted_sets(state, modifier, spec)[1]}
+    out = [c for c in unusable_columns(state) if c not in held]
+    return out + [c for c in adjustment_left_out(state) if c not in out and c not in held]
 
 
 def gappy_predictors(columns: Sequence[Mapping[str, Any]], roles: Mapping[str, str],
                      target: str | None, drop: Iterable[str] = ()) -> list[str]:
     """Predictors with any blank (by the table's counts: the working table's, at the stage), most
-    blank first, at most 200; none of ``drop``, the columns other answers leave out of every model
+    blank first, at most 200; none of ``drop``, the columns other answers leave out
     (:func:`answered_out`)."""
     gone = set(drop)
     gappy = [c for c in columns if roles.get(str(c["name"])) in PREDICTOR_ROLES
@@ -1168,7 +1177,7 @@ def missing_reading(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]],
                     roles: Mapping[str, str], target: str | None,
                     drop: Iterable[str] = ()) -> dict[str, Any]:
     """Each predictor with blanks among rows with the outcome measured, and which mean "not asked";
-    none of ``drop``, the columns other answers leave out of every model (:func:`answered_out`).
+    none of ``drop``, the columns other answers leave out (:func:`answered_out`).
 
     ``leave_out`` is the offer the missing-values question makes: the likely-not-asked columns,
     and the rows on which at least one of them is blank (the rows complete cases would lose to
@@ -1218,7 +1227,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     ``units`` the columns' recorded units (``set_column_unit``); ``settled`` the columns whose
     roles a number-changing default may read (:func:`turbotab.core.readings.settled_columns`;
     BLUEPRINT §14), every role as given when None. The missing-values reading lists none of the
-    columns ``state``'s other answers leave out of every model (:func:`answered_out`).
+    columns ``state``'s other answers leave out (:func:`answered_out`).
     """
     from turbotab.core.readings import unit_record
     from turbotab.core.voice import tick
