@@ -246,6 +246,36 @@ def test_a_removed_feature_a_declared_modification_holds_stays_listed(tmp_path, 
     assert listed(table.run(proposals_stage, state)) == want
 
 
+# `x2` declared the second exposure of an interaction with `f3`. Once QC-RLSC removed `f1` and `f2`
+# its answers are asked for `x1` alone; they also hold `f1`, answered before that removal, as a
+# confounder of `x2` (the interaction's model adjusts for it: ``interaction.adjusted_sets``) or as a
+# cause of neither.
+SECOND = {"f1 a confounder of x2": (CONFOUNDER, ["f1"]), "f1 no cause of x2": (NO_CAUSE, [])}
+
+
+@pytest.mark.parametrize("answer, adds", list(SECOND.values()), ids=list(SECOND))
+def test_a_removed_feature_an_interaction_adjusts_for_stays_listed(tmp_path, answer, adds):
+    """Both ways on the second exposure's confounders: QC-RLSC removes `f1` and `f2`, and `x2` is
+    declared the second exposure of an interaction with `f3`. When its answers make `f1` a
+    confounder of `x2`, the interaction's model adjusts for `f1`, reading its column from the
+    working table, so `f1` stays listed with its 4 blanks of the 10 rows with `y` measured; when
+    they make it a cause of neither, no model holds it and it is not listed. `f2` is listed in
+    neither."""
+    from turbotab.core.methods.interaction import adjusted_sets, declared, missing_answers
+
+    table, df = _table(tmp_path)
+    spec = ModificationSpec(kind="interaction", exposure="f3",
+                            answers={"x1": NO_CAUSE, "f1": answer})
+    state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
+                         estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
+                         modifications={"x2": spec}, findings=qc_answer())
+    assert (list(declared(state)), missing_answers(state, "x2", spec)) == (["x2"], [])
+    assert adjusted_sets(state, "x2", spec)[1] == adds
+    want = blanks(df, ["x1", "x2", "f3", *adds], "y")
+    assert want == ([("f1", 4, 0.4)] if adds else []) + [("x1", 3, 0.3), ("f3", 2, 0.2)]
+    assert listed(table.run(proposals_stage, state)) == want
+
+
 @pytest.mark.xfail(strict=True, reason="INBOX:1027 repair V2-1: the integrator adds 'modifications' "
                                        "to the proposals Stage's reads (with its version bump); "
                                        "then drop this marker")
