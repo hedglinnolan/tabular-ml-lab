@@ -4,7 +4,7 @@
  * one primary action at the card's foot. Everything here reads GET /quest's fields; nothing counts
  * or scores on its own (FOUNDATION §3; plans/W1_PART2_PLAN.md §2 "W1-E").
  */
-import type { FitLock, QuestLine, QuestLog, QuestStage, StageStatus, SweptLineInput } from "../api/schema";
+import type { FitLock, QuestLine, QuestLog, QuestStage, StageStatus, SweptLineInput, Triage } from "../api/schema";
 
 export type Label = QuestLine["label"];
 export const LABELS: readonly Label[] = ["Decide", "Confirm", "For the record"];
@@ -210,7 +210,9 @@ export type FitPosition =
  *  pressed; then the fit's job, while it runs. Under Predict a noticing in Models does not hold
  *  Fit back (ruling R-a): its triage is in Results, before the held-out rows open, and the
  *  engine's press does not wait on noticings (server/service.py `press_fit`, which waits only on
- *  the questions an estimate rests on), so Models passed for the triage offers Fit too. */
+ *  the questions an estimate rests on), so Models passed for the triage offers Fit too. Under
+ *  Estimate and Describe the triage at Models' end does not hold it either, as the engine's press
+ *  does not; Models' foot says it is confirmed before the press (`triageBeforeFit`). */
 export function fitPosition(log: QuestLog, fit: StageStatus | undefined): FitPosition {
   const lock = log.fit;
   if (!lock || lock.purpose === null) return { kind: "none" };
@@ -257,14 +259,17 @@ export interface Hint {
  *  next open line, finding 7) brought into view there. `note` says how many open noticings wait
  *  for the triage in Results under Predict (finding 6), and under Estimate, beside a noticing
  *  still to answer, that the stage's noticings are decided in it; before the goal is chosen it
- *  says nothing of them (`noticingsTravel`). */
+ *  says nothing of them (`noticingsTravel`). Under Estimate and Describe, Models' foot beside Fit
+ *  says what the triage at its end still asks before the press (`triageBeforeFit`). */
 export type Primary =
   | { kind: "continue"; to: string | null; line?: string; label: string; disabled: boolean; hint: Hint | null; note?: string }
   | { kind: "confirm"; label: string; heading: string }
   | { kind: "download" }
   /** Models before Fit: the card's foot holds no button; Fit is on the flowchart (§7). Its `note`
-   *  says how many of Models' noticings wait for the triage in Results (ruling R-a). */
-  | { kind: "fit"; note?: string }
+   *  says how many of Models' noticings wait for the triage in Results (ruling R-a); `waits`, said
+   *  in place of where Fit is, that the triage above is confirmed before the press fixes the plan
+   *  (`triageBeforeFit`). */
+  | { kind: "fit"; note?: string; waits?: string }
   /** Results before the opening: the opening is the foot's action, which W1-G's column draws there
    *  with its chain of refusals (src/quest/contracts.ts `FootSlot`). */
   | { kind: "open" };
@@ -278,25 +283,51 @@ export function runningName(name: string): string {
 const nameOf = (log: QuestLog, key: string) => stageOf(log, key)?.name ?? key;
 
 /**
- * Where the shell draws the triage of the open noticings, or null where it draws none: under
- * Predict, in Results, before the held-out rows open (core/sweep.py `gate_stage`; FOUNDATION §7).
- * Elsewhere the engine's triage stands before the plan's lock, in Models, which the shell does not
- * draw until W3 (W1-R R3 P5). The goal is the one the Fit lock serves.
+ * Where the shell draws the triage of the open noticings, or null where it draws none, at the
+ * engine's gate (core/sweep.py `gate_stage`; FOUNDATION §7): under Predict in Results, before the
+ * held-out rows open; under any other goal in Models, at its end, before the plan's lock and the
+ * analysis flowchart (G05). The goal is the one the Fit lock serves. Before it is chosen the
+ * engine's gate is Models, the strictest case, but where the noticings are decided waits on the
+ * goal (`noticingsTravel`), so the shell draws none; nor where a log is served with no Fit lock.
  */
 export function triageStage(log: QuestLog): string | null {
-  return log.fit?.purpose === "prediction" ? "results" : null;
+  const goal = log.fit?.purpose;
+  if (goal === null || goal === undefined) return null;
+  return goal === "prediction" ? "results" : "models";
 }
 
 /**
  * Whether open noticings travel, holding no stage's Continue but the triage's own (finding 6):
  * under Predict, to the triage in Results; and before the goal is chosen (W1-R M1), since under
  * Predict the goal is chosen in Your question, after Your data's noticings, and where they are
- * decided waits on it. Under Estimate each is decided in its own stage, as before finding 6, and
- * so where a log is served with no Fit lock to name the goal.
+ * decided waits on it. Under Estimate the engine counts each in its own stage (core/quest.py
+ * `quest_log`: the triage is Models' own), so each is decided there, as before finding 6, though
+ * the triage at Models' end can record it too; and so where a log is served with no Fit lock to
+ * name the goal.
  */
 export function noticingsTravel(log: QuestLog): boolean {
   const goal = log.fit?.purpose;
   return goal === "prediction" || goal === null;
+}
+
+/**
+ * What Models' foot says beside Fit while the triage at its end is unconfirmed (G05; FOUNDATION
+ * §7: under Estimate and Describe the analysis flowchart comes after the open-noticings gate), or
+ * null: where the goal's press fixes the plan (the lock's `locks`; server/service.py `press_fit`
+ * records `lock_plan`) and the plan is not fixed yet, and the engine serves Models' triage with
+ * noticings, not every one answered (`answered`: a blocker leaves it unanswered) and its gate not
+ * passed. Once the plan is fixed the triage's Confirm all is refused (core/sweep.py `gate_passed`),
+ * so its dispositions are recorded only before the press. The press itself does not wait on it:
+ * neither Fit (Fit.tsx) nor the engine's press reads the triage. Under Predict the triage is
+ * Results', before the held-out rows open, and the opening waits on it (results/cards.tsx
+ * `openingWaits`).
+ */
+export function triageBeforeFit(log: QuestLog, triage: Triage | null | undefined): string | null {
+  const lock = log.fit;
+  if (!lock?.locks || lock.locked || !triage || triage.stage !== "models") return null;
+  if (!triage.items.length || triage.answered || triage.passed) return null;
+  const n = triage.items.length;
+  return `Fit fixes the plan: first confirm the ${n === 1 ? "noticing" : `${n} noticings`} above.`;
 }
 
 /** A stage's open noticings: its Decide lines from a finding, still to answer. */
@@ -307,10 +338,11 @@ const openNoticings = (stage: QuestStage) =>
 const noticings = (n: number, one: string, many: string) => `${n} noticing${n === 1 ? ` ${one}` : `s ${many}`}`;
 
 /** The foot's note on the open noticings travelling from `stage` to the triage the shell draws:
- *  none where none do, or where the triage is not drawn yet (before the goal is chosen). */
+ *  none where none do, or where the triage is not drawn yet (before the goal is chosen). Under
+ *  Estimate none travels (`noticingsTravel`): each holds its stage until it is answered. */
 function travelNote(log: QuestLog, stage: QuestStage): { note?: string } {
   const gate = triageStage(log);
-  if (gate === null || stage.key === gate) return {};
+  if (gate === null || stage.key === gate || !noticingsTravel(log)) return {};
   const n = openNoticings(stage).length;
   return n ? { note: `${noticings(n, "waits", "wait")} for the triage in ${nameOf(log, gate)}.` } : {};
 }
@@ -336,8 +368,12 @@ export function nextOpen(log: QuestLog, from: string, canAnswer: CanAnswer = ANY
   return null;
 }
 
-export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition, canAnswer: CanAnswer = ANY): Primary {
-  if (stage.key === "models" && fit.kind === "press") return { kind: "fit", ...travelNote(log, stage) };
+/** `triage`: the triage the engine serves (GET /triage), which Models' foot beside Fit reads. */
+export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition, canAnswer: CanAnswer = ANY, triage?: Triage | null): Primary {
+  if (stage.key === "models" && fit.kind === "press") {
+    const waits = triageBeforeFit(log, triage);
+    return { kind: "fit", ...(waits ? { waits } : {}), ...travelNote(log, stage) };
+  }
   if (stage.key === "writeup" && stage.reached) return { kind: "download" };
   // A stage not reached yet is read, not worked on: its foot leads to the stage the analysis is at.
   if (!stage.reached) {
@@ -358,7 +394,7 @@ export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition, c
   const rest = unanswered(stage).filter((l) => !(held && l.key === DRAW));
   // Under Predict open noticings travel to the triage in Results (FOUNDATION §7), and before the
   // goal is chosen they hold nothing either (W1-R M1): they hold no stage but the triage's own.
-  // Under Estimate the shell draws no triage, so each holds its stage.
+  // Under Estimate the engine counts each in its own stage, so each holds it (`noticingsTravel`).
   const travels = noticingsTravel(log);
   const travel = !travels || stage.key === triageStage(log) ? [] : rest.filter((l) => l.source === "finding");
   const left = rest.filter((l) => !travel.includes(l));

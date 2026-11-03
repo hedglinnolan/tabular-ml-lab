@@ -1,9 +1,10 @@
 /**
  * Predict Results' card column (plans/W1_PART2_PLAN.md §2 W1-G; rulings 2 and 4), in Predict's
  * order (FOUNDATION §3, §10): the Results declarations before the opening (the shrinkage
- * question), the triage of the open noticings, the opening of the held-out rows with the chain of
- * refusals that names the final model, and the explanations. Every declaration is drawn through
- * the shell's dispatcher, so W1-F's cards are their only renderers, here as everywhere.
+ * question), the triage of the open noticings (cards/TriageCard.tsx, which Models draws under
+ * Estimate), the opening of the held-out rows with the chain of refusals that names the final
+ * model, and the explanations. Every declaration is drawn through the shell's dispatcher, so W1-F's
+ * cards are their only renderers, here as everywhere.
  *
  * The opening is the card's one primary action once the Results questions before it and the
  * triage are done (FOUNDATION §1): "Open the held-out rows" sits at the foot of the card column
@@ -19,11 +20,10 @@ import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { isRefusalError } from "../../api/client";
 import type { FitArtifact, SplitArtifact } from "../../api/m1-stage-types";
-import { keys, useConfirmSweep, useDecide, useQuest, useTriage } from "../../api/queries";
-import type { Decision, ProjectView, QuestLine, Refusal, Triage, TriageItem } from "../../api/schema";
+import { keys, useDecide, useQuest, useTriage } from "../../api/queries";
+import type { Decision, ProjectView, QuestLine, Refusal, Triage } from "../../api/schema";
 import { useM1Stage } from "../../components/stage/data";
 import { fmtInt } from "../../components/stage/format";
-import r from "../../components/stage/results/results.module.css";
 import { useRefetchOnOpening } from "../../components/stage/seal/OpenSeal";
 import { glyphOf, sealPhase } from "../../components/stage/seal/phase";
 import { SealGlyph } from "../../components/stage/seal/SealGlyph";
@@ -31,6 +31,7 @@ import seal from "../../components/stage/seal/seal.module.css";
 import { Rich } from "../../components/stage/text";
 import { Foot, Plain, kit as k } from "../../kit";
 import { CardFor } from "../cards/CardFor";
+import { TriageCard } from "../cards/TriageCard";
 import { FootSlot } from "../contracts";
 import { runningName } from "../log";
 import q from "../quest.module.css";
@@ -131,108 +132,6 @@ export function openingWaits(lines: readonly QuestLine[], triage: Triage | null)
     return `To open the held-out rows, first confirm the ${n === 1 ? "noticing" : `${n} noticings`} above.`;
   }
   return null;
-}
-
-// ── the triage of the open noticings ─────────────────────────────────────────
-
-/** A recorded disposition, in the triage's own words for each (core/sweep.py, its summary). It
- *  can differ from the recommendation it stands beside (`recorded` is kept while that holds). */
-const RECORDED: Record<NonNullable<TriageItem["recorded"]>, string> = {
-  no_change: "as changing no number here",
-  could_bias: "as a limitation",
-  act_on_it: "to act on",
-};
-
-/**
- * The noticings the held-out rows wait for (`GET /triage`, ruling 4): each with the engine's
- * recommended disposition and its reason; a blocker is decided on its own first. "Confirm all"
- * records each as listed (`confirm_sweep`, stage "results", sweep "noticings"). Once the rows are
- * opened (`passed`) the card is read, not confirmed, and its heading says so in the past. With no
- * rows held out (`heldOut` false: cross-validation only) there are none to open, so the gate never
- * passes (core/seal.py refuses the opening, `nothing_sealed`) and the heading names no held-out rows:
- * it says what confirming records.
- */
-export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; triage: Triage; id?: string; heldOut?: boolean }) {
-  const confirm = useConfirmSweep(pid);
-  const [refused, setRefused] = useState<Refusal | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
-  const items = triage.items;
-  if (!items.length) return null;
-  const blockers = items.filter((i) => i.blocker).length;
-  // Once the gate has passed (under Predict, the held-out rows are open) a confirmation is refused
-  // (core/sweep.py `gate_passed`), so a disposition that stands was recorded before the opening; a
-  // noticing with none is open now, after it.
-  const open = items.filter((i) => i.recorded === null || i.recorded === undefined).length;
-  const settled = triage.passed && open === 0;
-  const counted = items.length === 1 ? "1 noticing" : `${items.length} noticings`;
-  const press = () => {
-    setRefused(null);
-    setFailed(null);
-    confirm.mutate(
-      { stage: "results", sweep: "noticings", lines: [] },
-      { onError: (e) => (isRefusalError(e) ? setRefused(e.refusal) : setFailed(e.message)) },
-    );
-  };
-  return (
-    <section className={r.section} id={id} tabIndex={-1} aria-labelledby={`${id}-h`} data-testid="results-triage" data-purpose="triage">
-      <header className={r.sectionHead}>
-        <h3 id={`${id}-h`} className={r.kicker}>
-          {!heldOut
-            ? open === 0
-              ? `${counted}, each with its disposition recorded`
-              : `${counted}, each recorded as listed once confirmed`
-            : !triage.passed
-              ? `${counted} before the held-out rows open`
-              : settled
-                ? `${counted}, settled before the held-out rows were opened`
-                : `${counted}, ${open} open after the held-out rows were opened`}
-        </h3>
-      </header>
-      <ul className={s.items}>
-        {items.map((i) => (
-          <li key={i.id} className={s.item} data-item={i.id} data-blocker={i.blocker || undefined}>
-            <span className={s.itemSummary}>
-              <Rich text={i.summary} />
-            </span>
-            <span className={s.itemLabel}>
-              {i.blocker ? "Resolve first · " : ""}
-              {i.recorded && i.recorded !== i.recommended ? `Recommended: ${i.label} · recorded ${RECORDED[i.recorded]}` : i.label}
-              {i.recorded && i.recorded === i.recommended ? " · recorded" : ""}
-            </span>
-            <span className={s.itemReason}>
-              <Rich text={i.reason} />
-            </span>
-          </li>
-        ))}
-      </ul>
-      {settled ? (
-        <p className={r.said} role="status" data-testid="triage-settled">
-          Settled: the held-out rows no longer wait for these noticings.
-        </p>
-      ) : !triage.passed && !triage.answered ? (
-        <div className={r.bandRow}>
-          <button type="button" className={r.bandButton} onClick={press} disabled={confirm.isPending || !triage.confirmable} data-testid="triage-confirm">
-            {confirm.isPending ? "Recording…" : `Confirm all ${items.length}`}
-          </button>
-          {blockers > 0 ? (
-            <span className={r.bandNote}>
-              {blockers === 1 ? "The noticing marked to resolve first is" : `The ${blockers} noticings marked to resolve first are`} decided on
-              {blockers === 1 ? " its" : " their"} own before the rest are confirmed.
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-      {refused ? (
-        <p className={r.bandNote} role="alert">
-          <Rich text={`Not recorded: ${refused.error.message}`} />
-        </p>
-      ) : failed ? (
-        <p className={r.bandNote} role="alert">
-          Not recorded: {failed}
-        </p>
-      ) : null}
-    </section>
-  );
 }
 
 // ── the opening, and the chain of refusals that names the final model ────────
