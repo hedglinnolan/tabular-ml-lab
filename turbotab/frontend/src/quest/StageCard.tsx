@@ -19,6 +19,8 @@
  * says how many wait for the triage in Results (log.ts). Under Estimate the triage of the open
  * noticings (cards/TriageCard.tsx) is drawn at Models' end, after its Confirm sweep, before For the
  * record and the foot: before the plan's lock and the analysis flowchart beside the card (§7; G05).
+ * While it is unconfirmed, the foot beside Fit says that Fit fixes the plan and the noticings above
+ * are confirmed first (log.ts `triageBeforeFit`).
  *
  * A stage opened by a request (the quest line, a "Waiting for" link, a noticing's lever, the foot's
  * link) brings the line it names, else its open line, into view and gives it focus (§1, the
@@ -474,7 +476,8 @@ function Noticed({
 /**
  * The triage of the open noticings in `stage` (GET /triage; FOUNDATION §7), drawn only from a
  * triage the engine serves for that stage: under Estimate, Models, before the plan's lock (G05).
- * Its own "Confirm all" records every disposition; the stage's foot stays the shell's.
+ * Its own "Confirm all" records every disposition; the stage's foot stays the shell's, which says
+ * beside Fit, while the triage is unconfirmed, that it is confirmed before the press (`Primary`).
  */
 function StageTriage({ pid, stage }: { pid: string; stage: string }) {
   const served = useTriage(pid).data;
@@ -570,7 +573,10 @@ function Primary({
   const decide = useDecide(pid);
   const bundle = useExport(pid);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
-  const action = primaryFor(log, stage, fit, canAnswer);
+  // Models' foot beside Fit reads the triage at its end, where the shell draws it (log.ts
+  // `triageBeforeFit`); no other foot reads it.
+  const triage = useTriage(pid, stage.key === "models" && triageStage(log) === "models").data;
+  const action = primaryFor(log, stage, fit, canAnswer, triage);
   // No exit confirms a role in a block (§14 rule 2; besideAsk.ts `oneRoleAtATime`).
   const onRefused = (err: Error) =>
     setRefusal(isRefusalError(err) ? oneRoleAtATime(err.refusal) : { error: { code: "failed", message: err.message, exits: [] } });
@@ -580,7 +586,7 @@ function Primary({
     case "fit":
       node = (
         <div className={q.footQuiet} data-kit data-testid="primary-fit">
-          Fit is at the end of your analysis, beside the card.
+          {action.waits ?? "Fit is at the end of your analysis, beside the card."}
           {action.note ? (
             <>
               {" "}

@@ -17,6 +17,7 @@ import type { ForTheRecord, ProjectView, QuestLine, QuestLog, QuestStage, Triage
 import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { StageFocusProvider } from "../state/focus";
 import { CONTRACT } from "./fixtures/contract";
+import { type FitPosition, fitPosition } from "./log";
 import { QuestScreen } from "./QuestScreen";
 import { StageCard, type OpenRequest } from "./StageCard";
 
@@ -150,7 +151,7 @@ const lineEl = (card: HTMLElement, key: string) => within(card).getAllByTestId(`
 function cardOf(
   log: QuestLog,
   key: string,
-  opts: { request?: OpenRequest | null; answers?: Map<string, string>; open?: (stage: string, line?: string) => void; seed?: (qc: QueryClient) => void } = {},
+  opts: { request?: OpenRequest | null; answers?: Map<string, string>; open?: (stage: string, line?: string) => void; seed?: (qc: QueryClient) => void; fit?: FitPosition } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(keys.quest(PID), log);
@@ -162,7 +163,7 @@ function cardOf(
     log,
     stage: stageIn(log, key),
     answers: opts.answers ?? new Map<string, string>(),
-    fit: { kind: "none" } as const,
+    fit: opts.fit ?? ({ kind: "none" } as const),
     onOpenStage: opts.open ?? (() => {}),
     arrival: null,
     onOpenManuscript: () => {},
@@ -175,7 +176,7 @@ function cardOf(
     </QueryClientProvider>
   );
   const r = render(ui(opts.request ?? null));
-  return { card: screen.getByTestId(`card-${key}`), ask: (request: OpenRequest) => r.rerender(ui(request)) };
+  return { card: screen.getByTestId(`card-${key}`), ask: (request: OpenRequest) => r.rerender(ui(request)), unmount: r.unmount };
 }
 
 describe("a stage opened by a request (P3, P4)", () => {
@@ -828,6 +829,49 @@ describe("the triage of the open noticings under Estimate (G05)", () => {
     const { card } = cardOf(ESTIMATE, "models", { seed: seed(none) });
     expect(within(card).queryByTestId("results-triage")).toBeNull();
     expect(within(card).queryByRole("button", { name: /^Confirm all/ })).toBeNull();
+  });
+
+  /** The Estimate log with every question and sweep through Models answered, so Fit is offered. */
+  const done = (l: QuestLine): QuestLine => (l.label === "Decide" ? { ...l, status: "answered", decision_id: `r-${l.key}`, waiting_for: [] } : l);
+  const READY: QuestLog = {
+    ...ESTIMATE,
+    stages: ESTIMATE.stages.map((s) =>
+      ["question", "whos_in", "models"].includes(s.key)
+        ? {
+            ...s,
+            lines: s.lines.map(done),
+            sweep: s.sweep ? { ...s.sweep, answered: true } : null,
+            progress: s.progress ? { ...s.progress, answered: s.progress.required, complete: true } : null,
+          }
+        : s,
+    ),
+  };
+
+  it("leads the foot to the triage above while it is unconfirmed, where Fit is offered (V1)", () => {
+    // Pressing Fit fixes the plan under Estimate (the lock's `locks`), and once it is fixed the
+    // triage's Confirm all is refused (core/sweep.py `gate_passed`): the foot says so in place of
+    // where Fit is.
+    const fit = fitPosition(READY, undefined);
+    expect(fit.kind).toBe("press");
+    expect(READY.fit).toMatchObject({ locks: true, locked: false });
+    const triage = served("models");
+    const { card } = cardOf(READY, "models", { seed: seed(triage), fit });
+    expect(within(card).getByTestId("results-triage")).toBeInTheDocument();
+    const foot = within(card).getByTestId("primary-fit");
+    expect(triage.items).toHaveLength(1);
+    expect(foot).toHaveTextContent(/^Fit fixes the plan: first confirm the noticing above\.$/);
+    expect(follows(within(card).getByTestId("results-triage"), foot)).toBe(true);
+  });
+
+  it("points the foot to Fit beside the card once the triage is answered, or with none served", () => {
+    const fit = fitPosition(READY, undefined);
+    const answered: Triage = { ...served("models"), answered: true, confirmable: false, confirmed_by: "r-9" };
+    answered.items = answered.items.map((i) => ({ ...i, recorded: i.recommended }));
+    const confirmed = cardOf(READY, "models", { seed: seed(answered), fit });
+    expect(within(confirmed.card).getByTestId("primary-fit")).toHaveTextContent(/^Fit is at the end of your analysis, beside the card\.$/);
+    confirmed.unmount();
+    const { card } = cardOf(READY, "models", { fit });
+    expect(within(card).getByTestId("primary-fit")).toHaveTextContent(/^Fit is at the end of your analysis, beside the card\.$/);
   });
 
   it("is not drawn on a Models card not reached yet, though the engine serves Models' triage from Your data on", () => {

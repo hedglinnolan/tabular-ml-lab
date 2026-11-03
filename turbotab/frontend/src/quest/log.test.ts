@@ -7,7 +7,7 @@
  * construction where a case needs a moment the samples do not hold; each expected value is read off
  * the constructed log (a name, a stage), never off the function under test.
  */
-import type { Finding, FindingsArtifact, FitLock, QuestLine, QuestLog, QuestStage } from "../api/schema";
+import type { Finding, FindingsArtifact, FitLock, QuestLine, QuestLog, QuestStage, Triage } from "../api/schema";
 import prediction from "../mocks/fixtures/m3-nhanes-prediction.json";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { mockQuest } from "../mocks/quest";
@@ -623,6 +623,119 @@ describe("Fit beside a noticing in Models (ruling R-a)", () => {
     const fit = fitPosition(log, undefined);
     expect(fit.kind).toBe("press");
     expect(primaryFor(log, stageOf(log, "models")!, fit)).toEqual({ kind: "fit" });
+  });
+});
+
+/**
+ * Fit's foot beside the triage at Models' end under Estimate (G05, V1; FOUNDATION §7): the triage
+ * stands before the plan's lock, and pressing Fit fixes the plan (the lock's `locks`; the engine
+ * records `lock_plan` at the press, server/service.py `press_fit`), after which its Confirm all is
+ * refused (core/sweep.py `gate_passed`). So while the engine serves Models' triage with noticings
+ * not all answered and its gate not passed, the foot says so in place of where Fit is; it stays
+ * silent once the triage is answered, passed or empty, for a triage served for another stage,
+ * under Predict, and where Fit is not offered yet. The log and its lock are the engine's (Estimate:
+ * the contract's `unlocked`); the triage is built by construction in the shape it is served.
+ */
+describe("Fit's foot beside the triage at Models' end under Estimate (V1)", () => {
+  const ESTIMATE = doneIn({ ...NOT_REACHED, fit: CONTRACT.fit_locks.unlocked }, ["question", "whos_in", "models"]);
+  const NOTICING = stageOf(NOT_REACHED, "whos_in")!.lines.find((l) => l.source === "finding")!;
+  const item = (i: number): Triage["items"][number] => ({
+    id: `${NOTICING.key}-${i}`,
+    line: `${NOTICING.id}-${i}`,
+    stage: "whos_in",
+    summary: NOTICING.name,
+    severity: "warning",
+    columns: [],
+    question: null,
+    recommended: "could_bias",
+    label: "Could bias the estimate",
+    reason: "Left as it is, it could bias the estimate.",
+    blocker: false,
+    recorded: null,
+    family: "finding",
+    band: null,
+    measure: null,
+    calibrated: null,
+    limitation: true,
+    done: null,
+  });
+  /** Models' triage as served before the plan's lock: `n` noticings, none recorded. */
+  const served = (n: number, patch: Partial<Triage> = {}): Triage => ({
+    version: 1,
+    stage: "models",
+    gate: "gate:open-noticings-before-lock",
+    items: Array.from({ length: n }, (_, i) => item(i)),
+    blockers: 0,
+    confirmable: n > 0,
+    answered: n === 0,
+    confirmed_by: null,
+    changed: [],
+    passed: false,
+    rows: [],
+    ...patch,
+  });
+  const models = stageOf(ESTIMATE, "models")!;
+
+  it("offers Fit under Estimate once Models is done, the engine's lock fixing the plan at the press", () => {
+    expect(ESTIMATE.fit).toMatchObject({ purpose: "inference", locks: true, locked: false, pressed: false });
+    expect(models.progress?.complete).toBe(true);
+    expect(fitPosition(ESTIMATE, undefined)).toEqual({ kind: "press", held: false, estimate: null });
+  });
+
+  it("says, where Fit is offered, that Fit fixes the plan and the noticings above are confirmed first", () => {
+    const fit = fitPosition(ESTIMATE, undefined);
+    const five = served(5);
+    expect(primaryFor(ESTIMATE, models, fit, undefined, five)).toEqual({
+      kind: "fit",
+      waits: `Fit fixes the plan: first confirm the ${five.items.length} noticings above.`,
+    });
+    expect(primaryFor(ESTIMATE, models, fit, undefined, served(1))).toEqual({
+      kind: "fit",
+      waits: "Fit fixes the plan: first confirm the noticing above.",
+    });
+    // A blocker leaves the triage unanswered (core/sweep.py `triage`): it still waits.
+    const blocked = served(2, { blockers: 1, confirmable: false, items: [{ ...item(0), blocker: true }, item(1)] });
+    expect(primaryFor(ESTIMATE, models, fit, undefined, blocked)).toMatchObject({ kind: "fit", waits: expect.any(String) });
+  });
+
+  it("stays silent once the triage is answered, its gate passed, or nothing is open", () => {
+    const fit = fitPosition(ESTIMATE, undefined);
+    const recorded = served(2, { answered: true, items: [0, 1].map((i) => ({ ...item(i), recorded: "could_bias" as const })) });
+    expect(primaryFor(ESTIMATE, models, fit, undefined, recorded)).toEqual({ kind: "fit" });
+    expect(primaryFor(ESTIMATE, models, fit, undefined, served(2, { passed: true, confirmable: false }))).toEqual({ kind: "fit" });
+    expect(primaryFor(ESTIMATE, models, fit, undefined, served(0))).toEqual({ kind: "fit" });
+    // With no noticings the card draws nothing (TriageCard), so the foot names none above, whatever
+    // `answered` says.
+    expect(primaryFor(ESTIMATE, models, fit, undefined, served(0, { answered: false }))).toEqual({ kind: "fit" });
+    expect(primaryFor(ESTIMATE, models, fit, undefined, null)).toEqual({ kind: "fit" });
+    expect(primaryFor(ESTIMATE, models, fit)).toEqual({ kind: "fit" });
+  });
+
+  it("stays silent for a triage served for another stage, and under Predict, where the press fixes no plan", () => {
+    const fit = fitPosition(ESTIMATE, undefined);
+    expect(primaryFor(ESTIMATE, models, fit, undefined, served(2, { stage: "results", gate: "gate:open-noticings-before-seal" }))).toEqual({ kind: "fit" });
+    const predict = doneIn(NOT_REACHED, ["question", "whos_in", "models"]);
+    expect(predict.fit).toMatchObject({ purpose: "prediction", locks: false });
+    const pfit = fitPosition(predict, undefined);
+    expect(pfit.kind).toBe("press");
+    expect(primaryFor(predict, stageOf(predict, "models")!, pfit, undefined, served(2))).toEqual({ kind: "fit" });
+  });
+
+  it("stays silent where the lock says the plan is fixed already, which the press then does not do", () => {
+    // By construction: the quest log read after a lock and the triage before it (two reads).
+    const fixed = { ...ESTIMATE, fit: { ...ESTIMATE.fit!, locked: true } };
+    expect(primaryFor(fixed, models, fitPosition(fixed, undefined), undefined, served(2))).toEqual({ kind: "fit" });
+  });
+
+  it("stays silent where Fit is not offered yet: the foot names Models' own question still to answer", () => {
+    const { log, stage } = withStage(ESTIMATE, "models", (l) => (l.key === "set_selection" ? { ...l, status: "open", decision_id: null } : l), {
+      progress: { ...models.progress!, answered: models.progress!.required - 1, complete: false },
+    });
+    const fit = fitPosition(log, undefined);
+    expect(fit).toEqual({ kind: "none" });
+    const p = primaryFor(log, stage, fit, undefined, served(2));
+    expect(p).toMatchObject({ kind: "continue", disabled: true, hint: { lead: "Still to answer: ", to: { stage: "models", line: "set_selection" } } });
+    expect(JSON.stringify(p)).not.toContain("Fit fixes the plan");
   });
 });
 
