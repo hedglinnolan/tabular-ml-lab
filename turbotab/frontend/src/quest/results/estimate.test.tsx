@@ -3,7 +3,11 @@
  * served on a light time-to-event walk under Estimate (fixtures/cox-estimate.json, written by
  * fixtures/capture_estimate.py; nothing in it by hand): before the plan's lock, once Fit is pressed
  * and the plan locked, and once the failed proportional-hazards check's first way forward is
- * recorded.
+ * recorded. Beside it, what the real effects stage serves where Table 2 draws a declared sequence
+ * only in part (fixtures/estimate-sequences.json, written by fixtures/capture_sequences.py from
+ * the engine tests' own constructions): a primary refused beside an unadjusted model that reports,
+ * a family blocked and recorded, a category's levels; and the residual method's renamed exposure
+ * (mocks/fixtures/m3-dietary-recalls.json, captured from the real server).
  *
  * The truth is the served field: each printed number is read back off the screen and compared with
  * the field it shows, to the three significant digits the views print (views/format.ts), so a
@@ -18,10 +22,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EffectsArtifact } from "../../api/m3-types";
 import type { FitLock } from "../../api/schema";
 import { ENGINE_LABELS, SERVED } from "../../components/fixtures/stages";
+import { table2FromEffects } from "../../components/views/adapters";
 import LAB from "../../components/views/lab/fixtures.json";
+import diet from "../../mocks/fixtures/m3-dietary-recalls.json";
 import survey from "../../mocks/fixtures/m3-survey-design.json";
 import { lockOf } from "./estimate";
 import capture from "./fixtures/cox-estimate.json";
+import sequences from "./fixtures/estimate-sequences.json";
 import predict from "./fixtures/nhanes-predict.json";
 import { ResultsTapestry } from "./index";
 
@@ -47,6 +54,20 @@ const P = predict as unknown as { opened: Snapshot };
 const NHANES = (LAB as unknown as { nhanes: { effects: EffectsArtifact } }).nhanes.effects;
 const ODDS = (LAB as unknown as { timeVarying: { effects: EffectsArtifact } }).timeVarying.effects;
 const SURVEY = (survey as unknown as { artifacts: { effects: { base: EffectsArtifact } } }).artifacts.effects.base;
+/** Repeated 24-hour recalls under inference, energy-adjusted by the residual method: the exposure
+ *  `protein_g` is served as the column the method made of it (one version of the stage). */
+const DIET = (diet as unknown as { artifacts: { effects: { base: EffectsArtifact } } }).artifacts.effects.base;
+/** A served row's truth from statsmodels (fixtures/capture_sequences.py). */
+interface Truth {
+  estimate: number;
+  ci_low: number;
+  ci_high: number;
+  p: number;
+}
+type Sequenced = { artifact: EffectsArtifact; truth?: { crude: { rows: Record<string, Truth> } }; refused?: Record<string, string> };
+const Q = sequences as unknown as Record<"dependency" | "sole" | "blocked" | "levels", Sequenced>;
+/** The line the adapter says when Table 2 has no row: "… has no estimate for what you study yet." */
+const NONE_YET = table2FromEffects(NHANES).empty!;
 /** The locked snapshot with `artifact` served where the walk's effects were. */
 const servedAt = (artifact: EffectsArtifact): Snapshot => ({
   ...C.locked,
@@ -390,6 +411,160 @@ describe("a fit refused, or not yet run", () => {
   it("says the work under way in the engine's words while the effects are computed", async () => {
     const view = await estimateView(withEffects({ status: "running", fresh: false }));
     expect(view.textContent).toContain(ENGINE_LABELS.effects);
+    expect(within(view).queryByRole("table")).toBeNull();
+  });
+});
+
+// ── a declared sequence Table 2 draws in part ────────────────────────────────
+
+/** The table's drawn rows, by key. */
+const drawnRows = (view: HTMLElement) => [...within(view).getByRole("table").querySelectorAll("tbody tr[data-row]")].map((r) => r.getAttribute("data-row"));
+/** The line said for a declared model Table 2 does not draw. */
+const unreported = (view: HTMLElement, key: string) => view.querySelector<HTMLElement>(`[data-testid="results-unreported"][data-fit="${key}"]`);
+
+describe("the exposure's served rows", () => {
+  it("draws the column an energy model made of the exposure (the residual method's) as its estimate", async () => {
+    const fam = DIET.families[0]!;
+    expect(DIET.exposures).toEqual([DIET.exposure]);
+    const view = await estimateView(servedAt(DIET));
+    expect(view.textContent).not.toContain(NONE_YET);
+    const table = within(within(view).getByTestId("results-table2")).getByRole("table");
+    expect(drawnRows(view)).toEqual(fam.sequence.map((q) => q.key));
+    for (const fit of fam.sequence) {
+      // Each model serves the exposure's one row, named for the residual method's column.
+      const [e, ...rest] = fit.effects!;
+      expect(rest).toEqual([]);
+      expect(e!.feature).toBe(`${DIET.exposure}_adj`);
+      expectShows(cell(table, unticked(fit.label), "Difference"), [e!.estimate, e!.ci_low, e!.ci_high], `${fit.label}'s estimate`);
+      expectShows(cell(table, unticked(fit.label), "n"), [fit.n_rows], `${fit.label}'s rows`);
+      expect(table.querySelector(`tr[data-row="${fit.key}"] svg[data-mark="${fit.key}"]`), `${fit.key}'s mark`).not.toBeNull();
+      expect(unreported(view, fit.key)).toBeNull();
+    }
+  });
+
+  it("says a category served as its levels is not drawn here, naming the rows, never that there is no estimate", async () => {
+    const art = Q.levels.artifact;
+    const view = await estimateView(servedAt(art));
+    expect(view.textContent).not.toContain(NONE_YET);
+    expect(within(view).queryByRole("table")).toBeNull();
+    for (const fit of art.families[0]!.sequence) {
+      const said = unreported(view, fit.key)!;
+      expect(said, fit.key).not.toBeNull();
+      expect(said.textContent).toContain(unticked(fit.label));
+      for (const e of fit.effects!) expect(said.textContent).toContain(e.feature);
+    }
+    // No served number of a level is printed as an estimate.
+    const served = art.families[0]!.sequence.flatMap((q) => q.effects!.flatMap((e) => [e.estimate, e.ci_low, e.ci_high]));
+    expect(numbersIn(view.textContent ?? "").some((n) => served.some((v) => shows(n, v)))).toBe(false);
+    // statsmodels' truth for the unadjusted model is what the engine serves (the capture checks it).
+    expect(Object.keys(Q.levels.truth!.crude.rows)).toEqual(art.families[0]!.sequence[0]!.effects!.map((e) => e.feature));
+  });
+});
+
+describe("a declared model that reports no estimate", () => {
+  it.each([
+    { name: "Model 2 refused whole for a dependency, the linear model", of: Q.dependency },
+    { name: "Model 2 and Model 3 refused as not estimable given their covariates, feature-wise regression", of: Q.sole },
+  ])("says each in the engine's words beside the unadjusted model's row: $name", async ({ of }) => {
+    const art = of.artifact;
+    const seq = art.families[0]!.sequence;
+    const view = await estimateView(servedAt(art));
+    // The unadjusted model's row is drawn, and its numbers are statsmodels'.
+    expect(drawnRows(view)).toEqual(["crude"]);
+    const table = within(view).getByRole("table");
+    const crude = seq.find((q) => q.key === "crude")!;
+    const truth = of.truth!.crude.rows[art.exposure]!;
+    expectShows(cell(table, unticked(crude.label), "Difference"), [truth.estimate, truth.ci_low, truth.ci_high], "the unadjusted estimate");
+    expect(truth.p).toBeLessThan(0.001);
+    expect(cell(table, unticked(crude.label), "P")).toBe("<0.001");
+    // Each model with no estimate is said, in its refusal's words, the primary first; none is a
+    // footnote marked on a row that is not there.
+    const refused = Object.keys(of.refused!);
+    expect(refused[0]).toBe("model_2");
+    const section = within(view).getByTestId("results-table2");
+    const said = [...section.querySelectorAll<HTMLElement>('[data-testid="results-unreported"]')];
+    expect(said.map((x) => x.dataset.fit)).toEqual(refused);
+    for (const key of refused) {
+      const fit = seq.find((q) => q.key === key)!;
+      expect(fit.effects).toBeNull();
+      expect(unreported(view, key)!.textContent).toContain(`${unticked(fit.label)}: no estimate. ${unticked(of.refused![key]!)}`);
+      expect(footnotesIn(view)).not.toContain(`${unticked(fit.label)}:`);
+    }
+  });
+
+  it("says a family blocked and recorded in its refusal's words, in place of Table 2", async () => {
+    const art = Q.blocked.artifact;
+    const [fit] = art.families[0]!.sequence;
+    expect(fit).toMatchObject({ key: "model_2", effects: null });
+    const view = await estimateView(servedAt(art));
+    expect(within(view).queryByRole("table")).toBeNull();
+    expect(view.textContent).not.toContain(NONE_YET);
+    const section = within(view).getByTestId("results-table2");
+    expect(within(section).getByRole("heading").textContent).toBe("Table 2");
+    expect(unreported(view, "model_2")!.textContent).toBe(`${unticked(fit!.label)}: no estimate. ${unticked(Q.blocked.refused!.model_2!)}`);
+  });
+
+  it.each([
+    { name: "a hazard ratio (the walk's capture)", at: C.locked },
+    { name: "a difference (NHANES)", at: servedAt(NHANES) },
+    { name: "the residual method's exposure", at: servedAt(DIET) },
+  ])("says nothing more where every declared model reports: $name", async ({ at }) => {
+    const view = await estimateView(at);
+    expect(within(view).getByRole("table")).toBeTruthy();
+    expect(within(view).queryAllByTestId("results-unreported")).toEqual([]);
+  });
+});
+
+// ── a recorded response's served estimates (G18) ─────────────────────────────
+
+describe("a recorded response's estimates", () => {
+  it("are drawn under the check from the served change rows, on the ratio scale, beside the engine's label", async () => {
+    const view = await estimateView(C.responded);
+    const d = checkOf(C.responded);
+    expect(d.change!.length).toBe(2);
+    const change = within(view).getByTestId("results-diagnostic-change");
+    expect(change.textContent).toContain(unticked(d.change_label!));
+    const rows = within(change).getAllByTestId("results-change-row");
+    expect(rows.length).toBe(d.change!.length);
+    d.change!.forEach((e, i) => {
+      expect(within(rows[i]!).getByTestId("results-change-label").textContent).toBe(unticked(e.feature));
+      expectShows(within(rows[i]!).getByTestId("results-change-value").textContent, [e.ratio, e.ratio_low, e.ratio_high], `${e.feature}'s ratio`);
+    });
+  });
+
+  it("are not drawn where no response shows any (a failed check unanswered, a passed check)", async () => {
+    for (const at of [C.locked, servedAt(NHANES)]) {
+      const view = await estimateView(at);
+      expect(within(view).queryByTestId("results-diagnostic-change")).toBeNull();
+      cleanup();
+    }
+  });
+});
+
+// ── a failure the engine did not type as a refusal ───────────────────────────
+
+describe("a failure the engine did not type", () => {
+  /** The locked snapshot with stages failed in the engine's untyped shapes (components/fixtures/
+   *  stages.json: C fails with an error, AC waits on a stage that failed) and no effects served;
+   *  the models' question answered, as the server serves the interview, so a failure has a lever. */
+  const failing = (statuses: Record<string, Json>): Snapshot => {
+    const { effects: _effects, ...stages } = C.locked.stages;
+    const models = (C.locked.view.decisions as unknown as { id: string; decision: { kind: string } }[]).find((r) => r.decision.kind === "select_models")!;
+    const interview = [{ key: "models", status: "answered", decision_id: models.id, reason: null, waiting_on: [], deferred_findings: [] }];
+    return { ...C.locked, view: { ...C.locked.view, interview, stages: { ...C.locked.view.stages, ...statuses } }, stages };
+  };
+  const failed = (stage: string) => ({ ...SERVED.C, stage }) as unknown as Json;
+  const waiting = (stage: string, on: string) => ({ ...SERVED.AC, stage, error: SERVED.AC.error!.replace("'CH'", `'${on}'`) }) as unknown as Json;
+
+  it.each<{ name: string; statuses: Record<string, Json>; at: string }>([
+    { name: "the effects stage's own", statuses: { effects: failed("effects") }, at: "effects" },
+    { name: "the fit's, which the effects stage waits on", statuses: { fit: failed("fit"), effects: waiting("effects", "fit") }, at: "fit" },
+  ])("says $name in its words, and offers no change the shell's Results cannot reach", async ({ statuses, at }) => {
+    const view = await estimateView(failing(statuses));
+    const said = within(view).getByTestId("failure-effects");
+    expect(said.dataset).toMatchObject({ stage: at, kind: "failed" });
+    expect(said.textContent).toContain(`${ENGINE_LABELS[at]} did not finish: ${SERVED.C.error!.replace(/^\w+: /, "")}`);
+    expect(within(view).queryAllByRole("button").filter((b) => (b.textContent ?? "").startsWith("Change"))).toEqual([]);
     expect(within(view).queryByRole("table")).toBeNull();
   });
 });

@@ -3,20 +3,26 @@
  * a read-only first version from the views that exist, which W4's designed Results replaces or
  * wraps): the shell's Results tapestry under any goal but prediction. Nothing is recorded here
  * (FOUNDATION §1, the tapestry's rule) and nothing is computed: every number is the effects
- * stage's served field, formatted by the view, and every sentence is the engine's.
+ * stage's served field, formatted by the view, and every sentence is the engine's, save the lines
+ * that name what this Table 2 does not draw.
  *
  *   1. the plan-lock line, "Plan fixed at …" with the locked plan's SHA-256 as its quiet label
  *      (FOUNDATION §7), from the quest log's lock (core/fit_press.py `FitLock`);
  *   2. per model family, Table 2 with its forest as the last column (table2FromEffects and
  *      forestFromEffects over GET /stages/effects; on a ratio scale, which prints each ratio and
- *      no estimate, the caption's sentence on the coefficients' scale is left out, `asTable2`),
- *      and beside it the primary model's diagnostics in the engine's words: a failed check's ways
- *      forward are named, never pressed, and a recorded response is said as its record words it.
+ *      no estimate, the caption's sentence on the coefficients' scale is left out, `asTable2`):
+ *      each declared model's one served row for the exposure, under whatever name the engine gave
+ *      the column (the residual method's `<exposure>_adj`); a model that reports no estimate is
+ *      said in its refusal's words beside it, and one that serves the exposure as several rows (a
+ *      category's levels) is named, not drawn (`asTable2`, `unreportedOf`);
+ *   3. beside it the primary model's diagnostics in the engine's words: a failed check's ways
+ *      forward are named, never pressed, and a recorded response is said as its record words it,
+ *      with the estimates the engine serves for it.
  *
  * Gated on the plan's lock as the engine gates it (FOUNDATION §5 rule 6): the quest log's lock
  * through gateFromLock, which fails closed, and the served artifact's own withholding. A fit refused
- * or failed is said through StageFailure (StageRefusal for a refusal) with `recordHere` false; one
- * under way in the engine's label for the work.
+ * or failed is said through StageFailure (StageRefusal for a refusal) with `recordHere` false and
+ * no change offered; one under way in the engine's label for the work.
  */
 import { useState } from "react";
 import type { EffectsArtifact } from "../../api/m3-types";
@@ -30,10 +36,13 @@ import { forestFromEffects, gateFromLock, LOCK_GATE, table2FromEffects } from ".
 import { OneLine } from "../../components/views/common/parts";
 import type { EffectsLock } from "../../components/views/contracts";
 import { TableWithForest } from "../../components/views/Forest";
+import { fmtEstimate } from "../../components/views/format";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
 import s from "./results.module.css";
 
 type Family = EffectsArtifact["families"][number];
+type Fit = Family["sequence"][number];
+type Row = NonNullable<Fit["effects"]>[number];
 type Diagnostic = Family["diagnostics"][number];
 /** The served effects: an estimate stage's artifact carries the gate's words while it is withheld
  *  (core/estimand.py `withhold`), outside its schema. */
@@ -93,7 +102,8 @@ export function EstimateTapestry({ pid, view }: { pid: string; view: ProjectView
           </p>
         </section>
       ) : null}
-      {failed ? <StageFailure pid={pid} view={view} stage="effects" recordHere={false} /> : null}
+      {/* No change is offered: the Record that reopens a question is not in the shell. */}
+      {failed ? <StageFailure pid={pid} view={view} stage="effects" recordHere={false} changeable={false} /> : null}
       <Estimates art={art} view={view} veil={effects.veil} status={status?.status} failed={failed} />
     </div>
   );
@@ -154,20 +164,73 @@ function sentencesOf(text: string): string[] {
   return tail ? [...out, tail] : out;
 }
 
-/** The effects as Table 2 prints them. On a ratio scale its column is each ratio, exp(estimate),
- *  and it has no estimate column, so the caption's sentence on the coefficients' scale (the
- *  coefficient table's: "Estimates are log hazard ratios; …") would describe a column it does not
- *  print, and a reader who trusted it would exponentiate a ratio again: that sentence is left out,
- *  and the caption's others (its intervals, its rows) stay in the engine's words. A difference
- *  scale prints the estimate itself, and its caption whole. */
+/** Whose a served row is, where several exposures share a model (core/estimand.py
+ *  `primary_features`): the exposure's own column, the columns an energy model made of it
+ *  (`<exposure>_adj`, `<exposure>_per_<E>`, `kcal_from_<exposure>`) and a form's terms (`x'`,
+ *  `x_Q2`, a level's `x_b`); the longest exposure's where two names begin alike. */
+function ownerOf(feature: string, exposures: readonly string[]): string | null {
+  const base = feature.startsWith("kcal_from_") ? feature.slice("kcal_from_".length) : feature;
+  const mine = exposures.filter((e) => base.replace(/'+$/, "") === e || base.startsWith(`${e}_`) || base.startsWith(`${e}[`));
+  return mine.sort((a, b) => b.length - a.length)[0] ?? null;
+}
+
+/** Whether a declared model reports an estimate: a served row with a number (core/stages/
+ *  effects.py `_estimates`, the rule its methods text says "reports none" by). */
+const reports = (fit: Fit) => (fit.effects ?? []).some((r) => r.estimate !== null);
+
+/** A declared model as Table 2 draws it: each exposure's one served row under the exposure's name
+ *  (a model's rows are the exposures' only, core/stages/effects.py `SequenceFit`, so with one
+ *  exposure every row is its own), and the rows of an exposure it serves as several, which one row
+ *  per model cannot hold (a category's levels, a curve's terms), by exposure. */
+function drawnOf(fit: Fit, exposures: readonly string[]): { rows: Row[]; several: [string, Row[]][] } {
+  const by = new Map<string, Row[]>();
+  for (const r of fit.effects ?? []) {
+    const e = exposures.length === 1 ? exposures[0]! : ownerOf(r.feature, exposures);
+    if (e !== null) by.set(e, [...(by.get(e) ?? []), r]);
+  }
+  const rows = [...by].flatMap(([e, own]) => (own.length === 1 ? [{ ...own[0]!, feature: e }] : []));
+  return { rows, several: [...by].filter(([, own]) => own.length > 1) };
+}
+
+/** What Table 2 says beside its rows for a declared model it does not draw, in the engine's words
+ *  for why where it gives them (core/stages/effects.py `_family_sentence`: the table's refusal,
+ *  else its first concern); the primary first, as the methods text says it. */
+function unreportedOf(fam: Family, exposures: readonly string[]): { key: string; text: string }[] {
+  const plain = (x: string) => x.replaceAll("`", "");
+  const out = fam.sequence.flatMap((fit) => {
+    const label = plain(fit.label);
+    if (!reports(fit)) {
+      const why = fit.inference?.refused ?? fit.concerns[0] ?? null;
+      return [{ key: fit.key, text: why ? `${label}: no estimate. ${why}` : `${label}: no estimate.` }];
+    }
+    return drawnOf(fit, exposures).several.map(([e, own]) => ({
+      key: fit.key,
+      text: `${label}: \`${e}\` is reported as ${own.length} rows (${own.map((r) => `\`${r.feature}\``).join(", ")}); this Table 2 draws one row of it per model, so they are not drawn here.`,
+    }));
+  });
+  return [...out.filter((x) => x.key === "model_2"), ...out.filter((x) => x.key !== "model_2")];
+}
+
+/** The effects as Table 2 and its forest draw them. Each declared model keeps the rows it draws
+ *  (`drawnOf`), and a model that draws none is left out, so no footnote is marked on a row that is
+ *  not there and the caption is the first drawn model's (the primary's where it reports); what is
+ *  left out is said beside the table (`unreportedOf`). On a ratio scale its column is each ratio,
+ *  exp(estimate), and it has no estimate column, so the caption's sentence on the coefficients'
+ *  scale (the coefficient table's: "Estimates are log hazard ratios; …") would describe a column
+ *  it does not print, and a reader who trusted it would exponentiate a ratio again: that sentence
+ *  is left out, and the caption's others (its intervals, its rows) stay in the engine's words. A
+ *  difference scale prints the estimate itself, and its caption whole. */
 function asTable2(art: ServedEffects): ServedEffects {
-  if (art.scale !== "ratio") return art;
-  const caption = (text: string) => sentencesOf(text).filter((x) => !ON_COEFFICIENTS.test(x)).join(" ");
+  const caption = (text: string) => (art.scale === "ratio" ? sentencesOf(text).filter((x) => !ON_COEFFICIENTS.test(x)).join(" ") : text);
   return {
     ...art,
     families: art.families.map((fam) => ({
       ...fam,
-      sequence: fam.sequence.map((fit) => (fit.inference ? { ...fit, inference: { ...fit.inference, caption: caption(fit.inference.caption) } } : fit)),
+      sequence: fam.sequence.flatMap((fit) => {
+        const rows = reports(fit) ? drawnOf(fit, art.exposures).rows : [];
+        if (!rows.length) return [];
+        return [{ ...fit, effects: rows, inference: fit.inference ? { ...fit.inference, caption: caption(fit.inference.caption) } : fit.inference }];
+      }),
     })),
   };
 }
@@ -175,20 +238,28 @@ function asTable2(art: ServedEffects): ServedEffects {
 function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; index: number; many: boolean; decisions: readonly DecisionRecord[] }) {
   const [lit, setLit] = useState<string | null>(null);
   const fam = art.families[index]!;
-  const table = table2FromEffects(asTable2(art), index, many ? `Table 2 (${fam.label})` : "Table 2");
-  const primary = fam.sequence.find((q) => q.key === "model_2") ?? fam.sequence[0];
-  // A family blocked and recorded has no estimate: its refusal says why, in place of an empty table.
-  const refused = !table.rows.some((r) => r.kind === "row") ? (primary?.inference?.refused ?? null) : null;
+  const shown = asTable2(art);
+  const table = table2FromEffects(shown, index, many ? `Table 2 (${fam.label})` : "Table 2");
+  const unreported = unreportedOf(fam, art.exposures);
+  const said = unreported.map((x, i) => (
+    <span key={`${x.key}:${i}`} className={s.itemReason} data-testid="results-unreported" data-fit={x.key}>
+      <Rich text={x.text} />
+    </span>
+  ));
   return (
     <div className={s.tapestry}>
       <section className={s.exhibit} data-purpose="table2" data-testid="results-table2" data-family={fam.family}>
-        {refused ? (
-          <OneLine view="table" title={table.number} text={<Rich text={refused} />} />
+        {shown.families[index]!.sequence.length ? (
+          <>
+            <TableWithForest table={table} forest={forestFromEffects(shown, index)} gate={null} lit={lit} onLit={setLit} />
+            {said.length ? <div className={s.items}>{said}</div> : null}
+          </>
         ) : (
-          <TableWithForest table={table} forest={forestFromEffects(art, index)} gate={null} lit={lit} onLit={setLit} />
+          // No declared model draws a row: what each serves is said in place of an empty table.
+          <OneLine view="table" title={table.number} text={<span className={s.items}>{said}</span>} />
         )}
       </section>
-      <Diagnostics fam={fam} exposure={art.exposure} decisions={decisions} />
+      <Diagnostics fam={fam} exposure={art.exposure} scale={art.scale} decisions={decisions} />
     </div>
   );
 }
@@ -208,7 +279,7 @@ function responseSentence(d: Diagnostic, exposure: string, decisions: readonly D
 /** The primary model's diagnostics (G18), as words: each check's state and the engine's reading;
  *  a failed check's ways forward named, never pressed (the card is where a choice is recorded);
  *  a recorded response as its record says it. */
-function Diagnostics({ fam, exposure, decisions }: { fam: Family; exposure: string; decisions: readonly DecisionRecord[] }) {
+function Diagnostics({ fam, exposure, scale, decisions }: { fam: Family; exposure: string; scale: string | null; decisions: readonly DecisionRecord[] }) {
   if (!fam.diagnostics.length) return null;
   return (
     <section className={s.exhibit} data-purpose="diagnostics" data-testid="results-diagnostics" data-family={fam.family}>
@@ -229,6 +300,7 @@ function Diagnostics({ fam, exposure, decisions }: { fam: Family; exposure: stri
             ) : d.status === "failed" ? (
               <span className={s.itemReason}>No response is recorded yet.{d.exits.length ? " Its ways forward:" : ""}</span>
             ) : null}
+            {d.response && d.change?.length ? <Change d={d} scale={scale} /> : null}
             {!d.response && d.exits.length ? (
               <ul className={s.items}>
                 {d.exits.map((x) => (
@@ -242,5 +314,30 @@ function Diagnostics({ fam, exposure, decisions }: { fam: Family; exposure: stri
         ))}
       </ul>
     </section>
+  );
+}
+
+/** What a recorded response shows beside the estimate (core/stages/effects.py `Diagnostic.change`:
+ *  the hazard ratio before and after the median event time, the primary refit without the
+ *  influential rows), under the engine's label for it: each served row on the display scale, the
+ *  ratio and its limits under a ratio, as Table 2 prints them. */
+function Change({ d, scale }: { d: Diagnostic; scale: string | null }) {
+  const ratio = scale === "ratio";
+  return (
+    <div className={s.item} data-testid="results-diagnostic-change">
+      {d.change_label ? (
+        <span className={s.itemReason}>
+          <Rich text={d.change_label} />
+        </span>
+      ) : null}
+      <ul className={s.items}>
+        {d.change!.map((e) => (
+          <li key={e.feature} className={s.exitNote} data-testid="results-change-row">
+            <span data-testid="results-change-label">{e.feature.replaceAll("`", "")}</span>:{" "}
+            <span data-testid="results-change-value">{ratio ? fmtEstimate(e.ratio ?? null, e.ratio_low ?? null, e.ratio_high ?? null) : fmtEstimate(e.estimate, e.ci_low, e.ci_high)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
