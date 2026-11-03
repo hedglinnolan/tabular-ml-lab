@@ -158,6 +158,7 @@ describe("every (source, key) the engine emits has a renderer", () => {
  * sensitivity analyses under Predict). None is met on v0's walk, NHANES glucose under Predict.
  */
 const NOT_YET: Record<string, string> = {
+  set_batch: "a batch column's handling, met under the omics lenses",
   set_scales: "a multi-item scale, met under the survey lens",
 };
 
