@@ -95,7 +95,9 @@ const answers: Answers = {
   deferred: (line) =>
     line.source === "finding" &&
     (line.key === "sas_zeros" || line.key === "binary_text__gender" || (line.key.startsWith("voice::") && line.key !== "voice::survey_design_absent")),
-  unavailable: ["join_files", "import_codebook"],
+  // Joining another file and the data dictionary count toward nothing, and this journey has
+  // neither: each is left open on its card.
+  leftOpen: ["join_files", "import_codebook"],
   async answer(page, li, line) {
     if (line.source === "finding") return answerFinding(page, li, line);
     // A role proposed below high confidence waits in Your data for its confirmation (W1-R R1): the
@@ -193,16 +195,16 @@ test("NHANES glucose under Predict, through the quest shell, from the upload to 
     expect(taken, `the walk took ${id}`).toContain(id);
   }
 
-  // The lines no card records stay out of the count and are said together in one quiet line, by
-  // the names the server serves (finding 15), not each as a line of its own.
+  // Joining another file and the data dictionary stay out of the count, each a line of its own
+  // with its card (G07): the journey leaves both open, and no line is said as not available.
   await openStage(page, "data");
   const dataLines = (await getQuest(page, pid)).stages.find((s) => s.key === "data")!.lines;
-  const unavailable = answers.unavailable.map((key) => dataLines.find((l) => l.key === key)!);
-  expect(unavailable.map((l) => l.counted)).toEqual([false, false]);
-  await expect(page.getByTestId("lines-unavailable")).toHaveText(
-    `Not available in this version yet: ${unavailable.map((l) => l.name.replaceAll("`", "")).join(" and ")}.`,
-  );
-  for (const key of answers.unavailable) await expect(page.getByTestId(`line-${key}-unavailable`)).toHaveCount(0);
+  expect(answers.leftOpen.map((key) => dataLines.find((l) => l.key === key)?.counted)).toEqual([false, false]);
+  await expect(page.getByTestId("lines-unavailable")).toHaveCount(0);
+  for (const key of answers.leftOpen) {
+    await expect(page.getByTestId(`line-${key}`).first()).toBeVisible();
+    await expect(page.getByTestId(`line-${key}-unavailable`)).toHaveCount(0);
+  }
 
   // First look decides nothing; it lists each noticing with the stage that decides it.
   await openStage(page, "first_look");

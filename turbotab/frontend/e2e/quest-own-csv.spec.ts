@@ -89,7 +89,9 @@ const answers: Answers = {
   // repeat is read and kept as it is, on its own card.
   deferred: (line) =>
     line.source === "finding" && (line.key === "binary_text__sex" || (line.key.startsWith("voice::") && line.key !== "voice::repeats__subject_id")),
-  unavailable: ["join_files", "import_codebook"],
+  // Joining another file and the data dictionary count toward nothing, and this journey has
+  // neither: each is left open on its card.
+  leftOpen: ["join_files", "import_codebook"],
   async answer(page, li, line) {
     if (line.source === "finding") return answerFinding(page, li, line);
     // A role proposed below high confidence waits in Your data for its confirmation (W1-R R1): the

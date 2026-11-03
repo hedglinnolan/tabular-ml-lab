@@ -270,6 +270,32 @@ const upload = (testId: string, name: string) => {
   return file;
 };
 
+// The server's answer to a count or a codebook read asked before the table is read (server/
+// service.py `_table_ready`: 409 not_yet, whatever the read's status), in its served shape.
+const notYet = () =>
+  new RefusalError({
+    error: {
+      code: "not_yet",
+      message: "The table is still being read; try again once it is ready.",
+      exits: [],
+    },
+  });
+
+/** How the table's reading stands, for each way it can stand other than read (`mount`'s ingest). */
+const NOT_READ: Record<string, NotRead> = {
+  "first read failed": {
+    over: { status: "error", error: "ValueError: the test's file is not a SAS transport file" },
+    older: false,
+  },
+  "first read stopped": { over: { status: "idle", cancelled: true }, older: false },
+  "first read queued": { over: { status: "queued" }, older: false },
+  "first read running": { over: { status: "running" }, older: false },
+  "first read not started": { over: { status: "idle" }, older: false },
+  "read, its columns not fetched yet": "loading",
+  "read anew, running": { over: { status: "running" }, older: true },
+  "read anew, failed": { over: { status: "error", error: "the read ran out of memory" }, older: true },
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -693,16 +719,6 @@ describe("the table the join reads (the ingest stage)", () => {
   const chooseFile = () =>
     fireEvent.change(screen.getByTestId("field-file"), { target: { value: FILE.id } });
   const STILL = "The table is still being read; its columns appear here when it is done.";
-  // The server's answer to a count asked before the table is read (server/service.py
-  // `_table_ready`: 409 not_yet), in its served shape.
-  const notYet = () =>
-    new RefusalError({
-      error: {
-        code: "not_yet",
-        message: "The table is still being read; try again once it is ready.",
-        exits: [],
-      },
-    });
 
   it("names the reading that did not finish, its reason and its retry where the table's first read failed, never 'still being read'", async () => {
     const reason = "the test's file is not a SAS transport file";
@@ -805,6 +821,34 @@ describe("the table the join reads (the ingest stage)", () => {
     expect(screen.getByTestId("picker-count").closest("[inert]")).toBeNull();
     expect(screen.queryByTestId("retry-ingest")).toBeNull();
   });
+
+  // The identifier is chosen in the column picker over the table as read: a live one is shown only
+  // where the table is read and its columns fetched at the key it has now (an older read's is
+  // veiled and inert).
+  const pickerLive = () => {
+    const picker = screen.queryByTestId("picker-count");
+    return picker !== null && picker.closest("[inert]") === null;
+  };
+
+  it("asks for the identifier above where the table's columns are offered to choose it from", () => {
+    mount("join_files");
+    chooseFile();
+    expect(pickerLive()).toBe(true);
+    expect(record()).toHaveTextContent("Choose the identifier above");
+    expect(record()).toBeDisabled();
+  });
+
+  it.each(Object.entries(NOT_READ))(
+    "never asks for the identifier above where none can be chosen: the table's %s",
+    (_, ingest) => {
+      mount("join_files", { ingest });
+      chooseFile();
+      expect(pickerLive()).toBe(false);
+      expect(record()).not.toHaveTextContent("identifier");
+      expect(record()).toHaveTextContent(`Record: join ${FILE.name}`);
+      expect(record()).toBeDisabled();
+    },
+  );
 
   it("counts the join chosen again once the table is read, after the server answered it was not read yet", async () => {
     const { qc } = mount("join_files");
@@ -1070,6 +1114,94 @@ describe("the data dictionary (import_codebook)", () => {
   it("offers no path in server mode", () => {
     mount("import_codebook", { mode: "server" });
     expect(screen.queryByTestId("codebook-source-path")).toBeNull();
+    expect(screen.getByTestId("codebook-source-input")).toBeInTheDocument();
+  });
+});
+
+// ── the table the codebook is read against ──────────────────────────────────
+
+describe("the table the codebook reads (the ingest stage)", () => {
+  const card = () => screen.getByTestId("declaration-import_codebook");
+  const title = () => within(card()).getByRole("heading").textContent!;
+  const failed = NOT_READ["first read failed"] as Exclude<NotRead, "loading">;
+  const reason = failed.over.error!.replace(/^ValueError: /, "");
+
+  // The server reads a codebook only against the table read fresh (server/service.py
+  // `stage_codebook`, `_table_ready`), and answers every other read "still being read".
+  it.each([false, true])(
+    "names the reading that did not finish, its reason and its retry where the table's read failed (an older read held: %s), and offers no codebook read the server would answer 'still being read'",
+    async (older) => {
+      mount("import_codebook", { ingest: { ...failed, older } });
+      const failure = screen.getByTestId("codebook-ingest-failure");
+      expect(failure).toHaveAttribute("data-stage", "ingest");
+      expect(failure).toHaveAttribute("data-kind", "failed");
+      expect(failure).toHaveTextContent(reason);
+      expect(failure).toHaveTextContent(`${title()} waits on it.`);
+      expect(card()).not.toHaveTextContent("still being read");
+      expect(card()).not.toHaveTextContent("You stopped");
+      expect(screen.queryByTestId("codebook-source-input")).toBeNull();
+      expect(screen.queryByTestId("codebook-source-path")).toBeNull();
+      expect(screen.queryByTestId("card-record")).toBeNull();
+      const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+      fireEvent.click(within(failure).getByTestId("retry-ingest"));
+      await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "ingest"));
+    },
+  );
+
+  // The press is assessed against the table read fresh too, and refused "still being read" where
+  // it is not (core/codebook.py `_assessed`).
+  it("offers no press of a codebook read before the table's read failed, and names the failure", async () => {
+    const { qc, decide } = mount("import_codebook");
+    vi.spyOn(api, "uploadCodebook").mockResolvedValue(BOOK);
+    upload("codebook-source-input", BOOK.name);
+    await screen.findByTestId("codebook-counts");
+    expect(record()).toBeEnabled();
+    expect(screen.queryByTestId("codebook-ingest-failure")).toBeNull();
+    act(() => readAs(qc, { status: "error", error: failed.over.error!, key: NEXT_KEY }));
+    const failure = await screen.findByTestId("codebook-ingest-failure");
+    expect(failure).toHaveAttribute("data-kind", "failed");
+    expect(failure).toHaveTextContent(reason);
+    expect(screen.queryByTestId("codebook-counts")).toBeNull();
+    expect(screen.queryByTestId("card-record")).toBeNull();
+    expect(card()).not.toHaveTextContent("still being read");
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("says the reading was stopped, with a way to run it again, where the table's read was stopped, never 'still being read'", async () => {
+    mount("import_codebook", { ingest: NOT_READ["first read stopped"] });
+    const stopped = screen.getByTestId("codebook-ingest-failure");
+    expect(stopped).toHaveAttribute("data-stage", "ingest");
+    expect(stopped).toHaveAttribute("data-kind", "stopped");
+    expect(stopped).toHaveTextContent("You stopped");
+    expect(stopped).toHaveTextContent(`${title()} waits on it.`);
+    expect(card()).not.toHaveTextContent("still being read");
+    expect(screen.queryByTestId("codebook-source-input")).toBeNull();
+    expect(screen.queryByTestId("card-record")).toBeNull();
+    const retry = within(stopped).getByTestId("retry-ingest");
+    expect(retry).toHaveTextContent("Recompute");
+    const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(retry);
+    await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "ingest"));
+  });
+
+  it.each(["queued", "running"] as const)(
+    "names no failure while the table's read is %s, and says the server's 'still being read' where it is",
+    async (status) => {
+      mount("import_codebook", { ingest: { over: { status }, older: false } });
+      expect(screen.queryByTestId("codebook-ingest-failure")).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+      const refused = notYet();
+      vi.spyOn(api, "uploadCodebook").mockRejectedValue(refused);
+      upload("codebook-source-input", BOOK.name);
+      expect(await screen.findByTestId("codebook-source-error")).toHaveTextContent(refused.message);
+      expect(screen.queryByTestId("codebook-ingest-failure")).toBeNull();
+    },
+  );
+
+  it("names no failure and offers the codebook's read where the table is read", () => {
+    mount("import_codebook");
+    expect(screen.queryByTestId("codebook-ingest-failure")).toBeNull();
+    expect(screen.queryByTestId("retry-ingest")).toBeNull();
     expect(screen.getByTestId("codebook-source-input")).toBeInTheDocument();
   });
 });

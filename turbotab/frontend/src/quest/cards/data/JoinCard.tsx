@@ -70,7 +70,7 @@ const HOW_NAMES: Record<How, string> = {
 const DEFAULT_HOW: How = "left";
 
 /** The line's name as its card's heading says it (predict/card.tsx `Frame`). */
-const capital = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+export const capital = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 
 /** What the person has chosen: the file, the identifier in the table and in the file (null: the
  *  same name), and the rows kept. */
@@ -328,6 +328,8 @@ function Body({ pid, line, card }: { pid: string; line: QuestLine; card: CardWir
   const stopped = !failed && !!read?.cancelled;
   const reading = read?.status === "queued" || read?.status === "running";
   const loading = read?.status === "fresh" || read?.status === "stale";
+  // The identifier can be chosen only in the picker over the table as read, unveiled.
+  const choosable = !!file && !!columns && veil === "fresh";
 
   // The table read anew (fresh at another key) is counted again for the join chosen: the server
   // answered "not yet" before it was read, or counted the table as it was, and nothing else asks.
@@ -474,7 +476,7 @@ function Body({ pid, line, card }: { pid: string; line: QuestLine; card: CardWir
         >
           {!file
             ? "Choose the file to join above"
-            : !choice.on
+            : choosable && !choice.on
               ? "Choose the identifier above"
               : `Record: join ${file.name}`}
         </RecordButton>

@@ -326,8 +326,9 @@ export async function chooseFamilies(page: Page, li: Locator, families: readonly
 export interface Answers {
   /** The line left for a later card (the triage): not answered by the walk. */
   deferred: (line: QuestLine) => boolean;
-  /** Lines no card records, which the shell says together in one quiet line (finding 15). */
-  unavailable: readonly string[];
+  /** Lines the journey leaves open: they count toward nothing, and the journey has nothing for
+   *  them to record (no other file to join, no data dictionary). */
+  leftOpen: readonly string[];
   /** The answer to a line, on its card. */
   answer: (page: Page, li: Locator, line: QuestLine) => Promise<void>;
 }
@@ -342,7 +343,7 @@ async function answered(page: Page, pid: string, line: QuestLine): Promise<boole
  *  lines by the engine's order. */
 function openLines(log: QuestLog, a: Answers): { stage: QuestStage; line: QuestLine }[] {
   return linesOf(log).filter(
-    ({ stage, line }) => stage.reached && line.status === "open" && !a.unavailable.includes(line.key) && !a.deferred(line),
+    ({ stage, line }) => stage.reached && line.status === "open" && !a.leftOpen.includes(line.key) && !a.deferred(line),
   );
 }
 

@@ -10,10 +10,17 @@
  * The press posts the codebook's id alone; what it settles is the server's, read from the codebook
  * and the values. A press the server refuses (a codebook that names no column of the table) is
  * said in the engine's words, with its exits. The codebooks the state holds are named as imported.
+ *
+ * A codebook is read, and its press assessed, only against the table read fresh (server/service.py
+ * `_table_ready`, core/codebook.py `_assessed`): the server answers any other "still being read".
+ * A read that failed or was stopped does not restart by itself, so there the card says which
+ * computation did not finish and why, with its retry, in place of the read and the press, as the
+ * join card does (components/Failure.tsx `StageFailure`).
  */
-import { useCodebook, useHealth } from "../../../api/queries";
+import { useCodebook, useHealth, useProjectView } from "../../../api/queries";
 import type { CodebookPreview } from "../../../api/m3-types";
-import type { Decision, DecisionInput } from "../../../api/schema";
+import type { Decision, DecisionInput, ProjectView, QuestLine } from "../../../api/schema";
+import { StageFailure, rootFailure } from "../../../components/Failure";
 import { Pending } from "../../../components/record/blocks";
 import { Actions, RecordButton } from "../../../components/record/ask/common";
 import g from "../../../components/record/generic/generic.module.css";
@@ -22,7 +29,7 @@ import { fmtInt, listJoin } from "../../../util/format";
 import type { LineCard } from "../../contracts";
 import { Frame, useCard, type CardWiring } from "../predict/card";
 import c from "../predict/declaration.module.css";
-import { FileSource } from "./JoinCard";
+import { FileSource, capital } from "./JoinCard";
 
 /** What the press posts: the codebook's id. Every other field of the model is the server's, which
  *  discards what a client sends in its place (core/codebook.py `_codebook_records_what_it_settles`). */
@@ -102,11 +109,25 @@ function Asked({ asked }: { asked: CodebookPreview["asked"] }) {
   );
 }
 
-function Body({ pid, card }: { pid: string; card: CardWiring }) {
+function Body({
+  pid,
+  line,
+  view,
+  card,
+}: {
+  pid: string;
+  line: QuestLine;
+  view: ProjectView;
+  card: CardWiring;
+}) {
   const read = useCodebook(pid);
   const local = useHealth().data?.mode === "local";
   const books = Object.values(card.state?.codebooks ?? {}).map((b) => b.name);
   const book = read.data ?? null;
+  // A read of the table that failed or was stopped does not restart by itself
+  // (components/StageRetry.tsx), and the server reads no codebook until it is read.
+  const failed = rootFailure(view.stages, "ingest") !== null;
+  const stopped = !failed && !!view.stages.ingest?.cancelled;
   return (
     <>
       {books.length ? (
@@ -114,6 +135,38 @@ function Body({ pid, card }: { pid: string; card: CardWiring }) {
           Imported: {listJoin(books)}
         </p>
       ) : null}
+      {failed || stopped ? (
+        // Nothing in the quest shell answers a request to reopen an answer (the Record does), so
+        // the failure offers its retry alone.
+        <StageFailure
+          pid={pid}
+          view={view}
+          stage="ingest"
+          changeable={false}
+          after={<>{capital(line.name)} waits on it.</>}
+          testId="codebook-ingest-failure"
+        />
+      ) : (
+        <Read card={card} local={local} read={read} book={book} />
+      )}
+    </>
+  );
+}
+
+/** The codebook's source, what importing the codebook read would do, and its press. */
+function Read({
+  card,
+  local,
+  read,
+  book,
+}: {
+  card: CardWiring;
+  local: boolean;
+  read: ReturnType<typeof useCodebook>;
+  book: CodebookPreview | null;
+}) {
+  return (
+    <>
       <fieldset className={c.group}>
         <legend className={c.legend}>The codebook</legend>
         <FileSource
@@ -156,10 +209,11 @@ function Body({ pid, card }: { pid: string; card: CardWiring }) {
 
 export const CodebookCard: LineCard = ({ pid, line }) => {
   const card = useCard(pid, "import_codebook");
+  const view = useProjectView(pid).data;
   return (
     <Frame line={line}>
-      {card.state ? (
-        <Body key={line.decision_id ?? "open"} pid={pid} card={card} />
+      {card.state && view ? (
+        <Body key={line.decision_id ?? "open"} pid={pid} line={line} view={view} card={card} />
       ) : (
         <Pending>Loading the project…</Pending>
       )}

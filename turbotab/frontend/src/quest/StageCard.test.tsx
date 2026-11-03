@@ -16,6 +16,7 @@ import { keys } from "../api/queries";
 import type { ForTheRecord, ProjectView, QuestLine, QuestLog, QuestStage } from "../api/schema";
 import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { StageFocusProvider } from "../state/focus";
+import { DECLARATION_CARDS } from "./cards/predict";
 import { CONTRACT } from "./fixtures/contract";
 import { QuestScreen } from "./QuestScreen";
 import { StageCard, type OpenRequest } from "./StageCard";
@@ -309,16 +310,20 @@ describe("a request in the stage already shown (P9)", () => {
 });
 
 describe("a line no card can answer yet (P8)", () => {
-  // Your data as the engine serves it: the join and the data dictionary open and uncounted, with no
-  // card that records them; the lens and the roles answered.
-  const data = stageIn(REACHED, "data");
+  // Your data as the engine serves it, the lens and the roles answered and the join and the data
+  // dictionary open and uncounted, but those two keyed as no card records: each has a card since
+  // G07 (src/quest/cards/data), so the served log holds no Decide that none can answer.
+  const NO_CARD: Record<string, string> = { join_files: "no_card_one", import_codebook: "no_card_two" };
+  const LOG = patched(REACHED, { data: (l) => (l.key in NO_CARD ? { ...l, key: NO_CARD[l.key]! } : l) });
+  const data = stageIn(LOG, "data");
+  const unanswerable = Object.values(NO_CARD);
 
   it("is said, with every other such line that counts toward nothing, in one quiet line after the rest, never opened (finding 15)", () => {
     const unavailable = data.lines.filter((l) => l.status === "open" && l.label === "Decide");
-    expect(unavailable.map((l) => l.key)).toEqual(["join_files", "import_codebook"]);
-    expect(unavailable.every((l) => !l.counted)).toBe(true);
-    const { card } = cardOf(REACHED, "data");
-    for (const key of ["join_files", "import_codebook"]) expect(within(card).queryByTestId(`line-${key}`)).toBeNull();
+    expect(unavailable.map((l) => l.key)).toEqual(unanswerable);
+    expect(unavailable.every((l) => !l.counted && !(l.key in DECLARATION_CARDS))).toBe(true);
+    const { card } = cardOf(LOG, "data");
+    for (const key of unanswerable) expect(within(card).queryByTestId(`line-${key}`)).toBeNull();
     const quiet = within(card).getByTestId("lines-unavailable");
     expect(quiet).toHaveTextContent(`Not available in this version yet: ${unavailable[0]!.name} and ${unavailable[1]!.name}.`);
     expect(within(quiet).queryByRole("button")).toBeNull();
@@ -330,13 +335,22 @@ describe("a line no card can answer yet (P8)", () => {
   });
 
   it("keeps a line of its own where it counts, said as not available yet, with no Answer", () => {
-    const log = patched(REACHED, { data: (l) => (l.key === "join_files" ? { ...l, counted: true } : l) });
+    const log = patched(LOG, { data: (l) => (l.key === unanswerable[0] ? { ...l, counted: true } : l) });
     const { card } = cardOf(log, "data");
-    const line = lineEl(card, "join_files");
+    const line = lineEl(card, unanswerable[0]!);
     expect(within(line).queryByRole("button")).toBeNull();
     expect(line).toHaveTextContent("Not available yet");
     expect(line).not.toHaveAttribute("data-expanded");
-    expect(within(card).getByTestId("lines-unavailable")).not.toHaveTextContent(stageIn(log, "data").lines.find((l) => l.key === "join_files")!.name);
+    expect(within(card).getByTestId("lines-unavailable")).not.toHaveTextContent(stageIn(log, "data").lines.find((l) => l.key === unanswerable[0])!.name);
+  });
+
+  it("says neither the join nor the data dictionary as not available, each a line of its own with its card (G07)", () => {
+    const { card } = cardOf(REACHED, "data");
+    expect(within(card).queryByTestId("lines-unavailable")).toBeNull();
+    for (const key of Object.keys(NO_CARD)) {
+      expect(lineEl(card, key)).not.toHaveAttribute("data-unavailable");
+      expect(lineEl(card, key)).not.toHaveTextContent("Not available yet");
+    }
   });
 
   it("leaves a line a card can answer its Change", () => {
