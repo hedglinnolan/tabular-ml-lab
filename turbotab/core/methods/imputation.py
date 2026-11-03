@@ -393,6 +393,38 @@ TOBIT_NEWTON = 1e-8
 # unit diagonal (Jacobi's scaling, which no parameter's units move) above this, survreg's
 # ``toler.chol`` (1e-10). Over the verifier's 362 designs with a maximum it was at least 3.5e-4.
 TOBIT_SINGULAR = 1e-10
+# ... and in every direction of the coefficients at least this share of the information the same
+# rows would carry were every value detected (:func:`_design_share`). The unit diagonal hides a
+# direction whose curvature vanishes with its own diagonal, as where a 0/1 column's ones are all
+# below detection and its coefficient runs to −∞; this share does not, whatever the columns'
+# coding. A row below detection carries w = λ(a)(a + λ(a)) of a detected row's information, under
+# 1e-10 only where its fitted mean lies more than 6.93 σ below the limit, its log Φ(a) then within
+# 2e-12 of its bound 0: a direction only such rows carry is flat to the log-likelihood's rounding,
+# and a maximum along it cannot be told from a bound approached at infinity. Over the verifier's
+# 362 designs with a maximum and the 417 of its 600 fuzz designs the solver fits, the share was at
+# least 1.6e-6; at the 280 points the base solver returned where a 0/1 column's ones were all below
+# detection (its probe's 200 and 80 fuzz designs), at most 2.6e-16.
+TOBIT_SHARE = 1e-10
+
+
+def _below_weights(a: np.ndarray, log_cdf: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """For rows below detection at a = t L − xᵀγ, log Φ(a) given: (λ = φ(a)/Φ(a), w = λ(a + λ)),
+    w ∈ (0, 1) each row's share of a detected row's information on γ."""
+    lam = np.exp(-0.5 * a * a - 0.5 * math.log(2.0 * math.pi) - log_cdf)
+    return lam, lam * (a + lam)
+
+
+def _design_share(Xk: np.ndarray, censored: np.ndarray, w: np.ndarray) -> float:
+    """The smallest share of its information that a direction of the coefficients keeps at the
+    fit: the least eigenvalue of Qᵀ diag(r) Q, Q an orthonormal basis of the design's columns
+    (Householder QR) and r 1 on a detected row, w on a row below detection. The information on γ is
+    Xᵀ diag(r) X and every value detected gives XᵀX, so this is their least generalized eigenvalue,
+    in (0, 1], moved by no change of the columns' coding (X → XT), and read from Q and w, never
+    from the information's own diagonal."""
+    Q, _ = np.linalg.qr(Xk)
+    r = np.ones(len(Xk))
+    r[censored] = w
+    return float(np.linalg.eigvalsh((Q * r[:, None]).T @ Q).min())
 
 
 def _olsen(Xd: np.ndarray, zd: np.ndarray, Xc: np.ndarray, limit: float, phi: np.ndarray,
@@ -412,8 +444,7 @@ def _olsen(Xd: np.ndarray, zd: np.ndarray, Xc: np.ndarray, limit: float, phi: np
     ll = float(len(zd) * math.log(t) - 0.5 * float(e @ e) + float(log_cdf.sum()))
     if not derivatives:
         return ll, None, None
-    lam = np.exp(-0.5 * a * a - 0.5 * math.log(2.0 * math.pi) - log_cdf)
-    w = lam * (a + lam)
+    lam, w = _below_weights(a, log_cdf)
     g = np.concatenate([Xd.T @ e - Xc.T @ lam,
                         [len(zd) / t - float(zd @ e) + limit * float(lam.sum())]])
     k = len(phi)
@@ -445,14 +476,17 @@ def tobit_fit(X: np.ndarray, z: np.ndarray, censored: np.ndarray, limit: float
     move the fit. A column the earlier ones span is aliased (``models.effects.column_basis``, R's
     ``qr`` at 1e-7, as ``lm`` reads it): its coefficient is 0 and its row of the inverse
     information 0, as survreg reports it (NA, a zero row of its covariance). The point returned is
-    certified the maximum: its Newton decrement at most :data:`TOBIT_DECREMENT` (the score zero)
-    and its information, scaled to a unit diagonal, with no eigenvalue at or below
-    :data:`TOBIT_SINGULAR` (a negative-definite Hessian). Where either fails, or the arithmetic does
-    on the way (an overflow, a value that is not finite), it raises :class:`CensoredFitRefused`,
-    never a point short of the maximum: a likelihood with no finite maximum (a column detected only
-    in rows of one outcome, or fitted exactly with every value below detection under the limit) is
-    refused so. The inverse information is that of (β, log σ), the inverse of Jᵀ(−H)J with
-    J = ∂φ/∂θ, exact at the maximum (the score's term vanishes there)."""
+    certified the maximum: its Newton decrement at most :data:`TOBIT_DECREMENT` (the score zero),
+    its information, scaled to a unit diagonal, with no eigenvalue at or below
+    :data:`TOBIT_SINGULAR` (a negative-definite Hessian), and no direction of the coefficients
+    keeping :data:`TOBIT_SHARE` or less of the information the same rows would carry with every
+    value detected (:func:`_design_share`, whatever the columns' coding). Where any fails, or the
+    arithmetic does on the way (an overflow, a value that is not finite), it raises
+    :class:`CensoredFitRefused`, never a point short of the maximum: a likelihood with no finite
+    maximum (a column detected only in rows of one outcome, a 0/1 column whose ones or whose zeros
+    are all below detection, raw or standardized, or values fitted exactly with every value below
+    detection under the limit) is refused so. The inverse information is that of (β, log σ), the
+    inverse of Jᵀ(−H)J with J = ∂φ/∂θ, exact at the maximum (the score's term vanishes there)."""
     try:
         with np.errstate(over="ignore", under="ignore", invalid="ignore", divide="ignore"):
             return _tobit_certified(np.asarray(X, dtype=float), np.asarray(z, dtype=float),
@@ -471,6 +505,8 @@ def _tobit_certified(X: np.ndarray, z: np.ndarray, censored: np.ndarray, limit: 
         raise CensoredFitRefused(why="no detected value")
     if not (np.all(np.isfinite(X)) and np.all(np.isfinite(z[det])) and math.isfinite(limit)):
         raise CensoredFitRefused(why="a value that is not finite")
+    from scipy import special
+
     from turbotab.core.models.effects import column_basis
 
     keep = column_basis(X)
@@ -537,10 +573,15 @@ def _tobit_certified(X: np.ndarray, z: np.ndarray, censored: np.ndarray, limit: 
     if not smallest > TOBIT_SINGULAR:
         raise CensoredFitRefused(why=f"the information is singular (scaled eigenvalue "
                                      f"{smallest:.3g})")
+    gamma, t = phi[:-1], float(phi[-1])
+    a = t * L - Xc @ gamma
+    share = _design_share(Xk, censored, _below_weights(a, special.log_ndtr(a))[1])
+    if not share > TOBIT_SHARE:
+        raise CensoredFitRefused(why=f"a direction of the coefficients keeps {share:.3g} of the "
+                                     f"information its rows would carry with every value detected")
     decrement = float(g @ np.linalg.solve(A, g))
     if not decrement <= TOBIT_DECREMENT:
         raise CensoredFitRefused(why=f"the score is not zero (Newton decrement {decrement:.3g})")
-    gamma, t = phi[:-1], float(phi[-1])
     k = len(phi)
     J = np.zeros((k, k))  # ∂(γ, t)/∂(β, log σ) on the scaled column
     J[:-1, :-1] = t * np.eye(k - 1)
@@ -571,6 +612,30 @@ def tobit_expectation(mu: float, sigma: float, limit: float) -> float:
     return float(mu - sigma * math.exp(stats.norm.logpdf(a) - stats.norm.logcdf(a)))
 
 
+# A draw's square root raises each diagonal entry of the inverse information by this share of
+# itself (rounding's margin for the Cholesky factor; relative, so no column's units move it).
+TOBIT_ROOT_JITTER = 1e-12
+
+
+def tobit_root(V: np.ndarray) -> np.ndarray:
+    """A square root R (R Rᵀ = V) of :func:`tobit_fit`'s inverse information, for the parameter
+    draws θ* = θ̂ + R ε: the Cholesky factor of the block of the columns the fit kept, each diagonal
+    entry raised by :data:`TOBIT_ROOT_JITTER` of itself, and zero in an aliased column's row and
+    column (its coefficient stays 0, as survreg reports it NA). It moves with the columns' units
+    (R of D V D is D R), where an absolute jitter would swamp a coefficient's variance in small
+    units. Raises :class:`CensoredFitRefused` where the block has no Cholesky factor."""
+    V = np.asarray(V, dtype=float)
+    kept = np.flatnonzero(np.diag(V) > 0)
+    block = V[np.ix_(kept, kept)]
+    root = np.zeros_like(V)
+    try:
+        root[np.ix_(kept, kept)] = np.linalg.cholesky(
+            block + np.diag(np.diag(block) * TOBIT_ROOT_JITTER))
+    except np.linalg.LinAlgError as exc:
+        raise CensoredFitRefused(why=f"{type(exc).__name__}: {exc}") from exc
+    return root
+
+
 def _censored(X: np.ndarray, x: np.ndarray, miss: np.ndarray, c: Censoring,
               rng: np.random.Generator) -> np.ndarray:
     from scipy import stats
@@ -578,7 +643,7 @@ def _censored(X: np.ndarray, x: np.ndarray, miss: np.ndarray, c: Censoring,
     z = np.log(np.clip(x, 1e-300, None)) if c.log else x.astype(float)
     limit = math.log(c.limit) if c.log else c.limit
     theta, V = tobit_fit(X, np.where(miss, limit, z), miss, limit)
-    root = np.linalg.cholesky(V + np.eye(len(V)) * 1e-12)
+    root = tobit_root(V)
     star = theta + root @ rng.standard_normal(len(theta))
     mu, sigma = X[miss] @ star[:-1], math.exp(star[-1])
     upper = (limit - mu) / sigma

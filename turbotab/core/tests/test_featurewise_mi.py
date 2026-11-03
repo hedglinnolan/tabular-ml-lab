@@ -1720,3 +1720,53 @@ def test_22_a_study_factor_with_no_value_drawn_keeps_its_complete_data_test_and_
             "Barnard–Rubin degrees of freedom.") in every.info["caption"]
     assert ("; the estimates were pooled by Rubin's rules, each study factor's on t with "
             "Barnard–Rubin degrees of freedom") in every.info["missing"]["sentence"]
+
+
+def _units_panel(chained: bool) -> tuple[pd.DataFrame, np.ndarray]:
+    """The verifier's ``units_probe.py``: 150 rows, the event (half), x = 10 + 0.5 event + 0.4 z0 +
+    N(0, 1) below detection under its median; with ``chained``, 15% of `z1` blank (its chained
+    path, ``units_probe_chained.py``)."""
+    rng = np.random.default_rng(3)
+    n = 150
+    event = (rng.random(n) < 0.5).astype(float)
+    z0, z1 = rng.standard_normal(n), rng.standard_normal(n)
+    if chained:
+        z1[rng.random(n) < 0.15] = np.nan
+    x = 10 + 0.5 * event + 0.4 * z0 + rng.standard_normal(n)
+    return pd.DataFrame({"c0": np.where(x < np.quantile(x, 0.5), np.nan, x), "z0": z0,
+                         "z1": z1}), event
+
+
+@pytest.mark.parametrize("chained", [False, True], ids=["once", "chained"])
+def test_23_the_pooled_row_of_a_censored_factor_moves_with_its_units(chained):
+    """FWMI-R3-2. The censored normal is location–scale equivariant (a derivation, test 4 of
+    ``test_censored_normal_fit``), and so is each draw from it: in units a times the column's, θ̂'s
+    coefficients and each draw's are a times theirs, so each copy's blank is a times its value
+    and each test's estimate and standard error a times, its t, p and df unmoved. So the pooled row
+    of `c0` in units 1e−6 or 1e4 of its own has the same p, df and fmi to 1e−8, and its estimate and
+    standard error scaled, drawn once (the feature-wise copies) and by chained equations
+    (``imputation``'s censored draw, `z1` blank). On the base each draw added an absolute 1e−12 to
+    the inverse information before its Cholesky factor, a standard deviation of 1e−6 on every
+    coefficient, about 11 standard errors in units 1e−6: p moved from 0.034 to 0.56 drawn once and
+    from 0.0001 to 0.25 chained."""
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.methods.imputation import censoring_of
+
+    frame, event = _units_panel(chained)
+    rows, logs = {}, set()
+    for unit in (1.0, 1e-6, 1e4):
+        moved = frame.assign(c0=frame["c0"] * unit)
+        censoring = censoring_of(moved["c0"])
+        logs.add(censoring.log)
+        table, copies = fm.pooled_featurewise_table(moved, event, "binary", ["c0"], None,
+                                                    censored={"c0": censoring}, seed=5)
+        assert copies.imputed["c0"] == int(frame["c0"].isna().sum())
+        rows[unit] = table.rows[0]
+    assert logs == {False}  # one scale for the censored normal in every unit
+    base = rows[1.0]
+    for unit in (1e-6, 1e4):
+        row = rows[unit]
+        for key in ("p", "df", "fmi"):
+            assert row[key] == pytest.approx(base[key], rel=1e-8), (unit, key)
+        assert row["estimate"] == pytest.approx(unit * base["estimate"], rel=1e-8), unit
+        assert row["se"] == pytest.approx(unit * base["se"], rel=1e-8), unit

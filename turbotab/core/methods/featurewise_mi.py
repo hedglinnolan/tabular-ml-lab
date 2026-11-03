@@ -30,9 +30,11 @@ and never from the solver (:func:`identification_refusal`; Olsen 1978): one dete
 of one outcome, or whose detected values are all equal, is refused before any draw, and one with
 fewer detected values than terms is drawn where the rows below detection identify the rest. Its
 fit is then a certified maximum (``imputation.tobit_fit``: Newton's method in Olsen's concave
-parametrization, its score zero and its information positive definite where it stops), matching
-survreg's where survreg converges; a fit the solver cannot certify, whatever its arithmetic did on
-the way, is refused in words, never drawn (``imputation.CensoredFitRefused``), as is a chained
+parametrization, its score zero and its information positive definite where it stops, every
+direction of the coefficients keeping a share of the information its rows would carry were every
+value detected), matching survreg's where survreg converges; a fit the solver cannot certify,
+whatever its arithmetic did on the way, is refused in words, never drawn
+(``imputation.CensoredFitRefused``), as is a chained
 model the sampler cannot fit (:func:`chain_refusal`). On repeated rows a censored column's chained
 model holds the other variables' unit means, so beside a complete column that is one value per
 unit two of its terms are one: the fit drops the later of the two (aliased, as survreg drops it),
@@ -830,13 +832,13 @@ def _censored_copies(D: np.ndarray, x: np.ndarray, miss: np.ndarray, censoring: 
     refused in words (``imputation.censored_fit_words``), never drawn."""
     from scipy import stats
 
-    from turbotab.core.methods.imputation import CensoredFitRefused, tobit_fit
+    from turbotab.core.methods.imputation import CensoredFitRefused, tobit_fit, tobit_root
 
     z = _on_scale(x, censoring)
     limit = math.log(censoring.limit) if censoring.log else float(censoring.limit)
     try:
         theta, V = tobit_fit(D, np.where(miss, limit, z), miss, limit)
-        root = np.linalg.cholesky(V + np.eye(len(V)) * 1e-12)
+        root = tobit_root(V)
     except CensoredFitRefused as exc:
         raise exc.of(name) from None
     except (np.linalg.LinAlgError, ArithmeticError, ValueError) as exc:

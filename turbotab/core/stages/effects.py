@@ -1569,8 +1569,11 @@ class _Run:
             return None
         if len(tables) == 1:
             return tables[0]
-        if any(t.info.get("refused") for t in tables):
-            return tables[0]
+        refused = next((t for t in tables if t.info.get("refused")), None)
+        if refused is not None:
+            # A copy whose table is refused refuses the model, in that copy's words, as the fit's
+            # pooled table does; never another copy's table served as the pooled estimate.
+            return refused
         from turbotab.core.methods.imputation import pool_rows
         from turbotab.core.methods.missing import mi_concerns, multiple_imputation_info
         from turbotab.core.models.inference import pooled_firth

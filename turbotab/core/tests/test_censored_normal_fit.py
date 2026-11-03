@@ -18,7 +18,9 @@ The truths, each independent of the engine's output:
   (an aliased column NA in survreg, 0 with no variance here);
 * where the model has no finite maximum (the verifier's other designs: detected only in rows of one
   outcome, or fitted exactly with every value below detection under the limit, each read by
-  ``featurewise_mi.identification_refusal``'s linear programs and derivations), the refusal;
+  ``featurewise_mi.identification_refusal``'s linear programs and derivations; a 0/1 column whose
+  ones or whose zeros are all below detection, raw or standardized, by a derivation checked with
+  scipy's normal, FWMI-R3-1), the refusal, through the joint route's fit and declared models too;
 * the censored normal's location–scale equivariance (a derivation): the fit of a z + b is the fit
   of z moved and scaled;
 * an intercept and equal detected values have no finite maximum (σ → 0 raises the likelihood
@@ -358,3 +360,162 @@ def test_8_the_chained_equations_refuse_a_censored_model_with_no_maximum_in_word
             "`m`'s censored-normal model could not be fit on these rows: no maximum of its "
             "likelihood could be confirmed, so its values below detection cannot be drawn.")
         assert refused.value.columns == ["m"]
+
+
+SURVREG_INDICATOR = """
+suppressPackageStartupMessages(library(survival))
+d <- read.csv(designs_csv)
+res <- list()
+for (i in unique(d$design)) {
+  s <- d[d$design == i, ]
+  X <- as.matrix(s[, grep("^D", names(s))])
+  f <- survreg(Surv(s$y, s$det == 1, type = "left") ~ X, dist = "gaussian",
+               control = survreg.control(maxiter = 500))
+  v <- vcov(f)
+  res[[i]] <- list(coef = unname(coef(f)), scale = f$scale, iter = f$iter[1],
+                   se = sqrt(pmax(diag(v), 0)))
+}
+out(res)
+"""
+
+
+def indicator_design(group: str, coding: str, detected_one: bool):
+    """200 rows, x = 5 + 0.5 z + 1.5 b + N(0, 1), b a 0/1 column with 12 ones, below detection
+    under the 40th percentile, and every row of ``group`` (b = 1, "ones", or b = 0, "zeros") below
+    detection, but for its largest value where ``detected_one``. b enters the design ``coding``
+    "raw" (0/1, as a chain's category indicator enters) or "standardized" (as the feature-wise
+    design enters a column). Returns (X, y with the rows below detection at the limit, which rows
+    are below, the limit, the group's rows)."""
+    rng = np.random.default_rng(12)
+    n = 200
+    b = np.zeros(n)
+    b[rng.choice(n, size=12, replace=False)] = 1
+    z = rng.standard_normal(n)
+    x = 5 + 0.5 * z + 1.5 * b + rng.standard_normal(n)
+    limit = float(np.quantile(x, 0.4))
+    rows = b == (1 if group == "ones" else 0)
+    below = (x < limit) | rows
+    if detected_one:
+        pick = np.flatnonzero(rows)[np.argmax(x[rows])]
+        below[pick] = False
+        x[pick] = max(x[pick], limit + 0.25)
+    column = (b - b.mean()) / b.std() if coding == "standardized" else b
+    X = np.column_stack([np.ones(n), z, column])
+    return X, np.where(below, limit, x), below, limit, rows
+
+
+@needs_r
+def test_9_a_0_1_column_whose_ones_or_zeros_are_all_below_detection_is_refused(tmp_path):
+    """FWMI-R3-1. Where every row of one level of a 0/1 column is below detection, the
+    censored-normal likelihood has no finite maximum (a derivation): along the direction v with
+    X v = −1 on those rows and 0 elsewhere, no detected row moves and each of those rows'
+    Φ((L − xᵀβ)/σ) rises toward 1, so the likelihood rises toward a bound it never reaches
+    (checked from survreg's own stopping point with scipy's normal, row by row). survreg stops on
+    that ridge, with a standard error on b over 100 times the one it reports once a single row of
+    the level is detected. The engine refuses each, raw or standardized, ones or zeros, never
+    returning a point; the base returned one where the ones were all below detection in a raw 0/1
+    column, as a chain's category indicator enters its design (b's coefficient −10.5, its
+    standard error 1.1e9). With one row of the level detected the model has its maximum, and the
+    engine's fit is survreg's: each coefficient, the scale and each standard error."""
+    from scipy import stats
+
+    from turbotab.core.methods.imputation import CensoredFitRefused, tobit_fit
+
+    cases = {f"{g}-{c}-{'one' if one else 'none'}": indicator_design(g, c, one)
+             for g in ("ones", "zeros") for c in ("raw", "standardized") for one in (False, True)}
+    blocks = []
+    for key, (X, y, below, _limit, _rows) in cases.items():
+        block = pd.DataFrame({"D1": X[:, 1], "D2": X[:, 2], "y": y, "det": (~below).astype(int)})
+        block["design"] = key
+        blocks.append(block)
+    ref = run_r(SURVREG_INDICATOR, {"designs": pd.concat(blocks, ignore_index=True)}, tmp_path)
+    for key, (X, y, below, limit, rows) in cases.items():
+        r = ref[key]
+        assert r["iter"] < 500, key
+        if key.endswith("-none"):
+            assert rows.sum() and below[rows].all(), key  # the premise
+            v = np.linalg.lstsq(X, -rows.astype(float), rcond=None)[0]
+            np.testing.assert_allclose(X @ v, -rows.astype(float), atol=1e-12)
+            # Along v from survreg's stopping point each moved row's log Φ rises (scipy's normal,
+            # row by row: their sum's gain is below the log-likelihood's rounding there).
+            a = (limit - X[rows] @ np.asarray(r["coef"])) / r["scale"]
+            for s in (1.0, 2.0, 4.0):
+                gain = stats.norm.logcdf(a + s / r["scale"]) - stats.norm.logcdf(a)
+                assert np.all(gain > 0), (key, s)
+            identified = ref[key.replace("-none", "-one")]
+            assert r["se"][2] > 100 * identified["se"][2], key
+            with pytest.raises(CensoredFitRefused):
+                tobit_fit(X, y, below, limit)
+            continue
+        theta, V = tobit_fit(X, y, below, limit)
+        assert theta[:-1] == pytest.approx(r["coef"], rel=1e-5, abs=1e-6), key
+        assert math.exp(theta[-1]) == pytest.approx(r["scale"], rel=1e-5), key
+        assert np.sqrt(np.diag(V)) == pytest.approx(r["se"], rel=1e-4), key
+
+
+def site_panel(one_detected: bool) -> pd.DataFrame:
+    """The verifier's ``joint_cat.py``: 300 rows, m = 10 + 0.5 z + N(0, 1), y = 0.5 m + 0.3 z +
+    N(0, 1), `site` A, B or C (10%), m below detection under its 40th percentile and on every
+    level-C row, but for level C's largest value where ``one_detected``."""
+    rng = np.random.default_rng(4)
+    n = 300
+    site = rng.choice(["A", "B", "C"], size=n, p=[0.45, 0.45, 0.10])
+    z = rng.standard_normal(n)
+    m = 10 + 0.5 * z + rng.standard_normal(n)
+    y = 0.5 * m + 0.3 * z + rng.standard_normal(n)
+    lod = float(np.quantile(m, 0.4))
+    detected = (m >= lod) & (site != "C")
+    if one_detected:
+        rows = np.flatnonzero(site == "C")
+        pick = rows[np.argmax(m[rows])]
+        m[pick], detected[pick] = max(m[pick], lod + 0.5), True
+    return pd.DataFrame({"pid": np.arange(n), "m": np.where(detected, m, np.nan), "z": z,
+                         "site": site, "y": y, "m_full": m})
+
+
+def test_10_the_joint_route_refuses_a_category_level_wholly_below_detection_in_words(tmp_path):
+    """FWMI-R3-1 through the joint route (chained equations with the outcome, the linear family,
+    `m` the exposure, `z` and `site` confounders): every level-C row of `m` is below detection,
+    and a chain enters a category as raw 0/1 indicators, so `m`'s censored-normal model has no
+    finite maximum (test 9's derivation, on level C's indicator). The base drew level C's `m` at
+    the limit or near −4e9 and served an unadjusted estimate of 0.349 (95% CI −0.64 to 1.34); the
+    linear fit refused with a false reason, that `site_C` and `m` are fixed combinations of the
+    other columns, which the draws created. Now the fit and the declared models refuse in words
+    naming `m`, with a way forward, and report no estimate. With one level-C value detected the
+    model has its maximum, and both pool `m` (the guard silent), Model 2's estimate within three of
+    its standard errors of statsmodels' least squares on the values before censoring."""
+    import statsmodels.formula.api as smf
+
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    words = ("Multiple imputation cannot run on these data: `m`'s censored-normal model could not "
+             "be fit on these rows: no maximum of its likelihood could be confirmed, so its values "
+             "below detection cannot be drawn.")
+    roles = {"pid": "identifier", "m": "exposure", "z": "covariate", "site": "covariate"}
+    mi = {"strategy": "multiple_imputation", "below_detection": "censoring_aware",
+          "censored_columns": ["m"], "m": 20}
+    st = ef.state(target="y", task="regression", exposure="m", measure="mean_difference",
+                  roles=roles, answers={"z": ef.CONFOUNDER, "site": ef.CONFOUNDER},
+                  models=["linear"], missing=mi, amounts={"code_or_count:m": "amount"})
+    for one_detected in (False, True):
+        panel = site_panel(one_detected)
+        assert panel.loc[panel["site"] == "C", "m"].notna().sum() == int(one_detected)
+        out = ef.run(panel.drop(columns="m_full"), tmp_path / str(one_detected), st)
+        entry = next(e for e in out["fit"]["models"] if e["family"] == "linear")
+        seq = ef.sequence(out["effects"])
+        if not one_detected:
+            assert entry["inference"]["refused"] == words and not entry["coefficients"]
+            assert [e["label"] for e in entry["inference"]["exits"]] == [
+                "Complete cases, with their assumption stated"]
+            assert seq["model_2"]["inference"]["refused"] == words
+            assert seq["model_2"]["inference"]["exits"] == entry["inference"]["exits"]
+            assert not any(s.get("effects") for s in seq.values())
+            assert out["effects"]["methods"].startswith(f"No estimate of `m` is reported: {words}")
+            continue
+        assert entry["inference"]["refused"] is None
+        primary = seq["model_2"]
+        assert primary["inference"]["refused"] is None
+        assert primary["inference"]["caption"].startswith("Multiple imputation, m = ")
+        (effect,) = primary["effects"]
+        full = smf.ols("y ~ m_full + z + C(site)", data=panel).fit()
+        assert abs(effect["estimate"] - full.params["m_full"]) < 3 * effect["se"]
