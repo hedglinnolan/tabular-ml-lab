@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { api } from "../../../api/client";
 import type { UsualIntakeArtifact } from "../../../api/m3-types";
 import { keys } from "../../../api/queries";
@@ -186,7 +186,20 @@ function lineOf(over: Partial<QuestLine> = {}): QuestLine {
 }
 
 /** How the usual-intake stage stands where it is not fresh: recomputing, failed, or stopped. */
-type NotFresh = { status: "running" } | { status: "error"; error: string } | { status: "stale"; cancelled: true };
+type NotFresh =
+  | { status: "running" }
+  | { status: "error"; error: string }
+  | { status: "stale" | "idle"; cancelled: true };
+
+/**
+ * A stop as the engine serves it to the usual-intake stage, a heavy stage whose job the person can
+ * stop (core/stages/__init__.py, `heavy=True`): held, the stage is stale where it has an older
+ * result and idle where it has none, and cancelled either way (core/graph.py `_status`).
+ */
+const STOPS: NotFresh[] = [
+  { status: "stale", cancelled: true },
+  { status: "idle", cancelled: true },
+];
 
 /**
  * Serve the usual-intake stage: fresh, its result at the key the view reports; or not fresh
@@ -401,6 +414,70 @@ describe("the usual-intake card, from the usual-intake stage's offer", () => {
     expect(await posted(decide)).toMatchObject({ nutrient: "fiber_g", model: "none" });
   });
 
+  // A wide table's answer on record that the offer no longer lists (its days renamed, or no longer
+  // numeric): the label the engine keys it by is the first of its days, as the offer names one.
+  const ENERGY = { nutrient: "DR1TKCAL", days: ["DR1TKCAL", "DR2TKCAL"] };
+  const onRecord = (answer: { nutrient: string; days: string[] }, model = "amount_only") => {
+    const at = served();
+    const offer = wide(at.offer);
+    const decision = { kind: KIND, nutrient: answer.nutrient, model, days: answer.days } as unknown as Decision;
+    const mounted = mount({
+      artifact: { ...at.artifact, offer },
+      answers: { [answer.nutrient]: { model, days: answer.days } },
+      decisions: [{ id: "r9", decision }],
+      line: { status: "answered", decision_id: "r9" },
+    });
+    return { ...mounted, offer };
+  };
+
+  it.each(["amount_only", "two_part"])("records a wide component on record that the offer no longer lists with its days on record (%s)", async (model) => {
+    const { decide, offer } = onRecord(ENERGY);
+    expect(offer.candidates.map((c) => c.column)).not.toContain(ENERGY.nutrient);
+    expect((screen.getByTestId("field-nutrient") as HTMLSelectElement).value).toBe(ENERGY.nutrient);
+    press(`model:${model}`);
+    const sent = await posted(decide);
+    expect(problems(MODEL, sent)).toEqual([]);
+    expect(sent).toMatchObject({ kind: KIND, nutrient: ENERGY.nutrient, model, days: ENERGY.days });
+  });
+
+  it("leaves a wide component on record that the offer no longer lists out with no day columns, as the engine's own exit does", async () => {
+    const { decide } = onRecord(ENERGY);
+    press("model:none");
+    const sent = await posted(decide);
+    expect(problems(MODEL, sent)).toEqual([]);
+    expect(sent).toMatchObject({ kind: KIND, nutrient: ENERGY.nutrient, model: "none", days: [] });
+  });
+
+  it("names a component on record by its own label beside its days where the label is not its first day, so it never reads as the offer's own", () => {
+    // The engine keys a wide component by any label (core/decisions.py `SetUsualIntake`), as its own
+    // NHANES test records protein: DRxTPROT, with the days the offer names DR1TPROT by.
+    const protein = wide(served().offer).candidates[0]!;
+    const label = "DRxTPROT";
+    expect(label).not.toBe(protein.column);
+    onRecord({ nutrient: label, days: [...protein.days] });
+    const options = componentOptions().slice(1);
+    expect(options.map(([value]) => value)).toEqual([protein.column, label]);
+    const names = options.map(([, name]) => name);
+    expect(new Set(names).size).toBe(names.length);
+    const [, named] = options.find(([value]) => value === label)!;
+    expect(named).toContain(label);
+    for (const day of protein.days) expect(named).toContain(day);
+  });
+
+  it("names the offer's component as it does with no record where the answer on record is keyed by its own column", () => {
+    const offer = wide(served().offer);
+    const protein = offer.candidates[0]!;
+    mount({ artifact: { ...served().artifact, offer } });
+    const unanswered = componentOptions();
+    // The offer names the component by its first day, so its days alone name it.
+    expect(unanswered[1]).toEqual([protein.column, protein.days.join(", ")]);
+    cleanup();
+    vi.restoreAllMocks();
+    onRecord({ nutrient: protein.column, days: [...protein.days] });
+    expect(componentOptions()).toEqual(unanswered);
+    expect(componentOptions()).toHaveLength(2);
+  });
+
   it("says why the distribution is not offered where the offer is not made, and nothing of it where it is", () => {
     const at = served();
     expect(at.offer.reason).toBeNull();
@@ -463,6 +540,8 @@ describe("the usual-intake card, from the usual-intake stage's offer", () => {
     const failure = screen.getByTestId("usual-intake-failure");
     expect(failure).toHaveAttribute("data-stage", "usual_intake");
     expect(failure).toHaveTextContent(reason);
+    expect(screen.queryByTestId("usual-intake-stopped")).toBeNull();
+    expect(card).not.toHaveTextContent("You stopped");
     expect(offered()).toEqual([]);
     const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
     fireEvent.click(within(failure).getByTestId("retry-usual_intake"));
@@ -473,8 +552,51 @@ describe("the usual-intake card, from the usual-intake stage's offer", () => {
     const { decide } = mount({ artifact: null, status: { status: "running" } });
     expect(screen.getByTestId("usual-intake-unserved")).toBeInTheDocument();
     expect(screen.queryByTestId("usual-intake-failure")).toBeNull();
+    expect(screen.queryByTestId("usual-intake-stopped")).toBeNull();
+    expect(screen.queryByTestId("retry-usual_intake")).toBeNull();
     expect(offered()).toEqual([]);
     await settle();
     expect(decide).not.toHaveBeenCalled();
+  });
+
+  it.each(STOPS)("says the recompute was stopped, with a way to run it again, where the stage was stopped with no offer to show ($status)", async (stop) => {
+    mount({ artifact: null, status: stop });
+    const card = screen.getByTestId(`declaration-${KIND}`);
+    const title = within(card).getByRole("heading").textContent!;
+    expect(card).not.toHaveTextContent("not computed yet");
+    expect(screen.queryByTestId("usual-intake-unserved")).toBeNull();
+    expect(screen.queryByTestId("usual-intake-failure")).toBeNull();
+    const stopped = screen.getByTestId("usual-intake-stopped");
+    expect(stopped).toHaveTextContent(`You stopped the recompute before it finished. ${title} waits on it.`);
+    expect(offered()).toEqual([]);
+    const retry = within(stopped).getByTestId("retry-usual_intake");
+    expect(retry).toHaveTextContent("Recompute");
+    const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(retry);
+    await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "usual_intake"));
+  });
+
+  it("offers to recompute from the veil, outside its inert body, where the stage was stopped with an older offer on screen", async () => {
+    mount({ status: { status: "stale", cancelled: true } });
+    const veil = screen.getByTestId("usual-intake-veil");
+    expect(veil).toHaveAttribute("data-veil", "stopped");
+    expect(screen.queryByTestId("usual-intake-stopped")).toBeNull();
+    expect(screen.getByTestId("options-usual-intake").closest("[inert]")).not.toBeNull();
+    const retry = within(veil).getByTestId("retry-usual_intake");
+    expect(retry).toHaveTextContent("Recompute");
+    expect(retry.closest("[inert]")).toBeNull();
+    const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(retry);
+    await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "usual_intake"));
+  });
+
+  it("offers no way forward from the veil while the stage recomputes, nor once it is fresh", () => {
+    mount({ status: { status: "running" } });
+    expect(screen.getByTestId("usual-intake-veil")).toHaveAttribute("data-veil", "recomputing");
+    expect(screen.queryByTestId("retry-usual_intake")).toBeNull();
+    cleanup();
+    mount();
+    expect(screen.getByTestId("usual-intake-veil")).toHaveAttribute("data-veil", "fresh");
+    expect(screen.queryByTestId("retry-usual_intake")).toBeNull();
   });
 });

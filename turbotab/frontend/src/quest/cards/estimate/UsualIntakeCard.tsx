@@ -12,7 +12,9 @@
  * as proposed from their names, which the component's name on the card lists, so the press that
  * records them names them. Before the plan is locked the stage is served with its distributions
  * withheld and its offer kept (core/estimand.py `withhold`). A component already answered that the
- * offer no longer lists stays choosable, with its days on record.
+ * offer no longer lists stays choosable, with its days on record; the engine keys a wide answer by
+ * any label (core/decisions.py `SetUsualIntake`), so one whose label is not its first day is named
+ * by that label before its days, and never reads as an offered component of the same days.
  *
  * The card asks which component and which model. Leaving usual intake out records the component
  * with no model, as the engine's own exit does (core/usual_intake.py `leave_out`). The card does not
@@ -114,7 +116,13 @@ function componentsOf(offer: UsualIntakeOffer, answers: ProjectState["usual_inta
   return out;
 }
 
-const nameOf = (comp: Component) => (comp.days.length ? comp.days.join(", ") : comp.nutrient);
+/** A component's name: a long table's column; a wide table's days, after its own label where that
+ *  is not its first day (the offer names each of its components by its first day). */
+function nameOf(comp: Component): string {
+  if (!comp.days.length) return comp.nutrient;
+  const days = comp.days.join(", ");
+  return comp.nutrient === comp.days[0] ? days : `${comp.nutrient} (${days})`;
+}
 
 function Body({
   card,
