@@ -684,8 +684,9 @@ def _label_problem(con: Any, rel: str, label: str, kind: str | None) -> tuple[st
     if int(blank or 0):
         return ("unnamed_features", f"`{int(blank):,}` rows have no name in `{label}`; turned round, "
                                     f"they would be columns with no name. Name every row first.")
-    dupe = con.execute(f"SELECT {v} AS v FROM {rel} GROUP BY v HAVING count(*) > 1 "
-                       f"ORDER BY v LIMIT 1").fetchone()
+    # By position: GROUP BY v would read a sample column named v first, not the names.
+    dupe = con.execute(f"SELECT {v} FROM {rel} GROUP BY 1 HAVING count(*) > 1 "
+                       f"ORDER BY 1 LIMIT 1").fetchone()
     if dupe is not None:
         return ("duplicate_features",
                 f"Two rows are both named `{dupe[0]}`. Turned around, they would be two columns with "
@@ -1851,8 +1852,9 @@ def text_amounts(state: Any, source: Path, names: Sequence[str],
             if not types.get(c, "").startswith("VARCHAR"):
                 continue
             q = _ident(c)
-            rows = con.execute(f"SELECT {q} AS v, count(*) FROM {rel} WHERE {q} IS NOT NULL "
-                               f"GROUP BY v ORDER BY v").fetchall()
+            # By position: GROUP BY v would read a column named v first.
+            rows = con.execute(f"SELECT {q}, count(*) FROM {rel} WHERE {q} IS NOT NULL "
+                               f"GROUP BY 1 ORDER BY 1").fetchall()
             verdict = by_values("code_or_count", pd.Series([r[0] for r in rows], dtype=object),
                                 counts=np.asarray([r[1] for r in rows], dtype=float))
             found = verdict.detail if isinstance(verdict.detail, dict) else {}

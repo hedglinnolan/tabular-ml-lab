@@ -2065,10 +2065,10 @@ class DataStore:
             counts = np.ones(k)
         else:
             x = f"CAST({_ident(name)} AS DOUBLE)"
-            with self._cursor() as cur:
+            with self._cursor() as cur:  # by position: GROUP BY v reads a column named v first
                 rows = cur.execute(
-                    f"SELECT {x} AS v, count(*) FROM {self._rel} WHERE {x} IS NOT NULL "
-                    f"AND isfinite({x}) GROUP BY v ORDER BY v").fetchall()
+                    f"SELECT {x}, count(*) FROM {self._rel} WHERE {x} IS NOT NULL "
+                    f"AND isfinite({x}) GROUP BY 1 ORDER BY 1").fetchall()
             values = np.asarray([r[0] for r in rows], dtype=float)
             counts = np.asarray([r[1] for r in rows], dtype=float)
         verdict = by_values("code_or_count", pd.Series(values), counts=counts)
@@ -2089,9 +2089,9 @@ class DataStore:
                 and cmap[c].dtype in ("categorical", "text")]
         for name in todo:
             q = _ident(name)
-            with self._cursor() as cur:
-                rows = cur.execute(f"SELECT CAST({q} AS VARCHAR) AS v, count(*) FROM {self._rel} "
-                                   f"WHERE {q} IS NOT NULL GROUP BY v ORDER BY v").fetchall()
+            with self._cursor() as cur:  # by position: GROUP BY v reads a column named v first
+                rows = cur.execute(f"SELECT CAST({q} AS VARCHAR), count(*) FROM {self._rel} "
+                                   f"WHERE {q} IS NOT NULL GROUP BY 1 ORDER BY 1").fetchall()
             verdict = by_values("code_or_count", pd.Series([r[0] for r in rows], dtype=object),
                                 counts=np.asarray([r[1] for r in rows], dtype=float))
             found = verdict.detail if isinstance(verdict.detail, dict) else {}
