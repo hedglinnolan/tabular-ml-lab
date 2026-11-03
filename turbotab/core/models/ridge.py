@@ -254,7 +254,8 @@ def _thin_svd(A: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     converge, scipy's gesvd (QR iteration), whose factors give the path the same coefficients to
     rounding. Accelerate's gesdd failed so on an inner fold of a full-coded NHANES design (3,382 ×
     97, 26 singular values below 10⁻¹² and one zero column), which gesvd factored; with its rows or
-    its columns reordered gesdd converged. Where gesvd fails too (LAPACK allows it), the path is
+    its columns reordered gesdd converged. scipy's svd failed there too at its default driver,
+    gesdd, so the fallback names gesvd. Where gesvd fails too (LAPACK allows it), the path is
     refused in words, with a way forward: the failure stops the stage it is raised in, every
     family's fit with it (glucose's Fit stage), until ridge is left out. scipy refuses a matrix
     that is not finite before gesvd runs."""

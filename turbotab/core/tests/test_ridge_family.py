@@ -3,7 +3,9 @@
 Every reference here is computed in the test, independently of the family's code:
 
 * least squares: the closed form on the centered matrix with the intercept unpenalized,
-  β(λ) = (ZcᵀZc + nλI)⁻¹Zcᵀ(y − ȳ), b = ȳ − z̄ᵀβ, solved by numpy at every grid point;
+  β(λ) = (ZcᵀZc + nλI)⁻¹Zcᵀ(y − ȳ), b = ȳ − z̄ᵀβ, solved by numpy at every grid point; where
+  LAPACK's gesdd is made to fail, also the augmented least squares [Zc; √(nλ)I]β = [y − ȳ; 0] by
+  Householder QR, with no SVD;
 * df(λ): the trace of the explicit hat matrix Zc(ZcᵀZc + nλI)⁻¹Zcᵀ (ESL §3.4.1, eq. 3.50);
 * logistic ridge: scipy's L-BFGS on the penalized log-likelihood written out here,
   Σᵢ ℓᵢ + (nλ/2)‖W‖², the intercepts unpenalized, for a yes/no outcome and for classes;
@@ -455,25 +457,50 @@ def _full_coded(seed: int = 0, n: int = 240) -> tuple[np.ndarray, np.ndarray]:
     return Z, y
 
 
-def _gesdd_fails(monkeypatch) -> list[int]:
-    """numpy's SVD (LAPACK gesdd) raising as Accelerate's did on glucose's folds; the list grows
-    by one at each call it refuses."""
-    refused: list[int] = []
+def _gesdd_fails(monkeypatch) -> list[str]:
+    """LAPACK's gesdd failing as Accelerate's did on glucose's inner folds (run_36 and run_37,
+    2,720 to 3,787 rows × 96 to 99 columns): every wrapper that asks it for the factors raises,
+    numpy's svd and pinv and scipy's svd (gesdd is its default driver) and pinv, while scipy's
+    gesvd and the singular values alone still converge, as they did on those folds. A fallback to
+    gesdd by any of these routes fails here as it failed there. The list names each refused call."""
+    import inspect
 
-    def fails(*args, **kwargs):
-        refused.append(1)
-        raise np.linalg.LinAlgError("SVD did not converge")
+    import scipy.linalg
 
-    monkeypatch.setattr(np.linalg, "svd", fails)
+    refused: list[str] = []
+
+    def refuse(name: str, real, when):
+        signature = inspect.signature(real)
+
+        def wrapper(*args, **kwargs):
+            bound = signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+            if when(bound.arguments):
+                refused.append(name)
+                raise np.linalg.LinAlgError("SVD did not converge")
+            return real(*args, **kwargs)
+
+        return wrapper
+
+    monkeypatch.setattr(np.linalg, "svd", refuse(
+        "numpy svd", np.linalg.svd, lambda a: a["compute_uv"] and not a["hermitian"]))
+    monkeypatch.setattr(np.linalg, "pinv", refuse(
+        "numpy pinv", np.linalg.pinv, lambda a: not a["hermitian"]))
+    monkeypatch.setattr(scipy.linalg, "svd", refuse(
+        "scipy svd", scipy.linalg.svd,
+        lambda a: a["compute_uv"] and a["lapack_driver"] == "gesdd"))
+    monkeypatch.setattr(scipy.linalg, "pinv", refuse("scipy pinv", scipy.linalg.pinv,
+                                                     lambda a: True))
     return refused
 
 
 @pytest.mark.parametrize("design,weighted", [("correlated", False), ("correlated", True),
                                              ("full_coded", False)])
 def test_where_gesdd_fails_the_path_is_still_the_closed_form(design, weighted, monkeypatch):
-    """R1: with gesdd refusing, every grid point is still the normal equations' ridge solved by
-    numpy (weighted at weights of mean 1), and scikit-learn's Ridge at α = nλ, to 1e-8: the path
-    falls back to a driver that converges, with the same coefficients, rank-deficient or not."""
+    """R1: with gesdd refusing through every wrapper (``_gesdd_fails``), every grid point is still
+    the normal equations' ridge solved by numpy (weighted at weights of mean 1), and
+    scikit-learn's Ridge at α = nλ, to 1e-8: the path falls back to a driver that converges, with
+    the same coefficients, rank-deficient or not."""
     from sklearn.linear_model import Ridge as SklearnRidge
 
     f = _family()
@@ -492,6 +519,45 @@ def test_where_gesdd_fails_the_path_is_still_the_closed_form(design, weighted, m
         ref = SklearnRidge(alpha=n * lam, solver="cholesky").fit(Z, y, sample_weight=relative)
         assert np.max(np.abs(fit.coefs[0, g, 0] - ref.coef_)) < 1e-8, lam
         assert abs(fit.intercepts[0, g, 0] - ref.intercept_) < 1e-8, lam
+
+
+@pytest.mark.parametrize("design,weighted", [("full_coded", True), ("wide", False),
+                                             ("wide", True)])
+def test_where_gesdd_fails_in_every_wrapper_the_path_is_the_augmented_least_squares(
+        design, weighted, monkeypatch):
+    """R1: with gesdd failing through every wrapper (``_gesdd_fails``), scipy's own default
+    included, the path at λ from the grid's top to its bottom is still ridge's augmented least
+    squares, [√w(Z − z̄); √(nλ)I]β = [√w(y − ȳ); 0] with b = ȳ − z̄ᵀβ (the means weighted, the
+    weights scaled to mean 1), solved by Householder QR with no SVD at all, and scikit-learn's
+    Ridge at α = nλ, to 1e-8 of the coefficients' size: rank-deficient and weighted, or with more
+    columns than rows. It pins the coefficients, not which driver gave them."""
+    from scipy.linalg import solve_triangular
+    from sklearn.linear_model import Ridge as SklearnRidge
+
+    f = _family()
+    rng = np.random.default_rng(12)
+    if design == "full_coded":
+        Z, y = _full_coded(2)
+    else:
+        Z = rng.normal(size=(30, 60)) * rng.uniform(0.2, 5.0, size=60)
+        y = Z @ rng.normal(size=60) + rng.normal(size=30) + 4.0
+    n, p = Z.shape
+    w = rng.uniform(0.2, 3.0, size=n) if weighted else None
+    lams = np.array([1e2, 1.0, 1e-2, 1e-4, 1e-5])
+    _gesdd_fails(monkeypatch)
+    fit = f.path(Z, y, {"lambda": lams}, task="regression", weights=w)
+    relative = np.ones(n) if w is None else w / w.mean()
+    zbar, ybar = relative @ Z / relative.sum(), float(relative @ y / relative.sum())
+    root = np.sqrt(relative)
+    for g, lam in enumerate(lams):
+        Q, R = np.linalg.qr(np.vstack([root[:, None] * (Z - zbar), np.sqrt(n * lam) * np.eye(p)]))
+        beta = solve_triangular(R, Q.T @ np.concatenate([root * (y - ybar), np.zeros(p)]))
+        size = max(1.0, float(np.max(np.abs(beta))))
+        assert np.max(np.abs(fit.coefs[0, g, 0] - beta)) < 1e-8 * size, lam
+        assert abs(fit.intercepts[0, g, 0] - (ybar - zbar @ beta)) < 1e-8 * size, lam
+        ref = SklearnRidge(alpha=n * lam, solver="cholesky").fit(Z, y, sample_weight=relative)
+        assert np.max(np.abs(fit.coefs[0, g, 0] - ref.coef_)) < 1e-8 * size, lam
+        assert abs(fit.intercepts[0, g, 0] - ref.intercept_) < 1e-8 * size, lam
 
 
 @pytest.mark.parametrize("design", ["correlated", "full_coded"])
