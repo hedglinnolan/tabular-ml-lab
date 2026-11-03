@@ -1,8 +1,11 @@
 /**
  * Saying that a stage did not finish, truly and with a way forward (DRIVE_RUBRIC §2.1–2.3):
- * which computation stopped, why, in plain words, and two levers — run it again for the current
- * answers, or change the answer that led there. A stage that waits on a failed one names the one
- * that failed, never "Needs 'design', which failed."
+ * which computation stopped, why, in plain words, and its levers. A stage the engine refused in
+ * words (StageStatus.refusal) is said in the refusal's words, with the refusal's ways forward as
+ * its levers (StageRefusal), since running the same answers again refuses again. Any other
+ * failure has two levers — run it again for the current answers, or change the answer most likely
+ * behind it. A stage that waits on a failed one names the one that failed, never "Needs 'design',
+ * which failed.": the refusal names it, and for any other failure that error's words do.
  *
  * Changing an answer is the Record's to do: `requestReopen` asks it, from anywhere (the stage, the
  * banner), with a window event the Record listens for — no shared mutable state.
@@ -10,12 +13,16 @@
 import type { ReactNode } from "react";
 import type { QuestionKey } from "../api/m1-types";
 import type { DecisionRecord, ProjectView, StageStatus } from "../api/schema";
-import { STAGE_LABEL } from "./JobChips";
+import { stageLabel } from "./JobChips";
 import { Prose } from "./Prose";
+import { StageRefusal, finish, refusalOf, type StageRefused } from "./StageRefusal";
 import { StageRetry } from "./StageRetry";
 import s from "./Failure.module.css";
 
-/** The decision slots each stage reads (turbotab/core/stages/__init__.py). */
+/** The decision slots each stage reads (turbotab/core/stages/__init__.py), for the lever of a
+ *  failure the engine did not type as a refusal: copied by hand at the first milestone, so for a
+ *  stage that now reads more it can name an older answer than the newest one it reads (the
+ *  front-end audit's S1). A refusal's levers are its own ways forward. */
 const READS: Record<string, QuestionKey[]> = {
   target_info: ["target", "task"],
   findings: ["lens", "target"],
@@ -46,11 +53,13 @@ const SUBJECT: Partial<Record<QuestionKey, string>> = {
 const NEEDS = /^Needs '([a-z_]+)', which failed\.?$/;
 
 export interface Failure {
-  /** The stage that failed first (the one a dependent's error names). */
+  /** The stage that failed first (the one a refusal or a dependent's error names). */
   stage: string;
   status: StageStatus;
-  /** Its reason in plain words: no exception class names. */
+  /** Its reason in plain words: the refusal's, or the error's with no exception class name. */
   message: string;
+  /** The refusal in words the engine served for it; null for a failure it did not type so. */
+  refusal: StageRefused | null;
 }
 
 /** An error as a reader should see it: "EnergyAdjustmentNotApplicable: X" says "X". */
@@ -61,7 +70,8 @@ export function plainError(error: string | null | undefined): string {
     .trim();
 }
 
-/** The failure behind `stage` (itself, or the upstream stage its error names); null if none. */
+/** The failure behind `stage` (itself, or the upstream stage that refused or that its error
+ *  names); null if none. A refusal is read as served, never from the error's text. */
 export function rootFailure(
   stages: Record<string, StageStatus | undefined>,
   stage: string,
@@ -70,8 +80,13 @@ export function rootFailure(
   for (let i = 0; i < 12; i++) {
     const status = stages[name];
     if (!status || status.status !== "error") return null;
+    const refusal = refusalOf(status);
+    if (refusal) {
+      const at = stages[refusal.stage];
+      return { stage: refusal.stage, status: at ?? status, message: refusal.message, refusal };
+    }
     const m = NEEDS.exec(status.error ?? "");
-    if (!m || !stages[m[1]!]) return { stage: name, status, message: plainError(status.error) };
+    if (!m || !stages[m[1]!]) return { stage: name, status, message: plainError(status.error), refusal: null };
     name = m[1]!;
   }
   return null;
@@ -109,7 +124,11 @@ export function requestReopen(key: QuestionKey): void {
 
 /**
  * "Building each model's pipeline did not finish: <why>. [Try again] [Change the energy
- * adjustment]". For a stage the user stopped: "You stopped …" and [Recompute].
+ * adjustment]". For a stage the user stopped: "You stopped …" and [Recompute]. For a stage the
+ * engine refused in words: "Fitting the models did not finish: <the refusal's words>." and a press
+ * for each of its ways forward that is a decision (StageRefusal; `compact` and `changeable` do not
+ * apply to it), and each that is none in words; with `recordHere` false, no press and no decision
+ * said (StageRefusal's `besideCard`).
  */
 export function StageFailure({
   pid,
@@ -119,6 +138,7 @@ export function StageFailure({
   after,
   compact = false,
   changeable = true,
+  recordHere = true,
   testId,
 }: {
   pid: string;
@@ -131,14 +151,34 @@ export function StageFailure({
   /** Offer to change the answer behind it (off where its own "change" is beside it). */
   changeable?: boolean;
   compact?: boolean;
+  /** False where the card is the one place a choice is recorded (Stage's `recordHere`): no way
+   *  forward of a refusal is a press, and only those that name no decision are said. */
+  recordHere?: boolean;
   testId?: string;
 }) {
   const failure = rootFailure(view.stages, stage);
   const status = view.stages[stage];
   if (!failure && !status?.cancelled) return null;
   const at = failure?.stage ?? stage;
+  const work = stageLabel(at);
+  if (failure?.refusal) {
+    return (
+      <StageRefusal
+        pid={pid}
+        refusal={failure.refusal}
+        lead={
+          <>
+            {lead ? <>{lead} </> : null}
+            <strong className={s.what}>{work} did not finish:</strong>
+          </>
+        }
+        after={after}
+        recordHere={recordHere}
+        testId={testId ?? `failure-${stage}`}
+      />
+    );
+  }
   const cause = causeOf(view, at);
-  const work = STAGE_LABEL[at] ?? at.replace(/_/g, " ");
   return (
     <div
       className={compact ? s.compact : s.failure}
@@ -176,11 +216,6 @@ export function StageFailure({
       </div>
     </div>
   );
-}
-
-function finish(text: string): string {
-  const t = text.trim();
-  return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
 function lowerFirst(text: string): string {

@@ -2,12 +2,18 @@
  * Fit at the analysis flowchart's end (FOUNDATION §7; plans/W1_PART2_PLAN.md ruling 3). Before it is
  * pressed: Fit, with how long a held fit is expected to take in the engine's words, and the lock's
  * reason beneath; no Cancel, since nothing runs. While the fit job runs: its progress and a Cancel
- * where Fit was (POST /fit/cancel). Pressing is a job command, not a decision.
+ * where Fit was (POST /fit/cancel). Pressing is a job command, not a decision. A fit the engine
+ * refused in words (StageStatus.refusal: its own, or the refusal of the stage it waits on) is said
+ * beneath Fit as the shell's stage says a refusal (StageRefusal's `besideCard`): no way forward is a
+ * press, and one that is a decision is not said either, since in the quest shell a choice is
+ * recorded on the card.
  */
+import { Fragment } from "react";
 import { isRefusalError } from "../api/client";
 import { useCancelFit, useJobs, usePressFit } from "../api/queries";
 import type { QuestLog, StageStatus } from "../api/schema";
-import { STAGE_LABEL } from "../components/JobChips";
+import { stageLabel } from "../components/JobChips";
+import { besideCard, finish, refusalOf, type StageRefused } from "../components/StageRefusal";
 import { Plain, kit as k } from "../kit";
 import { fitPosition } from "./log";
 import q from "./quest.module.css";
@@ -27,6 +33,7 @@ export function FitControl({
   const pos = fitPosition(log, fit);
   const failure = press.error ?? cancel.error;
   const said = failure ? (isRefusalError(failure) ? failure.refusal.error.message : failure.message) : null;
+  const refused = refusalOf(fit);
 
   if (pos.kind === "press") {
     return (
@@ -45,6 +52,7 @@ export function FitControl({
             <Plain text={log.fit.reason} />
           </p>
         ) : null}
+        {refused ? <FitRefusal refusal={refused} /> : null}
         {said ? (
           <p className={q.fitReason} role="alert">
             <Plain text={said} />
@@ -56,7 +64,7 @@ export function FitControl({
   if (pos.kind === "running") {
     const progress = job?.progress ?? pos.progress;
     const pct = progress === null || progress === undefined ? null : Math.round(progress * 100);
-    const label = job?.label ?? STAGE_LABEL.fit ?? "Fitting the models";
+    const label = job?.label ?? stageLabel("fit");
     return (
       <div className={q.fit} data-kit data-testid="fit-position" data-running>
         <span className={q.fitLabel}>
@@ -93,4 +101,30 @@ export function FitControl({
     );
   }
   return null;
+}
+
+/** The fit's refusal beneath Fit, as Fit's other lines are said there: "<the refusal's words>
+ *  <each way forward that names no decision>." Fit sits in the tapestry, which records nothing
+ *  (FOUNDATION §1: the card is the one place a choice is recorded; Stage's `recordHere`), so the
+ *  refusal is said as the card leaves it (`besideCard`): a decision is the card's to offer, and its
+ *  label names a choice, which said as a sentence would read as a fact. */
+function FitRefusal({ refusal }: { refusal: StageRefused }) {
+  const { message, told } = besideCard(refusal);
+  return (
+    <p
+      className={q.fitReason}
+      role="alert"
+      data-testid="fit-refusal"
+      data-stage={refusal.stage}
+      data-code={refusal.code}
+    >
+      <Plain text={finish(message)} />
+      {told.map((x) => (
+        <Fragment key={x.label}>
+          {" "}
+          <Plain text={finish(x.label)} />
+        </Fragment>
+      ))}
+    </p>
+  );
 }
