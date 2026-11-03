@@ -8,8 +8,8 @@
  *
  * The Estimate declaration cards are registered here too, since the shell reads one map
  * (src/quest/cards/estimate): the Model 1 question, without which an Estimate project's Models never
- * completes and Fit is never offered, how many tests are accounted for, and the regression
- * calibration question.
+ * completes and Fit is never offered, how many tests are accounted for, the regression
+ * calibration question, and the usual-intake question.
  *
  * DECLARATION_DEFAULTS says, for a Confirm line the engine serves no reason for, the default it
  * confirms, from the engine's own value (src/quest/contracts.ts `DeclarationDefaults`).
@@ -18,6 +18,7 @@ import type { DeclarationCards, DeclarationDefaults } from "../../contracts";
 import { MeasurementErrorCard } from "../estimate/MeasurementErrorCard";
 import { ModelOneCard } from "../estimate/ModelOneCard";
 import { MultiplicityCard } from "../estimate/MultiplicityCard";
+import { UsualIntakeCard } from "../estimate/UsualIntakeCard";
 import { ExplainCard } from "./ExplainCard";
 import { IntendedUseCard } from "./IntendedUseCard";
 import { LeversCard, leversDefault } from "./LeversCard";
@@ -37,6 +38,7 @@ export const DECLARATION_CARDS: DeclarationCards = {
   set_model_sequence: ModelOneCard,
   set_multiplicity: MultiplicityCard,
   set_measurement_error: MeasurementErrorCard,
+  set_usual_intake: UsualIntakeCard,
 };
 
 export const DECLARATION_DEFAULTS: DeclarationDefaults = {

@@ -324,8 +324,8 @@ describe("the Estimate declarations the shell can answer (G01, G08)", () => {
     }
   });
 
-  it("leaves the batch, usual-intake and scales questions to the fallback, as later packages' cards", () => {
-    for (const key of ["set_batch", "set_usual_intake", "set_scales"]) {
+  it("leaves the batch and scales questions to the fallback, as later packages' cards", () => {
+    for (const key of ["set_batch", "set_scales"]) {
       expect(rendererOf({ source: "declaration", key }, DECLARATION_CARDS), key).toBe("generic");
     }
   });
