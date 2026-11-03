@@ -23,7 +23,9 @@ So the plan is locked before any inference estimate is displayed:
   was declared before any estimate was shown, and none was. The server records the withdrawal as a
   revert of the lock, so the record keeps the withdrawn lock with its time and fingerprint, and the
   next press of Fit records a new one (:func:`current_lock`). Once an estimate has been served the
-  lock stands: a client never reverts it.
+  lock stands: a client never reverts it. Nor does a client bring a withdrawn lock back (a revert
+  of the withdrawal), which would fix the plan as it stood when that lock was recorded: a press of
+  Fit that is accepted while the plan is unlocked locks the plan as it then stands.
 * **What.** The plan is every slot the estimates read, as it stood (:func:`plan_of`): the outcome,
   the exposures and the adjustment set (the roles), the exclusions, the missing-data plan, the
   energy model, the exposure forms, the families, the secondaries, and the data coding (repairs,
@@ -53,6 +55,7 @@ from turbotab.core.decisions import Refusal
 # The stages whose artifacts carry estimates of the outcome model: one list with the one WP17
 # withholds by, so the "further adjusted for" model (``stages/secondary.py``) is among them.
 from turbotab.core.estimand import ESTIMATE_STAGES
+from turbotab.core.fit_press import PRESS_FIT
 
 
 @lru_cache(maxsize=1)
@@ -344,16 +347,44 @@ def _the_lock_records_the_plan(decision: Any, ctx: Any) -> Any:
     return decision.model_copy(update={"plan": plan, "digest": digest(plan)})
 
 
+def _reverts_down_to(decision: Any, records: Sequence[Any]) -> tuple[Any, int]:
+    """The record a revert's chain ends on, the first that is not itself a revert, and how many
+    reverts lead to it, ``decision`` counted (None and the count so far where the log does not hold
+    one). An odd count undoes that record; an even one brings it back."""
+    by_id = {r.id: r for r in records}
+    target, count, seen = by_id.get(decision.decision_id), 1, set()
+    while target is not None and target.decision.kind == "revert" and target.id not in seen:
+        seen.add(target.id)
+        target, count = by_id.get(target.decision.decision_id), count + 1
+    return target, count
+
+
 def _the_lock_stays(decision: Any, ctx: Any) -> None:
-    records = _records(ctx)
-    target = next((r for r in records or [] if r.id == decision.decision_id), None)
-    if target is not None and target.decision.kind == "lock_plan":
+    """A client's revert never moves a lock: one that would withdraw it (a revert of the lock, or
+    of a revert that brought it back) is refused, and so is one that would bring back a lock
+    TurboTab withdrew (a revert of the withdrawal), which would hold the plan as it stood when the
+    lock was recorded, whatever has changed since. Only the server withdraws a lock
+    (``ProjectService._withdraw_lock``), and only while no estimate was shown under it."""
+    target, count = _reverts_down_to(decision, _records(ctx) or [])
+    if target is None or target.decision.kind != "lock_plan":
+        return
+    if count % 2:
         raise Refusal(
             "plan_stays_locked",
             "The estimates were displayed with this plan, and that cannot be undone: the lock "
             "stays in the record, and later changes stay marked as made after the estimates were "
             "seen.",
         )
+    state = _state(ctx)
+    raise Refusal(
+        "lock_stays_withdrawn",
+        "This revert would bring back an analysis-plan lock that was withdrawn, and a withdrawn "
+        "lock is not brought back: the record keeps it, with its time and fingerprint. Under "
+        "inference, a press of Fit that is accepted while the plan is unlocked locks the plan as "
+        "it then stands.",
+        exits=([{"label": PRESS_FIT, "decision": None}]
+               if getattr(state, "purpose", None) == "inference" else []),
+    )
 
 
 decisions.register_validator("lock_plan", _locked_once_under_inference)
