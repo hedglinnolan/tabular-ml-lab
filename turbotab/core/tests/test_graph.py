@@ -60,7 +60,9 @@ class Projects:
         self.settings: dict[str, dict] = {}
 
     def cache(self, pid: str) -> Path:
-        return self.root / pid / "cache"
+        path = self.root / pid / "cache"
+        path.mkdir(parents=True, exist_ok=True)  # as Workspace.cache_dir makes it
+        return path
 
     def __call__(self, pid: str) -> ProjectContext:
         return ProjectContext(
@@ -371,6 +373,7 @@ def test_a_failing_stage_is_an_error_and_other_branches_keep_going(make_engine):
 
 def test_artifacts_round_trip_in_the_three_formats(tmp_path):
     root = tmp_path / "cache"
+    root.mkdir()
     data = {"a": 1, "b": [1.5, float("nan")], "n": np.int64(3), "t": ("x", "y")}
     assert write_artifact(root, "S", "k1", 2, data) == "json"
     assert read_artifact(root, "S", "k1") == {"a": 1, "b": [1.5, None], "n": 3, "t": ["x", "y"]}
@@ -426,6 +429,7 @@ def test_a_bundle_carries_files_the_stage_wrote_itself(tmp_path):
 
     scratch = tmp_path / "scratch.parquet"
     scratch.write_bytes(b"PAR1-not-really")
+    (tmp_path / "cache").mkdir()
     write_artifact(tmp_path / "cache", "working", "k1", 1, Bundle(data={"n_rows": 3}, files={"table.parquet": scratch}))
     assert not scratch.exists()  # moved, not copied: a working table can be gigabytes
     whole = read_artifact(tmp_path / "cache", "working", "k1")

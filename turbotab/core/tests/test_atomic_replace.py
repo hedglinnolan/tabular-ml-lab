@@ -72,6 +72,7 @@ def test_elsewhere_a_refused_replace_raises_at_once(tmp_path, monkeypatch):
 def test_a_stage_s_latest_pointer_lands_though_a_reader_held_it(tmp_path, monkeypatch):
     monkeypatch.setattr(atomic, "WINDOWS", True)
     root = tmp_path / "cache"
+    root.mkdir()
     graph.write_artifact(root, "S", "k1", 1, {"a": 1})
     replace, calls = refusing(1, only=graph.LATEST)
     monkeypatch.setattr(os, "replace", replace)

@@ -25,8 +25,12 @@ Status rules (per stage, for its current key):
 
 * ``blocked`` — a slot in ``requires`` is unset here or upstream; ``missing``
   lists every such slot, transitively; ``key`` is null.
-* ``fresh`` — the artifact for the current key exists.
-* ``queued`` / ``running`` — work for the current key is in flight.
+* ``queued`` / ``running`` — work for the current key is in flight: until the
+  engine has heard its run is done and scheduled the stages after it, even once
+  the run's artifact is written. So no stage queued or running means the
+  project's stages are settled.
+* ``fresh`` — the artifact for the current key exists and no run for it is in
+  flight.
 * ``error`` — the stage raised for this key (the message is kept), or a dep is
   in error (``"Needs 'x', which failed."``). An errored key is not retried
   automatically; :meth:`Engine.ensure` retries it. A stage that refuses in
@@ -616,12 +620,17 @@ def _dump(obj: Any, folder: Path) -> ArtifactFormat:
 def write_artifact(
     cache_root: str | os.PathLike[str], stage: str, key: str, version: int, obj: Any
 ) -> ArtifactFormat:
-    """Write atomically (temp dir + rename) and move the ``latest`` pointer."""
+    """Write atomically (temp dir + rename) and move the ``latest`` pointer.
+
+    The stage's folder is made only under an existing ``cache_root`` (the workspace makes it): a
+    job that ends after its project was removed raises OSError and writes nothing, rather than
+    recreating the project's folder.
+    """
     final = artifact_dir(cache_root, stage, key)
     if (final / "meta.json").is_file():
         return read_meta(cache_root, stage, key)["format"]
     stage_dir = final.parent
-    stage_dir.mkdir(parents=True, exist_ok=True)
+    stage_dir.mkdir(exist_ok=True)
     tmp: Path | None = stage_dir / f".tmp-{key}-{uuid.uuid4().hex}"
     assert tmp is not None
     tmp.mkdir()
@@ -1141,8 +1150,9 @@ class Engine:
         common: dict[str, Any] = {"stage": name, "key": key, "updated_at": p.updated_at.get(name)}
         if key is None:
             return StageStatus(status="blocked", missing=list(p.missing.get(name, [])), **common)
-        if self._has(p, name, key):
-            return StageStatus(status="fresh", fresh=True, **common)
+        # A run reads before its artifact: a job writes its artifact before the engine hears it is
+        # done, and only _finish_run (under p.lock) schedules the stages after it, so until then
+        # the stage is in flight, and a project with no stage queued or running is settled.
         run = p.runs.get(name)
         if run is not None:
             return StageStatus(
@@ -1151,6 +1161,8 @@ class Engine:
                 progress=run.progress,
                 **common,
             )
+        if self._has(p, name, key):
+            return StageStatus(status="fresh", fresh=True, **common)
         error = p.errors.get((name, key))
         refusal = Refused.model_validate(p.refusals[(name, key)]) \
             if error is not None and (name, key) in p.refusals else None

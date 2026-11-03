@@ -209,7 +209,7 @@ def test_a_claim_rendered_in_a_job_worker_lands_in_its_project_s_log(runner, tmp
     from turbotab.core.workspace import CLAIMS_LOG
 
     project = tmp_path / "projects" / "p0123456789"
-    project.mkdir(parents=True)
+    (project / "cache").mkdir(parents=True)  # as Workspace.cache_dir makes it
 
     def project_ctx(pid: str) -> ProjectContext:
         return ProjectContext(project_id=pid, state=ToyState(), cache_root=project / "cache",
