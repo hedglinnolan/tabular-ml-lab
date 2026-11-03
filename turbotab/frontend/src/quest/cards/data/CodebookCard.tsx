@@ -13,10 +13,15 @@
  *
  * A codebook is read, and its press assessed, only against the table read fresh (server/service.py
  * `_table_ready`, core/codebook.py `_assessed`): the server answers any other "still being read".
- * A read that failed or was stopped does not restart by itself, so there the card says which
- * computation did not finish and why, with its retry, in place of the read and the press, as the
- * join card does (components/Failure.tsx `StageFailure`).
+ * That answer holds only until the table is read: from then on the card no longer says it, and
+ * offers the read again, as the join card counts its join again. A read that failed or was stopped
+ * does not restart by itself, so there the card says which computation did not finish and why,
+ * with its retry, in place of the read and the press, as the join card does
+ * (components/Failure.tsx `StageFailure`).
  */
+import { useEffect } from "react";
+import { isRefusalError } from "../../../api/client";
+import { NOT_YET } from "../../../api/m2-types";
 import { useCodebook, useHealth, useProjectView } from "../../../api/queries";
 import type { CodebookPreview } from "../../../api/m3-types";
 import type { Decision, DecisionInput, ProjectView, QuestLine } from "../../../api/schema";
@@ -128,6 +133,19 @@ function Body({
   // (components/StageRetry.tsx), and the server reads no codebook until it is read.
   const failed = rootFailure(view.stages, "ingest") !== null;
   const stopped = !failed && !!view.stages.ingest?.cancelled;
+  // The server answers a read asked before the table is read "not yet" (server/service.py
+  // `_table_ready`), which no longer holds once the table is read: it is cleared then, and never
+  // said while the table stands read.
+  const ingest = view.stages.ingest;
+  const table = ingest?.status === "fresh" ? ingest.key : null;
+  const early = isRefusalError(read.error) && read.error.refusal.error.code === NOT_YET;
+  useEffect(() => {
+    if (table && early) read.reset();
+    // Only the table read clears it. One that arrives while the table stands read is held unsaid:
+    // the server may have begun reading it anew, which its next event says.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table]);
+  const error = early && table ? null : read.error;
   return (
     <>
       {books.length ? (
@@ -147,7 +165,7 @@ function Body({
           testId="codebook-ingest-failure"
         />
       ) : (
-        <Read card={card} local={local} read={read} book={book} />
+        <Read card={card} local={local} read={read} error={error} book={book} />
       )}
     </>
   );
@@ -158,11 +176,14 @@ function Read({
   card,
   local,
   read,
+  error,
   book,
 }: {
   card: CardWiring;
   local: boolean;
   read: ReturnType<typeof useCodebook>;
+  /** The read's error the card says: none where it no longer holds. */
+  error: Error | null;
   book: CodebookPreview | null;
 }) {
   return (
@@ -173,7 +194,7 @@ function Read({
           drop="Drop a codebook here: a variable table, an NHANES codebook page or an XPT file"
           local={local}
           pending={read.isPending}
-          error={read.error}
+          error={error}
           pathAction="Read"
           onFile={(file) => read.mutate({ file })}
           onPath={(path) => read.mutate({ path, labels: false })}

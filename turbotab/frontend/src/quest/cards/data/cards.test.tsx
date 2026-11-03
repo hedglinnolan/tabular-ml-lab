@@ -1198,6 +1198,89 @@ describe("the table the codebook reads (the ingest stage)", () => {
     },
   );
 
+  // The server's "not yet" answers a read asked before the table is read; once it is read, that
+  // answer no longer holds (server/service.py `_table_ready` reads the codebook then), so the card
+  // stops saying it and offers the read again.
+  it.each(["queued", "running"] as const)(
+    "says the server's 'still being read' while the table's read is %s and goes on, and no longer once it is read, offering the codebook's read again",
+    async (status) => {
+      const { qc } = mount("import_codebook", { ingest: { over: { status }, older: false } });
+      const refused = notYet();
+      const read = vi.spyOn(api, "uploadCodebook").mockRejectedValueOnce(refused);
+      upload("codebook-source-input", BOOK.name);
+      expect(await screen.findByTestId("codebook-source-error")).toHaveTextContent(refused.message);
+      act(() => readAs(qc, { status: "running", key: NEXT_KEY }));
+      await settle();
+      expect(screen.getByTestId("codebook-source-error")).toHaveTextContent(refused.message);
+      act(() => readAs(qc, { status: "fresh", key: NEXT_KEY }));
+      await waitFor(() => expect(screen.queryByTestId("codebook-source-error")).toBeNull());
+      expect(card()).not.toHaveTextContent("still being read");
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByTestId("codebook-source-input")).toBeInTheDocument();
+      expect(screen.getByTestId("codebook-source-path")).toBeInTheDocument();
+      expect(record()).toHaveTextContent("Read a codebook above");
+      expect(record()).toBeDisabled();
+      // The read offered again reads the codebook against the table now read.
+      read.mockResolvedValue(BOOK);
+      upload("codebook-source-input", BOOK.name);
+      await screen.findByTestId("codebook-counts");
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(record()).toBeEnabled();
+    },
+  );
+
+  it("does not say the server's 'still being read' again once the table is read, when it is read anew", async () => {
+    const { qc } = mount("import_codebook", { ingest: NOT_READ["first read running"] });
+    vi.spyOn(api, "uploadCodebook").mockRejectedValue(notYet());
+    upload("codebook-source-input", BOOK.name);
+    await screen.findByTestId("codebook-source-error");
+    act(() => readAs(qc, { status: "fresh", key: NEXT_KEY }));
+    await waitFor(() => expect(screen.queryByTestId("codebook-source-error")).toBeNull());
+    // Read anew, asked nothing since: no answer to show.
+    act(() => readAs(qc, { status: "running", key: `${NEXT_KEY}-anew` }));
+    await settle();
+    expect(screen.queryByTestId("codebook-source-error")).toBeNull();
+    expect(card()).not.toHaveTextContent("still being read");
+  });
+
+  it("does not say the server's 'still being read' where the answer comes after the table is read", async () => {
+    const { qc } = mount("import_codebook", { ingest: NOT_READ["first read running"] });
+    let refuse!: (refusal: RefusalError) => void;
+    vi.spyOn(api, "uploadCodebook").mockReturnValue(
+      new Promise<CodebookPreview>((_, reject) => (refuse = reject)),
+    );
+    upload("codebook-source-input", BOOK.name);
+    act(() => readAs(qc, { status: "fresh", key: NEXT_KEY }));
+    await settle();
+    // The server answered while the table was being read; its answer arrives once it is read.
+    act(() => refuse(notYet()));
+    await settle();
+    expect(screen.queryByTestId("codebook-source-error")).toBeNull();
+    expect(card()).not.toHaveTextContent("still being read");
+    expect(screen.getByTestId("codebook-source-input")).toBeInTheDocument();
+    expect(record()).toHaveTextContent("Read a codebook above");
+    // Where the server had begun reading the table anew, its next event says so, and the answer
+    // holds again.
+    act(() => readAs(qc, { status: "running", key: `${NEXT_KEY}-anew` }));
+    await settle();
+    expect(screen.getByTestId("codebook-source-error")).toHaveTextContent("still being read");
+  });
+
+  it("still says why the server could not read a codebook once the table is read anew: only its 'not yet' goes", async () => {
+    const { qc } = mount("import_codebook");
+    const message = "The test's file is not a variable table, a codebook page or an XPT file.";
+    vi.spyOn(api, "uploadCodebook").mockRejectedValue(
+      new ApiError(400, message, { error: { code: "unreadable_codebook", message } }),
+    );
+    upload("codebook-source-input", "notes.txt");
+    expect(await screen.findByTestId("codebook-source-error")).toHaveTextContent(message);
+    act(() => readAs(qc, { status: "running", key: NEXT_KEY }));
+    await settle();
+    act(() => readAs(qc, { status: "fresh", key: NEXT_KEY }));
+    await settle();
+    expect(screen.getByTestId("codebook-source-error")).toHaveTextContent(message);
+  });
+
   it("names no failure and offers the codebook's read where the table is read", () => {
     mount("import_codebook");
     expect(screen.queryByTestId("codebook-ingest-failure")).toBeNull();
