@@ -134,11 +134,16 @@ estimate stage enters it), so a scored refit stays scored, its scores as read, t
 refit among them: each estimate stage in error is kept on it (``stages_in_error``: the stage,
 its kind, its error's first line, a typed refusal's code, and the defect file), an error there
 the engine did not type an engine defect with its reproduction, recorded once per distinct
-defect (:func:`defect_signature`: the stage and its error's words, the refit's own numbers and
-keys left out; ``defects/<its signature's hash>.json``), by the first refit that met it, its copy
-kept, and named by each later refit that meets it, whose copy is removed as a scored refit's
-is; a typed refusal there is no defect. The report says in words which scored refits carried
-either (``stages_in_error``).
+defect (:func:`defect_signature`: the stage and its error's words, each key and each number
+standing alone left out, the digits within a name kept; ``defects/<its signature's hash>.json``),
+by the first refit that met it, its copy kept, and named by each later refit that meets it, whose
+copy is removed as a scored refit's is; a typed refusal there is no defect. A resumed sweep
+under Predict reads by the same rule, without a refit, each refit an earlier run classed refused
+or failed only by estimate stages in error after its fit scored (:meth:`Sweep._reclass`): scored,
+its change read, the class that run gave it kept (``reclassed``), a failed one's defect named
+where it is recorded, else recorded by the file that run kept of it; under Estimate a resume
+reclasses nothing. The report says in words which scored refits carried either, and which were
+so read again (``stages_in_error``).
 
 **Materiality** (§7, :func:`materiality`): under Predict package 1's signed change of each family's
 primary score against the plan's (``assemble.signed_change`` over the two fit records, each arm's
@@ -1109,7 +1114,9 @@ class Refit:
     (``flow``: each step's rows). A refit whose wait ran out keeps what the sweep cancelled
     (``cancelled``: the wait, the stages still computing then, and ``arms.Local.cancel``'s
     account). Under Predict a scored refit keeps each estimate stage in error after its fit
-    (``stages_in_error``, :meth:`Sweep._estimate_stages`), which leaves it scored."""
+    (``stages_in_error``, :meth:`Sweep._estimate_stages`), which leaves it scored; one an earlier
+    run of the sweep classed by those stages keeps the class it gave (``reclassed``,
+    :meth:`Sweep._reclass`)."""
 
     point: str
     option: str | None
@@ -1145,6 +1152,9 @@ class Refit:
     # first line, a typed refusal's code, the defect file an untyped error is recorded in, and
     # whether this refit met that defect first (its copy kept for it).
     stages_in_error: list[dict[str, Any]] = field(default_factory=list)
+    # Under Predict, the class (refused, failed) an earlier run gave a refit by those stages, the
+    # progress file's, where a resume reads it scored.
+    reclassed: str | None = None
 
     @property
     def id(self) -> str:
@@ -1166,18 +1176,21 @@ def said_json(said: Any) -> dict[str, Any]:
 
 
 # A key in an error's words (a stage's, a project's, a job's): eight hex characters or more, a
-# digit among them; and a number. An estimate stage's defect leaves both out
+# digit among them; and a number standing alone, its decimals and exponent with it (not the
+# digits within a name: ``DR1TKCAL``, ``age_2``). An estimate stage's defect leaves both out
 # (:func:`defect_signature`).
 KEY_WORDS = re.compile(r"[0-9A-Fa-f][0-9A-Fa-f-]{7,}")
-NUMBER_WORDS = re.compile(r"\d+")
+NUMBER_WORDS = re.compile(r"\b\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\b")
 
 
 def defect_signature(stage: Any, error: Any) -> str:
     """An estimate stage's error as one engine defect, however the refit's own plan shaped it: the
     stage, then each distinct line of its error in the order first met, every key and every number
-    in it left out (:data:`KEY_WORDS`, :data:`NUMBER_WORDS`), so pydantic's errors over four
-    exposures from the 29th and over three from the 12th are one defect, while another stage,
-    another artifact or another column named is another."""
+    standing alone in it left out (:data:`KEY_WORDS`, :data:`NUMBER_WORDS`), so pydantic's errors
+    over four exposures from the 29th and over three from the 12th are one defect, while another
+    stage, another artifact or another column named is another, a column named with digits
+    within its name (``DR1TKCAL``, ``DR2TKCAL``) among them; a name that reads as a key (eight hex
+    characters or more, a digit among them) is left out as a key is."""
     lines: list[str] = []
     for line in str(error or "").splitlines():
         line = KEY_WORDS.sub(lambda m: "#" if any(c.isdigit() for c in m.group()) else m.group(),
@@ -1191,6 +1204,34 @@ def defect_signature(stage: Any, error: Any) -> str:
 def first_line(error: Any) -> str | None:
     lines = str(error or "").splitlines()
     return lines[0] if lines else None
+
+
+def same_defect(entry: Mapping[str, Any], refit: str, signature: str) -> bool:
+    """Whether a defect recorded with no signature (``entry``, a refit's own, classed failed) is
+    ``refit``'s of the estimate stage's defect ``signature``: a run before a Predict refit was read
+    by its score alone classed it failed by that stage (its ``failed`` at the stage, in those
+    words, :func:`defect_signature`)."""
+    failed = entry.get("failed") or {}
+    return (entry.get("refit") == refit and not entry.get("signature")
+            and failed.get("at") == "stage"
+            and defect_signature(failed.get("stage"), failed.get("message")) == signature)
+
+
+def recorded(defects: Sequence[Mapping[str, Any]], entry: Mapping[str, Any]
+             ) -> list[dict[str, Any]]:
+    """The engine defects the sweep holds (``Sweep.defects``) once ``entry`` is recorded, the same
+    in the sweep as on each read of its progress file: one with no signature (a refit's own, the
+    refit failed) replaces that refit's earlier one; one with its signature (an estimate stage's
+    defect under Predict, :func:`defect_signature`) replaces an earlier one of that signature and
+    the refit's own earlier record of that defect as its failure (:func:`same_defect`), keeping
+    every other the refit recorded."""
+    signature = entry.get("signature")
+    if signature is None:
+        others = [d for d in defects if d.get("refit") != entry.get("refit") or d.get("signature")]
+    else:
+        others = [d for d in defects if d.get("signature") != signature
+                  and not same_defect(d, str(entry.get("refit")), signature)]
+    return [*others, entry]  # type: ignore[list-item]
 
 
 def classed(fit: Any) -> tuple[str, dict[str, Any] | None]:
@@ -1497,8 +1538,10 @@ def listed(items: Sequence[str]) -> str:
 def stages_in_error_of(refits: Sequence[Refit]) -> dict[str, Any] | None:
     """Under Predict, the scored refits that carried an estimate stage in error after their fit
     and were kept scored (:meth:`Sweep._estimate_stages`), by id: those with an engine defect
-    there (``defects``) and those with a typed refusal there (``refusals``), and in words, each
-    with its stages and the defect file each defect is recorded in; None where none did."""
+    there (``defects``), those with a typed refusal there (``refusals``) and those an earlier run
+    of the sweep classed by those stages instead, read again on its resume (``reclassed``,
+    :meth:`Sweep._reclass`), and in words, each with its stages and the defect file each defect
+    is recorded in, and each read again with the class it was given; None where none did."""
     carried = [r for r in refits if r.kind == "scored" and r.stages_in_error]
     if not carried:
         return None
@@ -1527,9 +1570,17 @@ def stages_in_error_of(refits: Sequence[Refit]) -> dict[str, Any] | None:
         parts.append(said(len(refusals), "an estimate stage's typed refusal", [
             f"`{r.id}` (" + "; ".join(f"{e['stage']}, {e.get('code')}" for e in s) + ")"
             for r, s in refusals]))
+    words = ("Under Predict a refit is read by its score alone, so these were kept scored: "
+             + "; ".join(parts) + ".")
+    again = [r for r in carried if r.reclassed]
+    if again:
+        n = len(again)
+        words += (f" An earlier run of the sweep classed {n} of them by the stages in error "
+                  f"instead, {listed([f'`{r.id}` ({r.reclassed})' for r in again])}; "
+                  f"{'it is' if n == 1 else 'they are'} read here under this rule, without a "
+                  f"refit.")
     return {"defects": [r.id for r, _ in defects], "refusals": [r.id for r, _ in refusals],
-            "words": "Under Predict a refit is read by its score alone, so these were kept "
-                     "scored: " + "; ".join(parts) + "."}
+            "reclassed": [r.id for r in again], "words": words}
 
 
 def passed(report: Mapping[str, Any]) -> bool:
@@ -1740,7 +1791,57 @@ class Sweep:
             elif "offered" in entry:
                 self.offered[entry["offered"]["point"]] = entry["offered"]
             elif "defect" in entry:
-                self.defects.append(entry["defect"])
+                self.defects = recorded(self.defects, entry["defect"])
+        self._reclass()
+
+    def _reclass(self) -> None:
+        """Under Predict, each done refit an earlier run of the sweep classed refused or failed
+        only by estimate stages in error after its fit scored (before a Predict refit was read by
+        its score alone): it carries its fit's scores and record, and its class rests on stages
+        (``at`` ``stage``), each an estimate stage, a failed one's defect, as that run recorded it,
+        read and holding no request that failed (an HTTP 500 fails a refit under either rule).
+        Each is read again by today's rule without a refit, as :meth:`_estimate_stages` reads a
+        fitted refit: scored, its scores as kept, its change against the plan read
+        (:func:`materiality`), each stage kept (``stages_in_error``), and the class it was given
+        kept (``reclassed``); an error there the engine did not type is the defect of its
+        signature, named where it is recorded, else recorded by the file that run kept of it, its
+        copy kept for it, the refit's own record of it as its failure replaced. A copy that run
+        kept for a refit that now names another's file is left kept: a sweep removes only copies
+        its own run made. Each read of the progress file reads them again, so the file keeps the
+        class each run gave. Under Estimate, where the estimate is read from those stages,
+        nothing is read again."""
+        from turbotab.core import estimand
+
+        plan = self.done.get(PLAN)
+        if self.question.purpose != "prediction" or plan is None:
+            return
+        for refit in list(self.done.values()):
+            detail = {"refused": refit.refused, "failed": refit.failed}.get(refit.kind) or {}
+            failures = list(detail.get("stages") or [])
+            if not failures or detail.get("at") != "stage" or refit.scores is None \
+                    or refit.fit_record is None \
+                    or any(f.get("stage") not in estimand.ESTIMATE_STAGES for f in failures):
+                continue
+            earlier = None
+            if refit.kind == "failed":
+                earlier = self._earlier(refit)
+                if earlier is None:
+                    continue
+            words, refit.reclassed = str(refit.why), refit.kind
+            refit.kind, refit.why, refit.refused, refit.failed = "scored", None, None, None
+            refit.stages_in_error = self._kept(None, refit, failures, words, earlier)
+            materiality(refit, plan, self.question.purpose)
+
+    def _earlier(self, refit: Refit) -> dict[str, Any] | None:
+        """The refit's own defect as an earlier run recorded it, failed (no signature), where its
+        file can be read and holds no request that failed; else None."""
+        entry = next((d for d in self.defects if d.get("refit") == refit.id
+                      and not d.get("signature")), None)
+        try:
+            kept = json.loads(Path(str(entry["path"])).read_text("utf-8"))  # type: ignore[index]
+        except (TypeError, KeyError, OSError, ValueError):
+            return None
+        return None if not isinstance(kept, dict) or kept.get("requests") else entry
 
     def _write(self, entry: Mapping[str, Any]) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
@@ -1895,6 +1996,18 @@ class Sweep:
         if self.question.purpose != "prediction":
             self._met(refit, arms.met_stages(failures, words))
             return
+        refit.stages_in_error = self._kept(session, refit, failures, words)
+
+    def _kept(self, session: Any, refit: Refit, failures: Sequence[Mapping[str, Any]],
+              words: str, earlier: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Under Predict, each estimate stage in error after a scored fit (``driver.failures``'
+        entries) as the refit keeps it (``stages_in_error``): an error the engine did not type is
+        the engine defect of its signature (:func:`defect_signature`), named where it is recorded
+        (the refit's own record of it as its failure dropped, :func:`same_defect`), else recorded
+        by this refit, ``first``, its copy kept for it: with its reproduction (:meth:`_defect`),
+        or, for a refit an earlier run classed failed by it (``earlier``, that run's record of its
+        defect, :meth:`_reclass`), by the file that run kept. A typed refusal is no defect, kept
+        with its code."""
         kept: list[dict[str, Any]] = []
         for f in failures:
             entry = {"stage": f["stage"], "kind": f["kind"], "error": first_line(f.get("error")),
@@ -1902,15 +2015,21 @@ class Sweep:
             if f["kind"] != "refused":
                 signature = defect_signature(f["stage"], f.get("error"))
                 met = next((d for d in self.defects if d.get("signature") == signature), None)
+                failed = arms.met_stages([f], words).detail | {"option": refit.option}
                 if met is not None:
                     entry["defect"] = met.get("path")
-                else:
-                    failed = arms.met_stages([f], words).detail | {"option": refit.option}
+                    self.defects = [d for d in self.defects
+                                    if not same_defect(d, refit.id, signature)]
+                elif earlier is None:
                     entry["defect"] = self._defect(session, refit, [], failed=failed,
                                                    signature=signature)
                     entry["first"] = True
+                else:
+                    signed = {**earlier, "failed": failed, "signature": signature}
+                    self.defects = recorded(self.defects, signed)
+                    entry["defect"], entry["first"] = signed.get("path"), True
             kept.append(entry)
-        refit.stages_in_error = kept
+        return kept
 
     def _copy(self, session: Any) -> str:
         copy = session.copy(str(self.base["project"]))
@@ -2431,19 +2550,15 @@ class Sweep:
                                f"in its home."}
         entry = {"refit": refit.id, "point": refit.point, "option": refit.option,
                  "failed": failed, "path": str(path), "project": refit.project}
-        if signature is None:
-            # The refit's earlier defect (a resumed run's) replaced, but each it recorded of an
-            # estimate stage under Predict, which later refits name.
-            others = [d for d in self.defects if d.get("refit") != refit.id or d.get("signature")]
-        else:
+        if signature is not None:
             defect["signature"] = entry["signature"] = signature
             defect["kind"] = refit.kind  # the refit's class when it met the defect
-            # An earlier run's classing of this refit as failed (before a Predict refit was read
-            # by its score) is replaced as the refit's own defect would be.
-            others = [d for d in self.defects if d.get("signature") != signature
-                      and not (d.get("refit") == refit.id and not d.get("signature"))]
         path.write_text(json.dumps(defect, indent=1, default=str) + "\n", "utf-8")
-        self.defects = others + [entry]
+        # The refit's earlier defect (a resumed run's) replaced as each read of the progress file
+        # replaces it (:func:`recorded`): an estimate stage's defect, signed, replaces only the
+        # refit's earlier record of that defect, kept by a run before a Predict refit was read by
+        # its score alone; an unsigned one, the refit's earlier unsigned one.
+        self.defects = recorded(self.defects, entry)
         self._write({"defect": entry})
         return str(path)
 
