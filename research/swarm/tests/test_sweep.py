@@ -10,9 +10,23 @@ an answer refused with no way forward) on a session built here; a refit's wait, 
 session built here and a clock run by hand: a fit still running when the wait runs out, or one
 done whose other stages are not by then, cancelled and unreached in words that name what it
 waited on and for how long, each job the copy still holds cancelled where it does not go idle,
-and a fit blocked or held for a press never cancelled; and after a fitted refit, an estimate
-stage in error untyped (an engine defect) or typed (refused, with its code), and none in error
-(scored), the plan's own refit read the same; the crash sweep's previews after
+and a fit blocked or held for a press never cancelled; and after a fitted refit under Estimate, an
+estimate stage in error untyped (an engine defect) or typed (refused, with its code), and none in
+error (scored), the plan's own refit read the same; under Predict, the same stage errors leave a
+scored refit scored with its scores, the plan's own refit among them (glucose's sensitivity error
+in its engine's words, which stopped the step-4 sweep): an untyped one an engine defect written
+once however many exposures its words number (a later refit meeting it names that file and its
+copy is removed; another stage's words are another defect, as is another column whose name
+differs only in its digits; a resumed sweep names the first run's file), a typed one none, and
+the report saying in words which refits carried each; resumed under Predict from a progress file
+shaped as inpatient's haiku-conventional one, a refit an earlier run refused or failed only by
+such a stage after its fit scored read scored without a refit, its change by numpy, a failed
+one's defect recorded once by the file that run kept (one whose defect holds a failed request,
+or cannot be read, left failed), and nothing so read under Estimate or for a refit refused at
+its answer, at its fit, by such a stage with no fit scored, or by a stage that serves no
+estimate; and a plan's defect recorded by its signature replacing that refit's earlier record of
+the same defect, in the sweep and on each later read, while its record of another is kept; the crash
+sweep's previews after
 an option, of every later decision's plan answer (a question's, a finding's, a reading's, a
 declaration's) and of a question opened again at its default, which decisions they reach and
 that an HTTP 500 induced on one fails the refit as a defect, while one on a decision before the
@@ -554,12 +568,14 @@ def test_material_needs_both_the_interval_and_half_the_plans_half_width(case, pa
 # ── the crash sweep's report: what was not visited, what was swept ───────────
 
 
-def a_sweep(tmp_path, *, only=None, **kw):
-    """A sweep around a plan with no decision, its start recorded on the engine as it is (a
-    report read without a run of it would hold no start, and pass nothing); ``kw``, the sweep's
-    other settings (its refit wait, say)."""
+def a_sweep(tmp_path, *, only=None, purpose="prediction", **kw):
+    """A sweep around a plan with no decision, under Predict (``purpose``; under Estimate its
+    exposure ``x``), its start recorded on the engine as it is (a report read without a run of it
+    would hold no start, and pass nothing); ``kw``, the sweep's other settings (its refit wait,
+    say)."""
     sweep = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
-        target="y", purpose="prediction"), crash=True, plan="default", only=only, **kw)
+        target="y", purpose=purpose, exposure="x" if purpose == "inference" else None),
+        crash=True, plan="default", only=only, **kw)
     sweep.base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False},
                   "points": [], "skipped": []}
     sweep.engines.append({**W.engine_version(), "at": W.now()})
@@ -789,8 +805,8 @@ def waiting(stages, *names):
             "fit_failed": driver.failures(view, [*names, "fit"])}
 
 
-def refit_on(tmp_path, session):
-    sweep = a_sweep(tmp_path)
+def refit_on(tmp_path, session, purpose="prediction"):
+    sweep = a_sweep(tmp_path, purpose=purpose)
     return sweep, sweep.refit(session, POINT, OPTION, [], W.Refit(W.PLAN, None, None,
                                                                    kind="scored"))
 
@@ -951,11 +967,22 @@ class Pressed(Walked):
         return {"records": [self.RECORD]} if path == "fits" else None
 
 
-def pressed(tmp_path, monkeypatch, fit, **kw):
+ESTIMATED = [{"family": "linear", "feature": "x", "setting": None, "estimate": 0.4,
+              "ci_low": 0.1, "ci_high": 0.7}]
+
+
+def estimated(monkeypatch):
+    """Under Estimate, the estimate the app reports for a scored fit, served here."""
+    monkeypatch.setattr(W, "estimate_of", lambda session: ([dict(e) for e in ESTIMATED], None))
+
+
+def pressed(tmp_path, monkeypatch, fit, purpose="prediction", **kw):
     clock = Clock()
     monkeypatch.setattr(W, "time", clock)
+    if purpose == "inference":
+        estimated(monkeypatch)
     session = Pressed(clock, fit, **kw)
-    sweep, refit = refit_on(tmp_path, session)
+    sweep, refit = refit_on(tmp_path, session, purpose)
     return session, sweep, refit
 
 
@@ -1028,28 +1055,29 @@ def test_a_copy_that_does_not_go_idle_after_its_cancel_has_its_jobs_cancelled_an
     assert (refit.project is None) is (idle and removed)
 
 
-def test_an_untyped_error_in_an_estimate_stage_after_a_fitted_refit_is_an_engine_defect(
+def test_under_estimate_an_untyped_error_in_an_estimate_stage_after_a_fitted_refit_is_a_defect(
         tmp_path, monkeypatch):
-    """The fit fresh and the copy idle, the effects stage (one the fit does not wait on) is in
-    error the engine did not type: the refit is failed at that stage in its own words, reported
-    as a defect with its reproduction, and its copy kept."""
+    """Under Estimate, the fit fresh and the copy idle, the effects stage (one the fit does not
+    wait on) is in error the engine did not type: the refit is failed at that stage in its own
+    words, reported as a defect with its reproduction, and its copy kept."""
     stages = {**FIT_FRESH, **EFFECTS_CRASH}
-    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, stages=stages)
+    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, "inference", stages=stages)
     assert session.waits == [("fit", W.REFIT_WAIT), ("idle", W.REFIT_WAIT - 1.5)]
     assert refit.kind == "failed" and refit.failed["code"] == "stage_failed"
     assert refit.failed["stage"] == "effects" and refit.failed["at"] == "stage"
     assert refit.failed["message"] == "ValueError: no effect can be reported here"
     assert refit.failed["option"] == OPTION["id"]
+    assert refit.stages_in_error == []  # the Predict reading's field: under Estimate, the class
     (defect,) = sweep.defects
     kept = json.loads(Path(defect["path"]).read_text())
     assert kept["failed"]["stage"] == "effects" and "read the effects stage" in kept["reproduce"]
     assert session.dropped == [] and session.cancels == []
 
 
-def test_a_typed_refusal_in_an_estimate_stage_after_a_fitted_refit_is_a_refused_refit(
+def test_under_estimate_a_typed_refusal_in_an_estimate_stage_after_a_fit_is_a_refused_refit(
         tmp_path, monkeypatch):
     stages = {**FIT_FRESH, **EFFECTS_TYPED}
-    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, stages=stages)
+    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, "inference", stages=stages)
     assert refit.kind == "refused" and sweep.defects == []
     r = refit.refused
     assert (r["by"], r["at"], r["stage"], r["code"]) == ("engine", "stage", "effects",
@@ -1062,27 +1090,34 @@ def test_a_typed_refusal_in_an_estimate_stage_after_a_fitted_refit_is_a_refused_
     assert session.dropped == ["c1"]
 
 
-def test_a_fitted_refit_whose_estimate_stages_are_none_in_error_is_scored(tmp_path, monkeypatch):
-    """Both ways: every estimate stage fresh or blocked after the fit, the refit is scored."""
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_a_fitted_refit_whose_estimate_stages_are_none_in_error_is_scored(tmp_path, monkeypatch,
+                                                                          purpose):
+    """Both ways, under either goal: every estimate stage fresh or blocked after the fit, the
+    refit is scored, with nothing kept of a stage in error and no defect."""
     stages = {**FIT_FRESH, "effects": {"status": "fresh", "key": "e1"},
               "secondary": {"status": "blocked", "key": None}}
-    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, stages=stages)
+    session, sweep, refit = pressed(tmp_path, monkeypatch, FRESH, purpose, stages=stages)
     assert refit.kind == "scored" and refit.cancelled is None and sweep.defects == []
+    assert refit.stages_in_error == [] and not (tmp_path / "sweep" / "defects").exists()
     assert refit.fit_record == "f2" and session.dropped == ["c1"] and session.cancels == []
 
 
-@pytest.mark.parametrize("payload, stages, kind", [
-    (RUNNING, IN_FLIGHT, "unreached"), (FRESH, {**FIT_FRESH, **EFFECTS_CRASH}, "failed"),
-], ids=["wait_ran_out", "estimate_stage_crashed"])
+@pytest.mark.parametrize("payload, stages, kind, purpose", [
+    (RUNNING, IN_FLIGHT, "unreached", "prediction"),
+    (RUNNING, IN_FLIGHT, "unreached", "inference"),
+    (FRESH, {**FIT_FRESH, **EFFECTS_CRASH}, "failed", "inference"),
+], ids=["wait_ran_out", "wait_ran_out_estimate", "estimate_stage_crashed_estimate"])
 def test_the_plans_own_refit_is_read_as_every_refit_and_stops_the_sweep_unscored(
-        tmp_path, monkeypatch, payload, stages, kind):
-    """The plan's own refit is cancelled where its wait runs out, its copy removed, and read for
-    its estimate stages after its fit, an untyped error there a defect with its reproduction; a
-    plan not scored stops the sweep, in words."""
+        tmp_path, monkeypatch, payload, stages, kind, purpose):
+    """The plan's own refit is cancelled where its wait runs out, its copy removed, and, under
+    Estimate, read for its estimate stages after its fit, an untyped error there a defect with
+    its reproduction; a plan not scored stops the sweep, in words."""
     clock = Clock()
     monkeypatch.setattr(W, "time", clock)
+    estimated(monkeypatch)
     session = Pressed(clock, payload, stages=stages)
-    sweep = a_sweep(tmp_path)
+    sweep = a_sweep(tmp_path, purpose=purpose)
     with pytest.raises(arms.Stuck, match=f"The plan itself was not scored: {kind}: "):
         sweep.plan_refit(session)
     if kind == "unreached":
@@ -1091,6 +1126,545 @@ def test_the_plans_own_refit_is_read_as_every_refit_and_stops_the_sweep_unscored
         (defect,) = sweep.defects
         assert defect["refit"] == W.PLAN and defect["failed"]["stage"] == "effects"
         assert session.dropped == []
+
+
+# ── under Predict, an estimate stage in error after a scored fit ─────────────
+
+
+def sensitivity_crash(key, first, n):
+    """The sensitivity stage in an error the engine did not type, in the words glucose's engine
+    served on run_36's plan (the step-4 lane's defect of 2026-11-03): pydantic's ``n`` validation
+    errors of the artifact, the exposures from ``first`` on each None, at the stage's ``key``."""
+    lines = [f"ValidationError: {n} validation errors for SensitivityArtifact"]
+    for i in range(first, first + n):
+        lines += [f"exposures.{i}",
+                  "  Input should be a valid string [type=string_type, input_value=None, "
+                  "input_type=NoneType]",
+                  "    For further information visit https://errors.pydantic.dev/2.14/v/"
+                  "string_type"]
+    return {"sensitivity": {"status": "error", "key": key, "refusal": None,
+                            "error": "\n".join(lines)}}
+
+
+SENSITIVITY_FIRST_LINE = "ValidationError: 4 validation errors for SensitivityArtifact"
+STEPWISE_OPTION = {"id": "set_selection:stepwise",
+                   "decision": {"kind": "set_selection", "method": "stepwise"}}
+SCORES = {"metric": METRIC, "folds": "d", "families": {"linear": {METRIC: {"mean": 0.5}}}}
+
+
+class StagedLog(Pressed):
+    """:class:`Pressed` over a log that holds each decision answered on it (so an option's refit
+    has a digest of its own, not the plan's), each copy named in turn (``c1``, ``c2``, …), and a
+    walk that reaches Fit at once however often it is walked."""
+
+    def __init__(self, clock, fit, *, stages):
+        super().__init__(clock, fit, stages=stages, idle=[True] * 5)
+        self.copies = 0
+
+    def copy(self, pid):
+        self.copies += 1
+        return f"c{self.copies}"
+
+    def ask(self):
+        return {"question": None, "fit_reached": True}
+
+    def view(self):
+        log = view_of([("you", d) for d in self.answered if isinstance(d, dict)])
+        return {**log, "stages": self.stages, "state": {}}
+
+
+def logged(tmp_path, monkeypatch, stages, purpose="prediction"):
+    clock = Clock()
+    monkeypatch.setattr(W, "time", clock)
+    estimated(monkeypatch)
+    return StagedLog(clock, FRESH, stages=stages), a_sweep(tmp_path, purpose=purpose)
+
+
+def defect_files(tmp_path):
+    folder = tmp_path / "sweep" / "defects"
+    return sorted(folder.iterdir()) if folder.exists() else []
+
+
+def test_under_predict_the_plans_refit_with_an_estimate_stage_crashed_is_scored_and_a_defect(
+        tmp_path, monkeypatch):
+    """(a) Under Predict, the plan's fit scored and then its sensitivity stage in an error the
+    engine did not type (glucose's step-4 stop): the plan's refit is scored with the scores its
+    fit record serves, the sweep goes on (no Stuck), and the error is one engine defect with its
+    reproduction, the plan's copy the one it names; the stage is kept on the refit."""
+    session, sweep = logged(tmp_path, monkeypatch, {**FIT_FRESH, **sensitivity_crash("s1", 29, 4)})
+    plan = sweep.plan_refit(session)
+    assert plan.kind == "scored" and plan.failed is None and plan.refused is None
+    assert plan.scores == SCORES and plan.fit_record == "f2"
+    (path,) = defect_files(tmp_path)
+    (defect,) = sweep.defects
+    assert defect["path"] == str(path) and defect["refit"] == W.PLAN and defect["project"] == "c1"
+    kept = json.loads(path.read_text())
+    assert kept["refit"] == W.PLAN and kept["project"] == "c1" and kept["kind"] == "scored"
+    assert kept["failed"]["stage"] == "sensitivity" and kept["failed"]["code"] == "stage_failed"
+    assert kept["failed"]["message"] == sensitivity_crash("s1", 29, 4)["sensitivity"]["error"]
+    assert "read the sensitivity stage" in kept["reproduce"]
+    assert plan.stages_in_error == [{"stage": "sensitivity", "kind": "failed",
+                                     "error": SENSITIVITY_FIRST_LINE, "code": None,
+                                     "defect": str(path), "first": True}]
+    assert sweep.done[W.PLAN] is plan
+    written = [json.loads(line) for line in sweep.progress.read_text().splitlines()]
+    assert [e["refit"]["kind"] for e in written if "refit" in e] == ["scored"]
+
+
+def test_under_predict_a_second_refit_meeting_the_same_defect_names_its_file_and_is_dropped(
+        tmp_path, monkeypatch):
+    """(b) After the plan's refit met the sensitivity defect, an option's refit meets it again,
+    the error's numbers and the stage's key its own (three exposures from the 12th, key s2): it is
+    scored, no second defect file is written, its stage names the plan's file, and its copy is
+    removed as a scored refit's is. Both ways: a third option's refit whose effects stage fails
+    with other words is a second defect, its file written and its copy kept for it."""
+    session, sweep = logged(tmp_path, monkeypatch, {**FIT_FRESH, **sensitivity_crash("s1", 29, 4)})
+    plan = sweep.plan_refit(session)
+    (first,) = defect_files(tmp_path)
+    session.stages = {**FIT_FRESH, **sensitivity_crash("s2", 12, 3)}
+    again = sweep.refit(session, POINT, OPTION, [], plan)
+    assert again.kind == "scored" and again.scores == SCORES and again.duplicate_of is None
+    assert defect_files(tmp_path) == [first] and len(sweep.defects) == 1
+    assert again.stages_in_error == [{"stage": "sensitivity", "kind": "failed",
+                                      "error": "ValidationError: 3 validation errors for "
+                                               "SensitivityArtifact",
+                                      "code": None, "defect": str(first), "first": False}]
+    assert session.dropped == ["c2"] and again.project is None
+    session.stages = {**FIT_FRESH, **EFFECTS_CRASH}
+    other = sweep.refit(session, POINT, STEPWISE_OPTION, [], plan)
+    assert other.kind == "scored" and other.duplicate_of is None
+    files = defect_files(tmp_path)
+    (second,) = [f for f in files if f != first]
+    assert len(files) == 2 and [d["refit"] for d in sweep.defects] == [W.PLAN, other.id]
+    assert other.stages_in_error == [{"stage": "effects", "kind": "failed",
+                                      "error": "ValueError: no effect can be reported here",
+                                      "code": None, "defect": str(second), "first": True}]
+    assert json.loads(second.read_text())["project"] == "c3"
+    assert session.dropped == ["c2"] and other.project == "c3"
+
+
+def test_a_resumed_sweep_names_the_file_of_a_defect_an_earlier_run_recorded(tmp_path,
+                                                                           monkeypatch):
+    """The defects a run recorded are read back from its progress file: a resumed sweep's refit
+    meeting the plan's sensitivity defect names the first run's file and writes none."""
+    session, sweep = logged(tmp_path, monkeypatch, {**FIT_FRESH, **sensitivity_crash("s1", 29, 4)})
+    sweep.plan_refit(session)
+    (first,) = defect_files(tmp_path)
+    resumed = W.Sweep(tmp_path / "sweep", dataset="tiny", question=sweep.question, crash=True,
+                      plan="default")
+    resumed.base = sweep.base
+    plan = resumed.plan_refit(session)  # read back, not fitted again
+    assert plan.stages_in_error[0]["defect"] == str(first) and session.copies == 1
+    session.stages = {**FIT_FRESH, **sensitivity_crash("s2", 12, 3)}
+    again = resumed.refit(session, POINT, OPTION, [], plan)
+    assert again.kind == "scored" and again.stages_in_error[0]["defect"] == str(first)
+    assert defect_files(tmp_path) == [first] and session.dropped == ["c2"]
+
+
+def test_under_estimate_the_same_stage_error_fails_the_refit_as_before(tmp_path, monkeypatch):
+    """(c) Under Estimate the same sensitivity error after a scored fit fails the refit, an
+    engine defect with its copy kept, and the plan's own refit so classed stops the sweep."""
+    session, sweep = logged(tmp_path, monkeypatch, {**FIT_FRESH, **sensitivity_crash("s1", 29, 4)},
+                            purpose="inference")
+    refit = sweep.refit(session, POINT, OPTION, [], W.Refit(W.PLAN, None, None, kind="scored"))
+    assert refit.kind == "failed" and refit.scores is None and refit.estimates == ESTIMATED
+    assert (refit.failed["at"], refit.failed["stage"], refit.failed["code"]) == (
+        "stage", "sensitivity", "stage_failed")
+    assert refit.stages_in_error == [] and refit.project == "c1" and session.dropped == []
+    (defect,) = sweep.defects
+    assert defect["refit"] == refit.id and defect_files(tmp_path) == [Path(defect["path"])]
+    with pytest.raises(arms.Stuck, match="The plan itself was not scored: failed: "):
+        sweep.plan_refit(session)
+    assert W.PLAN not in sweep.done and len(sweep.defects) == 2
+
+
+def test_under_predict_the_plans_refit_with_no_estimate_stage_in_error_is_scored(tmp_path,
+                                                                               monkeypatch):
+    """(d) Under Predict, the plan's fit scored and every estimate stage fresh or blocked after
+    it: scored, nothing kept of a stage in error, no defect file."""
+    stages = {**FIT_FRESH, "sensitivity": {"status": "fresh", "key": "s1"},
+              "secondary": {"status": "blocked", "key": None}}
+    session, sweep = logged(tmp_path, monkeypatch, stages)
+    plan = sweep.plan_refit(session)
+    assert plan.kind == "scored" and plan.scores == SCORES and plan.stages_in_error == []
+    assert sweep.defects == [] and defect_files(tmp_path) == []
+
+
+def test_under_predict_a_typed_refusal_in_an_estimate_stage_after_a_fit_leaves_it_scored(
+        tmp_path, monkeypatch):
+    """Under Predict a typed refusal in an estimate stage after the fit is no engine defect: the
+    plan's refit is scored, the stage kept with its code, and no defect file is written."""
+    session, sweep = logged(tmp_path, monkeypatch, {**FIT_FRESH, **EFFECTS_TYPED})
+    plan = sweep.plan_refit(session)
+    assert plan.kind == "scored" and plan.refused is None and plan.scores == SCORES
+    assert plan.stages_in_error == [{"stage": "effects", "kind": "refused",
+                                     "error": "ValueError: No row is left to report the effect "
+                                              "on.",
+                                     "code": "no_rows_left", "defect": None, "first": False}]
+    assert sweep.defects == [] and defect_files(tmp_path) == []
+
+
+def test_a_stage_defects_signature_leaves_the_refits_own_numbers_and_keys_out():
+    """Both ways: the sensitivity error over four exposures from the 29th and over three from the
+    12th, and a key error naming two different stage keys, are each one defect; another stage,
+    another artifact or another column is another."""
+    four = sensitivity_crash("s1", 29, 4)["sensitivity"]["error"]
+    three = sensitivity_crash("s2", 12, 3)["sensitivity"]["error"]
+    sig = W.defect_signature
+    assert sig("sensitivity", four) == sig("sensitivity", three)
+    assert sig("explain", "KeyError: 'stage 2e2ba10a5e01adcf26ecb2e6'") == \
+        sig("explain", "KeyError: 'stage 9f00aa11bb22cc33dd44'")
+    assert sig("effects", four) != sig("sensitivity", four)
+    assert sig("sensitivity", four.replace("SensitivityArtifact", "CalibrationArtifact")) != \
+        sig("sensitivity", four)
+    assert sig("explain", "KeyError: 'age'") != sig("explain", "KeyError: 'bmi'")
+
+
+def test_the_report_says_how_many_scored_refits_carried_an_estimate_stage_defect_and_which(
+        tmp_path, monkeypatch):
+    """The sweep's report and its ``.md`` say in words which scored refits carried an estimate
+    stage in error after their fit: the plan's and an option's the sensitivity defect, a third's
+    a typed refusal; a refit with none is not named."""
+    session, sweep = logged(tmp_path, monkeypatch, {**FIT_FRESH, **sensitivity_crash("s1", 29, 4)})
+    plan = sweep.plan_refit(session)
+    (path,) = defect_files(tmp_path)
+    session.stages = {**FIT_FRESH, **sensitivity_crash("s2", 12, 3)}
+    vip = sweep.refit(session, POINT, OPTION, [], plan)
+    session.stages = {**FIT_FRESH, **EFFECTS_TYPED}
+    stepwise = sweep.refit(session, POINT, STEPWISE_OPTION, [], plan)
+    session.stages = dict(FIT_FRESH)
+    clean = sweep.refit(session, POINT, {"id": "set_selection:none",
+                                         "decision": {"kind": "set_selection", "method": "none"}},
+                        [], plan)
+    assert [r.kind for r in (vip, stepwise, clean)] == ["scored"] * 3
+    for r in (vip, stepwise, clean):
+        sweep.done[r.id] = r
+    report = sweep.report(plan, 1.0)
+    file = f"defects/{path.name}"
+    words = (f"Under Predict a refit is read by its score alone, so these were kept scored: 2 "
+             f"scored refits carried an estimate-stage defect after the fit, `plan` (sensitivity, "
+             f"recorded in {file}) and `{vip.id}` (sensitivity, recorded in {file}); 1 scored "
+             f"refit carried an estimate stage's typed refusal after the fit, `{stepwise.id}` "
+             f"(effects, no_rows_left).")
+    assert report["stages_in_error"] == {"defects": [W.PLAN, vip.id], "refusals": [stepwise.id],
+                                         "reclassed": [], "words": words}
+    md = W.table_md(report)
+    assert f"## Scored refits with an estimate stage in error\n\n{words}\n" in md
+
+
+# ── a resumed Predict sweep reads again a refit an earlier run classed by its stages ──
+
+MODELS_POINT = W.Point("question", "models", 6, "r6", {"kind": "select_models",
+                                                       "models": ["linear"]})
+NO_COEFFICIENTS = ("None of the chosen model families reports coefficients, so there is no "
+                   "estimate to set beside the primary's; choose the linear model.")
+
+
+def no_coefficient_table(option):
+    """The sensitivity stage's typed refusal in the words inpatient's engine served on
+    ``question:models=<option>`` (haiku-conventional's progress file, 2026-11-03)."""
+    return {"sensitivity": {"status": "error", "key": f"s-{option}",
+                            "error": f"ValueError: {NO_COEFFICIENTS}",
+                            "refusal": {"stage": "sensitivity", "code": "no_coefficient_table",
+                                        "message": NO_COEFFICIENTS,
+                                        "exits": [{"label": "Add Linear model, which reports "
+                                                            "coefficients",
+                                                   "decision": {"kind": "select_models",
+                                                                "models": [option, "linear"]}}]}}}
+
+
+def classed_by_its_stages(option, stages, rec, *, project=None):
+    """A refit as a run kept it before a Predict refit was read by its score alone: its fit
+    scored and read (its scores, record and split), then classed by the estimate stages in error
+    after it as that run's ``_estimate_stages`` did (``arms.met_stages`` over
+    ``driver.failures``), its change not read, its copy removed (refused) or kept (failed)."""
+    from research.swarm import driver
+
+    failures = driver.failures({"stages": stages}, list(stages))
+    stages_named = ", ".join(f["stage"] for f in failures)
+    met = arms.met_stages(failures, f"The fit was done, but after it an estimate stage was in "
+                                    f"error: {stages_named}.")
+    refit = W.Refit(MODELS_POINT.id, option, {"kind": "select_models", "models": [option]},
+                    kind=met.kind, why=str(met), digest=f"d-{option}", fit_key=f"k-{option}",
+                    fit_record=rec["id"], seconds=2.0, fit_seconds=1.8,
+                    scores={"metric": METRIC, "folds": rec["folds"], "families": rec["scores"]},
+                    split=dict(SPLIT), record=rec, project=project)
+    setattr(refit, met.kind, dict(met.detail) | {"option": option})
+    return refit
+
+
+def unsigned_defect(folder, refit, requests=()):
+    """The defect a run before the change recorded for a refit it classed failed (``_defect``
+    then): its file named by the refit's id, holding the requests that failed, and its line."""
+    import hashlib
+
+    path = folder / "defects" / f"{hashlib.sha256(refit.id.encode()).hexdigest()[:12]}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"refit": refit.id, "failed": refit.failed,
+                                "requests": list(requests), "project": refit.project}))
+    return {"refit": refit.id, "point": refit.point, "option": refit.option,
+            "failed": refit.failed, "path": str(path), "project": refit.project}
+
+
+def resumed_progress(tmp_path, refits, *, defects=(), folder="sweep"):
+    """A progress file shaped as inpatient's haiku-conventional one: its first run's engine, the
+    template, the plan's refit scored with its record, the models question's options listed,
+    then ``refits`` and ``defects`` (lines a run before the change wrote), every option done."""
+    out = tmp_path / folder
+    out.mkdir(parents=True, exist_ok=True)
+    plan = W.Refit(W.PLAN, None, None, kind="scored", digest="d0", fit_record=PLAN_RECORD["id"],
+                   record=PLAN_RECORD, split=dict(SPLIT),
+                   scores={"metric": METRIC, "folds": "d0", "families": PLAN_RECORD["scores"]})
+    options = [r.option for r in refits]
+    lines = [{"engine": {**ENGINE_1, "at": "2026-11-03T16:00:00+00:00"}},
+             {"template": {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": True},
+                           "points": [MODELS_POINT.json()], "skipped": [], "dataset": "tiny",
+                           "plan": "named", "crash": False}},
+             {"refit": plan.json()},
+             {"offered": {"point": MODELS_POINT.id, "why": None, "refused": None,
+                          "withdrawn": [], "ways": [],
+                          "options": [{"id": o, "label": o, "needs": None,
+                                       "decision": {"kind": "select_models", "models": [o]}}
+                                      for o in options]}}]
+    lines += [{"refit": r.json()} for r in refits] + [{"defect": d} for d in defects]
+    (out / "progress.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+    return out
+
+
+def resume(tmp_path, monkeypatch, purpose="prediction", folder="sweep"):
+    """The sweep resumed from its progress file and run with no session at all (any call on it
+    would raise), every option already done: nothing is refitted. Its report and the sweep."""
+    served_engines(monkeypatch, ENGINE_1)
+    sweep = W.Sweep(tmp_path / folder, dataset="tiny", question=arms.Question(
+        target="y", purpose=purpose, exposure="x" if purpose == "inference" else None),
+        crash=False, plan="named")
+    return sweep.run(object(), lambda s: pytest.fail("the template is rebuilt")), sweep
+
+
+BEFORE, AFTER = draws(0.04)  # material, by the paired test's construction
+PLAN_RECORD = record(BEFORE, digest="d0", fid="f0", low=0.63, high=0.67)
+
+
+def test_a_resumed_predict_sweep_reads_a_refit_refused_only_by_a_stage_after_its_fit_as_scored(
+        tmp_path, monkeypatch):
+    """SS-1, inpatient's haiku-conventional: an earlier run refused ``question:models=
+    boosted_trees`` on the sensitivity stage's typed refusal after its fit scored. Resumed under
+    Predict it is read by its score, without a refit: scored, its scores as kept, the stage kept
+    with its code, no defect, and its change against the plan read, the paired change and its
+    corrected interval by numpy. Both ways: an option refused at its answer (no fit), one
+    refused at the fit, one refused by the same stage with no fit scored, and one refused by a
+    stage that serves no estimate stay refused, a clean scored refit is untouched, and a second
+    resume reads the same; the progress file keeps what the earlier run classed."""
+    boosted = classed_by_its_stages("boosted_trees", no_coefficient_table("boosted_trees"),
+                                    record(AFTER, digest="d0", fid="f1", low=0.0, high=1.0))
+    clean = W.Refit(MODELS_POINT.id, "elastic_net", {}, kind="scored", digest="d-en",
+                    fit_record="f2", record=record(BEFORE, digest="d0", fid="f2", low=0.6,
+                                                   high=0.7),
+                    split=dict(SPLIT), scores={"metric": METRIC})
+    answer = W.Refit(MODELS_POINT.id, "featurewise", {}, kind="refused",
+                     refused={"kind": "refused", "code": "model_not_for_purpose", "at": "answer"})
+    at_fit = W.Refit(MODELS_POINT.id, "stability", {}, kind="refused", fit_key="k9",
+                     refused={"kind": "refused", "code": "nothing_kept", "at": "fit",
+                              "stage": "fit"})
+    # The same stage's refusal met with no fit scored (the walk's, say), and a stage that serves
+    # no estimate: neither is a refit classed only by an estimate stage after its fit.
+    walked = classed_by_its_stages("xgboost", no_coefficient_table("xgboost"), PLAN_RECORD)
+    walked.scores = walked.fit_record = walked.record = None
+    cohort = classed_by_its_stages("gee", {"cohort": {**no_coefficient_table("gee")[
+        "sensitivity"], "key": "c-gee"}}, PLAN_RECORD)
+    out = resumed_progress(tmp_path, [clean, boosted, answer, at_fit, walked, cohort])
+    before = out.joinpath("progress.jsonl").read_text()
+    report, sweep = resume(tmp_path, monkeypatch)
+    by = {r["option"]: r for r in report["refits"]}
+    got = by["boosted_trees"]
+    assert (got["kind"], got["refused"], got["failed"], got["why"]) == ("scored", None, None, None)
+    assert got["reclassed"] == "refused" and got["scores"] == boosted.scores
+    assert got["stages_in_error"] == [{"stage": "sensitivity", "kind": "refused",
+                                       "error": f"ValueError: {NO_COEFFICIENTS}",
+                                       "code": "no_coefficient_table", "defect": None,
+                                       "first": False}]
+    (change,) = got["change"]
+    diff, low, high = by_numpy_paired(AFTER, BEFORE, SHARE)
+    assert change["paired"] is True and (change["difference"], change["ci_low"],
+                                         change["ci_high"]) == pytest.approx((diff, low, high),
+                                                                            rel=1e-12, abs=1e-15)
+    by_rule = bool((low > 0 or high < 0) and abs(diff) >= 0.5 * 0.02)
+    assert by_rule is True and got["material"] is True
+    assert {o: by[o]["kind"] for o in by} == {"elastic_net": "scored", "boosted_trees": "scored",
+                                              "featurewise": "refused", "stability": "refused",
+                                              "xgboost": "refused", "gee": "refused"}
+    left = ("elastic_net", "featurewise", "stability", "xgboost", "gee")
+    assert all(by[o]["reclassed"] is None and by[o]["stages_in_error"] == [] for o in left)
+    assert by["elastic_net"]["change"] == [] and by["xgboost"]["refused"] == walked.refused
+    (decision,) = report["decisions"]
+    assert decision["classes"]["scored"] == 2 and decision["refused_options"] == [
+        "featurewise", "stability", "xgboost", "gee"]
+    assert report["defects"] == [] and defect_files(tmp_path) == []
+    assert report["stages_in_error"]["refusals"] == [boosted.id]
+    assert report["stages_in_error"]["reclassed"] == [boosted.id]
+    assert report["stages_in_error"]["words"].endswith(
+        f"An earlier run of the sweep classed 1 of them by the stages in error instead, "
+        f"`{boosted.id}` (refused); it is read here under this rule, without a refit.")
+    # The progress file keeps each run's own classing: this run wrote only its engine.
+    after = out.joinpath("progress.jsonl").read_text()
+    assert after.startswith(before) and [list(json.loads(x)) for x in after[len(before):]
+                                         .splitlines()] == [["engine"]]
+    again, _ = resume(tmp_path, monkeypatch)
+    assert [(r["option"], r["kind"], r["change"]) for r in again["refits"]] == [
+        (r["option"], r["kind"], r["change"]) for r in report["refits"]]
+
+
+def test_under_estimate_a_resume_reclasses_nothing(tmp_path, monkeypatch):
+    """The same progress file resumed under Estimate, where the estimate is read from the
+    estimate stages: the refit the sensitivity stage refused stays refused, as the run kept it."""
+    boosted = classed_by_its_stages("boosted_trees", no_coefficient_table("boosted_trees"),
+                                    record(AFTER, digest="d0", fid="f1", low=0.0, high=1.0))
+    resumed_progress(tmp_path, [boosted])
+    report, _ = resume(tmp_path, monkeypatch, purpose="inference")
+    (got,) = report["refits"]
+    assert (got["kind"], got["reclassed"], got["stages_in_error"]) == ("refused", None, [])
+    assert got["refused"] == boosted.refused and report["stages_in_error"] is None
+
+
+def test_a_resumed_predict_sweep_reads_a_refit_failed_only_by_a_stage_after_its_fit_as_scored(
+        tmp_path, monkeypatch):
+    """Two refits an earlier run failed on the sensitivity defect after their fits scored, each
+    with its own defect (the file named by its id) and its copy kept: resumed under Predict both
+    are scored, the defect is recorded once by its signature, the first's record of it now that
+    record (no file written), the second naming it, its copy, kept by that run, left so, and its
+    own record of the defect gone, read so again on a later resume; a refit this run fits that
+    meets the defect names the same file. Both ways: one whose defect holds a request that failed
+    (an HTTP 500 fails a refit under either rule) and one whose defect cannot be read stay
+    failed, each its own defect."""
+    rec = record(AFTER, digest="d0", fid="f1", low=0.0, high=1.0)
+    first = classed_by_its_stages("boosted_trees", sensitivity_crash("s1", 29, 4), rec,
+                                  project="c1")
+    second = classed_by_its_stages("random_forest", sensitivity_crash("s2", 12, 3), rec,
+                                   project="c2")
+    served = classed_by_its_stages("xgboost", sensitivity_crash("s3", 5, 2), rec, project="c3")
+    unread = classed_by_its_stages("gee", sensitivity_crash("s4", 1, 2), rec, project="c4")
+    folder = tmp_path / "sweep"
+    defects = [unsigned_defect(folder, first), unsigned_defect(folder, second),
+               unsigned_defect(folder, served, [{"status": 500, "said": "boom"}]),
+               unsigned_defect(folder, unread)]
+    Path(defects[3]["path"]).unlink()
+    resumed_progress(tmp_path, [first, second, served, unread], defects=defects)
+    files = defect_files(tmp_path)
+    report, sweep = resume(tmp_path, monkeypatch)
+    by = {r["option"]: r for r in report["refits"]}
+    assert [by[o]["kind"] for o in ("boosted_trees", "random_forest", "xgboost", "gee")] == [
+        "scored", "scored", "failed", "failed"]
+    path = defects[0]["path"]
+    entry = {"stage": "sensitivity", "kind": "failed", "error": SENSITIVITY_FIRST_LINE,
+             "code": None, "defect": path, "first": True}
+    assert by["boosted_trees"]["stages_in_error"] == [entry]
+    assert by["random_forest"]["stages_in_error"] == [entry | {
+        "error": "ValidationError: 3 validation errors for SensitivityArtifact", "first": False}]
+    assert (by["boosted_trees"]["project"], by["random_forest"]["project"]) == ("c1", "c2")
+    assert by["boosted_trees"]["reclassed"] == by["random_forest"]["reclassed"] == "failed"
+    assert by["boosted_trees"]["material"] is True
+    signature = W.defect_signature("sensitivity",
+                                   sensitivity_crash("s1", 29, 4)["sensitivity"]["error"])
+    assert [(d["refit"], d.get("signature")) for d in report["defects"]] == [
+        (served.id, None), (unread.id, None), (first.id, signature)]
+    assert report["defects"][-1]["path"] == path and report["defects"][-1]["project"] == "c1"
+    assert defect_files(tmp_path) == files  # recorded by the file its first run kept
+    again, resumed = resume(tmp_path, monkeypatch)
+    assert again["defects"] == report["defects"]
+    assert [r["stages_in_error"] for r in again["refits"]] == [
+        r["stages_in_error"] for r in report["refits"]]
+    clock = Clock()
+    monkeypatch.setattr(W, "time", clock)
+    session = StagedLog(clock, FRESH, stages={**FIT_FRESH, **sensitivity_crash("s5", 2, 2)})
+    session.copies = 10  # this run's copies: c11, …
+    later = resumed.refit(session, POINT, OPTION, [], resumed.done[W.PLAN])
+    assert later.kind == "scored" and later.stages_in_error[0]["defect"] == path
+    assert defect_files(tmp_path) == files and session.dropped == ["c11"]
+
+
+def test_a_stage_defects_signature_keeps_the_digits_inside_a_name(tmp_path, monkeypatch):
+    """SS-2: only a number standing alone is left out of a defect's signature. Both ways: a
+    KeyError over ``DR1TKCAL`` and one over ``DR2TKCAL``, or over ``age_1`` and ``age_2``, are two
+    defects, while pydantic's exposures from the 29th and from the 12th, and a condition number
+    in another float, are one. A refit meeting the second column's error after the first's is a
+    defect of its own: its file written and its copy kept, not named by the first's file."""
+    sig = W.defect_signature
+    assert sig("explain", "KeyError: 'DR1TKCAL'") != sig("explain", "KeyError: 'DR2TKCAL'")
+    assert sig("explain", "KeyError: 'age_1'") != sig("explain", "KeyError: 'age_2'")
+    assert sig("sensitivity", sensitivity_crash("s1", 29, 4)["sensitivity"]["error"]) == sig(
+        "sensitivity", sensitivity_crash("s2", 12, 3)["sensitivity"]["error"])
+    assert sig("effects", "LinAlgError: condition number 1.2e+16 at 0.5") == sig(
+        "effects", "LinAlgError: condition number 3.4e-05 at 12")
+
+    def explain(column):
+        return {**FIT_FRESH, "explain": {"status": "error", "key": f"x-{column}", "refusal": None,
+                                         "error": f"KeyError: '{column}'"}}
+
+    session, sweep = logged(tmp_path, monkeypatch, explain("DR1TKCAL"))
+    plan = sweep.plan_refit(session)
+    (first,) = defect_files(tmp_path)
+    session.stages = explain("DR2TKCAL")
+    other = sweep.refit(session, POINT, OPTION, [], plan)
+    (second,) = [f for f in defect_files(tmp_path) if f != first]
+    assert other.stages_in_error[0]["defect"] == str(second)
+    assert other.stages_in_error[0]["first"] is True and other.project == "c2"
+    assert session.dropped == [] and len(sweep.defects) == 2
+
+
+def plans_first_run(tmp_path, stages=None, fit=None):
+    """The progress of a run before the change that stopped at the plan's own refit: its engine,
+    and the defect it recorded for the plan it classed failed, by the sensitivity defect after a
+    scored fit (``stages``) or by an untyped error of the fit itself (``fit``)."""
+    from research.swarm import driver
+
+    folder = tmp_path / "sweep"
+    plan = W.Refit(W.PLAN, None, None, kind="failed", project="c0")
+    if stages is not None:
+        failures = driver.failures({"stages": stages}, list(stages))
+        plan.failed = arms.met_stages(failures, "The fit was done, but after it an estimate "
+                                                "stage was in error: sensitivity.").detail
+    else:
+        plan.failed = W.classed(arms.said_of(0, fit))[1]
+    entry = unsigned_defect(folder, plan)
+    (folder / "progress.jsonl").write_text(
+        json.dumps({"engine": {**ENGINE_1, "at": "2026-11-03T16:00:00+00:00"}}) + "\n"
+        + json.dumps({"defect": entry}) + "\n")
+    return entry
+
+
+@pytest.mark.parametrize("first_run", ["sensitivity", "fit"])
+def test_a_plans_signed_defect_replaces_its_earlier_record_of_the_same_defect_on_every_read(
+        tmp_path, monkeypatch, first_run):
+    """SS-3: a run before the change recorded the plan's sensitivity defect unsigned (glucose's
+    sonnet-conventional); the resumed run's plan, scored, records it by its signature, which
+    replaces that record, in the sweep and on every later read of the progress file, so the
+    defect is listed once. Both ways: an earlier record of another defect of the plan's (its fit
+    failed untyped) is not the same defect, and is kept beside it, in the sweep and on read."""
+    if first_run == "sensitivity":
+        earlier = plans_first_run(tmp_path, stages=sensitivity_crash("s0", 29, 4))
+    else:
+        earlier = plans_first_run(tmp_path, fit=CRASHED)
+    session, _ = logged(tmp_path, monkeypatch, {**FIT_FRESH, **sensitivity_crash("s1", 29, 4)})
+    resumed = W.Sweep(tmp_path / "sweep", dataset="tiny", question=arms.Question(
+        target="y", purpose="prediction"), crash=True, plan="default")
+    assert resumed.defects == [earlier]
+    resumed.base = {"project": "p0", "digest": "d0", "seq": 9, "scoring": {"set": False},
+                    "points": [], "skipped": []}
+    plan = resumed.plan_refit(session)
+    signed = plan.stages_in_error[0]
+    kept = [] if first_run == "sensitivity" else [earlier]
+    assert [d.get("signature") is not None for d in resumed.defects] == [False] * len(kept) + [
+        True]
+    assert resumed.defects[:-1] == kept and resumed.defects[-1]["path"] == signed["defect"]
+    # A later resume runs on (its plan read back), and the one after it reads what that held.
+    served_engines(monkeypatch, ENGINE_1)
+    again = W.Sweep(tmp_path / "sweep", dataset="tiny", question=resumed.question, crash=True,
+                    plan="default")
+    again.base = resumed.base
+    assert again.run(object(), lambda s: "p0")["defects"] == resumed.defects
+    read = W.Sweep(tmp_path / "sweep", dataset="tiny", question=resumed.question, crash=True,
+                   plan="default")
+    assert read.defects == resumed.defects
 
 
 # ── the crash sweep's previews of every later decision's default ─────────────
