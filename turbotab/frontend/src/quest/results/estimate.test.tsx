@@ -588,6 +588,110 @@ describe("an exposure family", () => {
   });
 });
 
+// ── an exposure family fitted in one model (ERV3-1) ──────────────────────────
+
+/** Table 2's footnotes, each as printed. */
+const notesIn = (view: HTMLElement) => [...within(within(view).getByTestId("results-table2")).getByTestId("footnotes").querySelectorAll("li")].map((li) => li.textContent ?? "");
+/** The note that says which members a model holds together. */
+const TOGETHER = / are in the model together, /;
+/** A name as a whole word: `arm` never as the start of `arm_y`. */
+const whole = (name: string) => new RegExp(`(?<![\\w'])${literally(name)}(?![\\w'])`);
+
+describe("an exposure family fitted in one model", () => {
+  /** The truth of a fit's row printed in a cell, and not another fit's: printed to three
+   *  significant digits, the two read apart. */
+  function showsTruth(printed: string | null, truth: Truth, not: Truth, where: string) {
+    expectShows(printed, [truth.estimate, truth.ci_low, truth.ci_high], where);
+    expect(shows(numbersIn(printed ?? "")[0], not.estimate), `${where}: ${not.estimate} is another fit's`).toBe(false);
+  }
+
+  it("says beside Table 2 that each model, the unadjusted one included, holds both members, and names them: statsmodels' joint fit, not arm_y's alone", async () => {
+    const of = T.family_level;
+    const art = of.artifact;
+    const seq = art.families[0]!.sequence;
+    const crude = seq.find((q) => q.key === "crude")!;
+    // The premise. The unadjusted model has no adjustment set, so its row says no other column is
+    // in it; yet its served rows are statsmodels' one fit of glucose on arm_y and fiber together,
+    // and arm_y's reads apart from statsmodels' fit of glucose on arm_y alone (the two-level
+    // capture, on the same seeded frame: capture_terms.py).
+    expect(crude.adjusted_for).toEqual([]);
+    expect(crude.effects!.map((e) => e.feature)).toEqual(Object.keys(of.truth!.crude.rows));
+    const view = await estimateView(servedAt(art));
+    const table = within(within(view).getByTestId("results-table2")).getByRole("table");
+    expect(table.querySelector('tr[data-row="arm_y:crude"]')!.textContent).toContain("No other column in the model");
+    showsTruth(cellAt(table, "arm_y:crude", "Difference"), of.truth!.crude.rows.arm_y!, T.two_level.truth!.crude.rows.arm_y!, "the unadjusted arm_y");
+    // So the footnotes that give each model's adjustment set say, first, that every model holds
+    // both members: each named, as the column it is served as.
+    const notes = notesIn(view);
+    const joint = notes.filter((t) => TOGETHER.test(t));
+    expect(joint).toEqual([
+      "In each model of this table, the unadjusted one included, fiber and arm (as arm_y) are in the model together, so each is adjusted for the other, beyond the columns the model's row and footnote name.",
+    ]);
+    expect(notes[0]).toBe(joint[0]);
+    for (const name of [...art.exposures, ...crude.effects!.map((e) => e.feature)]) expect(joint[0]).toMatch(whole(name));
+    for (const fit of seq.filter((q) => q.adjusted_for.length)) {
+      expect(fit.adjusted_for.some((c) => art.exposures.includes(c))).toBe(false);
+      expect(notes.some((t) => t.includes(`${unticked(fit.label)}: adjusted for ${fit.adjusted_for.join(", ")}`))).toBe(true);
+    }
+  });
+
+  it("says it where the member held is not drawn: fiber's unadjusted number is statsmodels' fit beside grp's levels", async () => {
+    const of = T.family_category;
+    const art = of.artifact;
+    const crude = art.families[0]!.sequence.find((q) => q.key === "crude")!;
+    expect(crude.adjusted_for).toEqual([]);
+    expect(crude.effects!.map((e) => e.feature)).toEqual(Object.keys(of.truth!.crude.rows));
+    // The premise, from statsmodels on the one seeded frame: grp's rows here read apart from its
+    // fit alone (the levels capture: glucose on grp_b and grp_c), and fiber's unadjusted number
+    // here (beside grp) from fiber's beside arm_y (family_level). Both rows say no other column.
+    const [joint, alone] = [of.truth!.crude.rows, Q.levels.truth!.crude.rows];
+    for (const level of Object.keys(alone)) expect(shows(Number(joint[level]!.estimate.toPrecision(3)), alone[level]!.estimate), level).toBe(false);
+    const view = await estimateView(servedAt(art));
+    const table = within(within(view).getByTestId("results-table2")).getByRole("table");
+    expect(table.querySelector('tr[data-row="crude"]')!.textContent).toContain("No other column in the model");
+    showsTruth(cell(table, unticked(crude.label), "Difference"), joint.fiber!, T.family_level.truth!.crude.rows.fiber!, "the unadjusted fiber");
+    expect(notesIn(view).filter((t) => TOGETHER.test(t))).toEqual([
+      "In each model of this table, the unadjusted one included, fiber and grp (as grp_b and grp_c) are in the model together, so each is adjusted for the other, beyond the columns the model's row and footnote name.",
+    ]);
+  });
+
+  it("names the models that hold the members where not every drawn model does (a family's served shape, one model's member row left out)", async () => {
+    // Built in the served shape from family_level: Model 3 serves fiber only, so it holds no other
+    // member and the note names the two models that do.
+    const art = structuredClone(T.family_level.artifact);
+    const m3 = art.families[0]!.sequence.find((q) => q.key === "model_3")!;
+    m3.effects = m3.effects!.filter((e) => e.feature === "fiber");
+    const view = await estimateView(servedAt(art));
+    expect(drawnRows(view)).toContain("fiber:model_3");
+    expect(notesIn(view).filter((t) => TOGETHER.test(t))).toEqual([
+      "In Unadjusted and Model 2 (primary), fiber and arm (as arm_y) are in the model together, so each is adjusted for the other, beyond the columns the model's row and footnote name.",
+    ]);
+  });
+
+  it.each([
+    { name: "a two-level string alone (arm_y)", at: servedAt(T.two_level.artifact) },
+    { name: "a difference (NHANES)", at: servedAt(NHANES) },
+    { name: "a density", at: servedAt(T.density.artifact) },
+    { name: "the residual method's exposure", at: servedAt(DIET) },
+    { name: "a hazard ratio (the walk's capture)", at: C.locked },
+    { name: "the primary refused beside the unadjusted model", at: servedAt(Q.dependency.artifact) },
+  ])("says nothing of the kind for a single exposure: $name", async ({ at }) => {
+    const view = await estimateView(at);
+    expect(within(view).getByRole("table")).toBeTruthy();
+    expect(told(view)).not.toMatch(TOGETHER);
+  });
+
+  it("is silent where the single exposure's unadjusted row is its fit alone (statsmodels), which says so", async () => {
+    const of = T.two_level;
+    const crude = of.artifact.families[0]!.sequence.find((q) => q.key === "crude")!;
+    const view = await estimateView(servedAt(of.artifact));
+    const table = within(view).getByRole("table");
+    expect(table.querySelector('tr[data-row="crude"]')!.textContent).toContain("No other column in the model");
+    showsTruth(cell(table, unticked(crude.label), "Difference"), of.truth!.crude.rows.arm_y!, T.family_level.truth!.crude.rows.arm_y!, "arm_y alone");
+    expect(notesIn(view).some((t) => TOGETHER.test(t))).toBe(false);
+  });
+});
+
 describe("a declared model that reports no estimate", () => {
   it.each([
     { name: "Model 2 refused whole for a dependency, the linear model", of: Q.dependency },

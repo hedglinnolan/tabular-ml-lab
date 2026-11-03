@@ -17,7 +17,9 @@
  *      cut's `<exposure>_C2`, a level's indicator), whose unit is not the exposure's, under its
  *      served name; a model that reports no estimate is said in its refusal's words beside it,
  *      and an exposure served as several rows (a category's levels) is named, not drawn, nor
- *      headed (`asTable2`, `unreportedOf`);
+ *      headed (`asTable2`, `unreportedOf`); where a model holds several members of an exposure
+ *      family in one fit, the footnotes say first that each is adjusted for the others there, the
+ *      unadjusted model's included, naming them as served (`jointOf`);
  *   3. beside it the primary model's diagnostics in the engine's words: a failed check's ways
  *      forward are named, never pressed, and a recorded response is said as its record words it,
  *      with the estimates the engine serves for it.
@@ -250,11 +252,55 @@ function asTable2(art: ServedEffects, index: number): ServedEffects {
   };
 }
 
+/** "a", "a and b", "a, b and c". */
+const listOf = (xs: readonly string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+
+/** The members of what is studied a declared model holds, from its served rows: each member with
+ *  the columns it is served as, in the artifact's order of the members, or none where its rows are
+ *  one member's (a single exposure, a category's levels). */
+function heldOf(fit: Fit, exposures: readonly string[]): [string, string[]][] {
+  const by = new Map<string, string[]>();
+  for (const r of fit.effects ?? []) {
+    const member = whose(r.feature, exposures) ?? r.feature;
+    by.set(member, [...(by.get(member) ?? []), r.feature]);
+  }
+  const at = (m: string) => (exposures.includes(m) ? exposures.indexOf(m) : exposures.length);
+  return by.size < 2 ? [] : [...by].sort(([a], [b]) => at(a) - at(b));
+}
+
+/** What Table 2 says, first among its footnotes, where a declared model it draws holds several
+ *  members of an exposure family in one fit (their rows served from that model): each member's
+ *  estimate is adjusted for the others there, the unadjusted model's included, so the row's "No
+ *  other column in the model" and a footnote's "adjusted for" name only the columns beyond them.
+ *  The members are named as served (`arm` as `arm_y`), and the models by their labels where not
+ *  every drawn model holds the same ones. A model that holds one member says nothing. */
+function jointOf(fam: Family, drawn: ReadonlySet<string>, exposures: readonly string[]): string[] {
+  const fits = fam.sequence.filter((fit) => drawn.has(fit.key));
+  const groups = new Map<string, { these: Fit[]; held: [string, string[]][] }>();
+  for (const fit of fits) {
+    const held = heldOf(fit, exposures);
+    if (!held.length) continue;
+    const key = JSON.stringify(held);
+    groups.set(key, { these: [...(groups.get(key)?.these ?? []), fit], held });
+  }
+  const plain = (x: string) => x.replaceAll("`", "");
+  return [...groups.values()].map(({ these, held }) => {
+    const where =
+      these.length === fits.length
+        ? `In each model of this table${these.some((fit) => !fit.adjusted_for.length) ? ", the unadjusted one included," : ","}`
+        : `In ${listOf(these.map((fit) => plain(fit.label)))},`;
+    const members = listOf(held.map(([m, columns]) => (columns.length === 1 && columns[0] === m ? m : `${m} (as ${listOf(columns)})`)));
+    return `${where} ${members} are in the model together, so each is adjusted for the other${held.length > 2 ? "s" : ""}, beyond the columns the model's row and footnote name.`;
+  });
+}
+
 function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; index: number; many: boolean; decisions: readonly DecisionRecord[] }) {
   const [lit, setLit] = useState<string | null>(null);
   const fam = art.families[index]!;
   const shown = asTable2(art, index);
-  const table = table2FromEffects(shown, index, many ? `Table 2 (${fam.label})` : "Table 2");
+  const drawn = new Set(shown.families[index]!.sequence.map((fit) => fit.key));
+  const adapted = table2FromEffects(shown, index, many ? `Table 2 (${fam.label})` : "Table 2");
+  const table = { ...adapted, footnotes: [...jointOf(fam, drawn, art.exposures).map((text) => ({ text })), ...adapted.footnotes] };
   const unreported = unreportedOf(fam, art.exposures);
   const said = unreported.map((x, i) => (
     <span key={`${x.key}:${i}`} className={s.itemReason} data-testid="results-unreported" data-fit={x.key}>
