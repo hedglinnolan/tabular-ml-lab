@@ -15,8 +15,8 @@
  * (src/quest/fixtures/quest-contract.json); and every posted decision held to its model in
  * turbotab/server/openapi.json. A payload the capture holds no case of (a refused join, a field the
  * values contradict, a press the server refuses, a file or codebook the server could not read, a
- * table not read yet, or whose read failed or was stopped) is built in the served shape, its words
- * the test's own construction.
+ * table not read yet, read anew, or whose read failed or was stopped) is built in the served shape,
+ * its words the test's own construction.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -1286,5 +1286,165 @@ describe("the table the codebook reads (the ingest stage)", () => {
     expect(screen.queryByTestId("codebook-ingest-failure")).toBeNull();
     expect(screen.queryByTestId("retry-ingest")).toBeNull();
     expect(screen.getByTestId("codebook-source-input")).toBeInTheDocument();
+  });
+
+  // What a codebook would import is counted against the table as the server read it then
+  // (server/service.py `stage_codebook`), and its press is assessed against the table read fresh
+  // (core/codebook.py `_assessed`, "still being read" otherwise). A table read anew is another
+  // table: the counts read against the older one are not its counts.
+  const veil = () => screen.getByTestId("codebook-veil");
+  const inert = (id: string) => screen.getByTestId(id).closest("[inert]") !== null;
+  /** No count is on screen unveiled: none, or each inside the inert veil. */
+  const noCountShown = () => {
+    const counts = screen.queryByTestId("codebook-counts");
+    return counts === null || counts.closest("[inert]") !== null;
+  };
+  /** The codebook read against the table read anew, the test's own construction: one of its
+   *  entries no longer names a column of the table. */
+  const ANEW: CodebookPreview = {
+    ...BOOK,
+    n_matched: BOOK.n_matched - 1,
+    n_unmatched: BOOK.n_unmatched + 1,
+    unmatched: [...BOOK.unmatched, "DR1EXMER"],
+  };
+
+  it("shows the counts of a codebook read against the table as it stands unveiled, and records it", async () => {
+    const { decide } = mount("import_codebook");
+    vi.spyOn(api, "uploadCodebook").mockResolvedValue(BOOK);
+    upload("codebook-source-input", BOOK.name);
+    await screen.findByTestId("codebook-counts");
+    expect(veil()).toHaveAttribute("data-veil", "fresh");
+    expect(inert("codebook-counts")).toBe(false);
+    expect(record()).toBeEnabled();
+    fireEvent.click(record());
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([
+    ["queued", "recomputing"],
+    ["running", "recomputing"],
+    ["stale", "stale"],
+  ] as const)(
+    "veils the counts read against the table as it stood, and records nothing, while the table is %s anew",
+    async (status, state) => {
+      const { qc, decide } = mount("import_codebook");
+      const read = vi.spyOn(api, "uploadCodebook").mockResolvedValue(BOOK);
+      upload("codebook-source-input", BOOK.name);
+      await screen.findByTestId("codebook-counts");
+      expect(record()).toBeEnabled();
+      act(() => readAs(qc, { status, key: NEXT_KEY }));
+      await settle();
+      expect(inert("codebook-counts")).toBe(true);
+      expect(inert("codebook-sentence")).toBe(true);
+      expect(record()).toBeDisabled();
+      expect(veil()).toHaveAttribute("data-veil", state);
+      fireEvent.click(record());
+      await settle();
+      expect(decide).not.toHaveBeenCalled();
+      // The server reads no codebook until the table is read: nothing asks it meanwhile.
+      expect(read).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(["upload", "path"] as const)(
+    "reads the codebook again (by %s) once the table is read anew, and records only the codebook read against it",
+    async (by) => {
+      const { qc, decide } = mount("import_codebook", { mode: "local" });
+      const anew = deferred<CodebookPreview>();
+      const read = vi
+        .spyOn(api, by === "upload" ? "uploadCodebook" : "codebook")
+        .mockResolvedValueOnce(BOOK)
+        .mockReturnValueOnce(anew.promise);
+      let file: File | null = null;
+      const path = "/data/nhanes/DEMO_J.htm";
+      if (by === "upload") file = upload("codebook-source-input", BOOK.name);
+      else {
+        fireEvent.change(screen.getByTestId("codebook-source-path"), { target: { value: path } });
+        fireEvent.submit(screen.getByTestId("codebook-source-path").closest("form")!);
+      }
+      await screen.findByTestId("codebook-counts");
+      act(() => readAs(qc, { status: "running", key: NEXT_KEY }));
+      await settle();
+      expect(read).toHaveBeenCalledTimes(1);
+      act(() => readAs(qc, { status: "fresh", key: NEXT_KEY }));
+      // The same codebook, read again against the table as it now stands.
+      await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+      expect(read.mock.calls[1]).toEqual(read.mock.calls[0]);
+      if (file) expect(read.mock.calls[1]![1]).toBe(file);
+      // Until that read answers, no count of the older table is shown unveiled, and nothing records.
+      expect(noCountShown()).toBe(true);
+      expect(record()).toBeDisabled();
+      fireEvent.click(record());
+      await settle();
+      expect(decide).not.toHaveBeenCalled();
+      await act(async () => anew.done(ANEW));
+      await waitFor(() =>
+        expect(countsOf("codebook-counts")).toEqual([
+          [fmt(ANEW.n_entries)],
+          [fmt(ANEW.n_matched)],
+          [fmt(ANEW.n_unmatched)],
+        ]),
+      );
+      expect(veil()).toHaveAttribute("data-veil", "fresh");
+      expect(inert("codebook-counts")).toBe(false);
+      expect(record()).toBeEnabled();
+      // The server answers the press with the project as it stands, its table as read now.
+      decide.mockResolvedValue(qc.getQueryData<ProjectView>(keys.view(PID))!);
+      fireEvent.click(record());
+      await waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
+      expect(decide.mock.calls[0]![1]).toEqual({ kind: "import_codebook", codebook: ANEW.id });
+      // Read against the table as it stands, it is not read again.
+      await settle();
+      expect(read).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("neither veils nor reads the codebook again where the table is read again at the key it was read against", async () => {
+    const { qc } = mount("import_codebook");
+    const read = vi.spyOn(api, "uploadCodebook").mockResolvedValue(BOOK);
+    upload("codebook-source-input", BOOK.name);
+    await screen.findByTestId("codebook-counts");
+    const key = qc.getQueryData<ProjectView>(keys.view(PID))!.stages.ingest!.key!;
+    // The project changes, its table as it was read.
+    act(() => {
+      const view = qc.getQueryData<ProjectView>(keys.view(PID))!;
+      qc.setQueryData(keys.view(PID), { ...view, stages: { ...view.stages } });
+    });
+    await settle();
+    expect(veil()).toHaveAttribute("data-veil", "fresh");
+    expect(record()).toBeEnabled();
+    // The same table read again: veiled while it is read, then the same table as the counts'.
+    act(() => readAs(qc, { status: "running", key }));
+    await settle();
+    expect(veil()).toHaveAttribute("data-veil", "recomputing");
+    expect(record()).toBeDisabled();
+    act(() => readAs(qc, { status: "fresh", key }));
+    await settle();
+    expect(veil()).toHaveAttribute("data-veil", "fresh");
+    expect(inert("codebook-counts")).toBe(false);
+    expect(record()).toBeEnabled();
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no press of a codebook the server read while the table is being read, until it is read against the table as read", async () => {
+    // The server answered from a table it had read before its event reached the card.
+    const { qc, decide } = mount("import_codebook", { ingest: NOT_READ["first read running"] });
+    const read = vi
+      .spyOn(api, "uploadCodebook")
+      .mockResolvedValueOnce(BOOK)
+      .mockResolvedValueOnce(ANEW);
+    upload("codebook-source-input", BOOK.name);
+    await screen.findByTestId("codebook-counts");
+    expect(inert("codebook-counts")).toBe(true);
+    expect(record()).toBeDisabled();
+    expect(veil()).toHaveAttribute("data-veil", "recomputing");
+    fireEvent.click(record());
+    await settle();
+    expect(decide).not.toHaveBeenCalled();
+    act(() => readAs(qc, { status: "fresh", key: NEXT_KEY }));
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(veil()).toHaveAttribute("data-veil", "fresh"));
+    expect(countsOf("codebook-counts")[1]).toEqual([fmt(ANEW.n_matched)]);
+    expect(record()).toBeEnabled();
   });
 });

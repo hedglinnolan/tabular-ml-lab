@@ -14,12 +14,16 @@
  * A codebook is read, and its press assessed, only against the table read fresh (server/service.py
  * `_table_ready`, core/codebook.py `_assessed`): the server answers any other "still being read".
  * That answer holds only until the table is read: from then on the card no longer says it, and
- * offers the read again, as the join card counts its join again. A read that failed or was stopped
- * does not restart by itself, so there the card says which computation did not finish and why,
- * with its retry, in place of the read and the press, as the join card does
- * (components/Failure.tsx `StageFailure`).
+ * offers the read again. What a codebook read would import is counted against the table as it was
+ * read then, at its key: once the table is read anew those counts are another table's, so they stay
+ * veiled and inert and record nothing, and once it is read the codebook is read again against it,
+ * since nothing else would ask, as the join card counts its join again. The press is offered only
+ * for a codebook read against the table as it stands read. A read that failed or was stopped does
+ * not restart by itself, so there the card says which computation did not finish and why, with its
+ * retry, in place of the read and the press, as the join card does (components/Failure.tsx
+ * `StageFailure`).
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { isRefusalError } from "../../../api/client";
 import { NOT_YET } from "../../../api/m2-types";
 import { useCodebook, useHealth, useProjectView } from "../../../api/queries";
@@ -30,6 +34,7 @@ import { Pending } from "../../../components/record/blocks";
 import { Actions, RecordButton } from "../../../components/record/ask/common";
 import g from "../../../components/record/generic/generic.module.css";
 import { Prose, V } from "../../../components/Prose";
+import { StaleVeil, veilFor, type VeilState } from "../../../motion/StaleVeil";
 import { fmtInt, listJoin } from "../../../util/format";
 import type { LineCard } from "../../contracts";
 import { Frame, useCard, type CardWiring } from "../predict/card";
@@ -146,6 +151,18 @@ function Body({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table]);
   const error = early && table ? null : read.error;
+  // The key the table stood read at when the codebook shown was asked for (none while it was not
+  // read), noted as each read is asked: its counts are the table's only while it stands read there.
+  const [asked, setAsked] = useState({ submittedAt: 0, at: null as string | null });
+  if (read.submittedAt !== asked.submittedAt) setAsked({ submittedAt: read.submittedAt, at: table });
+  const readAt = read.submittedAt === asked.submittedAt ? asked.at : table;
+  const veil = veilFor(ingest, book ? { fresh: true, key: readAt, artifact: book } : undefined);
+  // A codebook read against another table than the one read now is read again against it.
+  useEffect(() => {
+    if (table && book && readAt !== table && read.variables) read.mutate(read.variables);
+    // Only the table read anew, or a codebook's read answered since, asks here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, book]);
   return (
     <>
       {books.length ? (
@@ -165,7 +182,15 @@ function Body({
           testId="codebook-ingest-failure"
         />
       ) : (
-        <Read card={card} local={local} read={read} error={error} book={book} />
+        <Read
+          card={card}
+          local={local}
+          read={read}
+          error={error}
+          book={book}
+          veil={veil}
+          current={!!table && veil === "fresh"}
+        />
       )}
     </>
   );
@@ -178,6 +203,8 @@ function Read({
   read,
   error,
   book,
+  veil,
+  current,
 }: {
   card: CardWiring;
   local: boolean;
@@ -185,6 +212,11 @@ function Read({
   /** The read's error the card says: none where it no longer holds. */
   error: Error | null;
   book: CodebookPreview | null;
+  /** Whether the codebook's counts are the table's as it stands read (`fresh`), or another's. */
+  veil: VeilState;
+  /** Whether the codebook shown was read against the table as it stands read, so its press is
+   *  assessed: never while the table is not read (the server refuses it "still being read"). */
+  current: boolean;
 }) {
   return (
     <>
@@ -203,19 +235,22 @@ function Read({
       </fieldset>
       {read.isPending ? <Pending>Reading the codebook…</Pending> : null}
       {book ? (
-        <div className={c.group}>
-          <Counts p={book} />
-          {book.asked.length ? <Asked asked={book.asked} /> : null}
-          <p className={c.said} data-testid="codebook-sentence">
-            <Prose text={book.sentence} />
-          </p>
-        </div>
+        <StaleVeil state={veil} testId="codebook-veil">
+          <div className={c.group}>
+            <Counts p={book} />
+            {book.asked.length ? <Asked asked={book.asked} /> : null}
+            <p className={c.said} data-testid="codebook-sentence">
+              <Prose text={book.sentence} />
+            </p>
+          </div>
+        </StaleVeil>
       ) : null}
       <Actions>
         <RecordButton
-          disabled={!book || card.pending}
+          disabled={!book || !current || card.pending}
           onClick={() => {
-            if (book) card.record(codebookDecision(book) as unknown as Decision, "import");
+            if (book && current)
+              card.record(codebookDecision(book) as unknown as Decision, "import");
           }}
           title="Records the codebook read above."
           testId="card-record"
