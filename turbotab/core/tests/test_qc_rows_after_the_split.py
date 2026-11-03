@@ -16,7 +16,9 @@ other participants. So while rows are held out the guard refuses where a row tha
 before a row in the draw (it renumbers it), as well as where a row that leaves has its outcome
 recorded (a ``QC`` level of the outcome, the audit's export; or an outcome written on the QC rows).
 A grouped draw names a drawn row with no identifier by its working row id (``__missing_{rid}``),
-so that guard holds it still too.
+so that guard holds it still too. An answer that brings the rows back (the exclusion dismissed,
+deferred or reverted) or takes them out again (a revert of its dismissal) is held by the same guard
+(``test_reference_rows_undone_holds_the_seal.py``).
 """
 from __future__ import annotations
 

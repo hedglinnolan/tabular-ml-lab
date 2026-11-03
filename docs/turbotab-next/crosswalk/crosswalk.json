@@ -1352,7 +1352,7 @@
    "depends_on": [
     "q:lens"
    ],
-   "reopens_when": "After the seal, a repair is refused (rows_after_the_seal).",
+   "reopens_when": "While rows are held out, an answer to it that would move the draw is refused (rows_after_the_seal).",
    "status": "partial",
    "tapestry": "Flow: the loaded rows, then the reference rows that leave by role, then the participants, with the reference rows on a shelf the drift step reads",
    "notes": "Repairs.tsx renders every option alike. working.reference_rows is unread. Blank, dilution and LTR roles are recognized by name only. Thread metab-reference-rows.",
@@ -12931,7 +12931,7 @@
    "stage": "whos_in",
    "stage_name": "4 · Who's in",
    "kind": "refusal",
-   "title_plain": "Reference rows cannot leave once rows are held out",
+   "title_plain": "Once rows are held out, reference rows cannot leave or come back where that would draw the held-out rows again or renumber a row in the draw",
    "engine_source": "turbotab/core/reference_rows.py:_before_the_seal",
    "objective": "Shown (not an objective)",
    "goals": [
@@ -12940,7 +12940,7 @@
    "lenses": [
     "metabolomics"
    ],
-   "fires_when": "The pooled-QC exclusion is applied after set_split.",
+   "fires_when": "While the split holds rows out, an answer that changes which reference rows leave (the exclusion or QC-RLSC applied, dismissed, deferred or reverted) would move a row with the outcome recorded into or out of the draw or renumber one, or that cannot be read (no oriented table at hand, rows combined per unit).",
    "status": "built+rendered",
    "merged_from": [
     "whos_in|refusal:rows_after_the_seal"

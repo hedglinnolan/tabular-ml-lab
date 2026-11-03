@@ -207,7 +207,12 @@ def _nans_as_missing(con: Any, parquet: Path) -> list[str]:
     """Rewrite ``parquet``, a table this module wrote, with NaN → NULL in every float column that
     holds a NaN, as ingest does (``datastore._null_the_nans``): a NaN is no value, and every count
     of the working table (``n_missing`` and the readers of it: complete cases, the missing-values
-    previews, the row floor) reads nulls. Returns the columns it rewrote."""
+    previews, the row floor) reads nulls. Returns the columns it rewrote.
+
+    The reader takes Parquet's leaf column indices, which are a field's place among the top-level
+    fields only while none before it is nested, so a float column (a leaf of its own) is read by
+    its own path. Where the rewrite fails, the ``<table>.<token>.nan`` file it writes beside the
+    table is removed, as ingest removes its own."""
     import pyarrow as pa
     import pyarrow.compute as pc
     import pyarrow.parquet as pq
@@ -216,7 +221,8 @@ def _nans_as_missing(con: Any, parquet: Path) -> list[str]:
 
     pf = pq.ParquetFile(parquet)
     try:
-        floats = [i for i, f in enumerate(pf.schema_arrow)
+        leaf = {path[0]: i for i, path in enumerate(pf.reader.column_paths) if len(path) == 1}
+        floats = [leaf[f.name] for f in pf.schema_arrow
                   if f.name != ROW_ID and pa.types.is_floating(f.type)]
         found: list[str] = []
         for start in range(0, len(floats), 200):
@@ -226,7 +232,11 @@ def _nans_as_missing(con: Any, parquet: Path) -> list[str]:
     finally:
         pf.close()
     if found:
-        _null_the_nans(con, parquet, found, uuid.uuid4().hex[:8])
+        token = uuid.uuid4().hex[:8]
+        try:
+            _null_the_nans(con, parquet, found, token)
+        finally:
+            _cleanup(parquet.with_name(f"{parquet.name}.{token}.nan"))  # moved over it, or failed
     return found
 
 

@@ -811,7 +811,9 @@ def test_4_a_case_control_qc_export_excludes_its_qc_rows_before_the_seal(client,
 
 
 def test_4b_reference_rows_leave_only_before_the_seal():
-    """Once the held-out rows are drawn, excluding reference rows would draw them again: refused."""
+    """While rows are held out, excluding reference rows is refused where the guard cannot show the
+    draw stays: here no table is at hand (``reference_rows._before_the_seal``). With a table it is
+    refused only where the rows leaving would draw it again or renumber a row in it."""
     from turbotab.core import repairs  # noqa: F401 - registers the reference-rows family
     from turbotab.core.decisions import ProjectState, Refusal, validate
 
