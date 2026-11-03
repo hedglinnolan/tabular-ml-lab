@@ -20,6 +20,9 @@ finding                                legacy reading                           
                                        outside the served pooled-QC finding's
 =====================================  ===========================================  ==============
 
+Where the lens serves the pooled-QC finding, the clinical bands (``pack::clinical::impossible_…``)
+read the rows outside the ones it names too, as the left-censoring reading does.
+
 :func:`pack_findings` runs every other pack detector exactly as ``packs.findings`` does (same
 order, same failure handling), so a superseded detector is never computed twice. These are the
 pack's readings; the findings stage speaks for some of them and adds others
@@ -40,13 +43,16 @@ import pandas as pd
 from turbotab.core.detectors import codes, scales
 
 
-def _superseding(units: Any = None, codings: Any = None, target: str | None = None
+def _superseding(units: Any = None, codings: Any = None, target: str | None = None,
+                 qc_served: bool = False
                  ) -> dict[str, Callable[[pd.DataFrame], list[dict[str, Any]]]]:
     """Legacy detector name -> the reading served in its place (a list: one may become two).
     ``units`` are the columns' recorded units (``set_column_unit``: an age in months);
     ``codings`` the sex columns' codings the user confirmed (BLUEPRINT §14.3); ``target`` the
-    outcome, where one is chosen. The served pooled-QC reading is made once per table here, and
-    the left-censoring reading sets aside the rows it names."""
+    outcome, where one is chosen; ``qc_served`` whether the lens runs the pooled-QC reading (the
+    metabolomics pack's), so that the findings page serves it. The served pooled-QC reading is made
+    once per table here, and the left-censoring reading sets aside the rows it names, as the
+    clinical bands do where the lens serves it."""
     from turbotab import packs
     from turbotab.core.detectors import assay, genomics, plausibility
 
@@ -63,14 +69,25 @@ def _superseding(units: Any = None, codings: Any = None, target: str | None = No
     def on_the_participants(df: pd.DataFrame) -> dict[str, Any] | None:
         return packs._left_censored(df, qc_rows=_reference_rows(df, pooled_qc(df)), target=target)
 
+    def bands(df: pd.DataFrame) -> dict[str, Any] | None:
+        # INBOX:1033: read over every row, the QC rows' zeros (an export's missing glucose) were
+        # counted as impossible values "no living adult is expected to show", beside a finding
+        # that says those rows are not participants. Where it is served, the bands read the rows
+        # outside the ones it names, and say so (``non_qc_rows``, which the summary reads).
+        qc = _reference_rows(df, pooled_qc(df)) if qc_served else None
+        kept = df.loc[~qc.to_numpy()] if qc is not None and bool(qc.any()) else df
+        found = plausibility.impossible_vs_extreme_finding(kept, units=units, codings=codings)
+        if found is not None and kept is not df:
+            found["detail"] = f"Read on the {len(kept):,} non-QC rows. {found['detail']}"
+            found["params"]["non_qc_rows"] = len(kept)
+        return found
+
     return {
         "_ordinal_declared": scales.findings,      # both survey findings, from one block reading
         "_survey_sentinel_codes": lambda df: [],
         "_acquisition_order": one(assay.run_order_finding),
         "_redundancy": one(assay.redundancy_finding),
-        "_clinical_impossible_vs_extreme": one(
-            lambda df: plausibility.impossible_vs_extreme_finding(df, units=units,
-                                                                  codings=codings)),
+        "_clinical_impossible_vs_extreme": one(bands),
         "_genomics_data_type": genomics.findings,
         # Audit RO-13 (WP18): the pooled-QC level of a Case/Control/QC label, read by variance,
         # with text that no longer says the rows are already out of the model.
@@ -110,8 +127,11 @@ def pack_findings(df: pd.DataFrame, lens: Sequence[str], units: Any = None,
     out: list[dict[str, Any]] = []
     if df is None or df.empty:
         return out
-    replaced = _superseding(units, codings, target)
-    for key in packs.normalize_quiet(lens):
+    chosen = packs.normalize_quiet(lens)
+    qc_served = any(getattr(d, "__name__", "") == "_pooled_qc"
+                    for key in chosen for d in getattr(packs.PACKS.get(key), "detectors", ()))
+    replaced = _superseding(units, codings, target, qc_served)
+    for key in chosen:
         pack = packs.PACKS.get(key)
         if pack is None:
             continue

@@ -26,7 +26,10 @@ reading does not name:
   features' did not. The pack's own pooled-QC reading (``packs._pooled_qc``), whose rows it sets
   aside by default, reads a two-level label only; on a Case/Control/QC label the served reading
   names the QC rows and the pack's names none, so the app sets aside the served reading's rows,
-  and the outcome (``finding_words.left_censoring_on_the_participants``).
+  and the outcome (``finding_words.left_censoring_on_the_participants``);
+* the clinical bands (``plausibility.impossible_vs_extreme_finding``) read the same rows where the
+  lens serves the pooled-QC finding, so a QC row's 0 is no participant's impossible value, and
+  the intake and impossible-value counts say they are out of the non-QC rows.
 
 Each truth is by construction on a plasma-like table (60 participants, 10 QC injections, 40
 features censored below a detection limit, the features being the `mz_` columns it builds),
@@ -1200,3 +1203,202 @@ def test_in_kilojoules_where_no_participant_is_out_of_range_the_rows_within_are_
                             f"day; nothing needs excluding.")
     who = "" if qc == "no_qc" else " non-QC"
     assert f["title"] == f"No{who} record reports an implausible daily intake, read in kJ."
+
+
+@pytest.mark.parametrize("days, qc", [(1, True), (2, True), (2, False)],
+                         ids=["a_day_qc", "two_days_qc", "two_days_no_qc"])
+def test_in_kcal_where_no_participant_is_out_of_range_the_finding_closes(tmp_path, days, qc):
+    """Recorded in kcal, a day or a total over 2 days, every participant's intake is within the
+    range (pandas: the unmodified NHANES export's 120 intakes lie within 500–5,000 a day and
+    1,000–10,000 over 2 days). The pack compares the raw values with 500–5,000 and fires: beside
+    12 QC rows on their zeros, and with no QC rows over 2 days on 3 rows set to 6,000 kcal. The
+    summary said `0` of `120` rows report one out of range and offered an exclusion rule; it says
+    every row it reads is within the range, routing nowhere, as the kJ reading does."""
+    diet = pd.read_csv(SAMPLES / "nhanes_dietary.csv")
+    if not qc:
+        diet.loc[:2, "DR1TKCAL"] = 6000.0
+    frame = dietary_with_qc(diet, qc_intake=0.0) if qc else diet
+    df = read_back(tmp_path, frame)
+    rows = participants(df) if qc else df
+    kcal, every = rows["DR1TKCAL"], df["DR1TKCAL"]
+    lo, hi = 500 * days, 5000 * days
+    assert int(((kcal < lo) | (kcal > hi)).sum()) == 0 and kcal.notna().all() and len(rows) == 120
+    assert int(((every < 500) | (every > 5000)).sum()) == (12 if qc else 3)  # the pack fires
+    lens = ["metabolomics", "dietary"] if qc else ["dietary"]
+    f = _implausible(tmp_path, frame, lens, ColumnUnitSpec(unit="kcal", days=days))
+    which = "Every non-QC row" if qc else "Every row"
+    span = "a day" if days == 1 else "over `2` days"
+    assert f["summary"] == (f"{which} of `DR1TKCAL` is within `{lo}`–`{hi}` {span}; nothing needs "
+                            f"excluding.")
+    assert f["routes_to"] is None and f["lever_label"] is None
+
+
+@pytest.mark.parametrize("with_qc", [True, False])
+def test_with_no_unit_recorded_the_intake_counts_name_the_rows_they_read(tmp_path, with_qc):
+    """With no unit recorded the days in `DR1TKCAL` are asked, and the count is made under each
+    reading. Beside 12 QC rows holding 0 the counts are the 120 participants' (pandas: 3 of them
+    at 300 kcal, by construction, outside 500–5,000 a day and 1,000–10,000 over 2 days), and the
+    summary and detail now say they are counted out of the non-QC rows, where they said `3` of
+    `120` rows in a table of 132. With no QC rows the text is the one it was."""
+    diet = pd.read_csv(SAMPLES / "nhanes_dietary.csv")
+    diet.loc[:2, "DR1TKCAL"] = 300.0
+    frame = dietary_with_qc(diet, qc_intake=0.0) if with_qc else diet
+    df = read_back(tmp_path, frame)
+    rows = participants(df) if with_qc else df
+    kcal = rows["DR1TKCAL"]
+    a_day = int(((kcal < 500) | (kcal > 5000)).sum())
+    two_days = int(((kcal < 1000) | (kcal > 10000)).sum())
+    assert (a_day, two_days, len(rows), len(df)) == (3, 3, 120, 132 if with_qc else 120)
+    path = tmp_path / "intake.csv"
+    frame.to_csv(path, index=False)
+    table = Ingested(path, tmp_path / "intake-ingested")
+    lens = ["metabolomics", "dietary"] if with_qc else ["dietary"]
+    found = {f["id"]: f for f in table.run(findings_stage, ProjectState(lens=lens))["findings"]}
+    assert ("pack::metabolomics::pooled_qc" in found) == with_qc
+    f = found["pack::dietary::implausible_intake"]
+    who = " non-QC" if with_qc else ""
+    assert f["title"] == "The days in `DR1TKCAL` are not settled."
+    assert f["summary"] == (f"Read as one day's intake, `{a_day}` of `120`{who} rows fall outside "
+                            f"`500`–`5,000`: record `DR1TKCAL`'s days first.")
+    assert (f"Read as one day's intake, {a_day} of 120{who} rows fall outside 500–5,000 kcal; read "
+            f"as a total over 2 days, {two_days} fall outside 1,000–10,000 kcal.") in f["detail"]
+    assert (f"Observed range {kcal.min():,.0f} to {kcal.max():,.0f}, median "
+            f"{kcal.median():,.0f}.") in f["detail"]
+
+
+#: The unit readings that ask a question before any row is called a misreport, each as the energy
+#: card reads it (``proposals.energy_unit_reading``), and the bounds each counts against.
+QUESTIONS = {
+    "days_unsettled": ({"unit": "kcal", "confirmed": False, "days_unsettled": True, "basis": "name",
+                        "days_candidates": [2], "days_reading": {"evidence": "its median"},
+                        "sentence": "It is in kcal."}, (500, 5000)),
+    "days_in_name": ({"unit": "kcal", "confirmed": False, "basis": "days", "days_in_name": 2,
+                      "days": 2, "sentence": "Its name spans 2 days."}, (1000, 10000)),
+    "unit_unconfirmed": ({"unit": "kcal", "confirmed": False, "basis": "magnitude",
+                          "sentence": "It reads as kcal."}, (500, 5000)),
+    "unit_in_question": ({"unit": "kj", "confirmed": True, "sentence": "It is in kJ."},
+                         (500 * 4.184, 5000 * 4.184)),
+    "role_unconfirmed": ({"unit": "kcal", "confirmed": True, "sentence": "It is in kcal."},
+                         (500, 5000)),
+}
+
+
+@pytest.mark.parametrize("with_qc", [True, False])
+@pytest.mark.parametrize("question", list(QUESTIONS))
+def test_every_intake_question_names_the_rows_its_counts_are_out_of(monkeypatch, tmp_path,
+                                                                    question, with_qc):
+    """Each reading that asks before counting a misreport counts on the participants beside QC
+    rows holding 0 (pandas on the 120 participants of the NHANES export, 3 of them at 300 kcal by
+    construction; a kJ reading's bounds are 500–5,000 kcal at 4.184 kJ a kcal), and its summary
+    and detail say the count is out of the non-QC rows; with no QC rows, out of the rows, as
+    before. The reading is handed to the finding as the energy card would make it."""
+    from turbotab.core.stages import finding_words as fw
+
+    reading, (lo, hi) = QUESTIONS[question]
+    diet = pd.read_csv(SAMPLES / "nhanes_dietary.csv")
+    diet.loc[:2, "DR1TKCAL"] = 300.0
+    df = read_back(tmp_path, dietary_with_qc(diet, qc_intake=0.0) if with_qc else diet)
+    rows = participants(df) if with_qc else df
+    kcal = rows["DR1TKCAL"]
+    n = int(((kcal < lo) | (kcal > hi)).sum())
+    assert n == (int((kcal < lo).sum()) if question == "unit_in_question" else 3)
+    monkeypatch.setattr(fw, "energy_unit_of", lambda fc, column: dict(reading))
+    if question == "role_unconfirmed":
+        monkeypatch.setattr(FindingContext, "energy_settled", lambda self, column: False)
+    qc_at = np.flatnonzero(df["sample_type"].eq("pooled_qc").to_numpy()) if with_qc else []
+    fc = FindingContext(frame=df, lens=("metabolomics", "dietary"),
+                        reference_rows=frozenset(int(i) for i in qc_at))
+    f = {"id": "pack::dietary::implausible_intake", "affected_columns": ["DR1TKCAL"],
+         "title": "15 records report an implausible daily intake", "detail": ""}
+    p = {"column": "DR1TKCAL", "minimum": 500.0, "maximum": 5000.0, "n_flagged": 15}
+    said = fw._implausible(f, p, fc)
+    who = " non-QC" if with_qc else ""
+    assert f"`{n}` of `120`{who} rows" in said.summary
+    assert f"{n:,} of 120{who} rows" in f["detail"]
+
+
+def glucose_panel(impossible: tuple[float, ...]) -> pd.DataFrame:
+    """The plasma-like panel with a fasting `glucose` by construction: each participant's drawn
+    uniform on 90–110 mg/dL, inside the adult central 98% (NHANES 2017–2018: 79–285), the first
+    participants' set to ``impossible``, and 0 on every QC row (an export writes a pooled QC's
+    missing glucose as 0)."""
+    df = panel()
+    qc = df["sample_type"].eq("pooled_qc").to_numpy()
+    glucose = np.round(np.random.default_rng(5).uniform(90.0, 110.0, len(df)), 0)
+    glucose[np.flatnonzero(~qc)[:len(impossible)]] = impossible
+    glucose[qc] = 0.0
+    df["glucose"] = glucose
+    return df
+
+
+@pytest.mark.parametrize("lens", [["metabolomics", "clinical"], ["clinical"]],
+                         ids=["qc_rows_served", "no_qc_reading"])
+def test_impossible_values_are_counted_on_the_participants_beside_qc_rows(tmp_path, lens):
+    """Two participants' glucose is impossible (5 and 2,500 mg/dL, outside 10–2,000, by
+    construction) and the 10 QC rows hold 0. Where the pooled-QC finding is served the impossible
+    values are counted on the 60 participants (pandas: 2), and the summary and detail say so,
+    where they counted 12 and spoke of the QC rows' zeros as adults' values. Under the clinical
+    lens alone no QC row is named, and every row counts (pandas: 12), in the words it had."""
+    frame = glucose_panel((5.0, 2500.0))
+    df = read_back(tmp_path, frame)
+    rows = participants(df) if "metabolomics" in lens else df
+    g = rows["glucose"]
+    n = int(((g < 10) | (g > 2000)).sum())
+    unusual = int(((g >= 10) & (g <= 2000) & ((g < 79) | (g > 285))).sum())
+    assert (n, unusual, len(rows)) == ((2, 0, 60) if "metabolomics" in lens else (12, 0, 70))
+    found = findings_of(tmp_path, frame, lens)
+    assert ("pack::metabolomics::pooled_qc" in found) == ("metabolomics" in lens)
+    f = found["pack::clinical::impossible_vs_extreme"]
+    on = "On non-QC rows, " if "metabolomics" in lens else ""
+    assert f["summary"] == (f"{on}`glucose` has `{n}` impossible values outside `10`–`2000`; "
+                            f"`{unusual}` more are unusual but real.")
+    read = "Read on the 60 non-QC rows. " if "metabolomics" in lens else ""
+    assert f["detail"].startswith(f"{read}{n} values in `glucose` are outside 10–2000 mg/dL, "
+                                  f"limits no living adult is expected to show")
+    assert voice.words(f["summary"]) <= SUMMARY_WORDS
+
+
+@pytest.mark.parametrize("lens", [["metabolomics", "clinical"], ["clinical"]],
+                         ids=["qc_rows_served", "no_qc_reading"])
+def test_impossible_values_only_on_the_qc_rows_raise_no_participant_finding(tmp_path, lens):
+    """Only the 10 QC rows hold an impossible glucose (0, by construction; pandas: none of the 60
+    participants' is outside 10–2,000). Where the pooled-QC finding is served no impossible-value
+    finding is raised, where it said `glucose` has `10` impossible values, limits no living adult
+    is expected to show; under the clinical lens alone every row counts, and the 10 are said."""
+    frame = glucose_panel(())
+    df = read_back(tmp_path, frame)
+    g, every = participants(df)["glucose"], df["glucose"]
+    assert int(((g < 10) | (g > 2000)).sum()) == 0
+    assert int(((every < 10) | (every > 2000)).sum()) == 10
+    found = findings_of(tmp_path, frame, lens)
+    if "metabolomics" in lens:
+        assert "pack::metabolomics::pooled_qc" in found
+        assert "pack::clinical::impossible_vs_extreme" not in found
+        return
+    assert found["pack::clinical::impossible_vs_extreme"]["summary"].startswith(
+        "`glucose` has `10` impossible values outside `10`–`2000`;")
+
+
+@pytest.mark.parametrize("on_participants", [True, False])
+@pytest.mark.parametrize("form", ["age_unit_question", "in_question"])
+def test_the_impossible_value_questions_name_the_rows_they_read(form, on_participants):
+    """Where the clinical bands were read on the participants (the detector's ``non_qc_rows``),
+    the summaries that judge most of a column's rows say they are the non-QC rows; read on every
+    row, they say what they said."""
+    from turbotab.core.stages import finding_words as fw
+
+    p = ({"age_unit_question": True, "age": {"column": "age"}} if form == "age_unit_question"
+         else {"in_question": ["weight"]})
+    if on_participants:
+        p["non_qc_rows"] = 60
+    f = {"id": "pack::clinical::impossible_vs_extreme", "affected_columns": ["weight"],
+         "title": "t", "detail": ""}
+    said = fw._impossible(f, p, FindingContext(frame=pd.DataFrame({"weight": [1.0]})))
+    rows = "most non-QC rows" if on_participants else "most rows"
+    expected = {
+        "age_unit_question": (f"Read in years, `age` flags {rows}: record its unit before judging "
+                              f"by age."),
+        "in_question": (("On non-QC rows, most" if on_participants else "Most") + " of `weight` "
+                        "sits outside the adult reference: its unit or population is in question."),
+    }[form]
+    assert said.summary == expected

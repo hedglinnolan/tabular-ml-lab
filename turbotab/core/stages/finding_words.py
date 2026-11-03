@@ -394,23 +394,28 @@ def _text_numeric(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> V
 
 def _impossible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     entries = [e for e in _list(p.get("columns")) if isinstance(e, Mapping)]
+    # Read on the participants (``non_qc_rows``: ``detectors.pack_findings`` read the bands on the
+    # rows outside those the served pooled-QC finding names), the rows a judgment of most of them
+    # or a count is about are named.
+    on = bool(p.get("non_qc_rows"))
     if p.get("age_unit_question"):
         # Audit WP13 gate repair: an age in months read as years; nothing is judged by age, and no
         # range is offered on values whose judgment depends on the unit.
         age = (p.get("age") or {}).get("column") or "age"
-        return Voice(f"Read in years, {tick(age)} flags most rows: record its unit before judging "
-                     f"by age.")
+        return Voice(f"Read in years, {tick(age)} flags most {'non-QC ' if on else ''}rows: record "
+                     f"its unit before judging by age.")
     if not entries and p.get("in_question"):
         col = _list(p.get("in_question"))[0] if _list(p.get("in_question")) else None
-        return Voice(f"Most of {tick(col)} sits outside the adult reference: its unit or "
-                     f"population is in question.")
+        return Voice(f"{'On non-QC rows, most' if on else 'Most'} of {tick(col)} sits outside the "
+                     f"adult reference: its unit or population is in question.")
     if not entries:
         return Voice(finish(f["title"]), "exclusions", "Exclude rows by range")
     e = entries[0]
     band = e.get("impossible_band") or [None, None]
     more = f" ({len(entries) - 1} more {plural(len(entries) - 1, 'column')} too)" if len(entries) > 1 else ""
     # Audit IN-09: the second count is "outside the reference sample's central 98%", not "abnormal".
-    return Voice(f"{tick(e.get('column'))} has {count(e.get('n_impossible') or 0)} impossible values "
+    return Voice(f"{'On non-QC rows, ' if on else ''}{tick(e.get('column'))} has "
+                 f"{count(e.get('n_impossible') or 0)} impossible values "
                  f"outside {tick(number(band[0]))}–{tick(number(band[1]))}; "
                  f"{count(e.get('n_abnormal_but_possible') or 0)} more are unusual but real{more}.",
                  "exclusions", "Exclude rows by range")
@@ -462,6 +467,7 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
     # participant, so none of its rows is counted as a misreport or among the rows read.
     s = pd.to_numeric(fc.kept[col], errors="coerce")
     present = int(s.notna().sum())
+    who = " non-QC" if fc.reference_rows else ""  # the rows counted out of, named beside QC rows
 
     def counted(unit: str) -> tuple[float, float, int, int]:
         factor = (KCAL_PER_KJ if unit == "kj" else 1.0) * days
@@ -490,7 +496,7 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
         f["title"] = f"The days in `{col}` are not settled"
         f["detail"] = (
             f"{tick(col)} is in {word}, but how many days each value spans is not settled: "
-            f"{evidence}. Read as one day's intake, {n:,} of {present:,} rows fall outside "
+            f"{evidence}. Read as one day's intake, {n:,} of {present:,}{who} rows fall outside "
             f"{low:,.0f}–{high:,.0f} {word}; read as a total over {spanned} days, "
             f"{t_below + t_above:,} fall outside {t_low:,.0f}–{t_high:,.0f} {word}. Which rows are "
             f"implausible depends on it, so none is counted as a misreport until it is recorded, "
@@ -513,11 +519,11 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
         f["severity"] = "warning" if (n or d_below + d_above) else "info"
         f["title"] = f"The days in `{col}` are not settled"
         f["detail"] = (
-            f"{reading['sentence']} Read as a total over {spanned} days, {n:,} of {present:,} rows "
-            f"fall outside {low:,.0f}–{high:,.0f} {word}; read as one day's intake, "
-            f"{d_below + d_above:,} fall outside {d_low:,.0f}–{d_high:,.0f} {word}. Which rows are "
-            f"implausible depends on it, so none is counted as a misreport until it is recorded, "
-            f"and the intake screens wait for it. Observed range {float(s.min()):,.0f} to "
+            f"{reading['sentence']} Read as a total over {spanned} days, {n:,} of "
+            f"{present:,}{who} rows fall outside {low:,.0f}–{high:,.0f} {word}; read as one day's "
+            f"intake, {d_below + d_above:,} fall outside {d_low:,.0f}–{d_high:,.0f} {word}. Which "
+            f"rows are implausible depends on it, so none is counted as a misreport until it is "
+            f"recorded, and the intake screens wait for it. Observed range {float(s.min()):,.0f} to "
             f"{float(s.max()):,.0f}, median {float(s.median()):,.0f}.")
         return
     if not reading.get("confirmed", True):
@@ -530,7 +536,7 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
         f["severity"] = "warning" if n else "info"
         f["title"] = f"The unit of `{col}` is not settled"
         f["detail"] = (
-            f"{reading['sentence']} Read in {word}, {n:,} of {present:,} rows fall outside "
+            f"{reading['sentence']} Read in {word}, {n:,} of {present:,}{who} rows fall outside "
             f"{low:,.0f}–{high:,.0f} {word} a day ({below:,} below, {above:,} above); read in "
             f"{o_word}, {o_below + o_above:,} fall outside {o_low:,.0f}–{o_high:,.0f} {o_word}. "
             f"Which rows are implausible depends on the unit, so none is counted as a misreport "
@@ -546,12 +552,12 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
         f["severity"] = "warning"
         f["title"] = f"The unit of `{col}` is in question"
         f["detail"] = (
-            f"{reading['sentence']} Read in {word}, {n:,} of {present:,} rows ({n / present:.0%}) "
-            f"fall outside {low:,.0f}–{high:,.0f} {word} a day ({below:,} below, {above:,} above). "
-            f"When a screen would remove more than half the rows, the unit is the likelier error, "
-            f"not the people: a child's intake in kJ, an athlete's, or a weekly total all look "
-            f"like this. The intake screens refuse to remove more than half the rows; say what "
-            f"unit {tick(col)} is in first. Observed range {float(s.min()):,.0f} to "
+            f"{reading['sentence']} Read in {word}, {n:,} of {present:,}{who} rows "
+            f"({n / present:.0%}) fall outside {low:,.0f}–{high:,.0f} {word} a day ({below:,} "
+            f"below, {above:,} above). When a screen would remove more than half the rows, the "
+            f"unit is the likelier error, not the people: a child's intake in kJ, an athlete's, or "
+            f"a weekly total all look like this. The intake screens refuse to remove more than half "
+            f"the rows; say what unit {tick(col)} is in first. Observed range {float(s.min()):,.0f} to "
             f"{float(s.max()):,.0f}, median {float(s.median()):,.0f}.")
         return
     if not fc.energy_settled(col):
@@ -559,14 +565,14 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
         # intake (its values could not be checked against the macronutrients), so no row is
         # counted as a misreport in it; the energy card asks for its role first.
         p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word,
-                  "role_question": True, "n_present": present})
+                  "role_question": True, "n_present": present, "days": days})
         f["severity"] = "info"
         f["title"] = f"Whether `{col}` is total energy intake is not settled"
         f["detail"] = (
             f"Only {tick(col)}'s name reads it as total energy intake: its values could not be "
             f"checked against the energy its macronutrients carry. Read as a day's intake in "
-            f"{word}, {n:,} of {present:,} rows fall outside {low:,.0f}–{high:,.0f} {word}, but no "
-            f"row is counted as a misreport until its role is confirmed, and the intake screens "
+            f"{word}, {n:,} of {present:,}{who} rows fall outside {low:,.0f}–{high:,.0f} {word}, but "
+            f"no row is counted as a misreport until its role is confirmed, and the intake screens "
             f"wait for it. Observed range {float(s.min()):,.0f} to {float(s.max()):,.0f}, median "
             f"{float(s.median()):,.0f}.")
         return
@@ -576,9 +582,8 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
     # Beside pooled-QC rows the count is the participants' (the rows that stay), so the title and
     # detail say so, as the summary does; read in kcal a day too, where the pack's own words
     # counted the QC rows' intakes (a QC row's 0 among the "implausible" ones).
-    p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word})
+    p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word, "days": days})
     over = f" over {days} days" if days > 1 else ""
-    who = " non-QC" if fc.reference_rows else ""
     on = f" on the {len(fc.kept):,} non-QC rows" if fc.reference_rows else ""
     f["title"] = (f"{n:,}{who} {'record reports' if n == 1 else 'records report'} an implausible "
                   f"daily intake" if n else f"No{who} record reports an implausible daily intake, "
@@ -601,29 +606,30 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
     lo, hi = p.get("minimum"), p.get("maximum")
     if n is None or lo is None or hi is None:
         return Voice(finish(f["title"]), "exclusions", "Choose an exclusion rule")
+    # The rows the counts are out of: beside pooled-QC rows, the participants (the two-level
+    # reading's "non-QC rows"), named as such; a question's count is out of those holding a value.
+    who = " non-QC" if fc.reference_rows else ""
+    asked = f"{count(p.get('n_present') or len(fc.kept))}{who} rows"
     if p.get("days_question") and p.get("read_days") == 1:
         # The counts are the one-day reading's (its bounds a day's); the days are asked.
-        return Voice(f"Read as one day's intake, {count(n)} of "
-                     f"{count(p.get('n_present') or fc.n_rows)} rows fall outside "
+        return Voice(f"Read as one day's intake, {count(n)} of {asked} fall outside "
                      f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')}: record {tick(col)}'s days first.",
                      "exclusions", "Record the days first")
     if p.get("days_question"):
         return Voice(f"Read as a total over {tick(str(p['days_question']))} days, {count(n)} of "
-                     f"{count(p.get('n_present') or fc.n_rows)} rows fall outside "
+                     f"{asked} fall outside "
                      f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')}: record {tick(col)}'s days first.",
                      "exclusions", "Record the days first")
     if p.get("unit_unconfirmed"):
-        return Voice(f"Read in {p.get('unit')}, {count(n)} of {count(p.get('n_present') or fc.n_rows)} "
-                     f"rows fall outside {tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} a day: record "
+        return Voice(f"Read in {p.get('unit')}, {count(n)} of {asked} "
+                     f"fall outside {tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} a day: record "
                      f"{tick(col)}'s unit first.", "exclusions", "Record the unit first")
     if p.get("unit_question"):
-        return Voice(f"{count(n)} of {count(p.get('n_present') or fc.n_rows)} rows fall outside "
+        return Voice(f"{count(n)} of {asked} fall outside "
                      f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} {p.get('unit')} a day: check "
                      f"{tick(col)}'s unit before excluding anyone.", "exclusions",
                      "Check the unit first")
-    # Out of the rows that stay: beside pooled-QC rows, the participants (the two-level reading's
-    # "non-QC rows").
-    rows = f"{count(len(fc.kept))}{' non-QC' if fc.reference_rows else ''} rows"
+    rows = f"{count(len(fc.kept))}{who} rows"
     if p.get("unit") == "kJ":
         if not n:
             every = "every non-QC row" if fc.reference_rows else "every row"
@@ -633,6 +639,15 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
         return Voice(f"{count(n)} of {rows} report {tick(col)} below "
                      f"{tick(f'{lo:,.0f}')} kJ or above {tick(f'{hi:,.0f}')} kJ a day.",
                      "exclusions", "Choose an exclusion rule")
+    if not n:
+        # As in kJ: no row the count reads is out of range (beside QC rows whose intakes the pack
+        # counted, or over days the pack's raw range does not span), so nothing is offered. The
+        # bounds are over the days the reading records (``days``), a day's where it records none.
+        days = int(p.get("days") or 1)
+        span = "a day" if days == 1 else f"over {tick(days)} days"
+        return Voice(f"{'Every non-QC row' if fc.reference_rows else 'Every row'} of {tick(col)} is "
+                     f"within {tick(number(lo))}–{tick(number(hi))} {span}; nothing needs "
+                     f"excluding.", closes=True)
     return Voice(f"{count(n)} of {rows} report {tick(col)} below {tick(number(lo))} "
                  f"or above {tick(number(hi))} a day.", "exclusions", "Choose an exclusion rule")
 
