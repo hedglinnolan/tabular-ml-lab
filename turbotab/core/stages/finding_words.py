@@ -196,7 +196,8 @@ def _offers_a_level(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
     of the repair registry over the table and outcome ``repairs.attach`` offers on."""
     from turbotab.core.repairs import OfferContext, offer
 
-    found = offer(f, {"params": p}, OfferContext(frame=fc.frame, target=fc.target))
+    found = offer(f, {"params": p}, OfferContext(frame=fc.frame, target=fc.target,
+                                                 reference_rows=fc.reference_rows))
     return any(o.key == "level" for o in found)
 
 
@@ -220,8 +221,15 @@ def _two_level_text(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
                      f"asked.", *BLANKS)
     levels = [str(v) for v in p.get("levels") or []]
     if len(levels) == 2:
-        return Voice(f"{tick(col)} is two-level text ({tick(levels[0])}, {tick(levels[1])}); which "
-                     f"level counts as 1 is not asked yet.", closes=True)
+        # The levels as the data write them (`F`, `M`), not the lower-case tokens they are
+        # compared as (``repairs.level_spellings``).
+        from turbotab.core.repairs import level_spellings
+
+        written = (level_spellings(fc.frame[col], levels) if col in fc.frame.columns
+                   else {v: v for v in levels})
+        return Voice(f"{tick(col)} is two-level text ({tick(written[levels[0]])}, "
+                     f"{tick(written[levels[1]])}); which level counts as 1 is not asked yet.",
+                     closes=True)
     return Voice(f"{tick(col)} stores true and false as text.")
 
 
@@ -450,7 +458,9 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
     except ImportError:  # pragma: no cover - the legacy pack always defines it
         kcal = (500.0, 5000.0)
     days = int(reading.get("days") or 1)
-    s = pd.to_numeric(fc.frame[col], errors="coerce")
+    # Counted on the rows that stay (:attr:`FindingContext.kept`): a pooled-QC injection is no
+    # participant, so none of its rows is counted as a misreport or among the rows read.
+    s = pd.to_numeric(fc.kept[col], errors="coerce")
     present = int(s.notna().sum())
 
     def counted(unit: str) -> tuple[float, float, int, int]:
@@ -601,15 +611,18 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
                      f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} {p.get('unit')} a day: check "
                      f"{tick(col)}'s unit before excluding anyone.", "exclusions",
                      "Check the unit first")
+    # Out of the rows that stay: beside pooled-QC rows, the participants (the two-level reading's
+    # "non-QC rows").
+    rows = f"{count(len(fc.kept))}{' non-QC' if fc.reference_rows else ''} rows"
     if p.get("unit") == "kJ":
         if not n:
             return Voice(f"Read in kJ, every row of {tick(col)} is within "
                          f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} kJ a day; nothing needs "
                          f"excluding.", closes=True)
-        return Voice(f"{count(n)} of {count(fc.n_rows)} rows report {tick(col)} below "
+        return Voice(f"{count(n)} of {rows} report {tick(col)} below "
                      f"{tick(f'{lo:,.0f}')} kJ or above {tick(f'{hi:,.0f}')} kJ a day.",
                      "exclusions", "Choose an exclusion rule")
-    return Voice(f"{count(n)} of {count(fc.n_rows)} rows report {tick(col)} below {tick(number(lo))} "
+    return Voice(f"{count(n)} of {rows} report {tick(col)} below {tick(number(lo))} "
                  f"or above {tick(number(hi))} a day.", "exclusions", "Choose an exclusion rule")
 
 
@@ -631,9 +644,13 @@ def _energy(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
         # read "correlates -0.04 … tangled with total energy" whatever r was). r ≥ 0.3 is a
         # moderate correlation or more; anything weaker is stated as it is.
         if r >= TANGLED_R:
-            return Voice(f"{tick(best)} correlates {r:.2f} with {tick(energy)} across all "
-                         f"{count(fc.n_rows)} rows: nutrient effects are tangled with total "
-                         f"energy.", *lever)
+            # The rows the correlation pairs, where both hold a value (pandas' ``corr``): beside
+            # pooled-QC rows, which carry no intake, it said "across all" of the table's rows.
+            n = int((pd.to_numeric(fc.frame[best], errors="coerce").notna()
+                     & pd.to_numeric(fc.frame[energy], errors="coerce").notna()).sum())
+            rows = f"all {count(n)}" if n == fc.n_rows else count(n)
+            return Voice(f"{tick(best)} correlates {r:.2f} with {tick(energy)} across {rows} "
+                         f"rows: nutrient effects are tangled with total energy.", *lever)
         return Voice(f"{tick(best)} correlates only {r:.2f} with {tick(energy)}; adjusting still "
                      f"makes each effect a swap at fixed energy.", *lever)
     # Audit IN-20 (ledger #87): adjusting changes the question, it does not just remove a confounder.
@@ -1406,11 +1423,14 @@ def left_censoring_on_the_participants(legacy: list[tuple[dict[str, Any], dict[s
     The pack's detector sets aside the rows its own pooled-QC reading flags (``packs._pooled_qc``),
     which reads a two-level label only; the served reading (``reference_rows.pooled_qc_finding``)
     reads a label of 2 to 10 levels, so on a Case/Control/QC label it names the QC rows and the
-    pack's names none. The pack is not given the outcome (``packs.findings`` takes none), so it
-    reads ``omics.candidate_columns`` with no target, and an outcome no name rule sets aside (a
-    `disease` or `responder` column) is read there as a feature. The detector runs again with the
-    served reading's rows and the outcome set aside, and its finding takes the pack's place (none
-    does where it no longer fires; it joins the pack's findings where it now does)."""
+    pack's names none. The served pack findings (``detectors.pack_findings``) read it on those rows
+    already, but the findings stage hands them no outcome, and a list from ``packs.findings``
+    handed none reads neither those rows nor the outcome: with no outcome named, an outcome of
+    three or more values that no name rule sets aside (a `stage` coded 0, 1 and 2) is read as a
+    feature, while a 0/1 one is set aside as two-valued. The detector runs again with the served
+    reading's rows and the outcome set aside,
+    and its finding takes the pack's place (none does where it no longer fires; it joins the
+    pack's findings where it now does)."""
     if "metabolomics" not in fc.lens:
         return legacy
     from turbotab import packs

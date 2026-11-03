@@ -211,13 +211,60 @@ def test_a_binary_text_predictor_is_recoded_as_the_chosen_level(tables):
     table, artifact = tables["clinical_labs"]
     frame = table.frame()
     f = finding(artifact, "binary_text__sex")
+    # The label shows the level as the data write it; the recorded level is the token the recode
+    # compares (lower case, as ``ml.binary_text`` normalizes it).
     assert [(o["label"], o["decision"]["params"]["one"]) for o in f["repairs"]] == [
-        ("`f` counts as 1", "f"), ("`m` counts as 1", "m")]
+        ("`F` counts as 1", "f"), ("`M` counts as 1", "m")]
     for which, one in ((0, "f"), (1, "m")):
         got = sql_frame(table, artifact, {f["id"]: applied(f, which=which)}, ["sex"])
         reference = frame["sex"].map(_normalize).map(lambda t: None if t is None else int(t == one))
         same(got["sex"], reference)
         assert set(got["sex"].dropna().unique()) == {0, 1}
+
+
+@pytest.mark.parametrize("column", ["sex", "site"])
+def test_two_level_text_is_named_by_its_levels_as_written(tables, column):
+    """clinical_labs writes `sex` as F and M and `site` as NORTH and SOUTH (pandas). The two-level
+    summary and each level option name the levels as written, where they read `f`, `m`, `north`
+    and `south` (the comparison tokens), and each option counts its level's rows (pandas)."""
+    table, artifact = tables["clinical_labs"]
+    values = table.frame()[column].dropna()
+    written = sorted(values.unique())
+    assert written in (["F", "M"], ["NORTH", "SOUTH"])
+    f = finding(artifact, f"binary_text__{column}")
+    assert f["summary"] == (f"`{column}` is two-level text (`{written[0]}`, `{written[1]}`); which "
+                            f"level counts as 1 is not asked yet.")
+    counts = values.value_counts()
+    for o, (one, zero) in zip(f["repairs"], (written, written[::-1])):
+        assert o["label"] == f"`{one}` counts as 1"
+        assert o["consequence"] == (f"`{column}` becomes `1` for `{one}` (`{counts[one]}` rows) and "
+                                    f"`0` for `{zero}` (`{counts[zero]}`).")
+        assert o["decision"]["params"]["one"] == one.lower()
+
+
+@pytest.mark.parametrize("spelled, shown", [(["north", "south"], ["north", "south"]),
+                                            (["North", "south", "north"], ["North", "south"])],
+                         ids=["lower_case", "two_spellings"])
+def test_a_level_is_shown_in_the_first_spelling_the_file_gives_it(tmp_path, spelled, shown):
+    """The guard's other side and its edge: a column written in lower case is shown in lower case,
+    as before, and a level the file spells two ways (`North` first, then `north`) is shown in the
+    first, as the finding's own detail lists it first; its count is both spellings' (pandas)."""
+    rng = np.random.default_rng(3)
+    site = rng.choice(spelled, 80).astype(object)
+    site[:len(spelled)] = spelled  # every spelling, in the order given, before any other
+    frame = pd.DataFrame({"site": site, "x": rng.normal(size=80), "y": rng.normal(size=80)})
+    path = tmp_path / "site.csv"
+    frame.to_csv(path, index=False)
+    artifact = Ingested(path, tmp_path / "t").run(findings_stage, ProjectState(lens=["clinical"]))
+    f = finding(artifact, "binary_text__site")
+    north, south = shown
+    assert f["summary"] == (f"`site` is two-level text (`{north}`, `{south}`); which level counts "
+                            f"as 1 is not asked yet.")
+    tokens = pd.Series(site).str.lower()
+    assert [o["label"] for o in f["repairs"]] == [f"`{north}` counts as 1", f"`{south}` counts as 1"]
+    assert f["repairs"][0]["consequence"] == (
+        f"`site` becomes `1` for `{north}` (`{int((tokens == 'north').sum())}` rows) and `0` for "
+        f"`{south}` (`{int((tokens == 'south').sum())}`).")
 
 
 def test_a_binary_outcome_is_left_to_the_event_question(tables):

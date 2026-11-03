@@ -44,9 +44,10 @@ import pytest
 from scipy import stats
 
 from turbotab import packs
-from turbotab.core import repairs, voice
+from turbotab.core import detectors, repairs, voice
 from turbotab.core.decisions import (
     ApplyRepair,
+    ColumnUnitSpec,
     DecisionRecord,
     ProjectState,
     Refusal,
@@ -55,8 +56,13 @@ from turbotab.core.decisions import (
     validate,
 )
 from turbotab.core.quest import _finding_lines
-from turbotab.core.stages.finding_words import SUMMARY_WORDS
-from turbotab.core.stages.findings import findings_stage
+from turbotab.core.stages.finding_words import (
+    SUMMARY_WORDS,
+    FindingContext,
+    left_censoring_on_the_participants,
+    pooled_qc_rows,
+)
+from turbotab.core.stages.findings import findings_stage, pack_finding
 from turbotab.core.tests.stage_harness import SAMPLES, Ingested
 
 N_PART, N_QC, N_FEATURES = 60, 10, 40
@@ -651,12 +657,9 @@ def test_left_censoring_sets_aside_the_qc_rows_of_a_case_control_qc_label(tmp_pa
     assert censored["detail"] == f"On the {N_PART:,} non-QC rows, across {on_the_participants}"
 
 
-def test_left_censoring_raised_only_by_the_qc_rows_blanks_is_not_said(tmp_path):
-    """A Case/Control/QC table with no blank among the participants (by construction): only the
-    QC rows are blank, on `age`, `bmi`, the outcome and the six least abundant features. Read
-    over every row, as the pack's own reading reads this label, those six features' blanks track
-    abundance among the 40 (scipy), so the pack names left censoring; on the participants there
-    is no blank to read, and no left-censoring finding is said."""
+def qc_only_blanks_table() -> pd.DataFrame:
+    """A Case/Control/QC table with no blank among the participants, by construction: only the 10
+    QC rows are blank, on `age`, `bmi`, the outcome and the six least abundant features."""
     rng = np.random.default_rng(5)
     n = N_PART + N_QC
     qc = np.zeros(n, dtype=bool)
@@ -671,7 +674,17 @@ def test_left_censoring_raised_only_by_the_qc_rows_blanks_is_not_said(tmp_path):
     for j in range(N_FEATURES):
         frame[f"mz_{j + 1:03d}"] = values[:, j]
     frame["disease"] = np.where(qc, np.nan, rng.integers(0, 2, n).astype(float))
-    df = read_back(tmp_path, pd.DataFrame(frame))
+    return pd.DataFrame(frame)
+
+
+def test_left_censoring_raised_only_by_the_qc_rows_blanks_is_not_said(tmp_path):
+    """A Case/Control/QC table with no blank among the participants (by construction): only the
+    QC rows are blank, on `age`, `bmi`, the outcome and the six least abundant features. Read
+    over every row, as the pack's own reading reads this label, those six features' blanks track
+    abundance among the 40 (scipy), so the pack names left censoring; on the participants there
+    is no blank to read, and no left-censoring finding is said."""
+    frame = qc_only_blanks_table()
+    df = read_back(tmp_path, frame)
     feats = features(df)
     assert not participants(df)[feats + ["age", "bmi", "disease"]].isna().any().any()
     rate, mean = df[feats].isna().mean(), df[feats].mean()
@@ -680,7 +693,7 @@ def test_left_censoring_raised_only_by_the_qc_rows_blanks_is_not_said(tmp_path):
     every_row = packs._left_censored(df, target="disease")
     assert every_row is not None
     assert set(every_row["params"]["columns"]) == {f"mz_{j:03d}" for j in range(1, 7)}
-    found = findings_of(tmp_path, pd.DataFrame(frame), ["metabolomics"], target="disease")
+    found = findings_of(tmp_path, frame, ["metabolomics"], target="disease")
     assert "pack::metabolomics::pooled_qc" in found
     assert "pack::metabolomics::left_censored" not in found
 
@@ -752,3 +765,331 @@ def test_a_two_level_finding_with_no_level_to_choose_says_nothing_of_one(tmp_pat
     assert chol["routes_to"] == "missing" and chol["repairs"] == []
     assert chol["summary"] == (f"`meds_chol` is two-level text with `{int(df['meds_chol'].isna().sum())}` "
                                f"of `{len(df)}` blank; a blank may mean not asked.")
+
+
+# ── the pack findings read the participants, and the outcome as the outcome ──
+
+
+def test_the_pack_findings_read_left_censoring_on_the_participants_of_a_case_control_qc_label(
+        tmp_path):
+    """``detectors.pack_findings``, the reading the findings stage speaks for and the lens preview
+    counts, reads the left-censoring finding on the rows outside those the served pooled-QC
+    finding names. On a Case/Control/QC label whose QC rows alone are blank it raises none, where
+    read over every row (the pack's own pooled-QC reading flags no row of a three-level label) it
+    raised one; on the censored panel under that label its detail is the 60 participants' 40
+    features' own (pandas, scipy)."""
+    quiet = read_back(tmp_path, qc_only_blanks_table())
+    assert packs._pooled_qc(quiet) is None
+    assert packs._left_censored(quiet, target="disease") is not None  # every row: the QC rows' blanks
+    ids = [f["id"] for f in detectors.pack_findings(quiet, ["metabolomics"])]
+    assert "pack::metabolomics::pooled_qc" in ids
+    assert "pack::metabolomics::left_censored" not in ids
+
+    df = read_back(tmp_path, panel(labels=("case", "control")))
+    (found,) = [f for f in detectors.pack_findings(df, ["metabolomics"])
+                if f["id"] == "pack::metabolomics::left_censored"]
+    assert found["detail"] == f"On the {N_PART:,} non-QC rows, across {_detail_read_on(participants(df))}"
+
+
+def staged_panel() -> pd.DataFrame:
+    """``panel`` with `stage`, an outcome coded 0, 1 and 2 (three values, so the two-valued rule
+    does not set it aside) on no name list, blank on the QC rows and on the first 8 participants,
+    by construction."""
+    frame = panel()
+    qc = frame["sample_type"].eq("pooled_qc").to_numpy()
+    stage = np.random.default_rng(37).integers(0, 3, len(frame)).astype(float)
+    stage[qc] = np.nan
+    stage[np.flatnonzero(~qc)[:8]] = np.nan
+    frame["stage"] = stage
+    return frame
+
+
+@pytest.mark.parametrize("reader", ["packs.findings", "detectors.pack_findings"])
+def test_an_outcome_of_three_values_handed_to_the_pack_findings_is_not_read_as_a_feature(
+        tmp_path, reader):
+    """`stage`, the outcome, holds three values among the participants and no name rule sets it
+    aside, so with no outcome named the reading cannot tell it from a feature: its 8 participants'
+    blanks are named non-detections and the numbers are the 41 columns' (pandas, scipy), as
+    before. Handed the outcome, the legacy pack findings (``packs.findings``, which the legacy
+    interview reads) and the served ones (``detectors.pack_findings``) set it aside: the numbers
+    are the 40 features' own and `stage` is not named."""
+    df = read_back(tmp_path, staged_panel())
+    part = participants(df)
+    assert sorted(part["stage"].dropna().unique()) == [0.0, 1.0, 2.0]
+    assert int(part["stage"].isna().sum()) == 8
+    read = packs.findings if reader == "packs.findings" else detectors.pack_findings
+
+    def censored(target):
+        (found,) = [f for f in read(df, ["metabolomics"], target=target)
+                    if f["id"] == "pack::metabolomics::left_censored"]
+        return found
+
+    unnamed = censored(None)
+    assert unnamed["detail"] == (f"On the {N_PART:,} non-QC rows, across "
+                                 f"{_detail_read_on(part, features(df) + ['stage'])}")
+    assert "stage" in unnamed["params"]["columns"]
+    named = censored("stage")
+    assert named["detail"] == f"On the {N_PART:,} non-QC rows, across {_detail_read_on(part)}"
+    assert "stage" not in named["params"]["columns"]
+    assert named["params"]["n_features"] == N_FEATURES
+
+
+def test_the_derived_missingness_prior_is_not_granted_on_an_outcome_handed_to_it(tmp_path):
+    """``packs.prior_for_column`` (the column-scoped prior, GUIDED-027) applies the metabolomics
+    pack's derived prior to the columns the left-censoring reading names. Handed the outcome,
+    `stage` is not among them, so no prior reads its blanks as non-detections, while a feature
+    blank among the participants keeps it; with no outcome named, `stage` gets it, as before."""
+    df = read_back(tmp_path, staged_panel())
+    lens = [packs.METABOLOMICS]
+    feature = next(c for c in features(df) if participants(df)[c].isna().any())
+
+    def packs_of(column, target):
+        return [p["pack"] for p in packs.prior_for_column(lens, "missingness_direction", column, df,
+                                                          target=target)]
+
+    assert packs_of("stage", None) == [packs.METABOLOMICS]
+    assert packs_of("stage", "stage") == []
+    assert packs_of(feature, "stage") == packs_of(feature, None) == [packs.METABOLOMICS]
+    (scoped,) = packs.priors(lens, "missingness_direction", df, target="stage")
+    assert "stage" not in scoped["columns"] and feature in scoped["columns"]
+
+
+def test_left_censoring_the_pack_list_lacks_is_inserted_with_the_participants_numbers(tmp_path):
+    """The insert path of ``left_censoring_on_the_participants``: a Case/Control/QC label whose QC
+    rows are blank on the six most abundant features (by construction), so read over every row
+    the 40 features' blanks do not track abundance past the gate (scipy, above -0.5) and the
+    pack's own findings (``packs.findings``) hold no left-censoring finding, while on the
+    participants they do (scipy, -0.81). Handed a pack list with the served pooled-QC finding and
+    no left-censoring one, the re-read adds it after them, with the participants' numbers; and
+    the findings stage serves it so."""
+    frame = panel(labels=("case", "control"))
+    qc = frame["sample_type"].eq("pooled_qc").to_numpy()
+    for j in range(N_FEATURES - 6, N_FEATURES):
+        frame.loc[qc, f"mz_{j + 1:03d}"] = np.nan
+    df = read_back(tmp_path, frame)
+    feats = features(df)
+    every_row = stats.spearmanr(df[feats].isna().mean(), np.log(df[feats].mean())).statistic
+    assert every_row > -0.5
+    assert "pack::metabolomics::left_censored" not in {
+        f["id"] for f in packs.findings(df, ["metabolomics"])}
+    expected = f"On the {N_PART:,} non-QC rows, across {_detail_read_on(participants(df))}"
+    assert "rank correlation of -0.81." in expected
+    qc_raw = next(f for f in detectors.pack_findings(df, ["metabolomics"])
+                  if f["id"] == "pack::metabolomics::pooled_qc")
+    legacy = [(qc_raw, pack_finding(qc_raw))]
+    fc = FindingContext(frame=df, lens=("metabolomics",), target="disease",
+                        reference_rows=pooled_qc_rows(df, [qc_raw]))
+    assert sorted(fc.reference_rows) == QC_AT
+    out = left_censoring_on_the_participants(legacy, fc)
+    assert [f["id"] for _, f in out] == ["pack::metabolomics::pooled_qc",
+                                         "pack::metabolomics::left_censored"]
+    assert out[1][0]["detail"] == expected
+    served = findings_of(tmp_path, frame, ["metabolomics"], target="disease")
+    assert served["pack::metabolomics::left_censored"]["detail"] == expected
+
+
+# ── the lens contradiction reads what the left-censoring finding reads ──────
+
+
+#: Covariates omics sets aside by name (age and BMI under eight names, age in months among them).
+COVARIATES = {"age": (30, 75), "bmi": (20, 35), "age_at_enrollment": (30, 75),
+              "bmi_baseline": (20, 35), "RIDAGEMN": (360, 900), "age_at_draw": (30, 75),
+              "bmi_at_draw": (20, 35), "age_years": (30, 75)}
+
+
+def low_scale_panel(*, censored: bool, seed: int = 1) -> pd.DataFrame:
+    """60 participants and 10 pooled QCs (every seventh row, a two-level label), 40 features whose
+    log means run from -2 to 3 (values of about 0.1 to 20), the eight :data:`COVARIATES`, each
+    more abundant than any feature and blank on every QC row, and the 0/1 outcome `disease`,
+    blank there too, by construction. With ``censored`` the 12 least abundant features are blank
+    below a detection limit; without it 12 features spread over the abundance range (every third)
+    are blank at random on about a quarter of the participants."""
+    rng = np.random.default_rng(seed)
+    n = N_PART + N_QC
+    qc = np.zeros(n, dtype=bool)
+    qc[QC_AT] = True
+    log_mean = np.linspace(-2.0, 3.0, N_FEATURES)
+    log_value = log_mean + rng.normal(0.0, 1.0, (n, N_FEATURES)) * np.where(qc[:, None], 0.05, 0.8)
+    values = np.round(np.exp(log_value), 3)
+    if censored:
+        below = log_value < log_mean[11] + 0.3
+        values[below & (np.arange(N_FEATURES)[None, :] < 12)] = np.nan
+    else:
+        at_random = (rng.random((n, N_FEATURES)) < 0.25) & ~qc[:, None]
+        values[at_random & (np.arange(N_FEATURES)[None, :] % 3 == 0)] = np.nan
+    frame: dict[str, object] = {"sample_type": np.where(qc, "pooled_qc", "participant")}
+    for j in range(N_FEATURES):
+        frame[f"mz_{j + 1:03d}"] = values[:, j]
+    for name, (lo, hi) in COVARIATES.items():
+        frame[name] = np.where(qc, np.nan, np.round(rng.uniform(lo, hi, n), 1))
+    out = pd.DataFrame(frame)
+    out["disease"] = np.where(qc, np.nan, rng.integers(0, 2, n).astype(float))
+    return out
+
+
+def _participants_rho(df: pd.DataFrame, feats: list[str] | None = None) -> tuple[float, int, int]:
+    """By scipy and pandas, on the participants: the Spearman correlation of each usable feature's
+    missing rate with its log mean, the usable features and the features with a blank."""
+    part = participants(df)
+    feats = features(df) if feats is None else feats
+    rate, mean = part[feats].isna().mean(), part[feats].mean()
+    usable = [c for c in feats if pd.notna(mean[c]) and mean[c] > 0]
+    rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
+    return float(rho), len(usable), int((rate > 0).sum())
+
+
+def test_where_the_participants_features_are_censored_the_lens_is_not_contradicted(tmp_path):
+    """The participants' 12 censored features track abundance (scipy: -0.65 over the 40, with 12
+    blank), so the left-censoring finding is raised; read over every numeric column and every row,
+    the eight covariates blank on the QC rows, more abundant than any feature, pulled the lens
+    contradiction's reading above -0.3 (scipy), and the app said both that the blanks cluster in
+    the lowest-abundance features and that they do not look like non-detections. The
+    contradiction reads the same features on the same rows now, and says nothing."""
+    df = read_back(tmp_path, low_scale_panel(censored=True))
+    rho, n_usable, n_blank = _participants_rho(df)
+    assert rho <= -0.5 and n_blank == 12 and n_usable == N_FEATURES
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    rate, mean = df[numeric].isna().mean(), df[numeric].mean()
+    assert stats.spearmanr(rate.to_numpy(), np.log(mean.to_numpy())).statistic > -0.3
+    assert packs.contradiction(df, [packs.METABOLOMICS]) is None
+    found = findings_of(tmp_path, low_scale_panel(censored=True), ["metabolomics"])
+    assert "pack::metabolomics::left_censored" in found
+    assert "voice::lens_contradiction" not in found
+
+
+def test_where_the_participants_blanks_are_at_random_the_lens_is_contradicted_on_their_features(
+        tmp_path):
+    """The guard's other side: 12 features blank at random on the participants (scipy: their
+    missing rate does not track abundance, above -0.3), so the lens is contradicted, and the
+    sentence's count and correlation are the 40 features' on the 60 participants (scipy), not
+    every numeric column's over every row. Handed a three-valued outcome, `stage`, the reading
+    sets it aside; with no outcome named it is one more column, as before."""
+    frame = low_scale_panel(censored=False)
+    qc = frame["sample_type"].eq("pooled_qc").to_numpy()
+    stage = np.random.default_rng(41).integers(0, 3, len(frame)).astype(float)
+    stage[qc] = np.nan
+    stage[np.flatnonzero(~qc)[:20]] = np.nan
+    frame["stage"] = stage
+    df = read_back(tmp_path, frame)
+    for target, feats in ((None, features(df) + ["stage"]), ("stage", features(df))):
+        rho, n_usable, n_blank = _participants_rho(df, feats)
+        assert rho > -0.3 and n_blank >= 10
+        clash = packs.contradiction(df, [packs.METABOLOMICS], target=target)
+        assert clash is not None and clash["kind"] == "stated_assay_lens_but_blanks_are_not_censored"
+        assert clash["rho"] == round(rho, 3)
+        assert (f"across {n_usable:,} measurement columns the missing rate does not track "
+                f"abundance (rank correlation {rho:+.2f}") in clash["message"]
+    assert n_usable == N_FEATURES
+    served = findings_of(tmp_path, frame, ["metabolomics"])["voice::lens_contradiction"]
+    rho, n_usable, _ = _participants_rho(df, features(df) + ["stage"])
+    assert f"across {n_usable:,} measurement columns" in served["detail"]
+
+
+# ── the readings beside the pooled QCs count the participants ───────────────
+
+
+def statin_panel(blank: int) -> pd.DataFrame:
+    """``panel`` with `statin`, answered `Yes` or `No` (which the app reads as true and false),
+    blank on the 10 QC rows and on the first ``blank`` participants, by construction."""
+    frame = panel()
+    qc = frame["sample_type"].eq("pooled_qc").to_numpy()
+    statin = np.random.default_rng(43).choice(["Yes", "No"], len(frame)).astype(object)
+    statin[qc] = None
+    statin[np.flatnonzero(~qc)[:blank]] = None
+    frame["statin"] = statin
+    return frame
+
+
+def _not_asked(found: dict) -> list[dict]:
+    return [o for o in found["binary_text__statin"]["repairs"] if o["key"] == "not_asked_no"]
+
+
+def test_blanks_on_the_qc_rows_do_not_make_a_question_read_as_not_asked(tmp_path):
+    """`statin` is blank on 25 of the 60 participants (42%, under the not-asked share of half) and
+    on the 10 QC rows, 35 of 70 rows over every row (half): a QC injection is asked nothing, so its
+    blanks are no skip pattern, and "Not asked as No" is not offered; read over every row it was."""
+    df = read_back(tmp_path, statin_panel(25))
+    part = participants(df)
+    assert int(part["statin"].isna().sum()) / len(part) < 0.5 <= int(df["statin"].isna().sum()) / len(df)
+    assert _not_asked(findings_of(tmp_path, statin_panel(25), ["metabolomics"])) == []
+
+
+@pytest.mark.parametrize("lens", [["metabolomics"], ["clinical"]])
+def test_not_asked_as_no_counts_the_participants_beside_the_qc_rows(tmp_path, lens):
+    """`statin` blank on 30 of the 60 participants (half) is offered "Not asked as No", and with
+    the QC rows set aside (the metabolomics lens) its sentences count the participants, by pandas:
+    30 blanks on the non-QC rows and their other answers, 30 people not asked. With no assay lens
+    no row is set aside and every row counts, the 10 QC rows' blanks among them, as before."""
+    df = read_back(tmp_path, statin_panel(30))
+    rows = participants(df) if lens == ["metabolomics"] else df
+    n_blank = int(rows["statin"].isna().sum())
+    yes = int((rows["statin"] == "Yes").sum())
+    assert n_blank == (30 if lens == ["metabolomics"] else 40)
+    (option,) = _not_asked(findings_of(tmp_path, statin_panel(30), lens))
+    on = " on the non-QC rows" if lens == ["metabolomics"] else ""
+    assert option["consequence"] == (f"`{n_blank}` blanks in `statin`{on} become `False`; its "
+                                     f"`{yes}` other answers stay as given.")
+    assert option["sentence"].startswith(f"`statin` was blank for the `{n_blank}` people not asked;")
+    assert option["decision"]["params"]["n_blank"] == n_blank
+
+
+def dietary_with_qc(diet: pd.DataFrame, n_qc: int = 12, seed: int = 3) -> pd.DataFrame:
+    """``diet`` (an NHANES-shaped dietary table) with an assay panel beside it: 40 features (log
+    means 3.5 to 12, blank below exp(4)) and ``n_qc`` pooled-QC rows appended, blank on every
+    dietary column, with `sample_type` naming them, by construction."""
+    rng = np.random.default_rng(seed)
+    out = pd.concat([diet, pd.DataFrame(np.nan, index=range(n_qc), columns=diet.columns)],
+                    ignore_index=True)
+    qc = np.arange(len(out)) >= len(diet)
+    log_mean = np.linspace(3.5, 12.0, N_FEATURES)
+    log_value = log_mean + rng.normal(0.0, 1.0, (len(out), N_FEATURES)) * np.where(qc[:, None], 0.05, 0.8)
+    values = np.round(np.exp(log_value), 2)
+    values[log_value < LIMIT] = np.nan
+    for j in range(N_FEATURES):
+        out[f"mz_{j + 1:03d}"] = values[:, j]
+    out.insert(0, "sample_type", np.where(qc, "pooled_qc", "participant"))
+    return out
+
+
+@pytest.mark.parametrize("with_qc", [True, False])
+def test_the_energy_finding_counts_the_rows_its_correlation_reads(tmp_path, with_qc):
+    """The energy finding's correlation pairs the rows where both columns hold a value: beside 12
+    QC rows blank on every intake, the 120 participants', by pandas, where it said "across all 132
+    rows". With no QC rows every row holds both, and it says all of them, as before."""
+    diet = pd.read_csv(SAMPLES / "nhanes_dietary.csv")
+    frame = dietary_with_qc(diet) if with_qc else diet
+    df = read_back(tmp_path, frame)
+    both = df[["DR1TCARB", "DR1TKCAL"]].dropna()
+    r = float(both["DR1TCARB"].corr(both["DR1TKCAL"]))
+    lens = ["metabolomics", "dietary"] if with_qc else ["dietary"]
+    found = findings_of(tmp_path, frame, lens)
+    assert ("pack::metabolomics::pooled_qc" in found) == with_qc
+    rows = f"`{len(both):,}` rows" if with_qc else f"all `{len(df):,}` rows"
+    assert len(both) == 120 and len(df) == (132 if with_qc else 120)
+    assert found["pack::dietary::energy_adjustment"]["summary"] == (
+        f"`DR1TCARB` correlates {r:.2f} with `DR1TKCAL` across {rows}: nutrient effects are "
+        f"tangled with total energy.")
+
+
+@pytest.mark.parametrize("with_qc", [True, False])
+def test_implausible_intakes_in_kilojoules_count_the_participants(tmp_path, with_qc):
+    """Recorded in kJ, 3 participants' intakes below 2,092 kJ (1,000, by construction) are counted
+    out of the 120 participants beside 12 QC rows blank on every intake, where they were counted
+    out of all 132 rows; with no QC rows, out of every row, as before (pandas)."""
+    diet = pd.read_csv(SAMPLES / "nhanes_kilojoules.csv")
+    diet.loc[:2, "DR1TKCAL"] = 1000.0
+    frame = dietary_with_qc(diet) if with_qc else diet
+    df = read_back(tmp_path, frame)
+    kj = df["DR1TKCAL"]
+    n = int(((kj < 500 * 4.184) | (kj > 5000 * 4.184)).sum())
+    assert n == 3 and int(kj.notna().sum()) == 120
+    path = tmp_path / "kj.csv"
+    frame.to_csv(path, index=False)
+    table = Ingested(path, tmp_path / "ingested")
+    lens = ["metabolomics", "dietary"] if with_qc else ["dietary"]
+    state = ProjectState(lens=lens, column_units={"DR1TKCAL": ColumnUnitSpec(unit="kj")})
+    found = {f["id"]: f for f in table.run(findings_stage, state)["findings"]}
+    assert ("pack::metabolomics::pooled_qc" in found) == with_qc
+    of = "`120` non-QC rows" if with_qc else "`120` rows"
+    assert found["pack::dietary::implausible_intake"]["summary"] == (
+        f"`{n}` of {of} report `DR1TKCAL` below `2,092` kJ or above `20,920` kJ a day.")
