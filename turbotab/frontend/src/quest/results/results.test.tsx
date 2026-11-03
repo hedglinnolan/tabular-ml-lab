@@ -22,7 +22,7 @@ import { SealCard } from "./cards";
 import binaryCapture from "./fixtures/evaluation-binary.json";
 import capture from "./fixtures/nhanes-predict.json";
 import { ResultsCards, ResultsTapestry } from "./index";
-import { calibrationMeasures, currentOpening, cvComparison, familiesOf, heldOutTable, internalExternalTable, intervalClause, verdictCell } from "./model";
+import { calibrationMeasures, currentOpening, cvComparison, familiesOf, heldOutTable, internalExternalTable, intervalClause, subgroupTable, verdictCell } from "./model";
 
 /** The models' defaults and choices, as test_w1_declaration_cards.py holds them to decisions.py. */
 const DEFAULTS = PAYLOADS.defaults;
@@ -825,24 +825,51 @@ describe("the subgroups", () => {
     expect(within(section).getByRole("heading").textContent).toBe("Subgroups");
     expect(section.textContent).toContain(unticked(waiting[0]!.note!));
   });
+
+  it("name a group scored with no interval by its column and its level, so a level two columns share is never named alone", () => {
+    // By construction, in the shape the engine serves where a group's intervals are refused (each
+    // score's estimate with no interval and the reason, as the AUC's of a model that gives everyone
+    // the same score: performance.py `TIED`): the capture's sex column, its first level refused,
+    // beside a second coded column holding the same levels, every score with its interval.
+    const sex = (B.evaluation.subgroups as unknown as ServedSubgroup[]).find((s) => s.column === "sex")!;
+    const arm: ServedSubgroup = { ...sex, column: "arm" };
+    const level = sex.groups[0]!.group;
+    expect(arm.groups[0]!.group).toBe(level);
+    const refused = (s: ServedSubgroup): ServedSubgroup => ({
+      ...s,
+      groups: s.groups.map((g, i) =>
+        i ? g : { ...g, scores: Object.fromEntries(Object.entries(g.scores).map(([k, sc]) => [k, { ...sc, se: null, ci_low: null, ci_high: null, refused: "A constructed refusal of the interval." }])) },
+      ),
+    });
+    const titleOf = (subgroups: ServedSubgroup[]) => subgroupTable({ ...B.evaluation, subgroups } as unknown as EvaluationArtifact, B.fit)!.title;
+    const lead = `${nameOf(B.fit, B.evaluation, B.evaluation.reported_family!)}'s out-of-fold scores in each group: each score with its interval`;
+    // With no exception the caption is unchanged.
+    expect(titleOf([sex, arm])).toBe(lead);
+    expect(titleOf([refused(sex), arm])).toBe(`${lead}, except ${sex.column} ${level}`);
+    expect(titleOf([refused(sex), refused(arm)])).toBe(`${lead}, except ${sex.column} ${level} and ${arm.column} ${level}`);
+  });
 });
 
 describe("model updating", () => {
-  it("lists the regression's coefficients as fitted and as shrunk, with its re-estimated intercept and the engine's sentence", async () => {
+  it("lists the regression's coefficients before and after shrinking, with its re-estimated intercept and the engine's sentence", async () => {
     serve("sealed", binary);
     mount(<ResultsTapestry pid={PID} />);
     const section = await screen.findByTestId("results-updating");
     const sh = B.evaluation.shrinkage as unknown as ServedShrinkage;
     const table = within(section).getByRole("table");
-    expectShows(table.querySelector("caption")!.textContent, [sh.factor], "the factor");
-    expect(headsOf(table)).toEqual(["Term", "As fitted", "Shrunk"]);
+    // The served coefficients are the deployed model's (evaluation.py `_shrinkage`), under an
+    // imbalance correction the recalibrated ones, not the fit's own: the words claim neither.
+    const caption = table.querySelector("caption")!.textContent!;
+    expect(caption.startsWith("Model updating. The regression's coefficients before and after multiplying by "), caption).toBe(true);
+    expectShows(caption, [sh.factor], "the factor");
+    expect(headsOf(table)).toEqual(["Term", "Before shrinking", "Shrunk"]);
     const [intercept, ...rows] = bodyRows(table);
     expect(intercept!.head.startsWith("Intercept")).toBe(true);
     expect(intercept!.cells[0]).toBe("");
     expectShows(intercept!.cells[1], [sh.intercept], "the re-estimated intercept");
     expect(rows.map((r) => r.head)).toEqual(sh.coefficients.map((c) => c.feature));
     sh.coefficients.forEach((c, i) => {
-      expectShows(rows[i]!.cells[0], [c.estimate], `${c.feature} as fitted`);
+      expectShows(rows[i]!.cells[0], [c.estimate], `${c.feature} before shrinking`);
       expectShows(rows[i]!.cells[1], [c.shrunk], `${c.feature} shrunk`);
     });
     expect(footnotesOf(section)).toEqual([unticked(sh.sentence)]);
@@ -934,6 +961,26 @@ describe("internal–external validation", () => {
     expect(summaries(served)).toBe(2);
     expect(summaries(runsWith(1))).toBe(0);
     expect(summaries(runsWith(0))).toBe(0);
+  });
+
+  it("names a level scored with no interval by its model, its grouping and its level, so a level both models share is never named alone", () => {
+    // By construction, in the shapes the engine serves where a level's interval is not found (its
+    // score alone: validation.py `internal_external`) and where the random-effects summary has
+    // none (`_spread_sentence`), from the capture's two runs, which hold the same levels.
+    const served = B.evaluation.internal_external as unknown as ServedIecv[];
+    const [ridge, bench] = served as [ServedIecv, ServedIecv];
+    const level = ridge.clusters[1]!.cluster;
+    expect(bench.clusters[1]!.cluster).toBe(level);
+    const bare = (run: ServedIecv): ServedIecv => ({ ...run, clusters: run.clusters.map((c, i) => (i === 1 ? { ...c, primary: { ...c.primary, ci_low: null, ci_high: null } } : c)) });
+    const unpooled = (run: ServedIecv): ServedIecv => ({ ...run, pooled: { ...run.pooled, ci_low: null, ci_high: null } });
+    const titleOf = (runs: ServedIecv[]) => internalExternalTable({ ...B.evaluation, internal_external: runs } as unknown as EvaluationArtifact, B.fit)!.title;
+    const lead = `Each level of ${ridge.cluster} held out in turn, scored by each model fitted on the rest: each score with its interval`;
+    const levelOf = (run: ServedIecv) => `${run.label}'s ${run.cluster} ${level}`;
+    // With no exception the caption is unchanged.
+    expect(titleOf(served)).toBe(lead);
+    expect(titleOf([bare(ridge), bench])).toBe(`${lead}, except ${levelOf(ridge)}`);
+    expect(titleOf([bare(ridge), bare(bench)])).toBe(`${lead}, except ${levelOf(ridge)} and ${levelOf(bench)}`);
+    expect(titleOf([ridge, unpooled(bench)])).toBe(`${lead}, except ${bench.label}'s random-effects summary`);
   });
 });
 

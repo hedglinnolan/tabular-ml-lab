@@ -487,7 +487,8 @@ const reportedName = (fit: FitArtifact, ev: EvaluationArtifact) =>
  * served, each with its rows, its events under a yes/no outcome, and every metric scored with its
  * interval, the metrics in the order the fit names them. A group the engine names but does not
  * score, an interval it refuses and a column whose groups wait on a reading are each marked, the
- * engine's words their footnotes. Null where none is named.
+ * engine's words their footnotes. Null where none is named. The caption names a group scored with
+ * no interval by its column and its level ("sex 1"), since two coded columns can share a level.
  */
 export function subgroupTable(ev: EvaluationArtifact, fit: FitArtifact): TableData | null {
   const subs = ev.subgroups as unknown as ServedSubgroups[];
@@ -522,9 +523,10 @@ export function subgroupTable(ev: EvaluationArtifact, fit: FitArtifact): TableDa
       };
     }),
   ]);
+  const names = Object.fromEntries(subs.flatMap((s) => s.groups.map((g) => [`${s.column}:${g.group}`, `${s.column} ${g.group}`])));
   return {
     number: "Subgroups",
-    title: `${reportedName(fit, ev)}'s out-of-fold scores in each group${intervalClause(rows, metrics)}`,
+    title: `${reportedName(fit, ev)}'s out-of-fold scores in each group${intervalClause(rows, metrics, names)}`,
     stub: "Subgroup",
     columns: [{ key: "n", label: "Rows" }, ...(events ? [{ key: "events", label: "Events" }] : []), ...metrics.map((m) => ({ key: m.key, label: m.label }))],
     rows,
@@ -545,7 +547,9 @@ type ServedInternalExternal = InternalExternal & { family: string; label: string
  * metric with its interval by the model fitted on the rest, its rows and, under a yes/no outcome,
  * its events; then, where the engine pooled two levels or more (`pooled.k`), the random-effects
  * summary over them with its interval. The engine's sentence on the spread is the footnote of the
- * summary, or of the model's row where there is none. Null where no grouping is named.
+ * summary, or of the model's row where there is none. Null where no grouping is named. The caption
+ * names a row scored with no interval by its model, as each model holds the same levels: a level
+ * with its grouping ("Ridge's site 3"), the summary as the model's random-effects summary.
  */
 export function internalExternalTable(ev: EvaluationArtifact, fit: FitArtifact): TableData | null {
   const runs = ev.internal_external as unknown as ServedInternalExternal[];
@@ -589,9 +593,15 @@ export function internalExternalTable(ev: EvaluationArtifact, fit: FitArtifact):
     ];
   });
   const clusters = uniq(runs.map((r) => r.cluster));
+  const names = Object.fromEntries(
+    runs.flatMap((run) => [
+      ...run.clusters.map((c) => [`${run.family}:${c.cluster}`, `${run.label}'s ${run.cluster} ${c.cluster}`]),
+      [`${run.family}:pooled`, `${run.label}'s random-effects summary`],
+    ]),
+  );
   return {
     number: "Internal–external validation",
-    title: `Each level of ${listing(clusters)} held out in turn, scored by each model fitted on the rest${intervalClause(rows, metrics)}`,
+    title: `Each level of ${listing(clusters)} held out in turn, scored by each model fitted on the rest${intervalClause(rows, metrics, names)}`,
     stub: "Held-out level",
     columns: [{ key: "n", label: "Rows" }, ...(events ? [{ key: "events", label: "Events" }] : []), ...metrics.map((m) => ({ key: m.key, label: m.label }))],
     rows,
@@ -611,21 +621,24 @@ interface ServedShrinkage {
 }
 
 /**
- * Shrinkage as model updating, once applied: each of the regression's coefficients as fitted and
- * multiplied by the factor (`coefficients[].estimate`, `shrunk`), and its intercept as re-estimated
- * (`intercept`; the fitted intercept is not served, so its cell is empty), the engine's sentence
- * the footnote. Null while it is only offered, or where it was declared and not applied
- * (`updatingNotApplied` says why).
+ * Shrinkage as model updating, once applied: each of the regression's coefficients before and
+ * after multiplying by the factor (`coefficients[].estimate`, `shrunk`), and its intercept as
+ * re-estimated (`intercept`; the intercept before is not served, so its cell is empty), the
+ * engine's sentence the footnote. `estimate` is the deployed coefficient (decision_curve.py
+ * `deployed_coefficients`): under an imbalance correction the recalibration's slope times the
+ * class-weighted fit's, not the coefficient the regression was fitted with, so the words say
+ * before shrinking, not as fitted. Null while it is only offered, or where it was declared and
+ * not applied (`updatingNotApplied` says why).
  */
 export function updatingTable(ev: EvaluationArtifact): TableData | null {
   const sh = ev.shrinkage as unknown as ServedShrinkage | null;
   if (!sh || !Array.isArray(sh.coefficients) || typeof sh.intercept !== "number") return null;
   return {
     number: "Model updating",
-    title: `The regression's coefficients as fitted and multiplied by ${fmtNum(sh.factor)}`,
+    title: `The regression's coefficients before and after multiplying by ${fmtNum(sh.factor)}`,
     stub: "Term",
     columns: [
-      { key: "fitted", label: "As fitted" },
+      { key: "fitted", label: "Before shrinking" },
       { key: "shrunk", label: "Shrunk" },
     ],
     rows: [
