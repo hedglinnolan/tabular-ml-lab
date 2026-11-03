@@ -543,8 +543,9 @@ type ServedInternalExternal = InternalExternal & { family: string; label: string
  * Internal–external validation by cluster (`internal_external`): for each model (the reported
  * family and the benchmark), each level of the grouping held out in turn and scored on the primary
  * metric with its interval by the model fitted on the rest, its rows and, under a yes/no outcome,
- * its events; then the random-effects summary over the levels with its interval, the engine's
- * sentence on the spread its footnote. Null where no grouping is named.
+ * its events; then, where the engine pooled two levels or more (`pooled.k`), the random-effects
+ * summary over them with its interval. The engine's sentence on the spread is the footnote of the
+ * summary, or of the model's row where there is none. Null where no grouping is named.
  */
 export function internalExternalTable(ev: EvaluationArtifact, fit: FitArtifact): TableData | null {
   const runs = ev.internal_external as unknown as ServedInternalExternal[];
@@ -552,9 +553,13 @@ export function internalExternalTable(ev: EvaluationArtifact, fit: FitArtifact):
   const metrics: Metric[] = uniq(runs.map((r) => r.metric)).map((key) => ({ key, label: fit.metric_labels[key] ?? key }));
   const events = runs.some((r) => r.clusters.some((c) => typeof c.n_events === "number"));
   const notes = marker();
-  const rows: TableRow[] = runs.flatMap((run): TableRow[] => [
-    { kind: "group", key: run.family, label: run.label },
-    ...run.clusters.map((c): TableRow => {
+  const rows: TableRow[] = runs.flatMap((run): TableRow[] => {
+    // The engine's own rule (validation.py `_spread_sentence`): with one level pooled, `pooled` is
+    // that level's own score, and with none it holds no estimate, so neither is a summary.
+    const summary = run.pooled.k >= 2 && typeof run.pooled.estimate === "number";
+    const spread = () => (run.spread ? [notes.mark(`${run.label}: ${plain(run.spread)}`)] : undefined);
+    const head: TableRow = { kind: "group", key: run.family, label: run.label, marks: summary ? undefined : spread() };
+    const levels = run.clusters.map((c): TableRow => {
       const said = uniq([c.note, c.primary.refused].filter((t): t is string => !!t));
       return {
         kind: "row",
@@ -568,21 +573,26 @@ export function internalExternalTable(ev: EvaluationArtifact, fit: FitArtifact):
           [run.metric]: estimate(c.primary.estimate, c.primary.ci_low, c.primary.ci_high),
         },
       };
-    }),
-    {
-      kind: "row",
-      key: `${run.family}:pooled`,
-      label: "Random-effects summary",
-      indent: true,
-      marks: run.spread ? [notes.mark(`${run.label}: ${plain(run.spread)}`)] : undefined,
-      cells: { [run.metric]: estimate(run.pooled.estimate, run.pooled.ci_low, run.pooled.ci_high) },
-    },
-  ]);
+    });
+    if (!summary) return [head, ...levels];
+    return [
+      head,
+      ...levels,
+      {
+        kind: "row",
+        key: `${run.family}:pooled`,
+        label: "Random-effects summary",
+        indent: true,
+        marks: spread(),
+        cells: { [run.metric]: estimate(run.pooled.estimate, run.pooled.ci_low, run.pooled.ci_high) },
+      },
+    ];
+  });
   const clusters = uniq(runs.map((r) => r.cluster));
   return {
     number: "Internal–external validation",
     title: `Each level of ${listing(clusters)} held out in turn, scored by each model fitted on the rest${intervalClause(rows, metrics)}`,
-    stub: "Model",
+    stub: "Held-out level",
     columns: [{ key: "n", label: "Rows" }, ...(events ? [{ key: "events", label: "Events" }] : []), ...metrics.map((m) => ({ key: m.key, label: m.label }))],
     rows,
     footnotes: notes.footnotes(),

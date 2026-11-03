@@ -22,7 +22,7 @@ import { SealCard } from "./cards";
 import binaryCapture from "./fixtures/evaluation-binary.json";
 import capture from "./fixtures/nhanes-predict.json";
 import { ResultsCards, ResultsTapestry } from "./index";
-import { currentOpening, cvComparison, familiesOf, heldOutTable, intervalClause, verdictCell } from "./model";
+import { calibrationMeasures, currentOpening, cvComparison, familiesOf, heldOutTable, internalExternalTable, intervalClause, verdictCell } from "./model";
 
 /** The models' defaults and choices, as test_w1_declaration_cards.py holds them to decisions.py. */
 const DEFAULTS = PAYLOADS.defaults;
@@ -822,6 +822,7 @@ describe("the subgroups", () => {
     mount(<ResultsTapestry pid={PID} />);
     const section = await screen.findByTestId("results-subgroups");
     expect(within(section).queryByRole("table")).toBeNull();
+    expect(within(section).getByRole("heading").textContent).toBe("Subgroups");
     expect(section.textContent).toContain(unticked(waiting[0]!.note!));
   });
 });
@@ -870,7 +871,8 @@ describe("internal–external validation", () => {
     expect(runs.map((r) => r.family)).toEqual([B.evaluation.reported_family, B.evaluation.benchmark!.key]);
     const table = within(section).getByRole("table");
     expect(table.querySelector("caption")!.textContent).toBe(`Internal–external validation. Each level of ${runs[0]!.cluster} held out in turn, scored by each model fitted on the rest: each score with its interval`);
-    expect(headsOf(table)).toEqual(["Model", "Rows", "Events", B.fit.metric_labels[runs[0]!.metric]]);
+    // Its rows are the levels held out, each model a group row over them.
+    expect(headsOf(table)).toEqual(["Held-out level", "Rows", "Events", B.fit.metric_labels[runs[0]!.metric]]);
     const rows = bodyRows(table);
     let i = 0;
     for (const run of runs) {
@@ -890,6 +892,48 @@ describe("internal–external validation", () => {
     expect(i).toBe(rows.length);
     const notes = footnotesOf(section);
     for (const run of runs) expect(notes.some((n) => n.endsWith(unticked(run.spread))), run.spread).toBe(true);
+  });
+
+  // By construction, in the shape the engine serves when fewer than two levels have an interval
+  // (performance.py `random_effects`: k 1 is that one level's own score with no interval, k 0 no
+  // estimate), from the capture's first two levels.
+  const runsWith = (k: 0 | 1) =>
+    (B.evaluation.internal_external as unknown as ServedIecv[]).map((run) => {
+      const [first, second] = run.clusters;
+      const bare = (c: ServedIecv["clusters"][number]) => ({ ...c, primary: { ...c.primary, se: null, ci_low: null, ci_high: null, ...(k === 0 ? { estimate: null } : {}) } });
+      const pooled = { metric: run.metric, scale: "identity", k, estimate: k === 1 ? first!.primary.estimate : null, ci_low: null, ci_high: null, tau: null, i2: null, pi_low: null, pi_high: null };
+      return { ...run, clusters: k === 1 ? [first!, bare(second!)] : [bare(first!), bare(second!)], pooled, spread: `A constructed sentence on ${run.label}'s spread.` };
+    });
+
+  for (const k of [1, 0] as const) {
+    it(`names no random-effects summary where the engine pooled ${k} level${k === 1 ? ", its own score not a summary" : "s"}, and still says the engine's sentence`, async () => {
+      const runs = runsWith(k);
+      serve("sealed", (s) => withEvaluation(() => ({ internal_external: runs }))(binary(s)));
+      mount(<ResultsTapestry pid={PID} />);
+      const section = await screen.findByTestId("results-internal-external");
+      const rows = bodyRows(within(section).getByRole("table"));
+      expect(rows.some((r) => r.head.startsWith("Random-effects summary")), JSON.stringify(rows.map((r) => r.head))).toBe(false);
+      // Each model's group row and its two levels, and nothing else.
+      expect(rows.length).toBe(runs.length * 3);
+      if (k === 1)
+        for (const run of runs) {
+          // The one pooled level's score is printed once: in its own row, never again as a summary.
+          const said = rows.flatMap((r) => numbersIn(r.cells.join(" ")));
+          expect(said.filter((p) => shows(p, run.pooled.estimate)).length, `${run.label}: ${JSON.stringify(said)}`).toBe(1);
+        }
+      const notes = footnotesOf(section);
+      for (const run of runs) expect(notes.some((n) => n.endsWith(run.spread)), run.spread).toBe(true);
+    });
+  }
+
+  it("is a rule that holds both ways: a summary row where the engine pooled two levels or more, none where fewer", () => {
+    const rowsOf = (runs: unknown) => internalExternalTable({ ...B.evaluation, internal_external: runs } as unknown as EvaluationArtifact, B.fit)!.rows;
+    const summaries = (runs: unknown) => rowsOf(runs).filter((r) => r.label === "Random-effects summary").length;
+    const served = B.evaluation.internal_external as unknown as ServedIecv[];
+    expect(served.map((r) => (r.pooled as unknown as { k: number }).k)).toEqual([4, 4]);
+    expect(summaries(served)).toBe(2);
+    expect(summaries(runsWith(1))).toBe(0);
+    expect(summaries(runsWith(0))).toBe(0);
   });
 });
 
@@ -945,11 +989,34 @@ describe("the calibration measures", () => {
     ]);
   });
 
-  it("are not shown before the opening: no held-out number is read", async () => {
-    serve("sealed");
+  it("are not shown before the opening, even where the artifact were to hold them: no held-out calibration number is printed", async () => {
+    // The sealed capture serving the opened families' held-out detail, calibration included.
+    const opened = fitOf(C.opened);
+    const leaky = withFit((f) => ({ models: f.models.map((m, i) => ({ ...m, holdout_detail: opened.models[i]!.holdout_detail })) }));
+    serve("sealed", leaky);
     mount(<ResultsTapestry pid={PID} />);
     await screen.findByTestId("results-calibration");
     expect(screen.queryByTestId("results-calibration-measures")).toBeNull();
+    const printed = numbersIn(screen.getByTestId("results-tapestry").textContent ?? "");
+    const served = families().flatMap((m) => {
+      const c = m.holdout_detail!.calibration!;
+      return [
+        [`${m.label} intercept`, c.intercept.estimate],
+        [`${m.label} intercept's interval`, c.intercept.ci_low],
+        [`${m.label} intercept's interval`, c.intercept.ci_high],
+        [`${m.label} slope`, c.slope.estimate],
+        [`${m.label} slope's interval`, c.slope.ci_low],
+        [`${m.label} slope's interval`, c.slope.ci_high],
+        [`${m.label} Eavg`, c.eavg],
+        [`${m.label} E90`, c.e90],
+        [`${m.label} Emax`, c.emax],
+      ] as const;
+    });
+    expect(served.filter(([, v]) => typeof v === "number").length).toBe(18);
+    for (const [what, v] of served) expect(printed.some((p) => shows(p, v)), `${what} ${v} is printed`).toBe(false);
+    // The pure rule both ways: no measures while sealed, the measures once opened.
+    expect(calibrationMeasures(opened, "sealed", splitOf(C.opened))).toBeNull();
+    expect(calibrationMeasures(opened, "opened", splitOf(C.opened))).not.toBeNull();
   });
 
   it("leave out the gaps where the engine serves none, and label the measures exploratory as the split does", async () => {

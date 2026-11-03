@@ -307,7 +307,11 @@ function Evaluation({
       {subgroups ? (
         <StaleVeil state={veil} order={7} label="Subgroups">
           <section className={s.exhibit} data-purpose="subgroups" data-testid="results-subgroups">
-            <ExhibitTable data={subgroups} gate={null} />
+            {subgroups.rows.some((row) => row.kind === "row") ? (
+              <ExhibitTable data={subgroups} gate={null} />
+            ) : (
+              <OneLine view="table" title="Subgroups" text={subgroups.empty} />
+            )}
           </section>
         </StaleVeil>
       ) : null}
