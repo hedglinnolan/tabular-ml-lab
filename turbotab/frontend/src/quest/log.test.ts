@@ -7,12 +7,12 @@
  * construction where a case needs a moment the samples do not hold; each expected value is read off
  * the constructed log (a name, a stage), never off the function under test.
  */
-import type { Finding, FindingsArtifact, QuestLine, QuestLog, QuestStage } from "../api/schema";
+import type { Finding, FindingsArtifact, FitLock, QuestLine, QuestLog, QuestStage } from "../api/schema";
 import prediction from "../mocks/fixtures/m3-nhanes-prediction.json";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { mockQuest } from "../mocks/quest";
 import { CONTRACT } from "./fixtures/contract";
-import { type Hint, drawWaitsForSweep, filled, fitPosition, fitWithheld, nextOpen, openLine, openStageKey, primaryFor, readsDone, segments, settledBy, stageOf, sweptLines } from "./log";
+import { type Hint, drawWaitsForSweep, filled, fitPosition, fitWithheld, nextOpen, openLine, openStageKey, primaryFor, readsDone, segments, settledBy, stageOf, sweptLines, triageStage } from "./log";
 
 const strip = (lines: { id: string; key: string; value: string }[]) =>
   lines.map(({ id, key, value }) => ({ id, key, value }));
@@ -101,11 +101,54 @@ describe("a hint's name (P7)", () => {
 });
 
 /**
+ * Where the shell draws the triage of the open noticings (G05; FOUNDATION §7): where the engine's
+ * gate stands once the goal is chosen (core/sweep.py `gate_stage`: Results under Predict, before
+ * the held-out rows open; under any other goal Models, before the plan's lock). Before the goal is
+ * chosen the engine's gate is Models, the strictest case, but where the noticings are decided waits
+ * on the goal (W1-R M1), so the shell draws none; nor where a log is served with no Fit lock to name
+ * the goal. Each lock is the engine's own (fixtures/quest-contract.json).
+ */
+describe("where the triage of the open noticings is drawn (G05)", () => {
+  const under = (fit: FitLock | null): QuestLog => ({ ...LOG, fit });
+  const { unlocked, held, no_goal: noGoal } = CONTRACT.fit_locks;
+
+  it("is Models under Estimate, before the plan's lock", () => {
+    expect(unlocked).toMatchObject({ purpose: "inference", locks: true, locked: false });
+    expect(triageStage(under(unlocked))).toBe("models");
+  });
+
+  it("is Results under Predict, before the held-out rows open", () => {
+    expect(held.purpose).toBe("prediction");
+    expect(triageStage(under(held))).toBe("results");
+  });
+
+  it("is nowhere before the goal is chosen, or with no Fit lock to name the goal", () => {
+    expect(noGoal.purpose).toBeNull();
+    expect(triageStage(under(noGoal))).toBeNull();
+    expect(triageStage(under(null))).toBeNull();
+  });
+
+  it("is named by no foot under Estimate, where no noticing travels to it, even one that holds nothing", () => {
+    // By construction: Who's in's noticing listed but not counted, so nothing holds its Continue.
+    // Under Predict the foot says it waits for the triage in Results; under Estimate the engine
+    // counts each noticing in its own stage, so none waits for the triage in Models.
+    const { log, stage } = withStage(under(unlocked), "whos_in", (l) => (l.source === "finding" ? { ...l, counted: false } : l));
+    expect(stage.lines.some((l) => l.source === "finding" && l.label === "Decide" && l.status === "open")).toBe(true);
+    const p = primaryFor(log, stage, { kind: "none" });
+    expect(p).toMatchObject({ kind: "continue", disabled: false });
+    expect((p as { note?: string }).note).toBeUndefined();
+    const predict = withStage(under(held), "whos_in", (l) => (l.source === "finding" ? { ...l, counted: false } : l));
+    expect((primaryFor(predict.log, predict.stage, { kind: "none" }) as { note?: string }).note).toBe(`1 noticing waits for the triage in ${stageOf(LOG, "results")!.name}.`);
+  });
+});
+
+/**
  * Under Predict open noticings do not hold Continue (finding 6; FOUNDATION §7): each travels to the
  * triage of the open noticings, which stands before the held-out rows open, in Results
  * (core/sweep.py `gate_stage`), and the foot says how many wait there. Under Estimate the engine's
- * triage stands before the plan's lock, in Models, which the shell does not draw yet (W1-R R3 P5):
- * a noticing holds its own stage, as before finding 6, and the foot says it is decided there.
+ * triage stands before the plan's lock, at Models' end (G05), but the engine counts each noticing
+ * in its own stage (core/quest.py `quest_log`), so a noticing holds that stage, as before finding 6
+ * (W1-R R3 P5), and the foot says it is decided there.
  * Before the goal is chosen no noticing holds Continue either (W1-R M1: under Predict the goal is
  * chosen in Your question, after Your data's noticings), and the foot names no triage, since where
  * they are decided waits on the goal.
@@ -148,9 +191,9 @@ describe("open noticings and Continue (finding 6)", () => {
     });
   });
 
-  it("holds Continue on the noticing under Estimate, naming no triage, since the shell draws none there (W1-R R3 P5)", () => {
-    // Under Estimate the engine's triage stands before the plan's lock, in a Models the shell does
-    // not draw yet (W3): the noticing is decided in its own stage.
+  it("holds Continue on the noticing under Estimate, naming no triage, since the engine counts it in its own stage (W1-R R3 P5)", () => {
+    // Under Estimate the engine's triage stands before the plan's lock, at Models' end (G05), and
+    // the engine counts the noticing in its own stage: it is decided there.
     const log = { ...LOG, fit: { ...LOG.fit!, purpose: "inference" } } as QuestLog;
     const p = primaryFor(log, stageOf(log, "whos_in")!, { kind: "none" });
     expect(p).toEqual({
@@ -196,7 +239,8 @@ describe("open noticings and Continue (finding 6)", () => {
   });
 
   it("keeps a noticing holding Continue in Models under Estimate, where the engine's triage stands", () => {
-    // The shell draws no triage there yet: Models' noticing is decided in Models.
+    // The engine counts Models' noticing in Models: it holds Continue until it is answered, on its
+    // own card or by the triage at Models' end (G05).
     const estimate = { ...LOG, fit: { ...LOG.fit!, purpose: "inference" } };
     const n = { ...noticings[0]!, id: "finding:models-noticing", key: "models-noticing" };
     const models = stageOf(estimate, "models")!;

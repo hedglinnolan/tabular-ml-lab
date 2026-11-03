@@ -278,21 +278,27 @@ export function runningName(name: string): string {
 const nameOf = (log: QuestLog, key: string) => stageOf(log, key)?.name ?? key;
 
 /**
- * Where the shell draws the triage of the open noticings, or null where it draws none: under
- * Predict, in Results, before the held-out rows open (core/sweep.py `gate_stage`; FOUNDATION §7).
- * Elsewhere the engine's triage stands before the plan's lock, in Models, which the shell does not
- * draw until W3 (W1-R R3 P5). The goal is the one the Fit lock serves.
+ * Where the shell draws the triage of the open noticings, or null where it draws none, at the
+ * engine's gate (core/sweep.py `gate_stage`; FOUNDATION §7): under Predict in Results, before the
+ * held-out rows open; under any other goal in Models, at its end, before the plan's lock and the
+ * analysis flowchart (G05). The goal is the one the Fit lock serves. Before it is chosen the
+ * engine's gate is Models, the strictest case, but where the noticings are decided waits on the
+ * goal (`noticingsTravel`), so the shell draws none; nor where a log is served with no Fit lock.
  */
 export function triageStage(log: QuestLog): string | null {
-  return log.fit?.purpose === "prediction" ? "results" : null;
+  const goal = log.fit?.purpose;
+  if (goal === null || goal === undefined) return null;
+  return goal === "prediction" ? "results" : "models";
 }
 
 /**
  * Whether open noticings travel, holding no stage's Continue but the triage's own (finding 6):
  * under Predict, to the triage in Results; and before the goal is chosen (W1-R M1), since under
  * Predict the goal is chosen in Your question, after Your data's noticings, and where they are
- * decided waits on it. Under Estimate each is decided in its own stage, as before finding 6, and
- * so where a log is served with no Fit lock to name the goal.
+ * decided waits on it. Under Estimate the engine counts each in its own stage (core/quest.py
+ * `quest_log`: the triage is Models' own), so each is decided there, as before finding 6, though
+ * the triage at Models' end can record it too; and so where a log is served with no Fit lock to
+ * name the goal.
  */
 export function noticingsTravel(log: QuestLog): boolean {
   const goal = log.fit?.purpose;
@@ -307,10 +313,11 @@ const openNoticings = (stage: QuestStage) =>
 const noticings = (n: number, one: string, many: string) => `${n} noticing${n === 1 ? ` ${one}` : `s ${many}`}`;
 
 /** The foot's note on the open noticings travelling from `stage` to the triage the shell draws:
- *  none where none do, or where the triage is not drawn yet (before the goal is chosen). */
+ *  none where none do, or where the triage is not drawn yet (before the goal is chosen). Under
+ *  Estimate none travels (`noticingsTravel`): each holds its stage until it is answered. */
 function travelNote(log: QuestLog, stage: QuestStage): { note?: string } {
   const gate = triageStage(log);
-  if (gate === null || stage.key === gate) return {};
+  if (gate === null || stage.key === gate || !noticingsTravel(log)) return {};
   const n = openNoticings(stage).length;
   return n ? { note: `${noticings(n, "waits", "wait")} for the triage in ${nameOf(log, gate)}.` } : {};
 }
@@ -358,7 +365,7 @@ export function primaryFor(log: QuestLog, stage: QuestStage, fit: FitPosition, c
   const rest = unanswered(stage).filter((l) => !(held && l.key === DRAW));
   // Under Predict open noticings travel to the triage in Results (FOUNDATION §7), and before the
   // goal is chosen they hold nothing either (W1-R M1): they hold no stage but the triage's own.
-  // Under Estimate the shell draws no triage, so each holds its stage.
+  // Under Estimate the engine counts each in its own stage, so each holds it (`noticingsTravel`).
   const travels = noticingsTravel(log);
   const travel = !travels || stage.key === triageStage(log) ? [] : rest.filter((l) => l.source === "finding");
   const left = rest.filter((l) => !travel.includes(l));

@@ -13,7 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { keys } from "../api/queries";
-import type { ForTheRecord, ProjectView, QuestLine, QuestLog, QuestStage } from "../api/schema";
+import type { ForTheRecord, ProjectView, QuestLine, QuestLog, QuestStage, Triage } from "../api/schema";
 import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { StageFocusProvider } from "../state/focus";
 import { CONTRACT } from "./fixtures/contract";
@@ -724,5 +724,101 @@ describe("the foot's refusal, one role at a time (ruling R-b)", () => {
       exit("Choose the models", null),
     ]);
     expect(labels).toEqual(["Confirm the 2 as amounts", "Confirm `bp_sys` as a predictor", "Choose the models"]);
+  });
+});
+
+/**
+ * The triage of the open noticings under Estimate (G05; FOUNDATION §7): the engine's gate is the
+ * plan's lock, in Models (core/sweep.py `gate_stage`), so the card draws GET /triage at Models' end,
+ * after its Confirm sweep and before For the record and the foot (the analysis flowchart, with Fit,
+ * is beside the card). It is drawn nowhere else: not in another stage, not in Models under Predict
+ * (where it is Results', before the held-out rows open), not before the goal is chosen, and not
+ * from a triage served for another stage. The log is the engine's (Models open, before Fit) under
+ * the engine's own Estimate lock; the triage is built by construction in the shape it is served.
+ */
+describe("the triage of the open noticings under Estimate (G05)", () => {
+  const { unlocked, no_goal: noGoal } = CONTRACT.fit_locks;
+  const ESTIMATE: QuestLog = { ...NOT_REACHED, fit: unlocked };
+  const noticing = stageIn(NOT_REACHED, "whos_in").lines.find((l) => l.source === "finding")!;
+  const served = (stage: string): Triage => ({
+    version: 1,
+    stage,
+    gate: stage === "models" ? "gate:open-noticings-before-lock" : "gate:open-noticings-before-seal",
+    items: [
+      {
+        id: noticing.key,
+        line: noticing.id,
+        stage: "whos_in",
+        summary: noticing.name,
+        severity: "warning",
+        columns: ["kcal"],
+        question: null,
+        recommended: "could_bias",
+        label: "Could bias the estimate",
+        reason: "It concerns `kcal`, which the analysis reads; left as it is, it could bias the estimate.",
+        blocker: false,
+        recorded: null,
+        family: "finding",
+        band: null,
+        measure: null,
+        calibrated: null,
+        limitation: true,
+        done: null,
+      },
+    ],
+    blockers: 0,
+    confirmable: true,
+    answered: false,
+    confirmed_by: null,
+    changed: [],
+    passed: false,
+    rows: [],
+  });
+  /** For the record with a line in Models, so its disclosure is drawn there. */
+  const record: ForTheRecord = {
+    version: 1,
+    stages: [{ key: "models", name: "Models", lines: [{ kind: "noted", key: "k", id: null, text: "A line for the record.", decision_id: null }] }],
+  };
+  const seed = (triage: Triage) => (qc: QueryClient) => {
+    qc.setQueryData(keys.triage(PID), triage);
+    qc.setQueryData(keys.record(PID), record);
+  };
+  const follows = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it("is drawn once at Models' end, after the Confirm sweep and before For the record and the foot", () => {
+    const triage = served("models");
+    expect(stageIn(ESTIMATE, "models").reached).toBe(true);
+    const { card } = cardOf(ESTIMATE, "models", { seed: seed(triage) });
+    const drawn = within(card).getAllByTestId("results-triage");
+    expect(drawn).toHaveLength(1);
+    const item = drawn[0]!.querySelector(`[data-item="${CSS.escape(noticing.key)}"]`)!;
+    expect(item.textContent).toContain(triage.items[0]!.label);
+    expect(item.textContent).toContain(triage.items[0]!.reason.replaceAll("`", ""));
+    expect(within(drawn[0]!).getByRole("button", { name: `Confirm all ${triage.items.length}` })).toBeEnabled();
+    expect(follows(within(card).getByTestId("group-Confirm"), drawn[0]!)).toBe(true);
+    expect(follows(drawn[0]!, within(card).getByTestId("for-the-record"))).toBe(true);
+    expect(follows(drawn[0]!, within(card).getByTestId("primary"))).toBe(true);
+  });
+
+  it("is not drawn in another stage under Estimate", () => {
+    const { card } = cardOf(ESTIMATE, "whos_in", { seed: seed(served("models")) });
+    expect(within(card).queryByTestId("results-triage")).toBeNull();
+  });
+
+  it("is not drawn in Models under Predict, where the triage is Results'", () => {
+    expect(NOT_REACHED.fit?.purpose).toBe("prediction");
+    const { card } = cardOf(NOT_REACHED, "models", { seed: seed(served("results")) });
+    expect(within(card).queryByTestId("results-triage")).toBeNull();
+  });
+
+  it("is not drawn before the goal is chosen, though the engine's gate is then Models", () => {
+    expect(noGoal.purpose).toBeNull();
+    const { card } = cardOf({ ...NOT_REACHED, fit: noGoal }, "models", { seed: seed(served("models")) });
+    expect(within(card).queryByTestId("results-triage")).toBeNull();
+  });
+
+  it("is not drawn from a triage served for another stage", () => {
+    const { card } = cardOf(ESTIMATE, "models", { seed: seed(served("results")) });
+    expect(within(card).queryByTestId("results-triage")).toBeNull();
   });
 });

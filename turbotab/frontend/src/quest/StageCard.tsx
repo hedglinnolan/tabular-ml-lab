@@ -16,13 +16,15 @@
  * (FOUNDATION §1); a disabled one says why and links to what it waits for. Continue goes on to the
  * next open line a card can answer, naming it where that is not the next stage; under Predict open
  * noticings hold it in no stage but the triage's own, and the foot, or Fit's beside the flowchart,
- * says how many wait for the triage in Results (log.ts).
+ * says how many wait for the triage in Results (log.ts). Under Estimate the triage of the open
+ * noticings (cards/TriageCard.tsx) is drawn at Models' end, after its Confirm sweep, before For the
+ * record and the foot: before the plan's lock and the analysis flowchart beside the card (§7; G05).
  *
  * A stage opened by a request (the quest line, a "Waiting for" link, a noticing's lever, the foot's
  * link) brings the line it names, else its open line, into view and gives it focus (§1, the
  * five-second test).
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { isRefusalError } from "../api/client";
 import {
   useChecklist,
@@ -32,6 +34,7 @@ import {
   useProjectView,
   useRecord,
   useStageResult,
+  useTriage,
 } from "../api/queries";
 import type { Decision, Finding, ProjectState, QuestLine, QuestLog, QuestStage, Refusal, SweepStage } from "../api/schema";
 import { Foot, Plain, foot as f, kit as k, plain } from "../kit";
@@ -40,6 +43,7 @@ import { oneRoleAtATime } from "../components/record/besideAsk";
 import { CardFor } from "./cards/CardFor";
 import { DECLARATION_CARDS, DECLARATION_DEFAULTS } from "./cards/predict";
 import { columnOf, recordable } from "./cards/renderers";
+import { TriageCard } from "./cards/TriageCard";
 import { FootSlot } from "./contracts";
 import {
   type FitPosition,
@@ -52,6 +56,7 @@ import {
   runningName,
   settledBy,
   sweptLines,
+  triageStage,
 } from "./log";
 import { ResultsCards } from "./results";
 import { said } from "./words";
@@ -189,6 +194,9 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
   const drawHeld = drawWaitsForSweep(stage);
   // Results, once reached, is W1-G's column whole: it draws every line of the stage itself.
   const results = columnOf(stage) === "results";
+  // The triage of the open noticings, where the shell draws it outside Results' column: under
+  // Estimate, at Models' end (log.ts `triageStage`).
+  const triageHere = !results && stage.reached && triageStage(log) === stage.key;
   const back = !results && expanded !== openId ? () => setExpanded(openId) : null;
   const toggle = (l: QuestLine) => setExpanded((cur) => (cur === idOf(l) ? openId : idOf(l)));
   const line = (l: QuestLine, confirm = false) => (
@@ -255,6 +263,8 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
             {groups.Confirm.map((l) => line(l, true))}
           </Group>
         ) : null}
+
+        {triageHere ? <StageTriage pid={pid} stage={stage.key} /> : null}
 
         {stage.reached ? <ForTheRecord pid={pid} stage={stage} /> : null}
         {stage.key === "writeup" && stage.reached ? <Checklist pid={pid} /> : null}
@@ -459,6 +469,17 @@ function Noticed({
       })}
     </Group>
   );
+}
+
+/**
+ * The triage of the open noticings in `stage` (GET /triage; FOUNDATION §7), drawn only from a
+ * triage the engine serves for that stage: under Estimate, Models, before the plan's lock (G05).
+ * Its own "Confirm all" records every disposition; the stage's foot stays the shell's.
+ */
+function StageTriage({ pid, stage }: { pid: string; stage: string }) {
+  const served = useTriage(pid).data;
+  const id = useId();
+  return served && served.stage === stage ? <TriageCard pid={pid} triage={served} id={id} /> : null;
 }
 
 /** For the record (FOUNDATION §3): one quiet disclosure at the stage's foot; it never counts. */
