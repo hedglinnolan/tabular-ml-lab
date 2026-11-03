@@ -602,9 +602,14 @@ describe("an exposure family", () => {
     const line = familyLine(view)!;
     expect(line).not.toBeNull();
     expect(section.contains(line)).toBe(true);
-    expect(line.textContent).toMatch(/^This first version of Results does not draw Table 2 for a family of exposures, /);
-    expect(line.textContent).toMatch(/what the engine says each estimate is adjusted for is not yet right for every family/);
-    expect(line.textContent).toMatch(/; the estimates are in the export\.$/);
+    // The line speaks of this table, never of every family (a family that serves one member is
+    // drawn), and blames neither the family's kind nor its fit: whether the engine's adjustment
+    // words are right depends on the fit (the linear model's members share one; feature-wise
+    // regression fits each on its own), which nothing served says, so it says they are not yet
+    // known to be right, not that they are wrong.
+    expect(line.textContent).toBe(
+      "This first version of Results does not draw this Table 2: what the engine says each of its estimates is adjusted for is not yet known to be right where several members are served; its estimates are in the export.",
+    );
     // Nothing of the table is said: the section is its name and the line, whose one number is
     // Table 2's own, and no model's adjustment or note on the members is said anywhere.
     expect(section.textContent).toBe(`Table 2${line.textContent}`);
@@ -634,7 +639,7 @@ describe("an exposure family", () => {
     expect(drawnRows(view)).toEqual(keys);
     for (const key of keys) expect(table.querySelector(`tr[data-row="${key}"] svg[data-mark="${key}"]`), `${key}'s mark`).not.toBeNull();
     expect(familyLine(view)).toBeNull();
-    expect(told(view)).not.toMatch(/a family of exposures|in the model together/);
+    expect(told(view)).not.toMatch(/does not draw this Table 2|several members are served|in the model together/);
   });
 
   it("draws a family that serves one member as a single exposure's: feature-wise regression's {fiber, grp}, grp adjusted for (its served shape)", async () => {
@@ -656,6 +661,7 @@ describe("an exposure family", () => {
     expect(art.exposures).toEqual(["fiber", "grp"]);
     const view = await estimateView(servedAt(art));
     expect(familyLine(view)).toBeNull();
+    expect(told(view)).not.toMatch(/does not draw this Table 2|several members are served/);
     const table = within(within(view).getByTestId("results-table2")).getByRole("table");
     const seq = art.families[0]!.sequence;
     expect(drawnRows(view)).toEqual(seq.map((q) => q.key));

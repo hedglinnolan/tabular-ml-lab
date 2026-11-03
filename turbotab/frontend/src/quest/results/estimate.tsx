@@ -263,12 +263,13 @@ function membersOf(fam: Family, exposures: readonly string[]): Set<string> {
  *  (`adjusted_for`, the unadjusted model's "no other column in the model"), which is wrong where
  *  the members share one fit (the linear model: each is adjusted for the others there) and right
  *  where each is fitted on its own (feature-wise regression), and both serve each member's rows
- *  per model alike; until it says which, no row of a family is drawn with a label beside it. A
+ *  per model alike; until it says which, no row of such a family is drawn with a label beside it,
+ *  and the line speaks of this table, blaming neither the family's kind nor its fit. A
  *  family whose models serve one member (feature-wise regression's, beside a category it adjusts
  *  for and names) is drawn as a single exposure's. Every served row is written to the export's
  *  Table 2 (core/export/tables.py `table2`). */
 const FAMILY_NOT_DRAWN =
-  "This first version of Results does not draw Table 2 for a family of exposures, because what the engine says each estimate is adjusted for is not yet right for every family; the estimates are in the export.";
+  "This first version of Results does not draw this Table 2: what the engine says each of its estimates is adjusted for is not yet known to be right where several members are served; its estimates are in the export.";
 
 function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; index: number; many: boolean; decisions: readonly DecisionRecord[] }) {
   const [lit, setLit] = useState<string | null>(null);
