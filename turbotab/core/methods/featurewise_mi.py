@@ -28,17 +28,24 @@ one sweep each would do (each would refit the same model on the same observed va
 column is drawn only where its model has one finite maximum-likelihood fit, read from the design
 and never from the solver (:func:`identification_refusal`; Olsen 1978): one detected only in rows
 of one outcome, or whose detected values are all equal, is refused before any draw, and one with
-fewer detected values than terms is drawn where the rows below detection identify the rest. A
-chained model the sampler cannot fit is refused, never drawn (:func:`chain_refusal`). On repeated
-rows a censored column's chained model holds the other variables' unit means, so beside a complete
-column that is one value per unit two of its terms are one: whether the solver still fits it rests
-on rounding (in the second repair round's check, 4 of 10 panels; their pooled estimates were those
-of the same chain without the repeated term within one Monte Carlo error), and where it does not
-the refusal says why.
+fewer detected values than terms is drawn where the rows below detection identify the rest. Its
+fit is then a certified maximum (``imputation.tobit_fit``: Newton's method in Olsen's concave
+parametrization, its score zero and its information positive definite where it stops), matching
+survreg's where survreg converges; a fit the solver cannot certify, whatever its arithmetic did on
+the way, is refused in words, never drawn (``imputation.CensoredFitRefused``), as is a chained
+model the sampler cannot fit (:func:`chain_refusal`). On repeated rows a censored column's chained
+model holds the other variables' unit means, so beside a complete column that is one value per
+unit two of its terms are one: the fit drops the later of the two (aliased, as survreg drops it),
+which leaves every row's fitted mean as it is. Simulated by construction (40 units of 3 rows, the
+event one value per unit, 30% censored, a true difference of 0.5; 1,000 replicates in the second
+repair round's check, 400 in ``test_featurewise_mi_simulation``), every table was drawn, the mean
+estimate 0.501 (Monte Carlo error 0.010) and 95% coverage 0.960.
 
 **What is pooled.** Each copy is tested by the family's own Frisch–Waugh–Lovell tests
-(``featurewise.feature_tests``); each study factor is pooled by Rubin's rules with Barnard and
-Rubin's degrees of freedom, ν_com = n − rank[1, Z] − 1 (the Bell–McCaffrey df under CR2), then
+(``featurewise.feature_tests``); each study factor with a value drawn is pooled by Rubin's rules
+with Barnard and Rubin's degrees of freedom, ν_com = n − rank[1, Z] − 1 (the Bell–McCaffrey df
+under CR2), and one with none drawn is tested once, its row its complete-data test (B = 0, so
+ν = ν_com; the caption and the methods sentence count each, :meth:`PooledTests.counts`), then
 Benjamini–Hochberg runs on the pooled p-values (``featurewise.featurewise_table``). m is the
 engine's rule (``imputation.m_rule``) over the most rows any one study factor's model draws a value
 in.
@@ -65,10 +72,11 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 # The most draws one feature-wise table makes: each study factor drawn, m times, a chained one
 # (covariates with blanks, or rows that repeat) once per sweep of its chain. On 100 rows a chained
-# draw refits its censored-normal model (about 15 ms with the chain's other models), so 20,000
-# chained draws take about five minutes; a study factor drawn alone fits its model once (about
-# 5 ms) and its m copies cost little more. The plasma panel's 40 censored features × m 100 make
-# 4,000 draws.
+# draw refits its censored-normal model (about 15 ms with the chain's other models when the limit
+# was set; about 2 ms since the fit is Newton's, the second repair round), so 20,000 chained draws
+# took about five minutes and now take under one; a study factor drawn alone fits its model once
+# (about 5 ms) and its m copies cost little more. The plasma panel's 40 censored features × m 100
+# make 4,000 draws.
 MAX_FEATURE_COPIES = 20_000
 OUTCOME_TERM = "__outcome"  # the outcome's term among each study factor's imputation variables
 UNPOOLED = "featurewise_unpooled"  # the table's, and the plan's, refusal of what it cannot pool
@@ -288,8 +296,10 @@ def prepare(template: Any, X: pd.DataFrame, y: Any, *, state: Any = None,
     reads (already the log where the design logged after the fill; else the scale a censored normal
     fits better, ``imputation.censoring_of``'s rule). Raises :class:`Unpooled` where a blank would
     reach the matrix through ComBat, through a step that forms columns from others (a score, an
-    energy model, a form), or through a category's one-hot encoding."""
-    from turbotab.core.methods.imputation import Censoring, censoring_of
+    energy model, a form), or through a category's one-hot encoding, and
+    ``imputation.CensoredFitRefused`` (naming the column) where the scale's censored-normal fits
+    have no certified maximum."""
+    from turbotab.core.methods.imputation import Censoring, CensoredFitRefused, censoring_of
     from turbotab.core.models.featurewise import split_columns
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.voice import listing
@@ -335,7 +345,10 @@ def prepare(template: Any, X: pd.DataFrame, y: Any, *, state: Any = None,
                 censoring[c] = Censoring(limit=float(np.nanmin(series.to_numpy(dtype=float))),
                                          log=False)
             else:
-                censoring[c] = censoring_of(series)
+                try:
+                    censoring[c] = censoring_of(series)
+                except CensoredFitRefused as exc:  # the scale's two fits: refused, naming it
+                    raise exc.of(c) from None
     drawn = [c for c in tested if matrix[c].isna().any()]
     adjust_blank = [c for c in adjust if matrix[c].isna().any()]
     return Prepared(fitted=fitted, matrix=matrix, tested=tested, adjust=adjust,
@@ -788,51 +801,14 @@ def identification_refusal(name: str, z: np.ndarray, miss: np.ndarray, term: np.
     return None
 
 
-def unit_repeats(complete: Mapping[str, np.ndarray], units: np.ndarray) -> list[str]:
-    """The complete columns of a chained model on repeated rows (``complete``, keyed by the words
-    that name them: the outcome's term, the complete covariates) that are the same on every row of
-    their unit (``units``: integer codes), so the unit mean the engine's chained equations hold
-    beside each (``smcfcs.impute``) repeats it: two terms of the model are one, and a censored
-    model's information then has no inverse (the verifier's FWMI-R1-1). Whether the solver still
-    returns a fit rests on rounding, so this only says why, where it did not."""
-    codes = np.asarray(units, dtype=np.int64)
-    G = int(codes.max()) + 1 if len(codes) else 0
-    size = np.bincount(codes, minlength=G).astype(float)
-    size[size == 0] = 1.0
-    out = []
-    for label, values in complete.items():
-        v = np.asarray(values, dtype=float)
-        mean = (np.bincount(codes, weights=v, minlength=G) / size)[codes]
-        spread = float(np.max(np.abs(v))) if len(v) else 0.0
-        if np.ptp(v) > 0 and np.all(np.abs(v - mean) <= 1e-12 * max(1.0, spread)):
-            out.append(label)
-    return out
-
-
-def chain_refusal(name: str, frame: pd.DataFrame, units: np.ndarray | None,
-                  unit: str | None) -> str:
-    """The refusal of a study factor whose chained equations (on ``frame``, its chain's variables)
-    could not fit their models: where the rows repeat, with the complete columns its chain holds
-    beside unit means that repeat them (:func:`unit_repeats`: the outcome's term, the complete
-    covariates, and the study factor itself where it has no blank)."""
-    from turbotab.core.voice import listing
-
-    why = ""
-    if units is not None:
-        complete = {("the outcome" if c == OUTCOME_TERM else f"`{c}`"):
-                    frame[c].to_numpy(dtype=float)
-                    for c in frame.columns if not frame[c].isna().any()}
-        repeated = unit_repeats(complete, units)
-        if repeated:
-            by = f"`{unit}`" if unit else "unit"
-            one = len(repeated) == 1
-            repeats = "that mean repeats it" if one else "those means repeat them"
-            why = (f": on rows that repeat by {by} each of their models holds each other "
-                   f"variable's mean over the {by}'s rows beside it, and "
-                   f"{listing(repeated, ticked=False)} {'is' if one else 'are'} the same on every "
-                   f"row of a {by}, so {repeats}")
+def chain_refusal(name: str) -> str:
+    """The refusal of a study factor whose chained equations could not fit one of their models (a
+    linear-algebra or arithmetic failure in the sampler, never a copy). A censored model is never
+    one of these: its fit is certified or refused in its own words
+    (``imputation.CensoredFitRefused``), and a term its chain repeats (on repeated rows, the unit
+    mean of a column that is one value per unit) is aliased and dropped, as survreg drops it."""
     return (f"The chained equations that draw `{name}`'s copies could not fit their models on "
-            f"these rows, so its copies cannot be drawn{why}.")
+            f"these rows, so its copies cannot be drawn.")
 
 
 def _refuse(name: str, reason: str) -> Any:
@@ -846,24 +822,25 @@ def _refuse(name: str, reason: str) -> Any:
 def _censored_copies(D: np.ndarray, x: np.ndarray, miss: np.ndarray, censoring: Any, m: int,
                      rng: np.random.Generator, name: str) -> np.ndarray:
     """The m draws of a censored study factor's blanks (n_blank × m) from one censored-normal fit
-    on ``D``: θ̂ and its inverse observed information (``imputation.tobit_fit``), then for each copy
-    θ* ~ N(θ̂, I⁻¹) and each blank from N(Dβ*, σ*²) truncated above at the limit, as
-    ``imputation``'s censored draw makes one copy. The caller has checked that the model has a
-    finite fit (:func:`identification_refusal`); a solver that still returns none is refused."""
+    on ``D``: θ̂ and its inverse observed information (``imputation.tobit_fit``, a certified
+    maximum), then for each copy θ* ~ N(θ̂, I⁻¹) and each blank from N(Dβ*, σ*²) truncated above at
+    the limit, as ``imputation``'s censored draw makes one copy. The caller has checked that the
+    model has a finite fit (:func:`identification_refusal`); where the solver still certifies no
+    maximum (``imputation.CensoredFitRefused``) or any of its arithmetic fails, the study factor is
+    refused in words (``imputation.censored_fit_words``), never drawn."""
     from scipy import stats
 
-    from turbotab.core.methods.imputation import tobit_fit
+    from turbotab.core.methods.imputation import CensoredFitRefused, tobit_fit
 
     z = _on_scale(x, censoring)
     limit = math.log(censoring.limit) if censoring.log else float(censoring.limit)
     try:
         theta, V = tobit_fit(D, np.where(miss, limit, z), miss, limit)
-        if not (np.all(np.isfinite(theta)) and np.all(np.isfinite(V))):
-            raise np.linalg.LinAlgError
         root = np.linalg.cholesky(V + np.eye(len(V)) * 1e-12)
-    except (np.linalg.LinAlgError, ValueError):
-        raise _refuse(name, f"`{name}`'s censored-normal model could not be fit on these rows, so "
-                            f"its values below detection cannot be drawn.") from None
+    except CensoredFitRefused as exc:
+        raise exc.of(name) from None
+    except (np.linalg.LinAlgError, ArithmeticError, ValueError) as exc:
+        raise CensoredFitRefused(why=f"{type(exc).__name__}: {exc}").of(name) from None
     rows = D[miss]
     # Each copy's parameters (one column each), then every copy's blanks in one draw.
     stars = theta[:, None] + root @ rng.standard_normal((len(theta), m))
@@ -888,10 +865,12 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
     (``smcfcs.impute``, ``"fcs"``); otherwise from one fit of its own model (see the module).
     Raises ``imputation.ImputationRefused`` where a study factor has fewer than two observed values,
     or a censored column's model no one finite fit (:func:`identification_refusal`), before any
-    is drawn, and where the chained equations cannot fit a model (a LinAlgError, never a copy:
-    :func:`chain_refusal`). Deterministic for a given ``seed``: each study factor draws from its
-    own stream, by its place among ``tested``. ``kinds`` records the model each drawn column's
-    blanks came from, as the sampler was handed it."""
+    is drawn; where a censored model's fit has no certified maximum
+    (``imputation.CensoredFitRefused``, naming that column); and where the chained equations cannot
+    fit another model (a linear-algebra or arithmetic failure, never a copy: :func:`chain_refusal`).
+    Deterministic for a given ``seed``: each study factor draws from its own stream, by its place
+    among ``tested``. ``kinds`` records the model each drawn column's blanks came from, as the
+    sampler was handed it."""
     from turbotab.core.methods.imputation import column_kind
     from turbotab.core.methods.smcfcs import Variable
     from turbotab.core.methods.smcfcs import impute as fcs
@@ -959,11 +938,11 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
             try:
                 drawn_set = fcs(frame, variables, mode="fcs", units=units, m=m,
                                 seed=int(stream.generate_state(1)[0]), cancelled=cancelled)
-            except np.linalg.LinAlgError:
-                # A model the chain cannot fit (the verifier's FWMI-R1-1: a censored model's
-                # information with no inverse, raised from the sampler) is refused, never a copy;
-                # where rows repeat and a complete column is one value per unit, that says why.
-                raise _refuse(name, chain_refusal(name, frame, units, unit)) from None
+            except (np.linalg.LinAlgError, ArithmeticError):
+                # A model the chain cannot fit is refused, never a copy (the verifier's FWMI-R1-1
+                # and FWMI-R2-2). A censored model whose fit has no certified maximum is refused by
+                # the sampler in its own words, naming its column (``CensoredFitRefused``).
+                raise _refuse(name, chain_refusal(name)) from None
             values[name] = np.column_stack([f[name].to_numpy(dtype=float)
                                             for f in drawn_set.frames])
             if adjust_blank:
@@ -987,7 +966,10 @@ def draw_copies(matrix: pd.DataFrame, outcome: Any, tested: Sequence[str],
 class PooledTests:
     """Each tested study factor's pooled test: the estimate, its standard error √T, Barnard and
     Rubin's ν, whether nothing of it is left once the covariates are projected out (in some copy),
-    the fraction of missing information and the Monte Carlo error √(B/m); ``m`` the copies."""
+    the fraction of missing information and the Monte Carlo error √(B/m); ``m`` the copies.
+    ``drawn``: whether any value its test reads was drawn (its own blanks, or the covariates'
+    drawn with it); one with none is tested once, on the complete data, its row that test's
+    (ν its complete-data df)."""
 
     estimate: np.ndarray
     se: np.ndarray
@@ -996,6 +978,16 @@ class PooledTests:
     fmi: np.ndarray
     mc_se: np.ndarray
     m: int
+    drawn: np.ndarray | None = None
+
+    def counts(self) -> tuple[int, int]:
+        """(the study factors tested with values drawn, those tested once with none drawn),
+        counting only those with something left once the covariates are projected out (the
+        table's tests)."""
+        left = ~np.asarray(self.flat, dtype=bool)
+        drawn = (np.ones(len(left), dtype=bool) if self.drawn is None
+                 else np.asarray(self.drawn, dtype=bool))
+        return int(np.sum(drawn & left)), int(np.sum(~drawn & left))
 
 
 def pooled_tests(copies: FeatureCopies, matrix: pd.DataFrame, other: np.ndarray, binary: bool,
@@ -1079,7 +1071,9 @@ def pooled_tests(copies: FeatureCopies, matrix: pd.DataFrame, other: np.ndarray,
             df[j] = pooled.df if pooled.df is not None else np.inf
         fmi[j] = pooled.fmi if pooled.fmi is not None else np.nan
         mc[j] = pooled.mc_se if pooled.mc_se is not None else np.nan
-    return PooledTests(estimate=est, se=se, df=df, flat=flat, fmi=fmi, mc_se=mc, m=copies.m)
+    drawn = np.asarray([c in copies.values or c in copies.adjust for c in tested], dtype=bool)
+    return PooledTests(estimate=est, se=se, df=df, flat=flat, fmi=fmi, mc_se=mc, m=copies.m,
+                       drawn=drawn)
 
 
 def first_copy(matrix: pd.DataFrame, copies: FeatureCopies) -> pd.DataFrame:
@@ -1098,9 +1092,12 @@ def first_copy(matrix: pd.DataFrame, copies: FeatureCopies) -> pd.DataFrame:
     return out
 
 
-def caption_of(copies: FeatureCopies) -> str:
+def caption_of(copies: FeatureCopies, factors: tuple[int, int] | None = None) -> str:
     """The pooled table's first sentence: how its copies were drawn and pooled, each study
-    factor's own blanks by the model the sampler drew them from (``FeatureCopies.kinds``)."""
+    factor's own blanks by the model the sampler drew them from (``FeatureCopies.kinds``); where
+    ``factors`` (:meth:`PooledTests.counts`) says some had no value drawn, only those with values
+    drawn are said pooled (the others keep their complete-data tests, which the next sentence
+    says)."""
     own = {copies.kinds.get(c) for c in copies.values if copies.imputed.get(c)}
     how = []
     if "censored" in own:
@@ -1121,18 +1118,20 @@ def caption_of(copies: FeatureCopies) -> str:
     given = "the outcome and the covariates" if copies.adjust_names else "the outcome"
     return (f"Multiple imputation, m = {copies.m}, one study factor at a time: each study "
             f"factor's blanks were drawn from its own model given {given}{drawn}{beside}; each "
-            f"completed copy was analyzed as follows, and each study factor pooled by Rubin's "
-            f"rules.")
+            f"completed copy was analyzed as follows, and each study factor"
+            f"{' with values drawn' if factors and factors[1] else ''} pooled by Rubin's rules.")
 
 
-def as_imputations(copies: FeatureCopies, adjust: Sequence[str]) -> Any:
+def as_imputations(copies: FeatureCopies, adjust: Sequence[str],
+                   factors: tuple[int, int] | None = None) -> Any:
     """The copies as an ``imputation.Imputations`` record (no frames: each study factor's copies are
     its own), so the pooled table's record and concerns are written as every pooled table's
     (``missing.multiple_imputation_info``, ``missing.mi_concerns``). Its method is chained
     equations, on each study factor's own variables (one sweep where the factor's blanks are the
     only ones: the monotone case), its variables lead with ``missing.PER_FEATURE_VARIABLE``,
     which the record's readers take it by, and its ``kinds`` are the models each drawn column's
-    blanks came from, which its methods sentence names (``missing.mi_sentence``)."""
+    blanks came from, which its methods sentence names (``missing.mi_sentence``), as it counts
+    ``factors`` (:meth:`PooledTests.counts`: those with values drawn, those tested once)."""
     from turbotab.core.methods.imputation import Imputations
     from turbotab.core.methods.missing import PER_FEATURE_VARIABLE
 
@@ -1144,7 +1143,8 @@ def as_imputations(copies: FeatureCopies, adjust: Sequence[str]) -> Any:
         kinds=dict(copies.kinds),
         censored=dict(copies.censored), seed=copies.seed, method="chained_equations",
         plan={"m_asked": copies.asked, "unit": copies.unit,
-              "row_level": [PER_FEATURE_VARIABLE] if copies.unit else None})
+              "row_level": [PER_FEATURE_VARIABLE] if copies.unit else None,
+              "factors": list(factors) if factors is not None else None})
 
 
 # The record's note: what uses these copies (the joint imputation's note speaks of scores, which
@@ -1245,9 +1245,10 @@ def pooled_featurewise_table(matrix: pd.DataFrame, y: Any, task: str,
     table = featurewise_table(complete, y, task, features, clusters, event, named=named,
                               forms=forms, entered=entered, pooled=pooled)
     if table.rows and any(r.get("estimate") is not None for r in table.rows):
-        table.info["caption"] = f"{caption_of(copies)} {table.info.get('caption', '')}".strip()
+        table.info["caption"] = (f"{caption_of(copies, pooled.counts())} "
+                                 f"{table.info.get('caption', '')}").strip()
         record_spec = spec if spec is not None else _Spec(list(matrix.columns))
-        imputations = as_imputations(copies, adjust)
+        imputations = as_imputations(copies, adjust, factors=pooled.counts())
         table.info["missing"] = {**multiple_imputation_info(imputations, record_spec,
                                                             len(complete), rows=table.rows),
                                  "note": NOTE}

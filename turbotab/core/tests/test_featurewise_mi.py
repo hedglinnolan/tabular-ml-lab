@@ -1083,51 +1083,54 @@ def _repeated_panel(outcome_per_unit: bool, covariate_per_unit: bool, censored: 
     return frame, event, codes, limits
 
 
-def _chain_words(name: str, unit: str, repeated: list[str]) -> str:
-    """The refusal of a study factor whose chained equations could not fit their models on rows
-    that repeat, ``repeated`` (the words that name them, in the order of the chain's columns) one
-    value per unit."""
-    one = len(repeated) == 1
-    who = repeated[0] if one else ", ".join(repeated[:-1]) + " and " + repeated[-1]
-    return (f"The chained equations that draw `{name}`'s copies could not fit their models on "
-            f"these rows, so its copies cannot be drawn: on rows that repeat by `{unit}` each of "
-            f"their models holds each other variable's mean over the `{unit}`'s rows beside it, "
-            f"and {who} {'is' if one else 'are'} the same on every row of a `{unit}`, so "
-            f"{'that mean repeats it' if one else 'those means repeat them'}.")
-
-
-def test_15_a_censored_study_factor_beside_a_column_one_value_per_unit_is_refused_or_drawn():
+def test_15_a_censored_study_factor_beside_a_column_one_value_per_unit_is_drawn():
     """FWMI-R1-1: on repeated rows the chained equations draw a censored study factor from a
     model holding each other variable's unit mean beside it; an outcome or covariate the same on
     every row of its unit (by construction here: drawn once per unit) equals that mean, so two of
-    the model's terms are one and the censored model's information has no inverse. Whether the
-    solver still returns a fit rests on rounding (the verifier's panels raised; chain 3 of
-    ``test_ms7_chains`` pools), so this pins the claim, not which happens: on the base a
-    LinAlgError escaped (Matrix is not positive definite); now each is refused in words naming
-    what repeats, or drawn with a finite row. With both varying within units it is pooled, and a
-    blank not below a limit (a normal draw) is pooled beside unit-level columns as before."""
+    the model's terms are one. The censored-normal fit drops the later of the two, as survreg does
+    (``test_censored_normal_fit`` test 3: the fit is the fit without it), so each panel is drawn,
+    with a finite row. On the base the model's information had no inverse, and whether the solver
+    still returned a fit rested on rounding: of these three panels it refused all three in words
+    that blamed the repeated mean. With both varying within units it is pooled, and a blank not
+    below a limit (a normal draw) is pooled beside unit-level columns as before."""
     from turbotab.core.methods import featurewise_mi as fm
-    from turbotab.core.methods.imputation import ImputationRefused
     from turbotab.core.models.linear import as_clusters
 
-    for outcome, covariate, named in ((True, False, ["the outcome"]), (False, True, ["`z0`"]),
-                                      (True, True, ["the outcome", "`z0`"])):
-        frame, event, codes, limits = _repeated_panel(outcome, covariate)
-        try:
-            table, _ = fm.pooled_featurewise_table(frame, event, "binary", ["c0"],
-                                                   as_clusters(codes), censored=limits, seed=1)
-        except ImputationRefused as refused:
-            assert str(refused) == _chain_words("c0", "unit", named)
-            assert refused.columns == ["c0"]
-        else:
-            (row,) = table.rows
-            assert math.isfinite(row["estimate"]) and row["se"] > 0
-    for outcome, covariate, censored in ((False, False, True), (True, True, False)):
+    for outcome, covariate, censored in ((True, False, True), (False, True, True),
+                                         (True, True, True), (False, False, True),
+                                         (True, True, False)):
         frame, event, codes, limits = _repeated_panel(outcome, covariate, censored)
         table, copies = fm.pooled_featurewise_table(frame, event, "binary", ["c0"],
                                                     as_clusters(codes), censored=limits, seed=1)
         (row,) = table.rows
         assert copies.unit == "unit" and math.isfinite(row["estimate"]) and row["se"] > 0
+
+
+def test_15_a_chain_whose_arithmetic_fails_is_refused_in_words(monkeypatch):
+    """A chained model that cannot be fit for any reason but its censored normal's (a
+    linear-algebra or arithmetic failure in the sampler, here made to happen) refuses the study
+    factor in words, never raising: FWMI-R2-2's class. On the base only a LinAlgError was caught,
+    and a FloatingPointError or OverflowError escaped."""
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.methods import smcfcs
+    from turbotab.core.methods.imputation import ImputationRefused
+    from turbotab.core.models.linear import as_clusters
+
+    frame, event, codes, limits = _repeated_panel(False, False, censored=False)
+    for error in (np.linalg.LinAlgError("Matrix is not positive definite"),
+                  FloatingPointError("overflow"), OverflowError("math range error")):
+        def failing(*args, _error=error, **kwargs):
+            raise _error
+
+        monkeypatch.setattr(smcfcs, "impute", failing)
+        with pytest.raises(ImputationRefused) as refused:
+            fm.pooled_featurewise_table(frame, event, "binary", ["c0"], as_clusters(codes),
+                                        censored=limits, seed=1)
+        assert str(refused.value) == (
+            "The chained equations that draw `c0`'s copies could not fit their models on these "
+            "rows, so its copies cannot be drawn.")
+        assert refused.value.columns == ["c0"]
+        monkeypatch.undo()
 
 
 def _pid_panel(vary: bool) -> tuple[pd.DataFrame, Any]:
@@ -1158,41 +1161,25 @@ def _pid_panel(vary: bool) -> tuple[pd.DataFrame, Any]:
     return frame, st.model_copy(update={"grain": d.GrainSpec(grain="repeated", id_column="pid")})
 
 
-def test_15_through_the_fit_and_the_declared_models_a_failed_chain_is_refused_in_words(
-        tmp_path):
+def test_15_through_the_fit_and_the_declared_models_such_a_chain_is_drawn(tmp_path):
     """FWMI-R1-1 through the stages: participants' rows repeated three times by `pid`, `fiber`
-    censored. With the outcome and `age` one value per `pid`, the fit's feature-wise table is
-    refused in words naming them, with complete cases, leaving `fiber` out and another family as
-    ways forward, and the effects stage's declared model in the same words; or, where the solver
-    fits the chain anyway, both pool (rounding decides: the claim is pinned, not which). On the
-    base the fit's table had only the solver's message, "Matrix is not positive definite", and no
-    way forward, and the effects stage raised it. With both drawn row by row, both stages pool."""
+    censored, the outcome and `age` one value per `pid` (so their `pid` means repeat them in
+    `fiber`'s chained model). The fit's feature-wise table and the effects stage's declared model
+    both pool it, the repeated terms dropped from the censored-normal fit; on the base the fit's
+    table refused it, or pooled it, as rounding fell (the claim was pinned, not which), its refusal
+    blaming the repeated means. With both drawn row by row, both stages pool."""
     from turbotab.core.tests.acceptance import estimand_fixtures as ef
 
-    words = ("Multiple imputation cannot run on these data: "
-             + _chain_words("fiber", "pid", ["the outcome", "`age`"]))
-    frame, st = _pid_panel(vary=False)
-    out = ef.run(frame, tmp_path / "unit", st)
-    entry = next(m for m in out["fit"]["models"] if m["family"] == "featurewise")
-    (block,) = out["effects"]["families"]
-    primary = next(s for s in block["sequence"] if s["key"] == "model_2")
-    if entry["inference"]["refused"] is not None:
-        assert entry["inference"]["refused"] == words and not entry["coefficients"]
-        labels = [e["label"] for e in entry["inference"]["exits"]]
-        assert labels[1:] == ["Leave `fiber` out", "Choose another model family"]
-        assert labels[0].startswith("Complete cases (")
-        assert primary["inference"]["refused"] == words
-    else:
-        assert entry["coefficients"] and primary["effects"]
-        assert all(math.isfinite(r["estimate"]) for r in primary["effects"])
-    frame, st = _pid_panel(vary=True)
-    out = ef.run(frame, tmp_path / "rows", st)
-    entry = next(m for m in out["fit"]["models"] if m["family"] == "featurewise")
-    assert entry["inference"]["refused"] is None and entry["coefficients"]
-    (block,) = out["effects"]["families"]
-    primary = next(s for s in block["sequence"] if s["key"] == "model_2")
-    assert primary["inference"]["refused"] is None
-    assert primary["effects"] and all(math.isfinite(r["estimate"]) for r in primary["effects"])
+    for vary in (False, True):
+        frame, st = _pid_panel(vary=vary)
+        out = ef.run(frame, tmp_path / ("rows" if vary else "unit"), st)
+        entry = next(m for m in out["fit"]["models"] if m["family"] == "featurewise")
+        assert entry["inference"]["refused"] is None and entry["coefficients"], vary
+        (block,) = out["effects"]["families"]
+        primary = next(s for s in block["sequence"] if s["key"] == "model_2")
+        assert primary["inference"]["refused"] is None, vary
+        assert primary["effects"] and all(math.isfinite(r["estimate"])
+                                          for r in primary["effects"]), vary
 
 
 SURVREG_DESIGN = """
@@ -1499,3 +1486,237 @@ def test_19_the_median_refusal_s_censoring_aware_way_forward_is_taken_by_the_fea
     d.validate(d.SetMissing(**{k: v for k, v in way["decision"].items() if k != "kind"}),
                plan_ctx(state))
 
+
+
+# ── the second repair round: the censored-normal fit is a certified maximum ──────
+
+
+def _verifier_design(index: int) -> tuple[pd.DataFrame, np.ndarray]:
+    """The verifier's design ``index`` (FWMI-R2-1, seed 21; ``test_censored_normal_fit``), as its
+    ``d335_fit.py`` builds the table: `c0` (4 of 100 values detected for 205, 335 and 579), a
+    complete second study factor `g0` = 5 + 0.3 z0 + N(0, 1), the two covariates; and the event."""
+    from turbotab.core.tests.test_censored_normal_fit import verifier_columns
+
+    for i, x, event, Z, log_scale in verifier_columns():
+        if i == index:
+            assert not log_scale
+            other = 5 + 0.3 * Z[:, 0] + np.random.default_rng(i).standard_normal(len(x))
+            return pd.DataFrame({"c0": x, "g0": other, "z0": Z[:, 0], "z1": Z[:, 1]}), event
+    raise KeyError(index)
+
+
+def _overflow_case(index: int) -> tuple[pd.DataFrame, np.ndarray]:
+    """The verifier's case 17 or 232 (FWMI-R2-2, seed 5; ``test_censored_normal_fit``): `c0` with
+    4 of 100 values detected, the complete `g0`, the two covariates; and the event."""
+    from turbotab.core.tests.test_censored_normal_fit import overflow_cases
+
+    x, event, Z, good = overflow_cases()[index]
+    return pd.DataFrame({"c0": x, "g0": good, "z0": Z[:, 0], "z1": Z[:, 1]}), event
+
+
+SURVREG_C0 = """
+suppressPackageStartupMessages(library(survival))
+d <- read.csv(panel_csv)
+cens <- is.na(d$c0)
+t <- ifelse(cens, min(d$c0, na.rm = TRUE), d$c0)
+fit <- survreg(Surv(t, !cens, type = "left") ~ disease + z0 + z1, data = d, dist = "gaussian")
+out(list(estimate = unname(coef(fit)["disease"]), se = sqrt(vcov(fit)["disease", "disease"]),
+         iter = fit$iter[1]))
+"""
+
+
+@needs_r
+@pytest.mark.parametrize("index", [205, 335, 579])
+def test_20_four_detected_values_of_four_terms_pool_at_survregs_censored_fit(tmp_path, index):
+    """FWMI-R2-1: the verifier's designs 205, 335 and 579 have as many detected values as terms
+    (4: the intercept, the event, two covariates), and the base drew them from a fit far short of
+    the maximum (σ ≈ 2.6e−6, its start): design 335's pooled difference was 0.893 (SE 0.164,
+    q 0, a discovery) where survreg's maximum-likelihood difference is 0.0127 (SE 0.208). At
+    m = 200 each pooled estimate now lies within four Monte Carlo errors (its ``mc_se``) of
+    survreg's, and its standard error within 20% of survreg's (proper imputation's T tends to the
+    maximum-likelihood variance; at m = 200 the estimate of B moves by about 10%)."""
+    from turbotab.core.methods import featurewise_mi as fm
+
+    frame, event = _verifier_design(index)
+    table, copies = fm.pooled_featurewise_table(frame, event, "binary", ["c0", "g0"],
+                                                censored=limits_of(frame, ["c0"]), m=200, seed=8)
+    ref = run_r(SURVREG_C0, {"panel": frame.assign(disease=event)}, tmp_path)
+    assert ref["iter"] < 30
+    row = next(r for r in table.rows if r["feature"] == "c0")
+    assert copies.m == 200 and copies.imputed["c0"] == 96
+    assert abs(row["estimate"] - ref["estimate"]) <= 4 * row["mc_se"], (row, ref)
+    assert 0.8 <= row["se"] / ref["se"] <= 1.25, (row, ref)
+
+
+def _binary_state(frame: pd.DataFrame) -> Any:
+    from turbotab.core.decisions import SplitSpec
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    roles = {"c0": "exposure", "g0": "exposure", "z0": "covariate", "z1": "covariate"}
+    mi = {"strategy": "multiple_imputation", "below_detection": "censoring_aware",
+          "censored_columns": ["c0"], "m": 20}
+    return mf.state(lens=["clinical"], target="disease", task="binary", event="1",
+                    purpose="inference", roles=roles, role_confirmations=dict(roles),
+                    models=["featurewise"], missing=mi,
+                    split=SplitSpec(holdout=0.0, seed=0, folds=5),
+                    shape_confirmations={"code_or_count:c0": "amount"})
+
+
+def _effects_run(tmp_path, frame: pd.DataFrame, event: np.ndarray) -> dict:
+    """The effects stage's run of ``frame`` (the verifier's ``solver_effects.py``): `c0` the
+    exposure, the covariates confounders, feature-wise regression under censoring-aware multiple
+    imputation (m 20)."""
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    data = frame.assign(disease=np.where(event == 1, "yes", "no"), pid=np.arange(len(frame)))
+    roles = {"pid": "identifier", "c0": "exposure", "g0": "exposure", "z0": "covariate",
+             "z1": "covariate"}
+    mi = {"strategy": "multiple_imputation", "below_detection": "censoring_aware",
+          "censored_columns": ["c0"], "m": 20}
+    st = ef.state(target="disease", task="binary", event="yes", exposure="c0",
+                  measure="mean_difference", roles=roles,
+                  answers={"z0": ef.CONFOUNDER, "z1": ef.CONFOUNDER}, models=["featurewise"],
+                  missing=mi, amounts={"code_or_count:c0": "amount"})
+    return ef.run(data, tmp_path, st)
+
+
+def test_20_through_the_fit_and_the_declared_models_such_designs_pool(tmp_path):
+    """FWMI-R2-1 and FWMI-R2-2 through the stages: design 335 and cases 17 and 232 (4 of 100
+    values detected, 4 terms). The fit's feature-wise table pools `c0` with a finite row, and
+    design 335's is no discovery (survreg's difference is 0.0127, SE 0.208; the base's q was 0);
+    the effects stage's declared model pools it too. On the base cases 17 and 232 overflowed: the
+    fit's table read "math range error" and the effects stage raised OverflowError."""
+    cases = {"d335": _verifier_design(335), "c17": _overflow_case(17),
+             "c232": _overflow_case(232)}
+    for name, (frame, event) in cases.items():
+        entry = _fit_entry(tmp_path / name, frame.assign(disease=event), _binary_state(frame))
+        assert entry["inference"]["refused"] is None, name
+        row = next(r for r in entry["coefficients"] if r["feature"] == "c0")
+        assert math.isfinite(row["estimate"]) and row["se"] > 0, name
+        assert not any("could not be computed" in c for c in entry["concerns"]), name
+        if name == "d335":
+            assert row["q"] > 0.05
+        out = _effects_run(tmp_path / f"{name}_effects", frame, event)
+        (block,) = out["effects"]["families"]
+        primary = next(s for s in block["sequence"] if s["key"] == "model_2")
+        assert primary["inference"]["refused"] is None, name
+        assert all(math.isfinite(r["estimate"]) for r in primary["effects"]), name
+
+
+def _fit_fails(monkeypatch) -> None:
+    """The censored-normal solver's arithmetic made to overflow on every design with a term beside
+    the intercept (the verifier's OverflowError, ``math.exp(tau)``), so each draw's fit fails; the
+    one-column fits that choose a column's scale run as they do."""
+    from turbotab.core.methods import imputation as imp
+
+    olsen = getattr(imp, "_olsen", None)
+
+    def failing(Xd, zd, Xc, limit, phi, derivatives=True):
+        if Xd.shape[1] > 1:
+            raise OverflowError("math range error")
+        return olsen(Xd, zd, Xc, limit, phi, derivatives)
+
+    monkeypatch.setattr(imp, "_olsen", failing, raising=False)
+
+
+def test_21_a_censored_fit_with_no_certified_maximum_is_refused_in_words_through_the_stages(
+        tmp_path, monkeypatch):
+    """FWMI-R2-2: where the solver certifies no maximum, here because its arithmetic overflows, the
+    fit's feature-wise table is refused in words naming the column, with complete cases, leaving
+    it out and another family as its ways forward, and the effects stage's declared model refuses
+    in the same words; neither shows the arithmetic's message or raises. Drawn once (case 17), and
+    by chained equations on repeated rows (`fiber`, its rows repeated by `pid`). On the base case
+    17 overflowed on its own: its table read "math range error", with no way forward, and the
+    effects stage raised."""
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    _fit_fails(monkeypatch)
+
+    def words(name: str) -> str:
+        return (f"Multiple imputation cannot run on these data: `{name}`'s censored-normal model "
+                f"could not be fit on these rows: no maximum of its likelihood could be confirmed, "
+                f"so its values below detection cannot be drawn.")
+
+    frame, event = _overflow_case(17)
+    entry = _fit_entry(tmp_path / "once", frame.assign(disease=event), _binary_state(frame))
+    assert entry["inference"]["refused"] == words("c0") and not entry["coefficients"]
+    labels = [e["label"] for e in entry["inference"]["exits"]]
+    assert labels[-2:] == ["Leave `c0` out", "Choose another model family"]
+    assert not any("math range" in c for c in entry["concerns"])
+    out = _effects_run(tmp_path / "once_effects", frame, event)
+    (block,) = out["effects"]["families"]
+    primary = next(s for s in block["sequence"] if s["key"] == "model_2")
+    assert primary["inference"]["refused"] == words("c0")
+    frame, st = _pid_panel(vary=True)
+    out = ef.run(frame, tmp_path / "chained", st)
+    entry = next(m for m in out["fit"]["models"] if m["family"] == "featurewise")
+    assert entry["inference"]["refused"] == words("fiber")
+    assert [e["label"] for e in entry["inference"]["exits"]][-2:] == [
+        "Leave `fiber` out", "Choose another model family"]
+    (block,) = out["effects"]["families"]
+    primary = next(s for s in block["sequence"] if s["key"] == "model_2")
+    assert primary["inference"]["refused"] == words("fiber")
+
+
+@needs_r
+def test_22_a_study_factor_with_no_value_drawn_keeps_its_complete_data_test_and_the_words_say_so(
+        tmp_path):
+    """FWMI-R2-3: three censored study factors and two with no blank (`g0`, `g1`). The drawn ones'
+    rows are ``mice::pool`` on the engine's copies (Barnard–Rubin df, ``dfcom`` = n − 4), the
+    others' their complete-data tests (statsmodels' least squares, df = n − 4 = 96, which
+    ``mice::pool`` on m identical copies would put at ν_com(ν_com + 1)/(ν_com + 3) instead); then
+    Benjamini–Hochberg over all five. The caption and the methods sentence say which is which,
+    counted from the construction (3 drawn, 2 not); on the base both said every study factor was
+    on t with Barnard–Rubin degrees of freedom. Where every study factor has a value drawn (test
+    1's table) the words are as before."""
+    from statsmodels.stats.multitest import multipletests
+
+    from turbotab.core.methods import featurewise_mi as fm
+
+    frame, event = censored_panel(seed=11, shares=(0.2, 0.4, 0.6), deltas=(0.5, 0.0, 0.8),
+                                  complete=2)
+    drawn, once = ["f0", "f1", "f2"], ["g0", "g1"]
+    table, copies = fm.pooled_featurewise_table(frame, event, "binary", [*drawn, *once],
+                                                censored=limits_of(frame, drawn), seed=3)
+    assert sorted(copies.values) == drawn
+    long = pd.DataFrame([{"feature": f, "copy": k + 1, "row": i + 1, "value": v}
+                         for f in drawn for k in range(copies.m)
+                         for i, v in enumerate(copies.values[f][:, k])])
+    design = pd.DataFrame({"disease": event, "z0": frame["z0"], "z1": frame["z1"]})
+    ref = run_r(MICE_POOL, {"design": design, "copies": long}, tmp_path)
+    rows = {r["feature"]: r for r in table.rows}
+    p = {}
+    for f in drawn:
+        for key in ("estimate", "se", "df", "p"):
+            assert rows[f][key] == pytest.approx(ref["rows"][f][key], rel=1e-8), (f, key)
+        p[f] = ref["rows"][f]["p"]
+    X = sm.add_constant(design)
+    for f in once:
+        fit = sm.OLS(frame[f].to_numpy(float), X).fit()
+        assert rows[f]["estimate"] == pytest.approx(float(fit.params["disease"]), rel=1e-10)
+        assert rows[f]["se"] == pytest.approx(float(fit.bse["disease"]), rel=1e-10)
+        assert rows[f]["df"] == len(frame) - 4
+        p[f] = float(fit.pvalues["disease"])
+    q = multipletests([p[f] for f in [*drawn, *once]], method="fdr_bh")[1]
+    for f, want in zip([*drawn, *once], q):
+        assert rows[f]["q"] == pytest.approx(want, rel=1e-7), f
+    assert ("each completed copy was analyzed as follows, and each study factor with values drawn "
+            "pooled by Rubin's rules. Each of 5 study factors tested on its own with 2 adjustment "
+            "columns;") in table.info["caption"]
+    assert ("95% intervals from each test's own residual variance (classical least squares, exact "
+            "under the null for normal errors), on t(96): for the 3 study factors with values "
+            "drawn, in each copy, pooled by Rubin's rules on t with Barnard–Rubin degrees of "
+            "freedom; for the 2 with none drawn, once, on the complete data.") in table.info[
+        "caption"]
+    assert ("; the estimates of the 3 study factors with values drawn were pooled by Rubin's "
+            "rules, each on t with Barnard–Rubin degrees of freedom, and the 2 with none drawn "
+            "kept their complete-data tests") in table.info["missing"]["sentence"]
+    every, _ = fm.pooled_featurewise_table(frame.drop(columns=once), event, "binary", drawn,
+                                           censored=limits_of(frame, drawn), seed=3)
+    assert ("each completed copy was analyzed as follows, and each study factor pooled by Rubin's "
+            "rules.") in every.info["caption"]
+    assert ("in each copy from each test's own residual variance (classical least squares, exact "
+            "under the null for normal errors), on t(96), pooled by Rubin's rules on t with "
+            "Barnard–Rubin degrees of freedom.") in every.info["caption"]
+    assert ("; the estimates were pooled by Rubin's rules, each study factor's on t with "
+            "Barnard–Rubin degrees of freedom") in every.info["missing"]["sentence"]

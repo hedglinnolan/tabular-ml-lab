@@ -41,9 +41,10 @@ its table and no cross-validated score.
 Under multiple imputation the table is pooled over copies it draws itself, one study factor at a
 time, each factor's blanks from its own model given the outcome and ``Z`` (censored-normal below a
 detection limit), each copy tested as above and pooled by Rubin's rules with Barnard and Rubin's
-df, then Benjamini–Hochberg on the pooled p-values (``methods.featurewise_mi``; the plasma scope's
-item 1). A plan it cannot pool, and under inference one censoring-aware fill, are refused before
-the lock (:func:`_pools_before_the_lock`).
+df (a study factor with no value drawn keeps its complete-data test), then Benjamini–Hochberg on
+the pooled p-values (``methods.featurewise_mi``; the plasma scope's item 1). A plan it cannot
+pool, and under inference one censoring-aware fill, are refused before the lock
+(:func:`_pools_before_the_lock`).
 """
 from __future__ import annotations
 
@@ -550,9 +551,21 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
                f"the null for normal errors), on t({df_resid:,.0f})")
         covariance = "model"
     if pooled is not None:
-        # Each copy's intervals as above; the table's are Rubin's, on t with Barnard–Rubin df.
-        how = (f"in each copy {how}, pooled by Rubin's rules on t with Barnard–Rubin degrees of "
-               f"freedom")
+        # Each copy's intervals as above; the table's are Rubin's, on t with Barnard–Rubin df,
+        # where values were drawn, and a study factor with none drawn keeps its complete-data test
+        # (B = 0, so ν = ν_com): the caption counts each where any is so.
+        drawn, once = (pooled.counts() if hasattr(pooled, "counts")
+                       else (int(np.sum(~flat)), 0))
+        if not once:
+            how = (f"in each copy {how}, pooled by Rubin's rules on t with Barnard–Rubin degrees "
+                   f"of freedom")
+        elif drawn:
+            how = (f"{how}: for the {drawn:,} study factor{'s' if drawn != 1 else ''} with values "
+                   f"drawn, in each copy, pooled by Rubin's rules on t with Barnard–Rubin degrees "
+                   f"of freedom; for the {once:,} with none drawn, once, on the complete data")
+        else:
+            how = (f"{how}, each tested once, on the complete data (no value its tests read was "
+                   f"drawn)")
     caption = (f"Each of {m:,} study factors tested on its own {adjusted}; the estimate is {estimand}. "
                f"95% intervals {how}. Benjamini–Hochberg q < {FDR:g}: {found:,} of {m:,}.")
     if unestimable:

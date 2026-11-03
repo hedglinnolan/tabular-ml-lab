@@ -1033,10 +1033,10 @@ class _Run:
         from turbotab.core.methods.imputation import M_DEFAULT, ImputationRefused
         from turbotab.core.models.linear import model_matrix
 
-        prepared = fm.prepare(pipeline, X, y, state=self.state)
-        model = prepared.fitted[-1]
         answer = dict(self.spec.missing or {})
         try:
+            prepared = fm.prepare(pipeline, X, y, state=self.state)
+            model = prepared.fitted[-1]
             copies = fm.copies_for(model_matrix(prepared.fitted, X), y, self.task,
                                    getattr(model, "features", None), clusters,
                                    censored=prepared.censored,

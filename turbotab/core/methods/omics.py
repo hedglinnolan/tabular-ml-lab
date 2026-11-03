@@ -1373,8 +1373,8 @@ class LogScaleCensoredFill(TransformerMixin, BaseEstimator):
         self.columns = columns
 
     def fit(self, X: pd.DataFrame, y: Any = None) -> "LogScaleCensoredFill":
-        from turbotab.core.methods.imputation import tobit_fit
-        from turbotab.core.methods.missing import below_limit_mean
+        from turbotab.core.methods.imputation import CensoredFitRefused, tobit_fit
+        from turbotab.core.methods.missing import below_limit_mean, censored_fill_refusal
 
         self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
         self.n_features_in_ = X.shape[1]
@@ -1395,7 +1395,10 @@ class LogScaleCensoredFill(TransformerMixin, BaseEstimator):
                 continue
             L = math.log(limit)
             z = np.where(blank, L, np.log(np.where(blank, 1.0, x)))
-            theta, _ = tobit_fit(np.ones((len(x), 1)), z, blank, L)
+            try:
+                theta, _ = tobit_fit(np.ones((len(x), 1)), z, blank, L)
+            except CensoredFitRefused:
+                raise censored_fill_refusal(c, np.log(detected)) from None
             self.fill_[c] = below_limit_mean(float(theta[0]), math.exp(float(theta[1])), L, True)
         return self
 

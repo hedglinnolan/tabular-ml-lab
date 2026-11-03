@@ -1132,7 +1132,8 @@ class _Chain:
 
     def _update_fcs(self, name: str, var: Variable, skip: Sequence[str]) -> None:
         """mice's step: the model on the recorded rows, its parameters drawn, then each blank."""
-        from turbotab.core.methods.imputation import _binary, _categorical, _censored
+        from turbotab.core.methods.imputation import (CensoredFitRefused, _binary, _categorical,
+                                                      _censored)
 
         X = self.design_rows(name, skip)
         miss = self.miss[name]
@@ -1143,8 +1144,16 @@ class _Chain:
         elif var.kind == "binary":
             new = _from01(_binary(X, _as01(cur, self.data[name]), miss, self.rng), self.data[name])
         elif var.kind == "censored":
-            new = self.scaled(name, _censored(X, self.raw(name, cur.astype(float)), miss,
-                                              var.censoring, self.rng))
+            try:
+                new = self.scaled(name, _censored(X, self.raw(name, cur.astype(float)), miss,
+                                                  var.censoring, self.rng))
+            except CensoredFitRefused as exc:
+                # A censored-normal fit with no certified maximum (``imputation.tobit_fit``), or a
+                # draw from it whose arithmetic fails, is refused in words naming the column,
+                # never drawn.
+                raise exc.of(name) from None
+            except (np.linalg.LinAlgError, ArithmeticError) as exc:
+                raise CensoredFitRefused(why=f"{type(exc).__name__}: {exc}").of(name) from None
         else:
             rec = self.recorded[name]
             _, star, sigma = _norm_draw(X[rec], cur[rec].astype(float), self.rng)

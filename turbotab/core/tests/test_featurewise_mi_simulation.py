@@ -15,8 +15,12 @@ there). Many study factors in one table are independent replicates on that desig
   200 study factors (20 with δ = 0.8, 180 null, 40% censored), averages at most q = 0.05 within
   three of its Monte Carlo errors (Benjamini & Hochberg's bound under independence is
   q · 180/200 = 0.045). The scope did not check this.
+* On rows that repeat by participant beside an event that is one value per participant (the
+  verifier's clustered panel), every table is drawn, its estimate unbiased and its intervals at
+  their nominal coverage within three Monte Carlo errors (the second repair round).
 
-Marked slow (about four minutes): run it by name.
+Marked slow (under a minute since the censored-normal fit is Newton's, about four before; about
+five more for the clustered panel): run it by name.
 """
 from __future__ import annotations
 
@@ -115,3 +119,39 @@ def test_the_false_discovery_proportion_after_benjamini_hochberg_stays_at_q():
         fdp.append(found[20:].sum() / max(int(found.sum()), 1))
     mean, error = float(np.mean(fdp)), float(np.std(fdp, ddof=1) / np.sqrt(len(fdp)))
     assert mean <= 0.05 + 3 * error, (mean, error)
+
+
+@pytest.mark.slow
+def test_a_censored_factor_on_rows_repeating_beside_a_unit_level_outcome_is_drawn_and_covers():
+    """The verifier's clustered panel (FWMI-R1-1's, its ``cluster_sim.py``): 40 participants of 3
+    rows, the event one value per participant, `z0` row by row, a participant effect (SD 0.7);
+    x = 8 + δ·event + 0.3·z0 + effect + N(0, 1), δ = 0.5, blank below its 30% quantile; 400
+    independent replicates, each its own table, clustered by participant (CR2). The chained
+    model's participant mean of the event repeats it; the censored-normal fit drops it, as
+    survreg drops an aliased column. Every replicate is drawn (the base refused about 65% in
+    words, by rounding), the mean estimate lies within three Monte Carlo errors of δ, and the
+    coverage of the 95% intervals within three of 0.95 (√(0.95 · 0.05 / 400) = 0.011). Over 1,000
+    replicates the mean was 0.501 (Monte Carlo error 0.010) and the coverage 0.960."""
+    from turbotab.core.methods import featurewise_mi as fm
+    from turbotab.core.models.linear import as_clusters
+
+    G, R, delta = 40, 3, 0.5
+    codes = np.repeat(np.arange(G), R)
+    estimates, covered = [], []
+    for rep in range(400):
+        rng = np.random.default_rng(31000 + rep)
+        event = np.repeat((rng.random(G) < 0.5).astype(float), R)
+        z = rng.standard_normal(G * R)
+        effect = np.repeat(rng.standard_normal(G) * 0.7, R)
+        x = 8 + delta * event + 0.3 * z + effect + rng.standard_normal(G * R)
+        x = np.where(x < np.quantile(x, 0.3), np.nan, x)
+        frame = pd.DataFrame({"c0": x, "z0": z})
+        table, _ = fm.pooled_featurewise_table(
+            frame, event, "binary", ["c0"], as_clusters(codes),
+            censored={"c0": Censoring(float(np.nanmin(x)), False)}, seed=rep)
+        (row,) = table.rows
+        estimates.append(row["estimate"])
+        covered.append(row["ci_low"] <= delta <= row["ci_high"])
+    error = float(np.std(estimates, ddof=1) / np.sqrt(len(estimates)))
+    assert abs(float(np.mean(estimates)) - delta) <= 3 * error, (np.mean(estimates), error)
+    assert abs(float(np.mean(covered)) - 0.95) <= 3 * np.sqrt(0.95 * 0.05 / 400), np.mean(covered)
