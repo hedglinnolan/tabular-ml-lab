@@ -23,8 +23,11 @@ decision: it enters the Record only as the plan's lock, under Estimate and Descr
   convention, :data:`HOLD_SECONDS`) waits for Fit in the scheduler; shorter fits compute live and
   may be done when Fit is pressed. The hold re-arms when a new estimate exceeds 1.5 times the last
   one confirmed (:data:`REARM`). Every estimate stage that fits the chosen families (one that
-  reads ``models``) waits with the fit. The hold is the scheduler's, not a stage requirement, so
-  stages stay pure functions of the log and a replay bypasses it.
+  reads ``models``) waits with the fit. The curve of which decisions mattered is held the same
+  way (:func:`curve_holds`): it fits the plan once per specification, so its estimate is the
+  followed family's fit seconds times the specifications (:func:`curve_estimate`), and the press
+  that showed it confirms it (``curve_seconds``). The hold is the scheduler's, not a stage
+  requirement, so stages stay pure functions of the log and a replay bypasses it.
 * **The press** is kept beside the project (:data:`PRESS_FILE`: the outcome it was pressed for, the
   estimate it confirmed and the last record before it), as the scores seen are
   (``selection.SEEN_FILE``): it is not a decision and never enters the log. Cancel, or a change to
@@ -164,10 +167,14 @@ def read_press(project_dir: str | Path) -> dict[str, Any] | None:
 
 
 def record_press(project_dir: str | Path, *, target: str | None, seconds: float | None,
-                 seq: int | None) -> dict[str, Any]:
+                 seq: int | None, curve_seconds: float | None = None) -> dict[str, Any]:
     """Keep a press of Fit beside the project: the outcome, the estimate it confirmed, the last
-    record before it. Written atomically; the newest press replaces the last."""
+    record before it, and the curve's estimate it confirmed (``curve_seconds``,
+    :func:`curve_estimate`; None when none was shown). Written atomically; the newest press
+    replaces the last."""
     press = {"target": target, "seconds": seconds, "seq": seq}
+    if curve_seconds is not None:
+        press["curve_seconds"] = float(curve_seconds)
     _write(project_dir, press)
     return press
 
@@ -223,6 +230,34 @@ def holds(estimate: float | None, press: Mapping[str, Any] | None, target: str |
         return True
     confirmed = (press or {}).get("seconds")
     return confirmed is not None and estimate > REARM * float(confirmed)
+
+
+# ── the curve of which decisions mattered, held as Fit is ─────────────────────
+
+
+def curve_estimate(fit_seconds: float | None, specifications: int | None) -> float | None:
+    """What the curve of which decisions mattered (``core/mattered.py``) will take: it fits the
+    plan once per specification (the primary and each departure from it), so about the followed
+    family's fit seconds times the specifications (the orchestrator's ruling, 2026-11-03). None
+    when either is not known."""
+    if fit_seconds is None or not specifications or int(specifications) < 1:
+        return None
+    return float(fit_seconds) * int(specifications)
+
+
+def curve_holds(estimate: float | None, press: Mapping[str, Any] | None,
+                target: str | None) -> bool:
+    """Whether the scheduler holds the curve until Fit is pressed for it, as :func:`holds` holds
+    the fit: its estimate (:func:`curve_estimate`) exceeds about 2 minutes, and no press for this
+    outcome confirmed a curve estimate (the press's ``curve_seconds``) it is within 1.5 times of.
+    A press that confirmed none (pressed before the curve's cost was shown) releases nothing, and
+    an estimate not known holds nothing: computing stays live."""
+    if estimate is None or estimate <= HOLD_SECONDS:
+        return False
+    if not pressed_for(press, target):
+        return True
+    confirmed = (press or {}).get("curve_seconds")
+    return confirmed is None or estimate > REARM * float(confirmed)
 
 
 # ── the lock, as the quest log shows it ──────────────────────────────────────
@@ -310,7 +345,8 @@ def opened_by(press: Mapping[str, Any] | None) -> bool:
 
 
 __all__ = ["FIT_FIRST", "FitLock", "HOLD_SECONDS", "LOCK_FIRST", "PRESS_FILE", "PRESS_FIT",
-           "PURPOSE_FIRST", "RELATIONSHIPS_AFTER_LOCK", "REARM", "fit_estimate", "fit_lock", "gate",
+           "PURPOSE_FIRST", "RELATIONSHIPS_AFTER_LOCK", "REARM", "curve_estimate", "curve_holds",
+           "fit_estimate", "fit_lock", "gate",
            "holds", "opened_by", "pressed_for", "read_press", "record_press", "relationships_served",
            "withhold_relationships",
            "results_open",

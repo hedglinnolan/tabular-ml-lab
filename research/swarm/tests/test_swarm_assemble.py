@@ -1622,6 +1622,48 @@ def test_the_analyst_log_is_read_before_any_route_that_can_render_a_claim():
     assert served.mattered.body == {"status": "fresh"}
 
 
+def test_a_curve_held_for_fit_is_not_waited_for_and_one_waiting_on_its_estimate_is():
+    """The scheduler holds the curve until Fit is pressed for it (``held: "fit"``), which nothing
+    presses once the run is over: it is read as served at once, never waited out for the whole
+    ``mattered_wait``. A curve held while its estimate is measured (``held: "estimate"``) ends that
+    hold by itself, so it is waited for."""
+    import time
+
+    client = FakeClient({"/mattered": {"status": "pending"},
+                         "/projects/p1": {"stages": {"mattered": {"status": "pending",
+                                                                  "held": "fit"}}}})
+    start = time.monotonic()
+    served = A.curve_of(client, "/api/projects/p1", mattered_wait=600.0, poll=0.0)
+    assert time.monotonic() - start < 5.0
+    assert served.body == {"status": "pending"}
+    assert client.asked.count("/api/projects/p1/mattered") == 1
+
+    states = iter(["pending", "pending", "fresh"])
+    client = FakeClient({"/mattered": lambda: {"status": next(states)},
+                         "/projects/p1": {"stages": {"mattered": {"status": "pending",
+                                                                  "held": "estimate"}}}})
+    assert A.curve_of(client, "/api/projects/p1", mattered_wait=600.0,
+                      poll=0.0).body == {"status": "fresh"}
+
+
+def test_a_curve_whose_progress_moves_is_waited_for_past_the_wait_and_a_stalled_one_is_not():
+    """``mattered_wait`` is the longest the curve is waited for while nothing moves: one fitting a
+    specification after another (its progress advancing) is waited for until it is fresh, however
+    long that takes, and one whose status and progress stay put is read as served after it."""
+    progress = iter([0.1, 0.2, 0.3, 0.4])
+    states = iter(["running", "running", "running", "running", "fresh"])
+    client = FakeClient({"/mattered": lambda: {"status": next(states)},
+                         "/projects/p1": lambda: {"stages": {"mattered": {
+                             "status": "running", "progress": next(progress)}}}})
+    assert A.curve_of(client, "/api/projects/p1", mattered_wait=0.0,
+                      poll=0.0).body == {"status": "fresh"}
+    stalled = FakeClient({"/mattered": {"status": "running"},
+                          "/projects/p1": {"stages": {"mattered": {"status": "running",
+                                                                   "progress": 0.5}}}})
+    assert A.curve_of(stalled, "/api/projects/p1", mattered_wait=0.05,
+                      poll=0.01).body == {"status": "running"}
+
+
 def _run_dir(folder: Path, **driver: Any) -> Path:
     folder.mkdir(parents=True)
     (folder / A.DRIVER_FILE).write_text(json.dumps({"run": folder.name, "project": "p1",

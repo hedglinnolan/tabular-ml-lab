@@ -214,8 +214,32 @@ def test_a_press_is_kept_beside_the_project(tmp_path):
     assert fit_press.read_press(tmp_path) is None
     fit_press.record_press(tmp_path, target="glucose", seconds=140.0, seq=9)
     assert fit_press.read_press(tmp_path) == {"target": "glucose", "seconds": 140.0, "seq": 9}
+    fit_press.record_press(tmp_path, target="glucose", seconds=140.0, seq=9, curve_seconds=1400.0)
+    assert fit_press.read_press(tmp_path)["curve_seconds"] == 1400.0
     (tmp_path / fit_press.PRESS_FILE).write_text("{not json", "utf-8")
     assert fit_press.read_press(tmp_path) is None
+
+
+def test_the_curve_is_one_fit_per_specification_and_is_held_as_fit_is():
+    """The curve of which decisions mattered fits the plan once per specification: its estimate
+    is the fit's seconds times the specifications (40 s × 12 = 480 s, by construction), held over
+    about 2 minutes until a press for the outcome confirmed a curve estimate it is within 1.5
+    times of; a press that confirmed none (the fit's alone) releases nothing."""
+    assert fit_press.curve_estimate(40.0, 12) == 480.0
+    assert fit_press.curve_estimate(None, 12) is None and fit_press.curve_estimate(40.0, None) is None
+    assert fit_press.curve_estimate(40.0, 0) is None
+    assert not fit_press.curve_holds(None, None, "glucose")  # not known: computing stays live
+    assert not fit_press.curve_holds(fit_press.curve_estimate(3.8, 11), None, "glucose")  # 41.8 s
+    assert fit_press.curve_holds(480.0, None, "glucose")
+    fit_only = {"target": "glucose", "seconds": 40.0, "seq": 3}
+    assert fit_press.curve_holds(480.0, fit_only, "glucose")  # the fit's press showed no curve
+    assert not fit_press.holds(40.0, fit_only, "glucose")
+    shown = {**fit_only, "curve_seconds": 480.0}
+    assert not fit_press.curve_holds(480.0, shown, "glucose")
+    assert not fit_press.curve_holds(720.0, shown, "glucose")
+    assert fit_press.curve_holds(720.5, shown, "glucose")  # the hold re-arms past 1.5 times
+    assert fit_press.curve_holds(480.0, shown, "insulin")  # pressed for another outcome
+    assert fit_press.curve_holds(480.0, {**shown, "withdrawn": True}, "glucose")
 
 
 # ── (d) the lock is visible ──────────────────────────────────────────────────

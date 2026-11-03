@@ -47,7 +47,8 @@ engine.
 
 **The server's reads.** The analyst log comes first, since any later read can render a claim and
 each render is logged. Then the project with its decision log, the fit records, the results, which
-decisions mattered (waiting while that stage computes), the materiality ledger, the ingest, the
+decisions mattered (waiting while that stage computes and its progress moves, never while the
+scheduler holds it for a press of Fit: :func:`curve_of`), the materiality ledger, the ingest, the
 outcome and the participant flow, and the export. A read of the project, the analyst log, the fit
 records, the results or the materiality ledger that fails leaves a failed run
 (:class:`RunUnreadable`), never a record that reads as if the route had served nothing. Every
@@ -218,6 +219,10 @@ ADJUSTMENT_SLOT = "adjustment"
 MATTERED_KINDS = ("set_exclusions", "set_adjustment")
 # The stage statuses after which ``GET …/mattered`` is waited for no longer.
 SETTLED = ("fresh", "error", "blocked")
+# The curve's stage, and why the scheduler holds it until Fit is pressed for it (``StageStatus``'s
+# ``held``), which no read of a finished run will press: such a curve is not waited for.
+MATTERED_STAGE = "mattered"
+HELD_FOR_FIT = "fit"
 
 NOT_IN_A_FIT = "No fit completed while this record was in force."
 UNACCOUNTED = ("The decision log, read by the server's own rule, does not account for this fit's "
@@ -467,6 +472,35 @@ def _json(response: Any) -> Read:
     return Read(response.status_code, body)
 
 
+def curve_of(client: Any, base: str, *, mattered_wait: float = 600.0,
+             poll: float = 0.25) -> Read:
+    """``GET …/mattered`` once its stage settles (:data:`SETTLED`), else as served when it will
+    not: held by the scheduler until Fit is pressed for it (its status in ``GET …`` holds
+    :data:`HELD_FOR_FIT`; ``fit_press.curve_holds``), which nothing presses once the run is over,
+    so it is not waited for; or its status and progress unmoved for ``mattered_wait`` seconds. A
+    curve whose progress moves is waited for however long it computes: it fits the plan once per
+    specification, which on the slowest plans takes longer than any fixed wait."""
+    last: Any = None
+    moved = time.monotonic()
+    while True:
+        mattered = _json(client.get(f"{base}/mattered"))
+        status = (mattered.body or {}).get("status") if mattered.ok else None
+        if not mattered.ok or status in SETTLED:
+            return mattered
+        project = _json(client.get(base))
+        stage = ((project.body or {}).get("stages") or {}).get(MATTERED_STAGE) \
+            if project.ok and isinstance(project.body, dict) else None
+        stage = stage if isinstance(stage, dict) else {}
+        if stage.get("held") == HELD_FOR_FIT:
+            return mattered
+        now = (status, stage.get("status"), stage.get("progress"))
+        if now != last:
+            last, moved = now, time.monotonic()
+        elif time.monotonic() - moved > mattered_wait:
+            return mattered
+        time.sleep(poll)
+
+
 def fetch(client: Any, pid: str, *, mattered_wait: float = 600.0, poll: float = 0.25) -> Served:
     """Every route the record reads, analyst log first (the module docstring). ``client`` is an
     HTTP client on the server's root (``httpx.Client`` or FastAPI's ``TestClient``)."""
@@ -475,13 +509,7 @@ def fetch(client: Any, pid: str, *, mattered_wait: float = 600.0, poll: float = 
     project = _json(client.get(base))
     fits = _json(client.get(f"{base}/fits"))
     results = _json(client.get(f"{base}/results"))
-    end = time.monotonic() + mattered_wait
-    while True:
-        mattered = _json(client.get(f"{base}/mattered"))
-        status = (mattered.body or {}).get("status") if mattered.ok else None
-        if not mattered.ok or status in SETTLED or time.monotonic() > end:
-            break
-        time.sleep(poll)
+    mattered = curve_of(client, base, mattered_wait=mattered_wait, poll=poll)
     ledger = _json(client.get(f"{base}/materiality"))
     stages = {s: _json(client.get(f"{base}/stages/{s}")) for s in MARKER_STAGES}
     readings = _json(client.get(f"{base}/readings"))

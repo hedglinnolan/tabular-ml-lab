@@ -293,71 +293,217 @@ def test_agreement_is_judged_against_the_standard_error_both_ways():
     assert not M.agrees(S.Spec("p", {}, True, 1.0, 0.5, 1.5, 99), rep)  # other rows
 
 
-def test_a_fill_of_missing_values_refuses_the_curve_and_complete_cases_do_not(tmp_path):
-    """Under complete cases each specification's rows are its own complete cases, as the flow
-    judges the primary's (the tests above have blanks); a single fill would fill them instead,
-    which the refit does not, so it refuses by name before anything is fitted."""
-    filled = state(missing=d.MissingSpec(strategy="impute", acknowledged=True,
-                                         reason="a test of the refusal"))
-    run = Run(cohort(), tmp_path, filled)
-    art = run.mattered()
-    assert art["curve"] is None
-    assert "the fill of missing values" in art["refused"]["message"]
+FILL = d.MissingSpec(strategy="impute", acknowledged=True, reason="a test of the curve's fill")
 
 
-def test_under_a_fill_a_departure_whose_added_column_has_blanks_is_not_estimated(tmp_path):
-    """A single fill with blanks only in `bmi`, which the answers leave out: the primary's columns
-    are complete on its rows, so the fill changes nothing there and the curve is drawn; the
-    departure adding `bmi` would have its blanks filled by the plan, which the refit does not do,
-    so it alone is not estimated. Every other specification is statsmodels' fit."""
-    frame = ef.cohort(n=800, seed=7)
-    frame.loc[np.random.default_rng(11).choice(len(frame), 30, replace=False), "bmi"] = np.nan
-    filled = state(missing=d.MissingSpec(strategy="impute", acknowledged=True,
-                                         reason="a test of the guard"))
-    run = Run(frame, tmp_path, filled)
+def filled_fit(table: pd.DataFrame, *, rules: tuple[int, ...], covariates: list[str],
+               basis: dict[str, Any] | None = None) -> tuple[float, float, float, int]:
+    """statsmodels' least squares with HC3 on t(n − p) on a specification's rows under a single
+    fill: every row its rules keep, each blank its column's median on those rows (the fill, done
+    here by hand). ``basis``: a column's spline terms beside it, by name (:func:`rcs_terms`)."""
+    part = table[rows_of(table, rules=rules, columns=["glucose"])].copy()
+    for c in ["fiber", *covariates]:
+        if c != "sex" and part[c].isna().any():
+            part[c] = part[c].fillna(float(np.nanmedian(part[c].to_numpy(dtype=float))))
+    X = ef.design_matrix(part, ["fiber", *covariates])
+    for c, terms in (basis or {}).items():
+        if c in covariates:
+            for j, column in enumerate(terms(part[c].to_numpy(dtype=float)).T):
+                X[f"{c}_rcs{j}"] = column
+    fit = sm.OLS(part["glucose"].astype(float), X).fit(cov_type="HC3", use_t=True)
+    low, high = fit.conf_int(alpha=0.05).loc["fiber"]
+    return float(fit.params["fiber"]), float(low), float(high), int(len(part))
+
+
+def rcs_terms(x: np.ndarray, k: int = 4) -> np.ndarray:
+    """Harrell's restricted cubic spline's k − 2 nonlinear terms (Regression Modeling Strategies,
+    2nd ed., §2.4.5, eq. 2.25), its knots at the 5th, 35th, 65th and 95th percentiles of ``x`` by
+    R's type-7 quantile, as ``rms::rcs`` places four; written out here from the formula."""
+    t = np.quantile(x, [0.05, 0.35, 0.65, 0.95], method="linear")
+
+    def cube(u: np.ndarray) -> np.ndarray:
+        return np.clip(u, 0.0, None) ** 3
+
+    out = [cube(x - t[j]) - cube(x - t[k - 2]) * (t[k - 1] - t[j]) / (t[k - 1] - t[k - 2])
+           + cube(x - t[k - 1]) * (t[k - 2] - t[j]) / (t[k - 1] - t[k - 2]) for j in range(k - 2)]
+    return np.column_stack(out) / (t[k - 1] - t[0]) ** 2
+
+
+def test_under_a_single_fill_each_specification_is_fitted_through_the_fill(tmp_path, numeric):
+    """A single fill is a step the raw refit does not repeat, so each specification is fitted as
+    its plan: every row its rules keep, its blanks filled on those rows. Each is statsmodels' fit
+    on the rows filled here by hand (medians on each specification's own rows); on the base the
+    curve was refused by name. Under complete cases (the tests above) no fill is a step."""
+    run = Run(cohort(), tmp_path, state(missing=FILL))
     art = run.mattered()
     assert art["refused"] is None, art["refused"]
     curve = art["curve"]
-    added = [s for s in curve["not_estimated"] if s["picks"]["left_out:bmi"] == "added"]
-    assert len(added) == 1 and "the fill of missing values" in added[0]["reason"]
-    want = {k: v for k, v in departures().items() if k != added[0]["key"]}
     got = {s["key"]: s for s in curve["specs"]}
-    assert set(got) == set(want)
-    for k, (rules, covariates) in want.items():
-        est, low, high, n = statsmodels_fit(run.table, outcome="glucose", rules=rules,
-                                            covariates=covariates)
+    assert set(got) == set(departures()) and curve["not_estimated"] == []
+    for k, (rules, covariates) in departures().items():
+        est, low, high, n = filled_fit(run.table, rules=rules, covariates=covariates)
+        s = got[k]
+        assert s["n"] == n, k
+        assert (s["estimate"], s["low"], s["high"]) == pytest.approx((est, low, high), rel=1e-9), k
+    assert curve["through"] == ["impute"]
+    assert "(the fill of missing values)" in art["methods"]
+    assert "multiple imputation" not in art["methods"] and "Rubin" not in art["methods"]
+    plain = numeric.mattered()  # complete cases: every specification the raw refit, as before
+    assert plain["curve"]["through"] == [] and "through its plan" not in plain["methods"]
+
+
+def test_under_a_fill_a_departure_whose_added_column_has_blanks_is_fitted_through_the_fill(
+        tmp_path):
+    """A single fill with blanks only in `bmi`, which the answers leave out: the primary's columns
+    are complete on its rows, so the fill changes nothing there and the primary is the raw refit;
+    the departure adding `bmi` alone has its blanks filled by its plan, and is fitted through the
+    fill (on the base it was not estimated). Every specification is statsmodels' fit, `bmi`'s blanks
+    filled here by hand."""
+    frame = ef.cohort(n=800, seed=7)
+    frame.loc[np.random.default_rng(11).choice(len(frame), 30, replace=False), "bmi"] = np.nan
+    run = Run(frame, tmp_path, state(missing=FILL))
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    assert curve["not_estimated"] == []
+    got = {s["key"]: s for s in curve["specs"]}
+    assert set(got) == set(departures())
+    for k, (rules, covariates) in departures().items():
+        est, low, high, n = filled_fit(run.table, rules=rules, covariates=covariates)
         assert got[k]["estimate"] == pytest.approx(est, rel=1e-9) and got[k]["n"] == n, k
+    added = next(s for s in curve["specs"] if s["picks"]["left_out:bmi"] == "added")
+    assert added["n"] == len(run.table[rows_of(run.table, rules=(0, 1), columns=["glucose"])])
+    assert curve["through"] == ["impute"]  # the bmi departure's fill alone
 
 
-def test_a_declared_spline_refuses_the_curve_by_name(tmp_path):
+def test_a_spline_on_a_covariate_is_fitted_through_and_one_on_the_exposure_stays_refused(tmp_path):
+    """Truth (c), both ways. A spline declared on `age`, a covariate: each specification is fitted
+    through the form, its knots placed on its own rows, and is statsmodels' fit with Harrell's
+    restricted cubic spline terms written out here (on the base the curve was refused). A spline on
+    `fiber`, what the curve follows, splits it into three coefficients: there is no one estimate to
+    follow, so the curve stays refused, in words and with no exit, before anything is fitted."""
     from turbotab.core.decisions import ExposureFormSpec
 
     formed = state(exposure_forms={"age": ExposureFormSpec(form="spline", knots=4, scale="raw")})
-    run = Run(cohort(), tmp_path, formed)
+    run = Run(cohort(), tmp_path / "age", formed)
     assert run.design.objects["spec"]["exposure_forms"]  # the design applies it
     art = run.mattered()
-    assert art["curve"] is None
-    assert "a declared form other than a straight line" in art["refused"]["message"]
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    got = {s["key"]: s for s in curve["specs"]}
+    assert set(got) == set(departures()) and curve["through"] == ["form"]
+    for k, (rules, covariates) in departures().items():
+        est, low, high, n = statsmodels_fit(run.table, outcome="glucose", rules=rules,
+                                            covariates=covariates)
+        if "age" in covariates:  # the spline's terms on the specification's own complete cases
+            part = run.table[rows_of(run.table, rules=rules,
+                                     columns=["glucose", "fiber", *covariates])]
+            X = ef.design_matrix(part, ["fiber", *covariates])
+            for j, column in enumerate(rcs_terms(part["age"].to_numpy(dtype=float)).T):
+                X[f"age_rcs{j}"] = column
+            fit = sm.OLS(part["glucose"].astype(float), X).fit(cov_type="HC3", use_t=True)
+            est = float(fit.params["fiber"])
+            low, high = (float(v) for v in fit.conf_int(alpha=0.05).loc["fiber"])
+        assert got[k]["n"] == n, k
+        assert (got[k]["estimate"], got[k]["low"], got[k]["high"]) == pytest.approx(
+            (est, low, high), rel=1e-8), k
+    assert "(a declared form other than a straight line)" in art["methods"]
+
+    on_fiber = state(exposure_forms={"fiber": ExposureFormSpec(form="spline", knots=4,
+                                                               scale="raw")})
+    refused = Run(cohort(), tmp_path / "fiber", on_fiber).mattered()
+    assert refused["curve"] is None and refused["refused"]["exits"] == []
+    assert refused["refused"]["message"] == M.FORMED_EXPOSURE.format(
+        exposure="fiber", n=3, names="`fiber`, `fiber'` and `fiber''`")
 
 
-def test_a_residual_energy_model_refuses_the_curve_by_naming_it(tmp_path):
-    """The residual model fits ``fiber_adj`` in place of ``fiber``. The refit does not repeat the
-    energy model, and the refusal says so, before it looks for the reported row of ``fiber``
-    (which the energy model renamed) and offers an exit about scales that does not apply."""
+def test_an_omics_normalization_refuses_the_curve_by_name_and_no_step_of_the_others_does(
+        tmp_path, numeric):
+    """An omics normalization (log2) of `fiber` leaves its column's name on the normalized scale,
+    which the curve's label does not state, so the curve is not fitted through it: refused by name,
+    with no exit, before anything is fitted. The curves drawn above hold none of these steps."""
+    frame = cohort()
+    frame["fiber"] = frame["fiber"].clip(lower=1.0)  # intensities: positive
+    st = state(findings={"omics_scale": d.FindingDisposition(
+        action="applied", option="log2", params={"kind": "intensities", "columns": ["fiber"]})})
+    run = Run(frame, tmp_path, st)
+    assert run.design.objects["spec"]["normalization"]["columns"] == ["fiber"]  # the premise
+    art = run.mattered()
+    assert art["curve"] is None and art["refused"]["exits"] == []
+    assert art["refused"]["message"] == M.NOT_FOLLOWED_REFUSAL.format(
+        steps="the omics normalization")
+    assert numeric.mattered()["refused"] is None
+
+
+def test_the_hold_counts_the_specifications_the_curve_fits_and_the_fit_s_own_seconds(numeric):
+    """What the hold counts (``fit_press.curve_estimate``): the specifications the curve fits for
+    the state, the eight this curve draws, times the followed family's seconds: the fit's measured
+    ``fit_seconds`` once it is made, the shelf's ``estimate_seconds`` before. None where the curve is
+    not offered or no followed family is timed."""
+    curve = numeric.mattered()["curve"]
+    assert M.specifications_of(numeric.state) == len(curve["specs"]) + len(curve["not_estimated"])
+    assert M.specifications_of(numeric.state) == len(departures()) == 8
+    seconds = next(m["fit_seconds"] for m in numeric.fit.data["models"] if m["family"] == "linear")
+    assert M.expected_seconds(numeric.state, numeric.fit) == pytest.approx(8 * seconds)
+    shelf = {"families": [{"key": "elastic_net", "estimate_seconds": 900.0},
+                          {"key": "linear", "estimate_seconds": 2.5}]}
+    assert M.expected_seconds(numeric.state, shelf) == 20.0
+    assert M.expected_seconds(numeric.state, {"families": [{"key": "elastic_net",
+                                                            "estimate_seconds": 9.0}]}) is None
+    predict = numeric.state.model_copy(update={"purpose": "prediction"})
+    assert M.specifications_of(predict) is None and M.expected_seconds(predict, shelf) is None
+
+
+def energy_cohort() -> pd.DataFrame:
     frame = cohort()
     rng = np.random.default_rng(5)
     frame["kcal"] = 2000 + 40 * (frame["fiber"] - 20) + rng.normal(0, 300, len(frame))
+    return frame
+
+
+def test_a_residual_energy_model_is_fitted_through_and_the_curve_follows_its_column(tmp_path):
+    """The residual model fits ``fiber_adj`` in place of ``fiber``: the curve follows that column,
+    the fit's own reported row, and fits each specification through the energy model on its own
+    rows. Each is statsmodels' fit of `fiber_adj` written out here (Willett's residual of `fiber` on
+    `kcal` on the specification's rows, plus `fiber`'s mean, `kcal` kept). The departure that drops
+    `kcal` leaves the energy model without its total energy: it is not estimated, in words, while
+    every other departure is. On the base the curve was refused by naming the energy model."""
     st = state(roles={**ef.ROLES, "kcal": "energy"}, answers={**ef.ANSWERS, "kcal": ef.CONFOUNDER},
                energy_adjustment=d.EnergyAdjustment(method="residual", energy_column="kcal",
                                                     nutrients=["fiber"]))
-    run = Run(frame, tmp_path, st)
+    run = Run(energy_cohort(), tmp_path, st)
     model = next(m for m in run.fit.data["models"] if m["family"] == "linear")
     assert "fiber_adj" in [r["feature"] for r in model["coefficients"]]  # the premise
     art = run.mattered()
-    assert art["curve"] is None
-    message = art["refused"]["message"]
-    assert "the energy model" in message and "no single coefficient" not in message
-    assert S.SCALE_EXIT["label"] not in [e["label"] for e in art["refused"]["exits"]]
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    assert curve["estimate_label"] == "Difference in mean `glucose` per unit of `fiber_adj`"
+    assert art["reported"]["feature"] == "fiber_adj" and curve["through"] == ["energy"]
+    assert {c["key"] for c in curve["choices"]} == {*ORDER, "adjusted:kcal"}
+    assert [s["picks"]["adjusted:kcal"] for s in curve["not_estimated"]] == ["dropped"]
+    assert curve["not_estimated"][0]["reason"] == ("With this choice changed, "
+                                                   + M.ENERGY_READS.format(column="kcal"))
+    assert len(curve["specs"]) == len(departures())  # every other specification is estimated
+    for s in curve["specs"]:
+        picks = s["picks"]
+        rules = tuple(i for i in (0, 1) if picks[f"exclusion:{i}"] == M.RECORDED)
+        covariates = [c for c in ADJUSTED if picks[f"adjusted:{c}"] == M.RECORDED] \
+            + (["bmi"] if picks["left_out:bmi"] == "added" else [])
+        part = run.table[rows_of(run.table, rules=rules,
+                                 columns=["glucose", "fiber", "kcal", *covariates])]
+        e, n_ = part["kcal"].to_numpy(dtype=float), part["fiber"].to_numpy(dtype=float)
+        slope = float(np.cov(e, n_, ddof=1)[0, 1] / np.var(e, ddof=1))
+        X = ef.design_matrix(part, ["kcal", *covariates])
+        X["fiber_adj"] = n_ - slope * (e - e.mean())
+        fit = sm.OLS(part["glucose"].astype(float), X).fit(cov_type="HC3", use_t=True)
+        low, high = fit.conf_int(alpha=0.05).loc["fiber_adj"]
+        assert s["n"] == len(part), s["key"]
+        assert (s["estimate"], s["low"], s["high"]) == pytest.approx(
+            (float(fit.params["fiber_adj"]), float(low), float(high)), rel=1e-8), s["key"]
+    assert "(the energy model)" in art["methods"]
+    # The label quotes the column the curve follows: the reported row's.
+    assert M.reported_of(run.fit, "fiber", "regression",
+                         predictors=run.design.objects["spec"]["predictors"]).feature == "fiber_adj"
 
 
 @pytest.mark.parametrize("measure, words", [("risk_difference", "marginal risk difference"),
@@ -394,12 +540,14 @@ def with_statin() -> pd.DataFrame:
     return frame
 
 
-def test_an_added_column_the_plan_would_code_otherwise_is_not_estimated(tmp_path):
+def test_an_added_column_the_plan_would_code_otherwise_is_fitted_through_that_coding(tmp_path):
     """`statin` is two-valued with blanks, and the answer keeps a category's blanks as a level of
-    their own, so a plan adjusting for it would code its blanks as a level (``level_columns``); the
-    adjustment answers leave it out, so only the curve's departure adds it. The refit would drop
-    its blank rows instead, so that specification is listed as not estimated, with the step named.
-    `bmi`, a number with no step of its own, is added and estimated as statsmodels fits it."""
+    their own, so a plan adjusting for it codes its blanks as a level (``level_columns``); the
+    adjustment answers leave it out, so only the curve's departure adds it. That departure is
+    fitted as its plan: its blank rows kept (complete cases set a level column aside, as the flow
+    does) and coded as a level, statsmodels' fit with `statin`'s two indicators (1, and blank)
+    written out here. On the base it was not estimated. `bmi`, a number with no step of its own,
+    is added and estimated as statsmodels fits it, by the raw refit."""
     st = state(roles={**ef.ROLES, "statin": "covariate"},
                answers={**ef.ANSWERS, "statin": AFTER_EXPOSURE},
                missing=d.MissingSpec(strategy="complete_case", categorical="missing_category",
@@ -409,25 +557,33 @@ def test_an_added_column_the_plan_would_code_otherwise_is_not_estimated(tmp_path
     assert art["refused"] is None, art["refused"]
     curve = art["curve"]
     assert "left_out:statin" in [c["key"] for c in curve["choices"]]
-    statin = [s for s in curve["not_estimated"] if s["picks"]["left_out:statin"] == "added"]
-    assert len(statin) == 1
-    # The step is worded as something the plan applies (EBv2-5: "apply blanks kept as a level").
-    assert statin[0]["reason"] == ("With this choice changed, the plan would apply the coding of "
-                                   "blanks as a level of their own, which the curve's refit does "
-                                   "not repeat, so it is not fitted as the primary is.")
-    assert not [s for s in curve["specs"] if s["picks"]["left_out:statin"] == "added"]
+    assert curve["not_estimated"] == [] and curve["through"] == ["levels"]
+    statin = next(s for s in curve["specs"] if s["picks"]["left_out:statin"] == "added")
+    part = run.table[rows_of(run.table, rules=(0, 1), columns=["glucose", "fiber", *ADJUSTED])]
+    assert part["statin"].isna().any()  # the premise: blank rows kept
+    X = ef.design_matrix(part, ["fiber", *ADJUSTED])
+    X["statin_1"] = (part["statin"] == 1).astype(float)
+    X["statin_blank"] = part["statin"].isna().astype(float)
+    fit = sm.OLS(part["glucose"].astype(float), X).fit(cov_type="HC3", use_t=True)
+    low, high = fit.conf_int(alpha=0.05).loc["fiber"]
+    assert statin["n"] == len(part)
+    assert (statin["estimate"], statin["low"], statin["high"]) == pytest.approx(
+        (float(fit.params["fiber"]), float(low), float(high)), rel=1e-8)
     bmi = next(s for s in curve["specs"] if s["picks"]["left_out:bmi"] == "added")
     est, low, high, n = statsmodels_fit(run.table, outcome="glucose", rules=(0, 1),
                                         covariates=[*ADJUSTED, "bmi"])
     assert bmi["estimate"] == pytest.approx(est, rel=1e-9) and bmi["n"] == n
-    assert len(curve["specs"]) == 1 + len(curve["choices"]) - 1
-    assert "could not be estimated" in art["says"]
+    assert len(curve["specs"]) == 1 + len(curve["choices"])
+    assert "could not be estimated" not in art["says"]
+    assert "(the coding of blanks as a level of their own)" in art["methods"]
 
 
-def test_an_added_column_with_a_declared_form_is_not_estimated(numeric, tmp_path):
+def test_an_added_column_with_a_declared_form_is_fitted_through_the_form(numeric, tmp_path):
     """A spline declared on `bmi`, which the adjustment answers leave out: a plan adjusting for it
-    would fit the spline, so the departure that adds it is not estimated, with the step named.
-    Without the form (the numeric fixture) the same departure is estimated."""
+    fits the spline, so the departure that adds it is fitted through the form, its knots on its own
+    rows: statsmodels' fit with Harrell's terms of `bmi` written out here (on the base it was not
+    estimated). Every other specification is the raw refit, as without the form (the numeric
+    fixture)."""
     from turbotab.core.decisions import ExposureFormSpec
 
     formed = state(exposure_forms={"bmi": ExposureFormSpec(form="spline", knots=4, scale="raw")})
@@ -435,13 +591,23 @@ def test_an_added_column_with_a_declared_form_is_not_estimated(numeric, tmp_path
     art = run.mattered()
     assert art["refused"] is None, art["refused"]
     curve = art["curve"]
-    added = [s for s in curve["not_estimated"] if s["picks"]["left_out:bmi"] == "added"]
-    assert len(added) == 1
-    assert "a declared form other than a straight line" in added[0]["reason"]
-    assert {s["key"] for s in curve["specs"]} == set(departures()) - {added[0]["key"]}
-    plain = numeric.mattered()["curve"]
-    assert plain["not_estimated"] == []
-    assert [s for s in plain["specs"] if s["picks"]["left_out:bmi"] == "added"]
+    assert curve["not_estimated"] == [] and curve["through"] == ["form"]
+    assert {s["key"] for s in curve["specs"]} == set(departures())
+    added = next(s for s in curve["specs"] if s["picks"]["left_out:bmi"] == "added")
+    columns = ["glucose", "fiber", *ADJUSTED, "bmi"]
+    part = run.table[rows_of(run.table, rules=(0, 1), columns=columns)]
+    X = ef.design_matrix(part, ["fiber", *ADJUSTED, "bmi"])
+    for j, column in enumerate(rcs_terms(part["bmi"].to_numpy(dtype=float)).T):
+        X[f"bmi_rcs{j}"] = column
+    fit = sm.OLS(part["glucose"].astype(float), X).fit(cov_type="HC3", use_t=True)
+    low, high = fit.conf_int(alpha=0.05).loc["fiber"]
+    assert added["n"] == len(part)
+    assert (added["estimate"], added["low"], added["high"]) == pytest.approx(
+        (float(fit.params["fiber"]), float(low), float(high)), rel=1e-8)
+    plain = {s["key"]: s for s in numeric.mattered()["curve"]["specs"]}
+    for s in curve["specs"]:
+        if s["key"] != added["key"]:
+            assert s["estimate"] == pytest.approx(plain[s["key"]]["estimate"], rel=1e-12)
 
 
 def with_codes() -> pd.DataFrame:
@@ -810,9 +976,8 @@ def test_the_stage_is_registered_after_the_fit_and_locks_nothing():
     assert M.STAGE not in ESTIMATE_STAGES and "plan_locked" not in plan_slots()
 
 
-def test_the_key_covers_every_slot_the_stage_reads(numeric):
-    """A recording state: every field the stage's code reads, through every helper it calls, is
-    among the slots its key reads (``MATTERED_READS``)."""
+def recorded_reads(run: Run) -> set[str]:
+    """Every field of the state the stage's code reads for ``run``, through every helper."""
     seen: set[str] = set()
     fields = set(d.ProjectState.model_fields)
 
@@ -822,11 +987,28 @@ def test_the_key_covers_every_slot_the_stage_reads(numeric):
                 seen.add(name)
             return super().__getattribute__(name)
 
-    st = Recording(**{k: getattr(numeric.state, k) for k in fields})
-    art = numeric.mattered(st)
+    st = Recording(**{k: getattr(run.state, k) for k in fields})
+    art = run.mattered(st)
     assert art["refused"] is None and art["curve"]["specs"]
     assert seen, "nothing was recorded"
-    assert seen <= set(M.MATTERED_READS) | set(M.MATTERED_REQUIRES), seen - set(M.MATTERED_READS)
+    return seen
+
+
+def test_the_key_covers_every_slot_the_stage_reads(numeric, tmp_path):
+    """A recording state: every field the stage's code reads, through every helper it calls, is
+    among the slots its key reads (``MATTERED_READS``): the raw refit's, and a plan's fit's (its
+    copies drawn with the split's seed under multiple imputation, a spline's knots)."""
+    from turbotab.core.decisions import ExposureFormSpec
+
+    allowed = set(M.MATTERED_READS) | set(M.MATTERED_REQUIRES)
+    seen = recorded_reads(numeric)
+    assert seen <= allowed, seen - allowed
+    plan = Run(cohort(), tmp_path, state(
+        missing=d.MissingSpec(strategy="multiple_imputation"),
+        exposure_forms={"age": ExposureFormSpec(form="spline", knots=4, scale="raw")}))
+    seen = recorded_reads(plan)
+    assert seen <= allowed, seen - allowed
+    assert "split" in seen  # the seed its copies are drawn with
 
 
 def test_a_changed_choice_changes_the_key_and_a_look_does_not():

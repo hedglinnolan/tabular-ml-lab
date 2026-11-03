@@ -25,16 +25,25 @@ The methods sentence names these alternatives as the engine derived them
 (:func:`methods_sentence`); only an examined one is said to be declared.
 
 **The primary stays the reported estimate.** The curve follows the linear family's coefficient of
-the declared exposure, the fit stage's own table. Each specification is refit by
-``spec_curve.linear_fitter`` on the table's own columns (complete cases on each specification's
-columns), as the fit would fit the plan that specification is: its intervals HC3 (for a yes/no
-outcome Wald; where a column separates the outcome Firth's fit reports no interval, so that
-specification is not estimated), or CR2 by the unit its own rows repeat in, or design-based
-under the surveyed population (below), so they need not be the primary's, and the methods sentence names each kind where the fit gives it. The primary
-specification must reproduce the reported estimate (its estimate and interval within
-:data:`AGREEMENT` of its standard error, on the same rows); otherwise no specification is shown and
-the curve is refused, since the others would not be fitted as the primary is. That refusal quotes
-no estimate: it is served where no estimate is.
+the declared exposure, the fit stage's own table: the exposure's own column, or the one the
+energy model made of it (``fiber_adj``; :func:`reported_of`). Each specification is fitted as the
+fit would fit the plan that specification is. One whose plan holds no step that changes a column
+before the model reads it (:func:`plan_steps`) is refit by ``spec_curve.linear_fitter`` on the
+table's own columns (complete cases on each specification's columns). One whose plan holds such a
+step (a single fill or multiple imputation where its rows have blanks, the energy model, a
+declared form, blanks kept as a level) is fitted as that plan, through the path the secondary and
+sensitivity stages take (:func:`curve_for`'s ``plan_fit``: its own rows, its coding by
+``pipeline.design_spec``, its pipeline, its missing values as the answer handles them on its rows,
+under multiple imputation its own copies pooled by Rubin's rules with Barnard–Rubin degrees of
+freedom, each point carrying its fraction of missing information and Monte Carlo error, and
+``sensitivity.fit_on_rows``'s table). Either way its intervals are HC3 (for a yes/no outcome
+Wald; where a column separates the outcome Firth's fit reports no interval, so that specification
+is not estimated), or CR2 by the unit its own rows repeat in, or design-based under the surveyed
+population (below), so they need not be the primary's, and the methods sentence names each kind
+where the fit gives it. The primary specification must reproduce the reported estimate (its
+estimate and interval within :data:`AGREEMENT` of its standard error, on the same rows);
+otherwise no specification is shown and the curve is refused, since the others would not be
+fitted as the primary is. That refusal quotes no estimate: it is served where no estimate is.
 
 * **Which rows belong together** is read on each specification's own rows, as the fit reads its
   plan's (``inference.resolve_clusters`` over that specification's rows and the candidate unit
@@ -61,21 +70,27 @@ no estimate: it is served where no estimate is.
   standardized over the analyzed rows from the logistic model, which the refit does not repeat for
   each specification, so the curve is refused by name under it, before the lock too
   (:func:`offered`).
-* **What the refit does not repeat.** Before anything is read from the fit or fitted, a pipeline
-  step of the plan that this refit does not repeat refuses the curve by name (:func:`not_refitted`):
-  a fill of missing values that the primary's columns need, the energy model (other than total
-  energy kept as a covariate), a declared form, blanks kept as a level, a scale's score, an omics
-  normalization, values below detection, a batch correction, the D-ratio filter, or the data's own
-  imputed copies. Each other specification is judged the same way, on the coding the plan would
-  give its own columns (``pipeline.design_spec`` over the table's column summaries, as the design
-  stage reads them): a column only a departure adds, coded otherwise by the plan's answers (its
-  blanks a level, a declared form), leaves that specification not estimated, with the step named.
+* **What it does not fit through.** Before anything is read from the fit or fitted, a step of the
+  plan that no specification is fitted through yet refuses the curve by name
+  (:data:`NOT_FOLLOWED`, :data:`NOT_FOLLOWED_REFUSAL`): a scale's score, an omics normalization or
+  log, values below detection, a batch correction, the D-ratio filter, or the data's own imputed
+  copies. So does a form the plan declares on the exposure itself, which splits it into several
+  coefficients (:data:`FORMED_EXPOSURE`). Each other specification is judged on the coding the plan
+  would give its own columns (``pipeline.design_spec`` over the table's column summaries, as the
+  design stage reads them): a departure whose plan would apply such a step is not estimated, with
+  the step named, and so is one that leaves out a column the energy model reads
+  (:data:`ENERGY_READS`).
+* **The hold.** The curve fits the plan once per specification (:func:`specifications_of`), so
+  the scheduler may hold it as it holds the fit (``fit_press.curve_holds``), at the followed
+  family's seconds times the specifications (:func:`expected_seconds`).
 
 **Rows.** Every analyzed row (BLUEPRINT §12 ruling 3). The specifications' rows start from the
 participant flow without its exclusion rules and without its complete-cases line
 (``stages.rows.compute_cohort``); each rule is a choice, and complete cases are judged on each
-specification's own columns (the module docstring of ``spec_curve``), which is the flow's own
-judgment of the primary under the complete-cases answer. Under the surveyed-population answer the
+specification's own columns (the module docstring of ``spec_curve``), a column whose blanks are a
+level aside, which is the flow's own judgment of the primary under the complete-cases answer;
+under a single fill or multiple imputation a specification keeps every row its rules keep, its
+blanks for the fill (:func:`complete`). Under the surveyed-population answer the
 design is read over every row of the working table, and each specification's rows are a domain of
 it (``methods.survey.for_fit``).
 """
@@ -116,6 +131,33 @@ STEP_WORDS = {
     "form": "a declared form other than a straight line",
     "levels": "the coding of blanks as a level of their own",
 }
+IMPUTED_WORDS = "multiple imputation"  # the fill under the multiple-imputation answer
+# The steps a specification is not fitted through yet (:func:`plan_steps` names): the declared
+# scales' scores, and the omics steps (an omics normalization or log leaves the followed column's
+# name on a normalized scale the curve's label does not state; the fill below detection, the
+# batch correction and the D-ratio filter are not checked against an independent fit here). A
+# plan holding one refuses the curve by name; a departure whose plan would, is not estimated. So
+# are the data's own imputed copies (:data:`COPIES_WORDS`), which no step holds.
+NOT_FOLLOWED: tuple[str, ...] = ("score", "d_ratio", "detect", "normalize", "log", "batch")
+COPIES_WORDS = "the analysis of the data's own imputed copies"
+NOT_FOLLOWED_REFUSAL = ("The curve fits each specification as the plan it is, and the plan holds "
+                        "{steps}, which the curve does not fit a specification through, so it is "
+                        "not drawn.")
+# The exposure split into several coefficients by a form the plan declares on it (a spline, its
+# quintiles): there is no one estimate to follow, and the form is the plan's, so no exit.
+FORMED_EXPOSURE = ("The plan fits `{exposure}` by a declared form other than a straight line, so "
+                   "the linear model reports {n:,} coefficients of it ({names}) and no one estimate "
+                   "for the curve to follow across the choices.")
+# A specification fitted as its plan whose table holds no row of the column the curve follows (a
+# departure that drops the energy column the energy model needs to make it), after
+# "With this choice changed, " or, for the primary, :data:`RECORDED_WORDS`.
+NO_COLUMN = ("the plan fits no column `{feature}`, the one the curve follows, so it is not "
+             "estimated.")
+RECORDED_WORDS = "With every choice as recorded, "
+# A departure that leaves out a column the plan's energy model reads (its total energy, a
+# nutrient it adjusts): that model cannot be fitted without it, after "With this choice changed, ".
+ENERGY_READS = ("the plan's energy model reads `{column}`, which this specification leaves out, "
+                "so it is not estimated.")
 NOT_OFFERED_YET = ("The curve is offered under Estimate an effect, once the goal is chosen and what "
                    "you study is declared.")
 ONE_EXPOSURE = ("The curve follows one study factor's estimate; under a family of study factors "
@@ -206,6 +248,10 @@ class MatteredSpec(_Model):
     estimator: str = ""
     covariance: str = ""
     scale_key: str = ""
+    # Under multiple imputation: the fraction of missing information and the Monte Carlo error of
+    # the pooled estimate (``methods.imputation.Pooled``), ``df`` Barnard–Rubin's; else None.
+    fmi: float | None = None
+    mc_se: float | None = None
 
 
 class MatteredNotEstimated(_Model):
@@ -245,6 +291,9 @@ class MatteredCurve(_Model):
     weighted: bool
     clustered: bool
     exits: list[dict[str, Any]]
+    # The pipeline steps the specifications fitted as plans were fitted through, by their step
+    # names (``models.pipeline.shared_steps``); empty where every one was refitted on its columns.
+    through: list[str] = []
 
 
 class MatteredReported(_Model):
@@ -299,8 +348,10 @@ class Mattered(_Model):
 # ── what the stage reads ─────────────────────────────────────────────────────
 
 # Every slot the stage's code reads, directly or through the engine's helpers it calls (the
-# participant flow, the adjustment card, the design's coding, the clustering, the survey design),
-# so its key covers each one (turbotab/core/tests/test_mattered.py reads them back).
+# participant flow, the adjustment card, the design's coding, the clustering, the survey design,
+# and for a specification fitted as its plan the missing-values answer's copies, drawn with the
+# split's seed, and the fit's table), so its key covers each one
+# (turbotab/core/tests/test_mattered.py reads them back).
 MATTERED_READS: tuple[str, ...] = (
     "plan_locked", "purpose", "estimand", "adjustment", "clusters", "models", "target", "task",
     "event", "exclusions", "missing", "findings", "roles", "roles_unconfirmed",
@@ -308,8 +359,53 @@ MATTERED_READS: tuple[str, ...] = (
     "energy_adjustment", "exposure_forms", "form_domains", "follow_up", "scales", "batch",
     "column_units", "levers", "selection", "survey", "grain", "outcome_order", "repeat_kind",
     "unit", "aggregation", "numbers_read", "feature_table", "joins", "codebooks", "sex_codings",
+    "split",
 )
 MATTERED_REQUIRES: tuple[str, ...] = ("plan_locked", "estimand", "models", "purpose")
+
+
+def specifications_of(state: Any) -> int | None:
+    """How many specifications the curve fits for ``state`` (the primary and each departure from
+    it, one choice at a time: each exclusion rule, each covariate the adjustment answers put in the
+    model, each they leave out, each examined alternative), as :func:`curve_for` derives them from
+    the plan's predictors (``pipeline.model_predictors``, the design's); None where the curve is
+    not offered or there is no one exposure. What the hold counts (``fit_press.curve_estimate``)."""
+    from turbotab.core.estimand import adjustment_card, current_estimand
+    from turbotab.core.models.pipeline import model_predictors
+
+    if not offered(state).offered:
+        return None
+    estimand = current_estimand(state)
+    exposure = getattr(estimand, "exposure", None)
+    if estimand is None or getattr(estimand, "family", False) or not exposure:
+        return None
+    covariates = [c for c in model_predictors(state) if c != exposure]
+    card = adjustment_card(state) or {}
+    adjusted = [c for c in card.get("adjusted") or [] if c in covariates]
+    left_out = [c for c in card.get("left_out") or [] if c not in covariates and c != exposure]
+    return (1 + len(getattr(state, "exclusions", None) or []) + len(adjusted) + len(left_out)
+            + len(examined_of(state)))
+
+
+def expected_seconds(state: Any, timed: Any) -> float | None:
+    """What the curve's refits will take for ``state`` (``fit_press.curve_estimate``): the followed
+    family's own seconds (:func:`followed`) times :func:`specifications_of`. ``timed`` is the fit
+    stage's artifact (each family's measured ``fit_seconds``) once the fit is made, or before it the
+    shelf's (each family's ``estimate_seconds``); None where it times no followed family."""
+    from turbotab.core.fit_press import curve_estimate
+
+    data = getattr(timed, "data", timed)
+    if not isinstance(data, Mapping):
+        return None
+    task = getattr(state, "task", None)
+    keys = [followed(task)] if task in ("regression", "binary") else \
+        [followed("regression"), followed("binary")]
+    seconds = None
+    for entry in [*(data.get("models") or []), *(data.get("families") or [])]:
+        if isinstance(entry, Mapping) and entry.get("family", entry.get("key")) in keys:
+            seconds = entry.get("fit_seconds", entry.get("estimate_seconds"))
+            break
+    return curve_estimate(None if seconds is None else float(seconds), specifications_of(state))
 
 
 def examined_of(state: Any) -> list[MatteredExamined]:
@@ -426,11 +522,13 @@ def examined_choices(examined: Sequence[MatteredExamined]) -> list[S.Choice]:
 # ── what the refit does not repeat ───────────────────────────────────────────
 
 
-def not_refitted(spec: Any, *, gaps: bool) -> list[str]:
-    """The steps of the plan's pipeline (``models.pipeline.shared_steps``) that the curve's refit
-    does not repeat, in words. ``gaps``: some column a specification reads has a missing value on
-    the specifications' rows, so a fill would change it. Total energy kept as a covariate (the
-    standard model, unlogged) leaves every column as it is, so it is no such step."""
+def plan_steps(spec: Any, *, gaps: bool) -> list[str]:
+    """The steps of a plan's pipeline (``models.pipeline.shared_steps``) that change a column
+    before the model reads it, by step name: what ``spec_curve.linear_fitter``, which refits the
+    raw columns, does not repeat, so a specification whose plan holds one is fitted as that plan
+    (:func:`curve_for`). ``gaps``: some column the specification reads has a missing value on its
+    rows, so a fill would change it. Total energy kept as a covariate (the standard model,
+    unlogged) leaves every column as it is, and so does the one-hot coding, so neither is one."""
     from turbotab.core.models.pipeline import shared_steps
 
     out: list[str] = []
@@ -441,7 +539,29 @@ def not_refitted(spec: Any, *, gaps: bool) -> list[str]:
             adj = spec.energy_adjustment()
             if adj is not None and adj.method == "standard" and not adj.log_transform:
                 continue
+        if name not in out:
+            out.append(name)
+    return out
+
+
+def not_refitted(spec: Any, *, gaps: bool) -> list[str]:
+    """:func:`plan_steps` in words (:data:`STEP_WORDS`), each once."""
+    out: list[str] = []
+    for name in plan_steps(spec, gaps=gaps):
         words = STEP_WORDS.get(name, f"the step `{name}`")
+        if words not in out:
+            out.append(words)
+    return out
+
+
+def through_words(names: Sequence[str], *, imputing: bool) -> list[str]:
+    """The pipeline steps ``names`` in words, as a specification fitted as its plan goes through
+    them: under multiple imputation (``imputing``) the fill is the imputation (each copy fitted
+    and the copies pooled), not a single fill."""
+    out: list[str] = []
+    for name in names:
+        words = (IMPUTED_WORDS if name == "impute" and imputing
+                 else STEP_WORDS.get(name, f"the step `{name}`"))
         if words not in out:
             out.append(words)
     return out
@@ -533,11 +653,18 @@ def followed(task: str = "regression") -> str | None:
     return default.key if default is not None else None
 
 
-def reported_of(fit: Any, exposure: str, task: str = "regression") -> MatteredReported:
+def reported_of(fit: Any, exposure: str, task: str = "regression", *,
+                predictors: Sequence[str] = (), forms: Mapping[str, Any] | None = None
+                ) -> MatteredReported:
     """The followed family's row of ``exposure`` in the fit stage's table (:func:`followed`: the
-    linear family for a numeric or yes/no outcome); refused when there is none (the family not
-    chosen, a table refused or withheld by its own answer, the exposure split into several columns
-    by a form or an energy model)."""
+    linear family for a numeric or yes/no outcome): the one model-matrix column that carries its
+    effect (``estimand.primary_features`` over the table's rows and the plan's ``predictors``), its
+    own or the one an energy model made of it (``fiber_adj``), its ``feature``. Refused when there
+    is none: the family not chosen, a table refused or withheld by its own answer, the exposure
+    split into several columns, by a form the plan declares on it (``forms``, the design's
+    ``exposure_forms``; :data:`FORMED_EXPOSURE`, with no exit) or by its levels."""
+    from turbotab.core.estimand import primary_features
+
     data = getattr(fit, "data", fit) or {}
     key = followed(task)
     model = next((m for m in data.get("models") or [] if key is not None
@@ -552,7 +679,12 @@ def reported_of(fit: Any, exposure: str, task: str = "regression") -> MatteredRe
         raise S.SpecCurveRefused(
             f"The linear model reports no estimate here, so the curve has no primary to follow: "
             f"{info['refused']}", tuple(info.get("exits") or ()))
-    row = next((r for r in model.get("coefficients") or [] if r.get("feature") == exposure), None)
+    rows = list(model.get("coefficients") or [])
+    names = primary_features([str(r.get("feature")) for r in rows], exposure, predictors)
+    if len(names) > 1 and any(f in (forms or {}) for f in (exposure, *names)):
+        raise S.SpecCurveRefused(FORMED_EXPOSURE.format(
+            exposure=exposure, n=len(names), names=_listing([f"`{f}`" for f in names])), ())
+    row = next((r for r in rows if len(names) == 1 and r.get("feature") == names[0]), None)
     if row is None or row.get("estimate") is None:
         raise S.SpecCurveRefused(
             f"The linear model reports no single coefficient of `{exposure}`, so the curve has no "
@@ -562,7 +694,8 @@ def reported_of(fit: Any, exposure: str, task: str = "regression") -> MatteredRe
             f"The linear model's estimate of `{exposure}` has no interval here, so the curve has "
             f"no primary interval to follow.", ())
     n = info.get("n_rows")
-    return MatteredReported(family=str(key), feature=exposure, estimate=float(row["estimate"]),
+    return MatteredReported(family=str(key), feature=str(row["feature"]),
+                            estimate=float(row["estimate"]),
                             ci_low=float(row["ci_low"]), ci_high=float(row["ci_high"]),
                             se=None if row.get("se") is None else float(row["se"]),
                             n_rows=int(n) if n is not None else -1,
@@ -614,24 +747,34 @@ def says_of(curve: S.SpecCurve, reported: MatteredReported | None, task: str) ->
     return text
 
 
-def methods_sentence(curve: S.SpecCurve, *, task: str) -> str:
+def methods_sentence(curve: S.SpecCurve, *, task: str, imputing: bool = False) -> str:
     """The methods sentence of the stage's curve (one choice at a time, :data:`CROSSING`): the
     alternatives named as the engine derived them from the recorded choices (:data:`KIND_WORDS`,
     the kinds the curve holds), each specification refitted by the primary's estimator on its own
-    rows (:data:`ESTIMATOR_WORDS`), the primary the reported estimate. Each specification's interval
-    is the one the fit gives its own rows, which need not be the primary's: the sentence names the
-    intervals the estimated specifications have, each where the fit gives it
-    (:data:`INTERVAL_WORDS`, by each specification's own ``covariance``); under a survey design
-    every one is design-based."""
+    rows (:data:`ESTIMATOR_WORDS`), through its plan's own steps where it holds them (the curve's
+    ``through``, in words: :func:`through_words`; ``imputing``, the multiple-imputation answer,
+    whose blanks are imputed again and pooled), the primary the reported estimate. Each
+    specification's interval is the one the fit gives its own rows, which need not be the
+    primary's: the sentence names the intervals the estimated specifications have, each where the
+    fit gives it (:data:`INTERVAL_WORDS`, by each specification's own ``covariance``); under a
+    survey design every one is design-based."""
     keys = [str(c["key"]) for c in curve.choices]
     kinds = [words for prefix, words in KIND_WORDS if any(k.startswith(prefix) for k in keys)]
+    steps = list(getattr(curve, "through", None) or [])
+    through = through_words(steps, imputing=imputing)
     sentence = ("As a sensitivity analysis after the analysis plan was locked, the exposure's "
                 "estimate was refitted with each recorded analytic choice changed, one at a time"
                 + (": " + _listing(kinds) if kinds else "") + "; each specification estimated "
                 "was refitted by " + ESTIMATOR_WORDS.get(task, "the primary's estimator")
                 + (" on its own domain of the design" if curve.weighted else " on its own rows")
+                + (", through its plan's own steps where it holds them (" + _listing(through) + ")"
+                   if through else "")
                 + ", and the primary remains the reported estimate"
                 + (" (the log of its odds ratio)" if task == "binary" else "") + ".")
+    if imputing and "impute" in steps:
+        sentence += (" A specification whose rows have blanks had them imputed again on its own "
+                     "rows, and its estimate was pooled over its copies by Rubin's rules, each "
+                     "interval on t with Barnard–Rubin degrees of freedom.")
     covariances = {s.covariance for s in curve.specs} - {"design"}
     if covariances and covariances <= set(INTERVAL_WORDS):
         sentence += (" Each specification's interval is the one the fit gives its rows: "
@@ -647,7 +790,8 @@ def methods_sentence(curve: S.SpecCurve, *, task: str) -> str:
 
 def _artifact(*, curve: S.SpecCurve | None = None, reported: MatteredReported | None = None,
               task: str = "", examined: Sequence[MatteredExamined] = (),
-              refused: S.SpecCurveRefused | None = None) -> dict[str, Any]:
+              refused: S.SpecCurveRefused | None = None, imputing: bool = False
+              ) -> dict[str, Any]:
     doc = None
     if curve is not None:
         data = curve.to_dict()
@@ -656,8 +800,8 @@ def _artifact(*, curve: S.SpecCurve | None = None, reported: MatteredReported | 
     return MatteredArtifact(
         crossing=CROSSING, curve=doc,
         says=says_of(curve, reported, task) if curve is not None else None,
-        methods=(methods_sentence(curve, task=task) if curve is not None and not curve.sealed
-                 else None),
+        methods=(methods_sentence(curve, task=task, imputing=imputing)
+                 if curve is not None and not curve.sealed else None),
         reported=reported, examined=list(examined),
         refused=(MatteredRefusal(message=str(refused), exits=list(refused.exits))
                  if refused is not None else None),
@@ -667,6 +811,7 @@ def _artifact(*, curve: S.SpecCurve | None = None, reported: MatteredReported | 
 def mattered_stage(ctx: StageContext) -> dict[str, Any]:
     """The specification curve over the recorded choices, one at a time, after the lock; a curve
     that cannot be drawn is the artifact's ``refused``, with why and its exits."""
+    from turbotab.core.decisions import missing_strategy
     from turbotab.core.stages.modeling import _task
 
     examined = examined_of(ctx.state)
@@ -674,7 +819,8 @@ def mattered_stage(ctx: StageContext) -> dict[str, Any]:
         curve, reported = curve_for(ctx, examined=examined)
     except S.SpecCurveRefused as refusal:
         return _artifact(examined=examined, refused=refusal)
-    return _artifact(curve=curve, reported=reported, task=_task(ctx), examined=examined)
+    return _artifact(curve=curve, reported=reported, task=_task(ctx), examined=examined,
+                     imputing=missing_strategy(ctx.state) == "multiple_imputation")
 
 
 def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
@@ -735,20 +881,27 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
             masks.append(rule_keep(read, rule))
         unit_columns = cluster_columns(state, store.columns, [grouped_by])
         added = list(dict.fromkeys([*left_out, *(c for e in examined for c in e.add)]))
-        columns = list(dict.fromkeys([target, exposure, *covariates, *added, *unit_columns]))
+        # The plan's own inputs too (a residual model's strata, a batch column), which a
+        # specification fitted as its plan reads beside its predictors.
+        columns = list(dict.fromkeys([target, exposure, *covariates, *added, *unit_columns,
+                                      *spec.inputs]))
         frame = modeling_frame(store, columns, base, outcome=target)
         from turbotab.core.methods.survey import for_fit
 
+        # Every row's column summaries, as the design stage reads them for the levels.
+        column_info = {c.name: c for c in store.info().columns}
+        # A fill or multiple imputation keeps a row's blanks for the fill, as the flow does; under
+        # complete cases (or no answer yet) each specification's rows are its own complete cases.
+        fills = missing_strategy(state) in ("impute", "multiple_imputation")
         primary_rows = np.ones(len(frame), dtype=bool)
         for mask in masks:
             primary_rows &= mask.reindex(frame.index).fillna(False).to_numpy(dtype=bool)
-        primary_rows &= frame[[target, exposure, *covariates]].notna().all(axis=1).to_numpy()
+        primary_rows &= complete(frame, [target, exposure, *covariates], state, column_info,
+                                 fills=fills)
         clusters = (resolve_clusters(state, frame.loc[primary_rows, unit_columns], [grouped_by])
                     if unit_columns else None)
         unit = clusters.column if clusters is not None and clusters.clustered else None
         survey = for_fit(state, store, unit)
-        # Every row's column summaries, as the design stage reads them for the levels.
-        column_info = {c.name: c for c in store.info().columns}
         # The fit's own reading gate over each departure that adds a column (:func:`reading_wait`),
         # read once the plan is locked: why each such departure's fit would wait, by its choice.
         waits: dict[str, str] = {}
@@ -766,22 +919,26 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
     choices = [*exclusion_choices(rules, masks), *adjustment_choices(adjusted, left_out),
                *examined_choices(examined)]
     varied(choices)
-    if task == "binary":
-        levels = outcome_levels(task, frame[target].to_numpy(), state.event) or {}
-        what = (f"Difference in log-odds of `{target}` being `{levels.get(1, 1)}` per unit of "
-                f"`{exposure}`")
-        scale_key = f"log_odds:{exposure}"
-    else:
-        what = f"Difference in mean `{target}` per unit of `{exposure}`"
-        scale_key = f"difference:{exposure}"
+    event = (outcome_levels(task, frame[target].to_numpy(), state.event) or {}).get(1, 1) \
+        if task == "binary" else None
+
+    def label_of(feature: str) -> tuple[str, str]:
+        """The curve's estimate in words and its scale key, of the model-matrix column followed."""
+        if task == "binary":
+            return (f"Difference in log-odds of `{target}` being `{event}` per unit of "
+                    f"`{feature}`", f"log_odds:{feature}")
+        return f"Difference in mean `{target}` per unit of `{feature}`", f"difference:{feature}"
+
+    what, scale_key = label_of(exposure)
     if not state.plan_locked:
         return S.specification_curve(choices, lambda picks: None, lock=None, estimate_label=what,
                                      crossing=CROSSING), None
 
-    # The steps the refit does not repeat, judged before the fit's row is read (a step that renames
-    # the exposure, as the energy model does, is named for what it is) and before any fit.
+    # The steps each specification's plan holds (:func:`plan_steps`), judged before the fit's row
+    # is read and before any fit. One whose plan holds none is refitted by
+    # ``spec_curve.linear_fitter`` on its own columns; one that holds one is fitted as that plan,
+    # through the plan's own pipeline (:func:`plan_fit` below), as the fit fits its plan.
     raw = frame  # the columns as the table holds them, which the design's coding reads
-    fills = missing_strategy(state) != "complete_case"
     by_choice = {c.key: c for c in choices}
     recorded = {c.key: c.primary for c in choices}
 
@@ -801,29 +958,37 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
                 keep &= o.keep.reindex(raw.index).fillna(False).to_numpy(dtype=bool)
         return keep
 
-    def held_by(picks: Mapping[str, str], coding: Any = None) -> list[str]:
-        """The steps the plan would apply to this specification's columns that the refit does
-        not repeat: on ``coding`` (the design stage's own, for the primary), else on the coding
-        the plan's answers give these columns over every row's summaries, as the design does."""
+    def rows_of(picks: Mapping[str, str]) -> np.ndarray:
+        """The specification's rows: those its rules keep, judged as the flow judges the plan it is
+        (:func:`complete`)."""
+        return rule_rows(picks) & complete(raw, [target, *columns_of(picks)], state, column_info,
+                                           fills=fills)
+
+    def steps_of(picks: Mapping[str, str], coding: Any = None) -> list[str]:
+        """The steps the plan would apply to this specification's columns (:func:`plan_steps`): on
+        ``coding`` (the design stage's own, for the primary), else on the coding the plan's answers
+        give these columns over every row's summaries, as the design does."""
         cols = columns_of(picks)
         if coding is None:
             coding = design_spec(state, raw[cols], cols, column_info=column_info)
         gaps = fills and bool(raw.loc[rule_rows(picks), [target, *cols]].isna().to_numpy().any())
-        return not_refitted(coding, gaps=gaps)
+        return plan_steps(coding, gaps=gaps)
 
     try:
-        held = held_by(recorded, spec)
-        held += [w for w in held_by(recorded) if w not in held]
+        held = steps_of(recorded, spec)
+        held += [n for n in steps_of(recorded) if n not in held]
     except ValueError as exc:  # a column the design cannot code yet says why, as the design does
         raise S.SpecCurveRefused(str(exc), ()) from exc
+    unfollowed = through_words([n for n in held if n in NOT_FOLLOWED], imputing=False)
     if imputed_copies_column(state) is not None:
-        held.append("the analysis of the data's own imputed copies")
-    if held:
-        raise S.SpecCurveRefused(
-            "The curve refits the linear model on the table's own columns, and the plan holds "
-            + _listing(held) + ", which that refit does not repeat, so no specification would be "
-            "fitted as the primary is.", ())
-    reported = reported_of(ctx.inputs["fit"], exposure, task)
+        unfollowed.append(COPIES_WORDS)
+    if unfollowed:
+        raise S.SpecCurveRefused(NOT_FOLLOWED_REFUSAL.format(steps=_listing(unfollowed)), ())
+    # The column the curve follows: the exposure's own, or the one the energy model made of it.
+    reported = reported_of(ctx.inputs["fit"], exposure, task, predictors=spec.predictors,
+                           forms=spec.exposure_forms)
+    feature = reported.feature
+    what, scale_key = label_of(feature)
     if survey is not None and survey.refusal:
         raise S.SpecCurveRefused(survey.refusal, survey.exits)
     design = survey.design if survey is not None and survey.answer == "population" else None
@@ -846,14 +1011,12 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         frame[c] = frame[c].astype(object).where(frame[c].notna(), np.nan)
     def unit_of(picks: Mapping[str, str]) -> str | None:
         """The unit this specification's rows repeat in, as the fit reads the rows of the plan it
-        is (``inference.resolve_clusters`` over its own rows: those its rules keep with every
-        column it reads present); None when they do not repeat. Where that reading refuses, the
-        fit reports no interval without a design (the design-based fit does not read it)."""
+        is (``inference.resolve_clusters`` over its own rows, :func:`complete`); None when they do
+        not repeat. Where that reading refuses, the fit reports no interval without a design (the
+        design-based fit does not read it)."""
         if not unit_columns:
             return None
-        cols = columns_of(picks)
-        rows = rule_rows(picks) & frame[[target, *cols]].notna().all(axis=1).to_numpy()
-        found = resolve_clusters(state, frame.loc[rows, unit_columns], [grouped_by])
+        found = resolve_clusters(state, frame.loc[rows_of(picks), unit_columns], [grouped_by])
         if found.refusal and design is None:
             raise S.SpecCurveRefused(found.refusal, tuple(found.exits))
         return found.column if found.clustered else None
@@ -862,16 +1025,22 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
     # unit as the fit keys it; under the surveyed population, the design that unit gives (with no
     # PSU column the unit is its sampling unit), the primary's own design for the primary's unit.
     fitters: dict[str | None, Any] = {}
+    surveys: dict[str | None, Any] = {unit: survey}
+
+    def survey_for(u: str | None) -> Any:
+        """The survey answer as the fit applies it to rows whose unit is ``u``
+        (``methods.survey.for_fit``): the primary's own for the primary's unit."""
+        if u not in surveys:
+            with open_store(ctx) as store:
+                surveys[u] = for_fit(state, store, u)
+        return surveys[u]
 
     def fitter_for(u: str | None) -> Any:
         if u in fitters:
             return fitters[u]
         units, by = None, None
         if design is not None:
-            found = survey
-            if u != unit:
-                with open_store(ctx) as store:
-                    found = for_fit(state, store, u)
+            found = survey_for(u)
             if found is None or found.refusal or found.design is None:
                 fitters[u] = (found.refusal if found is not None and found.refusal else
                               "the survey design for these rows could not be built")
@@ -888,28 +1057,122 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
                                      else None, design=by)
         return fitters[u]
 
+    # A specification whose plan holds a step is fitted as that plan, through the path the
+    # secondary and sensitivity stages take (``stages.secondary``): its own rows, its coding, its
+    # pipeline, its missing values as the answer handles them on its rows, and the fit's table.
+    from dataclasses import replace
+
+    from turbotab.core.methods.qc_drift import working_qc_sd
+    from turbotab.core.models import get_family
+    from turbotab.core.models.inference import Outcome
+    from turbotab.core.models.pipeline import build_pipeline
+    from turbotab.core.readings import nesting
+    from turbotab.core.stages.modeling import _missing_for_table
+    from turbotab.core.stages.sensitivity import fit_on_rows
+
+    family = get_family(reported.family)
+    built = ctx.inputs["design"].objects
+    named = Outcome(name=target, labels=outcome_levels(task, raw[target].to_numpy(), state.event))
+    qc = working_qc_sd(ctx.inputs.get("working"))
+    nested = dict(built.get("nested") or {})
+    seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
+    beside = [c for c in spec.inputs if c not in spec.predictors]  # a strata or batch column
+
+    def plan_fit(picks: Mapping[str, str], u: str | None, at: Any) -> S.SpecFit:
+        """The specification fitted as the plan it is, as the fit fits its plan: on its own rows
+        (:func:`rows_of`), coded by ``pipeline.design_spec`` over them with the plan's answers (the
+        design's own coding and pipeline for the primary), its pipeline built for them
+        (``pipeline.build_pipeline``), its missing values as the answer handles them on these rows
+        (``modeling._missing_for_table``: under multiple imputation its own copies, drawn with the
+        split's seed, the survey design and the clustering in their model), and the table
+        ``sensitivity.fit_on_rows`` makes of them (pooled by Rubin's rules with Barnard–Rubin
+        degrees of freedom, the knots placed on these rows). ``at``: the context whose progress
+        is this specification's share of the stage's."""
+        cols = columns_of(picks)
+        part = raw.loc[rows_of(picks)]
+        if dict(picks) == recorded:
+            s, pipeline = spec, built["pipelines"][family.key]
+        else:
+            chosen = ([p for p in spec.predictors if p in cols]
+                      + [c for c in cols if c not in spec.predictors])
+            s = design_spec(state, part[list(dict.fromkeys([*chosen, *beside]))], chosen,
+                            column_info=column_info, qc=qc, energy_factors=spec.energy_factors)
+            s = replace(s, plans=spec.plans)
+            pipeline = build_pipeline(s, family, task, state.purpose, len(part), len(s.inputs) + 1)
+        y = np.asarray(coded_outcome(task, part[target].to_numpy(), state.event))
+        found = survey_for(u)
+        clustered = (resolve_clusters(state, part[unit_columns], [grouped_by])
+                     if unit_columns else None)
+        missing = _missing_for_table(at, s, part[list(s.inputs)], y, task, [family.key],
+                                     loss={"n_dropped": None}, survey=found, clusters=clustered,
+                                     nested=nesting(state, nested, columns=s.inputs))
+        _, (rows, info), _ = fit_on_rows(state, family, pipeline, part, s.inputs, y, task,
+                                         unit_columns, outcome=named, survey=found,
+                                         missing=missing, spec=s, seed=seed,
+                                         cancelled=ctx.cancelled)
+        info = info or {}
+        n = int(info["n_rows"]) if info.get("n_rows") is not None else int(len(part))
+        estimator = str(info.get("estimator") or "")
+        row = next((r for r in rows or [] if str(r.get("feature")) == feature), None)
+        refused = info.get("refused")
+        if row is None and not refused:
+            raise S.SpecCurveRefused(NO_COLUMN.format(feature=feature), ())
+        if refused or row is None or row.get("estimate") is None or row.get("ci_low") is None:
+            why = refused or "no interval could be computed"
+            estimate = None if row is None else row.get("estimate")
+            return S.SpecFit(math.nan if estimate is None else float(estimate), None, None, n,
+                             estimator=estimator, refused=str(why))
+        return S.SpecFit(float(row["estimate"]), float(row["ci_low"]), float(row["ci_high"]), n,
+                         se=_number(row.get("se")), p=_number(row.get("p")),
+                         df=_number(row.get("df")), estimator=estimator,
+                         covariance=str(info.get("covariance") or ""),
+                         fmi=_number(row.get("fmi")), mc_se=_number(row.get("mc_se")))
+
     changed_words = "With this choice changed, "
+    # The energy model the plan fits (not "none", which only takes total energy out): the columns
+    # it reads must be in every specification fitted through it (:data:`ENERGY_READS`).
+    energy = spec.energy_adjustment()
+    energy = energy if energy is not None and energy.method != "none" else None
+    total = 1 + sum(len(c.options) - 1 for c in choices)  # one at a time (:func:`varied`)
+    done = [0]
+    through: list[str] = []
 
     def fit(picks: Mapping[str, str]) -> S.SpecFit:
         """A departure is fitted as the fit would fit the plan it is: it waits where that fit
-        would wait for a reading (``waits``), and is not estimated where the plan would code its
-        columns with a step the refit does not repeat (the primary was judged above) or where its
-        rows' unit leaves no interval; its intervals cluster by the unit its own rows repeat in."""
+        would wait for a reading (``waits``), it is fitted through the plan's own steps where its
+        plan holds one (:func:`plan_fit`; the primary's were judged above), and it is not
+        estimated where its plan holds a step the curve does not fit through
+        (:data:`NOT_FOLLOWED`) or its rows' unit leaves no interval; its intervals cluster by the
+        unit its own rows repeat in."""
+        at = done[0]
+        done[0] += 1
+        low, high = 0.05 + 0.9 * at / total, 0.05 + 0.9 * (at + 1) / total
+        label = f"Specification {at + 1:,} of {total:,}"
+        ctx.progress(low, label)
         departure = dict(picks) != recorded
+        steps = held
         if departure:
             wait = next((waits[k] for k, o in picks.items() if o != recorded[k] and k in waits),
                         None)
             if wait is not None:
                 raise S.SpecCurveRefused(changed_words + "the fit would first wait for an answer, "
                                          "so it is not estimated: " + wait, ())
+            if energy is not None and "energy" in held:
+                cols = columns_of(picks)
+                gone = [c for c in (energy.energy_column, *energy.nutrients)
+                        if c and c not in cols]
+                if gone:
+                    raise S.SpecCurveRefused(changed_words + ENERGY_READS.format(column=gone[0]),
+                                             ())
             try:
-                held = held_by(picks)
+                steps = steps_of(picks)
             except ValueError as exc:
                 raise S.SpecCurveRefused(str(exc), ()) from exc
-            if held:
+            unfit = through_words([n for n in steps if n in NOT_FOLLOWED], imputing=False)
+            if unfit:
                 raise S.SpecCurveRefused(
-                    changed_words + "the plan would apply " + _listing(held) + ", which the "
-                    "curve's refit does not repeat, so it is not fitted as the primary is.", ())
+                    changed_words + "the plan would apply " + _listing(unfit) + ", which the "
+                    "curve does not fit a specification through, so it is not estimated.", ())
             try:
                 u = unit_of(picks)
             except S.SpecCurveRefused as refusal:
@@ -917,6 +1180,25 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
                                          + str(refusal), ()) from refusal
         else:
             u = unit_of(picks)
+        if steps or feature != exposure:
+            try:
+                got = plan_fit(picks, u, _within(ctx, low, high, label))
+            except S.SpecCurveRefused as refusal:
+                raise S.SpecCurveRefused((changed_words if departure else RECORDED_WORDS)
+                                         + str(refusal), ()) from refusal
+            except Exception as exc:  # noqa: BLE001 - a plan that cannot be fit says why
+                raise S.SpecCurveRefused((changed_words + "the plan could not be fitted: "
+                                          if departure else "The recorded plan could not be "
+                                          "fitted again: ") + str(exc), ()) from exc
+            if got.refused is not None:
+                if departure:
+                    raise S.SpecCurveRefused(changed_words + "the fit would report no interval: "
+                                             + got.refused, ())
+                return got
+            for name in steps:  # the steps an estimated specification went through
+                if name not in through:
+                    through.append(name)
+            return got
         refit = fitter_for(u)
         if isinstance(refit, str):  # the design this specification's unit gives was refused
             raise S.SpecCurveRefused((changed_words + "the fit would report no interval: "
@@ -928,6 +1210,7 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
                                   weighted=design is not None)
     # Clustered: some specification's intervals cluster by the unit its rows repeat in.
     curve.clustered = any(s.covariance == "CR2" for s in curve.specs)
+    curve.through = list(through)
     primary = next(s for s in curve.specs if s.primary)
     if not agrees(primary, reported):
         # No estimate is quoted: the refusal is served where none is (``served``, ``withheld``).
@@ -938,6 +1221,38 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
             f"estimate{rows}, so its other specifications would not be fitted as the primary is, "
             f"and none is shown.", ())
     return curve, reported
+
+
+def complete(frame: pd.DataFrame, columns: Sequence[str], state: Any,
+             column_info: Mapping[str, Any], *, fills: bool) -> np.ndarray:
+    """Which of ``frame``'s rows a specification reading ``columns`` keeps, as the participant
+    flow judges the plan it is (``stages.rows.cohort_flow``): under a fill or multiple imputation
+    (``fills``) every row, its blanks left to the fill; otherwise those with each of ``columns``
+    recorded, a column whose blanks are a level of their own aside (``pipeline.level_columns``
+    over every row's summaries, as ``stages.rows.cohort_inputs`` sets them aside)."""
+    if fills:
+        return np.ones(len(frame), dtype=bool)
+    from turbotab.core.models.pipeline import level_columns
+
+    levels = set(level_columns(state, list(columns), column_info))
+    return frame[[c for c in columns if c not in levels]].notna().all(axis=1).to_numpy()
+
+
+def _within(ctx: Any, low: float, high: float, label: str) -> Any:
+    """``ctx`` with its progress reported inside [``low``, ``high``] of the stage's, under
+    ``label``: one specification's share, so a fit's own progress (the imputation's) does not send
+    the stage's back to its start."""
+    from dataclasses import is_dataclass, replace
+
+    report = getattr(ctx, "on_progress", None)
+    if report is None or not is_dataclass(ctx):
+        return ctx
+    return replace(ctx, on_progress=lambda f, m="": report(
+        low + (high - low) * float(f), f"{label}: {m}" if m else label))
+
+
+def _number(x: Any) -> float | None:
+    return None if x is None else float(x)
 
 
 def _listing(items: Sequence[str]) -> str:
@@ -1004,12 +1319,15 @@ def served(artifact: Any, *, status: str, fresh: bool, key: str | None, lock_id:
         error=error)
 
 
-__all__ = ["AGREEMENT", "CAP_REFUSAL", "CROSSING", "ESTIMATOR_WORDS", "EXAMINED", "followed",
+__all__ = ["AGREEMENT", "CAP_REFUSAL", "COPIES_WORDS", "CROSSING", "ENERGY_READS",
+           "ESTIMATOR_WORDS", "EXAMINED", "FORMED_EXPOSURE", "IMPUTED_WORDS", "followed",
            "INTERVAL_WORDS", "KIND_WORDS", "LOCKED", "MARGINAL_REFUSAL", "MATTERED_READS",
            "MATTERED_REQUIRES", "Mattered", "MatteredArtifact", "MatteredCurve",
-           "MatteredExamined", "MatteredReported", "NOTHING_TO_VARY", "OUTCOME_REFUSAL",
-           "OUTCOME_WORDS", "RECORDED", "STAGE", "adjustment_choices", "agrees", "curve_for",
-           "examined_choices", "examined_of", "exclusion_choices", "follow_up_of", "goal_of",
-           "mattered_stage", "methods_sentence", "not_refitted", "offered", "outcome_refused",
-           "reading_wait", "reported_of", "says_of", "served", "shows_estimates", "unanswered",
+           "MatteredExamined", "MatteredReported", "NOTHING_TO_VARY", "NOT_FOLLOWED",
+           "NOT_FOLLOWED_REFUSAL", "NO_COLUMN", "OUTCOME_REFUSAL", "OUTCOME_WORDS", "RECORDED",
+           "RECORDED_WORDS", "STAGE", "adjustment_choices", "agrees", "complete", "curve_for",
+           "examined_choices", "examined_of", "exclusion_choices", "expected_seconds",
+           "follow_up_of", "goal_of", "mattered_stage", "methods_sentence", "not_refitted",
+           "offered", "outcome_refused", "plan_steps", "reading_wait", "reported_of", "says_of",
+           "served", "shows_estimates", "specifications_of", "through_words", "unanswered",
            "varied", "with_lock", "withheld"]
