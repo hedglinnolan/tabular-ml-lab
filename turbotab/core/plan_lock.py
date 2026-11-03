@@ -23,9 +23,10 @@ So the plan is locked before any inference estimate is displayed:
   was declared before any estimate was shown, and none was. The server records the withdrawal as a
   revert of the lock, so the record keeps the withdrawn lock with its time and fingerprint, and the
   next press of Fit records a new one (:func:`current_lock`). Once an estimate has been served the
-  lock stands: a client never reverts it. Nor does a client bring a withdrawn lock back (a revert
-  of the withdrawal), which would fix the plan as it stood when that lock was recorded: a press of
-  Fit that is accepted while the plan is unlocked locks the plan as it then stands.
+  lock stands: a client never reverts it. Nor does a client's revert further down a chain of
+  reverts withdraw the lock in force, or bring a withdrawn lock back (a revert of the withdrawal),
+  which would fix the plan as it stood when that lock was recorded: a press of Fit that is
+  accepted while the plan is unlocked locks the plan as it then stands.
 * **What.** The plan is every slot the estimates read, as it stood (:func:`plan_of`): the outcome,
   the exposures and the adjustment set (the roles), the exclusions, the missing-data plan, the
   energy model, the exposure forms, the families, the secondaries, and the data coding (repairs,
@@ -45,6 +46,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Literal, Mapping, Sequence
 
@@ -147,8 +149,6 @@ def canonical(value: Any) -> bytes:
 def _when(at: Any) -> str | None:
     if at is None:
         return None
-    from datetime import timezone
-
     return at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
@@ -347,38 +347,70 @@ def _the_lock_records_the_plan(decision: Any, ctx: Any) -> Any:
     return decision.model_copy(update={"plan": plan, "digest": digest(plan)})
 
 
-def _reverts_down_to(decision: Any, records: Sequence[Any]) -> tuple[Any, int]:
-    """The record a revert's chain ends on, the first that is not itself a revert, and how many
-    reverts lead to it, ``decision`` counted (None and the count so far where the log does not hold
-    one). An odd count undoes that record; an even one brings it back."""
+def _chain_end(decision: Any, records: Sequence[Any]) -> Any:
+    """The record a revert's chain ends on: the first down it that is not itself a revert (None
+    where the log does not hold one)."""
     by_id = {r.id: r for r in records}
-    target, count, seen = by_id.get(decision.decision_id), 1, set()
+    target, seen = by_id.get(decision.decision_id), set()
     while target is not None and target.decision.kind == "revert" and target.id not in seen:
         seen.add(target.id)
-        target, count = by_id.get(target.decision.decision_id), count + 1
-    return target, count
+        target = by_id.get(target.decision.decision_id)
+    return target
 
 
-def _the_lock_stays(decision: Any, ctx: Any) -> None:
-    """A client's revert never moves a lock: one that would withdraw it (a revert of the lock, or
-    of a revert that brought it back) is refused, and so is one that would bring back a lock
-    TurboTab withdrew (a revert of the withdrawal), which would hold the plan as it stood when the
-    lock was recorded, whatever has changed since. Only the server withdraws a lock
-    (``ProjectService._withdraw_lock``), and only while no estimate was shown under it. Pressing
-    Fit is offered as the way forward only where a press records a lock: under inference, while
-    the plan is unlocked (``ProjectService.press_fit``)."""
-    target, count = _reverts_down_to(decision, _records(ctx) or [])
-    if target is None or target.decision.kind != "lock_plan":
-        return
-    if count % 2:
-        raise Refusal(
+def _lock_moved(decision: Any, end: Any, records: Sequence[Any]) -> str | None:
+    """What recording ``decision``, a revert the log accepts whose chain ends on the lock ``end``,
+    would do to that lock, as the log's own fold reads it (``decisions.reverted``,
+    :func:`current_lock`): ``"withdraws"`` where it would withdraw the lock in force,
+    ``"brings back"`` where it would bring the lock back from withdrawn, else None, where the lock
+    stays as it was (withdrawn by another revert too) or is withdrawn while not the lock in force.
+    A revert moves no record but the one its chain ends on."""
+    probe = decisions.DecisionRecord(
+        id="__probe__", seq=max((r.seq for r in records), default=0) + 1,
+        at=datetime.now(timezone.utc), decision=decision)
+    try:
+        before, after = decisions.reverted(records), decisions.reverted([*records, probe])
+    except Refusal:
+        return None
+    if (end.id in before) == (end.id in after):
+        return None
+    if end.id in before:
+        return "brings back"
+    lock = current_lock(records)
+    return "withdraws" if lock is not None and lock.id == end.id else None
+
+
+def _lock_refusal(decision: Any, records: Sequence[Any], state: Any) -> Refusal | None:
+    """The refusal :func:`_the_lock_stays` gives ``decision``, or None where it passes."""
+    if getattr(decision, "kind", None) != "revert":
+        return None
+    end = _chain_end(decision, records)
+    if end is None or end.decision.kind != "lock_plan":
+        return None
+    try:
+        decisions._check_revert(records, decision)
+    except Refusal as refused:
+        return Refusal(refused.code, refused.message, exits=[
+            e for e in refused.exits if e["decision"] is None
+            or _lock_refusal(decisions.parse_decision(e["decision"]), records, state) is None])
+    if end.id == decision.decision_id:
+        return Refusal(
             "plan_stays_locked",
             "The estimates were displayed with this plan, and that cannot be undone: the lock "
             "stays in the record, and later changes stay marked as made after the estimates were "
             "seen.",
         )
-    state = _state(ctx)
-    raise Refusal(
+    moved = _lock_moved(decision, end, records)
+    if moved == "withdraws":
+        return Refusal(
+            "lock_stays_in_force",
+            "This revert would withdraw the analysis-plan lock in force, which only TurboTab does, "
+            "and only before any estimate is shown under it: when Fit is canceled or the plan is "
+            "changed.",
+        )
+    if moved != "brings back":
+        return None
+    return Refusal(
         "lock_stays_withdrawn",
         "This revert would bring back an analysis-plan lock that was withdrawn, and a withdrawn "
         "lock is not brought back: the record keeps it, with its time and fingerprint. Under "
@@ -388,6 +420,26 @@ def _the_lock_stays(decision: Any, ctx: Any) -> None:
                if getattr(state, "purpose", None) == "inference"
                and not getattr(state, "plan_locked", None) else []),
     )
+
+
+def _the_lock_stays(decision: Any, ctx: Any) -> None:
+    """A client's revert never moves a lock, as the log's own fold reads it. A revert of a lock
+    itself is refused while the log holds it unreverted (``plan_stays_locked``), whether it is the
+    lock in force or not. Further down a chain of reverts, one that would withdraw the lock in
+    force (a revert of a reinstatement an older engine accepted) is refused
+    (``lock_stays_in_force``), in words that do not say whether an estimate was shown under it,
+    which the log does not record; so is one that would bring back a lock that was withdrawn
+    (a revert of TurboTab's withdrawal: ``lock_stays_withdrawn``), which would hold the plan as it
+    stood when that lock was recorded, whatever has changed since. Where the lock the chain
+    reaches stays as it was (withdrawn by another revert too), or is withdrawn while not the lock
+    in force, the check is silent. Where the log would refuse the revert itself (a decision already
+    reverted), the log's refusal is said, with only the exits this check accepts. Only the server
+    withdraws a lock (``ProjectService._withdraw_lock``: on Cancel or a change to the plan, before
+    any estimate is shown under it). Pressing Fit is offered as the way forward only where a press
+    records a lock: under inference, while the plan is unlocked (``ProjectService.press_fit``)."""
+    refusal = _lock_refusal(decision, _records(ctx) or [], _state(ctx))
+    if refusal is not None:
+        raise refusal
 
 
 decisions.register_validator("lock_plan", _locked_once_under_inference)

@@ -5,13 +5,20 @@ recording a revert of it. A revert of that withdrawal would bring the lock back 
 stands, which may have changed since, so estimates would be served under the old lock's plan and
 fingerprint: it is refused, with pressing Fit as the way forward where a press would lock the plan
 (under inference, while it is unlocked). A revert of any other revert is not the lock's business
-and passes. Further down the chain the parity says what a revert does: one that would withdraw a
-lock again (a reinstatement an older engine accepted) is refused as a revert of the lock itself is.
+and passes. A revert of a lock itself is refused while the log holds it unreverted, whether it is
+the lock in force or not. Further down a chain of reverts the fold says what a revert does, not
+the chain's length: one that would withdraw the lock in force (a revert of a reinstatement an
+older engine accepted) is refused in words that do not say whether an estimate was shown under
+it, and one that leaves the lock it reaches as it was (withdrawn by another revert too, or a lock
+not in force) passes.
+Where the log refuses the revert itself (a decision already reverted), its own refusal is said,
+with only the exits the check accepts.
 
-Each expectation is read from the log's own fold (``decisions.fold``, ``decisions.reverted``),
-never from the check under test: a revert is refused here only where folding the log with it would
-change whether a lock is in force or bring a withdrawn lock back into the record, and passes where
-the fold's lock stays as it is.
+Each expectation is read from the log's own fold (``decisions.fold``, ``decisions.reverted``) and
+its own refusal (``decisions._check_revert``, which ``DecisionLog.append`` runs), never from the
+check under test: down a chain, a revert is refused here only where folding the log with it would
+withdraw the lock in force (the newest unreverted lock) or bring a withdrawn lock back into the
+record, and passes where the lock it reaches stays as it is.
 """
 from __future__ import annotations
 
@@ -130,15 +137,24 @@ def test_a_revert_of_a_lock_itself_is_refused_as_before():
 
 def test_a_lock_an_older_engine_brought_back_is_not_withdrawn_by_a_client_either():
     """An older engine accepted the revert of a withdrawal (r6 of r4), so its log holds the lock in
-    force again. A client's revert of that reinstatement would withdraw the lock: it is refused as
-    a revert of the lock itself is, since only TurboTab withdraws a lock. Its counterpart one step
-    further down a models answer's chain (r8 of r7 of r6' of r5) passes."""
-    records = [*withdrawn_log(), record(6, {"kind": "revert", "decision_id": "r4"})]
+    force again. A client's revert of that reinstatement would withdraw the lock in force: it is
+    refused, since only TurboTab withdraws a lock, in words that do not say whether an estimate
+    was shown under it (the log does not record it). Its counterpart one step further down a
+    models answer's chain (r8 of r7 of r6' of r5) passes."""
+    records = reinstated_log()
     assert decisions.fold(records).plan_locked is True  # back in force
+    assert lock_in_force(records) == "r3"
     assert not locked_with(records, "r6")  # this revert would withdraw it again
     with pytest.raises(Refusal) as refused:
         check(records, "r6")
-    assert refused.value.code == "plan_stays_locked"
+    assert refused.value.code == "lock_stays_in_force"
+    message = refused.value.message
+    assert message == ("This revert would withdraw the analysis-plan lock in force, which only "
+                       "TurboTab does, and only before any estimate is shown under it: when Fit is "
+                       "canceled or the plan is changed.")
+    assert "displayed" not in message and "were seen" not in message
+    assert refused.value.exits == []
+    assert not any(w in message.lower() for w in plan_lock.NEVER_SAID)
 
     plain = [*withdrawn_log(), record(6, {"kind": "revert", "decision_id": "r5"}),
              record(7, {"kind": "revert", "decision_id": "r6"})]
@@ -146,3 +162,138 @@ def test_a_lock_an_older_engine_brought_back_is_not_withdrawn_by_a_client_either
     assert decisions.fold([*plain, record(8, {"kind": "revert", "decision_id": "r7"})]
                           ).models == ["linear"]
     check(plain, "r7")  # no refusal: no lock is reached down this chain
+
+
+# ── decided by the fold, not by the chain's length (verifier pp2-plan-lock-V2) ──
+
+
+def reinstated_log() -> list[DecisionRecord]:
+    """:func:`withdrawn_log`, then an older engine's acceptance of a client's revert of the
+    withdrawal (r6 of r4): the lock r3 is in force again over the models changed since (r5)."""
+    return [*withdrawn_log(), record(6, {"kind": "revert", "decision_id": "r4"})]
+
+
+def withdrawn_again_log() -> list[DecisionRecord]:
+    """:func:`reinstated_log`, then a change of the models (r8) before which TurboTab withdrew the
+    reinstated lock again (r7 of r3): two reverts of the lock are live, r4 behind r6 and r7."""
+    return [*reinstated_log(), record(7, {"kind": "revert", "decision_id": "r3"}, by="turbotab"),
+            record(8, {"kind": "select_models", "models": ["elastic_net"]})]
+
+
+def with_revert(records: list[DecisionRecord], target: str) -> list[DecisionRecord]:
+    return [*records, record(max(r.seq for r in records) + 1,
+                             {"kind": "revert", "decision_id": target})]
+
+
+def lock_in_force(records: list[DecisionRecord]) -> str | None:
+    """The newest lock the log's own fold leaves unreverted (``decisions.reverted``), by id."""
+    withdrawn = decisions.reverted(records)
+    live = [r.id for r in sorted(records, key=lambda r: r.seq)
+            if r.decision.kind == "lock_plan" and r.id not in withdrawn]
+    return live[-1] if live else None
+
+
+def logs_refusal(records: list[DecisionRecord], target: str) -> Refusal:
+    """The log's own refusal of a revert of ``target`` (``DecisionLog.append``'s check)."""
+    with pytest.raises(Refusal) as refused:
+        decisions._check_revert(records, decisions.Revert(decision_id=target))
+    return refused.value
+
+
+def test_a_revert_that_moves_no_lock_is_not_refused_whatever_its_chain():
+    """The reinstated lock withdrawn again by TurboTab (r7) before a change: the client's revert of
+    the reinstatement (r6) is three reverts above the lock, but r7 withdraws the lock either way,
+    so no lock is in force before or after it, and the check is silent (C2). Its counterpart,
+    with no second withdrawal, would withdraw the lock in force and is refused (C1, above)."""
+    records = withdrawn_again_log()
+    assert decisions.fold(records).plan_locked is None
+    assert lock_in_force(records) is None and lock_in_force(with_revert(records, "r6")) is None
+    assert decisions.fold(with_revert(records, "r6")).plan_locked is None
+    check(records, "r6")  # no refusal
+
+    records = reinstated_log()
+    assert lock_in_force(records) == "r3" and lock_in_force(with_revert(records, "r6")) is None
+    with pytest.raises(Refusal) as refused:
+        check(records, "r6")
+    assert refused.value.code == "lock_stays_in_force"
+
+
+def test_a_chain_that_withdraws_a_lock_not_in_force_is_not_refused():
+    """An older engine's log with two live locks: the first (r3) brought back by a reinstatement
+    (r7 of r4) after a press recorded a newer one (r6). A client's revert of that reinstatement
+    withdraws r3 again, and the lock in force, the newest, stays r6: silent. A revert of the newer
+    lock's own withdrawal chain that would withdraw the lock in force is refused."""
+    newer = {"purpose": "inference", "models": ["linear", "elastic_net"]}
+    records = [*withdrawn_log(),
+               record(6, {"kind": "lock_plan", "plan": newer, "digest": plan_lock.digest(newer)}),
+               record(7, {"kind": "revert", "decision_id": "r4"})]
+    assert lock_in_force(records) == "r6" and "r3" not in decisions.reverted(records)
+    after = with_revert(records, "r7")
+    assert lock_in_force(after) == "r6" and "r3" in decisions.reverted(after)
+    check(records, "r7")  # no refusal: the lock in force does not move
+
+    moved = [*records, record(8, {"kind": "revert", "decision_id": "r6"}, by="turbotab"),
+             record(9, {"kind": "revert", "decision_id": "r8"})]  # r6 back by an older engine
+    assert lock_in_force(moved) == "r6" and lock_in_force(with_revert(moved, "r9")) == "r3"
+    with pytest.raises(Refusal) as refused:
+        check(moved, "r9")
+    assert refused.value.code == "lock_stays_in_force"
+
+
+def test_a_revert_the_log_refuses_hears_the_logs_refusal_with_only_the_exits_accepted():
+    """A second revert of the withdrawal (r4), already reverted by the reinstatement (r6): the log
+    refuses it (``already_reverted``), and that refusal is said, not a lock's (C4). Its exit, the
+    revert of r6, would withdraw the lock in force, which is refused, so it is not offered. Where
+    the lock was withdrawn again (r7) the same exit moves no lock and is offered; where r4 is not
+    yet reverted the lock's own refusal is said (``lock_stays_withdrawn``, above)."""
+    records = reinstated_log()
+    logs = logs_refusal(records, "r4")
+    assert logs.code == "already_reverted"
+    assert [e["decision"] for e in logs.exits] == [{"kind": "revert", "decision_id": "r6"}]
+    assert lock_in_force(records) == "r3" and lock_in_force(with_revert(records, "r6")) is None
+    with pytest.raises(Refusal) as refused:
+        check(records, "r4")
+    assert (refused.value.code, refused.value.message) == (logs.code, logs.message)
+    assert refused.value.exits == []
+
+    records = withdrawn_again_log()
+    logs = logs_refusal(records, "r4")
+    assert logs.code == "already_reverted"
+    assert lock_in_force(with_revert(records, "r6")) is None  # its exit moves no lock
+    check(records, "r6")
+    with pytest.raises(Refusal) as refused:
+        check(records, "r4")
+    assert (refused.value.code, refused.value.message) == (logs.code, logs.message)
+    assert refused.value.exits == logs.exits
+
+    records = withdrawn_log()
+    assert "r4" not in decisions.reverted(records)  # the log takes this one
+    with pytest.raises(Refusal) as refused:
+        check(records, "r4")
+    assert refused.value.code == "lock_stays_withdrawn"
+
+
+def test_a_revert_of_a_withdrawn_lock_hears_the_logs_refusal():
+    """A revert of the lock TurboTab already withdrew (r3, by r4) is the log's to refuse
+    (``already_reverted``); its exit, the revert of the withdrawal, would bring the lock back, which
+    is refused, so it is not offered. A revert of a lock the log holds unreverted is refused as a
+    revert of the lock, whether it is the lock in force or not (``plan_stays_locked``)."""
+    records = withdrawn_log()
+    logs = logs_refusal(records, "r3")
+    assert logs.code == "already_reverted"
+    assert [e["decision"] for e in logs.exits] == [{"kind": "revert", "decision_id": "r4"}]
+    assert lock_in_force(records) is None and lock_in_force(with_revert(records, "r4")) == "r3"
+    with pytest.raises(Refusal) as refused:
+        check(records, "r3")
+    assert (refused.value.code, refused.value.message) == (logs.code, logs.message)
+    assert refused.value.exits == []
+
+    newer = {"purpose": "inference", "models": ["linear", "elastic_net"]}
+    records = [*withdrawn_log(),
+               record(6, {"kind": "lock_plan", "plan": newer, "digest": plan_lock.digest(newer)}),
+               record(7, {"kind": "revert", "decision_id": "r4"})]
+    assert lock_in_force(records) == "r6" and "r3" not in decisions.reverted(records)
+    for target in ("r3", "r6"):
+        with pytest.raises(Refusal) as refused:
+            check(records, target)
+        assert refused.value.code == "plan_stays_locked", target

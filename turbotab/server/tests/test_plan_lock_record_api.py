@@ -5,6 +5,9 @@ P0.8; ``plan_lock``).
   plan changed since: the plan GET /plan declares and the lock a press of Fit then records hold the
   models in force, and the fit serves those models. Pressing Fit is offered as the way forward
   only while the plan is unlocked, where a press records a lock.
+* Down an older engine's chain of reverts, a client's revert that would withdraw the lock in force
+  is refused in words that do not say an estimate was displayed, one the log refuses hears the log's
+  refusal without a refused exit, and one that moves no lock is recorded.
 * A change the log refuses leaves no withdrawal behind: the lock is withdrawn only for a change the
   log then records.
 * A revert that makes the goal inference again, after estimates were shown under prediction, locks
@@ -111,9 +114,87 @@ def test_a_revert_of_turbotabs_withdrawal_is_refused_and_the_plan_and_fit_agree(
     assert len(v["decisions"]) == count and v["state"]["plan_locked"] is True
 
 
+@pytest.mark.slow
+def test_down_an_older_engines_chain_a_client_revert_moves_no_lock(client):
+    """An older engine accepted a client's revert of TurboTab's withdrawal (the reinstatement), so
+    its log holds the lock in force again over the models changed since, no estimate shown under
+    it. The client's revert of the reinstatement would withdraw that lock: it is refused, in words
+    that do not say an estimate was displayed, and a second revert of the withdrawal hears the log's
+    own refusal, without the refused revert as its exit. Cancel, which the words name, withdraws
+    the lock (TurboTab's record); then no lock is in force either way, so the same revert of the
+    reinstatement is the log's exit and is recorded, and no lock comes back."""
+    drive = _inference_drive(client)
+    pid = drive.pid
+    service = client.app.state.service
+    drive.decide({"kind": "select_models", "models": ["linear"]})
+    wait_for(client, pid, {"fit": "fresh"}, timeout=240)
+    press(client, pid)
+    lock = view_of(client, pid)["decisions"][-1]
+    assert lock["decision"]["kind"] == "lock_plan"
+    drive.decide({"kind": "select_models", "models": ["linear", "elastic_net"]})
+    withdrawal = view_of(client, pid)["decisions"][-2]
+    assert withdrawal["decision"] == {"kind": "revert", "decision_id": lock["id"]}
+    assert withdrawal["recorded_by"] == "turbotab"
+    reinstated = service.log(pid).append(Revert(decision_id=withdrawal["id"]))  # an older engine's
+    v = view_of(client, pid)
+    assert v["state"]["plan_locked"] is True and v["state"]["models"] == ["linear", "elastic_net"]
+    count = len(v["decisions"])
+
+    def posted(target: str) -> Any:
+        return client.post(f"/api/projects/{pid}/decisions",
+                           json={"kind": "revert", "decision_id": target})
+
+    def logs_refusal(target: str) -> Refusal:
+        """The log's own refusal of a revert of ``target`` (``DecisionLog.append``'s check)."""
+        with pytest.raises(Refusal) as refused:
+            decisions._check_revert(service.log(pid).records(), Revert(decision_id=target))
+        return refused.value
+
+    refused = posted(reinstated.id)
+    assert refused.status_code == 409, refused.text
+    error = refused.json()["error"]
+    assert error["code"] == "lock_stays_in_force" and error["exits"] == []
+    assert "displayed" not in error["message"] and "were seen" not in error["message"]
+    assert "when Fit is canceled or the plan is changed" in error["message"]
+
+    logs = logs_refusal(withdrawal["id"])
+    assert logs.code == "already_reverted"
+    assert [e["decision"] for e in logs.exits] == [
+        {"kind": "revert", "decision_id": reinstated.id}]  # the revert just refused
+    refused = posted(withdrawal["id"])
+    assert refused.status_code == 409, refused.text
+    error = refused.json()["error"]
+    assert (error["code"], error["message"], error["exits"]) == (logs.code, logs.message, [])
+    v = view_of(client, pid)
+    assert len(v["decisions"]) == count and v["state"]["plan_locked"] is True
+
+    canceled = client.post(f"/api/projects/{pid}/fit/cancel")
+    assert canceled.status_code == 200, canceled.text
+    v = view_of(client, pid)
+    assert [(r["decision"], r["recorded_by"]) for r in v["decisions"][count:]] == [
+        ({"kind": "revert", "decision_id": lock["id"]}, "turbotab")]
+    assert v["state"]["plan_locked"] is None
+    count = len(v["decisions"])
+
+    logs = logs_refusal(withdrawal["id"])
+    refused = posted(withdrawal["id"])
+    assert refused.status_code == 409, refused.text
+    error = refused.json()["error"]
+    assert (error["code"], error["message"]) == ("already_reverted", logs.message)
+    assert [e["decision"] for e in error["exits"]] == [
+        {"kind": "revert", "decision_id": reinstated.id}]
+    v = revert(client, pid, {"id": reinstated.id})
+    assert len(v["decisions"]) == count + 1 and v["state"]["plan_locked"] is None
+    assert v["decisions"][-1]["decision"] == {"kind": "revert", "decision_id": reinstated.id}
+    assert v["state"]["models"] == ["linear", "elastic_net"]
+    plan = client.get(f"/api/projects/{pid}/plan").json()
+    assert plan["status"] == "declared" and plan["plan"]["models"] == ["linear", "elastic_net"]
+
+
 # ── 2. a change the log refuses leaves no withdrawal (INBOX 1045) ────────────
 
 
+@pytest.mark.slow
 def test_a_change_the_log_refuses_leaves_no_withdrawal_behind(client):
     """An older engine accepted a revert of TurboTab's withdrawal, so its log holds a lock in force
     over a plan changed since, no estimate yet shown under it. A change then is refused by the log
