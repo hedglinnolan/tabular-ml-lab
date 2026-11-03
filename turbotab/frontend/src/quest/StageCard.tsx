@@ -4,13 +4,13 @@
  * collapse to their answers (a noticing to its answer alone, so its open-tense headline is not left
  * beside it, or, where a question's answer settled it, to what it was about and that question, so
  * the answer is printed once); lines still to come wait below, quieter, each "Waiting for" what it
- * needs. A line a change asked again says which change, until it is answered (`reopened_by`). A
- * line no card can answer yet is listed after the rest, "Not available yet", and never opened;
- * those that count toward nothing are said together in one quiet line. A record on an
- * expanded line collapses it, and the open line opens. The stage's Confirm sweep comes after its
- * Decides, each default with its reason (or, where the engine serves none, the default itself,
- * from its value) and what another choice would change, and any can be opened to change it; under
- * Predict, Who's in's draw waits for that sweep (§3, "two departures").
+ * needs. A line a change asked again says which change (an answer taken back says only that),
+ * until it is answered (`reopened_by`). A line no card can answer yet is listed after the rest,
+ * "Not available yet", and never opened; those that count toward nothing are said together in one
+ * quiet line. A record on an expanded line collapses it, and the open line opens. The stage's
+ * Confirm sweep comes after its Decides, each default with its reason (or, where the engine serves
+ * none, the default itself, from its value) and what another choice would change, and any can be
+ * opened to change it; under Predict, Who's in's draw waits for that sweep (§3, "two departures").
  * Results, once reached, has W1-G's ResultsCards in place of its lines, mounted once
  * (src/quest/contracts.ts). First look lists every noticing with the stage that decides it. For
  * the record sits collapsed at the foot (GET /record); Write-up's checklist below it lists what the
@@ -110,12 +110,16 @@ function settledText(log: QuestLog, line: QuestLine, noticings: readonly Finding
 /**
  * The change that asked a line again (`reopened_by`), in the words of the stage's own reason
  * (`QuestStage.reopened`, "Your change to … reopened"): by the stage it was made in, or as another
- * answer in this one. Null on an answered line, which reads as its answer, and where the log names
- * no such stage.
+ * answer in this one, since any other cause is a record after the line's last answer. A revert
+ * (an answer taken back, the Record's "undo") is said as only that: the engine names one the cause
+ * whichever answer it took back, the line's own included, and by the stage the undone kind sits in
+ * (every noticing's disposition in Your data), so neither "another answer" nor the stage holds.
+ * Null on an answered line, which reads as its answer, and where the log names no such stage.
  */
 function reopenedText(log: QuestLog, stage: QuestStage, line: QuestLine): string | null {
   const by = line.reopened_by;
   if (!by || line.status === "answered") return null;
+  if (by.kind === "revert") return "Reopened because an answer was taken back.";
   if (by.stage === stage.key) return `Reopened by your change to another answer in ${stage.name}.`;
   const where = log.stages.find((s) => s.key === by.stage);
   return where ? `Reopened by your change to ${where.name}.` : null;

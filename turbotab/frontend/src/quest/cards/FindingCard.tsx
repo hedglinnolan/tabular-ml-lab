@@ -5,7 +5,9 @@
  * other is the findings card, whose lever opens the stage that asks its question, with today's
  * "Keep as is", which records that it was seen and set aside. Either way, why it matters, where the
  * engine says (`why_it_matters`), sits behind the kit's one disclosure under the noticing's name
- * (FOUNDATION §2).
+ * (FOUNDATION §2). On a repairs card the served repairs teaching (its one-liner and why) follows it
+ * there, and the repairs card is given no teaching entry, so it draws no "why?" of its own: the
+ * card has one disclosure.
  */
 import { useState } from "react";
 import { isRefusalError } from "../../api/client";
@@ -45,6 +47,8 @@ export function FindingCard({
     decide.mutate(d, { onError: (err) => isRefusalError(err) && setRefused(err.refusal) });
   };
   const head = <p className={c.kicker}>{said(line.name)}</p>;
+  const repairs = finding?.repairs.length ? (teaching.data ?? []).find((e) => e.key === "repairs") : undefined;
+  const why = [finding?.why_it_matters, repairs?.one_liner, repairs?.why].filter(Boolean).join(" ");
   let body;
   if (!artifact) {
     body = <p className={c.quiet}>{STAGE_LABEL.findings}…</p>;
@@ -61,7 +65,7 @@ export function FindingCard({
       <RepairsSection
         findings={[finding]}
         decisions={view.decisions}
-        entry={(teaching.data ?? []).find((e) => e.key === "repairs")}
+        entry={undefined}
         deferTarget={deferTarget}
         subject={(k) => SUBJECT[k]}
         record={(d) => record(d)}
@@ -93,9 +97,9 @@ export function FindingCard({
   return (
     <section className={c.lineCard} data-testid={`finding-card-${line.key}`} aria-label={said(line.name)}>
       {head}
-      {finding?.why_it_matters ? (
+      {why ? (
         <div data-kit>
-          <Why text={finding.why_it_matters} />
+          <Why text={why} />
         </div>
       ) : null}
       {body}

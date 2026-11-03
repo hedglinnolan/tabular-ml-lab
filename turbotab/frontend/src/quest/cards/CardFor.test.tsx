@@ -253,6 +253,43 @@ describe("a noticing's why it matters (G20)", () => {
     expect(screen.getByTestId(`finding-card-${key}`)).toBeInTheDocument();
     expect(disclosure()).toBeNull();
   });
+
+  /**
+   * The repairs card's teaching (the served "repairs" entry's one-liner and why, which today's
+   * repairs card offers behind its own "why?" while a repair is still to decide) joins the
+   * noticing's in the one disclosure, so the card has one. The capture applied sas_zeros's repair;
+   * the view without that record is the moment before the researcher decides it.
+   */
+  const REPAIRS = SHARED.teaching.find((e) => e.key === "repairs")!;
+  const undecided = (key: string) => (qc: QueryClient) => {
+    const { view } = viewFor(key);
+    const own = (d: ProjectView["decisions"][number]) => (d.decision as { finding_id?: string }).finding_id === key;
+    expect(view.decisions.some(own)).toBe(true);
+    qc.setQueryData(keys.view(PID), { ...view, decisions: view.decisions.filter((d) => !own(d)) });
+  };
+
+  it("is the open repairs card's one disclosure, which holds the repairs teaching", () => {
+    const key = "sas_zeros";
+    const finding = findingOf(key);
+    renderLine({ ...lineOf({ source: "finding", key }), name: finding.summary }, undefined, undefined, undecided(key));
+    const card = screen.getByTestId(`finding-card-${key}`);
+    expect(screen.getByTestId("repairs-open-count")).toBeInTheDocument();
+    expect(screen.queryByTestId("why-repairs")).toBeNull();
+    const details = card.querySelectorAll("details");
+    expect(details).toHaveLength(1);
+    expect(details[0]).toHaveTextContent(plain(finding.why_it_matters));
+    expect(details[0]).toHaveTextContent(REPAIRS.one_liner);
+    expect(details[0]).toHaveTextContent(REPAIRS.why);
+  });
+
+  it("holds no repairs teaching on a noticing without repairs", () => {
+    const key = "binary_text__meds_hbp";
+    renderLine({ ...lineOf({ source: "finding", key }), name: findingOf(key).summary });
+    const why = disclosure()!;
+    expect(why).toHaveTextContent(plain(findingOf(key).why_it_matters));
+    expect(why).not.toHaveTextContent(REPAIRS.one_liner);
+    expect(why).not.toHaveTextContent(REPAIRS.why);
+  });
 });
 
 describe("the dispatcher never renders a blank", () => {

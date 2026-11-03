@@ -939,6 +939,102 @@ describe("a line a change reopened says which change (G20)", () => {
       expect(note(card, l.key), l.key).toBeNull();
     }
   });
+
+  /**
+   * Your question as the engine serves it once the design's own answer was taken back: quest_log on
+   * the records of core/tests/test_quest_reopened_holds_now.py::
+   * test_a_reopened_default_that_confirm_all_answers_clears_its_reason (the purpose under Estimate,
+   * the design answered as r5, and r6 a revert of r5), dumped at 0e7aae5b; each value as served.
+   * The design line names r6, a revert, in its own stage: no other answer changed. The engine names
+   * a revert the cause whichever answer it took back, the line's own included (`_reopened_by`), and
+   * names it by the stage the undone kind sits in, so the line says only that an answer was taken
+   * back. The stage's reason is served as the engine words it, and its head draws that, as served.
+   */
+  const WITHDRAWN: QuestStage = (() => {
+    const answered = (id: string, key: string, name: string, order: number): QuestLine => ({
+      id,
+      key,
+      source: "question",
+      label: "Decide",
+      name,
+      status: "answered",
+      counted: true,
+      order,
+      decision_id: `answer-${key}`,
+      reason: null,
+      waiting_for: [],
+      computing: [],
+      reopened_by: null,
+      would_change: null,
+      changes_nothing: null,
+      items: [],
+      changed_since: null,
+    });
+    return {
+      key: "question",
+      name: "Your question",
+      reached: true,
+      progress: { answered: 5, required: 6, complete: false },
+      sweep: {
+        lines: 1,
+        answered: false,
+        id: "other:confirm-sweep:question",
+        heading: "The choice set for you",
+        action: "Confirm it",
+        confirmed_by: null,
+        changed: [],
+      },
+      lines: [
+        answered("q:target", "target", "the outcome question", 1),
+        answered("q:event", "event", "the event question", 2),
+        answered("q:task", "task", "the task question", 3),
+        answered("q:follow_up", "follow_up", "the follow-up question", 7),
+        answered("q:goal", "purpose", "the purpose question", 18),
+        {
+          id: "q:study-design",
+          key: "design",
+          source: "question",
+          label: "Confirm",
+          name: "the study-design question",
+          status: "set_for_you",
+          counted: false,
+          order: 17,
+          decision_id: null,
+          reason: "stated",
+          waiting_for: [],
+          computing: [],
+          reopened_by: { decision_id: "r6", kind: "revert", stage: "question" },
+          would_change:
+            "A trial or a matched case-control study is analyzed another way, so the estimates here would not be the ones for that design.",
+          changes_nothing: null,
+          items: [],
+          changed_since: null,
+        },
+      ],
+      reopened: [
+        {
+          changed_in: "question",
+          decision_id: "r6",
+          kind: "revert",
+          questions: ["q:study-design"],
+          results: [],
+          within: true,
+          sentence: "Your change to another answer in Your question reopened 1 question.",
+        },
+      ],
+    };
+  })();
+
+  it("says only that an answer was taken back where a revert reopened it, never another answer or a stage", () => {
+    const log: QuestLog = { ...SEALED, stages: SEALED.stages.map((s) => (s.key === WITHDRAWN.key ? WITHDRAWN : s)) };
+    const design = WITHDRAWN.lines.find((l) => l.reopened_by)!;
+    expect(design.reopened_by!.kind).toBe("revert");
+    const { card } = cardOf(log, WITHDRAWN.key);
+    expect(card.querySelector("[data-expanded]")?.getAttribute("data-line")).not.toBe(`${design.source}:${design.key}`);
+    expect(note(card, design.key)!.textContent).toBe("Reopened because an answer was taken back.");
+    expect(lineEl(card, design.key)).not.toHaveTextContent("another answer");
+    expect(lineEl(card, design.key)).not.toHaveTextContent(WITHDRAWN.name);
+  });
 });
 
 /**
