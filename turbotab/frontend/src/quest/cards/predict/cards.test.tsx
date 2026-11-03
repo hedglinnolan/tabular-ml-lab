@@ -233,7 +233,7 @@ describe("the Predict declaration cards", () => {
   it("are one per declaration kind, and no other", () => {
     // The Estimate cards share the one map the shell reads (src/quest/cards/estimate, its own tests).
     expect(Object.keys(DECLARATION_CARDS).sort()).toEqual(
-      [...KINDS, "set_sensitivity", "set_model_sequence", "set_multiplicity", "set_measurement_error", "set_usual_intake"].sort(),
+      [...KINDS, "set_sensitivity", "set_model_sequence", "set_multiplicity", "set_measurement_error", "set_usual_intake", "set_batch"].sort(),
     );
   });
 
