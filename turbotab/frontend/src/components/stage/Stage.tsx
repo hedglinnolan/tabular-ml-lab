@@ -493,7 +493,7 @@ export function Stage({
                     ) : null}
                     {!showing.views.length && scene.kind === "preview" && live.cohort.artifact ? (
                       // Nothing on the rows to draw for this choice: what is recorded stays in view.
-                      <NowScene view={view} data={live} />
+                      <NowScene view={view} data={live} recordHere={recordHere} />
                     ) : null}
                     <PreviewGrid
                       tracks={tracks}
@@ -505,11 +505,13 @@ export function Stage({
                     />
                   </div>
                 ) : null}
-                {scene.kind === "now" ? <NowScene view={view} data={live} /> : null}
+                {scene.kind === "now" ? <NowScene view={view} data={live} recordHere={recordHere} /> : null}
                 {scene.kind === "rows" ? <RowsScene view={view} data={live} /> : null}
                 {scene.kind === "columns" ? <ColumnsScene view={view} data={live} /> : null}
                 {scene.kind === "models" ? <ModelsScene view={view} shelf={live.shelf} fit={live.fit.artifact} /> : null}
-                {scene.kind === "results" ? <ResultsScene pid={pid} view={view} data={live} /> : null}
+                {scene.kind === "results" ? (
+                  <ResultsScene pid={pid} view={view} data={live} recordHere={recordHere} />
+                ) : null}
               </motion.div>
             </AnimatePresence>
           </div>

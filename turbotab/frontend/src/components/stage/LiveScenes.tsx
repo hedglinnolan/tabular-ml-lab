@@ -337,7 +337,9 @@ export function ColumnsCard({ view, data, full }: { view: ProjectView; data: Liv
   );
 }
 
-export function NowScene({ view, data }: { view: ProjectView; data: LiveData }) {
+/** `recordHere` is the stage's (StageProps): false where the card is the one place a choice is
+ *  recorded, so a refused fit's ways forward are no press (StageFailure). */
+export function NowScene({ view, data, recordHere = true }: { view: ProjectView; data: LiveData; recordHere?: boolean }) {
   if (!data.cohort.artifact) {
     return (
       <p className={s.emptyLine}>
@@ -353,7 +355,7 @@ export function NowScene({ view, data }: { view: ProjectView; data: LiveData }) 
         <header className={s.cardHead}>
           <h3 className={s.kicker}>Results</h3>
         </header>
-        <NotFitted view={view} data={data} />
+        <NotFitted view={view} data={data} recordHere={recordHere} />
       </section>
     </div>
   );
@@ -380,11 +382,22 @@ export function ModelsScene({
   return <Shelf shelf={shelf} chosen={view.state.models} fit={fit} />;
 }
 
-export function ResultsScene({ pid, view, data }: { pid: string; view: ProjectView; data: LiveData }) {
+export function ResultsScene({
+  pid,
+  view,
+  data,
+  recordHere = true,
+}: {
+  pid: string;
+  view: ProjectView;
+  data: LiveData;
+  /** The stage's (StageProps `recordHere`), as NowScene's. */
+  recordHere?: boolean;
+}) {
   if (!data.fit.artifact) {
     return (
       <div className={s.emptyLine}>
-        <NotFitted view={view} data={data} />
+        <NotFitted view={view} data={data} recordHere={recordHere} />
       </div>
     );
   }
@@ -394,9 +407,18 @@ export function ResultsScene({ pid, view, data }: { pid: string; view: ProjectVi
 /** Why nothing is fitted, truly: a failure or a stop with its levers, the fit under way, a fit
  *  computed but withheld by the screen (its reason), or the questions still to answer before it
  *  (never "waits on substitution", which comes after). */
-function NotFitted({ view, data }: { view: ProjectView; data: LiveData }) {
+function NotFitted({ view, data, recordHere }: { view: ProjectView; data: LiveData; recordHere: boolean }) {
   if (rootFailure(view.stages, "fit") || view.stages.fit?.cancelled) {
-    return <StageFailure pid={data.pid} view={view} stage="fit" lead="Nothing was fitted." testId="fit-failure" />;
+    return (
+      <StageFailure
+        pid={data.pid}
+        view={view}
+        stage="fit"
+        lead="Nothing was fitted."
+        recordHere={recordHere}
+        testId="fit-failure"
+      />
+    );
   }
   const fit = view.stages.fit?.status;
   if (fit === "running" || fit === "queued") {
