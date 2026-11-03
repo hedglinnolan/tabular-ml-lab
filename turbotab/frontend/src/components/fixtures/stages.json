@@ -1,0 +1,229 @@
+{
+ "source": "turbotab/frontend/src/components/fixtures/capture_stages.py: labels from build_graph(); statuses from Engine.status on test_typed_fit_refusal's refusing_graph",
+ "labels": {
+  "ingest": "Reading the file",
+  "oriented": "Reading which way round the table is",
+  "profile": "Summarizing every column",
+  "findings": "Checking the table against the chosen lenses",
+  "structure": "Reading how the rows repeat",
+  "working": "Building the working table",
+  "target_info": "Reading the outcome column",
+  "roles": "Reading what each column is",
+  "proposals": "Looking up what the field usually does",
+  "cohort": "Counting who is in the analysis",
+  "split": "Drawing the held-out rows",
+  "shelf": "Ranking the model families for this table",
+  "design": "Building each model's pipeline",
+  "fit": "Fitting the models",
+  "substitution": "Drawing the substitution curves",
+  "seal_plan": "Reading what a held-out set can measure",
+  "sensitivity": "Refitting the model on each analysis's rows",
+  "calibration": "Correcting intakes for day-to-day error in the recalls",
+  "secondary": "Fitting the model further adjusted for the declared covariates",
+  "scales": "Estimating each scale's reliability",
+  "usual_intake": "Estimating usual-intake distributions",
+  "effects": "Reporting the effect of what you study across the declared models",
+  "causal_design": "Reading the causal lane's assumptions and overlap",
+  "causal": "Estimating the effect in the causal lane",
+  "time_varying": "Following what you study through time",
+  "explain": "Explaining each fitted model",
+  "forms": "Reading which continuous terms take a declared form",
+  "modification": "Estimating the declared effect modification",
+  "explore": "Exploring the rows Explore may read",
+  "evaluation": "Fitting the benchmark and weighing the models",
+  "mattered": "Refitting the estimate with each recorded choice changed"
+ },
+ "statuses": {
+  "R": {
+   "stage": "R",
+   "status": "error",
+   "key": "k",
+   "fresh": false,
+   "missing": [],
+   "error": "ValueError: The toy refuses in words: choose no selection.",
+   "job_id": null,
+   "progress": null,
+   "updated_at": null,
+   "cancelled": false,
+   "held": null,
+   "refusal": {
+    "stage": "R",
+    "code": "toy_refused",
+    "message": "The toy refuses in words: choose no selection.",
+    "exits": [
+     {
+      "label": "No selection",
+      "decision": {
+       "kind": "set_selection",
+       "method": "none",
+       "where": "in_fold",
+       "keep": null,
+       "threshold": null,
+       "q": null,
+       "pre_selected": null,
+       "sensitivity": false
+      }
+     },
+     {
+      "label": "Wait for the table",
+      "decision": null
+     }
+    ]
+   }
+  },
+  "RH": {
+   "stage": "RH",
+   "status": "error",
+   "key": "k",
+   "fresh": false,
+   "missing": [],
+   "error": "ValueError: The toy refuses in words: choose no selection.",
+   "job_id": null,
+   "progress": null,
+   "updated_at": null,
+   "cancelled": false,
+   "held": null,
+   "refusal": {
+    "stage": "RH",
+    "code": "toy_refused",
+    "message": "The toy refuses in words: choose no selection.",
+    "exits": [
+     {
+      "label": "No selection",
+      "decision": {
+       "kind": "set_selection",
+       "method": "none",
+       "where": "in_fold",
+       "keep": null,
+       "threshold": null,
+       "q": null,
+       "pre_selected": null,
+       "sensitivity": false
+      }
+     },
+     {
+      "label": "Wait for the table",
+      "decision": null
+     }
+    ]
+   }
+  },
+  "AR": {
+   "stage": "AR",
+   "status": "error",
+   "key": "k",
+   "fresh": false,
+   "missing": [],
+   "error": "Needs 'RH', which failed.",
+   "job_id": null,
+   "progress": null,
+   "updated_at": null,
+   "cancelled": false,
+   "held": null,
+   "refusal": {
+    "stage": "RH",
+    "code": "toy_refused",
+    "message": "The toy refuses in words: choose no selection.",
+    "exits": [
+     {
+      "label": "No selection",
+      "decision": {
+       "kind": "set_selection",
+       "method": "none",
+       "where": "in_fold",
+       "keep": null,
+       "threshold": null,
+       "q": null,
+       "pre_selected": null,
+       "sensitivity": false
+      }
+     },
+     {
+      "label": "Wait for the table",
+      "decision": null
+     }
+    ]
+   }
+  },
+  "C": {
+   "stage": "C",
+   "status": "error",
+   "key": "k",
+   "fresh": false,
+   "missing": [],
+   "error": "ValueError: The toy refuses in words: choose no selection.",
+   "job_id": null,
+   "progress": null,
+   "updated_at": null,
+   "cancelled": false,
+   "held": null,
+   "refusal": null
+  },
+  "CH": {
+   "stage": "CH",
+   "status": "error",
+   "key": "k",
+   "fresh": false,
+   "missing": [],
+   "error": "ValueError: The toy refuses in words: choose no selection.",
+   "job_id": null,
+   "progress": null,
+   "updated_at": null,
+   "cancelled": false,
+   "held": null,
+   "refusal": null
+  },
+  "AC": {
+   "stage": "AC",
+   "status": "error",
+   "key": "k",
+   "fresh": false,
+   "missing": [],
+   "error": "Needs 'CH', which failed.",
+   "job_id": null,
+   "progress": null,
+   "updated_at": null,
+   "cancelled": false,
+   "held": null,
+   "refusal": null
+  },
+  "U": {
+   "stage": "U",
+   "status": "error",
+   "key": "k",
+   "fresh": false,
+   "missing": [],
+   "error": "Unsettled: `age` holds whole numbers, which may be codes or amounts; the fit waits for the answer.",
+   "job_id": null,
+   "progress": null,
+   "updated_at": null,
+   "cancelled": false,
+   "held": null,
+   "refusal": {
+    "stage": "U",
+    "code": "reading_unsettled",
+    "message": "`age` holds whole numbers, which may be codes or amounts; the fit waits for the answer.",
+    "exits": [
+     {
+      "label": "`age` is an amount",
+      "decision": {
+       "kind": "confirm_reading",
+       "reading": "code_or_count",
+       "column": "age",
+       "value": "amount"
+      }
+     },
+     {
+      "label": "`age` holds codes",
+      "decision": {
+       "kind": "confirm_reading",
+       "reading": "code_or_count",
+       "column": "age",
+       "value": "code"
+      }
+     }
+    ]
+   }
+  }
+ }
+}

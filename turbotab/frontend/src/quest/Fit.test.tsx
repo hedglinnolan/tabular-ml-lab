@@ -3,11 +3,15 @@
  * expected to take and no Cancel, since nothing runs; while the fit job runs, its progress and a
  * Cancel where Fit was. The lock is the engine's (fixtures/quest-contract.json: core/fit_press.py
  * `fit_lock` for a fit estimated at 1,800 s), so the estimate on the button is the engine's words.
+ * A fit the engine refused in words (StageStatus.refusal, the audit's G04) is said beneath Fit with
+ * its ways forward in words, on the statuses the engine serves (components/fixtures/stages.json).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { api } from "../api/client";
 import type { FitLock, QuestLog, StageStatus } from "../api/schema";
+import { SERVED } from "../components/fixtures/stages";
 import { FitControl } from "./Fit";
 import { CONTRACT } from "./fixtures/contract";
 import { fitPosition, heldFor } from "./log";
@@ -81,5 +85,54 @@ describe("Fit, running", () => {
     expect(fitPosition(logWith(pressed), fitStatus("fresh", 1))).toEqual({ kind: "pressed" });
     const { container } = wrap(<FitControl pid="p" log={logWith(pressed)} fit={fitStatus("fresh", 1)} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("Fit, over a fit the engine refused", () => {
+  const notHeld = { ...held, held: false };
+  /** The fixture's status as the fit serves it; a refusal of its own is the fit's. */
+  const asFit = (from: StageStatus): StageStatus => ({
+    ...from,
+    stage: "fit",
+    refusal: from.refusal && from.refusal.stage === from.stage ? { ...from.refusal, stage: "fit" } : from.refusal,
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("says the refusal beneath Fit with each way forward in words, none a press", () => {
+    // Fit sits in the tapestry, which records nothing (FOUNDATION §1; Stage's recordHere): the
+    // way forward that is a decision is said as the one that is none.
+    const fit = asFit(SERVED.R);
+    const refusal = fit.refusal!;
+    const decide = vi.spyOn(api, "decide");
+    wrap(<FitControl pid="p" log={logWith(notHeld)} fit={fit} />);
+    expect(screen.getByTestId("fit")).toBeInTheDocument();
+    const note = screen.getByTestId("fit-refusal");
+    expect(note).toHaveAttribute("role", "alert");
+    expect(note).toHaveAttribute("data-stage", "fit");
+    expect(note).toHaveAttribute("data-code", refusal.code);
+    expect(note).toHaveTextContent(refusal.message);
+    expect(refusal.exits.map((x) => x.decision === null)).toEqual([false, true]);
+    for (const x of refusal.exits) {
+      expect(note).toHaveTextContent(String(x.label));
+      expect(screen.queryByRole("button", { name: String(x.label) })).toBeNull();
+    }
+    expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("says the refusal of the stage the fit waits on", () => {
+    // AR waits on RH, which refused: as the fit waits on the design.
+    const fit = { ...SERVED.AR, stage: "fit" };
+    wrap(<FitControl pid="p" log={logWith(notHeld)} fit={fit} />);
+    const note = screen.getByTestId("fit-refusal");
+    expect(note).toHaveAttribute("data-stage", SERVED.AR.refusal!.stage);
+    expect(note).toHaveTextContent(SERVED.AR.refusal!.message);
+  });
+
+  it("says nothing of a refusal over a fit that crashed, or one that is computed", () => {
+    wrap(<FitControl pid="p" log={logWith(notHeld)} fit={asFit(SERVED.C)} />);
+    expect(screen.queryByTestId("fit-refusal")).toBeNull();
+    wrap(<FitControl pid="p" log={logWith(notHeld)} fit={fitStatus("fresh", 1)} />);
+    expect(screen.queryByTestId("fit-refusal")).toBeNull();
   });
 });

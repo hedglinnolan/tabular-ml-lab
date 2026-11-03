@@ -7,12 +7,21 @@ import { useCancelJob, useJobs } from "../api/queries";
 import type { StageStatus } from "../api/schema";
 import styles from "./JobChips.module.css";
 
-/** Used until the JobView (with the server's own label) has arrived. */
+/**
+ * Each stage's label as the engine's graph declares it (turbotab/core/stages/__init__.py
+ * `build_graph`), for every stage: a JobView serves the same words (`label`) while the stage runs,
+ * so these say the work before a JobView has arrived and for a stage that is not running, whose
+ * status serves no label. JobChips.test.tsx holds them to the engine's (fixtures/stages.json,
+ * captured by fixtures/capture_stages.py; capture it again when a stage is added or relabeled).
+ */
 export const STAGE_LABEL: Record<string, string> = {
-  ingest: "Reading the file into columnar storage",
+  ingest: "Reading the file",
+  oriented: "Reading which way round the table is",
   profile: "Summarizing every column",
-  target_info: "Reading the outcome column",
   findings: "Checking the table against the chosen lenses",
+  structure: "Reading how the rows repeat",
+  working: "Building the working table",
+  target_info: "Reading the outcome column",
   roles: "Reading what each column is",
   proposals: "Looking up what the field usually does",
   cohort: "Counting who is in the analysis",
@@ -21,7 +30,28 @@ export const STAGE_LABEL: Record<string, string> = {
   design: "Building each model's pipeline",
   fit: "Fitting the models",
   substitution: "Drawing the substitution curves",
+  seal_plan: "Reading what a held-out set can measure",
+  sensitivity: "Refitting the model on each analysis's rows",
+  calibration: "Correcting intakes for day-to-day error in the recalls",
+  secondary: "Fitting the model further adjusted for the declared covariates",
+  scales: "Estimating each scale's reliability",
+  usual_intake: "Estimating usual-intake distributions",
+  effects: "Reporting the effect of what you study across the declared models",
+  causal_design: "Reading the causal lane's assumptions and overlap",
+  causal: "Estimating the effect in the causal lane",
+  time_varying: "Following what you study through time",
+  explain: "Explaining each fitted model",
+  forms: "Reading which continuous terms take a declared form",
+  modification: "Estimating the declared effect modification",
+  explore: "Exploring the rows Explore may read",
+  evaluation: "Fitting the benchmark and weighing the models",
+  mattered: "Refitting the estimate with each recorded choice changed",
 };
+
+/** A stage's work in words: its label, or for a stage with none here its name ("time varying"). */
+export function stageLabel(stage: string): string {
+  return STAGE_LABEL[stage] ?? stage.replace(/_/g, " ");
+}
 
 export function JobChips({ pid, stages }: { pid: string; stages: Record<string, StageStatus> }) {
   const active = Object.values(stages).filter(
@@ -37,7 +67,7 @@ export function JobChips({ pid, stages }: { pid: string; stages: Record<string, 
     <ul className={styles.list} aria-label="Work in progress">
       {active.map((s, i) => {
         const job = jobs[i]?.data;
-        const label = job?.label ?? STAGE_LABEL[s.stage] ?? s.stage;
+        const label = job?.label ?? stageLabel(s.stage);
         const progress = job?.progress ?? s.progress;
         const pct = progress === null || progress === undefined ? null : Math.round(progress * 100);
         return (
