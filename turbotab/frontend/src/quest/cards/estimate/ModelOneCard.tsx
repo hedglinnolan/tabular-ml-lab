@@ -1,0 +1,175 @@
+/**
+ * `set_model_sequence`: the Model 1 question, a counted Decide in Models under Estimate
+ * (core/quest.py). The proposals stage serves its declaration (core/estimand.py
+ * `model_sequence_card`): the columns Model 1 may hold (the primary's adjusted covariates and total
+ * energy), the guess at the field's age, sex and energy among them, the one-tap decision that
+ * declares that guess, and the engine's reason. Model 2 is the primary and Model 3 adds the possible
+ * mediators, both from the answers already given, so Model 1's columns are all the card asks.
+ *
+ * The guess is a suggestion beside an option, never a column checked for the person: its own option
+ * records the one-tap decision as served, and the other records the columns checked, in the
+ * engine's order, for the exposure the served decision names (none checked declares Model 1 with no
+ * column, as the model takes it). An empty guess suggests nothing, so only the columns checked are
+ * offered. A column outside the primary's adjustment set the engine refuses in its own words, with
+ * its exits.
+ *
+ * The columns declared are the state's: the line is answered only while the sequence on record
+ * holds (core/quest.py `_model_one_is_current`), and the served declaration is that sequence's only
+ * once the stage that serves it is fresh. That stage reads the sequence, so every record recomputes
+ * it, and meanwhile the server serves its older result (core/graph.py `Engine.get`): the card's
+ * columns and options stay veiled and inert until the fresh result arrives, so nothing is offered
+ * from the older one. A recompute that failed or was stopped does not restart by itself, so the veil
+ * offers its retry (components/StageRetry.tsx), as the stage's live scenes do.
+ *
+ * Only a result computed after the adjustment answer serves the columns (core/stages/proposals.py),
+ * so where that recompute failed or was stopped there are none to show, and the card never says
+ * they are not computed yet. Where it failed, the card says which computation did not finish and
+ * why, with its retry, as a step waiting on it does (components/Failure.tsx `StageFailure`). Where
+ * it was stopped, the card says so in the veil's words, with its retry: the proposals stage is a
+ * light one, with no job to stop, so its stop is always one it inherits from a stage it waits on
+ * (core/graph.py `_status`), and naming its own computation would name one the person could not
+ * stop. Its retry reruns every stopped stage it waits on (core/graph.py `Engine.ensure`).
+ */
+import { useState } from "react";
+import { useProjectView, useStageResult } from "../../../api/queries";
+import type { ProjectView } from "../../../api/schema";
+import { StageFailure, rootFailure } from "../../../components/Failure";
+import { Pending } from "../../../components/record/blocks";
+import { Prose } from "../../../components/Prose";
+import { StageRetry } from "../../../components/StageRetry";
+import { StaleVeil, veilFor } from "../../../motion/StaleVeil";
+import type { LineCard } from "../../contracts";
+import { Choice, Frame, useCard, type CardWiring, type Offer } from "../predict/card";
+import c from "../predict/declaration.module.css";
+import { ColumnChecks } from "../predict/fields";
+import { modelSequence, servedSequence, type ModelOneServed, type ModelSequence } from "./payloads";
+
+type Answer = "guess" | "checked";
+
+const listed = (columns: readonly string[]) => columns.join(", ");
+/** The line's name as its card's heading says it (predict/card.tsx `Frame`). */
+const capital = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
+const sameColumns = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((col) => b.includes(col));
+
+function Body({
+  card,
+  served,
+  guess,
+  declared,
+}: {
+  card: CardWiring;
+  served: ModelOneServed;
+  /** The served one-tap decision, which declares the guess. */
+  guess: ModelSequence;
+  /** Model 1's columns on record, once the line is answered; null while it is not. */
+  declared: readonly string[] | null;
+}) {
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set(declared ?? []));
+  const columns = served.allowed.filter((col) => checked.has(col));
+  const values: readonly Answer[] = guess.model_1.length ? ["guess", "checked"] : ["checked"];
+  const names: Record<Answer, string> = {
+    guess: `${listed(guess.model_1)} (suggested)`,
+    checked: columns.length ? `${listed(columns)} (checked above)` : "No column (none checked above)",
+  };
+  const recorded: Answer | null =
+    declared === null
+      ? null
+      : values.includes("guess") && sameColumns(declared, guess.model_1)
+        ? "guess"
+        : "checked";
+  const toggle = (column: string) =>
+    setChecked((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(column)) next.add(column);
+      return next;
+    });
+  const offerOf = (answer: Answer): Offer => ({
+    decision: answer === "guess" ? guess : modelSequence(guess.exposure, columns),
+  });
+  return (
+    <>
+      <p className={c.said} data-testid="model-one-reason">
+        <Prose text={served.reason} />
+      </p>
+      <ColumnChecks
+        group="model_1"
+        legend="Model 1 adjusts for"
+        columns={served.allowed}
+        chosen={checked}
+        onToggle={toggle}
+      />
+      <Choice
+        card={card}
+        field="model_1"
+        legend="Model 1's columns"
+        values={values}
+        names={names}
+        offerOf={offerOf}
+        recorded={recorded}
+        testId="options-model-one"
+      />
+    </>
+  );
+}
+
+/** The proposals stage's result, once the stage has started (state/stages.ts `useStage`). */
+function useProposals(pid: string, view: ProjectView | undefined) {
+  const status = view?.stages.proposals?.status;
+  return useStageResult(pid, "proposals", status !== undefined && status !== "idle" && status !== "blocked");
+}
+
+export const ModelOneCard: LineCard = ({ pid, line }) => {
+  const card = useCard(pid, "set_model_sequence");
+  const view = useProjectView(pid).data;
+  const proposals = useProposals(pid, view);
+  const served = proposals.data?.artifact?.model_sequence ?? null;
+  const guess = served ? servedSequence(served) : null;
+  const declared = line.status === "answered" ? (card.state?.model_sequence?.model_1 ?? null) : null;
+  // A stage that failed or was stopped does not restart by itself (components/StageRetry.tsx).
+  const status = view?.stages.proposals;
+  const failed = !!view && rootFailure(view.stages, "proposals") !== null;
+  const stopped = !failed && !!status?.cancelled;
+  return (
+    <Frame line={line}>
+      {!card.state || (proposals.isLoading && !served) ? (
+        <Pending>Loading the Model 1 question…</Pending>
+      ) : served && guess ? (
+        <StaleVeil
+          state={veilFor(status, proposals.data)}
+          testId="model-one-veil"
+          action={<StageRetry pid={pid} status={status} />}
+        >
+          {/* The checks start from the columns on record, so a new record starts them again. */}
+          <Body
+            key={`${line.decision_id ?? "open"} ${JSON.stringify(declared)}`}
+            card={card}
+            served={served}
+            guess={guess}
+            declared={declared}
+          />
+        </StaleVeil>
+      ) : failed && view ? (
+        // Nothing in the quest shell answers a request to reopen an answer (the Record does), so
+        // the failure offers its retry alone.
+        <StageFailure
+          pid={pid}
+          view={view}
+          stage="proposals"
+          changeable={false}
+          after={<>{capital(line.name)} waits on it.</>}
+          testId="model-one-failure"
+        />
+      ) : stopped ? (
+        <p className={c.waiting} role="alert" data-testid="model-one-stopped">
+          <strong>You stopped the recompute</strong> before it finished. {capital(line.name)} waits on it.{" "}
+          <StageRetry pid={pid} status={status} />
+        </p>
+      ) : (
+        <p className={c.waiting} data-testid="model-one-unserved">
+          The columns Model 1 may hold are not computed yet.
+        </p>
+      )}
+    </Frame>
+  );
+};
