@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 import { RefusalError, api } from "../api/client";
 import type { ProjectView, Refusal } from "../api/schema";
 import { SERVED } from "./fixtures/stages";
-import { StageRefusal, refusalOf, waysForward } from "./StageRefusal";
+import { StageRefusal, besideCard, refusalOf, waysForward } from "./StageRefusal";
 
 function wrap(node: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -71,6 +71,32 @@ describe("waysForward", () => {
   });
 });
 
+describe("besideCard", () => {
+  it("keeps the refusal's words up to the ledger's question, which the card asks, and its ways that name no decision", () => {
+    // By construction, as core/readings.py `ask_text` follows a consumer's words in a refusal that
+    // asks: the card lists each reading with its evidence (record/besideAsk.ts), so the words stop
+    // where its question begins.
+    const unsettled = SERVED.U.refusal!;
+    const asked = {
+      ...unsettled,
+      message: `${unsettled.message} Tell me about this column: \`age\`: an amount? (12 distinct values).`,
+      exits: [...unsettled.exits, { label: "Wait for the table", decision: null }],
+    };
+    expect(besideCard(asked)).toEqual({ message: unsettled.message, told: [{ label: "Wait for the table", decision: null }] });
+  });
+
+  it("keeps a refusal that asks no reading whole, with its way forward that names no decision", () => {
+    const refusal = SERVED.R.refusal!;
+    expect(besideCard(refusal)).toEqual({
+      message: refusal.message,
+      told: refusal.exits.filter((x) => x.decision === null),
+    });
+    // A refusal with no confirmation keeps words that read like the ledger's question.
+    const like = { ...refusal, message: `${refusal.message} Tell me about this column: \`x\`.` };
+    expect(besideCard(like).message).toBe(like.message);
+  });
+});
+
 describe("StageRefusal", () => {
   const refusal = SERVED.R.refusal!;
   const [take, told] = waysForward(refusal);
@@ -97,14 +123,26 @@ describe("StageRefusal", () => {
     await waitFor(() => expect(exits[0]).toBeDisabled());
   });
 
-  it("says every way forward in words, none a press, where the card is the one place to record", () => {
+  it("says the refusal's words and only its way forward that names no decision, where the card records", () => {
+    // The decision is the card's to offer (Stage's recordHere false): its label names a choice, so
+    // said here as a sentence it would read as a fact.
     const decide = vi.spyOn(api, "decide");
     wrap(<StageRefusal pid="p" refusal={refusal} recordHere={false} />);
     const note = screen.getByTestId(`stage-refusal-${refusal.stage}`);
-    expect(note).toHaveTextContent(refusal.message);
-    for (const x of [take!, told!]) expect(note).toHaveTextContent(x.label);
+    expect(note.textContent).toBe(`${refusal.message} ${told!.label}.`);
     expect(screen.queryAllByRole("button")).toEqual([]);
     expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("says no confirmation an unsettled reading waits on as a sentence, where the card records", () => {
+    // U's two ways forward are each a confirmation, the card's to ask: "`age` is an amount" and
+    // "`age` holds codes" are alternatives, never two facts side by side.
+    const unsettled = SERVED.U.refusal!;
+    wrap(<StageRefusal pid="p" refusal={unsettled} recordHere={false} />);
+    const note = screen.getByTestId(`stage-refusal-${unsettled.stage}`);
+    expect(note.textContent).toBe(shown(unsettled.message));
+    for (const x of unsettled.exits) expect(note).not.toHaveTextContent(shown(String(x.label)));
+    expect(screen.queryAllByRole("button")).toEqual([]);
   });
 
   it("offers each confirmation an unsettled reading waits on", () => {

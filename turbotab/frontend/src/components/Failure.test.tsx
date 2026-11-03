@@ -74,11 +74,13 @@ describe("StageFailure", () => {
     expect(screen.queryByTestId("failure-change-models")).toBeNull();
   });
 
-  it("says a refused stage's ways forward in words, none a press, where it may not record", () => {
+  it("says a refused stage's way forward that names no decision in words, none a press, where it may not record", () => {
+    // The decision is the card's to offer (Stage's recordHere false): neither a press nor a sentence.
     const fit = as("fit", SERVED.R);
+    const told = fit.refusal!.exits.find((x) => x.decision === null)!;
     wrap(<StageFailure pid="p" view={viewWith({ fit })} stage="fit" recordHere={false} />);
     const note = screen.getByTestId("failure-fit");
-    for (const x of fit.refusal!.exits) expect(note).toHaveTextContent(String(x.label));
+    expect(note.textContent).toBe(`${ENGINE_LABELS.fit} did not finish: ${fit.refusal!.message} ${String(told.label)}.`);
     expect(screen.queryAllByRole("button")).toEqual([]);
   });
 

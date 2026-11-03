@@ -4,7 +4,8 @@
  * Cancel where Fit was. The lock is the engine's (fixtures/quest-contract.json: core/fit_press.py
  * `fit_lock` for a fit estimated at 1,800 s), so the estimate on the button is the engine's words.
  * A fit the engine refused in words (StageStatus.refusal, the audit's G04) is said beneath Fit with
- * its ways forward in words, on the statuses the engine serves (components/fixtures/stages.json).
+ * its ways forward that name no decision in words (a decision is the card's), on the statuses the
+ * engine serves (components/fixtures/stages.json).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
@@ -12,6 +13,7 @@ import type { ReactNode } from "react";
 import { api } from "../api/client";
 import type { FitLock, QuestLog, StageStatus } from "../api/schema";
 import { SERVED } from "../components/fixtures/stages";
+import { plain } from "../kit";
 import { FitControl } from "./Fit";
 import { CONTRACT } from "./fixtures/contract";
 import { fitPosition, heldFor } from "./log";
@@ -98,9 +100,10 @@ describe("Fit, over a fit the engine refused", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("says the refusal beneath Fit with each way forward in words, none a press", () => {
+  it("says the refusal beneath Fit with its way forward that names no decision, none a press", () => {
     // Fit sits in the tapestry, which records nothing (FOUNDATION §1; Stage's recordHere): the
-    // way forward that is a decision is said as the one that is none.
+    // way forward that is a decision is the card's to offer, so it is neither a press nor a
+    // sentence here; the one that names no decision is said in words.
     const fit = asFit(SERVED.R);
     const refusal = fit.refusal!;
     const decide = vi.spyOn(api, "decide");
@@ -110,14 +113,26 @@ describe("Fit, over a fit the engine refused", () => {
     expect(note).toHaveAttribute("role", "alert");
     expect(note).toHaveAttribute("data-stage", "fit");
     expect(note).toHaveAttribute("data-code", refusal.code);
-    expect(note).toHaveTextContent(refusal.message);
-    expect(refusal.exits.map((x) => x.decision === null)).toEqual([false, true]);
-    for (const x of refusal.exits) {
-      expect(note).toHaveTextContent(String(x.label));
-      expect(screen.queryByRole("button", { name: String(x.label) })).toBeNull();
-    }
+    const [take, told] = refusal.exits;
+    expect([take!.decision === null, told!.decision === null]).toEqual([false, true]);
+    expect(note.textContent).toBe(`${refusal.message} ${String(told!.label)}.`);
+    for (const x of refusal.exits) expect(screen.queryByRole("button", { name: String(x.label) })).toBeNull();
     expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
     expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("says no confirmation of an unsettled reading as a sentence of fact", () => {
+    // U's ways forward are the two answers to one reading ("`age` is an amount", "`age` holds
+    // codes"), the card's to ask: said one after the other they would state both as facts.
+    const fit = asFit(SERVED.U);
+    const refusal = fit.refusal!;
+    wrap(<FitControl pid="p" log={logWith(notHeld)} fit={fit} />);
+    const note = screen.getByTestId("fit-refusal");
+    expect(note).toHaveAttribute("data-code", refusal.code);
+    expect(refusal.exits.every((x) => x.decision !== null)).toBe(true);
+    expect(note.textContent).toBe(plain(refusal.message));
+    for (const x of refusal.exits) expect(note).not.toHaveTextContent(plain(String(x.label)));
+    expect(screen.getAllByRole("button").map((b) => b.dataset.testid)).toEqual(["fit"]);
   });
 
   it("says the refusal of the stage the fit waits on", () => {

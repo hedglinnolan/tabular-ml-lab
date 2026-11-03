@@ -126,8 +126,9 @@ export function requestReopen(key: QuestionKey): void {
  * "Building each model's pipeline did not finish: <why>. [Try again] [Change the energy
  * adjustment]". For a stage the user stopped: "You stopped …" and [Recompute]. For a stage the
  * engine refused in words: "Fitting the models did not finish: <the refusal's words>." and a press
- * for each of its ways forward (StageRefusal; `compact` and `changeable` do not apply to it), or,
- * with `recordHere` false, each in words.
+ * for each of its ways forward that is a decision (StageRefusal; `compact` and `changeable` do not
+ * apply to it), and each that is none in words; with `recordHere` false, no press and no decision
+ * said (StageRefusal's `besideCard`).
  */
 export function StageFailure({
   pid,
@@ -150,8 +151,8 @@ export function StageFailure({
   /** Offer to change the answer behind it (off where its own "change" is beside it). */
   changeable?: boolean;
   compact?: boolean;
-  /** False where the card is the one place a choice is recorded (Stage's `recordHere`): a
-   *  refusal's ways forward are said in words, none a press. */
+  /** False where the card is the one place a choice is recorded (Stage's `recordHere`): no way
+   *  forward of a refusal is a press, and only those that name no decision are said. */
   recordHere?: boolean;
   testId?: string;
 }) {
