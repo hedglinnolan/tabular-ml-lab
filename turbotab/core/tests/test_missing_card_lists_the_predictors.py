@@ -1,15 +1,17 @@
-"""The missing-values card lists the predictors the other answers keep (INBOX:1027).
+"""The missing-values card lists every predictor a model of the plan holds, and no column a repair
+removed from every model (INBOX:1027).
 
 ``proposals.missing.columns`` (the card's list and its count) took every column holding a predictor
 role with a blank, so on the plasma panel's QC-RLSC plans it listed 36 columns, 16 of them features
 the QC filters removed: the working table keeps a removed feature's column, and the repair takes it
-out of the predictors (``repairs.unusable_columns``). The card now leaves out the columns the
-answers other than the missing-values one leave out: a repair's unusable columns and, under
-inference, the covariates the adjustment answers leave out of the primary model, but not those a
-model declared beside it holds, whose blanks cost that model rows: the "further adjusted for" model
-(``estimand.secondary_columns``) and a declared modification's (the modifier, and an interaction's
-confounders of its second exposure: ``interaction.adjusted_sets``). The missing-values answer's
-columns stay listed: they are this card's own offer (``leave_out``).
+out of the predictors (``repairs.unusable_columns``). The card now leaves out a repair's unusable
+columns, less each a declared modification's model holds (the modifier, and an interaction's
+confounders of its second exposure: ``interaction.adjusted_sets``), whose blanks cost that model
+rows. It leaves out nothing else. A covariate the adjustment answers leave out of the primary model
+stays listed: another model of the plan can hold it (the "further adjusted for" model, a declared
+modification's, the time-varying lane's and, after the lock, the specification curve's), so its
+blanks need the missing-data answer. The missing-values answer's columns stay listed: they are this
+card's own offer (``leave_out``).
 
 The truth is pandas: the blanks on the rows with the outcome measured, among the columns built to
 hold a predictor role, less the columns the recorded answers name. On the plasma panel the removed
@@ -117,23 +119,37 @@ ADJUSTMENT = {"x1": {"exposure": "f3", "causes_exposure": "no", "causes_outcome"
                      "after_exposure": "yes"}}
 
 
-@pytest.mark.parametrize("purpose", ["inference", "prediction"])
-def test_under_inference_a_covariate_the_adjustment_leaves_out_is_not_listed(tmp_path, purpose):
-    """Fires under inference: `x1` answered as changed by `f3` and a cause of `y` is a mediator, which
-    a total effect leaves out of the primary model (``estimand.adjustment_left_out``), and no model
-    declared beside it holds (not among ``estimand.secondary_columns``; no modification declared),
-    so its blanks drop no row and it is not listed. Silent under prediction, where the same answers
-    leave nothing out."""
+# `x1`'s answers that leave it out of the primary model (``estimand.adjustment_left_out``) and out of
+# the "further adjusted for" model: a mediator, which a total effect leaves out, and a confounder the
+# exposure affects, which the time-varying lane adjusts for (``time_varying.affected_confounders``).
+LEFT_OUT = {
+    "a mediator": (ADJUSTMENT["x1"], []),
+    "a confounder the exposure affects": ({"exposure": "f3", "causes_exposure": "yes",
+                                           "causes_outcome": "yes", "after_exposure": "yes"},
+                                          ["x1"]),
+}
+
+
+@pytest.mark.parametrize("answers, affected", list(LEFT_OUT.values()), ids=list(LEFT_OUT))
+def test_a_covariate_the_adjustment_leaves_out_stays_listed_beside_no_removed_feature(
+        tmp_path, answers, affected):
+    """Both ways under inference: QC-RLSC removes `f1` and `f2`, and the adjustment answers leave
+    `x1` out of the primary model, as a mediator or as a confounder the exposure affects. Another
+    model of the plan can hold `x1` (the time-varying lane's, which adjusts for the second; after
+    the lock, the specification curve's departure that adds a covariate the answers left out), so
+    its blanks need the missing-data answer: the card lists `x1` with its 3 blanks and `f3` with
+    its 2 of the 10 rows with `y` measured, and neither removed feature."""
     from turbotab.core.estimand import adjustment_left_out, secondary_columns
+    from turbotab.core.time_varying import affected_confounders
 
     table, df = _table(tmp_path)
-    state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose=purpose,
+    state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
                          estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
-                         adjustment=ADJUSTMENT)
-    gone = ["x1"] if purpose == "inference" else []
-    assert adjustment_left_out(state) == gone
-    assert secondary_columns(state) == []
-    want = blanks(df, [c for c in PREDICTORS if c not in gone], "y")
+                         adjustment={"x1": answers}, findings=qc_answer())
+    assert (adjustment_left_out(state), secondary_columns(state)) == (["x1"], [])
+    assert affected_confounders(state) == affected
+    want = blanks(df, ["x1", "x2", "f3"], "y")
+    assert want == [("x1", 3, 0.3), ("f3", 2, 0.2)]
     assert listed(table.run(proposals_stage, state)) == want
 
 
@@ -164,83 +180,56 @@ def test_a_covariate_the_further_adjusted_model_holds_stays_listed(tmp_path, ans
     assert listed(table.run(proposals_stage, state)) == want
 
 
-def test_a_missing_answer_that_takes_the_exposure_out_lists_the_mediator(tmp_path):
-    """The card reads the missing-values answer through the adjustment answers: one that leaves the
-    exposure `f3` out ends the estimand (``estimand.current_estimand``), so no answer leaves the
-    mediator `x1` out and the fresh card lists it, beside `f3`, that answer's own column."""
-    table, df = _table(tmp_path)
-    state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
-                         estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
-                         adjustment=ADJUSTMENT,
-                         missing=MissingSpec(strategy="complete_case", drop_columns=["f3"]))
-    want = blanks(df, PREDICTORS, "y")
-    assert ("x1", 3, 0.3) in want and ("f3", 2, 0.2) in want
-    assert listed(table.run(proposals_stage, state)) == want
-
-
 # `x1` answered as a cause of neither `f3` nor `y`: the primary model leaves it out and the "further
 # adjusted for" model does not hold it. A declared modification's model (``methods.interaction``)
-# can: the modifier is one of its predictors, as is each confounder an interaction's answers for its
-# second exposure add (``interaction.adjusted_sets``), so their blanks cost that model rows.
+# can, or not: the modifier is one of its predictors, as is each confounder an interaction's answers
+# for its second exposure, here `x2`, add (``interaction.adjusted_sets``). The QC-RLSC answer
+# removes `f1` and `f2`, so the interaction's answers are asked for `x1` alone.
 NEITHER = {"exposure": "f3", "causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
 CONFOUNDER = {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"}
-MODIFIED = {
+NO_CAUSE = {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"}
+MODIFICATIONS = {
+    "none declared": None,
     "x1 the modifier": {"x1": ModificationSpec(kind="effect_modification", exposure="f3")},
-    "x1 a confounder of the second exposure": {"f1": ModificationSpec(
-        kind="interaction", exposure="f3",
-        answers={c: CONFOUNDER for c in ["x1", "x2", "f2"]})},
+    "x1 withdrawn": {"x1": ModificationSpec(kind="effect_modification", exposure="f3",
+                                            withdrawn=True, post_hoc=True)},
+    "x1 a confounder of the second exposure": {"x2": ModificationSpec(
+        kind="interaction", exposure="f3", answers={"x1": CONFOUNDER})},
+    "x1 no confounder of the second exposure": {"x2": ModificationSpec(
+        kind="interaction", exposure="f3", answers={"x1": NO_CAUSE})},
 }
 
 
-def modified_state(modifications: dict | None) -> ProjectState:
-    return ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
-                        estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
-                        adjustment={"x1": NEITHER}, modifications=modifications)
-
-
-@pytest.mark.parametrize("modifications", list(MODIFIED.values()), ids=list(MODIFIED))
-def test_a_covariate_a_declared_modification_holds_stays_listed(tmp_path, modifications):
-    """Silent on a declared modification's columns: `x1`, which the adjustment answers leave out of
-    the primary model, is the declared modifier, or a confounder of the interaction's second
-    exposure `f1`, so the modification's model holds it and `x1` stays listed with its 3 blanks."""
+@pytest.mark.parametrize("modifications", list(MODIFICATIONS.values()), ids=list(MODIFICATIONS))
+def test_a_covariate_the_adjustment_leaves_out_stays_listed_whatever_the_modifications(
+        tmp_path, modifications):
+    """Both ways, whatever modification is declared: `x1`, which the adjustment answers leave out of
+    the primary model, stays listed with its 3 blanks, whether a modification's model holds it or
+    none does (after the lock the specification curve's departure that adds it can); the removed
+    `f1` and `f2`, which no model holds, are not listed."""
     from turbotab.core.estimand import adjustment_left_out, secondary_columns
     from turbotab.core.methods.interaction import adjusted_sets, declared
 
     table, df = _table(tmp_path)
-    state = modified_state(modifications)
+    state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
+                         estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
+                         adjustment={"x1": NEITHER}, modifications=modifications,
+                         findings=qc_answer())
     assert (adjustment_left_out(state), secondary_columns(state)) == (["x1"], [])
-    found = declared(state)
-    assert list(found) == list(modifications)
-    assert any(m == "x1" or "x1" in adjusted_sets(state, m, s)[1] for m, s in found.items())
-    want = blanks(df, PREDICTORS, "y")
-    assert want == [("f1", 4, 0.4), ("x1", 3, 0.3), ("f3", 2, 0.2), ("f2", 1, 0.1)]
+    held = {c for m, s in declared(state).items() for c in [m, *adjusted_sets(state, m, s)[1]]}
+    assert not held & {"f1", "f2"}
+    want = blanks(df, ["x1", "x2", "f3"], "y")
+    assert want == [("x1", 3, 0.3), ("f3", 2, 0.2)]
     assert listed(table.run(proposals_stage, state)) == want
 
 
-NOT_HELD = {
-    "none declared": None,
-    "x1 withdrawn": {"x1": ModificationSpec(kind="effect_modification", exposure="f3",
-                                            withdrawn=True, post_hoc=True)},
-    "x1 no confounder of the second exposure": {"f1": ModificationSpec(
-        kind="interaction", exposure="f3",
-        answers={"x1": {"causes_exposure": "no", "causes_outcome": "no", "after_exposure": "no"},
-                 "x2": CONFOUNDER, "f2": CONFOUNDER})},
-}
-
-
-@pytest.mark.parametrize("modifications", list(NOT_HELD.values()), ids=list(NOT_HELD))
-def test_a_covariate_no_declared_modification_holds_is_not_listed(tmp_path, modifications):
-    """Fires: with no modification declared, one withdrawn (no longer estimated), or an interaction
-    whose answers make `x1` a cause of neither its second exposure nor `y`, no model holds `x1`, so
-    it is not listed."""
-    from turbotab.core.methods.interaction import adjusted_sets, declared
-
-    table, df = _table(tmp_path)
-    state = modified_state(modifications)
-    assert not any(m == "x1" or "x1" in adjusted_sets(state, m, s)[1]
-                   for m, s in declared(state).items())
-    want = blanks(df, [c for c in PREDICTORS if c != "x1"], "y")
-    assert listed(table.run(proposals_stage, state)) == want
+def removed_state(declared_f1: bool) -> ProjectState:
+    """Under inference, QC-RLSC's answer removing `f1` and `f2`, and `f1` declared the modifier of
+    `f3`'s effect or no modification declared."""
+    return ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
+                        estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
+                        findings=qc_answer(), modifications={"f1": ModificationSpec(
+                            kind="effect_modification", exposure="f3")} if declared_f1 else None)
 
 
 @pytest.mark.parametrize("declared_f1", [True, False], ids=["f1 the modifier", "none declared"])
@@ -250,10 +239,7 @@ def test_a_removed_feature_a_declared_modification_holds_stays_listed(tmp_path, 
     from the working table), so `f1` stays listed with its 4 blanks; with none declared it is not
     listed. `f2` is listed in neither."""
     table, df = _table(tmp_path)
-    state = ProjectState(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
-                         estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
-                         findings=qc_answer(), modifications={"f1": ModificationSpec(
-                             kind="effect_modification", exposure="f3")} if declared_f1 else None)
+    state = removed_state(declared_f1)
     kept = ["x1", "x2", "f3", *(["f1"] if declared_f1 else [])]
     want = blanks(df, kept, "y")
     assert want == ([("f1", 4, 0.4)] if declared_f1 else []) + [("x1", 3, 0.3), ("f3", 2, 0.2)]
@@ -263,49 +249,22 @@ def test_a_removed_feature_a_declared_modification_holds_stays_listed(tmp_path, 
 @pytest.mark.xfail(strict=True, reason="INBOX:1027 repair V2-1: the integrator adds 'modifications' "
                                        "to the proposals Stage's reads (with its version bump); "
                                        "then drop this marker")
-def test_declaring_a_modification_rekeys_the_card():
-    """So the stage's key changes when a modification that holds `x1` is declared (the test above:
-    its fresh card lists `x1`), or the card cached before it, which omits `x1`, is served."""
+def test_declaring_a_removed_feature_the_modifier_rekeys_the_card():
+    """So the stage's key changes when the removed `f1` is declared the modifier (the test above:
+    its fresh card lists `f1`), or the card cached before it, which omits `f1`, is served."""
     from turbotab.core.graph import stage_keys
     from turbotab.core.stages import build_graph
     from turbotab.core.stages.proposals import answered_out
 
     order = build_graph().order()
-    plain, modified = modified_state(None), modified_state(MODIFIED["x1 the modifier"])
-    assert (answered_out(plain), answered_out(modified)) == (["x1"], [])
+    plain, modified = removed_state(False), removed_state(True)
+    assert ("f1" in answered_out(plain), "f1" in answered_out(modified)) == (True, False)
 
     def key(state: ProjectState) -> str | None:
         return stage_keys(order, state.model_dump(mode="json"), "fingerprint")["proposals"]
 
     assert key(plain) is not None
     assert key(modified) != key(plain)
-
-
-@pytest.mark.xfail(strict=True, reason="INBOX:1027 repair P2: the integrator adds 'missing' to the "
-                                       "proposals Stage's reads (with its version bump); then drop "
-                                       "this marker")
-def test_a_missing_answer_that_takes_the_exposure_out_rekeys_the_card():
-    """So the stage's key changes with a missing-values answer that leaves the exposure out (the
-    test above: its fresh card lists `x1`), or the card cached without that answer, which omits
-    `x1`, is served."""
-    from turbotab.core.estimand import adjustment_left_out
-    from turbotab.core.graph import stage_keys
-    from turbotab.core.stages import build_graph
-
-    order = build_graph().order()
-    answers = dict(lens=["metabolomics"], target="y", roles=ROLES, purpose="inference",
-                   estimand=EstimandSpec(exposure="f3", measure="mean_difference"),
-                   adjustment=ADJUSTMENT)
-    plain = ProjectState(**answers)
-    dropped = ProjectState(**answers, missing=MissingSpec(strategy="complete_case",
-                                                          drop_columns=["f3"]))
-    assert (adjustment_left_out(plain), adjustment_left_out(dropped)) == (["x1"], [])
-
-    def key(state: ProjectState) -> str | None:
-        return stage_keys(order, state.model_dump(mode="json"), "fingerprint")["proposals"]
-
-    assert key(plain) is not None
-    assert key(dropped) != key(plain)
 
 
 # ── the plasma panel through QC-RLSC, through the real stage graph ───────────────────────────────
