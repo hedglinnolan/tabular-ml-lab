@@ -8,9 +8,10 @@
  *   1. the plan-lock line, "Plan fixed at …" with the locked plan's SHA-256 as its quiet label
  *      (FOUNDATION §7), from the quest log's lock (core/fit_press.py `FitLock`);
  *   2. per model family, Table 2 with its forest as the last column (table2FromEffects and
- *      forestFromEffects over GET /stages/effects), and beside it the primary model's diagnostics
- *      in the engine's words: a failed check's ways forward are named, never pressed, and a
- *      recorded response is said as its record words it.
+ *      forestFromEffects over GET /stages/effects; on a ratio scale, which prints each ratio and
+ *      no estimate, the caption's sentence on the coefficients' scale is left out, `asTable2`),
+ *      and beside it the primary model's diagnostics in the engine's words: a failed check's ways
+ *      forward are named, never pressed, and a recorded response is said as its record words it.
  *
  * Gated on the plan's lock as the engine gates it (FOUNDATION §5 rule 6): the quest log's lock
  * through gateFromLock, which fails closed, and the served artifact's own withholding. A fit refused
@@ -131,10 +132,50 @@ function Estimates({
   );
 }
 
+/** A caption's sentence on the coefficients' scale names the exponential that turns a coefficient
+ *  into its ratio: "… each hazard ratio is exp(estimate)." (core/models/inference.py `_on_scale`,
+ *  for the hazard, odds and relative-risk ratios) or "… exp(β) multiplies the odds …"
+ *  (core/models/ordinal.py, the cumulative odds ratio). */
+const ON_COEFFICIENTS = /exp\((?:estimate|β)\)/;
+
+/** The sentences of an engine text: each ends at a full stop before a space, outside a backticked
+ *  name (a level such as `1.0`, a column such as `a. b`). Joined by one space they are the text. */
+function sentencesOf(text: string): string[] {
+  const out: string[] = [];
+  let [from, ticked] = [0, false];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "`") ticked = !ticked;
+    else if (!ticked && text[i] === "." && /\s/.test(text[i + 1] ?? "")) {
+      out.push(text.slice(from, i + 1).trim());
+      from = i + 1;
+    }
+  }
+  const tail = text.slice(from).trim();
+  return tail ? [...out, tail] : out;
+}
+
+/** The effects as Table 2 prints them. On a ratio scale its column is each ratio, exp(estimate),
+ *  and it has no estimate column, so the caption's sentence on the coefficients' scale (the
+ *  coefficient table's: "Estimates are log hazard ratios; …") would describe a column it does not
+ *  print, and a reader who trusted it would exponentiate a ratio again: that sentence is left out,
+ *  and the caption's others (its intervals, its rows) stay in the engine's words. A difference
+ *  scale prints the estimate itself, and its caption whole. */
+function asTable2(art: ServedEffects): ServedEffects {
+  if (art.scale !== "ratio") return art;
+  const caption = (text: string) => sentencesOf(text).filter((x) => !ON_COEFFICIENTS.test(x)).join(" ");
+  return {
+    ...art,
+    families: art.families.map((fam) => ({
+      ...fam,
+      sequence: fam.sequence.map((fit) => (fit.inference ? { ...fit, inference: { ...fit.inference, caption: caption(fit.inference.caption) } } : fit)),
+    })),
+  };
+}
+
 function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; index: number; many: boolean; decisions: readonly DecisionRecord[] }) {
   const [lit, setLit] = useState<string | null>(null);
   const fam = art.families[index]!;
-  const table = table2FromEffects(art, index, many ? `Table 2 (${fam.label})` : "Table 2");
+  const table = table2FromEffects(asTable2(art), index, many ? `Table 2 (${fam.label})` : "Table 2");
   const primary = fam.sequence.find((q) => q.key === "model_2") ?? fam.sequence[0];
   // A family blocked and recorded has no estimate: its refusal says why, in place of an empty table.
   const refused = !table.rows.some((r) => r.kind === "row") ? (primary?.inference?.refused ?? null) : null;

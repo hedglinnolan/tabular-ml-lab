@@ -19,6 +19,7 @@ import type { EffectsArtifact } from "../../api/m3-types";
 import type { FitLock } from "../../api/schema";
 import { ENGINE_LABELS, SERVED } from "../../components/fixtures/stages";
 import LAB from "../../components/views/lab/fixtures.json";
+import survey from "../../mocks/fixtures/m3-survey-design.json";
 import { lockOf } from "./estimate";
 import capture from "./fixtures/cox-estimate.json";
 import predict from "./fixtures/nhanes-predict.json";
@@ -39,6 +40,18 @@ const C = capture as unknown as {
   responded: Snapshot & { taken: Json };
 };
 const P = predict as unknown as { opened: Snapshot };
+/** The engine's effects, cut unchanged from captured journeys: NHANES under inference (a passed
+ *  check, on a difference scale), a time-varying exposure (a conditional odds ratio, components/
+ *  views/lab/fixtures.json) and the survey design (a check not assessed; mocks/fixtures, one
+ *  version of the stage, so its base is the served artifact). */
+const NHANES = (LAB as unknown as { nhanes: { effects: EffectsArtifact } }).nhanes.effects;
+const ODDS = (LAB as unknown as { timeVarying: { effects: EffectsArtifact } }).timeVarying.effects;
+const SURVEY = (survey as unknown as { artifacts: { effects: { base: EffectsArtifact } } }).artifacts.effects.base;
+/** The locked snapshot with `artifact` served where the walk's effects were. */
+const servedAt = (artifact: EffectsArtifact): Snapshot => ({
+  ...C.locked,
+  stages: { ...C.locked.stages, effects: { ...C.locked.stages.effects!, artifact } },
+});
 const effectsOf = (s: Snapshot) => s.stages.effects!.artifact as EffectsArtifact & { withheld?: string | null };
 const checkOf = (s: Snapshot): Diagnostic => effectsOf(s).families[0]!.diagnostics[0]!;
 const unticked = (s: string) => s.replaceAll("`", "");
@@ -235,6 +248,52 @@ describe("the plan-lock line", () => {
   });
 });
 
+// ── Table 2's caption on its display scale ───────────────────────────────────
+
+/** The primary model's served caption. */
+const captionOf = (art: EffectsArtifact) => {
+  const seq = art.families[0]!.sequence;
+  return (seq.find((q) => q.key === "model_2") ?? seq[0]!).inference!.caption;
+};
+
+/** Table 2's footnotes, as printed under it. */
+const footnotesIn = (view: HTMLElement) => within(within(view).getByTestId("results-table2")).getByTestId("footnotes").textContent ?? "";
+
+describe("Table 2's caption on its display scale", () => {
+  // Every number on a ratio scale's Table 2 is a ratio, exp(estimate) (the lock's gate, above), and
+  // it has no estimate column; the engine's caption is the coefficient table's, whose rows are
+  // the logs. Its sentence on that scale ends at "exp(estimate)." (core/models/inference.py
+  // `_on_scale`), and its other sentences say the intervals and the rows.
+  const SCALE_ENDS = "exp(estimate).";
+  it.each([
+    { name: "a hazard ratio (Cox, the walk's capture)", served: effectsOf(C.locked), at: C.locked },
+    { name: "an odds ratio (logistic, the time-varying capture)", served: ODDS, at: servedAt(ODDS) },
+  ])("on $name, leaves out the caption's sentence on the coefficients' scale and keeps its intervals and rows", async ({ served, at }) => {
+    expect(served.scale).toBe("ratio");
+    const caption = captionOf(served);
+    const cut = caption.indexOf(SCALE_ENDS) + SCALE_ENDS.length;
+    const [scale, rest] = [caption.slice(0, cut), caption.slice(cut).trim()];
+    // The served caption says its estimates are logs, and its other sentences are the
+    // intervals' and the rows' (the primary's served row count among them).
+    expect(cut).toBeGreaterThan(SCALE_ENDS.length);
+    expect(scale).toMatch(/^Estimates are log/);
+    expect(rest).toContain("interval");
+    const primary = served.families[0]!.sequence.find((q) => q.key === "model_2")!;
+    expect(rest).toMatch(new RegExp(`Estimated from all ${primary.n_rows!.toLocaleString("en-US")} analyzed rows\\.$`));
+    const view = await estimateView(at);
+    const notes = footnotesIn(view);
+    expect(notes).not.toContain(unticked(scale));
+    expect(notes).not.toContain("exp(");
+    expect(notes).toContain(unticked(rest));
+  });
+
+  it("on a difference scale, which prints the estimate itself, keeps the caption whole", async () => {
+    expect(NHANES.scale).toBe("difference");
+    const view = await estimateView(servedAt(NHANES));
+    expect(footnotesIn(view)).toContain(unticked(captionOf(NHANES)));
+  });
+});
+
 // ── the diagnostics beside Table 2 (G18) ─────────────────────────────────────
 
 describe("the diagnostics beside Table 2", () => {
@@ -243,6 +302,8 @@ describe("the diagnostics beside Table 2", () => {
     const d = checkOf(C.locked);
     const item = within(within(view).getByTestId("results-diagnostics")).getByTestId("results-diagnostic");
     expect(item.dataset).toMatchObject({ check: d.check, status: "failed" });
+    // The word the researcher reads for the check's state, not only the served status beneath it.
+    expect(within(item).getByText("Proportional hazards: failed")).toBeTruthy();
     expect(item.textContent).toContain(unticked(d.reading));
     expect(item.textContent).toContain("No response is recorded yet.");
     for (const x of d.exits) expect(item.textContent).toContain(unticked(x.label));
@@ -251,14 +312,14 @@ describe("the diagnostics beside Table 2", () => {
   });
 
   it("say a passed check in the engine's words, ask for no response and name no way forward; a difference prints its estimate", async () => {
-    // NHANES under inference: the engine's effects, cut unchanged from the captured journey
-    // (components/views/lab/fixtures.json), served where the walk's effects were.
-    const nhanes = (LAB as unknown as { nhanes: { effects: EffectsArtifact } }).nhanes.effects;
-    const view = await estimateView({ ...C.locked, stages: { ...C.locked.stages, effects: { ...C.locked.stages.effects!, artifact: nhanes } } });
+    // NHANES under inference, served where the walk's effects were.
+    const nhanes = NHANES;
+    const view = await estimateView(servedAt(nhanes));
     const d = nhanes.families[0]!.diagnostics[0]!;
-    expect(d).toMatchObject({ status: "passed", exits: [], response: null });
+    expect(d).toMatchObject({ check: "influence", status: "passed", exits: [], response: null });
     const item = within(view).getByTestId("results-diagnostic");
     expect(item.dataset).toMatchObject({ check: d.check, status: "passed" });
+    expect(within(item).getByText("Influence: passed")).toBeTruthy();
     expect(item.textContent).toContain(unticked(d.reading));
     expect(item.textContent).not.toContain("No response is recorded yet.");
     expect(item.querySelector("ul")).toBeNull();
@@ -277,10 +338,26 @@ describe("the diagnostics beside Table 2", () => {
     const [record] = records.filter((r) => r.decision.kind === "respond_diagnostic");
     expect(record!.decision).toEqual(C.responded.taken);
     const item = within(view).getByTestId("results-diagnostic");
+    // A response recorded leaves the check as it read: still failed.
+    expect(d.status).toBe("failed");
+    expect(within(item).getByText("Proportional hazards: failed")).toBeTruthy();
     expect(item.textContent).toContain(unticked(d.reading));
     expect(item.textContent).toContain(unticked(record!.sentence));
     expect(item.textContent).not.toContain("No response is recorded yet.");
     for (const x of checkOf(C.locked).exits) expect(item.textContent).not.toContain(unticked(x.label));
+  });
+
+  it("say a check not assessed as not assessed, in the engine's words for why, asking for no response", async () => {
+    // The survey design: its model is design-based, so the unweighted checks are not read.
+    const view = await estimateView(servedAt(SURVEY));
+    const d = SURVEY.families[0]!.diagnostics[0]!;
+    expect(d).toMatchObject({ check: "influence", status: "not_assessed", exits: [], response: null });
+    const item = within(view).getByTestId("results-diagnostic");
+    expect(item.dataset).toMatchObject({ check: d.check, status: "not_assessed" });
+    expect(within(item).getByText("Influence: not assessed")).toBeTruthy();
+    expect(within(item).getByText(unticked(d.reading))).toBeTruthy();
+    expect(item.textContent).not.toContain("No response is recorded yet.");
+    expect(item.querySelector("ul")).toBeNull();
   });
 });
 
