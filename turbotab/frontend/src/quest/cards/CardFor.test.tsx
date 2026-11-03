@@ -159,8 +159,6 @@ describe("every (source, key) the engine emits has a renderer", () => {
  */
 const NOT_YET: Record<string, string> = {
   set_batch: "a batch column's handling, met under the omics lenses",
-  set_measurement_error: "regression calibration, met under Estimate (W3)",
-  set_model_sequence: "the Model 1 question, met under Estimate (W3)",
   set_scales: "a multi-item scale, met under the survey lens",
   set_usual_intake: "usual intake from repeated recalls, met under the dietary lens with repeats",
 };

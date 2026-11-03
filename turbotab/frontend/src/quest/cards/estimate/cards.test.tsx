@@ -15,10 +15,11 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { api, RefusalError } from "../../../api/client";
 import type { ProposalsArtifact } from "../../../api/m1-types";
 import { keys } from "../../../api/queries";
+import { STAGE_LABEL } from "../../../components/JobChips";
 import type { Decision, ProjectState, ProjectView, QuestLine, QuestStage, Refusal } from "../../../api/schema";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../../mocks/m3";
 import { StageFocusProvider } from "../../../state/focus";
@@ -221,6 +222,21 @@ type NotFresh =
   | { status: "running" }
   | { status: "error"; error: string }
   | { status: "stale"; cancelled: true };
+
+/**
+ * A stop as the engine serves it to the proposals stage. Only a heavy stage's job can be stopped
+ * (the server cancels by job id, server/service.py `cancel_job`), and proposals is a light stage
+ * with none, so its `cancelled` is always inherited from a stage it waits on (core/graph.py
+ * `_status`: held, or any dep cancelled): here the working table's stop, which the column roles
+ * inherit too, leaves proposals stale and cancelled.
+ */
+const STOPPED_UPSTREAM: Record<string, Record<string, unknown>> = {
+  working: { stage: "working", status: "stale", key: "w", fresh: false, updated_at: null, error: null, cancelled: true },
+  roles: { stage: "roles", status: "stale", key: "r", fresh: false, updated_at: null, error: null, cancelled: true },
+};
+const STOPPED: NotFresh = { status: "stale", cancelled: true };
+const withStages = (view: ProjectView, stages: Record<string, Record<string, unknown>>): ProjectView =>
+  ({ ...view, stages: { ...view.stages, ...stages } }) as unknown as ProjectView;
 
 /**
  * Serve the proposals stage: fresh, its result at the key the view reports; or not fresh
@@ -469,9 +485,9 @@ describe("the Model 1 card, from the proposals stage's model_sequence", () => {
   // The line opens once the adjustment is answered, and only a result computed after that answer
   // serves Model 1's columns (core/stages/proposals.py): the older result the server falls back to
   // serves none, so a recompute that fails or is stopped leaves no columns to show.
-  const unservedAfter = (status: NotFresh) => {
+  const unservedAfter = (status: NotFresh, upstream: Record<string, Record<string, unknown>> = {}) => {
     const { view, proposals } = servedIn("nhanes-inference");
-    mount("set_model_sequence", { view, proposals: { ...proposals, model_sequence: null }, status });
+    mount("set_model_sequence", { view: withStages(view, upstream), proposals: { ...proposals, model_sequence: null }, status });
     const card = screen.getByTestId("declaration-set_model_sequence");
     return { card, title: within(card).getByRole("heading").textContent! };
   };
@@ -486,20 +502,68 @@ describe("the Model 1 card, from the proposals stage's model_sequence", () => {
     expect(failure).toHaveAttribute("data-kind", "failed");
     expect(failure).toHaveTextContent(reason);
     expect(failure).toHaveTextContent(`${title} waits on it.`);
+    expect(screen.queryByTestId("model-one-stopped")).toBeNull();
+    expect(card).not.toHaveTextContent("You stopped");
     expect(offered()).toEqual([]);
     const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
     fireEvent.click(within(failure).getByTestId("retry-proposals"));
     await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "proposals"));
   });
 
-  it("says the recompute was stopped, with a way to run it again, where the proposals stage was stopped", async () => {
-    const { card } = unservedAfter({ status: "stale", cancelled: true });
+  it("says the recompute was stopped, with a way to run it again, where a stage the proposals wait on was stopped", async () => {
+    const { card, title } = unservedAfter(STOPPED, STOPPED_UPSTREAM);
     expect(card).not.toHaveTextContent("not computed yet");
-    const failure = screen.getByTestId("model-one-failure");
-    expect(failure).toHaveAttribute("data-kind", "stopped");
+    // The stop is the working table's: no computation the person could not stop is named.
+    expect(card).not.toHaveTextContent(new RegExp(STAGE_LABEL.proposals!, "i"));
+    expect(screen.queryByTestId("model-one-failure")).toBeNull();
+    const stopped = screen.getByTestId("model-one-stopped");
+    expect(stopped).toHaveTextContent(`You stopped the recompute before it finished. ${title} waits on it.`);
+    expect(offered()).toEqual([]);
+    // Recomputing the proposals reruns every stopped stage they wait on (core/graph.py `ensure`).
     const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
-    fireEvent.click(within(failure).getByTestId("retry-proposals"));
+    fireEvent.click(within(stopped).getByTestId("retry-proposals"));
     await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "proposals"));
+  });
+
+  // The veiled columns and options come from an older result that does serve them: a recompute
+  // that fails or is stopped does not restart by itself, so the veil offers its way forward.
+  const veiledAfter = (status: NotFresh, upstream: Record<string, Record<string, unknown>> = {}) => {
+    const { view, proposals } = servedIn("nhanes-inference");
+    mount("set_model_sequence", { view: withStages(view, upstream), proposals, status });
+    const veil = screen.getByTestId("model-one-veil");
+    const retry = within(veil).queryByTestId("retry-proposals");
+    // The way forward sits outside the inert body it would otherwise share.
+    if (retry) expect(retry.closest("[inert]")).toBeNull();
+    return { veil, retry };
+  };
+
+  it("offers to try again from the veil where the proposals recompute failed", async () => {
+    const { veil, retry } = veiledAfter({ status: "error", error: "the recompute ran out of memory" });
+    expect(veil).toHaveAttribute("data-veil", "failed");
+    expect(retry).toHaveTextContent("Try again");
+    expect(screen.getByTestId("options-model-one").closest("[inert]")).not.toBeNull();
+    const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(retry!);
+    await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "proposals"));
+  });
+
+  it("offers to recompute from the veil where a stage the proposals wait on was stopped", async () => {
+    const { veil, retry } = veiledAfter(STOPPED, STOPPED_UPSTREAM);
+    expect(veil).toHaveAttribute("data-veil", "stopped");
+    expect(retry).toHaveTextContent("Recompute");
+    const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(retry!);
+    await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "proposals"));
+  });
+
+  it("offers no way forward from the veil while the proposals recompute, nor once it is fresh", async () => {
+    expect(veiledAfter({ status: "running" }).retry).toBeNull();
+    expect(screen.getByTestId("model-one-veil")).toHaveAttribute("data-veil", "recomputing");
+    cleanup();
+    const { view, proposals } = servedIn("nhanes-inference");
+    mount("set_model_sequence", { view, proposals });
+    expect(screen.getByTestId("model-one-veil")).toHaveAttribute("data-veil", "fresh");
+    expect(screen.queryByTestId("retry-proposals")).toBeNull();
   });
 
   it("says the columns are not computed yet, and names no failure, while the proposals stage computes its first result", () => {

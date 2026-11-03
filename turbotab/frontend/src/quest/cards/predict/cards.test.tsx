@@ -231,7 +231,10 @@ const recordedFor = (c: Case) =>
 
 describe("the Predict declaration cards", () => {
   it("are one per declaration kind, and no other", () => {
-    expect(Object.keys(DECLARATION_CARDS).sort()).toEqual([...KINDS, "set_sensitivity"].sort());
+    // The Estimate cards share the one map the shell reads (src/quest/cards/estimate, its own tests).
+    expect(Object.keys(DECLARATION_CARDS).sort()).toEqual(
+      [...KINDS, "set_sensitivity", "set_model_sequence", "set_multiplicity", "set_measurement_error"].sort(),
+    );
   });
 
   it.each(CASES.map((c) => [`${c.card} · ${c.press}${c.note ? ` · ${c.note}` : ""}`, c] as const))(

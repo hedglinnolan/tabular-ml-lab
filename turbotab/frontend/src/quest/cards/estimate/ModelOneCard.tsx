@@ -18,12 +18,17 @@
  * once the stage that serves it is fresh. That stage reads the sequence, so every record recomputes
  * it, and meanwhile the server serves its older result (core/graph.py `Engine.get`): the card's
  * columns and options stay veiled and inert until the fresh result arrives, so nothing is offered
- * from the older one.
+ * from the older one. A recompute that failed or was stopped does not restart by itself, so the veil
+ * offers its retry (components/StageRetry.tsx), as the stage's live scenes do.
  *
  * Only a result computed after the adjustment answer serves the columns (core/stages/proposals.py),
- * so where that recompute failed or was stopped there are none to show: the card says which
- * computation did not finish and why, with its retry, as a step waiting on it does
- * (components/Failure.tsx `StageFailure`), never that they are not computed yet.
+ * so where that recompute failed or was stopped there are none to show, and the card never says
+ * they are not computed yet. Where it failed, the card says which computation did not finish and
+ * why, with its retry, as a step waiting on it does (components/Failure.tsx `StageFailure`). Where
+ * it was stopped, the card says so in the veil's words, with its retry: the proposals stage is a
+ * light one, with no job to stop, so its stop is always one it inherits from a stage it waits on
+ * (core/graph.py `_status`), and naming its own computation would name one the person could not
+ * stop. Its retry reruns every stopped stage it waits on (core/graph.py `Engine.ensure`).
  */
 import { useState } from "react";
 import { useProjectView, useStageResult } from "../../../api/queries";
@@ -31,6 +36,7 @@ import type { ProjectView } from "../../../api/schema";
 import { StageFailure, rootFailure } from "../../../components/Failure";
 import { Pending } from "../../../components/record/blocks";
 import { Prose } from "../../../components/Prose";
+import { StageRetry } from "../../../components/StageRetry";
 import { StaleVeil, veilFor } from "../../../motion/StaleVeil";
 import type { LineCard } from "../../contracts";
 import { Choice, Frame, useCard, type CardWiring, type Offer } from "../predict/card";
@@ -121,13 +127,19 @@ export const ModelOneCard: LineCard = ({ pid, line }) => {
   const guess = served ? servedSequence(served) : null;
   const declared = line.status === "answered" ? (card.state?.model_sequence?.model_1 ?? null) : null;
   // A stage that failed or was stopped does not restart by itself (components/StageRetry.tsx).
-  const unfinished = !!view && (rootFailure(view.stages, "proposals") !== null || !!view.stages.proposals?.cancelled);
+  const status = view?.stages.proposals;
+  const failed = !!view && rootFailure(view.stages, "proposals") !== null;
+  const stopped = !failed && !!status?.cancelled;
   return (
     <Frame line={line}>
       {!card.state || (proposals.isLoading && !served) ? (
         <Pending>Loading the Model 1 question…</Pending>
       ) : served && guess ? (
-        <StaleVeil state={veilFor(view?.stages.proposals, proposals.data)} testId="model-one-veil">
+        <StaleVeil
+          state={veilFor(status, proposals.data)}
+          testId="model-one-veil"
+          action={<StageRetry pid={pid} status={status} />}
+        >
           {/* The checks start from the columns on record, so a new record starts them again. */}
           <Body
             key={`${line.decision_id ?? "open"} ${JSON.stringify(declared)}`}
@@ -137,7 +149,7 @@ export const ModelOneCard: LineCard = ({ pid, line }) => {
             declared={declared}
           />
         </StaleVeil>
-      ) : unfinished && view ? (
+      ) : failed && view ? (
         // Nothing in the quest shell answers a request to reopen an answer (the Record does), so
         // the failure offers its retry alone.
         <StageFailure
@@ -148,6 +160,11 @@ export const ModelOneCard: LineCard = ({ pid, line }) => {
           after={<>{capital(line.name)} waits on it.</>}
           testId="model-one-failure"
         />
+      ) : stopped ? (
+        <p className={c.waiting} role="alert" data-testid="model-one-stopped">
+          <strong>You stopped the recompute</strong> before it finished. {capital(line.name)} waits on it.{" "}
+          <StageRetry pid={pid} status={status} />
+        </p>
       ) : (
         <p className={c.waiting} data-testid="model-one-unserved">
           The columns Model 1 may hold are not computed yet.
