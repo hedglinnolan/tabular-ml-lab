@@ -970,6 +970,9 @@ def build_graph() -> Graph:
             # mattered 3: as fit 41.
             # sensitivity 25, calibration 22, secondary 16, scales 13, effects 16 (pp1f): as fit 42,
             # their refusal of the imputation reads the answer's words and ways forward.
+            # sensitivity 26 (PP2 N1): its exposures read the lineage unfolded, every matrix column
+            # named as the coefficient table names it, so a plan wider than lineage.COLLAPSE_AT no
+            # longer fails on an exposure named None.
             Stage("sensitivity", 26, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
