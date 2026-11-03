@@ -151,6 +151,7 @@ def test_a_claim_rendered_inside_the_server_s_stage_in_a_job_worker_lands_in_its
     assert stage.heavy  # the engine sends it to a job worker
     ctx = service._project_ctx(pid)
     (tmp_path / "data").mkdir()
+    (tmp_path / "cache").mkdir()  # as Workspace.cache_dir makes it; write_artifact never does
     spec = {"graph_factory": factory, "stage": "ingest", "version": stage.version, "key": "probe",
             "dep_keys": {}, "cache_root": str(tmp_path / "cache"), "project_id": pid,
             "state": ctx.state, "paths": {**ctx.paths, "data": str(tmp_path / "data" / "raw.parquet")},
