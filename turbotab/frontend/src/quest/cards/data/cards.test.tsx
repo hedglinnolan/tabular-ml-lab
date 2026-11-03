@@ -327,6 +327,7 @@ describe("joining another file (join_files)", () => {
       .mockImplementationOnce(() => second.promise);
     chooseJoin(FILE.id, PREVIEW.on);
     // Counting: nothing to show, nothing to record.
+    expect(await screen.findByText("Counting the rows the join would give…")).toBeInTheDocument();
     expect(screen.queryByTestId("join-counts")).toBeNull();
     expect(record()).toBeDisabled();
     await act(async () => first.done(PREVIEW));
@@ -368,6 +369,49 @@ describe("joining another file (join_files)", () => {
     expect(screen.queryByTestId("join-counts")).toBeNull();
     expect(record()).toBeDisabled();
   });
+
+  // A preview that answered another join than the one asked, one part at a time: the other file the
+  // capture added (its upload), another column of the table, the other rows kept. The silent side,
+  // the preview of the join asked, is "counts the join chosen as the server serves it" above.
+  const elsewhere: [string, () => Partial<JoinPreview>][] = [
+    ["another file", () => ({ file: served<AddedFile>("files_upload").id })],
+    [
+      "another identifier in the table",
+      () => ({
+        on: served<{ name: string }[]>("columns").find((c) => c.name !== PREVIEW.on)!.name,
+      }),
+    ],
+    [
+      "the other rows kept",
+      () => ({ how: HOW.enum!.find((v) => v !== HOW.default) as JoinPreviewRequest["how"] }),
+    ],
+  ];
+  it.each(elsewhere)(
+    "does not show a preview served for %s than the one chosen",
+    async (_, part) => {
+      const { decide } = mount("join_files");
+      const other: JoinPreview = { ...PREVIEW, ...part() };
+      // Each case differs from the join asked in its one part, and in no other.
+      expect(
+        Object.keys(other).filter(
+          (k) => other[k as keyof JoinPreview] !== PREVIEW[k as keyof JoinPreview],
+        ),
+      ).toHaveLength(1);
+      const ask = vi.spyOn(api, "joinPreview").mockResolvedValue(other);
+      chooseJoin(FILE.id, PREVIEW.on);
+      await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+      expect(ask.mock.calls[0]).toEqual([PID, { file: FILE.id, on: PREVIEW.on, how: HOW.default }]);
+      await settle();
+      // The server has answered: what is missing was refused by the card, not still being counted.
+      expect(screen.queryByText("Counting the rows the join would give…")).toBeNull();
+      expect(screen.queryByTestId("join-counts")).toBeNull();
+      expect(screen.queryByTestId("join-sentence")).toBeNull();
+      expect(record()).toBeDisabled();
+      fireEvent.click(record());
+      await settle();
+      expect(decide).not.toHaveBeenCalled();
+    },
+  );
 
   it("posts the file's own name for the identifier only where it is named otherwise", async () => {
     const { decide } = mount("join_files");
@@ -551,11 +595,19 @@ describe("the data dictionary (import_codebook)", () => {
     const list = await screen.findByTestId("codebook-asked");
     const rows = Array.from(list.querySelectorAll("li"));
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent(asked[0]!.column);
-    expect(rows[0]).toHaveTextContent(asked[0]!.says);
-    expect(rows[0]).toHaveTextContent(said(asked[0]!.values));
-    expect(rows[1]).toHaveTextContent(asked[1]!.column);
-    expect(rows[1]).toHaveTextContent(asked[1]!.values);
+    // As the server's sentence words each (core/codebook.py `codebook_sentence`): what a check that
+    // ran found is what "the values show"; a check that could not run showed nothing, and its
+    // `values` say why in their own words.
+    const [contradicted, unchecked] = asked as [(typeof asked)[0], (typeof asked)[0]];
+    expect(rows[0]!.textContent).toBe(
+      `${contradicted.column}'s ${contradicted.field}: the codebook says ${contradicted.says}; ` +
+        `the values show ${said(contradicted.values)}`,
+    );
+    expect(rows[1]!.textContent).toBe(
+      `${unchecked.column}'s ${unchecked.field}: the codebook says ${unchecked.says}; ` +
+        `${unchecked.values}`,
+    );
+    expect(rows[1]).not.toHaveTextContent("the values show");
     const names = screen.getByTestId("codebook-unmatched");
     for (const n of unmatched) expect(names).toHaveTextContent(n);
     expect(names).toHaveTextContent(`${fmt(book.n_unmatched - unmatched.length)} more`);
@@ -564,6 +616,24 @@ describe("the data dictionary (import_codebook)", () => {
       [fmt(book.n_matched)],
       [fmt(book.n_unmatched)],
     ]);
+  });
+
+  it("names each entry naming no column, and no more, where the server served every one", async () => {
+    // The server serves the first twenty names and the count of all (core/codebook.py
+    // `Assessment.to_dict`): up to twenty, the names are all of them.
+    mount("import_codebook");
+    const unmatched = ["DR1EXMER", "DRABF"];
+    const book: CodebookPreview = {
+      ...BOOK,
+      unmatched,
+      n_unmatched: unmatched.length,
+      n_matched: BOOK.n_matched - unmatched.length,
+    };
+    vi.spyOn(api, "uploadCodebook").mockResolvedValue(book);
+    upload("codebook-source-input", book.name);
+    const names = await screen.findByTestId("codebook-unmatched");
+    expect(names.textContent).toBe(`Not in the table: ${unmatched[0]} and ${unmatched[1]}`);
+    expect(names).not.toHaveTextContent("more");
   });
 
   it("says a press the server refuses in the engine's words", async () => {
