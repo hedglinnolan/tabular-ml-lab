@@ -1139,7 +1139,12 @@ def build_graph() -> Graph:
             # modification 2: as sensitivity 16 above (the product terms' table).
             # modification 3: as sensitivity 17 above.
             # modification 3: as fit 33 (its copies, drawn by interaction.impute_with_products).
-            Stage("modification", 7, ("working", "design", "split", "target_info"),
+            # modification 8 (PP1's bookkeeping, at PP2's integration): as fit 42, since its copies
+            # are drawn by the chained equations PP1 changed with no move of this version (a
+            # complete numeric code declared a category enters as its indicators, and
+            # smcfcs.refusal_before_drawing's width rule and words), so a modification cached by an
+            # earlier tree, an intermediate feat/pp1-int tree among them, is computed again.
+            Stage("modification", 8, ("working", "design", "split", "target_info"),
                   MODIFICATION_READS, modification_stage, heavy=True,
                   requires=("modifications", "models", "purpose"),
                   label="Estimating the declared effect modification", serves=ESTIMATE),
