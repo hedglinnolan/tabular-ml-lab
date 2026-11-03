@@ -14,8 +14,9 @@ folded. A plan of ``COLLAPSE_AT`` raw columns, which the lineage never folds, re
 
 The same compare of two drawings told the fixed-effects preview its indicators (folded, none
 arrived, and the view was dropped), the scales preview its items leaving (the view was dropped) and
-the batch preview the columns it emphasizes (a valid batch answer adds none: the server confirms
-the batch a covariate first); the selection and levers previews compared two lineages of
+the batch preview the columns it emphasizes (reference ComBat keeps every feature's name, so none
+arrives, but features folded in the plan's drawing and drawn in the answer's were emphasized as
+arriving); the selection and levers previews compared two lineages of
 Explore's steps, and told part of what arrives and leaves ("`gender_male`, `t00_b` and 21 more
 arrive" of 55, "The model sees the same columns" where nine leave). They read every column by
 name too: the plan previews' designs, and Explore's steps' fitted matrices.
@@ -23,7 +24,8 @@ name too: the plan previews' designs, and Explore's steps' fitted matrices.
 Expected values come from construction (the table's predictors, the residual method's nutrients,
 the four levels of `site`, a quintile form's five groups, the nine of `clinic`, the three columns
 that carry the outcome and so are what a screen of three terms keeps, the five knots Harrell's rule
-gives these rows), and from scikit-learn's ``OneHotEncoder`` (the indicators of the text columns,
+gives these rows, the batch table's features, each keeping its name through ComBat), and from
+scikit-learn's ``OneHotEncoder`` (the indicators of the text columns,
 and so the width of the matrix).
 """
 from __future__ import annotations
@@ -38,7 +40,7 @@ from sklearn.preprocessing import OneHotEncoder
 from turbotab.core.consequences import PreviewContext, after_state, plan
 from turbotab.core.datastore import DataStore
 from turbotab.core.decisions import (LeverSpec, ScaleSpec, SelectionSpec, SelectModels,
-                                     SetCategorical, SetClusters, SetEnergyAdjustment,
+                                     SetBatch, SetCategorical, SetClusters, SetEnergyAdjustment,
                                      SetExposureForm, SetLevers, SetScales, SetSelection)
 from turbotab.core.models.lineage import COLLAPSE_AT, SHOWN
 from turbotab.core.tests import modeling_fixtures as mf
@@ -407,3 +409,52 @@ def test_the_scales_preview_draws_no_items_leaving_once_the_scale_is_recorded(sc
     the items leave."""
     result = plan(SCALE, _recorded(scaled, SCALE, shape_confirmations=ITEMS_READ), basis="test")
     assert "Items into one score" not in _lineage_titles(result)
+
+
+# The omics table of ``preview_fixtures.batch_table``: features `m..` measured in three batches.
+# Reference ComBat reads `batch` as one more input of the plan and leaves the model none: the
+# answer's drawing has a raw column more than the plan's, so the one a feature fewer than the fold
+# is the plan neither drawing folds, and at the fold only the answer's drawing folds.
+BATCHED = {"folded": WIDE, "the answer's drawing folded": NARROW, "never-folded": NARROW - 1}
+COMBAT = SetBatch(column="batch", method="reference_combat")
+
+
+@pytest.fixture(scope="module", params=list(BATCHED.values()), ids=list(BATCHED))
+def batched(request, tmp_path_factory):
+    """``(features, project)``: the batch table's plan under prediction, every `m..` feature an
+    exposure, `batch` and the sample id no predictor (``preview_fixtures.batch_project``'s plan,
+    ``features`` wide)."""
+    from turbotab.core import decisions as d
+    from turbotab.core.decisions import ProjectState
+    from turbotab.core.tests.acceptance import preview_fixtures as F
+    from turbotab.core.tests.acceptance.preview_harness import Project
+
+    frame = F.batch_table(p=request.param)
+    roles = {"sample_id": "identifier", "batch": "excluded",
+             **{c: "exposure" for c in frame.columns if c.startswith("m")}}
+    state = ProjectState(
+        lens=["metabolomics"], target="y", task="regression", purpose="prediction",
+        roles=roles, role_confirmations=dict(roles),
+        grain=d.GrainSpec(grain="one_row_per_unit", id_column="sample_id"),
+        exclusions=[], missing=d.MissingSpec(strategy="complete_case"),
+        split=d.SplitSpec(holdout=0.2, seed=0, folds=5), models=["linear"])
+    project = Project(frame, Path(tmp_path_factory.mktemp("batched")), state,
+                      upto=["design", "cohort", "split", "findings"])
+    yield request.param, project
+    project.close()
+
+
+def test_the_batch_preview_emphasizes_no_feature_as_arriving_on_a_wide_plan(batched):
+    """Reference ComBat under prediction: every feature keeps its name and `batch` is no column of
+    the model, so nothing arrives and the view emphasizes `batch` alone, wide plan or narrow. On
+    the base the wide plan emphasized `batch`, `m00`, `m01` and nine more: features folded in the
+    plan's drawing and drawn in the answer's, which the compare of two drawings read as arriving."""
+    features, project = batched
+    result, _ = project.preview(COMBAT)
+    view = _the_lineage_view(result, "Where `batch` enters")
+    assert view.caption == (f"`{features}` features batch-adjusted inside each training fold, "
+                            f"without the outcome.")
+    assert view.emphasis == ["batch"]
+    # the premise: the drawings fold as the table is built to (`batch` one raw column more after)
+    assert view.before.collapsed is (features > COLLAPSE_AT)
+    assert view.after.collapsed is (features + 1 > COLLAPSE_AT)
