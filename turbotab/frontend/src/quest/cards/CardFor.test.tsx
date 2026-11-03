@@ -18,7 +18,8 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { QUESTION_KEYS, type TeachingEntry } from "../../api/m1-types";
 import { keys } from "../../api/queries";
-import type { ProjectView, QuestLine } from "../../api/schema";
+import type { Finding, FindingsArtifact, ProjectView, QuestLine } from "../../api/schema";
+import { plain } from "../../kit";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../mocks/m3";
 import { AskFor } from "../../components/record/AskFor";
 import { StageFocusProvider } from "../../state/focus";
@@ -75,7 +76,13 @@ function lineOf(pair: Pick<ContractPair, "source" | "key">, label: QuestLine["la
   };
 }
 
-function renderLine(line: QuestLine, cards?: DeclarationCards, onOpenStage?: (stage: string, line?: string) => void) {
+function renderLine(
+  line: QuestLine,
+  cards?: DeclarationCards,
+  onOpenStage?: (stage: string, line?: string) => void,
+  /** Patches the cache after the capture is served (a served artifact changed by construction). */
+  seed?: (qc: QueryClient) => void,
+) {
   const { view, f } = viewFor(line.key);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(keys.teaching(), SHARED.teaching);
@@ -93,6 +100,7 @@ function renderLine(line: QuestLine, cards?: DeclarationCards, onOpenStage?: (st
       artifact: artifactAt(f, name, status.key),
     });
   }
+  seed?.(qc);
   return render(
     <QueryClientProvider client={qc}>
       <StageFocusProvider>
@@ -200,6 +208,50 @@ describe("a noticing's lever (P9)", () => {
     renderLine({ ...lineOf({ source: "finding", key: "binary_text__meds_hbp" }), name: "Meds_hbp is blank on most rows" }, undefined, open);
     fireEvent.click(await screen.findByRole("button", { name: /Choose how blanks are handled/ }));
     expect(open).toHaveBeenCalledWith(asks, "missing");
+  });
+});
+
+/**
+ * G20: a noticing's card says why it matters in the engine's words (Finding.why_it_matters) behind
+ * the kit's one disclosure (FOUNDATION §2), whichever card it draws, the findings card or its
+ * repairs; where the engine says nothing, there is no disclosure. The findings are the capture's.
+ */
+describe("a noticing's why it matters (G20)", () => {
+  /** The capture's findings artifact as renderLine serves it for `key`, and its stage. */
+  const servedFor = (key: string) => {
+    const { view, f } = viewFor(key);
+    const stage = view.stages.findings!;
+    return { stage, artifact: artifactAt(f, "findings", stage.key) as FindingsArtifact };
+  };
+  const findingOf = (key: string): Finding => servedFor(key).artifact.findings.find((x) => x.id === key)!;
+  const disclosure = () => screen.queryByText("Why does this matter?")?.closest("details") ?? null;
+
+  it.each([
+    { card: "the findings card", key: "binary_text__meds_hbp", repairs: false },
+    { card: "its repairs", key: "sas_zeros", repairs: true },
+  ])("is said on $card, behind the disclosure", ({ key, repairs }) => {
+    const finding = findingOf(key);
+    expect(finding.repairs.length > 0).toBe(repairs);
+    expect(finding.why_it_matters).toBeTruthy();
+    renderLine({ ...lineOf({ source: "finding", key }), name: finding.summary });
+    const why = disclosure();
+    expect(why).not.toBeNull();
+    expect(screen.getByTestId(`finding-card-${key}`)).toContainElement(why);
+    expect(why).toHaveTextContent(plain(finding.why_it_matters));
+  });
+
+  it("is not drawn where the engine says nothing of why", () => {
+    const key = "binary_text__meds_hbp";
+    const { stage, artifact } = servedFor(key);
+    const silent: FindingsArtifact = {
+      ...artifact,
+      findings: artifact.findings.map((x) => (x.id === key ? { ...x, why_it_matters: null } : x)),
+    };
+    renderLine({ ...lineOf({ source: "finding", key }), name: findingOf(key).summary }, undefined, undefined, (qc) =>
+      qc.setQueryData(keys.stage(PID, "findings"), { stage: "findings", key: stage.key, fresh: true, status: stage.status, artifact: silent }),
+    );
+    expect(screen.getByTestId(`finding-card-${key}`)).toBeInTheDocument();
+    expect(disclosure()).toBeNull();
   });
 });
 

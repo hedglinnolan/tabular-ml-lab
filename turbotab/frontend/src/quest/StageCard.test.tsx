@@ -13,12 +13,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { keys } from "../api/queries";
-import type { ForTheRecord, ProjectView, QuestLine, QuestLog, QuestStage, Triage } from "../api/schema";
+import type { ChecklistItem, ChecklistReport, ForTheRecord, ProjectView, QuestLine, QuestLog, QuestStage, Triage } from "../api/schema";
 import { expandView, viewsOf, type M3Fixture } from "../mocks/m3";
 import { StageFocusProvider } from "../state/focus";
 import { CONTRACT } from "./fixtures/contract";
 import { type FitPosition, fitPosition } from "./log";
 import { QuestScreen } from "./QuestScreen";
+import CAPTURE from "./results/fixtures/nhanes-predict.json";
 import { StageCard, type OpenRequest } from "./StageCard";
 
 vi.mock("./results", () => ({
@@ -882,5 +883,141 @@ describe("the triage of the open noticings under Estimate (G05)", () => {
     const { card } = cardOf(early, "models", { seed: seed(served("models")) });
     expect(within(card).getByText("May change as you answer")).toBeInTheDocument();
     expect(within(card).queryByTestId("results-triage")).toBeNull();
+  });
+});
+
+// ── G20: served fields the card reads ────────────────────────────────────────
+
+/**
+ * QuestLine.reopened_by, on the captured NHANES walk under Predict (results/fixtures/
+ * nhanes-predict.json, written by its capture.py): confirming the readings in Your data reopened six
+ * of its noticings and one in Who's in. A line the change reopened, not expanded, says the change
+ * that reopened it, in the words of the stage's own reason ("Your change to … reopened"); a line it
+ * did not reopen, and one answered since (the "opened" snapshot still names the change on six
+ * answered lines), says nothing of it. Expected stage names are read off the log.
+ */
+describe("a line a change reopened says which change (G20)", () => {
+  const SEALED = (CAPTURE as unknown as { sealed: { quest: QuestLog } }).sealed.quest;
+  const OPENED = (CAPTURE as unknown as { opened: { quest: QuestLog } }).opened.quest;
+  const note = (card: HTMLElement, key: string) => within(card).queryByTestId(`line-${key}-reopened`);
+
+  it("says a change in its own stage, on each line it reopened, and nothing on a line it did not", () => {
+    const data = stageIn(SEALED, "data");
+    const reopened = data.lines.filter((l) => l.reopened_by);
+    expect(reopened).toHaveLength(6);
+    expect(reopened.every((l) => l.status === "open" && l.reopened_by!.stage === data.key)).toBe(true);
+    const { card } = cardOf(SEALED, "data");
+    const expanded = card.querySelector("[data-expanded]")?.getAttribute("data-line");
+    expect(reopened.some((l) => `${l.source}:${l.key}` === expanded)).toBe(false);
+    for (const l of reopened) {
+      expect(note(card, l.key), l.key).toHaveTextContent(`Reopened by your change to another answer in ${data.name}.`);
+    }
+    // Open too, and not reopened: nothing.
+    const other = data.lines.find((l) => l.status === "open" && l.counted && !l.reopened_by && `${l.source}:${l.key}` !== expanded)!;
+    expect(other).toBeDefined();
+    expect(within(card).getByTestId(`line-${other.key}`)).toBeInTheDocument();
+    expect(note(card, other.key)).toBeNull();
+  });
+
+  it("names the stage the change was made in, where that is another stage", () => {
+    const whos = stageIn(SEALED, "whos_in");
+    const line = whos.lines.find((l) => l.reopened_by)!;
+    expect(line.reopened_by!.stage).toBe("data");
+    // The missing-values question expanded, so the reopened noticing is a collapsed line.
+    const { card } = cardOf(SEALED, "whos_in", { request: { line: "missing", n: 1 } });
+    expect(card.querySelector("[data-expanded]")?.getAttribute("data-line")).toBe("question:missing");
+    expect(note(card, line.key)).toHaveTextContent(`Reopened by your change to ${stageIn(SEALED, "data").name}.`);
+  });
+
+  it("says nothing on a line answered since, though the served line still names the change", () => {
+    const data = stageIn(OPENED, "data");
+    const answered = data.lines.filter((l) => l.reopened_by && l.status === "answered");
+    expect(answered).toHaveLength(6);
+    const { card } = cardOf(OPENED, "data");
+    for (const l of answered) {
+      expect(within(card).getByTestId(`line-${l.key}`)).toBeInTheDocument();
+      expect(note(card, l.key), l.key).toBeNull();
+    }
+  });
+});
+
+/**
+ * ChecklistItem.owed and scope on Write-up's checklist, as the bundle's checklist states them
+ * (core/export/checklists.py `markdown`): each partly answered item by its number, with TRIPOD+AI's
+ * scope beside it, and its topic, then "The author must supply …". The reports are built in the
+ * served shape; each item's number, scope, topic and owed words are read off the report.
+ */
+describe("Write-up's checklist says what the author still owes (G20)", () => {
+  const where: ChecklistItem["where"] = [
+    { source: "file", file: "results/performance.md", quote: "A caption.", record_id: null, record_ids: null, seq: null, seqs: null, kind: null },
+  ];
+  const item = (over: Partial<ChecklistItem> & Pick<ChecklistItem, "id" | "status">): ChecklistItem => ({
+    section: "Methods",
+    topic: "Analytical methods",
+    text: "The item, quoted from its source.",
+    kind: null,
+    scope: null,
+    where: over.status === "unanswered" ? [] : where,
+    owed: null,
+    note: "",
+    ...over,
+  });
+  const reportOf = (checklist: ChecklistReport["checklist"], items: ChecklistItem[]): ChecklistReport => ({
+    checklist,
+    title: `${checklist} checklist`,
+    citation: "A citation.",
+    source: { table: "Table 2", pmcid: "PMC0", doi: "10.0/0", url: "https://example.org", retrieved: "2026-10-05", sha256: "0", license: "CC BY 4.0" },
+    purpose: checklist === "TRIPOD+AI" ? "prediction" : "inference",
+    items,
+    counts: {
+      items: items.length,
+      answered: items.filter((i) => i.status === "answered").length,
+      partly_answered: items.filter((i) => i.status === "partly answered").length,
+      unanswered: items.filter((i) => i.status === "unanswered").length,
+    },
+    unanswered: items.filter((i) => i.status === "unanswered").map((i) => i.id),
+    note: "",
+    waiting: [],
+  });
+  const writeup = (report: ChecklistReport) =>
+    cardOf(REACHED, "writeup", { seed: (qc) => qc.setQueryData(keys.checklist(PID), report) }).card;
+  const owedOf = (card: HTMLElement) => within(card).queryByTestId("checklist-owed");
+
+  it("lists each partly answered item, with its scope under TRIPOD+AI, and what the author must supply; no other item", () => {
+    expect(stageIn(REACHED, "writeup").reached).toBe(true);
+    const owed = [
+      item({ id: "12e", scope: "D;E", status: "partly answered", owed: "the rationale for each measure" }),
+      item({ id: "9a", scope: "D", topic: "Predictors", status: "partly answered", owed: "why these predictors" }),
+    ];
+    const rest = [item({ id: "12a", scope: "D", status: "answered" }), item({ id: "1", scope: "D;E", topic: "Title", status: "unanswered" })];
+    const card = writeup(reportOf("TRIPOD+AI", [owed[0]!, rest[0]!, owed[1]!, rest[1]!]));
+    const list = owedOf(card)!;
+    expect(list).not.toBeNull();
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(owed.length);
+    owed.forEach((i, n) => {
+      expect(rows[n]).toHaveTextContent(`${i.id} (${i.scope}) · ${i.topic}`);
+      expect(rows[n]).toHaveTextContent(`The author must supply ${i.owed}.`);
+    });
+    for (const i of rest) expect(list).not.toHaveTextContent(`${i.id} (${i.scope})`);
+  });
+
+  it("labels STROBE-nut's items as the bundle does, with no scope, where the source gives none", () => {
+    const owed = [
+      item({ id: "6a", kind: "STROBE", topic: "Participants", status: "partly answered", owed: "the sources and methods of selection" }),
+      item({ id: "nut-6", kind: "STROBE-nut", topic: "Participants", status: "partly answered", owed: "the dietary assessment method" }),
+    ];
+    const card = writeup(reportOf("STROBE-nut", owed));
+    const rows = within(owedOf(card)!).getAllByRole("listitem");
+    expect(rows).toHaveLength(owed.length);
+    expect(rows[0]).toHaveTextContent(new RegExp(`^${owed[0]!.kind} ${owed[0]!.id} · ${owed[0]!.topic}`));
+    expect(rows[1]).toHaveTextContent(new RegExp(`^${owed[1]!.id} · ${owed[1]!.topic}`));
+    for (const r of rows) expect(r.textContent).not.toMatch(/\(.*\)/);
+  });
+
+  it("lists nothing where the author owes nothing", () => {
+    const card = writeup(reportOf("TRIPOD+AI", [item({ id: "12a", scope: "D", status: "answered" }), item({ id: "1", scope: "D;E", status: "unanswered" })]));
+    expect(within(card).getByTestId("checklist")).toBeInTheDocument();
+    expect(owedOf(card)).toBeNull();
   });
 });

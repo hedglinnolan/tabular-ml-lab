@@ -3,7 +3,9 @@
  * artifact to the line's finding, without editing Findings.tsx. A finding with repairs is today's
  * repairs card for it alone (apply one, hold it for its question, or keep the table as is); any
  * other is the findings card, whose lever opens the stage that asks its question, with today's
- * "Keep as is", which records that it was seen and set aside.
+ * "Keep as is", which records that it was seen and set aside. Either way, why it matters, where the
+ * engine says (`why_it_matters`), sits behind the kit's one disclosure under the noticing's name
+ * (FOUNDATION §2).
  */
 import { useState } from "react";
 import { isRefusalError } from "../../api/client";
@@ -15,7 +17,7 @@ import { SUBJECT } from "../../components/record/AskFor";
 import { FindingsCards } from "../../components/record/Findings";
 import { RepairsSection } from "../../components/record/Repairs";
 import { useStage } from "../../state/stages";
-import { Plain } from "../../kit";
+import { Plain, Why } from "../../kit";
 import { said } from "../words";
 import c from "./cards.module.css";
 
@@ -91,6 +93,11 @@ export function FindingCard({
   return (
     <section className={c.lineCard} data-testid={`finding-card-${line.key}`} aria-label={said(line.name)}>
       {head}
+      {finding?.why_it_matters ? (
+        <div data-kit>
+          <Why text={finding.why_it_matters} />
+        </div>
+      ) : null}
       {body}
       {refused ? (
         <p className={c.note} role="alert">

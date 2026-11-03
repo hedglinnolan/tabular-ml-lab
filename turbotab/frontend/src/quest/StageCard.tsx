@@ -4,23 +4,25 @@
  * collapse to their answers (a noticing to its answer alone, so its open-tense headline is not left
  * beside it, or, where a question's answer settled it, to what it was about and that question, so
  * the answer is printed once); lines still to come wait below, quieter, each "Waiting for" what it
- * needs. A line no card can answer yet is listed after the rest, "Not available yet", and never
- * opened; those that count toward nothing are said together in one quiet line. A record on an
+ * needs. A line a change asked again says which change, until it is answered (`reopened_by`). A
+ * line no card can answer yet is listed after the rest, "Not available yet", and never opened;
+ * those that count toward nothing are said together in one quiet line. A record on an
  * expanded line collapses it, and the open line opens. The stage's Confirm sweep comes after its
  * Decides, each default with its reason (or, where the engine serves none, the default itself,
  * from its value) and what another choice would change, and any can be opened to change it; under
  * Predict, Who's in's draw waits for that sweep (§3, "two departures").
  * Results, once reached, has W1-G's ResultsCards in place of its lines, mounted once
  * (src/quest/contracts.ts). First look lists every noticing with the stage that decides it. For
- * the record sits collapsed at the foot (GET /record). The one primary action is at the very foot
- * (FOUNDATION §1); a disabled one says why and links to what it waits for. Continue goes on to the
- * next open line a card can answer, naming it where that is not the next stage; under Predict open
- * noticings hold it in no stage but the triage's own, and the foot, or Fit's beside the flowchart,
- * says how many wait for the triage in Results (log.ts). Under Estimate the triage of the open
- * noticings (cards/TriageCard.tsx) is drawn at Models' end, after its Confirm sweep, before For the
- * record and the foot: before the plan's lock and the analysis flowchart beside the card (§7; G05).
- * While it is unconfirmed, the foot beside Fit says that Fit fixes the plan and the noticings above
- * are confirmed first (log.ts `triageBeforeFit`).
+ * the record sits collapsed at the foot (GET /record); Write-up's checklist below it lists what the
+ * author still owes for each item answered in part (GET /checklist). The one primary action is at
+ * the very foot (FOUNDATION §1); a disabled one says why and links to what it waits for. Continue
+ * goes on to the next open line a card can answer, naming it where that is not the next stage;
+ * under Predict open noticings hold it in no stage but the triage's own, and the foot, or Fit's
+ * beside the flowchart, says how many wait for the triage in Results (log.ts). Under Estimate the
+ * triage of the open noticings (cards/TriageCard.tsx) is drawn at Models' end, after its Confirm
+ * sweep, before For the record and the foot: before the plan's lock and the analysis flowchart
+ * beside the card (§7; G05). While it is unconfirmed, the foot beside Fit says that Fit fixes the
+ * plan and the noticings above are confirmed first (log.ts `triageBeforeFit`).
  *
  * A stage opened by a request (the quest line, a "Waiting for" link, a noticing's lever, the foot's
  * link) brings the line it names, else its open line, into view and gives it focus (§1, the
@@ -38,7 +40,17 @@ import {
   useStageResult,
   useTriage,
 } from "../api/queries";
-import type { Decision, Finding, ProjectState, QuestLine, QuestLog, QuestStage, Refusal, SweepStage } from "../api/schema";
+import type {
+  ChecklistItem,
+  Decision,
+  Finding,
+  ProjectState,
+  QuestLine,
+  QuestLog,
+  QuestStage,
+  Refusal,
+  SweepStage,
+} from "../api/schema";
 import { Foot, Plain, foot as f, kit as k, plain } from "../kit";
 import { listJoin } from "../util/format";
 import { oneRoleAtATime } from "../components/record/besideAsk";
@@ -93,6 +105,20 @@ function settledText(log: QuestLog, line: QuestLine, noticings: readonly Finding
       : `${cols.slice(0, 2).join(", ")} and ${cols.length - 2} more`
     : runningName(f?.title ?? line.name);
   return `${said(about)}: settled by ${runningName(by.name)}`;
+}
+
+/**
+ * The change that asked a line again (`reopened_by`), in the words of the stage's own reason
+ * (`QuestStage.reopened`, "Your change to … reopened"): by the stage it was made in, or as another
+ * answer in this one. Null on an answered line, which reads as its answer, and where the log names
+ * no such stage.
+ */
+function reopenedText(log: QuestLog, stage: QuestStage, line: QuestLine): string | null {
+  const by = line.reopened_by;
+  if (!by || line.status === "answered") return null;
+  if (by.stage === stage.key) return `Reopened by your change to another answer in ${stage.name}.`;
+  const where = log.stages.find((s) => s.key === by.stage);
+  return where ? `Reopened by your change to ${where.name}.` : null;
 }
 
 /** A request to bring a line into view: the line's key (null: the stage's open line), and a count
@@ -215,6 +241,7 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
       state={state}
       confirm={confirm}
       settledAs={settledText(log, l, noticings)}
+      reopenedAs={reopenedText(log, stage, l)}
       swept={!!stage.sweep?.confirmed_by && l.label === "Confirm" && l.decision_id === stage.sweep.confirmed_by}
     />
   );
@@ -315,6 +342,7 @@ function Line({
   state,
   confirm = false,
   settledAs = null,
+  reopenedAs = null,
   swept = false,
 }: {
   pid: string;
@@ -331,6 +359,8 @@ function Line({
   confirm?: boolean;
   /** A noticing another line's answer settled, as it reads then (`settledText`). */
   settledAs?: string | null;
+  /** The change that asked it again, while it is not answered (`reopenedText`). */
+  reopenedAs?: string | null;
   /** Answered by its stage's "Confirm all", one record for every default it confirmed. */
   swept?: boolean;
 }) {
@@ -422,6 +452,11 @@ function Line({
             : "a result still computing"}
         </p>
       ) : null}
+      {reopenedAs ? (
+        <p className={q.lineQuiet} data-testid={`${testId}-reopened`}>
+          {reopenedAs}
+        </p>
+      ) : null}
       {line.changed_since ? (
         <p className={q.lineQuiet}>
           <Plain text={line.changed_since.reason} />
@@ -504,11 +539,24 @@ function ForTheRecord({ pid, stage }: { pid: string; stage: QuestStage }) {
   );
 }
 
-/** Write-up's checklist: the reporting guideline's items, by how far the record answers each. */
+/** An item's number as the bundle's checklist labels it (core/export/checklists.py `markdown`):
+ *  STROBE's own items under STROBE-nut by "STROBE", and TRIPOD+AI's with the scope the source gives
+ *  each (D, E or D;E) beside it. */
+function itemLabel(item: ChecklistItem): string {
+  const id = item.kind === "STROBE" ? `${item.kind} ${item.id}` : item.id;
+  return item.scope ? `${id} (${item.scope})` : id;
+}
+
+/**
+ * Write-up's checklist: the reporting guideline's items, by how far the record answers each, then
+ * each item the record answers only in part, with what the author must still supply (`owed`), as
+ * the bundle's checklist says it.
+ */
 function Checklist({ pid }: { pid: string }) {
   const report = useChecklist(pid).data;
   if (!report) return null;
   const { counts } = report;
+  const owed = report.items.filter((i) => i.owed);
   return (
     <section className={q.group} data-kit data-testid="checklist">
       <h3 className={q.groupLabel}>{report.title}</h3>
@@ -516,6 +564,20 @@ function Checklist({ pid }: { pid: string }) {
         {counts.answered} answered, {counts.partly_answered} partly answered, {counts.unanswered} unanswered,
         of {counts.items} items.
       </p>
+      {owed.length ? (
+        <ul className={q.lines} data-testid="checklist-owed">
+          {owed.map((i) => (
+            <li key={i.id} className={q.line}>
+              <span className={q.lineName}>
+                {itemLabel(i)} · <Plain text={i.topic} />
+              </span>
+              <p className={q.lineReason}>
+                The author must supply <Plain text={i.owed} />.
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {report.waiting.length ? (
         <ul className={q.recordList}>
           {report.waiting.map((w) => (
