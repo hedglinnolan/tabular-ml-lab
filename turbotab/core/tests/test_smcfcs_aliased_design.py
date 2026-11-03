@@ -337,9 +337,10 @@ def test_every_stage_that_draws_smcfcs_copies_computes_again():
     one more when it came to report them alone wherever the data separate and an iterative fit's
     distance from its maximum came to read its score (T5d), each one past both at its merge; and
     one more each, but the modification's, when their refusal of the imputation came to say the
-    answer's words (pp1f)."""
+    answer's words (pp1f); and the sensitivity stage's one more when it came to name each exposure
+    column of a plan wider than the lineage shows unfolded (PP2 N1)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     stages = ("fit", "sensitivity", "calibration", "secondary", "scales", "effects", "modification")
-    assert tuple(versions[s] for s in stages) == (42, 25, 22, 16, 13, 16, 7)
+    assert tuple(versions[s] for s in stages) == (42, 26, 22, 16, 13, 16, 7)

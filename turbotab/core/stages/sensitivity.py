@@ -285,13 +285,18 @@ def _no_spare_rows(family: Any, rows: list[dict[str, Any]] | None, n_rows: int, 
 
 
 def exposure_features(fitted: Any, inputs: Sequence[str], roles: Mapping[str, str]) -> list[str]:
-    """The model-matrix columns whose raw sources include an exposure column (the lineage's reading)."""
+    """The model-matrix columns the lineage gives an exposure's role (its first raw source with a
+    role is an exposure), each named as the fitted steps name it: the names the coefficient table
+    gives its rows, which :func:`changes_for` matches. The lineage is read unfolded: folded for
+    display above ``lineage.COLLAPSE_AT`` raw columns, its count nodes name no column, and under
+    Predict, where every predictor is an exposure, they were read as exposures named None (PP2 N1:
+    the stage failed on the NHANES glucose plans, wider than that)."""
     from turbotab.core.models.lineage import trace
 
     steps = list(fitted.steps[:-1])
     if not steps:
         return [c for c in inputs if roles.get(c) == "exposure"]
-    lineage = trace(steps, list(inputs), dict(roles))
+    lineage = trace(steps, list(inputs), dict(roles), fold=False)
     return [n.column for n in lineage.nodes if n.lane == "matrix" and n.role == "exposure"]
 
 
@@ -303,12 +308,17 @@ def _excludes_zero(row: Mapping[str, Any]) -> bool | None:
 
 
 def changes_for(fits: Sequence[Mapping[str, Any]], exposures: Sequence[str]) -> list[dict[str, Any]]:
+    # Each fit's rows by feature, a name's first row as before, read once per fit: under Predict a
+    # wide plan's exposures are every matrix column, and a search per exposure grew as their square.
+    tables: list[dict[str, Mapping[str, Any]]] = []
+    for f in fits:
+        table: dict[str, Mapping[str, Any]] = {}
+        for r in f.get("coefficients") or []:
+            table.setdefault(r["feature"], r)
+        tables.append(table)
     out = []
     for feature in exposures:
-        rows = []
-        for f in fits:
-            found = next((r for r in (f.get("coefficients") or []) if r["feature"] == feature), None)
-            rows.append(found)
+        rows = [table.get(feature) for table in tables]
         if not any(r is not None and r.get("estimate") is not None for r in rows):
             continue
         estimates = [r["estimate"] for r in rows if r is not None and r.get("estimate") is not None]
