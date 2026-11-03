@@ -523,28 +523,36 @@ def _offer_binary(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) 
     order = levels
     if p.get("positive_known") and p.get("positive") in levels:  # the usual reading first
         order = [str(p["positive"])] + [v for v in levels if v != p["positive"]]
-    # Each level said as the data write it; recorded as the token the recode compares.
+    # Each level said as the data write it, every spelling its count and recode cover; recorded
+    # as the token the recode compares.
     said = level_spellings(oc.frame[column], levels)
     out = []
     for one in order:
         zero = next(v for v in levels if v != one)
         out.append(_option(
-            finding, "level", f"{_tick(said[one])} counts as 1",
-            f"{_tick(column)} becomes `1` for {_tick(said[one])} ({_count(counts.get(one, 0))} rows) "
-            f"and `0` for {_tick(said[zero])} ({_count(counts.get(zero, 0))}).",
-            f"{_tick(column)} was recoded with {_tick(said[one])} as `1` and {_tick(said[zero])} as "
-            f"`0`.",
+            finding, "level", f"{said[one]} counts as 1",
+            f"{_tick(column)} becomes `1` for {said[one]} ({_count(counts.get(one, 0))} rows) "
+            f"and `0` for {said[zero]} ({_count(counts.get(zero, 0))}).",
+            f"{_tick(column)} was recoded with {said[one]} as `1` and {said[zero]} as `0`.",
             "values", {"column": str(column), "one": one, "zero": zero, "relabels": relabels}))
     return out
 
 
 def level_spellings(s: pd.Series, levels: Sequence[str]) -> dict[str, str]:
-    """Each level of a two-level reading (``ml.binary_text``'s token: stripped, lower case) -> the
-    first spelling the column gives it, the one the finding's own detail lists first (`F` for
-    ``f``); the token itself where the column gives it none. Read, not copied, from that module."""
-    from ml.binary_text import _original_labels
+    """Each level of a two-level reading (``ml.binary_text``'s token: stripped, lower case) -> every
+    spelling the column gives it, in the order it first gives them, as the finding's own detail
+    lists them, ticked and joined by a slash (`F` for ``f``; `North`/`north` for ``north``, whose
+    count and recode cover both); the token itself where the column gives it none. One word per
+    level, so a label keeps its budget (``LABEL_WORDS``). The token is read, not copied, from that
+    module (``ml.binary_text._normalize``)."""
+    from ml.binary_text import _normalize
 
-    return {str(v): (_original_labels(s, str(v)) or [str(v)])[0] for v in levels}
+    spelled: dict[str, list[str]] = {str(v): [] for v in levels}
+    for value in pd.unique(s.dropna()):
+        token, text = _normalize(value), str(value)
+        if token in spelled and text not in spelled[token]:
+            spelled[token].append(text)
+    return {v: "/".join(_tick(w) for w in (spelled[v] or [v])) for v in spelled}
 
 
 def _relabels(s: pd.Series) -> bool:
@@ -613,7 +621,8 @@ def _offer_not_asked(finding: dict[str, Any], p: dict[str, Any], oc: OfferContex
         return []
     # Read on the participants (:attr:`OfferContext.kept`): a pooled-QC injection is asked
     # nothing, so its blanks are no skip pattern, and they are not counted among the people not
-    # asked (the two-level finding beside this counts the same rows).
+    # asked (the two-level finding beside this counts the same rows); the recode fills them too,
+    # so they are said apart.
     rows = oc.kept
     s = rows[column]
     base = rows[oc.target].notna().to_numpy() if oc.has(oc.target) else None
@@ -625,16 +634,25 @@ def _offer_not_asked(finding: dict[str, Any], p: dict[str, Any], oc: OfferContex
     kind, no = written
     n_blank = int(s.isna().sum())
     shown = {"bool": "False", "number": "0"}.get(kind, str(no))
-    yes = int(s.notna().sum()) - int((s.dropna().astype(str).str.strip().str.lower()
-                                      == str(p.get("negative")).strip().lower()).sum())
-    on = " on the non-QC rows" if oc.reference_rows else ""
+    # The recode (:func:`_not_asked_values`) fills every blank in the column, the reference rows'
+    # too, and leaves every answer as given: each is said, counted over every row.
+    whole = oc.frame[column]
+    on_qc = int(whole.isna().sum()) - n_blank
+    yes = int(whole.notna().sum()) - int((whole.dropna().astype(str).str.strip().str.lower()
+                                          == str(p.get("negative")).strip().lower()).sum())
+    if on_qc:
+        filled = (f"{_count(n_blank)} non-QC and {_count(on_qc)} pooled-QC blanks in "
+                  f"{_tick(column)} become {_tick(shown)}; {_count(yes)} other answers stay as given.")
+        recoded = (f"those blanks, and the {_count(on_qc)} on the pooled-QC rows, were recoded as "
+                   f"{_tick(shown)}")
+    else:
+        filled = (f"{_count(n_blank)} blanks in {_tick(column)} become {_tick(shown)}; its "
+                  f"{_count(yes)} other answers stay as given.")
+        recoded = f"those blanks were recoded as {_tick(shown)}"
     return [_option(
-        finding, "not_asked_no", "Not asked as No",
-        f"{_count(n_blank)} blanks in {_tick(column)}{on} become {_tick(shown)}; its {_count(yes)} "
-        f"other answers stay as given.",
-        f"{_tick(column)} was blank for the {_count(n_blank)} people not asked; those blanks were "
-        f"recoded as {_tick(shown)}, on the assumption that a person not asked would have "
-        f"answered no.",
+        finding, "not_asked_no", "Not asked as No", filled,
+        f"{_tick(column)} was blank for the {_count(n_blank)} people not asked; {recoded}, on the "
+        f"assumption that a person not asked would have answered no.",
         "values", {"column": str(column), "no": no, "kind": kind, "n_blank": n_blank,
                    "relabels": False})]
 

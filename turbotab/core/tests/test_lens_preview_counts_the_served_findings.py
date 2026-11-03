@@ -206,3 +206,42 @@ def test_the_panel_counts_what_the_page_serves_before_and_after_the_outcome(tmp_
         state = ProjectState(target=target)
         assert said(table, ["metabolomics"], state, f"panel-{target}") == len(
             served(table, ["metabolomics"], state))
+
+
+def test_a_confirmation_the_findings_read_is_counted_in_the_same_project(tmp_path):
+    """clinical_labs under the clinical lens, previewed, then `troponin` confirmed as amounts
+    through the ledger (``shape_confirmations``, a slot the findings stage reads): the page then
+    serves one pack finding fewer (its mixed-result-type finding reads the column as the numbers
+    the fit reads), and the preview in the same project says the page's count, where it repeated
+    the count it had cached before the confirmation."""
+    table = Ingested(SAMPLES / "clinical_labs.csv", tmp_path / "labs")
+    before, after = ProjectState(), ProjectState(
+        shape_confirmations={"code_or_count:troponin": "amount"})
+    page_before, page_after = served(table, ["clinical"], before), served(table, ["clinical"], after)
+    assert "pack::clinical::mixed_result_type" in set(page_before) - set(page_after)
+    assert len(page_after) == len(page_before) - 1
+    assert said(table, ["clinical"], before, "labs-confirmed") == len(page_before)
+    assert said(table, ["clinical"], after, "labs-confirmed") == len(page_after)
+
+
+def test_an_answer_the_findings_do_not_read_reuses_the_count(tmp_path, monkeypatch):
+    """The guard's other side: the count is cached on what the findings stage reads (its
+    ``Stage`` reads, and the purpose the page's filter reads), so an answer it reads nowhere (a
+    row exclusion's label here, ``exclusions``) computes nothing again, while a purpose does."""
+    from turbotab.core.decisions import ExclusionRule
+
+    table = Ingested(SAMPLES / "clinical_labs.csv", tmp_path / "labs")
+    calls: list[int] = []
+    real = fact_previews.served_pack_findings
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(fact_previews, "served_pack_findings", counted)
+    said(table, ["clinical"], ProjectState(), "labs-reuse")
+    rule = ExclusionRule(column="age", low=0.0, high=120.0, reason="a range")
+    said(table, ["clinical"], ProjectState(exclusions=[rule]), "labs-reuse")
+    assert len(calls) == 1
+    said(table, ["clinical"], ProjectState(purpose="prediction"), "labs-reuse")
+    assert len(calls) == 2

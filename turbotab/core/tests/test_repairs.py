@@ -242,29 +242,45 @@ def test_two_level_text_is_named_by_its_levels_as_written(tables, column):
         assert o["decision"]["params"]["one"] == one.lower()
 
 
-@pytest.mark.parametrize("spelled, shown", [(["north", "south"], ["north", "south"]),
-                                            (["North", "south", "north"], ["North", "south"])],
-                         ids=["lower_case", "two_spellings"])
-def test_a_level_is_shown_in_the_first_spelling_the_file_gives_it(tmp_path, spelled, shown):
-    """The guard's other side and its edge: a column written in lower case is shown in lower case,
-    as before, and a level the file spells two ways (`North` first, then `north`) is shown in the
-    first, as the finding's own detail lists it first; its count is both spellings' (pandas)."""
+@pytest.mark.parametrize("spelled, shown", [
+    (["north", "south"], ["`north`", "`south`"]),
+    (["North", "south", "north"], ["`North`/`north`", "`south`"]),
+    (["North", "north", "NORTH", "nORTH", "south"], ["`North`/`north`/`NORTH`/`nORTH`", "`south`"])],
+    ids=["lower_case", "two_spellings", "four_spellings"])
+def test_a_level_is_shown_in_every_spelling_its_count_covers(tmp_path, spelled, shown):
+    """The guard's other side and its edges: a column written in lower case is shown in lower
+    case, as before, and a level the file spells two ways (`North` first, then `north`), or four,
+    is shown in each spelling, in the order the file first gives them, where it was shown in the
+    first alone beside a count of every spelling: the count and the recode compare the stripped,
+    lower-case token (pandas), so each option's count, and the cells it recodes, are every
+    spelling's. Each label and consequence keeps its word budget."""
+    from turbotab.core import voice
+
     rng = np.random.default_rng(3)
     site = rng.choice(spelled, 80).astype(object)
     site[:len(spelled)] = spelled  # every spelling, in the order given, before any other
     frame = pd.DataFrame({"site": site, "x": rng.normal(size=80), "y": rng.normal(size=80)})
     path = tmp_path / "site.csv"
     frame.to_csv(path, index=False)
-    artifact = Ingested(path, tmp_path / "t").run(findings_stage, ProjectState(lens=["clinical"]))
+    table = Ingested(path, tmp_path / "t")
+    artifact = table.run(findings_stage, ProjectState(lens=["clinical"]))
     f = finding(artifact, "binary_text__site")
     north, south = shown
-    assert f["summary"] == (f"`site` is two-level text (`{north}`, `{south}`); which level counts "
+    assert f["summary"] == (f"`site` is two-level text ({north}, {south}); which level counts "
                             f"as 1 is not asked yet.")
-    tokens = pd.Series(site).str.lower()
-    assert [o["label"] for o in f["repairs"]] == [f"`{north}` counts as 1", f"`{south}` counts as 1"]
-    assert f["repairs"][0]["consequence"] == (
-        f"`site` becomes `1` for `{north}` (`{int((tokens == 'north').sum())}` rows) and `0` for "
-        f"`{south}` (`{int((tokens == 'south').sum())}`).")
+    tokens = pd.Series(site).str.strip().str.lower()
+    n_north, n_south = int((tokens == "north").sum()), int((tokens == "south").sum())
+    assert n_north + n_south == 80
+    assert [o["label"] for o in f["repairs"]] == [f"{north} counts as 1", f"{south} counts as 1"]
+    first = f["repairs"][0]
+    assert first["consequence"] == (f"`site` becomes `1` for {north} (`{n_north}` rows) and `0` "
+                                    f"for {south} (`{n_south}`).")
+    assert first["sentence"] == f"`site` was recoded with {north} as `1` and {south} as `0`."
+    for o in f["repairs"]:
+        assert voice.words(o["label"]) <= repairs.LABEL_WORDS
+        assert voice.words(o["consequence"]) <= repairs.CONSEQUENCE_WORDS
+    got = sql_frame(table, artifact, {f["id"]: applied(f)}, ["site"])["site"]
+    assert int((got == 1).sum()) == n_north and int((got == 0).sum()) == n_south
 
 
 def test_a_binary_outcome_is_left_to_the_event_question(tables):

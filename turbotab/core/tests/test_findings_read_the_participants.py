@@ -49,6 +49,7 @@ from turbotab.core.decisions import (
     ApplyRepair,
     ColumnUnitSpec,
     DecisionRecord,
+    FindingDisposition,
     ProjectState,
     Refusal,
     SetMissing,
@@ -988,13 +989,14 @@ def test_where_the_participants_blanks_are_at_random_the_lens_is_contradicted_on
 # ── the readings beside the pooled QCs count the participants ───────────────
 
 
-def statin_panel(blank: int) -> pd.DataFrame:
+def statin_panel(blank: int, qc_answer: str | None = None) -> pd.DataFrame:
     """``panel`` with `statin`, answered `Yes` or `No` (which the app reads as true and false),
-    blank on the 10 QC rows and on the first ``blank`` participants, by construction."""
+    blank on the first ``blank`` participants and, unless ``qc_answer`` fills them, on the 10 QC
+    rows, by construction."""
     frame = panel()
     qc = frame["sample_type"].eq("pooled_qc").to_numpy()
     statin = np.random.default_rng(43).choice(["Yes", "No"], len(frame)).astype(object)
-    statin[qc] = None
+    statin[qc] = qc_answer
     statin[np.flatnonzero(~qc)[:blank]] = None
     frame["statin"] = statin
     return frame
@@ -1014,33 +1016,68 @@ def test_blanks_on_the_qc_rows_do_not_make_a_question_read_as_not_asked(tmp_path
     assert _not_asked(findings_of(tmp_path, statin_panel(25), ["metabolomics"])) == []
 
 
-@pytest.mark.parametrize("lens", [["metabolomics"], ["clinical"]])
-def test_not_asked_as_no_counts_the_participants_beside_the_qc_rows(tmp_path, lens):
-    """`statin` blank on 30 of the 60 participants (half) is offered "Not asked as No", and with
-    the QC rows set aside (the metabolomics lens) its sentences count the participants, by pandas:
-    30 blanks on the non-QC rows and their other answers, 30 people not asked. With no assay lens
-    no row is set aside and every row counts, the 10 QC rows' blanks among them, as before."""
-    df = read_back(tmp_path, statin_panel(30))
-    rows = participants(df) if lens == ["metabolomics"] else df
-    n_blank = int(rows["statin"].isna().sum())
-    yes = int((rows["statin"] == "Yes").sum())
-    assert n_blank == (30 if lens == ["metabolomics"] else 40)
-    (option,) = _not_asked(findings_of(tmp_path, statin_panel(30), lens))
-    on = " on the non-QC rows" if lens == ["metabolomics"] else ""
-    assert option["consequence"] == (f"`{n_blank}` blanks in `statin`{on} become `False`; its "
-                                     f"`{yes}` other answers stay as given.")
-    assert option["sentence"].startswith(f"`statin` was blank for the `{n_blank}` people not asked;")
+@pytest.mark.parametrize("lens, qc_answer", [(["metabolomics"], None), (["metabolomics"], "No"),
+                                             (["clinical"], None)],
+                         ids=["qc_blank", "qc_answered", "no_assay_lens"])
+def test_not_asked_as_no_names_every_blank_its_recode_fills(tmp_path, lens, qc_answer):
+    """`statin` blank on 30 of the 60 participants (half) is offered "Not asked as No", and its
+    sentences name every cell the recode changes, counted by applying its SQL to the table and
+    by pandas. With the QC rows set aside (the metabolomics lens) the blanks are counted on the
+    participants, the 30 people not asked, and the recode fills the 10 QC rows' blanks too, so
+    both are said, where only the 30 were; with the QC rows answered the 30 are every blank it
+    fills, said as they were before the QC rows were set aside. With no assay lens no row is set
+    aside and every row's blank counts, as before. Each consequence keeps its word budget."""
+    frame = statin_panel(30, qc_answer)
+    df = read_back(tmp_path, frame)
+    part = participants(df)
+    on_qc = int(df["statin"].isna().sum()) - int(part["statin"].isna().sum())
+    assert int(part["statin"].isna().sum()) == 30 and on_qc == (10 if qc_answer is None else 0)
+    assessed = lens == ["metabolomics"]
+    n_blank = 30 if assessed else int(df["statin"].isna().sum())
+    yes = int((df["statin"] == "Yes").sum())
+    path = tmp_path / "panel.csv"
+    frame.to_csv(path, index=False)
+    table = Ingested(path, tmp_path / "statin-ingested")
+    artifact = table.run(findings_stage, ProjectState(lens=lens))
+    found = {f["id"]: f for f in artifact["findings"]}
+    (option,) = _not_asked(found)
+    applied = {"binary_text__statin": FindingDisposition(
+        action="applied", option="not_asked_no", params=option["decision"]["params"])}
+    after = repairs.evaluate(table.parquet, ["statin"],
+                             repairs.column_expressions(artifact, applied))["statin"]
+    changed = int(df["statin"].isna().sum())  # every blank the SQL fills, by pandas
+    assert not after.isna().any() and int((after == False).sum()) == changed + int(  # noqa: E712
+        (df["statin"] == "No").sum())
+    assert changed == n_blank + (on_qc if assessed else 0)
+    if assessed and on_qc:
+        assert option["consequence"] == (
+            f"`{n_blank}` non-QC and `{on_qc}` pooled-QC blanks in `statin` become `False`; "
+            f"`{yes}` other answers stay as given.")
+        assert option["sentence"].startswith(
+            f"`statin` was blank for the `{n_blank}` people not asked; those blanks, and the "
+            f"`{on_qc}` on the pooled-QC rows, were recoded as `False`,")
+    else:  # every blank the recode fills is among those counted
+        assert option["consequence"] == (f"`{n_blank}` blanks in `statin` become `False`; its "
+                                         f"`{yes}` other answers stay as given.")
+        assert option["sentence"].startswith(
+            f"`statin` was blank for the `{n_blank}` people not asked; those blanks were recoded "
+            f"as `False`,")
+    assert voice.words(option["consequence"]) <= repairs.CONSEQUENCE_WORDS
     assert option["decision"]["params"]["n_blank"] == n_blank
 
 
-def dietary_with_qc(diet: pd.DataFrame, n_qc: int = 12, seed: int = 3) -> pd.DataFrame:
+def dietary_with_qc(diet: pd.DataFrame, n_qc: int = 12, seed: int = 3,
+                    qc_intake: float | None = None) -> pd.DataFrame:
     """``diet`` (an NHANES-shaped dietary table) with an assay panel beside it: 40 features (log
     means 3.5 to 12, blank below exp(4)) and ``n_qc`` pooled-QC rows appended, blank on every
-    dietary column, with `sample_type` naming them, by construction."""
+    dietary column but `DR1TKCAL`, which holds ``qc_intake`` there (blank by default), with
+    `sample_type` naming them, by construction."""
     rng = np.random.default_rng(seed)
     out = pd.concat([diet, pd.DataFrame(np.nan, index=range(n_qc), columns=diet.columns)],
                     ignore_index=True)
     qc = np.arange(len(out)) >= len(diet)
+    if qc_intake is not None:
+        out.loc[qc, "DR1TKCAL"] = qc_intake
     log_mean = np.linspace(3.5, 12.0, N_FEATURES)
     log_value = log_mean + rng.normal(0.0, 1.0, (len(out), N_FEATURES)) * np.where(qc[:, None], 0.05, 0.8)
     values = np.round(np.exp(log_value), 2)
@@ -1093,3 +1130,73 @@ def test_implausible_intakes_in_kilojoules_count_the_participants(tmp_path, with
     of = "`120` non-QC rows" if with_qc else "`120` rows"
     assert found["pack::dietary::implausible_intake"]["summary"] == (
         f"`{n}` of {of} report `DR1TKCAL` below `2,092` kJ or above `20,920` kJ a day.")
+
+
+def _implausible(tmp_path: Path, frame: pd.DataFrame, lens: list[str], unit: ColumnUnitSpec) -> dict:
+    """The implausible-intake finding the findings stage serves with `DR1TKCAL`'s unit recorded."""
+    path = tmp_path / "intake.csv"
+    frame.to_csv(path, index=False)
+    table = Ingested(path, tmp_path / "intake-ingested")
+    state = ProjectState(lens=lens, column_units={"DR1TKCAL": unit})
+    found = {f["id"]: f for f in table.run(findings_stage, state)["findings"]}
+    assert ("pack::metabolomics::pooled_qc" in found) == ("metabolomics" in lens)
+    return found["pack::dietary::implausible_intake"]
+
+
+@pytest.mark.parametrize("qc", ["intake_zero", "intake_blank", "no_qc"])
+def test_implausible_intakes_in_kcal_a_day_are_counted_on_the_rows_they_are_said_out_of(
+        tmp_path, qc):
+    """Recorded in kcal a day, 3 participants' intakes of 300 kcal (by construction) are the
+    implausible ones among the 120 participants (pandas). Beside 12 QC rows whose `DR1TKCAL`
+    holds 0, the pack counts 15 over every row, and the summary said `15` of the `120` non-QC rows:
+    the summary, the title and the detail count the 3 on the non-QC rows they name. With the QC
+    rows blank (as exported) the count is the same 3, said of the same rows; with no QC rows the
+    pack's own count over every row stands, in its own words."""
+    diet = pd.read_csv(SAMPLES / "nhanes_dietary.csv")
+    diet.loc[:2, "DR1TKCAL"] = 300.0
+    frame = diet if qc == "no_qc" else dietary_with_qc(
+        diet, qc_intake=0.0 if qc == "intake_zero" else None)
+    df = read_back(tmp_path, frame)
+    rows = df if qc == "no_qc" else participants(df)
+    kcal, every = rows["DR1TKCAL"], df["DR1TKCAL"]
+    n = int(((kcal < 500) | (kcal > 5000)).sum())
+    assert n == 3 and len(rows) == 120
+    assert int(((every < 500) | (every > 5000)).sum()) == (15 if qc == "intake_zero" else 3)
+    lens = ["dietary"] if qc == "no_qc" else ["metabolomics", "dietary"]
+    f = _implausible(tmp_path, frame, lens, ColumnUnitSpec(unit="kcal", days=1))
+    of = "`120` rows" if qc == "no_qc" else "`120` non-QC rows"
+    assert f["summary"] == f"`{n}` of {of} report `DR1TKCAL` below `500` or above `5000` a day."
+    if qc == "no_qc":
+        assert f["title"] == f"{n} records report an implausible daily intake."
+        assert f["detail"].startswith(f"`DR1TKCAL` is below 500 on {n} record(s) and above 5000 on 0.")
+        return
+    assert f["title"] == f"{n} non-QC records report an implausible daily intake."
+    low = int((kcal < 500).sum())
+    assert (f"Read in kcal on the 120 non-QC rows, `DR1TKCAL` is below 500 kcal a day on {low} "
+            f"records and above 5,000 kcal a day on 0. Observed range {kcal.min():,.0f} to "
+            f"{kcal.max():,.0f} kcal.") in f["detail"]
+
+
+@pytest.mark.parametrize("qc", ["intake_zero", "intake_blank", "no_qc"])
+def test_in_kilojoules_where_no_participant_is_out_of_range_the_rows_within_are_named(
+        tmp_path, qc):
+    """Recorded in kJ, every participant's intake is within 2,092–20,920 kJ (pandas); the pack,
+    comparing the raw values with 500–5,000, fires on every table here. Beside 12 QC rows the
+    summary says every non-QC row is within the range, where it said every row, which QC rows
+    holding 0 are not; with no QC rows it says every row, as before."""
+    diet = pd.read_csv(SAMPLES / "nhanes_kilojoules.csv")
+    frame = diet if qc == "no_qc" else dietary_with_qc(
+        diet, qc_intake=0.0 if qc == "intake_zero" else None)
+    df = read_back(tmp_path, frame)
+    rows = df if qc == "no_qc" else participants(df)
+    kj = rows["DR1TKCAL"]
+    assert int(((kj < 500 * 4.184) | (kj > 5000 * 4.184)).sum()) == 0 and kj.notna().all()
+    if qc == "intake_zero":
+        assert int((df["DR1TKCAL"] < 500 * 4.184).sum()) == 12
+    lens = ["dietary"] if qc == "no_qc" else ["metabolomics", "dietary"]
+    f = _implausible(tmp_path, frame, lens, ColumnUnitSpec(unit="kj"))
+    which = "every row" if qc == "no_qc" else "every non-QC row"
+    assert f["summary"] == (f"Read in kJ, {which} of `DR1TKCAL` is within `2,092`–`20,920` kJ a "
+                            f"day; nothing needs excluding.")
+    who = "" if qc == "no_qc" else " non-QC"
+    assert f["title"] == f"No{who} record reports an implausible daily intake, read in kJ."

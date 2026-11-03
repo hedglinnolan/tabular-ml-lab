@@ -91,6 +91,7 @@ def _and(items: list[str]) -> str:
 # the checks run without counting what they raise.
 LENS_CHECK_CELLS = 2_000_000
 _FOUND: dict[tuple[Any, ...], int] = {}
+_READS: list[str] = []
 
 
 def _small_table(ctx: PreviewContext) -> Any:
@@ -119,16 +120,33 @@ def _reads_feature_major(lens: list[str], table: Any) -> bool:
         return False
 
 
+def _findings_reads() -> tuple[str, ...]:
+    """The answers the findings stage reads (its ``Stage`` line's reads) with the purpose the
+    page's own filter reads (``materiality.finding_fires``): what the served count depends on.
+    Read from the stage graph, so the count's cache and the stage's key cannot drift; the stages
+    import this module's neighbors, so it is read when first asked for, not at import."""
+    if not _READS:
+        from turbotab.core.stages import build_graph
+
+        _READS.extend(dict.fromkeys([*build_graph()["findings"].reads, "purpose"]))
+    return tuple(_READS)
+
+
 def _pack_findings(ctx: PreviewContext, lens: list[str], table: Any) -> int | None:
     """How many pack findings the findings page serves under ``lens`` on this table
-    (:func:`served_pack_findings`), cached per table, lens and the answers that reading reads."""
+    (:func:`served_pack_findings`), cached per table, lens and every other answer that page reads
+    (:func:`_findings_reads`, each keyed as the stage's own key keys it)."""
     if table is None:
         return None
+    import json
+
+    from turbotab.core.graph import key_value
+
     state = ctx.state
+    values = state.model_dump(mode="json")
+    answers = {slot: key_value(slot, values.get(slot)) for slot in _findings_reads() if slot != "lens"}
     key = (ctx.project_id, int(ctx.datastore.n_rows), tuple(table.columns), tuple(sorted(lens)),
-           state.target, getattr(state, "purpose", None),
-           repr(getattr(state, "column_units", None)), repr(getattr(state, "sex_codings", None)),
-           repr(getattr(state, "numbers_read", None)))
+           json.dumps(answers, sort_keys=True, separators=(",", ":"), default=str))
     if key not in _FOUND:
         try:
             _FOUND[key] = len(served_pack_findings(table, lens, state))

@@ -221,14 +221,14 @@ def _two_level_text(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
                      f"asked.", *BLANKS)
     levels = [str(v) for v in p.get("levels") or []]
     if len(levels) == 2:
-        # The levels as the data write them (`F`, `M`), not the lower-case tokens they are
-        # compared as (``repairs.level_spellings``).
+        # The levels as the data write them (`F`, `M`), each in every spelling it is given, not
+        # the lower-case tokens they are compared as (``repairs.level_spellings``).
         from turbotab.core.repairs import level_spellings
 
         written = (level_spellings(fc.frame[col], levels) if col in fc.frame.columns
-                   else {v: v for v in levels})
-        return Voice(f"{tick(col)} is two-level text ({tick(written[levels[0]])}, "
-                     f"{tick(written[levels[1]])}); which level counts as 1 is not asked yet.",
+                   else {v: tick(v) for v in levels})
+        return Voice(f"{tick(col)} is two-level text ({written[levels[0]]}, "
+                     f"{written[levels[1]]}); which level counts as 1 is not asked yet.",
                      closes=True)
     return Voice(f"{tick(col)} stores true and false as text.")
 
@@ -570,18 +570,28 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
             f"wait for it. Observed range {float(s.min()):,.0f} to {float(s.max()):,.0f}, median "
             f"{float(s.median()):,.0f}.")
         return
-    if reading["unit"] != "kj" and days == 1:
-        return
+    a_day = reading["unit"] != "kj" and days == 1  # the pack's own range, in the column's unit
+    if a_day and not fc.reference_rows:
+        return  # the pack's count, over every row: the rows the summary counts
+    # Beside pooled-QC rows the count is the participants' (the rows that stay), so the title and
+    # detail say so, as the summary does; read in kcal a day too, where the pack's own words
+    # counted the QC rows' intakes (a QC row's 0 among the "implausible" ones).
     p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word})
     over = f" over {days} days" if days > 1 else ""
-    f["title"] = (f"{n:,} {'record reports' if n == 1 else 'records report'} an implausible daily "
-                  f"intake" if n else f"No record reports an implausible daily intake, read in "
-                                      f"{word}{over}")
-    f["detail"] = (f"{reading['sentence']} Read in {word}{over}, {tick(col)} is below "
-                   f"{low:,.0f} {word} ({kcal[0]:,.0f} kcal a day) on {below:,} "
-                   f"{plural(below, 'record')} and above {high:,.0f} {word} ({kcal[1]:,.0f} kcal a "
-                   f"day) on {above:,}. Observed range {float(s.min()):,.0f} to "
-                   f"{float(s.max()):,.0f} {word}.")
+    who = " non-QC" if fc.reference_rows else ""
+    on = f" on the {len(fc.kept):,} non-QC rows" if fc.reference_rows else ""
+    f["title"] = (f"{n:,}{who} {'record reports' if n == 1 else 'records report'} an implausible "
+                  f"daily intake" if n else f"No{who} record reports an implausible daily intake, "
+                                            f"read in {word}{over}")
+
+    def bound(value: float, per_day: float) -> str:
+        return (f"{value:,.0f} {word} a day" if a_day
+                else f"{value:,.0f} {word} ({per_day:,.0f} kcal a day)")
+    observed = (f" Observed range {float(s.min()):,.0f} to {float(s.max()):,.0f} {word}."
+                if present else "")
+    f["detail"] = (f"{reading['sentence']} Read in {word}{over}{on}, {tick(col)} is below "
+                   f"{bound(low, kcal[0])} on {below:,} {plural(below, 'record')} and above "
+                   f"{bound(high, kcal[1])} on {above:,}.{observed}")
 
 
 def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
@@ -616,7 +626,8 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
     rows = f"{count(len(fc.kept))}{' non-QC' if fc.reference_rows else ''} rows"
     if p.get("unit") == "kJ":
         if not n:
-            return Voice(f"Read in kJ, every row of {tick(col)} is within "
+            every = "every non-QC row" if fc.reference_rows else "every row"
+            return Voice(f"Read in kJ, {every} of {tick(col)} is within "
                          f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} kJ a day; nothing needs "
                          f"excluding.", closes=True)
         return Voice(f"{count(n)} of {rows} report {tick(col)} below "
