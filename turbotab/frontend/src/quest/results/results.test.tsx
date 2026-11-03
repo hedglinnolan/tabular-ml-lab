@@ -19,9 +19,10 @@ import type { ProjectView } from "../../api/schema";
 import PAYLOADS from "../cards/predict/payloads.fixture.json";
 import { FootSlot } from "../contracts";
 import { SealCard } from "./cards";
+import binaryCapture from "./fixtures/evaluation-binary.json";
 import capture from "./fixtures/nhanes-predict.json";
 import { ResultsCards, ResultsTapestry } from "./index";
-import { currentOpening, cvComparison, heldOutTable, intervalClause, verdictCell } from "./model";
+import { currentOpening, cvComparison, familiesOf, heldOutTable, intervalClause, verdictCell } from "./model";
 
 /** The models' defaults and choices, as test_w1_declaration_cards.py holds them to decisions.py. */
 const DEFAULTS = PAYLOADS.defaults;
@@ -607,6 +608,362 @@ describe("the interpretable model's cost", () => {
     mount(<ResultsTapestry pid={PID} />);
     const text = String((evaluationOf(C.opened).interpretable as Json).text);
     expect((await screen.findByTestId("results-interpretable")).textContent).toContain(text.replace(/`/g, ""));
+  });
+});
+
+// ── the evaluation's exhibits (G09) ──────────────────────────────────────────
+// The second capture (fixtures/evaluation-binary.json, written by fixtures/capture_evaluation.py
+// from the real stage graph on a constructed table; nothing in it by hand): a yes/no outcome under
+// decision support, four named subgroups (one with a level too rare to score, one whose groups wait
+// on a reading), a site grouping and shrinkage answered, sealed. The NHANES capture serves the
+// benchmark under a numeric outcome, the updating offer not yet answered, and none of the others.
+
+const B = binaryCapture as unknown as { fit: FitArtifact; evaluation: EvaluationArtifact };
+
+/** The sealed capture serving the binary capture's fit (sealed, as its stage wrote it) and its
+ *  evaluation, fresh. */
+const binary = (s: Snapshot): Snapshot => ({
+  ...s,
+  view: { ...s.view, stages: { ...s.view.stages, evaluation: C.opened.view.stages.evaluation! } },
+  stages: { ...s.stages, fit: { ...s.stages.fit!, artifact: B.fit }, evaluation: { ...C.opened.stages.evaluation!, artifact: B.evaluation } },
+});
+
+/** A snapshot whose served evaluation is patched. */
+const withEvaluation =
+  (patch: (e: EvaluationArtifact) => Json) =>
+  (s: Snapshot): Snapshot => ({
+    ...s,
+    stages: { ...s.stages, evaluation: { ...s.stages.evaluation!, artifact: { ...evaluationOf(s), ...patch(evaluationOf(s)) } } },
+  });
+
+/** The served shapes the evaluation types as plain dicts (turbotab/core/stages/evaluation.py). */
+interface ServedInterval {
+  estimate: number | null;
+  ci_low: number | null;
+  ci_high: number | null;
+}
+interface ServedSubgroup {
+  column: string;
+  note?: string;
+  groups: { group: string; n: number; events?: number; scores: Record<string, ServedInterval>; note: string | null }[];
+}
+interface ServedIecv {
+  family: string;
+  label: string;
+  cluster: string;
+  metric: string;
+  spread: string;
+  clusters: { cluster: string; n: number; n_events: number | null; primary: ServedInterval; note: string | null }[];
+  pooled: ServedInterval & { estimate: number | null };
+}
+interface ServedShrinkage {
+  factor: number;
+  intercept: number;
+  sentence: string;
+  coefficients: { feature: string; estimate: number; shrunk: number }[];
+}
+interface ServedCurve {
+  family: string;
+  sentence: string;
+  rows: { threshold: number; treat_all: number; models: Record<string, number> }[];
+}
+
+/** Each body row of a table: its header cell's text, whether it heads a group, its cells' text. */
+const bodyRows = (table: HTMLElement) =>
+  [...table.querySelectorAll("tbody tr")].map((tr) => ({
+    head: tr.querySelector("th")?.textContent ?? "",
+    group: tr.getAttribute("data-group") === "true",
+    cells: [...tr.querySelectorAll("td")].map((td) => td.textContent ?? ""),
+  }));
+const headsOf = (table: HTMLElement) => [...table.querySelectorAll("thead th")].map((h) => h.textContent ?? "");
+const footnotesOf = (el: HTMLElement) => [...el.querySelectorAll('[data-testid="footnotes"] li')].map((li) => li.textContent ?? "");
+/** A family's name as the fit serves it, else the benchmark's as the evaluation serves it. */
+const nameOf = (fit: FitArtifact, ev: EvaluationArtifact, key: string) =>
+  fit.models.find((m) => m.family === key)?.label ?? (ev.benchmark?.key === key ? ev.benchmark.label : key);
+const EVALUATION_EXHIBITS = ["results-benchmark", "results-decision-curve", "results-subgroups", "results-updating", "results-internal-external"];
+
+describe("the benchmark", () => {
+  const cases = [
+    ["a numeric outcome (NHANES, opened)", "opened", (s: Snapshot) => s],
+    ["a yes/no outcome (sealed)", "sealed", binary],
+  ] as const;
+  for (const [name, start, patch] of cases) {
+    it(`prints its served score with its interval, its verdict against the baseline and the engine's sentences, under ${name}`, async () => {
+      serve(start, patch);
+      mount(<ResultsTapestry pid={PID} />);
+      const section = await screen.findByTestId("results-benchmark");
+      const snap = patch(C[start]);
+      const fit = fitOf(snap);
+      const b = evaluationOf(snap).benchmark!;
+      const v = b.versus_baseline as unknown as VersusBaseline;
+      const table = within(section).getByRole("table");
+      expect(table.querySelector("caption")!.textContent).toBe("Benchmark. Cross-validated: each score with its interval");
+      expect(headsOf(table)).toEqual(["Model", fit.metric_labels[b.metric], `Against ${fit.models[0]!.baseline.label}`]);
+      const [row, ...rest] = bodyRows(table);
+      expect(rest).toEqual([]);
+      expect(row!.head).toBe(`${b.label}a`); // marked: its verdict's rule is footnote a
+      expectShows(row!.cells[0], [b.estimate, b.ci_low, b.ci_high], "the benchmark's score");
+      expect(row!.cells[1]!.startsWith(`${WORD[v.verdict]}: a gain in ${fit.metric_labels[v.metric]} of `), row!.cells[1]).toBe(true);
+      expectShows(row!.cells[1], [v.gain, v.ci_low, v.ci_high], "the benchmark against the baseline");
+      // the rule, the engine's sentence and its paired difference from each family, in its words
+      expect(b.differences.length).toBe(fit.models.length);
+      expect(footnotesOf(section)).toEqual([`a${b.label}: ${unticked(v.tolerance_basis)}`, unticked(b.sentence), ...b.differences.map((d) => unticked(String(d.sentence)))]);
+    });
+  }
+
+  it("says the engine's note in its place where no benchmark was fitted, and no table", async () => {
+    // By construction: the binary capture as the stage serves it with p ≫ n (no benchmark, a note).
+    const note = "A constructed note: no benchmark is fitted, and nothing is weighed against it.";
+    serve("sealed", (s) => withEvaluation(() => ({ benchmark: null, interpretable: null, note }))(binary(s)));
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-benchmark");
+    expect(section.textContent).toContain(note);
+    expect(within(section).queryByRole("table")).toBeNull();
+  });
+});
+
+describe("the decision curve", () => {
+  it("draws the reported model's out-of-fold net benefit beside the benchmark's and both references, every value as served", async () => {
+    serve("sealed", binary);
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-decision-curve");
+    const ev = B.evaluation;
+    const dc = ev.decision_curve as unknown as ServedCurve;
+    const keys = Object.keys(dc.rows[0]!.models);
+    expect(keys).toContain(ev.benchmark!.key);
+    const order = [dc.family, ...keys.filter((k) => k !== dc.family)]; // the reported model first
+    expect(within(section).getByRole("heading").textContent).toBe(`${nameOf(B.fit, ev, dc.family)}: net benefit at each threshold, out of fold`);
+    expect(section.querySelectorAll("[data-line]")).toHaveLength(order.length);
+    const table = within(section).getByTestId("table-alternative");
+    expect(table.querySelector("caption")!.textContent).toBe("Net benefit per row at each threshold, scored out of fold");
+    expect(headsOf(table)).toEqual(["Threshold", ...order.map((k) => nameOf(B.fit, ev, k)), "Treat everyone", "Treat no one"]);
+    const rows = bodyRows(table);
+    expect(rows).toHaveLength(dc.rows.length);
+    dc.rows.forEach((r, i) => {
+      expectShows(rows[i]!.head, [r.threshold], "the threshold");
+      order.forEach((k, j) => expectShows(rows[i]!.cells[j], [r.models[k]], `${k} at ${r.threshold}`));
+      expectShows(rows[i]!.cells[order.length], [r.treat_all], `treat everyone at ${r.threshold}`);
+      expect(rows[i]!.cells[order.length + 1]).toBe("0");
+    });
+    // the threshold chosen in each fold, and what it gave on the held-out folds: the engine's words
+    expect(within(section).getByTestId("results-decision-sentence").textContent).toBe(unticked(dc.sentence));
+  });
+
+  // The intended use on record, as the capture answered it (no thresholds named, so the stage drew
+  // over its default range), and by construction the same answer naming the range drawn.
+  const intendedUse = (low: number | null, high: number | null) => (s: Snapshot): Snapshot => ({
+    ...s,
+    view: { ...s.view, state: { ...s.view.state, intended_use: { use: "decision_support", threshold_low: low, threshold_high: high, threshold: null, subgroups: ["sex", "age", "smoker", "visits"], fairness: "subgroup_performance" } } },
+  });
+  const served = B.evaluation.decision_curve as unknown as { low: number; high: number };
+
+  it("does not call the range drawn the user's where the intended use names none", async () => {
+    serve("sealed", (s) => intendedUse(null, null)(binary(s)));
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-decision-curve");
+    expect(section.textContent).not.toContain("Your threshold range");
+    expect(section.querySelector('[data-mark="range"]')).toBeNull();
+  });
+
+  it("shades the range drawn as the user's where the intended use declares it", async () => {
+    serve("sealed", (s) => intendedUse(served.low, served.high)(binary(s)));
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-decision-curve");
+    expect(section.textContent).toContain("Your threshold range");
+    expect(section.querySelector('[data-mark="range"]')).not.toBeNull();
+  });
+});
+
+describe("the subgroups", () => {
+  it("score each named column's groups with the reported model, every score with its interval as served, a group too small and a column waiting in the engine's words", async () => {
+    serve("sealed", binary);
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-subgroups");
+    const ev = B.evaluation;
+    const subs = ev.subgroups as unknown as ServedSubgroup[];
+    // the capture holds a scored column, a group the engine names but does not score, and a
+    // column whose groups wait on a reading
+    expect(subs.some((s) => s.note) && subs.some((s) => s.groups.some((g) => g.note))).toBe(true);
+    const table = within(section).getByRole("table");
+    expect(table.querySelector("caption")!.textContent).toBe(`Subgroups. ${nameOf(B.fit, ev, ev.reported_family!)}'s out-of-fold scores in each group: each score with its interval`);
+    const keys = Object.keys(B.fit.metric_labels).filter((k) => subs.some((s) => s.groups.some((g) => g.scores[k])));
+    expect(keys.length).toBeGreaterThan(1); // the primary and the headline
+    expect(headsOf(table)).toEqual(["Subgroup", "Rows", "Events", ...keys.map((k) => B.fit.metric_labels[k])]);
+    const rows = bodyRows(table);
+    let i = 0;
+    for (const s of subs) {
+      const head = rows[i++]!;
+      expect(head.group, s.column).toBe(true);
+      expect(head.head.startsWith(s.column), head.head).toBe(true);
+      for (const g of s.groups) {
+        const r = rows[i++]!;
+        expect(r.group).toBe(false);
+        expect(r.head.startsWith(g.group), `${r.head} for ${g.group}`).toBe(true);
+        expect(r.cells.slice(0, 2)).toEqual([g.n.toLocaleString("en-US"), String(g.events)]);
+        keys.forEach((k, j) => {
+          const sc = g.scores[k];
+          if (sc) expectShows(r.cells[2 + j], [sc.estimate, sc.ci_low, sc.ci_high], `${s.column} ${g.group} ${k}`);
+          else expect(r.cells[2 + j]).toBe("");
+        });
+      }
+    }
+    expect(i).toBe(rows.length);
+    const notes = footnotesOf(section);
+    for (const s of subs) {
+      if (s.note) expect(notes.some((n) => n.endsWith(unticked(s.note!))), s.note).toBe(true);
+      for (const g of s.groups) if (g.note) expect(notes.some((n) => n.endsWith(g.note!)), g.note).toBe(true);
+    }
+  });
+
+  it("say a column's waiting in its place where no group is scored", async () => {
+    // By construction: the capture's waiting column alone.
+    const waiting = (B.evaluation.subgroups as unknown as ServedSubgroup[]).filter((s) => s.note);
+    serve("sealed", (s) => withEvaluation(() => ({ subgroups: waiting }))(binary(s)));
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-subgroups");
+    expect(within(section).queryByRole("table")).toBeNull();
+    expect(section.textContent).toContain(unticked(waiting[0]!.note!));
+  });
+});
+
+describe("model updating", () => {
+  it("lists the regression's coefficients as fitted and as shrunk, with its re-estimated intercept and the engine's sentence", async () => {
+    serve("sealed", binary);
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-updating");
+    const sh = B.evaluation.shrinkage as unknown as ServedShrinkage;
+    const table = within(section).getByRole("table");
+    expectShows(table.querySelector("caption")!.textContent, [sh.factor], "the factor");
+    expect(headsOf(table)).toEqual(["Term", "As fitted", "Shrunk"]);
+    const [intercept, ...rows] = bodyRows(table);
+    expect(intercept!.head.startsWith("Intercept")).toBe(true);
+    expect(intercept!.cells[0]).toBe("");
+    expectShows(intercept!.cells[1], [sh.intercept], "the re-estimated intercept");
+    expect(rows.map((r) => r.head)).toEqual(sh.coefficients.map((c) => c.feature));
+    sh.coefficients.forEach((c, i) => {
+      expectShows(rows[i]!.cells[0], [c.estimate], `${c.feature} as fitted`);
+      expectShows(rows[i]!.cells[1], [c.shrunk], `${c.feature} shrunk`);
+    });
+    expect(footnotesOf(section)).toEqual([unticked(sh.sentence)]);
+  });
+
+  it("says the engine's sentence where shrinkage was declared and not applied, and no table", async () => {
+    // By construction, in the shape the stage serves when the shrunk intercept cannot be estimated
+    // (evaluation.py `_shrinkage`): the offer, its note, the way out and the sentence.
+    const { factor, how, decision, label } = B.evaluation.shrinkage as unknown as Json;
+    const sentence = "A constructed sentence: shrinkage was declared as model updating but not applied.";
+    const failed = { factor, how, decision, label, note: "A constructed note. The model was not updated.", exit: { label: "No model updating", decision: { kind: "set_updating", method: "none" } }, sentence };
+    serve("sealed", (s) => withEvaluation(() => ({ shrinkage: failed }))(binary(s)));
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-updating");
+    expect(section.textContent).toContain(sentence);
+    expect(within(section).queryByRole("table")).toBeNull();
+  });
+});
+
+describe("internal–external validation", () => {
+  it("scores each level of the grouping by each model fitted on the rest, with the random-effects summary and the engine's sentence, as served", async () => {
+    serve("sealed", binary);
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-internal-external");
+    const runs = B.evaluation.internal_external as unknown as ServedIecv[];
+    expect(runs.map((r) => r.family)).toEqual([B.evaluation.reported_family, B.evaluation.benchmark!.key]);
+    const table = within(section).getByRole("table");
+    expect(table.querySelector("caption")!.textContent).toBe(`Internal–external validation. Each level of ${runs[0]!.cluster} held out in turn, scored by each model fitted on the rest: each score with its interval`);
+    expect(headsOf(table)).toEqual(["Model", "Rows", "Events", B.fit.metric_labels[runs[0]!.metric]]);
+    const rows = bodyRows(table);
+    let i = 0;
+    for (const run of runs) {
+      expect(rows[i]!.group).toBe(true);
+      expect(rows[i++]!.head).toBe(run.label);
+      for (const c of run.clusters) {
+        const r = rows[i++]!;
+        expect(r.head).toBe(c.cluster);
+        expect(r.cells.slice(0, 2)).toEqual([c.n.toLocaleString("en-US"), String(c.n_events)]);
+        expectShows(r.cells[2], [c.primary.estimate, c.primary.ci_low, c.primary.ci_high], `${run.family} ${c.cluster}`);
+      }
+      const pooled = rows[i++]!;
+      expect(pooled.head.startsWith("Random-effects summary"), pooled.head).toBe(true);
+      expect(pooled.cells.slice(0, 2)).toEqual(["", ""]);
+      expectShows(pooled.cells[2], [run.pooled.estimate, run.pooled.ci_low, run.pooled.ci_high], `${run.family} pooled`);
+    }
+    expect(i).toBe(rows.length);
+    const notes = footnotesOf(section);
+    for (const run of runs) expect(notes.some((n) => n.endsWith(unticked(run.spread))), run.spread).toBe(true);
+  });
+});
+
+describe("the evaluation's exhibits, each only where the engine serves it", () => {
+  it("are drawn before the opening, from the training rows the evaluation reads", async () => {
+    serve("sealed", binary);
+    mount(<ResultsTapestry pid={PID} />);
+    for (const id of EVALUATION_EXHIBITS) expect(await screen.findByTestId(id), id).toBeInTheDocument();
+  });
+
+  it("draw none but the benchmark under a numeric outcome with no intended use, no grouping and the updating unanswered", async () => {
+    serve("opened");
+    mount(<ResultsTapestry pid={PID} />);
+    await screen.findByTestId("results-benchmark");
+    expect((evaluationOf(C.opened).shrinkage as Json).sentence).toBeNull(); // offered only
+    for (const id of EVALUATION_EXHIBITS.slice(1)) expect(screen.queryByTestId(id), id).toBeNull();
+  });
+
+  it("draw none where the evaluation shows no score, whatever it holds", async () => {
+    // By construction: the binary capture marked as showing no score, with the engine's reason.
+    const note = "A constructed reason: no score is shown.";
+    serve("sealed", (s) => withEvaluation(() => ({ scores_shown: false, note }))(binary(s)));
+    mount(<ResultsTapestry pid={PID} />);
+    expect((await screen.findByTestId("results-interpretable")).textContent).toContain(note);
+    for (const id of EVALUATION_EXHIBITS) expect(screen.queryByTestId(id), id).toBeNull();
+  });
+});
+
+describe("the calibration measures", () => {
+  const families = () => familiesOf(fitOf(C.opened)).filter((m) => m.holdout_detail?.calibration);
+
+  it("list each family's held-out calibration intercept, slope and gaps as served, once the rows are opened", async () => {
+    serve("opened");
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-calibration-measures");
+    const table = within(section).getByRole("table");
+    expect(table.querySelector("caption")!.textContent).toBe("Calibration measures. On the held-out rows");
+    expect(headsOf(table)).toEqual(["Model", "Calibration intercept", "Calibration slope", "Average gapEavg", "90th percentile gapE90", "Largest gapEmax"]);
+    const rows = bodyRows(table);
+    expect(families().length).toBe(2);
+    expect(rows.map((r) => r.head)).toEqual(families().map((m) => `${m.label}${m.role === "final" ? "the final model" : "secondary"}`));
+    families().forEach((m, i) => {
+      const cal = m.holdout_detail!.calibration!;
+      expectShows(rows[i]!.cells[0], [cal.intercept.estimate, cal.intercept.ci_low, cal.intercept.ci_high], `${m.label} intercept`);
+      expectShows(rows[i]!.cells[1], [cal.slope.estimate, cal.slope.ci_low, cal.slope.ci_high], `${m.label} slope`);
+      expectShows(rows[i]!.cells[2], [cal.eavg], `${m.label} Eavg`);
+      expectShows(rows[i]!.cells[3], [cal.e90], `${m.label} E90`);
+      expectShows(rows[i]!.cells[4], [cal.emax], `${m.label} Emax`);
+    });
+    const smoother = families()[0]!.holdout_detail!.calibration!.smoother;
+    expect(footnotesOf(section)).toEqual([
+      `A row's gap is the distance between its prediction and the observed outcome smoothed at that prediction, by ${smoother}. The columns give the average gap (Eavg, the integrated calibration index), the 90th percentile gap (E90) and the largest gap (Emax) over the rows.`,
+    ]);
+  });
+
+  it("are not shown before the opening: no held-out number is read", async () => {
+    serve("sealed");
+    mount(<ResultsTapestry pid={PID} />);
+    await screen.findByTestId("results-calibration");
+    expect(screen.queryByTestId("results-calibration-measures")).toBeNull();
+  });
+
+  it("leave out the gaps where the engine serves none, and label the measures exploratory as the split does", async () => {
+    // By construction: each family's held-out calibration as an artifact from before the gaps.
+    const noGaps = withFit((f) => ({
+      models: f.models.map((m) => (m.holdout_detail?.calibration ? { ...m, holdout_detail: { ...m.holdout_detail, calibration: { ...m.holdout_detail.calibration, eavg: null, e90: null, emax: null } } } : m)),
+    }));
+    serve("opened", (s) => withSplit(UNDETERMINED)(noGaps(s)));
+    mount(<ResultsTapestry pid={PID} />);
+    const section = await screen.findByTestId("results-calibration-measures");
+    const table = within(section).getByRole("table");
+    expect(table.querySelector("caption")!.textContent).toBe("Calibration measures. On the held-out rows, exploratory");
+    expect(headsOf(table)).toEqual(["Model", "Calibration intercept", "Calibration slope"]);
+    expect(footnotesOf(section)).toEqual([]);
   });
 });
 

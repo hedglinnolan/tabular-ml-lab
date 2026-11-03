@@ -8,9 +8,14 @@
  *      by whether they are still the opening's, and labeled exploratory, with the split's reason,
  *      wherever its basis is not a verified clean one (the calibration too);
  *   3. the final model's held-out calibration (the served curve, intercept and slope; binned
- *      points wait for W2, ruling 5);
+ *      points wait for W2, ruling 5), and every family's calibration measures beside it (the
+ *      intercept, the slope and the gaps Eavg, E90 and Emax), sealed as the held-out table is;
  *   4. what drives each model: SHAP importance as a table, ALE curves with their support mask;
- *   5. evaluation's word on what the interpretable model costs.
+ *   5. the evaluation's exhibits, out of fold on the training rows, in the order its artifact holds
+ *      them, each only where it serves it and none where it shows no score: the regression-with-
+ *      splines benchmark (or the engine's note where none was fitted), what the interpretable model
+ *      costs, the decision curve, the subgroups, shrinkage as model updating, and internal–external
+ *      validation.
  *
  * Every number is a served field, formatted by the view; nothing is computed here.
  */
@@ -25,11 +30,27 @@ import { PostSealBand, useRefetchOnOpening } from "../../components/stage/seal/O
 import { sealPhase, type SealPhase } from "../../components/stage/seal/phase";
 import { Rich } from "../../components/stage/text";
 import { CalibrationView } from "../../components/views/CalibrationView";
-import { calibrationFromEngine, curveFromExplain, pastPalette } from "../../components/views/curveAdapters";
+import { calibrationFromEngine, curveFromExplain, decisionFromEngine, pastPalette, servedDecisionCurve } from "../../components/views/curveAdapters";
 import { CurveView } from "../../components/views/CurveView";
+import { DecisionCurveView } from "../../components/views/DecisionCurveView";
 import { ExhibitTable } from "../../components/views/ExhibitTable";
 import { OneLine } from "../../components/views/common/parts";
-import { currentOpening, cvComparison, exploratoryReasons, heldOutTable, importanceTable, interpretableCost, type SplitBasis } from "./model";
+import {
+  benchmarkTable,
+  calibrationMeasures,
+  currentOpening,
+  cvComparison,
+  exploratoryReasons,
+  familyLabels,
+  heldOutTable,
+  importanceTable,
+  internalExternalTable,
+  interpretableCost,
+  subgroupTable,
+  updatingNotApplied,
+  updatingTable,
+  type SplitBasis,
+} from "./model";
 import s from "./results.module.css";
 
 const busy = (status: StageStatus | undefined) => status?.status === "running" || status?.status === "queued";
@@ -79,7 +100,7 @@ export function Tapestry({ pid, view }: { pid: string; view: ProjectView }) {
         </section>
       </StaleVeil>
       <Explanations artifact={explain.artifact} veil={explain.veil} status={view.stages.explain} task={art.task} target={target} />
-      <Interpretable artifact={evaluation.artifact} veil={evaluation.veil} />
+      <Evaluation artifact={evaluation.artifact} veil={evaluation.veil} fit={art} use={view.state.intended_use ?? null} />
     </div>
   );
 }
@@ -99,9 +120,25 @@ function HeldOut({ fit, phase, split }: { fit: FitArtifact; phase: SealPhase; sp
   return <ExhibitTable data={table} gate={null} />;
 }
 
+/** The final model's held-out calibration, and every family's calibration measures beside it, once
+ *  opened (`calibrationMeasures`: none before). */
+function Calibration({ fit, phase, target, split }: { fit: FitArtifact; phase: SealPhase; target: string; split: SplitBasis | null }) {
+  const measures = calibrationMeasures(fit, phase, split);
+  return (
+    <>
+      <CalibrationPicture fit={fit} phase={phase} target={target} split={split} />
+      {measures ? (
+        <div data-testid="results-calibration-measures">
+          <ExhibitTable data={measures} gate={null} />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 /** The final model's held-out calibration, once opened; the engine's note where it served none. An
  *  exploratory split labels it as it labels the held-out table, whose footnote says why. */
-function Calibration({ fit, phase, target, split }: { fit: FitArtifact; phase: SealPhase; target: string; split: SplitBasis | null }) {
+function CalibrationPicture({ fit, phase, target, split }: { fit: FitArtifact; phase: SealPhase; target: string; split: SplitBasis | null }) {
   const title = "Calibration on the held-out rows";
   if (phase === "cv_only") return null;
   if (phase === "sealed" || phase === "none") {
@@ -213,12 +250,90 @@ function Explanations({
   );
 }
 
-function Interpretable({ artifact, veil }: { artifact: EvaluationArtifact | null; veil: VeilState }) {
+/** The evaluation's exhibits, in the order its artifact holds them. Where it shows no score
+ *  (`scores_shown` false: under inference, or before Fit) only its note is said, as before. The
+ *  intended use on record says whether the decision curve's range is the user's
+ *  (`decisionFromEngine`). */
+function Evaluation({
+  artifact,
+  veil,
+  fit,
+  use,
+}: {
+  artifact: EvaluationArtifact | null;
+  veil: VeilState;
+  fit: FitArtifact;
+  use: ProjectView["state"]["intended_use"];
+}) {
   if (!artifact) return null;
+  if (!artifact.scores_shown) return <Interpretable artifact={artifact} veil={veil} />;
+  const benchmark = artifact.benchmark ? benchmarkTable(artifact.benchmark, fit) : null;
+  const curve = servedDecisionCurve(artifact.decision_curve);
+  const subgroups = subgroupTable(artifact, fit);
+  const updating = updatingTable(artifact);
+  const notApplied = updating ? null : updatingNotApplied(artifact);
+  const iecv = internalExternalTable(artifact, fit);
+  const labels = familyLabels(fit, artifact);
+  return (
+    <>
+      {benchmark || artifact.note ? (
+        <StaleVeil state={veil} order={4} label="Benchmark">
+          <section className={s.exhibit} data-purpose="benchmark" data-testid="results-benchmark">
+            {benchmark ? <ExhibitTable data={benchmark} gate={null} /> : <OneLine view="table" title="Benchmark" text={<Rich text={artifact.note!} />} />}
+          </section>
+        </StaleVeil>
+      ) : null}
+      <Interpretable artifact={artifact} veil={veil} />
+      {curve ? (
+        <StaleVeil state={veil} order={6} label="Decision curve">
+          <section className={s.exhibit} data-purpose="decision_curve" data-testid="results-decision-curve">
+            <DecisionCurveView
+              title={`${labels[curve.family] ?? curve.family}: net benefit at each threshold, out of fold`}
+              data={decisionFromEngine(curve, {
+                where: "out_of_fold",
+                sealed: null,
+                labels,
+                declared: use ? { low: use.threshold_low ?? null, high: use.threshold_high ?? null } : null,
+              })}
+            />
+            {curve.sentence ? (
+              <p className={r.basis} data-testid="results-decision-sentence">
+                <Rich text={curve.sentence} />
+              </p>
+            ) : null}
+          </section>
+        </StaleVeil>
+      ) : null}
+      {subgroups ? (
+        <StaleVeil state={veil} order={7} label="Subgroups">
+          <section className={s.exhibit} data-purpose="subgroups" data-testid="results-subgroups">
+            <ExhibitTable data={subgroups} gate={null} />
+          </section>
+        </StaleVeil>
+      ) : null}
+      {updating || notApplied ? (
+        <StaleVeil state={veil} order={8} label="Model updating">
+          <section className={s.exhibit} data-purpose="model_updating" data-testid="results-updating">
+            {updating ? <ExhibitTable data={updating} gate={null} /> : <OneLine view="table" title="Model updating" text={<Rich text={notApplied!} />} />}
+          </section>
+        </StaleVeil>
+      ) : null}
+      {iecv ? (
+        <StaleVeil state={veil} order={9} label="Internal–external validation">
+          <section className={s.exhibit} data-purpose="internal_external" data-testid="results-internal-external">
+            <ExhibitTable data={iecv} gate={null} />
+          </section>
+        </StaleVeil>
+      ) : null}
+    </>
+  );
+}
+
+function Interpretable({ artifact, veil }: { artifact: EvaluationArtifact; veil: VeilState }) {
   const text = artifact.scores_shown ? interpretableCost(artifact) : (artifact.note ?? null);
   if (!text) return null;
   return (
-    <StaleVeil state={veil} order={4} label="What the interpretable model costs">
+    <StaleVeil state={veil} order={5} label="What the interpretable model costs">
       <section className={s.exhibit} data-purpose="interpretable_cost" data-testid="results-interpretable">
         <h3 className={s.exhibitTitle}>What the interpretable model costs</h3>
         <p className={r.caption}>

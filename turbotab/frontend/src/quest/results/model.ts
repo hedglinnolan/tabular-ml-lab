@@ -5,9 +5,9 @@
  * every sentence is the engine's, or composed only from served fields.
  */
 import type { FitArtifact, FittedModel, SplitArtifact } from "../../api/m1-stage-types";
-import type { EvaluationArtifact, FamilyExplanation, VersusBaseline } from "../../api/m3-types";
+import type { Benchmark, EvaluationArtifact, FamilyExplanation, ScoreInterval, VersusBaseline } from "../../api/m3-types";
 import type { DecisionRecord, ProjectView } from "../../api/schema";
-import { plain } from "../../components/stage/format";
+import { fmtNum, plain } from "../../components/stage/format";
 import { fmtEstimate } from "../../components/views/format";
 import type { Cell, Footnote, TableData, TableRow } from "../../components/views/types";
 import { glyphOf, isExploratory, scoresVisible, type SealPhase } from "../../components/stage/seal/phase";
@@ -132,6 +132,20 @@ const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
 /** "a", "a and b", "a, b and c". */
 const listing = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
+const uniq = <T,>(xs: T[]) => xs.filter((x, i) => xs.indexOf(x) === i);
+
+/** Footnotes by their text: each text marked once, the same text on several rows sharing its mark. */
+function marker() {
+  const texts: string[] = [];
+  return {
+    mark: (text: string) => {
+      if (!texts.includes(text)) texts.push(text);
+      return mark(texts.indexOf(text));
+    },
+    footnotes: (): Footnote[] => texts.map((text, i) => ({ mark: mark(i), text })),
+  };
+}
+
 /**
  * What a table's caption may say of intervals, true of every score it prints (each estimate cell
  * with a served value): "each score with its interval" only where every one carries its interval.
@@ -153,7 +167,6 @@ export function intervalClause(rows: readonly TableRow[], metrics: readonly Metr
   }
   if (!cells.some((c) => c.has)) return "";
   if (cells.every((c) => c.has)) return ": each score with its interval";
-  const uniq = (xs: string[]) => xs.filter((x, i) => xs.indexOf(x) === i);
   const rowsWithout = uniq(cells.map((c) => c.row)).filter((row) => cells.every((c) => c.row !== row || !c.has));
   const rest = cells.filter((c) => !rowsWithout.includes(c.row));
   const colsWithout = uniq(rest.map((c) => c.col)).filter((col) => rest.every((c) => c.col !== col || !c.has));
@@ -338,6 +351,288 @@ export function importanceTable(f: FamilyExplanation): TableData {
     footnotes: f.method ? [{ text: plain(f.method) }] : [],
     empty: f.reason ? plain(f.reason) : `${f.label} was not explained.`,
   };
+}
+
+// ── the held-out calibration's measures ──────────────────────────────────────
+
+/** The gaps between each prediction and the smoothed observed outcome (turbotab/core/models/
+ *  performance.py `calibration`: `|p − smooth(p)|`, summarized as `val.prob` does), in plain words
+ *  with the technical name as the quiet line. */
+const GAPS = [
+  { key: "eavg", label: "Average gap", sub: "Eavg", said: "the average gap (Eavg, the integrated calibration index)" },
+  { key: "e90", label: "90th percentile gap", sub: "E90", said: "the 90th percentile gap (E90)" },
+  { key: "emax", label: "Largest gap", sub: "Emax", said: "the largest gap (Emax)" },
+] as const;
+
+/**
+ * Every family's held-out calibration once the rows are opened (`holdout_detail.calibration`): the
+ * calibration intercept and slope with their intervals, and the gaps (`eavg`, `e90`, `emax`), each
+ * gap's column only where some family's is served (an artifact from before them serves none). Null
+ * while the phase hides held-out scores, as the held-out table is. A flagged family's concern, in
+ * the engine's words, is its footnote.
+ */
+export function calibrationMeasures(fit: FitArtifact, phase: SealPhase, split: SplitBasis | null): TableData | null {
+  if (!scoresVisible(phase)) return null;
+  const families = familiesOf(fit).filter((m) => m.holdout_detail?.calibration);
+  if (!families.length) return null;
+  const cal = (m: FittedModel) => m.holdout_detail!.calibration!;
+  const gaps = GAPS.filter((g) => families.some((m) => typeof cal(m)[g.key] === "number"));
+  const notes = marker();
+  const rows: TableRow[] = families.map((m) => {
+    const c = cal(m);
+    return {
+      kind: "row",
+      key: m.family,
+      label: m.label,
+      sub: m.role ? ROLE[m.role] : undefined,
+      primary: m.role === "final",
+      marks: c.concern ? [notes.mark(`${m.label}: ${plain(c.concern)}`)] : undefined,
+      cells: {
+        intercept: estimate(c.intercept.estimate, c.intercept.ci_low, c.intercept.ci_high),
+        slope: estimate(c.slope.estimate, c.slope.ci_low, c.slope.ci_high),
+        ...Object.fromEntries(gaps.map((g) => [g.key, typeof c[g.key] === "number" ? estimate(c[g.key]) : null])),
+      },
+    };
+  });
+  const smoothers = uniq(families.map((m) => cal(m).smoother).filter((x) => !!x));
+  const by = smoothers.length ? `, by ${listing(smoothers)}` : "";
+  return {
+    number: "Calibration measures",
+    title: `On the held-out rows${exploratoryReasons(split) ? ", exploratory" : ""}`,
+    stub: "Model",
+    columns: [
+      { key: "intercept", label: "Calibration intercept" },
+      { key: "slope", label: "Calibration slope" },
+      ...gaps.map((g) => ({ key: g.key, label: g.label, sub: g.sub })),
+    ],
+    rows,
+    footnotes: [
+      ...notes.footnotes(),
+      ...(gaps.length
+        ? [
+            {
+              text: `A row's gap is the distance between its prediction and the observed outcome smoothed at that prediction${by}. The columns give ${listing(gaps.map((g) => g.said))} over the rows.`,
+            },
+          ]
+        : []),
+    ],
+    empty: "No held-out calibration was served.",
+  };
+}
+
+// ── the evaluation stage's exhibits (G09) ────────────────────────────────────
+// Each is read from the evaluation artifact as the stage serves it (turbotab/core/stages/
+// evaluation.py `_prediction`), out of fold on the training rows: the benchmark, the decision curve,
+// the subgroups, shrinkage as model updating and internal–external validation. The artifact types
+// all but the benchmark as plain dicts; the shapes below are the engine's.
+
+/** Each fitted family's name as the fit serves it, and the benchmark's as the evaluation does. */
+export function familyLabels(fit: FitArtifact, ev: EvaluationArtifact): Record<string, string> {
+  return {
+    ...Object.fromEntries(fit.models.map((m) => [m.family, m.label])),
+    ...(ev.benchmark ? { [ev.benchmark.key]: ev.benchmark.label } : {}),
+  };
+}
+
+/**
+ * The regression-with-splines benchmark (`benchmark`): its cross-validated score on the primary
+ * metric with its interval, and its verdict against the no-predictor baseline (named as the fit
+ * names it) in the words its rule defines, the rule its footnote; then the engine's sentence, and
+ * its paired difference from each family in the engine's words (`differences[].sentence`), whose
+ * sign each sentence says.
+ */
+export function benchmarkTable(b: Benchmark, fit: FitArtifact): TableData {
+  const v = (b.versus_baseline ?? null) as VersusBaseline | null;
+  const metric: Metric = { key: b.metric, label: fit.metric_labels[b.metric] ?? b.metric };
+  const base = fit.models.find((m) => m.baseline.value !== null)?.baseline ?? null;
+  const rows: TableRow[] = [
+    {
+      kind: "row",
+      key: b.key,
+      label: b.label,
+      marks: v ? [mark(0)] : undefined,
+      cells: { [metric.key]: estimate(b.estimate, b.ci_low, b.ci_high), versus: verdictCell(v, fit.metric_labels) },
+    },
+  ];
+  return {
+    number: "Benchmark",
+    title: `Cross-validated${intervalClause(rows, [metric])}`,
+    stub: "Model",
+    columns: [{ key: metric.key, label: metric.label }, ...(v ? [{ key: "versus", label: base ? `Against ${base.label}` : "Against the baseline" }] : [])],
+    rows,
+    footnotes: [
+      ...(v ? [{ mark: mark(0), text: `${b.label}: ${plain(v.tolerance_basis)}` }] : []),
+      ...(b.sentence ? [{ text: plain(b.sentence) }] : []),
+      ...b.differences.flatMap((d) => (typeof d["sentence"] === "string" && d["sentence"] ? [{ text: plain(d["sentence"]) }] : [])),
+    ],
+    empty: "No benchmark was fitted.",
+  };
+}
+
+/** One named column's groups, scored with the reported family's out-of-fold predictions
+ *  (turbotab/core/models/decision_curve.py `subgroup_performance`); `note` and `ask`, with no
+ *  groups, while the column's code-or-amount reading is unsettled. */
+interface ServedSubgroups {
+  column: string;
+  grouped_by: string | null;
+  groups: { group: string; n: number; events?: number | null; scores: Record<string, ScoreInterval | undefined>; note: string | null }[];
+  note?: string | null;
+}
+
+const reportedName = (fit: FitArtifact, ev: EvaluationArtifact) =>
+  ev.reported_family ? (familyLabels(fit, ev)[ev.reported_family] ?? ev.reported_family) : "The reported model";
+
+/**
+ * Subgroup performance (`subgroups`): each named column a group of rows, its groups in the order
+ * served, each with its rows, its events under a yes/no outcome, and every metric scored with its
+ * interval, the metrics in the order the fit names them. A group the engine names but does not
+ * score, an interval it refuses and a column whose groups wait on a reading are each marked, the
+ * engine's words their footnotes. Null where none is named.
+ */
+export function subgroupTable(ev: EvaluationArtifact, fit: FitArtifact): TableData | null {
+  const subs = ev.subgroups as unknown as ServedSubgroups[];
+  if (!subs.length) return null;
+  const served = uniq(subs.flatMap((s) => s.groups.flatMap((g) => Object.keys(g.scores))));
+  const metrics: Metric[] = [...Object.keys(fit.metric_labels).filter((k) => served.includes(k)), ...served.filter((k) => !(k in fit.metric_labels))].map((key) => ({
+    key,
+    label: fit.metric_labels[key] ?? key,
+  }));
+  const events = subs.some((s) => s.groups.some((g) => typeof g.events === "number"));
+  const notes = marker();
+  const rows: TableRow[] = subs.flatMap((s): TableRow[] => [
+    { kind: "group", key: `column:${s.column}`, label: s.column, marks: s.note ? [notes.mark(plain(s.note))] : undefined },
+    ...s.groups.map((g): TableRow => {
+      const said = uniq([g.note, ...metrics.map((m) => g.scores[m.key]?.refused)].filter((t): t is string => !!t));
+      return {
+        kind: "row",
+        key: `${s.column}:${g.group}`,
+        label: g.group,
+        indent: true,
+        marks: said.length ? said.map((t) => notes.mark(plain(t))) : undefined,
+        cells: {
+          n: { kind: "count", n: g.n },
+          ...(events && typeof g.events === "number" ? { events: { kind: "count", n: g.events } as Cell } : {}),
+          ...Object.fromEntries(
+            metrics.map((m) => {
+              const sc = g.scores[m.key];
+              return [m.key, sc ? estimate(sc.estimate, sc.ci_low, sc.ci_high) : null];
+            }),
+          ),
+        },
+      };
+    }),
+  ]);
+  return {
+    number: "Subgroups",
+    title: `${reportedName(fit, ev)}'s out-of-fold scores in each group${intervalClause(rows, metrics)}`,
+    stub: "Subgroup",
+    columns: [{ key: "n", label: "Rows" }, ...(events ? [{ key: "events", label: "Events" }] : []), ...metrics.map((m) => ({ key: m.key, label: m.label }))],
+    rows,
+    footnotes: notes.footnotes(),
+    // With no group scored (every named column waiting), the table says why in one line.
+    empty: subs.map((s) => (s.note ? plain(s.note) : `No group of ${s.column} was scored.`)).join(" "),
+  };
+}
+
+type InternalExternal = NonNullable<FittedModel["internal_external"]>;
+/** One model's internal–external validation as the evaluation serves it (evaluation.py `_iecv`):
+ *  the engine's `InternalExternal` beside the model's key and name. */
+type ServedInternalExternal = InternalExternal & { family: string; label: string };
+
+/**
+ * Internal–external validation by cluster (`internal_external`): for each model (the reported
+ * family and the benchmark), each level of the grouping held out in turn and scored on the primary
+ * metric with its interval by the model fitted on the rest, its rows and, under a yes/no outcome,
+ * its events; then the random-effects summary over the levels with its interval, the engine's
+ * sentence on the spread its footnote. Null where no grouping is named.
+ */
+export function internalExternalTable(ev: EvaluationArtifact, fit: FitArtifact): TableData | null {
+  const runs = ev.internal_external as unknown as ServedInternalExternal[];
+  if (!runs.length) return null;
+  const metrics: Metric[] = uniq(runs.map((r) => r.metric)).map((key) => ({ key, label: fit.metric_labels[key] ?? key }));
+  const events = runs.some((r) => r.clusters.some((c) => typeof c.n_events === "number"));
+  const notes = marker();
+  const rows: TableRow[] = runs.flatMap((run): TableRow[] => [
+    { kind: "group", key: run.family, label: run.label },
+    ...run.clusters.map((c): TableRow => {
+      const said = uniq([c.note, c.primary.refused].filter((t): t is string => !!t));
+      return {
+        kind: "row",
+        key: `${run.family}:${c.cluster}`,
+        label: c.cluster,
+        indent: true,
+        marks: said.length ? said.map((t) => notes.mark(plain(t))) : undefined,
+        cells: {
+          n: { kind: "count", n: c.n },
+          ...(events && typeof c.n_events === "number" ? { events: { kind: "count", n: c.n_events } as Cell } : {}),
+          [run.metric]: estimate(c.primary.estimate, c.primary.ci_low, c.primary.ci_high),
+        },
+      };
+    }),
+    {
+      kind: "row",
+      key: `${run.family}:pooled`,
+      label: "Random-effects summary",
+      indent: true,
+      marks: run.spread ? [notes.mark(`${run.label}: ${plain(run.spread)}`)] : undefined,
+      cells: { [run.metric]: estimate(run.pooled.estimate, run.pooled.ci_low, run.pooled.ci_high) },
+    },
+  ]);
+  const clusters = uniq(runs.map((r) => r.cluster));
+  return {
+    number: "Internal–external validation",
+    title: `Each level of ${listing(clusters)} held out in turn, scored by each model fitted on the rest${intervalClause(rows, metrics)}`,
+    stub: "Model",
+    columns: [{ key: "n", label: "Rows" }, ...(events ? [{ key: "events", label: "Events" }] : []), ...metrics.map((m) => ({ key: m.key, label: m.label }))],
+    rows,
+    footnotes: notes.footnotes(),
+    empty: "No level was scored.",
+  };
+}
+
+/** Shrinkage offered as model updating (evaluation.py `_shrinkage`): the offer, and once answered
+ *  the shrunk model (`intercept`, `coefficients`) with its sentence, or, where it could not be
+ *  applied, the sentence saying so with no coefficients. */
+interface ServedShrinkage {
+  factor: number;
+  sentence: string | null;
+  intercept?: number | null;
+  coefficients?: { feature: string; estimate: number; shrunk: number }[];
+}
+
+/**
+ * Shrinkage as model updating, once applied: each of the regression's coefficients as fitted and
+ * multiplied by the factor (`coefficients[].estimate`, `shrunk`), and its intercept as re-estimated
+ * (`intercept`; the fitted intercept is not served, so its cell is empty), the engine's sentence
+ * the footnote. Null while it is only offered, or where it was declared and not applied
+ * (`updatingNotApplied` says why).
+ */
+export function updatingTable(ev: EvaluationArtifact): TableData | null {
+  const sh = ev.shrinkage as unknown as ServedShrinkage | null;
+  if (!sh || !Array.isArray(sh.coefficients) || typeof sh.intercept !== "number") return null;
+  return {
+    number: "Model updating",
+    title: `The regression's coefficients as fitted and multiplied by ${fmtNum(sh.factor)}`,
+    stub: "Term",
+    columns: [
+      { key: "fitted", label: "As fitted" },
+      { key: "shrunk", label: "Shrunk" },
+    ],
+    rows: [
+      { kind: "row", key: "intercept", label: "Intercept", sub: "re-estimated", cells: { shrunk: estimate(sh.intercept) } },
+      ...sh.coefficients.map((c): TableRow => ({ kind: "row", key: c.feature, label: c.feature, cells: { fitted: estimate(c.estimate), shrunk: estimate(c.shrunk) } })),
+    ],
+    footnotes: sh.sentence ? [{ text: plain(sh.sentence) }] : [],
+    empty: "No coefficient was shrunk.",
+  };
+}
+
+/** The engine's sentence where shrinkage was declared and not applied (a sentence, no shrunk
+ *  coefficients); null otherwise, the offer alone included. */
+export function updatingNotApplied(ev: EvaluationArtifact): string | null {
+  const sh = ev.shrinkage as unknown as ServedShrinkage | null;
+  if (!sh || Array.isArray(sh.coefficients)) return null;
+  return typeof sh.sentence === "string" && sh.sentence ? sh.sentence : null;
 }
 
 // ── what the interpretable model costs ───────────────────────────────────────

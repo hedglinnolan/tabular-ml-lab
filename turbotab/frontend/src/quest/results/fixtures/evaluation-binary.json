@@ -1,0 +1,2455 @@
+{
+ "meta": {
+  "script": "turbotab/frontend/src/quest/results/fixtures/capture_evaluation.py",
+  "captured": "2026-11-03",
+  "seed": 41,
+  "subgroups": [
+   "sex",
+   "age",
+   "smoker",
+   "visits"
+  ],
+  "seconds": 407
+ },
+ "fit": {
+  "task": "binary",
+  "primary_metric": "log_loss",
+  "metric_labels": {
+   "auc": "AUC",
+   "brier": "Brier score",
+   "log_loss": "Log loss"
+  },
+  "n_train": 480,
+  "n_holdout": 120,
+  "models": [
+   {
+    "family": "linear",
+    "label": "Linear model",
+    "cv": {
+     "auc": {
+      "mean": 0.7694624578258136,
+      "sd": 0.06690630176808066,
+      "folds": [
+       0.7750900669068451,
+       0.7545454545454546,
+       0.695959595959596,
+       0.8772727272727272,
+       0.7444444444444445
+      ],
+      "estimate": 0.7694624578258136,
+      "estimator": "fold_mean",
+      "se": 0.023255955667238832,
+      "ci_low": 0.7238816222919653,
+      "ci_high": 0.8150432933596619,
+      "repeats": 1,
+      "repeat_sd": null
+     },
+     "brier": {
+      "mean": 0.17042331245744238,
+      "sd": 0.020058640638417516,
+      "folds": [
+       0.1671686463562403,
+       0.1707214751603059,
+       0.19656263464154744,
+       0.14084956732993173,
+       0.17681423879918653
+      ],
+      "estimate": 0.17042331245744238,
+      "estimator": "fold_mean",
+      "se": 0.009670638630531643,
+      "ci_low": 0.1514692090340986,
+      "ci_high": 0.18937741588078616,
+      "repeats": 1,
+      "repeat_sd": null
+     },
+     "log_loss": {
+      "mean": 0.5151423725169816,
+      "sd": 0.0528984151113117,
+      "folds": [
+       0.5037963372474948,
+       0.5224669452142537,
+       0.5829188134190734,
+       0.43644291825368214,
+       0.5300868484504039
+      ],
+      "estimate": 0.5151423725169816,
+      "estimator": "fold_mean",
+      "se": 0.024632758753407945,
+      "ci_low": 0.46686305252043825,
+      "ci_high": 0.5634216925135249,
+      "repeats": 1,
+      "repeat_sd": null
+     }
+    },
+    "holdout": null,
+    "coefficients": [
+     {
+      "feature": "(intercept)",
+      "estimate": -1.9368202185581098,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "sex_2",
+      "estimate": 0.6349787872712052,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "x1",
+      "estimate": 1.0029674744900756,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "x2",
+      "estimate": -0.6913422954676138,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "x3",
+      "estimate": 0.2556220781341121,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "age",
+      "estimate": 0.0119791253627671,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     }
+    ],
+    "fit_seconds": 0.321,
+    "concerns": [
+     "Scores are unweighted: they describe these rows, not the population the survey weights stand for."
+    ],
+    "baseline": {
+     "metric": "log_loss",
+     "value": 0.6194564199101671,
+     "label": "the class prior"
+    },
+    "versus_baseline": {
+     "verdict": "better",
+     "metric": "log_loss",
+     "gain": 0.10535862169068977,
+     "tolerance": 0.04353727095315377,
+     "tolerance_basis": "Better only when the gain's 95% interval lies above zero and the gain is at least 1% of the baseline's log loss, 0.0062 here (a McFadden R² of 0.01, a convention): a gain above 0.0435. The interval is corrected for the 50 folds sharing training rows (Nadeau & Bengio 2003).",
+     "se": 0.021664912141009733,
+     "ci_low": 0.061821350737536,
+     "ci_high": 0.14889589264384354,
+     "df": 49,
+     "level": 0.95
+    },
+    "inference": null,
+    "coefficients_n": 480,
+    "role": null,
+    "calibration": {
+     "n": 480,
+     "observed": 0.3104166666666667,
+     "expected": 0.30931215899924863,
+     "intercept": {
+      "estimate": 0.006697337747923798,
+      "se": 0.11234575644639704,
+      "ci_low": -0.21349629870292292,
+      "ci_high": 0.22689097419877052,
+      "level": 0.95,
+      "method": "Wald"
+     },
+     "slope": {
+      "estimate": 0.9088221184231278,
+      "se": 0.10624252855818997,
+      "ci_low": 0.7005905888226074,
+      "ci_high": 1.1170536480236481,
+      "level": 0.95,
+      "method": "Wald"
+     },
+     "curve": [
+      {
+       "x": 0.006297718360960665,
+       "y": 0.04179571566674443
+      },
+      {
+       "x": 0.025955417731883423,
+       "y": 0.058785441158133625
+      },
+      {
+       "x": 0.038940568792846214,
+       "y": 0.0699506590181336
+      },
+      {
+       "x": 0.05344623684967867,
+       "y": 0.08241099975521098
+      },
+      {
+       "x": 0.0648508770657217,
+       "y": 0.0922296267495607
+      },
+      {
+       "x": 0.07965996437924737,
+       "y": 0.10505320252538726
+      },
+      {
+       "x": 0.09102341574459694,
+       "y": 0.11495615169606296
+      },
+      {
+       "x": 0.1008325042760992,
+       "y": 0.12357463451890115
+      },
+      {
+       "x": 0.11275285729591962,
+       "y": 0.13413980601693898
+      },
+      {
+       "x": 0.12814543944517365,
+       "y": 0.14792121040420664
+      },
+      {
+       "x": 0.13520904545429016,
+       "y": 0.15428406793126262
+      },
+      {
+       "x": 0.14674014748279154,
+       "y": 0.16468583959204408
+      },
+      {
+       "x": 0.16082267322074126,
+       "y": 0.17725707312223096
+      },
+      {
+       "x": 0.16899714840875404,
+       "y": 0.18434601744788282
+      },
+      {
+       "x": 0.17860803184488608,
+       "y": 0.19229299662598048
+      },
+      {
+       "x": 0.1844881442298179,
+       "y": 0.19694027737499772
+      },
+      {
+       "x": 0.20089882172899423,
+       "y": 0.20835521552161737
+      },
+      {
+       "x": 0.2169742463213061,
+       "y": 0.2190643390953071
+      },
+      {
+       "x": 0.23774188332087373,
+       "y": 0.2349545804888773
+      },
+      {
+       "x": 0.25312978805016884,
+       "y": 0.24769299914818446
+      },
+      {
+       "x": 0.2677119216361821,
+       "y": 0.25998985206208663
+      },
+      {
+       "x": 0.27818237022981,
+       "y": 0.26874288156979426
+      },
+      {
+       "x": 0.3022795320399869,
+       "y": 0.2898049763495126
+      },
+      {
+       "x": 0.31687511042780897,
+       "y": 0.30448622867314695
+      },
+      {
+       "x": 0.33575672912743404,
+       "y": 0.3228793723680551
+      },
+      {
+       "x": 0.3505359018011122,
+       "y": 0.3364236883513089
+      },
+      {
+       "x": 0.3727494252907197,
+       "y": 0.3555918084679592
+      },
+      {
+       "x": 0.39017528165740206,
+       "y": 0.37019627775784425
+      },
+      {
+       "x": 0.42022824398965625,
+       "y": 0.39571216761688516
+      },
+      {
+       "x": 0.43849763302639366,
+       "y": 0.41338576193878646
+      },
+      {
+       "x": 0.47345635428372146,
+       "y": 0.4495095612841342
+      },
+      {
+       "x": 0.4909486285588603,
+       "y": 0.4677976841660434
+      },
+      {
+       "x": 0.5098713282440949,
+       "y": 0.48721558824683386
+      },
+      {
+       "x": 0.5433793829978877,
+       "y": 0.5226016716142973
+      },
+      {
+       "x": 0.5981178256297598,
+       "y": 0.5832436941224135
+      },
+      {
+       "x": 0.6518986783801698,
+       "y": 0.642837728776198
+      },
+      {
+       "x": 0.6895345225514669,
+       "y": 0.6844556403981364
+      },
+      {
+       "x": 0.7469062512552679,
+       "y": 0.7479334812106497
+      },
+      {
+       "x": 0.8369688664808614,
+       "y": 0.8479281688064204
+      },
+      {
+       "x": 0.930318402612006,
+       "y": 0.9526588965236271
+      }
+     ],
+     "support": [
+      {
+       "lo": 0.006297718360960665,
+       "hi": 0.052498752573512934,
+       "n": 35
+      },
+      {
+       "lo": 0.052498752573512934,
+       "hi": 0.0986997867860652,
+       "n": 49
+      },
+      {
+       "lo": 0.0986997867860652,
+       "hi": 0.14490082099861745,
+       "n": 50
+      },
+      {
+       "lo": 0.14490082099861745,
+       "hi": 0.19110185521116974,
+       "n": 57
+      },
+      {
+       "lo": 0.19110185521116974,
+       "hi": 0.23730288942372202,
+       "n": 29
+      },
+      {
+       "lo": 0.23730288942372202,
+       "hi": 0.28350392363627425,
+       "n": 44
+      },
+      {
+       "lo": 0.28350392363627425,
+       "hi": 0.32970495784882653,
+       "n": 28
+      },
+      {
+       "lo": 0.32970495784882653,
+       "hi": 0.3759059920613788,
+       "n": 28
+      },
+      {
+       "lo": 0.3759059920613788,
+       "hi": 0.4221070262739311,
+       "n": 25
+      },
+      {
+       "lo": 0.4221070262739311,
+       "hi": 0.4683080604864834,
+       "n": 19
+      },
+      {
+       "lo": 0.4683080604864834,
+       "hi": 0.5145090946990357,
+       "n": 31
+      },
+      {
+       "lo": 0.5145090946990357,
+       "hi": 0.5607101289115879,
+       "n": 15
+      },
+      {
+       "lo": 0.5607101289115879,
+       "hi": 0.6069111631241402,
+       "n": 10
+      },
+      {
+       "lo": 0.6069111631241402,
+       "hi": 0.6531121973366925,
+       "n": 11
+      },
+      {
+       "lo": 0.6531121973366925,
+       "hi": 0.6993132315492447,
+       "n": 13
+      },
+      {
+       "lo": 0.6993132315492447,
+       "hi": 0.745514265761797,
+       "n": 10
+      },
+      {
+       "lo": 0.745514265761797,
+       "hi": 0.7917152999743493,
+       "n": 8
+      },
+      {
+       "lo": 0.7917152999743493,
+       "hi": 0.8379163341869016,
+       "n": 6
+      },
+      {
+       "lo": 0.8379163341869016,
+       "hi": 0.8841173683994539,
+       "n": 8
+      },
+      {
+       "lo": 0.8841173683994539,
+       "hi": 0.930318402612006,
+       "n": 4
+      }
+     ],
+     "eavg": 0.016933213993687517,
+     "e90": 0.027548619551575303,
+     "emax": 0.03549799730578376,
+     "smoother": "lowess, span 2/3, no robustness iterations (as rms val.prob)",
+     "flagged": false,
+     "concern": null
+    },
+    "holdout_detail": null,
+    "optimism": null,
+    "internal_external": {
+     "cluster": "site",
+     "metric": "log_loss",
+     "clusters": [
+      {
+       "cluster": "site_0",
+       "n": 125,
+       "n_events": 38,
+       "scores": {
+        "auc": 0.749848759830611,
+        "brier": 0.1804716525948626,
+        "log_loss": 0.5313567600545691
+       },
+       "primary": {
+        "estimate": 0.5313567600545691,
+        "se": 0.048152616172503736,
+        "ci_low": 0.43697936659508085,
+        "ci_high": 0.6257341535140574,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "note": null
+      },
+      {
+       "cluster": "site_1",
+       "n": 129,
+       "n_events": 33,
+       "scores": {
+        "auc": 0.8222853535353535,
+        "brier": 0.1409537202295471,
+        "log_loss": 0.4440135594402465
+       },
+       "primary": {
+        "estimate": 0.4440135594402465,
+        "se": 0.036384086879800055,
+        "ci_low": 0.3727020595454621,
+        "ci_high": 0.5153250593350309,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "note": null
+      },
+      {
+       "cluster": "site_2",
+       "n": 112,
+       "n_events": 40,
+       "scores": {
+        "auc": 0.7656249999999999,
+        "brier": 0.1838361388227266,
+        "log_loss": 0.5523624774567126
+       },
+       "primary": {
+        "estimate": 0.5523624774567126,
+        "se": 0.05709512592629608,
+        "ci_low": 0.4404580869483933,
+        "ci_high": 0.664266867965032,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "note": null
+      },
+      {
+       "cluster": "site_3",
+       "n": 114,
+       "n_events": 38,
+       "scores": {
+        "auc": 0.7385734072022161,
+        "brier": 0.18807407105774812,
+        "log_loss": 0.5599276563746582
+       },
+       "primary": {
+        "estimate": 0.5599276563746582,
+        "se": 0.05649346603303552,
+        "ci_low": 0.4492024975880718,
+        "ci_high": 0.6706528151612448,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "note": null
+      }
+     ],
+     "pooled": {
+      "metric": "log_loss",
+      "scale": "identity",
+      "k": 4,
+      "estimate": 0.5112431857564682,
+      "ci_low": 0.4516542222018673,
+      "ci_high": 0.5708321493110692,
+      "tau": 0.03682374354699434,
+      "i2": 0.36679525649174927,
+      "pi_low": 0.3057791943735936,
+      "pi_high": 0.7167071771393428
+     },
+     "spread": "Across 4 levels of site, log loss ranged from 0.444 to 0.560; the random−effects summary is 0.511 (95% CI 0.452 to 0.571), and a new site would score between 0.306 and 0.717 (95% prediction interval)."
+    },
+    "exposure_tests": [],
+    "calibration_levels": null,
+    "calibration_horizon": null,
+    "calibration_note": null,
+    "compared_on": {
+     "mean": 0.5140977982194772,
+     "sd": 0.04240232178556986,
+     "folds": [
+      0.5037963372474948,
+      0.5224669452142537,
+      0.5829188134190734,
+      0.43644291825368214,
+      0.5300868484504039,
+      0.5016350427168307,
+      0.49991574562469454,
+      0.5722500186663976,
+      0.47348363387259235,
+      0.5171580415687366,
+      0.41020658578429475,
+      0.585070396009154,
+      0.48258218768363115,
+      0.5827780277880749,
+      0.5483333576517103,
+      0.4965556257330745,
+      0.5186549222735862,
+      0.5162297803796846,
+      0.4701506878610475,
+      0.5381937610178448,
+      0.5387380407759336,
+      0.5258460479857899,
+      0.4772691441433716,
+      0.5523600732507047,
+      0.46856357837068846,
+      0.4755531838938929,
+      0.5443645897533624,
+      0.5515462376901582,
+      0.4971151251591304,
+      0.5168499832007073,
+      0.5363218979307688,
+      0.5300619549234494,
+      0.4912485004645284,
+      0.45612234647033434,
+      0.5263103924448053,
+      0.47624128498639656,
+      0.566353272701427,
+      0.46448430104740773,
+      0.5794234350517592,
+      0.510839056401515,
+      0.4876767688831516,
+      0.49204097321323625,
+      0.4822148344798151,
+      0.5926011582109325,
+      0.5298533228678791,
+      0.5040232938433914,
+      0.46438721715518594,
+      0.48681660554414846,
+      0.6029850991640358,
+      0.48776851374969193
+     ],
+     "estimate": 0.5140977982194772,
+     "estimator": "fold_mean",
+     "se": 0.024426278765859476,
+     "ci_low": 0.46622317156205717,
+     "ci_high": 0.5619724248768972,
+     "repeats": 10,
+     "repeat_sd": 0.004812288038994904
+    },
+    "performance": "Cross-validated log loss 0.515 (95% interval 0.467 to 0.563) by 5-fold cross-validation: the expected performance of this modeling procedure at this sample size.",
+    "nested_cv": null,
+    "adjustment_terms": null,
+    "methods": null,
+    "score_concerns": []
+   },
+   {
+    "family": "ridge",
+    "label": "Ridge",
+    "cv": {
+     "auc": {
+      "mean": 0.769761641115218,
+      "sd": 0.0663303480527812,
+      "folds": [
+       0.7740607308286156,
+       0.7535353535353536,
+       0.6989898989898989,
+       0.8777777777777778,
+       0.7444444444444445
+      ],
+      "estimate": 0.769761641115218,
+      "estimator": "fold_mean",
+      "se": 0.023274789621151124,
+      "ci_low": 0.7241438917100153,
+      "ci_high": 0.8153793905204209,
+      "repeats": 1,
+      "repeat_sd": null
+     },
+     "brier": {
+      "mean": 0.1701722567847232,
+      "sd": 0.018471501195697917,
+      "folds": [
+       0.16623528322384687,
+       0.16998599536218875,
+       0.19434434148872934,
+       0.1433552278223668,
+       0.1769404360264842
+      ],
+      "estimate": 0.1701722567847232,
+      "estimator": "fold_mean",
+      "se": 0.0092481448189575,
+      "ci_low": 0.1520462260157558,
+      "ci_high": 0.1882982875536906,
+      "repeats": 1,
+      "repeat_sd": null
+     },
+     "log_loss": {
+      "mean": 0.5141014322854184,
+      "sd": 0.04671992307297287,
+      "folds": [
+       0.5030359241901422,
+       0.5184954783701872,
+       0.574031308161657,
+       0.44516718788011816,
+       0.5297772628249872
+      ],
+      "estimate": 0.5141014322854184,
+      "estimator": "fold_mean",
+      "se": 0.02288945600138625,
+      "ci_low": 0.46923892289698715,
+      "ci_high": 0.5589639416738497,
+      "repeats": 1,
+      "repeat_sd": null
+     }
+    },
+    "holdout": null,
+    "coefficients": [
+     {
+      "feature": "(intercept)",
+      "estimate": -1.557884292618219,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "sex_1",
+      "estimate": -0.30752317720047734,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "sex_2",
+      "estimate": 0.3075231772004793,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "x1",
+      "estimate": 0.9376631424684639,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "x2",
+      "estimate": -0.6491632088062862,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "x3",
+      "estimate": 0.2368627473130494,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     },
+     {
+      "feature": "age",
+      "estimate": 0.01119804604573485,
+      "ci_low": null,
+      "ci_high": null,
+      "p": null,
+      "se": null,
+      "df": null,
+      "meaning": null,
+      "ratio": null,
+      "ratio_low": null,
+      "ratio_high": null,
+      "q": null,
+      "fmi": null,
+      "mc_se": null
+     }
+    ],
+    "fit_seconds": 319.428,
+    "concerns": [
+     "Scores are unweighted: they describe these rows, not the population the survey weights stand for."
+    ],
+    "baseline": {
+     "metric": "log_loss",
+     "value": 0.6194564199101671,
+     "label": "the class prior"
+    },
+    "versus_baseline": {
+     "verdict": "better",
+     "metric": "log_loss",
+     "gain": 0.1055680256130479,
+     "tolerance": 0.03841763865913918,
+     "tolerance_basis": "Better only when the gain's 95% interval lies above zero and the gain is at least 1% of the baseline's log loss, 0.0062 here (a McFadden R² of 0.01, a convention): a gain above 0.0384. The interval is corrected for the 50 folds sharing training rows (Nadeau & Bengio 2003).",
+     "se": 0.01911729302258937,
+     "ci_low": 0.06715038695390872,
+     "ci_high": 0.14398566427218706,
+     "df": 49,
+     "level": 0.95
+    },
+    "inference": null,
+    "coefficients_n": 480,
+    "role": null,
+    "calibration": {
+     "n": 480,
+     "observed": 0.3104166666666667,
+     "expected": 0.30931964074114277,
+     "intercept": {
+      "estimate": 0.006372978166212855,
+      "se": 0.10996454446128472,
+      "ci_low": -0.2091535685542586,
+      "ci_high": 0.2218995248866843,
+      "level": 0.95,
+      "method": "Wald"
+     },
+     "slope": {
+      "estimate": 1.0249379687832727,
+      "se": 0.11963593881361141,
+      "ci_low": 0.7904558374519568,
+      "ci_high": 1.2594201001145886,
+      "level": 0.95,
+      "method": "Wald"
+     },
+     "curve": [
+      {
+       "x": 0.01045091439393781,
+       "y": 0.03222864221496493
+      },
+      {
+       "x": 0.03655298313476247,
+       "y": 0.055239266194550427
+      },
+      {
+       "x": 0.05085944874411206,
+       "y": 0.06773090473354271
+      },
+      {
+       "x": 0.06894217496257876,
+       "y": 0.08347752406506084
+      },
+      {
+       "x": 0.08026228505505946,
+       "y": 0.09335668908520257
+      },
+      {
+       "x": 0.09526373379219108,
+       "y": 0.10652121237161391
+      },
+      {
+       "x": 0.107736859676551,
+       "y": 0.1175493963273214
+      },
+      {
+       "x": 0.11907000371465752,
+       "y": 0.12767386407427464
+      },
+      {
+       "x": 0.1297829788588025,
+       "y": 0.13733348231946046
+      },
+      {
+       "x": 0.14469171476256995,
+       "y": 0.15090225597250145
+      },
+      {
+       "x": 0.1537132618419502,
+       "y": 0.15915276349129862
+      },
+      {
+       "x": 0.16458460085951337,
+       "y": 0.16906238630038425
+      },
+      {
+       "x": 0.17422498043769616,
+       "y": 0.1776803926436565
+      },
+      {
+       "x": 0.1823676551021963,
+       "y": 0.18471069721631855
+      },
+      {
+       "x": 0.19158334557290727,
+       "y": 0.1921318518873492
+      },
+      {
+       "x": 0.19876671312083066,
+       "y": 0.1974490539526999
+      },
+      {
+       "x": 0.21506497747788342,
+       "y": 0.20865119910552785
+      },
+      {
+       "x": 0.228534294387009,
+       "y": 0.21829676023366765
+      },
+      {
+       "x": 0.24629430016330267,
+       "y": 0.23218978081160768
+      },
+      {
+       "x": 0.26339021767482285,
+       "y": 0.24688082727592342
+      },
+      {
+       "x": 0.27439101405062827,
+       "y": 0.2565323458303493
+      },
+      {
+       "x": 0.28584948595991205,
+       "y": 0.26688285058891337
+      },
+      {
+       "x": 0.3026166684808435,
+       "y": 0.2840173293296682
+      },
+      {
+       "x": 0.32051163974916863,
+       "y": 0.30473126223158536
+      },
+      {
+       "x": 0.3401602904399811,
+       "y": 0.32637542623540994
+      },
+      {
+       "x": 0.35106922519260564,
+       "y": 0.3377660685319648
+      },
+      {
+       "x": 0.37020728225727306,
+       "y": 0.3570245131301089
+      },
+      {
+       "x": 0.3877451242074595,
+       "y": 0.37434113586587003
+      },
+      {
+       "x": 0.40988920273552704,
+       "y": 0.3961773620810458
+      },
+      {
+       "x": 0.42967019180911414,
+       "y": 0.41791709878076355
+      },
+      {
+       "x": 0.461566194465557,
+       "y": 0.4551083673692654
+      },
+      {
+       "x": 0.4771710464956026,
+       "y": 0.4730606305675027
+      },
+      {
+       "x": 0.4933080451907958,
+       "y": 0.4909700577928366
+      },
+      {
+       "x": 0.5207002080624407,
+       "y": 0.5217915447542
+      },
+      {
+       "x": 0.5635214365066085,
+       "y": 0.5726489343593448
+      },
+      {
+       "x": 0.6224590618347691,
+       "y": 0.642768703379107
+      },
+      {
+       "x": 0.6541819715916486,
+       "y": 0.6803530220178976
+      },
+      {
+       "x": 0.7037844270711381,
+       "y": 0.7390275712182751
+      },
+      {
+       "x": 0.799956166295698,
+       "y": 0.8526647183831257
+      },
+      {
+       "x": 0.90379068295296,
+       "y": 0.9762123557270054
+      }
+     ],
+     "support": [
+      {
+       "lo": 0.01045091439393781,
+       "hi": 0.055117902821888914,
+       "n": 29
+      },
+      {
+       "lo": 0.055117902821888914,
+       "hi": 0.09978489124984001,
+       "n": 36
+      },
+      {
+       "lo": 0.09978489124984001,
+       "hi": 0.1444518796777911,
+       "n": 46
+      },
+      {
+       "lo": 0.1444518796777911,
+       "hi": 0.18911886810574222,
+       "n": 56
+      },
+      {
+       "lo": 0.18911886810574222,
+       "hi": 0.23378585653369333,
+       "n": 46
+      },
+      {
+       "lo": 0.23378585653369333,
+       "hi": 0.2784528449616444,
+       "n": 39
+      },
+      {
+       "lo": 0.2784528449616444,
+       "hi": 0.32311983338959555,
+       "n": 36
+      },
+      {
+       "lo": 0.32311983338959555,
+       "hi": 0.3677868218175466,
+       "n": 29
+      },
+      {
+       "lo": 0.3677868218175466,
+       "hi": 0.4124538102454977,
+       "n": 29
+      },
+      {
+       "lo": 0.4124538102454977,
+       "hi": 0.45712079867344885,
+       "n": 22
+      },
+      {
+       "lo": 0.45712079867344885,
+       "hi": 0.5017877871013999,
+       "n": 29
+      },
+      {
+       "lo": 0.5017877871013999,
+       "hi": 0.5464547755293511,
+       "n": 14
+      },
+      {
+       "lo": 0.5464547755293511,
+       "hi": 0.5911217639573022,
+       "n": 13
+      },
+      {
+       "lo": 0.5911217639573022,
+       "hi": 0.6357887523852533,
+       "n": 10
+      },
+      {
+       "lo": 0.6357887523852533,
+       "hi": 0.6804557408132044,
+       "n": 15
+      },
+      {
+       "lo": 0.6804557408132044,
+       "hi": 0.7251227292411555,
+       "n": 9
+      },
+      {
+       "lo": 0.7251227292411555,
+       "hi": 0.7697897176691066,
+       "n": 6
+      },
+      {
+       "lo": 0.7697897176691066,
+       "hi": 0.8144567060970577,
+       "n": 5
+      },
+      {
+       "lo": 0.8144567060970577,
+       "hi": 0.8591236945250088,
+       "n": 8
+      },
+      {
+       "lo": 0.8591236945250088,
+       "hi": 0.90379068295296,
+       "n": 3
+      }
+     ],
+     "eavg": 0.013500981701985642,
+     "e90": 0.021643128068509532,
+     "emax": 0.07242167277404543,
+     "smoother": "lowess, span 2/3, no robustness iterations (as rms val.prob)",
+     "flagged": false,
+     "concern": null
+    },
+    "holdout_detail": null,
+    "optimism": null,
+    "internal_external": {
+     "cluster": "site",
+     "metric": "log_loss",
+     "clusters": [
+      {
+       "cluster": "site_0",
+       "n": 125,
+       "n_events": 38,
+       "scores": {
+        "auc": 0.749546279491833,
+        "brier": 0.17883151027898547,
+        "log_loss": 0.5275675847230772
+       },
+       "primary": {
+        "estimate": 0.5275675847230772,
+        "se": 0.0452494408950389,
+        "ci_low": 0.4388803102482271,
+        "ci_high": 0.6162548591979273,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "note": null
+      },
+      {
+       "cluster": "site_1",
+       "n": 129,
+       "n_events": 33,
+       "scores": {
+        "auc": 0.8229166666666666,
+        "brier": 0.1414863533652515,
+        "log_loss": 0.4476707098080886
+       },
+       "primary": {
+        "estimate": 0.4476707098080886,
+        "se": 0.0340099393587545,
+        "ci_low": 0.3810124535485385,
+        "ci_high": 0.5143289660676387,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "note": null
+      },
+      {
+       "cluster": "site_2",
+       "n": 112,
+       "n_events": 40,
+       "scores": {
+        "auc": 0.7680555555555555,
+        "brier": 0.18435551961396165,
+        "log_loss": 0.55073963267343
+       },
+       "primary": {
+        "estimate": 0.55073963267343,
+        "se": 0.05302766291969433,
+        "ci_low": 0.446807323166499,
+        "ci_high": 0.6546719421803608,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "note": null
+      },
+      {
+       "cluster": "site_3",
+       "n": 114,
+       "n_events": 38,
+       "scores": {
+        "auc": 0.7371883656509695,
+        "brier": 0.18751916995019696,
+        "log_loss": 0.5570210111910976
+       },
+       "primary": {
+        "estimate": 0.5570210111910976,
+        "se": 0.05353432172708082,
+        "ci_low": 0.4520956686692391,
+        "ci_high": 0.6619463537129561,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "note": null
+      }
+     ],
+     "pooled": {
+      "metric": "log_loss",
+      "scale": "identity",
+      "k": 4,
+      "estimate": 0.5106061642246024,
+      "ci_low": 0.45453277708534073,
+      "ci_high": 0.566679551363864,
+      "tau": 0.034848642140029945,
+      "i2": 0.37109654759604427,
+      "pi_low": 0.3166082679651289,
+      "pi_high": 0.7046040604840758
+     },
+     "spread": "Across 4 levels of site, log loss ranged from 0.448 to 0.557; the random−effects summary is 0.511 (95% CI 0.455 to 0.567), and a new site would score between 0.317 and 0.705 (95% prediction interval)."
+    },
+    "exposure_tests": [],
+    "calibration_levels": null,
+    "calibration_horizon": null,
+    "calibration_note": null,
+    "compared_on": {
+     "mean": 0.5138883942971191,
+     "sd": 0.03752461026074685,
+     "folds": [
+      0.5030359241901422,
+      0.5184954783701872,
+      0.574031308161657,
+      0.44516718788011816,
+      0.5297772628249872,
+      0.5029289778518725,
+      0.502369793404734,
+      0.5658734927272864,
+      0.47834093194356225,
+      0.5150905512601999,
+      0.4254599366171638,
+      0.578639581084853,
+      0.48396463239054405,
+      0.578678134101227,
+      0.5445443622496503,
+      0.49577092891633373,
+      0.5155390790519672,
+      0.5172169635910451,
+      0.4730449729454176,
+      0.5357180589834897,
+      0.53287683764052,
+      0.5238328366426743,
+      0.49130700915245495,
+      0.5473920422841457,
+      0.4757687453278208,
+      0.47724774046898705,
+      0.5400008138089422,
+      0.545574060884593,
+      0.4985163496843885,
+      0.5177298022372195,
+      0.534471982232795,
+      0.5303529956863354,
+      0.4943216700912128,
+      0.45687799713829075,
+      0.5253989730885645,
+      0.4783191667093893,
+      0.559772716401673,
+      0.472514537025776,
+      0.572285778872301,
+      0.5124741165426874,
+      0.4896256635827907,
+      0.4932177781394523,
+      0.4840203627387773,
+      0.5864896379483584,
+      0.5254409403200682,
+      0.5039667276280101,
+      0.47368533875102603,
+      0.4886921219427072,
+      0.5881791690304848,
+      0.49037824430707205
+     ],
+     "estimate": 0.5138883942971191,
+     "estimator": "fold_mean",
+     "se": 0.02287544363097189,
+     "ci_low": 0.469053348650038,
+     "ci_high": 0.5587234399442002,
+     "repeats": 10,
+     "repeat_sd": 0.004738379069271965
+    },
+    "performance": "Cross-validated log loss 0.514 (95% interval 0.469 to 0.559) by 5-fold cross-validation: the expected performance of this modeling procedure at this sample size.",
+    "nested_cv": null,
+    "adjustment_terms": null,
+    "methods": null,
+    "score_concerns": []
+   }
+  ],
+  "holdout_sealed": true,
+  "changed_after_seal": false,
+  "post_seal_decisions": [],
+  "fold_scheme": "random",
+  "cv_definition": "Cross-validated scores are the mean over folds; the fold values show the spread.",
+  "selection": {
+   "metric": "log_loss",
+   "families": [
+    "linear",
+    "ridge"
+   ],
+   "best": "ridge",
+   "cv": 0.5138883942971191,
+   "optimism": 0.00028471900477400336,
+   "corrected": 0.5141731133018931,
+   "corrected_low": 0.45195421143460235,
+   "corrected_high": 0.5804122420983729,
+   "replicates": 1000,
+   "wins": {
+    "linear": 324,
+    "ridge": 676
+   },
+   "method": "bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018)",
+   "text": "Choosing the best of 2 families by cross-validated log loss flatters the winner: Ridge's CV log loss of 0.514 is low by about 0.000285; corrected for the choice, 0.514 (95% interval 0.452 to 0.58) is the expected performance of this modeling procedure at this sample size (bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), 1,000 resamples of the out-of-fold predictions). The held-out score of a family declared before the seal is opened carries no such optimism.",
+   "by_unit": false,
+   "extras": {
+    "auc": {
+     "corrected": 0.7665796936695433,
+     "corrected_low": 0.7043834705599411,
+     "corrected_high": 0.8288840899284775
+    }
+   }
+  },
+  "final_model": null,
+  "final_note": null,
+  "at_opening": null,
+  "validation": "kfold",
+  "repeats": 1,
+  "ranking": "lowest log loss",
+  "se_definition": "Each standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.",
+  "comparisons": [
+   {
+    "a": "linear",
+    "b": "ridge",
+    "metric": "log_loss",
+    "difference": -0.00020940392235810012,
+    "ci_low": -0.006010281816536208,
+    "ci_high": 0.005591473971820008,
+    "df": 49,
+    "sentence": "Linear model against Ridge: log loss differs by 0.000 (95% interval of the difference −0.006 to 0.006; corrected repeated k-fold t −0.07 on 49 df, 10 × 5 folds): not distinguishable on these rows.",
+    "t": -0.07254297446097069,
+    "p": 0.9424651145690016,
+    "se": 0.0028866189167741237,
+    "folds": 50,
+    "repeats": 10
+   }
+  ],
+  "precision": "On these 480 training rows the cross-validated log loss has a standard error of 0.025 for Linear model and 0.023 for Ridge; whether two families differ is read from their paired interval, not from either one alone.",
+  "imbalance": "The event, `yes`, is 31% of the training rows. No resampling (SMOTE, over- or undersampling) or class weighting was applied: customary in machine-learning papers, resampling overestimates the rarer class's probability without raising the AUC (van den Goorbergh et al. 2022); a decision moves the threshold instead.",
+  "levels": null,
+  "batch_figure": null,
+  "withheld": null,
+  "withheld_for": null,
+  "estimand": null,
+  "headline_metric": "auc",
+  "headline_label": "customary headline",
+  "tension": "AUC is the customary headline: it ranks risks without asking whether they are right (semi-proper), so the models were compared, chosen and declared on log loss, a strictly proper score (Van Calster et al., STRATOS TG6).",
+  "comparison": {
+   "folds": 5,
+   "repeats": 10,
+   "shared": 1,
+   "method": "the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004)",
+   "note": null
+  },
+  "comparisons_note": "Each pairwise interval is descriptive: none is corrected for how many pairs there are, and the choice among the families is corrected by bootstrap bias-corrected cross-validation instead.",
+  "result": {
+   "basis": "holdout",
+   "family": null,
+   "metric": "log_loss",
+   "estimate": null,
+   "ci_low": null,
+   "ci_high": null,
+   "how": null,
+   "narrow": null,
+   "sentence": "The held-out rows score the final model, declared on cross-validation before they are opened; its held-out log loss will be the result.",
+   "name": null,
+   "said": null,
+   "vouched": null,
+   "exit": null
+  },
+  "horizon": null,
+  "horizon_note": null,
+  "wide": null,
+  "nested_offer": null,
+  "chain": [
+   {
+    "relation": "proper_score_primary",
+    "because": "the outcome is a binary outcome",
+    "then": "the models were compared, chosen and declared on log loss, and AUC is reported as the customary headline"
+   },
+   {
+    "relation": "families_compared_on_substrate",
+    "because": "the purpose is prediction",
+    "then": "every family and the no-predictor baseline were compared on 5-fold cross-validation repeated 10 times (50 paired folds, 49 degrees of freedom)"
+   },
+   {
+    "relation": "clusters_site_heterogeneity",
+    "because": "the grouping question named `site`, with 4 levels",
+    "then": "every family was also validated internal–externally by it: each level scored by models fit on the others, with the random-effects summary and the spread"
+   },
+   {
+    "relation": "choice_among_families_bbc",
+    "because": "2 families were compared",
+    "then": "the best family's score is corrected for the choice by BBC-CV"
+   }
+  ]
+ },
+ "evaluation": {
+  "purpose": "prediction",
+  "task": "binary",
+  "scores_shown": true,
+  "note": null,
+  "metric": "log_loss",
+  "reported_family": "ridge",
+  "benchmark": {
+   "key": "spline_benchmark",
+   "label": "Regression with splines (benchmark)",
+   "metric": "log_loss",
+   "estimate": 0.5276430654590338,
+   "ci_low": 0.47438979226807865,
+   "ci_high": 0.580896338649989,
+   "versus_baseline": {
+    "verdict": "better",
+    "metric": "log_loss",
+    "gain": 0.09181335445113334,
+    "tolerance": 0.05742655044958722,
+    "tolerance_basis": "Better only when the gain's 95% interval lies above zero and the gain is at least 1% of the baseline's log loss, 0.0062 here (a McFadden R² of 0.01, a convention): a gain above 0.0574. The interval is corrected for the 50 folds sharing training rows (Nadeau & Bengio 2003).",
+    "se": 0.028576462024693043,
+    "ci_low": 0.03438680400154612,
+    "ci_high": 0.14923990490072056,
+    "df": 49,
+    "level": 0.95
+   },
+   "differences": [
+    {
+     "a": "spline_benchmark",
+     "b": "linear",
+     "metric": "log_loss",
+     "difference": -0.013545267239556536,
+     "ci_low": -0.04007331576071383,
+     "ci_high": 0.012982781281600757,
+     "df": 49,
+     "sentence": "Regression with splines (benchmark) against Linear model: log loss differs by 0.014 (95% interval of the difference −0.040 to 0.013; corrected repeated k-fold t −1.03 on 49 df, 10 × 5 folds): not distinguishable on these rows.",
+     "t": -1.0260925753057712,
+     "p": 0.3098868852049526,
+     "se": 0.013200823751716656,
+     "folds": 50,
+     "repeats": 10
+    },
+    {
+     "a": "spline_benchmark",
+     "b": "ridge",
+     "metric": "log_loss",
+     "difference": -0.013754671161914636,
+     "ci_low": -0.04204082602651052,
+     "ci_high": 0.014531483702681246,
+     "df": 49,
+     "sentence": "Regression with splines (benchmark) against Ridge: log loss differs by 0.014 (95% interval of the difference −0.042 to 0.015; corrected repeated k-fold t −0.98 on 49 df, 10 × 5 folds): not distinguishable on these rows.",
+     "t": -0.9771934960462225,
+     "p": 0.3332733593026021,
+     "se": 0.014075688405179502,
+     "folds": 50,
+     "repeats": 10
+    }
+   ],
+   "sentence": "The regression-with-splines benchmark (every continuous predictor a restricted cubic spline, knots by Harrell's rule, on the same in-fold preprocessing) scored cross-validated log loss 0.528 on the families' 50 paired folds, better than the no-predictor baseline."
+  },
+  "interpretable": {
+   "text": "No flexible family was fitted, so there is nothing for the interpretable model to cost or gain against."
+  },
+  "decision_curve": {
+   "family": "ridge",
+   "low": 0.05,
+   "high": 0.5,
+   "rows": [
+    {
+     "threshold": 0.05,
+     "treat_all": 0.2741228070175439,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.2768640350877193,
+      "spline_benchmark": 0.2728070175438596
+     }
+    },
+    {
+     "threshold": 0.06,
+     "treat_all": 0.26640070921985815,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.268572695035461,
+      "spline_benchmark": 0.26471631205673757
+     }
+    },
+    {
+     "threshold": 0.07,
+     "treat_all": 0.2585125448028674,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.2599910394265233,
+      "spline_benchmark": 0.25797491039426523
+     }
+    },
+    {
+     "threshold": 0.08,
+     "treat_all": 0.25045289855072467,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.25253623188405794,
+      "spline_benchmark": 0.2530797101449275
+     }
+    },
+    {
+     "threshold": 0.09,
+     "treat_all": 0.24221611721611724,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.2443910256410256,
+      "spline_benchmark": 0.24473443223443223
+     }
+    },
+    {
+     "threshold": 0.1,
+     "treat_all": 0.23379629629629628,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.2398148148148148,
+      "spline_benchmark": 0.2365740740740741
+     }
+    },
+    {
+     "threshold": 0.11,
+     "treat_all": 0.22518726591760302,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.23122659176029964,
+      "spline_benchmark": 0.23113295880149815
+     }
+    },
+    {
+     "threshold": 0.12,
+     "treat_all": 0.21638257575757577,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.22272727272727272,
+      "spline_benchmark": 0.22443181818181818
+     }
+    },
+    {
+     "threshold": 0.13,
+     "treat_all": 0.20737547892720307,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.21424808429118775,
+      "spline_benchmark": 0.2197318007662835
+     }
+    },
+    {
+     "threshold": 0.14,
+     "treat_all": 0.1981589147286822,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.2078003875968992,
+      "spline_benchmark": 0.2130813953488372
+     }
+    },
+    {
+     "threshold": 0.15,
+     "treat_all": 0.18872549019607843,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.20024509803921567,
+      "spline_benchmark": 0.2071078431372549
+     }
+    },
+    {
+     "threshold": 0.16,
+     "treat_all": 0.17906746031746032,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.1879960317460317,
+      "spline_benchmark": 0.20248015873015873
+     }
+    },
+    {
+     "threshold": 0.17,
+     "treat_all": 0.16917670682730923,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.18544176706827306,
+      "spline_benchmark": 0.19402610441767065
+     }
+    },
+    {
+     "threshold": 0.18,
+     "treat_all": 0.1590447154471545,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.18003048780487804,
+      "spline_benchmark": 0.18546747967479676
+     }
+    },
+    {
+     "threshold": 0.19,
+     "treat_all": 0.14866255144032925,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.17883230452674898,
+      "spline_benchmark": 0.17721193415637865
+     }
+    },
+    {
+     "threshold": 0.2,
+     "treat_all": 0.13802083333333334,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.17760416666666667,
+      "spline_benchmark": 0.17083333333333334
+     }
+    },
+    {
+     "threshold": 0.21,
+     "treat_all": 0.12710970464135024,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.17333860759493674,
+      "spline_benchmark": 0.16832805907172993
+     }
+    },
+    {
+     "threshold": 0.22,
+     "treat_all": 0.11591880341880342,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.1630876068376068,
+      "spline_benchmark": 0.16185897435897437
+     }
+    },
+    {
+     "threshold": 0.23,
+     "treat_all": 0.10443722943722947,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.15998376623376623,
+      "spline_benchmark": 0.15476190476190477
+     }
+    },
+    {
+     "threshold": 0.24,
+     "treat_all": 0.09265350877192985,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.1518640350877193,
+      "spline_benchmark": 0.14868421052631578
+     }
+    },
+    {
+     "threshold": 0.25,
+     "treat_all": 0.08055555555555557,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.14513888888888887,
+      "spline_benchmark": 0.14305555555555557
+     }
+    },
+    {
+     "threshold": 0.26,
+     "treat_all": 0.06813063063063063,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.14076576576576577,
+      "spline_benchmark": 0.1358108108108108
+     }
+    },
+    {
+     "threshold": 0.27,
+     "treat_all": 0.05536529680365293,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.1432648401826484,
+      "spline_benchmark": 0.14123858447488585
+     }
+    },
+    {
+     "threshold": 0.28,
+     "treat_all": 0.04224537037037035,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.13518518518518516,
+      "spline_benchmark": 0.1386574074074074
+     }
+    },
+    {
+     "threshold": 0.29,
+     "treat_all": 0.028755868544600938,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.1272300469483568,
+      "spline_benchmark": 0.13157276995305164
+     }
+    },
+    {
+     "threshold": 0.3,
+     "treat_all": 0.014880952380952384,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.11607142857142856,
+      "spline_benchmark": 0.13095238095238093
+     }
+    },
+    {
+     "threshold": 0.31,
+     "treat_all": 0.0006038647342994641,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.11400966183574879,
+      "spline_benchmark": 0.12575483091787437
+     }
+    },
+    {
+     "threshold": 0.32,
+     "treat_all": -0.014093137254901966,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.11531862745098038,
+      "spline_benchmark": 0.11360294117647057
+     }
+    },
+    {
+     "threshold": 0.33,
+     "treat_all": -0.02922885572139311,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.11492537313432832,
+      "spline_benchmark": 0.10649875621890548
+     }
+    },
+    {
+     "threshold": 0.34,
+     "treat_all": -0.044823232323232376,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.10972222222222221,
+      "spline_benchmark": 0.09949494949494947
+     }
+    },
+    {
+     "threshold": 0.35,
+     "treat_all": -0.06089743589743585,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.11025641025641028,
+      "spline_benchmark": 0.09679487179487181
+     }
+    },
+    {
+     "threshold": 0.36,
+     "treat_all": -0.07747395833333331,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.10729166666666669,
+      "spline_benchmark": 0.09309895833333331
+     }
+    },
+    {
+     "threshold": 0.37,
+     "treat_all": -0.09457671957671959,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.10062830687830687,
+      "spline_benchmark": 0.08617724867724869
+     }
+    },
+    {
+     "threshold": 0.38,
+     "treat_all": -0.11223118279569894,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.09489247311827956,
+      "spline_benchmark": 0.08306451612903225
+     }
+    },
+    {
+     "threshold": 0.39,
+     "treat_all": -0.13046448087431695,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.09241803278688522,
+      "spline_benchmark": 0.08500683060109288
+     }
+    },
+    {
+     "threshold": 0.4,
+     "treat_all": -0.14930555555555558,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.09027777777777778,
+      "spline_benchmark": 0.08194444444444444
+     }
+    },
+    {
+     "threshold": 0.41,
+     "treat_all": -0.16878531073446312,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.08704096045197741,
+      "spline_benchmark": 0.0754590395480226
+     }
+    },
+    {
+     "threshold": 0.42,
+     "treat_all": -0.1889367816091953,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.08556034482758623,
+      "spline_benchmark": 0.06896551724137932
+     }
+    },
+    {
+     "threshold": 0.43,
+     "treat_all": -0.20979532163742687,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.08446637426900586,
+      "spline_benchmark": 0.06772660818713452
+     }
+    },
+    {
+     "threshold": 0.44,
+     "treat_all": -0.23139880952380953,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.08258928571428571,
+      "spline_benchmark": 0.06488095238095237
+     }
+    },
+    {
+     "threshold": 0.45,
+     "treat_all": -0.2537878787878788,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.08087121212121214,
+      "spline_benchmark": 0.06268939393939395
+     }
+    },
+    {
+     "threshold": 0.46,
+     "treat_all": -0.2770061728395061,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.07901234567901234,
+      "spline_benchmark": 0.05470679012345679
+     }
+    },
+    {
+     "threshold": 0.47,
+     "treat_all": -0.30110062893081757,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.06497641509433963,
+      "spline_benchmark": 0.054599056603773594
+     }
+    },
+    {
+     "threshold": 0.48,
+     "treat_all": -0.3261217948717948,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.05176282051282051,
+      "spline_benchmark": 0.0546474358974359
+     }
+    },
+    {
+     "threshold": 0.49,
+     "treat_all": -0.3521241830065359,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.0607843137254902,
+      "spline_benchmark": 0.049101307189542504
+     }
+    },
+    {
+     "threshold": 0.5,
+     "treat_all": -0.37916666666666665,
+     "treat_none": 0.0,
+     "models": {
+      "ridge": 0.06458333333333333,
+      "spline_benchmark": 0.04791666666666666
+     }
+    }
+   ],
+   "useful": [
+    0.05,
+    0.5
+   ],
+   "in_fold": {
+    "folds": [
+     {
+      "threshold": 0.31,
+      "n": 96,
+      "sensitivity": 0.7586206896551724,
+      "specificity": 0.6119402985074627,
+      "net_benefit": 0.107487922705314,
+      "treat_all": -0.011473429951690928
+     },
+     {
+      "threshold": 0.38,
+      "n": 96,
+      "sensitivity": 0.43333333333333335,
+      "specificity": 0.9090909090909091,
+      "net_benefit": 0.09711021505376344,
+      "treat_all": -0.1088709677419355
+     },
+     {
+      "threshold": 0.31,
+      "n": 96,
+      "sensitivity": 0.6,
+      "specificity": 0.6212121212121212,
+      "net_benefit": 0.07050120772946858,
+      "treat_all": 0.003623188405797062
+     },
+     {
+      "threshold": 0.4,
+      "n": 96,
+      "sensitivity": 0.7666666666666667,
+      "specificity": 0.8333333333333334,
+      "net_benefit": 0.16319444444444445,
+      "treat_all": -0.14583333333333337
+     },
+     {
+      "threshold": 0.37,
+      "n": 96,
+      "sensitivity": 0.5666666666666667,
+      "specificity": 0.803030303030303,
+      "net_benefit": 0.09755291005291006,
+      "treat_all": -0.09126984126984128
+     }
+    ],
+    "declared": false,
+    "thresholds": [
+     0.31,
+     0.38,
+     0.31,
+     0.4,
+     0.37
+    ],
+    "median_threshold": 0.37,
+    "net_benefit": 0.1071693399971801,
+    "sensitivity": 0.6250574712643678,
+    "specificity": 0.7557213930348259
+   },
+   "sentence": "Decision curve analysis of Ridge's out-of-fold risks over thresholds from 0.05 to 0.5: it beats treating everyone and no one from 0.05 to 0.5 (Vickers & Elkin 2006); at the threshold Youden's J chose in each training fold (median 0.370), the held-out sensitivity was 0.625, the specificity 0.756 and the net benefit 0.107 per row."
+  },
+  "subgroups": [
+   {
+    "column": "sex",
+    "grouped_by": "levels",
+    "groups": [
+     {
+      "group": "1",
+      "n": 232,
+      "scores": {
+       "log_loss": {
+        "estimate": 0.5040131412733518,
+        "se": 0.03724819741197339,
+        "ci_low": 0.43100801585684595,
+        "ci_high": 0.5770182666898577,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "auc": {
+        "estimate": 0.6934862012987013,
+        "se": 0.0402973822893414,
+        "ci_low": 0.61450478334035,
+        "ci_high": 0.7724676192570527,
+        "level": 0.95,
+        "method": "DeLong"
+       }
+      },
+      "note": null,
+      "events": 56
+     },
+     {
+      "group": "2",
+      "n": 248,
+      "scores": {
+       "log_loss": {
+        "estimate": 0.5235388658128353,
+        "se": 0.02737146724980306,
+        "ci_low": 0.46989177579920366,
+        "ci_high": 0.5771859558264668,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "auc": {
+        "estimate": 0.7984738120013876,
+        "se": 0.02866214546720482,
+        "ci_low": 0.7422970391660182,
+        "ci_high": 0.8546505848367569,
+        "level": 0.95,
+        "method": "DeLong"
+       }
+      },
+      "note": null,
+      "events": 93
+     }
+    ]
+   },
+   {
+    "column": "age",
+    "grouped_by": "thirds",
+    "groups": [
+     {
+      "group": "39.37–57.79",
+      "n": 160,
+      "scores": {
+       "log_loss": {
+        "estimate": 0.5370435838648737,
+        "se": 0.042147678484322444,
+        "ci_low": 0.454435652003628,
+        "ci_high": 0.6196515157261194,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "auc": {
+        "estimate": 0.7503085875506965,
+        "se": 0.043845676600107734,
+        "ci_low": 0.6643726405366948,
+        "ci_high": 0.8362445345646983,
+        "level": 0.95,
+        "method": "DeLong"
+       }
+      },
+      "note": null,
+      "events": 53
+     },
+     {
+      "group": "> 57.79",
+      "n": 160,
+      "scores": {
+       "log_loss": {
+        "estimate": 0.5312220179386491,
+        "se": 0.03600877930347313,
+        "ci_low": 0.4606461073765905,
+        "ci_high": 0.6017979285007077,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "auc": {
+        "estimate": 0.7614678899082569,
+        "se": 0.03969395890399781,
+        "ci_low": 0.6836691600526081,
+        "ci_high": 0.8392666197639056,
+        "level": 0.95,
+        "method": "DeLong"
+       }
+      },
+      "note": null,
+      "events": 51
+     },
+     {
+      "group": "≤ 39.37",
+      "n": 160,
+      "scores": {
+       "log_loss": {
+        "estimate": 0.4740386950527323,
+        "se": 0.04049955341003281,
+        "ci_low": 0.39466102897911165,
+        "ci_high": 0.5534163611263528,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "auc": {
+        "estimate": 0.7909178743961353,
+        "se": 0.03946230326549677,
+        "ci_low": 0.7135731812487642,
+        "ci_high": 0.8682625675435063,
+        "level": 0.95,
+        "method": "DeLong"
+       }
+      },
+      "note": null,
+      "events": 45
+     }
+    ]
+   },
+   {
+    "column": "smoker",
+    "grouped_by": "levels",
+    "groups": [
+     {
+      "group": "no",
+      "n": 321,
+      "scores": {
+       "log_loss": {
+        "estimate": 0.5330205564233415,
+        "se": 0.02830900661997826,
+        "ci_low": 0.47753592301007813,
+        "ci_high": 0.5885051898366048,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "auc": {
+        "estimate": 0.7506043513295728,
+        "se": 0.02922143743265081,
+        "ci_low": 0.6933313863850866,
+        "ci_high": 0.807877316274059,
+        "level": 0.95,
+        "method": "DeLong"
+       }
+      },
+      "note": null,
+      "events": 102
+     },
+     {
+      "group": "unknown",
+      "n": 7,
+      "scores": {},
+      "note": "Too few rows of one class to score this group (fewer than 5).",
+      "events": 1
+     },
+     {
+      "group": "yes",
+      "n": 152,
+      "scores": {
+       "log_loss": {
+        "estimate": 0.4858253646135311,
+        "se": 0.04009531931334814,
+        "ci_low": 0.4072399828107355,
+        "ci_high": 0.5644107464163267,
+        "level": 0.95,
+        "method": "influence function"
+       },
+       "auc": {
+        "estimate": 0.7834290401968825,
+        "se": 0.042401678023328934,
+        "ci_low": 0.7003232783870943,
+        "ci_high": 0.8665348020066708,
+        "level": 0.95,
+        "method": "DeLong"
+       }
+      },
+      "note": null,
+      "events": 46
+     }
+    ]
+   },
+   {
+    "column": "visits",
+    "grouped_by": null,
+    "groups": [],
+    "note": "Whether `visits`'s numbers are codes or amounts is not settled, so its groups wait on that answer: its levels as codes, its thirds as an amount.",
+    "ask": [
+     {
+      "label": "`visits` is a count or an amount (a slope; a unit's rows averaged)",
+      "decision": {
+       "kind": "confirm_reading",
+       "reading": "code_or_count",
+       "column": "visits",
+       "value": "amount"
+      }
+     },
+     {
+      "label": "`visits` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+      "decision": {
+       "kind": "confirm_reading",
+       "reading": "code_or_count",
+       "column": "visits",
+       "value": "code"
+      }
+     }
+    ]
+   }
+  ],
+  "shrinkage": {
+   "factor": 0.9088221184231278,
+   "how": "the out-of-fold calibration slope (cross-validation)",
+   "decision": {
+    "kind": "set_updating",
+    "method": "shrinkage"
+   },
+   "label": "Shrink the regression's coefficients by 0.909 (model updating)",
+   "intercept": -1.8198472824991099,
+   "coefficients": [
+    {
+     "feature": "sex_2",
+     "estimate": 0.6349787872712052,
+     "shrunk": 0.5770827666015653
+    },
+    {
+     "feature": "x1",
+     "estimate": 1.0029674744900756,
+     "shrunk": 0.9115190248755649
+    },
+    {
+     "feature": "x2",
+     "estimate": -0.6913422954676138,
+     "shrunk": -0.6283071695223847
+    },
+    {
+     "feature": "x3",
+     "estimate": 0.2556220781341121,
+     "shrunk": 0.23231499856556603
+    },
+    {
+     "feature": "age",
+     "estimate": 0.0119791253627671,
+     "shrunk": 0.010886894089046214
+    }
+   ],
+   "sentence": "As model updating, the regression's coefficients were multiplied by 0.909, the out-of-fold calibration slope (cross-validation), and its intercept re-estimated with the shrunk linear predictor as an offset (−1.820)."
+  },
+  "internal_external": [
+   {
+    "family": "ridge",
+    "label": "Ridge",
+    "cluster": "site",
+    "metric": "log_loss",
+    "clusters": [
+     {
+      "cluster": "site_0",
+      "n": 125,
+      "n_events": 38,
+      "scores": {
+       "auc": 0.749546279491833,
+       "brier": 0.17883151027898547,
+       "log_loss": 0.5275675847230772
+      },
+      "primary": {
+       "estimate": 0.5275675847230772,
+       "se": 0.0452494408950389,
+       "ci_low": 0.4388803102482271,
+       "ci_high": 0.6162548591979273,
+       "level": 0.95,
+       "method": "influence function"
+      },
+      "note": null
+     },
+     {
+      "cluster": "site_1",
+      "n": 129,
+      "n_events": 33,
+      "scores": {
+       "auc": 0.8229166666666666,
+       "brier": 0.1414863533652515,
+       "log_loss": 0.4476707098080886
+      },
+      "primary": {
+       "estimate": 0.4476707098080886,
+       "se": 0.0340099393587545,
+       "ci_low": 0.3810124535485385,
+       "ci_high": 0.5143289660676387,
+       "level": 0.95,
+       "method": "influence function"
+      },
+      "note": null
+     },
+     {
+      "cluster": "site_2",
+      "n": 112,
+      "n_events": 40,
+      "scores": {
+       "auc": 0.7680555555555555,
+       "brier": 0.18435551961396165,
+       "log_loss": 0.55073963267343
+      },
+      "primary": {
+       "estimate": 0.55073963267343,
+       "se": 0.05302766291969433,
+       "ci_low": 0.446807323166499,
+       "ci_high": 0.6546719421803608,
+       "level": 0.95,
+       "method": "influence function"
+      },
+      "note": null
+     },
+     {
+      "cluster": "site_3",
+      "n": 114,
+      "n_events": 38,
+      "scores": {
+       "auc": 0.7371883656509695,
+       "brier": 0.18751916995019696,
+       "log_loss": 0.5570210111910976
+      },
+      "primary": {
+       "estimate": 0.5570210111910976,
+       "se": 0.05353432172708082,
+       "ci_low": 0.4520956686692391,
+       "ci_high": 0.6619463537129561,
+       "level": 0.95,
+       "method": "influence function"
+      },
+      "note": null
+     }
+    ],
+    "pooled": {
+     "metric": "log_loss",
+     "scale": "identity",
+     "k": 4,
+     "estimate": 0.5106061642246024,
+     "ci_low": 0.45453277708534073,
+     "ci_high": 0.566679551363864,
+     "tau": 0.034848642140029945,
+     "i2": 0.37109654759604427,
+     "pi_low": 0.3166082679651289,
+     "pi_high": 0.7046040604840758
+    },
+    "spread": "Across 4 levels of site, log loss ranged from 0.448 to 0.557; the random−effects summary is 0.511 (95% CI 0.455 to 0.567), and a new site would score between 0.317 and 0.705 (95% prediction interval)."
+   },
+   {
+    "family": "spline_benchmark",
+    "label": "Regression with splines (benchmark)",
+    "cluster": "site",
+    "metric": "log_loss",
+    "clusters": [
+     {
+      "cluster": "site_0",
+      "n": 125,
+      "n_events": 38,
+      "scores": {
+       "auc": 0.7643678160919541,
+       "brier": 0.17559114904078935,
+       "log_loss": 0.5294913538478838
+      },
+      "primary": {
+       "estimate": 0.5294913538478838,
+       "se": 0.054202410787333045,
+       "ci_low": 0.42325658082946577,
+       "ci_high": 0.6357261268663019,
+       "level": 0.95,
+       "method": "influence function"
+      },
+      "note": null
+     },
+     {
+      "cluster": "site_1",
+      "n": 129,
+      "n_events": 33,
+      "scores": {
+       "auc": 0.8257575757575758,
+       "brier": 0.1414067813167925,
+       "log_loss": 0.43727694023801505
+      },
+      "primary": {
+       "estimate": 0.43727694023801505,
+       "se": 0.038139667413280294,
+       "ci_low": 0.3625245657256498,
+       "ci_high": 0.5120293147503803,
+       "level": 0.95,
+       "method": "influence function"
+      },
+      "note": null
+     },
+     {
+      "cluster": "site_2",
+      "n": 112,
+      "n_events": 40,
+      "scores": {
+       "auc": 0.7413194444444445,
+       "brier": 0.1931078360555915,
+       "log_loss": 0.5730308958867377
+      },
+      "primary": {
+       "estimate": 0.5730308958867377,
+       "se": 0.0605376356743275,
+       "ci_low": 0.4543793102558487,
+       "ci_high": 0.6916824815176268,
+       "level": 0.95,
+       "method": "influence function"
+      },
+      "note": null
+     },
+     {
+      "cluster": "site_3",
+      "n": 114,
+      "n_events": 38,
+      "scores": {
+       "auc": 0.7268005540166205,
+       "brier": 0.19995167211295212,
+       "log_loss": 0.6018946036049281
+      },
+      "primary": {
+       "estimate": 0.6018946036049281,
+       "se": 0.06916895700905765,
+       "ci_low": 0.4663259390189758,
+       "ci_high": 0.7374632681908804,
+       "level": 0.95,
+       "method": "influence function"
+      },
+      "note": null
+     }
+    ],
+    "pooled": {
+     "metric": "log_loss",
+     "scale": "identity",
+     "k": 4,
+     "estimate": 0.5232200769381766,
+     "ci_low": 0.44473099376836267,
+     "ci_high": 0.6017091601079906,
+     "tau": 0.05864117675827281,
+     "i2": 0.5442204418798975,
+     "pi_low": 0.21768675065277704,
+     "pi_high": 0.8287534032235762
+    },
+    "spread": "Across 4 levels of site, log loss ranged from 0.437 to 0.602; the random−effects summary is 0.523 (95% CI 0.445 to 0.602), and a new site would score between 0.218 and 0.829 (95% prediction interval)."
+   }
+  ],
+  "inclusion": null,
+  "design_based": null,
+  "hand_levers": [],
+  "estimates": null,
+  "sentences": [
+   "The regression-with-splines benchmark (every continuous predictor a restricted cubic spline, knots by Harrell's rule, on the same in-fold preprocessing) scored cross-validated log loss 0.528 on the families' 50 paired folds, better than the no-predictor baseline.",
+   "Decision curve analysis of Ridge's out-of-fold risks over thresholds from 0.05 to 0.5: it beats treating everyone and no one from 0.05 to 0.5 (Vickers & Elkin 2006); at the threshold Youden's J chose in each training fold (median 0.370), the held-out sensitivity was 0.625, the specificity 0.756 and the net benefit 0.107 per row.",
+   "As model updating, the regression's coefficients were multiplied by 0.909, the out-of-fold calibration slope (cross-validation), and its intercept re-estimated with the shrunk linear predictor as an offset (−1.820)."
+  ]
+ }
+}

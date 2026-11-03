@@ -1,12 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { substitutionChoice, substitutionCompare, substitutionSealed } from "./lab/curves.fixtures";
-import { calibrationFromEngine, curveFromExplain, curveFromSubstitution, pastPalette } from "./curveAdapters";
+import { calibrationFromEngine, curveFromExplain, curveFromSubstitution, decisionFromEngine, pastPalette, servedDecisionCurve, type EngineDecisionCurve } from "./curveAdapters";
 import { CalibrationView } from "./CalibrationView";
 import { CurveView } from "./CurveView";
 import type { CurveLine } from "./curve";
 import prediction from "../../mocks/fixtures/m3-nhanes-prediction.json";
-import type { InputCurves, ModelCalibration, SubstitutionArtifact } from "../../api/m3-types";
+import binary from "../../quest/results/fixtures/evaluation-binary.json";
+import type { EvaluationArtifact, InputCurves, ModelCalibration, SubstitutionArtifact } from "../../api/m3-types";
 
 describe("the substitution artifact as a curve (captured NHANES Predict)", () => {
   it("draws each k's own rows in gray and the same rows at every k in indigo, with the stop said", () => {
@@ -193,5 +194,55 @@ describe("a served calibration through the adapter, to the drawn strip", () => {
     expect(data.support ?? null).toBeNull();
     const { container } = render(<CalibrationView data={data} />);
     expect(container.querySelector("[data-mark=\"support\"]")).toBeNull();
+  });
+});
+
+describe("the evaluation's decision curve, as the real stage graph serves it", () => {
+  // quest/results/fixtures/evaluation-binary.json (fixtures/capture_evaluation.py): a yes/no
+  // outcome under decision support; nothing in it by hand.
+  const capture = binary as unknown as { fit: { models: { family: string; label: string }[] }; evaluation: EvaluationArtifact };
+  const art = capture.evaluation;
+  const served = art.decision_curve as unknown as EngineDecisionCurve & { sentence: string };
+
+  it("is read off the artifact's untyped field as served, and refused where the field is not a curve", () => {
+    const dc = servedDecisionCurve(art.decision_curve)!;
+    expect(dc).toBe(art.decision_curve);
+    expect(dc.sentence).toBe(served.sentence);
+    expect(servedDecisionCurve(null)).toBeNull();
+    expect(servedDecisionCurve({})).toBeNull();
+    expect(servedDecisionCurve({ ...served, rows: [] })).toBeNull();
+    expect(servedDecisionCurve({ ...served, family: null })).toBeNull();
+    expect(servedDecisionCurve({ ...served, low: null })).toBeNull();
+  });
+
+  it("draws the reported model first, then the benchmark, by the names given, over the declared range, out of fold", () => {
+    const labels: Record<string, string> = { ...Object.fromEntries(capture.fit.models.map((m) => [m.family, m.label])), [art.benchmark!.key]: art.benchmark!.label };
+    const d = decisionFromEngine(servedDecisionCurve(art.decision_curve)!, { where: "out_of_fold", labels });
+    expect(Object.keys(served.rows[0]!.models).filter((k) => k !== served.family)).toEqual([art.benchmark!.key]);
+    expect(d.models).toEqual([
+      { key: served.family, label: labels[served.family], slot: 1 },
+      { key: art.benchmark!.key, label: art.benchmark!.label, slot: 2 },
+    ]);
+    expect([d.low, d.high, d.useful]).toEqual([served.low, served.high, served.useful]);
+    expect(d.rows).toBe(served.rows);
+    // what the stage does not serve is not filled in
+    expect([d.prevalence, d.n, d.sealed]).toEqual([null, null, null]);
+  });
+
+  it("shades the range drawn as the user's only where the intended use on record declares that range", () => {
+    // The capture's intended use named no thresholds, so the stage drew over its default range.
+    const dc = servedDecisionCurve(art.decision_curve)!;
+    const range = (declared: { low: number | null; high: number | null } | null) => {
+      const d = decisionFromEngine(dc, { where: "out_of_fold", declared });
+      return [d.low, d.high];
+    };
+    expect(range({ low: null, high: null })).toEqual([null, null]);
+    expect(range(null)).toEqual([null, null]);
+    expect(range({ low: served.low, high: null })).toEqual([null, null]);
+    expect(range({ low: served.low, high: served.high + 0.1 })).toEqual([null, null]);
+    expect(range({ low: served.low, high: served.high })).toEqual([served.low, served.high]);
+    // with no record given (the lab's illustrative curve, whose range is declared), as served
+    const lab = decisionFromEngine(dc, { where: "out_of_fold" });
+    expect([lab.low, lab.high]).toEqual([served.low, served.high]);
   });
 });

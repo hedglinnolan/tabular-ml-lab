@@ -163,28 +163,60 @@ export function calibrationFromEngine(
   };
 }
 
-/** The evaluation stage's `decision_curve` (turbotab/core/stages/evaluation.py `_decision`). */
+/** The evaluation stage's `decision_curve` (turbotab/core/stages/evaluation.py `_decision`): the
+ *  reported family, the range drawn over (`decisionFromEngine` says whose), one row per threshold,
+ *  the span where the family beats both
+ *  references, the threshold chosen or declared in each fold with what it gave on the held-out
+ *  folds (`in_fold`), and the engine's sentence. `labels`, `prevalence` and `n` are not served by
+ *  the stage (the lab's illustrative curve carries them). */
 export interface EngineDecisionCurve {
   family: string;
   low: number;
   high: number;
   rows: DecisionCurveRow[];
   useful: [number, number] | number[] | null;
+  in_fold?: Record<string, unknown> | null;
+  sentence?: string | null;
   labels?: Record<string, string>;
   prevalence?: number;
   n?: number;
 }
 
-export function decisionFromEngine(dc: EngineDecisionCurve, opts: { where: ScoredWhere; sealed?: string | null; labels?: Record<string, string> }): DecisionCurveData {
+const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/** The decision curve the evaluation serves, read off its untyped field
+ *  (`EvaluationArtifact.decision_curve`) as it is; null where none is served, or where the field is
+ *  not a curve: no reported family, no declared range or no rows. */
+export function servedDecisionCurve(raw: unknown): EngineDecisionCurve | null {
+  if (!raw || typeof raw !== "object") return null;
+  const dc = raw as Partial<EngineDecisionCurve>;
+  if (typeof dc.family !== "string" || !finite(dc.low) || !finite(dc.high) || !Array.isArray(dc.rows) || !dc.rows.length) return null;
+  return dc as EngineDecisionCurve;
+}
+
+/**
+ * The decision curve view's input. The view shades its `low`–`high` as the declared range, "Your
+ * threshold range"; the stage serves the range it drew over, which is the intended use's, or its
+ * default where the answer names none (turbotab/core/models/decision_curve.py `DEFAULT_RANGE`). So
+ * given the range on record (`declared`: the intended use's `threshold_low` and `threshold_high`,
+ * or null with no intended use), the range is shaded only where the record declares the very range
+ * drawn; with none given (the lab's illustrative curve, whose range is declared), as served.
+ */
+export function decisionFromEngine(
+  dc: EngineDecisionCurve,
+  opts: { where: ScoredWhere; sealed?: string | null; labels?: Record<string, string>; declared?: { low: number | null; high: number | null } | null },
+): DecisionCurveData {
   const labels = opts.labels ?? dc.labels ?? {};
   const keys = Object.keys(dc.rows[0]?.models ?? {});
   // The reported model first, then the others in the engine's order: color follows the entity.
   const ordered = [dc.family, ...keys.filter((k) => k !== dc.family)].filter((k) => keys.includes(k)).slice(0, 5);
+  const d = opts.declared;
+  const yours = d === undefined || (d !== null && d.low === dc.low && d.high === dc.high);
   return {
     rows: dc.rows,
     models: ordered.map((k, i) => ({ key: k, label: labels[k] ?? k, slot: SLOTS[i]! })),
-    low: dc.low,
-    high: dc.high,
+    low: yours ? dc.low : null,
+    high: yours ? dc.high : null,
     useful: dc.useful && dc.useful.length === 2 ? [dc.useful[0]!, dc.useful[1]!] : null,
     where: opts.where,
     sealed: opts.sealed ?? null,
