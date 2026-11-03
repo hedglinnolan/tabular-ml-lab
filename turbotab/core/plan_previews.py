@@ -315,10 +315,14 @@ def matrix_of(drawn: Design | Lineage) -> list[str]:
 def lineage_change(before: Design | Lineage | None, after: Design | Lineage
                    ) -> tuple[list[str], list[str]]:
     """Matrix columns that arrive and that leave between two designs (:func:`matrix_of`)."""
-    now = matrix_of(before) if before is not None else []
-    then = matrix_of(after)
-    had, has = set(now), set(then)  # a wide plan's every column: sets, not lists
-    return [c for c in then if c not in had], [c for c in now if c not in has]
+    return columns_change(matrix_of(before) if before is not None else [], matrix_of(after))
+
+
+def columns_change(before: Sequence[str], after: Sequence[str]) -> tuple[list[str], list[str]]:
+    """The columns of ``after`` that arrive and those of ``before`` that leave, every column by its
+    name (two models' matrices, never two drawings' named nodes)."""
+    had, has = set(before), set(after)  # a wide plan's every column: sets, not lists
+    return [c for c in after if c not in had], [c for c in before if c not in has]
 
 
 def points(x: np.ndarray, y: np.ndarray, keep: np.ndarray | None = None) -> list[tuple[float, float]]:

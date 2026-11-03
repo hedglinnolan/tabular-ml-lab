@@ -40,7 +40,7 @@ from turbotab.core.consequences import (
     after_state, estimates_unseen, fmt_count, register_consequence,
 )
 from turbotab.core.plan_previews import (
-    Design, cannot_draw, caption, drawn, fit_design, histogram, lineage_change, moved, num, points,
+    Design, cannot_draw, caption, columns_change, drawn, fit_design, histogram, moved, num, points,
     pool, prediction_first, rows_word, tick, title,
 )
 
@@ -65,16 +65,18 @@ def _outcome(ctx: PreviewContext, state: Any, index: Any) -> tuple[np.ndarray, n
 
 
 def explored(design: Design, task: str, y: np.ndarray | None,
-             keep: np.ndarray | None) -> tuple[Any, list[tuple[str, Any]]]:
-    """``(lineage, fitted steps)``: the design's construction followed by the steps Explore's
-    answers add (``pipeline.explore_steps``, as ``build_pipeline`` adds them), fitted on the rows
-    that record the outcome."""
+             keep: np.ndarray | None) -> tuple[Any, list[tuple[str, Any]], list[str]]:
+    """``(lineage, fitted steps, columns)``: the design's construction followed by the steps
+    Explore's answers add (``pipeline.explore_steps``, as ``build_pipeline`` adds them), fitted on
+    the rows that record the outcome, and the columns the model sees after them, every one by its
+    name (the lineage of a plan wider than ``lineage.COLLAPSE_AT`` folds for display, and its count
+    nodes name none)."""
     from turbotab.core.models.lineage import missing_counts, trace
     from turbotab.core.models.pipeline import explore_steps
 
     steps = explore_steps(design.spec, task)
     if not steps:
-        return design.lineage, []
+        return design.lineage, [], design.columns
     X = design.matrix if keep is None else design.matrix.loc[keep]
     fitted: list[tuple[str, Any]] = []
     for name, step in steps:
@@ -84,7 +86,7 @@ def explored(design: Design, task: str, y: np.ndarray | None,
         fitted.append((name, step))
     lineage = trace([*design.fitted.steps, *fitted], design.spec.inputs, design.spec.roles,
                     missing_counts(design.frame[design.spec.inputs]))
-    return lineage, fitted
+    return lineage, fitted, [str(c) for c in X.columns]
 
 
 def _pair(decision: Any, ctx: PreviewContext) -> tuple[Any, Design | None, Design, Any] | None:
@@ -141,10 +143,11 @@ def levers_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         ctx.read["note"] = prediction_first("Inner cross-validation chooses each predictor's bends "
                                             "from the outcome model", ctx.state)
     else:
-        lineage, steps = explored(then, task, y, keep)
-        before = explored(now, task, y, keep)[0] if now is not None else None
+        lineage, steps, columns = explored(then, task, y, keep)
+        before, _, had = explored(now, task, y, keep) if now is not None else (None, [], [])
     if steps:
-        arrive, leave = lineage_change(before, lineage)
+        # Every column by its name, never the drawings' named nodes (a wide plan's are folded).
+        arrive, leave = columns_change(had, columns)
         parts = []
         forms = dict(steps).get("lever_forms")
         if forms is not None:
@@ -240,11 +243,12 @@ def selection_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if outcome is None:
         return []
     y, keep = outcome
-    lineage, steps = explored(then, task, y, keep)
-    before = explored(now, task, y, keep)[0] if now is not None else None
+    lineage, steps, columns = explored(then, task, y, keep)
+    before, _, had = explored(now, task, y, keep) if now is not None else (None, [], [])
     select = dict(steps).get("select")
     if select is None:
-        arrive, leave = lineage_change(before, lineage)
+        # Every column by its name, never the drawings' named nodes (a wide plan's are folded).
+        arrive, leave = columns_change(had, columns)
         return [LineageView(
             title=title("No selection: every term enters"),
             caption=caption(moved(arrive, leave)), emphasis=[*arrive, *leave][:12],
