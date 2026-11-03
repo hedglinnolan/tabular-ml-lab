@@ -28,6 +28,7 @@ class GraphRun:
         self.folder = Path(folder)
         (self.folder / "data").mkdir(parents=True, exist_ok=True)
         self.cache = self.folder / "cache"
+        self.cache.mkdir(exist_ok=True)  # as Workspace.cache_dir makes it
         self.graph = build_graph()
         self.raw = self.folder / "data" / "raw.parquet"
         self.info = ingest(self.source, self.raw).to_dict()
