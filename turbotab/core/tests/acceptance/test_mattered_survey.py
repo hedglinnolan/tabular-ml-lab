@@ -277,8 +277,10 @@ def test_a_departure_whose_persons_cross_psus_is_not_estimated_with_the_designs_
     another PSU of its person's stratum, so with the age rule dropped the rows repeat by `pid` and
     no PSU holds a person's rows together (``methods.survey.for_fit``, over every row: 150 persons,
     by construction). That departure is listed with that reason, which is the fit stage's own
-    refusal of the plan the departure is (the age rule dropped). Every other specification's rows
-    do not repeat, and each is R's svyglm (``ids = ~psu``) on its domain."""
+    refusal of the plan the departure is (the age rule dropped), a table with no estimate at all,
+    so it is said to have none (V3-2, PP2 C1 repair round 1: it was said to have no interval).
+    Every other specification's rows do not repeat, and each is R's svyglm (``ids = ~psu``) on its
+    domain."""
     from pathlib import Path
 
     from turbotab.core.datastore import DataStore
@@ -295,10 +297,12 @@ def test_a_departure_whose_persons_cross_psus_is_not_estimated_with_the_designs_
     assert why is not None and why.startswith("150 `pid` units have rows in more than one PSU")
     [listed] = art["curve"]["not_estimated"]
     assert listed["key"] == AGE_DROPPED and listed["primary"] is False
-    assert listed["reason"] == "With this choice changed, the fit would report no interval: " + why
+    assert listed["reason"] == "With this choice changed, the fit would report no estimate: " + why
     plan = Run(frame, tmp_path / "plan", population(exclusions=[d.ExclusionRule(**RULES[1])]))
     linear = next(m for m in plan.fit.data["models"] if m["family"] == "linear")
     assert linear["inference"]["refused"] == why
+    assert not [r for r in linear["coefficients"] or []  # the plan's table has no estimate at all
+                if r["feature"] == "fiber" and r.get("estimate") is not None]
     ref = run_r(_r_specs() + SVY, {"d": run.table}, tmp_path / "r")
     got = {s["key"]: s for s in art["curve"]["specs"]}
     assert set(got) == set(ref) - {AGE_DROPPED}

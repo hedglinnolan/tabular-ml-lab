@@ -33,7 +33,9 @@ table's own columns (complete cases on each specification's columns). One whose 
 step (a single fill or multiple imputation where its rows have blanks, the energy model, a
 declared form, blanks kept as a level) is fitted as that plan, through the path the secondary and
 sensitivity stages take (:func:`curve_for`'s ``plan_fit``: its own rows, its coding by
-``pipeline.design_spec``, its pipeline, its missing values as the answer handles them on its rows,
+``pipeline.design_spec`` over every column the plan reads (a residual energy model's strata stays an
+input where a departure drops it as a predictor, as the design keeps it), its pipeline, its
+missing values as the answer handles them on its rows,
 under multiple imputation its own copies pooled by Rubin's rules with Barnard–Rubin degrees of
 freedom, each point carrying its fraction of missing information and Monte Carlo error, and
 ``sensitivity.fit_on_rows``'s table). Either way its intervals are HC3 (for a yes/no outcome
@@ -82,7 +84,11 @@ fitted as the primary is. That refusal quotes no estimate: it is served where no
   Each other specification is judged on the coding the plan would give its own columns
   (``pipeline.design_spec`` over the table's column summaries, as the design stage reads them): a
   departure whose plan would apply such a step is not estimated, with the step named, and so is
-  one that leaves out a column the energy model reads (:data:`ENERGY_READS`).
+  one that leaves out a column the energy model reads (:data:`ENERGY_READS`). A departure whose
+  plan's table has no estimate (blocked by the missing-values answer, or by a survey design refused
+  for its rows) is said to have none, and one whose estimate has no interval is said to have no
+  interval. An error its refit raises that the engine did not type as a refusal is the curve's own
+  (:data:`REFIT_ERROR`), never a plan that could not be fitted.
 * **The hold, not wired yet.** The curve fits the plan once per specification
   (:func:`specifications_of`), so it takes about the followed family's seconds times the
   specifications (:func:`expected_seconds`), which ``fit_press.curve_holds`` judges as the fit's
@@ -108,7 +114,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
-from turbotab.core.graph import StageContext
+from turbotab.core.graph import StageContext, StageRefusal
 from turbotab.core.methods import spec_curve as S
 
 STAGE = "mattered"
@@ -172,6 +178,11 @@ RECORDED_WORDS = "With every choice as recorded, "
 # nutrient it adjusts): that model cannot be fitted without it, after "With this choice changed, ".
 ENERGY_READS = ("the plan's energy model reads `{column}`, which this specification leaves out, "
                 "so it is not estimated.")
+# A departure whose refit through its plan raised an error the engine did not type as a refusal
+# (``graph.StageRefusal``): the curve's own failure, never the plan's, after
+# "With this choice changed, " and before the error's text.
+REFIT_ERROR = ("the curve's refit of this specification stopped on an error, not on a refusal of "
+               "the plan, so it is not estimated: ")
 NOT_OFFERED_YET = ("The curve is offered under Estimate an effect, once the goal is chosen and what "
                    "you study is declared.")
 ONE_EXPOSURE = ("The curve follows one study factor's estimate; under a family of study factors "
@@ -1095,12 +1106,14 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
     qc = working_qc_sd(ctx.inputs.get("working"))
     nested = dict(built.get("nested") or {})
     seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
-    beside = [c for c in spec.inputs if c not in spec.predictors]  # a strata or batch column
 
     def plan_fit(picks: Mapping[str, str], u: str | None, at: Any) -> S.SpecFit:
         """The specification fitted as the plan it is, as the fit fits its plan: on its own rows
         (:func:`rows_of`), coded by ``pipeline.design_spec`` over them with the plan's answers (the
-        design's own coding and pipeline for the primary), its pipeline built for them
+        design's own coding and pipeline for the primary; a departure's coding over every column
+        the plan reads, so a column the plan's steps read, a residual model's strata, stays an
+        input where the departure drops it as a predictor, as ``pipeline.input_columns`` keeps it,
+        and one no step reads leaves), its pipeline built for them
         (``pipeline.build_pipeline``), its missing values as the answer handles them on these rows
         (``modeling._missing_for_table``: under multiple imputation its own copies, drawn with the
         split's seed, the survey design and the clustering in their model), and the table
@@ -1114,7 +1127,7 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         else:
             chosen = ([p for p in spec.predictors if p in cols]
                       + [c for c in cols if c not in spec.predictors])
-            s = design_spec(state, part[list(dict.fromkeys([*chosen, *beside]))], chosen,
+            s = design_spec(state, part[list(dict.fromkeys([*chosen, *spec.inputs]))], chosen,
                             column_info=column_info, qc=qc, energy_factors=spec.energy_factors)
             s = replace(s, plans=spec.plans)
             pipeline = build_pipeline(s, family, task, state.purpose, len(part), len(s.inputs) + 1)
@@ -1137,8 +1150,9 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         if row is None and not refused:
             raise S.SpecCurveRefused(NO_COLUMN.format(feature=feature), ())
         if refused or row is None or row.get("estimate") is None or row.get("ci_low") is None:
-            why = refused or "no interval could be computed"
             estimate = None if row is None else row.get("estimate")
+            why = refused or (f"no {'estimate' if estimate is None else 'interval'} could be "
+                              f"computed")
             return S.SpecFit(math.nan if estimate is None else float(estimate), None, None, n,
                              estimator=estimator, refused=str(why))
         return S.SpecFit(float(row["estimate"]), float(row["ci_low"]), float(row["ci_high"]), n,
@@ -1162,7 +1176,10 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         plan holds one (:func:`plan_fit`; the primary's were judged above), and it is not
         estimated where its plan holds a step the curve does not fit through
         (:data:`NOT_FOLLOWED`) or its rows' unit leaves no interval; its intervals cluster by the
-        unit its own rows repeat in."""
+        unit its own rows repeat in. A departure whose plan's table has no estimate is said to have
+        none, one whose estimate has no interval to have no interval, and one whose refit raised
+        an error the engine did not type as a refusal (``graph.StageRefusal``) is said to have
+        stopped on the curve's own error (:data:`REFIT_ERROR`)."""
         at = done[0]
         done[0] += 1
         low, high = 0.05 + 0.9 * at / total, 0.05 + 0.9 * (at + 1) / total
@@ -1205,22 +1222,28 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
             except S.SpecCurveRefused as refusal:
                 raise S.SpecCurveRefused((changed_words if departure else RECORDED_WORDS)
                                          + str(refusal), ()) from refusal
-            except Exception as exc:  # noqa: BLE001 - a plan that cannot be fit says why
+            except StageRefusal as exc:  # the engine's typed refusal of the plan, in its words
                 raise S.SpecCurveRefused((changed_words + "the plan could not be fitted: "
                                           if departure else "The recorded plan could not be "
                                           "fitted again: ") + str(exc), ()) from exc
+            except Exception as exc:  # noqa: BLE001 - an untyped error is the curve's own, said so
+                raise S.SpecCurveRefused((changed_words + REFIT_ERROR if departure else
+                                          "The recorded plan could not be fitted again: ")
+                                         + str(exc), ()) from exc
             if got.refused is not None:
-                if departure:
-                    raise S.SpecCurveRefused(changed_words + "the fit would report no interval: "
-                                             + got.refused, ())
+                if departure:  # the table's estimate with no interval, or no estimate at all
+                    lacks = "interval" if math.isfinite(got.estimate) else "estimate"
+                    raise S.SpecCurveRefused(f"{changed_words}the fit would report no {lacks}: "
+                                             f"{got.refused}", ())
                 return got
             for name in steps:  # the steps an estimated specification went through
                 if name not in through:
                     through.append(name)
             return got
         refit = fitter_for(u)
-        if isinstance(refit, str):  # the design this specification's unit gives was refused
-            raise S.SpecCurveRefused((changed_words + "the fit would report no interval: "
+        if isinstance(refit, str):  # the design this specification's unit gives was refused,
+            # which blocks the fit's table: no estimate at all (``sensitivity.fit_on_rows``)
+            raise S.SpecCurveRefused((changed_words + "the fit would report no estimate: "
                                       if departure else "") + refit, ())
         return refit(picks)
 

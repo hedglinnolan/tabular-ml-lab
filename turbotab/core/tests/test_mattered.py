@@ -591,6 +591,164 @@ def test_a_residual_energy_model_is_fitted_through_and_the_curve_follows_its_col
                          predictors=run.design.objects["spec"]["predictors"]).feature == "fiber_adj"
 
 
+def strata_cohort() -> pd.DataFrame:
+    """The cohort with total energy 200 kcal higher in men, so a residual model within the levels
+    of `sex` is not the pooled one. `sex` has no blank."""
+    frame = cohort()
+    rng = np.random.default_rng(5)
+    frame["kcal"] = (2000 + 40 * (frame["fiber"] - 20) + 200 * (frame["sex"] == "male")
+                     + rng.normal(0, 300, len(frame)))
+    return frame
+
+
+def energy_state(**energy: Any) -> d.ProjectState:
+    """`kcal` total energy, a confounder, and the residual energy model of `fiber` on it."""
+    return state(roles={**ef.ROLES, "kcal": "energy"},
+                 answers={**ef.ANSWERS, "kcal": ef.CONFOUNDER},
+                 energy_adjustment=d.EnergyAdjustment(method="residual", energy_column="kcal",
+                                                      nutrients=["fiber"], **energy))
+
+
+def within_strata(part: pd.DataFrame) -> np.ndarray:
+    """`fiber_adj` by the stratified residual model's definition (``StratifiedEnergyAdjuster``):
+    N − b_s (E − Ē_s) − N̄_s + N̄ in each level s of `sex`, with b_s, Ē_s and N̄_s that level's
+    slope of `fiber` on `kcal` and means on these rows, and N̄ `fiber`'s mean over all of them."""
+    e, n_ = part["kcal"].to_numpy(dtype=float), part["fiber"].to_numpy(dtype=float)
+    out = np.empty(len(part))
+    for level in pd.unique(part["sex"]):
+        m = (part["sex"] == level).to_numpy()
+        slope = float(np.cov(e[m], n_[m], ddof=1)[0, 1] / np.var(e[m], ddof=1))
+        out[m] = n_[m] - slope * (e[m] - e[m].mean()) - n_[m].mean() + n_.mean()
+    return out
+
+
+def test_a_departure_dropping_the_strata_column_keeps_it_as_the_energy_model_s_strata(tmp_path):
+    """V3-1 (PP2 C1 repair round 1), both ways. The residual energy model within the levels of
+    `sex`, an adjusted covariate. The departure dropping `sex` from the adjustment is the plan with
+    `sex` out of the outcome model and its energy model still within `sex`, the column kept among
+    its inputs as the design keeps a strata column that is no predictor
+    (``pipeline.input_columns``). It is estimated: statsmodels' fit of `fiber_adj` with `sex` out
+    of the model (on the base it was not estimated, said to be a plan that could not be fitted).
+    A column a departure drops that no step reads (`age`) leaves its inputs: each other
+    specification is the same fit with its own covariates, `fiber_adj` the stratified model's
+    definition written out here (:func:`within_strata`). The departure dropping `kcal` leaves the
+    energy model without its total energy and is not estimated, as with no strata."""
+    run = Run(strata_cohort(), tmp_path, energy_state(strata="sex"))
+    assert run.design.objects["spec"]["energy"]["strata"] == "sex"  # the premise
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    assert curve["through"] == ["energy"]
+    assert [s["picks"]["adjusted:kcal"] for s in curve["not_estimated"]] == ["dropped"]
+    assert curve["not_estimated"][0]["reason"] == ("With this choice changed, "
+                                                   + M.ENERGY_READS.format(column="kcal"))
+    assert len(curve["specs"]) == len(departures())
+    every = rows_of(run.table, rules=(0, 1), columns=["glucose", "fiber", "kcal", *ADJUSTED])
+    assert [s["n"] for s in curve["specs"] if s["picks"]["adjusted:sex"] == "dropped"] == [
+        int(every.sum())]  # `sex` has no blank: the primary's rows
+    for s in curve["specs"]:
+        picks = s["picks"]
+        rules = tuple(i for i in (0, 1) if picks[f"exclusion:{i}"] == M.RECORDED)
+        covariates = [c for c in ADJUSTED if picks[f"adjusted:{c}"] == M.RECORDED] \
+            + (["bmi"] if picks["left_out:bmi"] == "added" else [])
+        part = run.table[rows_of(run.table, rules=rules,
+                                 columns=["glucose", "fiber", "kcal", *covariates])]
+        X = ef.design_matrix(part, ["kcal", *covariates])  # `sex` only where it is adjusted for
+        X["fiber_adj"] = within_strata(part)
+        fit = sm.OLS(part["glucose"].astype(float), X).fit(cov_type="HC3", use_t=True)
+        low, high = fit.conf_int(alpha=0.05).loc["fiber_adj"]
+        assert s["n"] == len(part), s["key"]
+        assert (s["estimate"], s["low"], s["high"]) == pytest.approx(
+            (float(fit.params["fiber_adj"]), float(low), float(high)), rel=1e-8), s["key"]
+
+
+REFIT_ERROR = ("With this choice changed, the curve's refit of this specification stopped on an "
+               "error, not on a refusal of the plan, so it is not estimated: ")  # in words
+
+
+def test_an_error_in_the_curve_s_own_refit_is_never_said_to_be_a_plan_that_could_not_be_fitted(
+        tmp_path, monkeypatch):
+    """V3-1 (PP2 C1 repair round 1), both ways. Where the curve's refit of a departure through its
+    plan raises an error the engine did not type as a refusal (constructed here: building each
+    departure's pipeline raises one), the failure is the curve's own: each such departure is not
+    estimated, said in those words, never as a plan that could not be fitted. Where it raises the
+    engine's typed refusal of a plan (``graph.StageRefusal``), the plan is refused: said to be a
+    plan that could not be fitted, with the refusal's words. The primary is fitted by the design's
+    own pipeline either way, and the departure dropping `kcal` is not estimated before any build."""
+    from turbotab.core.graph import StageRefusal
+    from turbotab.core.models import pipeline as P
+
+    run = Run(energy_cohort(), tmp_path, energy_state())
+    for raised, words in ((RuntimeError("a constructed error"), REFIT_ERROR),
+                          (StageRefusal("constructed", "A constructed refusal."),
+                           "With this choice changed, the plan could not be fitted: ")):
+        def build(*args: Any, raised: Exception = raised, **kwargs: Any) -> Any:
+            raise raised
+
+        monkeypatch.setattr(P, "build_pipeline", build)
+        art = run.mattered()
+        assert art["refused"] is None, art["refused"]
+        curve = art["curve"]
+        assert [s["primary"] for s in curve["specs"]] == [True]
+        held = [s for s in curve["not_estimated"] if s["picks"]["adjusted:kcal"] != "dropped"]
+        assert len(held) == len(departures()) - 1
+        for s in held:
+            assert s["reason"] == words + str(raised), s["key"]
+        if isinstance(raised, RuntimeError):
+            assert not [s for s in held if "could not be fitted" in s["reason"]]
+
+
+def test_a_departure_says_no_estimate_where_its_plan_has_none_and_no_interval_where_it_has_one(
+        tmp_path, monkeypatch):
+    """V3-2 (PP2 C1 repair round 1), both ways. Passive multiple imputation with a spline declared
+    on `bmi`, the covariate the adjustment answers leave out: the departure adding `bmi` is the plan
+    with `bmi` adjusted for, whose fit is blocked with no estimate at all (the plan's own fit
+    shows it), so the departure is not estimated, said to have no estimate, with the block's words
+    (on the base it was said to have no interval). Where a departure's plan has an estimate and no
+    interval (constructed here: under a single fill, the `bmi` departure's table with `fiber`'s
+    interval removed, with a reason or none), it is said to have no interval; where the row's
+    estimate is removed too and the table gives no reason, no estimate, and never that no
+    interval could be computed."""
+    from turbotab.core.decisions import ExposureFormSpec
+    from turbotab.core.stages import sensitivity
+
+    passive = d.MissingSpec(strategy="multiple_imputation", imputation_model="passive")
+    formed = {"bmi": ExposureFormSpec(form="spline", knots=4, scale="raw")}
+    run = Run(cohort(), tmp_path / "curve", state(missing=passive, exposure_forms=formed))
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    [held] = art["curve"]["not_estimated"]
+    assert held["picks"]["left_out:bmi"] == "added"
+    plan = Run(cohort(), tmp_path / "plan", state(missing=passive, exposure_forms=formed,
+                                                  answers={**ef.ANSWERS, "bmi": ef.CONFOUNDER}))
+    linear = next(m for m in plan.fit.data["models"] if m["family"] == "linear")
+    why = linear["inference"]["refused"]
+    assert why and not [r for r in linear["coefficients"] or []
+                        if r["feature"] == "fiber" and r.get("estimate") is not None]
+    assert held["reason"] == "With this choice changed, the fit would report no estimate: " + why
+
+    real = sensitivity.fit_on_rows
+    fill = Run(cohort(), tmp_path / "fill", state(missing=FILL))
+    blank = {"interval": ("ci_low", "ci_high"), "estimate": ("estimate", "ci_low", "ci_high")}
+    for lacks, reason, words in (
+            ("interval", "a constructed reason", "no interval: a constructed reason"),
+            ("interval", None, "no interval: no interval could be computed"),
+            ("estimate", None, "no estimate: no estimate could be computed")):
+        def table(*args: Any, lacks: str = lacks, reason: str | None = reason,
+                  **kwargs: Any) -> Any:
+            fitted, (rows, info), concerns = real(*args, **kwargs)
+            if "bmi" in args[4]:  # the inputs: the departure adding `bmi` alone
+                rows = [{**r, **dict.fromkeys(blank[lacks])} if r["feature"] == "fiber" else r
+                        for r in rows]
+                info = {**info, "refused": reason}
+            return fitted, (rows, info), concerns
+
+        monkeypatch.setattr(sensitivity, "fit_on_rows", table)
+        [held] = fill.mattered()["curve"]["not_estimated"]
+        assert held["picks"]["left_out:bmi"] == "added"
+        assert held["reason"] == "With this choice changed, the fit would report " + words
+
+
 @pytest.mark.parametrize("measure, words", [("risk_difference", "marginal risk difference"),
                                             ("risk_ratio", "marginal risk ratio")])
 def test_a_marginal_measure_refuses_the_curve_by_name_and_the_odds_ratio_does_not(binary, measure,
