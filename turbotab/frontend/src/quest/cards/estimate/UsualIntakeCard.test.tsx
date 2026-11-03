@@ -9,20 +9,22 @@
  * The truth the card is held to is the server's, never the card's own constants: the offer as a real
  * server served it (the dietary-recalls capture in src/mocks/fixtures, whose usual-intake stage
  * offers two components of a long table), or built in the served shape where no capture holds the
- * case (a wide table's recall days, core/stages/usual_intake.py `build_offer`); every payload, list
- * of models and default from turbotab/server/openapi.json, the contract the server's own test holds
- * to its pydantic models (core/decisions.py `SetUsualIntake`); and the line's name and place from
- * the quest contract the engine writes (src/quest/fixtures/quest-contract.json).
+ * case (a wide table's recall days, core/stages/usual_intake.py `build_offer`; an analysis the
+ * stage refuses, its `refuse`; an answer on record as the state holds it, every field present);
+ * every payload, list of models and default from turbotab/server/openapi.json, the contract the
+ * server's own test holds to its pydantic models (core/decisions.py `SetUsualIntake`); and the
+ * line's name and place from the quest contract the engine writes
+ * (src/quest/fixtures/quest-contract.json).
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { api } from "../../../api/client";
+import { api, RefusalError } from "../../../api/client";
 import type { UsualIntakeArtifact } from "../../../api/m3-types";
 import { keys } from "../../../api/queries";
-import type { Decision, ProjectView, QuestLine } from "../../../api/schema";
+import type { Decision, ProjectView, QuestLine, Refusal } from "../../../api/schema";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../../mocks/m3";
 import { StageFocusProvider } from "../../../state/focus";
 import { CONTRACT } from "../../fixtures/contract";
@@ -118,6 +120,24 @@ const STATED = Object.fromEntries(
 const UNSTATED = Object.entries(MODEL.properties!)
   .filter(([k, p]) => !(MODEL.required ?? []).includes(k) && p.default === undefined)
   .map(([k, p]) => [k, p.type === "array" ? [] : null] as const);
+
+/** An answer as the state holds it (`UsualIntakeSpec`, every field present): the fields given, the
+ *  model's defaults for the rest. */
+const specOf = (over: Record<string, unknown>) => ({ ...Object.fromEntries(UNSTATED), ...STATED, ...over });
+
+/** An analysis as the stage serves it (`UsualIntakeAnalysis`): the fields given, the model's
+ *  defaults for the rest (turbotab/server/openapi.json). */
+type Analysis = UsualIntakeArtifact["analyses"][number];
+const ANALYSIS = SCHEMAS["UsualIntakeAnalysis"]!;
+const analysisOf = (over: Partial<Analysis> & Pick<Analysis, "nutrient" | "model" | "applies" | "methods">): Analysis =>
+  ({
+    ...Object.fromEntries(
+      Object.entries(ANALYSIS.properties!)
+        .filter(([, p]) => p.default !== undefined)
+        .map(([k, p]) => [k, p.default]),
+    ),
+    ...over,
+  }) as Analysis;
 
 // ── the captured server (src/mocks/fixtures) ─────────────────────────────────
 
@@ -223,7 +243,8 @@ function mount(
     artifact?: UsualIntakeArtifact | null;
     stale?: boolean;
     status?: NotFresh;
-    /** The state's usual-intake answers, keyed by component. */
+    /** The state's usual-intake answers, keyed by component: the fields given, the model's
+     *  defaults for the rest. */
     answers?: Record<string, Record<string, unknown>>;
     /** The view's records (the line's own among them, by its id). */
     decisions?: { id: string; decision: Decision }[];
@@ -233,7 +254,10 @@ function mount(
   const at = served();
   const base = {
     ...at.view,
-    state: { ...at.view.state, usual_intake: opts.answers ?? null },
+    state: {
+      ...at.view.state,
+      usual_intake: opts.answers ? Object.fromEntries(Object.entries(opts.answers).map(([k, v]) => [k, specOf(v)])) : null,
+    },
     decisions: [...at.view.decisions, ...(opts.decisions ?? [])],
   } as ProjectView;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
@@ -504,14 +528,34 @@ describe("the usual-intake card, from the usual-intake stage's offer", () => {
     expect(screen.getByTestId("usual-intake-unoffered")).toHaveTextContent(reason);
   });
 
-  it("reads the offer alone: no distribution the stage holds is shown", () => {
+  it("shows no distribution the stage holds, and no refusal, for an answer whose analysis applies", () => {
     // After the lock the stage serves each answer's distribution (core/estimand.py `withhold` keeps
-    // only the offer before it); the card asks the question and never shows one.
+    // only the offer and the refused analyses before it); the card asks the question and never
+    // shows one.
     const at = served();
+    const nutrient = at.offer.candidates[0]!.column;
     const methods = "The usual-intake distribution of protein was estimated by the NCI method.";
-    const analysis = { nutrient: at.offer.candidates[0]!.column, model: "amount_only", applies: true, methods } as unknown as UsualIntakeArtifact["analyses"][number];
-    mount({ artifact: { ...at.artifact, analyses: [analysis] } });
-    expect(screen.getByTestId(`declaration-${KIND}`)).not.toHaveTextContent(methods);
+    const estimate = { value: 81.25, se: 1.5, ci_low: 78.31, ci_high: 84.19 };
+    const analysis = analysisOf({
+      nutrient,
+      model: "amount_only",
+      applies: true,
+      methods,
+      percentiles: { "50": estimate },
+      mean: estimate,
+      exits: [{ label: "Report the share below it as a plain share", decision: { kind: KIND, nutrient, model: "amount_only" } }],
+    });
+    mount({
+      artifact: { ...at.artifact, analyses: [analysis] },
+      answers: { [nutrient]: { model: "amount_only" } },
+      decisions: [{ id: "r9", decision: { kind: KIND, nutrient, model: "amount_only" } as unknown as Decision }],
+      line: { status: "answered", decision_id: "r9" },
+    });
+    const card = screen.getByTestId(`declaration-${KIND}`);
+    expect(card).not.toHaveTextContent(methods);
+    for (const n of Object.values(estimate)) expect(card).not.toHaveTextContent(String(n));
+    expect(screen.queryByTestId("usual-intake-refused")).toBeNull();
+    expect(screen.queryByTestId("usual-intake-refused-exit")).toBeNull();
   });
 
   it("veils the components and the models, inert, while the stage's result is not fresh", () => {
@@ -598,5 +642,209 @@ describe("the usual-intake card, from the usual-intake stage's offer", () => {
     mount();
     expect(screen.getByTestId("usual-intake-veil")).toHaveAttribute("data-veil", "fresh");
     expect(screen.queryByTestId("retry-usual_intake")).toBeNull();
+  });
+});
+
+// ── an answer on record whose analysis the stage refuses (A2) ───────────────
+
+describe("the usual-intake card, where the stage refuses the analysis of an answer on record", () => {
+  /**
+   * The captured long table's energy is reported on every recall (its candidate's zero share is 0),
+   * and the card offers the two-part model for it. Recorded, the stage refuses that analysis and
+   * serves the refusal before the lock (core/estimand.py `withhold`), as it builds it
+   * (core/stages/usual_intake.py `refuse` and `method_exits`; core/usual_intake.py `answer` and
+   * `leave_out`; the words as core/methods/usual_intake.py raises `no_zero_day`).
+   */
+  function refusedEnergy() {
+    const at = served();
+    const energy = at.offer.candidates.find((c) => c.zero_share === 0)!;
+    const nutrient = energy.column;
+    const record = specOf({ model: "two_part" });
+    const why =
+      "No recall reports a day without it, so the probability part of the two-part model has nothing to estimate; " +
+      "the amount-only model is the one for an intake reported every day.";
+    const amountOnly = { kind: KIND, nutrient, ...record, model: "amount_only" } as unknown as Decision;
+    const leaveOut = { kind: KIND, nutrient, model: "none" } as unknown as Decision;
+    const analysis = analysisOf({
+      nutrient,
+      model: "two_part",
+      applies: false,
+      refused: why,
+      format: "long",
+      exits: [
+        { label: "Use the amount-only model, for a component reported every day", decision: amountOnly },
+        { label: "Leave usual intake out", decision: leaveOut },
+      ],
+      methods: `No usual-intake distribution was estimated for \`${nutrient}\`: ${why}`,
+    });
+    const mounted = mount({
+      artifact: { ...at.artifact, analyses: [analysis] },
+      answers: { [nutrient]: { model: "two_part" } },
+      decisions: [{ id: "r9", decision: { kind: KIND, nutrient, model: "two_part" } as unknown as Decision }],
+      line: { status: "answered", decision_id: "r9" },
+    });
+    return { ...mounted, analysis, nutrient, amountOnly, leaveOut };
+  }
+
+  it("says the refusal in the engine's words, naming the component, with each way forward", () => {
+    const { analysis, nutrient } = refusedEnergy();
+    expect(analysis.refused).toBeTruthy();
+    const refused = screen.getByTestId("usual-intake-refused");
+    expect(refused).toHaveAttribute("data-nutrient", nutrient);
+    expect(refused).toHaveTextContent(analysis.refused!);
+    expect(refused).toHaveTextContent(nutrient);
+    const exits = within(refused).getAllByTestId("usual-intake-refused-exit");
+    expect(exits.map((e) => e.textContent)).toEqual(analysis.exits.map((x) => x.label));
+  });
+
+  it.each([0, 1])("records the way forward pressed, as the engine serves it (exit %i)", async (i) => {
+    const { decide, analysis } = refusedEnergy();
+    fireEvent.click(within(screen.getByTestId("usual-intake-refused")).getAllByTestId("usual-intake-refused-exit")[i]!);
+    const sent = await posted(decide);
+    expect(sent).toEqual(analysis.exits[i]!.decision);
+    expect(problems(MODEL, sent)).toEqual([]);
+  });
+
+  it("says a way forward that names no decision in words, and offers no press for it", () => {
+    // core/stages/usual_intake.py `method_exits`, a column with no amounts: name it (a question).
+    const at = served();
+    const nutrient = at.offer.candidates[0]!.column;
+    const ask = { label: "Name the column (or recall days) that hold the component's amounts", decision: null };
+    const leaveOut = { label: "Leave usual intake out", decision: { kind: KIND, nutrient, model: "none" } };
+    const why = `\`${nutrient}\` holds no amounts on the analysis rows.`;
+    mount({
+      artifact: {
+        ...at.artifact,
+        analyses: [
+          analysisOf({
+            nutrient,
+            model: "amount_only",
+            applies: false,
+            refused: why,
+            exits: [ask, leaveOut],
+            methods: `No usual-intake distribution was estimated for \`${nutrient}\`: ${why}`,
+          }),
+        ],
+      },
+      answers: { [nutrient]: { model: "amount_only" } },
+      decisions: [{ id: "r9", decision: { kind: KIND, nutrient, model: "amount_only" } as unknown as Decision }],
+      line: { status: "answered", decision_id: "r9" },
+    });
+    const refused = screen.getByTestId("usual-intake-refused");
+    expect(refused).toHaveTextContent(ask.label);
+    expect(within(refused).getAllByTestId("usual-intake-refused-exit").map((e) => e.textContent)).toEqual([leaveOut.label]);
+  });
+
+  it("answers a way forward the engine refuses in its words, at the refusal", async () => {
+    const { decide } = refusedEnergy();
+    const refusal = {
+      error: { code: "usual_intake_under_prediction", message: "Usual intake is not offered under prediction.", exits: [] },
+    } as unknown as Refusal;
+    decide.mockRejectedValueOnce(new RefusalError(refusal));
+    const refused = screen.getByTestId("usual-intake-refused");
+    fireEvent.click(within(refused).getAllByTestId("usual-intake-refused-exit")[0]!);
+    await posted(decide);
+    expect(await within(refused).findByTestId("refusal")).toHaveTextContent(refusal.error.message);
+  });
+
+  it("keeps the refusal veiled and inert while the stage recomputes", () => {
+    const at = served();
+    const nutrient = at.offer.candidates[0]!.column;
+    const why = "No recall reports a day without it.";
+    mount({
+      stale: true,
+      artifact: {
+        ...at.artifact,
+        analyses: [
+          analysisOf({
+            nutrient,
+            model: "two_part",
+            applies: false,
+            refused: why,
+            exits: [{ label: "Leave usual intake out", decision: { kind: KIND, nutrient, model: "none" } }],
+            methods: `No usual-intake distribution was estimated for \`${nutrient}\`: ${why}`,
+          }),
+        ],
+      },
+      answers: { [nutrient]: { model: "two_part" } },
+    });
+    expect(screen.getByTestId("usual-intake-refused").closest("[inert]")).not.toBeNull();
+  });
+});
+
+// ── a press on a component on record (A3) ───────────────────────────────────
+
+describe("the usual-intake card, pressed on a component with an answer on record", () => {
+  // A record made outside the card (the API, the headless engine), as the NHANES journey records
+  // protein: its weekend days, an EAR cut-off answered as every participant's, more replicates.
+  const PROTEIN = {
+    model: "amount_only",
+    days: ["DR1TPROT", "DR2TPROT"],
+    weekend: ["DR1DAY", "DR2DAY"],
+    cutoff: 46,
+    cutoff_kind: "EAR",
+    ear_for_all: true,
+    n_boot: 500,
+  };
+  const recorded = (record: Record<string, unknown>) => {
+    const at = served();
+    const offer = wide(at.offer);
+    const nutrient = offer.candidates[0]!.column;
+    const mounted = mount({
+      artifact: { ...at.artifact, offer },
+      answers: { [nutrient]: record },
+      decisions: [{ id: "r9", decision: { kind: KIND, nutrient, ...record } as unknown as Decision }],
+      line: { status: "answered", decision_id: "r9" },
+    });
+    return { ...mounted, nutrient, offer };
+  };
+
+  it("keeps every field of the record the card does not ask, changing the model alone, as the engine changes one field of a record", async () => {
+    // core/usual_intake.py `answer(nutrient, spec, model=...)`: the record with the model changed.
+    const { decide, nutrient } = recorded(PROTEIN);
+    press("model:two_part");
+    const sent = await posted(decide);
+    expect(problems(MODEL, sent)).toEqual([]);
+    expect(sent).toEqual({ kind: KIND, nutrient, ...specOf(PROTEIN), model: "two_part" });
+  });
+
+  it("posts the days on record, which the component's name lists, where they are not the days the offer proposes", async () => {
+    const days = ["DR1TPROT", "DR2TPROT", "DR3TPROT"];
+    const { decide, nutrient, offer } = recorded({ ...PROTEIN, days });
+    expect(offer.candidates[0]!.days).not.toEqual(days);
+    const [, name] = componentOptions().find(([value]) => value === nutrient)!;
+    expect(name).toBe(days.join(", "));
+    press("model:two_part");
+    expect(await posted(decide)).toMatchObject({ nutrient, days });
+  });
+
+  it("leaves usual intake out as the engine's own exit does, whatever the record holds", async () => {
+    // core/usual_intake.py `leave_out`: {"kind", "nutrient", "model": "none"}, every other field the
+    // model's default.
+    const { decide, nutrient } = recorded(PROTEIN);
+    press("model:none");
+    const sent = await posted(decide);
+    expect(sent).toEqual({ kind: KIND, nutrient, model: "none", ...Object.fromEntries(UNSTATED), ...STATED });
+  });
+
+  it("posts the model's defaults and the offer's days for a component with no answer, whatever another's record holds", async () => {
+    const at = served();
+    const [first, second] = at.offer.candidates;
+    const { decide } = mount({
+      answers: { [first!.column]: { ...PROTEIN, days: [] } },
+      decisions: [{ id: "r9", decision: { kind: KIND, nutrient: first!.column, model: "amount_only" } as unknown as Decision }],
+      line: { status: "answered", decision_id: "r9" },
+    });
+    choose(second!.column);
+    press("model:amount_only");
+    const sent = await posted(decide);
+    expect(sent).toEqual({
+      kind: KIND,
+      nutrient: second!.column,
+      model: "amount_only",
+      ...Object.fromEntries(UNSTATED),
+      ...STATED,
+      days: second!.days,
+    });
   });
 });

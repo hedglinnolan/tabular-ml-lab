@@ -9,8 +9,8 @@
  * distribution estimates, why it is not offered where it is not, and each dietary component the
  * recalls measure, with the engine's reason for the model it ranks first. A long table's component
  * is its column; a wide table's is a group of recall-day columns, named by its first day, its days
- * as proposed from their names, which the component's name on the card lists, so the press that
- * records them names them. Before the plan is locked the stage is served with its distributions
+ * as proposed from their names (or as an answer on record names them), which the component's name
+ * on the card lists, so the press that records them names them. Before the plan is locked the stage is served with its distributions
  * withheld and its offer kept (core/estimand.py `withhold`). A component already answered that the
  * offer no longer lists stays choosable, with its days on record; the engine keys a wide answer by
  * any label (core/decisions.py `SetUsualIntake`), so one whose label is not its first day is named
@@ -19,17 +19,25 @@
  * The card asks which component and which model. Leaving usual intake out records the component
  * with no model, as the engine's own exit does (core/usual_intake.py `leave_out`). The card does not
  * ask the order or weekend columns, the population (whole, or consumers only with the column that
- * marks them), a cut-off and the EAR's conditions, or the bootstrap's replicates: it sends the
- * model's defaults for them. What an answer cannot run on this table (the two-part model with no
- * zero day, the survey question unanswered) is said by the stage's analysis, with its exits, which
- * this card does not show: it reads the offer alone. A press the engine refuses (under prediction,
- * a column the table lacks) is answered in its own words, with its exits.
+ * marks them), a cut-off and the EAR's conditions, or the bootstrap's replicates. For a component
+ * with an answer on record it keeps them as the record holds them, with its days, and changes the
+ * model alone, as the engine changes one field of a record (core/usual_intake.py `answer`); for one
+ * with none it sends the model's defaults and the offer's days.
+ *
+ * What an answer on record cannot run on this table (the two-part model with no zero day, the
+ * weekend column's values, the survey question unanswered) the stage serves as a refused analysis,
+ * kept before the lock since it asks for an answer (core/estimand.py `withhold`). The card says each
+ * in the engine's words (the analysis's methods sentence, which names the component and the
+ * refusal), then each way forward that names no decision in words, and offers each that is a
+ * decision as a press that records it as served. It shows no analysis that applies, and so no
+ * number. A press the engine refuses (under prediction, a column the table lacks) is answered in its
+ * own words, with its exits.
  *
  * Every record recomputes the stage, and meanwhile the server serves its older result, so the card
  * is veiled and inert until the fresh result arrives (StaleVeil), with the retry of a recompute that
  * failed or was stopped (components/StageRetry.tsx), as the Model 1 card is.
  */
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useProjectView, useStageResult } from "../../../api/queries";
 import type { UsualIntakeArtifact } from "../../../api/m3-types";
 import type { Decision, ProjectState, ProjectView, QuestLine } from "../../../api/schema";
@@ -37,6 +45,7 @@ import { StageFailure, rootFailure } from "../../../components/Failure";
 import { Pending } from "../../../components/record/blocks";
 import { Prose } from "../../../components/Prose";
 import { StageRetry } from "../../../components/StageRetry";
+import r from "../../../components/record/Refusal.module.css";
 import { StaleVeil, veilFor } from "../../../motion/StaleVeil";
 import type { LineCard } from "../../contracts";
 import { Choice, Frame, useCard, type CardWiring, type Offer } from "../predict/card";
@@ -45,6 +54,11 @@ import { SelectField } from "../predict/fields";
 
 export type UsualIntake = Extract<Decision, { kind: "set_usual_intake" }>;
 type UsualIntakeOffer = UsualIntakeArtifact["offer"];
+type Analysis = UsualIntakeArtifact["analyses"][number];
+/** An answer as the state holds it, every field present (core/decisions.py `UsualIntakeSpec`). */
+type Spec = NonNullable<ProjectState["usual_intake"]>[string];
+/** The fields the card does not ask. */
+type Unasked = Required<Omit<UsualIntake, "kind" | "nutrient" | "model" | "days">>;
 
 type Exactly<L extends readonly unknown[], U> = [U] extends [L[number]]
   ? [L[number]] extends [U]
@@ -78,9 +92,26 @@ export const DEFAULTS = {
   n_boot: 200,
   ear_for_all: false,
   ear_symmetric: false,
-} as const satisfies Omit<UsualIntake, "kind" | "nutrient" | "model" | "days">;
+} as const satisfies Unasked;
 
-/** A component the card offers: the name an answer is keyed by, and a wide table's recall days. */
+/** The fields of a record the card does not ask, as the record holds them. */
+function unasked(spec: Spec): Unasked {
+  return {
+    order_column: spec.order_column,
+    weekend: [...spec.weekend],
+    weekend_coding: spec.weekend_coding,
+    population: spec.population,
+    consumer_column: spec.consumer_column,
+    cutoff: spec.cutoff,
+    cutoff_kind: spec.cutoff_kind,
+    n_boot: spec.n_boot,
+    ear_for_all: spec.ear_for_all,
+    ear_symmetric: spec.ear_symmetric,
+  };
+}
+
+/** A component the card offers: the name an answer is keyed by, and a wide table's recall days (the
+ *  record's, where an answer on record names them, else the offer's). */
 export interface Component {
   nutrient: string;
   days: readonly string[];
@@ -89,25 +120,34 @@ export interface Component {
 }
 
 /**
- * The decision for `component` and `model`. None sends no day columns, as the engine's own "Leave
- * usual intake out" does; every field the card does not ask is the model's default.
+ * The decision for `component` and `model`. None sends no day columns and the model's defaults, as
+ * the engine's own "Leave usual intake out" does. Any other model keeps every field `record` holds
+ * that the card does not ask, as the engine's `answer` does, else sends the model's defaults.
  */
-export function usualIntake(component: Pick<Component, "nutrient" | "days">, model: UsualIntake["model"]): UsualIntake {
+export function usualIntake(
+  component: Pick<Component, "nutrient" | "days">,
+  model: UsualIntake["model"],
+  record: Spec | null = null,
+): UsualIntake {
+  const kept = model !== "none" && record ? unasked(record) : { ...DEFAULTS, weekend: [...DEFAULTS.weekend] };
   return {
     kind: "set_usual_intake",
     nutrient: component.nutrient,
     model,
     days: model === "none" ? [] : [...component.days],
-    ...DEFAULTS,
-    weekend: [...DEFAULTS.weekend],
+    ...kept,
   };
 }
+
+/** The days an answer on record names: none where it leaves usual intake out (its days are the
+ *  offer's to propose again). */
+const daysOn = (spec: Spec | undefined): readonly string[] | null => (spec && spec.model !== "none" ? spec.days : null);
 
 /** The offer's components in its order, then each one answered that it no longer lists. */
 function componentsOf(offer: UsualIntakeOffer, answers: ProjectState["usual_intake"]): Component[] {
   const out: Component[] = offer.candidates.map((cand) => ({
     nutrient: cand.column,
-    days: cand.days,
+    days: daysOn(answers?.[cand.column]) ?? cand.days,
     why: cand.why ?? null,
   }));
   for (const [nutrient, spec] of Object.entries(answers ?? {})) {
@@ -124,14 +164,79 @@ function nameOf(comp: Component): string {
   return comp.nutrient === comp.days[0] ? days : `${comp.nutrient} (${days})`;
 }
 
+/** A way forward from a refused analysis, as the stage serves it: a label, and a decision or none
+ *  (a question to answer). */
+interface Way {
+  label: string;
+  decision: Decision | null;
+}
+
+function waysOf(analysis: Analysis): Way[] {
+  const ways: Way[] = [];
+  for (const { label, decision } of analysis.exits) {
+    if (typeof label !== "string") continue;
+    const decided = typeof decision === "object" && decision !== null && typeof (decision as { kind?: unknown }).kind === "string";
+    ways.push({ label, decision: decided ? (decision as Decision) : null });
+  }
+  return ways;
+}
+
+/** A sentence ends with its stop. */
+const finish = (text: string) => (/[.!?]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`);
+
+/** An analysis the stage refused: the engine's sentence of it, each way forward that names no
+ *  decision in words after it, and a press for each that is a decision. A press the server does not
+ *  record is answered here, in its words. */
+function Refused({ card, analysis }: { card: CardWiring; analysis: Analysis }) {
+  const ways = waysOf(analysis);
+  const at = (i: number) => `refused:${analysis.nutrient}:${i}`;
+  const answer = card.answerAt && ways.some((_, i) => card.answerAt!.key === at(i)) ? card.answerAt.node : null;
+  return (
+    <div className={r.refusal} role="alert" data-testid="usual-intake-refused" data-nutrient={analysis.nutrient}>
+      <p className={r.text}>
+        <Prose text={finish(analysis.methods || analysis.refused || "")} />
+        {ways
+          .filter((x) => !x.decision)
+          .map((x) => (
+            <Fragment key={x.label}>
+              {" "}
+              <Prose text={finish(x.label)} />
+            </Fragment>
+          ))}
+      </p>
+      {ways.some((x) => x.decision) ? (
+        <div className={r.exits}>
+          {ways.map((x, i) =>
+            x.decision ? (
+              <button
+                key={x.label}
+                type="button"
+                className={r.exit}
+                disabled={card.pending}
+                onClick={() => card.record(x.decision!, at(i))}
+                data-testid="usual-intake-refused-exit"
+              >
+                <Prose text={x.label} />
+              </button>
+            ) : null,
+          )}
+        </div>
+      ) : null}
+      {answer}
+    </div>
+  );
+}
+
 function Body({
   card,
   offer,
+  analyses,
   answered,
   initial,
 }: {
   card: CardWiring;
   offer: UsualIntakeOffer;
+  analyses: readonly Analysis[];
   answered: boolean;
   /** The component of the line's own record, once the line is answered. */
   initial: string;
@@ -140,9 +245,10 @@ function Body({
   const components = componentsOf(offer, answers);
   const [chosen, setChosen] = useState(components.some((comp) => comp.nutrient === initial) ? initial : "");
   const component = components.find((comp) => comp.nutrient === chosen) ?? null;
-  const recorded = answered && component ? (answers?.[component.nutrient]?.model ?? null) : null;
+  const record = component ? (answers?.[component.nutrient] ?? null) : null;
+  const recorded = answered ? (record?.model ?? null) : null;
   const offerOf = (model: UsualIntake["model"]): Offer =>
-    component ? { decision: usualIntake(component, model) } : { problems: [`${COMPONENT}: choose a component`] };
+    component ? { decision: usualIntake(component, model, record) } : { problems: [`${COMPONENT}: choose a component`] };
   return (
     <>
       <p className={c.said} data-testid="usual-intake-estimand">
@@ -153,6 +259,11 @@ function Body({
           <Prose text={offer.reason} />
         </p>
       ) : null}
+      {analyses
+        .filter((a) => a.refused)
+        .map((a) => (
+          <Refused key={a.nutrient} card={card} analysis={a} />
+        ))}
       <div className={c.fields}>
         <SelectField
           name="nutrient"
@@ -208,6 +319,7 @@ export const UsualIntakeCard: LineCard = ({ pid, line }) => {
   const view = useProjectView(pid).data;
   const stage = useUsualIntake(pid, view);
   const offer = stage.data?.artifact?.offer ?? null;
+  const analyses = stage.data?.artifact?.analyses ?? [];
   const initial = recordedComponent(view, line);
   // A stage that failed or was stopped does not restart by itself (components/StageRetry.tsx).
   const status = view?.stages.usual_intake;
@@ -227,6 +339,7 @@ export const UsualIntakeCard: LineCard = ({ pid, line }) => {
             key={`${line.decision_id ?? "open"} ${initial}`}
             card={card}
             offer={offer}
+            analyses={analyses}
             answered={line.status === "answered"}
             initial={initial}
           />
