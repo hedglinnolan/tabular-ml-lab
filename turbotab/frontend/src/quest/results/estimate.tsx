@@ -11,10 +11,13 @@
  *   2. per model family, Table 2 with its forest as the last column (table2FromEffects and
  *      forestFromEffects over GET /stages/effects; on a ratio scale, which prints each ratio and
  *      no estimate, the caption's sentence on the coefficients' scale is left out, `asTable2`):
- *      each declared model's one served row for the exposure, under whatever name the engine gave
- *      the column (the residual method's `<exposure>_adj`); a model that reports no estimate is
- *      said in its refusal's words beside it, and one that serves the exposure as several rows (a
- *      category's levels) is named, not drawn (`asTable2`, `unreportedOf`);
+ *      each declared model's one served row for each exposure, under the name of the column it is
+ *      per unit of: the exposure's own column under the exposure's name, and a column a method
+ *      made of it (the residual method's `<exposure>_adj`, a density's `<exposure>_per_<E>`, a
+ *      cut's `<exposure>_C2`, a level's indicator), whose unit is not the exposure's, under its
+ *      served name; a model that reports no estimate is said in its refusal's words beside it,
+ *      and an exposure served as several rows (a category's levels) is named, not drawn, nor
+ *      headed (`asTable2`, `unreportedOf`);
  *   3. beside it the primary model's diagnostics in the engine's words: a failed check's ways
  *      forward are named, never pressed, and a recorded response is said as its record words it,
  *      with the estimates the engine serves for it.
@@ -174,21 +177,26 @@ function ownerOf(feature: string, exposures: readonly string[]): string | null {
   return mine.sort((a, b) => b.length - a.length)[0] ?? null;
 }
 
+/** The exposure a served row is of: a model's rows are the exposures' only (core/stages/effects.py
+ *  `SequenceFit`), so with one exposure every row is its own. */
+const whose = (feature: string, exposures: readonly string[]) => (exposures.length === 1 ? exposures[0]! : ownerOf(feature, exposures));
+
 /** Whether a declared model reports an estimate: a served row with a number (core/stages/
  *  effects.py `_estimates`, the rule its methods text says "reports none" by). */
 const reports = (fit: Fit) => (fit.effects ?? []).some((r) => r.estimate !== null);
 
-/** A declared model as Table 2 draws it: each exposure's one served row under the exposure's name
- *  (a model's rows are the exposures' only, core/stages/effects.py `SequenceFit`, so with one
- *  exposure every row is its own), and the rows of an exposure it serves as several, which one row
- *  per model cannot hold (a category's levels, a curve's terms), by exposure. */
+/** A declared model as Table 2 draws it: each exposure's one served row, as served, so under the
+ *  name of the column its number is per unit of (the exposure's own, or one a method made of it on
+ *  another unit: `fiber_per_kcal` is per unit of `fiber` / `kcal`, never of `fiber`), and the rows
+ *  of an exposure it serves as several, which one row per model cannot hold (a category's levels,
+ *  a curve's terms), by exposure. */
 function drawnOf(fit: Fit, exposures: readonly string[]): { rows: Row[]; several: [string, Row[]][] } {
   const by = new Map<string, Row[]>();
   for (const r of fit.effects ?? []) {
-    const e = exposures.length === 1 ? exposures[0]! : ownerOf(r.feature, exposures);
+    const e = whose(r.feature, exposures);
     if (e !== null) by.set(e, [...(by.get(e) ?? []), r]);
   }
-  const rows = [...by].flatMap(([e, own]) => (own.length === 1 ? [{ ...own[0]!, feature: e }] : []));
+  const rows = [...by.values()].flatMap((own) => (own.length === 1 ? own : []));
   return { rows, several: [...by].filter(([, own]) => own.length > 1) };
 }
 
@@ -211,34 +219,41 @@ function unreportedOf(fam: Family, exposures: readonly string[]): { key: string;
   return [...out.filter((x) => x.key === "model_2"), ...out.filter((x) => x.key !== "model_2")];
 }
 
-/** The effects as Table 2 and its forest draw them. Each declared model keeps the rows it draws
- *  (`drawnOf`), and a model that draws none is left out, so no footnote is marked on a row that is
- *  not there and the caption is the first drawn model's (the primary's where it reports); what is
- *  left out is said beside the table (`unreportedOf`). On a ratio scale its column is each ratio,
+/** The effects of family `index` as Table 2 and its forest draw them. Each declared model keeps the
+ *  rows it draws (`drawnOf`), and a model that draws none is left out, so no footnote is marked on
+ *  a row that is not there and the caption is the first drawn model's (the primary's where it
+ *  reports); what is left out is said beside the table (`unreportedOf`). The adapter heads and
+ *  titles its rows by the artifact's exposures and finds each model's row by that name, so they are
+ *  the drawn rows' columns, each exposure's in turn: a column on another unit than its exposure's
+ *  is said per unit of its own name, a member with no drawn row gets no heading, and with one
+ *  column drawn the title is per unit of it, never of a family's name for itself (`*`, core/
+ *  decisions.py `EXPOSURE_FAMILY`). On a ratio scale its column is each ratio,
  *  exp(estimate), and it has no estimate column, so the caption's sentence on the coefficients'
  *  scale (the coefficient table's: "Estimates are log hazard ratios; …") would describe a column
  *  it does not print, and a reader who trusted it would exponentiate a ratio again: that sentence
  *  is left out, and the caption's others (its intervals, its rows) stay in the engine's words. A
  *  difference scale prints the estimate itself, and its caption whole. */
-function asTable2(art: ServedEffects): ServedEffects {
+function asTable2(art: ServedEffects, index: number): ServedEffects {
   const caption = (text: string) => (art.scale === "ratio" ? sentencesOf(text).filter((x) => !ON_COEFFICIENTS.test(x)).join(" ") : text);
+  const sequence = art.families[index]!.sequence.flatMap((fit) => {
+    const rows = reports(fit) ? drawnOf(fit, art.exposures).rows : [];
+    if (!rows.length) return [];
+    return [{ ...fit, effects: rows, inference: fit.inference ? { ...fit.inference, caption: caption(fit.inference.caption) } : fit.inference }];
+  });
+  const drawn = sequence.flatMap((fit) => fit.effects);
+  const columns = [...new Set(art.exposures.flatMap((e) => drawn.filter((r) => whose(r.feature, art.exposures) === e).map((r) => r.feature)))];
   return {
     ...art,
-    families: art.families.map((fam) => ({
-      ...fam,
-      sequence: fam.sequence.flatMap((fit) => {
-        const rows = reports(fit) ? drawnOf(fit, art.exposures).rows : [];
-        if (!rows.length) return [];
-        return [{ ...fit, effects: rows, inference: fit.inference ? { ...fit.inference, caption: caption(fit.inference.caption) } : fit.inference }];
-      }),
-    })),
+    exposure: columns.length === 1 ? columns[0]! : art.exposure,
+    exposures: columns,
+    families: art.families.map((fam, i) => (i === index ? { ...fam, sequence } : fam)),
   };
 }
 
 function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; index: number; many: boolean; decisions: readonly DecisionRecord[] }) {
   const [lit, setLit] = useState<string | null>(null);
   const fam = art.families[index]!;
-  const shown = asTable2(art);
+  const shown = asTable2(art, index);
   const table = table2FromEffects(shown, index, many ? `Table 2 (${fam.label})` : "Table 2");
   const unreported = unreportedOf(fam, art.exposures);
   const said = unreported.map((x, i) => (
