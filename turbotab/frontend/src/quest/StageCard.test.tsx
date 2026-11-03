@@ -821,4 +821,22 @@ describe("the triage of the open noticings under Estimate (G05)", () => {
     const { card } = cardOf(ESTIMATE, "models", { seed: seed(served("results")) });
     expect(within(card).queryByTestId("results-triage")).toBeNull();
   });
+
+  it("is not drawn where no noticing is open: a triage served with none", () => {
+    // core/sweep.py `triage` with nothing open: items [], so confirmable false and answered true.
+    const none: Triage = { ...served("models"), items: [], confirmable: false, answered: true };
+    const { card } = cardOf(ESTIMATE, "models", { seed: seed(none) });
+    expect(within(card).queryByTestId("results-triage")).toBeNull();
+    expect(within(card).queryByRole("button", { name: /^Confirm all/ })).toBeNull();
+  });
+
+  it("is not drawn on a Models card not reached yet, though the engine serves Models' triage from Your data on", () => {
+    // By construction: the engine's Estimate log before Models is reached (a card opened early from
+    // the quest line), with the triage the engine serves then for its gate, Models.
+    const early: QuestLog = { ...ESTIMATE, stages: ESTIMATE.stages.map((s) => (s.key === "models" ? { ...s, reached: false } : s)) };
+    expect(stageIn(early, "models").reached).toBe(false);
+    const { card } = cardOf(early, "models", { seed: seed(served("models")) });
+    expect(within(card).getByText("May change as you answer")).toBeInTheDocument();
+    expect(within(card).queryByTestId("results-triage")).toBeNull();
+  });
 });

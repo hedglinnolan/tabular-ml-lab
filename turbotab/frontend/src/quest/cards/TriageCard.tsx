@@ -43,14 +43,28 @@ function limitationOwed(item: TriageItem): boolean {
 }
 
 /**
+ * Whether the card says that a limitation sentence is owed for `item`: where one is, and its
+ * reason does not say so already. A finding's reason names none (core/sweep.py `recommend`,
+ * `_left_as_it_is`); a measured noticing that owes one ends its reason saying the sentence is
+ * drafted (core/materiality.py `recommend`), so the card does not say it twice.
+ */
+function saysLimitation(item: TriageItem): boolean {
+  return item.family === "finding" && limitationOwed(item);
+}
+
+/**
  * The noticings the gate waits for (`GET /triage`, ruling 4): each with the engine's recommended
- * disposition and its reason, and, where one is owed, that a limitation sentence is; a blocker is
- * decided on its own first. "Confirm all" records each as listed (`confirm_sweep`, the gate's
+ * disposition and its reason, and, where one is owed and the reason does not say so, that a
+ * limitation sentence is; a blocker is decided on its own first. "Confirm all" records each as listed (`confirm_sweep`, the gate's
  * stage, sweep "noticings"). Once the gate has passed (`passed`: under Predict the held-out rows
  * are open, under Estimate the plan is fixed) the card is read, not confirmed, and its heading says
- * so in the past. Under Predict with no rows held out (`heldOut` false: cross-validation only)
- * there are none to open, so the gate never passes (core/seal.py refuses the opening,
- * `nothing_sealed`) and the heading names no held-out rows: it says what confirming records.
+ * so in the past: settled only where no noticing is open and none recorded "act on it" is still
+ * listed, since one acted on drops out (core/sweep.py `triage`); under Predict the opening refuses
+ * while one is (core/seal.py), but under Estimate the plan's lock reads no triage, so the plan can
+ * be fixed with one, and the heading counts it still to act on. Under Predict with no rows held
+ * out (`heldOut` false: cross-validation only) there are none to open, so the gate never passes
+ * (core/seal.py refuses the opening, `nothing_sealed`) and the heading names no held-out rows: it
+ * says what confirming records.
  */
 export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; triage: Triage; id?: string; heldOut?: boolean }) {
   const confirm = useConfirmSweep(pid);
@@ -64,7 +78,11 @@ export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; t
   // Once the gate has passed a confirmation is refused (core/sweep.py `gate_passed`), so a
   // disposition that stands was recorded before it; a noticing with none is open now, after it.
   const open = items.filter((i) => i.recorded === null || i.recorded === undefined).length;
-  const settled = triage.passed && open === 0;
+  // A noticing recorded "act on it" is listed only until it is acted on (core/sweep.py `triage`;
+  // core/materiality.py `in_triage`): one still listed is still to act on.
+  const toAct = items.filter((i) => i.recorded === "act_on_it").length;
+  const settled = triage.passed && open === 0 && toAct === 0;
+  const unsettled = [open ? `${open} open` : "", toAct ? `${toAct} still to act on` : ""].filter(Boolean).join(" and ");
   const counted = items.length === 1 ? "1 noticing" : `${items.length} noticings`;
   const press = () => {
     setRefused(null);
@@ -86,7 +104,7 @@ export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; t
               ? `${counted} ${gate.before}`
               : settled
                 ? `${counted}, ${gate.settled}`
-                : `${counted}, ${open} open ${gate.after}`}
+                : `${counted}, ${unsettled} ${gate.after}`}
         </h3>
       </header>
       <ul className={s.items}>
@@ -103,7 +121,7 @@ export function TriageCard({ pid, triage, id, heldOut = true }: { pid: string; t
             <span className={s.itemReason}>
               <Rich text={i.reason} />
             </span>
-            {limitationOwed(i) ? (
+            {saysLimitation(i) ? (
               <span className={s.itemReason} data-testid="triage-limitation">
                 A limitation sentence is owed for it.
               </span>
