@@ -23,11 +23,14 @@ decision: it enters the Record only as the plan's lock, under Estimate and Descr
   convention, :data:`HOLD_SECONDS`) waits for Fit in the scheduler; shorter fits compute live and
   may be done when Fit is pressed. The hold re-arms when a new estimate exceeds 1.5 times the last
   one confirmed (:data:`REARM`). Every estimate stage that fits the chosen families (one that
-  reads ``models``) waits with the fit. The curve of which decisions mattered is held the same
-  way (:func:`curve_holds`): it fits the plan once per specification, so its estimate is the
-  followed family's fit seconds times the specifications (:func:`curve_estimate`), and the press
-  that showed it confirms it (``curve_seconds``). The hold is the scheduler's, not a stage
-  requirement, so stages stay pure functions of the log and a replay bypasses it.
+  reads ``models``) waits with the fit. The curve of which decisions mattered fits the plan once
+  per specification, so its estimate is the followed family's fit seconds times the
+  specifications (:func:`curve_estimate`), and :func:`curve_holds` judges it as the fit's hold is
+  judged, released by a press that confirmed it (``curve_seconds``). That hold is not wired yet:
+  the server's hold holds only the estimate stages, the curve's stage is none, and no press
+  records ``curve_seconds``, so the curve computes live once the fit is made. The hold is the
+  scheduler's, not a stage requirement, so stages stay pure functions of the log and a replay
+  bypasses it.
 * **The press** is kept beside the project (:data:`PRESS_FILE`: the outcome it was pressed for, the
   estimate it confirmed and the last record before it), as the scores seen are
   (``selection.SEEN_FILE``): it is not a decision and never enters the log. Cancel, or a change to
@@ -170,8 +173,8 @@ def record_press(project_dir: str | Path, *, target: str | None, seconds: float 
                  seq: int | None, curve_seconds: float | None = None) -> dict[str, Any]:
     """Keep a press of Fit beside the project: the outcome, the estimate it confirmed, the last
     record before it, and the curve's estimate it confirmed (``curve_seconds``,
-    :func:`curve_estimate`; None when none was shown). Written atomically; the newest press
-    replaces the last."""
+    :func:`curve_estimate`; None when none was shown, as no press shows one yet). Written
+    atomically; the newest press replaces the last."""
     press = {"target": target, "seconds": seconds, "seq": seq}
     if curve_seconds is not None:
         press["curve_seconds"] = float(curve_seconds)
@@ -251,7 +254,8 @@ def curve_holds(estimate: float | None, press: Mapping[str, Any] | None,
     the fit: its estimate (:func:`curve_estimate`) exceeds about 2 minutes, and no press for this
     outcome confirmed a curve estimate (the press's ``curve_seconds``) it is within 1.5 times of.
     A press that confirmed none (pressed before the curve's cost was shown) releases nothing, and
-    an estimate not known holds nothing: computing stays live."""
+    an estimate not known holds nothing: computing stays live. The scheduler does not call it yet
+    (the module docstring)."""
     if estimate is None or estimate <= HOLD_SECONDS:
         return False
     if not pressed_for(press, target):

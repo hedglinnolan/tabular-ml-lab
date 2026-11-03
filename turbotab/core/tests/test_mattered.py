@@ -417,6 +417,50 @@ def test_a_spline_on_a_covariate_is_fitted_through_and_one_on_the_exposure_stays
         exposure="fiber", n=3, names="`fiber`, `fiber'` and `fiber''`")
 
 
+def test_a_one_column_form_on_the_exposure_is_refused_and_one_on_a_covariate_is_fitted_through(
+        tmp_path):
+    """V3 (PP2 C1 repair), both ways. One cut point declared on `fiber`, what the curve follows,
+    or one data-derived cut point: the linear model fits it as one column (`fiber_C2`,
+    `fiber_above`), a contrast of the groups the form makes, not a difference per unit of
+    `fiber`. Refused in words with no exit, before anything is fitted, as truth (c) refuses an
+    exposure split by its own form (on the base refused as a step the refit did not repeat; before
+    this repair drawn, labeled per unit of `fiber_C2`). One cut point declared on `age`, a
+    covariate, is fitted through: each specification is statsmodels' fit with `age` replaced by
+    its indicator above 50 (the form's groups: at most the cut, and above it), written out here
+    (on the base the curve was refused)."""
+    from turbotab.core.decisions import ExposureFormSpec
+
+    for form, name in ((ExposureFormSpec(form="categories", cuts=[20.0]), "fiber_C2"),
+                       (ExposureFormSpec(form="optimal"), "fiber_above")):
+        run = Run(cohort(), tmp_path / form.form, state(exposure_forms={"fiber": form}))
+        model = next(m for m in run.fit.data["models"] if m["family"] == "linear")
+        assert [r["feature"] for r in model["coefficients"] if "fiber" in r["feature"]] == [name]
+        art = run.mattered()
+        assert art["curve"] is None and art["reported"] is None
+        assert art["refused"] == {"message": M.FORMED_CONTRAST.format(exposure="fiber", name=name),
+                                  "exits": []}, form.form
+
+    run = Run(cohort(), tmp_path / "age",
+              state(exposure_forms={"age": ExposureFormSpec(form="categories", cuts=[50.0])}))
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    assert curve["through"] == ["form"] and curve["not_estimated"] == []
+    assert curve["estimate_label"] == "Difference in mean `glucose` per unit of `fiber`"
+    got = {s["key"]: s for s in curve["specs"]}
+    assert set(got) == set(departures())
+    for k, (rules, covariates) in departures().items():
+        part = run.table[rows_of(run.table, rules=rules,
+                                 columns=["glucose", "fiber", *covariates])]
+        X = ef.design_matrix(part.assign(age=(part["age"] > 50.0).astype(float)),
+                             ["fiber", *covariates])
+        fit = sm.OLS(part["glucose"].astype(float), X).fit(cov_type="HC3", use_t=True)
+        low, high = fit.conf_int(alpha=0.05).loc["fiber"]
+        assert got[k]["n"] == len(part), k
+        assert (got[k]["estimate"], got[k]["low"], got[k]["high"]) == pytest.approx(
+            (float(fit.params["fiber"]), float(low), float(high)), rel=1e-9), k
+
+
 def test_an_omics_normalization_refuses_the_curve_by_name_and_no_step_of_the_others_does(
         tmp_path, numeric):
     """An omics normalization (log2) of `fiber` leaves its column's name on the normalized scale,
@@ -433,6 +477,40 @@ def test_an_omics_normalization_refuses_the_curve_by_name_and_no_step_of_the_oth
     assert art["refused"]["message"] == M.NOT_FOLLOWED_REFUSAL.format(
         steps="the omics normalization")
     assert numeric.mattered()["refused"] is None
+
+
+BELOW_DETECTION = d.MissingSpec(strategy="complete_case", below_detection="half_minimum",
+                                censored_columns=["bmi"])
+
+
+def test_a_departure_whose_plan_holds_a_step_the_curve_does_not_follow_is_not_estimated(
+        tmp_path, numeric):
+    """V2 (PP2 C1 repair), both ways. `bmi`'s blanks declared values below detection, filled at
+    half its minimum: a step the curve does not fit a specification through (``detect``,
+    :data:`M.NOT_FOLLOWED`). Only the departure adding `bmi`, which the adjustment answers leave
+    out, reads it, so that one specification alone is not estimated, the step named, and every
+    other is statsmodels' fit on its own complete cases, as with no declaration. With no
+    declaration (the numeric fixture) the same departure is estimated."""
+    run = Run(cohort(), tmp_path, state(missing=BELOW_DETECTION))
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    curve = art["curve"]
+    added = [k for k in departures() if "left_out:bmi=added" in k]
+    assert [s["key"] for s in curve["not_estimated"]] == added
+    assert curve["not_estimated"][0]["reason"] == (
+        "With this choice changed, the plan would apply the fill of values below detection, which "
+        "the curve does not fit a specification through, so it is not estimated.")
+    assert curve["through"] == []
+    got = {s["key"]: s for s in curve["specs"]}
+    assert set(got) == set(departures()) - set(added)
+    for k, s in got.items():
+        rules, covariates = departures()[k]
+        est, low, high, n = statsmodels_fit(run.table, outcome="glucose", rules=rules,
+                                            covariates=covariates)
+        assert s["n"] == n, k
+        assert (s["estimate"], s["low"], s["high"]) == pytest.approx((est, low, high),
+                                                                     rel=1e-9), k
+    assert set(added) <= {s["key"] for s in numeric.mattered()["curve"]["specs"]}
 
 
 def test_the_hold_counts_the_specifications_the_curve_fits_and_the_fit_s_own_seconds(numeric):

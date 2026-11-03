@@ -74,15 +74,19 @@ fitted as the primary is. That refusal quotes no estimate: it is served where no
   plan that no specification is fitted through yet refuses the curve by name
   (:data:`NOT_FOLLOWED`, :data:`NOT_FOLLOWED_REFUSAL`): a scale's score, an omics normalization or
   log, values below detection, a batch correction, the D-ratio filter, or the data's own imputed
-  copies. So does a form the plan declares on the exposure itself, which splits it into several
-  coefficients (:data:`FORMED_EXPOSURE`). Each other specification is judged on the coding the plan
-  would give its own columns (``pipeline.design_spec`` over the table's column summaries, as the
-  design stage reads them): a departure whose plan would apply such a step is not estimated, with
-  the step named, and so is one that leaves out a column the energy model reads
-  (:data:`ENERGY_READS`).
-* **The hold.** The curve fits the plan once per specification (:func:`specifications_of`), so
-  the scheduler may hold it as it holds the fit (``fit_press.curve_holds``), at the followed
-  family's seconds times the specifications (:func:`expected_seconds`).
+  copies. So does a form the plan declares on the exposure itself, once the fit's row is read and
+  before anything is fitted: one that splits it into several coefficients
+  (:data:`FORMED_EXPOSURE`), and one that leaves it one column contrasting the groups the form
+  makes, such as one cut point (:data:`FORMED_CONTRAST`), which is no difference per unit.
+  Each other specification is judged on the coding the plan would give its own columns
+  (``pipeline.design_spec`` over the table's column summaries, as the design stage reads them): a
+  departure whose plan would apply such a step is not estimated, with the step named, and so is
+  one that leaves out a column the energy model reads (:data:`ENERGY_READS`).
+* **The hold, not wired yet.** The curve fits the plan once per specification
+  (:func:`specifications_of`), so it takes about the followed family's seconds times the
+  specifications (:func:`expected_seconds`), which ``fit_press.curve_holds`` judges as the fit's
+  hold is judged. The scheduler does not call it yet (the server holds only the estimate stages,
+  and this stage is none), so the curve computes live once the fit is made.
 
 **Rows.** Every analyzed row (BLUEPRINT §12 ruling 3). The specifications' rows start from the
 participant flow without its exclusion rules and without its complete-cases line
@@ -148,6 +152,13 @@ NOT_FOLLOWED_REFUSAL = ("The curve fits each specification as the plan it is, an
 FORMED_EXPOSURE = ("The plan fits `{exposure}` by a declared form other than a straight line, so "
                    "the linear model reports {n:,} coefficients of it ({names}) and no one estimate "
                    "for the curve to follow across the choices.")
+# The exposure left one column by a form the plan declares on it (one cut point, declared or
+# derived from the data): its coefficient contrasts the form's groups, where the curve follows a
+# difference per unit (its label, ``curve_for``'s ``label_of``). The form is the plan's, so no exit.
+FORMED_CONTRAST = ("The plan fits `{exposure}` by a declared form other than a straight line, so "
+                   "the linear model's coefficient of it (`{name}`) compares groups that form "
+                   "makes, not a difference per unit, the one kind of estimate the curve follows "
+                   "across the choices.")
 # A specification fitted as its plan whose table holds no row of the column the curve follows (a
 # departure that drops the energy column the energy model needs to make it), after
 # "With this choice changed, " or, for the primary, :data:`RECORDED_WORDS`.
@@ -369,7 +380,8 @@ def specifications_of(state: Any) -> int | None:
     it, one choice at a time: each exclusion rule, each covariate the adjustment answers put in the
     model, each they leave out, each examined alternative), as :func:`curve_for` derives them from
     the plan's predictors (``pipeline.model_predictors``, the design's); None where the curve is
-    not offered or there is no one exposure. What the hold counts (``fit_press.curve_estimate``)."""
+    not offered or there is no one exposure. What a hold of the curve would count
+    (``fit_press.curve_estimate``; not wired yet, the module docstring)."""
     from turbotab.core.estimand import adjustment_card, current_estimand
     from turbotab.core.models.pipeline import model_predictors
 
@@ -662,7 +674,9 @@ def reported_of(fit: Any, exposure: str, task: str = "regression", *,
     own or the one an energy model made of it (``fiber_adj``), its ``feature``. Refused when there
     is none: the family not chosen, a table refused or withheld by its own answer, the exposure
     split into several columns, by a form the plan declares on it (``forms``, the design's
-    ``exposure_forms``; :data:`FORMED_EXPOSURE`, with no exit) or by its levels."""
+    ``exposure_forms``; :data:`FORMED_EXPOSURE`, with no exit) or by its levels, or a form the plan
+    declares on it leaving it one column, a contrast of the form's groups (:data:`FORMED_CONTRAST`,
+    with no exit)."""
     from turbotab.core.estimand import primary_features
 
     data = getattr(fit, "data", fit) or {}
@@ -684,6 +698,8 @@ def reported_of(fit: Any, exposure: str, task: str = "regression", *,
     if len(names) > 1 and any(f in (forms or {}) for f in (exposure, *names)):
         raise S.SpecCurveRefused(FORMED_EXPOSURE.format(
             exposure=exposure, n=len(names), names=_listing([f"`{f}`" for f in names])), ())
+    if len(names) == 1 and exposure in (forms or {}):
+        raise S.SpecCurveRefused(FORMED_CONTRAST.format(exposure=exposure, name=names[0]), ())
     row = next((r for r in rows if len(names) == 1 and r.get("feature") == names[0]), None)
     if row is None or row.get("estimate") is None:
         raise S.SpecCurveRefused(
@@ -1320,7 +1336,8 @@ def served(artifact: Any, *, status: str, fresh: bool, key: str | None, lock_id:
 
 
 __all__ = ["AGREEMENT", "CAP_REFUSAL", "COPIES_WORDS", "CROSSING", "ENERGY_READS",
-           "ESTIMATOR_WORDS", "EXAMINED", "FORMED_EXPOSURE", "IMPUTED_WORDS", "followed",
+           "ESTIMATOR_WORDS", "EXAMINED", "FORMED_CONTRAST", "FORMED_EXPOSURE", "IMPUTED_WORDS",
+           "followed",
            "INTERVAL_WORDS", "KIND_WORDS", "LOCKED", "MARGINAL_REFUSAL", "MATTERED_READS",
            "MATTERED_REQUIRES", "Mattered", "MatteredArtifact", "MatteredCurve",
            "MatteredExamined", "MatteredReported", "NOTHING_TO_VARY", "NOT_FOLLOWED",

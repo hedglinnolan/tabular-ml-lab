@@ -476,10 +476,11 @@ def curve_of(client: Any, base: str, *, mattered_wait: float = 600.0,
              poll: float = 0.25) -> Read:
     """``GET …/mattered`` once its stage settles (:data:`SETTLED`), else as served when it will
     not: held by the scheduler until Fit is pressed for it (its status in ``GET …`` holds
-    :data:`HELD_FOR_FIT`; ``fit_press.curve_holds``), which nothing presses once the run is over,
-    so it is not waited for; or its status and progress unmoved for ``mattered_wait`` seconds. A
-    curve whose progress moves is waited for however long it computes: it fits the plan once per
-    specification, which on the slowest plans takes longer than any fixed wait."""
+    :data:`HELD_FOR_FIT`; ``fit_press.curve_holds``, which the server does not call yet), which
+    nothing presses once the run is over, so it is not waited for; or its status and progress
+    unmoved for ``mattered_wait`` seconds. A curve whose progress moves is waited for however long
+    it computes: it fits the plan once per specification, which on the slowest plans takes longer
+    than any fixed wait."""
     last: Any = None
     moved = time.monotonic()
     while True:
