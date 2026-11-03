@@ -108,6 +108,9 @@ SUPPORT_BINS = 20  # equal-width stretches of the predictions' range (module doc
 SMOOTHER = "lowess, span 2/3, no robustness iterations (as rms val.prob)"
 EPS = 1e-12
 FLAT = 1e-8  # predictions spread less than this (relative to the outcome's) have no slope
+# logistic_fit reads a coefficient past this, in its column's units on the log-odds scale, as a
+# fit with no finite maximum (separation) and returns None.
+COEFFICIENT_BOUND = 50
 
 
 def z_value(level: float = LEVEL) -> float:
@@ -497,7 +500,10 @@ def logistic_fit(X: np.ndarray, y: np.ndarray, offset: np.ndarray | None = None,
     """Maximum-likelihood logistic regression by Newton–Raphson: (coefficients, covariance).
 
     The covariance is the inverse information, or the cluster-robust sandwich when ``codes`` give
-    each row's unit. None when the fit does not converge (separation).
+    each row's unit. None in four ways: the information is singular at a step; the steps do not
+    fall below 10⁻¹⁰ within ``max_iter``; a coefficient is not finite or is past
+    :data:`COEFFICIENT_BOUND` in its column's units (read as separation); or the information
+    at the estimate is singular.
     """
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -517,7 +523,7 @@ def logistic_fit(X: np.ndarray, y: np.ndarray, offset: np.ndarray | None = None,
             break
     else:
         return None
-    if not np.all(np.isfinite(beta)) or np.max(np.abs(beta)) > 50:
+    if not np.all(np.isfinite(beta)) or np.max(np.abs(beta)) > COEFFICIENT_BOUND:
         return None
     eta = off + X @ beta
     mu = 1.0 / (1.0 + np.exp(-eta))
@@ -994,9 +1000,9 @@ def random_effects(metric: str, estimates: Sequence[float], ses: Sequence[float]
 
 
 __all__ = [
-    "Calibration", "CurvePoint", "HorizonCalibration", "INTERCEPT_TOLERANCE", "Interval", "LEVEL",
-    "LevelCalibration", "NOT_ASSESSED", "Pooled", "RiskGroup", "SLOPE_TOLERANCE", "SUPPORT_BINS",
-    "SupportBin", "TIED",
+    "COEFFICIENT_BOUND", "Calibration", "CurvePoint", "HorizonCalibration", "INTERCEPT_TOLERANCE",
+    "Interval", "LEVEL", "LevelCalibration", "NOT_ASSESSED", "Pooled", "RiskGroup",
+    "SLOPE_TOLERANCE", "SUPPORT_BINS", "SupportBin", "TIED",
     "auc_components", "auc_influence", "auc_interval", "breslow", "brier_at", "brier_rows",
     "calibration", "censoring_survival", "delayed_entry", "delong", "fold_variance",
     "horizon_calibration", "interval", "kaplan_meier", "level_calibration", "log_loss_rows",
