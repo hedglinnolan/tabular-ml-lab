@@ -19,10 +19,16 @@
  * it, and meanwhile the server serves its older result (core/graph.py `Engine.get`): the card's
  * columns and options stay veiled and inert until the fresh result arrives, so nothing is offered
  * from the older one.
+ *
+ * Only a result computed after the adjustment answer serves the columns (core/stages/proposals.py),
+ * so where that recompute failed or was stopped there are none to show: the card says which
+ * computation did not finish and why, with its retry, as a step waiting on it does
+ * (components/Failure.tsx `StageFailure`), never that they are not computed yet.
  */
 import { useState } from "react";
 import { useProjectView, useStageResult } from "../../../api/queries";
 import type { ProjectView } from "../../../api/schema";
+import { StageFailure, rootFailure } from "../../../components/Failure";
 import { Pending } from "../../../components/record/blocks";
 import { Prose } from "../../../components/Prose";
 import { StaleVeil, veilFor } from "../../../motion/StaleVeil";
@@ -35,6 +41,8 @@ import { modelSequence, servedSequence, type ModelOneServed, type ModelSequence 
 type Answer = "guess" | "checked";
 
 const listed = (columns: readonly string[]) => columns.join(", ");
+/** The line's name as its card's heading says it (predict/card.tsx `Frame`). */
+const capital = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
 const sameColumns = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((col) => b.includes(col));
 
@@ -112,6 +120,8 @@ export const ModelOneCard: LineCard = ({ pid, line }) => {
   const served = proposals.data?.artifact?.model_sequence ?? null;
   const guess = served ? servedSequence(served) : null;
   const declared = line.status === "answered" ? (card.state?.model_sequence?.model_1 ?? null) : null;
+  // A stage that failed or was stopped does not restart by itself (components/StageRetry.tsx).
+  const unfinished = !!view && (rootFailure(view.stages, "proposals") !== null || !!view.stages.proposals?.cancelled);
   return (
     <Frame line={line}>
       {!card.state || (proposals.isLoading && !served) ? (
@@ -127,6 +137,17 @@ export const ModelOneCard: LineCard = ({ pid, line }) => {
             declared={declared}
           />
         </StaleVeil>
+      ) : unfinished && view ? (
+        // Nothing in the quest shell answers a request to reopen an answer (the Record does), so
+        // the failure offers its retry alone.
+        <StageFailure
+          pid={pid}
+          view={view}
+          stage="proposals"
+          changeable={false}
+          after={<>{capital(line.name)} waits on it.</>}
+          testId="model-one-failure"
+        />
       ) : (
         <p className={c.waiting} data-testid="model-one-unserved">
           The columns Model 1 may hold are not computed yet.

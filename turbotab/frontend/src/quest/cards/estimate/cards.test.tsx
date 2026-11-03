@@ -216,16 +216,26 @@ function stateOf(over: Record<string, unknown> = {}): ProjectState {
   } as unknown as ProjectState;
 }
 
+/** How the proposals stage stands where it is not fresh: recomputing, failed, or stopped. */
+type NotFresh =
+  | { status: "running" }
+  | { status: "error"; error: string }
+  | { status: "stale"; cancelled: true };
+
 /**
- * Serve the proposals stage: fresh, its result at the key the view reports; or recomputing, the
- * view reporting the key it computes while the server serves the latest older result with
- * `fresh: false` (core/graph.py `Engine.get`, allow_stale).
+ * Serve the proposals stage: fresh, its result at the key the view reports; or not fresh
+ * (recomputing unless `over` says how it stands), the view reporting the key it computes while
+ * the server serves the latest older result with `fresh: false` (core/graph.py `Engine.get`,
+ * allow_stale).
  */
-function serveProposals(qc: QueryClient, view: ProjectView, artifact: ProposalsArtifact | null, fresh = true) {
-  const status = fresh ? "fresh" : "running";
+function serveProposals(qc: QueryClient, view: ProjectView, artifact: ProposalsArtifact | null, fresh = true, over?: NotFresh) {
+  const status = over?.status ?? (fresh ? "fresh" : "running");
   qc.setQueryData(keys.view(PID), {
     ...view,
-    stages: { ...view.stages, proposals: { stage: "proposals", status, key: "p", fresh, updated_at: null } },
+    stages: {
+      ...view.stages,
+      proposals: { stage: "proposals", status, key: "p", fresh, updated_at: null, error: null, cancelled: false, ...over },
+    },
   } as unknown as ProjectView);
   qc.setQueryData(keys.stage(PID, "proposals"), { stage: "proposals", key: fresh ? "p" : "p0", fresh, status, artifact });
 }
@@ -237,6 +247,8 @@ function mount(
     proposals?: ProposalsArtifact | null;
     /** Serve the proposals result as an older one while the stage recomputes. */
     stale?: boolean;
+    /** Serve it as an older one while the stage stands so (failed, stopped). */
+    status?: NotFresh;
     state?: Record<string, unknown>;
     line?: Partial<QuestLine>;
   } = {},
@@ -252,7 +264,7 @@ function mount(
     } as unknown as ProjectView);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(keys.view(PID), view);
-  if (opts.proposals !== undefined) serveProposals(qc, view, opts.proposals, !opts.stale);
+  if (opts.proposals !== undefined) serveProposals(qc, view, opts.proposals, !opts.stale && !opts.status, opts.status);
   const withProposals = qc.getQueryData<ProjectView>(keys.view(PID))!;
   qc.setQueryData(keys.columns(PID), Object.keys(withProposals.state.roles ?? {}).map((name) => ({ name })));
   const decide = vi.spyOn(api, "decide").mockResolvedValue(withProposals);
@@ -453,6 +465,50 @@ describe("the Model 1 card, from the proposals stage's model_sequence", () => {
     await settle();
     expect(decide).not.toHaveBeenCalled();
   });
+
+  // The line opens once the adjustment is answered, and only a result computed after that answer
+  // serves Model 1's columns (core/stages/proposals.py): the older result the server falls back to
+  // serves none, so a recompute that fails or is stopped leaves no columns to show.
+  const unservedAfter = (status: NotFresh) => {
+    const { view, proposals } = servedIn("nhanes-inference");
+    mount("set_model_sequence", { view, proposals: { ...proposals, model_sequence: null }, status });
+    const card = screen.getByTestId("declaration-set_model_sequence");
+    return { card, title: within(card).getByRole("heading").textContent! };
+  };
+
+  it("names the stage that did not finish, its reason and its retry where the proposals stage failed, never 'not computed yet'", async () => {
+    const reason = "the recompute ran out of memory";
+    const { card, title } = unservedAfter({ status: "error", error: reason });
+    expect(card).not.toHaveTextContent("not computed yet");
+    expect(screen.queryByTestId("model-one-unserved")).toBeNull();
+    const failure = screen.getByTestId("model-one-failure");
+    expect(failure).toHaveAttribute("data-stage", "proposals");
+    expect(failure).toHaveAttribute("data-kind", "failed");
+    expect(failure).toHaveTextContent(reason);
+    expect(failure).toHaveTextContent(`${title} waits on it.`);
+    expect(offered()).toEqual([]);
+    const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(within(failure).getByTestId("retry-proposals"));
+    await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "proposals"));
+  });
+
+  it("says the recompute was stopped, with a way to run it again, where the proposals stage was stopped", async () => {
+    const { card } = unservedAfter({ status: "stale", cancelled: true });
+    expect(card).not.toHaveTextContent("not computed yet");
+    const failure = screen.getByTestId("model-one-failure");
+    expect(failure).toHaveAttribute("data-kind", "stopped");
+    const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(within(failure).getByTestId("retry-proposals"));
+    await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "proposals"));
+  });
+
+  it("says the columns are not computed yet, and names no failure, while the proposals stage computes its first result", () => {
+    const { view } = servedIn("nhanes-inference");
+    mount("set_model_sequence", { view, proposals: null, stale: true });
+    expect(screen.getByTestId("model-one-unserved")).toHaveTextContent("not computed yet");
+    expect(screen.queryByTestId("model-one-failure")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 // ── how many tests are accounted for ────────────────────────────────────────
@@ -582,6 +638,17 @@ describe("the regression calibration card", () => {
     expect((screen.getByTestId("field-n_boot") as HTMLInputElement).value).toBe(String(nBoot.maximum));
     expect(screen.getByTestId("option-method:regression_calibration")).toHaveAttribute("data-recorded");
     expect(screen.getByTestId("option-method:none")).not.toHaveAttribute("data-recorded");
+  });
+
+  it("starts at the model's default and marks nothing recorded on an open line, whatever calibration the state holds", () => {
+    // A calibration declared under another adjustment set is asked again while the state keeps it
+    // (core/quest.py `_calibration_is_current`), so it is no answer to show.
+    expect(nBoot.maximum).not.toBe(nBoot.default);
+    const held = { method: "regression_calibration", exposures: [], n_boot: nBoot.maximum, interval: "whole_chain_bootstrap", adjustment: ["age"] };
+    mount("set_measurement_error", { state: { measurement_error: held } });
+    expect(screen.getByTestId("declaration-set_measurement_error")).toHaveAttribute("data-status", "open");
+    expect((screen.getByTestId("field-n_boot") as HTMLInputElement).value).toBe(String(nBoot.default));
+    expect(document.querySelectorAll("[data-recorded]")).toHaveLength(0);
   });
 
   it("holds its bound, its defaults and both cards' lists to the models'", async () => {
