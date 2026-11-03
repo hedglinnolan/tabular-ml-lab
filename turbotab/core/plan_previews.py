@@ -303,15 +303,22 @@ def fit_design(ctx: PreviewContext, state: Any, ids: Any, extra: Sequence[str] =
                   lineage=lineage)
 
 
-def matrix_of(lineage: Lineage) -> list[str]:
-    return [n.column for n in lineage.nodes if n.lane == "matrix" and n.column is not None]
+def matrix_of(drawn: Design | Lineage) -> list[str]:
+    """The columns the model sees, by name: a design's matrix, every column; a lineage's named
+    matrix nodes, every column only where the lineage is not folded for display (above
+    ``lineage.COLLAPSE_AT`` raw columns its count nodes name none, so pass the design)."""
+    if isinstance(drawn, Design):
+        return drawn.columns
+    return [n.column for n in drawn.nodes if n.lane == "matrix" and n.column is not None]
 
 
-def lineage_change(before: Lineage | None, after: Lineage) -> tuple[list[str], list[str]]:
-    """Matrix columns that arrive and that leave between two lineages."""
+def lineage_change(before: Design | Lineage | None, after: Design | Lineage
+                   ) -> tuple[list[str], list[str]]:
+    """Matrix columns that arrive and that leave between two designs (:func:`matrix_of`)."""
     now = matrix_of(before) if before is not None else []
     then = matrix_of(after)
-    return [c for c in then if c not in now], [c for c in now if c not in then]
+    had, has = set(now), set(then)  # a wide plan's every column: sets, not lists
+    return [c for c in then if c not in had], [c for c in now if c not in has]
 
 
 def points(x: np.ndarray, y: np.ndarray, keep: np.ndarray | None = None) -> list[tuple[float, float]]:
@@ -1074,7 +1081,7 @@ def exposure_form_views(decision: Any, ctx: PreviewContext, after: Any = None,
             column=name, before=hist, after=hist, before_label=name, after_label=name,
             marks=marks,
         ))
-    arrive, leave = lineage_change(now.lineage if now is not None else None, then.lineage)
+    arrive, leave = lineage_change(now, then)
     if arrive or leave:
         views.append(LineageView(
             title=title("Columns the model will see"),
@@ -1454,7 +1461,7 @@ def clusters_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         then = fit_design(ctx, after, rows)
         now = fit_design(ctx, ctx.state, rows)
         if then is not None:
-            arrive, _ = lineage_change(now.lineage if now is not None else None, then.lineage)
+            arrive, _ = lineage_change(now, then)
             if arrive:
                 views.append(LineageView(
                     title=title(f"{tick(named)} as fixed effects"),
@@ -1888,7 +1895,7 @@ def categorical_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if then is None:
         return []
     now = fit_design(ctx, ctx.state, ids)
-    arrive, leave = lineage_change(now.lineage if now is not None else None, then.lineage)
+    arrive, leave = lineage_change(now, then)
     coded = [c for c in decision.columns if c in then.spec.inputs]
     if not coded:
         ctx.read["note"] = (f"{names(list(decision.columns))} "

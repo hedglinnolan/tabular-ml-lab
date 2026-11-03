@@ -155,13 +155,20 @@ def _read(ctx: PreviewContext, columns: Sequence[str]) -> Any:
     return modeling_frame(ctx.datastore, [c for c in dict.fromkeys(columns) if c in available], ids)
 
 
-def _lineage(state: Any, frame: Any, predictors: Sequence[str], adjustment: Any) -> Any:
-    from turbotab.core.models.lineage import missing_counts, trace
+def _lineage(state: Any, frame: Any, predictors: Sequence[str], adjustment: Any
+             ) -> tuple[Lineage, list[str]]:
+    """The model matrix's lineage under ``adjustment`` as drawn, folded for display on a plan of
+    more than ``lineage.COLLAPSE_AT`` raw columns as ``lineage.trace`` folds it, and every column
+    the model sees by its name: a folded lineage's count nodes name none, so the columns are read
+    from the lineage unfolded, and the drawing is folded from it (one trace, not two)."""
+    from turbotab.core.models.lineage import COLLAPSE_AT, collapse, missing_counts, trace
     from turbotab.core.models.pipeline import design_spec, shared_steps, transformer
 
     spec = design_spec(state, frame, predictors, energy=adjustment)
     fitted = transformer(shared_steps(spec)).fit(frame[spec.inputs])
-    return trace(fitted.steps, spec.inputs, spec.roles, missing_counts(frame[spec.inputs]))
+    whole = trace(fitted.steps, spec.inputs, spec.roles, missing_counts(frame[spec.inputs]),
+                  fold=False)
+    return (collapse(whole) if len(spec.inputs) > COLLAPSE_AT else whole), _matrix(whole)
 
 
 def _matrix(lineage: Any) -> list[str]:
@@ -169,8 +176,11 @@ def _matrix(lineage: Any) -> list[str]:
 
 
 def lineage_caption(before: Sequence[str], after: Sequence[str]) -> str:
-    leave = [c for c in before if c not in after]
-    arrive = [c for c in after if c not in before]
+    """What leaves and arrives between the model's columns ``before`` and ``after`` (every column
+    by its name, never a drawing's named nodes), and how many columns the model sees."""
+    before_set, after_set = set(before), set(after)  # a wide plan's every column: sets, not lists
+    leave = [c for c in before if c not in after_set]
+    arrive = [c for c in after if c not in before_set]
     parts = []
     if leave:
         parts.append(f"{_names(leave)} {'leaves' if len(leave) == 1 else 'leave'}")
@@ -438,18 +448,22 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     if problem:
         return views
 
-    lineage_before = lineage_after = None
+    drawn_before = drawn_after = None
     try:
         if asked is None:
-            lineage_after = _lineage(state, frame, predictors, after_adj)
-            lineage_before = _lineage(state, frame, predictors, before_adj)
+            drawn_after = _lineage(state, frame, predictors, after_adj)
+            drawn_before = _lineage(state, frame, predictors, before_adj)
     except (ValueError, TypeError):
         pass  # the recorded method may not run on these rows; the option's own lineage still shows
-    if lineage_after is not None:
-        cols_after = _matrix(lineage_after)
-        cols_before = _matrix(lineage_before) if lineage_before is not None else cols_after
-        changed = [c for c in cols_after if c not in cols_before] + [c for c in cols_before
-                                                                      if c not in cols_after]
+    if drawn_after is not None:
+        # Every column by its name, never the drawing's named nodes: on a wide plan the drawing
+        # folds the columns no step changed, and those past the changes it keeps in view.
+        lineage_after, cols_after = drawn_after
+        lineage_before, cols_before = (drawn_before if drawn_before is not None
+                                       else (None, cols_after))
+        before_set, after_set = set(cols_before), set(cols_after)
+        changed = [c for c in cols_after if c not in before_set] + [c for c in cols_before
+                                                                     if c not in after_set]
         views.append(LineageView(
             title="Columns the model will see",
             caption=(lineage_caption(cols_before, cols_after) if lineage_before is not None
