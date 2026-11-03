@@ -326,13 +326,15 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     came to read its score (T5d); and, where two branches both moved a stage, one past both at
     their merge; and the fit and the stages that refuse the imputation again when that refusal came
     to say the answer's words (pp1f), and the findings when they came to judge columns on the
-    participants and to set two-valued columns aside (PP1)."""
+    participants and to set two-valued columns aside (PP1); and the sensitivity stage again when
+    it came to name each exposure column of a plan wider than the lineage shows unfolded (PP2
+    N1)."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
     assert (versions["design"], versions["fit"], versions["findings"]) == (35, 42, 23)
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
-            versions["secondary"], versions["scales"]) == (16, 25, 22, 16, 13)
+            versions["secondary"], versions["scales"]) == (16, 26, 22, 16, 13)
     assert (versions["modification"], versions["mattered"]) == (7, 3)
     assert versions["proposals"] == 22
 

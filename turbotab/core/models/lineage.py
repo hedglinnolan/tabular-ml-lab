@@ -175,12 +175,14 @@ def _run(steps: Sequence[tuple[str, Any]], columns: Sequence[str],
 
 
 def trace(steps: Sequence[tuple[str, Any]], raw: Sequence[str], roles: Mapping[str, str],
-          missing: Mapping[str, int] | None = None) -> Lineage:
+          missing: Mapping[str, int] | None = None, *, fold: bool = True) -> Lineage:
     """The lineage of fitted transformer ``steps`` applied to the ``raw`` input columns.
 
     Steps named in ``ADJUST_STEPS`` (impute, energy) end in the "adjusted" lane; every later
     step ends in the "matrix" lane. ``missing`` (column → missing count in the fitting rows) lets
-    an imputer say which columns it actually filled.
+    an imputer say which columns it actually filled. Above :data:`COLLAPSE_AT` raw columns the
+    lineage is folded for display (:func:`collapse`), its count nodes naming no column; a reader
+    that needs every column by its name passes ``fold=False``.
     """
     raw = [str(c) for c in raw]
     adjust = [(n, s) for n, s in steps if n in ADJUST_STEPS]
@@ -210,7 +212,7 @@ def trace(steps: Sequence[tuple[str, Any]], raw: Sequence[str], roles: Mapping[s
                                  operation=_link_op(origin.paths.get(a, [])))
                      for a in adj_sources)
     lineage = Lineage(nodes=nodes, links=links)
-    return collapse(lineage) if len(raw) > COLLAPSE_AT else lineage
+    return collapse(lineage) if fold and len(raw) > COLLAPSE_AT else lineage
 
 
 def collapse(lineage: Lineage, shown: int = SHOWN) -> Lineage:

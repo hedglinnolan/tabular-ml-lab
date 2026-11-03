@@ -970,7 +970,7 @@ def build_graph() -> Graph:
             # mattered 3: as fit 41.
             # sensitivity 25, calibration 22, secondary 16, scales 13, effects 16 (pp1f): as fit 42,
             # their refusal of the imputation reads the answer's words and ways forward.
-            Stage("sensitivity", 25, ("working", "design", "split", "target_info"),
+            Stage("sensitivity", 26, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models", "purpose"),
                   label="Refitting the model on each analysis's rows", serves=ESTIMATE),
