@@ -14,15 +14,16 @@
  * decisions it posted and the views they led to; the quest lines from the engine's contract
  * (src/quest/fixtures/quest-contract.json); and every posted decision held to its model in
  * turbotab/server/openapi.json. A payload the capture holds no case of (a refused join, a field the
- * values contradict, a press the server refuses) is built in the served shape, its words the test's
- * own construction.
+ * values contradict, a press the server refuses, a file or codebook the server could not read, a
+ * table not read yet, or whose read failed or was stopped) is built in the served shape, its words
+ * the test's own construction.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { api, RefusalError } from "../../../api/client";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { api, ApiError, RefusalError } from "../../../api/client";
 import type {
   AddedFile,
   CodebookPreview,
@@ -30,7 +31,7 @@ import type {
   JoinPreviewRequest,
 } from "../../../api/m3-types";
 import { keys } from "../../../api/queries";
-import type { Decision, ProjectView, QuestLine } from "../../../api/schema";
+import type { Decision, ProjectView, QuestLine, StageResult, StageStatus } from "../../../api/schema";
 import { artifactAt, expandView, viewsOf, type M3Fixture } from "../../../mocks/m3";
 import { StageFocusProvider } from "../../../state/focus";
 import { CONTRACT } from "../../fixtures/contract";
@@ -129,6 +130,17 @@ function lineOf(kind: Kind, over: Partial<QuestLine> = {}): QuestLine {
 
 // ── mounting ────────────────────────────────────────────────────────────────
 
+/** How the table's reading (the ingest stage) stands where it is not fresh at the view's key. */
+type Ingest = Partial<StageStatus> & { status: StageStatus["status"] };
+
+/**
+ * The table as read, standing `over` at a key of its own while the server serves the older result
+ * it holds (`older`), or none: a first read that failed or was stopped leaves none (core/graph.py
+ * `Engine.get`). "loading": read, its result not fetched yet.
+ */
+type NotRead = { over: Ingest; older: boolean } | "loading";
+const NEXT_KEY = "ingest-next";
+
 function mount(
   kind: Kind,
   opts: {
@@ -136,12 +148,34 @@ function mount(
     mode?: "local" | "server";
     line?: Partial<QuestLine>;
     next?: ProjectView;
+    ingest?: NotRead;
+    /** The files added to the project, as the server lists them. */
+    files?: AddedFile[];
   } = {},
 ) {
-  const view = viewAt(opts.at ?? 1);
+  const at = viewAt(opts.at ?? 1);
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
+  const ingest = at.stages.ingest!.key;
+  const read = artifactAt(F, "ingest", ingest);
+  const not = typeof opts.ingest === "object" ? opts.ingest : null;
+  const view: ProjectView = not
+    ? {
+        ...at,
+        stages: {
+          ...at.stages,
+          ingest: {
+            ...at.stages.ingest!,
+            key: NEXT_KEY,
+            fresh: false,
+            error: null,
+            cancelled: false,
+            ...not.over,
+          },
+        },
+      }
+    : at;
   qc.setQueryData(keys.view(PID), view);
   qc.setQueryData(keys.health(), {
     version: "test",
@@ -150,20 +184,29 @@ function mount(
     user: null,
     auth: "none",
   });
-  const ingest = view.stages.ingest!.key;
-  qc.setQueryData(keys.stage(PID, "ingest"), {
-    stage: "ingest",
-    key: ingest,
-    fresh: true,
-    status: "fresh",
-    artifact: artifactAt(F, "ingest", ingest),
-  });
+  if (not)
+    qc.setQueryData(keys.stage(PID, "ingest"), {
+      stage: "ingest",
+      key: not.older ? ingest : null,
+      fresh: false,
+      status: not.over.status,
+      artifact: not.older ? read : null,
+    });
+  else if (opts.ingest !== "loading")
+    qc.setQueryData(keys.stage(PID, "ingest"), {
+      stage: "ingest",
+      key: ingest,
+      fresh: true,
+      status: "fresh",
+      artifact: read,
+    });
   qc.setQueryData(keys.columns(PID), served("columns"));
-  qc.setQueryData(keys.files(PID), FILES);
+  const files = opts.files ?? FILES;
+  qc.setQueryData(keys.files(PID), files);
   // Nothing else is fetched: the stage results and previews these cards do not read never answer.
   vi.spyOn(api, "stage").mockImplementation(() => new Promise(() => {}));
   vi.spyOn(api, "preview").mockImplementation(() => new Promise(() => {}));
-  vi.spyOn(api, "files").mockResolvedValue(FILES);
+  vi.spyOn(api, "files").mockResolvedValue(files);
   const decide = vi.spyOn(api, "decide").mockResolvedValue(opts.next ?? view);
   const Card = DECLARATION_CARDS[kind];
   if (!Card) throw new Error(`no card for ${kind}`);
@@ -175,6 +218,24 @@ function mount(
     </QueryClientProvider>,
   );
   return { decide, qc };
+}
+
+/**
+ * The table as the server reads it now: the view's ingest standing `over` at `key`, its event
+ * patching the view, and once fresh its result at that key (the same columns: the test's own
+ * construction of a table read anew).
+ */
+function readAs(qc: QueryClient, over: Ingest & { key: string }) {
+  const view = qc.getQueryData<ProjectView>(keys.view(PID))!;
+  const fresh = over.status === "fresh";
+  qc.setQueryData(keys.view(PID), {
+    ...view,
+    stages: { ...view.stages, ingest: { ...view.stages.ingest!, fresh, ...over } },
+  });
+  if (fresh) {
+    const result = qc.getQueryData<StageResult>(keys.stage(PID, "ingest"))!;
+    qc.setQueryData(keys.stage(PID, "ingest"), { ...result, key: over.key, fresh, status: "fresh" });
+  }
 }
 
 const settle = () => act(() => new Promise((r) => setTimeout(r, 20)));
@@ -486,6 +547,119 @@ describe("joining another file (join_files)", () => {
     );
   });
 
+  // The server's refusal of a file it could not add, in the shape it serves (server/service.py
+  // `ApiError`: 400 unreadable_file and the like), its words the test's own.
+  const unreadable = (name: string) => {
+    const message = `${name} could not be read: the test's file holds no table`;
+    return new ApiError(400, message, { error: { code: "unreadable_file", message } });
+  };
+
+  it("says why the server could not add a file, and says it no longer once a file is added", async () => {
+    mount("join_files", { mode: "server" });
+    const added = served<AddedFile>("files_upload");
+    const refused = unreadable(added.name);
+    const send = vi
+      .spyOn(api, "uploadFile")
+      .mockRejectedValueOnce(refused)
+      .mockResolvedValueOnce(added);
+    upload("join-source-input", added.name);
+    expect(await screen.findByTestId("join-source-error")).toHaveTextContent(refused.message);
+    expect(screen.getByTestId("field-file")).toHaveValue("");
+    expect(record()).toBeDisabled();
+    upload("join-source-input", added.name);
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("field-file")).toHaveValue(added.id));
+    expect(screen.queryByTestId("join-source-error")).toBeNull();
+  });
+
+  it("says no refusal where the file is added", async () => {
+    mount("join_files", { mode: "server" });
+    const added = served<AddedFile>("files_upload");
+    vi.spyOn(api, "uploadFile").mockResolvedValue(added);
+    upload("join-source-input", added.name);
+    await waitFor(() => expect(screen.getByTestId("field-file")).toHaveValue(added.id));
+    expect(screen.queryByTestId("join-source-error")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says why the server could not count the join, and shows no count and records nothing", async () => {
+    const { decide } = mount("join_files");
+    // The server's answer to a preview of a file it does not hold (server/service.py
+    // `join_preview`: 404 unknown_file), in its served shape; its words the test's own.
+    const message = `No file ${FILE.id} is added to this project.`;
+    const refused = new ApiError(404, message, { error: { code: "unknown_file", message } });
+    vi.spyOn(api, "joinPreview").mockRejectedValue(refused);
+    chooseJoin(FILE.id, PREVIEW.on);
+    expect(await screen.findByTestId("join-preview-error")).toHaveTextContent(message);
+    expect(screen.queryByTestId("join-counts")).toBeNull();
+    expect(screen.queryByTestId("join-sentence")).toBeNull();
+    expect(record()).toBeDisabled();
+    fireEvent.click(record());
+    await settle();
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("says no refusal of the count where the server counted the join", async () => {
+    mount("join_files");
+    vi.spyOn(api, "joinPreview").mockResolvedValue(PREVIEW);
+    chooseJoin(FILE.id, PREVIEW.on);
+    await screen.findByTestId("join-counts");
+    expect(screen.queryByTestId("join-preview-error")).toBeNull();
+  });
+
+  it("says what the server noticed reading the file chosen, and nothing where it noticed nothing", async () => {
+    // The capture's file was read with nothing to say; a note in the served shape (core/datastore.py
+    // `ingest`'s warnings), its words the test's own.
+    expect(FILE.warnings).toEqual([]);
+    const noted: AddedFile = { ...FILE, warnings: ["the test's file was read as Latin-1"] };
+    mount("join_files");
+    fireEvent.change(screen.getByTestId("field-file"), { target: { value: FILE.id } });
+    expect(screen.getByTestId("field-right_on")).toBeInTheDocument();
+    expect(screen.queryByTestId("join-file-warnings")).toBeNull();
+    cleanup();
+    mount("join_files", { files: [noted] });
+    fireEvent.change(screen.getByTestId("field-file"), { target: { value: FILE.id } });
+    const notes = screen.getByTestId("join-file-warnings");
+    expect(Array.from(notes.querySelectorAll("li")).map((li) => li.textContent)).toEqual(
+      noted.warnings,
+    );
+  });
+
+  // Each option of the rows kept is named as the sentence the server records for it says it
+  // (core/assembly.py `join_sentence`: "keeping every row of the table" for left, "keeping only
+  // the rows found in both" for inner). The left join's is the captured server's own sentence; the
+  // capture holds no inner join, so its sentence is built in the served shape from those words.
+  const keeping = (label: string) => label.replace(/^Keep /, "keeping ");
+  const INNER_KEEP = "keeping only the rows found in both";
+  it("names the rows kept as the server's sentence for each says it", async () => {
+    expect(PREVIEW.how).toBe("left");
+    const inner: JoinPreview = {
+      ...PREVIEW,
+      how: "inner",
+      rows: PREVIEW.table.rows - PREVIEW.table_unmatched,
+      sentence: `\`${PREVIEW.file_side.name}\` was joined to the table on \`${PREVIEW.on}\`, ${INNER_KEEP}`,
+    };
+    mount("join_files");
+    vi.spyOn(api, "joinPreview").mockImplementation(async (_pid, body) =>
+      body.how === "inner" ? inner : PREVIEW,
+    );
+    chooseJoin(FILE.id, PREVIEW.on);
+    const how = screen.getByTestId("field-how") as HTMLSelectElement;
+    const labels = new Map(Array.from(how.options).map((o) => [o.value, o.textContent!]));
+    for (const p of [PREVIEW, inner]) {
+      fireEvent.change(how, { target: { value: p.how } });
+      await waitFor(() =>
+        expect(screen.getByTestId("join-sentence").textContent).toBe(said(p.sentence)),
+      );
+      const label = labels.get(p.how)!;
+      expect(how.selectedOptions[0]!.textContent).toBe(label);
+      expect(said(p.sentence)).toContain(keeping(label));
+      // And not the other option's words.
+      for (const [value, other] of labels)
+        if (value !== p.how) expect(said(p.sentence)).not.toContain(keeping(other));
+    }
+  });
+
   it("adds a file by upload and chooses the file added", async () => {
     mount("join_files", { mode: "server" });
     const added = served<AddedFile>("files_upload");
@@ -508,6 +682,187 @@ describe("joining another file (join_files)", () => {
     mount("join_files", { mode: "server" });
     expect(screen.queryByTestId("join-source-path")).toBeNull();
     expect(screen.getByTestId("join-source-input")).toBeInTheDocument();
+  });
+});
+
+// ── the table as read, where the join's identifier is chosen ────────────────
+
+describe("the table the join reads (the ingest stage)", () => {
+  const card = () => screen.getByTestId("declaration-join_files");
+  const title = () => within(card()).getByRole("heading").textContent!;
+  const chooseFile = () =>
+    fireEvent.change(screen.getByTestId("field-file"), { target: { value: FILE.id } });
+  const STILL = "The table is still being read; its columns appear here when it is done.";
+  // The server's answer to a count asked before the table is read (server/service.py
+  // `_table_ready`: 409 not_yet), in its served shape.
+  const notYet = () =>
+    new RefusalError({
+      error: {
+        code: "not_yet",
+        message: "The table is still being read; try again once it is ready.",
+        exits: [],
+      },
+    });
+
+  it("names the reading that did not finish, its reason and its retry where the table's first read failed, never 'still being read'", async () => {
+    const reason = "the test's file is not a SAS transport file";
+    mount("join_files", {
+      ingest: { over: { status: "error", error: `ValueError: ${reason}` }, older: false },
+    });
+    chooseFile();
+    const failure = screen.getByTestId("join-ingest-failure");
+    expect(failure).toHaveAttribute("data-stage", "ingest");
+    expect(failure).toHaveAttribute("data-kind", "failed");
+    expect(failure).toHaveTextContent(reason);
+    expect(failure).toHaveTextContent(`${title()} waits on it.`);
+    expect(card()).not.toHaveTextContent("still being read");
+    expect(card()).not.toHaveTextContent("You stopped");
+    expect(screen.queryByTestId("picker-count")).toBeNull();
+    const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(within(failure).getByTestId("retry-ingest"));
+    await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "ingest"));
+  });
+
+  it("says the reading was stopped, with a way to run it again, where the table's first read was stopped, never 'still being read'", async () => {
+    // The ingest waits on no stage (core/stages `ingest`: deps none), so its stop is its own.
+    mount("join_files", { ingest: { over: { status: "idle", cancelled: true }, older: false } });
+    chooseFile();
+    const stopped = screen.getByTestId("join-ingest-failure");
+    expect(stopped).toHaveAttribute("data-stage", "ingest");
+    expect(stopped).toHaveAttribute("data-kind", "stopped");
+    expect(stopped).toHaveTextContent("You stopped");
+    expect(stopped).toHaveTextContent(`${title()} waits on it.`);
+    expect(card()).not.toHaveTextContent("still being read");
+    expect(screen.queryByTestId("picker-count")).toBeNull();
+    const retry = within(stopped).getByTestId("retry-ingest");
+    expect(retry).toHaveTextContent("Recompute");
+    const run = vi.spyOn(api, "runStage").mockImplementation(() => new Promise(() => {}));
+    fireEvent.click(retry);
+    await waitFor(() => expect(run).toHaveBeenCalledWith(PID, "ingest"));
+  });
+
+  it.each(["queued", "running"] as const)(
+    "says the table is still being read, and names no failure, while its first read is %s",
+    (status) => {
+      mount("join_files", { ingest: { over: { status }, older: false } });
+      chooseFile();
+      expect(card()).toHaveTextContent(STILL);
+      expect(screen.queryByTestId("join-ingest-failure")).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByTestId("picker-count")).toBeNull();
+    },
+  );
+
+  it("says the table is not read yet, never 'still being read', where its first read has not started", () => {
+    mount("join_files", { ingest: { over: { status: "idle" }, older: false } });
+    chooseFile();
+    expect(card()).toHaveTextContent(
+      "The table is not read yet; its columns appear here once it is.",
+    );
+    expect(card()).not.toHaveTextContent("still being read");
+    expect(screen.queryByTestId("join-ingest-failure")).toBeNull();
+  });
+
+  it("says the table's columns are loading, never 'still being read', where it is read and its columns not fetched yet", () => {
+    mount("join_files", { ingest: "loading" });
+    chooseFile();
+    expect(card()).toHaveTextContent("Loading the table's columns…");
+    expect(card()).not.toHaveTextContent("still being read");
+    expect(screen.queryByTestId("join-ingest-failure")).toBeNull();
+  });
+
+  // The columns of an older read, where the table is read anew: veiled and inert, never offered as
+  // the table's, with the way forward from a read that will not restart by itself.
+  it.each([
+    ["running", "recomputing", null],
+    ["error", "failed", "Try again"],
+  ] as const)(
+    "veils the older read's columns while the table's read is %s, and offers %s",
+    async (status, veil, retry) => {
+      mount("join_files", {
+        ingest: {
+          over: { status, ...(status === "error" ? { error: "the read ran out of memory" } : {}) },
+          older: true,
+        },
+      });
+      chooseFile();
+      const veiled = screen.getByTestId("join-veil");
+      expect(veiled).toHaveAttribute("data-veil", veil);
+      expect(screen.getByTestId("picker-count").closest("[inert]")).not.toBeNull();
+      const way = within(veiled).queryByTestId("retry-ingest");
+      if (retry === null) expect(way).toBeNull();
+      else {
+        expect(way).toHaveTextContent(retry);
+        expect(way!.closest("[inert]")).toBeNull();
+      }
+    },
+  );
+
+  it("offers the table's columns unveiled where it is read", () => {
+    mount("join_files");
+    chooseFile();
+    expect(screen.getByTestId("join-veil")).toHaveAttribute("data-veil", "fresh");
+    expect(screen.getByTestId("picker-count").closest("[inert]")).toBeNull();
+    expect(screen.queryByTestId("retry-ingest")).toBeNull();
+  });
+
+  it("counts the join chosen again once the table is read, after the server answered it was not read yet", async () => {
+    const { qc } = mount("join_files");
+    const refused = notYet();
+    const ask = vi
+      .spyOn(api, "joinPreview")
+      .mockRejectedValueOnce(refused)
+      .mockResolvedValue(PREVIEW);
+    chooseJoin(FILE.id, PREVIEW.on);
+    expect(await screen.findByTestId("join-preview-error")).toHaveTextContent(refused.message);
+    expect(record()).toBeDisabled();
+    // The server's table is being read anew, then is read.
+    act(() => readAs(qc, { status: "running", key: NEXT_KEY }));
+    await settle();
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("join-veil")).toHaveAttribute("data-veil", "recomputing");
+    act(() => readAs(qc, { status: "fresh", key: NEXT_KEY }));
+    await waitFor(() => expect(ask).toHaveBeenCalledTimes(2));
+    expect(ask.mock.calls[1]).toEqual(ask.mock.calls[0]);
+    await screen.findByTestId("join-counts");
+    expect(screen.queryByTestId("join-preview-error")).toBeNull();
+    expect(screen.getByTestId("join-veil")).toHaveAttribute("data-veil", "fresh");
+    expect(record()).toBeEnabled();
+  });
+
+  it("asks again only once the table is read anew, and only for a join chosen", async () => {
+    const { qc } = mount("join_files");
+    const ask = vi.spyOn(api, "joinPreview").mockRejectedValue(notYet());
+    // Read anew with no join chosen: nothing to count.
+    act(() => readAs(qc, { status: "fresh", key: NEXT_KEY }));
+    await settle();
+    expect(ask).not.toHaveBeenCalled();
+    chooseJoin(FILE.id, PREVIEW.on);
+    await screen.findByTestId("join-preview-error");
+    expect(ask).toHaveBeenCalledTimes(1);
+    // The project changes, its table as it was read: nothing new to count.
+    act(() => {
+      const view = qc.getQueryData<ProjectView>(keys.view(PID))!;
+      qc.setQueryData(keys.view(PID), { ...view, stages: { ...view.stages } });
+    });
+    await settle();
+    expect(ask).toHaveBeenCalledTimes(1);
+  });
+
+  it("veils the counts shown and records nothing while the table is read anew", async () => {
+    const { qc, decide } = mount("join_files");
+    vi.spyOn(api, "joinPreview").mockResolvedValue(PREVIEW);
+    chooseJoin(FILE.id, PREVIEW.on);
+    await screen.findByTestId("join-counts");
+    expect(record()).toBeEnabled();
+    act(() => readAs(qc, { status: "running", key: NEXT_KEY }));
+    await settle();
+    expect(screen.getByTestId("join-veil")).toHaveAttribute("data-veil", "recomputing");
+    expect(screen.getByTestId("join-counts").closest("[inert]")).not.toBeNull();
+    expect(record()).toBeDisabled();
+    fireEvent.click(record());
+    await settle();
+    expect(decide).not.toHaveBeenCalled();
   });
 });
 
@@ -552,6 +907,36 @@ describe("the data dictionary (import_codebook)", () => {
     const sent = decide.mock.calls[0]![1] as Record<string, unknown>;
     expect(sent).toEqual(press.decision);
     expect(problems(MODEL.import_codebook, sent)).toEqual([]);
+  });
+
+  it("says why the server could not read a codebook, leaves nothing to record, and says it no longer once one is read", async () => {
+    const { decide } = mount("import_codebook", { mode: "server" });
+    // The server's refusal in its served shape (server/service.py `codebook`: 400
+    // unreadable_codebook, the codebook reader's own reason); its words the test's own.
+    const message = "The test's file is not a variable table, a codebook page or an XPT file.";
+    const refused = new ApiError(400, message, { error: { code: "unreadable_codebook", message } });
+    const send = vi
+      .spyOn(api, "uploadCodebook")
+      .mockResolvedValueOnce(BOOK)
+      .mockRejectedValueOnce(refused)
+      .mockResolvedValueOnce(BOOK);
+    // A codebook read, then another the server could not read: what the first would import goes.
+    upload("codebook-source-input", BOOK.name);
+    await screen.findByTestId("codebook-counts");
+    expect(screen.queryByTestId("codebook-source-error")).toBeNull();
+    upload("codebook-source-input", "notes.txt");
+    expect(await screen.findByTestId("codebook-source-error")).toHaveTextContent(message);
+    expect(screen.queryByTestId("codebook-counts")).toBeNull();
+    expect(screen.queryByTestId("codebook-sentence")).toBeNull();
+    expect(record()).toBeDisabled();
+    fireEvent.click(record());
+    await settle();
+    expect(decide).not.toHaveBeenCalled();
+    upload("codebook-source-input", BOOK.name);
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(3));
+    await screen.findByTestId("codebook-counts");
+    expect(screen.queryByTestId("codebook-source-error")).toBeNull();
+    expect(record()).toBeEnabled();
   });
 
   it("records nothing before a codebook is read", async () => {

@@ -16,8 +16,17 @@
  * the identifier and the rows kept; the file's name and the counts are the server's, recorded with
  * the answer. A file the state holds as joined (its `joins`, as the server's file list reads them)
  * is named as joined and not offered again.
+ *
+ * The identifier in the table is chosen from the table as read (the ingest stage), and the server
+ * counts a join only once that read is fresh (server/service.py `_table_ready`, "not yet" until
+ * then). A join changes what the table is, so the table is read anew after each: meanwhile the
+ * server serves the older read, whose columns, and any count made on it, stay veiled and inert
+ * and record nothing, and once the table is read the join chosen is counted again, since nothing
+ * else would ask. Where the read failed or was stopped and no older one is held, the card says
+ * which computation did not finish and why, with its retry, as the Model 1 card does
+ * (components/Failure.tsx `StageFailure`); it says the table is still being read only while it is.
  */
-import { useId, useRef, useState, type DragEvent } from "react";
+import { useEffect, useId, useRef, useState, type DragEvent } from "react";
 import {
   useAddFile,
   useFiles,
@@ -26,12 +35,15 @@ import {
   useProjectView,
 } from "../../../api/queries";
 import type { AddedFile, JoinPreview, JoinPreviewRequest } from "../../../api/m3-types";
-import type { Decision, DecisionInput } from "../../../api/schema";
+import type { Decision, DecisionInput, QuestLine } from "../../../api/schema";
+import { StageFailure, rootFailure } from "../../../components/Failure";
 import { ColumnPicker } from "../../../components/record/ColumnPicker";
 import { Pending } from "../../../components/record/blocks";
 import { Actions, RecordButton } from "../../../components/record/ask/common";
 import g from "../../../components/record/generic/generic.module.css";
 import { Prose, V } from "../../../components/Prose";
+import { StageRetry } from "../../../components/StageRetry";
+import { StaleVeil, veilFor } from "../../../motion/StaleVeil";
 import s from "../../../screens/StartScreen.module.css";
 import { useStage } from "../../../state/stages";
 import { cx, fmtInt, listJoin } from "../../../util/format";
@@ -56,6 +68,9 @@ const HOW_NAMES: Record<How, string> = {
   inner: "Keep only the rows found in both",
 };
 const DEFAULT_HOW: How = "left";
+
+/** The line's name as its card's heading says it (predict/card.tsx `Frame`). */
+const capital = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 
 /** What the person has chosen: the file, the identifier in the table and in the file (null: the
  *  same name), and the rows kept. */
@@ -195,7 +210,7 @@ export function FileSource({
         </form>
       ) : null}
       {error ? (
-        <p className={s.error} role="alert">
+        <p className={s.error} role="alert" data-testid={`${testId}-error`}>
           {error.message}
         </p>
       ) : null}
@@ -276,13 +291,14 @@ function Preview({ p }: { p: JoinPreview }) {
   );
 }
 
-function Body({ pid, card }: { pid: string; card: CardWiring }) {
+function Body({ pid, line, card }: { pid: string; line: QuestLine; card: CardWiring }) {
   const view = useProjectView(pid).data!;
   const listed = useFiles(pid).data;
   const add = useAddFile(pid);
   const preview = useJoinPreview(pid);
   const local = useHealth().data?.mode === "local";
   const ingest = useStage(pid, view, "ingest");
+  const read = view.stages.ingest;
   const labelId = useId();
   const [choice, setChoice] = useState<Choice>({
     file: null,
@@ -305,6 +321,22 @@ function Body({ pid, card }: { pid: string; card: CardWiring }) {
   const asked = file ? joinRequest(choice) : null;
   const shown = asked && preview.data && answers(preview.data, asked) ? preview.data : null;
   const columns = ingest?.artifact?.columns.filter((col) => col.name !== "__row_id");
+  // The columns on screen are the table's only while its read is fresh at the key it has now.
+  const veil = veilFor(read, ingest);
+  // A read that failed or was stopped does not restart by itself (components/StageRetry.tsx).
+  const failed = rootFailure(view.stages, "ingest") !== null;
+  const stopped = !failed && !!read?.cancelled;
+  const reading = read?.status === "queued" || read?.status === "running";
+  const loading = read?.status === "fresh" || read?.status === "stale";
+
+  // The table read anew (fresh at another key) is counted again for the join chosen: the server
+  // answered "not yet" before it was read, or counted the table as it was, and nothing else asks.
+  const table = read?.status === "fresh" ? read.key : null;
+  useEffect(() => {
+    if (table && asked) preview.mutate(asked);
+    // Only the table read anew asks here: each choice asks for itself (`choose`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table]);
 
   const choose = (patch: Partial<Choice>, pool: AddedFile[] = offered) => {
     const next = { ...choice, ...patch };
@@ -355,33 +387,31 @@ function Body({ pid, card }: { pid: string; card: CardWiring }) {
           testId="join-source"
         />
         {file?.warnings.length ? (
-          <ul className={c.words}>
+          <ul className={c.words} data-testid="join-file-warnings">
             {file.warnings.map((w) => (
               <li key={w}>{w}</li>
             ))}
           </ul>
         ) : null}
       </fieldset>
-      {file ? (
-        <>
+      {file && columns ? (
+        <StaleVeil
+          state={veil}
+          testId="join-veil"
+          action={<StageRetry pid={pid} status={read} />}
+        >
           <fieldset className={c.group}>
             <legend className={c.legend}>The column that identifies each unit</legend>
             <p className={c.fieldLabel} id={labelId}>
               In the table
             </p>
-            {columns ? (
-              <ColumnPicker
-                columns={columns}
-                value={choice.on}
-                onChange={(on) => choose({ on })}
-                summaries={new Map(card.summaries)}
-                labelId={labelId}
-              />
-            ) : (
-              <Pending>
-                The table is still being read; its columns appear here when it is done.
-              </Pending>
-            )}
+            <ColumnPicker
+              columns={columns}
+              value={choice.on}
+              onChange={(on) => choose({ on })}
+              summaries={new Map(card.summaries)}
+              labelId={labelId}
+            />
             <div className={c.fields}>
               <SelectField
                 name="right_on"
@@ -404,18 +434,39 @@ function Body({ pid, card }: { pid: string; card: CardWiring }) {
           </fieldset>
           {preview.isPending ? <Pending>Counting the rows the join would give…</Pending> : null}
           {preview.isError ? (
-            <p className={s.error} role="alert">
+            <p className={s.error} role="alert" data-testid="join-preview-error">
               {preview.error.message}
             </p>
           ) : null}
           {shown ? <Preview p={shown} /> : null}
-        </>
+        </StaleVeil>
+      ) : file && (failed || stopped) ? (
+        // Nothing in the quest shell answers a request to reopen an answer (the Record does), so
+        // the failure offers its retry alone.
+        <StageFailure
+          pid={pid}
+          view={view}
+          stage="ingest"
+          changeable={false}
+          after={<>{capital(line.name)} waits on it.</>}
+          testId="join-ingest-failure"
+        />
+      ) : file ? (
+        <Pending>
+          {reading
+            ? "The table is still being read; its columns appear here when it is done."
+            : loading
+              ? "Loading the table's columns…"
+              : "The table is not read yet; its columns appear here once it is."}
+        </Pending>
       ) : null}
       <Actions>
         <RecordButton
-          disabled={!asked || !shown || shown.refusal !== null || card.pending}
+          disabled={
+            !asked || !shown || shown.refusal !== null || veil !== "fresh" || card.pending
+          }
           onClick={() => {
-            if (asked && shown && shown.refusal === null)
+            if (asked && shown && shown.refusal === null && veil === "fresh")
               card.record(joinDecision(asked) as unknown as Decision, "join");
           }}
           title="Records the join counted above."
@@ -439,7 +490,7 @@ export const JoinCard: LineCard = ({ pid, line }) => {
   return (
     <Frame line={line}>
       {card.state && view ? (
-        <Body key={line.decision_id ?? "open"} pid={pid} card={card} />
+        <Body key={line.decision_id ?? "open"} pid={pid} line={line} card={card} />
       ) : (
         <Pending>Loading the project…</Pending>
       )}
