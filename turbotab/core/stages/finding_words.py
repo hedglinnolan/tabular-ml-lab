@@ -15,9 +15,9 @@ intakes → ``exclusions``; identifiers, survey design and flags → ``roles``.
 The legacy detectors keep their ids, details and badges; this module only speaks for them. Where a
 legacy sentence is untrue of the table (``pack::dietary::energy_adjustment`` counts every numeric
 column as a candidate nutrient), the detail is restated from the data; where a legacy reason names a
-stage, a view or a diagnostic v2 does not have, that clause is restated or dropped
-(:data:`UNTRUE_CLAUSES`), and a reason none of whose sentences holds in v2 is not served
-(:data:`UNTRUE_REASONS`).
+stage, a view or a diagnostic v2 does not have, or says what v2 does not do or does only under one
+goal, that clause is restated or dropped (:data:`UNTRUE_CLAUSES`), and a reason none of whose
+sentences holds in v2 is not served (:data:`UNTRUE_REASONS`).
 
 The app's own findings (``voice::*``) cover what the drive rubric says NHANES users were never told
 (DRIVE_RUBRIC §4): the respondent identifier, the ``imputed_*`` flags and the columns they mark,
@@ -1063,12 +1063,51 @@ def _grain_asked(m: re.Match[str]) -> str:
             f"you give there is the one that governs.")
 
 
-#: The clauses of legacy reasons that name a stage, a view or a diagnostic v2 does not have, by
-#: family, each with what is served in its place: the two-level reason put a column's blanks at a
-#: Preprocess stage (``ml/binary_text.py``); the repeated-subjects reason called the grain question
-#: one the app "has already asked", as the legacy lockbox did (``turbotab/packs.py``), where v2
-#: asks it in a later stage than the finding's; the temporal reason said the app "has never done"
-#: the temporal check it is making (``turbotab/clinical.py``).
+def _height_example(m: re.Match[str]) -> str:
+    """The temporal reason's two heights: the second is the first plus twice the jump between
+    visits the finding flags (``clinical.HEIGHT_JUMP_CM``), so the example is one it would flag."""
+    from turbotab.clinical import HEIGHT_JUMP_CM
+
+    return f"a height of 160 cm and a height of {160 + 2 * HEIGHT_JUMP_CM:g} cm"
+
+
+#: What a text predictor is to the design every family shares (``models.pipeline.category_inputs``):
+#: a category, each distinct value a level, where the legacy reason said it "cannot be modeled"
+#: and sits out of the analysis. The app's own text-number reason adds that its repair can read it
+#: as numbers (``repairs.TEXT_NUMBERS_WHY``); no repair reads the units the legacy reading strips.
+NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a category, each "
+                       "distinct value a level of its own, rather than as a number.")
+
+#: The clauses of legacy reasons that say what v2 does not do, by family, each with what is served
+#: in its place. The findings stage reads no purpose, so its reasons are served whichever goal the
+#: researcher holds or will choose: a clause whose truth depends on the goal says the condition.
+#:
+#: * Stages, views and diagnostics v2 does not have (pp2-why-true): the two-level reason put a
+#:   column's blanks at a Preprocess stage (``ml/binary_text.py``); the repeated-subjects reason
+#:   called the grain question one the app "has already asked", as the legacy lockbox did
+#:   (``turbotab/packs.py``), where v2 asks it in a later stage than the finding's; the temporal
+#:   reason said the app "has never done" the temporal check it is making (``turbotab/clinical.py``).
+#: * What v2 does not do, or does only under one goal (pp2-why-audit): a column of numbers stored as
+#:   text "cannot be modeled" (``ml/import_doctor.py``) or "silently" becomes one-hot levels
+#:   (``turbotab/clinical.py``), where v2's design reads it as a category and the app's own finding
+#:   says so beside it; the grain answer decides "how the held-out set is drawn", and the pooled QCs
+#:   could be in "a held-out set" and leave "before the held-out rows are drawn"
+#:   (``core/reference_rows.py``), where under Estimate no holdout is offered first
+#:   (``seal.split_offer``) and the folds keep a unit whole under either goal; at p/n ≥ 2 "an
+#:   unregularized fit" ranks below the regularized ones, where under Estimate the feature-wise
+#:   tests, one feature at a time and unpenalized, rank first (``models.base.rank``); the app
+#:   "needs to be told which export wrote this file" or "what was already done to this table and by
+#:   which tool", which it never asks; a constant feature survives "every filter that is written in
+#:   terms of variance ratios", where v2's D-ratio filter drops it (``methods.qc_drift``); a unit
+#:   artifact passes "every distributional check the app has", beside the app's own check that found
+#:   it (``turbotab/clinical.py``); the temporal example's 169 cm, typed beside the jump limit it
+#:   illustrates; the survey encoding "applied now rather than fitted inside the training folds",
+#:   where nothing is applied at the finding (``core/detectors/scales.py``); total energy "the
+#:   denominator of every energy adjustment", a unit error propagating "into every result"
+#:   (``turbotab/nutrition.py``), where a residual on energy is unchanged by a unit's constant
+#:   factor; and two goal-blind clauses, the unusual values as "the case mix the model exists to
+#:   learn" (``core/detectors/plausibility.py``) and the event as "which one you are predicting"
+#:   (``ml/binary_text.py``).
 UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...]] = {
     "binary_text": ((re.compile(r"(?<=are a separate question, )asked at Preprocess(?=: )"),
                      _blanks_asked),),
@@ -1076,11 +1115,70 @@ UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]],
         (re.compile(r"^This is the question the app has already asked — whether one person can "
                     r"appear in more than one row — and the answer you gave there is the one that "
                     r"governs\."), _grain_asked),
+        (re.compile(r"It decides how the held-out set is drawn, because a subject appearing in "
+                    r"both halves makes the held-out estimate optimistic\."),
+         lambda m: ("It decides how the rows are split for scoring: the cross-validation folds, "
+                    "and the held-out set where one is drawn, keep each subject's rows on one "
+                    "side, because a subject appearing on both sides makes the score optimistic.")),
         (re.compile(r"Nothing is re-asked here; "),
          lambda m: "That question is not asked here; "),),
     "pack::clinical::temporal_implausibility": (
         (re.compile(r" The app already does the first, at every value, and has never done the "
-                    r"second\."), lambda m: ""),),
+                    r"second\."), lambda m: ""),
+        (re.compile(r"a height of 160 cm and a height of 169 cm"), _height_example),),
+    "numeric_as_text": (
+        (re.compile(r"^As text this column cannot be modeled, correlated,? or plotted — it will "
+                    r"silently sit out of your analysis(?: while appearing perfectly fine)?\.$"),
+         lambda m: NUMERIC_AS_TEXT_WHY),),
+    "pack::clinical::number_format": (
+        (re.compile(r"^A column that does not parse as numeric is treated as a category by "
+                    r"everything downstream, so a continuous measurement silently becomes "
+                    r"hundreds of one-hot levels\."),
+         lambda m: ("A predictor that does not parse as numeric enters the models as a category, "
+                    "so a continuous measurement left as text becomes hundreds of one-hot "
+                    "levels.")),),
+    "pack::metabolomics::pooled_qc": (
+        (re.compile(r"(?<=analyzed as rows like any other, and )a held-out set could contain "
+                    r"them\."),
+         lambda m: "a cross-validation fold or a held-out set could contain them."),
+        (re.compile(r"(?<=Excluding them here removes them )before the held-out rows are drawn"),
+         lambda m: "before the rows are split"),),
+    "pack::genomics::counts_p_over_n": (
+        (re.compile(r"(?<=at this p/n )an unregularized fit is not merely optimistic"),
+         lambda m: "an unregularized fit of all the features at once is not merely optimistic"),),
+    "pack::metabolomics::zeros_or_missing": (
+        (re.compile(r"(?<=Nothing here has defaulted: )the app needs to be told which export wrote "
+                    r"this file\."),
+         lambda m: "no zero is read as a non-detection unless you say so."),),
+    "pack::metabolomics::already_transformed": (
+        (re.compile(r"(?<=Before anything is transformed here, )the app needs to know what was "
+                    r"already done to this table and by which tool\."),
+         lambda m: "what was already done to this table needs to be known."),),
+    "pack::metabolomics::empty_blocks": (
+        (re.compile(r", and both survive every filter that is written in terms of variance ratios "
+                    r"because their variance is zero rather than small(?=\.)"), lambda m: ""),),
+    "pack::clinical::mixed_units": (
+        (re.compile(r" It also passes every distributional check the app has, because two clean "
+                    r"unimodal populations at a constant ratio look like one skewed one\."),
+         lambda m: ""),),
+    "pack::clinical::default_value_mass": (
+        (re.compile(r"(?<=It is also invisible to )every distributional check the app has"),
+         lambda m: "every range check"),),
+    "pack::survey::ordinal_declared": (
+        (re.compile(r", so it is applied now rather than fitted inside the training folds(?=\.)"),
+         lambda m: ""),),
+    "pack::dietary::atwater": (
+        (re.compile(r"^Total energy is the denominator of every energy adjustment, every nutrient "
+                    r"density and every implausible-intake screen, so a unit error here "
+                    r"propagates into every result"),
+         lambda m: ("Total energy is the denominator of every nutrient density and the scale of "
+                    "every implausible-intake screen, so a unit error here moves both")),),
+    "pack::clinical::impossible_vs_extreme": (
+        (re.compile(r"(?<=the unusual ones are the case mix )the model exists to learn"),
+         lambda m: "the model is fit on"),),
+    "positive_class": (
+        (re.compile(r"Nothing in the file says which one you are predicting\."),
+         lambda m: "Nothing in the file says which one is the event."),),
 }
 
 #: The families whose legacy reason holds no sentence true of v2, served with none. The

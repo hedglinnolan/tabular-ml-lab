@@ -232,7 +232,8 @@ def test_the_repeated_subjects_reason_says_where_v2_asks_the_grain(paired):
     """`subject_id` repeats by construction, so the finding is served; it is placed in Your data,
     at the roles question it routes to, and the grain question is asked later, in Who's in. The
     reason names that stage and question as v2 names them, says nothing was asked before, and
-    keeps the legacy reason's true sentences word for word."""
+    keeps the legacy reason's true sentences word for word. Its held-out sentence is restated to
+    hold under either goal (pp2-why-audit; ``test_findings_hold_under_every_goal``)."""
     from turbotab import packs
     from turbotab.core.quest import QUESTIONS, STAGE_INDEX, STAGE_NAMES, finding_place
     from turbotab.core.voice import question_name
@@ -247,18 +248,19 @@ def test_the_repeated_subjects_reason_says_where_v2_asks_the_grain(paired):
     assert STAGE_INDEX[place.stage] < STAGE_INDEX[grain.stage]
     stage = STAGE_NAMES[grain.stage]
     assert stage == "Who's in"
-    kept = ("It decides how the held-out set is drawn, because a subject appearing in both halves "
-            "makes the held-out estimate optimistic.",
-            "this is the same question seen from the assay side, and the reason it matters more "
+    kept = ("this is the same question seen from the assay side, and the reason it matters more "
             "in an assay is that the technical replicate and the repeat visit look identical in "
             "the table.")
     legacy = packs._repeated_subjects(frame)["why_it_matters"]
     assert legacy.startswith("This is the question the app has already asked")
-    assert all(sentence in legacy for sentence in kept)
+    assert kept in legacy and "It decides how the held-out set is drawn" in legacy
     assert served["why_it_matters"] == (
         f"Whether one person can appear in more than one row is asked in {stage}, by "
         f"{question_name('grain')}, and the answer you give there is the one that governs. "
-        f"{kept[0]} That question is not asked here; {kept[1]}")
+        f"It decides how the rows are split for scoring: the cross-validation folds, and the "
+        f"held-out set where one is drawn, keep each subject's rows on one side, because a subject "
+        f"appearing on both sides makes the score optimistic. That question is not asked here; "
+        f"{kept}")
 
 
 # ── dietary, genomics and clinical ───────────────────────────────────────────
@@ -290,8 +292,8 @@ def test_the_counts_reason_ranks_only_families_the_shelf_has(expression):
     why = _one(expression, "pack::genomics::counts_p_over_n")["why_it_matters"]
     assert why.startswith(
         "Two consequences, and only one of them is ours to settle. Model ranking is: at this p/n "
-        "an unregularized fit is not merely optimistic but degenerate, so it ranks below the "
-        "regularized ones — ordered, never filtered. For a time to event there are no regularized "
+        "an unregularized fit of all the features at once is not merely optimistic but "
+        "degenerate, so it ranks below the regularized ones — ordered, never filtered. For a time to event there are no regularized "
         "ones: the Cox model, unregularized, ranks alone. Normalization is NOT: "), why
 
 
@@ -352,13 +354,18 @@ def labs(tmp_path_factory) -> dict:
 
 
 def test_the_temporal_reason_does_not_deny_itself(labs):
+    """Its example's second height is the first plus twice the jump limit the finding flags,
+    interpolated from ``clinical.HEIGHT_JUMP_CM`` where a height was typed beside it
+    (pp2-why-audit)."""
+    from turbotab.clinical import HEIGHT_JUMP_CM
+
     why = _one(labs, "pack::clinical::temporal_implausibility")["why_it_matters"]
     assert why == (
         "Kahn et al.'s framework separates ATEMPORAL plausibility — is this value believable — "
         "from TEMPORAL plausibility — is this trajectory believable. Each value flagged here is "
         "individually plausible and the sequence is not, so no per-value check can find them: a "
-        "height of 160 cm and a height of 169 cm are both ordinary, and they cannot both belong "
-        "to the same adult.")
+        f"height of 160 cm and a height of {160 + 2 * HEIGHT_JUMP_CM:g} cm are both ordinary, and "
+        "they cannot both belong to the same adult.")
 
 
 # ── every reason served on these tables ──────────────────────────────────────

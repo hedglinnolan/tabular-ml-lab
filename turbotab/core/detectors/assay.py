@@ -249,8 +249,8 @@ def redundancy_finding(df: pd.DataFrame) -> dict[str, Any] | None:
          + " This table carries no retention time, so co-elution, the other half of the "
            "research's rule, could only split these groups further."),
         ("Untargeted features are not independent: one compound leaves the source as several "
-         "ions and isotopologues. The count enters the data-description sentence and the "
-         "denominator of a multiple-testing correction. Nothing is collapsed here."),
+         "ions and isotopologues. The count enters the manuscript's data-description sentence and "
+         "the denominator of a multiple-testing correction. Nothing is collapsed here."),
         confidence="high", pack=METABOLOMICS, marker="offered",
         evidence=REDUNDANCY_EVIDENCE, claims=REDUNDANCY_CLAIMS,
         columns=largest[:8],
