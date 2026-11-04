@@ -495,10 +495,14 @@ def build_graph() -> Graph:
             # proposals 23 (PP2's second pass, the small-reads package): the missing-values card
             # lists no feature a repair marked unusable unless a declared modification's model holds
             # it (``proposals.answered_out``), so the stage reads the modifications. It does not
-            # read the missing-values answer: a stage's reads are also the Router's card
-            # dependencies (``sequence.card_reads``), and that read would hold the estimand question
-            # until the missing-values question is answered.
-            Stage("proposals", 23, ("working", "roles"),
+            # read the missing-values answer among its reads (from 24 its key reads it): a stage's
+            # reads are also the Router's card dependencies (``sequence.card_reads``), and that
+            # read would hold the estimand question until the missing-values question is answered.
+            # proposals 24 (PP2's proposals-key-reads package, 2026-11-04): the stage's key reads
+            # the missing-values answer (``Stage.key_reads``, none of its reads, so no card waits
+            # on it), so a cached proposals card is computed again when that answer's columns leave
+            # the predictors (``estimand.predictor_roles``) and change what its cards list.
+            Stage("proposals", 24, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", "modifications", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does",

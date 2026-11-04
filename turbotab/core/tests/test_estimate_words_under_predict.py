@@ -338,7 +338,9 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     holds a pipeline step came to be fitted as that plan (PP2 C1), and the findings when, beside
     pooled-QC rows, their counts came to read the participants and their two-level levels came to
     be named as the file spells them; and, at PP2's fourth pass, the findings when their served
-    reasons came to name only the stages, views and diagnostics v2 has."""
+    reasons came to name only the stages, views and diagnostics v2 has; and, with PP2's
+    proposals-key-reads package, the proposals stage when its key came to read the missing-values
+    answer."""
     from turbotab.core.stages import build_graph
 
     versions = {s.name: s.version for s in build_graph().stages()}
@@ -346,7 +348,7 @@ def test_the_design_and_fit_stages_compute_again_rather_than_serve_a_cache_from_
     assert (versions["effects"], versions["sensitivity"], versions["calibration"],
             versions["secondary"], versions["scales"]) == (17, 27, 23, 17, 14)
     assert (versions["modification"], versions["mattered"]) == (9, 4)
-    assert versions["proposals"] == 23
+    assert versions["proposals"] == 24
 
 
 def _design_data(tmp_path, purpose: str | None) -> dict:
