@@ -27,7 +27,12 @@
  * option's label and line alone: they are the server's words for the method, its served label and
  * its sound sentence, since whether the fit draws copies is the engine's to decide ("Multiple
  * imputation (m at least 20, more when more rows are incomplete)" and "Sound: with the outcome and
- * energy", in missing.html).
+ * energy", in missing.html). G16 of the front-end audit (the owner's Q4) added one option to the
+ * survey card, after the engine's population options and before "These participants", and changed
+ * nothing else in its block but the lists of the engine's candidates after the options: a design
+ * of one's own ("Your own design columns", in survey.html and in the ask block that holds that
+ * card), its weight, strata, PSU, cycle and four-year weight as fields starting from the engine's
+ * first population option.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
