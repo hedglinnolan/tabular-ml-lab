@@ -312,9 +312,14 @@ def build_graph() -> Graph:
             # pooled-QC rows; a two-level finding a missing-values answer settles keeps its levels.
             # findings 23 (pp1f): the left-censoring reading sets aside two-valued columns, as the
             # omics_scale reading does.
+            # findings 24 (PP2 findings-participants): the pack's left-censoring reading leaves out
+            # the rows the served pooled-QC finding names; beside those rows the not-asked option
+            # and the implausible intake count the participants; the energy finding counts the rows
+            # its correlation pairs; and a two-level column's levels are named in every spelling
+            # the file gives them.
             Stage(
                 "findings",
-                23,
+                24,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings", "numbers_read",
                  "shape_confirmations", "categorical", "aggregation"),
