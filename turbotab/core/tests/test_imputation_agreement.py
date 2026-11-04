@@ -7,8 +7,10 @@ text column recorded on no analyzed row, which the rule does not hold) was locke
 by the fit. Now the answer and the lock refuse every plan the sampler refuses before it draws a
 copy, at any width, in the fit's words, with the fit's ways forward, each where the record accepts
 it when taken; a roles answer's ways forward are checked against the state after it too. The
-leave-out ways never name a column the energy model is computed with, a missing-values answer
-leaving one out is refused, and the log residual's zero is a refusal in words at the design. The
+leave-out ways never name a column the energy model is computed with; a missing-values answer
+leaving one out is refused, and so are a revert that would bring one back left out under the
+energy model and the lock of a state that leaves one out; the log residual's zero is a refusal in
+words at the design. The
 scales stage refuses the items' copies in the fit's words with its ways forward.
 
 Every expected value is from construction (the rows recorded, the columns built), pandas' counts,
@@ -403,6 +405,165 @@ def test_the_energy_refusal_names_each_method_by_its_label_and_says_what_cannot_
         f"`kcal` and `x` are needed to compute the energy adjustment “{LABELS[method]}”, so the "
         f"missing-values answer cannot drop them.")
     validate(answer, ctx_of(with_("none"), Ingested(path, tmp_path / "none")))
+
+
+# Where a revert or the lock meets the same state: the probes of the second repair round's
+# verifier (pp2ia_v2/probe_revert.py, probe_revert2.py), where on the base each revert and the
+# lock were accepted and the fit then raised "The energy column kcal is not in this table".
+KEEP = "Keep the answers as they are"
+STANDARD = {"kind": "set_energy_adjustment", "method": "standard", "energy_column": "kcal",
+            "nutrients": ["x"]}
+NONE = {"kind": "set_energy_adjustment", "method": "none", "energy_column": "kcal",
+        "nutrients": []}
+
+
+def _dropping(*columns: str) -> dict[str, Any]:
+    return {"kind": "set_missing", "strategy": "complete_case", "drop_columns": list(columns)}
+
+
+def _logged(folder: Any, answers: list[dict[str, Any]], *, checked: bool = True
+            ) -> tuple[list[Any], Ingested]:
+    """The log of :func:`_kcal_narrow`'s table (`kcal` on every row) after the outcome, its task,
+    inference, the roles and ``answers``, records r1 … r(4 + len(answers)), each accepted by the
+    record when it was given (``checked``: a log recorded before this check is built unchecked)."""
+    from datetime import datetime, timezone
+
+    from turbotab.core.decisions import DecisionRecord
+
+    folder.mkdir(parents=True, exist_ok=True)
+    _, path, state = _kcal_narrow(folder, adjusted=False, kcal_once=False)
+    ingested = Ingested(path, folder / "answers")
+    records: list[Any] = []
+    given = [{"kind": "set_target", "column": "y"},
+             {"kind": "set_task", "column": "y", "task": "regression"},
+             {"kind": "set_purpose", "purpose": "inference"},
+             {"kind": "set_roles", "roles": dict(state.roles)}, *answers]
+    for i, answer in enumerate(given, 1):
+        decision = parse_decision(answer)
+        if checked or i <= 4:
+            validate(decision, _with_log(records, ingested))
+        records.append(DecisionRecord(id=f"r{i}", seq=i, at=datetime.now(timezone.utc),
+                                      decision=decision))
+    return records, ingested
+
+
+def _with_log(records: list[Any], ingested: Ingested) -> dict[str, Any]:
+    """The validators' context as the server builds it, with the log it folds."""
+    from turbotab.core.decisions import fold
+
+    return {"state": fold(records), "store": ingested.store, "task": "regression",
+            "records": list(records)}
+
+
+def _undo(record_id: str) -> Any:
+    return parse_decision({"kind": "revert", "decision_id": record_id})
+
+
+def test_a_revert_bringing_back_an_answer_that_drops_the_energy_column_is_refused(tmp_path):
+    """Leaving `kcal` out (r5), then keeping every predictor (r6), then the standard energy model
+    on `kcal` and `x` (r7): undoing r6 would bring back r5, dropping `kcal` while the energy model
+    is computed with it, so it is refused in the missing-values answer's words. A revert that
+    brings back a missing-values answer offers only keeping the answers as they are, here and
+    where r5 is multiple imputation, whose form without `kcal` is not the answer now. With r5
+    leaving out the covariate `c1` instead, the same revert is accepted."""
+    from turbotab.core.decisions import fold
+
+    records, ingested = _logged(tmp_path, [_dropping("kcal"), _dropping(), STANDARD])
+    with pytest.raises(Refusal) as refused:
+        validate(_undo("r6"), _with_log(records, ingested))
+    assert refused.value.code == smcfcs.ENERGY_LEFT_OUT
+    assert refused.value.message == LEFT_OUT.format(c="kcal")
+    assert refused.value.exits == [{"label": KEEP, "decision": None}]
+    imputed = {**_dropping("kcal"), "strategy": "multiple_imputation"}
+    records, ingested = _logged(tmp_path / "mi", [imputed, _dropping(), STANDARD])
+    with pytest.raises(Refusal) as refused:
+        validate(_undo("r6"), _with_log(records, ingested))
+    assert refused.value.message == LEFT_OUT.format(c="kcal")
+    assert refused.value.exits == [{"label": KEEP, "decision": None}]
+    records, ingested = _logged(tmp_path / "c1", [_dropping("c1"), _dropping(), STANDARD])
+    validate(_undo("r6"), _with_log(records, ingested))
+    assert fold([*records, _record("r8", 8, _undo("r6"))]).missing.drop_columns == ["c1"]
+
+
+def _record(record_id: str, seq: int, decision: Any) -> Any:
+    from datetime import datetime, timezone
+
+    from turbotab.core.decisions import DecisionRecord
+
+    return DecisionRecord(id=record_id, seq=seq, at=datetime.now(timezone.utc),
+                          decision=parse_decision(decision))
+
+
+def test_a_revert_bringing_back_the_energy_model_while_its_column_is_dropped_is_refused(tmp_path):
+    """The mirror: the standard energy model (r5), then none (r6), then leaving `kcal` out (r7):
+    undoing r6 would bring back the standard model on `kcal`, which r7 drops, so it is refused in
+    the same words, with keeping every predictor, which the record accepts now and with the revert
+    recorded; once it is taken (r8), the same revert is accepted and leaves the standard model on
+    every predictor. With r7 leaving out `c1` instead, the revert is accepted."""
+    from turbotab.core.decisions import fold
+
+    records, ingested = _logged(tmp_path, [STANDARD, NONE, _dropping("kcal")])
+    with pytest.raises(Refusal) as refused:
+        validate(_undo("r6"), _with_log(records, ingested))
+    assert refused.value.code == smcfcs.ENERGY_LEFT_OUT
+    assert refused.value.message == LEFT_OUT.format(c="kcal")
+    assert _labels(refused.value) == ["Keep every predictor", KEEP]
+    way = parse_decision(refused.value.exits[0]["decision"])
+    assert (way.kind, way.strategy, way.drop_columns) == ("set_missing", "complete_case", [])
+    validate(way, _with_log(records, ingested))
+    records = [*records, _record("r8", 8, way)]
+    validate(_undo("r6"), _with_log(records, ingested))
+    after = fold([*records, _record("r9", 9, _undo("r6"))])
+    assert (after.energy_adjustment.method, after.missing.drop_columns) == ("standard", [])
+    records, ingested = _logged(tmp_path / "c1", [STANDARD, NONE, _dropping("c1")])
+    validate(_undo("r6"), _with_log(records, ingested))
+
+
+def test_a_revert_is_refused_only_where_it_brings_the_dropped_energy_column(tmp_path):
+    """A log recorded before this check, already dropping `kcal` (r6) under the standard energy
+    model on it (r5): undoing a later answer that leaves both as they are (r7, the roles again) is
+    not the revert's doing, so it is accepted; the lock refuses that state (the next test)."""
+    from turbotab.core.decisions import fold
+
+    _, _, state = _kcal_narrow(tmp_path, adjusted=False, kcal_once=False)
+    roles = {"kind": "set_roles", "roles": dict(state.roles)}
+    records, ingested = _logged(tmp_path / "log", [STANDARD, _dropping("kcal"), roles],
+                                checked=False)
+    now = fold(records)
+    assert (now.energy_adjustment.method, now.missing.drop_columns) == ("standard", ["kcal"])
+    validate(_undo("r7"), _with_log(records, ingested))
+
+
+@pytest.mark.parametrize("strategy", ["complete_case", "multiple_imputation"])
+def test_the_lock_is_refused_on_a_state_dropping_a_column_the_energy_model_needs(tmp_path,
+                                                                                 strategy):
+    """The state either revert above would leave (or a log recorded before the check): `kcal`
+    dropped under the standard energy model on `kcal` and `x`. The lock Fit records is refused in
+    the missing-values answer's words, under complete cases and under multiple imputation (where
+    on the base the check at the answer read the design's error as no plan), with the same answer
+    keeping every predictor, which the record accepts, and on whose state the lock is accepted.
+    Dropping the covariate `c1` instead, or `kcal` under method "none", the lock is accepted."""
+    _, path, state = _kcal_narrow(tmp_path, adjusted=True, kcal_once=False)
+
+    def dropping(*columns: str, method: str = "standard") -> ProjectState:
+        return state.model_copy(update={
+            "missing": MissingSpec(strategy=strategy, drop_columns=list(columns)),
+            "energy_adjustment": state.energy_adjustment.model_copy(update={"method": method})})
+
+    def ctx(of: ProjectState, name: str) -> dict[str, Any]:
+        return ctx_of(of, Ingested(path, tmp_path / name))
+
+    with pytest.raises(Refusal) as refused:
+        validate({"kind": "lock_plan"}, ctx(dropping("kcal"), "lock"))
+    assert refused.value.code == smcfcs.ENERGY_LEFT_OUT
+    assert refused.value.message == LEFT_OUT.format(c="kcal")
+    assert _labels(refused.value) == ["Keep every predictor"]
+    way = parse_decision(refused.value.exits[0]["decision"])
+    assert (way.kind, way.strategy, way.drop_columns) == ("set_missing", strategy, [])
+    validate(way, ctx(dropping("kcal"), "way"))
+    validate({"kind": "lock_plan"}, ctx(dropping(), "kept"))
+    validate({"kind": "lock_plan"}, ctx(dropping("c1"), "c1"))
+    validate({"kind": "lock_plan"}, ctx(dropping("kcal", method="none"), "none"))
 
 
 def test_the_log_residual_s_zero_is_a_refusal_in_words_with_the_model_without_the_log(tmp_path):

@@ -2253,32 +2253,69 @@ def _context_after(ctx: Any, decision: Any, after: Any) -> Any:
 ENERGY_LEFT_OUT = "energy_column_left_out"
 
 
+def _energy_columns_dropped(state: Any) -> list[str]:
+    """The columns ``state``'s energy adjustment is computed with (``methods.energy.
+    adjustment_columns``: none under method ``"none"``) that its missing-values answer drops."""
+    from turbotab.core.methods.energy import adjustment_columns
+
+    named = set(adjustment_columns(getattr(state, "energy_adjustment", None)))
+    spec = getattr(state, "missing", None)
+    return [c for c in (spec.drop_columns if spec is not None else []) if c in named]
+
+
 def _left_out_columns_keep_the_energy_model(decision: Any, ctx: Any) -> None:
     """A missing-values answer that leaves out of the predictors a column the energy adjustment is
     computed with (its total energy or a nutrient it adjusts, ``methods.energy.
-    adjustment_columns``) is refused: the design could not compute the adjustment without it
-    (``methods.energy.applicable_methods``, "The energy column … is not in this table"), so the fit
-    would raise on it. Its way forward is the same answer leaving out only the rest, where the
-    record accepts it."""
-    from turbotab.core.decisions import Refusal, _state
+    adjustment_columns``) while that adjustment holds: the design could not compute the
+    adjustment without it (``methods.energy.applicable_methods``, "The energy column … is not in
+    this table"), so the fit would raise on it. Refused here, in the same words: the
+    missing-values answer dropping such a column; a revert whose state after drops one (it brings
+    back that answer, or the energy adjustment over it) where the state before it drops none; and
+    the inference plan's lock, which the server records when Fit is pressed, of a state that drops
+    one (a log recorded before this check). An energy adjustment over a column already left out is
+    refused by its own answer's check (``decisions``, ``left_out``). The way forward is the
+    missing-values answer leaving out only the rest, where the record accepts it: the answer
+    given, or the one in force at the lock, or, under a revert that leaves the missing-values
+    answer as it stands, that one (taken first, then the revert given again: asked of the record
+    now and with the revert recorded, :func:`_offered`). A revert that brings back a missing-values
+    answer offers no such way (it would be a new answer in place of the one brought back, which
+    its label does not say), and every revert offers keeping the answers as they are."""
+    from turbotab.core.decisions import Refusal, SetMissing, _state, state_after
     from turbotab.core.methods.energy import METHOD_TABLE, adjustment_columns
-    from turbotab.core.row_floor import _PROBING, accepted_exit
+    from turbotab.core.row_floor import KEEP, _PROBING, accepted_exit
 
-    if decision.kind != "set_missing" or not decision.drop_columns:
-        return
-    adjustment = getattr(_state(ctx), "energy_adjustment", None)
+    now = _state(ctx)
+    if decision.kind == "set_missing":
+        if not decision.drop_columns:
+            return
+        answer, after, adjustment = decision, None, getattr(now, "energy_adjustment", None)
+    else:  # a revert, from the state it would leave; the lock, from the state as it stands
+        after = now if decision.kind == "lock_plan" else state_after(decision, ctx)
+        if after is None or not _energy_columns_dropped(after):
+            return
+        if decision.kind == "revert" and now is not None and _energy_columns_dropped(now):
+            return  # already so before this revert: not this revert's doing
+        answer = SetMissing(**after.missing.model_dump())
+        adjustment = after.energy_adjustment
     named = set(adjustment_columns(adjustment))
-    kept = [c for c in decision.drop_columns if c in named]
+    kept = [c for c in answer.drop_columns if c in named]
     if not kept:
         return
-    rest = [c for c in decision.drop_columns if c not in named]
+    rest = [c for c in answer.drop_columns if c not in named]
     label = METHOD_TABLE.get(adjustment.method, {}).get("label", adjustment.method)
     one = len(kept) == 1
-    way = decision.model_copy(update={"drop_columns": rest})
-    # an exit tried for another refusal needs none of its own (``row_floor._PROBING``)
-    exits = ([{"label": f"Leave out only {_listed([f'`{c}`' for c in rest])}" if rest
-               else "Keep every predictor", "decision": way}]
-             if not _PROBING.get() and accepted_exit(way, ctx) is not None else [])
+    way = answer.model_copy(update={"drop_columns": rest})
+    ways = [{"label": f"Leave out only {_listed([f'`{c}`' for c in rest])}" if rest
+             else "Keep every predictor", "decision": way}]
+    if _PROBING.get():  # an exit tried for another refusal needs none of its own
+        exits: list[dict[str, Any]] = []
+    elif decision.kind == "set_missing":
+        exits = ways if accepted_exit(way, ctx) is not None else []
+    elif decision.kind == "lock_plan":
+        exits = _offered(ways, decision, ctx, now, after)
+    else:  # a revert: the way only where it leaves the missing-values answer as it stands
+        stands = now is not None and now.missing == after.missing
+        exits = [*(_offered(ways, decision, ctx, now, after) if stands else []), dict(KEEP)]
     # The label as the method table spells it, in quotation marks (one has parentheses of its
     # own), and the answer "cannot drop" the columns, true under every method, those whose label
     # says total energy leaves the model among them: the design still computes with it.
@@ -2292,11 +2329,13 @@ def _left_out_columns_keep_the_energy_model(decision: Any, ctx: Any) -> None:
 
 def _register() -> None:
     """Importing this module registers the check, for every kind the decisions know by then (as
-    ``row_floor`` registers its own) and for revert, and, before it, the missing-values answer's
-    check that it leaves the energy model its columns."""
+    ``row_floor`` registers its own) and for revert, and, before it, the check that the
+    missing-values answer leaves the energy model its columns, for that answer, revert and the
+    plan's lock (the sampler's check reads the design's error on such a state as no plan)."""
     from turbotab.core.decisions import SLOTS, register_validator
 
-    register_validator("set_missing", _left_out_columns_keep_the_energy_model)
+    for kind in ("set_missing", "revert", "lock_plan"):
+        register_validator(kind, _left_out_columns_keep_the_energy_model)
     for kind in [*SLOTS, "revert"]:
         register_validator(kind, _imputation_has_its_rows)
 
