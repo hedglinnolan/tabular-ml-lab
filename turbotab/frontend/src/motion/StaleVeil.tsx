@@ -26,6 +26,9 @@ interface Props {
   action?: ReactNode;
   /** For tight places (the banner): the tag is a dot, its words for screen readers only. */
   compact?: boolean;
+  /** Words in place of the state's, while veiled, where the caller knows the state's words would
+   *  name a cause it never saw (Write-up's tables while the export waits or refuses). */
+  tag?: string;
 }
 
 const TAG: Record<Exclude<VeilState, "fresh">, string> = {
@@ -44,9 +47,11 @@ export function StaleVeil({
   testId,
   action,
   compact = false,
+  tag,
 }: Props) {
   const { reduced } = useMotionPrefs();
   const veiled = state !== "fresh";
+  const words = veiled ? (tag ?? TAG[state]) : null;
   const delay = veiled && !reduced ? order * DUR.propagateStepMs : 0;
   const style = { "--veil-delay": `${delay}ms` } as CSSProperties;
   return (
@@ -65,11 +70,11 @@ export function StaleVeil({
     >
       <div className={styles.tagSlot} aria-live="polite">
         {veiled && compact ? (
-          <span className={styles.dot} title={TAG[state]}>
-            <span className="visually-hidden">{TAG[state]}</span>
+          <span className={styles.dot} title={words!}>
+            <span className="visually-hidden">{words}</span>
           </span>
         ) : veiled ? (
-          <span className={styles.tag}>{TAG[state]}</span>
+          <span className={styles.tag}>{words}</span>
         ) : null}
         {veiled && action ? action : null}
       </div>

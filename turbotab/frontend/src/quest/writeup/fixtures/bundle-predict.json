@@ -1,0 +1,1942 @@
+{
+ "purpose": "prediction",
+ "zip": "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",
+ "checklist": {
+  "checklist": "TRIPOD+AI",
+  "title": "TRIPOD+AI checklist for the reporting of prediction model studies",
+  "citation": "Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods. BMJ 2024;385:e078378. doi:10.1136/bmj-2023-078378",
+  "source": {
+   "table": "Table 2",
+   "pmcid": "PMC11019967",
+   "doi": "10.1136/bmj-2023-078378",
+   "url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC11019967/fullTextXML",
+   "retrieved": "2026-10-05",
+   "sha256": "48f1f82c4f9f74d9a72a580690634651e095161c9bf8a0a1078afc691d54705a",
+   "license": "CC BY 4.0"
+  },
+  "purpose": "prediction",
+  "items": [
+   {
+    "id": "1",
+    "section": "Title",
+    "topic": "Title",
+    "text": "Identify the study as developing or evaluating the performance of a multivariable prediction model, the target population, and the outcome to be predicted",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "2",
+    "section": "Abstract",
+    "topic": "Abstract",
+    "text": "See TRIPOD+AI for Abstracts checklist",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "3a",
+    "section": "Introduction",
+    "topic": "Background",
+    "text": "Explain the healthcare context (including whether diagnostic or prognostic) and rationale for developing or evaluating the prediction model, including references to existing models",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "3b",
+    "section": "Introduction",
+    "topic": "Background",
+    "text": "Describe the target population and the intended purpose of the prediction model in the context of the care pathway, including its intended users (eg, healthcare professionals, patients, public)",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "3c",
+    "section": "Introduction",
+    "topic": "Background",
+    "text": "Describe any known health inequalities between sociodemographic groups",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "4",
+    "section": "Introduction",
+    "topic": "Objectives",
+    "text": "Specify the study objectives, including whether the study describes the development or validation of a prediction model (or both)",
+    "kind": null,
+    "scope": "D;E",
+    "status": "partly answered",
+    "where": [
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
+      "record_id": "0788384327c14394b159d551efec9b31",
+      "record_ids": null,
+      "seq": 4,
+      "seqs": null,
+      "kind": "set_purpose"
+     }
+    ],
+    "owed": "the study's objectives, and whether it develops or validates a model (or both)",
+    "note": "partly answered — the author must supply the study's objectives, and whether it develops or validates a model (or both)"
+   },
+   {
+    "id": "5a",
+    "section": "Methods",
+    "topic": "Data",
+    "text": "Describe the sources of data separately for the development and evaluation datasets (eg, randomised trial, cohort, routine care or registry data), the rationale for using these data, and representativeness of the data",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "5b",
+    "section": "Methods",
+    "topic": "Data",
+    "text": "Specify the dates of the collected participant data, including start and end of participant accrual; and, if applicable, end of follow-up",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "6a",
+    "section": "Methods",
+    "topic": "Participants",
+    "text": "Specify key elements of the study setting (eg, primary care, secondary care, general population) including the number and location of centres",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "6b",
+    "section": "Methods",
+    "topic": "Participants",
+    "text": "Describe the eligibility criteria for study participants",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "6c",
+    "section": "Methods",
+    "topic": "Participants",
+    "text": "Give details of any treatments received, and how they were handled during model development or evaluation, if relevant",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "7",
+    "section": "Methods",
+    "topic": "Data preparation",
+    "text": "Describe any data pre-processing and quality checking, including whether this was similar across relevant sociodemographic groups",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "8a",
+    "section": "Methods",
+    "topic": "Outcome",
+    "text": "Clearly define the outcome that is being predicted and the time horizon, including how and when assessed, the rationale for choosing this outcome, and whether the method of outcome assessment is consistent across sociodemographic groups",
+    "kind": null,
+    "scope": "D;E",
+    "status": "partly answered",
+    "where": [
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "`glucose` was chosen as the outcome.",
+      "record_id": "e68547c2b5f64f2793410ff24e151862",
+      "record_ids": null,
+      "seq": 2,
+      "seqs": null,
+      "kind": "set_target"
+     },
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "`glucose` was modeled as a `regression` task.",
+      "record_id": "5fe086db488f4bc68894f958ef6a8848",
+      "record_ids": null,
+      "seq": 3,
+      "seqs": null,
+      "kind": "set_task"
+     }
+    ],
+    "owed": "how and when the outcome was assessed, why it was chosen, and whether its assessment is consistent across sociodemographic groups",
+    "note": "partly answered — the author must supply how and when the outcome was assessed, why it was chosen, and whether its assessment is consistent across sociodemographic groups"
+   },
+   {
+    "id": "8b",
+    "section": "Methods",
+    "topic": "Outcome",
+    "text": "If outcome assessment requires subjective interpretation, describe the qualifications and demographic characteristics of the outcome assessors",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "8c",
+    "section": "Methods",
+    "topic": "Outcome",
+    "text": "Report any actions to blind assessment of the outcome to be predicted",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "9a",
+    "section": "Methods",
+    "topic": "Predictors",
+    "text": "Describe the choice of initial predictors (eg, literature, previous models, all available predictors) and any pre-selection of predictors before model building",
+    "kind": null,
+    "scope": "D",
+    "status": "partly answered",
+    "where": [
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "Column roles were set for `2` columns: predictors `fiber` and `age`.",
+      "record_id": "0a76fd5ef6e14d82a9d34acf1132d84a",
+      "record_ids": null,
+      "seq": 5,
+      "seqs": null,
+      "kind": "set_roles"
+     }
+    ],
+    "owed": "why these predictors, and any pre-selection of predictors before model building",
+    "note": "partly answered — the author must supply why these predictors, and any pre-selection of predictors before model building"
+   },
+   {
+    "id": "9b",
+    "section": "Methods",
+    "topic": "Predictors",
+    "text": "Clearly define all predictors, including how and when they were measured (and any actions to blind assessment of predictors for the outcome and other predictors)",
+    "kind": null,
+    "scope": "D;E",
+    "status": "partly answered",
+    "where": [
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "Column roles were set for `2` columns: predictors `fiber` and `age`.",
+      "record_id": "0a76fd5ef6e14d82a9d34acf1132d84a",
+      "record_ids": null,
+      "seq": 5,
+      "seqs": null,
+      "kind": "set_roles"
+     }
+    ],
+    "owed": "how and when each predictor was measured",
+    "note": "partly answered — the author must supply how and when each predictor was measured"
+   },
+   {
+    "id": "9c",
+    "section": "Methods",
+    "topic": "Predictors",
+    "text": "If predictor measurement requires subjective interpretation, describe the qualifications and demographic characteristics of the predictor assessors",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "10",
+    "section": "Methods",
+    "topic": "Sample size",
+    "text": "Explain how the study size was arrived at (separately for development and evaluation), and justify that the study size was sufficient to answer the research question. Include details of any sample size calculation",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "11",
+    "section": "Methods",
+    "topic": "Missing data",
+    "text": "Describe how missing data were handled. Provide reasons for omitting any data",
+    "kind": null,
+    "scope": "D;E",
+    "status": "answered",
+    "where": [
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "Rows missing any predictor were dropped (a complete-case analysis).",
+      "record_id": "541b5161d1c24ef2814c440347efbf0b",
+      "record_ids": null,
+      "seq": 6,
+      "seqs": null,
+      "kind": "set_missing"
+     }
+    ],
+    "owed": null,
+    "note": "answered in the bundle"
+   },
+   {
+    "id": "12a",
+    "section": "Methods",
+    "topic": "Analytical methods",
+    "text": "Describe how the data were used (eg, for development and evaluation of model performance) in the analysis, including whether the data were partitioned, considering any sample size requirements",
+    "kind": null,
+    "scope": "D",
+    "status": "answered",
+    "where": [
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
+      "record_id": "0788384327c14394b159d551efec9b31",
+      "record_ids": null,
+      "seq": 4,
+      "seqs": null,
+      "kind": "set_purpose"
+     },
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`); models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times (`5` where `5,000` or more rows train), by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction.",
+      "record_id": "5a4b7500432543a9a0ffd76d78ba74a2",
+      "record_ids": null,
+      "seq": 7,
+      "seqs": null,
+      "kind": "set_split"
+     }
+    ],
+    "owed": null,
+    "note": "answered in the bundle"
+   },
+   {
+    "id": "12b",
+    "section": "Methods",
+    "topic": "Analytical methods",
+    "text": "Depending on the type of model, describe how predictors were handled in the analyses (functional form, rescaling, transformation, or any standardisation)",
+    "kind": null,
+    "scope": "D",
+    "status": "answered",
+    "where": [
+     {
+      "source": "file",
+      "file": "figures/lineage.svg",
+      "quote": "Figure 2. Column lineage, from the 2 raw columns the analysis reads to the 2 columns of the model matrix (90 rows), through the steps every model family shares; a family's own steps (scaling, a spline basis) are in the methods. Line styles: solid, kept as it is. Drawn from the decision record.",
+      "record_id": null,
+      "record_ids": null,
+      "seq": null,
+      "seqs": null,
+      "kind": null
+     }
+    ],
+    "owed": null,
+    "note": "answered in the bundle"
+   },
+   {
+    "id": "12c",
+    "section": "Methods",
+    "topic": "Analytical methods",
+    "text": "Specify the type of model, rationale†, all model building steps, including any hyperparameter tuning, and method for internal validation",
+    "kind": null,
+    "scope": "D",
+    "status": "partly answered",
+    "where": [
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`); models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times (`5` where `5,000` or more rows train), by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction.",
+      "record_id": "5a4b7500432543a9a0ffd76d78ba74a2",
+      "record_ids": null,
+      "seq": 7,
+      "seqs": null,
+      "kind": "set_split"
+     },
+     {
+      "source": "record",
+      "file": "methods.md",
+      "quote": "Two model families were chosen: linear regression and elastic net; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score.",
+      "record_id": "03e8c952e4604ce6aada5cf68269ba4c",
+      "record_ids": null,
+      "seq": 8,
+      "seqs": null,
+      "kind": "select_models"
+     }
+    ],
+    "owed": "the rationale for each model family",
+    "note": "partly answered — the author must supply the rationale for each model family"
+   },
+   {
+    "id": "12d",
+    "section": "Methods",
+    "topic": "Analytical methods",
+    "text": "Describe if and how any heterogeneity in estimates of model parameter values and model performance was handled and quantified across clusters (eg, hospitals, countries). See TRIPOD-Cluster for additional considerations‡",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "12e",
+    "section": "Methods",
+    "topic": "Analytical methods",
+    "text": "Specify all measures and plots used (and their rationale) to evaluate model performance (eg, discrimination, calibration, clinical utility) and, if relevant, to compare multiple models",
+    "kind": null,
+    "scope": "D;E",
+    "status": "partly answered",
+    "where": [
+     {
+      "source": "file",
+      "file": "results/performance.md",
+      "quote": "Table 2. Performance of each model family, and the declared result. The declared result is the selection-corrected RMSE of the elastic net.",
+      "record_id": null,
+      "record_ids": null,
+      "seq": null,
+      "seqs": null,
+      "kind": null
+     }
+    ],
+    "owed": "the rationale for each measure",
+    "note": "partly answered — the author must supply the rationale for each measure"
+   },
+   {
+    "id": "12f",
+    "section": "Methods",
+    "topic": "Analytical methods",
+    "text": "Describe any model updating (eg, recalibration) arising from the model evaluation, either overall or for particular sociodemographic groups or settings",
+    "kind": null,
+    "scope": "E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "12g",
+    "section": "Methods",
+    "topic": "Analytical methods",
+    "text": "For model evaluation, describe how the model predictions were calculated (eg, formula, code, object, application programming interface)",
+    "kind": null,
+    "scope": "E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "13",
+    "section": "Methods",
+    "topic": "Class imbalance",
+    "text": "If class imbalance methods were used, state why and how this was done, and any subsequent methods to recalibrate the model or the model predictions",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "14",
+    "section": "Methods",
+    "topic": "Fairness",
+    "text": "Describe any approaches that were used to address model fairness and their rationale",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "15",
+    "section": "Methods",
+    "topic": "Model output",
+    "text": "Specify the output of the prediction model (eg, probabilities, classification). Provide details and rationale for any classification and how the thresholds were identified",
+    "kind": null,
+    "scope": "D",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "16",
+    "section": "Methods",
+    "topic": "Training versus evaluation",
+    "text": "Identify any differences between the development and evaluation data in healthcare setting, eligibility criteria, outcome, and predictors",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "17",
+    "section": "Methods",
+    "topic": "Ethical approval",
+    "text": "Name the institutional research board or ethics committee that approved the study and describe the participant informed consent or the ethics committee waiver of informed consent",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "18a",
+    "section": "Open science",
+    "topic": "Funding",
+    "text": "Give the source of funding and the role of the funders for the present study",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "18b",
+    "section": "Open science",
+    "topic": "Conflicts of interest",
+    "text": "Declare any conflicts of interest and financial disclosures for all authors",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "18c",
+    "section": "Open science",
+    "topic": "Protocol",
+    "text": "Indicate where the study protocol can be accessed or state that a protocol was not prepared",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "18d",
+    "section": "Open science",
+    "topic": "Registration",
+    "text": "Provide registration information for the study, including register name and registration number, or state that the study was not registered",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "18e",
+    "section": "Open science",
+    "topic": "Data sharing",
+    "text": "Provide details of the availability of the study data",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "18f",
+    "section": "Open science",
+    "topic": "Code sharing",
+    "text": "Provide details of the availability of the analytical code§",
+    "kind": null,
+    "scope": "D;E",
+    "status": "partly answered",
+    "where": [
+     {
+      "source": "file",
+      "file": "provenance.json",
+      "quote": "the provenance record: the decision log, each input file's SHA-256, the engine and its stages' versions, the model matrix's hashes and every reported estimate, which `python -m turbotab.replay` checks against the input files",
+      "record_id": null,
+      "record_ids": null,
+      "seq": null,
+      "seqs": null,
+      "kind": null
+     }
+    ],
+    "owed": "where the bundle, and the TurboTab version it names, can be obtained",
+    "note": "partly answered — the author must supply where the bundle, and the TurboTab version it names, can be obtained"
+   },
+   {
+    "id": "19",
+    "section": "Patient and public involvement",
+    "topic": "Patient and public involvement",
+    "text": "Provide details of any patient and public involvement during the design, conduct, reporting, interpretation, or dissemination of the study or state no involvement",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "20a",
+    "section": "Result",
+    "topic": "Participants",
+    "text": "Describe the flow of participants through the study, including the number of participants with and without the outcome and, if applicable, a summary of the follow-up time. A diagram may be helpful",
+    "kind": null,
+    "scope": "D;E",
+    "status": "answered",
+    "where": [
+     {
+      "source": "file",
+      "file": "figures/participant_flow.svg",
+      "quote": "Figure 1. Participant flow, from the 100 rows of the table as read to 90 analyzed. Each exclusion is shown beside the step that made it, with its count and its reason (10 excluded in all).",
+      "record_id": null,
+      "record_ids": null,
+      "seq": null,
+      "seqs": null,
+      "kind": null
+     }
+    ],
+    "owed": null,
+    "note": "answered in the bundle"
+   },
+   {
+    "id": "20b",
+    "section": "Result",
+    "topic": "Participants",
+    "text": "Report the characteristics overall and, where applicable, for each data source or setting, including the key dates, key predictors (including demographics), treatments received, sample size, number of outcome events, follow-up time, and amount of missing data. A table may be helpful. Report any differences across key demographic groups",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "20c",
+    "section": "Result",
+    "topic": "Participants",
+    "text": "For model evaluation, show a comparison with the development data of the distribution of important predictors (demographics, predictors, and outcome)",
+    "kind": null,
+    "scope": "E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "21",
+    "section": "Result",
+    "topic": "Model development",
+    "text": "Specify the number of participants and outcome events in each analysis (eg, for model development, hyperparameter tuning, model evaluation)",
+    "kind": null,
+    "scope": "D;E",
+    "status": "partly answered",
+    "where": [
+     {
+      "source": "file",
+      "file": "figures/participant_flow.svg",
+      "quote": "Figure 1. Participant flow, from the 100 rows of the table as read to 90 analyzed. Each exclusion is shown beside the step that made it, with its count and its reason (10 excluded in all).",
+      "record_id": null,
+      "record_ids": null,
+      "seq": null,
+      "seqs": null,
+      "kind": null
+     }
+    ],
+    "owed": "the number of participants (and outcome events) in each analysis: development, tuning and evaluation",
+    "note": "partly answered — the author must supply the number of participants (and outcome events) in each analysis: development, tuning and evaluation"
+   },
+   {
+    "id": "22",
+    "section": "Result",
+    "topic": "Model specification",
+    "text": "Provide details of the full prediction model (eg, formula, code, object, application programming interface) to allow predictions in new individuals and to enable third party evaluation and implementation, including any restrictions to access or reuse (eg, freely available, proprietary)¶",
+    "kind": null,
+    "scope": "D",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "23a",
+    "section": "Result",
+    "topic": "Model performance",
+    "text": "Report model performance estimates with confidence intervals, including for any key subgroups (eg, sociodemographic). Consider plots to aid presentation",
+    "kind": null,
+    "scope": "D;E",
+    "status": "partly answered",
+    "where": [
+     {
+      "source": "file",
+      "file": "results/performance.md",
+      "quote": "Table 2. Performance of each model family, and the declared result. The declared result is the selection-corrected RMSE of the elastic net.",
+      "record_id": null,
+      "record_ids": null,
+      "seq": null,
+      "seqs": null,
+      "kind": null
+     }
+    ],
+    "owed": "performance in key subgroups, with intervals",
+    "note": "partly answered — the author must supply performance in key subgroups, with intervals"
+   },
+   {
+    "id": "23b",
+    "section": "Result",
+    "topic": "Model performance",
+    "text": "If examined, report results of any heterogeneity in model performance across clusters. See TRIPOD-Cluster for additional details‡",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "24",
+    "section": "Result",
+    "topic": "Model updating",
+    "text": "Report the results from any model updating, including the updated model and subsequent performance",
+    "kind": null,
+    "scope": "E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "25",
+    "section": "Discussion",
+    "topic": "Interpretation",
+    "text": "Give an overall interpretation of the main results, including issues of fairness in the context of the objectives and previous studies",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "26",
+    "section": "Discussion",
+    "topic": "Limitations",
+    "text": "Discuss any limitations of the study (such as a non-representative sample, sample size, overfitting, missing data) and their effects on any biases, statistical uncertainty, and generalisability",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "27a",
+    "section": "Discussion",
+    "topic": "Usability of the model in the context of current care",
+    "text": "Describe how poor quality or unavailable input data (eg, predictor values) should be assessed and handled when implementing the prediction model",
+    "kind": null,
+    "scope": "D",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "27b",
+    "section": "Discussion",
+    "topic": "Usability of the model in the context of current care",
+    "text": "Specify whether users will be required to interact in the handling of the input data or use of the model, and what level of expertise is required of users",
+    "kind": null,
+    "scope": "D",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   },
+   {
+    "id": "27c",
+    "section": "Discussion",
+    "topic": "Usability of the model in the context of current care",
+    "text": "Discuss any next steps for future research, with a specific view to applicability and generalisability of the model",
+    "kind": null,
+    "scope": "D;E",
+    "status": "unanswered",
+    "where": [],
+    "owed": null,
+    "note": "unanswered — the author must supply this"
+   }
+  ],
+  "counts": {
+   "items": 52,
+   "answered": 4,
+   "partly_answered": 9,
+   "unanswered": 39
+  },
+  "unanswered": [
+   "1",
+   "2",
+   "3a",
+   "3b",
+   "3c",
+   "5a",
+   "5b",
+   "6a",
+   "6b",
+   "6c",
+   "7",
+   "8b",
+   "8c",
+   "9c",
+   "10",
+   "12d",
+   "12f",
+   "12g",
+   "13",
+   "14",
+   "15",
+   "16",
+   "17",
+   "18a",
+   "18b",
+   "18c",
+   "18d",
+   "18e",
+   "19",
+   "20b",
+   "20c",
+   "22",
+   "23b",
+   "24",
+   "25",
+   "26",
+   "27a",
+   "27b",
+   "27c"
+  ],
+  "note": "Each item is quoted from Table 2 of the source and listed with where this bundle answers it: a sentence of the decision record (with its decision), a paragraph the analysis wrote, or a figure or table. An item the record cannot answer is listed as “unanswered — the author must supply this”.",
+  "waiting": []
+ },
+ "plan": {
+  "after_estimates": [],
+  "declared_at": "2026-11-04T13:44:52.021324Z",
+  "format": "turbotab-analysis-plan/1",
+  "plan": {
+   "lens": [
+    "dietary"
+   ],
+   "missing": {
+    "acknowledged": false,
+    "below_detection": null,
+    "categorical": "impute",
+    "censored_columns": [],
+    "drop_columns": [],
+    "imputation_levels": null,
+    "imputation_model": null,
+    "indicators": false,
+    "m": 20,
+    "reason": null,
+    "strategy": "complete_case"
+   },
+   "models": [
+    "linear",
+    "elastic_net"
+   ],
+   "purpose": "prediction",
+   "roles": {
+    "age": "covariate",
+    "fiber": "exposure"
+   },
+   "roles_unconfirmed": [],
+   "split": {
+    "cluster": null,
+    "cut_point": null,
+    "fold_order": null,
+    "folds": 5,
+    "holdout": 0.0,
+    "n_boot": 500,
+    "nested_cv": false,
+    "repeats": 10,
+    "seed": 0,
+    "validation": "kfold"
+   },
+   "target": "glucose",
+   "task": "regression"
+  },
+  "plan_sha256": "934e8a07fb49bcd1e14aa8bd9eb37ceb4483e3237cf63938b7bf9f2efb14e03a",
+  "sentences": [
+   "The table was read through the `dietary` lens.",
+   "`glucose` was chosen as the outcome.",
+   "`glucose` was modeled as a `regression` task.",
+   "The analysis was declared for `prediction`: models are judged on rows they never saw.",
+   "Column roles were set for `2` columns: predictors `fiber` and `age`.",
+   "Rows missing any predictor were dropped (a complete-case analysis).",
+   "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`); models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times (`5` where `5,000` or more rows train), by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction.",
+   "Two model families were chosen: linear regression and elastic net; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score."
+  ],
+  "sha256": "2a022e08fdcaf2d07c48f4699de8b09ecae69aefc52186e504553fe647ec3675",
+  "status": "declared",
+  "text": "This is the analysis as declared in TurboTab for prediction, through the decision recorded on 2026-11-04 at 13:44:52.021324 UTC. Under prediction no plan is locked: the held-out rows are the seal, and a family's score is the result only as the fit declares it (the held-out score of a family declared final before they were opened, or the selection-corrected estimate). It records what was declared in the software and when; it is not a registration with any outside registry, and the analyst may have seen the data. Its SHA-256 over canonical JSON (keys sorted, no spaces, UTF-8) is 2a022e08fdcaf2d07c48f4699de8b09ecae69aefc52186e504553fe647ec3675: the same decisions give the same bytes, so the hash can be cited in an external registration.",
+  "through_record": 8
+ },
+ "waiting": {
+  "checklist": {
+   "checklist": "TRIPOD+AI",
+   "title": "TRIPOD+AI checklist for the reporting of prediction model studies",
+   "citation": "Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods. BMJ 2024;385:e078378. doi:10.1136/bmj-2023-078378",
+   "source": {
+    "table": "Table 2",
+    "pmcid": "PMC11019967",
+    "doi": "10.1136/bmj-2023-078378",
+    "url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC11019967/fullTextXML",
+    "retrieved": "2026-10-05",
+    "sha256": "48f1f82c4f9f74d9a72a580690634651e095161c9bf8a0a1078afc691d54705a",
+    "license": "CC BY 4.0"
+   },
+   "purpose": "prediction",
+   "items": [
+    {
+     "id": "1",
+     "section": "Title",
+     "topic": "Title",
+     "text": "Identify the study as developing or evaluating the performance of a multivariable prediction model, the target population, and the outcome to be predicted",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "2",
+     "section": "Abstract",
+     "topic": "Abstract",
+     "text": "See TRIPOD+AI for Abstracts checklist",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "3a",
+     "section": "Introduction",
+     "topic": "Background",
+     "text": "Explain the healthcare context (including whether diagnostic or prognostic) and rationale for developing or evaluating the prediction model, including references to existing models",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "3b",
+     "section": "Introduction",
+     "topic": "Background",
+     "text": "Describe the target population and the intended purpose of the prediction model in the context of the care pathway, including its intended users (eg, healthcare professionals, patients, public)",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "3c",
+     "section": "Introduction",
+     "topic": "Background",
+     "text": "Describe any known health inequalities between sociodemographic groups",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "4",
+     "section": "Introduction",
+     "topic": "Objectives",
+     "text": "Specify the study objectives, including whether the study describes the development or validation of a prediction model (or both)",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
+       "record_id": "0788384327c14394b159d551efec9b31",
+       "record_ids": null,
+       "seq": 4,
+       "seqs": null,
+       "kind": "set_purpose"
+      }
+     ],
+     "owed": "the study's objectives, and whether it develops or validates a model (or both)",
+     "note": "partly answered — the author must supply the study's objectives, and whether it develops or validates a model (or both)"
+    },
+    {
+     "id": "5a",
+     "section": "Methods",
+     "topic": "Data",
+     "text": "Describe the sources of data separately for the development and evaluation datasets (eg, randomised trial, cohort, routine care or registry data), the rationale for using these data, and representativeness of the data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "5b",
+     "section": "Methods",
+     "topic": "Data",
+     "text": "Specify the dates of the collected participant data, including start and end of participant accrual; and, if applicable, end of follow-up",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "6a",
+     "section": "Methods",
+     "topic": "Participants",
+     "text": "Specify key elements of the study setting (eg, primary care, secondary care, general population) including the number and location of centres",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "6b",
+     "section": "Methods",
+     "topic": "Participants",
+     "text": "Describe the eligibility criteria for study participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "6c",
+     "section": "Methods",
+     "topic": "Participants",
+     "text": "Give details of any treatments received, and how they were handled during model development or evaluation, if relevant",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "7",
+     "section": "Methods",
+     "topic": "Data preparation",
+     "text": "Describe any data pre-processing and quality checking, including whether this was similar across relevant sociodemographic groups",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "8a",
+     "section": "Methods",
+     "topic": "Outcome",
+     "text": "Clearly define the outcome that is being predicted and the time horizon, including how and when assessed, the rationale for choosing this outcome, and whether the method of outcome assessment is consistent across sociodemographic groups",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "`glucose` was chosen as the outcome.",
+       "record_id": "e68547c2b5f64f2793410ff24e151862",
+       "record_ids": null,
+       "seq": 2,
+       "seqs": null,
+       "kind": "set_target"
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "`glucose` was modeled as a `regression` task.",
+       "record_id": "5fe086db488f4bc68894f958ef6a8848",
+       "record_ids": null,
+       "seq": 3,
+       "seqs": null,
+       "kind": "set_task"
+      }
+     ],
+     "owed": "how and when the outcome was assessed, why it was chosen, and whether its assessment is consistent across sociodemographic groups",
+     "note": "partly answered — the author must supply how and when the outcome was assessed, why it was chosen, and whether its assessment is consistent across sociodemographic groups"
+    },
+    {
+     "id": "8b",
+     "section": "Methods",
+     "topic": "Outcome",
+     "text": "If outcome assessment requires subjective interpretation, describe the qualifications and demographic characteristics of the outcome assessors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "8c",
+     "section": "Methods",
+     "topic": "Outcome",
+     "text": "Report any actions to blind assessment of the outcome to be predicted",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "9a",
+     "section": "Methods",
+     "topic": "Predictors",
+     "text": "Describe the choice of initial predictors (eg, literature, previous models, all available predictors) and any pre-selection of predictors before model building",
+     "kind": null,
+     "scope": "D",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "Column roles were set for `2` columns: predictors `fiber` and `age`.",
+       "record_id": "0a76fd5ef6e14d82a9d34acf1132d84a",
+       "record_ids": null,
+       "seq": 5,
+       "seqs": null,
+       "kind": "set_roles"
+      }
+     ],
+     "owed": "why these predictors, and any pre-selection of predictors before model building",
+     "note": "partly answered — the author must supply why these predictors, and any pre-selection of predictors before model building"
+    },
+    {
+     "id": "9b",
+     "section": "Methods",
+     "topic": "Predictors",
+     "text": "Clearly define all predictors, including how and when they were measured (and any actions to blind assessment of predictors for the outcome and other predictors)",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "Column roles were set for `2` columns: predictors `fiber` and `age`.",
+       "record_id": "0a76fd5ef6e14d82a9d34acf1132d84a",
+       "record_ids": null,
+       "seq": 5,
+       "seqs": null,
+       "kind": "set_roles"
+      }
+     ],
+     "owed": "how and when each predictor was measured",
+     "note": "partly answered — the author must supply how and when each predictor was measured"
+    },
+    {
+     "id": "9c",
+     "section": "Methods",
+     "topic": "Predictors",
+     "text": "If predictor measurement requires subjective interpretation, describe the qualifications and demographic characteristics of the predictor assessors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "10",
+     "section": "Methods",
+     "topic": "Sample size",
+     "text": "Explain how the study size was arrived at (separately for development and evaluation), and justify that the study size was sufficient to answer the research question. Include details of any sample size calculation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "11",
+     "section": "Methods",
+     "topic": "Missing data",
+     "text": "Describe how missing data were handled. Provide reasons for omitting any data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "Rows missing any predictor were dropped (a complete-case analysis).",
+       "record_id": "541b5161d1c24ef2814c440347efbf0b",
+       "record_ids": null,
+       "seq": 6,
+       "seqs": null,
+       "kind": "set_missing"
+      }
+     ],
+     "owed": null,
+     "note": "answered in the bundle"
+    },
+    {
+     "id": "12a",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "text": "Describe how the data were used (eg, for development and evaluation of model performance) in the analysis, including whether the data were partitioned, considering any sample size requirements",
+     "kind": null,
+     "scope": "D",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "The analysis was declared for `prediction`: models are judged on rows they never saw.",
+       "record_id": "0788384327c14394b159d551efec9b31",
+       "record_ids": null,
+       "seq": 4,
+       "seqs": null,
+       "kind": "set_purpose"
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`); models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times (`5` where `5,000` or more rows train), by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction.",
+       "record_id": "5a4b7500432543a9a0ffd76d78ba74a2",
+       "record_ids": null,
+       "seq": 7,
+       "seqs": null,
+       "kind": "set_split"
+      }
+     ],
+     "owed": null,
+     "note": "answered in the bundle"
+    },
+    {
+     "id": "12b",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "text": "Depending on the type of model, describe how predictors were handled in the analyses (functional form, rescaling, transformation, or any standardisation)",
+     "kind": null,
+     "scope": "D",
+     "status": "answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/lineage.svg",
+       "quote": "Figure 2. Column lineage, from the 2 raw columns the analysis reads to the 2 columns of the model matrix (90 rows), through the steps every model family shares; a family's own steps (scaling, a spline basis) are in the methods. Line styles: solid, kept as it is. Drawn from the decision record.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "kind": null
+      }
+     ],
+     "owed": null,
+     "note": "answered in the bundle"
+    },
+    {
+     "id": "12c",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "text": "Specify the type of model, rationale†, all model building steps, including any hyperparameter tuning, and method for internal validation",
+     "kind": null,
+     "scope": "D",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`); models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times (`5` where `5,000` or more rows train), by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction.",
+       "record_id": "5a4b7500432543a9a0ffd76d78ba74a2",
+       "record_ids": null,
+       "seq": 7,
+       "seqs": null,
+       "kind": "set_split"
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "quote": "Two model families were chosen: linear regression and elastic net; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score.",
+       "record_id": "03e8c952e4604ce6aada5cf68269ba4c",
+       "record_ids": null,
+       "seq": 8,
+       "seqs": null,
+       "kind": "select_models"
+      }
+     ],
+     "owed": "the rationale for each model family",
+     "note": "partly answered — the author must supply the rationale for each model family"
+    },
+    {
+     "id": "12d",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "text": "Describe if and how any heterogeneity in estimates of model parameter values and model performance was handled and quantified across clusters (eg, hospitals, countries). See TRIPOD-Cluster for additional considerations‡",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "12e",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "text": "Specify all measures and plots used (and their rationale) to evaluate model performance (eg, discrimination, calibration, clinical utility) and, if relevant, to compare multiple models",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "results/performance.md",
+       "quote": "Table 2. Performance of each model family, and the declared result. The declared result is the selection-corrected RMSE of the elastic net.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "kind": null
+      }
+     ],
+     "owed": "the rationale for each measure",
+     "note": "partly answered — the author must supply the rationale for each measure"
+    },
+    {
+     "id": "12f",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "text": "Describe any model updating (eg, recalibration) arising from the model evaluation, either overall or for particular sociodemographic groups or settings",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "12g",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "text": "For model evaluation, describe how the model predictions were calculated (eg, formula, code, object, application programming interface)",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "13",
+     "section": "Methods",
+     "topic": "Class imbalance",
+     "text": "If class imbalance methods were used, state why and how this was done, and any subsequent methods to recalibrate the model or the model predictions",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "14",
+     "section": "Methods",
+     "topic": "Fairness",
+     "text": "Describe any approaches that were used to address model fairness and their rationale",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "15",
+     "section": "Methods",
+     "topic": "Model output",
+     "text": "Specify the output of the prediction model (eg, probabilities, classification). Provide details and rationale for any classification and how the thresholds were identified",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "16",
+     "section": "Methods",
+     "topic": "Training versus evaluation",
+     "text": "Identify any differences between the development and evaluation data in healthcare setting, eligibility criteria, outcome, and predictors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "17",
+     "section": "Methods",
+     "topic": "Ethical approval",
+     "text": "Name the institutional research board or ethics committee that approved the study and describe the participant informed consent or the ethics committee waiver of informed consent",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "18a",
+     "section": "Open science",
+     "topic": "Funding",
+     "text": "Give the source of funding and the role of the funders for the present study",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "18b",
+     "section": "Open science",
+     "topic": "Conflicts of interest",
+     "text": "Declare any conflicts of interest and financial disclosures for all authors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "18c",
+     "section": "Open science",
+     "topic": "Protocol",
+     "text": "Indicate where the study protocol can be accessed or state that a protocol was not prepared",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "18d",
+     "section": "Open science",
+     "topic": "Registration",
+     "text": "Provide registration information for the study, including register name and registration number, or state that the study was not registered",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "18e",
+     "section": "Open science",
+     "topic": "Data sharing",
+     "text": "Provide details of the availability of the study data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "18f",
+     "section": "Open science",
+     "topic": "Code sharing",
+     "text": "Provide details of the availability of the analytical code§",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "provenance.json",
+       "quote": "the provenance record: the decision log, each input file's SHA-256, the engine and its stages' versions, the model matrix's hashes and every reported estimate, which `python -m turbotab.replay` checks against the input files",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "kind": null
+      }
+     ],
+     "owed": "where the bundle, and the TurboTab version it names, can be obtained",
+     "note": "partly answered — the author must supply where the bundle, and the TurboTab version it names, can be obtained"
+    },
+    {
+     "id": "19",
+     "section": "Patient and public involvement",
+     "topic": "Patient and public involvement",
+     "text": "Provide details of any patient and public involvement during the design, conduct, reporting, interpretation, or dissemination of the study or state no involvement",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "20a",
+     "section": "Result",
+     "topic": "Participants",
+     "text": "Describe the flow of participants through the study, including the number of participants with and without the outcome and, if applicable, a summary of the follow-up time. A diagram may be helpful",
+     "kind": null,
+     "scope": "D;E",
+     "status": "answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "quote": "Figure 1. Participant flow, from the 100 rows of the table as read to 90 analyzed. Each exclusion is shown beside the step that made it, with its count and its reason (10 excluded in all).",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "kind": null
+      }
+     ],
+     "owed": null,
+     "note": "answered in the bundle"
+    },
+    {
+     "id": "20b",
+     "section": "Result",
+     "topic": "Participants",
+     "text": "Report the characteristics overall and, where applicable, for each data source or setting, including the key dates, key predictors (including demographics), treatments received, sample size, number of outcome events, follow-up time, and amount of missing data. A table may be helpful. Report any differences across key demographic groups",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "20c",
+     "section": "Result",
+     "topic": "Participants",
+     "text": "For model evaluation, show a comparison with the development data of the distribution of important predictors (demographics, predictors, and outcome)",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "21",
+     "section": "Result",
+     "topic": "Model development",
+     "text": "Specify the number of participants and outcome events in each analysis (eg, for model development, hyperparameter tuning, model evaluation)",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "quote": "Figure 1. Participant flow, from the 100 rows of the table as read to 90 analyzed. Each exclusion is shown beside the step that made it, with its count and its reason (10 excluded in all).",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "kind": null
+      }
+     ],
+     "owed": "the number of participants (and outcome events) in each analysis: development, tuning and evaluation",
+     "note": "partly answered — the author must supply the number of participants (and outcome events) in each analysis: development, tuning and evaluation"
+    },
+    {
+     "id": "22",
+     "section": "Result",
+     "topic": "Model specification",
+     "text": "Provide details of the full prediction model (eg, formula, code, object, application programming interface) to allow predictions in new individuals and to enable third party evaluation and implementation, including any restrictions to access or reuse (eg, freely available, proprietary)¶",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "23a",
+     "section": "Result",
+     "topic": "Model performance",
+     "text": "Report model performance estimates with confidence intervals, including for any key subgroups (eg, sociodemographic). Consider plots to aid presentation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "results/performance.md",
+       "quote": "Table 2. Performance of each model family, and the declared result. The declared result is the selection-corrected RMSE of the elastic net.",
+       "record_id": null,
+       "record_ids": null,
+       "seq": null,
+       "seqs": null,
+       "kind": null
+      }
+     ],
+     "owed": "performance in key subgroups, with intervals",
+     "note": "partly answered — the author must supply performance in key subgroups, with intervals"
+    },
+    {
+     "id": "23b",
+     "section": "Result",
+     "topic": "Model performance",
+     "text": "If examined, report results of any heterogeneity in model performance across clusters. See TRIPOD-Cluster for additional details‡",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "24",
+     "section": "Result",
+     "topic": "Model updating",
+     "text": "Report the results from any model updating, including the updated model and subsequent performance",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "25",
+     "section": "Discussion",
+     "topic": "Interpretation",
+     "text": "Give an overall interpretation of the main results, including issues of fairness in the context of the objectives and previous studies",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "26",
+     "section": "Discussion",
+     "topic": "Limitations",
+     "text": "Discuss any limitations of the study (such as a non-representative sample, sample size, overfitting, missing data) and their effects on any biases, statistical uncertainty, and generalisability",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "27a",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "text": "Describe how poor quality or unavailable input data (eg, predictor values) should be assessed and handled when implementing the prediction model",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "27b",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "text": "Specify whether users will be required to interact in the handling of the input data or use of the model, and what level of expertise is required of users",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    },
+    {
+     "id": "27c",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "text": "Discuss any next steps for future research, with a specific view to applicability and generalisability of the model",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null,
+     "note": "unanswered — the author must supply this"
+    }
+   ],
+   "counts": {
+    "items": 52,
+    "answered": 4,
+    "partly_answered": 9,
+    "unanswered": 39
+   },
+   "unanswered": [
+    "1",
+    "2",
+    "3a",
+    "3b",
+    "3c",
+    "5a",
+    "5b",
+    "6a",
+    "6b",
+    "6c",
+    "7",
+    "8b",
+    "8c",
+    "9c",
+    "10",
+    "12d",
+    "12f",
+    "12g",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18a",
+    "18b",
+    "18c",
+    "18d",
+    "18e",
+    "19",
+    "20b",
+    "20c",
+    "22",
+    "23b",
+    "24",
+    "25",
+    "26",
+    "27a",
+    "27b",
+    "27c"
+   ],
+   "note": "Each item is quoted from Table 2 of the source and listed with where this bundle answers it: a sentence of the decision record (with its decision), a paragraph the analysis wrote, or a figure or table. An item the record cannot answer is listed as “unanswered — the author must supply this”.",
+   "waiting": [
+    "The fit is still being computed for the current answers."
+   ]
+  },
+  "refusal": {
+   "error": {
+    "code": "result_not_ready",
+    "message": "The fit is still being computed for the current answers.",
+    "exits": [
+     {
+      "label": "Export again once it is done",
+      "decision": null
+     }
+    ]
+   }
+  }
+ },
+ "truth": {
+  "files": {
+   "turbotab-export/README.md": "da3b3d3a0fd0019c6400b0b8e310017409a40b049502f129e44acb6505ec36ce",
+   "turbotab-export/analysis_plan.json": "bcca4c5e09c950d25c1057e8f6a4529e8c81f51662b7c3527b1e59494574fda4",
+   "turbotab-export/checklist/tripod_ai.json": "bae1144bf2e7a8adca64c1a245232a1ab896127ac3d46919ae2d0448420070f9",
+   "turbotab-export/checklist/tripod_ai.md": "b866d6b882664aeadd45939a31929e91571f99641cd4286b0ee9ca6383ae2ade",
+   "turbotab-export/decisions.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "turbotab-export/figures/lineage.svg": "92095dbf710af64a749b7926476a1ae0997f06dd51f299c6f0c35e85ef87414c",
+   "turbotab-export/figures/participant_flow.svg": "5f00d7b1f908c69012bc9028630ca4657ba248b39c10e6d45c4ceef0c376e4b7",
+   "turbotab-export/manifest.json": "c05dc4334d36fe2b5687df24f71e745df5794f4dc8378b186f1e32a472b07d86",
+   "turbotab-export/methods.json": "8338f2a430737219b1faa4c042f4f0b0fa2a9266346230f2dc026018b641fdbb",
+   "turbotab-export/methods.md": "007d3c4a6ed74c60c1d6be9c5c534a9934f8cececc42a4695a24ef471674264c",
+   "turbotab-export/methods.txt": "91a1296fcb6338cfea9b467df6f7b014d1d9caa9ff842e67c6fb264f82b089b1",
+   "turbotab-export/provenance.json": "75d3aedabbc8dd603b0698f9d203d2f61ce789b4248abbdb2d82a8a180353c65",
+   "turbotab-export/results/performance.csv": "7a6624b56e922dfe981e13f97300a7685e869aa1f7e07c950d89d1bad07cbb47",
+   "turbotab-export/results/performance.md": "068eb42bb2bfb04d1632b8a25275bb8699ec417728de8c70af059138d0eef134"
+  },
+  "tables": [
+   {
+    "file": "results/performance.md",
+    "title": "Table 2. Performance of each model family, and the declared result",
+    "caption": "The declared result is the selection-corrected RMSE of the elastic net.",
+    "header": [
+     "Family",
+     "Score",
+     "Basis",
+     "Estimate (95% CI)",
+     "Role"
+    ],
+    "rows": [
+     [
+      "Linear model",
+      "RMSE",
+      "cross-validated (k-fold)",
+      "12.5 (11 to 14)",
+      "not the result"
+     ],
+     [
+      "Linear model",
+      "R²",
+      "cross-validated (k-fold)",
+      "0.21",
+      "not the result"
+     ],
+     [
+      "Elastic net",
+      "RMSE",
+      "cross-validated (k-fold)",
+      "12.2 (10.9 to 13.6)",
+      "not the result"
+     ],
+     [
+      "Elastic net",
+      "R²",
+      "cross-validated (k-fold)",
+      "0.24",
+      "not the result"
+     ],
+     [
+      "Elastic net",
+      "RMSE",
+      "selection-corrected (BBC-CV)",
+      "12.8 (11.2 to 14.3)",
+      "the result"
+     ]
+    ],
+    "empty": null
+   }
+  ],
+  "figures": {
+   "turbotab-export/figures/lineage.svg": {
+    "title": "Figure 2. Column lineage",
+    "desc": "Figure 2. Column lineage, from the 2 raw columns the analysis reads to the 2 columns of the model matrix (90 rows), through the steps every model family shares; a family's own steps (scaling, a spline basis) are in the methods. Line styles: solid, kept as it is. Drawn from the decision record."
+   },
+   "turbotab-export/figures/participant_flow.svg": {
+    "title": "Figure 1. Participant flow",
+    "desc": "Figure 1. Participant flow, from the 100 rows of the table as read to 90 analyzed. Each exclusion is shown beside the step that made it, with its count and its reason (10 excluded in all)."
+   }
+  },
+  "checklist_headings": [
+   "1 (D;E) · Title",
+   "2 (D;E) · Abstract",
+   "3a (D;E) · Background",
+   "3b (D;E) · Background",
+   "3c (D;E) · Background",
+   "4 (D;E) · Objectives",
+   "5a (D;E) · Data",
+   "5b (D;E) · Data",
+   "6a (D;E) · Participants",
+   "6b (D;E) · Participants",
+   "6c (D;E) · Participants",
+   "7 (D;E) · Data preparation",
+   "8a (D;E) · Outcome",
+   "8b (D;E) · Outcome",
+   "8c (D;E) · Outcome",
+   "9a (D) · Predictors",
+   "9b (D;E) · Predictors",
+   "9c (D;E) · Predictors",
+   "10 (D;E) · Sample size",
+   "11 (D;E) · Missing data",
+   "12a (D) · Analytical methods",
+   "12b (D) · Analytical methods",
+   "12c (D) · Analytical methods",
+   "12d (D;E) · Analytical methods",
+   "12e (D;E) · Analytical methods",
+   "12f (E) · Analytical methods",
+   "12g (E) · Analytical methods",
+   "13 (D;E) · Class imbalance",
+   "14 (D;E) · Fairness",
+   "15 (D) · Model output",
+   "16 (D;E) · Training versus evaluation",
+   "17 (D;E) · Ethical approval",
+   "18a (D;E) · Funding",
+   "18b (D;E) · Conflicts of interest",
+   "18c (D;E) · Protocol",
+   "18d (D;E) · Registration",
+   "18e (D;E) · Data sharing",
+   "18f (D;E) · Code sharing",
+   "19 (D;E) · Patient and public involvement",
+   "20a (D;E) · Participants",
+   "20b (D;E) · Participants",
+   "20c (E) · Participants",
+   "21 (D;E) · Model development",
+   "22 (D) · Model specification",
+   "23a (D;E) · Model performance",
+   "23b (D;E) · Model performance",
+   "24 (E) · Model updating",
+   "25 (D;E) · Interpretation",
+   "26 (D;E) · Limitations",
+   "27a (D) · Usability of the model in the context of current care",
+   "27b (D) · Usability of the model in the context of current care",
+   "27c (D;E) · Usability of the model in the context of current care"
+  ]
+ }
+}

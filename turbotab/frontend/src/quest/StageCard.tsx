@@ -14,8 +14,8 @@
  * Results, once reached, has W1-G's ResultsCards in place of its lines, mounted once
  * (src/quest/contracts.ts). First look opens on its guide (src/quest/firstlook: its beats, or the
  * question of a look its gallery asks to decide now), then lists every noticing with the stage
- * that decides it. For the record sits collapsed at the foot (GET /record); Write-up's checklist
- * below it lists what the author still owes for each item answered in part (GET /checklist). The
+ * that decides it. For the record sits collapsed at the foot (GET /record); below it, Write-up
+ * shows what the export holds, read-only, its checklist among it (src/quest/writeup). The
  * one primary action is at the very foot (FOUNDATION §1); a disabled one says why and links to
  * what it waits for. Continue goes on to the next open line a card can answer, naming it where
  * that is not the next stage; under Predict open noticings hold it in no stage but the triage's
@@ -33,7 +33,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { isRefusalError } from "../api/client";
 import {
-  useChecklist,
   useConfirmSweep,
   useDecide,
   useExport,
@@ -43,7 +42,6 @@ import {
   useTriage,
 } from "../api/queries";
 import type {
-  ChecklistItem,
   Decision,
   DecisionRecord,
   Finding,
@@ -78,6 +76,7 @@ import {
 } from "./log";
 import { ResultsCards } from "./results";
 import { said } from "./words";
+import { WriteUp } from "./writeup";
 import q from "./quest.module.css";
 
 const idOf = (l: QuestLine) => `${l.source}:${l.key}`;
@@ -341,7 +340,7 @@ export function StageCard({ pid, log, stage, answers, fit, onOpenStage, request 
         {triageHere ? <StageTriage pid={pid} stage={stage.key} /> : null}
 
         {stage.reached ? <ForTheRecord pid={pid} stage={stage} /> : null}
-        {stage.key === "writeup" && stage.reached ? <Checklist pid={pid} /> : null}
+        {stage.key === "writeup" && stage.reached ? <WriteUp pid={pid} /> : null}
 
         {back ? (
           <button type="button" className={k.linkish} data-kit onClick={back} data-testid="back-to-stage">
@@ -581,91 +580,6 @@ function ForTheRecord({ pid, stage }: { pid: string; stage: QuestStage }) {
         ))}
       </ul>
     </details>
-  );
-}
-
-/** An item's number as the bundle's checklist labels it (core/export/checklists.py `markdown`):
- *  STROBE's own items under STROBE-nut by "STROBE". */
-function itemLabel(item: ChecklistItem): string {
-  return item.kind === "STROBE" ? `${item.kind} ${item.id}` : item.id;
-}
-
-/**
- * TRIPOD+AI's scope codes in plain words, as the source's own legend defines them (Collins et al.
- * 2024, Table 2's footnote, which core/export/data/tripod_ai.json holds): "D=items relevant only to
- * the development of a prediction model; E=items relating solely to the evaluation of a prediction
- * model; D;E=items applicable to both the development and evaluation of a prediction model". The
- * report serves the code alone; a code the legend does not define is shown as served, with no
- * words.
- */
-const SCOPE_WORDS: Readonly<Record<string, string>> = {
-  D: "Applies only to developing a model.",
-  E: "Applies only to evaluating a model.",
-  "D;E": "Applies to both developing and evaluating a model.",
-};
-
-/**
- * Write-up's checklist: the reporting guideline's items, by how far the record answers each, then,
- * behind one quiet disclosure as For the record is (FOUNDATION §2, one click away), each item the
- * record answers only in part, with what the author must still supply (`owed`), as the bundle's
- * checklist says it. Every item the record answers in part owes something, and only those do
- * (core/export/checklists.py `fill`), so the disclosure is counted by the items it holds.
- * TRIPOD+AI's scope is said in plain words (`SCOPE_WORDS`), its code the quiet label.
- */
-function Checklist({ pid }: { pid: string }) {
-  const report = useChecklist(pid).data;
-  if (!report) return null;
-  const { counts } = report;
-  const owed = report.items.filter((i) => i.owed);
-  return (
-    <section className={q.group} data-kit data-testid="checklist">
-      <h3 className={q.groupLabel}>{report.title}</h3>
-      <p className={q.lineQuiet}>
-        {counts.answered} answered, {counts.partly_answered} partly answered, {counts.unanswered} unanswered,
-        of {counts.items} items.
-      </p>
-      {owed.length ? (
-        <details className={q.record} data-testid="checklist-owed">
-          <summary>Partly answered · {owed.length}</summary>
-          <ul className={q.lines}>
-            {owed.map((i) => {
-              const words = i.scope ? SCOPE_WORDS[i.scope] : undefined;
-              return (
-                <li key={i.id} className={q.line}>
-                  <div className={q.lineRow}>
-                    <span className={q.lineName}>
-                      {itemLabel(i)} · <Plain text={i.topic} />
-                    </span>
-                    {i.scope ? (
-                      <span className={q.lineLabel} data-testid={`checklist-scope-code-${i.id}`}>
-                        {i.scope}
-                      </span>
-                    ) : null}
-                  </div>
-                  {words ? (
-                    <p className={q.lineQuiet} data-testid={`checklist-scope-${i.id}`}>
-                      {words}
-                    </p>
-                  ) : null}
-                  <p className={q.lineReason}>
-                    The author must supply <Plain text={i.owed} />.
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      ) : null}
-      {report.waiting.length ? (
-        <ul className={q.recordList}>
-          {report.waiting.map((w) => (
-            <li key={w}>
-              <Plain text={w} />
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
   );
 }
 

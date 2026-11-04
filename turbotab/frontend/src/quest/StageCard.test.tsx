@@ -9,16 +9,11 @@
  * a real server's captured NHANES walk under Predict; the quest logs are the engine's
  * (fixtures/quest-contract.json), with the Results lines' statuses set for each moment.
  */
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { keys } from "../api/queries";
 import type {
-  ChecklistItem,
-  ChecklistReport,
   DecisionRecord,
   ForTheRecord,
   ProjectView,
@@ -1172,156 +1167,5 @@ describe("a line a change reopened says which change (G20)", () => {
       expect(within(card).getByTestId(`line-${l.key}`)).toBeInTheDocument();
       expect(note(card, l.key), l.key).toBeNull();
     }
-  });
-});
-
-/**
- * ChecklistItem.owed and scope on Write-up's checklist, as the bundle's checklist states them
- * (core/export/checklists.py `markdown`): each partly answered item by its number and its topic,
- * then "The author must supply …", behind one closed disclosure counted as For the record's is
- * (FOUNDATION §2: one click away, never all on screen at once). TRIPOD+AI's scope is said in plain
- * words, with its code as the quiet label; the words are checked against the source's own legend,
- * read from the engine's copy of TRIPOD+AI (core/export/data/tripod_ai.json, Table 2's footnote).
- * The reports are built in the served shape; each item's number, scope, topic and owed words are
- * read off the report.
- */
-describe("Write-up's checklist says what the author still owes (G20)", () => {
-  const where: ChecklistItem["where"] = [
-    { source: "file", file: "results/performance.md", quote: "A caption.", record_id: null, record_ids: null, seq: null, seqs: null, kind: null },
-  ];
-  const item = (over: Partial<ChecklistItem> & Pick<ChecklistItem, "id" | "status">): ChecklistItem => ({
-    section: "Methods",
-    topic: "Analytical methods",
-    text: "The item, quoted from its source.",
-    kind: null,
-    scope: null,
-    where: over.status === "unanswered" ? [] : where,
-    owed: null,
-    note: "",
-    ...over,
-  });
-  const reportOf = (checklist: ChecklistReport["checklist"], items: ChecklistItem[]): ChecklistReport => ({
-    checklist,
-    title: `${checklist} checklist`,
-    citation: "A citation.",
-    source: { table: "Table 2", pmcid: "PMC0", doi: "10.0/0", url: "https://example.org", retrieved: "2026-10-05", sha256: "0", license: "CC BY 4.0" },
-    purpose: checklist === "TRIPOD+AI" ? "prediction" : "inference",
-    items,
-    counts: {
-      items: items.length,
-      answered: items.filter((i) => i.status === "answered").length,
-      partly_answered: items.filter((i) => i.status === "partly answered").length,
-      unanswered: items.filter((i) => i.status === "unanswered").length,
-    },
-    unanswered: items.filter((i) => i.status === "unanswered").map((i) => i.id),
-    note: "",
-    waiting: [],
-  });
-  const writeup = (report: ChecklistReport) =>
-    cardOf(REACHED, "writeup", { seed: (qc) => qc.setQueryData(keys.checklist(PID), report) }).card;
-  const owedOf = (card: HTMLElement) => within(card).queryByTestId("checklist-owed");
-  const rowsOf = (list: HTMLElement) => [...list.querySelectorAll("li")];
-  const TRIPOD = JSON.parse(
-    readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../../core/export/data/tripod_ai.json"), "utf-8"),
-  ) as { footnote: string; items: { id: string; scope?: string | null }[] };
-  /** The legend, as Table 2's footnote gives it: "*D=…; E=…; D;E=…." */
-  const LEGEND = (() => {
-    const m = /\*D=([^;]+); E=([^;]+); D;E=([^.]+)\./.exec(TRIPOD.footnote);
-    if (!m) throw new Error("TRIPOD+AI's footnote holds no D, E and D;E legend");
-    return { D: m[1]!, E: m[2]!, "D;E": m[3]! };
-  })();
-
-  it("puts each partly answered item behind one closed disclosure, counted, with what the author must supply; no other item", () => {
-    expect(stageIn(REACHED, "writeup").reached).toBe(true);
-    const owed = [
-      item({ id: "12e", scope: "D;E", status: "partly answered", owed: "the rationale for each measure" }),
-      item({ id: "9a", scope: "D", topic: "Predictors", status: "partly answered", owed: "why these predictors" }),
-    ];
-    const rest = [item({ id: "12a", scope: "D", status: "answered" }), item({ id: "1", scope: "D;E", topic: "Title", status: "unanswered" })];
-    const report = reportOf("TRIPOD+AI", [owed[0]!, rest[0]!, owed[1]!, rest[1]!]);
-    const card = writeup(report);
-    const list = owedOf(card)!;
-    expect(list).not.toBeNull();
-    // One quiet disclosure, closed until opened, counted by what it holds: the partly answered items.
-    expect(list.tagName).toBe("DETAILS");
-    expect((list as HTMLDetailsElement).open).toBe(false);
-    expect(report.counts.partly_answered).toBe(owed.length);
-    expect(list.querySelector("summary")!.textContent).toBe(`Partly answered · ${report.counts.partly_answered}`);
-    const rows = rowsOf(list);
-    expect(rows).toHaveLength(owed.length);
-    owed.forEach((i, n) => {
-      expect(rows[n]).toHaveTextContent(`${i.id} · ${i.topic}`);
-      expect(rows[n]).toHaveTextContent(`The author must supply ${i.owed}.`);
-    });
-    for (const i of rest) expect(list).not.toHaveTextContent(`${i.id} · ${i.topic}`);
-    // The counts line stays open above it.
-    expect(within(card).getByTestId("checklist")).toHaveTextContent(`${report.counts.partly_answered} partly answered`);
-  });
-
-  it("says TRIPOD+AI's scope in plain words, as the source's legend defines each code, with the code as its quiet label", () => {
-    // The legend: D only development, E only (solely) evaluation, D;E both.
-    expect(LEGEND.D).toMatch(/\bonly\b/);
-    expect(LEGEND.D).toMatch(/development/);
-    expect(LEGEND.D).not.toMatch(/evaluation/);
-    expect(LEGEND.E).toMatch(/\bsolely\b/);
-    expect(LEGEND.E).toMatch(/evaluation/);
-    expect(LEGEND.E).not.toMatch(/development/);
-    expect(LEGEND["D;E"]).toMatch(/\bboth\b/);
-    expect(LEGEND["D;E"]).toMatch(/development and evaluation/);
-    // Every scope the source gives an item is a code the legend defines.
-    const codes = [...new Set(TRIPOD.items.map((i) => i.scope))];
-    expect(codes.sort()).toEqual(Object.keys(LEGEND).sort());
-    const owed = Object.keys(LEGEND).map((scope, n) =>
-      item({ id: `${n + 1}a`, scope, status: "partly answered", owed: `the thing ${n + 1}` }),
-    );
-    const list = owedOf(writeup(reportOf("TRIPOD+AI", owed)))!;
-    const words = (id: string) => within(list).getByTestId(`checklist-scope-${id}`).textContent ?? "";
-    const code = (id: string) => within(list).getByTestId(`checklist-scope-code-${id}`).textContent;
-    const [d, e, both] = owed as [ChecklistItem, ChecklistItem, ChecklistItem];
-    expect([d.scope, e.scope, both.scope]).toEqual(["D", "E", "D;E"]);
-    expect(words(d.id)).toMatch(/\bonly\b/i);
-    expect(words(d.id)).toMatch(/develop/i);
-    expect(words(d.id)).not.toMatch(/evaluat/i);
-    expect(words(e.id)).toMatch(/\bonly\b/i);
-    expect(words(e.id)).toMatch(/evaluat/i);
-    expect(words(e.id)).not.toMatch(/develop/i);
-    expect(words(both.id)).toMatch(/develop/i);
-    expect(words(both.id)).toMatch(/evaluat/i);
-    expect(words(both.id)).not.toMatch(/\bonly\b/i);
-    for (const i of owed) expect(code(i.id)).toBe(i.scope);
-    // The bare code beside the number is gone.
-    expect(list.textContent).not.toMatch(/\((D|E|D;E)\)/);
-  });
-
-  it("says no words for a scope the legend does not define, and shows its code as served", () => {
-    const odd = item({ id: "5x", scope: "X", status: "partly answered", owed: "something" });
-    expect(Object.keys(LEGEND)).not.toContain(odd.scope);
-    const list = owedOf(writeup(reportOf("TRIPOD+AI", [odd])))!;
-    expect(within(list).queryByTestId(`checklist-scope-${odd.id}`)).toBeNull();
-    expect(within(list).getByTestId(`checklist-scope-code-${odd.id}`).textContent).toBe(odd.scope);
-  });
-
-  it("labels STROBE-nut's items as the bundle does, with no scope, where the source gives none", () => {
-    const owed = [
-      item({ id: "6a", kind: "STROBE", topic: "Participants", status: "partly answered", owed: "the sources and methods of selection" }),
-      item({ id: "nut-6", kind: "STROBE-nut", topic: "Participants", status: "partly answered", owed: "the dietary assessment method" }),
-    ];
-    const card = writeup(reportOf("STROBE-nut", owed));
-    const list = owedOf(card)!;
-    const rows = rowsOf(list);
-    expect(rows).toHaveLength(owed.length);
-    expect(rows[0]).toHaveTextContent(new RegExp(`^${owed[0]!.kind} ${owed[0]!.id} · ${owed[0]!.topic}`));
-    expect(rows[1]).toHaveTextContent(new RegExp(`^${owed[1]!.id} · ${owed[1]!.topic}`));
-    for (const r of rows) expect(r.textContent).not.toMatch(/\(.*\)/);
-    for (const i of owed) {
-      expect(within(list).queryByTestId(`checklist-scope-${i.id}`)).toBeNull();
-      expect(within(list).queryByTestId(`checklist-scope-code-${i.id}`)).toBeNull();
-    }
-  });
-
-  it("lists nothing where the author owes nothing", () => {
-    const card = writeup(reportOf("TRIPOD+AI", [item({ id: "12a", scope: "D", status: "answered" }), item({ id: "1", scope: "D;E", status: "unanswered" })]));
-    expect(within(card).getByTestId("checklist")).toBeInTheDocument();
-    expect(owedOf(card)).toBeNull();
   });
 });
