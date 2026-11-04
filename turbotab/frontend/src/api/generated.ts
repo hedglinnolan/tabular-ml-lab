@@ -2209,12 +2209,30 @@ export interface components {
              */
             missing: "exclude" | "keep";
         };
-        /** Exit */
+        /**
+         * Exit
+         * @description A way forward: its label, and the decision a press records, or none. One that names no
+         *     decision names the card that opens it (``target``) where it can; ``target`` is absent from a
+         *     way forward that opens nothing, so it is the one field a response may leave out.
+         */
         Exit: {
             /** Label */
             label: string;
             /** Decision */
             decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"] | components["schemas"]["SetModelSequence-Output"] | components["schemas"]["RespondDiagnostic"] | components["schemas"]["SetCausal-Output"] | components["schemas"]["SetTimeVarying-Output"] | components["schemas"]["SetExplain-Output"] | components["schemas"]["SetForms-Output"] | components["schemas"]["SetModification-Output"] | components["schemas"]["ViewOutcome-Output"] | components["schemas"]["SetLevers-Output"] | components["schemas"]["SetSelection-Output"] | components["schemas"]["SetIntendedUse-Output"] | components["schemas"]["SetUpdating-Output"] | components["schemas"]["ConfirmSweep-Output"] | components["schemas"]["SetDesign-Output"] | components["schemas"]["SetValidation-Output"]) | null;
+            target?: components["schemas"]["ExitTarget"] | null;
+        };
+        /**
+         * ExitTarget
+         * @description The card a way forward opens (``turbotab.core.exit_target``): its quest stage and the quest
+         *     line whose card it is, by the key the quest log serves; a null key opens the stage on its open
+         *     line.
+         */
+        ExitTarget: {
+            /** Stage */
+            stage: string;
+            /** Key */
+            key: string | null;
         };
         /** ExplainSpec */
         ExplainSpec: {

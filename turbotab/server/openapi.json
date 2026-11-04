@@ -6948,6 +6948,16 @@
               }
             ],
             "title": "Decision"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExitTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6955,7 +6965,34 @@
           "label",
           "decision"
         ],
-        "title": "Exit"
+        "title": "Exit",
+        "description": "A way forward: its label, and the decision a press records, or none. One that names no\ndecision names the card that opens it (``target``) where it can; ``target`` is absent from a\nway forward that opens nothing, so it is the one field a response may leave out."
+      },
+      "ExitTarget": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "key"
+        ],
+        "title": "ExitTarget",
+        "description": "The card a way forward opens (``turbotab.core.exit_target``): its quest stage and the quest\nline whose card it is, by the key the quest log serves; a null key opens the stage on its open\nline."
       },
       "ExplainSpec": {
         "properties": {
