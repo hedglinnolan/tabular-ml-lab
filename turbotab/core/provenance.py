@@ -10,7 +10,8 @@ decisions out, but only those superseded before anything was seen:
   or its key of a keyed slot), its condition holds (a task answer is for the current outcome), and
   it still applies to the analysis: a follow-up only while the outcome is answered as a time to
   event, an event level only for a binary or time-to-event outcome, a declared order only for an
-  ordinal one (:data:`APPLIES`). A revert is never in force: the answer it restores is.
+  ordinal one, a features-in-rows reading only while the table is turned (orientation
+  `feature_major`; :data:`APPLIES`). A revert is never in force: the answer it restores is.
 * **Events.** An opening of the held-out rows and a re-seal are in force while they are about the
   current outcome; the analysis-plan lock always is.
 * **Nothing is folded out once something was seen.** From the first opening or the plan lock on,
@@ -22,9 +23,13 @@ decisions out, but only those superseded before anything was seen:
   the substitution posted under prediction; :func:`never_applied`) changed nothing, so it is no
   fork and writes no sentence, nor does a revert of it; nor does one recorded after that moment
   that the goal holds now, whatever the goal was when it was recorded, since the methods never
-  state a held answer as applied (W1-R round 2, ruling R-d). An answer in force at that moment and
-  held by the goal now stays in the plan as declared, which is what the lock fixed, with one added
-  sentence: it is not applied under the goal as it stands (:func:`not_applied_sentence`).
+  state a held answer as applied (W1-R round 2, ruling R-d); nor does a features-in-rows reading
+  in force at no moment from the later of its record and that moment on (the table unturned while
+  it stood), nor its revert (:func:`never_read`). An answer in force at that moment and held by
+  the goal now stays in the plan as declared, which is what the lock fixed, with one added
+  sentence: it is not applied under the goal as it stands (:func:`not_applied_sentence`). The
+  exported plan lists every decision made after the estimates were seen, and says which of them
+  the methods leave out (:func:`in_methods`; ``plan_lock.plan_text``).
 * **Restated.** An in-force sentence that says what another answer does to it (under the surveyed
   population, each chosen family's estimator or block, the substitution band, the calibration;
   MS4) is restated on the answers as they stand (:func:`restated`; ``voice.restate``), so the
@@ -51,7 +56,14 @@ APPLIES: dict[str, Callable[[Any, Any], bool]] = {
     "set_follow_up": lambda d, state: state.task == "time_to_event",
     "set_event": lambda d, state: state.task in (None, "binary", "time_to_event"),
     "set_outcome_order": lambda d, state: state.task == "ordinal",
+    # the oriented stage turns the table only on `feature_major` (``working.oriented_stage``)
+    "set_feature_table": lambda d, state: state.orientation == "feature_major",
 }
+# Of those, the kinds the analysis reads only where they apply, so one in force at no moment from
+# the later of its record and the seen moment on changed nothing (:func:`never_read`): the
+# features-in-rows reading, which the oriented stage reads only to turn the table (and, unturned,
+# to say how it would turn).
+UNREAD_UNLESS_APPLIED: tuple[str, ...] = ("set_feature_table",)
 EVENTS = ("open_seal", "reseal", "lock_plan")
 
 
@@ -147,7 +159,9 @@ def never_applied(records: Sequence[Any], since: int) -> set[str]:
     such an answer is no change made to the analysis now, so it writes no methods sentence; it
     does once its condition holds. A revert of an answer recorded by ``since`` that applied when
     it was recorded withdraws an answer of the plan as declared, which is a change made whatever
-    the goal is now, so it is not one (W1-R round 3, SE-m5). An opening and a re-seal are events,
+    the goal is now, so it is not one (W1-R round 3, SE-m5). So is an answer the analysis reads
+    only where it applies that was in force at no moment from the later of its record and
+    ``since`` on, and a revert of one (:func:`never_read`). An opening and a re-seal are events,
     never one."""
     ordered = sorted(records, key=lambda r: r.seq)
     try:
@@ -156,14 +170,14 @@ def never_applied(records: Sequence[Any], since: int) -> set[str]:
         return set()
     by_id = {r.id: r for r in ordered}
     at = {r.id: i for i, r in enumerate(ordered)}
-    out: set[str] = set()
+    out = never_read(ordered, since)
     for record in ordered:
         if record.seq <= since:
             continue
         answer = record
         while answer is not None and isinstance(answer.decision, Revert):
             answer = by_id.get(answer.decision.decision_id)
-        if answer is None or answer.decision.kind in EVENTS:
+        if answer is None or answer.decision.kind in (*EVENTS, *UNREAD_UNLESS_APPLIED):
             continue
         holds = decisions._HOLDS.get(answer.decision.kind)
         if holds is None or holds(answer.decision, now):
@@ -177,6 +191,45 @@ def never_applied(records: Sequence[Any], since: int) -> set[str]:
         except Refusal:
             continue
         if not holds(answer.decision, then):
+            out.add(record.id)
+    return out
+
+
+def never_read(records: Sequence[Any], since: int) -> set[str]:
+    """Ids of the records after ``since`` (a seq) that record an answer of a kind the analysis reads
+    only where it applies (:data:`UNREAD_UNLESS_APPLIED`), or revert one, when that answer was in
+    force (:func:`in_force`) on no prefix of the log from the later of its own record and the
+    prefix through ``since`` (the plan as declared, :func:`methods_text`'s) to the whole: a
+    features-in-rows reading while no answer turned the table, superseded or withdrawn before one
+    did. The analysis read such an answer at no moment from what had been seen on, so neither it
+    nor a revert of it is a fork (:func:`never_applied`): the methods state neither, and the
+    plan's export names each as left out of them (``plan_lock.plan_text``). A reading recorded by
+    ``since`` and in force when it was recorded, but not in the plan as declared nor since, is
+    stated nowhere in the methods, so its revert is no change either (V2-2). One in force at any
+    moment from that prefix on is a change, whatever the orientation when it was recorded or now;
+    so is a revert of it."""
+    ordered = sorted(records, key=lambda r: r.seq)
+    try:
+        decisions.fold(ordered)
+    except Refusal:
+        return set()
+    by_id = {r.id: r for r in ordered}
+    at = {r.id: i for i, r in enumerate(ordered)}
+    declared = sum(1 for r in ordered if r.seq <= since) - 1  # the prefix through ``since``
+    read: dict[str, bool] = {}
+    out: set[str] = set()
+    for record in ordered:
+        if record.seq <= since:
+            continue
+        answer = record
+        while answer is not None and isinstance(answer.decision, Revert):
+            answer = by_id.get(answer.decision.decision_id)
+        if answer is None or answer.decision.kind not in UNREAD_UNLESS_APPLIED:
+            continue
+        if answer.id not in read:
+            read[answer.id] = any(answer.id in in_force(ordered[:i + 1])
+                                  for i in range(max(at[answer.id], declared), len(ordered)))
+        if not read[answer.id]:
             out.add(record.id)
     return out
 
@@ -240,10 +293,10 @@ def restated(records: Sequence[Any], now: set[str], ctx: Any = None) -> dict[str
     return out
 
 
-def methods_text(records: Sequence[Any], ctx: Any = None) -> MethodsText:
-    """The methods text of a decision log (see the module). ``ctx``: what a restated sentence may
-    read besides the answers (``detected_task``, the task the target stage detected)."""
-    ordered = sorted(records, key=lambda r: r.seq)
+def _kept(ordered: Sequence[Any]) -> tuple[set[str], int | None, set[str], set[str]]:
+    """What the methods text keeps of the records ``ordered`` (see the module): those in force
+    now, the record from which nothing is folded out (:func:`seen_from`), those in force then (the
+    plan as declared), and every record kept."""
     now = in_force(ordered)
     seen = seen_from(ordered)
     kept = set(now)
@@ -252,6 +305,23 @@ def methods_text(records: Sequence[Any], ctx: Any = None) -> MethodsText:
         declared = in_force([r for r in ordered if r.seq <= seen])
         kept |= declared
         kept |= {r.id for r in ordered if r.seq > seen} - never_applied(ordered, seen)
+    return now, seen, declared, kept
+
+
+def in_methods(records: Sequence[Any]) -> set[str]:
+    """Ids of the records whose sentence the methods text states (:func:`methods_text`, by the
+    same rule; a restated one counts whatever its words). The exported plan names each decision it
+    lists as made after the estimates were seen that is not one (``plan_lock.plan_text``)."""
+    ordered = sorted(records, key=lambda r: r.seq)
+    kept = _kept(ordered)[3]
+    return {r.id for r in ordered if r.id in kept and r.sentence}
+
+
+def methods_text(records: Sequence[Any], ctx: Any = None) -> MethodsText:
+    """The methods text of a decision log (see the module). ``ctx``: what a restated sentence may
+    read besides the answers (``detected_task``, the task the target stage detected)."""
+    ordered = sorted(records, key=lambda r: r.seq)
+    now, seen, declared, kept = _kept(ordered)
     again = restated(ordered, now, ctx)
     # Ruling R-d: an answer in force when the plan was locked (or the held-out rows opened) stays
     # in the plan as declared, which is what the lock fixed; one the goal holds now says so.
@@ -282,5 +352,6 @@ def _with(sentence: str, added: str | None) -> str:
     return f"{sentence} {added}" if added and sentence else sentence
 
 
-__all__ = ["APPLIES", "MethodsLine", "MethodsText", "held_by_goal", "in_force", "methods_text",
-           "never_applied", "not_applied_sentence", "restated", "seen_from"]
+__all__ = ["APPLIES", "MethodsLine", "MethodsText", "UNREAD_UNLESS_APPLIED", "held_by_goal",
+           "in_force", "in_methods", "methods_text", "never_applied", "never_read",
+           "not_applied_sentence", "restated", "seen_from"]
