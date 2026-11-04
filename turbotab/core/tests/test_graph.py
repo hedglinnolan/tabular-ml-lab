@@ -27,6 +27,7 @@ from turbotab.core.tests import toy_stages as toy
 from turbotab.core.tests.toy_stages import ToyState
 
 TOY = "turbotab.core.tests.toy_stages:toy_graph"
+KEY_READ = "turbotab.core.tests.toy_stages:key_read_graph"
 HEAVY = "turbotab.core.tests.toy_stages:heavy_graph"
 FAILING = "turbotab.core.tests.toy_stages:failing_graph"
 
@@ -165,6 +166,71 @@ def test_a_stage_reading_a_slot_the_state_lacks_is_an_error(make_engine, tmp_pat
 
     projects.states[pid] = ProjectState()  # has no x or y
     with pytest.raises(GraphError, match="slot 'x'"):
+        engine.keys(pid)
+
+
+def test_a_key_read_moves_its_stage_key_and_those_downstream_and_is_none_of_its_reads(make_engine):
+    """Both ways on ``Stage.key_reads`` (KR1): C's key reads `y`, which none of the graph's reads
+    names, so a changed `y` moves C's key and E's, downstream of it, and leaves A's, which reads `x`
+    only; a changed `x` moves all three."""
+    engine, projects, _ = make_engine(KEY_READ)
+    pid = _pid()
+    projects.states[pid] = ToyState(x="1", y="1")
+    k1 = engine.keys(pid)
+    assert all(k1.values())
+
+    projects.states[pid] = ToyState(x="1", y="2")
+    engine.on_decision(pid)
+    k2 = engine.keys(pid)
+    assert {s for s in k1 if k1[s] != k2[s]} == {"C", "E"}
+
+    projects.states[pid] = ToyState(x="2", y="2")
+    engine.on_decision(pid)
+    k3 = engine.keys(pid)
+    assert {s for s in k2 if k2[s] != k3[s]} == {"A", "C", "E"}
+    assert [(s.name, s.reads, s.key_reads) for s in engine.graph.order()] == [
+        ("A", ("x",), ()), ("C", (), ("y",)), ("E", (), ())]
+
+
+def test_a_changed_key_read_runs_its_stage_again_and_a_reverted_one_serves_the_earlier_artifact(
+        make_engine):
+    """Both ways on what the engine computes for ``Stage.key_reads`` (KR1): once `y`, C's key read,
+    changes, C and E run again and A does not; once `y` is back where it was, the artifacts cached
+    under that key are fresh at once and nothing runs."""
+    engine, projects, _ = make_engine(KEY_READ)
+    pid = _pid()
+    projects.states[pid] = ToyState(x="1", y="1")
+    engine.on_decision(pid)
+    wait_for(engine, pid, all_fresh)
+    first = {name: engine.get(pid, name).key for name in ("A", "C", "E")}
+
+    def runs() -> dict[str, int]:
+        return {name: toy.CALLS[(pid, name)] for name in ("A", "C", "E")}
+
+    assert runs() == {"A": 1, "C": 1, "E": 1}
+    projects.states[pid] = ToyState(x="1", y="2")
+    engine.on_decision(pid)
+    wait_for(engine, pid, all_fresh)
+    assert runs() == {"A": 1, "C": 2, "E": 2}
+    assert engine.get(pid, "C").key != first["C"]
+
+    projects.states[pid] = ToyState(x="1", y="1")
+    engine.on_decision(pid)
+    assert all_fresh(engine.status(pid))
+    assert {name: engine.get(pid, name).key for name in ("A", "C", "E")} == first
+    assert runs() == {"A": 1, "C": 2, "E": 2}
+
+
+def test_a_key_read_of_a_slot_the_state_lacks_is_an_error(make_engine):
+    from turbotab.core.decisions import ProjectState
+
+    class OnlyX(ProjectState):
+        x: str | None = None
+
+    engine, projects, _ = make_engine(KEY_READ)
+    pid = _pid()
+    projects.states[pid] = OnlyX(x="1")  # A's read is there, C's key read is not
+    with pytest.raises(GraphError, match="stage 'C' reads slot 'y'"):
         engine.keys(pid)
 
 

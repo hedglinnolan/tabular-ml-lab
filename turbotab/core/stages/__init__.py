@@ -501,7 +501,11 @@ def build_graph() -> Graph:
             Stage("proposals", 23, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", "modifications", *WP17_READS),
-                  proposals_stage, label="Looking up what the field usually does"),
+                  proposals_stage, label="Looking up what the field usually does",
+                  # The missing-values answer's columns leave the predictors (``estimand.
+                  # predictor_roles``), so the estimand, adjustment and missing-values cards rest on
+                  # it; the key reads it, and no card waits on the missing-values question for it.
+                  key_reads=("missing",)),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
             # cohort 4 (WP17): complete cases read the predictors the adjustment answers keep.
