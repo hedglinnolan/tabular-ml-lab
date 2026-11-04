@@ -988,7 +988,8 @@ def test_7_the_passive_refusal_ticks_each_column_once():
 def test_7_the_answers_sentence_and_labels_state_m_by_its_rule():
     """The missing-values answer's sentence writes m as a number, not a data value (it read
     "m = `20`"); the method's label and the single-fill refusal's exit no longer fix m at 20, which
-    the rule raises with the share of incomplete rows."""
+    the rule raises with the share of incomplete rows: they state the rule (pp2-mi-words; "more
+    when more rows are incomplete" was false from an m of 100)."""
     from turbotab.core.methods.missing import METHODS, MI_EXIT_LABEL, missing_block
     from turbotab.core.voice import sentence_for
 
@@ -997,9 +998,10 @@ def test_7_the_answers_sentence_and_labels_state_m_by_its_rule():
     assert "m = 20 or the percentage of rows with an imputed value if that is larger" in said
     assert "`20`" not in said
     label = METHODS["multiple_imputation"].label
-    assert label == "Multiple imputation (m at least 20, more when more rows are incomplete)"
-    assert MI_EXIT_LABEL == ("Multiple imputation with the outcome and energy (m at least 20, "
-                             "more when more rows are incomplete)")
+    rule = ("m = the number asked, 20 by default, or the percentage of rows with an imputed value, "
+            "rounded up, if that is larger")
+    assert label == f"Multiple imputation ({rule})"
+    assert MI_EXIT_LABEL == f"Multiple imputation with the outcome and energy ({rule})"
     with pytest.raises(Refusal) as refused:
         validate(SetMissing(strategy="impute"),
                  {"state": ProjectState(target="y", purpose="inference", roles={"x": "exposure"})})

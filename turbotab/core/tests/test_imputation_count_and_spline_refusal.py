@@ -482,8 +482,9 @@ def test_model_three_whose_added_columns_no_row_records_together_offers_multiple
                                   "cannot be fit.")
     leave, impute = refused.value.exits
     assert leave == {"label": "Leave `bmi` and `waist` out of Model 3", "decision": None}
-    assert impute["label"] == ("Multiple imputation (m at least 20, more when more rows are "
-                               "incomplete)")
+    assert impute["label"] == ("Multiple imputation (m = the number asked, 20 by default, or the "
+                               "percentage of rows with an imputed value, rounded up, if that is "
+                               "larger)")
     assert parse_decision(impute["decision"]).strategy == "multiple_imputation"
 
 

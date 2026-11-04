@@ -1232,13 +1232,16 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
 
     info = {str(c["name"]): c for c in columns}
     roles = dict(roles or {})
-    missing = missing_reading(frame, columns, roles, target, answered_out(state))
+    gone = answered_out(state)
+    missing = missing_reading(frame, columns, roles, target, gone)
     # WP7: the missing-data methods, soundest first for the declared purpose, each with its
-    # "customary" and "sound" labels and its rung (turbotab.core.methods.missing).
+    # "customary" and "sound" labels and its rung (turbotab.core.methods.missing). Multiple
+    # imputation's sentence names total energy only where a column is declared it (pp2-mi-words).
     from turbotab.core.methods.missing import (below_detection_options,
                                                imputation_model_options, methods_for)
 
-    missing["methods"] = methods_for(purpose)
+    declared = [c for c, r in roles.items() if r == "energy" and c != target and c not in gone]
+    missing["methods"] = methods_for(purpose, energy=declared)
     missing["below_detection"] = below_detection_options(purpose)
     # MS1–MS2: multiple imputation's sub-answers, each labeled (compatible; passive; single-level).
     missing["imputation_models"] = imputation_model_options(purpose)
@@ -1247,7 +1250,8 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
         from turbotab.core import custom_sound
 
         return {"exclusions": [], "energy": None, "missing": missing, "n_base": n_base,
-                "labels": {"missing": custom_sound.missing(purpose).model_dump(mode="json"),
+                "labels": {"missing": custom_sound.missing(purpose, declared)
+                           .model_dump(mode="json"),
                            "exclusions": None, "energy_adjustment": None},
                 "coach": _card_lines(frame, target=target, energy=None, unit="kcal", missing=missing),
                 "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen.",
@@ -1342,7 +1346,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     applicable = ([m for m, v in (reading or {}).get("applicability", {}).items() if v.get("ok")]
                   if reading else None)
     labels = {
-        "missing": custom_sound.missing(purpose).model_dump(mode="json"),
+        "missing": custom_sound.missing(purpose, declared).model_dump(mode="json"),
         "exclusions": custom_sound.exclusions(purpose, [e["key"] for e in exclusions])
         .model_dump(mode="json"),
         "energy_adjustment": (custom_sound.energy(purpose, applicable).model_dump(mode="json")
