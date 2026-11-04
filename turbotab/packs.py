@@ -3400,8 +3400,9 @@ def _counts_at_p_over_n(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         ("Two consequences, and only one of them is ours to settle. Model "
          "ranking is: at this p/n an unregularized fit is not merely optimistic "
          "but degenerate, so it ranks below the regularized ones — ordered, "
-         "never filtered. Normalization is NOT: CPM, TPM "
-         "and VST answer different questions and are not interchangeable, and "
+         "never filtered. For a time to event there are no regularized ones: "
+         "the Cox model, unregularized, ranks alone. Normalization is NOT: CPM, "
+         "TPM and VST answer different questions and are not interchangeable, and "
          "the right one depends on the assay and on what you are asking. "
          "**No normalization default is asserted here**, and that is the "
          "considered position rather than an omission."),

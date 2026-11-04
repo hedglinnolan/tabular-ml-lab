@@ -17,8 +17,12 @@ does not have:
   (its lever is the roles question's "Leave one part out");
 * the counts reason said "regularized models rank first and distance-based ones last": the shelf
   has no distance-based family (``turbotab.core.models``), and under Estimate the feature-wise
-  tests rank first. What holds under both purposes is that every unregularized fit ranks below the
-  regularized ones (``models.base.rank``);
+  tests rank first. What holds under either purpose, or none yet, is that on every outcome the
+  shelf has a regularized family for, every unregularized fit ranks below the regularized ones
+  (``models.base.rank``); a time to event has none, and the Cox model, unregularized, ranks alone;
+* the repeated-subjects reason said the grain question was one "the app has already asked", with
+  "the answer you gave there": the finding is placed in Your data, at the roles question, and v2
+  asks the grain question later, in Who's in (``quest.QUESTIONS``);
 * the boolean-as-text reason said the column "is neither a number nor a label" and quoted the
   error ("Unknown label type") modeling, correlation and feature selection raise refusing it
   (``ml/import_doctor.py``): v2's ingest reads True/False with blanks as a yes/no column and its
@@ -28,8 +32,9 @@ does not have:
 
 Each truth is by construction (a table built here, or a shipped sample table whose companion says
 what it holds), by numpy (least squares at p ≥ n has no unique solution), or by the code's own
-structure (the stage that holds the missing-values question, the readings that need an order).
-The true sentences of each reason stay as they were.
+structure (the stage that holds the missing-values question, the readings that need an order,
+the stages the grain question and a finding are placed in, the families each outcome's shelf
+registers). The true sentences of each reason stay as they were.
 """
 from __future__ import annotations
 
@@ -47,7 +52,8 @@ from turbotab.core.tests.stage_harness import SAMPLES, Ingested
 # What v2 does not have, as the legacy reasons named it. None may be served.
 UNTRUE = ("Preprocess", "PCA scores", "PCA overlay", "overlay", "recovers all three",
           "distance-based", "log-ratios", "independent predictors", "Unknown label type",
-          "refuse it", "neither a number nor a label", "has never done")
+          "refuse it", "neither a number nor a label", "has never done", "already asked",
+          "answer you gave", "re-asked")
 
 
 def _artifact(tmp: Path, source: Path, lens: list[str], target: str | None = None) -> dict:
@@ -213,6 +219,48 @@ def test_the_acquisition_inventory_names_what_v2_computes(untargeted):
         "data-description sentence is written from.")
 
 
+@pytest.fixture(scope="module")
+def paired(tmp_path_factory) -> tuple[pd.DataFrame, dict]:
+    """`metabolomics_paired_logged.csv`: 72 samples from 36 subjects, two each, by `subject_id`
+    (its companion)."""
+    source = SAMPLES / "metabolomics_paired_logged.csv"
+    return pd.read_csv(source), _artifact(tmp_path_factory.mktemp("paired"), source,
+                                          ["metabolomics"])
+
+
+def test_the_repeated_subjects_reason_says_where_v2_asks_the_grain(paired):
+    """`subject_id` repeats by construction, so the finding is served; it is placed in Your data,
+    at the roles question it routes to, and the grain question is asked later, in Who's in. The
+    reason names that stage and question as v2 names them, says nothing was asked before, and
+    keeps the legacy reason's true sentences word for word."""
+    from turbotab import packs
+    from turbotab.core.quest import QUESTIONS, STAGE_INDEX, STAGE_NAMES, finding_place
+    from turbotab.core.voice import question_name
+
+    frame, artifact = paired
+    subjects = frame["subject_id"].dropna()
+    assert (subjects.nunique(), len(subjects)) == (36, 72)
+    served = _one(artifact, "pack::metabolomics::repeated_subjects")
+    place, question = finding_place(served)
+    grain = QUESTIONS["grain"]
+    assert (place.stage, question) == ("data", "roles")
+    assert STAGE_INDEX[place.stage] < STAGE_INDEX[grain.stage]
+    stage = STAGE_NAMES[grain.stage]
+    assert stage == "Who's in"
+    kept = ("It decides how the held-out set is drawn, because a subject appearing in both halves "
+            "makes the held-out estimate optimistic.",
+            "this is the same question seen from the assay side, and the reason it matters more "
+            "in an assay is that the technical replicate and the repeat visit look identical in "
+            "the table.")
+    legacy = packs._repeated_subjects(frame)["why_it_matters"]
+    assert legacy.startswith("This is the question the app has already asked")
+    assert all(sentence in legacy for sentence in kept)
+    assert served["why_it_matters"] == (
+        f"Whether one person can appear in more than one row is asked in {stage}, by "
+        f"{question_name('grain')}, and the answer you give there is the one that governs. "
+        f"{kept[0]} That question is not asked here; {kept[1]}")
+
+
 # ── dietary, genomics and clinical ───────────────────────────────────────────
 
 
@@ -243,30 +291,55 @@ def test_the_counts_reason_ranks_only_families_the_shelf_has(expression):
     assert why.startswith(
         "Two consequences, and only one of them is ours to settle. Model ranking is: at this p/n "
         "an unregularized fit is not merely optimistic but degenerate, so it ranks below the "
-        "regularized ones — ordered, never filtered. Normalization is NOT: "), why
+        "regularized ones — ordered, never filtered. For a time to event there are no regularized "
+        "ones: the Cox model, unregularized, ranks alone. Normalization is NOT: "), why
 
 
 UNREGULARIZED = {"linear", "huber", "proportional_odds", "mixed", "gee", "cox"}
 REGULARIZED = {"elastic_net", "ridge"}
 
 
-@pytest.mark.parametrize("task", ["regression", "binary"])
-@pytest.mark.parametrize("purpose", ["inference", "prediction"])
+def _penalized(family, task: str) -> bool:
+    """Whether the estimator ``family`` builds for ``task`` penalizes its coefficients: a positive
+    ``alpha`` (scikit-learn's ridge and elastic net), or a finite ``C`` (its logistic regression,
+    where C is the inverse of the penalty's strength and only C = inf fits without one)."""
+    built = family.build(task, "prediction", 30, 60)
+    params = (built[-1] if hasattr(built, "steps") else built).get_params(deep=False)
+    return params.get("alpha", 0) > 0 or bool(np.isfinite(params.get("C", np.inf)))
+
+
+@pytest.mark.parametrize("task", ["regression", "binary", "multiclass", "ordinal",
+                                  "time_to_event"])
+@pytest.mark.parametrize("purpose", ["inference", "prediction", None])
 def test_at_p_over_n_every_unregularized_fit_ranks_below_the_regularized(task, purpose):
     """What the counts reason says, on the shelf: 60 predictors for 30 rows (p/n 2, the reason's
-    floor), under both purposes. Least squares there has no unique solution (numpy: a 30 × 61
-    design has rank at most 30), and every unregularized family on the shelf ranks below every
-    regularized one; the shelf has no distance-based family."""
-    from turbotab.core.models import Situation, families, rank  # the package registers them
+    floor), under either purpose or none yet (the finding is served before the goal is chosen).
+    Least squares there has no unique solution (numpy: a 30 × 61 design has rank at most 30). On
+    every outcome but a time to event the shelf registers a regularized family (ridge's and the
+    elastic net's estimators penalize their coefficients), and every unregularized family ranks
+    below every regularized one; a time to event registers the Cox model alone, whose estimator
+    takes no penalty, and it ranks alone. Nothing is filtered, and the shelf has no distance-based
+    family."""
+    from turbotab.core.models import Situation, families, get_family, rank  # registers them
+    from turbotab.core.models.base import TASKS
 
+    assert set(TASKS) == {"regression", "binary", "multiclass", "ordinal", "time_to_event"}
     rng = np.random.default_rng(1)
     design = np.column_stack([np.ones(30), rng.poisson(20, (30, 60))])
     assert np.linalg.matrix_rank(design) <= 30 < design.shape[1]
     keys = {f.key for f in families()}
     assert REGULARIZED <= keys and not keys & {"knn", "k_nearest", "svm", "kernel"}
+    shelf = {f.key for f in families(task)}
     situation = Situation(task=task, purpose=purpose, n_rows=30, n_features=60,
-                          n_events=12 if task == "binary" else None, lenses=("genomics",))
+                          n_events=12 if task in ("binary", "time_to_event") else None,
+                          lenses=("genomics",))
     order = [f.key for f, _ in rank(situation)]
+    assert set(order) == shelf and len(order) == len(shelf)
+    if task == "time_to_event":
+        assert order == ["cox"] and not shelf & REGULARIZED
+        assert get_family("cox").build(task, purpose, 30, 60).get_params() == {}
+        return
+    assert shelf & REGULARIZED and all(_penalized(get_family(k), task) for k in shelf & REGULARIZED)
     below = [order.index(k) for k in UNREGULARIZED if k in order]
     above = [order.index(k) for k in REGULARIZED if k in order]
     assert below and above and max(above) < min(below), order
@@ -291,8 +364,8 @@ def test_the_temporal_reason_does_not_deny_itself(labs):
 # ── every reason served on these tables ──────────────────────────────────────
 
 
-@pytest.mark.parametrize("name", ["two_level", "no_order", "untargeted", "recalls", "expression",
-                                  "labs"])
+@pytest.mark.parametrize("name", ["two_level", "no_order", "untargeted", "paired", "recalls",
+                                  "expression", "labs"])
 def test_no_served_reason_names_what_v2_does_not_have(name, request):
     found = request.getfixturevalue(name)
     artifact = found[1] if isinstance(found, tuple) else found

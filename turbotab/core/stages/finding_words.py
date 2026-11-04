@@ -1051,13 +1051,33 @@ def _blanks_asked(m: re.Match[str]) -> str:
     return f"asked in {STAGE_NAMES[QUESTIONS['missing'].stage]} by {question_name('missing')}"
 
 
+def _grain_asked(m: re.Match[str]) -> str:
+    """Where v2 asks whether one person can appear in more than one row: at the grain question, in
+    the stage that holds it (``quest.QUESTIONS``), after Your data, where the repeated-subjects
+    finding is placed (at the roles question it routes to)."""
+    from turbotab.core.quest import QUESTIONS, STAGE_NAMES
+    from turbotab.core.voice import question_name
+
+    return (f"Whether one person can appear in more than one row is asked in "
+            f"{STAGE_NAMES[QUESTIONS['grain'].stage]}, by {question_name('grain')}, and the answer "
+            f"you give there is the one that governs.")
+
+
 #: The clauses of legacy reasons that name a stage, a view or a diagnostic v2 does not have, by
 #: family, each with what is served in its place: the two-level reason put a column's blanks at a
-#: Preprocess stage (``ml/binary_text.py``); the temporal reason said the app "has never done" the
-#: temporal check it is making (``turbotab/clinical.py``).
+#: Preprocess stage (``ml/binary_text.py``); the repeated-subjects reason called the grain question
+#: one the app "has already asked", as the legacy lockbox did (``turbotab/packs.py``), where v2
+#: asks it in a later stage than the finding's; the temporal reason said the app "has never done"
+#: the temporal check it is making (``turbotab/clinical.py``).
 UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...]] = {
     "binary_text": ((re.compile(r"(?<=are a separate question, )asked at Preprocess(?=: )"),
                      _blanks_asked),),
+    "pack::metabolomics::repeated_subjects": (
+        (re.compile(r"^This is the question the app has already asked — whether one person can "
+                    r"appear in more than one row — and the answer you gave there is the one that "
+                    r"governs\."), _grain_asked),
+        (re.compile(r"Nothing is re-asked here; "),
+         lambda m: "That question is not asked here; "),),
     "pack::clinical::temporal_implausibility": (
         (re.compile(r" The app already does the first, at every value, and has never done the "
                     r"second\."), lambda m: ""),),
