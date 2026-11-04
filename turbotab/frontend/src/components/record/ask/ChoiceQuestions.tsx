@@ -28,6 +28,7 @@ import type {
   ShelfFamily,
 } from "../../../api/m1-types";
 import type { Decision, DecisionInput, ProjectState } from "../../../api/schema";
+import { focusKey } from "../../../state/focus";
 import { listJoin } from "../../../util/format";
 import { Prose, V } from "../../Prose";
 import { Options, type OptionItem } from "../Options";
@@ -1174,6 +1175,23 @@ function designDecision(cols: SurveyColumns): SurveyDecision | null {
   };
 }
 
+/** How the stage knows a preview: by its decision as JSON (state/focus.tsx `focusKey`), and Options
+ *  marks as shown every option whose decision has the shown one's key. */
+const previewKey = (d: unknown) => focusKey({ kind: "option", decision: d as Decision, label: "" });
+
+/** One's own design as the stage previews it. Where its fields name an engine option's very columns
+ *  it is that option's decision field for field, so previewing either would mark both as shown;
+ *  there its fields are written in the reverse order: the same set_survey to the server, which reads
+ *  a decision's fields by name, and a preview of its own on the stage. */
+function ownPreview(
+  own: SurveyDecision,
+  offered: NonNullable<ProposalsArtifact["survey"]>["options"],
+): SurveyDecision {
+  const key = previewKey(own);
+  if (!offered.some((o) => previewKey(o.decision) === key)) return own;
+  return Object.fromEntries(Object.entries(own).reverse()) as SurveyDecision;
+}
+
 /** How the stage names a design of one's own, as the engine labels a design it places by values
  *  ("Population by w, strata s, PSU p"; core/survey.py `_offered_by_values`). */
 const designShown = (d: SurveyDecision) =>
@@ -1238,7 +1256,7 @@ export function SurveyAsk({
     key: OWN_DESIGN,
     label: "Your own design columns",
     line: "Weighted by the weight you name, over the strata and PSU you name.",
-    decision: own ? (own as unknown as Decision) : null,
+    decision: own ? (ownPreview(own, offered) as unknown as Decision) : null,
     previewLabel: own ? designShown(own) : undefined,
     extra: (
       <form

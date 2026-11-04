@@ -21,13 +21,13 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { api, RefusalError } from "../../../api/client";
 import type { ProposalsArtifact, TeachingEntry } from "../../../api/m1-types";
 import { keys } from "../../../api/queries";
 import type { Decision, ProjectState, ProjectView, Refusal } from "../../../api/schema";
 import { artifactAt, expandView, servedAt, viewsOf, type M3Fixture } from "../../../mocks/m3";
-import { StageFocusProvider } from "../../../state/focus";
+import { StageFocusProvider, useStageFocus } from "../../../state/focus";
 import { AskFor } from "../AskFor";
 import { SurveyAsk } from "./ChoiceQuestions";
 
@@ -148,25 +148,39 @@ const FIELDS = [
   ["four_year_weight", "Four-year weight column"],
 ] as const;
 
+/** What the stage is showing, from the one StageFocus the card shares with it: the decision it
+ *  previews, and its button records (an option with no `record` of its own), as JSON. */
+function StageProbe() {
+  const { focus } = useStageFocus();
+  return (
+    <output data-testid="stage-probe">
+      {focus.kind === "option" ? JSON.stringify(focus.decision) : ""}
+    </output>
+  );
+}
+
 function renderCard(survey: Survey | undefined, current: ProjectState["survey"] = null) {
   const record = vi.fn<(d: Decision, at?: string) => void>();
   render(
-    <SurveyAsk
-      entry={undefined}
-      pending={false}
-      record={record}
-      answerAt={null}
-      shell={{
-        qkey: "survey",
-        now: true,
-        arriving: false,
-        onArrived: () => {},
-        onOpenDrawer: () => {},
-        reopened: false,
-      }}
-      proposal={survey}
-      current={current}
-    />,
+    <StageFocusProvider>
+      <StageProbe />
+      <SurveyAsk
+        entry={undefined}
+        pending={false}
+        record={record}
+        answerAt={null}
+        shell={{
+          qkey: "survey",
+          now: true,
+          arriving: false,
+          onArrived: () => {},
+          onOpenDrawer: () => {},
+          reopened: false,
+        }}
+        proposal={survey}
+        current={current}
+      />
+    </StageFocusProvider>,
   );
   return record;
 }
@@ -188,6 +202,22 @@ function recordedOptions(): string[] {
     .filter((o) => o.getAttribute("aria-selected") === "true")
     .map((o) => o.getAttribute("data-key") ?? "");
 }
+
+/** The options the stage is previewing (data-shown), by key. */
+function previewedOptions(): string[] {
+  return within(screen.getByTestId("options-survey"))
+    .getAllByRole("option")
+    .filter((o) => o.hasAttribute("data-shown"))
+    .map((o) => o.getAttribute("data-key") ?? "");
+}
+const optionEl = (key: string) => screen.getByTestId(`option-${key}`);
+const focusOn = (key: string) => act(() => optionEl(key).focus());
+const hoverOn = (key: string) => fireEvent.pointerMove(optionEl(key), { pointerType: "mouse" });
+/** The decision the stage previews, and records from its button, for the option shown. */
+const stagedDecision = () => {
+  const json = screen.getByTestId("stage-probe").textContent;
+  return json ? (JSON.parse(json) as unknown) : null;
+};
 
 afterEach(cleanup);
 
@@ -283,6 +313,43 @@ describe("the answer on record is marked on the option that records it", () => {
       acknowledged: false,
     });
     expect(recordedOptions()).toEqual(["sample"]);
+  });
+});
+
+describe("previewing an option marks that option alone", () => {
+  it("where one's own design names the engine option's very columns, as it starts", () => {
+    const record = renderCard(NHANES.survey);
+    expect(shown()).toEqual(asFields(FIRST.decision)); // the two options name the same design
+    focusOn(FIRST.key);
+    expect(previewedOptions()).toEqual([FIRST.key]);
+    focusOn("custom");
+    expect(previewedOptions()).toEqual(["custom"]);
+    // the stage previews, and its button records, the same set_survey the engine's option holds
+    expect(stagedDecision()).toEqual(FIRST.decision);
+    hoverOn(FIRST.key);
+    expect(previewedOptions()).toEqual([FIRST.key]);
+    hoverOn("custom");
+    expect(previewedOptions()).toEqual(["custom"]);
+    // pressing it, or its button, posts that set_survey, at one's own design
+    fireEvent.click(optionEl("custom"));
+    press();
+    expect(record.mock.calls).toEqual([
+      [FIRST.decision, "custom"],
+      [FIRST.decision, "custom"],
+    ]);
+  });
+
+  it("where one's own design names other columns than every engine option", () => {
+    const record = renderCard(NHANES.survey);
+    type("PSU column", "");
+    focusOn("custom");
+    expect(previewedOptions()).toEqual(["custom"]);
+    expect(stagedDecision()).toEqual(I4_NO_PSU);
+    focusOn(FIRST.key);
+    expect(previewedOptions()).toEqual([FIRST.key]);
+    expect(stagedDecision()).toEqual(FIRST.decision);
+    fireEvent.click(optionEl("custom"));
+    expect(record.mock.calls).toEqual([[I4_NO_PSU, "custom"]]);
   });
 });
 
