@@ -252,6 +252,43 @@ def test_a_cross_product_numpy_cannot_factor_is_refused_in_words(fails, monkeypa
     assert refused.value.why == f"LinAlgError: {message}"
 
 
+def test_the_calibration_bootstrap_counts_a_replicate_whose_imputation_is_refused_as_not_imputed(
+        monkeypatch):
+    """PP2D-V2-1: the calibration's bootstrap tallies each replicate it leaves out under its
+    reason, and the researcher reads that reason's words (``stages.calibration.FAILURE_WORDS``).
+    A replicate whose number's draw cannot be computed (``imputation.NormDrawRefused``) or whose
+    censored-normal fit certifies no maximum (``imputation.CensoredFitRefused``) could not be
+    imputed, and is counted so, never under its class's name; on 652cb0bc they were tallied as
+    `NormDrawRefused` and `CensoredFitRefused`. The tally the other way: numpy's bare LinAlgError
+    (a singular fit) and a calibration refused keep their own words."""
+    from turbotab.core.methods.calibration import CalibrationRefused, whole_chain
+    from turbotab.core.methods.imputation import CensoredFitRefused
+    from turbotab.core.stages.calibration import FAILURE_WORDS
+
+    X, y = _full_rank_design()
+
+    def estimate(_: object, b: int) -> np.ndarray:
+        if b in (1, 2):
+            _norm_draw(X, y, np.random.default_rng(b))  # its pseudo-inverse fails (below)
+        if b == 3:
+            raise CensoredFitRefused(why="the solver's own account")
+        if b == 4:
+            raise np.linalg.LinAlgError("Singular matrix")
+        if b == 5:
+            raise CalibrationRefused("no positive true-intake covariance")
+        return np.array([1.0])
+
+    class Rows:
+        def draw(self, rng: np.random.Generator) -> None:
+            return None
+
+    _pinv_fails_in_the_draw(monkeypatch)
+    boot = whole_chain(estimate, Rows(), 8, 0)
+    assert boot.failures == {"ImputationRefused": 3, "LinAlgError": 1, "CalibrationRefused": 1}
+    assert {FAILURE_WORDS.get(k, k) for k in boot.failures} == {
+        "could not be imputed", "had a singular fit", "had no positive true-intake covariance"}
+
+
 def _pinv_fails_in_the_draw(monkeypatch: pytest.MonkeyPatch) -> None:
     """numpy's ``pinv`` made to fail as LAPACK's SVD may (``models/ridge.py`` records gesdd not
     converging on Accelerate), only where ``_norm_draw`` calls it."""

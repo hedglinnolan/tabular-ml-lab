@@ -665,7 +665,11 @@ def whole_chain(estimate: Callable[[Draw, int], np.ndarray], resampling: Resampl
         try:
             values = np.asarray(estimate(draw, b), dtype=float)
         except (CalibrationRefused, np.linalg.LinAlgError, ValueError) as refused:
-            key = type(refused).__name__
+            from turbotab.core.methods.imputation import ImputationRefused
+
+            # An imputation refused in a replicate, whatever its kind, could not be imputed.
+            key = ("ImputationRefused" if isinstance(refused, ImputationRefused)
+                   else type(refused).__name__)
             failures[key] = failures.get(key, 0) + 1
             continue
         if np.all(np.isfinite(values)):
