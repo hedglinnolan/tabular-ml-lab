@@ -1998,6 +1998,11 @@ class ProjectService:
         out["at_opening"] = at
         if at is not None and not at["current"] and out.get("final_note"):
             out["final_note"] = at["note"]
+        # ... and once opened with a final family named, the declared result states that family's
+        # score as the first opening recorded it, where it said the score "will be the result".
+        from turbotab.core.models.selection import result_at_opening
+
+        out = result_at_opening(out, at)
         # MS6 (MODELING_SEQUENCE §1 row 12 (b), §4): with no rows held out, the result stands only
         # when every family whose score was shown for this outcome is fitted; the only family
         # fitted is declared before any score was seen only when no other's was ever shown. A stale
