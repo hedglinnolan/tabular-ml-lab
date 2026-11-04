@@ -957,6 +957,18 @@ def _named_values(unparsed: Mapping[str, int], limit: int = 10) -> str:
     return shown
 
 
+#: Why a text column of numbers matters: what the design does with it until it is read as numbers,
+#: by this finding's repair or through the fit's codes-or-amounts question
+#: (``readings.code_question``: the fit waits on it for every text-number predictor; ``code_guess``
+#: leads with amounts but for a few whole values; an "amounts" answer is read by
+#: ``working.text_amounts``, or asks how the commas read, whose answers are this repair's), which
+#: ``readings.unsettled_codes`` does not ask of an assay's exposures.
+TEXT_NUMBERS_WHY = ("As a predictor it can enter the models only as a category, one level per "
+                    "distinct value, until it is read as numbers: here, or through the fit's "
+                    "question whether it holds codes or amounts, which is not asked of an assay's "
+                    "exposures.")
+
+
 def text_number_findings(frame: pd.DataFrame) -> list[tuple[dict, dict]]:
     """The app's own findings for text columns that hold numbers (``text_numbers__<column>``) and
     for values below a detection limit (``below_detection__<column>``), as ``(raw, finding)``."""
@@ -993,8 +1005,10 @@ def text_number_findings(frame: pd.DataFrame) -> list[tuple[dict, dict]]:
             "title": f"{_tick(c)} holds numbers stored as text.",
             "detail": (f"{_count(numbers)} of its {_count(n)} values read as numbers.{how}{spelled}"
                        f"{limited}"),
-            "why_it_matters": ("As text the column cannot be modeled, correlated or plotted: it "
-                               "would sit out of the analysis while looking complete."),
+            # As text it is a category to the design every family shares, each distinct value a
+            # level (``models.pipeline.category_inputs``), until this finding's repair, or the fit's
+            # own codes-or-amounts question, reads it as numbers (pp2-why-audit).
+            "why_it_matters": TEXT_NUMBERS_WHY,
             "affected_columns": [c], "source": "structural", "lens": None, "evidence": None,
             "summary": summary, "routes_to": None, "lever_label": None, "group": None,
         }))
@@ -1006,9 +1020,13 @@ def text_number_findings(frame: pd.DataFrame) -> list[tuple[dict, dict]]:
                           f"detection limit."),
                 "detail": (f"{_named_values({'<' + k: v for k, v in below.items()})}. Each is a value "
                            f"somewhere below its limit, not a missing one."),
-                "why_it_matters": ("Read as blanks they are left out as if unknown, though each is "
-                                   "known to be small; replaced by one value they all become that "
-                                   "value, which narrows their spread."),
+                # Read as blanks, each missing-values answer treats them as unknown: complete cases
+                # drop their rows (``rows.cohort_flow``), and the single fill in each training fold
+                # and multiple imputation fill them from the other values (pp2-why-audit).
+                "why_it_matters": ("Read as blanks they are treated as unknown, dropped with their "
+                                   "rows or filled from the other values, though each is known to "
+                                   "be small; replaced by one value they all become that value, "
+                                   "which narrows their spread."),
                 "affected_columns": [c], "source": "structural", "lens": None, "evidence": None,
                 "summary": (f"{_count(n_below)} {_plural(n_below, 'value')} of {_tick(c)}, such as "
                             f"{_tick('<' + first)}, lie below a detection limit."),
