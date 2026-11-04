@@ -8,6 +8,7 @@
 import {
   createContext,
   useContext,
+  useId,
   useRef,
   useState,
   type FormEvent,
@@ -26,7 +27,8 @@ import type {
   ShelfArtifact,
   ShelfFamily,
 } from "../../../api/m1-types";
-import type { Decision, ProjectState } from "../../../api/schema";
+import type { Decision, DecisionInput, ProjectState } from "../../../api/schema";
+import { focusKey } from "../../../state/focus";
 import { listJoin } from "../../../util/format";
 import { Prose, V } from "../../Prose";
 import { Options, type OptionItem } from "../Options";
@@ -1105,8 +1107,134 @@ export function SubstitutionAsk({ pairs, ...p }: AskProps & { pairs: number | nu
 
 // ── the survey answer (audit §5 WP10) ────────────────────────────────────────
 
+type SurveyDecision = Extract<DecisionInput, { kind: "set_survey" }>;
+
+/** The columns a population answer names (decisions.py SetSurvey), in the card's order, each
+ *  labeled by the server's own word for it: its refusals ask for "the PSU column". */
+const SURVEY_FIELDS = [
+  { field: "weight", word: "weight", aria: "Survey weight column", empty: "column name" },
+  { field: "strata", word: "strata", aria: "Strata column", empty: "none" },
+  { field: "psu", word: "PSU", aria: "PSU column", empty: "none" },
+  { field: "cycle", word: "cycle", aria: "Survey cycle column", empty: "none" },
+  {
+    field: "four_year_weight",
+    word: "four-year weight",
+    aria: "Four-year weight column",
+    empty: "none",
+  },
+] as const;
+type SurveyField = (typeof SURVEY_FIELDS)[number]["field"];
+type SurveyColumns = Record<SurveyField, string>;
+
+/** The option that records the design as its fields name it. */
+const OWN_DESIGN = "custom";
+
+/** The design columns a decision or a record names; a column it does not name is blank. */
+const designOf = (d: Partial<Record<SurveyField, unknown>>): SurveyColumns =>
+  Object.fromEntries(
+    SURVEY_FIELDS.map(({ field }) => {
+      const v = d[field];
+      return [field, typeof v === "string" ? v : ""];
+    }),
+  ) as SurveyColumns;
+
+const sameDesign = (a: SurveyColumns, b: SurveyColumns) =>
+  SURVEY_FIELDS.every(({ field }) => a[field] === b[field]);
+
+/** Where the design fields start (the owner's Q4, 2026-11-04: the engine's proposal preselected):
+ *  the population answer on record; else the engine's first population option, the weight it ranks
+ *  first with the strata, PSU, cycle and four-year weight it fills in (core/survey.py `offered`);
+ *  else, where it offers none (no weight read), the strata, PSU and pooled cycle the names read. */
+function designStart(
+  proposal: ProposalsArtifact["survey"] | undefined,
+  current: ProjectState["survey"],
+): SurveyColumns {
+  if (current?.estimand === "population") return designOf(current);
+  const first = proposal?.options.find((o) => o.decision.estimand === "population");
+  if (first) return designOf(first.decision);
+  return designOf({ strata: proposal?.strata[0], psu: proposal?.psu[0], cycle: proposal?.cycle });
+}
+
+/** The population answer the fields make, as the contract takes it (SetSurvey): each column named,
+ *  a blank field none, and never acknowledged, as the engine's own options are not (where no strata
+ *  or PSU is named the server asks for the attestation). Null without a weight: a population answer
+ *  is weighted, so there is nothing to record yet. */
+function designDecision(cols: SurveyColumns): SurveyDecision | null {
+  const named = (field: SurveyField) => cols[field].trim() || null;
+  const weight = named("weight");
+  if (!weight) return null;
+  return {
+    kind: "set_survey",
+    estimand: "population",
+    weight,
+    strata: named("strata"),
+    psu: named("psu"),
+    cycle: named("cycle"),
+    four_year_weight: named("four_year_weight"),
+    acknowledged: false,
+  };
+}
+
+/** How the stage knows a preview: by its decision as JSON (state/focus.tsx `focusKey`), and Options
+ *  marks as shown every option whose decision has the shown one's key. */
+const previewKey = (d: unknown) => focusKey({ kind: "option", decision: d as Decision, label: "" });
+
+/** One's own design as the stage previews it. Where its fields name an engine option's very columns
+ *  it is that option's decision field for field, so previewing either would mark both as shown;
+ *  there its fields are written in the reverse order: the same set_survey to the server, which reads
+ *  a decision's fields by name, and a preview of its own on the stage. */
+function ownPreview(
+  own: SurveyDecision,
+  offered: NonNullable<ProposalsArtifact["survey"]>["options"],
+): SurveyDecision {
+  const key = previewKey(own);
+  if (!offered.some((o) => previewKey(o.decision) === key)) return own;
+  return Object.fromEntries(Object.entries(own).reverse()) as SurveyDecision;
+}
+
+/** How the stage names a design of one's own, as the engine labels a design it places by values
+ *  ("Population by w, strata s, PSU p"; core/survey.py `_offered_by_values`). */
+const designShown = (d: SurveyDecision) =>
+  `Population by ${d.weight}` +
+  (d.strata ? `, strata ${d.strata}` : "") +
+  (d.psu ? `, PSU ${d.psu}` : "") +
+  (d.cycle ? `, cycle ${d.cycle}` : "") +
+  (d.four_year_weight ? `, four-year weight ${d.four_year_weight}` : "");
+
+/** What recording one's own design does, from its fields, in the words the engine uses for its own
+ *  options (core/survey.py `offered`): the weight, the strata and PSU it is weighted over, and a
+ *  named cycle's pooling, which divides each weight by the number of cycles pooled. A four-year
+ *  weight is said with a named cycle, where `analysis_weights` takes it (methods/survey.py): when
+ *  the cycle pools 1999–2000 with other cycles, the 1999–2002 rows take it, doubled, then divided by
+ *  that number; with no cycle named it takes the weight as it is, so none is said. The weight is
+ *  "the weight you name" until one is. What the intervals or scores are, which the engine's lines
+ *  end with, is not said: it depends on the purpose, which this card is not given. */
+function designLine(cols: SurveyColumns): string {
+  const named = (field: SurveyField) => cols[field].trim();
+  const tick = (column: string) => `\`${column}\``;
+  const weight = named("weight") ? tick(named("weight")) : "the weight you name";
+  const units = [named("strata"), named("psu")].filter((c) => c).map(tick);
+  const within = units.length ? ` over ${units.join(" and ")}` : "; no strata or PSU named";
+  const cycle = named("cycle");
+  const four = named("four_year_weight");
+  const pooled = cycle
+    ? `; pooled over the survey cycles ${tick(cycle)} names, each weight divided by their number`
+    : "";
+  const early =
+    cycle && four
+      ? `; where ${tick(cycle)} pools 1999–2000 with other cycles, the 1999–2002 rows take ` +
+        `${tick(four)}, doubled, then divided by the same number`
+      : "";
+  return `Weighted by ${weight}${within}${pooled}${early}.`;
+}
+
 /** Whose estimate it is under a survey design: the server offers one "surveyed population"
- *  option per weight it recognized, and "these participants"; each carries its decision. */
+ *  option per weight it recognized, and "these participants"; each carries its decision. Between
+ *  them, a design of one's own (G16; the owner's Q4): the weight, strata, PSU, cycle and four-year
+ *  weight as fields, starting from the engine's proposal, any column of the table named by name
+ *  (the engine's candidates offered), so a survey whose columns the names reader does not read can
+ *  still be answered for its population. The server checks each column; its refusal answers at
+ *  this option with its exits. */
 export function SurveyAsk({
   proposal,
   current,
@@ -1115,29 +1243,122 @@ export function SurveyAsk({
   proposal: ProposalsArtifact["survey"] | undefined;
   current: ProjectState["survey"];
 }) {
-  const items: OptionItem[] = (proposal?.options ?? []).map((o) => ({
+  const base = useId();
+  const weightRef = useRef<HTMLInputElement>(null);
+  // Only the fields typed into are held here: the rest follow the proposal as it arrives, and the
+  // answer on record as it changes.
+  const [typed, setTyped] = useState<Partial<SurveyColumns>>({});
+  const cols: SurveyColumns = { ...designStart(proposal, current), ...typed };
+  const own = designDecision(cols);
+  const record = () => {
+    // The Input side of the contract: the server records the goal it is answered under.
+    if (own) p.record(own as unknown as Decision, OWN_DESIGN);
+  };
+
+  const offered = proposal?.options ?? [];
+  const engine: OptionItem[] = offered.map((o) => ({
     key: o.key,
     label: o.label,
     line: o.consequence,
     decision: o.decision as unknown as Decision,
   }));
-  const recorded = current
-    ? current.estimand === "sample"
+  const optionColumns = (field: SurveyField) =>
+    offered.map((o) => o.decision[field]).filter((v): v is string => typeof v === "string");
+  /** The engine's candidates for each field, offered beside it: the columns its reading and its
+   *  options name. */
+  const candidates: Record<SurveyField, string[]> = {
+    weight: [...(proposal?.weights ?? []), ...optionColumns("weight")],
+    strata: [...(proposal?.strata ?? []), ...optionColumns("strata")],
+    psu: [...(proposal?.psu ?? []), ...optionColumns("psu")],
+    cycle: [...(proposal?.cycle ? [proposal.cycle] : []), ...optionColumns("cycle")],
+    four_year_weight: [
+      ...Object.values(proposal?.four_year ?? {}),
+      ...optionColumns("four_year_weight"),
+    ],
+  };
+  const listId = (field: SurveyField) =>
+    candidates[field].length ? `${base}-${field}` : undefined;
+
+  const ownItem: OptionItem = {
+    key: OWN_DESIGN,
+    label: "Your own design columns",
+    line: designLine(cols),
+    decision: own ? (ownPreview(own, offered) as unknown as Decision) : null,
+    previewLabel: own ? designShown(own) : undefined,
+    extra: (
+      <form
+        className={c.range}
+        onClick={controlsOnly}
+        onSubmit={(e: FormEvent) => {
+          e.preventDefault();
+          record();
+        }}
+      >
+        {SURVEY_FIELDS.map(({ field, word, aria, empty }) => (
+          <label key={field} className={c.field}>
+            <span>{word}</span>
+            <input
+              ref={field === "weight" ? weightRef : undefined}
+              value={cols[field]}
+              onChange={(e) => setTyped((t) => ({ ...t, [field]: e.target.value }))}
+              placeholder={empty}
+              aria-label={aria}
+              list={listId(field)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        ))}
+        <button type="submit" className={c.small} disabled={!own || p.pending}>
+          Record this design
+        </button>
+      </form>
+    ),
+  };
+  // One's own design sits after the engine's population options, before "these participants".
+  const cut = offered.findIndex((o) => o.decision.estimand !== "population");
+  const at = cut === -1 ? engine.length : cut;
+  const items: OptionItem[] = proposal
+    ? [...engine.slice(0, at), ownItem, ...engine.slice(at)]
+    : [];
+
+  // An answer on record is marked on the option whose line says what it holds: the engine's where
+  // that option names every column on record, else one's own design while its fields name them
+  // (its line is said from its fields), and no option once they are edited away from them.
+  const recorded = !current
+    ? null
+    : current.estimand === "sample"
       ? "sample"
-      : `population:${current.weight ?? ""}`
-    : null;
+      : (offered.find(
+          (o) =>
+            o.decision.estimand === "population" &&
+            sameDesign(designOf(o.decision), designOf(current)),
+        )?.key ?? (sameDesign(cols, designOf(current)) ? OWN_DESIGN : null));
   return (
     <Question {...p.shell} entry={p.entry}>
       <Options
         items={items}
         mode="single"
-        onRecord={(o) => o.decision && p.record(o.decision, o.key)}
+        onRecord={(o) => {
+          if (o.decision) p.record(o.decision, o.key);
+          else if (o.key === OWN_DESIGN) weightRef.current?.focus();
+        }}
         recordedKey={recorded}
         pending={p.pending}
         answerAt={p.answerAt}
         label="Survey design — preview with the arrow keys, Enter to record"
         testId="options-survey"
       />
+      {SURVEY_FIELDS.map(({ field }) => {
+        const id = listId(field);
+        return id ? (
+          <datalist key={field} id={id}>
+            {[...new Set(candidates[field])].map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+        ) : null;
+      })}
       <KeepRow keep={p.keep} />
     </Question>
   );
