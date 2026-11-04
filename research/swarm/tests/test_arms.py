@@ -1,9 +1,11 @@
 """The mechanical arms (SWARM_PLAN §6; ``research/swarm/arms.py``): the card's question, the default
 path's and the random path's answers on asks built here, the walk on a session that serves those
 asks (and what stops it, classed by what the engine said), a local session's posts keeping a
-refusal's ways forward until an answer is recorded as the driver's do, a copy's fit cancelled
-through the server's Cancel and, only where the copy stays busy, each job it holds; a press of
-Fit whose wait ran out, waited out with reads alone, on a server modeled here on the one the
+refusal's ways forward until an answer is recorded as the driver's do, a copy dropped once it
+stops computing and, where a late write lands in its removal, removed again once the server can
+no longer read it, else kept, never raising, a copy's fit cancelled through the server's Cancel
+and, only where the copy stays busy, each job it holds; a press of Fit whose wait ran out,
+waited out with reads alone, on a server modeled here on the one the
 driver's ``fit`` meets (:class:`Server`): Fit pressed once, and the press kept, the fit record's
 press and what the arm says those of the driver's own ``fit`` whose wait outlasts the fit,
 however the fit ends; each path through a driver modeled here, its Fit the driver's own on that
@@ -23,7 +25,10 @@ it (the seq of the last record before it, the shelf's estimate where the shelf h
 and what the driver's own ``fit`` says when its wait outlasts the fit; the time waited from a hand
 clock that only the waits move, derived here from the budget and the wait; the arm's commands
 against those of the same arm whose fit takes 10 s; the record from the schema
-(``record.validate``)."""
+(``record.validate``); a late write in a copy's removal from the OS's own removal and the error
+it raises (ENOTEMPTY) on a file written into the folder after the removal listed it, and the
+server's read of a copy as ``Workspace.get`` reads it, from its ``project.json``, and its 404
+for a project it cannot find (``errors.not_found``)."""
 from __future__ import annotations
 
 import json
@@ -499,6 +504,164 @@ def test_a_copy_still_written_to_after_its_stages_go_idle_is_removed_on_a_retry_
     made = {"p2"}
     assert session.drop("p2", made) is False
     assert (tmp_path / "projects" / "p2").exists() and made == {"p2"}
+
+
+# A copy's stages as the server serves them (``Engine._status``): none queued or running
+# (``Local.BUSY``), or its fit running.
+IDLE = {"ingest": {"status": "fresh", "job_id": None}, "fit": {"status": "stale", "job_id": None}}
+BUSY = {"ingest": {"status": "fresh", "job_id": None}, "fit": {"status": "running", "job_id": "j1"}}
+
+
+class Disk:
+    """The server as a dropped copy's reads meet it (``GET /projects/{pid}``): the project read
+    from its folder's ``project.json`` as ``Workspace.get`` reads it, and, where that is gone, the
+    404 the server answers for a project it cannot find (``errors.not_found``); where it is there,
+    the next of ``answers`` (the last again once they run out): stages served, or a status the
+    server answers instead (404, its own; 500, an unhandled exception as the server serves it)."""
+
+    def __init__(self, home, answers):
+        self.home, self.answers, self.reads = home, list(answers), []
+
+    def get(self, path, **query):
+        from research.swarm import driver
+        from turbotab.server.errors import not_found
+
+        pid = path.rsplit("/", 1)[-1]
+        self.reads.append(path)
+        answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+        if not (self.home / "projects" / pid / "project.json").is_file() or answer == 404:
+            return driver.Response(404, json.dumps(not_found(pid).body()).encode("utf-8"), {})
+        if answer == 500:
+            return driver.Response(500, b"Internal Server Error", {})
+        return driver.Response(200, json.dumps({"stages": answer}).encode("utf-8"), {})
+
+
+def a_copy(home, pid):
+    """A copy's folders as ``Local.copy`` and ``Local.use`` leave them: its project folder (its
+    ``project.json``, its decision log and a stage computed) and its driver folder."""
+    folder = home / "projects" / pid
+    (folder / "cache" / "ingest" / "k1").mkdir(parents=True)
+    (folder / "project.json").write_text(json.dumps({"id": pid}), "utf-8")
+    (folder / "decisions.jsonl").write_text("{}\n", "utf-8")
+    (folder / "cache" / "ingest" / "k1" / "meta.json").write_text("{}", "utf-8")
+    (home / "driver" / pid).mkdir(parents=True)
+    return folder
+
+
+def removing(monkeypatch, folder, *, refused=0, late=None):
+    """The copy's removal, the OS's own (``shutil.rmtree``), with what lands in ``folder`` as it
+    runs: the first ``refused`` files it would unlink refused (EACCES), so that removal stops
+    having removed nothing; and a late write, a file written at the folder's top after the
+    removal listed it, once it unlinks the ``project.json`` (``late="project.json"``) or after each
+    file it unlinks (``late="each"``), so that it finds the folder not empty, as the OS says
+    (ENOTEMPTY: 66 on macOS), as the step-4 sweeps' removals did. The errno of each removal that
+    failed, in order."""
+    import errno
+    import os
+    import shutil
+
+    real_unlink, real_rmtree = os.unlink, shutil.rmtree
+    raised, unlinked = [], []
+
+    def unlink(name, *, dir_fd=None):
+        if len(unlinked) < refused:
+            unlinked.append(None)
+            raise PermissionError(errno.EACCES, "Permission denied", name)
+        real_unlink(name, dir_fd=dir_fd)
+        unlinked.append(os.path.basename(name))
+        if late == "each" or late == unlinked[-1]:
+            (folder / f"late-{len(unlinked)}").write_text("late", "utf-8")
+
+    def rmtree(path, *a, **k):
+        try:
+            return real_rmtree(path, *a, **k)
+        except OSError as exc:
+            raised.append(exc.errno)
+            raise
+
+    monkeypatch.setattr(os, "unlink", unlink)
+    monkeypatch.setattr(shutil, "rmtree", rmtree)
+    return raised
+
+
+def test_a_copy_a_late_write_lands_in_as_it_is_removed_is_removed_again_once_it_cannot_be_read(
+        tmp_path, monkeypatch):
+    """A late write lands in a copy after the removal took its ``project.json`` ("Directory not
+    empty", as both step-4 sweeps of the readmission dataset met on 2026-11-03), so the server can
+    no longer read it (404): a copy it cannot read has stopped computing, so drop pauses and
+    removes it again, its driver folder too, and says it was removed, where it once ended the sweep
+    on the 404 (``DriverError``)."""
+    import errno
+
+    session, clock = arms.Local(tmp_path), Clock()
+    folder = a_copy(tmp_path, "p1")
+    session.client = Disk(tmp_path, [IDLE])
+    monkeypatch.setattr(arms, "time", clock)
+    raised = removing(monkeypatch, folder, late="project.json")
+    made = {"p1", "p2"}
+    assert session.drop("p1", made) is True
+    assert raised == [errno.ENOTEMPTY]  # the first removal met the late write
+    assert not folder.exists() and not (tmp_path / "driver" / "p1").exists() and made == {"p2"}
+    assert session.client.reads == ["/projects/p1"] * 2  # idle before; its 404 after
+    assert clock.now == arms.DROP_PAUSE  # one pause, then the removal that took it
+
+
+@pytest.mark.parametrize("answers, refused", [([BUSY], 0), ([IDLE, BUSY], 1)],
+                         ids=["before_its_removal", "after_a_removal_that_failed"])
+def test_a_copy_still_computing_is_kept_and_drop_says_so(tmp_path, monkeypatch, answers, refused):
+    """A copy whose stages stay computing, before its removal or once a removal failed having
+    removed nothing, is waited for, :data:`arms.DROP_WAIT` seconds, and kept, whole, and drop
+    says it was not removed: the other way of the copy that cannot be read."""
+    session, clock = arms.Local(tmp_path), Clock()
+    folder = a_copy(tmp_path, "p1")
+    session.client = Disk(tmp_path, answers)
+    monkeypatch.setattr(arms, "time", clock)
+    raised = removing(monkeypatch, folder, refused=refused)
+    made = {"p1"}
+    assert session.drop("p1", made) is False
+    assert len(raised) == refused and made == {"p1"}
+    assert sorted(p.name for p in folder.iterdir()) == ["cache", "decisions.jsonl", "project.json"]
+    assert (tmp_path / "driver" / "p1").is_dir()
+    assert clock.now == arms.DROP_WAIT  # the wait for the copy that stayed busy, no more
+
+
+def test_a_copy_that_late_writes_keep_landing_in_is_kept_after_its_removals_never_raising(
+        tmp_path, monkeypatch):
+    """Where a late write lands in each removal, the copy is removed :data:`arms.DROP_TRIES` times,
+    a pause of :data:`arms.DROP_PAUSE` seconds between each two, and then kept, and drop says it
+    was not removed; it never raises, though the server cannot read the copy."""
+    import errno
+
+    session, clock = arms.Local(tmp_path), Clock()
+    folder = a_copy(tmp_path, "p1")
+    session.client = Disk(tmp_path, [IDLE])
+    monkeypatch.setattr(arms, "time", clock)
+    raised = removing(monkeypatch, folder, late="each")
+    made = {"p1"}
+    assert session.drop("p1", made) is False
+    assert raised == [errno.ENOTEMPTY] * arms.DROP_TRIES
+    assert folder.is_dir() and (tmp_path / "driver" / "p1").is_dir() and made == {"p1"}
+    assert clock.now == arms.DROP_PAUSE * (arms.DROP_TRIES - 1)
+
+
+@pytest.mark.parametrize("answer, removed", [(404, True), (500, False)],
+                         ids=["no_such_project", "a_server_failure"])
+def test_a_copy_the_server_cannot_read_after_a_failed_removal_is_removed_only_on_its_404(
+        tmp_path, monkeypatch, answer, removed):
+    """A removal that failed having removed nothing (its ``project.json`` there), the server's
+    read of the copy decides: its own 404 (there is no such project) says the copy cannot be read,
+    so it is removed again; any other failure says nothing of whether the copy still computes, so
+    it is kept, whole; either way drop never raises."""
+    session, clock = arms.Local(tmp_path), Clock()
+    folder = a_copy(tmp_path, "p1")
+    session.client = Disk(tmp_path, [IDLE, answer])
+    monkeypatch.setattr(arms, "time", clock)
+    raised = removing(monkeypatch, folder, refused=1)
+    made = {"p1"}
+    assert session.drop("p1", made) is removed
+    assert len(raised) == 1 and folder.exists() is not removed and (made == set()) is removed
+    assert (folder / "project.json").is_file() is not removed
+    assert clock.now == (arms.DROP_PAUSE if removed else 0.0)
 
 
 class Served:

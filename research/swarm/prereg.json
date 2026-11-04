@@ -587,6 +587,15 @@
     "slowest_fit": 10.947,
     "sha256": "77893e0e56cf7788ba97364708b286c963c64aec40a4e6275cf9f4e1ba43cad5",
     "filled_at": "2026-10-29T19:10:44+00:00"
+   },
+   "nhanes_glucose_predict": {
+    "commit": "0421626658b69ea8ac005db19e9e67d4fdf84286",
+    "engine_tree": "21cde147c2b6de36ebaa7a9c21b819eaa064c03c",
+    "fits": 107,
+    "total_seconds": 78663.744,
+    "slowest_fit": 2483.13,
+    "sha256": "58168ec7e8b95e16499ba3dd217bd192bce62e03c525a43f3d788d48162968b7",
+    "filled_at": "2026-11-03T14:38:04+00:00"
    }
   },
   "fit_budget": {
@@ -609,9 +618,44 @@
     "fits": 29,
     "seconds": 318.0,
     "slowest_fit": 10.947
+   },
+   "nhanes_glucose_predict": {
+    "fits": 107,
+    "seconds": 265695.0,
+    "slowest_fit": 2483.13
    }
   },
-  "compute_cap": null,
+  "compute_cap": {
+   "seconds": 196824.793,
+   "by_dataset": {
+    "sullivan2021": {
+     "plans": 2,
+     "crash_seconds": 5032.469,
+     "seconds": 10064.938
+    },
+    "nhanes_glucose_predict": {
+     "plans": 2,
+     "crash_seconds": 78663.744,
+     "seconds": 157327.488
+    },
+    "inpatient_readmission_predict": {
+     "plans": 2,
+     "crash_seconds": 14556.273,
+     "seconds": 29112.546
+    },
+    "walking_bp_estimate": {
+     "plans": 5,
+     "crash_seconds": 33.555,
+     "seconds": 167.775
+    },
+    "plasma_panel_estimate": {
+     "plans": 2,
+     "crash_seconds": 76.023,
+     "seconds": 152.046
+    }
+   },
+   "rule": "Per dataset, the plans named to sweep beyond the default times the crash sweep's own fit seconds there, summed; the sweeps of a dataset stop once they have spent its share."
+  },
   "default_plan": {
    "dataset": "inpatient_readmission_predict",
    "families": [
