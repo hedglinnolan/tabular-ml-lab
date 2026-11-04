@@ -22,7 +22,9 @@
  *      estimates are in the export (`membersOf`, `FAMILY_NOT_DRAWN`);
  *   3. beside it the primary model's diagnostics in the engine's words: a failed check's ways
  *      forward are named, never pressed, and a recorded response is said as its record words it,
- *      with the estimates the engine serves for it.
+ *      with the estimates the engine serves for it;
+ *   4. under them, "Which of my decisions mattered?" (mattered.tsx): the specification curve and
+ *      the materiality ledger's rows, behind the same gate.
  *
  * Gated on the plan's lock as the engine gates it (FOUNDATION §5 rule 6): the quest log's lock
  * through gateFromLock, which fails closed, and the served artifact's own withholding. A fit refused
@@ -43,6 +45,7 @@ import type { EffectsLock } from "../../components/views/contracts";
 import { TableWithForest } from "../../components/views/Forest";
 import { fmtEstimate } from "../../components/views/format";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
+import { Mattered } from "./mattered";
 import s from "./results.module.css";
 
 type Family = EffectsArtifact["families"][number];
@@ -110,6 +113,7 @@ export function EstimateTapestry({ pid, view }: { pid: string; view: ProjectView
       {/* No change is offered: the Record that reopens a question is not in the shell. */}
       {failed ? <StageFailure pid={pid} view={view} stage="effects" recordHere={false} changeable={false} /> : null}
       <Estimates art={art} view={view} veil={effects.veil} status={status?.status} failed={failed} />
+      <Mattered pid={pid} view={view} />
     </div>
   );
 }
