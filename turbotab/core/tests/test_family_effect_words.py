@@ -22,6 +22,8 @@ columns as the raw columns they come from (`sex_male` is `sex`'s), the row's own
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -61,6 +63,22 @@ JOINT_NOTE = ("STROBE 16a's estimate without the covariates; the study factors `
 UNADJUSTED_NOTE = "STROBE 16a's unadjusted estimate: no other column in the model."
 # The claims no sentence beside a joint fit's rows makes: none carries a q-value.
 EACH_CLAIMS = ("each in turn", "q-values control", "tests are stated")
+# What the methods text says each declared model's estimate is adjusted for, read off the design
+# that reproduces its rows, the row's own member aside (the verifier's FW-V1 and FW-V3): under the
+# linear model the members together, each adjusted for the other and, from Model 2, the covariates;
+# under feature-wise regression each member alone, then with the covariates. Model 3 adds `bmi` to
+# Model 2's design under either.
+JOINT_WORDS = ("the estimate of each exposure is reported across a declared sequence of models fit "
+               "on all 400 analyzed rows: without the covariates, with `fiber` and `sugar` fit "
+               "together, each adjusted for the other; Model 2, the primary, adjusted for `age`, "
+               "`sex`, `smoking`, `activity` and the other exposure; Model 3, further adjusted for "
+               "`bmi`, a possible mediator, so not a total effect.")
+APART_WORDS = ("the estimate of each exposure is reported across a declared sequence of models fit "
+               "on all 400 analyzed rows: unadjusted; Model 2, the primary, adjusted for `age`, "
+               "`sex`, `smoking` and `activity`; Model 3, further adjusted for `bmi`, a possible "
+               "mediator, so not a total effect.")
+# A model said to be adjusted for a member: each member's estimate is never adjusted for itself.
+ITSELF = re.compile(r"adjusted for [^;.]*`(?:fiber|sugar)`")
 
 
 def _fit(frame: pd.DataFrame, columns: list[str]) -> dict[str, float]:
@@ -153,17 +171,20 @@ def test_each_model_of_a_joint_fit_names_the_members_it_holds(joint):
 
 def test_a_joint_fits_unadjusted_model_is_said_without_covariates_with_its_members(joint):
     """The unadjusted model holds both members, so it is "Without covariates", and its note says
-    they are in it together, never that no other column is in the model; the methods text follows
-    its served words, and Model 3 is still further adjusted for `bmi` alone."""
+    they are in it together, never that no other column is in the model. The methods text says
+    what each model's estimate is adjusted for as the design that reproduces its rows does
+    (``test_a_joint_fits_rows_are_statsmodels_one_fit_of_the_members_together``): the members fit
+    together, each adjusted for the other, then the covariates and the other exposure, and Model 3
+    further adjusted for `bmi` alone. It said each model was adjusted for both members, a row's own
+    among them ("adjusted for `fiber` and `sugar` alone"; the verifier's FW-V3)."""
     _, out = joint
     crude = _sequence(out, "linear")["crude"]
     assert crude["label"] == "Without covariates"
     assert crude["note"] == JOINT_NOTE
+    assert set(COVARIATES) == _raw(FW.MODEL_2)  # Model 2's design, as the columns it names
     methods = out["effects"]["methods"]
-    assert ("models fit on all 400 analyzed rows: without the covariates, adjusted for `fiber` and "
-            "`sugar` alone; Model 2, the primary, adjusted for `age`, `sex`, `smoking`, "
-            "`activity`, `fiber` and `sugar`; Model 3, further adjusted for `bmi`, a possible "
-            "mediator") in methods
+    assert methods.startswith(f"T{JOINT_WORDS[1:]}")
+    assert ITSELF.search(methods) is None, ITSELF.search(methods)
     assert "unadjusted;" not in methods and "no other column" not in methods
 
 
@@ -181,6 +202,30 @@ def test_a_joint_fits_multiplicity_sentence_says_the_members_were_fit_together(j
     assert out["effects"]["methods"].endswith(f" {JOINT['fdr_bh']}")
     for claim in EACH_CLAIMS:
         assert claim not in out["effects"]["methods"], claim
+
+
+def test_three_members_of_a_joint_fit_are_each_said_adjusted_for_the_others(tmp_path):
+    """{`fiber`, `sugar`, `supplement`} under the linear model: each row is statsmodels' one fit of
+    glucose on the three (and the model's covariates), so each estimate is adjusted for the 2
+    others, and the methods text says the plural where it said each model was adjusted for all
+    three, a row's own among them."""
+    frame = FW._frame()
+    members = ["fiber", "sugar", "supplement"]
+    out = ef.run(frame, tmp_path, FW._family(dict.fromkeys(members, "exposure"), ["linear"]))
+    sequence = _sequence(out, "linear")
+    for key, adjust in DESIGN.items():
+        together = _fit(frame, [*members, *adjust])
+        rows = {r["feature"]: r["estimate"] for r in sequence[key]["effects"]}
+        for m in members:
+            assert rows[m] == pytest.approx(together[m], rel=1e-9), (key, m)
+    methods = out["effects"]["methods"]
+    assert methods.startswith(
+        "The estimate of each exposure is reported across a declared sequence of models fit on all "
+        "400 analyzed rows: without the covariates, with `fiber`, `sugar` and `supplement` fit "
+        "together, each adjusted for the others; Model 2, the primary, adjusted for `age`, `sex`, "
+        "`smoking`, `activity` and the other exposures; Model 3, further adjusted for `bmi`, a "
+        "possible mediator, so not a total effect."), methods[:400]
+    assert re.search(r"adjusted for [^;.]*`(?:fiber|sugar|supplement)`", methods) is None
 
 
 def test_a_category_member_of_a_joint_fit_is_named_by_its_column(tmp_path):
@@ -229,19 +274,27 @@ def test_one_fit_per_member_keeps_every_word(apart):
     assert sequence["model_2"]["adjusted_for"] == COVARIATES
     assert out["effects"]["multiplicity"] == EACH["fdr_bh"]
     assert out["fit"]["estimand"]["multiplicity"] == EACH["fdr_bh"]
+    # Its methods text says each member alone, then with the covariates, as it did.
+    assert out["effects"]["methods"].startswith(f"T{APART_WORDS[1:]}")
     assert out["effects"]["methods"].endswith(f" {EACH['fdr_bh']}")
 
 
 # ── both chosen ──────────────────────────────────────────────────────────────
 
 
-def test_with_both_fits_chosen_each_sentence_is_said_under_its_name(tmp_path):
-    """The linear model and feature-wise regression together: one sentence is served for both
-    tables, so each fit's is said under its family's name, the joint fit's never claiming the
-    q-values only the feature-wise tests carry; the linear model names the members it holds, and
-    feature-wise regression's models none."""
+@pytest.mark.parametrize("models", [["linear", "featurewise"], ["featurewise", "linear"]])
+def test_with_both_fits_chosen_each_sentence_is_said_under_its_name(tmp_path, models):
+    """The linear model and feature-wise regression together, in either order: one sentence is
+    served for both tables, so each fit's is said under its family's name, the joint fit's never
+    claiming the q-values only the feature-wise tests carry; the linear model names the members it
+    holds, and feature-wise regression's models none. Both report from every model, and the
+    methods text said the first family's sequence alone, for both: under [linear, feature-wise]
+    that each feature-wise estimate was adjusted for both members, under [feature-wise, linear]
+    that the linear model's unadjusted model was unadjusted (the verifier's FW-V1). Now it says
+    each family's sequence under its name, each as the design that reproduces its rows says:
+    statsmodels' fit of the members together, and of each member alone."""
     frame = FW._frame()
-    out = ef.run(frame, tmp_path, FW._family(NUMERIC, ["linear", "featurewise"]))
+    out = ef.run(frame, tmp_path, FW._family(NUMERIC, models))
     said = (f"Under the feature-wise regression, {EACH['fdr_bh']} Under the linear model, "
             f"{JOINT['fdr_bh']}")
     assert out["effects"]["multiplicity"] == said
@@ -251,11 +304,22 @@ def test_with_both_fits_chosen_each_sentence_is_said_under_its_name(tmp_path):
     assert linear["crude"]["label"] == "Without covariates"
     assert featurewise["model_2"]["adjusted_for"] == COVARIATES
     assert (featurewise["crude"]["label"], featurewise["crude"]["adjusted_for"]) == ("Unadjusted", [])
-    together = _fit(frame, ["fiber", "sugar", *FW.MODEL_2])
-    alone = _fit(frame, ["fiber", *FW.MODEL_2])
-    assert linear["model_2"]["effects"][0]["estimate"] == pytest.approx(together["fiber"], rel=1e-9)
-    assert featurewise["model_2"]["effects"][0]["estimate"] == pytest.approx(alone["fiber"],
-                                                                              rel=1e-9)
+    for key, adjust in DESIGN.items():
+        together = _fit(frame, ["fiber", "sugar", *adjust])
+        for m in ("fiber", "sugar"):
+            joint_row = next(r for r in linear[key]["effects"] if r["feature"] == m)
+            apart_row = next(r for r in featurewise[key]["effects"] if r["feature"] == m)
+            assert joint_row["estimate"] == pytest.approx(together[m], rel=1e-9), (key, m)
+            assert apart_row["estimate"] == pytest.approx(_fit(frame, [m, *adjust])[m],
+                                                          rel=1e-9), (key, m)
+    words = {"linear": f"Under the linear model, {JOINT_WORDS}",
+             "featurewise": f"Under the feature-wise regression, {APART_WORDS}"}
+    methods = out["effects"]["methods"]
+    first, second = (words[m] for m in models)
+    assert methods.startswith(first), methods[:400]
+    assert methods.index(f" {second}") > len(first)
+    assert methods.endswith(f" {said}")
+    assert ITSELF.search(methods) is None, ITSELF.search(methods)
 
 
 # ── the sentence, for each method ────────────────────────────────────────────
