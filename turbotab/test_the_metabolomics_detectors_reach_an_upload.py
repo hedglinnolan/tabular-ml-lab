@@ -433,9 +433,11 @@ def test_the_run_order_reading_has_exactly_one_implementation():
 
 
 def test_the_loud_absence_names_what_stops_being_possible():
-    """§01 says *"say so loudly"*, which is met by naming the three
-    diagnostics rather than by an exclamation mark — and the payload carries
-    the same three, because that is what everything downstream reads."""
+    """§01 says *"say so loudly"*, which is met by naming the diagnostics
+    rather than by an exclamation mark. The prose names the two v2 computes
+    against an injection order, drift and QC-RLSC, and the run-order column
+    that lets both read one; the payload still carries §01's three, the
+    run-order PCA overlay v2 does not draw among them (pp2-why-true)."""
     finding = fired("metabolomics_no_qc")["no_run_order"]
     assert finding["params"]["cannot_compute"] == ["drift", "QC-RLSC",
                                                    "run-order PCA overlay"]

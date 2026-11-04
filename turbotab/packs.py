@@ -2120,11 +2120,11 @@ def _acquisition_design(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         f"The acquisition and design columns in this run: "
         f"{len(columns):,} of them",
         "This run records " + "; ".join(said) + ".",
-        ("Run order, batch and plate are what drift correction, batch "
-         "correction and the run-order PCA overlay are computed against, and "
-         "the group-by-batch crosstab is what shows a confound before it "
-         "becomes a result. Nothing here is changed — this is the inventory the "
-         "data-description sentence is written from."),
+        ("Run order, batch and plate are what drift correction and batch "
+         "correction are computed against, and the group-by-batch crosstab is "
+         "what shows a confound before it becomes a result. Nothing here is "
+         "changed — this is the inventory the manuscript's data-description "
+         "sentence is written from."),
         confidence="high", pack=METABOLOMICS, marker="derived",
         evidence=DESIGN_EVIDENCE,
         columns=columns[:8],
@@ -2141,8 +2141,12 @@ def _no_run_order(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """No run order, no timestamp, nothing shaped like either. **Said loudly.**
 
     §01 uses the words *"say so loudly"*, which is a specification and is met by
-    saying what stops being possible rather than by an exclamation mark. Three
-    named diagnostics, in the payload as well as in the prose.
+    saying what stops being possible rather than by an exclamation mark. The
+    prose names the two that v2 computes against an injection order, the drift
+    reading (``detectors.assay.drift_reading``) and QC-RLSC
+    (``readings.injection_order_reading``), each of which reads a column that
+    runs 1 to n; v2 draws no run-order PCA overlay, which the payload's §01
+    list still names.
     """
     if not _is_assay_wide(df):
         return None
@@ -2159,10 +2163,10 @@ def _no_run_order(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          f"{len(df.columns):,} columns."),
         ("Instrument drift is often the largest single variance component in a "
          "run, and every way of seeing it is ordered by injection: drift "
-         "diagnostics, QC-RLSC correction and the run-order overlay on the PCA "
-         "scores plot all become impossible without one. The order is in the "
-         "instrument's sequence file — if you still have it, adding the column "
-         "now recovers all three."),
+         "diagnostics and QC-RLSC correction both become impossible without "
+         "one. The order is in the instrument's sequence file — if you still "
+         "have it, adding it as a run-order column that runs 1 to "
+         f"{len(df):,} lets both read it."),
         confidence="high", pack=METABOLOMICS, marker="derived",
         evidence=DESIGN_EVIDENCE,
         columns=[],
@@ -2929,9 +2933,7 @@ def _compositional(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
                          "ordinary correlation between them is not "
                          "interpretable: raising one necessarily lowers "
                          "another, so the negative correlation is arithmetic "
-                         "rather than dietary. The collinearity figure is drawn "
-                         "on log-ratios rather than on the parts, and the parts "
-                         "are not offered as independent predictors."),
+                         "rather than dietary."),
                         confidence="high", pack=DIETARY, marker="derived",
                         evidence=COMPOSITIONAL_EVIDENCE,
                         columns=list(subset),
@@ -3397,8 +3399,8 @@ def _counts_at_p_over_n(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          f"{spread:.1f}-fold."),
         ("Two consequences, and only one of them is ours to settle. Model "
          "ranking is: at this p/n an unregularized fit is not merely optimistic "
-         "but degenerate, so regularized models rank first and distance-based "
-         "ones last — ordered, never filtered. Normalization is NOT: CPM, TPM "
+         "but degenerate, so it ranks below the regularized ones — ordered, "
+         "never filtered. Normalization is NOT: CPM, TPM "
          "and VST answer different questions and are not interchangeable, and "
          "the right one depends on the assay and on what you are asking. "
          "**No normalization default is asserted here**, and that is the "

@@ -1,0 +1,284 @@
+"""Every served ``why_it_matters`` names only stages, views and diagnostics v2 has (pp2-why-true,
+W1). The legacy reasons the findings stage serves were written for Classic, and some named what v2
+does not have:
+
+* the two-level reason placed a column's blanks "at Preprocess" (``ml/binary_text.py``); v2 has
+  no Preprocess stage (``quest.STAGES``) and asks it in Who's in, at the missing-values question,
+  whose "Blanks as their own level" keeps a blank as a value of a two-valued column
+  (``models.pipeline.level_columns``);
+* the metabolomics acquisition inventory and the no-run-order finding named a run-order overlay
+  on a PCA scores plot (``turbotab/packs.py``); v2 draws no such plot (its one PCA figure is the
+  batch figure, colored by batch: ``methods.batch.batch_figure``). What v2 computes against an
+  injection order is the drift reading (``detectors.assay.drift_reading``) and QC-RLSC
+  (``methods.qc_drift``, which reads ``readings.injection_order_reading``), so "adding the column
+  recovers all three" became the two that read it;
+* the compositional reason said a collinearity figure "is drawn on log-ratios" and the parts "are
+  not offered as independent predictors": v2 has no log-ratio figure, and the parts are offered
+  (its lever is the roles question's "Leave one part out");
+* the counts reason said "regularized models rank first and distance-based ones last": the shelf
+  has no distance-based family (``turbotab.core.models``), and under Estimate the feature-wise
+  tests rank first. What holds under both purposes is that every unregularized fit ranks below the
+  regularized ones (``models.base.rank``);
+* the boolean-as-text reason quoted an error v2 never raises ("Unknown label type") from modeling,
+  correlation and feature selection refusing the column (``ml/import_doctor.py``);
+* the temporal-plausibility reason said the app "has never done" temporal plausibility, on the
+  finding that does it (``turbotab/clinical.py``).
+
+Each truth is by construction (a table built here, or a shipped sample table whose companion says
+what it holds), by numpy (least squares at p ≥ n has no unique solution), or by the code's own
+structure (the stage that holds the missing-values question, the readings that need an order).
+The true sentences of each reason stay as they were.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from turbotab.core.decisions import ProjectState
+from turbotab.core.stages.finding_words import family
+from turbotab.core.stages.findings import findings_stage, structural_finding
+from turbotab.core.tests.stage_harness import SAMPLES, Ingested
+
+# What v2 does not have, as the legacy reasons named it. None may be served.
+UNTRUE = ("Preprocess", "PCA scores", "PCA overlay", "overlay", "recovers all three",
+          "distance-based", "log-ratios", "independent predictors", "Unknown label type",
+          "refuse it", "has never done")
+
+
+def _artifact(tmp: Path, source: Path, lens: list[str], target: str | None = None) -> dict:
+    table = Ingested(source, tmp)
+    return table.run(findings_stage, ProjectState(lens=lens, target=target))
+
+
+def _served(artifact: dict, fam: str) -> list[dict]:
+    return [f for f in artifact["findings"] if family(f["id"]) == fam]
+
+
+def _one(artifact: dict, fam: str) -> dict:
+    found = _served(artifact, fam)
+    assert len(found) == 1, (fam, [f["id"] for f in artifact["findings"]])
+    return found[0]
+
+
+N, N_BLANK = 120, 12
+
+
+def two_level_table() -> pd.DataFrame:
+    """120 rows: `sex` M/F with 12 blanks (rows 0–11), `smoker` current/never with none, a
+    one-level `screened` (True on 48 rows, blank on the rest) and two numbers."""
+    rng = np.random.default_rng(7)
+    sex = rng.choice(["F", "M"], N).astype(object)
+    sex[:N_BLANK] = None
+    screened = np.where(np.arange(N) % 5 < 2, "True", None)
+    return pd.DataFrame({"age": rng.integers(20, 80, N), "sbp": rng.normal(125, 15, N).round(1),
+                         "sex": sex, "smoker": rng.choice(["current", "never"], N),
+                         "screened": screened})
+
+
+@pytest.fixture(scope="module")
+def two_level(tmp_path_factory) -> tuple[pd.DataFrame, dict, dict[str, str]]:
+    """The construction, its served findings, and the legacy reasons as the legacy engine writes
+    them (``turbotab.engine.diagnose``, the stream the findings stage speaks for)."""
+    from turbotab import engine
+
+    tmp = tmp_path_factory.mktemp("two_level")
+    frame = two_level_table()
+    path = tmp / "two_level.csv"
+    frame.to_csv(path, index=False)
+    read = Ingested(path, tmp / "ingested")
+    with read.store() as store:
+        written = store.materialize().reset_index(drop=True)
+    legacy = {f["id"]: f["why_it_matters"] for f in
+              (structural_finding(engine.shape_finding_to_dict(s))
+               for s in engine.diagnose(written, None))}
+    return frame, read.run(findings_stage, ProjectState(lens=[])), legacy
+
+
+def test_the_blanks_are_asked_where_v2_asks_them(two_level):
+    """`sex` has 12 blanks by construction. The reason places their question where v2 asks it:
+    the stage that holds the missing-values question, by that question's name; and the stage it
+    names is one of v2's (Preprocess is not)."""
+    from turbotab.core.quest import QUESTIONS, STAGE_NAMES
+    from turbotab.core.voice import question_name
+
+    frame, artifact, legacy = two_level
+    assert int(frame["sex"].isna().sum()) == N_BLANK
+    why = {f["id"]: f for f in artifact["findings"]}["binary_text__sex"]["why_it_matters"]
+    stage = STAGE_NAMES[QUESTIONS["missing"].stage]
+    assert stage == "Who's in" and "Preprocess" not in STAGE_NAMES.values()
+    clause = (f"The {N_BLANK} blank(s) are a separate question, asked in {stage} by "
+              f"{question_name('missing')}: whether not-answered is itself informative.")
+    assert why.endswith(" " + clause), why
+    assert why.count("blank(s)") == 1 and "Preprocess" not in why
+    # The two-level reading's own sentences are as the legacy reason writes them.
+    before = legacy["binary_text__sex"]
+    assert "asked at Preprocess" in before
+    assert why[: -len(clause)] == before[: before.index("The 12 blank(s)")]
+
+
+def test_a_two_level_column_with_no_blanks_keeps_its_reason_whole(two_level):
+    """The guard's silent side: `smoker` has no blank, so its reason has no blanks clause and is
+    the legacy reason, word for word."""
+    frame, artifact, legacy = two_level
+    assert int(frame["smoker"].isna().sum()) == 0
+    why = {f["id"]: f for f in artifact["findings"]}["binary_text__smoker"]["why_it_matters"]
+    assert why == legacy["binary_text__smoker"]
+    assert "blank" not in why
+
+
+def test_text_booleans_name_no_error_v2_never_raises(two_level):
+    """`screened` is True on 48 rows and blank on 72: text booleans with one level, which the
+    two-level reading does not claim. Its reason quoted an error from modeling, correlation and
+    feature selection refusing it; v2 reads text as categories and raises no such error. The
+    reason's first sentence stays."""
+    frame, artifact, legacy = two_level
+    assert int((frame["screened"] == "True").sum()) == 48
+    served = _one(artifact, "boolean_as_text")
+    assert served["affected_columns"] == ["screened"]
+    before = legacy["boolean_as_text__screened"]
+    assert "Unknown label type" in before
+    assert served["why_it_matters"] == "Stored this way the column is neither a number nor a label."
+
+
+# ── metabolomics: what an injection order is read by ─────────────────────────
+
+
+@pytest.fixture(scope="module")
+def no_order(tmp_path_factory) -> tuple[pd.DataFrame, dict]:
+    """`metabolomics_no_qc.csv`: an untargeted panel with no run order, no timestamp and no
+    column that numbers the rows (its companion, ``metabolomics_no_qc.md``)."""
+    source = SAMPLES / "metabolomics_no_qc.csv"
+    return pd.read_csv(source), _artifact(tmp_path_factory.mktemp("no_order"), source,
+                                          ["metabolomics"])
+
+
+def test_no_run_order_names_what_reads_an_order(no_order):
+    frame, artifact = no_order
+    why = _one(artifact, "pack::metabolomics::no_run_order")["why_it_matters"]
+    assert why == (
+        "Instrument drift is often the largest single variance component in a run, and every way "
+        "of seeing it is ordered by injection: drift diagnostics and QC-RLSC correction both "
+        "become impossible without one. The order is in the instrument's sequence file — if you "
+        f"still have it, adding it as a run-order column that runs 1 to {len(frame):,} lets both "
+        "read it.")
+
+
+def test_the_two_readings_need_an_order_and_read_one_that_runs_1_to_n(no_order):
+    """The sentence's claim, both ways: on the table as shipped neither the drift reading nor
+    QC-RLSC's order reading finds an order; with a column numbering the rows 1 to n added, both
+    read it."""
+    from turbotab.core.detectors.assay import drift_reading
+    from turbotab.core.readings import injection_order_reading
+
+    frame, _ = no_order
+    assert drift_reading(frame) is None and injection_order_reading(frame) is None
+    ordered = frame.assign(run_order=np.arange(1, len(frame) + 1))
+    assert drift_reading(ordered)["column"] == "run_order"
+    assert injection_order_reading(ordered).value == "run_order"
+
+
+@pytest.fixture(scope="module")
+def untargeted(tmp_path_factory) -> dict:
+    """`metabolomics_untargeted.csv`: a run order, a batch and pooled QCs (its companion)."""
+    return _artifact(tmp_path_factory.mktemp("untargeted"),
+                     SAMPLES / "metabolomics_untargeted.csv", ["metabolomics"])
+
+
+def test_the_acquisition_inventory_names_what_v2_computes(untargeted):
+    why = _one(untargeted, "pack::metabolomics::acquisition_design")["why_it_matters"]
+    assert why == (
+        "Run order, batch and plate are what drift correction and batch correction are computed "
+        "against, and the group-by-batch crosstab is what shows a confound before it becomes a "
+        "result. Nothing here is changed — this is the inventory the manuscript's "
+        "data-description sentence is written from.")
+
+
+# ── dietary, genomics and clinical ───────────────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def recalls(tmp_path_factory) -> dict:
+    """`dietary_recalls.csv`: four energy shares that sum to 100 (its companion)."""
+    return _artifact(tmp_path_factory.mktemp("recalls"), SAMPLES / "dietary_recalls.csv",
+                     ["dietary"])
+
+
+def test_the_compositional_reason_names_no_figure(recalls):
+    why = _one(recalls, "pack::dietary::compositional")["why_it_matters"]
+    assert why == (
+        "These are compositional — parts of a whole — and ordinary correlation between them is not "
+        "interpretable: raising one necessarily lowers another, so the negative correlation is "
+        "arithmetic rather than dietary.")
+
+
+@pytest.fixture(scope="module")
+def expression(tmp_path_factory) -> dict:
+    """`genomics_expression.csv`: raw counts, many more genes than samples (its companion)."""
+    return _artifact(tmp_path_factory.mktemp("expression"), SAMPLES / "genomics_expression.csv",
+                     ["genomics"])
+
+
+def test_the_counts_reason_ranks_only_families_the_shelf_has(expression):
+    why = _one(expression, "pack::genomics::counts_p_over_n")["why_it_matters"]
+    assert why.startswith(
+        "Two consequences, and only one of them is ours to settle. Model ranking is: at this p/n "
+        "an unregularized fit is not merely optimistic but degenerate, so it ranks below the "
+        "regularized ones — ordered, never filtered. Normalization is NOT: "), why
+
+
+UNREGULARIZED = {"linear", "huber", "proportional_odds", "mixed", "gee", "cox"}
+REGULARIZED = {"elastic_net", "ridge"}
+
+
+@pytest.mark.parametrize("task", ["regression", "binary"])
+@pytest.mark.parametrize("purpose", ["inference", "prediction"])
+def test_at_p_over_n_every_unregularized_fit_ranks_below_the_regularized(task, purpose):
+    """What the counts reason says, on the shelf: 60 predictors for 30 rows (p/n 2, the reason's
+    floor), under both purposes. Least squares there has no unique solution (numpy: a 30 × 61
+    design has rank at most 30), and every unregularized family on the shelf ranks below every
+    regularized one; the shelf has no distance-based family."""
+    from turbotab.core.models import Situation, families, rank  # the package registers them
+
+    rng = np.random.default_rng(1)
+    design = np.column_stack([np.ones(30), rng.poisson(20, (30, 60))])
+    assert np.linalg.matrix_rank(design) <= 30 < design.shape[1]
+    keys = {f.key for f in families()}
+    assert REGULARIZED <= keys and not keys & {"knn", "k_nearest", "svm", "kernel"}
+    situation = Situation(task=task, purpose=purpose, n_rows=30, n_features=60,
+                          n_events=12 if task == "binary" else None, lenses=("genomics",))
+    order = [f.key for f, _ in rank(situation)]
+    below = [order.index(k) for k in UNREGULARIZED if k in order]
+    above = [order.index(k) for k in REGULARIZED if k in order]
+    assert below and above and max(above) < min(below), order
+
+
+@pytest.fixture(scope="module")
+def labs(tmp_path_factory) -> dict:
+    """`clinical_labs.csv`: repeated heights that cannot belong to one adult (its companion)."""
+    return _artifact(tmp_path_factory.mktemp("labs"), SAMPLES / "clinical_labs.csv", ["clinical"])
+
+
+def test_the_temporal_reason_does_not_deny_itself(labs):
+    why = _one(labs, "pack::clinical::temporal_implausibility")["why_it_matters"]
+    assert why == (
+        "Kahn et al.'s framework separates ATEMPORAL plausibility — is this value believable — "
+        "from TEMPORAL plausibility — is this trajectory believable. Each value flagged here is "
+        "individually plausible and the sequence is not, so no per-value check can find them: a "
+        "height of 160 cm and a height of 169 cm are both ordinary, and they cannot both belong "
+        "to the same adult.")
+
+
+# ── every reason served on these tables ──────────────────────────────────────
+
+
+@pytest.mark.parametrize("name", ["two_level", "no_order", "untargeted", "recalls", "expression",
+                                  "labs"])
+def test_no_served_reason_names_what_v2_does_not_have(name, request):
+    found = request.getfixturevalue(name)
+    artifact = found[1] if isinstance(found, tuple) else found
+    problems = [(f["id"], word) for f in artifact["findings"] for word in UNTRUE
+                if word in (f.get("why_it_matters") or "")]
+    assert not problems, problems

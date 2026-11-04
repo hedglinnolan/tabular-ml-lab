@@ -14,7 +14,9 @@ intakes → ``exclusions``; identifiers, survey design and flags → ``roles``.
 
 The legacy detectors keep their ids, details and badges; this module only speaks for them. Where a
 legacy sentence is untrue of the table (``pack::dietary::energy_adjustment`` counts every numeric
-column as a candidate nutrient), the detail is restated from the data.
+column as a candidate nutrient), the detail is restated from the data; where a legacy reason names a
+stage, a view or a diagnostic v2 does not have, that clause is restated or dropped
+(:data:`UNTRUE_CLAUSES`).
 
 The app's own findings (``voice::*``) cover what the drive rubric says NHANES users were never told
 (DRIVE_RUBRIC §4): the respondent identifier, the ``imputed_*`` flags and the columns they mark,
@@ -1038,6 +1040,34 @@ def _fallback(title: str) -> str:
     return finish(" ".join(text.split()[:budget]))
 
 
+def _blanks_asked(m: re.Match[str]) -> str:
+    """Where v2 asks whether a blank is informative: at the missing-values question, in the stage
+    that holds it (``quest.QUESTIONS``), whose "Blanks as their own level" keeps a two-valued
+    column's blank as a value (``models.pipeline.level_columns``)."""
+    from turbotab.core.quest import QUESTIONS, STAGE_NAMES
+    from turbotab.core.voice import question_name
+
+    return f"asked in {STAGE_NAMES[QUESTIONS['missing'].stage]} by {question_name('missing')}"
+
+
+#: The clauses of legacy reasons that name a stage, a view or a diagnostic v2 does not have, by
+#: family, each with what is served in its place: the two-level reason put a column's blanks at a
+#: Preprocess stage (``ml/binary_text.py``); the text-booleans reason quoted the error modeling,
+#: correlation and feature selection raise refusing the column (``ml/import_doctor.py``), where v2
+#: reads text as categories and raises none; the temporal reason said the app "has never done" the
+#: temporal check it is making (``turbotab/clinical.py``).
+UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...]] = {
+    "binary_text": ((re.compile(r"(?<=are a separate question, )asked at Preprocess(?=: )"),
+                     _blanks_asked),),
+    "boolean_as_text": ((re.compile(r" Modeling, correlation and feature selection all refuse it, "
+                                    r"and the error they raise reads .+? how it is stored\."),
+                         lambda m: ""),),
+    "pack::clinical::temporal_implausibility": (
+        (re.compile(r" The app already does the first, at every value, and has never done the "
+                    r"second\."), lambda m: ""),),
+}
+
+
 def speak(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: FindingContext) -> dict[str, Any]:
     """Add ``summary``, ``routes_to``, ``lever_label`` and ``group``; normalize every text field.
 
@@ -1050,6 +1080,9 @@ def speak(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: FindingCon
     for key in ("title", "detail", "why_it_matters"):
         if finding.get(key):
             finding[key] = quote_columns(finding[key], columns)
+    for clause, said in UNTRUE_CLAUSES.get(fam, ()):
+        if finding.get("why_it_matters"):
+            finding["why_it_matters"] = clause.sub(said, finding["why_it_matters"])
     say = FAMILIES.get(fam)
     voice = say(finding, params, fc) if say is not None else None
     if voice is None:
