@@ -225,8 +225,8 @@ def test_the_curve_s_estimate_is_one_fit_per_specification_and_its_hold_is_judge
     is the fit's seconds times the specifications (40 s × 12 = 480 s, by construction), and
     ``curve_holds`` judges it held over about 2 minutes until a press for the outcome confirmed a
     curve estimate it is within 1.5 times of; a press that confirmed none (the fit's alone)
-    releases nothing. These are the pure judgments only; the server's hold calls them for the
-    curve's stage (``ProjectService._hold``, ``server/tests/test_curve_hold.py``)."""
+    releases nothing. These are the pure judgments only: the scheduler does not call them yet
+    (``fit_press``'s module docstring), so nothing here holds a stage."""
     assert fit_press.curve_estimate(40.0, 12) == 480.0
     assert fit_press.curve_estimate(None, 12) is None and fit_press.curve_estimate(40.0, None) is None
     assert fit_press.curve_estimate(40.0, 0) is None

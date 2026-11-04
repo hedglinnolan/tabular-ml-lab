@@ -2153,20 +2153,11 @@ class ProjectService:
         for Fit; while the shelf is still measuring that estimate, the fit waits for it. Every
         estimate stage that fits the chosen families (it reads ``models``: the sensitivity
         analyses, the effects, the scales' corrections) costs at least as much, and waits with
-        it. The curve of which decisions mattered (``core/mattered.py``), which starts once the
-        fit is made and fits the plan once per specification, is held as the fit is: its estimate
-        is the followed family's measured fit seconds times the specifications
-        (``mattered.expected_seconds``), and over about 2 minutes it waits until a press of Fit
-        for the outcome confirmed a curve estimate it is within 1.5 times of
-        (``fit_press.curve_holds``); an estimate not known holds nothing."""
-        from turbotab.core.fit_press import curve_holds, fit_estimate, holds
+        it. The curve of which decisions mattered is not an estimate stage and is held by none:
+        ``fit_press.curve_holds`` keeps a long curve until a press confirmed its estimate, and no
+        press records one yet (``fit_press``'s module docstring), so it computes live."""
+        from turbotab.core.fit_press import fit_estimate, holds
 
-        if stage == "mattered":
-            from turbotab.core.mattered import expected_seconds
-
-            estimate = expected_seconds(view.state, view.artifact("fit"))
-            return ("fit" if curve_holds(estimate, self._press(view.pid), view.state.target)
-                    else None)
         if stage not in estimand.ESTIMATE_STAGES or "models" not in self.engine.graph[stage].reads:
             return None
         if view.pending("shelf"):
