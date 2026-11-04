@@ -57,8 +57,10 @@ def test_4_the_form_question_asks_each_continuous_confounder_and_proposes_a_spli
     rungs = {o["value"]: o["rung"] for o in age["options"]}
     assert rungs == {"spline": "recommended", "linear": "available", "categories": "rank_lower",
                      "quintiles": "rank_lower", "optimal": "block_and_record"}
+    # Batch 1: what you study (`fiber`) is proposed as a straight line; the confounder's spline
+    # is unchanged.
     assert card["answer"] == {"kind": "set_forms", "forms": {
-        "fiber": {"form": "spline", "knots": 5, "knots_rule": "harrell"},
+        "fiber": {"form": "linear"},
         "age": {"form": "spline", "knots": 5, "knots_rule": "harrell"}}}
 
 
@@ -131,9 +133,11 @@ def test_4_a_data_derived_cut_point_is_blocked_under_inference_and_found_as_by_h
     with pytest.raises(d.Refusal) as refused:
         d.validate({"kind": "set_exposure_form", "column": "fiber", "form": "optimal"}, ctx)
     assert refused.value.code == "optimal_cut_point"
+    # Batch 1: what you study leads with its straight line, as its card does.
     assert [e["label"] for e in refused.value.exits] == [
-        "A restricted cubic spline (recommended)", "Quintiles",
+        "A straight line (recommended)", "A restricted cubic spline", "Quintiles",
         "Declare the cut points from outside these data", "Keep it, recorded as a limitation"]
+    assert refused.value.exits[0]["decision"]["form"] == "linear"
     # under prediction it is ranked lower, not blocked
     pred = setting["state"].model_copy(update={"purpose": "prediction"})
     d.validate({"kind": "set_exposure_form", "column": "fiber", "form": "optimal"},

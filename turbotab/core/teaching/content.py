@@ -1700,8 +1700,8 @@ FORM = {
     "key": "form",
     "title": "The form of each continuous term",
     "question": "How do what you study, and each continuous covariate, enter the model?",
-    "one_liner": "Declared before estimates, on the final scale: a spline by default, k by "
-                 "Harrell's rule, quintiles reported beside it.",
+    "one_liner": "Declared before estimates, on the final scale: a straight line for what you "
+                 "study, its spline the check; splines for continuous covariates.",
     "why": "A straight line a curve does not follow biases the estimate, and a covariate that could explain the link, cut into "
            "a few groups leaves confounding behind. Choosing the form after seeing a nonlinearity "
            "test inflates the test of association, so the form is declared first and its overall "

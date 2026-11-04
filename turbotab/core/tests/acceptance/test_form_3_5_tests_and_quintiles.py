@@ -172,6 +172,9 @@ def test_5_quintiles_as_the_form_label_their_trend_customary_too(tmp_path):
     assert trend["caption"].startswith("The p for linear trend (customary) across quintiles of "
                                        "`fiber`")
     assert trend["reference"].startswith("quintile 1, `fiber` ≤ ")
-    # under inference quintiles rank lower; the spline leads; the companion is produced by default
-    options = {o["value"]: o["rung"] for o in ef.options("inference")}
+    # under inference quintiles rank lower; a confounder's spline leads (batch 1: what you study
+    # is proposed as a straight line, its spline offered); the companion is produced by default
+    options = {o["value"]: o["rung"] for o in ef.options("inference", "confounder")}
     assert options["spline"] == "recommended" and options["quintiles"] == "rank_lower"
+    exposure = {o["value"]: o["rung"] for o in ef.options("inference")}
+    assert exposure["spline"] == "available" and exposure["quintiles"] == "rank_lower"

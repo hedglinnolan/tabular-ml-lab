@@ -385,7 +385,8 @@ def test_a_spline_on_a_covariate_is_fitted_through_and_one_on_the_exposure_stays
     through the form, its knots placed on its own rows, and is statsmodels' fit with Harrell's
     restricted cubic spline terms written out here (on the base the curve was refused). A spline on
     `fiber`, what the curve follows, splits it into three coefficients: there is no one estimate to
-    follow, so the curve stays refused, in words and with no exit, before anything is fitted."""
+    follow, so the curve stays refused, in words, before anything is fitted, its one way forward
+    the straight line (batch 1, the owner's ruling of 2026-11-04; on the base it had no exit)."""
     from turbotab.core.decisions import ExposureFormSpec
 
     formed = state(exposure_forms={"age": ExposureFormSpec(form="spline", knots=4, scale="raw")})
@@ -416,9 +417,93 @@ def test_a_spline_on_a_covariate_is_fitted_through_and_one_on_the_exposure_stays
     on_fiber = state(exposure_forms={"fiber": ExposureFormSpec(form="spline", knots=4,
                                                                scale="raw")})
     refused = Run(cohort(), tmp_path / "fiber", on_fiber).mattered()
-    assert refused["curve"] is None and refused["refused"]["exits"] == []
+    assert refused["curve"] is None and refused["refused"]["exits"] == [STRAIGHT_FIBER]
     assert refused["refused"]["message"] == M.FORMED_EXPOSURE.format(
         exposure="fiber", n=3, names="`fiber`, `fiber'` and `fiber''`")
+
+
+# The refusal's way forward where the plan's form splits or contrasts `fiber` (batch 1, SL2).
+STRAIGHT_FIBER = {"label": "Fit `fiber` as a straight line, with a curve set in the plan as its "
+                           "check",
+                  "decision": {"kind": "set_exposure_form", "column": "fiber", "form": "linear"}}
+
+
+def test_pressing_the_straight_line_records_the_form_and_the_curve_then_draws(tmp_path):
+    """SL2, both ways. A spline on `fiber` refuses the curve with the straight line as its way
+    forward; the decision it carries is recorded as a straight line of `fiber` (validated and
+    completed as the server records it), and on that plan the curve is drawn: its primary is
+    statsmodels' straight-line fit of the plan (least squares with HC3), with no refusal. On the
+    base the refusal had no exit."""
+    from turbotab.core.decisions import ExposureFormSpec
+
+    on_fiber = state(exposure_forms={"fiber": ExposureFormSpec(form="spline", knots=4,
+                                                               scale="raw")})
+    refused = Run(cohort(), tmp_path / "spline", on_fiber).mattered()["refused"]
+    assert refused is not None and len(refused["exits"]) == 1
+    pressed = d.validate(refused["exits"][0]["decision"], {"state": on_fiber})
+    assert pressed.kind == "set_exposure_form" and pressed.form == "linear"
+    after = d.fold_onto(on_fiber, pressed)
+    assert after.exposure_forms["fiber"].form == "linear"
+    run = Run(cohort(), tmp_path / "line", after)
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    primary = next(s for s in art["curve"]["specs"]
+                   if s["key"] == "|".join(f"{c}={M.RECORDED}" for c in ORDER))
+    est, low, high, n = statsmodels_fit(run.table, outcome="glucose", rules=(0, 1),
+                                        covariates=ADJUSTED)
+    assert primary["n"] == n
+    assert (primary["estimate"], primary["low"], primary["high"]) == pytest.approx(
+        (est, low, high), rel=1e-8)
+
+
+def test_the_straight_line_keeps_a_consumers_only_domain_and_whom_the_curve_is_about(tmp_path):
+    """The verifier's B1-V2, both ways. A spline of `fiber` among consumers only (a 25% mass at
+    zero, the domain an estimand change, STROBE-nut nut-14) refuses the curve with the straight
+    line among consumers as its way forward: pressed, `fiber` is a straight line with the domain
+    kept (on the branch before this repair the decision reset it to everyone, and the curve's
+    primary held non-consumers), its record sentence says the analysis is restricted to consumers,
+    and the curve's primary is statsmodels' straight-line fit (least squares with HC3) on the
+    consumers among the rows its rules keep, counted here from the table. On a plan about everyone
+    the exit carries no domain (:data:`STRAIGHT_FIBER`, the test above)."""
+    from turbotab.core.decisions import ExposureFormSpec
+    from turbotab.core.methods import exposure_form as forms
+
+    frame = cohort()
+    rng = np.random.default_rng(9)
+    frame.loc[rng.choice(len(frame), 200, replace=False), "fiber"] = 0.0
+    among = state(exposure_forms={"fiber": ExposureFormSpec(form="spline", knots=4, scale="raw",
+                                                            domain="consumers")},
+                  form_domains={"fiber": "consumers"})
+    refused = Run(frame, tmp_path / "spline", among).mattered()["refused"]
+    assert refused is not None and refused["exits"] == [{
+        "label": "Fit `fiber` as a straight line among consumers, as the plan restricts it, with "
+                 "a curve set in the plan as its check",
+        "decision": {"kind": "set_exposure_form", "column": "fiber", "form": "linear",
+                     "domain": "consumers"}}]
+    pressed = d.validate(refused["exits"][0]["decision"], {"state": among})
+    after = d.fold_onto(among, pressed)
+    assert (after.exposure_forms["fiber"].form, after.exposure_forms["fiber"].domain) == (
+        "linear", "consumers")
+    assert after.form_domains == {"fiber": "consumers"}
+    assert forms.domain_columns(after) == ["fiber"]
+    assert "; the analysis was restricted to consumers of `fiber` (`fiber` above 0)" in \
+        forms._sentence(pressed, among, {"state": among})
+    run = Run(frame, tmp_path / "line", after)
+    art = run.mattered()
+    assert art["refused"] is None, art["refused"]
+    primary = next(s for s in art["curve"]["specs"]
+                   if s["key"] == "|".join(f"{c}={M.RECORDED}" for c in ORDER))
+    table = run.table
+    keep = rows_of(table, rules=(0, 1), columns=["glucose", "fiber", *ADJUSTED]) & (
+        table["fiber"] > 0).to_numpy()
+    part = table[keep]
+    fit = sm.OLS(part["glucose"].astype(float), ef.design_matrix(part, ["fiber", *ADJUSTED])).fit(
+        cov_type="HC3", use_t=True)
+    low, high = fit.conf_int(alpha=0.05).loc["fiber"]
+    assert primary["n"] == int(keep.sum()) < int(rows_of(
+        table, rules=(0, 1), columns=["glucose", "fiber", *ADJUSTED]).sum())
+    assert (primary["estimate"], primary["low"], primary["high"]) == pytest.approx(
+        (float(fit.params["fiber"]), float(low), float(high)), rel=1e-8)
 
 
 def test_a_one_column_form_on_the_exposure_is_refused_and_one_on_a_covariate_is_fitted_through(
@@ -427,7 +512,8 @@ def test_a_one_column_form_on_the_exposure_is_refused_and_one_on_a_covariate_is_
     or one data-derived cut point: the linear model fits it as one column (`fiber_C2`,
     `fiber_above`), a contrast of the groups either side of the cut, not a difference per unit of
     `fiber`. Refused in words that end with what happens (the declared cut's sentence written out,
-    VR2-2), with no exit, before anything is fitted, as truth (c) refuses an
+    VR2-2), its one way forward the straight line (batch 1, SL2; on the base no exit), before
+    anything is fitted, as truth (c) refuses an
     exposure split by its own form (on the base refused as a step the refit did not repeat; before
     this repair drawn, labeled per unit of `fiber_C2`). One cut point declared on `age`, a
     covariate, is fitted through: each specification is statsmodels' fit with `age` replaced by
@@ -443,7 +529,7 @@ def test_a_one_column_form_on_the_exposure_is_refused_and_one_on_a_covariate_is_
         art = run.mattered()
         assert art["curve"] is None and art["reported"] is None
         assert art["refused"] == {"message": M.FORMED_CONTRAST.format(exposure="fiber", name=name),
-                                  "exits": []}, form.form
+                                  "exits": [STRAIGHT_FIBER]}, form.form
         if form.form == "categories":  # the sentence the user reads, ending with what happens
             assert art["refused"]["message"] == (
                 "The plan fits `fiber` by a declared form other than a straight line: the linear "

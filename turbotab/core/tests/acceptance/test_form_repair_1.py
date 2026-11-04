@@ -238,8 +238,8 @@ def test_r3_the_card_waits_for_an_unsettled_reading_and_proposes_no_form_on_a_gu
     facts = _Store(frame).whole_numbers(["x", "band"])
     card = ef.forms_card(st, frame, _band_info(frame), frame["y"], "regression", facts)
     assert [n["column"] for n in card["needs"]] == ["x"]
-    assert card["answer"] == {"kind": "set_forms", "forms": {
-        "x": {"form": "spline", "knots": harrell(len(frame)), "knots_rule": "harrell"}}}
+    # Batch 1: what you study (`x`) is proposed as a straight line.
+    assert card["answer"] == {"kind": "set_forms", "forms": {"x": {"form": "linear"}}}
     (waiting,) = card["waiting"]
     assert (waiting["column"], waiting["role"]) == ("band", "confounder")
     k = int(frame["band"].nunique())
@@ -632,7 +632,12 @@ def rows_journey(tmp_path_factory) -> dict[str, Any]:
         seen["card_domain"] = _card(drive, lambda c: c["n_effective"] not in (None, n_cc))
         seen["step_domain"] = _until(lambda: (lambda s: s if s["status"] == "open" else None)(
             _step(drive, "form")), what="the form question was not asked again")
-        r = drive.post(seen["card_domain"]["answer"])
+        # The one-tap answer, the exposure's proposed straight line exchanged for the spline
+        # (batch 1: a straight line is proposed for what you study), its domain kept as the
+        # answer keeps it.
+        answer = seen["card_domain"]["answer"]
+        r = drive.post({**answer, "forms": {**answer["forms"], "dose": {
+            **answer["forms"]["dose"], "form": "spline"}}})
         assert r.status_code == 200, r.text[:600]
         seen["record_domain_again"] = drive.view()["decisions"][-1]
         drive.answer("models", {"kind": "select_models", "models": ["linear"]})
@@ -767,7 +772,9 @@ def band_journey(tmp_path_factory) -> dict[str, Any]:
         seen["card"] = drive.artifact("forms")
         seen["band_spline"] = drive.post({"kind": "set_exposure_form", "column": "band",
                                           "form": "spline"})
-        r = drive.post(seen["card"]["answer"])
+        # The one-tap answer, the exposure's proposed straight line exchanged for the spline (batch
+        # 1: a straight line is proposed for what you study).
+        r = drive.post({**seen["card"]["answer"], "forms": {"x": {"form": "spline"}}})
         assert r.status_code == 200, r.text[:600]
         seen["step_after_answer"] = _step(drive, "form")
         seen["models_early"] = drive.post({"kind": "select_models", "models": ["linear"]})

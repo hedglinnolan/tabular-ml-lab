@@ -80,7 +80,8 @@ fitted as the primary is. That refusal quotes no estimate: it is served where no
   before anything is fitted: one that splits it into several coefficients
   (:data:`FORMED_EXPOSURE`), and one that leaves it one column contrasting the groups either side
   of one cut point, declared or data-derived (:data:`FORMED_CONTRAST`), which is no difference per
-  unit.
+  unit; each with the straight line as its way forward, a curve then set in the plan as its check
+  (:func:`straight_line_exit`).
   Each other specification is judged on the coding the plan would give its own columns
   (``pipeline.design_spec`` over the table's column summaries, as the design stage reads them): a
   departure whose plan would apply such a step is not estimated, with the step named, and so is
@@ -155,7 +156,8 @@ NOT_FOLLOWED_REFUSAL = ("The curve fits each specification as the plan it is, an
                         "{steps}, which the curve does not fit a specification through, so it is "
                         "not drawn.")
 # The exposure split into several coefficients by a form the plan declares on it (a spline, its
-# quintiles): there is no one estimate to follow, and the form is the plan's, so no exit.
+# quintiles): there is no one estimate to follow. Its one way forward is the straight line
+# (:func:`straight_line_exit`).
 FORMED_EXPOSURE = ("The plan fits `{exposure}` by a declared form other than a straight line, so "
                    "the linear model reports {n:,} coefficients of it ({names}) and no one estimate "
                    "for the curve to follow across the choices.")
@@ -163,11 +165,42 @@ FORMED_EXPOSURE = ("The plan fits `{exposure}` by a declared form other than a s
 # derived from the data, the only forms that leave one column: ``design_forms`` drops a straight
 # line, and a spline, its quintiles or non-consumers apart make two or more): its coefficient
 # contrasts the two groups either side of the cut, where the curve follows a difference per unit
-# (its label, ``curve_for``'s ``label_of``). The form is the plan's, so no exit.
+# (its label, ``curve_for``'s ``label_of``). Its one way forward is the straight line too.
 FORMED_CONTRAST = ("The plan fits `{exposure}` by a declared form other than a straight line: the "
                    "linear model's one coefficient of it (`{name}`) compares the groups on either "
                    "side of the form's cut point, and the curve follows only a difference per "
                    "unit, so it is not drawn.")
+# The way forward from either (batch 1, the owner's ruling of 2026-11-04: "a curve keeps its
+# refusal, with a way forward to the straight line"): the exposure declared a straight line, whose
+# plan then sets a restricted cubic spline beside it as its check (``exposure_form.check_shape``).
+# Pressed after the lock, its record says "After the estimates were seen" only where an estimate
+# was shown (a lock none was shown under is withdrawn instead, ``plan_lock``), so its words do
+# not say when. A consumers-only domain standing on the exposure stays in the decision (who the
+# estimate is about is not the shape's to change, as the form card's one-tap answer keeps it), and
+# the label says so (:data:`STRAIGHT_LINE_AMONG_CONSUMERS`).
+STRAIGHT_LINE_EXIT = ("Fit `{exposure}` as a straight line, with a curve set in the plan as its "
+                      "check")
+STRAIGHT_LINE_AMONG_CONSUMERS = ("Fit `{exposure}` as a straight line among consumers, as the plan "
+                                 "restricts it, with a curve set in the plan as its check")
+
+
+def straight_line_exit(exposure: str, *, consumers: bool = False) -> dict[str, Any]:
+    """The decision exit of :data:`FORMED_EXPOSURE` and :data:`FORMED_CONTRAST`: ``exposure`` as a
+    straight line (``set_exposure_form``), among consumers where the plan restricts it to them
+    (``consumers``: its domain kept, never reset to everyone)."""
+    decision: dict[str, Any] = {"kind": "set_exposure_form", "column": exposure, "form": "linear"}
+    if consumers:
+        decision["domain"] = "consumers"
+    words = STRAIGHT_LINE_AMONG_CONSUMERS if consumers else STRAIGHT_LINE_EXIT
+    return {"label": words.format(exposure=exposure), "decision": decision}
+
+
+def _consumers_only(forms: Mapping[str, Any] | None, exposure: str) -> bool:
+    """Whether the plan's declared form of ``exposure`` (the design's ``exposure_forms`` entry, a
+    dict or a spec) restricts the analysis to its consumers."""
+    form = (forms or {}).get(exposure)
+    domain = form.get("domain") if isinstance(form, Mapping) else getattr(form, "domain", None)
+    return domain == "consumers"
 # A specification fitted as its plan whose table holds no row of the column the curve follows (a
 # departure that drops the energy column the energy model needs to make it), after
 # "With this choice changed, " or, for the primary, :data:`RECORDED_WORDS`.
@@ -680,17 +713,19 @@ def followed(task: str = "regression") -> str | None:
 
 
 def reported_of(fit: Any, exposure: str, task: str = "regression", *,
-                predictors: Sequence[str] = (), forms: Mapping[str, Any] | None = None
-                ) -> MatteredReported:
+                predictors: Sequence[str] = (), forms: Mapping[str, Any] | None = None,
+                consumers: bool = False) -> MatteredReported:
     """The followed family's row of ``exposure`` in the fit stage's table (:func:`followed`: the
     linear family for a numeric or yes/no outcome): the one model-matrix column that carries its
     effect (``estimand.primary_features`` over the table's rows and the plan's ``predictors``), its
     own or the one an energy model made of it (``fiber_adj``), its ``feature``. Refused when there
     is none: the family not chosen, a table refused or withheld by its own answer, the exposure
     split into several columns, by a form the plan declares on it (``forms``, the design's
-    ``exposure_forms``; :data:`FORMED_EXPOSURE`, with no exit) or by its levels, or a form the plan
-    declares on it leaving it one column, a contrast of the form's groups (:data:`FORMED_CONTRAST`,
-    with no exit)."""
+    ``exposure_forms``; :data:`FORMED_EXPOSURE`) or by its levels, or a form the plan declares on
+    it leaving it one column, a contrast of the form's groups (:data:`FORMED_CONTRAST`); each of
+    the two formed refusals with the straight line as its way forward
+    (:func:`straight_line_exit`), among consumers where the plan restricts the exposure to them
+    (``consumers``, the state's standing domain, or the declared form's own)."""
     from turbotab.core.estimand import primary_features
 
     data = getattr(fit, "data", fit) or {}
@@ -709,11 +744,13 @@ def reported_of(fit: Any, exposure: str, task: str = "regression", *,
             f"{info['refused']}", tuple(info.get("exits") or ()))
     rows = list(model.get("coefficients") or [])
     names = primary_features([str(r.get("feature")) for r in rows], exposure, predictors)
+    line = straight_line_exit(exposure, consumers=consumers or _consumers_only(forms, exposure))
     if len(names) > 1 and any(f in (forms or {}) for f in (exposure, *names)):
         raise S.SpecCurveRefused(FORMED_EXPOSURE.format(
-            exposure=exposure, n=len(names), names=_listing([f"`{f}`" for f in names])), ())
+            exposure=exposure, n=len(names), names=_listing([f"`{f}`" for f in names])), (line,))
     if len(names) == 1 and exposure in (forms or {}):
-        raise S.SpecCurveRefused(FORMED_CONTRAST.format(exposure=exposure, name=names[0]), ())
+        raise S.SpecCurveRefused(FORMED_CONTRAST.format(exposure=exposure, name=names[0]),
+                                 (line,))
     row = next((r for r in rows if len(names) == 1 and r.get("feature") == names[0]), None)
     if row is None or row.get("estimate") is None:
         raise S.SpecCurveRefused(
@@ -1014,9 +1051,11 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         unfollowed.append(COPIES_WORDS)
     if unfollowed:
         raise S.SpecCurveRefused(NOT_FOLLOWED_REFUSAL.format(steps=_listing(unfollowed)), ())
+    from turbotab.core.methods.exposure_form import domain_columns
+
     # The column the curve follows: the exposure's own, or the one the energy model made of it.
     reported = reported_of(ctx.inputs["fit"], exposure, task, predictors=spec.predictors,
-                           forms=spec.exposure_forms)
+                           forms=spec.exposure_forms, consumers=exposure in domain_columns(state))
     feature = reported.feature
     what, scale_key = label_of(feature)
     if survey is not None and survey.refusal:
@@ -1381,7 +1420,8 @@ __all__ = ["AGREEMENT", "CAP_REFUSAL", "COPIES_WORDS", "CROSSING", "ENERGY_READS
            "MATTERED_REQUIRES", "Mattered", "MatteredArtifact", "MatteredCurve",
            "MatteredExamined", "MatteredReported", "NOTHING_TO_VARY", "NOT_FOLLOWED",
            "NOT_FOLLOWED_REFUSAL", "NO_COLUMN", "OUTCOME_REFUSAL", "OUTCOME_WORDS", "RECORDED",
-           "RECORDED_WORDS", "STAGE", "adjustment_choices", "agrees", "complete", "curve_for",
+           "RECORDED_WORDS", "STAGE", "STRAIGHT_LINE_AMONG_CONSUMERS", "STRAIGHT_LINE_EXIT", "adjustment_choices", "agrees",
+           "complete", "curve_for", "straight_line_exit",
            "examined_choices", "examined_of", "exclusion_choices", "expected_seconds",
            "follow_up_of", "goal_of", "mattered_stage", "methods_sentence", "not_refitted",
            "offered", "outcome_refused", "plan_steps", "reading_wait", "reported_of", "says_of",
