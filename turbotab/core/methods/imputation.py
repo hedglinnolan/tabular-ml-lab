@@ -391,6 +391,23 @@ class _Design:
         return np.column_stack([np.ones(n), *parts]) if parts else np.ones((n, 1))
 
 
+NORM_DRAW_WORDS = "The model that imputes a number's blanks could not be computed on these rows."
+
+
+class NormDrawRefused(ImputationRefused, np.linalg.LinAlgError):
+    """:func:`_norm_draw`'s one refusal: numpy could not compute the pseudo-inverse or the
+    eigendecomposition of the model's cross-product (an SVD or eigendecomposition that did not
+    converge). An :class:`ImputationRefused`, so every caller that refuses an imputation in words
+    refuses this one too, and a LinAlgError, as numpy's failure was, so a caller that refuses a
+    chained model's linear-algebra failure in its own words naming the column
+    (``featurewise_mi.draw_copies``) still does. Its message is words, and ``why`` numpy's own
+    account (never shown)."""
+
+    def __init__(self, message: str = NORM_DRAW_WORDS, why: str = ""):
+        super().__init__(message)
+        self.why = str(why)
+
+
 def _norm_draw(X: np.ndarray, y: np.ndarray, rng: np.random.Generator
                ) -> tuple[np.ndarray, np.ndarray, float]:
     """(β̂, β*, σ*): least squares and a draw from its posterior (mice's ``.norm.draw``), β* = β̂ +
@@ -405,15 +422,13 @@ def _norm_draw(X: np.ndarray, y: np.ndarray, rng: np.random.Generator
     along it, as mice's ``remove.lindep`` drops a predictor whose variance on those rows is at most
     10⁻⁴, and V's other directions are large enough (as where the model has more columns than
     rows) that its rounding outweighs the 10⁻¹². A cross-product numpy cannot factor (an SVD or
-    eigendecomposition that does not converge) is refused in words."""
-    unfactored = ("A least-squares imputation model could not be drawn: numpy could not factor the "
-                  "cross-product of its predictors ({}).")
+    eigendecomposition that does not converge) is refused in words (:class:`NormDrawRefused`)."""
     XtX = X.T @ X
     XtX = XtX + np.diag(RIDGE * np.maximum(np.diag(XtX), 1e-12))
     try:
         inv = np.linalg.pinv(XtX)
     except np.linalg.LinAlgError as exc:
-        raise ImputationRefused(unfactored.format(exc)) from None
+        raise NormDrawRefused(why=f"{type(exc).__name__}: {exc}") from None
     beta = inv @ (X.T @ y)
     resid = y - X @ beta
     df = max(len(y) - X.shape[1], 1)
@@ -424,7 +439,7 @@ def _norm_draw(X: np.ndarray, y: np.ndarray, rng: np.random.Generator
         try:
             lam, Q = np.linalg.eigh((inv + inv.T) / 2)
         except np.linalg.LinAlgError as exc:
-            raise ImputationRefused(unfactored.format(exc)) from None
+            raise NormDrawRefused(why=f"{type(exc).__name__}: {exc}") from None
         root = Q * np.sqrt(np.clip(lam, 0.0, None))
     star = beta + sigma * (root @ rng.standard_normal(len(beta)))
     return beta, star, sigma

@@ -24,11 +24,14 @@ The tests recover R Rᵀ from the draws and their normal deviates and check it a
 ``pinvh`` of mice's ridged cross-product (``estimice``: ``xtx + diag(ridge * diag(xtx))``, ridge
 10⁻⁵), whose pseudo-inverse gives the zero column's coefficient no variance, as ``remove.lindep``
 drops a predictor whose variance on the recorded rows is at most 10⁻⁴. Where the factor exists,
-every draw is the base's, bit for bit. A cross-product numpy cannot factor is refused in words.
+every draw is the base's, bit for bit. A cross-product numpy cannot factor is refused in plain
+words, naming no library, and as a LinAlgError too, so the feature-wise copies still refuse their
+study factor in the words that name it and offer to leave it out (the verifier's PP2D-V1).
 """
 from __future__ import annotations
 
 import math
+import sys
 
 import numpy as np
 import pandas as pd
@@ -227,8 +230,11 @@ def test_where_the_cholesky_factor_exists_the_draw_is_the_base_s_bit_for_bit():
 @pytest.mark.parametrize("fails", ["pinv", "eigh"])
 def test_a_cross_product_numpy_cannot_factor_is_refused_in_words(fails, monkeypatch):
     """Where numpy's SVD (``pinv``) or, with no Cholesky factor, its eigendecomposition does not
-    converge (LAPACK allows either), the draw is refused in words naming what failed, never
-    numpy's bare LinAlgError; the tests above, where each converges, are drawn."""
+    converge (LAPACK allows either), the draw is refused in plain words, never numpy's bare
+    LinAlgError: an ImputationRefused, whose words name no library and carry none of LAPACK's text
+    (that is kept, unshown, as ``why``), and a LinAlgError too, so a caller that refuses a chained
+    model's linear-algebra failure in its own words still does (the next test). The tests above,
+    where each converges, are drawn."""
     message = "SVD did not converge" if fails == "pinv" else "Eigenvalues did not converge"
 
     def failing(*_: object, **__: object) -> None:
@@ -240,6 +246,72 @@ def test_a_cross_product_numpy_cannot_factor_is_refused_in_words(fails, monkeypa
     X, y = _full_rank_design()
     with pytest.raises(ImputationRefused) as refused:
         _norm_draw(X, y, np.random.default_rng(0))
-    assert str(refused.value) == (
-        f"A least-squares imputation model could not be drawn: numpy could not factor the "
-        f"cross-product of its predictors ({message}).")
+    assert isinstance(refused.value, np.linalg.LinAlgError)
+    assert str(refused.value) == ("The model that imputes a number's blanks could not be computed "
+                                  "on these rows.")
+    assert refused.value.why == f"LinAlgError: {message}"
+
+
+def _pinv_fails_in_the_draw(monkeypatch: pytest.MonkeyPatch) -> None:
+    """numpy's ``pinv`` made to fail as LAPACK's SVD may (``models/ridge.py`` records gesdd not
+    converging on Accelerate), only where ``_norm_draw`` calls it."""
+    real = np.linalg.pinv
+
+    def pinv(*args: object, **kwargs: object) -> np.ndarray:
+        if sys._getframe(1).f_code.co_name == "_norm_draw":
+            raise np.linalg.LinAlgError("SVD did not converge")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(np.linalg, "pinv", pinv)
+
+
+def _factor_beside_a_blank_covariate(rows: int = 120, seed: int = 1
+                                     ) -> tuple[pd.DataFrame, np.ndarray]:
+    """A study factor `f1` = 1 + 0.5 `a1` + 0.5 × event + N(0, 1), blank on a fifth of its rows,
+    beside an adjustment column `a1` blank on a fifth of its own, so the factor's copies are drawn
+    by the chained equations (``featurewise_mi.draw_copies``), `f1`'s by a number's model."""
+    rng = np.random.default_rng(seed)
+    a1 = rng.normal(size=rows)
+    event = (rng.random(rows) < 0.5).astype(float)
+    f1 = 1 + 0.5 * a1 + 0.5 * event + rng.normal(size=rows)
+    f1[rng.random(rows) < 0.2] = np.nan
+    a1[rng.random(rows) < 0.2] = np.nan
+    return pd.DataFrame({"f1": f1, "a1": a1}), event
+
+
+def test_a_study_factor_whose_number_s_model_cannot_be_computed_is_refused_naming_it(monkeypatch):
+    """PP2D-V1: where `f1`'s model cannot be computed in its chain, the feature-wise copies refuse
+    `f1` in the words that name it, and offer to leave it out (``columns``), as the base did for
+    numpy's LinAlgError; on fe4ff420 (round 1's head) the refusal escaped that handler, its
+    words numpy's and LAPACK's, naming no column. Where the model is computed, `f1` is drawn:
+    every blank of every copy finite, its recorded values untouched."""
+    from turbotab.core.methods.featurewise_mi import draw_copies
+
+    frame, event = _factor_beside_a_blank_covariate()
+    blank = frame["f1"].isna().to_numpy()
+    copies = draw_copies(frame, event, ["f1"], ["a1"], {}, 5, seed=1)
+    assert copies.imputed == {"f1": int(blank.sum())} and copies.values["f1"].shape == (120, 5)
+    assert np.isfinite(copies.values["f1"]).all()
+    assert (copies.values["f1"][~blank] == frame["f1"].to_numpy()[~blank, None]).all()
+    _pinv_fails_in_the_draw(monkeypatch)
+    with pytest.raises(ImputationRefused) as refused:
+        draw_copies(frame, event, ["f1"], ["a1"], {}, 5, seed=1)
+    assert str(refused.value) == ("The chained equations that draw `f1`'s copies could not fit "
+                                  "their models on these rows, so its copies cannot be drawn.")
+    assert refused.value.columns == ["f1"]
+
+
+def test_the_imputation_of_the_whole_model_refuses_it_in_the_plain_words(monkeypatch):
+    """The copies the fit's coefficient table, calibration and scales draw
+    (``missing.impute_for_inference``, ``smcfcs.impute``) carry the same refusal unchanged: an
+    ImputationRefused, in the plain words (the fit leads them with "Multiple imputation cannot run
+    on these data: "). Where the model is computed, every blank of both columns is drawn."""
+    frame, _ = _factor_beside_a_blank_covariate()
+    variables = [Variable("f1", "numeric"), Variable("a1", "numeric")]
+    drawn = impute(frame, variables, m=2, seed=1, iterations=2)
+    assert all(np.isfinite(f[["f1", "a1"]].to_numpy()).all() for f in drawn.frames)
+    _pinv_fails_in_the_draw(monkeypatch)
+    with pytest.raises(ImputationRefused) as refused:
+        impute(frame, variables, m=2, seed=1, iterations=2)
+    assert str(refused.value) == ("The model that imputes a number's blanks could not be computed "
+                                  "on these rows.")
