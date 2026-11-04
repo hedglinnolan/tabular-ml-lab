@@ -126,6 +126,8 @@ def test_table_2s_caption_states_no_interval_beside_the_result_row_that_gives_no
             assert (fit["result"]["ci_low"], fit["result"]["ci_high"]) == (311.42, 372.7)
             own = next(r for r in t.rows if r["key"] == "elastic_net/holdout/mse")
             assert (own["ci_low"], own["ci_high"]) == (311.42, 372.7)
+        else:  # the served score is the recorded one here: only the opening's currency withholds
+            assert fit["result"]["ci_low"] is None and fit["result"]["ci_high"] is None
 
 
 def test_after_a_change_after_the_opening_the_score_stays_and_no_interval_is_given():
@@ -137,6 +139,27 @@ def test_after_a_change_after_the_opening_the_score_stays_and_no_interval_is_giv
     moved = {"linear": {"mse": 351.0, "r2": 0.1}, "elastic_net": {"mse": 349.5, "r2": 0.11}}
     result = result_at_opening(served_fit(moved), at)["result"]
     assert result["estimate"] == 342.068 and result["estimate"] != moved["elastic_net"]["mse"]
+    assert result["ci_low"] is None and result["ci_high"] is None
+    assert result["sentence"] == opened_sentence("; the opening recorded no interval on it.")
+
+
+def test_after_a_change_that_leaves_the_final_familys_score_as_it_was_no_interval_is_given():
+    """The opening's currency withholds the interval on its own: a family selected after the
+    opening changes the fit, while the final family's served held-out score and interval stay what
+    the opening recorded and served. The fit is no longer the one opened, so no interval is given.
+    The other side of this guard, the opening current with the same served score and interval,
+    gives it (the first test)."""
+    records = [*opened_log(),
+               record(6, d.SelectModels(models=["linear", "elastic_net", "ridge"]), post_seal=True)]
+    at = seal.reported_result(records, opened=True, changed=True)
+    assert at["current"] is False
+    fit = served_fit()
+    served = next(m for m in fit["models"] if m["family"] == "elastic_net")
+    # The scenario discriminates: the score guard alone would give the interval here.
+    assert served["holdout"]["mse"] == at["scores"]["elastic_net"]["mse"] == 342.068
+    assert served["holdout_detail"]["intervals"]["mse"] == INTERVAL
+    result = result_at_opening(fit, at)["result"]
+    assert result["family"] == "elastic_net" and result["estimate"] == 342.068
     assert result["ci_low"] is None and result["ci_high"] is None
     assert result["sentence"] == opened_sentence("; the opening recorded no interval on it.")
 
