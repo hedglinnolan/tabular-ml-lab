@@ -2154,7 +2154,9 @@ class ProjectService:
         for Fit; while the shelf is still measuring that estimate, the fit waits for it. Every
         estimate stage that fits the chosen families (it reads ``models``: the sensitivity
         analyses, the effects, the scales' corrections) costs at least as much, and waits with
-        it."""
+        it. The curve of which decisions mattered is not an estimate stage and is held by none:
+        ``fit_press.curve_holds`` keeps a long curve until a press confirmed its estimate, and no
+        press records one yet (``fit_press``'s module docstring), so it computes live."""
         from turbotab.core.fit_press import fit_estimate, holds
 
         if stage not in estimand.ESTIMATE_STAGES or "models" not in self.engine.graph[stage].reads:

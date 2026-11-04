@@ -70,7 +70,7 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.stages.effects import has_coefficient_table, no_table_refusal
     from turbotab.core.stages.modeling import (_missing_for_table, _survey, _task, coded_outcome,
                                                fit_designs, outcome_levels, read_assignment)
-    from turbotab.core.stages.sensitivity import fit_on_rows
+    from turbotab.core.stages.sensitivity import fit_on_rows, split_units
     from turbotab.core.voice import listing
 
     state = ctx.state
@@ -98,10 +98,14 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     assignment = read_assignment(ctx.inputs["split"])
     rows = assignment.index.to_numpy()  # every analyzed row (ruling 3)
     extra = [c for c in further if c not in spec.inputs]
+    grouped_by = (getattr(ctx.inputs["split"], "data", None) or {}).get("grouped_by")
     with open_store(ctx) as store:
         unit_columns = cluster_columns(state, store.columns)
         info = {c.name: c for c in store.info().columns}
-        columns = list(dict.fromkeys([*spec.inputs, *extra, target, *unit_columns]))
+        if grouped_by not in store.columns:
+            grouped_by = None
+        columns = list(dict.fromkeys([*spec.inputs, *extra, target, *unit_columns,
+                                      *([grouped_by] if grouped_by else [])]))
         frame = modeling_frame(store, columns, rows, outcome=target)
         # F15: the refits take the split's seed and the rows' designs, as the fit stage's did
         designs = fit_designs(state, store, frame.index.to_numpy())
@@ -114,6 +118,9 @@ def secondary_stage(ctx: StageContext) -> Bundle:
             frame = frame.loc[recorded]
             note = (f"the {int(len(frame)):,} analyzed rows with {listing(extra)} recorded, so the "
                     f"two differ by the adjustment alone")
+    # Ruling 14 (WAVE_C6A_PLAN §7): each row's unit as the split groups them, the groups the fit
+    # stage hands its own fits, so a refit's inner splits keep a unit's rows on one side.
+    split_groups = split_units(frame, grouped_by)
     spec2 = design_spec(state, frame[[*spec.inputs, *extra]],
                         [*spec.predictors, *[c for c in extra if c not in spec.predictors]],
                         column_info=info, energy_factors=spec.energy_factors)
@@ -172,7 +179,8 @@ def secondary_stage(ctx: StageContext) -> Bundle:
                 _, (coef, inference), concerns = fit_on_rows(
                     state, family, built[family.key], frame, s.inputs, y, task, unit_columns,
                     outcome=outcome, survey=survey, levels=levels, missing=missing_by[label],
-                    spec=s, seed=split_seed, designs=designs, cancelled=ctx.cancelled)
+                    spec=s, seed=split_seed, designs=designs, cancelled=ctx.cancelled,
+                    groups=split_groups)
             except Exception as exc:  # noqa: BLE001 - a model that cannot be fit says why
                 fits.append({"label": label, "adjusted_for": adjusted, "n_rows": int(len(frame)),
                              "coefficients": None, "concerns": [f"It could not be fit: {exc}"]})
