@@ -294,6 +294,39 @@ def test_declaring_a_removed_feature_the_modifier_rekeys_the_card():
     assert key(modified) != key(plain)
 
 
+@pytest.mark.xfail(strict=True, reason="KR1: the proposals key does not read the missing-values "
+                                       "answer until a stage may declare a key-only read "
+                                       "(graph.Stage, outside this package)")
+def test_a_missing_values_answer_that_drops_the_exposure_rekeys_the_card(tmp_path):
+    """KR1: `f1`, a feature QC-RLSC removed, is the declared modifier of `f3`'s effect, so the card
+    lists it with its 4 blanks (the test above). A missing-values answer that leaves `f3` out takes
+    the exposure out of every model, so no modification is declared for it and the fresh card omits
+    `f1`. So the stage's key changes with that answer, or the card cached before it, which lists
+    `f1`, is served."""
+    from turbotab.core.graph import stage_keys
+    from turbotab.core.methods.interaction import declared
+    from turbotab.core.stages import build_graph
+
+    table, df = _table(tmp_path)
+    held = removed_state(True)
+    dropped = held.model_copy(update={"missing": MissingSpec(strategy="complete_case",
+                                                             drop_columns=["f3"])})
+    assert (list(declared(held)), list(declared(dropped))) == (["f1"], [])
+    before, after = blanks(df, ["x1", "x2", "f3", "f1"], "y"), blanks(df, ["x1", "x2", "f3"], "y")
+    assert (before, after) == ([("f1", 4, 0.4), ("x1", 3, 0.3), ("f3", 2, 0.2)],
+                               [("x1", 3, 0.3), ("f3", 2, 0.2)])
+    assert listed(table.run(proposals_stage, held)) == before
+    assert listed(table.run(proposals_stage, dropped)) == after  # the leave-out's own f3 stays
+
+    order = build_graph().order()
+
+    def key(state: ProjectState) -> str | None:
+        return stage_keys(order, state.model_dump(mode="json"), "fingerprint")["proposals"]
+
+    assert key(held) is not None
+    assert key(dropped) != key(held)
+
+
 # ── the plasma panel through QC-RLSC, through the real stage graph ───────────────────────────────
 
 PLASMA_BASE = {"lens": ["metabolomics"], "orientation": "sample_major", "target": "disease",

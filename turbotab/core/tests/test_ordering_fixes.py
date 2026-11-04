@@ -505,6 +505,23 @@ def test_decide_now_answers_the_effect_while_whos_in_is_still_open():
                       early_ctx("exclusions"))
 
 
+@pytest.mark.parametrize("question", ["estimand", "adjustment", "energy_adjustment"])
+def test_no_card_the_proposals_stage_serves_waits_on_the_missing_values_question(question):
+    """Both ways on a proposals card's dependencies (KR1): the card is computed by the proposals
+    stage and asked after the grouping and the missing-values questions. The stage reads the
+    grouping answer, so the card waits on it; the missing-values answer is no card dependency,
+    whatever the stage's key reads, so Decide now answers the effect while Who's in is still open
+    (the test above)."""
+    from turbotab.core.interview import NEEDS
+    from turbotab.core.sequence import card_reads
+
+    assert "proposals" in NEEDS[question]
+    assert (QUESTION_KEYS.index("clusters") < QUESTION_KEYS.index("missing")
+            < QUESTION_KEYS.index(question))
+    assert "clusters" in card_reads(question)
+    assert "missing" not in card_reads(question)
+
+
 def survey_log(*later: dict) -> list[DecisionRecord]:
     roles = {"SEQN": "identifier", "DR1TKCAL": "covariate", "WTDRD1": "design",
              "SDMVSTRA": "design", "SDMVPSU": "design"}
