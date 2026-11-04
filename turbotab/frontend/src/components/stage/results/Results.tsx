@@ -3,7 +3,7 @@
  * decision that produced it. A changed earlier answer veils each section until its stage
  * recomputes; nothing is deleted.
  */
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { isRefusalError } from "../../../api/client";
 import {
   substitutionDecision,
@@ -14,9 +14,10 @@ import {
   type SubstitutionArtifact,
 } from "../../../api/m1-stage-types";
 import { useCancelJob, useDecide, useModels, usePressFit, useQuest } from "../../../api/queries";
-import type { ProjectView, Refusal, StageStatus } from "../../../api/schema";
-import { RefusalNote } from "../../record/Refusal";
+import type { Decision, ProjectView, Refusal, StageStatus } from "../../../api/schema";
+import { FailureNote, RefusalNote } from "../../record/Refusal";
 import { StaleVeil, type VeilState } from "../../../motion/StaleVeil";
+import { finish, waysForward } from "../../StageRefusal";
 import { StageRetry } from "../../StageRetry";
 import { DesignWarnings, warningsAbout } from "../DesignWarnings";
 import { plain } from "../format";
@@ -79,11 +80,31 @@ function energyProvenance(view: ProjectView, design: DesignArtifact | null): str
  * Fit, pressed (SIZING P0.8; FOUNDATION §7): until it is, no estimate is served, and under
  * Estimate pressing it locks the plan. One obvious click; a refusal says what it waits for.
  * `reason`: the engine's words for why the fit waits, once known; no caption until then.
+ *
+ * A refused press is said with its ways forward, as a stage's refusal is (StageRefusal): one that
+ * names no decision in words after the refusal's, and one that is a decision a press that records
+ * it as the server served it. Under Estimate and Describe the open noticings' triage holds the
+ * press until it is confirmed (core/fit_press.py `triage_refusal`), and this screen draws no
+ * triage, so its "Keep the recommended dispositions" is the way past here: once it is recorded
+ * the refusal goes, and Fit is pressed again by the person, never for them. A refusal of that
+ * decision is said beneath the press's refusal (RefusalNote).
  */
 function FitPress({ pid, reason }: { pid: string; reason: string | null }) {
   const press = usePressFit(pid);
+  const decide = useDecide(pid);
+  const [notTaken, setNotTaken] = useState<{ refusal: Refusal } | { failure: string } | null>(null);
   const failure = press.error;
   const refused = failure && isRefusalError(failure) ? failure.refusal : null;
+  const ways = refused ? waysForward({ stage: "fit", ...refused.error }) : [];
+  const take = (decision: Decision) => {
+    setNotTaken(null);
+    decide.mutate(decision, {
+      onSuccess: () => press.reset(),
+      onError: (e) => setNotTaken(isRefusalError(e) ? { refusal: e.refusal } : { failure: e.message }),
+    });
+  };
+  const told = ways.filter((x) => !x.decision);
+  const presses = ways.filter((x) => x.decision);
   return (
     <section className={s.section} data-purpose="fit_press" data-testid="fit-press">
       {reason ? (
@@ -95,7 +116,10 @@ function FitPress({ pid, reason }: { pid: string; reason: string | null }) {
         <button
           type="button"
           className={s.bandButton}
-          onClick={() => press.mutate()}
+          onClick={() => {
+            setNotTaken(null);
+            press.mutate();
+          }}
           disabled={press.isPending}
           data-testid="press-fit"
         >
@@ -103,9 +127,44 @@ function FitPress({ pid, reason }: { pid: string; reason: string | null }) {
         </button>
       </div>
       {refused ? (
-        <p className={s.bandNote} role="alert">
-          <Rich text={refused.error.message} />
-        </p>
+        <div role="alert" data-testid="fit-press-refusal" data-code={refused.error.code}>
+          <p className={s.bandNote}>
+            <Rich text={told.length ? finish(refused.error.message) : refused.error.message} />
+            {told.map((x) => (
+              <Fragment key={x.label}>
+                {" "}
+                <Rich text={finish(x.label)} />
+              </Fragment>
+            ))}
+          </p>
+          {presses.length ? (
+            <div className={s.bandRow}>
+              {presses.map((x) => (
+                <button
+                  key={x.label}
+                  type="button"
+                  className={s.bandButton}
+                  onClick={() => take(x.decision as Decision)}
+                  disabled={decide.isPending || press.isPending}
+                  data-testid="fit-press-exit"
+                >
+                  <Rich text={x.label} />
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {notTaken ? (
+            "refusal" in notTaken ? (
+              <RefusalNote
+                refusal={notTaken.refusal}
+                onExit={(exit) => (exit.decision ? take(exit.decision as Decision) : setNotTaken(null))}
+                onDismiss={() => setNotTaken(null)}
+              />
+            ) : (
+              <FailureNote message={notTaken.failure} onDismiss={() => setNotTaken(null)} />
+            )
+          ) : null}
+        </div>
       ) : failure ? (
         <p className={s.bandNote} role="alert">
           {failure.message}
