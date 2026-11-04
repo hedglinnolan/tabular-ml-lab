@@ -51,10 +51,11 @@ def state(**slots: Any) -> d.ProjectState:
 
 class Run:
     """The table ingested, the participant flow, and the design, fit and mattered stages as a
-    worker runs them (every analyzed row, no held-out rows: inference)."""
+    worker runs them (every analyzed row, no held-out rows: inference). ``grouped_by``: the
+    column the split keeps whole, each row's unit its value there (row id = position)."""
 
     def __init__(self, frame: pd.DataFrame, folder: Path, st: d.ProjectState, *,
-                 fit: Any = None):
+                 fit: Any = None, grouped_by: str | None = None):
         from turbotab.core.datastore import DataStore, ingest
         from turbotab.core.stages.modeling import design_stage, fit_stage
         from turbotab.core.stages.rows import compute_cohort
@@ -70,7 +71,10 @@ class Run:
         with DataStore(parquet, 1 << 30) as store:
             _, kept, _ = compute_cohort(store, st, self.info)
         self.kept = np.asarray(kept)
-        split = mf.split_bundle(self.kept, holdout=0.0, seed=st.split.seed)
+        units = (None if grouped_by is None
+                 else self.table[grouped_by].to_numpy()[self.kept])
+        split = mf.split_bundle(self.kept, holdout=0.0, seed=st.split.seed, groups=units,
+                                grouped_by=grouped_by)
         base = {"ingest": self.info, "split": split, "target_info": mf.target_info(st.task,
                                                                                     st.target)}
         self.design = design_stage(mf.context(st, base, self.paths))

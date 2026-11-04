@@ -1097,8 +1097,8 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
     from turbotab.core.models.inference import Outcome
     from turbotab.core.models.pipeline import build_pipeline
     from turbotab.core.readings import nesting
-    from turbotab.core.stages.modeling import _missing_for_table
-    from turbotab.core.stages.sensitivity import fit_on_rows
+    from turbotab.core.stages.modeling import _missing_for_table, fit_designs
+    from turbotab.core.stages.sensitivity import fit_on_rows, split_units
 
     family = get_family(reported.family)
     built = ctx.inputs["design"].objects
@@ -1118,10 +1118,22 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         (``modeling._missing_for_table``: under multiple imputation its own copies, drawn with the
         split's seed, the survey design and the clustering in their model), and the table
         ``sensitivity.fit_on_rows`` makes of them (pooled by Rubin's rules with Barnard–Rubin
-        degrees of freedom, the knots placed on these rows). ``at``: the context whose progress
-        is this specification's share of the stage's."""
+        degrees of freedom, the knots placed on these rows). Each refit is handed these rows'
+        survey design (``modeling.fit_designs``: under the population answer each row's stratum,
+        PSU and weight, so a tuned family's inner splits keep whole PSUs; F15) and each row's unit
+        as the split groups them (``sensitivity.split_units``; WAVE_C6A_PLAN §7 ruling 14), as the
+        fit hands its own fits both and the sensitivity analyses' refits are handed them; where
+        ``fit_designs`` refuses the weight on these rows, the fit would report no estimate, so the
+        specification is not estimated, in that refusal's words, and nothing is fitted without its
+        design. ``at``: the context whose progress is this specification's share of the stage's."""
         cols = columns_of(picks)
         part = raw.loc[rows_of(picks)]
+        with open_store(ctx) as store:
+            try:
+                designs = fit_designs(state, store, part.index.to_numpy())
+            except StageRefusal as exc:  # a weight that cannot be built on these rows
+                raise S.SpecCurveRefused("the fit would report no estimate: " + str(exc),
+                                         ()) from exc
         if dict(picks) == recorded:
             s, pipeline = spec, built["pipelines"][family.key]
         else:
@@ -1138,10 +1150,11 @@ def curve_for(ctx: StageContext, *, examined: Sequence[MatteredExamined] = ()
         missing = _missing_for_table(at, s, part[list(s.inputs)], y, task, [family.key],
                                      loss={"n_dropped": None}, survey=found, clusters=clustered,
                                      nested=nesting(state, nested, columns=s.inputs))
-        _, (rows, info), _ = fit_on_rows(state, family, pipeline, part, s.inputs, y, task,
-                                         unit_columns, outcome=named, survey=found,
-                                         missing=missing, spec=s, seed=seed,
-                                         cancelled=ctx.cancelled)
+        _, (rows, info), _ = fit_on_rows(
+            state, family, pipeline, part, s.inputs, y, task, unit_columns, outcome=named,
+            survey=found, missing=missing, spec=s, seed=seed, designs=designs,
+            cancelled=ctx.cancelled,
+            groups=split_units(part, grouped_by if grouped_by in part.columns else None))
         info = info or {}
         n = int(info["n_rows"]) if info.get("n_rows") is not None else int(len(part))
         estimator = str(info.get("estimator") or "")
