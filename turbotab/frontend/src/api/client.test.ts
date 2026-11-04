@@ -9,6 +9,16 @@ import {
   signInUrl,
 } from "./client";
 import type { ProjectView, Refusal } from "./schema";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** The query parameters the served contract gives the decisions route (POST …/decisions). */
+const DECIDE_QUERY = (
+  JSON.parse(
+    readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../../server/openapi.json"), "utf-8"),
+  ) as { paths: Record<string, { post?: { parameters?: { name: string; in: string }[] } }> }
+).paths["/api/projects/{pid}/decisions"]!.post!.parameters!.filter((p) => p.in === "query").map((p) => p.name);
 
 function respond(status: number, body: unknown) {
   const fetchMock = vi.fn(async () => {
@@ -114,6 +124,38 @@ describe("a decision the server refuses (409)", () => {
       .decide("p1", { kind: "set_lens", lenses: [] })
       .catch((e) => e)) as RefusalError;
     expect(err.refusal.error.exits).toEqual([]);
+  });
+});
+
+describe("a decision's reason (the decider's note, G14)", () => {
+  const decision = { kind: "set_target", column: "hba1c" } as const;
+  const urlOf = (call: unknown) => new URL((call as [string])[0], "http://localhost");
+
+  it("rides as the decisions route's note, in the person's words, and only when given", async () => {
+    // The parameter the server takes is the served contract's, not the client's own name.
+    expect(DECIDE_QUERY).toContain("note");
+    const reason = "The clinic reads 7% & over as \"high\" + flags it.";
+    const fetchMock = respond(200, { decisions: [] });
+    await api.decide("p 1", decision, { note: reason });
+    await api.decide("p 1", decision);
+    await api.decide("p 1", decision, { note: "" });
+    const [noted, plain, blank] = fetchMock.mock.calls.map(urlOf);
+    expect(noted!.pathname).toBe("/api/projects/p%201/decisions");
+    expect(noted!.searchParams.get("note")).toBe(reason);
+    expect([...noted!.searchParams.keys()].every((k) => DECIDE_QUERY.includes(k))).toBe(true);
+    // No reason, no parameter: the record's note is none.
+    expect(plain!.search).toBe("");
+    expect(blank!.search).toBe("");
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual(decision);
+  });
+
+  it("goes with decide_now when both are asked for", async () => {
+    const fetchMock = respond(200, { decisions: [] });
+    await api.decide("p1", decision, { decideNow: true, note: "Answered ahead." });
+    const url = urlOf(fetchMock.mock.calls[0]);
+    expect(url.searchParams.get("decide_now")).toBe("true");
+    expect(url.searchParams.get("note")).toBe("Answered ahead.");
   });
 });
 

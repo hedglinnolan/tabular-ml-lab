@@ -210,13 +210,19 @@ export const api = {
   /**
    * Record a decision. `decideNow` answers a later question ahead of the Router, where the server
    * allows it (its card is computed and the earlier answers it reads are in); otherwise it is
-   * refused (409) with what the question is waiting for.
+   * refused (409) with what the question is waiting for. `note` is the decider's reason, kept on
+   * the decision's record (`?note=`); one past the server's limit is refused (409,
+   * `note_too_long`) and nothing is recorded. An empty one is not sent.
    */
-  decide: (pid: string, decision: Decision | DecisionInput, opts?: { decideNow?: boolean }) =>
+  decide: (
+    pid: string,
+    decision: Decision | DecisionInput,
+    opts?: { decideNow?: boolean; note?: string },
+  ) =>
     request<ProjectView>(`/projects/${enc(pid)}/decisions`, {
       method: "POST",
       json: decision,
-      query: { decide_now: opts?.decideNow ? "true" : undefined },
+      query: { decide_now: opts?.decideNow ? "true" : undefined, note: opts?.note },
     }),
 
   /** Confirm a gate's sweep: every default ("defaults") or noticing disposition ("noticings") as

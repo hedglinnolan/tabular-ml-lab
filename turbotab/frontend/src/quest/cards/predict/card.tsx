@@ -1,12 +1,14 @@
 /**
  * What the six Predict declaration cards share: the frame, the recording, and the engine's words.
  *
- * A card records through the existing decision hook (`useDecide`) and answers a press the server
- * does not record the way the Record's plain wiring does: the refusal and its exits, or the
- * failure, at the option pressed. It states only what the engine serves: a line of the quest log
- * (`reason`, `would_change`, `changes_nothing`), the preview the engine serves for the option
- * pointed at (the caption of its first view, else its note, else its caution), or the refusal the
- * preview meets. A card with nothing served to say about an option names the option and stops.
+ * A card records as the existing decision hook (`useDecide`) does, with the reason the person gave
+ * for the answer (ReasonBox, above the card's record button) as the decision's note, and answers a
+ * press the server does not record the way the Record's plain wiring does: the refusal and its
+ * exits, or the failure, at the option pressed. It states only what the engine serves: a line of
+ * the quest log (`reason`, `would_change`, `changes_nothing`), the preview the engine serves for
+ * the option pointed at (the caption of its first view, else its note, else its caution), or the
+ * refusal the preview meets. A card with nothing served to say about an option names the option and
+ * stops; the reason on record is the person's own words, as recorded.
  *
  * A press the card will not send (a number outside what the model takes, a column still to choose)
  * is answered at the option too, in one sentence for each field in the way, so no press is silent.
@@ -15,16 +17,26 @@
  * walkthrough): a click on an option chooses it, marked "chosen" until it is recorded, and the
  * button under the options records the choice; Enter on an option records it at once, as before.
  */
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type MouseEvent, type ReactNode } from "react";
-import { isRefusalError } from "../../../api/client";
-import { useColumnSummaries, useDecide, useProjectView, useStageResult } from "../../../api/queries";
-import type { ColumnSummary, Decision, ProjectState, QuestLine, Refusal } from "../../../api/schema";
+import { api, isRefusalError } from "../../../api/client";
+import {
+  keys,
+  logDerivedKeys,
+  mergeView,
+  useColumnSummaries,
+  useProjectView,
+  useQuest,
+  useStageResult,
+} from "../../../api/queries";
+import type { ColumnSummary, Decision, ProjectState, ProjectView, QuestLine, QuestLog, Refusal } from "../../../api/schema";
 import { Actions, RecordButton } from "../../../components/record/ask/common";
 import { Options, type OptionItem, type OptionTag } from "../../../components/record/Options";
 import { FailureNote, RefusalNote } from "../../../components/record/Refusal";
 import { Prose } from "../../../components/Prose";
 import { decisionKey, stateSeq, usePreview, type Answer } from "../../../components/stage/data";
 import { useStageFocus, type StageFocus } from "../../../state/focus";
+import { NO_REASON, ReasonBox, noteOf, type Reason } from "../ReasonBox";
 import c from "./declaration.module.css";
 
 /** The engine's words for the option pointed at, tagged with the decision they answer. */
@@ -66,18 +78,50 @@ export interface CardWiring {
   hold: (at: string) => void;
   answerAt: { key: string; node: ReactNode } | null;
   words: Words | null;
+  /** The reason being written for the next record, sent with it as the decision's note. */
+  reason: Reason;
+  setReason: (reason: Reason) => void;
+  /** The note on the record that answers the card's line, or null. */
+  reasonOnRecord: string | null;
+}
+
+/** Record a decision with the reason given for it (`?note=`, none where none is given), as
+ *  `useDecide` records one (queries.ts): the view the server answers with merged into the cache,
+ *  and the reads that follow the decision log refetched. `useDecide` takes no note. */
+function useDecideWithNote(pid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ decision, note }: { decision: Decision; note: string | null }) =>
+      note === null ? api.decide(pid, decision) : api.decide(pid, decision, { note }),
+    onSuccess: (view: ProjectView) => {
+      qc.setQueryData<ProjectView>(keys.view(pid), (prev) => mergeView(prev, view));
+      for (const key of logDerivedKeys(pid)) void qc.invalidateQueries({ queryKey: key, exact: true });
+    },
+  });
+}
+
+/** The note on the record that answers the card's line: the record the quest log names for the
+ *  declaration of `kind` (core/quest.py: a declaration's line is keyed by its kind, and names the
+ *  last live record of it once answered), or null. The log is the one the shell holds; the card
+ *  never fetches it. */
+function noteOnRecord(view: ProjectView | undefined, log: QuestLog | undefined, kind: Decision["kind"]): string | null {
+  const line = log?.stages.flatMap((s) => s.lines).find((l) => l.source === "declaration" && l.key === kind);
+  if (!line?.decision_id) return null;
+  return view?.decisions.find((d) => d.id === line.decision_id)?.note ?? null;
 }
 
 /** The wiring of one card: its project's state, its recording, and the preview of the option of
  *  its own kind that is pointed at (the Stage previews the same option from the same cache). */
 export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
   const view = useProjectView(pid).data;
+  const log = useQuest(pid, false).data;
   const summaries = useColumnSummaries(pid, view?.stages.ingest?.status === "fresh").data;
   const targetStatus = view?.stages.target_info?.status;
   const target = useStageResult(pid, "target_info", targetStatus !== undefined && targetStatus !== "idle" && targetStatus !== "blocked").data?.artifact;
-  const decide = useDecide(pid);
+  const decide = useDecideWithNote(pid);
   const [plain, setPlain] = useState<PlainAnswer | null>(null);
   const [held, setHeld] = useState<string | null>(null);
+  const [reason, setReason] = useState<Reason>(NO_REASON);
   const { focus } = useStageFocus();
   const pointed =
     focus.kind === "option" && focus.decision.kind === kind
@@ -85,10 +129,15 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
       : null;
   const preview = usePreview(pid, pointed, view ? stateSeq(view) : 0);
 
+  // Every way the card records (its button, Enter on an option, a refusal's exit) sends the reason
+  // written for it; once recorded, the box is collapsed and empty again, unless the person has
+  // written on meanwhile. A refused press keeps it.
   const record = (decision: Decision, at: string) => {
     setPlain(null);
     setHeld(null);
-    decide.mutate(decision, {
+    const note = noteOf(reason);
+    decide.mutate({ decision, note }, {
+      onSuccess: () => setReason((now) => (noteOf(now) === note ? NO_REASON : now)),
       onError: (err) =>
         setPlain(
           isRefusalError(err)
@@ -130,6 +179,9 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
     hold,
     answerAt,
     words: preview.answer ? wordsOf(preview.answer) : null,
+    reason,
+    setReason,
+    reasonOnRecord: noteOnRecord(view, log, kind),
   };
 }
 
@@ -205,8 +257,10 @@ function BlockedNote({ problems }: { problems: string[] }) {
  *  card until the action records it). */
 export const CHOSEN = "chosen";
 
-/** The card's record button (today's cards' RecordButton), what a press records named on it, and
- *  the answer to its press under it where that press is not answered at an option. */
+/** The card's record button (today's cards' RecordButton), what a press records named on it, the
+ *  reason for the answer above it (ReasonBox: the one on record, and the box for the next, collapsed
+ *  until asked for), and the answer to its press under it where that press is not answered at an
+ *  option. */
 export function RecordChosen({
   label,
   card,
@@ -221,6 +275,7 @@ export function RecordChosen({
 }) {
   return (
     <>
+      <ReasonBox reason={card.reason} onChange={card.setReason} onRecord={card.reasonOnRecord} />
       <Actions>
         <RecordButton
           disabled={label === null || card.pending}
