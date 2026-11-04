@@ -23,8 +23,11 @@
  * in missing.html), with its m, its imputation model and its levels. Its repair round's V3 changed
  * that option's line alone: it says the coefficients are pooled, and claims no imputation of each
  * blank; its second repair round's V1 changed that line alone again: it says the copies only where
- * a predictor has a blank to impute, since the fit draws none where none has ("Where a predictor
- * has a blank to impute, several copies of the data are imputed", in missing.html).
+ * a predictor has a blank to impute, since the fit draws none where none has. R2-V1 changed that
+ * option's label and line alone: they are the server's words for the method, its served label and
+ * its sound sentence, since whether the fit draws copies is the engine's to decide ("Multiple
+ * imputation (m at least 20, more when more rows are incomplete)" and "Sound: with the outcome and
+ * energy", in missing.html).
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
