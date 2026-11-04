@@ -271,15 +271,23 @@ def functional_form(purpose: str) -> list[Case] | None:
     k = knots_by_rule(None)
     plain = proposal("exposure", purpose, k, mass_at_zero=False)
     zero = proposal("exposure", purpose, k, mass_at_zero=True)
+    covariate = proposal("confounder", purpose, k, mass_at_zero=False)
     confounder = proposal("confounder", purpose, k, mass_at_zero=True)
-    _check(plain["form"] != zero["form"], "an exposure with a mass at zero is proposed apart")
+    # Batch 1 (the owner's ruling of 2026-11-04): what you study is proposed as a straight line, a
+    # mass at zero or not, its restricted cubic spline the plan's check (``check_shape``).
+    _check(plain["form"] == zero["form"] == "linear",
+           "what you study is proposed as a straight line, a mass at zero or not")
+    _check(covariate["form"] == confounder["form"] == "spline",
+           "a continuous confounder is proposed as a spline, a mass at zero or not")
     rule = "knots by Harrell's rule on the effective sample size (`exposure_form.knots_by_rule`)"
     return [
-        Case("a continuous exposure or confounder (the form card's proposal, one tap for all)",
-             f"`{plain['form']}`, {rule}", plain["form"]),
-        Case(f"an exposure with at least {MASS_AT_ZERO:.0%} of its values exactly zero and none "
-             f"negative", f"`{zero['form']}`: non-consumers apart, a spline among consumers",
-             zero["form"]),
+        Case(f"what you study, a continuous exposure, with or without {MASS_AT_ZERO:.0%} or more "
+             f"of its values exactly zero (the form card's proposal)",
+             f"`{plain['form']}`: a straight line, the same model with a restricted cubic spline "
+             f"in its place set in the plan as its check (`exposure_form.check_shape`)",
+             plain["form"]),
+        Case("a continuous confounder (the form card's proposal, one tap for all)",
+             f"`{covariate['form']}`, {rule}", covariate["form"]),
         Case("a confounder with a mass at zero", f"`{confounder['form']}`, {rule}",
              confounder["form"]),
     ]
