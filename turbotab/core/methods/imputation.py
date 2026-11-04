@@ -184,10 +184,10 @@ class ModelSize:
     def held(self) -> bool:
         """Whether the rule applies: not to a yes/no or categorical model whose recorded values
         hold one level, which has no second level to count events or an effective size over. The
-        chain draws such a categorical column's blanks as its one level without fitting a model
-        (``_categorical``); a 0/1 column's logistic model is fit all the same (``_binary``), on
-        recorded values of one level that give its intercept no finite maximum, and its draws can
-        be the other level."""
+        chained equations draw such a column's blanks as its one level without fitting a model
+        (``_categorical``, ``_binary``), as a substantive-model-compatible draw does a category's;
+        such a draw of a 0/1 column fits its logistic model all the same (``smcfcs``'s covariate
+        model), and its draws can be the other level."""
         return self.kind not in ("binary", "categorical") or self.levels > 1
 
     @property
@@ -393,15 +393,39 @@ class _Design:
 
 def _norm_draw(X: np.ndarray, y: np.ndarray, rng: np.random.Generator
                ) -> tuple[np.ndarray, np.ndarray, float]:
-    """(β̂, β*, σ*): least squares and a draw from its posterior (mice's ``.norm.draw``)."""
+    """(β̂, β*, σ*): least squares and a draw from its posterior (mice's ``.norm.draw``), β* = β̂ +
+    σ* R z with R Rᵀ = V, V the pseudo-inverse of XᵀX with mice's ridge.
+
+    R is V's Cholesky factor, with 10⁻¹² on its diagonal. Where that factor does not exist in
+    float64, R is V's root by its eigendecomposition, V symmetrized first as mice's ``sym`` does
+    and its negative eigenvalues, which only rounding gives a pseudo-inverse of a positive
+    semidefinite matrix, set to 0; the draw takes the same z. The factor can fail where a predictor
+    is zero on the rows the model is fit to (the indicator of a level none of them hold, or a
+    column of one value, which standardizes to 0), so V and the predictor's coefficient are zero
+    along it, as mice's ``remove.lindep`` drops a predictor whose variance on those rows is at most
+    10⁻⁴, and V's other directions are large enough (as where the model has more columns than
+    rows) that its rounding outweighs the 10⁻¹². A cross-product numpy cannot factor (an SVD or
+    eigendecomposition that does not converge) is refused in words."""
+    unfactored = ("A least-squares imputation model could not be drawn: numpy could not factor the "
+                  "cross-product of its predictors ({}).")
     XtX = X.T @ X
     XtX = XtX + np.diag(RIDGE * np.maximum(np.diag(XtX), 1e-12))
-    inv = np.linalg.pinv(XtX)
+    try:
+        inv = np.linalg.pinv(XtX)
+    except np.linalg.LinAlgError as exc:
+        raise ImputationRefused(unfactored.format(exc)) from None
     beta = inv @ (X.T @ y)
     resid = y - X @ beta
     df = max(len(y) - X.shape[1], 1)
     sigma = math.sqrt(float(resid @ resid) / rng.chisquare(df))
-    root = np.linalg.cholesky(inv + np.eye(len(inv)) * 1e-12)
+    try:
+        root = np.linalg.cholesky(inv + np.eye(len(inv)) * 1e-12)
+    except np.linalg.LinAlgError:
+        try:
+            lam, Q = np.linalg.eigh((inv + inv.T) / 2)
+        except np.linalg.LinAlgError as exc:
+            raise ImputationRefused(unfactored.format(exc)) from None
+        root = Q * np.sqrt(np.clip(lam, 0.0, None))
     star = beta + sigma * (root @ rng.standard_normal(len(beta)))
     return beta, star, sigma
 
@@ -438,7 +462,18 @@ def _logistic(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _binary(X: np.ndarray, y: np.ndarray, miss: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """A yes/no column's blanks: β* ~ N(β̂, H⁻¹) from its penalized logistic model (``_logistic``),
+    then a Bernoulli draw for each. Where its recorded values hold one level, that model's
+    intercept has no finite maximum (the fit stops far out, with a variance far larger, so a drawn
+    intercept can take either sign), and every blank is drawn as that level, as ``_categorical``
+    draws a category of one level; the model's random numbers are still taken, so every later draw
+    in the copy takes the random numbers it took before."""
     obs = ~miss
+    recorded = np.unique(y[obs])
+    if len(recorded) == 1:
+        rng.standard_normal(X.shape[1])  # β*'s
+        rng.random(int(miss.sum()))  # each blank's
+        return np.full(int(miss.sum()), recorded[0], dtype=float)
     beta, V = _logistic(X[obs], y[obs])
     root = np.linalg.cholesky(V + np.eye(len(V)) * 1e-12)
     star = beta + root @ rng.standard_normal(len(beta))
