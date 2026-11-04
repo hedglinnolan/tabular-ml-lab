@@ -630,10 +630,16 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
                      f"{tick(col)}'s unit before excluding anyone.", "exclusions",
                      "Check the unit first")
     rows = f"{count(len(fc.kept))}{who} rows"
+    # A closing says of the rows it reads what is counted: where some hold no value of ``col`` it
+    # names the values read, since a blank row is within no range.
+    held = (int(pd.to_numeric(fc.kept[col], errors="coerce").notna().sum())
+            if col in fc.kept.columns else len(fc.kept))
     if p.get("unit") == "kJ":
         if not n:
-            every = "every non-QC row" if fc.reference_rows else "every row"
-            return Voice(f"Read in kJ, {every} of {tick(col)} is within "
+            every = (f"all {count(held)}{who} values of {tick(col)} are"
+                     if held < len(fc.kept) else
+                     f"{'every non-QC row' if fc.reference_rows else 'every row'} of {tick(col)} is")
+            return Voice(f"Read in kJ, {every} within "
                          f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} kJ a day; nothing needs "
                          f"excluding.", closes=True)
         return Voice(f"{count(n)} of {rows} report {tick(col)} below "
@@ -645,8 +651,9 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
         # bounds are over the days the reading records (``days``), a day's where it records none.
         days = int(p.get("days") or 1)
         span = "a day" if days == 1 else f"over {tick(days)} days"
-        return Voice(f"{'Every non-QC row' if fc.reference_rows else 'Every row'} of {tick(col)} is "
-                     f"within {tick(number(lo))}–{tick(number(hi))} {span}; nothing needs "
+        every = (f"All {count(held)}{who} values of {tick(col)} are" if held < len(fc.kept) else
+                 f"{'Every non-QC row' if fc.reference_rows else 'Every row'} of {tick(col)} is")
+        return Voice(f"{every} within {tick(number(lo))}–{tick(number(hi))} {span}; nothing needs "
                      f"excluding.", closes=True)
     return Voice(f"{count(n)} of {rows} report {tick(col)} below {tick(number(lo))} "
                  f"or above {tick(number(hi))} a day.", "exclusions", "Choose an exclusion rule")

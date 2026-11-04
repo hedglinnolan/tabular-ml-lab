@@ -217,11 +217,26 @@ def reframe(findings: list[dict[str, Any]], lens: Sequence[str], frame: pd.DataF
     return out
 
 
-def own_findings(frame: pd.DataFrame, lens: Sequence[str]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
-    """The app's own findings from this package, as ``(raw, finding)``: the lens contradiction."""
-    from turbotab.core.detectors import lenses
+def own_findings(frame: pd.DataFrame, lens: Sequence[str], target: str | None = None,
+                 from_packs: Sequence[dict[str, Any]] | None = None
+                 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """The app's own findings from this package, as ``(raw, finding)``: the lens contradiction.
 
-    found = lenses.contradiction_finding(frame, lens)
+    INBOX:1032: it reads what the left-censoring finding reads, the outcome ``target`` set aside
+    and, handed the served pack findings ``from_packs``, the rows outside those their pooled-QC
+    finding names (every row where none is served). Handed neither, on a Case/Control/QC label it
+    read the QC rows (the pack's own reading needs a two-level label) and the outcome as a
+    measurement column, and could say the blanks do not look like non-detections beside a
+    left-censoring finding that says they do."""
+    from turbotab.core.detectors import lenses
+    from turbotab.core.stages.finding_words import pooled_qc_rows
+
+    qc_rows = None
+    if from_packs is not None:
+        at = np.zeros(len(frame), dtype=bool)
+        at[sorted(pooled_qc_rows(frame, from_packs))] = True
+        qc_rows = pd.Series(at, index=frame.index)
+    found = lenses.contradiction_finding(frame, lens, target=target, qc_rows=qc_rows)
     return [({"confidence": "high"}, found)] if found else []
 
 
