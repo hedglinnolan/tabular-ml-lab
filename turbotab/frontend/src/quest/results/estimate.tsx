@@ -23,8 +23,9 @@
  *      model that holds the members together names them all among its columns, each row adjusted
  *      for the others (core/stages/effects.py `SequenceFit.adjusted_for`), so its footnote names
  *      what every row it marks is adjusted for, the members beside a row's own as the other study
- *      factor (`asTable2`, `footnoted`); where the rows carry Benjamini–Hochberg q-values (each
- *      member tested in its own model), a q column follows P (`qsOf`, `withQ`);
+ *      factor, said last (`asTable2`, `footnoted`); where the rows carry Benjamini–Hochberg
+ *      q-values beside the family's multiplicity sentence (each member tested in its own model),
+ *      a q column follows P (`qsOf`, `withQ`);
  *   3. beside it the primary model's diagnostics in the engine's words: a failed check's ways
  *      forward are named, never pressed, and a recorded response is said as its record words it,
  *      with the estimates the engine serves for it.
@@ -246,8 +247,8 @@ function unreportedOf(fam: Family, exposures: readonly string[]): { key: string;
  *  is adjusted for (core/stages/effects.py `SequenceFit.adjusted_for`), each row adjusted for the
  *  others; the adapter's one footnote per model, marked on each member's row, would then say a row
  *  is adjusted for its own member. So each drawn model's columns are handed to it as what every
- *  row it marks is adjusted for (`footnoted`): the members this table draws are named as "the
- *  other study factor" in their place, so the footnote names what each row's line counts
+ *  row it marks is adjusted for (`footnoted`): the members this table draws are said as "the
+ *  other study factor", last, in their place, so the footnote names what each row's line counts
  *  (`subsOf`), and a model that holds nothing but the members (the unadjusted one) has a footnote,
  *  with the engine's note that they are in it together. A member the table does not draw (a
  *  category served as several rows) stays among them by its name. */
@@ -273,22 +274,30 @@ function asTable2(art: ServedEffects, index: number): ServedEffects {
 /** A model's served columns as its footnote says them for every row it marks (`asTable2`): the
  *  members this table draws (`drawn`) left out, and where the model holds two or more of them
  *  together, each row adjusted for the others, "the other study factor" (or "the other N study
- *  factors") in the first one's place: what every marked row's estimate is adjusted for beside
- *  the rest, its own member never among them. One drawn member (a single exposure; feature-wise
- *  regression's, each in its own model) is only left out: no row is adjusted for another. */
+ *  factors") said last, joined by "and" to the column before it: what every marked row's estimate
+ *  is adjusted for beside the rest, its own member never among them. Said last and joined so, no
+ *  column beside it reads as its name: in the served order it read "the other study factor, grp"
+ *  beside a member not drawn, and "the other study factor, bmi" in Model 3 (the verifier's
+ *  FW-V2-5). One drawn member (a single exposure; feature-wise regression's, each in its own
+ *  model) is only left out: no row is adjusted for another. */
 function footnoted(columns: readonly string[], drawn: ReadonlySet<string | null>): string[] {
   const others = columns.filter((c) => drawn.has(c)).length - 1;
+  const rest = columns.filter((c) => !drawn.has(c));
+  if (others < 1) return rest;
   const said = others === 1 ? "the other study factor" : `the other ${others} study factors`;
-  const first = columns.findIndex((c) => drawn.has(c));
-  return columns.flatMap((c, i) => (!drawn.has(c) ? [c] : i === first && others > 0 ? [said] : []));
+  return rest.length ? [...rest.slice(0, -1), `${rest[rest.length - 1]!} and ${said}`] : [said];
 }
 
 /** Each drawn row's q-value by the row's key as the adapter keys it (`<column>:<model>` with
- *  several columns drawn, else the model's key), where a drawn row is served one: the Benjamini–
- *  Hochberg q-values feature-wise regression gives each member's test, which the footnotes say
+ *  several columns drawn, else the model's key), where a drawn row is served one beside the
+ *  family's multiplicity sentence (`art.multiplicity`, which the table footnotes): the Benjamini–
+ *  Hochberg q-values feature-wise regression gives each member's test, which that sentence says
  *  control the false-discovery rate (core/estimand.py `multiplicity_statement`). Empty where no
- *  drawn row carries one (a joint fit, a single exposure), so no column is drawn for them. */
-function qsOf(shown: ServedEffects, index: number): Map<string, number | null> {
+ *  drawn row carries one (a joint fit), or where no such sentence is served (a single exposure,
+ *  whose feature-wise test carries a q-value over its 1 test, the effects stage serving the
+ *  sentence only for a family; the verifier's FW-V2-2), so no column is drawn for them. */
+function qsOf(art: ServedEffects, shown: ServedEffects, index: number): Map<string, number | null> {
+  if (!art.multiplicity) return new Map();
   const many = shown.exposures.length > 1;
   const out = new Map<string, number | null>();
   for (const column of shown.exposures) {
@@ -351,7 +360,7 @@ function FamilyEstimates({ art, index, many, decisions }: { art: ServedEffects; 
   const shown = asTable2(art, index);
   const subs = subsOf(art, shown, index);
   const adapted = table2FromEffects(shown, index, number);
-  const table = withQ({ ...adapted, rows: withSubs(adapted.rows, subs) }, qsOf(shown, index));
+  const table = withQ({ ...adapted, rows: withSubs(adapted.rows, subs) }, qsOf(art, shown, index));
   const plotted = forestFromEffects(shown, index);
   const forest = { ...plotted, rows: withSubs(plotted.rows, subs) };
   const unreported = unreportedOf(fam, art.exposures);
