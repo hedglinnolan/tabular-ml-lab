@@ -22,7 +22,7 @@ import { useStageFocus } from "../../state/focus";
 import { fmtInt, fmtValue, listJoin } from "../../util/format";
 import { type FirstLook, useColumnHistogram, useFirstLook, useOutcomeHistogram } from "./data";
 import { type ColumnLook, type Look, ROWS_SHOWN, TITLE, decideNow, exploreLine, listedColumns, outcomeTitle, rowsWords, sectionId } from "./model";
-import { Bars, Curve, GroupShares, Levels } from "./views";
+import { Bars, Curve, GroupShares, Levels, Unread } from "./views";
 import s from "./firstlook.module.css";
 
 export function FirstLookGallery({ pid, view, log }: { pid: string; view: ProjectView; log: QuestLog }) {
@@ -58,15 +58,6 @@ function Refused({ message }: { message: string }) {
   );
 }
 
-/** A read the server did not answer, said where its drawing would be. */
-function Unread({ message }: { message: string }) {
-  return (
-    <p className={s.refused} data-testid="look-unread">
-      Not read: <Plain text={message} />
-    </p>
-  );
-}
-
 // ── each column, as it is ────────────────────────────────────────────────────
 
 function Columns({ pid, fl }: { pid: string; fl: FirstLook }) {
@@ -74,7 +65,7 @@ function Columns({ pid, fl }: { pid: string; fl: FirstLook }) {
   if (!fl.read) {
     return (
       <Section id="columns" title={TITLE.columns}>
-        <p className={s.quiet}>Reading the columns…</p>
+        {fl.unread.columns ? <Unread message={fl.unread.columns} /> : <p className={s.quiet}>Reading the columns…</p>}
       </Section>
     );
   }
@@ -274,7 +265,7 @@ function DistributionCell({ pid, fl, onDecide }: { pid: string; fl: FirstLook; o
   const histogram = useOutcomeHistogram(pid, target, fl.gate, open && numeric);
   const lever = fl.explore.looks?.distribution ?? null;
   let body: ReactNode;
-  if (!door || !outcome) body = <p className={s.quiet}>Reading when it opens…</p>;
+  if (!door || !outcome) body = fl.unread.outcome ? <Unread message={fl.unread.outcome} /> : <p className={s.quiet}>Reading when it opens…</p>;
   else if (door.kind === "shut") {
     body = (
       <p className={s.quiet} data-testid="look-outcome-distribution-line">
@@ -405,7 +396,11 @@ function RowsCell({ pid, fl }: { pid: string; fl: FirstLook }) {
         <span className={s.cellKind}>the outcome beside the other columns</span>
       </div>
       {!rows || !window ? (
-        <p className={s.quiet}>Reading the rows…</p>
+        fl.unread.window ? (
+          <Unread message={fl.unread.window} />
+        ) : (
+          <p className={s.quiet}>Reading the rows…</p>
+        )
       ) : (
         <>
           {rows.kind === "record" ? (

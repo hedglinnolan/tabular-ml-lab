@@ -44,6 +44,10 @@ const EXPLORE = "explore" as string as AnyStageName;
 export interface FirstLook {
   /** GET /columns has answered: until then nothing is counted */
   read: boolean;
+  /** why a read failed, where it did, in the client's words: GET /columns; the outcome's summary
+   *  (GET /columns for the gates now); the row window, which waits on the columns and so fails
+   *  with them. Null while a read is on its way or answered. */
+  unread: { columns: string | null; outcome: string | null; window: string | null };
   /** every column but the outcome, and those drawn */
   columns: ColumnLook[];
   drawn: ColumnLook[];
@@ -67,20 +71,24 @@ export function useFirstLook(pid: string, view: ProjectView, log: QuestLog): Fir
   const target = state.target ?? null;
   const gate = gateMark(view, log);
   const table = tableMark(view);
-  const summaries = useColumnSummaries(pid, view.stages.ingest?.status === "fresh").data;
+  const columnsRead = useColumnSummaries(pid, view.stages.ingest?.status === "fresh");
+  const summaries = columnsRead.data;
   const columns = summaries ? columnLooks(summaries, state) : [];
-  const outcome = useQuery({
+  const outcomeRead = useQuery({
     queryKey: [...keys.columns(pid), "outcome", gate],
     queryFn: ({ signal }) => api.columns(pid, signal),
     enabled: target !== null,
     select: (all: ColumnSummary[]) => all.find((c) => c.name === target) ?? null,
-  }).data;
+  });
+  const outcome = outcomeRead.data;
   const windowColumns = target && summaries ? [target, ...summaries.filter((c) => c.name !== target).slice(0, COLUMNS_BESIDE).map((c) => c.name)] : [];
-  const window = useQuery({
+  const windowRead = useQuery({
     queryKey: [...keys.table(pid, 0, ROWS_SHOWN, windowColumns.join(",")), gate],
     queryFn: ({ signal }) => api.table(pid, { offset: 0, limit: ROWS_SHOWN, columns: windowColumns }, signal),
     enabled: windowColumns.length > 0,
-  }).data;
+  });
+  const window = windowRead.data;
+  const columnsFailed = summaries === undefined ? (columnsRead.error?.message ?? null) : null;
 
   const status = view.stages.explore;
   const read = useQuery<StageResult<ExploreArtifact>>({
@@ -99,6 +107,11 @@ export function useFirstLook(pid: string, view: ProjectView, log: QuestLog): Fir
 
   return {
     read: summaries !== undefined,
+    unread: {
+      columns: columnsFailed,
+      outcome: outcome === undefined ? (outcomeRead.error?.message ?? null) : null,
+      window: window === undefined ? (windowRead.error?.message ?? (windowColumns.length ? null : columnsFailed)) : null,
+    },
     columns,
     drawn: columns.slice(0, GALLERY_MAX),
     target,

@@ -338,14 +338,65 @@ describe("the card's beats", () => {
     expect(said.line).toBe("Its distribution is open on the rows analyzed; each view of the outcome is recorded as looked at.");
     // The window's gate is the outcome beside another column, the relationships' too: its line once.
     expect(said.also).toEqual([ESTIMATE.table.body.withheld[OUTCOME]]);
-    // Both ways: with the window open, a relationship that still waits says its own line; none
-    // waiting, nothing more is said (Predict, after the record).
-    const open = rowsDoor(RECORDED.table.body, OUTCOME);
-    const detail = relationships[0]!.finding.detail!;
-    expect(outcome(beats({ ...input, rows: open, relationships })).also).toEqual([detail]);
+  });
+
+  /** Explore's beat as the card reads it at a moment, with its status changed where given. */
+  const beatAt = (m: Moment, artifact: ExploreArtifact, status = m.view.stages.explore) =>
+    exploreBeat({
+      target: OUTCOME,
+      status,
+      result: { ...m.explore.body, artifact },
+      failed: null,
+      artifact,
+      looks: exploreLooks(artifact, m.view.state),
+      whosIn,
+    });
+  const outcomeOf = (b: ReturnType<typeof beats>) => b.find((x) => x.key === "outcome")!;
+
+  it("say nothing more under Estimate while the window is on its way or was not read, though the relationships wait", () => {
+    // Under Estimate the relationships wait with their own line, served while Explore is current.
+    const a = artifactOf(ESTIMATE);
+    const { relationships } = exploreLooks(a, ESTIMATE.view.state);
+    expect(relationships.length).toBeGreaterThan(0);
+    expect(relationships.every((l) => l.state.kind === "waits" && !!l.state.line)).toBe(true);
+    const explore = beatAt(ESTIMATE, a);
+    expect(explore.kind).toBe("fresh");
+    const input = { columns: 3, drawn: 3, noticed: 0, target: OUTCOME, door: outcomeDoor(summaryOf(ESTIMATE)), relationships, explore };
+    // The window not read (on its way, or its read failed): nothing is said for it.
+    expect(outcomeOf(beats({ ...input, rows: null })).also).toEqual([]);
+    // Both ways: once read and shut, the window's own line.
+    expect(outcomeOf(beats({ ...input, rows: rowsDoor(ESTIMATE.table.body, OUTCOME) })).also).toEqual([ESTIMATE.table.body.withheld[OUTCOME]]);
+  });
+
+  it("say nothing more under Predict while Explore reads the rows again, and a relationship's own line only once it is current", () => {
+    // By construction, in the served shape: while Explore is not fresh under Predict the service
+    // serves its last result with each relationship's points withheld and a line in their place
+    // (service.py `_outcome_served`, fit_press.withhold_relationships), though the rows are drawn.
+    const line = "The line served in the relationships' place";
+    const withheld: ExploreArtifact = {
+      ...artifactOf(RECORDED),
+      findings: artifactOf(RECORDED).findings.map((f) => (f.kind === "outcome_relationship" ? { ...f, points: [], detail: line, record: null } : f)),
+    };
+    const { relationships } = exploreLooks(withheld, RECORDED.view.state);
+    expect(relationships.length).toBeGreaterThan(0);
+    expect(relationships.every((l) => l.state.kind === "waits")).toBe(true);
+    const rows = rowsDoor(RECORDED.table.body, OUTCOME);
+    expect(rows.kind).toBe("open");
+    const input = { columns: 3, drawn: 3, noticed: 0, target: OUTCOME, door: outcomeDoor(summaryOf(RECORDED)), rows, relationships };
+    const reading = beatAt(RECORDED, withheld, { ...RECORDED.view.stages.explore!, status: "running", fresh: false, key: "a key after the change" });
+    expect(reading).toEqual({ kind: "running", again: true });
+    expect(outcomeOf(beats({ ...input, explore: reading })).also).toEqual([]);
+    // Both ways: with what Explore found current and the window open, a relationship that waits
+    // says its own line once (the shape is constructed: today's server serves every relationship's
+    // points then); with the window not read, nothing.
+    const current = beatAt(RECORDED, withheld);
+    expect(current.kind).toBe("fresh");
+    expect(outcomeOf(beats({ ...input, explore: current })).also).toEqual([line]);
+    expect(outcomeOf(beats({ ...input, rows: null, explore: current })).also).toEqual([]);
+    // As served once current, none waits: nothing more is said.
     const recorded = exploreLooks(artifactOf(RECORDED), RECORDED.view.state).relationships;
     expect(recorded.some((l) => l.state.kind === "waits")).toBe(false);
-    expect(outcome(beats({ ...input, rows: open, relationships: recorded })).also).toEqual([]);
+    expect(outcomeOf(beats({ ...input, relationships: recorded, explore: beatAt(RECORDED, artifactOf(RECORDED)) })).also).toEqual([]);
   });
 
   it("say what Explore read and what can be decided now, once it has run", () => {

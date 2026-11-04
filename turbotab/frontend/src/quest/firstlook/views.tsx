@@ -5,10 +5,12 @@
  * (components/views/common/parts `ViewFrame`: the one line in place of an empty drawing, and the
  * table alternative, drawn only once it is opened, since a gallery holds many), in the gray of the
  * data now, at the container's width; it restyles none of them. The scale math is model.ts's
- * (`barsOf`, `curveOf`).
+ * (`barsOf`, `curveOf`). `Unread` is the line said in place of a drawing, or of the guide's beats,
+ * whose read the server did not answer.
  */
 import type { Histogram } from "../../api/schema";
 import { NOW, ViewFrame, fmtNum, fmtPct, fmtTick, sharedStyles as v, useWidth, type TableSpec } from "../../components/views/common/parts";
+import { Plain } from "../../kit";
 import { fmtInt } from "../../util/format";
 import { type BinPoint, type Box, type GroupQuality, barsOf, curveOf } from "./model";
 import s from "./firstlook.module.css";
@@ -46,6 +48,15 @@ const tableOf = (t: TableSpec) => () => (
     </tbody>
   </table>
 );
+
+/** A read the server did not answer, said where what it reads would be, in the client's words. */
+export function Unread({ message }: { message: string }) {
+  return (
+    <p className={s.refused} data-testid="look-unread">
+      Not read: <Plain text={message} />
+    </p>
+  );
+}
 
 /** A column's histogram: rows in each bin, between its first and last edges. */
 export function Bars({ histogram, label }: { histogram: Pick<Histogram, "edges" | "counts">; label: string }) {

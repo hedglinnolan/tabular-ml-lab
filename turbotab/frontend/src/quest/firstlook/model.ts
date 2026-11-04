@@ -340,7 +340,8 @@ export interface BeatsInput {
   noticed: number;
   target: string | null;
   door: Door | null;
-  /** the outcome beside the other columns, and how it moves with each predictor */
+  /** the outcome beside the other columns (null until its window is read), and how it moves with
+   *  each predictor */
   rows: RowsDoor | null;
   relationships: readonly Look[];
   explore: ExploreBeat;
@@ -379,12 +380,22 @@ export function exploreLine(e: ExploreBeat): string {
 
 /**
  * What else the outcome waits for, in the server's words, each said once and never the beat's own
- * line again: the window's line where it is shut, which is the gate of the outcome beside another
- * column and so the relationships' too (core/outcome_gate.py); else the line each relationship
- * that waits is served with.
+ * line again. Nothing until the window is read. Once read and shut, the window's line, which is
+ * the gate of the outcome beside another column and so the relationships' too
+ * (core/outcome_gate.py). Once read and not shut, the line each relationship that waits is served
+ * with, but only while what Explore found is current: while it reads the rows again the server
+ * serves a line in the relationships' place though the rows are drawn (service.py
+ * `_outcome_served`), and the gallery veils it.
  */
-function waiting(said: string, rows: RowsDoor | null, relationships: readonly Look[]): string[] {
-  const lines = rows?.kind === "shut" ? [rows.line] : relationships.map((l) => (l.state.kind === "waits" ? l.state.line : null));
+function waiting(said: string, rows: RowsDoor | null, relationships: readonly Look[], explore: ExploreBeat): string[] {
+  const lines =
+    rows === null
+      ? []
+      : rows.kind === "shut"
+        ? [rows.line]
+        : explore.kind === "fresh"
+          ? relationships.map((l) => (l.state.kind === "waits" ? l.state.line : null))
+          : [];
   return [...new Set(lines)].filter((l): l is string => !!l && l !== said);
 }
 
@@ -411,7 +422,7 @@ export function beats(input: BeatsInput): Beat[] {
   if (input.target && input.door) {
     const d = input.door;
     const said = d.kind === "open" ? `Its distribution is open on the ${rowsWords(d.rows)}; each view of the outcome is recorded as looked at.` : d.line;
-    out.push({ key: "outcome", title: outcomeTitle(input.target), line: said, also: waiting(said, input.rows, input.relationships) });
+    out.push({ key: "outcome", title: outcomeTitle(input.target), line: said, also: waiting(said, input.rows, input.relationships, input.explore) });
   }
   return out;
 }

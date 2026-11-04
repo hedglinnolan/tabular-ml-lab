@@ -24,6 +24,7 @@ import { Plain, kit as k, plain } from "../../kit";
 import { useStageFocus } from "../../state/focus";
 import { useFirstLook } from "./data";
 import { type ExploreBeat, type Look, beats, decideNow, exploreLine, sectionId } from "./model";
+import { Unread } from "./views";
 import s from "./firstlook.module.css";
 
 const isLook = (id: string) => id.startsWith("explore::");
@@ -63,7 +64,7 @@ function Guide({ pid, view, log }: { pid: string; view: ProjectView; log: QuestL
   if (!fl.read) {
     return (
       <section data-kit data-testid="first-look-guide" aria-label="First look's guide">
-        <p className={s.beatLine}>Reading the columns…</p>
+        {fl.unread.columns ? <Unread message={fl.unread.columns} /> : <p className={s.beatLine}>Reading the columns…</p>}
       </section>
     );
   }

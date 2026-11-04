@@ -9,10 +9,10 @@
  * decide_now.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 import { keys, useProjectView } from "../../api/queries";
-import type { QuestLog } from "../../api/schema";
+import type { QuestLog, TableWindow } from "../../api/schema";
 import { plain } from "../../kit";
 import { StageFocusProvider } from "../../state/focus";
 import { QuestScreen } from "../QuestScreen";
@@ -256,6 +256,93 @@ describe("under Estimate, after Who's in", () => {
     const beat = await within(card).findByTestId("beat-outcome");
     await waitFor(() => expect(within(beat).getAllByTestId("beat-outcome-also").map((p) => p.textContent)).toEqual([plain(ESTIMATE.table.body.withheld[OUTCOME])]));
     expect(beat).toHaveTextContent(plain(summaryOf(ESTIMATE).withheld));
+  });
+
+  it("the card's outcome beat says nothing more while the window is on its way or was not read, though the relationships wait", async () => {
+    const waits = [...new Set(relationships(ESTIMATE).map((f) => f.detail))];
+    expect(waits).toHaveLength(1);
+    for (const opts of [{ hold: ["/table"] }, {}] as Opts[]) {
+      const m = opts.hold ? ESTIMATE : { ...ESTIMATE, table: { status: 500, body: "Internal Server Error" as unknown as TableWindow } };
+      const { card, canvas } = shell(m, opts);
+      // Explore's result is read: the relationships wait, in their own line, on the canvas.
+      expect(await within(canvas).findByTestId("look-relationships-waiting-line")).toHaveTextContent(plain(waits[0]));
+      const beat = await within(card).findByTestId("beat-outcome");
+      expect(beat).toHaveTextContent(plain(summaryOf(ESTIMATE).withheld));
+      const rows = within(canvas).getByTestId("look-outcome-rows");
+      if (opts.hold) expect(rows).toHaveTextContent("Reading the rows…");
+      else await waitFor(() => expect(within(rows).getByTestId("look-unread")).toHaveTextContent("Not read: Internal Server Error"));
+      expect(within(beat).queryAllByTestId("beat-outcome-also")).toEqual([]);
+      expect(beat).not.toHaveTextContent(plain(waits[0]));
+      cleanup();
+    }
+  });
+});
+
+describe("under Predict while Explore reads the rows again", () => {
+  it("the card's outcome beat says nothing of the relationships, whose line the server serves in their place while Explore is not current", async () => {
+    // By construction, in the served shape: an answer Explore reads changed after the record, and
+    // while Explore reads the rows again the service serves its last result with each
+    // relationship's points withheld and a line in their place (service.py `_outcome_served`).
+    const line = "The line served in the relationships' place";
+    const withheld = {
+      ...artifactOf(RECORDED),
+      findings: artifactOf(RECORDED).findings.map((f) => (f.kind === "outcome_relationship" ? { ...f, points: [], detail: line, record: null } : f)),
+    };
+    const v = RECORDED.view;
+    const m: Moment = {
+      ...RECORDED,
+      view: { ...v, stages: { ...v.stages, explore: { ...v.stages.explore!, status: "running", fresh: false, key: "explore's key after the change" } } },
+      explore: { ...RECORDED.explore, body: { ...RECORDED.explore.body, artifact: withheld } },
+    };
+    const { card, canvas } = shell(m);
+    const waiting = await within(canvas).findByTestId("look-relationships-waiting-line");
+    expect(waiting).toHaveTextContent(line);
+    expect(inert(waiting)).toBe(true);
+    const beat = await within(card).findByTestId("beat-outcome");
+    await waitFor(() => expect(within(card).getByTestId("beat-explore")).toHaveTextContent("Explore is reading the rows again"));
+    // The window is open and read: its rows stand beside the other columns.
+    await waitFor(() => expect([...within(canvas).getByTestId("look-outcome-rows").querySelectorAll("th")].map((th) => th.textContent)).toEqual(RECORDED.table.body.columns));
+    expect(within(beat).queryAllByTestId("beat-outcome-also")).toEqual([]);
+    expect(beat).not.toHaveTextContent(line);
+  });
+});
+
+describe("a read the server did not answer", () => {
+  const failed = { status: 500, body: "Internal Server Error" };
+  const NOT_READ = "Not read: Internal Server Error";
+
+  it("the rows window: says it was not read where GET /table failed, and that it is reading while it is on its way", async () => {
+    const { canvas } = shell({ ...DRAWN, table: failed as unknown as Moment["table"] });
+    const rows = within(canvas).getByTestId("look-outcome-rows");
+    await waitFor(() => expect(within(rows).getByTestId("look-unread")).toHaveTextContent(NOT_READ));
+    expect(rows).not.toHaveTextContent("Reading");
+    cleanup();
+    // Both ways: held, it is still on its way.
+    const held = shell(DRAWN, { hold: ["/table"] });
+    await within(held.canvas).findByTestId("open-outcome-distribution");
+    const reading = within(held.canvas).getByTestId("look-outcome-rows");
+    expect(reading).toHaveTextContent("Reading the rows…");
+    expect(within(reading).queryByTestId("look-unread")).toBeNull();
+  });
+
+  it("the columns: where GET /columns failed, the guide, each column, the outcome's distribution and its rows say so", async () => {
+    const { canvas, card } = shell({ ...DRAWN, columns: failed as unknown as Moment["columns"] });
+    await waitFor(() => expect(within(card).getByTestId("look-unread")).toHaveTextContent(NOT_READ));
+    for (const id of ["first-look-columns", "look-outcome-distribution", "look-outcome-rows"]) {
+      const cell = within(canvas).getByTestId(id);
+      await waitFor(() => expect(within(cell).getByTestId("look-unread")).toHaveTextContent(NOT_READ));
+      expect(cell).not.toHaveTextContent("Reading");
+    }
+    expect(card).not.toHaveTextContent("Reading");
+    cleanup();
+    // Both ways: held, each is still on its way.
+    const held = shell(DRAWN, { hold: ["/columns"] });
+    expect(await within(held.card).findByTestId("first-look-guide")).toHaveTextContent("Reading the columns…");
+    expect(within(held.canvas).getByTestId("first-look-columns")).toHaveTextContent("Reading the columns…");
+    expect(within(held.canvas).getByTestId("look-outcome-distribution")).toHaveTextContent("Reading when it opens…");
+    expect(within(held.canvas).getByTestId("look-outcome-rows")).toHaveTextContent("Reading the rows…");
+    expect(within(held.card).queryByTestId("look-unread")).toBeNull();
+    expect(within(held.canvas).queryByTestId("look-unread")).toBeNull();
   });
 });
 
