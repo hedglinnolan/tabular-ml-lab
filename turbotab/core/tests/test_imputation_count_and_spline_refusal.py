@@ -6,9 +6,9 @@
   to the percentage of incomplete cases", as White, Pandis & Pham put it, and at least 20 here),
   not the answer's m; and only on the line of a family whose table is pooled over the copies,
   under inference, where the fit draws them. A family with no inference table is fit on the
-  step's fill, and the feature-wise table pools no copies, so under that answer it is not fit:
-  their lines say so, with no count (the verifier's P1: elastic net alone drew no copy while its
-  line said 38). Under prediction, or with the goal unanswered, the fit draws no copy, and no
+  step's fill, and its line says so, with no count (the verifier's P1: elastic net alone drew no
+  copy while its line said 38); the feature-wise tests draw copies of their own one study factor
+  at a time (the plasma scope's item 1), so their line states only the rule's floor. Under prediction, or with the goal unanswered, the fit draws no copy, and no
   family's line states a count or pooling (the next verifier's V1: under Predict the linear line
   said 38).
 * **A spline on too few values** (``exposure_form.rcs_knots``): ``Hmisc::rcspline.eval`` stops
@@ -149,32 +149,41 @@ def test_a_family_with_no_table_to_pool_states_no_count_and_says_its_fit_uses_th
     assert "38" not in line and "pooled" not in line
 
 
-FEATUREWISE_NOT_FIT = (" Feature-wise regression pools no multiple imputations, so under this "
-                       "answer its table is not fit; the fit says why and what to choose instead.")
+FEATUREWISE_OWN = (" Feature-wise regression's tests do not use this fill: they are pooled over at "
+                   "least 20 multiple imputations drawn one study factor at a time, each from its "
+                   "own model given the outcome and the covariates, more when more rows are "
+                   "incomplete.")
 
 
-def test_the_feature_wise_line_states_no_count_and_says_its_table_is_not_fit():
-    """The feature-wise tests pool no imputations, so under this answer their table is not fit:
-    the line says so in plain words (it said "the fit holds its table", which reads as keeps it),
-    with no count and no cross-validated score (it has none)."""
+def test_the_feature_wise_line_states_the_rules_floor_and_that_its_tests_draw_their_own():
+    """The feature-wise tests draw their own copies, one study factor at a time (the plasma
+    scope's item 1): the line says their tests do not use this fill and states only the rule's
+    floor, 20, since the fit counts the rest over the most incomplete study factor's model (on the
+    base it said the table is not fit); no cross-validated score (it has none)."""
     line, _, _ = _impute_line(38, family=get_family("featurewise"))
-    assert line.endswith(FEATUREWISE_NOT_FIT)
-    assert "38" not in line and "cross-validated" not in line and "holds" not in line
+    assert line.endswith(FEATUREWISE_OWN)
+    assert "38" not in line and "cross-validated" not in line and "not fit" not in line
 
 
 @pytest.mark.parametrize("models", [["featurewise"], ["linear", "featurewise"]])
-def test_the_feature_wise_table_the_line_says_is_not_fit_has_no_coefficients(tmp_path, models):
-    """The verifier's probe, alone and beside the linear model (which draws the copies): the fit
-    gives the feature-wise tests no coefficient, and its refusal says why and names a way forward,
-    as the design's line says."""
+def test_the_feature_wise_table_the_line_speaks_of_is_pooled_over_its_own_copies(tmp_path,
+                                                                                  models):
+    """The verifier's probe, alone and beside the linear model (which draws the joint copies): the
+    fit pools the feature-wise tests over copies of their own, at least the 20 the line states and
+    by the rule 38 here (`fiber` has no blank and `activity`, a covariate, is blank on 112 of the
+    300 rows: ⌈100 · 112 / 300⌉), each `fiber` row with an interval; on the base it gave them no
+    coefficient."""
+    import math
+
     lines, fit = _fit_under_mi(tmp_path, models)
-    assert lines["featurewise"].endswith(FEATUREWISE_NOT_FIT)
+    assert lines["featurewise"].endswith(FEATUREWISE_OWN)
     tests = next(m for m in fit.data["models"] if m["family"] == "featurewise")
-    assert not tests["inference"].get("coefficients")
-    refused = tests["inference"]["refused"]
-    assert refused.startswith("Feature-wise regression is not pooled over multiple imputations "
-                              "here: its tests run feature by feature")
-    assert refused.endswith("Choose complete cases.")
+    assert tests["inference"]["refused"] is None
+    record = tests["inference"]["missing"]
+    assert record["variables"][0] == "each study factor"
+    assert record["m"] == math.ceil(100 * 112 / 300) == 38
+    [fiber] = tests["coefficients"]
+    assert fiber["ci_low"] < fiber["estimate"] < fiber["ci_high"]
 
 
 @pytest.mark.parametrize("key", ["linear", "mixed", "gee"])

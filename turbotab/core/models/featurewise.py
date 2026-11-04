@@ -37,6 +37,14 @@ p-value over the exposures tested, and a discovery is ``q <`` :data:`FDR`.
 Every test is computed by Frisch–Waugh–Lovell: ``Z`` is projected out once, so 20,000 tests cost a
 few matrix products. The family makes no predictions (``predicts = False``): the fit stage reports
 its table and no cross-validated score.
+
+Under multiple imputation the table is pooled over copies it draws itself, one study factor at a
+time, each factor's blanks from its own model given the outcome and ``Z`` (censored-normal below a
+detection limit), each copy tested as above and pooled by Rubin's rules with Barnard and Rubin's
+df (a study factor with no value drawn keeps its complete-data test), then Benjamini–Hochberg on
+the pooled p-values (``methods.featurewise_mi``; the plasma scope's item 1). A plan it cannot
+pool, and under inference one censoring-aware fill, are refused before the lock
+(:func:`_pools_before_the_lock`).
 """
 from __future__ import annotations
 
@@ -379,11 +387,47 @@ def _clean(x: float) -> float | None:
     return float(x) if np.isfinite(x) else None
 
 
+def feature_tests(X: np.ndarray, other: np.ndarray, Q: np.ndarray, Z: np.ndarray, df_resid: float,
+                  binary: bool, clusters: Any, refusal: Any = None
+                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """(estimates, standard errors, df, nothing left) of each column of ``X`` tested on its own
+    against ``other`` (the event under the limma design, else the outcome), adjusted for
+    ``span(Q)`` (``Z``: the adjustment columns beside the intercept): classical least squares on
+    t(``df_resid``) by Frisch–Waugh–Lovell in blocks, or one CR2 fit per column with
+    Bell–McCaffrey df where the rows repeat. Under a ``refusal`` (no intervals: too few clusters,
+    more columns than CR2 is computed for) the least-squares estimates alone; with no residual
+    degrees of freedom, none."""
+    m = X.shape[1]
+    est = np.full(m, np.nan)
+    se = np.full(m, np.nan)
+    df = np.full(m, df_resid)
+    flat = np.zeros(m, dtype=bool)  # a study factor with nothing left once Z is projected out
+    n = X.shape[0]
+    if not clusters.clustered or refusal is not None:
+        step = max(1, _BLOCK_FLOATS // max(n, 1))
+        for lo in range(0, m, step):
+            block = slice(lo, lo + step)
+            if refusal is not None and df_resid < 1:
+                break  # no residual degrees of freedom: nothing can be estimated
+            flat[block] = nothing_left(X[:, block], Q)
+            if binary:
+                est[block], se[block] = classical_tests(X[:, block], other, Q, df_resid,
+                                                        response_is_matrix=True)
+            else:
+                est[block], se[block] = classical_tests(other, X[:, block], Q, df_resid,
+                                                        response_is_matrix=False)
+    else:
+        flat = nothing_left(X, Q)
+        est, se, df = _cr2_tests(X, other, Z, clusters.codes, binary)
+    return est, se, df, flat
+
+
 def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequence[str] | None,
                       clusters: Any = None, event: str | None = None, *,
                       named: Sequence[str] | None = None,
                       forms: Mapping[str, Any] | None = None,
-                      entered: Mapping[str, Sequence[str]] | None = None) -> Any:
+                      entered: Mapping[str, Sequence[str]] | None = None,
+                      pooled: Any = None) -> Any:
     """The feature-wise inference table (an ``InferenceTable``) on the model matrix. ``named``:
     the columns the roles answer gave the role, beside ``features`` (the names the matrix holds
     them under), for the words of a refusal; ``forms``: the study factors whose declared form is
@@ -397,7 +441,14 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     factor with nothing left once the adjustment columns are projected out is not estimable given
     them (:func:`not_estimable`): its row holds no number and the caption counts only the study
     factors tested, and where none is left to test the table is refused, naming each (the
-    orchestrator's ruling (4))."""
+    orchestrator's ruling (4)).
+
+    ``pooled``: each study factor's test pooled over imputed copies
+    (``methods.featurewise_mi.PooledTests``: the estimate, √T, Barnard–Rubin ν, nothing left in
+    some copy, the fraction of missing information and the Monte Carlo error), in place of the
+    tests on ``matrix`` (then one completed copy, whose names, rows and rank the table reads): its
+    rows add ``fmi`` and ``mc_se``, its intervals and p-values are on t(ν), and its caption says
+    the intervals are pooled."""
     from turbotab.core.models.inference import (INDEPENDENT, InferenceTable, _info, floor_refusal,
                                                 format_p)
 
@@ -439,29 +490,16 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
                    f"is reported.",
                    ({"label": f"Combine each `{clusters.column}`'s rows into one (the unit question, "
                               f"before the seal)", "decision": None},))
-    est = np.full(m, np.nan)
-    se = np.full(m, np.nan)
-    df = np.full(m, df_resid)
-    flat = np.zeros(m, dtype=bool)  # a study factor with nothing left once Z is projected out
     if refusal is None and df_resid < 1:
         refusal = (f"{n:,} rows leave no residual degrees of freedom after {Q.shape[1]:,} adjustment "
                    f"columns, so no test can be made.", ())
-    if not clusters.clustered or refusal is not None:
-        step = max(1, _BLOCK_FLOATS // max(n, 1))
-        for lo in range(0, m, step):
-            block = slice(lo, lo + step)
-            if refusal is not None and df_resid < 1:
-                break  # no residual degrees of freedom: nothing can be estimated
-            flat[block] = nothing_left(X[:, block], Q)
-            if binary:
-                est[block], se[block] = classical_tests(X[:, block], g, Q, df_resid,
-                                                        response_is_matrix=True)
-            else:
-                est[block], se[block] = classical_tests(yv, X[:, block], Q, df_resid,
-                                                        response_is_matrix=False)
+    if pooled is None:
+        est, se, df, flat = feature_tests(X, g if binary else yv, Q, Z, df_resid, binary, clusters,
+                                          refusal)
     else:
-        flat = nothing_left(X, Q)
-        est, se, df = _cr2_tests(X, g if binary else yv, Z, clusters.codes, binary)
+        est, se, df = (np.asarray(pooled.estimate, dtype=float), np.asarray(pooled.se, dtype=float),
+                       np.asarray(pooled.df, dtype=float))
+        flat = np.asarray(pooled.flat, dtype=bool)
     # No estimate of a study factor with nothing left (a copy of the covariates' span): the
     # numbers a fit gives it are rounding error, and under the limma design its "difference" is 0
     # with no variance. It is not estimable given the covariates (the orchestrator's ruling (4)).
@@ -492,6 +530,13 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     rows = [{"feature": f, "estimate": _clean(b), "ci_low": _clean(a), "ci_high": _clean(c),
              "p": _clean(pv), "se": _clean(s), "df": _clean(d), "q": _clean(qv)}
             for f, b, a, c, pv, s, d, qv in zip(tested, est, low, high, p, se, df, q)]
+    if pooled is not None:
+        # Each pooled row's fraction of missing information and Monte Carlo error, as every
+        # pooled table's rows carry them (``imputation.pool_rows``).
+        for r, g_, mc in zip(rows, np.asarray(pooled.fmi, dtype=float),
+                             np.asarray(pooled.mc_se, dtype=float)):
+            r["fmi"] = _clean(g_) if r["estimate"] is not None else None
+            r["mc_se"] = _clean(mc) if r["estimate"] is not None else None
     n_adjust = Q.shape[1] - 1
     adjusted = (f"with {n_adjust:,} adjustment column{'s' if n_adjust != 1 else ''}" if n_adjust
                 else "with no adjustment columns")
@@ -505,6 +550,22 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
         how = (f"from each test's own residual variance (classical least squares, exact under "
                f"the null for normal errors), on t({df_resid:,.0f})")
         covariance = "model"
+    if pooled is not None:
+        # Each copy's intervals as above; the table's are Rubin's, on t with Barnard–Rubin df,
+        # where values were drawn, and a study factor with none drawn keeps its complete-data test
+        # (B = 0, so ν = ν_com): the caption counts each where any is so.
+        drawn, once = (pooled.counts() if hasattr(pooled, "counts")
+                       else (int(np.sum(~flat)), 0))
+        if not once:
+            how = (f"in each copy {how}, pooled by Rubin's rules on t with Barnard–Rubin degrees "
+                   f"of freedom")
+        elif drawn:
+            how = (f"{how}: for the {drawn:,} study factor{'s' if drawn != 1 else ''} with values "
+                   f"drawn, in each copy, pooled by Rubin's rules on t with Barnard–Rubin degrees "
+                   f"of freedom; for the {once:,} with none drawn, once, on the complete data")
+        else:
+            how = (f"{how}, each tested once, on the complete data (no value its tests read was "
+                   f"drawn)")
     caption = (f"Each of {m:,} study factors tested on its own {adjusted}; the estimate is {estimand}. "
                f"95% intervals {how}. Benjamini–Hochberg q < {FDR:g}: {found:,} of {m:,}.")
     if unestimable:
@@ -574,8 +635,11 @@ class FeatureWiseTests(BaseEstimator):
         self.feature_names_in_ = np.asarray([str(c) for c in frame.columns], dtype=object)
         self.n_features_in_ = frame.shape[1]
         self.tested_, self.adjust_ = split_columns(list(frame.columns), self.features)
-        self.table_ = featurewise_table(frame, y, self.task, self.features, named=self.named,
-                                        forms=self.forms)
+        # A matrix with its blanks kept (the pooled table's, ``methods.featurewise_mi``) has no
+        # table of its own: each copy's is made from its draws.
+        complete = bool(np.isfinite(frame.to_numpy(dtype=float, na_value=np.nan)).all())
+        self.table_ = (featurewise_table(frame, y, self.task, self.features, named=self.named,
+                                         forms=self.forms) if complete else None)
         if self.task == "binary":
             _, event, other = event_indicator(y)
             self.classes_ = np.asarray([0 if other is None else other, event], dtype=object)
@@ -603,9 +667,12 @@ class FeatureWise(FamilyBase):
     )
     needs_scaling = False
     handles_missing = False
-    # Its tests run over more columns than an imputation model holds, so it pools no multiple
-    # imputations: under that answer the fit holds its table with the ways forward (MS7 repair).
-    pools_imputations = False
+    # Its tests run over more columns than one imputation model holds, so it pools imputations it
+    # draws itself, one study factor at a time, each from that factor's own model given the outcome
+    # and the covariates (``methods.featurewise_mi``; the plasma scope's item 1). Up to its budget
+    # (``featurewise_mi.MAX_FEATURE_COPIES``), beyond which the plan is refused before the lock.
+    pools_imputations = True
+    draws_per_feature = True
     # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it). It makes no predictions, so its invariances,
     # raw scale, attribution and curve shape are not applicable (C3, C5, C10), and so is Harrell's
     # bootstrap, which has no score of its to correct: the fit skips the loop for it (C11).
@@ -669,16 +736,28 @@ class FeatureWise(FamilyBase):
         return self.inference(pipeline, X, y, task=task, clusters=as_clusters(groups)).rows
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
-                  event: str | None = None) -> Any:
+                  event: str | None = None, copies: Any = None) -> Any:
         """The feature-wise table on the matrix the model step saw, clustered when rows repeat. A
         study factor that is a category enters with the columns the pipeline's own encoder made of
         it (:func:`category_columns`); a pipeline of the model step alone (the effects stage's, on
-        a matrix) hands them on from the step (``entered_``)."""
+        a matrix) hands them on from the step (``entered_``). ``copies``: the study factors'
+        imputed copies (``methods.featurewise_mi.FeatureCopies``) where the matrix keeps its
+        blanks, so the table is pooled over them
+        (``featurewise_mi.pooled_featurewise_table``)."""
         model = pipeline[-1]
         entered = getattr(model, "entered_", None)
         if len(getattr(pipeline, "steps", None) or ()) > 1 and getattr(model, "categories", None):
             entered = category_columns(pipeline, model.categories)
-        return featurewise_table(self._matrix(pipeline, X), y, task,
+        matrix = self._matrix(pipeline, X)
+        if copies is not None:
+            from turbotab.core.methods.featurewise_mi import pooled_featurewise_table
+
+            table, _ = pooled_featurewise_table(
+                matrix, y, task, getattr(model, "features", None), clusters, event,
+                censored=copies.censored, copies=copies, named=getattr(model, "named", None),
+                forms=getattr(model, "forms", None), entered=entered)
+            return table
+        return featurewise_table(matrix, y, task,
                                  getattr(model, "features", None), clusters, event,
                                  named=getattr(model, "named", None),
                                  forms=getattr(model, "forms", None), entered=entered)
@@ -729,15 +808,72 @@ def _has_a_study_factor(decision: Any, ctx: Any) -> None:
                     exits=[ROLES_WAY, keep])
 
 
+def _pools_before_the_lock(decision: Any, ctx: Any) -> None:
+    """The check before the lock (the plasma scope's item 1, fix (b)): under inference a
+    missing-values answer the plan's tables cannot take is refused at the models answer, at the
+    missing-values answer, in either order, and at the Fit press before the lock is recorded
+    (``lock_plan``), with the ways forward the fit would give, never only after the lock:
+
+    * the feature-wise table under one censoring-aware fill, recorded or not: its pooled route
+      replaces it (the orchestrator's ruling on M2; ``featurewise_mi.single_fill_refusal``);
+    * the feature-wise table under multiple imputation it cannot pool: a category among the
+      covariates with blanks, or draws beyond its budget, counted on the plan's rows
+      (``featurewise_mi.plan_refusal``);
+    * the marginal risk difference or ratio under multiple imputation, wherever a chosen family
+      standardizes them and a predictor is blank: they are not pooled over imputations (the
+      effects stage's own refusal, ``effects._Run.marginal``), so the conditional odds ratio or
+      complete cases.
+
+    Where the models answer chose other families too, fitting them without feature-wise
+    regression is a way forward."""
+    from turbotab.core import decisions as d
+
+    state = d._state(ctx)
+    if state is None or getattr(state, "purpose", None) != "inference":
+        return
+    kind = getattr(decision, "kind", None)
+    models = list(decision.models or []) if kind == "select_models" else list(state.models or [])
+    if kind == "set_missing":
+        answer = decision.model_dump(mode="json")
+    else:
+        answer = state.missing.model_dump(mode="json") if state.missing is not None else None
+    if not answer:
+        return
+    from turbotab.core.methods import featurewise_mi as fm
+
+    if FEATUREWISE.key in models:
+        others = [m for m in models if m != FEATUREWISE.key]
+        keep = ([{"label": (f"Fit the other {'family' if len(others) == 1 else 'families'} "
+                            f"chosen, without feature-wise regression"),
+                  "decision": {"kind": "select_models", "models": others}}] if others else [])
+        if fm.single_censoring_fill(answer):
+            reason, exits = fm.single_fill_refusal(answer, state, fm.plan_frame(state, ctx))
+            raise d.Refusal(fm.SINGLE_FILL, reason, exits=[*exits, *keep])
+        if answer.get("strategy") == "multiple_imputation":
+            found = fm.plan_refusal(state, answer, ctx)
+            if found is not None:
+                reason, exits = found
+                raise d.Refusal(fm.UNPOOLED, reason, exits=[*exits, *keep])
+    if answer.get("strategy") == "multiple_imputation":
+        marginal = fm.marginal_refusal(state, models, answer, ctx)
+        if marginal is not None:
+            raise d.Refusal(fm.MARGINAL_UNPOOLED_CODE, marginal[0], exits=marginal[1])
+
+
 def _register() -> None:
     from turbotab.core.decisions import register_validator
 
     register_validator("select_models", _has_a_study_factor)
+    register_validator("select_models", _pools_before_the_lock)
+    # First among the missing-values answer's checks: a single censoring-aware fill under the
+    # feature-wise table is refused for its pooled route before any check offers to record it.
+    register_validator("set_missing", _pools_before_the_lock, first=True)
+    register_validator("lock_plan", _pools_before_the_lock)
 
 
 _register()
 
 __all__ = ["CR2_MAX_FEATURES", "FDR", "FEATUREWISE", "FORMED_STUDY_FACTOR", "FeatureWise",
            "FeatureWiseTests", "bh_adjust", "categories_said", "category_columns", "classical_tests",
-           "energy_names", "event_indicator", "featurewise_table", "formed_study_factor",
+           "energy_names", "event_indicator", "feature_tests", "featurewise_table", "formed_study_factor",
            "no_study_factor", "not_estimable", "not_tested", "nothing_left", "split_columns"]

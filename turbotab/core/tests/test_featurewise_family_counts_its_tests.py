@@ -31,8 +31,9 @@ least squares on the design written out.
   others among them; each adjusted-for list names `grp` where the model holds its indicators.
 * (4) `fib` = 2 × `activity` + 1, nothing left once the covariates are projected out: refused by
   row as not estimable given them, naming them, alone and beside a tested `fiber`.
-* (5) values below detection under multiple imputation, the table refused: the sentence states
-  the answer and no interval.
+* (5) values below detection under multiple imputation: the table pooled over copies drawn one
+  study factor at a time (the plasma scope's item 1; it was refused), the sentence saying what was
+  drawn and pooled.
 
 The repair round (the verifier's V4a-1 … V4a-5): a recorded single fill beside a table that holds
 no interval (chain 3 with 244 features, cluster-robust tests beyond what TurboTab computes) claims
@@ -617,57 +618,89 @@ def test_the_detection_sentence_states_the_answer_and_no_interval_beside_a_refus
         "(Tobit) model within each of the 20 multiple imputations")
 
 
-def test_the_fits_methods_paragraph_beside_a_table_refused_under_multiple_imputation(tmp_path):
-    """Chain 3's inference twin (``test_ms7_chains``), its feature-wise table refused under
-    multiple imputation: the paragraph states the answer and no interval, and says no single fill
-    was made."""
+def _chain3_plan(tmp_path, features: int = 120) -> tuple:
+    """(the graph run, the table, the answers): chain 3's inference twin (``test_ms7_chains``) with
+    ``features`` metabolites, its QC-RLSC and PQN repairs applied, the multiple-imputation answer
+    the detection-limit leash draws for the values below detection, and feature-wise regression
+    chosen. The caller closes the run."""
     from turbotab.core.decisions import ProjectState, Refusal, SetMissing, validate
     from turbotab.core.methods import qc_drift as Q
     from turbotab.core.tests.acceptance.omics_chains import metabolomics_run
     from turbotab.core.tests.acceptance.test_ms7_chains import ctx_of, data
     from turbotab.core.tests.graph_runner import GraphRun
 
-    frame, _ = metabolomics_run()
+    frame, _ = metabolomics_run(p=features)
     path = tmp_path / "run.csv"
     frame.to_csv(path, index=False)
     run = GraphRun(path, tmp_path / "project")
+    base = {"lens": ["metabolomics"], "target": "case", "purpose": "inference",
+            "task": "binary", "event": "1",
+            "grain": {"grain": "repeated", "id_column": "participant_id"}, "unit": "row",
+            "repeat_kind": {"repeat_kind": "repeats"}}
+    roles = {c: "exposure" for c in frame.columns if c.startswith("mz_")}
+    roles.update({"participant_id": "identifier", "sample_id": "excluded",
+                  "injection_order": "excluded", "batch": "excluded", "sample_type": "excluded"})
+    out = run.run(ProjectState.model_validate({**base, "roles": roles}), upto=["findings"])
+    findings = {f["id"]: f for f in data(out["findings"])["findings"]}
+    qc = next(o for o in findings[Q.FINDING]["repairs"] if o["key"] == "qc_rlsc_lc")
+    scale = next(o for o in findings["omics_scale"]["repairs"] if o["key"] == "pqn_log2")
+    applied = ProjectState.model_validate({**base, "roles": roles, "findings": {
+        Q.FINDING: {"action": "applied", "option": "qc_rlsc_lc",
+                    "params": qc["decision"]["params"]},
+        "omics_scale": {"action": "applied", "option": "pqn_log2",
+                        "params": scale["decision"]["params"]}}})
+    with pytest.raises(Refusal) as refused:
+        validate(SetMissing(strategy="multiple_imputation"), ctx_of(applied, frame, out))
+    drawn = refused.value.exits[0]["decision"]
+    slots = {**applied.model_dump(exclude_none=True),
+             "missing": {k: v for k, v in drawn.items() if k != "kind"},
+             "split": {"holdout": 0.0, "folds": 5, "seed": 0, "validation": "kfold"},
+             "models": ["featurewise"]}
+    return run, frame, slots
+
+
+@pytest.mark.slow
+def test_the_fits_methods_paragraph_beside_a_table_pooled_under_multiple_imputation(tmp_path):
+    """Chain 3's inference twin under multiple imputation: the feature-wise table, refused on the
+    base ("Feature-wise regression is not pooled over multiple imputations here"), is pooled over
+    copies drawn one study factor at a time (the plasma scope's item 1). Counted on the table here,
+    never read from the engine: the study factors still blank among the 78 study samples after the
+    QC filters are the ones drawn, m is the engine's rule (at least 20, and at least the
+    percentage of samples blank in the most incomplete one), the q-values are statsmodels'
+    Benjamini–Hochberg over the pooled p-values, and the paragraph says what was drawn and pooled,
+    and no single fill."""
+    import math
+
+    from statsmodels.stats.multitest import multipletests
+
+    from turbotab.core.decisions import ProjectState
+    from turbotab.core.tests.acceptance.test_ms7_chains import data
+
+    run, frame, slots = _chain3_plan(tmp_path)
     try:
-        base = {"lens": ["metabolomics"], "target": "case", "purpose": "inference",
-                "task": "binary", "event": "1",
-                "grain": {"grain": "repeated", "id_column": "participant_id"}, "unit": "row",
-                "repeat_kind": {"repeat_kind": "repeats"}}
-        feats = [c for c in frame.columns if c.startswith("mz_")]
-        roles = {c: "exposure" for c in feats}
-        roles.update({"participant_id": "identifier", "sample_id": "excluded",
-                      "injection_order": "excluded", "batch": "excluded",
-                      "sample_type": "excluded"})
-        out = run.run(ProjectState.model_validate({**base, "roles": roles}), upto=["findings"])
-        findings = {f["id"]: f for f in data(out["findings"])["findings"]}
-        qc = next(o for o in findings[Q.FINDING]["repairs"] if o["key"] == "qc_rlsc_lc")
-        scale = next(o for o in findings["omics_scale"]["repairs"] if o["key"] == "pqn_log2")
-        applied = ProjectState.model_validate({**base, "roles": roles, "findings": {
-            Q.FINDING: {"action": "applied", "option": "qc_rlsc_lc",
-                        "params": qc["decision"]["params"]},
-            "omics_scale": {"action": "applied", "option": "pqn_log2",
-                            "params": scale["decision"]["params"]}}})
-        with pytest.raises(Refusal) as refused:
-            validate(SetMissing(strategy="multiple_imputation"), ctx_of(applied, frame, out))
-        drawn = refused.value.exits[0]["decision"]
-        slots = {**applied.model_dump(exclude_none=True),
-                 "missing": {k: v for k, v in drawn.items() if k != "kind"},
-                 "split": {"holdout": 0.0, "folds": 5, "seed": 0, "validation": "kfold"},
-                 "models": ["featurewise"]}
         out = run.run(ProjectState.model_validate(slots), upto=["fit"])
         model = data(out["fit"])["models"][0]
-        assert model["inference"]["refused"].startswith(
-            "Feature-wise regression is not pooled over multiple imputations here")  # premise
+        info, rows = model["inference"], model["coefficients"]
+        assert info["refused"] is None and info["covariance"] == "CR2"
+        study = frame[frame["sample_type"] == "Sample"]
+        blank = {r["feature"]: int(study[r["feature"]].isna().sum()) for r in rows}
+        drawn = sorted(f for f, k in blank.items() if k)
+        most = max(blank.values())
+        m = max(20, math.ceil(100 * most / len(study)))
+        record = info["missing"]
+        assert (record["m"], record["n_incomplete_rows"], sorted(record["censored"])) == (
+            m, most, drawn)
+        q = multipletests([r["p"] for r in rows], method="fdr_bh")[1]
+        np.testing.assert_allclose([r["q"] for r in rows], q, rtol=1e-10)
         methods = model["methods"]
-        assert "The missing-values answer is multiple imputation, which draws the values below " \
-               "detection in " in methods
-        assert "the table was not estimated from the copies, so no estimate or interval rests " \
-               "on them." in methods
-        assert "single fill" not in methods.lower().split("the feature-wise table was refused")[0]
-        assert "intervals are too narrow" not in methods
+        assert (f"Values below detection in {len(drawn)} features were drawn below the limit "
+                f"within each of the {m} multiple imputations, each feature's from its own "
+                f"censored-normal (Tobit) model given the outcome (Lubin et al. 2004).") in methods
+        assert (f"Each of the {len(rows)} features was tested in its own linear model with the "
+                f"covariates in each imputation and pooled by Rubin's rules; Benjamini–Hochberg "
+                f"q-values across the pooled p-values of the {len(rows)} tests "
+                f"({int(np.sum(q < 0.05))} below 0.05), every feature shown.") in methods
+        assert "single fill" not in methods.lower()
     finally:
         run.close()
 
@@ -796,68 +829,65 @@ def test_a_recorded_single_fill_beside_a_table_with_no_interval_claims_none():
     assert said(None, None) == narrow
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("features", [260, 120])
-def test_the_fits_methods_paragraph_under_a_single_fill_claims_an_interval_only_where_one_is(
+def test_the_fits_methods_paragraph_claims_an_interval_only_where_the_pooled_table_holds_one(
         tmp_path, features):
-    """Chain 3's inference twin under the single fill the multiple-imputation refusal offers: with
-    260 features, 244 after the QC filters, and the samples repeating, cluster-robust intervals are
-    beyond what TurboTab computes, so the table gives estimates alone, and the paragraph said "A
-    single fill, recorded as a limitation: its intervals are too narrow" beside it; now it claims
-    no interval. With 120 features the table holds its CR2 intervals, and the sentence stays."""
-    from turbotab.core.decisions import ProjectState, Refusal, SetMissing, validate
-    from turbotab.core.methods import qc_drift as Q
-    from turbotab.core.tests.acceptance.omics_chains import metabolomics_run
-    from turbotab.core.tests.acceptance.test_ms7_chains import ctx_of, data
-    from turbotab.core.tests.graph_runner import GraphRun
+    """Chain 3's inference twin under multiple imputation (the verifier's V4a-1, after the plasma
+    scope's item 1): with 260 features, 244 after the QC filters, and the samples repeating,
+    cluster-robust intervals are beyond what TurboTab computes, so the pooled table gives each
+    feature's pooled estimate alone and the paragraph claims no interval or test; with 120 the
+    table holds its pooled CR2 intervals. (On the base the answer was refused at the fit and one
+    censoring-aware fill offered in its place.)"""
+    from turbotab.core.decisions import ProjectState
+    from turbotab.core.tests.acceptance.test_ms7_chains import data
 
-    frame, _ = metabolomics_run(p=features)
-    path = tmp_path / "run.csv"
-    frame.to_csv(path, index=False)
-    run = GraphRun(path, tmp_path / "project")
+    run, frame, slots = _chain3_plan(tmp_path, features)
     try:
-        base = {"lens": ["metabolomics"], "target": "case", "purpose": "inference",
-                "task": "binary", "event": "1",
-                "grain": {"grain": "repeated", "id_column": "participant_id"}, "unit": "row",
-                "repeat_kind": {"repeat_kind": "repeats"}}
-        roles = {c: "exposure" for c in frame.columns if c.startswith("mz_")}
-        roles.update({"participant_id": "identifier", "sample_id": "excluded",
-                      "injection_order": "excluded", "batch": "excluded",
-                      "sample_type": "excluded"})
-        out = run.run(ProjectState.model_validate({**base, "roles": roles}), upto=["findings"])
-        findings = {f["id"]: f for f in data(out["findings"])["findings"]}
-        qc = next(o for o in findings[Q.FINDING]["repairs"] if o["key"] == "qc_rlsc_lc")
-        scale = next(o for o in findings["omics_scale"]["repairs"] if o["key"] == "pqn_log2")
-        applied = ProjectState.model_validate({**base, "roles": roles, "findings": {
-            Q.FINDING: {"action": "applied", "option": "qc_rlsc_lc",
-                        "params": qc["decision"]["params"]},
-            "omics_scale": {"action": "applied", "option": "pqn_log2",
-                            "params": scale["decision"]["params"]}}})
-        with pytest.raises(Refusal) as refused:
-            validate(SetMissing(strategy="multiple_imputation"), ctx_of(applied, frame, out))
-        drawn = refused.value.exits[0]["decision"]
-        slots = {**applied.model_dump(exclude_none=True),
-                 "missing": {k: v for k, v in drawn.items() if k != "kind"},
-                 "split": {"holdout": 0.0, "folds": 5, "seed": 0, "validation": "kfold"},
-                 "models": ["featurewise"]}
-        out = run.run(ProjectState.model_validate(slots), upto=["fit"])
-        once = data(out["fit"])["models"][0]["inference"]["exits"][1]["decision"]
-        slots["missing"] = {k: v for k, v in once.items() if k != "kind"}
         out = run.run(ProjectState.model_validate(slots), upto=["fit"])
         model = data(out["fit"])["models"][0]
         info, rows = model["inference"], model["coefficients"]
-        assert (info["missing"] or {}).get("method") == "single_fill"  # the premise: recorded
+        assert info["missing"]["variables"][0] == "each study factor"  # the premise: pooled
         methods = model["methods"]
         if features == 260:
             assert info["covariance"] == "none" and info["refused"].startswith(
                 "`participant_id` repeats, and cluster-robust intervals for 244 separate tests")
             assert rows and not any(r["ci_low"] is not None for r in rows)  # estimates alone
-            assert ("A single fill, recorded as a limitation; the table reports no interval. "
-                    in methods)
-            assert "its intervals are too narrow" not in methods
+            assert "The feature-wise table gives estimates alone: its tests and intervals were " \
+                   "refused." in methods
+            assert "intervals are too narrow" not in methods and "single fill" not in methods
         else:
             assert info["covariance"] == "CR2" and all(r["ci_low"] is not None for r in rows)
-            assert "A single fill, recorded as a limitation: its intervals are too narrow." \
-                in methods
+            assert ("pooled by Rubin's rules on t with Barnard–Rubin degrees of freedom"
+                    in info["caption"])
+            assert "single fill" not in methods.lower()
+    finally:
+        run.close()
+
+
+def test_under_inference_a_recorded_single_censoring_aware_fill_is_refused_at_the_fit(tmp_path):
+    """The fit's backstop to the check before the lock (the orchestrator's ruling on M2): a plan
+    that records one censoring-aware fill for the feature-wise table under inference (as run_19
+    and run_20 did, before the check) gets no table, the refusal's words saying what the fill does
+    and its first way forward the pooled route; the paragraph says the fill was not used. Silent
+    the other way: the pooled route itself is fit (the test above)."""
+    from turbotab.core.decisions import ProjectState
+    from turbotab.core.methods.featurewise_mi import SINGLE_FILL_WORDS
+    from turbotab.core.tests.acceptance.test_ms7_chains import data
+
+    run, frame, slots = _chain3_plan(tmp_path)
+    try:
+        slots["missing"] = {**slots["missing"], "strategy": "impute", "acknowledged": True}
+        out = run.run(ProjectState.model_validate(slots), upto=["fit"])
+        model = data(out["fit"])["models"][0]
+        info = model["inference"]
+        assert info["refused"] == SINGLE_FILL_WORDS and not model["coefficients"]
+        pooled = info["exits"][0]["decision"]
+        assert (pooled["strategy"], pooled["below_detection"]) == ("multiple_imputation",
+                                                                   "censoring_aware")
+        assert all((e["decision"] or {}).get("strategy") != "impute" for e in info["exits"])
+        assert ("A single fill, recorded as a limitation; the table was not estimated from it, "
+                "so no interval rests on it.") in model["methods"]
     finally:
         run.close()
 

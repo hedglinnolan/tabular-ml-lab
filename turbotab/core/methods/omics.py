@@ -1373,8 +1373,8 @@ class LogScaleCensoredFill(TransformerMixin, BaseEstimator):
         self.columns = columns
 
     def fit(self, X: pd.DataFrame, y: Any = None) -> "LogScaleCensoredFill":
-        from turbotab.core.methods.imputation import tobit_fit
-        from turbotab.core.methods.missing import below_limit_mean
+        from turbotab.core.methods.imputation import CensoredFitRefused, tobit_fit
+        from turbotab.core.methods.missing import below_limit_mean, censored_fill_refusal
 
         self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
         self.n_features_in_ = X.shape[1]
@@ -1395,7 +1395,10 @@ class LogScaleCensoredFill(TransformerMixin, BaseEstimator):
                 continue
             L = math.log(limit)
             z = np.where(blank, L, np.log(np.where(blank, 1.0, x)))
-            theta, _ = tobit_fit(np.ones((len(x), 1)), z, blank, L)
+            try:
+                theta, _ = tobit_fit(np.ones((len(x), 1)), z, blank, L)
+            except CensoredFitRefused:
+                raise censored_fill_refusal(c, np.log(detected)) from None
             self.fill_[c] = below_limit_mean(float(theta[0]), math.exp(float(theta[1])), L, True)
         return self
 
@@ -1569,6 +1572,10 @@ def _detection_limit_leash(decision: Any, ctx: Any) -> None:
     * QRILC is refused (one draw outside the multiple imputation);
     * half the minimum above 10% censored is **blocked and recorded**: kept only with the
       attestation (``acknowledged``) the methods sentence carries.
+
+    Each refusal's censored-normal way forward is the draw within the multiple imputation its
+    label names: under an answer that filled once (or kept complete cases), it changes the
+    strategy to multiple imputation too.
     """
     from turbotab.core.decisions import Refusal, _censored_named, _missing_base, _state
 
@@ -1589,7 +1596,12 @@ def _detection_limit_leash(decision: Any, ctx: Any) -> None:
     # included (a share of blanks alone reads 0 when an export wrote non-detects as zeros).
     share = censored_share_of(ctx, censored)
     named = ", ".join(f"`{c}`" for c in censored[:6]) + (" and others" if len(censored) > 6 else "")
-    aware = _missing_base(decision, below_detection="censoring_aware", censored_columns=censored)
+    # The exit its label names: the censored-normal draw within the multiple imputation, whatever
+    # strategy the answer had (the verifier's FWMI-R1-5: kept, a single fill was recorded under
+    # that label, and the feature-wise table refused it when taken).
+    aware = _missing_base(decision, below_detection="censoring_aware", censored_columns=censored,
+                          **({} if decision.strategy == "multiple_imputation" else
+                             {"strategy": "multiple_imputation", "acknowledged": False}))
     if decision.below_detection in (None, "as_missing") and decision.strategy != "complete_case":
         exits = [{"label": "Censored-normal: a draw below the limit within the multiple imputation",
                   "decision": aware}]
@@ -2301,17 +2313,21 @@ def fit_methods(state: Any, family: Any, steps: Sequence[str], split: Mapping[st
                              missing=info.get("missing"), inference=info, figure=figure)
 
 
-def unpooled_refusal(label: str, state: Any,
-                     frame: pd.DataFrame | None = None) -> tuple[str, list[dict[str, Any]]]:
-    """(reason, exits) of a table that pools no multiple imputations (feature-wise tests), its
-    reason naming exactly the ways forward its exits take (:func:`featurewise_missing_exits`;
-    ``frame``: the rows and columns the table is estimated from)."""
+def unpooled_refusal(label: str, state: Any, frame: pd.DataFrame | None = None,
+                     why: str | None = None) -> tuple[str, list[dict[str, Any]]]:
+    """(reason, exits) of a table that is not pooled over the copies drawn (``why``: the reason's
+    first sentence; the feature-wise tests draw their own copies, ``methods.featurewise_mi``, and
+    pool none of the data's own), its reason naming exactly the ways forward its exits take
+    (:func:`featurewise_missing_exits`; ``frame``: the rows and columns the table is estimated
+    from). Where none of those is open (complete cases keep too few rows, and values below
+    detection are named, so no single fill), another family is (DoD §1: a way forward for every
+    refusal)."""
     from turbotab.core.methods.exposure_form import SPLINE_MIN_VALUES
+    from turbotab.core.models.featurewise import ANOTHER_FAMILY
 
-    exits = featurewise_missing_exits(state, frame)
+    exits = featurewise_missing_exits(state, frame) or [{**ANOTHER_FAMILY, "way": "another_family"}]
     ways = [EXIT_WORDS[e["way"]] for e in exits]
-    reason = (f"{label} is not pooled over multiple imputations here: its tests run feature by "
-              f"feature over more columns than an imputation model holds.")
+    reason = why or f"{label} is not pooled over multiple imputations here."
     complete = complete_rows(frame)
     if complete is not None and not any(e["way"] == "complete_case" for e in exits):
         reason += (f" Complete cases are not offered: {complete:,} of the {len(frame):,} rows "
@@ -2321,12 +2337,13 @@ def unpooled_refusal(label: str, state: Any,
     return reason, [{k: v for k, v in e.items() if k != "way"} for e in exits]
 
 
-# The ways forward a feature-wise table offers, as its refusal names them (each a request).
+# The ways forward a feature-wise table offers, as its refusal names them (each a request). One
+# censoring-aware fill is not among them: under inference the pooled route replaces it (the
+# orchestrator's ruling on M2; ``featurewise_mi.single_fill_refusal``).
 EXIT_WORDS = {
     "complete_case": "choose complete cases",
-    "censoring_aware": "fill the values below detection once, censoring-aware, recorded as a "
-                       "limitation",
     "single_fill": "fill the missing values once, recorded as a limitation",
+    "another_family": "choose another model family",
 }
 
 
@@ -2343,14 +2360,14 @@ def complete_rows(frame: pd.DataFrame | None) -> int | None:
 
 def featurewise_missing_exits(state: Any, frame: pd.DataFrame | None = None
                               ) -> list[dict[str, Any]]:
-    """Where a feature-wise table goes when its missing-values answer is multiple imputation, which
-    it cannot pool (more columns than an imputation model holds): complete cases, offered only when
-    they keep rows enough for the design (:data:`SPLINE_MIN_VALUES`, the fewest a spline's knots
-    can be placed on; ``frame``: the table's rows and columns, so a way forward that leaves nothing
-    to fit is never offered, DoD §1); when values below detection are named, one censoring-aware
-    fill recorded as a limitation; and when neither is open, one fill recorded as a limitation (a
-    single fill under inference is block-and-record: its intervals are too narrow). Each exit
-    carries ``way``, its key in :data:`EXIT_WORDS`."""
+    """Where a feature-wise table goes when the copies its missing-values answer draws are not
+    pooled for it: complete cases, offered only when they keep rows enough for the design
+    (:data:`SPLINE_MIN_VALUES`, the fewest a spline's knots can be placed on; ``frame``: the
+    table's rows and columns, so a way forward that leaves nothing to fit is never offered, DoD
+    §1); and when they are not open and no value is below detection, one fill recorded as a
+    limitation (a single fill under inference is block-and-record: its intervals are too narrow).
+    One censoring-aware fill is never offered: under inference the pooled route replaces it (the
+    orchestrator's ruling on M2). Each exit carries ``way``, its key in :data:`EXIT_WORDS`."""
     from turbotab.core.methods.exposure_form import SPLINE_MIN_VALUES
 
     spec = getattr(state, "missing", None)
@@ -2363,14 +2380,7 @@ def featurewise_missing_exits(state: Any, frame: pd.DataFrame | None = None
         exits.append({"label": label, "way": "complete_case",
                       "decision": {"kind": "set_missing", "strategy": "complete_case", **keep}})
     censored = list(getattr(spec, "censored_columns", None) or [])
-    if censored:
-        exits.append({
-            "label": "Fill values below detection once, censoring-aware, recorded as a limitation",
-            "way": "censoring_aware",
-            "decision": {"kind": "set_missing", "strategy": "impute",
-                         "below_detection": "censoring_aware", "censored_columns": censored,
-                         "acknowledged": True, **keep}})
-    if not exits:
+    if not exits and not censored:
         exits.append({"label": "Fill the missing values once, recorded as a limitation",
                       "way": "single_fill",
                       "decision": {"kind": "set_missing", "strategy": "impute",
@@ -2443,6 +2453,22 @@ def detection_details(state: Any, method: str | None, *, censored: Mapping[str, 
         if method == "half_minimum":  # filled before the chained equations (``imputation_frame``)
             return (f"Values below detection in {what} were set to half the {noun}'s smallest "
                     f"detected value before the {m:,} multiple imputations ({LUBIN}).")
+        from turbotab.core.methods.missing import per_feature
+
+        if per_feature(record):
+            # The feature-wise tests' own copies (``methods.featurewise_mi``): the features drawn
+            # are those whose values below detection the analyzed rows hold.
+            drawn = len(record.get("censored") or [])
+            if not drawn:
+                return (f"No value below detection in {what} is among the analyzed rows, so none "
+                        f"was drawn.")
+            what = f"{drawn:,} {noun}{'s' if drawn != 1 else ''}"
+            # Its variables: each study factor, the outcome, then the adjustment columns.
+            given = ("the outcome and the covariates" if len(record.get("variables") or []) > 2
+                     else "the outcome")
+            return (f"Values below detection in {what} were drawn below the limit within each of "
+                    f"the {m:,} multiple imputations, each {noun}'s from its own censored-normal "
+                    f"(Tobit) model given {given} ({LUBIN}).")
         return (f"Values below detection in {what} were drawn below the limit from a censored-normal "
                 f"(Tobit) model within each of the {m:,} multiple imputations, given the outcome "
                 f"({LUBIN}).")
@@ -2494,15 +2520,20 @@ def featurewise_details(table: Mapping[str, Any], method: str) -> str:
         return featurewise_untested(table)
     m = len(rows)
     found = sum(1 for r in rows if r.get("q") is not None and r["q"] < 0.05)
+    # A table pooled over imputations (its rows carry the fraction of missing information): each
+    # feature tested in each copy, then pooled (``methods.featurewise_mi``).
+    pooled = (" in each imputation and pooled by Rubin's rules"
+              if any(r.get("fmi") is not None for r in rows) else "")
     if method == "bh":
+        across = "pooled p-values of the " if pooled else ""
         return (f"Each of the {m:,} features was tested in its own linear model with the "
-                f"covariates; Benjamini–Hochberg q-values across the {m:,} tests ({found:,} below "
-                f"0.05), every feature shown.")
+                f"covariates{pooled}; Benjamini–Hochberg q-values across the {across}{m:,} tests "
+                f"({found:,} below 0.05), every feature shown.")
     if method == "stated_count":
         return (f"Each of the {m:,} features was tested in its own linear model with the "
-                f"covariates; unadjusted p-values, {m:,} tests ({ROTHMAN}).")
-    return (f"Each of the {m:,} features was tested in its own linear model with the covariates; no "
-            f"multiplicity control, recorded as a limitation.")
+                f"covariates{pooled}; unadjusted p-values, {m:,} tests ({ROTHMAN}).")
+    return (f"Each of the {m:,} features was tested in its own linear model with the covariates"
+            f"{pooled}; no multiplicity control, recorded as a limitation.")
 
 
 def featurewise_untested(table: Mapping[str, Any]) -> str:

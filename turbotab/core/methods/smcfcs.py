@@ -1156,7 +1156,8 @@ class _Chain:
 
     def _update_fcs(self, name: str, var: Variable, skip: Sequence[str]) -> None:
         """mice's step: the model on the recorded rows, its parameters drawn, then each blank."""
-        from turbotab.core.methods.imputation import _binary, _categorical, _censored
+        from turbotab.core.methods.imputation import (CensoredFitRefused, _binary, _categorical,
+                                                      _censored)
 
         X = self.design_rows(name, skip)
         miss = self.miss[name]
@@ -1167,8 +1168,16 @@ class _Chain:
         elif var.kind == "binary":
             new = _from01(_binary(X, _as01(cur, self.data[name]), miss, self.rng), self.data[name])
         elif var.kind == "censored":
-            new = self.scaled(name, _censored(X, self.raw(name, cur.astype(float)), miss,
-                                              var.censoring, self.rng))
+            try:
+                new = self.scaled(name, _censored(X, self.raw(name, cur.astype(float)), miss,
+                                                  var.censoring, self.rng))
+            except CensoredFitRefused as exc:
+                # A censored-normal fit with no certified maximum (``imputation.tobit_fit``), or a
+                # draw from it whose arithmetic fails, is refused in words naming the column,
+                # never drawn.
+                raise exc.of(name) from None
+            except (np.linalg.LinAlgError, ArithmeticError) as exc:
+                raise CensoredFitRefused(why=f"{type(exc).__name__}: {exc}").of(name) from None
         else:
             rec = self.recorded[name]
             _, star, sigma = _norm_draw(X[rec], cur[rec].astype(float), self.rng)
@@ -1981,7 +1990,9 @@ def _imputation_at(state: Any, ctx: Any, store: Any) -> AtTheAnswer | None:
     clustered = clusters is not None and getattr(clusters, "clustered", False)
     # What the fit's table holds before any copy is drawn (``stages.modeling._missing_for_table``):
     # a passive or single-level imputation it blocks, a chosen set of families none of which pools
-    # the copies, and an unconfirmed one-value-per-unit column it asks about.
+    # the copies, one whose tables all draw their own copies one study factor at a time (the
+    # feature-wise tests, ``methods.featurewise_mi``, which no joint copy serves), and an
+    # unconfirmed one-value-per-unit column it asks about.
     if missing_block(answer, "inference", levels, nonlinear=nonlinear_terms(spec, task),
                      passive=task in ("ordinal", "multiclass"), clustered=clustered) is not None:
         return None
@@ -1989,6 +2000,8 @@ def _imputation_at(state: Any, ctx: Any, store: Any) -> AtTheAnswer | None:
     if state.models and (not pools or not any(getattr(get_family(k), "pools_imputations", True)
                                               for k in pools)):
         return None
+    if pools and all(getattr(get_family(k), "draws_per_feature", False) for k in pools):
+        return None  # the feature-wise tests draw their own copies, one study factor at a time
     once: list[str] = []
     if clustered and answer.get("imputation_levels") != "single_level":
         once, ask = time_invariant_columns(state, X, clusters.codes, gaps)

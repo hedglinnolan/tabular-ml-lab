@@ -86,6 +86,9 @@ LOG_GAIN = 2.0  # a censored column is modeled on the log scale when that gains 
 OUTCOME_PREFIX = "__outcome"  # the outcome's terms in the imputation model never collide with a column
 
 Kind = Literal["numeric", "binary", "categorical", "censored"]
+# :class:`CensoredFitRefused`'s words where its caller names no column.
+CENSORED_FIT_WORDS = ("A censored-normal (Tobit) model could not be fit on these rows: no maximum "
+                      "of its likelihood could be confirmed.")
 
 
 @dataclass(frozen=True)
@@ -123,6 +126,34 @@ class Imputations:
 
 class ImputationRefused(ValueError):
     """The data cannot carry a chained-equations model; the message says why."""
+
+
+class CensoredFitRefused(ImputationRefused):
+    """:func:`tobit_fit`'s one failure: no maximum of the censored-normal likelihood could be
+    certified on these rows (the solver did not reach a point where the score is zero and the
+    information positive definite, or its arithmetic failed on the way). An
+    :class:`ImputationRefused`, so every caller that refuses an imputation in words refuses this
+    one too; its message is words, and ``why`` the solver's own account (never shown). A caller
+    that knows the column says so (``columns``)."""
+
+    def __init__(self, message: str = CENSORED_FIT_WORDS, why: str = ""):
+        super().__init__(message)
+        self.why = str(why)
+
+    def of(self, column: str, words: str | None = None) -> "CensoredFitRefused":
+        """This failure as ``column``'s: its words name the column (``words``, or that its values
+        below detection cannot be drawn), and leaving it out lets the imputation run
+        (``columns``)."""
+        named = CensoredFitRefused(words or censored_fit_words(column), why=self.why)
+        named.columns = [column]
+        return named
+
+
+def censored_fit_words(column: str) -> str:
+    """The refusal of ``column``'s draws below detection where :func:`tobit_fit` certified no
+    maximum (:class:`CensoredFitRefused`)."""
+    return (f"`{column}`'s censored-normal model could not be fit on these rows: no maximum of its "
+            f"likelihood could be confirmed, so its values below detection cannot be drawn.")
 
 
 # ── how many rows an imputation model needs ──────────────────────────────────
@@ -436,44 +467,227 @@ def _categorical(X: np.ndarray, values: np.ndarray, levels: Sequence[Any], miss:
 # The censored-normal (Tobit) model ─────────────────────────────────────────
 
 
+# The Newton steps the fit takes at most; it reaches its maximum in 5 to 15 from its start.
+TOBIT_STEPS = 200
+# The fit is certified at its maximum where the Newton decrement gᵀ(−H)⁻¹g is at most this: twice
+# the log-likelihood a further Newton step would gain, and the squared distance to the maximum in
+# standard errors (1e-12: within 10⁻⁶ of a standard error, far above rounding, ~1e-25 on 100 rows).
+TOBIT_DECREMENT = 1e-12
+# Below this decrement the fit takes Newton's full step, no line search (the quadratic region).
+TOBIT_NEWTON = 1e-8
+# ... and its information positive definite: the smallest eigenvalue of the information scaled to a
+# unit diagonal (Jacobi's scaling, which no parameter's units move) above this, survreg's
+# ``toler.chol`` (1e-10). Over the verifier's 362 designs with a maximum it was at least 3.5e-4.
+TOBIT_SINGULAR = 1e-10
+# ... and in every direction of the coefficients at least this share of the information the same
+# rows would carry were every value detected (:func:`_design_share`). The unit diagonal hides a
+# direction whose curvature vanishes with its own diagonal, as where a 0/1 column's ones are all
+# below detection and its coefficient runs to −∞; this share does not, whatever the columns'
+# coding. A row below detection carries w = λ(a)(a + λ(a)) of a detected row's information, under
+# 1e-10 only where its fitted mean lies more than 6.93 σ below the limit, its log Φ(a) then within
+# 2e-12 of its bound 0: a direction only such rows carry is flat to the log-likelihood's rounding,
+# and a maximum along it cannot be told from a bound approached at infinity. Over the verifier's
+# 362 designs with a maximum and the 417 of its 600 fuzz designs the solver fits, the share was at
+# least 1.6e-6; at the 280 points the base solver returned where a 0/1 column's ones were all below
+# detection (its probe's 200 and 80 fuzz designs), at most 2.6e-16.
+TOBIT_SHARE = 1e-10
+
+
+def _below_weights(a: np.ndarray, log_cdf: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """For rows below detection at a = t L − xᵀγ, log Φ(a) given: (λ = φ(a)/Φ(a), w = λ(a + λ)),
+    w ∈ (0, 1) each row's share of a detected row's information on γ."""
+    lam = np.exp(-0.5 * a * a - 0.5 * math.log(2.0 * math.pi) - log_cdf)
+    return lam, lam * (a + lam)
+
+
+def _design_share(Xk: np.ndarray, censored: np.ndarray, w: np.ndarray) -> float:
+    """The smallest share of its information that a direction of the coefficients keeps at the
+    fit: the least eigenvalue of Qᵀ diag(r) Q, Q an orthonormal basis of the design's columns
+    (Householder QR) and r 1 on a detected row, w on a row below detection. The information on γ is
+    Xᵀ diag(r) X and every value detected gives XᵀX, so this is their least generalized eigenvalue,
+    in (0, 1], moved by no change of the columns' coding (X → XT), and read from Q and w, never
+    from the information's own diagonal."""
+    Q, _ = np.linalg.qr(Xk)
+    r = np.ones(len(Xk))
+    r[censored] = w
+    return float(np.linalg.eigvalsh((Q * r[:, None]).T @ Q).min())
+
+
+def _olsen(Xd: np.ndarray, zd: np.ndarray, Xc: np.ndarray, limit: float, phi: np.ndarray,
+           derivatives: bool = True) -> tuple[float, np.ndarray | None, np.ndarray | None]:
+    """The censored-normal log-likelihood in Olsen's (1978) parametrization φ = (γ, t) = (β/σ,
+    1/σ), with its score and Hessian: Σ_detected [log t − (t z − xᵀγ)²/2] + Σ_below log Φ(t L −
+    xᵀγ), concave in φ (Olsen, *Econometrica* 46:1211), the constant −½ log 2π of each detected
+    row left out. With λ = φ(a)/Φ(a) and w = λ(a + λ) ∈ (0, 1) at a = t L − xᵀγ: the score is
+    (Σ_d e x − Σ_c λ x, n_d/t − Σ_d e z + L Σ_c λ), e = t z − xᵀγ, and the Hessian
+    [[−Σ_d x xᵀ − Σ_c w x xᵀ, Σ_d z x + L Σ_c w x], [·, −n_d/t² − Σ_d z² − L² Σ_c w]]."""
+    from scipy import special
+
+    gamma, t = phi[:-1], float(phi[-1])
+    e = t * zd - Xd @ gamma
+    a = t * limit - Xc @ gamma
+    log_cdf = special.log_ndtr(a)
+    ll = float(len(zd) * math.log(t) - 0.5 * float(e @ e) + float(log_cdf.sum()))
+    if not derivatives:
+        return ll, None, None
+    lam, w = _below_weights(a, log_cdf)
+    g = np.concatenate([Xd.T @ e - Xc.T @ lam,
+                        [len(zd) / t - float(zd @ e) + limit * float(lam.sum())]])
+    k = len(phi)
+    H = np.empty((k, k))
+    H[:-1, :-1] = -(Xd.T @ Xd) - (Xc * w[:, None]).T @ Xc
+    H[:-1, -1] = H[-1, :-1] = Xd.T @ zd + limit * (Xc.T @ w)
+    H[-1, -1] = -len(zd) / t ** 2 - float(zd @ zd) - limit ** 2 * float(w.sum())
+    return ll, g, H
+
+
+def _unit_diagonal(A: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(A scaled to a unit diagonal, the scale); raises where a diagonal entry is not positive."""
+    d = np.sqrt(np.diag(A))
+    if not (np.all(np.isfinite(d)) and np.all(d > 0)):
+        raise CensoredFitRefused(why="the information has a diagonal entry that is not positive")
+    return A / np.outer(d, d), d
+
+
 def tobit_fit(X: np.ndarray, z: np.ndarray, censored: np.ndarray, limit: float
               ) -> tuple[np.ndarray, np.ndarray]:
     """Maximum likelihood for z ~ N(Xβ, σ²) where ``censored`` rows are known only to lie below
-    ``limit``: (θ̂ = (β, log σ), the inverse observed information at θ̂)."""
-    from scipy import optimize, stats
+    ``limit``: (θ̂ = (β, log σ), the inverse observed information at θ̂), θ̂ a certified maximum,
+    or :class:`CensoredFitRefused`.
 
+    Fitted by Newton's method with a backtracking (Armijo) line search in Olsen's concave
+    parametrization (:func:`_olsen`), full steps once the decrement is below
+    :data:`TOBIT_NEWTON`, on z centered on its detected mean (where a column of X is constant, an
+    intercept) and scaled by its root mean square, so neither the column's units nor its offset
+    move the fit. A column the earlier ones span is aliased (``models.effects.column_basis``, R's
+    ``qr`` at 1e-7, as ``lm`` reads it): its coefficient is 0 and its row of the inverse
+    information 0, as survreg reports it (NA, a zero row of its covariance). The point returned is
+    certified the maximum: its Newton decrement at most :data:`TOBIT_DECREMENT` (the score zero),
+    its information, scaled to a unit diagonal, with no eigenvalue at or below
+    :data:`TOBIT_SINGULAR` (a negative-definite Hessian), and no direction of the coefficients
+    keeping :data:`TOBIT_SHARE` or less of the information the same rows would carry with every
+    value detected (:func:`_design_share`, whatever the columns' coding). Where any fails, or the
+    arithmetic does on the way (an overflow, a value that is not finite), it raises
+    :class:`CensoredFitRefused`, never a point short of the maximum: a likelihood with no finite
+    maximum (a column detected only in rows of one outcome, a 0/1 column whose ones or whose zeros
+    are all below detection, raw or standardized, or values fitted exactly with every value below
+    detection under the limit) is refused so. The inverse information is that of (β, log σ), the
+    inverse of Jᵀ(−H)J with J = ∂φ/∂θ, exact at the maximum (the score's term vanishes there)."""
+    try:
+        with np.errstate(over="ignore", under="ignore", invalid="ignore", divide="ignore"):
+            return _tobit_certified(np.asarray(X, dtype=float), np.asarray(z, dtype=float),
+                                    np.asarray(censored, dtype=bool), float(limit))
+    except CensoredFitRefused:
+        raise
+    except (ArithmeticError, np.linalg.LinAlgError, ValueError) as exc:
+        raise CensoredFitRefused(why=f"{type(exc).__name__}: {exc}") from exc
+
+
+def _tobit_certified(X: np.ndarray, z: np.ndarray, censored: np.ndarray, limit: float
+                     ) -> tuple[np.ndarray, np.ndarray]:
+    n, p = X.shape
     det = ~censored
-    Xd, zd, Xc = X[det], z[det], X[censored]
+    if not det.any():
+        raise CensoredFitRefused(why="no detected value")
+    if not (np.all(np.isfinite(X)) and np.all(np.isfinite(z[det])) and math.isfinite(limit)):
+        raise CensoredFitRefused(why="a value that is not finite")
+    from scipy import special
 
-    def nll(theta: np.ndarray) -> tuple[float, np.ndarray]:
-        beta, tau = theta[:-1], theta[-1]
-        sigma = math.exp(tau)
-        e = (zd - Xd @ beta) / sigma
-        a = (limit - Xc @ beta) / sigma
-        logcdf = stats.norm.logcdf(a)
-        ll = float(-len(zd) * tau - 0.5 * e @ e + logcdf.sum())
-        lam = np.exp(stats.norm.logpdf(a) - logcdf)
-        g_beta = Xd.T @ e / sigma - Xc.T @ lam / sigma
-        g_tau = -len(zd) + float(e @ e) - float(lam @ a)
-        return -ll, -np.concatenate([g_beta, [g_tau]])
+    from turbotab.core.models.effects import column_basis
 
-    start_beta = np.linalg.lstsq(Xd, zd, rcond=None)[0] if len(zd) >= X.shape[1] else np.zeros(X.shape[1])
-    resid = zd - Xd @ start_beta
-    start = np.concatenate([start_beta, [math.log(max(float(np.std(resid)), 1e-6))]])
-    fit = optimize.minimize(nll, start, jac=True, method="BFGS",
-                            options={"gtol": 1e-8, "maxiter": 1000})
-    theta = fit.x
-    # The observed information by central differences of the analytic gradient.
-    k = len(theta)
-    H = np.empty((k, k))
-    for j in range(k):
-        h = 1e-5 * max(1.0, abs(theta[j]))
-        up, down = theta.copy(), theta.copy()
-        up[j] += h
-        down[j] -= h
-        H[:, j] = (nll(up)[1] - nll(down)[1]) / (2 * h)
-    H = 0.5 * (H + H.T)
-    return theta, np.linalg.pinv(H)
+    keep = column_basis(X)
+    Xk = X[:, keep]
+    y = np.where(censored, limit, z)
+    constant = [j for j in range(Xk.shape[1]) if np.ptp(Xk[:, j]) == 0 and Xk[0, j] != 0]
+    center = float(np.mean(z[det])) if constant else 0.0
+    scale = float(np.sqrt(np.mean((y - center) ** 2)))
+    if not (math.isfinite(scale) and scale > 0):
+        scale = 1.0
+    ys, L = (y - center) / scale, (limit - center) / scale
+    Xd, zd, Xc = Xk[det], ys[det], Xk[censored]
+    # The start: least squares on every row (those below detection at the limit), its spread at
+    # least a tenth of the column's.
+    start = np.linalg.lstsq(Xk, ys, rcond=None)[0]
+    spread = max(float(np.sqrt(np.mean((ys - Xk @ start) ** 2))), 0.1)
+    phi = np.concatenate([start / spread, [1.0 / spread]])
+    eye = np.eye(len(phi))
+    previous = math.inf
+    for _ in range(TOBIT_STEPS):
+        ll, g, H = _olsen(Xd, zd, Xc, L, phi)
+        if not (math.isfinite(ll) and np.all(np.isfinite(g)) and np.all(np.isfinite(H))):
+            raise CensoredFitRefused(why="a value that is not finite on the way to the maximum")
+        S, d = _unit_diagonal(-H)
+        damp = 0.0  # Levenberg's: only where the scaled information is not positive definite
+        while True:
+            try:
+                root = np.linalg.cholesky(S + damp * eye)
+                break
+            except np.linalg.LinAlgError:
+                damp = 1e-10 if damp == 0 else damp * 10
+                if damp > 1e6:
+                    raise CensoredFitRefused(why="no direction of ascent") from None
+        step = np.linalg.solve(root.T, np.linalg.solve(root, g / d)) / d
+        decrement = float(g @ step)
+        if damp == 0 and decrement <= TOBIT_DECREMENT * 1e-8:
+            break
+        if damp == 0 and decrement <= TOBIT_NEWTON:
+            # Near the maximum Newton's full step squares the decrement; a gain this small is
+            # below the log-likelihood's rounding, so no line search could see it. Stop where a
+            # step no longer halves it (rounding).
+            if decrement > 0.5 * previous:
+                break
+            previous = decrement
+            phi = phi + step
+            continue
+        alpha, moved = 1.0, False
+        while alpha > 1e-14:
+            trial = phi + alpha * step
+            if trial[-1] > 0:
+                gained = _olsen(Xd, zd, Xc, L, trial, derivatives=False)[0]
+                if math.isfinite(gained) and gained >= ll + 1e-4 * alpha * decrement:
+                    phi, moved = trial, True
+                    break
+            alpha *= 0.5
+        if not moved:
+            break  # no step gains: the maximum within rounding, or none (the certificate says)
+    _, g, H = _olsen(Xd, zd, Xc, L, phi)
+    A = -H
+    S, _d = _unit_diagonal(A)
+    if not (np.all(np.isfinite(S)) and np.all(np.isfinite(g))):
+        raise CensoredFitRefused(why="a value that is not finite at the maximum")
+    smallest = float(np.linalg.eigvalsh(S).min())
+    if not smallest > TOBIT_SINGULAR:
+        raise CensoredFitRefused(why=f"the information is singular (scaled eigenvalue "
+                                     f"{smallest:.3g})")
+    gamma, t = phi[:-1], float(phi[-1])
+    a = t * L - Xc @ gamma
+    share = _design_share(Xk, censored, _below_weights(a, special.log_ndtr(a))[1])
+    if not share > TOBIT_SHARE:
+        raise CensoredFitRefused(why=f"a direction of the coefficients keeps {share:.3g} of the "
+                                     f"information its rows would carry with every value detected")
+    decrement = float(g @ np.linalg.solve(A, g))
+    if not decrement <= TOBIT_DECREMENT:
+        raise CensoredFitRefused(why=f"the score is not zero (Newton decrement {decrement:.3g})")
+    k = len(phi)
+    J = np.zeros((k, k))  # ∂(γ, t)/∂(β, log σ) on the scaled column
+    J[:-1, :-1] = t * np.eye(k - 1)
+    J[:-1, -1] = -gamma
+    J[-1, -1] = -t
+    inverse = np.linalg.inv(J.T @ A @ J)
+    inverse = 0.5 * (inverse + inverse.T)
+    beta = scale * gamma / t
+    if constant:
+        beta[constant[0]] += center / Xk[0, constant[0]]
+    units = np.r_[np.full(k - 1, scale), 1.0]
+    theta = np.zeros(p + 1)
+    theta[keep] = beta
+    theta[-1] = math.log(scale / t)
+    at = [*keep, p]
+    V = np.zeros((p + 1, p + 1))
+    V[np.ix_(at, at)] = inverse * np.outer(units, units)
+    if not (np.all(np.isfinite(theta)) and np.all(np.isfinite(V))):
+        raise CensoredFitRefused(why="a value that is not finite at the maximum")
+    return theta, V
 
 
 def tobit_expectation(mu: float, sigma: float, limit: float) -> float:
@@ -484,6 +698,30 @@ def tobit_expectation(mu: float, sigma: float, limit: float) -> float:
     return float(mu - sigma * math.exp(stats.norm.logpdf(a) - stats.norm.logcdf(a)))
 
 
+# A draw's square root raises each diagonal entry of the inverse information by this share of
+# itself (rounding's margin for the Cholesky factor; relative, so no column's units move it).
+TOBIT_ROOT_JITTER = 1e-12
+
+
+def tobit_root(V: np.ndarray) -> np.ndarray:
+    """A square root R (R Rᵀ = V) of :func:`tobit_fit`'s inverse information, for the parameter
+    draws θ* = θ̂ + R ε: the Cholesky factor of the block of the columns the fit kept, each diagonal
+    entry raised by :data:`TOBIT_ROOT_JITTER` of itself, and zero in an aliased column's row and
+    column (its coefficient stays 0, as survreg reports it NA). It moves with the columns' units
+    (R of D V D is D R), where an absolute jitter would swamp a coefficient's variance in small
+    units. Raises :class:`CensoredFitRefused` where the block has no Cholesky factor."""
+    V = np.asarray(V, dtype=float)
+    kept = np.flatnonzero(np.diag(V) > 0)
+    block = V[np.ix_(kept, kept)]
+    root = np.zeros_like(V)
+    try:
+        root[np.ix_(kept, kept)] = np.linalg.cholesky(
+            block + np.diag(np.diag(block) * TOBIT_ROOT_JITTER))
+    except np.linalg.LinAlgError as exc:
+        raise CensoredFitRefused(why=f"{type(exc).__name__}: {exc}") from exc
+    return root
+
+
 def _censored(X: np.ndarray, x: np.ndarray, miss: np.ndarray, c: Censoring,
               rng: np.random.Generator) -> np.ndarray:
     from scipy import stats
@@ -491,7 +729,7 @@ def _censored(X: np.ndarray, x: np.ndarray, miss: np.ndarray, c: Censoring,
     z = np.log(np.clip(x, 1e-300, None)) if c.log else x.astype(float)
     limit = math.log(c.limit) if c.log else c.limit
     theta, V = tobit_fit(X, np.where(miss, limit, z), miss, limit)
-    root = np.linalg.cholesky(V + np.eye(len(V)) * 1e-12)
+    root = tobit_root(V)
     star = theta + root @ rng.standard_normal(len(theta))
     mu, sigma = X[miss] @ star[:-1], math.exp(star[-1])
     upper = (limit - mu) / sigma
@@ -780,8 +1018,9 @@ def pooled_cov(estimates: np.ndarray, covariances: np.ndarray) -> np.ndarray:
 
 
 __all__ = [
-    "Censoring", "ITERATIONS", "ImputationRefused", "Imputations", "M_DEFAULT", "M_MAX",
-    "censored_loglik", "log_scale_fits_better",
+    "CENSORED_FIT_WORDS", "Censoring", "CensoredFitRefused", "ITERATIONS", "ImputationRefused",
+    "Imputations", "M_DEFAULT", "M_MAX", "TOBIT_DECREMENT", "TOBIT_SINGULAR",
+    "censored_fit_words", "censored_loglik", "log_scale_fits_better",
     "MAX_MODEL_COLUMNS", "ModelSize", "OUTCOME_PREFIX", "Pooled", "barnard_rubin", "censoring_of",
     "chained_equations", "column_kind", "m_rule", "model_size", "nelson_aalen", "outcome_terms",
     "pool_rows",

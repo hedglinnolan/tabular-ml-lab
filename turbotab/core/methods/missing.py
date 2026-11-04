@@ -622,7 +622,7 @@ class BelowDetectionFill(TransformerMixin, BaseEstimator):
         self.method = method
 
     def fit(self, X: pd.DataFrame, y: Any = None) -> "BelowDetectionFill":
-        from turbotab.core.methods.imputation import tobit_fit
+        from turbotab.core.methods.imputation import CensoredFitRefused, tobit_fit
 
         self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
         self.n_features_in_ = X.shape[1]
@@ -642,14 +642,17 @@ class BelowDetectionFill(TransformerMixin, BaseEstimator):
                 continue
             from turbotab.core.methods.imputation import log_scale_fits_better
 
-            log = log_scale_fits_better(x, limit)
-            z = np.log(x) if log else x
-            L = math.log(limit) if log else limit
             blank = ~np.isfinite(x)
-            if not blank.any():
-                self.fill_[c] = limit / 2 if limit > 0 else limit
-                continue
-            theta, _ = tobit_fit(np.ones((len(x), 1)), np.where(blank, L, z), blank, L)
+            try:
+                log = log_scale_fits_better(x, limit)
+                z = np.log(x) if log else x
+                L = math.log(limit) if log else limit
+                if not blank.any():
+                    self.fill_[c] = limit / 2 if limit > 0 else limit
+                    continue
+                theta, _ = tobit_fit(np.ones((len(x), 1)), np.where(blank, L, z), blank, L)
+            except CensoredFitRefused:
+                raise censored_fill_refusal(c, detected) from None
             mu, sigma = float(theta[0]), math.exp(float(theta[1]))
             self.fill_[c] = below_limit_mean(mu, sigma, L, log)
         return self
@@ -673,6 +676,32 @@ class BelowDetectionFill(TransformerMixin, BaseEstimator):
         return [{"output": c, "inputs": [c],
                  "operation": f"below detection: {what}" if c in filled else "kept"}
                 for c in self.feature_names_in_]
+
+
+CENSORED_FILL_REFUSED = "censored_fill_unfit"  # the fill's refusal deep in a fit (SWARM_PLAN §8)
+
+
+def censored_fill_refusal(column: str, detected: np.ndarray) -> Any:
+    """The censoring-aware fill's refusal where its censored-normal fit has no certified maximum
+    (``imputation.CensoredFitRefused``): a ``graph.StageRefusal`` in words, its ways forward the
+    other fill below detection and leaving the column out, each a change to the missing-values
+    answer in words (a step deep in a fit knows neither the answer's strategy nor its drops, and
+    a decision naming only the changed field would not read as one). An intercept and at least
+    three detected values have one finite maximum unless those values are all equal (σ → 0 then
+    raises the likelihood without bound: a derivation), and the words say so where they are."""
+    from turbotab.core.graph import StageRefusal
+
+    detected = np.asarray(detected, dtype=float)
+    why = (f"its {len(detected):,} detected values are all equal, so their spread cannot be "
+           f"estimated" if len(detected) and np.ptp(detected) == 0
+           else "no maximum of its likelihood could be confirmed")
+    return StageRefusal(
+        CENSORED_FILL_REFUSED,
+        f"`{column}`'s values below detection cannot be filled censoring-aware: its "
+        f"censored-normal model could not be fit on these rows ({why}).",
+        exits=[{"label": "In the missing-values answer, fill values below detection with half "
+                         "the smallest detected value", "decision": None},
+               {"label": f"In the missing-values answer, leave `{column}` out", "decision": None}])
 
 
 def below_limit_mean(mu: float, sigma: float, limit: float, log: bool) -> float:
@@ -810,7 +839,8 @@ def imputation_frame(spec: Any, X: pd.DataFrame, y: Any, task: str
     column is filled by half its minimum before the chained equations under ``half_minimum``, and
     drawn below its limit within them under ``censoring_aware``.
     """
-    from turbotab.core.methods.imputation import Censoring, censoring_of, column_kind, outcome_terms
+    from turbotab.core.methods.imputation import (Censoring, CensoredFitRefused, censoring_of,
+                                                  column_kind, outcome_terms)
     from turbotab.core.models.pipeline import MISSING_LEVEL
 
     inputs = [c for c in spec.inputs if c in X.columns]
@@ -823,7 +853,10 @@ def imputation_frame(spec: Any, X: pd.DataFrame, y: Any, task: str
     for c in cens.get("columns") or []:
         if c not in data.columns:
             continue
-        reading = censoring_of(data[c])
+        try:
+            reading = censoring_of(data[c])
+        except CensoredFitRefused as exc:  # the scale's two fits: refused, naming the column
+            raise exc.of(c) from None
         if cens.get("method") == "half_minimum":
             col = pd.to_numeric(data[c], errors="coerce")
             data[c] = col.where(col.notna(), reading.limit / 2 if reading.limit > 0 else reading.limit)
@@ -1703,13 +1736,37 @@ def multiple_imputation_info(imputations: Any, spec: Any, n_rows: int,
         record.update(outcome_in_model=False, n_incomplete_rows=None, percent_incomplete=None,
                       note=None, assumption=("the copies' imputation model, as the data's provider "
                                              "drew them"))
-    record["sentence"] = mi_sentence(record)
+    record["sentence"] = mi_sentence(record, kinds=getattr(imputations, "kinds", None),
+                                     factors=plan.get("factors"))
     return record
 
 
-def mi_sentence(record: Mapping[str, Any]) -> str:
+# The first of the imputation model's variables in the record of copies drawn one study factor at a
+# time (the feature-wise tests' own, ``methods.featurewise_mi``): chained equations on each study
+# factor's own variables, so the record's ``model`` is ``chained_equations``, and this names them.
+PER_FEATURE_VARIABLE = "each study factor"
+
+
+def per_feature(record: Mapping[str, Any] | None) -> bool:
+    """Whether ``record`` (an ``inference.missing`` record) is of copies drawn one study factor at
+    a time (:data:`PER_FEATURE_VARIABLE` leads its variables)."""
+    variables = list((record or {}).get("variables") or [])
+    return bool(variables) and variables[0] == PER_FEATURE_VARIABLE
+
+
+def mi_sentence(record: Mapping[str, Any], kinds: Mapping[str, str] | None = None,
+                factors: Sequence[int] | None = None) -> str:
     """The methods sentence of a pooled table's multiple imputation (STROBE-nut nut-13; Sterne et
-    al. 2009's checklist: the imputation model, m, and how the results were combined)."""
+    al. 2009's checklist: the imputation model, m, and how the results were combined).
+
+    ``kinds``: of copies drawn one study factor at a time (:func:`per_feature`), the model each
+    drawn column's blanks came from as the sampler was handed it (``Imputations.kinds``:
+    ``"censored"``, ``"binary"``, ``"numeric"``), which the sentence names and no other; without
+    them it names no model. ``factors``: of those copies, (the study factors tested with values
+    drawn, those tested once with none drawn; ``featurewise_mi.PooledTests.counts``): a study
+    factor with none drawn keeps its complete-data test (B = 0, so ν = ν_com), and where any does,
+    the sentence counts each."""
+    from turbotab.core.methods.imputation import M_DEFAULT
     from turbotab.core.voice import finish, listing, plural, tick
 
     def num(v: float) -> str:
@@ -1723,6 +1780,22 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
         text = (f"Each of the data's {m} imputed copies ({numbered}{tick(record.get('implicate'))}) "
                 f"was analyzed as its own completed dataset with its own outcome, and the estimates "
                 f"were pooled by Rubin's rules (NCHS's combining rules)")
+    elif per_feature(record):
+        # The feature-wise tests' own copies (``methods.featurewise_mi``): each study factor's
+        # blanks from its own model given the outcome and the covariates, its test's terms; each
+        # drawn column by the model the sampler drew it from (``kinds``), and no other.
+        how = _per_feature_models(set((kinds or {}).values()))
+        pct = record.get("percent_incomplete") or 0.0
+        # Its variables: each study factor, the outcome, then the adjustment columns.
+        given = ("the outcome and the covariates" if len(record.get("variables") or []) > 2
+                 else "the outcome")
+        floor = max(M_DEFAULT, int(record.get("m_asked") or M_DEFAULT))  # ``imputation.m_rule``'s
+        text = (f"Missing values were multiply imputed one study factor at a time, each from its own "
+                f"model given {given}, the terms of its test{f' ({how})' if how else ''}; m = {m} "
+                f"imputations, at least {floor} and at least the {pct:g}% of rows with an imputed "
+                f"value in the most incomplete study factor's model ({WHITE_ROYSTON_WOOD})")
+        if record.get("unit"):
+            text += _clustered_clause(record)
     else:
         if model == "smcfcs":
             kind = {"linear": "linear", "logistic": "logistic", "cox": "Cox"}.get(
@@ -1776,6 +1849,20 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
         if record.get("unit"):
             text += _clustered_clause(record)
     pooled = "" if model == "supplied" else "; the estimates were pooled by Rubin's rules"
+    if per_feature(record):
+        drawn, once = (int(factors[0]), int(factors[1])) if factors else (0, 0)
+        if once and drawn:
+            kept = "kept its complete-data test" if once == 1 else "kept their complete-data tests"
+            pooled = (f"; the {plural(drawn, 'estimate')} of the {drawn:,} "
+                      f"{plural(drawn, 'study factor')} with values drawn "
+                      f"{plural(drawn, 'was', 'were')} pooled by Rubin's rules, "
+                      f"{'' if drawn == 1 else 'each '}on t with Barnard–Rubin degrees of freedom, "
+                      f"and the {once:,} with none drawn {kept}")
+        elif once:
+            pooled = ("; no study factor tested had a value drawn, so each kept its complete-data "
+                      "test")
+        else:
+            pooled += ", each study factor's on t with Barnard–Rubin degrees of freedom"
     if record.get("tests_d1"):
         pooled += ", multi-parameter tests by D1 (Li, Raghunathan & Rubin 1991)"
     if record.get("df_com"):
@@ -1786,6 +1873,35 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
         text += (f"; the largest Monte Carlo error, for {tick(record.get('mc_feature'))}, was "
                  f"{100 * ratio:.1f}% of its standard error")
     return finish(text)
+
+
+def _per_feature_models(kinds: set[str]) -> str:
+    """The models the per-feature copies drew from, as the methods sentence names them: the
+    censored normal for values below detection, logistic regression for a two-valued column,
+    normal linear regression (mice's ``norm``) for any other blank; each model's parameters drawn
+    from their posterior, by its normal approximation for the censored-normal and logistic ones.
+    "" for none."""
+    parts = []
+    if "censored" in kinds:
+        parts.append("values below a detection limit from a censored-normal (Tobit) model")
+    if "binary" in kinds:
+        parts.append("a two-valued column's blanks from a logistic regression")
+    if "numeric" in kinds:
+        parts.append(f"{'any other' if parts else 'each'} blank from a normal linear model")
+    if not parts:
+        return ""
+    approximate = [w for k, w in (("censored", "censored-normal"), ("binary", "logistic"))
+                   if k in kinds]
+    said = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    if len(parts) == 1:
+        drawn = f"its parameters drawn from their {'approximate ' if approximate else ''}posterior"
+    elif "numeric" not in kinds:
+        drawn = "each model's parameters drawn from their approximate posterior"
+    else:
+        drawn = (f"each model's parameters drawn from their posterior, approximately for the "
+                 f"{' and '.join(approximate)} {'model' if len(approximate) == 1 else 'models'}"
+                 if approximate else "each model's parameters drawn from their posterior")
+    return f"{said}, {drawn}"
 
 
 def _clustered_clause(record: Mapping[str, Any]) -> str:
@@ -2183,6 +2299,7 @@ __all__ = [
     "imputation_model_options", "MI_CONTRACTS", "CopyGuard", "FixedForms", "ImputationPlan",
     "PASSIVE_CAUTION", "SINGLE_LEVEL_CAUTION", "copy_pipeline", "copy_template", "design_variables",
     "energy_identity", "fixed_forms", "imputation_plan", "logged_columns", "mi_sentence",
+    "per_feature", "PER_FEATURE_VARIABLE",
     "nonlinear_terms", "supplied_copies", "carry_within_units", "time_invariance_ask",
     "time_invariant_columns", "MI_EXIT_LABEL", "MI_LABEL", "M_WORDS", "engine_substantive",
     "DesignWords", "design_term_words", "sample_way", "WITHOUT_THE_DESIGN",
