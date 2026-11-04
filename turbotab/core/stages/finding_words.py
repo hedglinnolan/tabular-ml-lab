@@ -14,7 +14,10 @@ intakes → ``exclusions``; identifiers, survey design and flags → ``roles``.
 
 The legacy detectors keep their ids, details and badges; this module only speaks for them. Where a
 legacy sentence is untrue of the table (``pack::dietary::energy_adjustment`` counts every numeric
-column as a candidate nutrient), the detail is restated from the data.
+column as a candidate nutrient), the detail is restated from the data; where a legacy reason names a
+stage, a view or a diagnostic v2 does not have, that clause is restated or dropped
+(:data:`UNTRUE_CLAUSES`), and a reason none of whose sentences holds in v2 is not served
+(:data:`UNTRUE_REASONS`).
 
 The app's own findings (``voice::*``) cover what the drive rubric says NHANES users were never told
 (DRIVE_RUBRIC §4): the respondent identifier, the ``imputed_*`` flags and the columns they mark,
@@ -1038,6 +1041,57 @@ def _fallback(title: str) -> str:
     return finish(" ".join(text.split()[:budget]))
 
 
+def _blanks_asked(m: re.Match[str]) -> str:
+    """Where v2 asks whether a blank is informative: at the missing-values question, in the stage
+    that holds it (``quest.QUESTIONS``), whose "Blanks as their own level" keeps a two-valued
+    column's blank as a value (``models.pipeline.level_columns``)."""
+    from turbotab.core.quest import QUESTIONS, STAGE_NAMES
+    from turbotab.core.voice import question_name
+
+    return f"asked in {STAGE_NAMES[QUESTIONS['missing'].stage]} by {question_name('missing')}"
+
+
+def _grain_asked(m: re.Match[str]) -> str:
+    """Where v2 asks whether one person can appear in more than one row: at the grain question, in
+    the stage that holds it (``quest.QUESTIONS``), after Your data, where the repeated-subjects
+    finding is placed (at the roles question it routes to)."""
+    from turbotab.core.quest import QUESTIONS, STAGE_NAMES
+    from turbotab.core.voice import question_name
+
+    return (f"Whether one person can appear in more than one row is asked in "
+            f"{STAGE_NAMES[QUESTIONS['grain'].stage]}, by {question_name('grain')}, and the answer "
+            f"you give there is the one that governs.")
+
+
+#: The clauses of legacy reasons that name a stage, a view or a diagnostic v2 does not have, by
+#: family, each with what is served in its place: the two-level reason put a column's blanks at a
+#: Preprocess stage (``ml/binary_text.py``); the repeated-subjects reason called the grain question
+#: one the app "has already asked", as the legacy lockbox did (``turbotab/packs.py``), where v2
+#: asks it in a later stage than the finding's; the temporal reason said the app "has never done"
+#: the temporal check it is making (``turbotab/clinical.py``).
+UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...]] = {
+    "binary_text": ((re.compile(r"(?<=are a separate question, )asked at Preprocess(?=: )"),
+                     _blanks_asked),),
+    "pack::metabolomics::repeated_subjects": (
+        (re.compile(r"^This is the question the app has already asked — whether one person can "
+                    r"appear in more than one row — and the answer you gave there is the one that "
+                    r"governs\."), _grain_asked),
+        (re.compile(r"Nothing is re-asked here; "),
+         lambda m: "That question is not asked here; "),),
+    "pack::clinical::temporal_implausibility": (
+        (re.compile(r" The app already does the first, at every value, and has never done the "
+                    r"second\."), lambda m: ""),),
+}
+
+#: The families whose legacy reason holds no sentence true of v2, served with none. The
+#: text-booleans reason (``ml/import_doctor.py``) said the column "is neither a number nor a label"
+#: and that modeling, correlation and feature selection refuse it with an "Unknown label type"
+#: error. The legacy detector claims only a column of real True/False values, which v2's ingest has
+#: read as a yes/no column, and v2's design reads such a predictor as a number, True 1 and False 0
+#: (``models.pipeline.normalize_frame``).
+UNTRUE_REASONS: frozenset[str] = frozenset({"boolean_as_text"})
+
+
 def speak(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: FindingContext) -> dict[str, Any]:
     """Add ``summary``, ``routes_to``, ``lever_label`` and ``group``; normalize every text field.
 
@@ -1050,6 +1104,11 @@ def speak(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: FindingCon
     for key in ("title", "detail", "why_it_matters"):
         if finding.get(key):
             finding[key] = quote_columns(finding[key], columns)
+    if fam in UNTRUE_REASONS:
+        finding["why_it_matters"] = None
+    for clause, said in UNTRUE_CLAUSES.get(fam, ()):
+        if finding.get("why_it_matters"):
+            finding["why_it_matters"] = clause.sub(said, finding["why_it_matters"])
     say = FAMILIES.get(fam)
     voice = say(finding, params, fc) if say is not None else None
     if voice is None:
