@@ -108,7 +108,7 @@ describe("the bar's guard", () => {
       ...log,
       stages: log.stages.map((s) =>
         s.key === "data"
-          ? { ...s, reopened: [{ changed_in: "data", decision_id: "r9", kind: "join_files", questions: [], results: [], within: true, sentence }] }
+          ? { ...s, reopened: [{ changed_in: "data", decision_id: "r9", kind: "join_files", questions: [], results: [], added: [], within: true, sentence }] }
           : s,
       ),
     };

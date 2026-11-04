@@ -332,3 +332,22 @@ def test_write_up_is_reached_once_the_plan_is_locked_and_the_exhibits_are_fresh(
     stages = quest(drive)
     assert stages["results"]["progress"] == {"answered": 2, "required": 2, "complete": True}
     assert stages["writeup"]["reached"]
+
+    # B1 round 1 (V1; §7.2 I11): a sensitivity analysis declared after the lock (a Models answer;
+    # its stage requires it) serves a third exhibit. While it computes (the statuses the
+    # decision's response reports) Results reads 2 of 3 and Write-up waits for it, and Results
+    # names the answer and the exhibit it served; computed, it is placed, and nothing is said.
+    sensitivity = {"kind": "set_sensitivity", "analyses": [{"label": "Every row", "rules": []}]}
+    changed, stages = at_the_change(drive, sensitivity, monkeypatch)
+    results = stages["results"]
+    assert results["progress"] == {"answered": 2, "required": 3, "complete": False}
+    assert not stages["writeup"]["reached"]
+    [added] = [r for r in results["reopened"] if r["decision_id"] == changed]
+    assert (added["changed_in"], added["added"], added["results"]) == (
+        "models", ["sensitivity"], [])
+    assert added["sentence"] == "Your change to Models added 1 result to Results."
+    settle(drive)
+    assert drive.view()["stages"]["sensitivity"]["status"] == "fresh"
+    stages = quest(drive)
+    assert stages["results"]["progress"] == {"answered": 3, "required": 3, "complete": True}
+    assert stages["writeup"]["reached"] and stages["results"]["reopened"] == []

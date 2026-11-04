@@ -19,7 +19,9 @@ expected here are the hand-listed exhibits below, each fresh or not by construct
 """
 from __future__ import annotations
 
+from datetime import timedelta
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -182,17 +184,24 @@ def test_while_the_estimates_are_withheld_no_exhibit_is_placed():
                                                                complete=True)
 
 
-def _describe(usual_intake: str, lens: bool = True) -> dict[str, QuestStage]:
+def _describe(usual_intake: str, lens: bool | str = True) -> dict[str, QuestStage]:
     """Describe (TRUST: inference with no effect declared, ``goal_of``): the dietary lens (unless
-    not ``lens``), the outcome and the goal answered, the plan locked, every other question of
-    Estimate answered, and the usual-intake stage at ``usual_intake``."""
+    not ``lens``; ``"after"``: after the lock), the outcome and the goal answered, the plan locked,
+    every other question of Estimate answered, and the usual-intake stage at ``usual_intake``."""
+    return _describe_log(usual_intake, lens)[0]
+
+
+def _describe_log(usual_intake: str, lens: bool | str = True
+                  ) -> tuple[dict[str, QuestStage], list]:
     from turbotab.core.interview import QUESTION_KEYS, InterviewStep
 
     records: list = []
-    for payload in ({"kind": "set_lens", "lenses": ["dietary"]} if lens else None,
+    dietary = {"kind": "set_lens", "lenses": ["dietary"]}
+    for payload in (dietary if lens is True else None,
                     {"kind": "set_target", "column": "glucose"},
                     {"kind": "set_purpose", "purpose": "inference"},
-                    {"kind": "lock_plan", "seen_target": "glucose"}):
+                    {"kind": "lock_plan", "seen_target": "glucose"},
+                    dietary if lens == "after" else None):
         if payload is not None:
             state = _decide(records, payload)
     assert quest.served_exhibits(state) == (("usual_intake",) if lens else ())
@@ -200,7 +209,7 @@ def _describe(usual_intake: str, lens: bool = True) -> dict[str, QuestStage]:
              for k in QUESTION_KEYS if k != "open_seal"]  # the seal is Predict's
     fit = fit_press.fit_lock(state, records, pressed=True, held=False, estimate=None, opened=True)
     log = quest.quest_log(state, records, steps, _fresh(usual_intake=usual_intake), fit=fit)
-    return {s.key: s for s in log.stages}
+    return {s.key: s for s in log.stages}, records
 
 
 def test_under_describe_usual_intake_is_placed_once_fresh_after_the_lock():
@@ -223,6 +232,157 @@ def test_with_no_exhibit_served_nothing_is_placed_and_write_up_waits():
     stages = _describe("fresh", lens=False)
     assert stages["results"].reached and stages["results"].progress.required == 0
     assert not stages["writeup"].reached and stages["writeup"].progress is None
+
+
+# ── B1 round 1: an exhibit served after the lock says why (V1; §7.2 I11) ────
+# Results, complete once both exhibits are placed, has one more objective when an answer given
+# after the lock serves another exhibit: it reads 2 of 3 and Write-up waits for it, so Results
+# names the answer and the exhibit it served, until that exhibit is computed and placed. Each
+# expected record is written by hand: the answer is the last record built here, its stage the
+# one its kind is decided in (``kind_stages``: set_sensitivity, set_substitution and set_scales in
+# Models, set_explain in Results, set_lens in Your data), and its sentence the reason's template
+# with the counts constructed (one exhibit served; two left out of date).
+
+SENSITIVITY = {"kind": "set_sensitivity", "analyses": [{"label": "Every row", "rules": []}]}
+SUBSTITUTION = {"kind": "set_substitution", "donor": "carb", "recipient": "fat_total"}
+EXPLAIN = {"kind": "set_explain", "reseeds": 0}
+LOCK = {"kind": "lock_plan", "seen_target": "glucose"}
+
+
+def _journey(before: list[dict], after: list[dict], stages: dict,
+             shown: tuple[str, ...] = ()) -> tuple[Any, list, QuestLog]:
+    """The NHANES fixture answered under Estimate, ``before`` recorded, the plan locked, then
+    ``after`` recorded; each compute stage at its status in ``stages``, and each of ``shown``
+    computed just after the lock (``shown_at``: shown for earlier answers). Its state, records
+    and quest log."""
+    state, _artifacts, records = path_fuzzer.answered_through(path_fuzzer.NHANES, "inference")
+    for payload in [*before, LOCK]:
+        state = _decide(records, payload)
+    at = records[-1].at + timedelta(seconds=30)
+    for payload in after:
+        state = _decide(records, payload)
+    fit = fit_press.fit_lock(state, records, pressed=True, held=False, estimate=None, opened=True)
+    log = _log_of(state, records, stages=stages, fit=fit, shown_at={n: at for n in shown})
+    return state, records, log
+
+
+def _by_key(log: QuestLog) -> dict[str, QuestStage]:
+    return {s.key: s for s in log.stages}
+
+
+@pytest.mark.parametrize("status", ["queued", "running", "error"])
+@pytest.mark.parametrize("answer,exhibit", [(SENSITIVITY, "sensitivity"),
+                                            (SUBSTITUTION, "substitution")])
+def test_an_exhibit_a_models_answer_serves_after_the_lock_says_why_results_dropped_back(
+        answer, exhibit, status):
+    # sensitivity requires its answer, the substitution curve its pair (the substitution question
+    # opens once the fit is fresh: with a held fit, after the press that locks the plan)
+    _state, records, log = _journey([], [answer], {**ALL_FRESH, exhibit: {"status": status}})
+    stages = _by_key(log)
+    assert stages["results"].progress == Progress(answered=2, required=3, complete=False)
+    assert not stages["writeup"].reached
+    assert stages["results"].reopened == [Reopened(
+        changed_in="models", decision_id=records[-1].id, kind=answer["kind"], added=[exhibit],
+        sentence="Your change to Models added 1 result to Results.")]
+
+
+def test_an_exhibit_a_results_answer_serves_after_the_lock_says_so_within_results():
+    # the explain declaration is decided in Results itself: the reason is within it
+    _state, records, log = _journey([], [EXPLAIN], {**ALL_FRESH, "explain": {"status": "queued"}})
+    stages = _by_key(log)
+    assert stages["results"].progress == Progress(answered=2, required=3, complete=False)
+    assert not stages["writeup"].reached
+    assert stages["results"].reopened == [Reopened(
+        changed_in="results", decision_id=records[-1].id, kind="set_explain", added=["explain"],
+        within=True, sentence="Your change to another answer in Results added 1 result.")]
+
+
+@pytest.mark.parametrize("answer,exhibit", [(SENSITIVITY, "sensitivity"),
+                                            (SUBSTITUTION, "substitution"), (EXPLAIN, "explain")])
+def test_an_exhibit_served_after_the_lock_and_placed_since_names_nothing(answer, exhibit):
+    # computed for the answers now, it is placed: 3 of 3, Write-up reached again, nothing to say
+    _state, _records, log = _journey([], [answer], {**ALL_FRESH, exhibit: {"status": "fresh"}})
+    stages = _by_key(log)
+    assert stages["results"].progress == Progress(answered=3, required=3, complete=True)
+    assert stages["writeup"].reached
+    assert stages["results"].reopened == []
+
+
+def test_the_lock_and_an_exhibit_served_before_it_name_nothing():
+    # the plain lock, every exhibit placed
+    assert _locked(ALL_FRESH)["results"].reopened == []
+    # an exhibit served at the lock and not computed yet was never one more: Results was not
+    # complete since the lock, and nothing reopened it
+    stages = _locked(_fresh("fit", "secondary", effects="queued"))
+    assert stages["results"].progress == Progress(answered=1, required=2, complete=False)
+    assert stages["results"].reopened == []
+    _state, _records, log = _journey([SENSITIVITY], [],
+                                     {**ALL_FRESH, "sensitivity": {"status": "queued"}})
+    stages = _by_key(log)
+    assert stages["results"].progress == Progress(answered=2, required=3, complete=False)
+    assert stages["results"].reopened == []
+    # before any lock nothing is placed, so nothing is one more
+    stages = _after_fit("inference", [SENSITIVITY],
+                        {**ALL_FRESH, "sensitivity": {"status": "queued"}})
+    assert stages["results"].progress == Progress(answered=0, required=3, complete=False)
+    assert stages["results"].reopened == []
+
+
+def test_one_answer_that_leaves_two_results_out_of_date_and_serves_a_third_says_both():
+    # A scale declared after the lock: Table 2 and Model 3 read the scales (computed just after
+    # the lock, out of date now), and the scales exhibit requires them (served now). One record
+    # says both, in one sentence.
+    scale = {"kind": "set_scales", "scales": [{"name": "fat_score", "low": 0, "high": 100,
+                                              "items": ["fat_sat", "fat_mon", "fat_poly"],
+                                              "kind": "formative"}]}
+    queued = {"status": "queued"}
+    _state, records, log = _journey([], [scale], {**ALL_FRESH, "secondary": queued,
+                                                  "effects": queued, "scales": queued},
+                                    shown=("secondary", "effects"))
+    [reason] = _by_key(log)["results"].reopened
+    assert (reason.decision_id, reason.changed_in, reason.added) == (records[-1].id, "models",
+                                                                     ["scales"])
+    assert sorted(reason.results) == ["effects", "secondary"]
+    assert reason.sentence == ("Your change to Models made 2 results in Results out of date and "
+                               "added 1 result there.")
+
+
+def test_under_describe_a_lens_given_after_the_lock_says_why_results_counts_its_exhibit():
+    # No lens at the lock: Results counts nothing yet, and waits for usual intake (0 of 0, not
+    # complete: ``exhibits_waiting``). The dietary lens after the lock serves it: 0 of 1, and Your
+    # data's answer is named as the one that served it.
+    stages = _describe("fresh", lens=False)
+    assert stages["results"].progress == Progress(answered=0, required=0, complete=False)
+    assert stages["results"].reopened == []
+    stages, records = _describe_log("queued", lens="after")
+    assert stages["results"].progress == Progress(answered=0, required=1, complete=False)
+    assert stages["results"].reopened == [Reopened(
+        changed_in="data", decision_id=records[-1].id, kind="set_lens", added=["usual_intake"],
+        sentence="Your change to Your data added 1 result to Results.")]
+    # computed since: placed, Write-up reached, nothing said
+    stages, _records = _describe_log("fresh", lens="after")
+    assert stages["results"].progress == Progress(answered=1, required=1, complete=True)
+    assert stages["writeup"].reached and stages["results"].reopened == []
+
+
+@pytest.mark.parametrize("answer,exhibit,action", [(SENSITIVITY, "sensitivity", "declare"),
+                                                   (EXPLAIN, "explain", "declare"),
+                                                   (SUBSTITUTION, "substitution", "answer")])
+def test_i11_holds_on_the_engines_own_logs_when_an_exhibit_is_served_after_the_lock(
+        answer, exhibit, action):
+    # The verifier's probe (B1-WO1-V1): the lock with both exhibits placed, then the answer with
+    # its exhibit not computed yet. I11 asks a complete stage that gains a line, and a stage that
+    # stops being reached, to say why; and once the exhibit is placed, nothing is left to say.
+    state, records, before = _journey([], [], ALL_FRESH)
+    prev = SimpleNamespace(log=before, state=state)
+    for status, expected in (("queued", (2, 3)), ("fresh", (3, 3))):
+        state, records, log = _journey([], [answer], {**ALL_FRESH, exhibit: {"status": status}})
+        snap = SimpleNamespace(action=action, kind=answer["kind"], reopening=False, log=log,
+                               steps=[], state=state, artifacts={})
+        results = _by_key(log)["results"]
+        assert (results.progress.answered, results.progress.required) == expected
+        assert _by_key(log)["writeup"].reached is (status == "fresh")
+        assert _i11(prev, snap) == []
 
 
 def test_before_fit_results_has_no_progress_at_all():
