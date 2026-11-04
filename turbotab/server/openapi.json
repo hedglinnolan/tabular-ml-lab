@@ -10581,6 +10581,14 @@
             },
             "type": "array",
             "title": "Exits"
+          },
+          "through": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Through",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -10601,7 +10609,8 @@
           "plan_lock",
           "weighted",
           "clustered",
-          "exits"
+          "exits",
+          "through"
         ],
         "title": "MatteredCurve",
         "description": "``spec_curve.SpecCurve`` as data (its ``to_dict``)."
@@ -10867,6 +10876,28 @@
             "type": "string",
             "title": "Scale Key",
             "default": ""
+          },
+          "fmi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fmi"
+          },
+          "mc_se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mc Se"
           }
         },
         "additionalProperties": false,
@@ -10884,7 +10915,9 @@
           "df",
           "estimator",
           "covariance",
-          "scale_key"
+          "scale_key",
+          "fmi",
+          "mc_se"
         ],
         "title": "MatteredSpec"
       },

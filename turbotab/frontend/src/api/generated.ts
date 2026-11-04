@@ -3585,6 +3585,11 @@ export interface components {
             exits: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Through
+             * @default []
+             */
+            through: string[];
         };
         /**
          * MatteredExamined
@@ -3692,6 +3697,10 @@ export interface components {
              * @default
              */
             scale_key: string;
+            /** Fmi */
+            fmi: number | null;
+            /** Mc Se */
+            mc_se: number | null;
         };
         /** MatteredSummary */
         MatteredSummary: {
