@@ -2910,17 +2910,51 @@ def _design_counts(d: Any, ctx: Any) -> tuple[int, int, int] | None:
     return int(per.sum()), int(len(per)), int((per == 1).sum())
 
 
-def _weight_words(d: Any) -> str:
-    """How a population answer weights each row (a pooled table's weight divided by its cycles)."""
-    if d.cycle and d.four_year_weight:
+def _weight_words(d: Any, state: Any = None, ctx: Any = None) -> str:
+    """How a population answer weights each row, as ``methods.survey.analysis_weights`` builds the
+    weight on the working table's rows, which the fit reads (``methods.survey.for_fit``): the
+    weight as it is with no cycle named or one cycle in it; the 2-year weight divided by the
+    number of cycles pooled from 2001–2002 on; the four-year weight on the 1999–2002 rows only
+    where 1999–2000 is pooled, which is the four-year weight itself where only 1999–2002 is.
+    Which of these it is comes from the weight's own note (the four-year weight is named in it
+    only where it was used), never from the answer's names alone: a 2001–2004 pool answered with
+    the four-year weight is weighted by the 2-year weight ÷ 2 (SW1). Without the table it states
+    the rule, not which branch of it."""
+    weight = tick(d.weight)
+    if not d.cycle:
+        return f"weighted by {weight}"
+    pooled = None
+    store = _get(ctx, "datastore")
+    if store is not None:
+        from turbotab.core.methods.survey import analysis_weights
+
+        try:
+            present = set(store.columns)
+            target = getattr(state, "target", None)
+            outcome = target if target and target in present else None
+            wanted = [c for c in (d.weight, d.cycle, d.four_year_weight, outcome)
+                      if c and c in present]
+            frame = store.materialize(list(dict.fromkeys(wanted)), None)
+            pooled = analysis_weights(frame, d.weight, d.cycle, d.four_year_weight, outcome)
+        except Exception:  # noqa: BLE001 - a sentence says less rather than fail
+            pooled = None
+    if pooled is None or pooled.refusal is not None:
+        four = (f" (or, on the 1999–2002 rows where 1999–2000 is pooled, "
+                f"{tick(d.four_year_weight)})" if d.four_year_weight else "")
+        return (f"weighted by {weight}{four}, pooled over the cycles in {tick(d.cycle)} by "
+                f"NCHS's rule")
+    if pooled.note is None:
+        return f"weighted by {weight}"
+    used = bool(d.four_year_weight) and f"`{d.four_year_weight}`" in pooled.note
+    if used and f"`{d.weight}`" not in pooled.note:
+        return (f"weighted by {tick(d.four_year_weight)}, the four-year weight NCHS provides for "
+                f"1999–2002")
+    if used:
         return (f"weighted by {tick(d.four_year_weight)} on the 1999–2002 rows (doubled, then "
                 f"divided by the number of cycles pooled in {tick(d.cycle)}) and by "
-                f"{tick(d.weight)} on the others (divided by the same number), as NCHS directs "
+                f"{weight} on the others (divided by the same number), as NCHS directs "
                 f"for 1999–2000")
-    if d.cycle:
-        return (f"weighted by {tick(d.weight)} divided by the number of cycles pooled in "
-                f"{tick(d.cycle)}")
-    return f"weighted by {tick(d.weight)}"
+    return f"weighted by {weight} divided by the number of cycles pooled in {tick(d.cycle)}"
 
 
 @register_sentence("set_survey")
@@ -2940,11 +2974,11 @@ def _set_survey(d: Any, state: Any, ctx: Any) -> str:
                     f"not in the surveyed population: unweighted{unused}")
         return (f"The estimates describe these participants, not the surveyed population: "
                 f"{ATTESTATION}{unused}")
+    weight = _weight_words(d, state, ctx)
     if scores:
         return (f"The scores estimate performance in the surveyed population: each score "
-                f"{_weight_words(d)}, by design-based cross-validation that holds whole PSUs out "
+                f"{weight}, by design-based cross-validation that holds whole PSUs out "
                 f"within strata")
-    weight = _weight_words(d)
     if d.strata and d.psu:
         counts = _design_counts(d, ctx)
         shape = f" ({count(counts[0])} PSUs in {count(counts[1])} strata)" if counts else ""
