@@ -329,6 +329,59 @@ describe("the specification curve", () => {
     expect(section.querySelector('[data-veil="stale"]')).not.toBeNull();
     expect(section.querySelector("[inert] [data-spec]")).not.toBeNull();
   });
+
+  /** `s` with its mattered stage at `status` and its artifact of earlier answers still served, as
+   *  the stage route serves the engine's last artifact, not fresh, while it is computed again. */
+  const computedAgain = (s: Snapshot, status: "stale" | "running" | "queued"): Snapshot => ({
+    ...s,
+    view: { ...s.view, stages: { ...s.view.stages, mattered: { ...s.view.stages.mattered!, status, fresh: false } } },
+    stages: { ...s.stages, mattered: { ...s.stages.mattered!, status, fresh: false } },
+  });
+  /** The section's text outside every inert body: what it says as current. */
+  const current = (section: HTMLElement) => {
+    const copy = section.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll("[inert]").forEach((el) => el.remove());
+    return copy.textContent ?? "";
+  };
+  const AGAIN = [
+    ["stale", "stale"],
+    ["running", "recomputing"],
+    ["queued", "recomputing"],
+  ] as const;
+
+  it("veils a refusal of earlier answers and its ways forward, inert, while it is computed again, and only then", async () => {
+    const message = unticked(C.refused.refused!.message);
+    const exit = C.refused.refused!.exits[0]!.label;
+    const fresh = await matteredSection(curveServed(C.refused));
+    expect(fresh.querySelector('[data-veil="fresh"]')).not.toBeNull();
+    expect(fresh.querySelector("[inert]")).toBeNull();
+    expect(current(fresh)).toContain(message);
+    expect(current(fresh)).toContain(exit);
+    cleanup();
+    for (const [status, veil] of AGAIN) {
+      const section = await matteredSection(computedAgain(curveServed(C.refused), status));
+      await waitFor(() => expect(section.querySelector(`[data-veil="${veil}"] [inert] [data-testid="results-mattered-exit"]`), status).not.toBeNull());
+      expect(section.querySelector(`[data-veil="${veil}"] [inert]`), status).toHaveTextContent(message);
+      expect(current(section), status).not.toContain(message);
+      expect(current(section), status).not.toContain(exit);
+      cleanup();
+    }
+  });
+
+  it("veils a withheld curve of earlier answers, inert, while it is computed again, and only then", async () => {
+    const withheld = unticked(servedOf(C.cox.locked).withheld!);
+    const fresh = await matteredSection(C.cox.locked);
+    expect(fresh.querySelector('[data-veil="fresh"]')).not.toBeNull();
+    expect(fresh.querySelector("[inert]")).toBeNull();
+    expect(current(fresh)).toContain(withheld);
+    cleanup();
+    for (const [status, veil] of AGAIN) {
+      const section = await matteredSection(computedAgain(C.cox.locked, status));
+      await waitFor(() => expect(section.querySelector(`[data-veil="${veil}"] [inert]`), status).toHaveTextContent(withheld));
+      expect(current(section), status).not.toContain(withheld);
+      cleanup();
+    }
+  });
 });
 
 // ── the materiality ledger ───────────────────────────────────────────────────

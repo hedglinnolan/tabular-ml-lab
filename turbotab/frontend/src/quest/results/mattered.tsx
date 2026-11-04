@@ -23,8 +23,9 @@
  *
  * A failed or stopped curve is said through StageFailure with `recordHere` false and no change
  * offered, as the estimate's is; one under way in the engine's label for the work; one of earlier
- * answers veiled while it is computed again; one whose stage is blocked on an answer, with nothing
- * served, not at all (and with no ledger row either, no part of this is drawn).
+ * answers (the curve, its withheld line or its refusal with the ways forward) veiled and inert
+ * while it is computed again; one whose stage is blocked on an answer, with nothing served, not at
+ * all (and with no ledger row either, no part of this is drawn).
  */
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
@@ -99,6 +100,16 @@ function CurveBody({ pid, art, veil, status, failed }: { pid: string; art: Serve
     if (failed) return null;
     return <OneLine view="spec_curve" text={busy(status) ? `${stageLabel(STAGE)}…` : "No specification curve is served yet."} />;
   }
+  // Whatever the artifact says (a curve, its gate's words, a refusal and its ways forward) is of
+  // the answers it was computed for, so all of it is veiled and inert while it is computed again.
+  return (
+    <StaleVeil state={veil} label={TITLE}>
+      <ServedBody pid={pid} art={art} />
+    </StaleVeil>
+  );
+}
+
+function ServedBody({ pid, art }: { pid: string; art: Served }) {
   if (art.withheld) return <OneLine view="spec_curve" text={<Rich text={art.withheld} />} />;
   if (art.refused) return <Refused pid={pid} refused={art.refused} />;
   if (!art.curve) return <OneLine view="spec_curve" text="No specification curve is served yet." />;
@@ -108,7 +119,7 @@ function CurveBody({ pid, art, veil, status, failed }: { pid: string; art: Serve
   // engine's account of the curve.
   const why = data.sealed ?? (art.says ? plain(art.says) : "No specification of this curve is estimated.");
   return (
-    <StaleVeil state={veil} label={TITLE}>
+    <>
       <SpecCurveView data={data} why={why} />
       {missing.length ? (
         <ul className={s.items}>
@@ -127,7 +138,7 @@ function CurveBody({ pid, art, veil, status, failed }: { pid: string; art: Serve
           <Rich text={art.methods} />
         </p>
       ) : null}
-    </StaleVeil>
+    </>
   );
 }
 
