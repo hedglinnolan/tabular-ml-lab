@@ -2912,21 +2912,40 @@ def _design_counts(d: Any, ctx: Any) -> tuple[int, int, int] | None:
 
 def _weight_words(d: Any, state: Any = None, ctx: Any = None) -> str:
     """How a population answer weights each row, as ``methods.survey.analysis_weights`` builds the
-    weight on the working table's rows, which the fit reads (``methods.survey.for_fit``): the
-    weight as it is with no cycle named or one cycle in it; the 2-year weight divided by the
-    number of cycles pooled from 2001–2002 on; the four-year weight on the 1999–2002 rows only
-    where 1999–2000 is pooled, which is the four-year weight itself where only 1999–2002 is.
-    Which of these it is comes from the weight's own note (the four-year weight is named in it
-    only where it was used), never from the answer's names alone: a 2001–2004 pool answered with
-    the four-year weight is weighted by the 2-year weight ÷ 2 (SW1). Without the table it states
-    the rule, not which branch of it."""
+    weight on the rows that read it: the weight as it is with no cycle named or one cycle in them;
+    the 2-year weight divided by the number of cycles pooled from 2001–2002 on; the four-year
+    weight on the 1999–2002 rows only where 1999–2000 is pooled, which is the four-year weight
+    itself where only 1999–2002 is. Which of these it is comes from the weight's own note (the
+    four-year weight is named in it only where it was used), never from the answer's names alone:
+    a 2001–2004 pool answered with the four-year weight is weighted by the 2-year weight ÷ 2 (SW1).
+
+    Under inference those rows are every row of the working table (``methods.survey.for_fit``, a
+    domain analysis). Under prediction they are the training rows each score is drawn on
+    (``stages.evaluation``, ``stages.modeling.fit_designs``), among the rows with the target
+    recorded, which the split and the exclusions, answered after this question, may still cut by
+    whole cycles; so a branch is said only where every such set of rows takes it (1999–2000 not
+    among the rows with the target recorded, or one cycle among them), and otherwise the rule.
+    Without the table, too, it states the rule, not which branch of it."""
     weight = tick(d.weight)
     if not d.cycle:
         return f"weighted by {weight}"
+    scores = getattr(d, "goal", None) == "prediction"
+    four = (f" (or, on the 1999–2002 rows where 1999–2000 is pooled, {tick(d.four_year_weight)})"
+            if d.four_year_weight else "")
+    if scores:
+        rule = (f"weighted by {weight}{four}, pooled by NCHS's rule over the cycles the training "
+                f"rows hold in {tick(d.cycle)}")
+        divided = (f"weighted by {weight} divided by the number of cycles the training rows hold "
+                   f"in {tick(d.cycle)}")
+    else:
+        rule = (f"weighted by {weight}{four}, pooled over the cycles in {tick(d.cycle)} by "
+                f"NCHS's rule")
+        divided = f"weighted by {weight} divided by the number of cycles pooled in {tick(d.cycle)}"
     pooled = None
     store = _get(ctx, "datastore")
     if store is not None:
-        from turbotab.core.methods.survey import analysis_weights
+        from turbotab.core.methods.survey import _recorded, analysis_weights
+        from turbotab.core.survey import cycle_number
 
         try:
             present = set(store.columns)
@@ -2935,14 +2954,18 @@ def _weight_words(d: Any, state: Any = None, ctx: Any = None) -> str:
             wanted = [c for c in (d.weight, d.cycle, d.four_year_weight, outcome)
                       if c and c in present]
             frame = store.materialize(list(dict.fromkeys(wanted)), None)
+            if scores and outcome is not None:
+                frame = frame.loc[_recorded(frame[outcome])]
             pooled = analysis_weights(frame, d.weight, d.cycle, d.four_year_weight, outcome)
         except Exception:  # noqa: BLE001 - a sentence says less rather than fail
             pooled = None
     if pooled is None or pooled.refusal is not None:
-        four = (f" (or, on the 1999–2002 rows where 1999–2000 is pooled, "
-                f"{tick(d.four_year_weight)})" if d.four_year_weight else "")
-        return (f"weighted by {weight}{four}, pooled over the cycles in {tick(d.cycle)} by "
-                f"NCHS's rule")
+        return rule
+    if scores and len(pooled.cycles) > 1 and any(cycle_number(v, d.cycle) == 1
+                                                 for v in pooled.cycles):
+        # 1999–2000 among several cycles: training rows that keep it, keep only 1999–2002, or
+        # drop it each take another branch.
+        return rule
     if pooled.note is None:
         return f"weighted by {weight}"
     used = bool(d.four_year_weight) and f"`{d.four_year_weight}`" in pooled.note
@@ -2954,7 +2977,7 @@ def _weight_words(d: Any, state: Any = None, ctx: Any = None) -> str:
                 f"divided by the number of cycles pooled in {tick(d.cycle)}) and by "
                 f"{weight} on the others (divided by the same number), as NCHS directs "
                 f"for 1999–2000")
-    return f"weighted by {weight} divided by the number of cycles pooled in {tick(d.cycle)}"
+    return divided
 
 
 @register_sentence("set_survey")

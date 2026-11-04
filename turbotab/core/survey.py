@@ -377,7 +377,11 @@ def _names_real_columns(decision: Any, ctx: Any) -> None:
             raise Refusal("design_is_outcome",
                           f"`{column}` is the outcome, so it cannot be part of the survey design.",
                           exits=[{"label": "Name another column", "decision": None}])
-        if roles.get(column) in ("exposure", "covariate", "energy"):
+        # The cycle says only which cycle's weight each row takes and how many are pooled
+        # (``methods.survey.analysis_weights``), which adjusting for it (a secular trend, or the
+        # exposure of a trend across cycles) does not contradict. Refusing it left a pool whose
+        # cycle the roles adjust for with no answer that reaches NCHS's weight (PP2 follow-up SW2).
+        if slot != "cycle" and roles.get(column) in ("exposure", "covariate", "energy"):
             raise Refusal(
                 "design_is_predictor",
                 f"`{column}` is a predictor ({roles[column]}); a survey "
@@ -492,9 +496,10 @@ def _pools_by_the_cycle_read(decision: Any, ctx: Any) -> Any:
     it, so the fit, every stage that weighs by the answer and its sentence divide by the cycles
     it holds. Where it does not (another name the cycle reader takes, two columns that each pool,
     or a role that rode along unconfirmed), the answer is refused, with a way on naming each
-    column, which the user then records, and the sample-only answer. A column the roles make a
-    predictor or the outcome is not a cycle the answer can name (``_names_real_columns``), so it
-    is not read here; an answer weighted by any other weight is kept as given."""
+    column, which the user then records, and the sample-only answer. A cycle the roles make a
+    predictor is read as any other (adjusting for it does not change which weight a row takes);
+    the outcome is not a cycle the answer can name (``_names_real_columns``), so it is not read
+    here. An answer weighted by any other weight is kept as given."""
     from turbotab.core.decisions import Refusal, _ctx, _state
 
     if decision.estimand != "population" or decision.cycle or not one_cycle_weight(decision.weight):
@@ -505,11 +510,10 @@ def _pools_by_the_cycle_read(decision: Any, ctx: Any) -> Any:
         return decision
     store = store_fn()
     present = set(getattr(store, "columns", ()) or ()) if store is not None else set()
-    roles = getattr(state, "roles", None) or {}
     target = getattr(state, "target", None)
     pools: dict[str, list[Any]] = {}
     for c in reading_of(state).cycles:
-        if c in present and c != target and roles.get(c) not in ("exposure", "covariate", "energy"):
+        if c in present and c != target:
             values = store.materialize([c], None)[c].dropna().unique().tolist()
             if len(values) > 1:
                 pools[c] = values
