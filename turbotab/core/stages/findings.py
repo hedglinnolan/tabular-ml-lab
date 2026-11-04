@@ -218,7 +218,7 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
 
     own.extend(batch_findings(frame, lens, target))
     # WP14 (audit IN-13): the stated lens against the table, answered by changing it or recorded.
-    own.extend(detectors.own_findings(frame, lens, target, from_packs))
+    own.extend(detectors.own_findings(frame, lens))
     for _, f in spoken:
         if family(f["id"]) == "pack::genomics::data_type":
             omics.restate_raw_counts(f)

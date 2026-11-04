@@ -239,17 +239,14 @@ def hints(df: pd.DataFrame | None) -> list[dict[str, str]]:
     return out
 
 
-def contradiction_finding(df: pd.DataFrame, lens: Sequence[str], target: str | None = None,
-                          qc_rows: pd.Series | None = None) -> dict[str, Any] | None:
+def contradiction_finding(df: pd.DataFrame, lens: Sequence[str]) -> dict[str, Any] | None:
     """The stated lens against the table (``packs.contradiction``), as a finding the user answers:
-    change the lens, or dismiss it to record that the answer stands. ``target`` (the outcome) and
-    ``qc_rows`` (the pooled-QC rows) are what its second direction sets aside, as the
-    left-censoring finding does; by default no outcome, and the rows the pack's own reading flags."""
+    change the lens, or dismiss it to record that the answer stands."""
     from turbotab import packs
     from turbotab.core.stages.finding_words import _finding
 
     try:
-        found = packs.contradiction(df, list(lens), target=target, qc_rows=qc_rows)
+        found = packs.contradiction(df, list(lens))
     except Exception:  # noqa: BLE001 - a check that cannot read the table says nothing
         return None
     if not found:

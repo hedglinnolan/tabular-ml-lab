@@ -27,11 +27,13 @@ reading does not name:
   aside by default, reads a two-level label only; on a Case/Control/QC label the served reading
   names the QC rows and the pack's names none, so the app sets aside the served reading's rows,
   and the outcome (``finding_words.left_censoring_on_the_participants``);
-* the lens contradiction the page serves (``detectors.own_findings``) reads what the
-  left-censoring reading reads: those rows, those features, the outcome set aside;
-* the clinical bands (``plausibility.impossible_vs_extreme_finding``) read the same rows where the
-  lens serves the pooled-QC finding, so a QC row's 0 is no participant's impossible value, and
-  the intake and impossible-value counts say they are out of the non-QC rows.
+* beside the pooled QCs the not-asked option, the implausible-intake counts and the energy
+  correlation count the participants, and say so.
+
+The lens contradiction the page serves (``detectors.own_findings``) still reads every numeric
+column over every row, the outcome and the QC rows among them, and the impossible-value card
+(``plausibility.impossible_vs_extreme_finding``) every row, the rows its repairs act on: when
+either should read the participants is a later package's.
 
 Each truth is by construction on a plasma-like table (60 participants, 10 QC injections, 40
 features censored below a detection limit, the features being the `mz_` columns it builds),
@@ -894,7 +896,7 @@ def test_left_censoring_the_pack_list_lacks_is_inserted_with_the_participants_nu
     assert served["pack::metabolomics::left_censored"]["detail"] == expected
 
 
-# ── the lens contradiction reads what the left-censoring finding reads ──────
+# ── the lens contradiction reads every row, as base does ────────────────────
 
 
 #: Covariates omics sets aside by name (age and BMI under eight names, age in months among them).
@@ -933,62 +935,112 @@ def low_scale_panel(*, censored: bool, seed: int = 1) -> pd.DataFrame:
     return out
 
 
-def _participants_rho(df: pd.DataFrame, feats: list[str] | None = None) -> tuple[float, int, int]:
-    """By scipy and pandas, on the participants: the Spearman correlation of each usable feature's
-    missing rate with its log mean, the usable features and the features with a blank."""
-    part = participants(df)
-    feats = features(df) if feats is None else feats
-    rate, mean = part[feats].isna().mean(), part[feats].mean()
-    usable = [c for c in feats if pd.notna(mean[c]) and mean[c] > 0]
-    rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
-    return float(rho), len(usable), int((rate > 0).sum())
+def labs_panel(n_labs: int, lo: float, hi: float,
+               labels: tuple[str, ...] = ("case", "control")) -> pd.DataFrame:
+    """The plasma-like panel (its features censored by abundance), on a Case/Control/QC label by
+    default (``labels``, as :func:`panel` takes them), with ``n_labs`` laboratory values on no name
+    list, each drawn uniform on ``lo``–``hi``, and a three-valued outcome `stage` (0, 1, 2), all
+    blank on every QC row, by construction."""
+    df = panel(labels=labels)
+    qc = df["sample_type"].eq("pooled_qc").to_numpy()
+    rng = np.random.default_rng(29)
+    for j in range(n_labs):
+        df[f"lab_{j:02d}"] = np.where(qc, np.nan, np.round(rng.uniform(lo, hi, len(df)), 1))
+    df["stage"] = np.where(qc, np.nan, rng.integers(0, 3, len(df)).astype(float))
+    return df
 
 
-def test_where_the_participants_features_are_censored_the_lens_is_not_contradicted(tmp_path):
-    """The participants' 12 censored features track abundance (scipy: -0.65 over the 40, with 12
-    blank), so the left-censoring finding is raised; read over every numeric column and every row,
-    the eight covariates blank on the QC rows, more abundant than any feature, pulled the lens
-    contradiction's reading above -0.3 (scipy), and the app said both that the blanks cluster in
-    the lowest-abundance features and that they do not look like non-detections. The
-    contradiction reads the same features on the same rows now, and says nothing."""
-    df = read_back(tmp_path, low_scale_panel(censored=True))
-    rho, n_usable, n_blank = _participants_rho(df)
-    assert rho <= -0.5 and n_blank == 12 and n_usable == N_FEATURES
-    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-    rate, mean = df[numeric].isna().mean(), df[numeric].mean()
-    assert stats.spearmanr(rate.to_numpy(), np.log(mean.to_numpy())).statistic > -0.3
-    assert packs.contradiction(df, [packs.METABOLOMICS]) is None
-    found = findings_of(tmp_path, low_scale_panel(censored=True), ["metabolomics"])
-    assert "pack::metabolomics::left_censored" in found
-    assert "voice::lens_contradiction" not in found
+#: Fifteen clinical labs on no name list, each drawn on its adult reference range.
+CLINICAL_LABS = {"creatinine": (0.6, 1.3), "potassium": (3.5, 5.0), "albumin": (3.5, 5.0),
+                 "hba1c": (4.0, 5.6), "bilirubin": (0.1, 1.2), "calcium": (8.5, 10.5),
+                 "magnesium": (1.7, 2.2), "phosphate": (2.5, 4.5), "bun": (7.0, 20.0),
+                 "uric_acid": (3.5, 7.2), "crp": (0.1, 10.0), "tsh": (0.4, 4.0),
+                 "ferritin": (20.0, 300.0), "alt": (7.0, 56.0), "ast": (10.0, 40.0)}
 
 
-def test_where_the_participants_blanks_are_at_random_the_lens_is_contradicted_on_their_features(
-        tmp_path):
-    """The guard's other side: 12 features blank at random on the participants (scipy: their
-    missing rate does not track abundance, above -0.3), so the lens is contradicted, and the
-    sentence's count and correlation are the 40 features' on the 60 participants (scipy), not
-    every numeric column's over every row. Handed a three-valued outcome, `stage`, the reading
-    sets it aside; with no outcome named it is one more column, as before."""
+def clinical_labs_panel(labels: tuple[str, ...] = ("participant",)) -> pd.DataFrame:
+    """The plasma-like panel (its features censored by abundance, its 0/1 outcome `disease`, on a
+    label of ``labels`` as :func:`panel` takes them) with the 15 :data:`CLINICAL_LABS`, each drawn
+    uniform on its reference range and blank on every QC row, by construction."""
+    df = panel(labels=labels)
+    qc = df["sample_type"].eq("pooled_qc").to_numpy()
+    rng = np.random.default_rng(31)
+    for name, (lo, hi) in CLINICAL_LABS.items():
+        df[name] = np.where(qc, np.nan, np.round(rng.uniform(lo, hi, len(df)), 2))
+    return df
+
+
+def random_blanks_panel() -> pd.DataFrame:
+    """:func:`low_scale_panel` with its 12 features blank at random, on a Case/Control/QC label,
+    and a three-valued outcome `stage`, blank on every QC row and on 20 participants, by
+    construction."""
     frame = low_scale_panel(censored=False)
     qc = frame["sample_type"].eq("pooled_qc").to_numpy()
+    label = np.random.default_rng(12).choice(["case", "control"], len(frame))
+    frame["sample_type"] = np.where(qc, "pooled_qc", label)
     stage = np.random.default_rng(41).integers(0, 3, len(frame)).astype(float)
     stage[qc] = np.nan
     stage[np.flatnonzero(~qc)[:20]] = np.nan
     frame["stage"] = stage
+    return frame
+
+
+def _every_row_reading(df: pd.DataFrame) -> tuple[float, int, int]:
+    """By scipy and pandas, the blanks read over every numeric column and every row: the Spearman
+    correlation of each positive-mean column's missing rate with its log mean, those columns and
+    the columns with a blank."""
+    numeric = [c for c in df.columns
+               if pd.api.types.is_numeric_dtype(df[c]) and not pd.api.types.is_bool_dtype(df[c])]
+    rate, mean = df[numeric].isna().mean(), df[numeric].mean()
+    usable = [c for c in numeric if pd.notna(mean[c]) and mean[c] > 0]
+    rho = stats.spearmanr(rate[usable].to_numpy(), np.log(mean[usable].to_numpy())).statistic
+    return float(rho), len(usable), int((rate > 0).sum())
+
+
+#: name -> (the table, the outcome handed to the findings stage, whether the contradiction is
+#: served: by construction, and checked against scipy's reading over every row).
+CONTRADICTION_TABLES = {
+    "knife": (lambda: labs_panel(30, 50.0, 300.0, labels=("participant",)), "stage", False),
+    "knife_no_outcome": (lambda: labs_panel(30, 50.0, 300.0, labels=("participant",)), None,
+                         False),
+    "clinical_labs": (clinical_labs_panel, "disease", False),
+    "clinical_labs_case_control_qc": (lambda: clinical_labs_panel(("case", "control")), "disease",
+                                      False),
+    "case_control_qc_low_labs": (lambda: labs_panel(15, 0.5, 2.0), "stage", False),
+    "case_control_qc_high_labs": (lambda: labs_panel(20, 1e6, 3e6), "stage", True),
+    "case_control_qc_at_random": (random_blanks_panel, "stage", True),
+}
+
+
+@pytest.mark.parametrize("name", list(CONTRADICTION_TABLES))
+def test_the_served_lens_contradiction_reads_every_numeric_column_over_every_row(tmp_path, name):
+    """The lens contradiction the page serves reads the blanks as base (f13f0869) does: over every
+    numeric column and every row, the pooled-QC rows and the outcome among them, and it is served
+    where the missing rate does not track abundance (Spearman above -0.3; scipy's reading here).
+    On the knife (a two-level label, 30 labs on no name list blank on the QC rows, a three-valued
+    outcome `stage`, handed or not), the clinical labs (15 on their reference ranges, blank on the
+    QC rows, on a two-level and a Case/Control/QC label) and labs of 0.5 to 2 on a Case/Control/QC
+    label it is silent; four of those five served that the blanks do not look like non-detections
+    where the contradiction read the participants' columns. On labs more abundant than any feature
+    and on blanks at random, both on a Case/Control/QC label, it is served, with the count and
+    correlation read over every row. Which rows and columns it should read is a later package's.
+    Each reading is at least 0.1 from the gate, so no float tips it."""
+    build, target, served = CONTRADICTION_TABLES[name]
+    frame = build()
     df = read_back(tmp_path, frame)
-    for target, feats in ((None, features(df) + ["stage"]), ("stage", features(df))):
-        rho, n_usable, n_blank = _participants_rho(df, feats)
-        assert rho > -0.3 and n_blank >= 10
-        clash = packs.contradiction(df, [packs.METABOLOMICS], target=target)
-        assert clash is not None and clash["kind"] == "stated_assay_lens_but_blanks_are_not_censored"
-        assert clash["rho"] == round(rho, 3)
-        assert (f"across {n_usable:,} measurement columns the missing rate does not track "
-                f"abundance (rank correlation {rho:+.2f}") in clash["message"]
-    assert n_usable == N_FEATURES
-    served = findings_of(tmp_path, frame, ["metabolomics"])["voice::lens_contradiction"]
-    rho, n_usable, _ = _participants_rho(df, features(df) + ["stage"])
-    assert f"across {n_usable:,} measurement columns" in served["detail"]
+    rho, n_usable, n_blank = _every_row_reading(df)
+    assert n_blank >= 10 and n_usable >= 10 and abs(rho + 0.3) >= 0.1
+    assert (rho > -0.3) is served
+    clash = packs.contradiction(df, [packs.METABOLOMICS])
+    found = findings_of(tmp_path, frame, ["metabolomics"], target)
+    if not served:
+        assert clash is None and "voice::lens_contradiction" not in found
+        return
+    said = (f"across {n_usable:,} measurement columns the missing rate does not track abundance "
+            f"(rank correlation {rho:+.2f}")
+    assert clash["kind"] == "stated_assay_lens_but_blanks_are_not_censored"
+    assert clash["rho"] == round(rho, 3) and said in clash["message"]
+    assert said in found["voice::lens_contradiction"]["detail"]
 
 
 # ── the readings beside the pooled QCs count the participants ───────────────
@@ -1333,167 +1385,33 @@ def glucose_panel(impossible: tuple[float, ...]) -> pd.DataFrame:
     return df
 
 
+@pytest.mark.parametrize("impossible", [(5.0, 2500.0), ()], ids=["two_participants", "qc_only"])
 @pytest.mark.parametrize("lens", [["metabolomics", "clinical"], ["clinical"]],
                          ids=["qc_rows_served", "no_qc_reading"])
-def test_impossible_values_are_counted_on_the_participants_beside_qc_rows(tmp_path, lens):
-    """Two participants' glucose is impossible (5 and 2,500 mg/dL, outside 10–2,000, by
-    construction) and the 10 QC rows hold 0. Where the pooled-QC finding is served the impossible
-    values are counted on the 60 participants (pandas: 2), and the summary and detail say so,
-    where they counted 12 and spoke of the QC rows' zeros as adults' values. Under the clinical
-    lens alone no QC row is named, and every row counts (pandas: 12), in the words it had."""
-    frame = glucose_panel((5.0, 2500.0))
-    df = read_back(tmp_path, frame)
-    rows = participants(df) if "metabolomics" in lens else df
-    g = rows["glucose"]
+def test_the_impossible_value_card_counts_the_values_its_repairs_act_on(tmp_path, lens, impossible):
+    """The impossible-value card and its repair options count the same values, every row's, as the
+    repairs act on every row. `glucose` is 0 on the 10 QC rows and impossible (outside 10–2,000
+    mg/dL) on ``impossible`` participants, by construction, so pandas counts 12 (or 10) on as many
+    rows, whether or not the pooled-QC finding is served. Read on the participants beside the QC
+    rows, the card said 2 while its options said 12; which rows both should count is a later
+    package's."""
+    frame = glucose_panel(impossible)
+    g = read_back(tmp_path, frame)["glucose"]
     n = int(((g < 10) | (g > 2000)).sum())
     unusual = int(((g >= 10) & (g <= 2000) & ((g < 79) | (g > 285))).sum())
-    assert (n, unusual, len(rows)) == ((2, 0, 60) if "metabolomics" in lens else (12, 0, 70))
+    assert (n, unusual) == (N_QC + len(impossible), 0)
     found = findings_of(tmp_path, frame, lens)
     assert ("pack::metabolomics::pooled_qc" in found) == ("metabolomics" in lens)
     f = found["pack::clinical::impossible_vs_extreme"]
-    on = "On non-QC rows, " if "metabolomics" in lens else ""
-    assert f["summary"] == (f"{on}`glucose` has `{n}` impossible values outside `10`–`2000`; "
+    assert f["summary"] == (f"`glucose` has `{n}` impossible values outside `10`–`2000`; "
                             f"`{unusual}` more are unusual but real.")
-    read = "Read on the 60 non-QC rows. " if "metabolomics" in lens else ""
-    assert f["detail"].startswith(f"{read}{n} values in `glucose` are outside 10–2000 mg/dL, "
-                                  f"limits no living adult is expected to show")
-    assert voice.words(f["summary"]) <= SUMMARY_WORDS
-
-
-@pytest.mark.parametrize("lens", [["metabolomics", "clinical"], ["clinical"]],
-                         ids=["qc_rows_served", "no_qc_reading"])
-def test_impossible_values_only_on_the_qc_rows_raise_no_participant_finding(tmp_path, lens):
-    """Only the 10 QC rows hold an impossible glucose (0, by construction; pandas: none of the 60
-    participants' is outside 10–2,000). Where the pooled-QC finding is served no impossible-value
-    finding is raised, where it said `glucose` has `10` impossible values, limits no living adult
-    is expected to show; under the clinical lens alone every row counts, and the 10 are said."""
-    frame = glucose_panel(())
-    df = read_back(tmp_path, frame)
-    g, every = participants(df)["glucose"], df["glucose"]
-    assert int(((g < 10) | (g > 2000)).sum()) == 0
-    assert int(((every < 10) | (every > 2000)).sum()) == 10
-    found = findings_of(tmp_path, frame, lens)
-    if "metabolomics" in lens:
-        assert "pack::metabolomics::pooled_qc" in found
-        assert "pack::clinical::impossible_vs_extreme" not in found
-        return
-    assert found["pack::clinical::impossible_vs_extreme"]["summary"].startswith(
-        "`glucose` has `10` impossible values outside `10`–`2000`;")
-
-
-@pytest.mark.parametrize("on_participants", [True, False])
-@pytest.mark.parametrize("form", ["age_unit_question", "in_question"])
-def test_the_impossible_value_questions_name_the_rows_they_read(form, on_participants):
-    """Where the clinical bands were read on the participants (the detector's ``non_qc_rows``),
-    the summaries that judge most of a column's rows say they are the non-QC rows; read on every
-    row, they say what they said."""
-    from turbotab.core.stages import finding_words as fw
-
-    p = ({"age_unit_question": True, "age": {"column": "age"}} if form == "age_unit_question"
-         else {"in_question": ["weight"]})
-    if on_participants:
-        p["non_qc_rows"] = 60
-    f = {"id": "pack::clinical::impossible_vs_extreme", "affected_columns": ["weight"],
-         "title": "t", "detail": ""}
-    said = fw._impossible(f, p, FindingContext(frame=pd.DataFrame({"weight": [1.0]})))
-    rows = "most non-QC rows" if on_participants else "most rows"
-    expected = {
-        "age_unit_question": (f"Read in years, `age` flags {rows}: record its unit before judging "
-                              f"by age."),
-        "in_question": (("On non-QC rows, most" if on_participants else "Most") + " of `weight` "
-                        "sits outside the adult reference: its unit or population is in question."),
-    }[form]
-    assert said.summary == expected
-
-
-# ── the lens contradiction the page serves reads the participants, the outcome set aside ──
-
-
-def labs_panel(n_labs: int, lo: float, hi: float,
-               labels: tuple[str, ...] = ("case", "control")) -> pd.DataFrame:
-    """The plasma-like panel (its features censored by abundance), on a Case/Control/QC label by
-    default (``labels``, as :func:`panel` takes them), with ``n_labs`` laboratory values on no name
-    list, each drawn uniform on ``lo``–``hi``, and a three-valued outcome `stage` (0, 1, 2), all
-    blank on every QC row, by construction."""
-    df = panel(labels=labels)
-    qc = df["sample_type"].eq("pooled_qc").to_numpy()
-    rng = np.random.default_rng(29)
-    for j in range(n_labs):
-        df[f"lab_{j:02d}"] = np.where(qc, np.nan, np.round(rng.uniform(lo, hi, len(df)), 1))
-    df["stage"] = np.where(qc, np.nan, rng.integers(0, 3, len(df)).astype(float))
-    return df
-
-
-def test_on_a_case_control_qc_label_the_served_lens_is_not_contradicted_where_blanks_track_abundance(
-        tmp_path):
-    """On the participants of a Case/Control/QC label the features' blanks track abundance with the
-    20 labs among them (scipy, `stage` set aside: -0.5 or below), and the left-censoring finding
-    says so. Read over every row with `stage` among the columns, the labs blank on the QC rows and
-    more abundant than any feature held the correlation above -0.3 (scipy), and the page served
-    beside it that the blanks do not look like non-detections. Handed the outcome and the rows the
-    served pooled-QC finding names, the contradiction reads what the left-censoring finding reads,
-    and says nothing."""
-    frame = labs_panel(20, 1e6, 3e6)
-    df = read_back(tmp_path, frame)
-    labs = [c for c in df.columns if c.startswith("lab_")]
-    rho, n_usable, _ = _participants_rho(df, features(df) + labs)
-    assert rho <= -0.5 and n_usable == N_FEATURES + 20
-    cols = features(df) + labs + ["stage"]
-    rate, mean = df[cols].isna().mean(), df[cols].mean()
-    assert stats.spearmanr(rate.to_numpy(), np.log(mean.to_numpy())).statistic > -0.3
-    found = findings_of(tmp_path, frame, ["metabolomics"], target="stage")
-    assert "pack::metabolomics::pooled_qc" in found
-    assert "pack::metabolomics::left_censored" in found
-    assert "voice::lens_contradiction" not in found
-
-
-def test_on_a_case_control_qc_label_the_served_lens_is_contradicted_on_the_participants_features(
-        tmp_path):
-    """The guard's other side, on a Case/Control/QC label: 12 features blank at random on the
-    participants (scipy: their missing rate does not track abundance, above -0.3), so the page
-    serves the contradiction, and its count and correlation are the 40 features' on the 60
-    participants (scipy), the outcome `stage` handed to the stage set aside, where it counted
-    `stage` among the measurement columns and read every row, the QC rows' too."""
-    frame = low_scale_panel(censored=False)
-    qc = frame["sample_type"].eq("pooled_qc").to_numpy()
-    label = np.random.default_rng(12).choice(["case", "control"], len(frame))
-    frame["sample_type"] = np.where(qc, "pooled_qc", label)
-    stage = np.random.default_rng(41).integers(0, 3, len(frame)).astype(float)
-    stage[qc] = np.nan
-    stage[np.flatnonzero(~qc)[:20]] = np.nan
-    frame["stage"] = stage
-    df = read_back(tmp_path, frame)
-    rho, n_usable, n_blank = _participants_rho(df)
-    assert rho > -0.3 and n_blank >= 10 and n_usable == N_FEATURES
-    found = findings_of(tmp_path, frame, ["metabolomics"], target="stage")
-    assert "pack::metabolomics::pooled_qc" in found
-    served = found["voice::lens_contradiction"]
-    assert (f"across {n_usable:,} measurement columns the missing rate does not track abundance "
-            f"(rank correlation {rho:+.2f}") in served["detail"]
-
-
-def test_on_a_two_level_label_the_outcome_read_as_a_feature_does_not_contradict_the_served_lens(
-        tmp_path):
-    """The guard's silent side where the outcome tips it, on a two-level label: 30 labs on no name
-    list, blank on the QC rows only and drawn uniform on 50–300, beside the 40 censored features.
-    On the participants with the outcome `stage` set aside, the missing rate of the 40 features and
-    30 labs tracks abundance at -0.3 or below (scipy), short of the contradiction's gate (above
-    -0.3); with `stage` (three values, blank on every QC row) read as a measurement column it is
-    above -0.3 (scipy), and the page served that the blanks do not look like non-detections, which
-    base, reading every numeric column over every row (scipy: -0.5 or below), did not. Handed the
-    outcome, the contradiction reads what the left-censoring finding reads, and says nothing."""
-    frame = labs_panel(30, 50.0, 300.0, labels=("participant",))
-    df = read_back(tmp_path, frame)
-    feats = features(df) + [c for c in df.columns if c.startswith("lab_")]
-    rho, n_usable, _ = _participants_rho(df, feats)
-    with_outcome, _, _ = _participants_rho(df, feats + ["stage"])
-    assert rho <= -0.3 < with_outcome and n_usable == N_FEATURES + 30
-    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-    rate, mean = df[numeric].isna().mean(), df[numeric].mean()
-    assert stats.spearmanr(rate.to_numpy(), np.log(mean.to_numpy())).statistic <= -0.5
-    found = findings_of(tmp_path, frame, ["metabolomics"], target="stage")
-    assert "pack::metabolomics::pooled_qc" in found
-    assert "voice::lens_contradiction" not in found
+    assert f["detail"].startswith(f"{n} values in `glucose` are outside 10–2000 mg/dL, limits no "
+                                  f"living adult is expected to show")
+    options = {o["key"]: o["consequence"] for o in f["repairs"]}
+    assert options["set_missing"] == (f"`{n}` impossible values in `glucose` become blank; every "
+                                      f"possible value stays.")
+    assert options["exclude_rows"] == (f"`{n}` rows holding an impossible `glucose` value leave "
+                                       f"the analysis before the seal.")
 
 
 @pytest.mark.parametrize("form", ["kcal_a_day_qc", "kcal_two_days", "kj_qc", "kj"])

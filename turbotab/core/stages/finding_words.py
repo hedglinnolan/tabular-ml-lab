@@ -394,28 +394,23 @@ def _text_numeric(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> V
 
 def _impossible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     entries = [e for e in _list(p.get("columns")) if isinstance(e, Mapping)]
-    # Read on the participants (``non_qc_rows``: ``detectors.pack_findings`` read the bands on the
-    # rows outside those the served pooled-QC finding names), the rows a judgment of most of them
-    # or a count is about are named.
-    on = bool(p.get("non_qc_rows"))
     if p.get("age_unit_question"):
         # Audit WP13 gate repair: an age in months read as years; nothing is judged by age, and no
         # range is offered on values whose judgment depends on the unit.
         age = (p.get("age") or {}).get("column") or "age"
-        return Voice(f"Read in years, {tick(age)} flags most {'non-QC ' if on else ''}rows: record "
-                     f"its unit before judging by age.")
+        return Voice(f"Read in years, {tick(age)} flags most rows: record its unit before judging "
+                     f"by age.")
     if not entries and p.get("in_question"):
         col = _list(p.get("in_question"))[0] if _list(p.get("in_question")) else None
-        return Voice(f"{'On non-QC rows, most' if on else 'Most'} of {tick(col)} sits outside the "
-                     f"adult reference: its unit or population is in question.")
+        return Voice(f"Most of {tick(col)} sits outside the adult reference: its unit or "
+                     f"population is in question.")
     if not entries:
         return Voice(finish(f["title"]), "exclusions", "Exclude rows by range")
     e = entries[0]
     band = e.get("impossible_band") or [None, None]
     more = f" ({len(entries) - 1} more {plural(len(entries) - 1, 'column')} too)" if len(entries) > 1 else ""
     # Audit IN-09: the second count is "outside the reference sample's central 98%", not "abnormal".
-    return Voice(f"{'On non-QC rows, ' if on else ''}{tick(e.get('column'))} has "
-                 f"{count(e.get('n_impossible') or 0)} impossible values "
+    return Voice(f"{tick(e.get('column'))} has {count(e.get('n_impossible') or 0)} impossible values "
                  f"outside {tick(number(band[0]))}–{tick(number(band[1]))}; "
                  f"{count(e.get('n_abnormal_but_possible') or 0)} more are unusual but real{more}.",
                  "exclusions", "Exclude rows by range")
