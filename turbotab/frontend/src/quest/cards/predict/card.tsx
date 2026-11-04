@@ -92,11 +92,18 @@ export interface CardWiring {
   /** The reason being written for the next record, sent with it as the decision's note. */
   reason: Reason;
   setReason: (reason: Reason) => void;
-  /** The note on the record that answers what the card shows as recorded, or null: for a keyed
-   *  kind, the record of the entry its marked option's decision writes (`shown`; none where it marks
-   *  none); for a kind that keeps one answer, the line's record, whatever `shown` is. */
-  reasonOnRecord: (shown?: Decision | null) => string | null;
+  /** The note on the record that answers what the card shows as recorded, or null: none where the
+   *  card marks no option (`marked` null); for a keyed kind, the record of the entry its marked
+   *  option's decision writes; for a kind that keeps one answer, the kind's record in force, the
+   *  one the line names, where the card marks an option or draws its button over several choices
+   *  (`marked` left out). */
+  reasonOnRecord: (marked?: Marked) => string | null;
 }
+
+/** What a card marks as recorded, for the reason shown beside it: the option it marks, with the
+ *  decision that option sends now (null where its offer has problems now), or null where it marks
+ *  none (the value on record is not among the values it lists). */
+export type Marked = { decision: Decision | null } | null;
 
 /** Where a note the server refuses as too long is answered: at the reason box, which holds the text
  *  to shorten and names it as the refusal does (core/decisions.py `check_note`), not at the option
@@ -138,30 +145,35 @@ function live(records: readonly DecisionRecord[]): DecisionRecord[] {
   return ordered.filter((r) => !cancelled.has(r.id));
 }
 
-/** The note on the record that answers what the card shows as recorded, or null. The quest log
- *  names one record for the declaration of `kind`, the last live record of the kind once answered
- *  (core/quest.py: a declaration's line is keyed by its kind); the log is the one the shell holds,
- *  and the card never fetches it. For a kind that keeps one answer, that record is the answer,
- *  whatever the card marks. For a keyed kind it is the last entry written, whatever entry the card
- *  shows, so the record that answers is the last live one of the entry `shown` writes, and there is
- *  none where the card marks none (`shown` null or left out). */
+/** The note on the record that answers what the card shows as recorded, or null. A record answers
+ *  only while the quest log names one for the declaration of `kind` (core/quest.py: a declaration's
+ *  line is keyed by its kind, and names a record once answered); the log is the one the shell
+ *  holds, and the card never fetches it. The record it names is the last live record of the kind
+ *  (core/quest.py `last_answer` over `_Log.live`), read here from the view, as the card reads what
+ *  it marks: so a new answer's own note is beside it from the decision's response on, not the note
+ *  of the record it replaced, which the log names until the shell refetches it. None answers where
+ *  the card marks no option (`marked` null). For a kind that keeps one answer, that record is the
+ *  answer to the option marked, or to the several choices a card draws one button over (`marked`
+ *  left out). For a keyed kind it is the last entry written, whatever entry the card shows, so the
+ *  record that answers is the last live one of the entry the marked option's decision writes, and
+ *  there is none where that decision is not known. */
 function noteOnRecord(
   view: ProjectView | undefined,
   log: QuestLog | undefined,
   kind: Decision["kind"],
-  shown: Decision | null | undefined,
+  marked: Marked | undefined,
 ): string | null {
   const line = log?.stages.flatMap((s) => s.lines).find((l) => l.source === "declaration" && l.key === kind);
-  if (!view || !line?.decision_id) return null;
-  const named = view.decisions.find((d) => d.id === line.decision_id);
-  if (!named) return null;
-  if (entryOf(named.decision) === undefined) return named.note ?? null;
-  const entry = shown ? entryOf(shown) : undefined;
-  if (entry === undefined) return null;
-  const answers = live(view.decisions)
+  if (!view || !line?.decision_id || marked === null) return null;
+  const kept = live(view.decisions)
     .reverse()
-    .find((r) => r.decision.kind === kind && entryOf(r.decision) === entry);
-  return answers?.note ?? null;
+    .filter((r) => r.decision.kind === kind);
+  const last = kept[0];
+  if (!last) return null;
+  if (entryOf(last.decision) === undefined) return last.note ?? null;
+  const entry = marked?.decision ? entryOf(marked.decision) : undefined;
+  if (entry === undefined) return null;
+  return kept.find((r) => entryOf(r.decision) === entry)?.note ?? null;
 }
 
 /** The wiring of one card: its project's state, its recording, and the preview of the option of
@@ -235,7 +247,7 @@ export function useCard(pid: string, kind: Decision["kind"]): CardWiring {
     words: preview.answer ? wordsOf(preview.answer) : null,
     reason,
     setReason,
-    reasonOnRecord: (shown) => noteOnRecord(view, log, kind, shown),
+    reasonOnRecord: (marked) => noteOnRecord(view, log, kind, marked),
   };
 }
 
@@ -327,10 +339,10 @@ export function RecordChosen({
   card: CardWiring;
   onClick: () => void;
   answer?: ReactNode;
-  /** The decision of the option the card marks as recorded, null where it marks none; left out by
-   *  a card that draws this button over several choices (LeversCard), whose line's record is its
-   *  one answer. */
-  recorded?: Decision | null;
+  /** The option the card marks as recorded (`Marked`), null where it marks none; left out by a card
+   *  that draws this button over several choices (LeversCard), whose record in force is its one
+   *  answer. */
+  recorded?: Marked;
 }) {
   return (
     <>
@@ -487,7 +499,7 @@ export function Choice<V extends string>({
           label={chosen === null ? null : `Record: ${names[chosen]}`}
           card={card}
           onClick={() => chosen !== null && send(`${field}:${chosen}`)}
-          recorded={recorded === null ? null : (decisions.get(`${field}:${recorded}`) ?? null)}
+          recorded={offered(recorded) ? { decision: decisions.get(`${field}:${recorded}`) ?? null } : null}
         />
       ) : null}
     </fieldset>

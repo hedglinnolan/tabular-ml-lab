@@ -140,6 +140,7 @@ function lineOf(kind: CardKind, over: Partial<QuestLine> = {}): QuestLine {
 
 interface Mounted {
   decide: ReturnType<typeof vi.spyOn>;
+  qc: QueryClient;
 }
 
 /** An outcome the engine reads as yes/no, the one decision support is offered for (finding 9). */
@@ -222,7 +223,7 @@ function mount(
       </StageFocusProvider>
     </QueryClientProvider>,
   );
-  return { decide };
+  return { decide, qc };
 }
 
 afterEach(() => {
@@ -1257,9 +1258,17 @@ describe("the reason for an answer (G14)", () => {
     mount("set_updating", { ...answered, decisions: [record({ note: null })], quest: [named] });
     expect(screen.queryByTestId("reason-on-record")).toBeNull();
     cleanup();
-    // The line answered by another record (r8, the one in force after r9 was withdrawn, say).
+    // The line answered by another record: r8, the one in force after r9 was withdrawn (r10).
+    const r8 = record({ id: "r8", seq: 8, note: null, decision: { kind: "set_updating", method: "none" } });
+    const r10 = record({ id: "r10", seq: 10, note: null, decision: { kind: "revert", decision_id: "r9" } as Decision });
     const other = lineOf("set_updating", { status: "answered", decision_id: "r8" });
-    mount("set_updating", { ...answered, decisions: [record()], quest: [other] });
+    mount("set_updating", {
+      recorded: { updating: { method: "none" } },
+      answered: true,
+      line: { decision_id: "r8" },
+      decisions: [r8, record(), r10],
+      quest: [other],
+    });
     expect(screen.queryByTestId("reason-on-record")).toBeNull();
     cleanup();
     // The line open again: no record answers it, whatever an earlier one said.
@@ -1270,6 +1279,103 @@ describe("the reason for an answer (G14)", () => {
     const elsewhere = lineOf("set_explain", { status: "answered", decision_id: "r9" });
     mount("set_updating", { ...answered, decisions: [record()], quest: [elsewhere] });
     expect(screen.queryByTestId("reason-on-record")).toBeNull();
+  });
+
+  const marked = () =>
+    Array.from(document.querySelectorAll("[role=option][data-recorded]")).map((o) => o.getAttribute("data-testid"));
+
+  // A second answer replacing the first, as the server keeps the log: the line's record is the last
+  // live record of its kind (core/quest.py `last_answer`), here r2. The shell refetches the quest log
+  // only after the decision's own response is merged, so the card first sees the new log with the
+  // line still naming r1.
+  const OLD = "Recalibration is out of scope for this paper.";
+  const first = () => record({ id: "r1", seq: 1, note: OLD, decision: { kind: "set_updating", method: "none" } });
+  const replacing = (note: string | null) => record({ id: "r2", seq: 2, note, decision: shrinkage.payload as Decision });
+  const before = lineOf("set_updating", { status: "answered", decision_id: "r1" });
+  const mountFirst = () =>
+    mount("set_updating", {
+      recorded: { updating: { method: "none" } },
+      answered: true,
+      line: { decision_id: "r1" },
+      decisions: [first()],
+      quest: [before],
+    });
+  const lineInCache = (qc: QueryClient) =>
+    qc.getQueryData<QuestLog>(keys.quest(PID))!.stages.flatMap((s) => s.lines).find((l) => l.key === "set_updating");
+
+  it.each([
+    ["its own reason", REASON],
+    ["no reason, where none was given for it", null],
+  ])("on record beside a new answer is %s, never the one it replaced, while the quest log still names that one", async (_, note) => {
+    const { decide, qc } = mountFirst();
+    expect(screen.getByTestId("reason-on-record")).toHaveTextContent(OLD);
+    decide.mockResolvedValueOnce({
+      ...viewOf(stateWith({ updating: { method: "shrinkage" } })),
+      decisions: [first(), replacing(note)],
+    });
+    if (note !== null) {
+      open();
+      type("reason-input", note);
+    }
+    press(shrinkage.press);
+    await waitFor(() => expect(marked()).toEqual([`option-${shrinkage.press}`]));
+    expect(lineInCache(qc)?.decision_id).toBe("r1");
+    if (note === null) expect(screen.queryByTestId("reason-on-record")).toBeNull();
+    else expect(screen.getByTestId("reason-on-record")).toHaveTextContent(note);
+    expect(document.body).not.toHaveTextContent(OLD);
+  });
+
+  it("on record is not shown where the line names no record, whatever the log's last record says", () => {
+    mount("set_updating", {
+      recorded: { updating: { method: "shrinkage" } },
+      decisions: [first(), replacing(REASON)],
+      quest: [lineOf("set_updating")],
+    });
+    expect(screen.queryByTestId("reason-on-record")).toBeNull();
+    expect(document.body).not.toHaveTextContent(REASON);
+    expect(document.body).not.toHaveTextContent(OLD);
+  });
+
+  // The intended use as recorded for decision support (payloads.ts `intendedUse`), with its reason.
+  const WHY_DS = "The clinic acts on a cut-off, so the thresholds are the use.";
+  const supportUse = {
+    use: "decision_support",
+    threshold_low: null,
+    threshold_high: null,
+    threshold: 0.2,
+    subgroups: [] as string[],
+    fairness: "subgroup_performance",
+  };
+  const supportRecord = () =>
+    record({ note: WHY_DS, decision: { kind: "set_intended_use", ...supportUse } as Decision });
+  const mountUse = (task: string) =>
+    mount("set_intended_use", {
+      recorded: { task, intended_use: supportUse },
+      answered: true,
+      decisions: [supportRecord()],
+      quest: [lineOf("set_intended_use", { status: "answered", decision_id: "r9" })],
+    });
+
+  it("on record is not shown where the card marks no answer: a use on record it no longer lists", () => {
+    // The line stays answered after the outcome turns numeric (core/quest.py gives the intended use
+    // no holds), and a numeric outcome is offered no decision support (finding 9).
+    mountUse("regression");
+    expect(marked()).toEqual([]);
+    expect(screen.queryByTestId("reason-on-record")).toBeNull();
+    expect(document.body).not.toHaveTextContent(WHY_DS);
+  });
+
+  it("on record is shown beside the use the card lists and marks, its fields as recorded or invalid now", () => {
+    mountUse("binary");
+    expect(marked()).toEqual(["option-use:decision_support"]);
+    expect(screen.getByTestId("reason-on-record")).toHaveTextContent(WHY_DS);
+    // The threshold's open top as served (below it, not at it): decision support's offer has a
+    // problem now.
+    type("field-threshold", String(FIXTURE.bounds.set_intended_use.threshold.lt));
+    press("use:decision_support");
+    expect(screen.getByTestId("blocked")).toBeInTheDocument();
+    expect(marked()).toEqual(["option-use:decision_support"]);
+    expect(screen.getByTestId("reason-on-record")).toHaveTextContent(WHY_DS);
   });
 
   // The refusal as the server serves it for a note past its limit (core/decisions.py `check_note`,
