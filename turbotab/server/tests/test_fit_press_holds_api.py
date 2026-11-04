@@ -5,8 +5,12 @@ Under Estimate and Describe pressing Fit locks the analysis plan, and the open n
 triaged before the lock, so the server holds the press:
 
 * while the open noticings' triage is not confirmed: refused, naming each open noticing and the way
-  forward (the triage in Models, or its "Confirm all"), recording no press and no lock; once the
-  triage is confirmed the press locks the plan, the dispositions in it;
+  forward (the triage in Models, or its "Confirm all"), recording no press and no lock;
+* while a noticing the triage recorded "act on it" is not acted on (the owner's Q8): refused,
+  naming it, where it is acted on and the way forward that changes its disposition (recorded as a
+  limitation), recording no press and no lock; once its disposition is changed, or once it is acted
+  on (NHANES's SAS zeros read as zero by their repair, so the triage no longer lists them), the
+  press locks the plan, the dispositions in it;
 * while the fit, or a stage it waits on, is refused: refused with that stage's own refusal, its
   words and its ways forward, recording no press and no lock; once nothing refuses it, the press
   locks the plan as before.
@@ -16,7 +20,8 @@ triage open, and with the fit refused. An Estimate fit with nothing to triage is
 
 What the triages hold rests on each table's construction, read here with pandas: NHANES's
 `gender` and the dietary file's `sex` are two-level text, each a noticing of which level counts as
-1. The refused fit is a refusal written here, served as the fit's status (the stage it names is
+1, and NHANES's misread SAS transport zeros (cells of about 5.4e-79) a finding with a repair, acted
+on in Your data. The refused fit is a refusal written here, served as the fit's status (the stage it names is
 the one that refused, a stage the fit waits on): through the walk the server refuses an answer
 that would leave the fit refused before the fit runs, so a fit refuses only where those checks
 cannot see (SWARM_PLAN §8), which no fixture reaches.
@@ -171,7 +176,36 @@ def test_under_estimate_fit_waits_for_the_open_noticings_triage_and_locks_once_i
     assert triaged["decision"]["kind"] == "confirm_sweep"
     assert {l["key"]: l["value"] for l in triaged["decision"]["lines"]} == {
         i["id"]: i["recommended"] for i in still}
-    assert triage(client, pid)["answered"]
+    kept = triage(client, pid)
+    assert kept["answered"]
+
+    # Kept is not acted on (the owner's Q8): the SAS zeros, recorded "act on it", hold the press
+    # until they are acted on or their disposition is changed.
+    to_act = sas_zeros_kept_to_act_on(kept)
+    before = kinds(client, pid)
+    held = press(client, pid)
+    assert held.status_code == 409, held.text[:600]
+    error = held.json()["error"]
+    assert error["code"] == "triage_open"
+    summary = to_act["summary"]
+    assert error["message"] == (
+        f"Fit waits: pressing it locks the analysis plan, and 1 noticing marked \"act on it\" is "
+        f"not acted on yet: {summary.strip().rstrip('.')}. Act on it where it is decided, or change "
+        f"its disposition by recording it as a limitation, before any estimate is seen.")
+    change = parse_decision({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings",
+                             "lines": [{"id": to_act["line"], "key": "sas_zeros",
+                                        "value": "could_bias"}]}).model_dump(mode="json")
+    assert error["exits"] == [{"label": f"Act on it in Your data: {summary}", "decision": None},
+                              {"label": f"Record as a limitation: {summary}", "decision": change}]
+    nothing_pressed_or_locked(client, pid, before)
+
+    # Its disposition changed by that way forward: recorded as could bias the estimate, every other
+    # disposition as kept; Fit then locks the plan with the dispositions in it.
+    changed = drive.post(change)
+    assert changed.status_code == 200, changed.text[:600]
+    triaged = changed.json()["decisions"][-1]
+    assert {l["key"]: l["value"] for l in triaged["decision"]["lines"]} == {
+        **{i["id"]: i["recorded"] for i in kept["items"]}, "sas_zeros": "could_bias"}
     taken = press(client, pid)
     assert taken.status_code == 200, taken.text[:600]
     assert taken.json()["locked"] is True
@@ -181,6 +215,95 @@ def test_under_estimate_fit_waits_for_the_open_noticings_triage_and_locks_once_i
     assert lock["decision"]["plan"]["triage"] == triaged["decision"]["lines"]
     service: ProjectService = client.app.state.service
     assert fit_press.read_press(service.workspace.project_dir(pid))["target"] == "glucose"
+
+
+def sas_cells() -> tuple[int, int]:
+    """The construction: how many cells of the NHANES export hold a misread SAS transport zero
+    (about 5.4e-79: nonzero and below 1e-70 in magnitude), and in how many columns, by pandas."""
+    import numpy as np
+
+    from turbotab.core.tests.stage_harness import NHANES
+
+    numbers = pd.read_csv(NHANES).select_dtypes("number").abs()
+    tiny = (numbers > 0) & (numbers < 1e-70)
+    return int(np.sum(tiny.to_numpy())), int(tiny.any().sum())
+
+
+def sas_zeros_kept_to_act_on(kept: dict[str, Any]) -> dict[str, Any]:
+    """The triage as served once "Keep the recommended dispositions" is recorded: every noticing
+    with a disposition, and the one recorded "act on it" the SAS zeros, the finding on the cells
+    pandas counts (:func:`sas_cells`), decided in Your data where its repair is chosen."""
+    cells, columns = sas_cells()
+    assert cells and columns  # the construction: the export holds misread SAS zeros
+    to_act = [i for i in kept["items"] if i["recorded"] == "act_on_it"]
+    assert [i["id"] for i in to_act] == ["sas_zeros"], to_act
+    assert f"`{cells}` cells in `{columns}` columns" in to_act[0]["summary"]
+    assert to_act[0]["stage"] == "data"
+    return to_act[0]
+
+
+def answered_as_asked(drive: Any, timeout: float = 300.0) -> None:
+    """The findings and the fit computed, each reading a stage asks for on the way (a stage refused
+    in words that asks one, as the design asks whether a column's whole numbers are amounts or
+    codes) answered as the fixture's truth declares it (``truths.answers``), as a person who knows
+    the table answers it. Any other stage in error fails."""
+    import time
+
+    from turbotab.core.tests.truths import answers
+
+    end, given = time.monotonic() + timeout, []
+    while True:
+        stages = drive.view()["stages"]
+        if all(stages[s]["status"] == "fresh" for s in ("findings", "fit")):
+            return
+        failed = [s for s in stages.values() if s["status"] == "error"]
+        asks = next((answers(s["refusal"], drive.truth) for s in failed if s.get("refusal")
+                     and answers(s["refusal"], drive.truth)), [])
+        assert asks or not failed, failed
+        for decision in asks:
+            if decision in given:  # answered already: the stage has not computed again yet
+                continue
+            r = drive.post(decision)
+            assert r.status_code == 200, r.text[:600]
+            given.append(decision)
+        assert time.monotonic() < end, {k: s["status"] for k, s in stages.items()}
+        time.sleep(0.1)
+
+
+@pytest.mark.slow
+@needs_nhanes
+def test_under_estimate_a_noticing_kept_to_act_on_and_acted_on_holds_fit_no_longer(client):
+    """Both ways, the other way through: the SAS zeros kept to act on, then acted on as a person
+    acts on them, by their repair as the findings serve it (Read as zero, in Your data). Acted on,
+    they drop out of the triage, no refusal names them, and Fit locks the plan (after the triage's
+    "Confirm all" again, where a disposition no longer stands once the cells are read as zero)."""
+    drive = nhanes_under_estimate(client)
+    pid = drive.pid
+    first = press(client, pid)
+    assert first.status_code == 409 and first.json()["error"]["code"] == "triage_open"
+    assert drive.post(CONFIRM).status_code == 200
+    sas_zeros_kept_to_act_on(triage(client, pid))
+
+    findings = client.get(f"/api/projects/{pid}/stages/findings").json()["artifact"]["findings"]
+    repair = next(f for f in findings if f["id"] == "sas_zeros")["repairs"][0]["decision"]
+    assert repair["kind"] == "apply_repair" and repair["finding_id"] == "sas_zeros"
+    acted = drive.post(repair)
+    assert acted.status_code == 200, acted.text[:600]
+    # Read as zero, `kcal`'s misread cells leave it whole numbers alone, so the model's design asks
+    # whether they are amounts or codes; answered as the fixture declares (an amount).
+    answered_as_asked(drive)
+    after = triage(client, pid)
+    assert "sas_zeros" not in {i["id"] for i in after["items"]}
+    assert not [i for i in after["items"] if i["recorded"] == "act_on_it"]
+
+    answers = [press(client, pid)]
+    if answers[-1].status_code == 409 and "still open" in answers[-1].json()["error"]["message"]:
+        assert drive.post(CONFIRM).status_code == 200
+        answers.append(press(client, pid))
+    assert answers[-1].status_code == 200, answers[-1].text[:600]
+    assert answers[-1].json()["locked"] is True
+    assert not any("not acted on yet" in a.text for a in answers)
+    assert kinds(client, pid)[-1] == "lock_plan"
 
 
 def test_under_estimate_with_nothing_to_triage_fit_locks_the_plan_as_before(client, tmp_path):

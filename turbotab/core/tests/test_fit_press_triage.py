@@ -10,15 +10,23 @@ recommended).
 
 * It fires while a noticing blocks (each is decided on its own first) and while one has no recorded
   disposition (the triage in Models, or its "Confirm all" as recommended), one noticing or several.
-* It is silent once every disposition is recorded, "act on it" among them (the gate is the
-  confirmation, FOUNDATION §7), with nothing to triage, and once the gate has passed.
+* It fires while a noticing recorded "act on it" is still listed, not acted on (the owner's Q8,
+  2026-11-04: Fit holds until each is acted on or its disposition changed): each is named with
+  where it is acted on and a way forward that changes its disposition, recording it as a
+  limitation. Built by the engine's own triage, a kept "act on it" holds the press, and taking
+  that way forward, or acting on the noticing (its own decision answers it, so it drops out of the
+  triage), releases it.
+* It is silent once every disposition is recorded and none is "act on it" still listed, with
+  nothing to triage, and once the gate has passed.
 * It names each noticing where no summary can be misread: one after a colon, several each in a
   numbered sentence of its own, with its recommended disposition in a sentence after it, so a
   summary's own semicolon and a label's own parentheses stay inside their noticing.
 * The reference journeys' export, pressing Fit again where it waits for the lock, takes its way
   forward "Keep the recommended dispositions" as a person pressing Confirm all does, recorded as
-  that way forward's, and presses again; a blocking noticing's refusal stands, nothing posted. The
-  server there is one written here that serves the refusal built from a triage written here.
+  that way forward's, and presses again, and so on through each refusal that offers a way forward
+  recording a disposition ("Record as a limitation" for a noticing marked "act on it" and not
+  acted on); a blocking noticing's refusal stands, nothing posted. The server there is one written
+  here that serves the refusals built from triages written here.
 """
 from __future__ import annotations
 
@@ -37,11 +45,12 @@ LEAD = ("Fit waits: pressing it locks the analysis plan, and the open noticings 
 
 
 def item(fid: str, summary: str, recommended: str = "no_change", *, blocker: bool = False,
-         recorded: str | None = None, label: str | None = None) -> TriageItem:
-    return TriageItem(id=fid, line=f"finding:{fid}", stage="models", summary=summary,
+         recorded: str | None = None, label: str | None = None, stage: str = "models",
+         question: str | None = None) -> TriageItem:
+    return TriageItem(id=fid, line=f"finding:{fid}", stage=stage, summary=summary,
                       severity="critical" if blocker else "info", recommended=recommended,
                       label=label or LABELS[recommended], reason="the reason", blocker=blocker,
-                      recorded=recorded)
+                      recorded=recorded, question=question)
 
 
 def triage(*items: TriageItem, passed: bool = False) -> Triage:
@@ -116,11 +125,157 @@ def test_a_blocking_noticing_is_decided_on_its_own_before_the_rest_are_triaged()
     assert [e["label"] for e in two.exits] == ["Decide: A.", "Decide: B"]
 
 
-@pytest.mark.parametrize("recorded", ["no_change", "could_bias", "act_on_it"])
-def test_a_confirmed_triage_holds_nothing_whatever_disposition_it_recorded(recorded):
+@pytest.mark.parametrize("recorded", ["no_change", "could_bias"])
+def test_a_confirmed_triage_holds_nothing_where_no_noticing_listed_is_marked_act_on_it(recorded):
+    """Silent: every disposition recorded, none of them "act on it" (one recommended to act on,
+    recorded otherwise by the person, included)."""
     assert fit_press.triage_refusal(triage(
         item("binary_text__gender", "`gender` is two-level text", recorded="no_change"),
         item("sas_zeros", "Cells hold 5.4e-79", "act_on_it", recorded=recorded))) is None
+
+
+# ── a noticing marked "act on it" and not acted on (the owner's Q8) ──────────
+
+ACT_LEAD = "Fit waits: pressing it locks the analysis plan, and"
+SAS = "`152` cells in `9` columns hold `5.4e-79`: a zero in a SAS transport file, misread."
+
+
+def keeping(*lines: dict) -> dict:
+    """The triage's own confirmation of ``lines`` (each noticing's id, key and value), as the
+    server stores a way forward's decision."""
+    return parse_decision({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings",
+                           "lines": list(lines)}).model_dump(mode="json")
+
+
+def test_a_noticing_kept_to_act_on_and_not_acted_on_holds_fit_with_where_and_a_change():
+    """Fires: every disposition is recorded, one of them "act on it", and that noticing is still
+    listed, so it is not acted on (a noticing acted on drops out of the triage: ``sweep.triage``).
+    The refusal names it, says where it is acted on (its stage, Your data), and offers changing its
+    disposition, recorded as a limitation (the triage's own confirmation of that one line, "could
+    bias the estimate"); the other noticing's disposition is untouched."""
+    refused = fit_press.triage_refusal(triage(
+        item("binary_text__gender", "`gender` is two-level text", recorded="no_change"),
+        item("sas_zeros", SAS, "act_on_it", recorded="act_on_it", stage="data")))
+    assert isinstance(refused, Refusal) and refused.code == "triage_open"
+    assert refused.message == (
+        f"{ACT_LEAD} 1 noticing marked \"act on it\" is not acted on yet: {SAS} Act on it where "
+        f"it is decided, or change its disposition by recording it as a limitation, before any "
+        f"estimate is seen.")
+    assert refused.exits == [
+        {"label": f"Act on it in Your data: {SAS}", "decision": None},
+        {"label": f"Record as a limitation: {SAS}",
+         "decision": keeping({"id": "finding:sas_zeros", "key": "sas_zeros",
+                              "value": "could_bias"})}]
+
+
+def test_several_kept_to_act_on_are_each_named_with_the_question_or_stage_that_acts_on_it():
+    """Fires, several: each in a numbered sentence of its own, in the triage's order, each with its
+    two ways forward; one routed to a question is acted on at that question, in that question's
+    stage (the eligibility question, in Who's in), one with none in its own stage."""
+    refused = fit_press.triage_refusal(triage(
+        item("sas_zeros", SAS, "act_on_it", recorded="act_on_it", stage="data"),
+        item("pack::dietary::implausible_intake", "Some sugar reports are implausible",
+             "act_on_it", recorded="act_on_it", stage="whos_in", question="exclusions"),
+        item("diet-day-to-day-variance", "Part of `sugar`'s spread is day-to-day noise",
+             "could_bias", recorded="could_bias")))
+    assert refused is not None and refused.code == "triage_open"
+    assert refused.message == (
+        f"{ACT_LEAD} 2 noticings marked \"act on it\" are not acted on yet. (1) {SAS} (2) Some "
+        f"sugar reports are implausible. Act on each where it is decided, or change its "
+        f"disposition by recording it as a limitation, before any estimate is seen.")
+    assert [e["label"] for e in refused.exits] == [
+        f"Act on it in Your data: {SAS}", f"Record as a limitation: {SAS}",
+        "Act on it at the eligibility question in Who's in: Some sugar reports are implausible",
+        "Record as a limitation: Some sugar reports are implausible"]
+    assert [e["decision"] for e in refused.exits] == [
+        None, keeping({"id": "finding:sas_zeros", "key": "sas_zeros", "value": "could_bias"}),
+        None, keeping({"id": "finding:pack::dietary::implausible_intake",
+                       "key": "pack::dietary::implausible_intake", "value": "could_bias"})]
+
+
+def test_a_noticing_still_open_speaks_before_one_kept_to_act_on():
+    """The triage first: while a noticing has no recorded disposition, the press waits for the
+    triage (its "Confirm all" as recommended), whatever else is marked to act on."""
+    refused = fit_press.triage_refusal(triage(
+        item("sas_zeros", SAS, "act_on_it", recorded="act_on_it", stage="data"),
+        item("binary_text__gender", "`gender` is two-level text")))
+    assert refused is not None and "1 noticing is still open" in refused.message
+    assert refused.exits[1] == {"label": "Keep the recommended dispositions", "decision": CONFIRM}
+
+
+# Two findings about `age` written here, under Estimate (``test_confirm_sweep.planned``): one with a
+# repair this engine applies (``repairs.Family``: `binary_text`), so it is acted on in Your data where
+# its repair is chosen ("act on it", ``sweep.recommend``'s finding with a repair); one whose family
+# applies no repair (`heaping`), about a column the analysis reads, so it could bias the estimate
+# (``sweep.recommend`` rule 4).
+ACT_ON = {"id": "binary_text__age", "severity": "warning", "summary": "Age is written as text",
+          "affected_columns": ["age"], "routes_to": None, "repairs": [{"key": "level"}],
+          "answered_by": None}
+HEAPS = {"id": "heaping__age", "severity": "warning", "summary": "Ages heap on round numbers",
+         "affected_columns": ["age"], "routes_to": None, "repairs": [{"key": "map"}],
+         "answered_by": None}
+
+
+def estimating(findings: dict, records: list):
+    """The engine's own triage at the gate before the lock, on ``findings`` after ``records``."""
+    from turbotab.core import decisions, sweep
+    from turbotab.core.tests.test_confirm_sweep import log_of, planned
+
+    state = planned()
+    if records:
+        state = state.model_copy(update={"sweeps": decisions.fold(records).sweeps})
+    log = log_of(state, records, findings=findings)
+    return log, sweep.triage(state, log, findings, records)
+
+
+def confirmed(log, t, body: dict, seq: int):
+    """``body`` validated as the server validates a confirmation (the triage's own completion),
+    as a record at ``seq``."""
+    from turbotab.core import decisions
+    from turbotab.core.tests.test_confirm_sweep import Ctx
+    from turbotab.core.tests.test_stage_registry import record
+
+    return record(seq, decisions.validate(body, Ctx(log, t)).model_dump(mode="json"))
+
+
+def test_built_by_the_engine_a_kept_act_on_it_holds_fit_until_its_disposition_is_changed():
+    """Construction, both ways, on the engine's own triage: "Keep the recommended dispositions"
+    records `age`'s text as to act on and its heaping as could bias, and the press is held, naming
+    the text alone; its way forward recorded, the press is released, the text recorded as could
+    bias the estimate and the heaping as it was."""
+    findings = {"findings": [ACT_ON, HEAPS]}
+    log, t = estimating(findings, [])
+    assert {i.id: (i.recommended, i.stage) for i in t.items} == {
+        "binary_text__age": ("act_on_it", "data"), "heaping__age": ("could_bias", "data")}
+    held = fit_press.triage_refusal(t)
+    records = [confirmed(log, t, held.exits[1]["decision"], 1)]
+    log, kept = estimating(findings, records)
+    assert kept.answered and {i.id: i.recorded for i in kept.items} == {
+        "binary_text__age": "act_on_it", "heaping__age": "could_bias"}
+    refused = fit_press.triage_refusal(kept)
+    assert refused is not None and refused.code == "triage_open"
+    assert "1 noticing marked \"act on it\" is not acted on yet: Age is written as text." \
+        in refused.message
+    act, change = refused.exits
+    assert act == {"label": "Act on it in Your data: Age is written as text", "decision": None}
+    records.append(confirmed(log, kept, change["decision"], 2))
+    _log, changed = estimating(findings, records)
+    assert {i.id: i.recorded for i in changed.items} == {
+        "binary_text__age": "could_bias", "heaping__age": "could_bias"}
+    assert fit_press.triage_refusal(changed) is None
+
+
+def test_built_by_the_engine_a_kept_act_on_it_acted_on_drops_out_and_holds_fit_no_longer():
+    """Silent, the other way through: the finding answered by a record of its own (its repair
+    applied: ``answered_by``, as ``repairs.annotate`` serves it), its line is answered, so the
+    triage no longer lists it, and nothing else holds the press."""
+    findings = {"findings": [ACT_ON, HEAPS]}
+    log, t = estimating(findings, [])
+    records = [confirmed(log, t, CONFIRM, 1)]
+    acted = {"findings": [{**ACT_ON, "answered_by": "r-repair"}, HEAPS]}
+    _log, after = estimating(acted, records)
+    assert [(i.id, i.recorded) for i in after.items] == [("heaping__age", "could_bias")]
+    assert fit_press.triage_refusal(after) is None
 
 
 def test_nothing_to_triage_holds_nothing():
@@ -152,11 +307,16 @@ class Answer:
 
 class Served:
     """The server as the export's re-press meets it (``journeys.export``): the export refused while
-    the plan is open; Fit refused with ``held`` (the server's refusal while the triage is
-    unconfirmed) until the triage is recorded, then taken, which locks the plan; each post kept."""
+    the plan is open; Fit refused with each of ``held`` in turn (the server's refusals while the
+    triage is unconfirmed, then while a noticing marked "act on it" is not acted on), each until a
+    decision is recorded, then taken, which locks the plan; each post kept."""
 
-    def __init__(self, held: Refusal):
-        self.held, self.posts, self.locked, self.triaged = held, [], False, False
+    def __init__(self, *held: Refusal):
+        self.left, self.posts, self.locked = list(held), [], False
+
+    @property
+    def triaged(self) -> bool:
+        return not self.left
 
     def get(self, url: str, **kw):
         assert url.endswith("/export"), url
@@ -165,23 +325,24 @@ class Served:
     def post(self, url: str, json: dict | None = None, **kw):
         self.posts.append((url.rsplit("/", 1)[1], json))
         if url.endswith("/decisions"):
-            self.triaged = True
-            return Answer(200, {"decisions": [{"seq": 30, "sentence": "Triaged.",
-                                               "decision": json}]})
-        if not self.triaged:
-            return Answer(409, self.held.to_dict())
+            if self.left:
+                self.left.pop(0)
+            return Answer(200, {"decisions": [{"seq": 30 + len(self.posts),
+                                               "sentence": "Triaged.", "decision": json}]})
+        if self.left:
+            return Answer(409, self.left[0].to_dict())
         self.locked = True
         return Answer(200, {"locked": True, "pressed": True})
 
 
-def exported(held: Refusal):
+def exported(*held: Refusal):
     """``journeys.export`` on :class:`Served` with ``held``: what it returned, the server, and the
     run (its log of the decisions posted, each with where its answer came from, and its notes)."""
     from types import SimpleNamespace
 
     from turbotab.core.reference import journeys as J
 
-    server = Served(held)
+    server = Served(*held)
     run = J.Run(SimpleNamespace(name="stub"))
     run.pid, run.source = "p1", "the export"
     run.client = J.Recording(server, run)
@@ -225,8 +386,8 @@ AT_END = {"interview": [{"key": "open_seal", "status": "answered", "waiting_on":
 WAY = "the way forward of Fit's refusal, “Keep the recommended dispositions”"
 
 
-def followed(held: Refusal | None):
-    """``journeys.follow`` on :class:`Served` with ``held`` (None: Fit taken at its first press):
+def followed(*held: Refusal):
+    """``journeys.follow`` on :class:`Served` with ``held`` (none: Fit taken at its first press):
     the Router at Fit, the seal waiting for it, until the plan locks, then at its end; the drivers'
     last answer, before Fit, the WP17 questions' (its source the run's own). The run (its log, each
     decision posted with where its answer came from) and the server."""
@@ -234,8 +395,7 @@ def followed(held: Refusal | None):
 
     from turbotab.core.reference import journeys as J
 
-    server = Served(held or Refusal("unused", "unused"))
-    server.triaged = held is None
+    server = Served(*held)
     run = J.Run(SimpleNamespace(name="stub", timeout=30.0, before={}))
     run.pid, run.source = "p1", J.WP17_SOURCE
     run.client = J.Recording(server, run)
@@ -268,5 +428,63 @@ def test_the_journeys_fit_presser_posts_nothing_where_no_triage_holds_fit():
     is the answer's before it, as it was."""
     from turbotab.core.reference import journeys as J
 
-    run, server = followed(None)
+    run, server = followed()
     assert server.posts == [("fit", None)] and run.log == [] and run.source == J.WP17_SOURCE
+
+
+# ── the drivers, through a noticing kept to act on ───────────────────────────
+
+
+def kept_then_unacted() -> tuple[Refusal, Refusal]:
+    """The server's two refusals of a press where the triage holds one open noticing recommended to
+    act on: first while it has no recorded disposition, then, "Keep the recommended dispositions"
+    taken, while it is recorded "act on it" and not acted on (each built from a triage written
+    here)."""
+    held = fit_press.triage_refusal(triage(item("sas_zeros", SAS, "act_on_it", stage="data")))
+    unacted = fit_press.triage_refusal(triage(item("sas_zeros", SAS, "act_on_it",
+                                                   recorded="act_on_it", stage="data")))
+    return held, unacted
+
+
+LIMIT = keeping({"id": "finding:sas_zeros", "key": "sas_zeros", "value": "could_bias"})
+LIMIT_WAY = f"the way forward of Fit's refusal, “Record as a limitation: {SAS}”"
+
+
+def test_the_journeys_export_takes_each_way_forward_a_kept_act_on_it_offers_and_presses_again():
+    """The export's re-press through both refusals: "Keep the recommended dispositions", then, the
+    noticing kept to act on and not acted on, the first way forward that records something, its
+    "Record as a limitation", each recorded as its way forward's, and Fit pressed after each: the
+    plan locks and the bundle is made."""
+    r, server, run = exported(*kept_then_unacted())
+    assert r.status_code == 200
+    assert server.posts == [("fit", None), ("decisions", CONFIRM), ("fit", None),
+                            ("decisions", LIMIT), ("fit", None)]
+    assert [(e["kind"], e["status"], e["source"]) for e in run.log] == [
+        ("confirm_sweep", 200, WAY), ("confirm_sweep", 200, LIMIT_WAY)]
+
+
+def test_the_journeys_fit_presser_takes_each_way_forward_a_kept_act_on_it_offers():
+    """The FitPresser likewise, once the Router reaches Fit: each decision credited to the way
+    forward it was posted for, and a note of each."""
+    run, server = followed(*kept_then_unacted())
+    assert server.posts == [("fit", None), ("decisions", CONFIRM), ("fit", None),
+                            ("decisions", LIMIT), ("fit", None)]
+    assert [(e["kind"], e["status"], e["source"]) for e in run.log] == [
+        ("confirm_sweep", 200, WAY), ("confirm_sweep", 200, LIMIT_WAY)]
+    assert f"Fit waited for the open noticings' triage: took “Record as a limitation: {SAS}”" \
+        in run.notes
+
+
+def test_the_server_drive_press_stops_where_no_way_forward_records_anything():
+    """Both ways: the press goes on only through ways forward that record something; a refusal of
+    the triage with none (a blocking noticing, after "Keep the recommended dispositions") is the
+    answer, as it came, and nothing more is posted."""
+    from turbotab.core.tests.acceptance import server_drive
+
+    held, _ = kept_then_unacted()
+    blocking = fit_press.triage_refusal(triage(item("outcome_constant", "`glucose` takes one value",
+                                                    blocker=True)))
+    server = Served(held, blocking)
+    r = server_drive.fit_response(server, "p1")
+    assert r.status_code == 409 and r.json() == blocking.to_dict()
+    assert server.posts == [("fit", None), ("decisions", CONFIRM), ("fit", None)]

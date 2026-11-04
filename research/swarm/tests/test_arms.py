@@ -1073,6 +1073,87 @@ def test_a_press_the_open_noticings_triage_holds_keeps_the_recommended_and_press
         ("fit", "fit", [way["id"]], "refused", "triage_open")]
 
 
+SAS = "`152` cells in `9` columns hold `5.4e-79`: a zero in a SAS transport file, misread."
+
+
+def served_refusal(tmp_path, *, recorded):
+    """A press of Fit as the driver says the server's refusal of it (``fit_press.triage_refusal``
+    over a triage written here: one noticing recommended to act on, in Your data, its disposition
+    ``recorded`` or none; served as the server serves a refusal and read by ``driver.refused``,
+    each way forward with its id), classed (``arms.said_of``)."""
+    from research.swarm import driver
+    from turbotab.core import fit_press
+    from turbotab.core.sweep import Triage, TriageItem
+
+    item = TriageItem(id="sas_zeros", line="finding:sas_zeros", stage="data", summary=SAS,
+                      severity="warning", recommended="act_on_it", label="Act on it",
+                      reason="the reason", blocker=False, recorded=recorded)
+    refusal = fit_press.triage_refusal(Triage(stage="models", gate="gate", items=[item],
+                                              confirmable=True,
+                                              answered=recorded is not None))
+    served = driver.Response(409, json.dumps(refusal.to_dict()).encode("utf-8"), {})
+    run = driver.Run(tmp_path / "run", {"project": PID})
+    run.folder.mkdir(parents=True, exist_ok=True)
+    return arms.said_of(1, driver.refused(served, run, "fit"))
+
+
+LIMIT = {"kind": "confirm_sweep", "stage": "models", "sweep": "noticings",
+         "lines": [{"id": "finding:sas_zeros", "key": "sas_zeros", "value": "could_bias",
+                    "basis": None}]}
+
+
+def kept_then_unacted(tmp_path):
+    """The server's two refusals of a press the triage holds (:func:`served_refusal`): first with
+    no disposition recorded, then, the recommended kept, with "act on it" recorded and not acted
+    on; and the way forward each arm takes from each, by the id the driver gave it."""
+    held = served_refusal(tmp_path / "held", recorded=None)
+    unacted = served_refusal(tmp_path / "unacted", recorded="act_on_it")
+    keep = next(w for w in held.exits if w.get("decision"))
+    limit = next(w for w in unacted.exits if w.get("decision"))
+    assert (keep["label"], keep["decision"]) == ("Keep the recommended dispositions", KEEP)
+    assert (limit["label"], limit["decision"]) == (f"Record as a limitation: {SAS}", LIMIT)
+    assert [w["decision"] for w in unacted.exits if w["label"].startswith("Act on it")] == [None]
+    return held, unacted, keep, limit
+
+
+@pytest.mark.parametrize("path", ARMS)
+def test_a_press_a_kept_act_on_it_holds_records_it_as_a_limitation_and_presses_again(
+        tmp_path, path):
+    """The owner's Q8: once "Keep the recommended dispositions" is recorded, a noticing kept to act
+    on and not acted on holds the press again; either arm takes that refusal's way forward that
+    records something, "Record as a limitation" (by its id), and presses Fit again: that press is
+    the answer, each way forward a step of its own."""
+    held, unacted, keep, limit = kept_then_unacted(tmp_path)
+    session, steps = Presses(held, unacted, FITTED), []
+    said = arms.fit_through(session, policy_of(path), steps)
+    assert said is FITTED and session.presses == 3
+    name = policy_of(path).name
+    assert session.answers == [
+        ([keep["id"]], [], f"{name}: the fit's way forward, Keep the recommended dispositions."),
+        ([limit["id"]], [], f"{name}: the fit's way forward, Record as a limitation: {SAS}.")]
+    assert [(s.at, s.key, s.chosen, s.said, s.code) for s in steps] == [
+        ("fit", "fit", [keep["id"]], "refused", "triage_open"),
+        ("fit", "fit", [limit["id"]], "refused", "triage_open")]
+
+
+def test_a_local_press_a_kept_act_on_it_holds_records_it_as_a_limitation_and_presses_again(
+        tmp_path):
+    """The sweep's press (:meth:`arms.Local.fit`) likewise: through both refusals, each way forward
+    answered by its id, Fit pressed after each; the last press is the answer. The presses are the
+    server's refusals as the driver says them (:func:`served_refusal`), in turn."""
+    held, unacted, keep, limit = kept_then_unacted(tmp_path)
+    session = object.__new__(arms.Local)  # no server: the presses and answers are written here
+    said, answers = [held, unacted, FITTED], []
+    session._said = lambda call: said.pop(0)
+    session.answer = lambda ids, sets, reason: answers.append((ids, sets, reason)) or arms.Said(
+        "ok", {"answer": {}})
+    assert session.fit(1.0) is FITTED and said == []
+    assert answers == [([keep["id"]], [], "The fit's way forward, Keep the recommended "
+                                          "dispositions."),
+                       ([limit["id"]], [], f"The fit's way forward, Record as a limitation: "
+                                           f"{SAS}.")]
+
+
 @pytest.mark.parametrize("path", ARMS)
 def test_a_press_a_blocking_noticing_or_another_refusal_holds_is_the_answer_unchanged(
         tmp_path, path):

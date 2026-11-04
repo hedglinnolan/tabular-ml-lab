@@ -557,10 +557,10 @@ def reaches_fit(view: dict[str, Any]) -> bool:
 
 
 def taking_fits_way(run: Run) -> Callable[[dict[str, Any]], None]:
-    """What a driver does as it takes the way forward of Fit's refusal while the open noticings'
-    triage holds the press (``server_drive.fit_response``'s ``taking``): the decision that way
-    posts is recorded as that way forward's (``run.source``, the packet's "Where the answer came
-    from"), and the run is told."""
+    """What a driver does as it takes a way forward of Fit's refusal while the open noticings'
+    triage holds the press (``server_drive.fit_response``'s ``taking``, told each it takes): the
+    decision that way posts is recorded as that way forward's (``run.source``, the packet's "Where
+    the answer came from"), and the run is told."""
 
     def taking(way: dict[str, Any]) -> None:
         run.source = f"the way forward of Fit's refusal, “{way['label']}”"
@@ -575,8 +575,9 @@ class FitPresser:
     most once for each state of the log and the fit, so a refused press (``fit_not_yet``) is not
     sent again until something changes. ``note``: told what happened, in a sentence. Under
     Estimate and Describe, where the open noticings' triage holds the press, the refusal's way
-    forward "Keep the recommended dispositions" is taken and Fit pressed again
-    (``server_drive.fit_response``); ``taking`` is told that way forward before it is taken (a
+    forward "Keep the recommended dispositions" is taken and Fit pressed again, and then, for each
+    noticing recorded "act on it" and not acted on, its "Record as a limitation"
+    (``server_drive.fit_response``); ``taking`` is told each way forward before it is taken (a
     run's :func:`taking_fits_way`, which credits the decision it posts to it)."""
 
     def __init__(self, client: Any, pid: str, note: Callable[[str], None] | None = None,
@@ -690,8 +691,9 @@ def refusals_in(artifact: Any) -> list[tuple[str, list[dict[str, Any]]]]:
 def export(run: Run) -> Any:
     """The bundle, taking the export's own ways forward: under inference Fit pressed, which locks
     the plan (SIZING P0.8), the open noticings' triage first kept as recommended where it holds
-    the press; under prediction Fit pressed, and the final model declared and the held-out rows
-    opened (its first exit)."""
+    the press, and each noticing kept to act on and not acted on recorded as a limitation; under
+    prediction Fit pressed, and the final model declared and the held-out rows opened (its first
+    exit)."""
     d = run.drive
     url = f"/api/projects/{run.pid}/export"
     r = d.c.get(url)
@@ -707,7 +709,8 @@ def export(run: Run) -> Any:
             # Pressed again after a way forward a refused result offered: that change to the plan
             # withdrew the lock no estimate had been shown under (calm/FOUNDATION §7). Where the
             # open noticings' triage holds the press, its way forward "Keep the recommended
-            # dispositions" is taken first, as a person pressing Confirm all does
+            # dispositions" is taken first, as a person pressing Confirm all does, then each
+            # "Record as a limitation" a noticing kept to act on and not acted on offers
             # (``server_drive.fit_response``); a blocking noticing's refusal stands.
             from turbotab.core.tests.acceptance.server_drive import fit_response
 

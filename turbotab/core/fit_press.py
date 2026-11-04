@@ -34,9 +34,11 @@ decision: it enters the Record only as the plan's lock, under Estimate and Descr
 * **What a press waits for** under Estimate and Describe, where it records the lock
   (``ProjectService.press_fit``): a fit that can run (while the fit or a stage it waits on is
   refused, the press is refused with that refusal) and, while the plan is unlocked, the open
-  noticings' triage, which comes before the lock (:func:`triage_refusal`; calm/FOUNDATION §7). A
-  refused press records no press and no lock. Under Predict neither holds it: the triage's gate
-  there is the held-out rows.
+  noticings' triage, which comes before the lock (:func:`triage_refusal`; calm/FOUNDATION §7),
+  and each noticing it recorded "act on it", until that one is acted on or its disposition is
+  changed (the owner's Q8, 2026-11-04). A refused press records no press and no lock. Under
+  Predict neither holds it: the triage's gate there is the held-out rows, which stay sealed while
+  a noticing recorded "act on it" is not acted on (``seal._the_opening_waits_for_the_triage``).
 * **The press** is kept beside the project (:data:`PRESS_FILE`: the outcome it was pressed for, the
   estimate it confirmed and the last record before it), as the scores seen are
   (``selection.SEEN_FILE``): it is not a decision and never enters the log. Cancel, or a change to
@@ -362,17 +364,37 @@ def _named(items: Sequence[Any], *, recommended: bool = False) -> str:
     return ". " + " ".join(f"({k}) {s}" for k, s in enumerate(said, 1))
 
 
+def _acted_at(i: Any) -> str:
+    """Where noticing ``i`` is acted on, as a way forward names it: at the question it routes to,
+    in that question's stage, else in its own stage (``TriageItem.question``, ``stage``)."""
+    from turbotab.core.quest import QUESTIONS, STAGE_NAMES
+    from turbotab.core.voice import question_name
+
+    question = _get(i, "question")
+    if question in QUESTIONS:
+        return f"at {question_name(question)} in {STAGE_NAMES[QUESTIONS[question].stage]}"
+    stage = STAGE_NAMES.get(str(_get(i, "stage")))
+    return f"in {stage}" if stage else "where it is decided"
+
+
 def triage_refusal(t: Any) -> Any:
     """Under Estimate and Describe the open noticings are triaged before the plan's lock
     (calm/FOUNDATION §7), and pressing Fit records the lock, so a press waits while ``t``, the
-    triage at that gate (``sweep.triage``), is not confirmed: the refusal (``triage_open``) that
-    names each noticing (:func:`_named`) and the way forward, else None. While a noticing blocks,
-    each blocking one is decided on its own first (the triage's "Confirm all" refuses it); while
-    one has no recorded disposition (none recorded, or the one recorded no longer stands), each
-    such noticing is named with its recommended disposition, and the ways forward are the triage
-    in Models and its "Confirm all", which records each as the engine recommends, with its reason.
-    Silent once every disposition is recorded, whatever it is, with nothing to triage, and once the
-    gate has passed (the plan is locked)."""
+    triage at that gate (``sweep.triage``), is not confirmed, or holds a noticing marked to act on
+    that is not acted on: the refusal (``triage_open``) that names each noticing (:func:`_named`)
+    and the ways forward, else None. While a noticing blocks, each blocking one is decided on its
+    own first (the triage's "Confirm all" refuses it); while one has no recorded disposition (none
+    recorded, or the one recorded no longer stands), each such noticing is named with its
+    recommended disposition, and the ways forward are the triage in Models and its "Confirm all",
+    which records each as the engine recommends, with its reason. Then, while one recorded "act on
+    it" is still listed (the triage lists one only until it is acted on: its own decision answers
+    it, ``sweep.triage``), recording the intent is not the act (the owner's Q8, 2026-11-04): each
+    such noticing is named, and its ways forward are where it is acted on (:func:`_acted_at`) and
+    changing its disposition, recorded as a limitation ("could bias the estimate", that one line
+    of the triage's own confirmation), as the held-out rows' gate under Predict offers
+    (``seal._the_opening_waits_for_the_triage``). Silent once every disposition is recorded and
+    none listed is "act on it", with nothing to triage, and once the gate has passed (the plan is
+    locked)."""
     from turbotab.core.decisions import Refusal
     from turbotab.core.quest import STAGE_NAMES
 
@@ -389,7 +411,23 @@ def triage_refusal(t: Any) -> Any:
             exits=[{"label": f"Decide: {i.summary}", "decision": None} for i in blocking])
     waiting = [i for i in items if i.recorded is None]
     if not waiting:
-        return None
+        unacted = [i for i in items if i.recorded == "act_on_it"]
+        if not unacted:
+            return None
+        n = len(unacted)
+        exits: list[dict[str, Any]] = []
+        for i in unacted:
+            exits.append({"label": f"Act on it {_acted_at(i)}: {i.summary}", "decision": None})
+            exits.append({"label": f"Record as a limitation: {i.summary}", "decision": {
+                "kind": "confirm_sweep", "stage": stage, "sweep": "noticings",
+                "lines": [{"id": i.line, "key": i.id, "value": "could_bias"}]}})
+        return Refusal(
+            "triage_open",
+            f"Fit waits: pressing it locks the analysis plan, and {_noticings(n)} marked "
+            f"\"act on it\" {'is' if n == 1 else 'are'} not acted on yet{_named(unacted)} Act on "
+            f"{'it' if n == 1 else 'each'} where it is decided, or change its disposition by "
+            f"recording it as a limitation, before any estimate is seen.",
+            exits=exits)
     n, where = len(waiting), STAGE_NAMES[stage]
     return Refusal(
         "triage_open",

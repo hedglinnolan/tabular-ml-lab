@@ -24,8 +24,8 @@ def press_fit(client: Any, pid: str,
     served before it (under Estimate and Describe it locks the plan). True when it was taken; False
     when it was refused because there is nothing to fit yet or a question the estimates rest on is
     open, so the estimates stay withheld, as WP17 withholds them. Under Estimate and Describe a
-    press the open noticings' triage holds is pressed again once the triage is confirmed as the
-    user confirms it (:func:`fit_response`, which tells ``taking`` the way forward it takes)."""
+    press the open noticings' triage holds is pressed again once the triage is settled as the user
+    settles it (:func:`fit_response`, which tells ``taking`` each way forward it takes)."""
     r = fit_response(client, pid, taking=taking)
     if r.status_code == 409 and r.json()["error"]["code"] == "fit_not_yet":
         return False
@@ -33,25 +33,35 @@ def press_fit(client: Any, pid: str,
     return True
 
 
+# How many of the triage's refusals one press goes through: its "Confirm all", then one for each
+# noticing marked "act on it" and not acted on, with room for a disposition that no longer stands.
+TRIAGE_ROUNDS = 12
+
+
 def fit_response(client: Any, pid: str,
                  taking: Callable[[dict[str, Any]], None] | None = None) -> Any:
     """The response to a press of Fit. Under Estimate and Describe the press waits for the open
-    noticings' triage (``triage_open``): the refusal's way forward "Keep the recommended
-    dispositions" (the triage's "Confirm all", each noticing as recommended) is taken, as the user
-    pressing it does, and Fit is pressed again; ``taking`` is told that way forward (its label and
-    decision) before it is taken. A blocking noticing has no such way forward: it is decided on its
-    own, and the refusal is returned."""
+    noticings' triage (``triage_open``): the refusal's first way forward that records something is
+    taken, as the user pressing it does, and Fit is pressed again, through each such refusal (at
+    most :data:`TRIAGE_ROUNDS`): "Keep the recommended dispositions" (the triage's "Confirm all",
+    each noticing as recommended) while a noticing has no recorded disposition, then, for each
+    noticing recorded "act on it" and not acted on, its "Record as a limitation" (that noticing's
+    disposition changed, the owner's Q8), which moves no fitted number, as acting on it might;
+    ``taking`` is told each way forward (its label and decision) before it is taken. A blocking
+    noticing has no such way forward: it is decided on its own, and the refusal is returned."""
     r = client.post(f"/api/projects/{pid}/fit")
-    if r.status_code != 409 or r.json()["error"]["code"] != "triage_open":
-        return r
-    way = next((e for e in r.json()["error"]["exits"] if e.get("decision")), None)
-    if way is None:
-        return r
-    if taking is not None:
-        taking(way)
-    confirmed = client.post(f"/api/projects/{pid}/decisions", json=way["decision"])
-    assert confirmed.status_code == 200, confirmed.text[:600]
-    return client.post(f"/api/projects/{pid}/fit")
+    for _ in range(TRIAGE_ROUNDS):
+        if r.status_code != 409 or r.json()["error"]["code"] != "triage_open":
+            return r
+        way = next((e for e in r.json()["error"]["exits"] if e.get("decision")), None)
+        if way is None:
+            return r
+        if taking is not None:
+            taking(way)
+        confirmed = client.post(f"/api/projects/{pid}/decisions", json=way["decision"])
+        assert confirmed.status_code == 200, confirmed.text[:600]
+        r = client.post(f"/api/projects/{pid}/fit")
+    return r
 
 
 def estimate_stage(stage: str) -> bool:
