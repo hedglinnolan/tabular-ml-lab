@@ -15,6 +15,8 @@
  * confirms, from the engine's own value (src/quest/contracts.ts `DeclarationDefaults`).
  */
 import type { DeclarationCards, DeclarationDefaults } from "../../contracts";
+import { CodebookCard } from "../data/CodebookCard";
+import { JoinCard } from "../data/JoinCard";
 import { MeasurementErrorCard } from "../estimate/MeasurementErrorCard";
 import { ModelOneCard } from "../estimate/ModelOneCard";
 import { MultiplicityCard } from "../estimate/MultiplicityCard";
@@ -39,6 +41,9 @@ export const DECLARATION_CARDS: DeclarationCards = {
   set_multiplicity: MultiplicityCard,
   set_measurement_error: MeasurementErrorCard,
   set_usual_intake: UsualIntakeCard,
+  // Your data's file joins and data dictionary (src/quest/cards/data), under every goal.
+  join_files: JoinCard,
+  import_codebook: CodebookCard,
 };
 
 export const DECLARATION_DEFAULTS: DeclarationDefaults = {
