@@ -11,28 +11,43 @@
  *
  * The bundle and the checklist are built from the decision log and the stages as they stand, and
  * no event names them: they are read again when a decision is recorded, or a stage changes its
- * state, its result or its hold, never on a progress tick (`basisOf`); what was drawn stays,
- * veiled, while it is read again. A decision event already
+ * state, its result or its hold, never on a progress tick (`basisOf`). A decision event already
  * reads the checklist again (src/api/events.ts); a stage event does not, so a stage's change reads
  * it again here, where what it says beside the tables matters.
+ *
+ * What was drawn stays, veiled and inert, until the export is read for the record as it stands:
+ * while it is read again, while it waits, and where it refuses or cannot be read (`useExportContents`
+ * keeps the newest read; `veilOf` says how it is veiled, by what moved since).
  */
 import { useEffect, useRef } from "react";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { keys } from "../../api/queries";
 import type { ProjectView } from "../../api/schema";
-import { readContents } from "./bundle";
+import type { VeilState } from "../../motion/StaleVeil";
+import { readContents, type ExportContents } from "./bundle";
 import { readZip } from "./zip";
 
 /** What the export is built from, as the view holds it: the newest decision and each stage's
- *  state, result and hold. Null until the view is read. */
-export function basisOf(view: ProjectView | undefined): string | null {
+ *  state, result and hold. */
+export interface Basis {
+  /** The decisions recorded: their count and the newest one's id. */
+  decisions: string;
+  /** Each stage's state, result and hold, by its name. */
+  stages: Record<string, string>;
+  /** All of it as one key. */
+  key: string;
+}
+
+/** The view's basis; null until the view is read. */
+export function basisOf(view: ProjectView | undefined): Basis | null {
   if (!view) return null;
   const last = view.decisions[view.decisions.length - 1];
-  const stages = Object.entries(view.stages)
-    .flatMap(([name, s]) => (s ? [`${name}:${s.status}:${s.key ?? ""}:${s.held ?? ""}`] : []))
-    .sort();
-  return [`${view.decisions.length}:${last?.id ?? ""}`, ...stages].join("|");
+  const decisions = `${view.decisions.length}:${last?.id ?? ""}`;
+  const stages: Record<string, string> = {};
+  for (const [name, s] of Object.entries(view.stages)) if (s) stages[name] = `${s.status}:${s.key ?? ""}:${s.held ?? ""}`;
+  const key = [decisions, ...Object.keys(stages).sort().map((name) => `${name}:${stages[name]}`)].join("|");
+  return { decisions, stages, key };
 }
 
 /** The checklist read again whenever the basis moves after the first read. */
@@ -47,21 +62,63 @@ export function useChecklistFollows(pid: string, basis: string | null): void {
   }, [qc, pid, basis]);
 }
 
-/** The bundle's tables and figures, read for this basis while `enabled`; until a new basis's read
- *  arrives, the last one read stands in for it (`isPlaceholderData`), for the card to veil. */
-export function useExportContents(pid: string, basis: string | null, enabled: boolean) {
+/** One read of the export: its tables and figures, and the basis it was read for. */
+export interface ExportRead {
+  basis: Basis;
+  contents: ExportContents;
+}
+
+/** Where the newest read is kept, whatever basis it was read for. Only a read sets it. */
+const drawnKey = (pid: string) => [pid, "export", "drawn"] as const;
+
+/** The export read for this basis while `enabled`: the newest read of it for any basis (`drawn`,
+ *  kept until a newer read arrives, through a wait, a refusal or a read that failed), whether it
+ *  is being read now (`again`), and the error of the read for this basis, if it refused or failed. */
+export function useExportContents(pid: string, basis: Basis | null, enabled: boolean) {
   const qc = useQueryClient();
-  return useQuery({
-    queryKey: [pid, "export", "contents", basis] as const,
-    placeholderData: keepPreviousData,
-    queryFn: async ({ signal }) => {
+  const read = useQuery({
+    queryKey: [pid, "export", "contents", basis?.key ?? null] as const,
+    queryFn: async ({ signal }): Promise<ExportRead> => {
       const { blob } = await api.exportBundle(pid, signal);
       const contents = readContents(await readZip(new Uint8Array(await blob.arrayBuffer())));
+      const out: ExportRead = { basis: basis!, contents };
+      // A read for a basis already left behind is not the newest.
+      if (!signal.aborted) qc.setQueryData(drawnKey(pid), out);
       // The bundle's scores now count as shown, and the checklist quotes them only once they have.
       void qc.invalidateQueries({ queryKey: keys.checklist(pid), exact: true });
-      return contents;
+      return out;
     },
     enabled: enabled && basis !== null,
     retry: false,
   });
+  const drawn = useQuery<ExportRead>({ queryKey: drawnKey(pid), queryFn: skipToken }).data ?? null;
+  return { drawn, again: read.isFetching, error: read.error };
+}
+
+/** How the tables and figures of the read for `drawn` stand beside the view now, as StaleVeil says
+ *  it. "fresh" only where they are the export's for the record as it stands: nothing moved since
+ *  that read, the checklist waits for nothing, and the export is neither being read again nor
+ *  refused. Else by what moved in the view since: "recomputing" while the export is read again or
+ *  a stage that moved since computes; "failed" where such a stage failed, "stopped" where its
+ *  computing was stopped; "stale" where a decision was recorded since. Where none of that moved,
+ *  an export that refused or failed when read again is "failed" (its own recompute did not
+ *  finish); else "stale". */
+export function veilOf(
+  drawn: Basis,
+  view: ProjectView | undefined,
+  read: { ready: boolean; again: boolean; failed: boolean },
+): VeilState {
+  const now = basisOf(view) ?? drawn;
+  if (now.key === drawn.key && read.ready && !read.again && !read.failed) return "fresh";
+  const moved = [...new Set([...Object.keys(drawn.stages), ...Object.keys(now.stages)])]
+    .filter((name) => drawn.stages[name] !== now.stages[name])
+    .flatMap((name) => {
+      const s = view?.stages[name];
+      return s ? [s] : [];
+    });
+  if (read.again || moved.some((s) => s.status === "queued" || s.status === "running")) return "recomputing";
+  if (moved.some((s) => s.status === "error")) return "failed";
+  if (moved.some((s) => s.cancelled)) return "stopped";
+  if (now.decisions !== drawn.decisions) return "stale";
+  return read.failed ? "failed" : "stale";
 }

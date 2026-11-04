@@ -1,11 +1,12 @@
 /**
  * The export's zip, read in the browser (zip.ts): every file of the zip GET …/export serves, named
  * as the zip stores it and byte for byte as Python's zipfile reads it (fixtures/capture.py writes
- * each file's SHA-256 from the served bytes), and bytes that are not a zip refused.
+ * each file's SHA-256 from the served bytes), and bytes that are not a zip refused; and whether
+ * this browser can inflate the "deflate-raw" its entries are stored in (canReadZip).
  */
 import estimate from "./fixtures/bundle-estimate.json";
 import predict from "./fixtures/bundle-predict.json";
-import { readZip } from "./zip";
+import { canReadZip, readZip } from "./zip";
 
 const bytesOf = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
@@ -33,5 +34,35 @@ describe("readZip", () => {
   it("refuses a zip whose end is cut off", async () => {
     const whole = bytesOf(predict.zip);
     await expect(readZip(whole.slice(0, whole.length - 40))).rejects.toThrow(/not a zip/);
+  });
+});
+
+describe("canReadZip", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("holds where DecompressionStream inflates \"deflate-raw\", as it does here", () => {
+    expect(canReadZip()).toBe(true);
+  });
+
+  it("does not where there is no DecompressionStream", () => {
+    vi.stubGlobal("DecompressionStream", undefined);
+    expect(canReadZip()).toBe(false);
+  });
+
+  it("does not where DecompressionStream inflates other formats but refuses \"deflate-raw\"", () => {
+    const Real = DecompressionStream;
+    vi.stubGlobal(
+      "DecompressionStream",
+      class {
+        constructor(format: CompressionFormat) {
+          if (format === "deflate-raw") throw new TypeError("Unsupported compression format: 'deflate-raw'");
+          return new Real(format);
+        }
+      },
+    );
+    expect(() => new DecompressionStream("deflate")).not.toThrow();
+    expect(canReadZip()).toBe(false);
   });
 });

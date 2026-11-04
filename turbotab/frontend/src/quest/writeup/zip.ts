@@ -12,9 +12,16 @@ const CENTRAL = 0x02014b50; // central directory file header
 const LOCAL = 0x04034b50; // local file header
 const DEFLATED = 8;
 
-/** Whether this browser can inflate a zip's entries (DecompressionStream with "deflate-raw"). */
+/** Whether this browser can inflate a zip's entries: its DecompressionStream takes "deflate-raw".
+ *  Some have the class but refuse that format (Chromium 80 to 102 inflate "deflate" and "gzip"
+ *  only), so the format itself is tried. */
 export function canReadZip(): boolean {
-  return typeof DecompressionStream === "function";
+  try {
+    new DecompressionStream("deflate-raw");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function inflate(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {

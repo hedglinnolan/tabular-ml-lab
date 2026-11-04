@@ -11,7 +11,7 @@
  * Predict); the view is a real server's captured NHANES walk.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 import { keys } from "../../api/queries";
 import type { PlanExport } from "../../api/m3-types";
@@ -37,6 +37,12 @@ interface Captured {
     checklist_headings: string[];
   };
 }
+// Each test draws the whole card, every checklist item and the bundle's tables, after inflating
+// the zip: on a loaded machine that takes past the 1 s a wait gives by default (and a test's 5 s),
+// so the waits on the export's read, and the tests, get a budget of their own.
+configure({ asyncUtilTimeout: 15_000 });
+vi.setConfig({ testTimeout: 60_000 });
+
 const CAPTURED: [string, Captured][] = [
   ["prediction", predictRaw as unknown as Captured],
   ["estimate", estimateRaw as unknown as Captured],
@@ -69,9 +75,11 @@ const refusalAnswer = (c: Captured) => () =>
   new Response(JSON.stringify(c.waiting.refusal), { status: 409, headers: { "Content-Type": "application/json" } });
 
 /** The card at Write-up with the served checklist and plan in the cache; GET …/export answered by
- *  `exportAnswer`, GET …/checklist by the same checklist, everything else left pending. */
+ *  `exportAnswer`, GET …/checklist by the same checklist until `serve` names another, everything
+ *  else left pending. */
 function writeUp(c: Captured, opts: { checklist?: ChecklistReport; exportAnswer?: () => Response | Promise<Response> } = {}) {
   const checklist = opts.checklist ?? c.checklist;
+  let served = checklist;
   const answer = opts.exportAnswer ?? zipAnswer(c);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(keys.quest(PID), LOG);
@@ -81,7 +89,7 @@ function writeUp(c: Captured, opts: { checklist?: ChecklistReport; exportAnswer?
   qc.setQueryData(keys.plan(PID), c.plan);
   const fetched = vi.fn((url: string) => {
     if (url.endsWith(`/projects/${PID}/export`)) return Promise.resolve(answer());
-    if (url.endsWith(`/projects/${PID}/checklist`)) return Promise.resolve(Response.json(checklist));
+    if (url.endsWith(`/projects/${PID}/checklist`)) return Promise.resolve(Response.json(served));
     return new Promise<Response>(() => {});
   });
   vi.stubGlobal("fetch", fetched);
@@ -93,7 +101,10 @@ function writeUp(c: Captured, opts: { checklist?: ChecklistReport; exportAnswer?
     </QueryClientProvider>,
   );
   const calls = (route: string) => fetched.mock.calls.filter(([url]) => String(url).endsWith(`/projects/${PID}/${route}`)).length;
-  return { qc, card: screen.getByTestId("card-writeup"), calls };
+  const serve = (next: ChecklistReport) => {
+    served = next;
+  };
+  return { qc, card: screen.getByTestId("card-writeup"), calls, serve };
 }
 
 const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
@@ -212,6 +223,25 @@ describe("the export is read only when it can be shown", () => {
     expect(within(card).queryByTestId("export-tables")).toBeNull();
   });
 
+  it("is not read in a browser whose DecompressionStream refuses \"deflate-raw\", the format the zip's entries are stored in", async () => {
+    // As Chromium 80 to 102 do: the class is there, and it inflates "deflate" and "gzip" only.
+    const Real = DecompressionStream;
+    vi.stubGlobal(
+      "DecompressionStream",
+      class {
+        constructor(format: CompressionFormat) {
+          if (format === "deflate-raw") throw new TypeError("Unsupported compression format: 'deflate-raw'");
+          return new Real(format);
+        }
+      },
+    );
+    const { card, calls } = writeUp(PREDICT);
+    await settle();
+    expect(calls("export")).toBe(0);
+    expect(within(card).getByTestId("export-unreadable")).toBeInTheDocument();
+    expect(within(card).queryByTestId("export-failed")).toBeNull();
+  });
+
   it("is read again when a stage changes state or result, never on a progress tick", async () => {
     const { qc, card, calls } = writeUp(PREDICT);
     await within(card).findByTestId("export-tables");
@@ -243,5 +273,70 @@ describe("the export is read only when it can be shown", () => {
     await act(async () => answerNext(zipAnswer(PREDICT)()));
     await waitFor(() => expect(veilOf()).toHaveAttribute("data-veil", "fresh"));
     expect(within(card).getByTestId("export-tables").closest("[inert]")).toBeNull();
+  });
+
+  it("keeps what it drew veiled \"stale\" while the export waits after a decision, unread, and live again once it is read", async () => {
+    const { qc, card, calls, serve } = writeUp(PREDICT);
+    const drawn = await within(card).findByTestId("export-tables");
+    const veilOf = () => within(card).getByTestId("export-veil");
+    // A decision is recorded and the checklist, read again, names what the export now waits for.
+    serve(PREDICT.waiting.checklist);
+    act(() => qc.setQueryData(keys.checklist(PID), PREDICT.waiting.checklist));
+    const last = VIEW.decisions[VIEW.decisions.length - 1]!;
+    act(() => qc.setQueryData(keys.view(PID), { ...VIEW, decisions: [...VIEW.decisions, { ...last, id: `${last.id}-next` }] }));
+    await waitFor(() => expect(veilOf()).toHaveAttribute("data-veil", "stale"));
+    await settle();
+    expect(within(card).getByTestId("export-tables")).toBe(drawn);
+    expect(drawn.closest("[inert]")).not.toBeNull();
+    expect(within(card).getAllByTestId("export-later")).toHaveLength(1);
+    expect(calls("export")).toBe(1);
+    // Once the checklist waits for nothing, the export is read for the record as it stands.
+    serve(PREDICT.checklist);
+    await act(() => qc.invalidateQueries({ queryKey: keys.checklist(PID), exact: true }));
+    await waitFor(() => expect(veilOf()).toHaveAttribute("data-veil", "fresh"));
+    expect(calls("export")).toBe(2);
+    expect(within(card).queryByTestId("export-later")).toBeNull();
+    expect(within(card).getByTestId("export-tables").closest("[inert]")).toBeNull();
+  });
+
+  it("keeps what it drew veiled \"recomputing\" while a stage computes and the export refuses, and live again once it is read", async () => {
+    let n = 0;
+    const { qc, card, calls, serve } = writeUp(PREDICT, {
+      exportAnswer: () => (++n === 2 ? refusalAnswer(PREDICT)() : zipAnswer(PREDICT)()),
+    });
+    const drawn = await within(card).findByTestId("export-tables");
+    const veilOf = () => within(card).getByTestId("export-veil");
+    // The fit computes: the export, read again at once, refuses (as it was captured doing while a
+    // result computes), and the checklist, read again, names what it waits for.
+    serve(PREDICT.waiting.checklist);
+    const fit = VIEW.stages.fit!;
+    act(() => qc.setQueryData(keys.view(PID), { ...VIEW, stages: { ...VIEW.stages, fit: { ...fit, status: "running" } } }));
+    await waitFor(() => expect(within(card).getAllByTestId("export-later")).toHaveLength(1));
+    await waitFor(() => expect(veilOf()).toHaveAttribute("data-veil", "recomputing"));
+    expect(calls("export")).toBe(2);
+    expect(within(card).getByTestId("export-tables")).toBe(drawn);
+    expect(drawn.closest("[inert]")).not.toBeNull();
+    // The fit is fresh again, with its new result: the export is read again and drawn live.
+    serve(PREDICT.checklist);
+    act(() => qc.setQueryData(keys.view(PID), { ...VIEW, stages: { ...VIEW.stages, fit: { ...fit, key: `${fit.key}-new` } } }));
+    await waitFor(() => expect(veilOf()).toHaveAttribute("data-veil", "fresh"));
+    expect(calls("export")).toBe(3);
+    expect(within(card).queryByTestId("export-later")).toBeNull();
+    expect(within(card).getByTestId("export-tables").closest("[inert]")).toBeNull();
+  });
+
+  it("keeps what it drew veiled where the export, read again, refuses, with its refusal in its words beside it", async () => {
+    let n = 0;
+    const { qc, card } = writeUp(PREDICT, { exportAnswer: () => (++n === 1 ? zipAnswer(PREDICT)() : refusalAnswer(PREDICT)()) });
+    const drawn = await within(card).findByTestId("export-tables");
+    const fit = VIEW.stages.fit!;
+    act(() => qc.setQueryData(keys.view(PID), { ...VIEW, stages: { ...VIEW.stages, fit: { ...fit, key: `${fit.key}-other` } } }));
+    const refused = await within(card).findByTestId("export-refused");
+    expect(refused).toHaveTextContent(plain(PREDICT.waiting.refusal.error.message));
+    // Nothing the view holds failed, stopped or computes, and no decision was recorded: what did
+    // not finish is the export's own read.
+    expect(within(card).getByTestId("export-veil")).toHaveAttribute("data-veil", "failed");
+    expect(within(card).getByTestId("export-tables")).toBe(drawn);
+    expect(drawn.closest("[inert]")).not.toBeNull();
   });
 });
