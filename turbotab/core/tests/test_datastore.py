@@ -432,6 +432,30 @@ def test_histograms_count_every_finite_value_once(tmp_path):
             assert len(h["edges"]) == len(h["counts"]) + 1
 
 
+def test_a_histogram_reads_a_table_that_holds_a_column_named_b(tmp_path):
+    """INBOX:1015: the bin index was aliased ``b`` and grouped by ``b``, which DuckDB binds to a
+    table column of that name before the alias, so every other column's histogram failed with a
+    Binder Error (the target_info stage with it). The counts are numpy's on the same edges, and
+    the edges the resolution rule's for whole numbers (one bin per integer, half a step off the
+    grid, as bins=30 is more than the 17 values)."""
+    y = [i % 7 + (i % 3) * 5 for i in range(40)]
+    rows = [f"{v},{i % 4},{i % 2}" for i, v in enumerate(y)]
+    src = _write(tmp_path, "b.csv", "y,b,v\n" + "\n".join(rows) + "\n,1,0\n")
+    info, store, _ = _ingest(tmp_path, src)
+
+    h = store.histogram("y", bins=30)
+    finite = np.asarray(y, dtype=float)
+    edges = np.arange(finite.min() - 0.5, finite.max() + 1.0)
+    assert h["edges"] == pytest.approx(edges.tolist())
+    assert h["counts"] == np.histogram(finite, bins=edges)[0].tolist()
+    assert h["n_missing"] == 1 and sum(h["counts"]) + h["n_missing"] == info.n_rows
+    # The column named b itself, binned by the same rule: 0–3 with the blank row's 1.
+    b = store.histogram("b", bins=30)
+    values = np.asarray([i % 4 for i in range(40)] + [1], dtype=float)
+    assert b["counts"] == np.histogram(values, bins=np.asarray(b["edges"]))[0].tolist()
+    assert b["edges"] == pytest.approx([-0.5, 0.5, 1.5, 2.5, 3.5]) and b["n_missing"] == 0
+
+
 # ── materialize under a budget ───────────────────────────────────────────────
 
 def test_materialize_refuses_before_reading_when_over_budget(tmp_path):

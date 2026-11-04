@@ -1104,11 +1104,40 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
     }
 
 
+def answered_out(state: Any) -> list[str]:
+    """The columns a repair marked unusable (the features the QC filters removed, whose columns the
+    working table keeps), less each one a declared modification's model holds: that model reads the
+    column from the working table, so its blanks cost the model rows or are imputed in it
+    (``methods.interaction.declared``: the modifier, and the confounders an interaction's answers
+    for its second exposure add, ``interaction.adjusted_sets``). No other column is among them: a
+    covariate the adjustment answers leave out of the primary model can be in another model of the
+    plan (the "further adjusted for" one, a declared modification's, the time-varying lane's and,
+    after the lock, the specification curve's), and the missing-values answer's own columns are its
+    card's offer."""
+    if state is None:
+        return []
+    from turbotab.core.repairs import unusable_columns
+
+    out = unusable_columns(state)
+    if not out:
+        return []
+    from turbotab.core.methods.interaction import adjusted_sets, declared
+
+    held: set[str] = set()
+    for modifier, spec in declared(state).items():
+        held |= {modifier, *adjusted_sets(state, modifier, spec)[1]}
+    return [c for c in out if c not in held]
+
+
 def gappy_predictors(columns: Sequence[Mapping[str, Any]], roles: Mapping[str, str],
-                     target: str | None) -> list[str]:
-    """Predictors with any blank (by the ingest's counts), most blank first, at most 200."""
+                     target: str | None, drop: Iterable[str] = ()) -> list[str]:
+    """Predictors with any blank (by the table's counts: the working table's, at the stage), most
+    blank first, at most 200; none of ``drop``, the columns a repair took out of every model
+    (:func:`answered_out`)."""
+    gone = set(drop)
     gappy = [c for c in columns if roles.get(str(c["name"])) in PREDICTOR_ROLES
-             and str(c["name"]) != target and int(c.get("n_missing") or 0) > 0]
+             and str(c["name"]) != target and str(c["name"]) not in gone
+             and int(c.get("n_missing") or 0) > 0]
     gappy.sort(key=lambda c: -int(c.get("n_missing") or 0))
     return [str(c["name"]) for c in gappy[:MAX_MISSING_COLUMNS]]
 
@@ -1143,8 +1172,10 @@ def _blank_reason(share: float, yes_no: bool, medication: bool,
 
 
 def missing_reading(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]],
-                    roles: Mapping[str, str], target: str | None) -> dict[str, Any]:
-    """Each predictor with blanks among rows with the outcome measured, and which mean "not asked".
+                    roles: Mapping[str, str], target: str | None,
+                    drop: Iterable[str] = ()) -> dict[str, Any]:
+    """Each predictor with blanks among rows with the outcome measured, and which mean "not asked";
+    none of ``drop``, the columns a repair took out of every model (:func:`answered_out`).
 
     ``leave_out`` is the offer the missing-values question makes: the likely-not-asked columns,
     and the rows on which at least one of them is blank (the rows complete cases would lose to
@@ -1154,7 +1185,7 @@ def missing_reading(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]],
     base = frame[target].notna() if target and target in frame.columns else pd.Series(True, index=frame.index)
     n_base = int(base.sum())
     out = []
-    for c in gappy_predictors(columns, roles, target):
+    for c in gappy_predictors(columns, roles, target, drop):
         if c not in frame.columns or not n_base:
             continue
         n = int((frame[c].isna() & base).sum())
@@ -1193,14 +1224,15 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     recall days each row's energy averages, with a note when they differ (``recall_days``);
     ``units`` the columns' recorded units (``set_column_unit``); ``settled`` the columns whose
     roles a number-changing default may read (:func:`turbotab.core.readings.settled_columns`;
-    BLUEPRINT §14), every role as given when None.
+    BLUEPRINT §14), every role as given when None. The missing-values reading lists none of the
+    columns ``state``'s repairs took out of every model (:func:`answered_out`).
     """
     from turbotab.core.readings import unit_record
     from turbotab.core.voice import tick
 
     info = {str(c["name"]): c for c in columns}
     roles = dict(roles or {})
-    missing = missing_reading(frame, columns, roles, target)
+    missing = missing_reading(frame, columns, roles, target, answered_out(state))
     # WP7: the missing-data methods, soundest first for the declared purpose, each with its
     # "customary" and "sound" labels and its rung (turbotab.core.methods.missing).
     from turbotab.core.methods.missing import (below_detection_options,
@@ -1395,7 +1427,7 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
     target = state.target
     wanted = needed_columns(columns, target=target, roles=roles) if "dietary" in (state.lens or []) else []
     wanted = list(dict.fromkeys([*wanted, *([target] if target else []),
-                                 *gappy_predictors(columns, roles, target)]))
+                                 *gappy_predictors(columns, roles, target, answered_out(state))]))
     with open_store(ctx) as store:  # no column wanted still reads the row ids, so N is right
         ctx.progress(0.2, "Reading the energy, nutrient and blank columns")
         frame = store.materialize(wanted)
@@ -1513,7 +1545,8 @@ def recall_days(working: Any, state: Any = None) -> tuple[float, str | None]:
 
 
 __all__ = [
-    "ENERGY_EVIDENCE", "EXCLUSION_EVIDENCE", "build_proposals", "energy_bearing", "energy_column",
+    "ENERGY_EVIDENCE", "EXCLUSION_EVIDENCE", "answered_out", "build_proposals", "energy_bearing",
+    "energy_column",
     "MOST_ROWS", "exclusion_proposals", "gappy_predictors", "level_key", "missing_reading",
     "needed_columns", "screen_refusal", "unit_refusal", "energy_column_reading",
     "energy_unit_reading", "recorded_energy_unit", "SETTLED_UNIT_BASES",

@@ -1960,9 +1960,11 @@ class DataStore:
                 f"(SELECT DISTINCT {x} AS v FROM {self._rel} WHERE {finite})").fetchone()
             step = next((s for s, ok in zip(binning.STEPS, grid) if ok), None)
             start, width, nb, edges = binning.layout(lo, hi, step, bins)
+            # Grouped by position: DuckDB binds a GROUP BY name to a table column before a SELECT
+            # alias, so grouping by an alias fails on a table holding a column of that name.
             rows = cur.execute(
-                f"SELECT least(greatest(CAST(floor(({x} - ?) / ?) AS BIGINT), 0), ?) AS b, "
-                f"count(*) FROM {self._rel} WHERE {finite} GROUP BY b",
+                f"SELECT least(greatest(CAST(floor(({x} - ?) / ?) AS BIGINT), 0), ?), "
+                f"count(*) FROM {self._rel} WHERE {finite} GROUP BY 1",
                 [start, width, nb - 1]).fetchall()
         counts = [0] * nb
         for b, n in rows:
