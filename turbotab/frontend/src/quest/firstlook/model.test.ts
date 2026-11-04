@@ -13,8 +13,11 @@ import {
   columnLooks,
   curveOf,
   decideNow,
+  exploreBeat,
+  exploreLine,
   exploreLooks,
   gateMark,
+  listedColumns,
   outcomeDoor,
   recordedLook,
   rowsDoor,
@@ -122,7 +125,19 @@ describe("the outcome beside the other columns (rowsDoor), as GET /table serves 
   it("is open once the window holds the outcome", () => {
     const w = RECORDED.table.body;
     expect(w.columns).toContain(OUTCOME);
-    expect(rowsDoor(w, OUTCOME)).toEqual({ kind: "open", note: w.withheld[OUTCOME] ?? w.labels[OUTCOME] ?? null });
+    expect(w.withheld[OUTCOME]).toBeUndefined();
+    expect(w.labels[OUTCOME]).toBeUndefined();
+    expect(rowsDoor(w, OUTCOME)).toEqual({ kind: "open", notes: [] });
+  });
+
+  it("keeps both of the server's lines on an open window: the rows left blank and its label", () => {
+    // By construction, in the served shape: under Estimate after the lock the service serves the
+    // outcome with both a line on the rows it leaves blank and the exploratory label (service.py
+    // `table_window`); each is said as served, the blank rows' line first.
+    const w = { ...RECORDED.table.body, withheld: { [OUTCOME]: "Blank rows' line, as served" }, labels: { [OUTCOME]: "The label, as served" } };
+    expect(rowsDoor(w, OUTCOME)).toEqual({ kind: "open", notes: ["Blank rows' line, as served", "The label, as served"] });
+    expect(rowsDoor({ ...w, withheld: {} }, OUTCOME)).toEqual({ kind: "open", notes: ["The label, as served"] });
+    expect(rowsDoor({ ...w, labels: {} }, OUTCOME)).toEqual({ kind: "open", notes: ["Blank rows' line, as served"] });
   });
 });
 
@@ -191,6 +206,96 @@ describe("Explore's looks (exploreLooks)", () => {
     expect(decideNow(told)).toEqual([]);
     expect(decideNow({ ...sex, lever: null })).toEqual([]);
   });
+
+  it("names the near-constant predictors served, and how many more the summary counts", () => {
+    // By construction, in the served shape (explore.py: the summary counts every near-constant
+    // predictor, its columns the first of them). 15 counted, 12 named: 3 more.
+    const named = Array.from({ length: 12 }, (_, i) => `flat_${i + 1}`);
+    const flat = {
+      ...artifactOf(DRAWN).findings.find((f) => !f.outcome_view)!,
+      id: "explore::low_variance",
+      kind: "low_variance",
+      summary: "15 predictors barely vary on the training rows",
+      columns: named,
+      groups: [],
+      view: "table_focus",
+    };
+    expect(listedColumns(flat)).toEqual({ names: named, more: 3 });
+    // Every one named: none more. A count past a thousand reads with its comma.
+    expect(listedColumns({ ...flat, summary: "2 predictors barely vary on the training rows", columns: ["a", "b"] })).toEqual({
+      names: ["a", "b"],
+      more: 0,
+    });
+    expect(listedColumns({ ...flat, summary: "1,012 predictors barely vary on the training rows" })).toEqual({ names: named, more: 1000 });
+    // A summary whose count cannot be read claims nothing more.
+    expect(listedColumns({ ...flat, summary: "Some predictors barely vary" })).toEqual({ names: named, more: 0 });
+    // Silent on a look that is not about near-constant predictors.
+    for (const f of artifactOf(DRAWN).findings) expect(listedColumns(f)).toBeNull();
+  });
+});
+
+describe("what Explore's beat says (exploreBeat), from its status, its result and its read", () => {
+  const whosIn = stageName(FIRST, "whos_in");
+  const fresh = (m: Moment) => {
+    const artifact = m.explore.body.artifact ?? null;
+    return { artifact, looks: artifact ? exploreLooks(artifact, m.view.state) : null };
+  };
+  const at = (m: Moment, change: Partial<Parameters<typeof exploreBeat>[0]> = {}) =>
+    exploreBeat({
+      target: m.view.state.target ?? null,
+      status: m.view.stages.explore,
+      result: m.explore.body,
+      failed: null,
+      whosIn,
+      ...fresh(m),
+      ...change,
+    });
+
+  it("counts the looks and those that can be decided only while what it found is current", () => {
+    const looks = exploreLooks(artifactOf(RECORDED), RECORDED.view.state);
+    const artifact = artifactOf(RECORDED);
+    expect(at(RECORDED)).toEqual({
+      kind: "fresh",
+      looks: looks.free.length,
+      decidable: looks.free.filter((l) => l.options.length).length,
+      rows: artifact.rows,
+      n_rows: artifact.n_rows,
+      n_holdout: artifact.n_holdout,
+    });
+    // By construction: an answer it reads changed (the server marks it stale, then reads again).
+    const stale = { ...RECORDED.view.stages.explore!, status: "stale" as const, fresh: false, key: "a key after the change" };
+    for (const status of [stale, { ...stale, status: "queued" as const }, { ...stale, status: "running" as const }]) {
+      expect(at(RECORDED, { status })).toEqual({ kind: "running", again: true });
+    }
+    expect(exploreLine({ kind: "running", again: true })).toBe("Explore is reading the rows again; nothing it found can be decided until it has.");
+  });
+
+  it("is reading what Explore found, not waiting for it, while the stage is fresh and its result not yet read", () => {
+    const status = DRAWN.view.stages.explore!;
+    expect(status.status).toBe("fresh");
+    const unread = { result: undefined, artifact: null, looks: null };
+    expect(at(DRAWN, unread)).toEqual({ kind: "reading" });
+    expect(exploreLine({ kind: "reading" })).toBe("Reading what Explore found…");
+    // A newer result on its way: the one on screen is for an earlier key.
+    expect(at(DRAWN, { status: { ...status, key: "a newer key" } })).toEqual({ kind: "reading" });
+  });
+
+  it("says the read failed, with the reason, where it did", () => {
+    expect(at(DRAWN, { result: undefined, artifact: null, looks: null, failed: "The server answered 500." })).toEqual({
+      kind: "unread",
+      message: "The server answered 500.",
+    });
+    expect(exploreLine({ kind: "unread", message: "The server answered 500." })).toBe("What Explore found was not read: The server answered 500.");
+  });
+
+  it("waits for Who's in before Explore has started, and says an error or a stop over what it found before", () => {
+    expect(at(FIRST, { result: undefined, artifact: null, looks: null })).toEqual({ kind: "waits", stage: whosIn });
+    const status = RECORDED.view.stages.explore!;
+    expect(at(RECORDED, { status: { ...status, status: "error", fresh: false, error: "It stopped." } })).toEqual({ kind: "error", error: "It stopped." });
+    expect(at(RECORDED, { status: { ...status, status: "stale", fresh: false, key: "k", cancelled: true } })).toEqual({ kind: "stopped" });
+    expect(exploreLine({ kind: "stopped" })).toBe("Explore was stopped before it finished reading the rows.");
+    expect(at({ ...RECORDED, view: { ...RECORDED.view, state: { ...RECORDED.view.state, target: null } } })).toEqual({ kind: "none" });
+  });
 });
 
 describe("the card's beats", () => {
@@ -204,6 +309,8 @@ describe("the card's beats", () => {
       noticed: 0,
       target: OUTCOME,
       door: outcomeDoor(summaryOf(FIRST)),
+      rows: rowsDoor(FIRST.table.body, OUTCOME),
+      relationships: [],
       explore: { kind: "waits", stage: whosIn },
     });
     expect(said.map((b) => b.key)).toEqual(["columns", "explore", "outcome"]);
@@ -211,6 +318,34 @@ describe("the card's beats", () => {
     expect(said[1]!.line).toBe(`Explore has not run yet: it reads the rows ${whosIn} keeps.`);
     expect(said[2]!.title).toBe(`The outcome, ${OUTCOME}`);
     expect(said[2]!.line).toBe(summaryOf(FIRST).withheld);
+    // The rows wait at the same gate, in the same words: said once.
+    expect(FIRST.table.body.withheld[OUTCOME]).toBe(summaryOf(FIRST).withheld);
+    expect(said[2]!.also).toEqual([]);
+  });
+
+  it("say, under Estimate with the distribution recorded, that its distribution is open and what still waits, in the server's words", () => {
+    // By construction from the Estimate moment: the outcome's summary as the server serves it once
+    // its distribution is recorded (no line, no record, on the rows analyzed); the window and the
+    // relationships as served then, both waiting for Fit.
+    const opened = { ...summaryOf(ESTIMATE), withheld: null, record: null, rows: "analyzed" as const };
+    const rows = rowsDoor(ESTIMATE.table.body, OUTCOME);
+    const { relationships } = exploreLooks(artifactOf(ESTIMATE), ESTIMATE.view.state);
+    expect(rows.kind).toBe("shut");
+    expect(relationships.every((l) => l.state.kind === "waits")).toBe(true);
+    const input = { columns: 3, drawn: 3, noticed: 0, target: OUTCOME, door: outcomeDoor(opened), explore: { kind: "none" as const } };
+    const outcome = (b: ReturnType<typeof beats>) => b.find((x) => x.key === "outcome")!;
+    const said = outcome(beats({ ...input, rows, relationships }));
+    expect(said.line).toBe("Its distribution is open on the rows analyzed; each view of the outcome is recorded as looked at.");
+    // The window's gate is the outcome beside another column, the relationships' too: its line once.
+    expect(said.also).toEqual([ESTIMATE.table.body.withheld[OUTCOME]]);
+    // Both ways: with the window open, a relationship that still waits says its own line; none
+    // waiting, nothing more is said (Predict, after the record).
+    const open = rowsDoor(RECORDED.table.body, OUTCOME);
+    const detail = relationships[0]!.finding.detail!;
+    expect(outcome(beats({ ...input, rows: open, relationships })).also).toEqual([detail]);
+    const recorded = exploreLooks(artifactOf(RECORDED), RECORDED.view.state).relationships;
+    expect(recorded.some((l) => l.state.kind === "waits")).toBe(false);
+    expect(outcome(beats({ ...input, rows: open, relationships: recorded })).also).toEqual([]);
   });
 
   it("say what Explore read and what can be decided now, once it has run", () => {
@@ -223,19 +358,23 @@ describe("the card's beats", () => {
       noticed: 2,
       target: OUTCOME,
       door: outcomeDoor(summaryOf(RECORDED)),
+      rows: rowsDoor(RECORDED.table.body, OUTCOME),
+      relationships: exploreLooks(artifactOf(RECORDED), RECORDED.view.state).relationships,
       explore: { kind: "fresh", looks: looks.free.length, decidable, rows: a.rows, n_rows: a.n_rows, n_holdout: a.n_holdout },
     });
     expect(said.map((b) => b.key)).toEqual(["columns", "noticed", "explore", "outcome"]);
-    expect(said[0]!.line).toBe("10 columns, each drawn as it is on every row of the table. The first 6 are drawn here.");
+    // The count and the cap in one sentence: only the first are drawn.
+    expect(said[0]!.line).toBe("10 columns; the first 6 are drawn here, each as it is on every row of the table.");
     expect(said[1]!.line).toBe("2 noticings, each decided in the stage whose answer it changes, listed below.");
     expect(said[2]!.line).toBe(
       `${looks.free.length} looks on the ${a.n_rows.toLocaleString("en-US")} ${a.rows} rows; the ${a.n_holdout.toLocaleString("en-US")} held-out rows are never read. ${decidable} can be decided now.`,
     );
-    expect(said[3]!.line).toBe("Open on the training rows; each view of it is recorded as looked at.");
+    expect(said[3]!.line).toBe("Its distribution is open on the training rows; each view of the outcome is recorded as looked at.");
+    expect(said[3]!.also).toEqual([]);
   });
 
   it("leave the outcome out when none is chosen", () => {
-    const said = beats({ columns: 3, drawn: 3, noticed: 1, target: null, door: null, explore: { kind: "none" } });
+    const said = beats({ columns: 3, drawn: 3, noticed: 1, target: null, door: null, rows: null, relationships: [], explore: { kind: "none" } });
     expect(said.map((b) => b.key)).toEqual(["columns", "noticed"]);
     expect(said[1]!.line).toBe("1 noticing, each decided in the stage whose answer it changes, listed below.");
   });

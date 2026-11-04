@@ -10,7 +10,10 @@
  * recorded with `decide_now` (POST /decisions?decide_now=true), which the server refuses, saying
  * what it waits for, where the question cannot be answered ahead of the Router (FOUNDATION §3, the
  * one exception to "Waiting for"). An option the lever names but no decision records is said, not
- * offered. A record, "Back to First look" or Escape returns to the beats.
+ * offered. The options are offered only while what Explore found is current: a lever's decision
+ * carries the answer it changes as Explore computed it, so while Explore reads the rows again the
+ * card says so and offers nothing to record. A record, "Back to First look" or Escape returns to
+ * the beats.
  */
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { isRefusalError } from "../../api/client";
@@ -20,7 +23,7 @@ import { Options, type OptionItem } from "../../components/record/Options";
 import { Plain, kit as k, plain } from "../../kit";
 import { useStageFocus } from "../../state/focus";
 import { useFirstLook } from "./data";
-import { type Look, beats, decideNow, sectionId } from "./model";
+import { type ExploreBeat, type Look, beats, decideNow, exploreLine, sectionId } from "./model";
 import s from "./firstlook.module.css";
 
 const isLook = (id: string) => id.startsWith("explore::");
@@ -56,7 +59,7 @@ function Guide({ pid, view, log }: { pid: string; view: ProjectView; log: QuestL
     setAsked(null);
     reset();
   };
-  if (look) return <Asked pid={pid} look={look} onBack={back} />;
+  if (look) return <Asked pid={pid} look={look} beat={fl.explore.beat} onBack={back} />;
   if (!fl.read) {
     return (
       <section data-kit data-testid="first-look-guide" aria-label="First look's guide">
@@ -71,6 +74,8 @@ function Guide({ pid, view, log }: { pid: string; view: ProjectView; log: QuestL
     noticed: fl.noticed,
     target: fl.target,
     door: fl.door,
+    rows: fl.rows,
+    relationships: looks?.relationships ?? [],
     explore: fl.explore.beat,
   });
   return (
@@ -84,6 +89,11 @@ function Guide({ pid, view, log }: { pid: string; view: ProjectView; log: QuestL
             <p className={s.beatLine}>
               <Plain text={b.line} />
             </p>
+            {b.also.map((line, i) => (
+              <p key={i} className={s.beatLine} data-testid={`beat-${b.key}-also`}>
+                <Plain text={line} />
+              </p>
+            ))}
             {b.key !== "noticed" ? (
               <button type="button" className={`${k.linkish} ${s.act}`} onClick={() => show(b.key)} data-testid={`beat-${b.key}-show`}>
                 Show it beside the card
@@ -104,8 +114,10 @@ function show(key: string) {
   el.focus({ preventScroll: true });
 }
 
-function Asked({ pid, look, onBack }: { pid: string; look: Look; onBack: () => void }) {
+function Asked({ pid, look, beat, onBack }: { pid: string; look: Look; beat: ExploreBeat; onBack: () => void }) {
   const decideNow = useDecideNow(pid);
+  // Its options are Explore's: offered only while what it found is current (model.ts `exploreBeat`).
+  const current = beat.kind === "fresh";
   const [answer, setAnswer] = useState<{ key: string; node: ReactNode } | null>(null);
   const id = useId();
   const f = look.finding;
@@ -155,16 +167,22 @@ function Asked({ pid, look, onBack }: { pid: string; look: Look; onBack: () => v
           <Plain text={f.summary} />
         </p>
       ) : null}
-      <Options
-        items={items}
-        mode="single"
-        onRecord={(item) => item.decision && send(item.key, item.decision)}
-        pending={decideNow.isPending}
-        answerAt={answer}
-        label={plain(lever.question)}
-        testId="decide-now-options"
-      />
-      {told.length ? (
+      {current ? (
+        <Options
+          items={items}
+          mode="single"
+          onRecord={(item) => item.decision && send(item.key, item.decision)}
+          pending={decideNow.isPending}
+          answerAt={answer}
+          label={plain(lever.question)}
+          testId="decide-now-options"
+        />
+      ) : (
+        <p className={s.beatLine} role="status" data-testid="decide-now-waits">
+          <Plain text={exploreLine(beat)} />
+        </p>
+      )}
+      {current && told.length ? (
         <ul className={s.told}>
           {told.map((o) => (
             <li key={o.key}>

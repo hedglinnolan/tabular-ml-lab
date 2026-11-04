@@ -25,11 +25,13 @@ import {
   GALLERY_MAX,
   ROWS_SHOWN,
   columnLooks,
+  exploreBeat,
   exploreLooks,
   gateMark,
   noticedCount,
   outcomeDoor,
   rowsDoor,
+  started,
   tableMark,
 } from "./model";
 
@@ -38,7 +40,6 @@ export const BINS = 20;
 
 // The explore stage is served at GET /stages/explore, but src/api's stage map does not list it yet.
 const EXPLORE = "explore" as string as AnyStageName;
-const started = (status: string | undefined) => status !== undefined && status !== "idle" && status !== "blocked";
 
 export interface FirstLook {
   /** GET /columns has answered: until then nothing is counted */
@@ -82,30 +83,16 @@ export function useFirstLook(pid: string, view: ProjectView, log: QuestLog): Fir
   }).data;
 
   const status = view.stages.explore;
-  const result = useQuery<StageResult<ExploreArtifact>>({
+  const read = useQuery<StageResult<ExploreArtifact>>({
     queryKey: keys.stage(pid, "explore"),
     queryFn: ({ signal }) => api.stage(pid, EXPLORE, signal) as unknown as Promise<StageResult<ExploreArtifact>>,
     enabled: started(status?.status),
-  }).data;
+  });
+  const result = read.data;
   const artifact = started(status?.status) ? (result?.artifact ?? null) : null;
   const looks = artifact ? exploreLooks(artifact, state) : null;
   const whosIn = log.stages.find((s) => s.key === "whos_in")?.name ?? "Who's in";
-  const beat: ExploreBeat = !target
-    ? { kind: "none" }
-    : artifact && looks
-      ? {
-          kind: "fresh",
-          looks: looks.free.length,
-          decidable: looks.free.filter((l) => l.options.length).length,
-          rows: artifact.rows,
-          n_rows: artifact.n_rows,
-          n_holdout: artifact.n_holdout,
-        }
-      : status?.status === "error"
-        ? { kind: "error", error: status.error }
-        : status?.status === "running" || status?.status === "queued" || status?.status === "stale"
-          ? { kind: "running" }
-          : { kind: "waits", stage: whosIn };
+  const beat: ExploreBeat = exploreBeat({ target, status, result, failed: read.error?.message ?? null, artifact, looks, whosIn });
 
   const targetInfo = useStageResult(pid, "target_info", started(view.stages.target_info?.status)).data?.artifact;
   const task = state.task ?? (targetInfo && targetInfo.column === target ? targetInfo.detected_task : null);

@@ -21,7 +21,7 @@ import { StaleVeil } from "../../motion/StaleVeil";
 import { useStageFocus } from "../../state/focus";
 import { fmtInt, fmtValue, listJoin } from "../../util/format";
 import { type FirstLook, useColumnHistogram, useFirstLook, useOutcomeHistogram } from "./data";
-import { type ColumnLook, type Look, ROWS_SHOWN, TITLE, decideNow, exploreLine, outcomeTitle, rowsWords, sectionId } from "./model";
+import { type ColumnLook, type Look, ROWS_SHOWN, TITLE, decideNow, exploreLine, listedColumns, outcomeTitle, rowsWords, sectionId } from "./model";
 import { Bars, Curve, GroupShares, Levels } from "./views";
 import s from "./firstlook.module.css";
 
@@ -167,11 +167,17 @@ function DecideNow({ id, onDecide }: { id: string; onDecide: () => void }) {
 
 function FreeCell({ look, onDecide }: { look: Look; onDecide: () => void }) {
   const f = look.finding;
+  const listed = listedColumns(f);
   return (
     <li className={s.cell} data-testid={`look-${f.id}`}>
       <p className={s.claim}>
         <Plain text={f.summary} />
       </p>
+      {listed?.names.length ? (
+        <p className={s.quiet} data-testid={`look-${f.id}-columns`}>
+          {listJoin(listed.more ? [...listed.names, `${fmtInt(listed.more)} more`] : listed.names)}
+        </p>
+      ) : null}
       {f.groups.length ? <GroupShares groups={f.groups} column={f.columns[0] ?? ""} /> : null}
       {f.kind === "collinear" && f.detail ? (
         <ul className={s.pairs}>
@@ -319,7 +325,13 @@ function DistributionCell({ pid, fl, onDecide }: { pid: string; fl: FirstLook; o
         ) : (
           <p className={s.quiet}>{fmtInt(outcome.n_unique)} distinct values</p>
         )}
-        {lever && decideNow(lever).length ? <DecideNow id={lever.id} onDecide={() => onDecide(lever.id)} /> : null}
+        {lever && decideNow(lever).length ? (
+          // Its lever is Explore's, and records the slot as Explore computed it: veiled and inert
+          // with Explore's other looks while it computes again, so an earlier answer is never undone.
+          <StaleVeil state={fl.explore.veil} compact>
+            <DecideNow id={lever.id} onDecide={() => onDecide(lever.id)} />
+          </StaleVeil>
+        ) : null}
       </>
     );
   }
@@ -410,11 +422,11 @@ function RowsCell({ pid, fl }: { pid: string; fl: FirstLook }) {
               Open the outcome beside the other columns
             </button>
           ) : null}
-          {rows.kind !== "open" || rows.note ? (
-            <p className={s.quiet} data-testid="look-outcome-rows-line">
-              <Plain text={rows.kind === "open" ? rows.note : rows.line} />
+          {(rows.kind === "open" ? rows.notes : [rows.line]).map((line, i) => (
+            <p key={i} className={s.quiet} data-testid="look-outcome-rows-line">
+              <Plain text={line} />
             </p>
-          ) : null}
+          ))}
           <div className={s.rows}>
             <table>
               <thead>

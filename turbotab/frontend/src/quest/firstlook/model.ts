@@ -13,11 +13,15 @@
  *                 own and drawn only once recorded, though Explore serves their points before
  *                 then), its distribution (its door is GET /columns'), and the outcome-free looks,
  *                 each with the lever options "Decide now" can record
+ *   listedColumns the predictors a near-constant look is about
+ *   exploreBeat   what Explore's beat says, and whether what it found can be decided now: only
+ *                 while it is current
  *   beats         the card's few beats, one per gallery section
  *   gateMark, tableMark   what each read depends on, so a changed answer reads it again
  *   barsOf, curveOf       the drawings' scale math
  */
 import type { ColumnSummary, Decision, Histogram, ProjectState, ProjectView, QuestLog, TableWindow } from "../../api/schema";
+import { veilFor } from "../../motion/StaleVeil";
 import { fmtInt } from "../../util/format";
 
 // ── the explore stage's artifact, as served ────────────────────────────────────
@@ -170,13 +174,16 @@ export function outcomeDoor(summary: ColumnSummary): Door {
 export type RowsDoor =
   | { kind: "shut"; line: string }
   | { kind: "record"; line: string; record: Decision }
-  | { kind: "open"; note: string | null };
+  | { kind: "open"; notes: string[] };
 
 /** The outcome beside the other columns, as a GET /table window serves it: left out with its
  *  line before its gate (`beside_gate`), with the record to post once open and not recorded, else
- *  in the window, with any line on rows left blank or its label (`EXPLORATORY`). */
+ *  in the window, with each line the server serves beside it, as served: the one on rows it leaves
+ *  blank, then its label (`EXPLORATORY`); under Estimate after the lock it serves both. */
 export function rowsDoor(window: TableWindow, target: string): RowsDoor {
-  if (window.columns.includes(target)) return { kind: "open", note: window.withheld[target] ?? window.labels[target] ?? null };
+  if (window.columns.includes(target)) {
+    return { kind: "open", notes: [window.withheld[target], window.labels[target]].filter((l): l is string => !!l) };
+  }
   const line = window.withheld[target] ?? "";
   return window.record ? { kind: "record", line, record: window.record as unknown as Decision } : { kind: "shut", line };
 }
@@ -215,6 +222,19 @@ export function recordedLook(state: Pick<ProjectState, "target" | "outcome_views
 export const decideNow = (f: ExploreFinding): LeverOption[] => (f.lever?.options ?? []).filter((o) => o.decision !== null);
 
 /**
+ * The predictors a near-constant look is about, so that its "Decide now" names what it filters:
+ * the columns served (explore.py serves the first of them) and how many more its summary counts.
+ * The count is served only in the summary's words, which open with it; a summary that does not
+ * claims nothing more. Null on any other look.
+ */
+export function listedColumns(f: Pick<ExploreFinding, "kind" | "summary" | "columns">): { names: string[]; more: number } | null {
+  if (f.kind !== "low_variance") return null;
+  const counted = /^(\d[\d,]*)\s/.exec(f.summary);
+  const total = counted ? Number(counted[1]!.replaceAll(",", "")) : NaN;
+  return { names: f.columns, more: Number.isFinite(total) ? Math.max(0, total - f.columns.length) : 0 };
+}
+
+/**
  * The explore stage's findings as the gallery shows them. An outcome view waits where the server
  * serves nothing to open (its points withheld, its record null: before the lock under Estimate,
  * before a fresh draw under Predict), says why in the server's words, and offers nothing to post;
@@ -248,16 +268,67 @@ export function exploreLooks(artifact: ExploreArtifact, state: Pick<ProjectState
 // ── the card's beats ─────────────────────────────────────────────────────────
 
 export type ExploreBeat =
+  /** what it found is current: only then can a look be decided now */
   | { kind: "fresh"; looks: number; decidable: number; rows: string; n_rows: number; n_holdout: number }
   | { kind: "waits"; stage: string }
-  | { kind: "running" }
+  /** reading the rows; `again` where what it found before is on screen, veiled */
+  | { kind: "running"; again: boolean }
+  /** done, its result on its way */
+  | { kind: "reading" }
+  /** done, its result not read */
+  | { kind: "unread"; message: string }
+  | { kind: "stopped" }
   | { kind: "error"; error: string | null }
   | { kind: "none" };
+
+/** The explore stage's status and its result as read, in the fields its beat reads (`veilFor`'s). */
+export interface ExploreBeatInput {
+  target: string | null;
+  status: { status: string; fresh: boolean; key: string | null; cancelled?: boolean; error?: string | null } | undefined;
+  result: { fresh: boolean; key: string | null; artifact: unknown } | undefined;
+  /** why GET /stages/explore failed, where it did */
+  failed: string | null;
+  artifact: ExploreArtifact | null;
+  looks: Looks | null;
+  /** Who's in, by its name on the quest line */
+  whosIn: string;
+}
+
+/** Whether a stage has started: idle and blocked have not. */
+export const started = (status: string | undefined) => status !== undefined && status !== "idle" && status !== "blocked";
+
+/**
+ * What Explore's beat says. What it found counts, and can be decided now, only while it is current
+ * (the veil fresh: the result read for the key the stage has now); while Explore reads the rows
+ * again, what it found before was computed from earlier answers, and a lever's decision carries the
+ * slot as it stood then (explore.py `_use_lever`), so recording it would undo a later answer.
+ */
+export function exploreBeat(e: ExploreBeatInput): ExploreBeat {
+  const status = e.status;
+  if (!e.target) return { kind: "none" };
+  if (!status || !started(status.status)) return { kind: "waits", stage: e.whosIn };
+  if (status.status === "error") return { kind: "error", error: status.error ?? null };
+  if (status.status === "stale" && status.cancelled) return { kind: "stopped" };
+  if (e.artifact && e.looks && veilFor(status, e.result) === "fresh") {
+    return {
+      kind: "fresh",
+      looks: e.looks.free.length,
+      decidable: e.looks.free.filter((l) => l.options.length).length,
+      rows: e.artifact.rows,
+      n_rows: e.artifact.n_rows,
+      n_holdout: e.artifact.n_holdout,
+    };
+  }
+  if (status.status === "fresh") return e.failed ? { kind: "unread", message: e.failed } : { kind: "reading" };
+  return { kind: "running", again: e.artifact !== null };
+}
 
 export interface Beat {
   key: "columns" | "noticed" | "explore" | "outcome";
   title: string;
   line: string;
+  /** further lines, each the server's, said after it */
+  also: string[];
 }
 
 export interface BeatsInput {
@@ -269,6 +340,9 @@ export interface BeatsInput {
   noticed: number;
   target: string | null;
   door: Door | null;
+  /** the outcome beside the other columns, and how it moves with each predictor */
+  rows: RowsDoor | null;
+  relationships: readonly Look[];
   explore: ExploreBeat;
 }
 
@@ -293,34 +367,51 @@ export function exploreLine(e: ExploreBeat): string {
     return said;
   }
   if (e.kind === "waits") return `Explore has not run yet: it reads the rows ${e.stage} keeps.`;
-  if (e.kind === "running") return "Explore is reading the rows.";
+  if (e.kind === "running") {
+    return e.again ? "Explore is reading the rows again; nothing it found can be decided until it has." : "Explore is reading the rows.";
+  }
+  if (e.kind === "reading") return "Reading what Explore found…";
+  if (e.kind === "unread") return `What Explore found was not read: ${e.message}`;
+  if (e.kind === "stopped") return "Explore was stopped before it finished reading the rows.";
   if (e.kind === "error") return e.error ? `Explore did not finish: ${e.error}` : "Explore did not finish.";
   return "";
 }
 
+/**
+ * What else the outcome waits for, in the server's words, each said once and never the beat's own
+ * line again: the window's line where it is shut, which is the gate of the outcome beside another
+ * column and so the relationships' too (core/outcome_gate.py); else the line each relationship
+ * that waits is served with.
+ */
+function waiting(said: string, rows: RowsDoor | null, relationships: readonly Look[]): string[] {
+  const lines = rows?.kind === "shut" ? [rows.line] : relationships.map((l) => (l.state.kind === "waits" ? l.state.line : null));
+  return [...new Set(lines)].filter((l): l is string => !!l && l !== said);
+}
+
 /** The card's beats, in the gallery's order: each column, what was noticed (listed on the card),
- *  what Explore found, and the outcome last, behind its gate (FIRST_LOOK_BRIEF §1.2, §6.2). */
+ *  what Explore found, and the outcome last, behind its gates (FIRST_LOOK_BRIEF §1.2, §6.2): what
+ *  of it is open, then what still waits. */
 export function beats(input: BeatsInput): Beat[] {
   const out: Beat[] = [];
   const { columns, drawn } = input;
-  let line = `${plural(columns, "column")}, each drawn as it is on every row of the table.`;
-  if (drawn < columns) line += ` The first ${fmtInt(drawn)} are drawn here.`;
-  out.push({ key: "columns", title: TITLE.columns, line });
+  const line =
+    drawn < columns
+      ? `${plural(columns, "column")}; the first ${fmtInt(drawn)} are drawn here, each as it is on every row of the table.`
+      : `${plural(columns, "column")}, each drawn as it is on every row of the table.`;
+  out.push({ key: "columns", title: TITLE.columns, line, also: [] });
   if (input.noticed > 0) {
     out.push({
       key: "noticed",
       title: TITLE.noticed,
       line: `${plural(input.noticed, "noticing")}, each decided in the stage whose answer it changes, listed below.`,
+      also: [],
     });
   }
-  if (input.explore.kind !== "none") out.push({ key: "explore", title: TITLE.explore, line: exploreLine(input.explore) });
+  if (input.explore.kind !== "none") out.push({ key: "explore", title: TITLE.explore, line: exploreLine(input.explore), also: [] });
   if (input.target && input.door) {
     const d = input.door;
-    out.push({
-      key: "outcome",
-      title: outcomeTitle(input.target),
-      line: d.kind === "open" ? `Open on the ${rowsWords(d.rows)}; each view of it is recorded as looked at.` : d.line,
-    });
+    const said = d.kind === "open" ? `Its distribution is open on the ${rowsWords(d.rows)}; each view of the outcome is recorded as looked at.` : d.line;
+    out.push({ key: "outcome", title: outcomeTitle(input.target), line: said, also: waiting(said, input.rows, input.relationships) });
   }
   return out;
 }

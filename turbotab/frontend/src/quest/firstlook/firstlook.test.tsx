@@ -9,7 +9,7 @@
  * decide_now.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 import { keys, useProjectView } from "../../api/queries";
 import type { QuestLog } from "../../api/schema";
@@ -22,12 +22,19 @@ import { FirstLookGallery, FirstLookGuide } from ".";
 const PID = "first-look";
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+interface Opts {
+  after?: Moment;
+  refuse?: unknown;
+  /** reads left unanswered, as a read still on its way */
+  hold?: string[];
+}
+
 /**
- * The server as it answered at `start`: each read the gallery makes; any other stays pending. A POST
- * is answered as the server answered it: a record moves the server on to `after` and answers with
- * that view; `refuse` answers every POST with that refusal.
+ * The server as it answered at `start`: each read the gallery makes; any other stays pending, as
+ * does each read in `hold`. A POST is answered as the server answered it: a record moves the server
+ * on to `after` and answers with that view; `refuse` answers every POST with that refusal.
  */
-function server(start: Moment, opts: { after?: Moment; refuse?: unknown } = {}) {
+function server(start: Moment, opts: Opts = {}) {
   let now = start;
   const posts: { path: string; query: URLSearchParams; body: unknown }[] = [];
   const reads: string[] = [];
@@ -41,6 +48,7 @@ function server(start: Moment, opts: { after?: Moment; refuse?: unknown } = {}) 
       return json(200, now.view);
     }
     reads.push(path);
+    if (opts.hold?.includes(path)) return new Promise<Response>(() => {});
     if (path === "/columns") return json(now.columns.status, now.columns.body);
     if (path === "/table") return json(now.table.status, now.table.body);
     if (path === "/stages/explore") return json(now.explore.status, now.explore.body);
@@ -68,10 +76,11 @@ function Gallery({ log }: { log: QuestLog }) {
 }
 
 /** The guide on a card and the gallery beside it, sharing one stage focus, as in the shell. */
-function shell(m: Moment, opts: { after?: Moment; refuse?: unknown } = {}) {
+function shell(m: Moment, opts: Opts = {}) {
   const net = server(m, opts);
+  const qc = client(m);
   render(
-    <QueryClientProvider client={client(m)}>
+    <QueryClientProvider client={qc}>
       <StageFocusProvider>
         <div data-testid="card">
           <FirstLookGuide pid={PID} log={m.quest} />
@@ -82,8 +91,36 @@ function shell(m: Moment, opts: { after?: Moment; refuse?: unknown } = {}) {
       </StageFocusProvider>
     </QueryClientProvider>,
   );
-  return { ...net, card: screen.getByTestId("card"), canvas: screen.getByTestId("canvas") };
+  return { ...net, qc, card: screen.getByTestId("card"), canvas: screen.getByTestId("canvas") };
 }
+
+/** The sex look's one recording option: score performance within its groups. */
+const SEX = "explore::quality::sex";
+const DISTRIBUTION = "explore::outcome_distribution";
+const sexOption = () => artifactOf(RECORDED).findings.find((f) => f.id === SEX)!.lever!.options.find((o) => o.decision)!;
+
+/**
+ * By construction, the moment right after "Decide now" on the sex look recorded its option after
+ * the outcome's views were recorded: the log holds the record and the state its subgroup, and
+ * Explore, which reads that answer, is stale for its new key (the server then reads the rows
+ * again), while the result it served for its earlier key is all GET /stages/explore holds.
+ */
+function afterSubgroup(): Moment {
+  const v = RECORDED.view;
+  const last = v.decisions[v.decisions.length - 1]!;
+  const decision = sexOption().decision as unknown as (typeof last)["decision"];
+  return {
+    ...RECORDED,
+    view: {
+      ...v,
+      decisions: [...v.decisions, { ...last, id: "subgroup", seq: last.seq + 1, decision }],
+      state: { ...v.state, intended_use: { use: "risk_estimation", threshold_low: null, threshold_high: null, threshold: null, subgroups: ["sex"], fairness: "subgroup_performance" } },
+      stages: { ...v.stages, explore: { ...v.stages.explore!, status: "stale", fresh: false, key: "explore's key with the subgroup" } },
+    },
+  };
+}
+
+const inert = (el: HTMLElement) => el.closest("[inert]") !== null;
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -213,6 +250,43 @@ describe("under Estimate, after Who's in", () => {
     expect(within(canvas).queryByTestId("open-outcome-rows")).toBeNull();
     expect(within(canvas).getByTestId("open-outcome-distribution")).toBeInTheDocument();
   });
+
+  it("the card's outcome beat says the outcome beside another column waits, in the server's words, as well as its distribution's door", async () => {
+    const { card } = shell(ESTIMATE);
+    const beat = await within(card).findByTestId("beat-outcome");
+    await waitFor(() => expect(within(beat).getAllByTestId("beat-outcome-also").map((p) => p.textContent)).toEqual([plain(ESTIMATE.table.body.withheld[OUTCOME])]));
+    expect(beat).toHaveTextContent(plain(summaryOf(ESTIMATE).withheld));
+  });
+});
+
+describe("the rows window once open", () => {
+  it("says each of the server's lines on it: the rows it leaves blank and its label", async () => {
+    // By construction, in the served shape (service.py under Estimate after the lock).
+    const table = { ...RECORDED.table, body: { ...RECORDED.table.body, withheld: { [OUTCOME]: "Blank rows' line" }, labels: { [OUTCOME]: "The label" } } };
+    const { canvas } = shell({ ...RECORDED, table });
+    const cell = await within(canvas).findByTestId("look-outcome-rows");
+    await waitFor(() => expect(within(cell).getAllByTestId("look-outcome-rows-line").map((p) => p.textContent)).toEqual(["Blank rows' line", "The label"]));
+  });
+});
+
+describe("while Explore's result is read", () => {
+  it("says it is reading what Explore found, not that Explore has not run, while the stage is fresh and its result on its way", async () => {
+    expect(DRAWN.view.stages.explore!.status).toBe("fresh");
+    const { canvas, card } = shell(DRAWN, { hold: ["/stages/explore"] });
+    expect(await within(card).findByTestId("beat-explore")).toHaveTextContent("Reading what Explore found…");
+    expect(within(canvas).getByTestId("first-look-explore-line")).toHaveTextContent("Reading what Explore found…");
+    expect(card).not.toHaveTextContent("has not run yet");
+    expect(canvas).not.toHaveTextContent("has not run yet");
+  });
+
+  it("says the read failed, with the server's reason, where it failed", async () => {
+    const failed = { ...DRAWN, explore: { status: 500, body: "Internal Server Error" as unknown as Moment["explore"]["body"] } };
+    const { canvas, card } = shell(failed);
+    const line = "What Explore found was not read: Internal Server Error";
+    await waitFor(() => expect(within(canvas).getByTestId("first-look-explore-line")).toHaveTextContent(line));
+    expect(within(card).getByTestId("beat-explore")).toHaveTextContent(line);
+    expect(canvas).not.toHaveTextContent("has not run yet");
+  });
 });
 
 describe("Decide now", () => {
@@ -279,6 +353,92 @@ describe("Decide now", () => {
     const age = artifactOf(DRAWN).findings.find((f) => f.id === "explore::quality::age")!;
     expect(age.lever!.options.some((o) => o.decision)).toBe(true);
     expect(within(canvas).getByTestId(`look-${age.id}-decide`)).toBeInTheDocument();
+  });
+
+  it("is offered on no look while Explore reads the rows again after an answer it reads, the outcome's distribution's among them", async () => {
+    // The sequence of the verifier's probe: Decide now on the sex look records its subgroup, which
+    // Explore reads; the distribution's lever, computed before, would record the slot without it.
+    const { canvas, card, posts } = shell(RECORDED, { after: afterSubgroup() });
+    const distribution = await within(canvas).findByTestId(`look-${DISTRIBUTION}-decide`);
+    const sex = within(canvas).getByTestId(`look-${SEX}-decide`);
+    // Both ways: while what Explore found is current, each is offered.
+    expect(inert(distribution)).toBe(false);
+    expect(inert(sex)).toBe(false);
+    fireEvent.click(sex);
+    fireEvent.click(within(await within(card).findByTestId("decide-now")).getByTestId(`option-${sexOption().key}`));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toMatchObject({ body: sexOption().decision });
+    expect(await within(card).findByTestId("first-look-guide")).toBeInTheDocument();
+    // Now Explore is stale: every Decide now on the canvas is veiled and inert, the distribution's too.
+    const decides = [...canvas.querySelectorAll<HTMLElement>('[data-testid$="-decide"]')];
+    expect(decides.map((b) => b.getAttribute("data-testid"))).toEqual(expect.arrayContaining([`look-${DISTRIBUTION}-decide`, `look-${SEX}-decide`]));
+    for (const b of decides) expect(inert(b)).toBe(true);
+    expect(within(card).getByTestId("beat-explore")).toHaveTextContent("Explore is reading the rows again; nothing it found can be decided until it has.");
+    expect(within(card).getByTestId("beat-explore")).not.toHaveTextContent("can be decided now");
+    expect(posts).toHaveLength(1);
+  });
+
+  it("asks nothing to record while Explore reads the rows again, and says so, then asks again once it has", async () => {
+    const { canvas, card, posts, qc } = shell(RECORDED);
+    fireEvent.click(await within(canvas).findByTestId(`look-${DISTRIBUTION}-decide`));
+    const asked = await within(card).findByTestId("decide-now");
+    const distribution = artifactOf(RECORDED).findings.find((f) => f.id === DISTRIBUTION)!;
+    const recording = distribution.lever!.options.filter((o) => o.decision);
+    expect(recording.length).toBeGreaterThan(0);
+    for (const o of recording) expect(within(asked).getByTestId(`option-${o.key}`)).toBeInTheDocument();
+    // An answer Explore reads changes elsewhere: the view the shell holds says Explore is stale.
+    const stale = afterSubgroup().view;
+    act(() => {
+      qc.setQueryData(keys.view(PID), stale);
+    });
+    await waitFor(() => expect(within(card).getByTestId("decide-now-waits")).toHaveTextContent("Explore is reading the rows again; nothing it found can be decided until it has."));
+    expect(within(card).getByTestId("decide-now").querySelector("h3")).toHaveTextContent(plain(distribution.lever!.question));
+    for (const o of distribution.lever!.options) expect(within(card).queryByTestId(`option-${o.key}`)).toBeNull();
+    expect(posts).toHaveLength(0);
+    // Fresh again: its options are asked again.
+    act(() => {
+      qc.setQueryData(keys.view(PID), RECORDED.view);
+    });
+    await waitFor(() => expect(within(card).queryByTestId("decide-now-waits")).toBeNull());
+    for (const o of recording) expect(within(card).getByTestId(`option-${o.key}`)).toBeInTheDocument();
+  });
+});
+
+describe("a look at near-constant predictors", () => {
+  // By construction, in the served shape (explore.py `ExploreFinding` kind low_variance): the
+  // summary counts 15, the columns name the first 12, and the lever's first option records.
+  const named = Array.from({ length: 12 }, (_, i) => `flat_${i + 1}`);
+  const sex = artifactOf(DRAWN).findings.find((f) => f.id === SEX)!;
+  const flat = (summary: string, columns: string[]) => ({
+    ...sex,
+    id: "explore::low_variance",
+    kind: "low_variance",
+    summary,
+    columns,
+    groups: [],
+    view: "table_focus",
+    detail: "The rule, as served.",
+    lever: {
+      question: "Drop near-constant predictors inside each training fold?",
+      options: [{ ...sex.lever!.options[0]!, key: "near_zero", decision: { kind: "set_levers", variance_filter: "near_zero" } }],
+    },
+  });
+  const served = (f: ReturnType<typeof flat>): Moment => ({
+    ...DRAWN,
+    explore: { ...DRAWN.explore, body: { ...DRAWN.explore.body, artifact: { ...artifactOf(DRAWN), findings: [...artifactOf(DRAWN).findings, f] } } },
+  });
+
+  it("names the predictors it is about beside its Decide now, and how many more the summary counts", async () => {
+    const { canvas } = shell(served(flat("15 predictors barely vary on the training rows", named)));
+    const cell = await within(canvas).findByTestId("look-explore::low_variance");
+    expect(within(cell).getByTestId("look-explore::low_variance-columns")).toHaveTextContent(`${named.slice(0, -1).join(", ")}, ${named.at(-1)}, and 3 more`);
+    expect(within(cell).getByTestId("look-explore::low_variance-decide")).toBeInTheDocument();
+  });
+
+  it("says no more where it names every one", async () => {
+    const { canvas } = shell(served(flat("2 predictors barely vary on the training rows", ["flat_1", "flat_2"])));
+    const cell = await within(canvas).findByTestId("look-explore::low_variance");
+    expect(within(cell).getByTestId("look-explore::low_variance-columns").textContent).toBe("flat_1 and flat_2");
   });
 });
 
