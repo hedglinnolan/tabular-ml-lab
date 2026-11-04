@@ -37,7 +37,9 @@ def stage(client, pid: str, name: str) -> dict:
 
 
 def press(client, pid: str, status: int = 200) -> dict:
-    response = client.post(f"/api/projects/{pid}/fit")
+    from turbotab.core.tests.acceptance.server_drive import fit_response
+
+    response = fit_response(client, pid)  # the triage confirmed first, as Confirm all does
     assert response.status_code == status, response.text
     return response.json()
 

@@ -40,6 +40,7 @@ from turbotab.core.graph import artifact_dir, read_artifact
 from turbotab.core.models.selection import read_seen
 from turbotab.core.runs import RUNS_FILE
 from turbotab.core.stages.modeling import read_assignment
+from turbotab.core.tests.acceptance.server_drive import fit_response
 from turbotab.server.service import STALE_OUTCOME_UNREAD, ProjectService
 from turbotab.server.tests.conftest import prepare, wait_for
 from turbotab.server.tests.test_quest_api import needs_nhanes
@@ -525,13 +526,15 @@ def test_under_estimate_no_estimate_before_the_lock_and_only_the_locked_plans_af
     # Fit locks the second plan and computes nothing new; then every estimate of that fit, the
     # stage routes' own. The first fit's plan is not the locked one and it was computed before the
     # lock: none of its estimates is served, and it says why.
-    assert client.post(f"/api/projects/{pid}/fit").status_code == 200
+    assert fit_response(client, pid).status_code == 200  # the triage confirmed first
     lock = kinds(client, pid, "lock_plan")[-1]
     first, second = settled(client, pid, 2)
-    assert second["plan_digest"] == lock["decision"]["digest"] != first["plan_digest"]
+    # the triage confirmed after the second fit: the lock's plan holds it, the fit's does not
+    assert lock["decision"]["digest"] == plan_sha(client, pid) != second["plan_digest"]
+    assert second["plan_digest"] != first["plan_digest"]
     text = json.dumps(lock["decision"]["plan"], sort_keys=True, separators=(",", ":"),
                       ensure_ascii=False)
-    assert second["plan_digest"] == hashlib.sha256(text.encode("utf-8")).hexdigest()
+    assert lock["decision"]["digest"] == hashlib.sha256(text.encode("utf-8")).hexdigest()
     assert service._shown_lock(pid) == lock["id"]  # an estimate served under the lock: it stands
     served, effects = stage(client, pid, "fit"), stage(client, pid, "effects")
     rows = by_family(served)["linear"]["coefficients"]
@@ -620,7 +623,7 @@ def test_under_estimate_the_lock_covers_the_fit_it_was_recorded_on_whatever_else
     wait_for(client, pid, {"fit": "fresh", "effects": "fresh"}, timeout=240)
     assert fit_key(client, pid) == second["fit_key"]  # the fit does not read the sequence
     assert [r["locked"] for r in (first, second)] == [False, False]  # no lock yet
-    assert client.post(f"/api/projects/{pid}/fit").status_code == 200
+    assert fit_response(client, pid).status_code == 200  # the triage confirmed first
     lock = kinds(client, pid, "lock_plan")[-1]
     first, second = settled(client, pid, 2)  # Fit computed nothing new
     assert lock["decision"]["digest"] == plan_sha(client, pid) != second["plan_digest"]
