@@ -386,9 +386,16 @@ def test_3_set_multiplicity_the_family_is_the_effects_stages(fam):
     # The m the preview divides by is the number of tests the effects stage runs and states.
     assert ctx.read["multiplicity"]["m"] == len(effects["exposures"]) == 2
     assert effects["exposures"] == ["fiber", "supplement"]
-    assert effects["multiplicity"].startswith(
-        "2 exposures were tested, each in turn; Benjamini–Hochberg q-values control the "
-        "false-discovery rate across all 2 ")
+    # The family is under the linear model, which fits both members together and gives its rows no
+    # q-value, so the sentence says so (pp2-family-effect-words), where it said each was tested in
+    # turn with Benjamini–Hochberg q-values.
+    assert all(r.get("q") is None for fit in effects["families"][0]["sequence"]
+               for r in fit["effects"] or [])
+    assert effects["multiplicity"] == (
+        "2 exposures were fit together in each model, so each estimate is adjusted for the other, "
+        "and every member is shown. Their p-values are not adjusted for multiplicity: "
+        "Benjamini–Hochberg q-values are computed only where each member is tested in its own "
+        "model.")
 
 
 # ── set_survey ───────────────────────────────────────────────────────────────

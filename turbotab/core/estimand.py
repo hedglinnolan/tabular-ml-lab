@@ -1183,7 +1183,63 @@ def multiplicity_question(state: Any, n: int, *, family: Sequence[str] | None = 
 
 
 def multiplicity_statement(state: Any, spec: Any, n: int) -> str:
-    """The sentence a family's table and methods carry: its method and the number of tests."""
+    """The sentence a family's table and methods carry: its method and the number of tests, as the
+    chosen model families fit the members (the brief's FW1). One that tests each member in its own
+    model (feature-wise regression) tested each in turn; a joint model with a coefficient table
+    (the linear model) fit them together, so each estimate is adjusted for the others, and its
+    table carries no Benjamini–Hochberg q-value (only the feature-wise tests are given them,
+    ``methods.omics.apply_multiplicity``), so its sentence claims no adjustment whatever the
+    method. With both chosen, each is said under its family's name; with no joint model, the
+    sentence is as it was."""
+    from turbotab.core.models import get_family
+    from turbotab.core.stages.effects import _named, has_coefficient_table
+    from turbotab.core.voice import listing
+
+    def fits_together(key: str) -> bool:
+        # A registered family with a coefficient table that tests no member in its own model.
+        try:
+            family = get_family(key)
+        except KeyError:
+            return False
+        return not _estimates_each_in_turn(key) and has_coefficient_table(family)
+
+    each = _each_in_turn_statement(state, n)
+    models = [str(m) for m in _get(state, "models") or []]
+    joint = [m for m in models if fits_together(m)]
+    if not joint:
+        return each
+    together = _together_statement(state, n)
+    in_turn = [m for m in models if _estimates_each_in_turn(m)]
+    if not in_turn:
+        return together
+    task = str(_get(state, "task") or "regression")
+
+    def under(keys: Sequence[str]) -> str:
+        return listing([_named(get_family(k), task) for k in keys], ticked=False)
+
+    return f"Under {under(in_turn)}, {each} Under {under(joint)}, {together}"
+
+
+def _together_statement(state: Any, n: int) -> str:
+    """:func:`multiplicity_statement` for members fit together in one model: no q-value is
+    computed for its rows, so none is claimed."""
+    method, _ = family_multiplicity(state)
+    head = (f"{n:,} exposures were fit together in each model, so each estimate is adjusted for "
+            f"the other{'s' if n > 2 else ''}, and every member is shown.")
+    if method == "none":
+        return f"{head} Their p-values have no multiplicity control, recorded as a limitation."
+    if method == "fdr_bh":
+        return (f"{head} Their p-values are not adjusted for multiplicity: Benjamini–Hochberg "
+                f"q-values are computed only where each member is tested in its own model.")
+    kept = (" It was kept for an omics family as recorded: the field expects false-discovery "
+            "control." if omics_family(state) else
+            " It was kept for this many tests as recorded." if unadjusted_blocked(state, n) else "")
+    return (f"{head} Their p-values are not adjusted for multiplicity and are stated as such "
+            f"(customary for a few declared nutrient hypotheses, {ROTHMAN}).{kept}")
+
+
+def _each_in_turn_statement(state: Any, n: int) -> str:
+    """:func:`multiplicity_statement` for members each tested in its own model."""
     method, _ = family_multiplicity(state)
     if method == "none":
         return (f"{n:,} exposures were tested, each in turn, with no multiplicity control, recorded "

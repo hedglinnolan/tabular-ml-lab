@@ -79,8 +79,10 @@ SequenceKey = Literal["crude", "model_1", "model_2", "model_3"]
 
 class SequenceFit(_Model):
     key: SequenceKey
-    label: str  # "Unadjusted" | "Model 1" | "Model 2 (primary)" | "Model 3"
-    adjusted_for: list[str]  # the columns besides the exposure
+    label: str  # "Unadjusted" | "Without covariates" | "Model 1" | "Model 2 (primary)" | "Model 3"
+    # The columns besides the exposure; an exposure family's members the model holds together
+    # (a joint fit, not one fit per member) after them, each row adjusted for the others.
+    adjusted_for: list[str]
     note: str | None = None  # what the model is (Model 3: "possible mediators: not a total effect")
     n_rows: int
     effects: list[Coefficient] | None  # the exposure's rows only
@@ -263,7 +265,8 @@ EFFECTS_READS = ("adjustment", "estimand", "multiplicity", "model_sequence", "di
 LABELS = {"crude": "Unadjusted", "model_1": "Model 1", "model_2": "Model 2 (primary)",
           "model_3": "Model 3"}
 # The unadjusted model where it holds a category's indicators (feature-wise regression adjusts
-# for a category among the study factors in each of its models, the unadjusted one too): no
+# for a category among the study factors in each of its models, the unadjusted one too), or an
+# exposure family's members fit together (a joint model: each adjusted for the others, FW1): no
 # covariate, but not unadjusted (the verifier's T2V3-4).
 CRUDE_HOLDING = "Without covariates"
 STRAIGHT_LINE = "the straight-line estimate beside the curve"
@@ -1079,6 +1082,7 @@ class _Run:
         failures: dict[str, str] = {}
         lineage: dict[str, Any] = {}  # each model's first copy's matrix columns by their sources
         adjusted_for: dict[str, list[str]] = {}
+        joint: dict[str, list[str]] = {}  # the members each joint model holds (``together``)
         features: list[str] = []
         first: dict[str, Any] = {}
         curve: tuple[str, list[str]] | None = None  # a spline's straight-line and nonlinear columns
@@ -1174,14 +1178,27 @@ class _Run:
                     # The categories whose indicators a model holds, each adjusted for in it.
                     return [c for c, ind in entered.items() if set(ind) & set(cols)]
 
+                def together(cols: Sequence[str]) -> list[str]:
+                    # The members of an exposure family a joint model holds, where it holds more
+                    # than one: each member's estimate is adjusted for the others there (the
+                    # brief's FW1). None where each member is tested in its own model.
+                    if tests_only(family):
+                        return []
+                    held = [e for e in self.exposures
+                            if exposure_columns(fitted, cols, [e], predictors)]
+                    return held if len(held) > 1 else []
+
                 def adjusting(cols: Sequence[str]) -> list[str]:
                     # Each column a model adjusts for, once: a category beside the estimand's
                     # study factor is among the columns its indicators come from, and among
-                    # those it holds (the verifier's V4a-5).
-                    return list(dict.fromkeys([*self._raw(cols, feats, sources), *holding(cols)]))
+                    # those it holds (the verifier's V4a-5); the members a joint model holds
+                    # after the covariates.
+                    return list(dict.fromkeys([*self._raw(cols, feats, sources), *holding(cols),
+                                               *together(cols)]))
 
                 lineage.update(dict.fromkeys(subsets, sources))
-                adjusted_for = {"crude": holding(subsets["crude"]),
+                joint = {name: together(cols) for name, cols in subsets.items()}
+                adjusted_for = {"crude": [*holding(subsets["crude"]), *joint["crude"]],
                                 "model_2": adjusting(M.columns)}
                 if "model_1" in subsets:
                     adjusted_for["model_1"] = adjusting(subsets["model_1"])
@@ -1192,6 +1209,7 @@ class _Run:
             adjusted_for["model_3"] = [*adjusted_for.get("model_2", []),
                                        *[c for c in self.further
                                          if c not in adjusted_for.get("model_2", [])]]
+            joint["model_3"] = joint.get("model_2", [])
         if not supported:
             concerns.append(f"{family.label} has no model matrix here, so only the primary model is "
                             f"refit: the unadjusted model and Model 1 are refit for least squares, "
@@ -1216,8 +1234,8 @@ class _Run:
                 adjusted = [c for c in adjusted_for.get(name, []) if c not in categories]
                 sequence.append(SequenceFit(
                     key=name, label=self._label(name, adjusted), adjusted_for=adjusted,
-                    note=self._note(name, adjusted), n_rows=n_model, effects=None,
-                    inference=self._held(missing) if held else None,
+                    note=self._note(name, adjusted, joint.get(name, [])), n_rows=n_model,
+                    effects=None, inference=self._held(missing) if held else None,
                     concerns=[f"It could not be fit: {failures.get(name, 'no table')}"]))
                 continue
             if missing is not None:
@@ -1238,7 +1256,8 @@ class _Run:
                         if c not in categories or any(r.get("estimate") is not None for r in rows)]
             fit = SequenceFit(
                 key=name, label=self._label(name, adjusted), adjusted_for=adjusted,
-                note=self._note(name, adjusted), n_rows=int(table.info.get("n_rows") or n_model),
+                note=self._note(name, adjusted, joint.get(name, [])),
+                n_rows=int(table.info.get("n_rows") or n_model),
                 effects=shown if table.rows else None,
                 inference=table.info, concerns=list(table.concerns))
             if name == "model_3" and comparison is not None:
@@ -1530,12 +1549,21 @@ class _Run:
     @staticmethod
     def _label(name: str, adjusted: Sequence[str] = ()) -> str:
         """A model's label: the unadjusted model is "Without covariates" where it holds a
-        category's indicators (``adjusted``), which it adjusts for."""
+        category's indicators, or an exposure family's members fit together (``adjusted``), each
+        of which it adjusts for."""
         return CRUDE_HOLDING if name == "crude" and adjusted else LABELS[name]
 
-    def _note(self, name: str, adjusted: Sequence[str] = ()) -> str | None:
+    def _note(self, name: str, adjusted: Sequence[str] = (),
+              together: Sequence[str] = ()) -> str | None:
+        """What the model is; the unadjusted model's says what it holds where it holds anything:
+        the members of an exposure family a joint model holds (``together``), or the categories
+        feature-wise regression adjusts for in each of its models."""
         from turbotab.core.voice import listing
 
+        if name == "crude" and together:
+            return (f"STROBE 16a's estimate without the covariates; {listing(list(together))}, "
+                    f"the members of the exposure family, are in it together, so each is "
+                    f"adjusted for the other{'s' if len(together) > 2 else ''}.")
         if name == "crude" and adjusted:
             one = len(adjusted) == 1
             return (f"STROBE 16a's estimate without the covariates; the indicators of "
@@ -2237,7 +2265,9 @@ def _without_the_primary(artifact: EffectsArtifact, fam: Any, two: Any, whose: s
                          f"{listing(s.adjusted_for) if s.adjusted_for else 'nothing besides it'}")
         else:
             named.append(f"Model 3, further adjusted for {added(s)}")
-    text = (f"The estimate of {whose} is reported from {named[0]} alone, fit on {artifact.rows}."
+    # A model that holds something without the covariates is already said with "alone".
+    one = named[0] if named[0].endswith(" alone") else f"{named[0]} alone"
+    text = (f"The estimate of {whose} is reported from {one}, fit on {artifact.rows}."
             if len(named) == 1 else
             f"The estimate of {whose} is reported from these models alone, fit on "
             f"{artifact.rows}: {'; '.join(named)}.")

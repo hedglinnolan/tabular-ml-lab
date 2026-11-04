@@ -179,11 +179,16 @@ def test_a_family_of_numeric_study_factors_tests_each_without_the_other(tmp_path
     model_2 = {r["feature"]: r for r in _sequence(out)["model_2"]["effects"]}
     for x in rows:
         assert (model_2[x]["estimate"], model_2[x]["se"]) == (rows[x]["estimate"], rows[x]["se"])
-    # silent: no member is a category, so the family's sentence is the estimand's, byte for byte
-    assert out["effects"]["multiplicity"] == (
-        "2 exposures were tested, each in turn; Benjamini–Hochberg q-values control the "
-        "false-discovery rate across all 2 (Benjamini & Hochberg 1995, J R Stat Soc B 57:289), and "
-        "every member is shown, significant or not.")
+    # silent: no member is a category, so feature-wise regression's sentence is the estimand's,
+    # byte for byte; the linear model beside it fits both together and gives no q-value, so each
+    # is said under its family's name (pp2-family-effect-words)
+    from turbotab.core.tests.test_featurewise_family_counts_its_tests import BOTH_TWO
+
+    assert BOTH_TWO.startswith(
+        "Under the feature-wise regression, 2 exposures were tested, each in turn; "
+        "Benjamini–Hochberg q-values control the false-discovery rate across all 2 (Benjamini & "
+        "Hochberg 1995, J R Stat Soc B 57:289), and every member is shown, significant or not. ")
+    assert out["effects"]["multiplicity"] == BOTH_TWO
 
 
 def test_the_table_counts_each_categorys_indicators_and_no_longer_predictors_columns():

@@ -22,10 +22,13 @@ import pytest
 from turbotab.core.tests import test_featurewise_family_counts_its_tests as T
 from turbotab.core.tests.acceptance import estimand_fixtures as ef
 
-LINEAR_FIB = (f"Under the linear model, the estimate of each exposure is reported from the "
-              f"unadjusted model alone, fit on all 400 analyzed rows. Model 2, the primary, "
-              f"adjusted for `age`, `sex`, `smoking` and `activity`, reports none: {T.SINGULAR} "
-              f"Model 3, further adjusted for `bmi`, reports none: {T.SINGULAR}")
+# The linear model holds both members in each model, so each model names them
+# (pp2-family-effect-words).
+LINEAR_FIB = (f"Under the linear model, the estimate of each exposure is reported from the model "
+              f"without the covariates, adjusted for `fiber` and `fib` alone, fit on all 400 "
+              f"analyzed rows. Model 2, the primary, adjusted for `age`, `sex`, `smoking`, "
+              f"`activity`, `fiber` and `fib`, reports none: {T.SINGULAR} Model 3, further "
+              f"adjusted for `bmi`, reports none: {T.SINGULAR}")
 
 
 def test_with_the_family_that_reports_more_chosen_first_each_is_said_by_name(tmp_path):
@@ -73,8 +76,9 @@ def test_with_the_family_that_reports_nothing_chosen_second_each_is_said_by_name
 def test_families_that_report_from_the_same_models_keep_the_first_familys_text(tmp_path):
     """Silent, byte for byte: the numeric family {`fiber`, `sugar`} under [feature-wise, linear]
     (each reports in every model) reads as feature-wise regression's text alone, unscoped, as on
-    the base."""
+    the base, save the family's sentence, now each family's under its name, since the linear
+    model fits both members together (pp2-family-effect-words)."""
     out = ef.run(T._frame(), tmp_path, T._family({"fiber": "exposure", "sugar": "exposure"},
                                                  ["featurewise", "linear"]))
     assert out["effects"]["methods"] == (
-        f"T{T.SEQUENCE[1:]}{T.MODEL_3}{T.APART}{T.BENCHMARKED} {T.ALL_TWO}")
+        f"T{T.SEQUENCE[1:]}{T.MODEL_3}{T.APART}{T.BENCHMARKED} {T.BOTH_TWO}")
