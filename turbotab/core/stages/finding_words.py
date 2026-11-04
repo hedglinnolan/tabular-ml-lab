@@ -1071,10 +1071,20 @@ def _height_example(m: re.Match[str]) -> str:
     return f"a height of 160 cm and a height of {160 + 2 * HEIGHT_JUMP_CM:g} cm"
 
 
+def _intake_floor(m: re.Match[str]) -> str:
+    """The implausible-intake reason's example: the floor below which the finding counts a recall
+    (``packs._PLAUSIBLE_KCAL``), read from the constant rather than typed beside it."""
+    from turbotab import packs
+
+    return f"a recall under {packs._PLAUSIBLE_KCAL[0]:,g} kcal"
+
+
 #: What a text predictor is to the design every family shares (``models.pipeline.category_inputs``):
 #: a category, each distinct value a level, where the legacy reason said it "cannot be modeled"
-#: and sits out of the analysis. The app's own text-number reason adds that its repair can read it
-#: as numbers (``repairs.TEXT_NUMBERS_WHY``); no repair reads the units the legacy reading strips.
+#: and sits out of the analysis. The app's own text-number reason adds that its repair, or the
+#: fit's codes-or-amounts question, can read it as numbers (``repairs.TEXT_NUMBERS_WHY``); the
+#: legacy reason is served where that finding does not read the column (``findings_stage``), as
+#: units (`107 kg`), which neither its repair nor the fit's question reads.
 NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a category, each "
                        "distinct value a level of its own, rather than as a number.")
 
@@ -1088,11 +1098,13 @@ NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a c
 #:   (``turbotab/packs.py``), where v2 asks it in a later stage than the finding's; the temporal
 #:   reason said the app "has never done" the temporal check it is making (``turbotab/clinical.py``).
 #: * What v2 does not do, or does only under one goal (pp2-why-audit): a column of numbers stored as
-#:   text "cannot be modeled" (``ml/import_doctor.py``) or "silently" becomes one-hot levels
-#:   (``turbotab/clinical.py``), where v2's design reads it as a category and the app's own finding
-#:   says so beside it; the grain answer decides "how the held-out set is drawn", and the pooled QCs
-#:   could be in "a held-out set" and leave "before the held-out rows are drawn"
-#:   (``core/reference_rows.py``), where under Estimate no holdout is offered first
+#:   text "cannot be modeled" (``ml/import_doctor.py``) or "silently" becomes "hundreds of one-hot
+#:   levels" (``turbotab/clinical.py``), where v2's design reads a text predictor as a category, one
+#:   level per distinct value (88 and 165 on the shipped tables), until it is read as numbers, and
+#:   the fit asks first whether it holds codes or amounts (``readings.code_question``), but not of
+#:   an assay's exposures (``readings.unsettled_codes``); the grain answer decides "how the held-out
+#:   set is drawn", and the pooled QCs could be in "a held-out set" and leave "before the held-out
+#:   rows are drawn" (``core/reference_rows.py``), where under Estimate no holdout is offered first
 #:   (``seal.split_offer``) and the folds keep a unit whole under either goal; at p/n ≥ 2 "an
 #:   unregularized fit" ranks below the regularized ones, where under Estimate the feature-wise
 #:   tests, one feature at a time and unpenalized, rank first (``models.base.rank``); the app
@@ -1100,13 +1112,15 @@ NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a c
 #:   which tool", which it never asks; a constant feature survives "every filter that is written in
 #:   terms of variance ratios", where v2's D-ratio filter drops it (``methods.qc_drift``); a unit
 #:   artifact passes "every distributional check the app has", beside the app's own check that found
-#:   it (``turbotab/clinical.py``); the temporal example's 169 cm, typed beside the jump limit it
-#:   illustrates; the survey encoding "applied now rather than fitted inside the training folds",
-#:   where nothing is applied at the finding (``core/detectors/scales.py``); total energy "the
-#:   denominator of every energy adjustment", a unit error propagating "into every result"
-#:   (``turbotab/nutrition.py``), where a residual on energy is unchanged by a unit's constant
-#:   factor; and two goal-blind clauses, the unusual values as "the case mix the model exists to
-#:   learn" (``core/detectors/plausibility.py``) and the event as "which one you are predicting"
+#:   it, and is "a mixed-unit predictor", served alike on an outcome since the pack never sees the
+#:   target (``turbotab/clinical.py``); the temporal example's 169 cm and the implausible-intake
+#:   example's 300 kcal, each typed beside the limit it illustrates (``turbotab/packs.py``); the
+#:   survey encoding "applied now rather than fitted inside the training folds", where nothing is
+#:   applied at the finding (``core/detectors/scales.py``); total energy "the denominator of every
+#:   energy adjustment", a unit error propagating "into every result" (``turbotab/nutrition.py``),
+#:   where a residual on energy is unchanged by a unit's constant factor; and two goal-blind
+#:   clauses, the unusual values as "the case mix the model exists to learn"
+#:   (``core/detectors/plausibility.py``) and the event as "which one you are predicting"
 #:   (``ml/binary_text.py``).
 UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...]] = {
     "binary_text": ((re.compile(r"(?<=are a separate question, )asked at Preprocess(?=: )"),
@@ -1134,9 +1148,11 @@ UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]],
         (re.compile(r"^A column that does not parse as numeric is treated as a category by "
                     r"everything downstream, so a continuous measurement silently becomes "
                     r"hundreds of one-hot levels\."),
-         lambda m: ("A predictor that does not parse as numeric enters the models as a category, "
-                    "so a continuous measurement left as text becomes hundreds of one-hot "
-                    "levels.")),),
+         lambda m: ("A predictor that does not parse as numeric can enter the models only as a "
+                    "category until it is read as numbers, by a repair or through the fit's "
+                    "question whether it holds codes or amounts (not asked of an assay's "
+                    "exposures), so a continuous measurement left as text becomes a one-hot level "
+                    "for each distinct value.")),),
     "pack::metabolomics::pooled_qc": (
         (re.compile(r"(?<=analyzed as rows like any other, and )a held-out set could contain "
                     r"them\."),
@@ -1158,6 +1174,8 @@ UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]],
         (re.compile(r", and both survive every filter that is written in terms of variance ratios "
                     r"because their variance is zero rather than small(?=\.)"), lambda m: ""),),
     "pack::clinical::mixed_units": (
+        (re.compile(r"^A mixed-unit predictor is not a noisy predictor\."),
+         lambda m: "A mixed-unit column is not a noisy column."),
         (re.compile(r" It also passes every distributional check the app has, because two clean "
                     r"unimodal populations at a constant ratio look like one skewed one\."),
          lambda m: ""),),
@@ -1173,6 +1191,8 @@ UNTRUE_CLAUSES: dict[str, tuple[tuple[re.Pattern[str], Callable[[re.Match[str]],
                     r"propagates into every result"),
          lambda m: ("Total energy is the denominator of every nutrient density and the scale of "
                     "every implausible-intake screen, so a unit error here moves both")),),
+    "pack::dietary::implausible_intake": (
+        (re.compile(r"a recall of 300 kcal(?= is under-reporting)"), _intake_floor),),
     "pack::clinical::impossible_vs_extreme": (
         (re.compile(r"(?<=the unusual ones are the case mix )the model exists to learn"),
          lambda m: "the model is fit on"),),

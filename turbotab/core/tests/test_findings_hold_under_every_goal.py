@@ -8,9 +8,15 @@ the condition itself. The re-scan of every family's served reason found these fa
 * numbers stored as text: the app's own reason (``core/repairs.py``) and the legacy one
   (``ml/import_doctor.py``) said the column "cannot be modeled" and sits out of the analysis; v2's
   design reads a text predictor as a category, each distinct value a level of its own
-  (``models.pipeline.category_inputs``), until a repair reads it as numbers. The clinical pack's
-  number-format reason said such a column "silently" becomes one-hot levels, beside the app's own
-  finding about the same column;
+  (``models.pipeline.category_inputs``), until a repair reads it as numbers or, for numbers
+  ``parse_text_numbers`` reads, the fit's codes-or-amounts question does: the fit waits on it,
+  offering amounts first (``readings.code_question``, ``predictors_or_ask``), reads an "amounts"
+  answer (``working.text_amounts``) or asks how commas that read two ways read, whose answers are
+  the finding's own repairs, and does not ask it of an assay's exposures
+  (``readings.unsettled_codes``). The app's own reason said a text predictor "enters the models as
+  a category", and the clinical pack's number-format reason that such a column "silently" becomes
+  "hundreds of one-hot levels", beside the app's own finding about the same column, where the
+  columns it is served on hold 88 and 165 distinct values;
 * the repeated-subjects reason said the answer "decides how the held-out set is drawn", and the
   pooled-QC reason that "a held-out set could contain them", removed "before the held-out rows are
   drawn": under Estimate no holdout is offered first (``seal.split_offer``), and under Predict a
@@ -24,9 +30,12 @@ the condition itself. The re-scan of every family's served reason found these fa
 * the empty-blocks reason said a constant feature survives "every filter that is written in terms
   of variance ratios": v2's D-ratio filter drops one (``methods.qc_drift.DRatioFilter``);
 * the clinical mixed-units and default-value reasons said the artifact passes "every distributional
-  check the app has", each beside the app's own distributional check that found it;
+  check the app has", each beside the app's own distributional check that found it, and the
+  mixed-units reason called its column "a mixed-unit predictor", served alike when that column is
+  the outcome (the pack never sees the target);
 * the temporal reason's 169 cm was typed beside the jump limit it illustrates
-  (``clinical.HEIGHT_JUMP_CM``);
+  (``clinical.HEIGHT_JUMP_CM``), and the implausible-intake reason's 300 kcal beside the floor it
+  illustrates (``packs._PLAUSIBLE_KCAL``);
 * the survey ordinal reason said the encoding "is applied now", where nothing is applied at the
   finding;
 * the energy-unit reason said total energy is "the denominator of every energy adjustment" and that
@@ -58,7 +67,9 @@ UNTRUE = ("cannot be modeled", "sit out of", "held-out set is drawn",
           "which export wrote", "by which tool", "survive every filter",
           "every distributional check", "169 cm", "applied now", "denominator of every energy",
           "propagates into every result", "exists to learn", "which one you are predicting",
-          "silently becomes", "an unregularized fit is not")
+          "silently becomes", "an unregularized fit is not", "hundreds of one-hot",
+          "mixed-unit predictor", "a recall of 300 kcal", "it enters the models as a category, "
+          "each distinct value a level of its own, rather than as a number, until")
 
 
 def _run(tmp: Path, source: Path, lens: list[str], target: str | None = None) -> tuple[Ingested, dict]:
@@ -85,26 +96,119 @@ def visits(tmp_path_factory) -> tuple[Ingested, dict, dict]:
     return read, before, read.run(findings_stage, ProjectState(lens=["clinical"], target="outcome"))
 
 
-TEXT_NUMBERS_WHY = ("As a predictor left as text, it enters the models as a category, each distinct "
-                    "value a level of its own, rather than as a number, until it is read as "
-                    "numbers.")
+TEXT_NUMBERS_WHY = ("As a predictor it can enter the models only as a category, one level per "
+                    "distinct value, until it is read as numbers: here, or through the fit's "
+                    "question whether it holds codes or amounts, which is not asked of an assay's "
+                    "exposures.")
 NUMERIC_AS_TEXT_WHY = ("As a predictor left as text, it enters the models as a category, each "
                        "distinct value a level of its own, rather than as a number.")
+NUMBER_FORMAT_WHY = (
+    "A predictor that does not parse as numeric can enter the models only as a category until it "
+    "is read as numbers, by a repair or through the fit's question whether it holds codes or "
+    "amounts (not asked of an assay's exposures), so a continuous measurement left as text becomes "
+    "a one-hot level for each distinct value. The decimal-comma case is worse "
+    "than that: it can parse successfully and be wrong by a factor of a hundred, which no error "
+    "anywhere would report.")
 
 
-def test_numbers_stored_as_text_are_said_to_enter_as_a_category(visits):
-    """The served reasons, before a target and with one: `income` (the app's own text-number
-    finding) and `weight` (the legacy numeric-as-text finding, units the text-number reading does
-    not read) enter the models as categories, as the next test shows."""
+@pytest.fixture(scope="module")
+def labs_glucose(tmp_path_factory) -> tuple[Ingested, dict, dict]:
+    """`clinical_labs.csv` under the clinical lens before a target is chosen and with `glucose`,
+    the column its mixed-units finding flags, as the target."""
+    read, before = _run(tmp_path_factory.mktemp("labs_glucose"), SAMPLES / "clinical_labs.csv",
+                        ["clinical"])
+    return read, before, read.run(findings_stage, ProjectState(lens=["clinical"], target="glucose"))
+
+
+def test_numbers_stored_as_text_are_said_to_be_a_category_until_read_as_numbers(visits, labs,
+                                                                                labs_glucose):
+    """The served reasons, before a target and with one, on both tables they are served on:
+    `income` (`clinic_visits.csv`) and `platelets` (`clinical_labs.csv`), the app's own text-number
+    findings, which the fit asks about (the next test), and `weight`, the legacy numeric-as-text
+    finding, units the text-number reading does not read, which the fit does not ask about and
+    which enters the models as a category (the test after)."""
     _, before, after = visits
+    _, labs_before, _ = labs_glucose
     for artifact in (before, after):
         assert _one(artifact, "text_numbers")["why_it_matters"] == TEXT_NUMBERS_WHY
         assert _one(artifact, "numeric_as_text")["why_it_matters"] == NUMERIC_AS_TEXT_WHY
-        assert _one(artifact, "pack::clinical::number_format")["why_it_matters"] == (
-            "A predictor that does not parse as numeric enters the models as a category, so a "
-            "continuous measurement left as text becomes hundreds of one-hot levels. The "
-            "decimal-comma case is worse than that: it can parse successfully and be wrong by a "
-            "factor of a hundred, which no error anywhere would report.")
+    for artifact in (before, after, labs, labs_before):
+        found = _one(artifact, "pack::clinical::number_format")
+        assert found["why_it_matters"] == NUMBER_FORMAT_WHY
+    platelets = [f for f in labs["findings"] if f["id"] == "text_numbers__platelets"]
+    assert [f["why_it_matters"] for f in platelets] == [TEXT_NUMBERS_WHY]
+
+
+def test_the_fit_asks_codes_or_amounts_of_a_text_predictor(visits):
+    """What the text-number reason says, both ways. The fit waits on whether `income` (numbers
+    with thousands separators) holds codes or amounts, leading with amounts, and asks nothing of
+    `weight` (`107 kg`, which ``parse_text_numbers`` does not read); under an assay lens it does
+    not ask of `income` as an exposure and asks of it as a covariate. Once "amounts" is answered,
+    the fit asks how its commas read (every one could split thousands), and its two answers are
+    this finding's own repairs; a "codes" answer keeps it a category, a level per distinct value
+    (pandas counts 88)."""
+    from turbotab.core import readings
+    from turbotab.core.models.pipeline import category_inputs
+    from turbotab.core.readings import Unsettled, predictors_or_ask, unsettled_codes, whole_facts
+
+    read, _, after = visits
+    info = {c["name"]: c for c in read.info["columns"]}
+    with read.store() as store:
+        facts = whole_facts(["income", "weight"], info, store=store)
+    asked = unsettled_codes(ProjectState(lens=["clinical"], target="outcome"),
+                            ["income", "weight"], facts)
+    assert [(r.column, r.value) for r in asked] == [("income", "amount")]
+    for role, want in (("exposure", []), ("covariate", ["income"])):
+        assay = ProjectState(lens=["metabolomics"], target="outcome", roles={"income": role})
+        assert [r.column for r in unsettled_codes(assay, ["income"], facts)] == want
+
+    def ask(answer: dict[str, str]) -> Unsettled:
+        state = ProjectState(lens=["clinical"], target="outcome", roles={"income": "covariate"},
+                             reading_confirmations=answer)
+        with read.store() as store, pytest.raises(Unsettled) as waited:
+            predictors_or_ask(state, read.info, store=store)
+        return waited.value
+
+    first = ask({})
+    assert [x["decision"] for x in first.exits] == [x["decision"] for x in
+                                                    readings.code_or_count_exits("income")]
+    assert first.exits[0]["label"].startswith("`income` is a count or an amount")
+    commas = ask({"code_or_count:income": "amount"})
+    offered = [x["decision"]["option"] for x in commas.exits
+               if (x["decision"] or {}).get("finding_id") == "text_numbers__income"]
+    own = [o["key"] for o in _one(after, "text_numbers")["repairs"]]
+    assert offered == ["thousands", "decimal_comma"] and set(offered) <= set(own)
+
+    frame = read.frame()
+    assert frame["income"].dtype == object and frame["income"].nunique() == 88
+    codes = ProjectState(lens=["clinical"], target="outcome",
+                         reading_confirmations={"code_or_count:income": "code"})
+    assert category_inputs(codes, frame[["income"]], ["income"]) == ["income"]
+
+
+def test_an_amounts_answer_reads_text_numbers_whose_commas_read_one_way(tmp_path):
+    """The other path the reason names: forty text numbers whose commas can only mark decimals
+    (`4,73`: two digits after a comma cannot be a thousands group) are read as numbers on an
+    "amounts" answer alone, as pandas reads them once each comma is a point (the SAS `.` blank),
+    and are no category; without the answer, they stay text and a category."""
+    from turbotab.core.datastore import ROW_ID
+    from turbotab.core.models.pipeline import category_inputs
+    from turbotab.core.repairs import evaluate
+    from turbotab.core.stages.working import text_amounts
+
+    drawn = np.random.default_rng(0).uniform(0.5, 9.5, 40)
+    values = [f"{v:.2f}".replace(".", ",") for v in drawn] + [".", None]
+    path = tmp_path / "oriented.parquet"
+    pd.DataFrame({"income": values, ROW_ID: np.arange(len(values))}).to_parquet(path)
+    assert text_amounts({}, path, ["income"], {}) == {}
+    assert category_inputs({}, pd.DataFrame({"income": values}), ["income"]) == ["income"]
+    amounts = {"reading_confirmations": {"code_or_count:income": "amount"}}
+    sql = text_amounts(amounts, path, ["income"], {})
+    assert set(sql) == {"income"}
+    got = evaluate(path, ["income"], sql)["income"]
+    want = pd.to_numeric(pd.Series(values).str.replace(",", ".", regex=False), errors="coerce")
+    np.testing.assert_array_equal(got.to_numpy(dtype=float), want.to_numpy(dtype=float))
+    assert category_inputs(amounts, pd.DataFrame({"income": got}), ["income"]) == []
 
 
 def test_both_legacy_spellings_of_the_numbers_as_text_reason_are_restated():
@@ -409,13 +513,27 @@ def labs(tmp_path_factory) -> dict:
                 "readmitted")[1]
 
 
+MIXED_UNITS_WHY = (
+    "A mixed-unit column is not a noisy column. It is a variable whose meaning changes between "
+    "rows, and no amount of regularization repairs that — the model learns a relationship that is "
+    "true of neither population.")
+
+
+def test_the_mixed_units_reason_holds_whatever_the_columns_role(labs, labs_glucose):
+    """The pack never sees the target (``detectors.pack_findings``), so one reason is served on
+    `glucose` before a target, with `readmitted` as the target and with `glucose` itself, the
+    flagged column, as the target: it names no role."""
+    _, before, flagged = labs_glucose
+    for artifact in (before, labs, flagged):
+        found = _one(artifact, "pack::clinical::mixed_units")
+        assert found["affected_columns"][0] == "glucose"
+        assert found["why_it_matters"] == MIXED_UNITS_WHY
+
+
 def test_the_clinical_reasons_say_only_what_the_app_checks(labs):
     from turbotab.clinical import HEIGHT_JUMP_CM
 
-    assert _one(labs, "pack::clinical::mixed_units")["why_it_matters"] == (
-        "A mixed-unit predictor is not a noisy predictor. It is a variable whose meaning changes "
-        "between rows, and no amount of regularization repairs that — the model learns a "
-        "relationship that is true of neither population.")
+    assert _one(labs, "pack::clinical::mixed_units")["why_it_matters"] == MIXED_UNITS_WHY
     assert _one(labs, "pack::clinical::default_value_mass")["why_it_matters"] == (
         "A spike at a default value is a measurement that was probably never taken, and it biases "
         "every summary toward the default. It is also invisible to every range check, because a "
@@ -514,6 +632,76 @@ def test_the_energy_unit_reason_names_what_a_unit_moves(kilojoules):
         "tables.")
 
 
+@pytest.fixture(scope="module")
+def recalls(tmp_path_factory) -> dict:
+    """`dietary_recalls.csv`: 24-hour recalls with `energy_kcal`, some outside the plausible
+    range (its companion), under the dietary lens."""
+    return _run(tmp_path_factory.mktemp("recalls"), SAMPLES / "dietary_recalls.csv",
+                ["dietary"])[1]
+
+
+def _intake_why(low: float) -> str:
+    return (f"These are possible days and poor estimates: a recall under {low:,g} kcal is "
+            "under-reporting rather than starvation. Excluding them is an eligibility criterion, "
+            "which changes N and is reported in participant flow — so it is offered here and never "
+            "applied. Nothing is filtered unless you say so.")
+
+
+def test_the_implausible_intake_example_is_the_floor_the_finding_uses(recalls, kilojoules):
+    """Both tables it is served on: the example is the floor below which the finding counts a
+    recall (``packs._PLAUSIBLE_KCAL``), here 500 kcal, so it is one the finding flags."""
+    from turbotab import packs
+
+    low, _ = packs._PLAUSIBLE_KCAL
+    for artifact in (recalls, kilojoules):
+        assert _one(artifact, "pack::dietary::implausible_intake")["why_it_matters"] == (
+            _intake_why(low))
+
+
+def test_the_intake_example_moves_with_the_floor_and_only_on_its_own_reason(monkeypatch):
+    """With the floor moved to 1,200 kcal (by construction), the pack counts the recalls below
+    1,200 and the example names 1,200; the same legacy words under another family are served as
+    written."""
+    from turbotab import packs
+    from turbotab.core.stages.finding_words import FindingContext, speak
+
+    monkeypatch.setattr(packs, "_PLAUSIBLE_KCAL", (1200.0, 5000.0))
+    frame = pd.DataFrame({"energy_kcal": [300.0, 900.0, 1100.0, 2000.0, 2500.0, 6000.0]})
+    raw = packs._implausible_intake(frame)
+    assert raw is not None and raw["params"]["n_flagged"] == 4
+    legacy = raw["why_it_matters"]
+    fc = FindingContext(frame=frame)
+    finding = {"id": raw["id"], "title": raw["title"], "detail": raw["detail"],
+               "why_it_matters": legacy, "affected_columns": ["energy_kcal"]}
+    assert speak(finding, raw, fc)["why_it_matters"] == _intake_why(1200.0)
+    other = {"id": "pack::dietary::atwater", "title": "x", "detail": "x",
+             "why_it_matters": legacy, "affected_columns": ["energy_kcal"]}
+    assert speak(other, None, fc)["why_it_matters"] == legacy
+
+
+@pytest.mark.parametrize("fam, legacy", [
+    ("pack::clinical::mixed_units",
+     "A mixed-unit predictor is not a noisy predictor. It is a variable whose meaning changes "
+     "between rows."),
+    ("pack::clinical::number_format",
+     "A column that does not parse as numeric is treated as a category by everything downstream, "
+     "so a continuous measurement silently becomes hundreds of one-hot levels."),
+], ids=["mixed_units", "number_format"])
+def test_the_restated_clauses_stay_silent_under_another_family(fam, legacy):
+    """Each clause restates only its own family's reason: the same words under its family are
+    restated, and under another are served as written."""
+    from turbotab.core.stages.finding_words import FindingContext, speak
+
+    fc = FindingContext(frame=pd.DataFrame({"glucose": [1.0, 2.0]}))
+
+    def served(fid: str) -> str:
+        return speak({"id": fid, "title": "x", "detail": "x", "why_it_matters": legacy,
+                      "affected_columns": ["glucose"]}, None, fc)["why_it_matters"]
+
+    assert served(fam) != legacy
+    assert served("category_variants__glucose") == legacy
+
+
 def test_a_units_factor_moves_densities_and_the_screen_but_not_a_residual():
     """By least squares (numpy): total energy written in kJ, 4.184 times its kcal, leaves a
     nutrient's residual on energy unchanged, so not every adjustment moves; it divides every
@@ -539,12 +727,13 @@ def test_a_units_factor_moves_densities_and_the_screen_but_not_a_residual():
 # ── every reason served on these tables ──────────────────────────────────────
 
 
-@pytest.mark.parametrize("name", ["visits", "labs", "paired", "merged",
+@pytest.mark.parametrize("name", ["visits", "labs", "labs_glucose", "paired", "merged",
                                   pytest.param("redundant", marks=pytest.mark.slow),
-                                  "expression", "survey", "kilojoules"])
+                                  "expression", "survey", "kilojoules", "recalls"])
 def test_no_served_reason_says_what_v2_does_not_do(name, request):
     """Every reason served on these tables, before a target and with one where the fixture has
-    one (`clinic_visits.csv` both ways)."""
+    one (`clinic_visits.csv` both ways, `clinical_labs.csv` before one and with its flagged
+    `glucose` as the target)."""
     found = request.getfixturevalue(name)
     artifacts = [x for x in (found if isinstance(found, tuple) else (found,)) if isinstance(x, dict)]
     problems = [(f["id"], phrase) for artifact in artifacts for f in artifact["findings"]

@@ -912,9 +912,16 @@ def _named_values(unparsed: Mapping[str, int], limit: int = 10) -> str:
     return shown
 
 
-#: Why a text column of numbers matters: what the design does with it while it stays text.
-TEXT_NUMBERS_WHY = ("As a predictor left as text, it enters the models as a category, each distinct "
-                    "value a level of its own, rather than as a number, until it is read as numbers.")
+#: Why a text column of numbers matters: what the design does with it until it is read as numbers,
+#: by this finding's repair or through the fit's codes-or-amounts question
+#: (``readings.code_question``: the fit waits on it for every text-number predictor; ``code_guess``
+#: leads with amounts but for a few whole values; an "amounts" answer is read by
+#: ``working.text_amounts``, or asks how the commas read, whose answers are this repair's), which
+#: ``readings.unsettled_codes`` does not ask of an assay's exposures.
+TEXT_NUMBERS_WHY = ("As a predictor it can enter the models only as a category, one level per "
+                    "distinct value, until it is read as numbers: here, or through the fit's "
+                    "question whether it holds codes or amounts, which is not asked of an assay's "
+                    "exposures.")
 
 
 def text_number_findings(frame: pd.DataFrame) -> list[tuple[dict, dict]]:
@@ -955,7 +962,7 @@ def text_number_findings(frame: pd.DataFrame) -> list[tuple[dict, dict]]:
                        f"{limited}"),
             # As text it is a category to the design every family shares, each distinct value a
             # level (``models.pipeline.category_inputs``), until this finding's repair, or the fit's
-            # own "amounts" answer, reads it as numbers (pp2-why-audit).
+            # own codes-or-amounts question, reads it as numbers (pp2-why-audit).
             "why_it_matters": TEXT_NUMBERS_WHY,
             "affected_columns": [c], "source": "structural", "lens": None, "evidence": None,
             "summary": summary, "routes_to": None, "lever_label": None, "group": None,
