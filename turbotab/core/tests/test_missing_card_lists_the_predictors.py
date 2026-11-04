@@ -294,9 +294,6 @@ def test_declaring_a_removed_feature_the_modifier_rekeys_the_card():
     assert key(modified) != key(plain)
 
 
-@pytest.mark.xfail(strict=True, reason="KR1: the proposals key does not read the missing-values "
-                                       "answer until a stage may declare a key-only read "
-                                       "(graph.Stage, outside this package)")
 def test_a_missing_values_answer_that_drops_the_exposure_rekeys_the_card(tmp_path):
     """KR1: `f1`, a feature QC-RLSC removed, is the declared modifier of `f3`'s effect, so the card
     lists it with its 4 blanks (the test above). A missing-values answer that leaves `f3` out takes

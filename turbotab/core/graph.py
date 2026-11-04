@@ -3,9 +3,10 @@
 
 A :class:`Stage` is a pure function of its upstream artifacts and the decision
 slots it reads. Its **key** is a sha256 over its name, version, its deps' keys,
-the values of the slots it reads, and (for a stage with no deps) the dataset
-fingerprint. So a changed decision changes keys exactly downstream of the slot
-it wrote, and nothing ever keeps a manual invalidation list.
+the values of the slots it reads (its ``key_reads`` among them), and (for a
+stage with no deps) the dataset fingerprint. So a changed decision changes keys
+exactly downstream of the slot it wrote, and nothing ever keeps a manual
+invalidation list.
 
 Artifacts live at ``cache_root/<stage>/<key>/`` (``meta.json`` plus the
 artifact: dict/list/model -> JSON, DataFrame -> Parquet, anything else ->
@@ -100,9 +101,13 @@ class Stage:
     # rests on is open, and the first one served locks the plan); not part of the key. The gate
     # lists are derived from it, never kept by hand (V2X_SEAMS rule 6).
     serves: str | None = None
+    # Slots its key reads that are not among its ``reads``: what it computes rests on them, so its
+    # key moves with them and its artifact is computed again, but nothing that reads ``reads`` sees
+    # them (the Router's card dependencies, ``sequence.card_reads``, among them).
+    key_reads: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        for attr in ("deps", "reads", "requires"):  # accept lists, store tuples
+        for attr in ("deps", "reads", "requires", "key_reads"):  # accept lists, store tuples
             object.__setattr__(self, attr, tuple(getattr(self, attr)))
 
 
@@ -422,10 +427,10 @@ def stage_keys(
     unmet: Mapping[str, Sequence[str]] | None = None,
 ) -> dict[str, str | None]:
     """Each stage (in topological ``order``) -> its key under ``values`` (a state's JSON dump), each
-    slot it reads keyed by its view (:func:`key_value`); None while it or a stage upstream waits on
-    an unset slot (``unmet``, :func:`unmet_requires` by default). The scheduler's rule
-    (:meth:`Engine._compute_keys`), read by the seal too (``seal.keys_for``), so the fit the seal
-    was opened on and the fit served are keyed alike."""
+    slot it reads, its ``key_reads`` among them, keyed by its view (:func:`key_value`); None while
+    it or a stage upstream waits on an unset slot (``unmet``, :func:`unmet_requires` by default).
+    The scheduler's rule (:meth:`Engine._compute_keys`), read by the seal too (``seal.keys_for``),
+    so the fit the seal was opened on and the fit served are keyed alike."""
     unmet = unmet_requires(order, values) if unmet is None else unmet
     keys: dict[str, str | None] = {}
     for stage in order:
@@ -435,7 +440,8 @@ def stage_keys(
         keys[stage.name] = stage_key(
             stage,
             {dep: keys[dep] for dep in stage.deps},  # type: ignore[misc]
-            {slot: key_value(slot, values.get(slot)) for slot in stage.reads},
+            {slot: key_value(slot, values.get(slot))
+             for slot in (*stage.reads, *stage.key_reads)},
             fingerprint,
         )
     return keys
@@ -936,7 +942,7 @@ class Engine:
         fields = type(state).model_fields
         values = state.model_dump(mode="json")
         for stage in self._order:
-            for slot in (*stage.reads, *stage.requires):
+            for slot in (*stage.reads, *stage.key_reads, *stage.requires):
                 if slot not in fields:
                     raise GraphError(
                         f"stage {stage.name!r} reads slot {slot!r}, which "

@@ -66,6 +66,22 @@ def toy_graph() -> Graph:
     )
 
 
+def stage_e(ctx: StageContext) -> dict:
+    _ran("E", ctx)
+    return {"value": f"E({ctx.inputs['C']['value']})"}
+
+
+def key_read_graph() -> Graph:
+    """A reads x; C deps A, reads nothing, and its key reads y (``Stage.key_reads``); E deps C."""
+    return Graph(
+        [
+            Stage("A", 1, (), ("x",), stage_a, requires=("x",)),
+            Stage("C", 1, ("A",), (), stage_c, key_reads=("y",)),
+            Stage("E", 1, ("C",), (), stage_e),
+        ]
+    )
+
+
 # ── heavy ────────────────────────────────────────────────────────────────────
 
 
