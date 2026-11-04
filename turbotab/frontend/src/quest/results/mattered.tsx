@@ -15,7 +15,11 @@
  *      be drawn) in the engine's words, a refusal's ways forward named, never pressed; each
  *      specification not estimated named by the choice it changed, with the engine's reason; the
  *      stage's methods sentence beneath it. Sensitivity, never a way to choose: the primary stays
- *      the reported estimate (the view's own line says so);
+ *      the reported estimate (the view's own line says so). Under a yes/no outcome the curve is of
+ *      log odds while Table 2 prints the odds ratio, so beneath the view the engine's own account
+ *      of the curve says the primary is the log of the reported odds ratio, quoting both
+ *      (matteredAdapter `onLogOdds`); under a difference in means, which Table 2 prints as the
+ *      curve does, it is not said;
  *   2. the materiality ledger's rows (GET …/materiality, core/materiality.py `ledger`), read-only:
  *      each noticing's alternative, the ledger's own line for it (the supplement line, the
  *      limitation draft or the card it was decided on), the open relabel of a row that moved more
@@ -37,7 +41,7 @@ import { stageLabel } from "../../components/JobChips";
 import { useM1Stage } from "../../components/stage/data";
 import { Rich } from "../../components/stage/text";
 import { OneLine } from "../../components/views/common/parts";
-import { notEstimatedOf, specCurveFromMattered, type ServedCurve } from "../../components/views/matteredAdapter";
+import { notEstimatedOf, onLogOdds, specCurveFromMattered, type ServedCurve } from "../../components/views/matteredAdapter";
 import { SpecCurveView } from "../../components/views/SpecCurveView";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
 import s from "./results.module.css";
@@ -118,9 +122,18 @@ function ServedBody({ pid, art }: { pid: string; art: Served }) {
   // With no specification estimated the view says one line: the gate's while sealed, else the
   // engine's account of the curve.
   const why = data.sealed ?? (art.says ? plain(art.says) : "No specification of this curve is estimated.");
+  // On the log-odds scale the view's own line calls the primary the reported estimate, while Table 2
+  // prints the odds ratio: the engine's account beneath it says the primary is the log of that
+  // ratio, quoting both.
+  const logOdds = onLogOdds(art.curve) && !!art.says;
   return (
     <>
       <SpecCurveView data={data} why={why} />
+      {logOdds ? (
+        <p className={s.quietLine} data-testid="results-mattered-says">
+          <Rich text={art.says!} />
+        </p>
+      ) : null}
       {missing.length ? (
         <ul className={s.items}>
           {missing.map((x) => (

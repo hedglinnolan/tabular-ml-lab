@@ -4,8 +4,9 @@
  * fixtures/capture_mattered.py; nothing in it by hand): the NHANES journey under Estimate before
  * the plan's lock and once Fit locked it (the specification curve, one specification not
  * estimated, and the materiality ledger with a row that moved more than predicted); journey B, a
- * time to an event, whose curve the server withholds; and the stage's refusal of an exposure
- * family.
+ * time to an event, whose curve the server withholds; the stage's refusal of an exposure family;
+ * and the logistic curve it makes under a yes/no outcome and the odds ratio, with the fit's own
+ * row of the exposure (fixtures/mattered-binary.json, by the same script).
  *
  * The truth is the served field: each printed number is read back off the screen and compared with
  * the field it shows, to the three significant digits the views print (views/format.ts), and each
@@ -20,6 +21,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Ledger, ProjectView } from "../../api/schema";
 import { ENGINE_LABELS } from "../../components/fixtures/stages";
 import type { ServedCurve } from "../../components/views/matteredAdapter";
+import binaryCapture from "./fixtures/mattered-binary.json";
 import capture from "./fixtures/mattered-estimate.json";
 import { ResultsTapestry } from "./index";
 import { Mattered } from "./mattered";
@@ -31,7 +33,7 @@ interface Served {
   curve: ServedCurve | null;
   says: string | null;
   methods: string | null;
-  reported: { estimate: number } | null;
+  reported: { estimate: number; ratio?: number | null } | null;
   refused: { message: string; exits: { label: string; stage?: string }[] } | null;
   withheld?: string | null;
 }
@@ -55,6 +57,8 @@ const C = capture as unknown as {
   refused: Served;
 };
 const LOCKED = C.nhanes.locked;
+/** Under a yes/no outcome: the stage's artifact and the fit's own row of the exposure it follows. */
+const BINARY = (binaryCapture as unknown as { binary: { artifact: Served; fit_row: { estimate: number; ci_low: number; ci_high: number; ratio: number } } }).binary;
 const servedOf = (s: Snapshot) => s.stages.mattered!.artifact as Served;
 const CURVE = servedOf(LOCKED).curve!;
 const LEDGER = LOCKED.materiality;
@@ -167,6 +171,20 @@ describe("the capture", () => {
     expect(LEDGER.rows.filter((r) => r.realized)).toHaveLength(1);
   });
 
+  it("holds a logistic curve whose primary is the fit's own row, and whose odds ratio is the exponent of its log odds", () => {
+    const curve = BINARY.artifact.curve!;
+    expect(curve.sealed).toBeNull();
+    expect(curve.specs.length).toBeGreaterThan(1);
+    expect(curve.specs.every((s) => s.scale_key.startsWith("log_odds:"))).toBe(true);
+    const primary = curve.specs.find((s) => s.primary)!;
+    expect(primary.estimate).toBeCloseTo(BINARY.fit_row.estimate, 12);
+    expect(primary.low).toBeCloseTo(BINARY.fit_row.ci_low, 12);
+    expect(primary.high).toBeCloseTo(BINARY.fit_row.ci_high, 12);
+    // The fit reports the odds ratio exp(β) and the curve follows β.
+    expect(Math.abs(BINARY.fit_row.ratio / Math.exp(primary.estimate) - 1)).toBeLessThan(1e-12);
+    expect(BINARY.artifact.reported!.ratio).toBe(BINARY.fit_row.ratio);
+  });
+
   it("withholds journey B's curve in the words GET /mattered refuses it with, and refuses a family's", () => {
     const cox = servedOf(C.cox.locked);
     expect(cox.curve).toBeNull();
@@ -240,6 +258,39 @@ describe("the specification curve", () => {
   it("says the stage's methods sentence beneath it", async () => {
     const section = await matteredSection(LOCKED);
     expect(within(section).getByTestId("results-mattered-methods")).toHaveTextContent(unticked(servedOf(LOCKED).methods!));
+  });
+
+  it("under a yes/no outcome says beside the curve that the primary is the log of the reported odds ratio, quoting both", async () => {
+    const art = BINARY.artifact;
+    const primary = art.curve!.specs.find((s) => s.primary)!;
+    const section = await matteredSection(curveServed(art));
+    expect(section.querySelectorAll("[data-spec]")).toHaveLength(art.curve!.specs.length);
+    const says = within(section).getByTestId("results-mattered-says");
+    expect(says).toHaveTextContent(unticked(art.says!));
+    // The clause on the primary: its log odds as the curve draws it, then the odds ratio, which is
+    // its exponent (the ratio Table 2 prints under the odds ratio).
+    const clause = /the primary, (\S+), is the log of the reported odds ratio, ([−-]?\d[\d,]*(?:\.\d+)?)/.exec(says.textContent ?? "");
+    expect(clause, says.textContent ?? "").not.toBeNull();
+    expectShows(clause![1], [primary.estimate], "the primary's log odds");
+    expectShows(clause![2], [Math.exp(primary.estimate)], "the reported odds ratio");
+    // Said once, beside the curve: the view's own line is not it.
+    expect((section.textContent ?? "").split("is the log of the reported odds ratio")).toHaveLength(2);
+  });
+
+  it("says no account beside a curve of a difference in means, whose primary is the reported estimate as Table 2 prints it", async () => {
+    const section = await matteredSection(LOCKED);
+    expect(section.querySelectorAll("[data-spec]")).toHaveLength(CURVE.specs.length);
+    expect(within(section).queryByTestId("results-mattered-says")).toBeNull();
+    expect(section).not.toHaveTextContent(unticked(servedOf(LOCKED).says!));
+  });
+
+  it("says no account beside a sealed logistic curve, only the line it is sealed with", async () => {
+    const sealed = (C.nhanes.before.route!.body.error as { message: string }).message;
+    const art = { ...BINARY.artifact, curve: { ...BINARY.artifact.curve!, sealed }, says: sealed };
+    const section = await matteredSection(curveServed(art));
+    expect(section.querySelector("[data-spec]")).toBeNull();
+    expect(within(section).queryByTestId("results-mattered-says")).toBeNull();
+    expect((section.textContent ?? "").split(unticked(sealed))).toHaveLength(2);
   });
 
   it("says a withheld curve in the engine's words and draws no specification", async () => {

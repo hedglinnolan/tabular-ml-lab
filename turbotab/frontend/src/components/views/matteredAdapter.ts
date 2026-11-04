@@ -66,6 +66,15 @@ export function specCurveFromMattered(curve: ServedCurve): SpecCurveData {
   };
 }
 
+/** Whether the curve is drawn on the log-odds scale: some specification estimated, not sealed, and
+ *  every one on one scale whose key is log odds (core/mattered.py `label_of`: `log_odds:<column>`
+ *  under a yes/no outcome). Its primary is then the log of the odds ratio the fit reports, not the
+ *  number Table 2 prints. */
+export function onLogOdds(curve: ServedCurve): boolean {
+  const scales = new Set(curve.specs.map((s) => s.scale_key));
+  return !curve.sealed && scales.size === 1 && [...scales][0]!.startsWith("log_odds:");
+}
+
 /** A specification the curve could not estimate: the choices it changed from the recorded plan
  *  (each choice's label and the option taken, as the view's matrix names them) and the engine's
  *  reason, as served. */

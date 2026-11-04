@@ -3,14 +3,17 @@
  * view reads it, against what the real server served on the NHANES journey under Estimate once the
  * plan was locked (quest/results/fixtures/mattered-estimate.json, written by
  * fixtures/capture_mattered.py; nothing in it by hand): 19 specifications estimated and one not,
- * the departure adding `hdl`, which waits for that column's reading.
+ * the departure adding `hdl`, which waits for that column's reading; and the logistic curve the
+ * stage makes under a yes/no outcome and the odds ratio (fixtures/mattered-binary.json, by the same
+ * script).
  *
  * The truth is the served field: every number passes through unchanged, so each is compared with
  * the field it comes from, and every label is the served one with its backticks dropped.
  */
 import { describe, expect, it } from "vitest";
+import binary from "../../quest/results/fixtures/mattered-binary.json";
 import capture from "../../quest/results/fixtures/mattered-estimate.json";
-import { notEstimatedOf, specCurveFromMattered, type ServedCurve } from "./matteredAdapter";
+import { notEstimatedOf, onLogOdds, specCurveFromMattered, type ServedCurve } from "./matteredAdapter";
 
 const C = capture as unknown as {
   nhanes: {
@@ -19,6 +22,8 @@ const C = capture as unknown as {
   };
 };
 const CURVE = C.nhanes.locked.stages.mattered.artifact.curve;
+/** The logistic curve, under a yes/no outcome. */
+const LOGISTIC = (binary as unknown as { binary: { artifact: { curve: ServedCurve } } }).binary.artifact.curve;
 /** The line GET /mattered refused with before the lock (core/methods/spec_curve.py `SEALED`). */
 const SEALED = C.nhanes.before.route.body.error.message;
 const unticked = (s: string) => s.replaceAll("`", "");
@@ -80,5 +85,21 @@ describe("notEstimatedOf", () => {
     const primary = CURVE.specs.find((s) => s.primary)!;
     const recorded = { key: primary.key, picks: primary.picks, primary: true, reason: CURVE.not_estimated[0]!.reason };
     expect(notEstimatedOf({ ...CURVE, not_estimated: [recorded] })[0]!.changed).toEqual([]);
+  });
+});
+
+describe("onLogOdds", () => {
+  it("holds for the logistic curve, every specification of one log-odds scale, and not for a difference in means", () => {
+    expect(LOGISTIC.estimate_label).toMatch(/^Difference in log-odds of /);
+    expect(onLogOdds(LOGISTIC)).toBe(true);
+    expect(CURVE.estimate_label).toMatch(/^Difference in mean /);
+    expect(onLogOdds(CURVE)).toBe(false);
+  });
+
+  it("does not hold where no log-odds curve is drawn: sealed, with no specification, or on two scales", () => {
+    expect(onLogOdds({ ...LOGISTIC, sealed: SEALED })).toBe(false);
+    expect(onLogOdds({ ...LOGISTIC, specs: [] })).toBe(false);
+    const [first, ...rest] = LOGISTIC.specs;
+    expect(onLogOdds({ ...LOGISTIC, specs: [{ ...first!, scale_key: "log_odds:another" }, ...rest] })).toBe(false);
   });
 });

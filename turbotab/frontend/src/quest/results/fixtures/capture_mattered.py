@@ -20,13 +20,18 @@ stage) and the materiality ledger, and what the stage itself makes where the cur
   ``turbotab/core/tests/test_mattered.py``'s cohort (its ``Run`` and that test's family state).
   With the gate clear the server serves such an artifact unchanged (``service._serve``:
   ``mattered.with_lock`` names the lock on a curve, and a refusal has none).
+* ``binary`` (its own file, ``mattered-binary.json``): the ``mattered`` stage's artifact under a
+  yes/no outcome and the odds ratio, the logistic curve of that test's ``binary`` run, as served
+  with the gate clear (``mattered.with_lock``, the ``nhanes`` capture's lock named), and the fit's
+  own row of the exposure the curve follows (its odds ratio, as Table 2 reports it).
 
     OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 scripts/py turbotab/frontend/src/quest/results/fixtures/capture_mattered.py
 
-writes ``mattered-estimate.json`` beside this file. Nothing in it is written by hand: a project
-view keeps only the state the Results read (``capture_estimate._slim_view``), the record and the
-stages, and every other served value is kept exactly as served. The run stops itself after
-:data:`LIMIT` seconds.
+writes ``mattered-estimate.json`` and ``mattered-binary.json`` beside this file; with ``--binary``
+it writes only the second, naming the lock ``mattered-estimate.json`` holds, and runs no server.
+Nothing in either is written by hand: a project view keeps only the state the Results read
+(``capture_estimate._slim_view``), the record and the stages, and every other served value is kept
+exactly as served. The run stops itself after :data:`LIMIT` seconds.
 """
 from __future__ import annotations
 
@@ -57,6 +62,7 @@ from turbotab.server.tests.test_confirm_sweep_api import post  # noqa: E402
 from turbotab.server.tests.test_quest_api import settle  # noqa: E402
 
 OUT = Path(__file__).with_name("mattered-estimate.json")
+BINARY = Path(__file__).with_name("mattered-binary.json")
 LIMIT = 540  # seconds: a local run stays under ten minutes
 STAGES = ("effects", "mattered")  # the stages whose served results the Results read
 
@@ -158,32 +164,61 @@ def refused(folder: Path, lock_id: str, notes: list[str], t0: float) -> dict[str
     return served
 
 
-def main() -> int:
+def binary(folder: Path, lock_id: str, notes: list[str], t0: float) -> dict[str, Any]:
+    run = TM.Run(TM.cohort(), folder, TM.state(target="dm", task="binary", measure="odds_ratio",
+                                               event="yes"))
+    art = run.mattered()
+    assert art["refused"] is None and art["curve"]["specs"], art
+    served = M.with_lock(art, lock_id)
+    reported = art["reported"]
+    model = next(m for m in run.fit.data["models"] if m["family"] == reported["family"])
+    row = next(r for r in model["coefficients"] if r["feature"] == reported["feature"])
+    notes.append(f"binary: the logistic curve under the odds ratio ({round(time.monotonic() - t0)} s)")
+    return {"artifact": served, "fit_row": row}
+
+
+def _head() -> str:
+    return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                          text=True, cwd=Path(__file__).parent).stdout.strip()
+
+
+def _write(path: Path, meta: dict[str, Any], out: dict[str, Any]) -> None:
+    out = {"meta": {**meta, "captured": date.today().isoformat(), "head": _head(),
+                    "script": "turbotab/frontend/src/quest/results/fixtures/capture_mattered.py"},
+           **out}
+    path.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")) + "\n")
+    print(f"wrote {path} ({path.stat().st_size:,} bytes) in {meta['seconds']} s")
+
+
+def main(argv: list[str]) -> int:
     t0 = time.monotonic()
     signal.signal(signal.SIGALRM, _stop)
     signal.alarm(LIMIT)
     notes: list[str] = []
     with tempfile.TemporaryDirectory(prefix="mattered-capture-") as folder:
         root = Path(folder)
-        (root / "nhanes").mkdir()
-        (root / "cox").mkdir()
-        out: dict[str, Any] = {"nhanes": nhanes(root / "nhanes", notes, t0),
-                               "cox": cox(root / "cox", notes, t0)}
-        lock_id = out["nhanes"]["locked"]["route"]["body"]["plan_lock"]
-        out["refused"] = refused(root / "engine", lock_id, notes, t0)
-    head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
-                          text=True, cwd=Path(__file__).parent).stdout.strip()
-    out = {"meta": {"journey": "estimate-mattered",
-                    "source": "test_materiality_api.py's journey, test_estimand_chain.py journey B, "
-                              "test_mattered.py's cohort",
-                    "captured": date.today().isoformat(), "head": head,
-                    "seconds": round(time.monotonic() - t0),
-                    "script": "turbotab/frontend/src/quest/results/fixtures/capture_mattered.py",
-                    "view_state": list(CE.STATE_KEYS), "notes": notes}, **out}
-    OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")) + "\n")
-    print(f"wrote {OUT} ({OUT.stat().st_size:,} bytes) in {out['meta']['seconds']} s")
+        if "--binary" in argv:
+            lock_id = json.loads(OUT.read_text())["nhanes"]["locked"]["route"]["body"]["plan_lock"]
+        else:
+            (root / "nhanes").mkdir()
+            (root / "cox").mkdir()
+            out: dict[str, Any] = {"nhanes": nhanes(root / "nhanes", notes, t0),
+                                   "cox": cox(root / "cox", notes, t0)}
+            lock_id = out["nhanes"]["locked"]["route"]["body"]["plan_lock"]
+            out["refused"] = refused(root / "engine", lock_id, notes, t0)
+            _write(OUT, {"journey": "estimate-mattered",
+                         "source": "test_materiality_api.py's journey, test_estimand_chain.py "
+                                   "journey B, test_mattered.py's cohort",
+                         "seconds": round(time.monotonic() - t0),
+                         "view_state": list(CE.STATE_KEYS), "notes": notes}, out)
+            notes = []
+        t1 = time.monotonic()
+        part = binary(root / "binary", lock_id, notes, t1)
+    _write(BINARY, {"journey": "estimate-mattered-binary",
+                    "source": "test_mattered.py's cohort and its binary run",
+                    "seconds": round(time.monotonic() - t1), "notes": notes}, {"binary": part})
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
